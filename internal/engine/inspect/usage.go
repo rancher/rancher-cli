@@ -47,7 +47,7 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"Required collectors hard-error: cluster resolution and the pod list always; project " +
 			"resolution and the membership list with --project; the project and namespace maps with " +
 			"--by project; the node list with --by node, or the named node GET with --by node --node N. " +
-			"Degradable section: metrics (unavailable — requests and limits stay). A scope that resolves " +
+			"Degradable section: metrics (unavailable - requests and limits stay). A scope that resolves " +
 			"to zero namespaces is verified empty: no pod or metrics read is issued.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
@@ -207,7 +207,7 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 // namespace when exactly one is given (--namespace mode never pulls
 // cluster-wide metrics to summarize a handful of pods), cluster-wide
 // otherwise. A multi-namespace --project run relies on the namespace+name
-// key lookup in aggregateUsage to filter — an unscoped fetch is correct
+// key lookup in aggregateUsage to filter - an unscoped fetch is correct
 // there because non-member pods are simply never looked up.
 func fetchPodMetrics(ctx context.Context, client engine.ClusterClient, namespaces []string) (map[string]*unstructured.Unstructured, error) {
 	scope := ""
@@ -228,13 +228,13 @@ func fetchPodMetrics(ctx context.Context, client engine.ClusterClient, namespace
 
 // aggregateUsage sums CPU/memory requests, limits, and (when metrics.k8s.io
 // is reachable) usage per grouped key, degrading a metrics fetch failure to
-// a metrics section rather than a command error — request and limit totals
+// a metrics section rather than a command error - request and limit totals
 // stay readable, so the usage section itself is never unavailable for this.
 // Shared by usage's own per-namespace/per-project modes and inspect
 // project's usage summary. sec MUST have sectionMetrics registered in its
-// vocabulary — the metrics degrade records against it, and an unregistered
+// vocabulary - the metrics degrade records against it, and an unregistered
 // section is the accumulator's programmer-error panic. One row is emitted
-// per key present in grouped, even for nil (empty) pod slices — callers
+// per key present in grouped, even for nil (empty) pod slices - callers
 // that need a guaranteed row for a scope with no pods must seed the key
 // first.
 func aggregateUsage(ctx context.Context, client engine.ClusterClient, sec *sections, grouped map[string][]unstructured.Unstructured, namespaces []string) (usageRows, error) {
@@ -284,7 +284,7 @@ func aggregateUsage(ctx context.Context, client engine.ClusterClient, sec *secti
 // addQuantity parses the string quantity at path within container (a
 // map[string]any decoded from spec.containers[i] or a pod-metrics
 // containers[i] entry) and adds it to q. A missing or unparsable value is a
-// silent no-op — an absent request/limit/usage contributes zero.
+// silent no-op - an absent request/limit/usage contributes zero.
 func addQuantity(q *resource.Quantity, container map[string]any, path ...string) {
 	v, found, _ := unstructured.NestedString(container, path...)
 	if !found || v == "" {
@@ -386,7 +386,7 @@ func (e usageEnvelope) Rows() [][]string {
 }
 
 // filterPodsByNode returns the pods scheduled on nodeName; an empty nodeName
-// is a no-op. Every grouping except --by node uses it to honor --node —
+// is a no-op. Every grouping except --by node uses it to honor --node -
 // an accepted flag must never be a silent no-op. Filtering is client-side:
 // ClusterClient.List takes a label selector only (no field selectors).
 func filterPodsByNode(pods []unstructured.Unstructured, nodeName string) []unstructured.Unstructured {

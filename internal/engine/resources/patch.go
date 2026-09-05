@@ -25,15 +25,15 @@ type patchCmd struct {
 // patch's Effect after the server dry-run built it (e.g. the
 // provisioningcluster override's etcd-quorum preview, Task 8). It receives
 // the original and patched objects Plan already computed and a pointer to
-// the Effect about to be returned; it never gates — Action/Destructive/
-// Stability remain the only gating fields — it only informs.
+// the Effect about to be returned; it never gates - Action/Destructive/
+// Stability remain the only gating fields - it only informs.
 type EffectEnricher func(orig, patched *unstructured.Unstructured, eff *safety.Effect)
 
 // NewPatch builds `patch <kind> <name>` (mutating) from a Kind. It applies an
 // RFC 6902 JSON patch locally against the fetched object, diffs the original
 // and patched objects field-by-field, and updates with the fetched
 // resourceVersion as a precondition. Destructiveness is per-kind (Sensitive),
-// not a constant — patching a setting or identity kind requires --yes.
+// not a constant - patching a setting or identity kind requires --yes.
 // enrich is optional (variadic keeps every existing call site compiling
 // unchanged); each enricher runs, in order, after PlanUpdate builds the
 // Effect and before Plan returns it.
@@ -52,7 +52,7 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		// "Patch the <kind>" (a single named resource), matching delete's
 		// article choice; see the note in delete.go. The patch format (RFC
 		// 6902) is documented once, on the --patch flag that carries the
-		// payload — repeating it in every leaf's usage made `patch -h` read
+		// payload - repeating it in every leaf's usage made `patch -h` read
 		// like a stutter, and "patch" appeared twice per line.
 		Usage:        "Patch the " + c.k.Name,
 		CommandType:  runtime.Mutating,
@@ -67,7 +67,7 @@ func (c patchCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// patchFlags is delete's Route flag set (same Required-per-policy rules — patch
+// patchFlags is delete's Route flag set (same Required-per-policy rules - patch
 // is always a named op) plus the two input sources: --patch (inline ops) and
 // --filename/-f (a file or "-" for stdin). Exactly one of the two is required,
 // enforced in Plan.
@@ -130,7 +130,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// ownership on the server, and one that changed them would forge it.
 	patched.SetManagedFields(orig.GetManagedFields())
 
-	// Diff the fetched and patched objects field-by-field — correct for every op
+	// Diff the fetched and patched objects field-by-field - correct for every op
 	// type, unlike mapping ops to entries (a move would misreport as a single
 	// change). Computed before the RV is stamped, so the precondition never
 	// appears as a field change.
@@ -239,12 +239,12 @@ func valueCarries(op jsonpatch.Operation, path string, keys []string) bool {
 }
 
 // redactSensitiveDiff blanks From/To for diff entries under /data or
-// /stringData in place — the JSON path stays visible (so a caller can see
+// /stringData in place - the JSON path stays visible (so a caller can see
 // which keys changed) but the raw value never reaches the Effect. Gated on
 // c.k.Sensitive (the same flag that gates the --yes destructive gate on this
 // same command), not the literal "secret" kind, so redaction stays correct
 // by construction for any future Sensitive kind with a confidential payload
-// under these paths — today only `secret` has one.
+// under these paths - today only `secret` has one.
 func redactSensitiveDiff(diff []safety.DiffEntry) {
 	for i, e := range diff {
 		if isSecretDataPath(e.Path) {

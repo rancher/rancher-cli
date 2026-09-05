@@ -25,7 +25,7 @@ type errEnvelope struct {
 
 // TestCreateResourceShortFlag exercises the real urfave tree: `create resource
 // -f -` must parse the `-f` alias, read the manifest from stdin, and fail with
-// VALIDATION on the unknown kind — proving the alias is wired end-to-end.
+// VALIDATION on the unknown kind - proving the alias is wired end-to-end.
 func TestCreateResourceShortFlag(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -53,7 +53,7 @@ func TestCreateResourceShortFlag(t *testing.T) {
 
 // TestReadOnlyModeRefusesMutatingBeforeDispatch proves the read-only gate
 // fires from the real urfave tree, before Plan (which performs real network
-// calls unconditionally) ever runs — no -f/--apply is supplied, so if the
+// calls unconditionally) ever runs - no -f/--apply is supplied, so if the
 // gate did not fire first, some other VALIDATION (missing input) would
 // surface instead.
 func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {

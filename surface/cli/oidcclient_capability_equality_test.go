@@ -10,7 +10,7 @@ import (
 )
 
 // oidcBespokeCommandNames is the reviewed set of bespoke commands whose
-// Capability requirement must EQUAL the oidcclient kind row's — copied
+// Capability requirement must EQUAL the oidcclient kind row's - copied
 // through the one shared helper, never a second hand-authored value. The
 // coverage rule's uncoveredGated proves PRESENCE only (a typo'd Feature
 // string would still pass it); this test proves SAMENESS.

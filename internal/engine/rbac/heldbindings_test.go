@@ -125,7 +125,7 @@ func TestHeldGlobalBindingsGrantShapedTwoFieldClassifiesWithPrincipal(t *testing
 
 func TestHeldGlobalBindingsConflictingFieldMalformedStaysDirect(t *testing.T) {
 	// userName matches the user's own id (direct), but userPrincipalName
-	// carries a value the user does not own — a malformed/multi-subject
+	// carries a value the user does not own - a malformed/multi-subject
 	// binding. Direct wins (own field, own id); the row falls back to the
 	// user's own principal rather than showing the unrelated value, and an
 	// unrelated groupPrincipalName never redirects it to a group.

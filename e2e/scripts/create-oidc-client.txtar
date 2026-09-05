@@ -3,11 +3,11 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # oidc-provider enabled: the capability check must proceed (envtest cannot
 # serve /rancherversion, so PRIME_REQUIRED/Disabled are covered by
-# surface/cli's own httptest-backed unit tests, not here — see
+# surface/cli's own httptest-backed unit tests, not here - see
 # oidcclient_capability_acceptance_test.go). Seeded ONCE, in this one
 # scenario file: "oidc-provider" is a fixed, production-real Feature name
 # that cannot be scenario-namespaced, and testscript scenarios share one
-# envtest cluster and run concurrently — a second seed attempt elsewhere
+# envtest cluster and run concurrently - a second seed attempt elsewhere
 # would collide (see ext-kinds.txtar, which no longer assumes an empty
 # Feature list for exactly this reason).
 seedobj management.cattle.io/v3/features . oidc-feature.yaml
@@ -29,17 +29,17 @@ jsonquery stdout data.name create-test
 jsonquery stdout data.clientID client-e2e-1
 jsonquery stdout data.secretName client-secret-1
 jsonquery stdout data.clientSecret super-secret-value
-jsonquery stdout 'warnings.0' 'this client secret is shown exactly once — store it now'
+jsonquery stdout 'warnings.0' 'this client secret is shown exactly once - store it now'
 
-# The façade serves no /oidc/.well-known/openid-configuration route, so
+# The facade serves no /oidc/.well-known/openid-configuration route, so
 # discovery degrades: issuer is derived from the effective base, endpoints
-# are omitted, and a second warning names what failed — a committed create
+# are omitted, and a second warning names what failed - a committed create
 # must never fail on discovery quality.
 jsonquery stdout data.issuer ${TEST_RANCHER_URL}/oidc
 jsonquery stdout data.endpoints ''
 stdout 'could not confirm the discovery document'
 
-# -o name is rejected before Plan for this once-only command — zero total
+# -o name is rejected before Plan for this once-only command - zero total
 # requests, never a silent invalidate-and-discard.
 ! exec rancher create oidc-client name-rejected -o name --apply --yes
 stderr 'error \(VALIDATION\):'
@@ -54,14 +54,14 @@ seedobj core/v1/secrets cattle-oidc-client-secrets secret2.yaml
 wait createtextcmd
 
 stdout 'oidcclient/create-test-text created'
-stdout 'client secret: super-secret-value-2   \(shown once — store it now\)'
+stdout 'client secret: super-secret-value-2   \(shown once - store it now\)'
 
 # --- oidc-client add-secret / rotate-secret / remove-secret ---
 #
 # A second, already-provisioned client. Status is set via flipstatus, not
 # embedded in the seedobj YAML: a CRD with a status subresource strips
 # status from the main create call, exactly like a real Kubernetes
-# apiserver — only the status subresource endpoint (flipstatus) can set it,
+# apiserver - only the status subresource endpoint (flipstatus) can set it,
 # even for the FIRST write.
 seedobj management.cattle.io/v3/oidcclients . lifecycle-client.yaml
 flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"clientID":"client-lc-1","clientSecrets":{"client-secret-1":{"createdAt":"1700000000","lastFiveCharacters":"aaaaa"}}}
@@ -73,7 +73,7 @@ seedobj core/v1/secrets cattle-oidc-client-secrets lifecycle-secret.yaml
 # Fleet: a short pause for the real annotation write to land, then the
 # generic `patch` verb (the deliberately kept power-user escape hatch)
 # removes the annotation and `patch secret`/
-# flipstatus apply the controller's effect — all well inside the bespoke
+# flipstatus apply the controller's effect - all well inside the bespoke
 # verb's 2s poll tick.
 exec rancher oidc-client add-secret lifecycle-client --apply --yes -o json &addcmd&
 exec sleep 1
@@ -85,7 +85,7 @@ jsonquery stdout data.clientID client-lc-1
 jsonquery stdout data.secretName client-secret-2
 jsonquery stdout data.clientSecret new-secret-2-value
 jsonquery stdout 'warnings.0' 'creates a new client secret on lifecycle-client'
-jsonquery stdout 'warnings.1' 'this client secret is shown exactly once — store it now'
+jsonquery stdout 'warnings.1' 'this client secret is shown exactly once - store it now'
 
 # rotate-secret: client-secret-1's BACKING VALUE changes; its status entry
 # (createdAt, key set) does not.

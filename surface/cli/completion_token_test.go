@@ -10,7 +10,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// NOTE: tests below mutate storedConfig (package global) and env — NOT parallel.
+// NOTE: tests below mutate storedConfig (package global) and env - NOT parallel.
 func TestResolveCompletionTokenEnvWins(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
@@ -169,14 +169,14 @@ func TestResolveCompletionTokenShimEntryPlusNativeResolvesNative(t *testing.T) {
 
 // TestResolveCompletionTokenShimOnlyYieldsEmpty verifies the shim-only case:
 // when only a legacy:-prefixed cache entry exists for a server+cluster, AC-6
-// must yield an empty capability — the slot is kubectl's, not the operator's.
+// must yield an empty capability - the slot is kubectl's, not the operator's.
 func TestResolveCompletionTokenShimOnlyYieldsEmpty(t *testing.T) {
 	// NOT parallel: mutates storedConfig package global and env.
 	t.Setenv(config.EnvToken, "")
 	keyring.MockInit()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	// Only a shim entry — no native entry.
+	// Only a shim entry - no native entry.
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("legacy:y", "https://rancher.example.com", "c-def"),
 		"shim-only-tok", time.Now().Add(time.Hour),

@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// mcInput is a full runtime.Input fake covering all five axes — create
+// mcInput is a full runtime.Input fake covering all five axes - create
 // machine-config is the first command that consumes Strings and IsSet.
 type mcInput struct {
 	s  map[string]string
@@ -105,8 +105,8 @@ func TestCreateMachineConfigDescribe(t *testing.T) {
 }
 
 // TestCreateMachineConfigBuildRootLevelFields asserts MC-6/MC-10: driver
-// fields sit at the CR ROOT alongside apiVersion/kind/metadata — no spec
-// wrapper — in fleet-default, with the kind row's K8sKind casing.
+// fields sit at the CR ROOT alongside apiVersion/kind/metadata - no spec
+// wrapper - in fleet-default, with the kind row's K8sKind casing.
 func TestCreateMachineConfigBuildRootLevelFields(t *testing.T) {
 	t.Parallel()
 	obj, err := buildMachineConfig(t, mcInput{
@@ -171,7 +171,7 @@ func TestCreateMachineConfigBoolTriState(t *testing.T) {
 // pkg/controllers/management/drivers/nodedriver/utils.go): booleans stay
 // JSON booleans (BoolFlag → "boolean"), arrays stay JSON arrays
 // (StringSliceFlag → "array[string]"), null stays null (Nullable), but
-// NUMBERS submit as their literal string — IntFlag fields are published
+// NUMBERS submit as their literal string - IntFlag fields are published
 // as "string", so a JSON number fails the CRD type check. Anything else
 // is the raw string; '=' allowed in the value; every occurrence lands
 // (MC-6a).
@@ -199,7 +199,7 @@ func TestCreateMachineConfigSetValueParsing(t *testing.T) {
 	assert.Equal(t, "a=b", obj.Object["userdata"], "cut at the FIRST =")
 }
 
-// TestCreateMachineConfigSetMalformed asserts MC-6's shape errors — and that
+// TestCreateMachineConfigSetMalformed asserts MC-6's shape errors - and that
 // they NEVER reflect the entry's content: a bare pasted secret (no '=') or
 // an empty-key assignment ('=secret') would otherwise echo the secret to
 // stderr and into shell history/CI logs. The error names the offending
@@ -232,7 +232,7 @@ func TestCreateMachineConfigSetMalformed(t *testing.T) {
 
 // TestCreateMachineConfigSetEnvelopeKeysRejected asserts MC-6's envelope
 // guard: apiVersion, kind, metadata, and status via --set are VALIDATION
-// before any overlay — they are object identity (or server-owned status),
+// before any overlay - they are object identity (or server-owned status),
 // never driver fields, and must not overwrite what build assembles.
 func TestCreateMachineConfigSetEnvelopeKeysRejected(t *testing.T) {
 	t.Parallel()
@@ -261,7 +261,7 @@ func TestCreateMachineConfigSetDuplicateKey(t *testing.T) {
 
 // TestCreateMachineConfigSetCuratedCollision asserts MC-7: on the curated
 // kind, a --set key naming a curated flag's field is VALIDATION with both
-// spellings named — never silent precedence.
+// spellings named - never silent precedence.
 func TestCreateMachineConfigSetCuratedCollision(t *testing.T) {
 	t.Parallel()
 	_, err := buildMachineConfig(t, mcInput{
@@ -273,7 +273,7 @@ func TestCreateMachineConfigSetCuratedCollision(t *testing.T) {
 }
 
 // TestCreateMachineConfigCuratedFlagForeignKind asserts MC-7a for one flag of
-// each class — string, bool (incl. explicit-false presence), list: a DO
+// each class - string, bool (incl. explicit-false presence), list: a DO
 // curated flag on a non-DO kind is VALIDATION naming flag and kind, with
 // the --set alternative named too, and the field is never written.
 func TestCreateMachineConfigCuratedFlagForeignKind(t *testing.T) {
@@ -312,7 +312,7 @@ func TestCreateMachineConfigCuratedFlagForeignKind(t *testing.T) {
 // TestCreateMachineConfigCredentialRejectedPerKind asserts MC-8: at least one
 // credential-carried key per kind, passed as a WELL-FORMED key=value
 // assignment (so the credential check, not the shape check, is what
-// fires), is VALIDATION naming the key with the cloud-credential guidance —
+// fires), is VALIDATION naming the key with the cloud-credential guidance -
 // here in the canonical confirmed casing (case folding is asserted by
 // TestCreateMachineConfigCredentialRejectedCaseInsensitive).
 func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
@@ -385,7 +385,7 @@ func TestCreateMachineConfigArgValidation(t *testing.T) {
 // slice (used by completion and documentation). A field added to one side
 // only causes a gap: completion suggests a key that validation rejects, or
 // a flag is built that completion never surfaces. The test enforces SET
-// equality — order is irrelevant, membership is not.
+// equality - order is irrelevant, membership is not.
 func TestDoCuratedFlagsMatchKindsCurated(t *testing.T) {
 	t.Parallel()
 	meta, ok := kinds.MachineConfigFieldsFor(doKind)
@@ -445,12 +445,12 @@ func TestCreateMachineConfigPrunedKeyWarning(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, eff.Warnings, 1)
-	assert.Equal(t, "field(s) pruned by the server: regoin — unknown field?", eff.Warnings[0])
+	assert.Equal(t, "field(s) pruned by the server: regoin - unknown field?", eff.Warnings[0])
 }
 
 // TestCreateMachineConfigNullValuePruned asserts the --set field=null edge:
 // the value parses to JSON null, so the SUBMITTED object carries the key
-// with a nil value — the key exists. When the server's dry-run response
+// with a nil value - the key exists. When the server's dry-run response
 // drops that key, the pruned-key comparison (a presence check, not a
 // value check) must treat it like any other pruned key and warn BY NAME,
 // so a null-valued submission never vanishes silently.
@@ -474,12 +474,12 @@ func TestCreateMachineConfigNullValuePruned(t *testing.T) {
 	assert.True(t, submitted, "null value still submits the key")
 	assert.Nil(t, v)
 	require.Len(t, eff.Warnings, 1)
-	assert.Equal(t, "field(s) pruned by the server: keypairName — unknown field?", eff.Warnings[0])
+	assert.Equal(t, "field(s) pruned by the server: keypairName - unknown field?", eff.Warnings[0])
 }
 
 // TestCreateMachineConfigNullValueKept asserts the other half of the null
 // edge: when the server's dry-run response KEEPS the submitted-nil key,
-// no warning fires — presence, not value, decides.
+// no warning fires - presence, not value, decides.
 func TestCreateMachineConfigNullValueKept(t *testing.T) {
 	t.Parallel()
 	client := &mcRecClient{dryRunResult: &unstructured.Unstructured{Object: map[string]any{
@@ -582,7 +582,7 @@ func TestCreateMachineConfigExecutePropagatesError(t *testing.T) {
 // TestCreateMachineConfigFallthroughWarning asserts the driver-default
 // fallthrough warning: Plan appends a warning when any curated VALUE field
 // is left unset, listing only those unset fields sorted. Bool fields
-// (monitoring, ipv6, privateNetworking) are excluded — they can't go stale
+// (monitoring, ipv6, privateNetworking) are excluded - they can't go stale
 // like value defaults. No warning when all value fields are set (bools may
 // still be unset); no warning for non-curated kinds.
 func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
@@ -607,7 +607,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		assert.Equal(t,
 			"unset field(s) inherit the node driver's declared defaults, which may be stale: "+
 				"image, region, size, tags"+
-				" — set them explicitly (a stale default, such as a retired image, makes provisioning fail)",
+				" - set them explicitly (a stale default, such as a retired image, makes provisioning fail)",
 			eff.Warnings[0])
 	})
 
@@ -625,7 +625,7 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		assert.Equal(t,
 			"unset field(s) inherit the node driver's declared defaults, which may be stale: "+
 				"size, tags"+
-				" — set them explicitly (a stale default, such as a retired image, makes provisioning fail)",
+				" - set them explicitly (a stale default, such as a retired image, makes provisioning fail)",
 			eff.Warnings[0])
 	})
 

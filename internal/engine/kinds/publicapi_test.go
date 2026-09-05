@@ -15,7 +15,7 @@ import (
 // Format: "<K8sKind>.<group>"
 //
 // ClusterProxyConfig.management.cattle.io and AuditPolicy.auditlog.cattle.io
-// are on the list but have no kind-table rows yet — they are listed here for
+// are on the list but have no kind-table rows yet - they are listed here for
 // reference and are NOT expected to produce a test failure when absent.
 var publicAPIMembers = []string{
 	"Project.management.cattle.io",
@@ -27,7 +27,7 @@ var publicAPIMembers = []string{
 	"GlobalRoleBinding.management.cattle.io",
 	"ClusterRoleTemplateBinding.management.cattle.io",
 	"ProjectRoleTemplateBinding.management.cattle.io",
-	// No kind-table rows yet — listed for completeness, tolerated as absent:
+	// No kind-table rows yet - listed for completeness, tolerated as absent:
 	// "ClusterProxyConfig.management.cattle.io",
 	// "AuditPolicy.auditlog.cattle.io",
 }
@@ -47,7 +47,7 @@ func TestPublicAPIKindsAreContractPublic(t *testing.T) {
 		key := fmt.Sprintf("%s.%s", k.K8sKind, k.GVR.Group)
 		if k.Binding.Contract == safety.ContractPublic {
 			assert.True(t, memberSet[key],
-				"kind %q (%s) has ContractPublic but is NOT in the publicAPIMembers list — add it or downgrade its contract",
+				"kind %q (%s) has ContractPublic but is NOT in the publicAPIMembers list - add it or downgrade its contract",
 				k.Name, key)
 		}
 		if memberSet[key] {

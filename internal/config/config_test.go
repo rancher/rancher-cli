@@ -89,7 +89,7 @@ func TestCompletionTimeoutWithRaw(t *testing.T) {
 			assert.Equal(t, tc.effective, eff)
 			assert.Equal(t, tc.raw, raw)
 			assert.Equal(t, tc.diverges, div)
-			// EffectiveCompletionTimeout must agree — it is now a thin wrapper.
+			// EffectiveCompletionTimeout must agree - it is now a thin wrapper.
 			assert.Equal(t, tc.effective, EffectiveCompletionTimeout(cfg))
 		})
 	}

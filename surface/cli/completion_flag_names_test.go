@@ -78,7 +78,7 @@ func TestFlagNameCompletionDoubleDash(t *testing.T) {
 }
 
 // TestFlagNameCompletionSingleDash: `usage -<TAB>` must emit both short aliases
-// (-o, -h) and long forms (--output, --help) — the "-" prefix enables all
+// (-o, -h) and long forms (--output, --help) - the "-" prefix enables all
 // forms, not long-only.
 func TestFlagNameCompletionSingleDash(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -214,8 +214,8 @@ func TestFlagNameCompletionFormatColonSeparated(t *testing.T) {
 // TestFlagNameCompletionV1ProtocolLeaf verifies that the v1 protocol path is
 // preserved: when no proto sentinel is present (rawProtoV2=false), the
 // SiteNameLike branch delegates to urfave's DefaultCompleteWithFlags, which
-// reads the partial word ("--") from cmd.Args().Slice() — urfave preserves
-// "--" in parsedArgs in shellCompletion mode (command_parse.go) — and emits
+// reads the partial word ("--") from cmd.Args().Slice() - urfave preserves
+// "--" in parsedArgs in shellCompletion mode (command_parse.go) - and emits
 // leaf flag names via printFlagSuggestions.
 func TestFlagNameCompletionV1ProtocolLeaf(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -346,7 +346,7 @@ func TestLeafEqualsFormFlagValueCompletion(t *testing.T) {
 
 // TestGroupAliasOnlyPrefixCompletion: `get ns<TAB>` must return the alias "ns"
 // (and NOT "namespace", which doesn't start with "ns"). Before the fix, the alias
-// loop was gated on the canonical name prefix-matching first — since "namespace"
+// loop was gated on the canonical name prefix-matching first - since "namespace"
 // does not start with "ns", the alias loop never ran and zero candidates were
 // returned.
 func TestGroupAliasOnlyPrefixCompletion(t *testing.T) {

@@ -17,14 +17,14 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
-// configEditSkeleton seeds the temp buffer when no config file exists yet —
+// configEditSkeleton seeds the temp buffer when no config file exists yet -
 // commented-out so an unedited save still parses (as an empty config) rather
 // than erroring. Carries no example server block: config edit can no longer
 // create one (servers/currentServer are rejected at commit), so seeding one
 // would only teach a workflow this command immediately refuses.
 const configEditSkeleton = `# No rancher CLI config file exists yet at this path.
 # Save this file as-is (or empty) to leave nothing configured.
-# config edit cannot add or change servers or the current server — use
+# config edit cannot add or change servers or the current server - use
 # rancher config add-server / update-server / delete-server / use-server.
 `
 
@@ -33,14 +33,14 @@ type configEditCmd struct {
 	// launchEditor invokes the resolved editor (bin+args from $VISUAL/
 	// $EDITOR) against tempPath, injectable for tests; defaults to
 	// execEditor. A non-nil return (a launch failure or a non-zero exit
-	// alike — exec.Cmd.Run reports both as an error) means abort: the real
+	// alike - exec.Cmd.Run reports both as an error) means abort: the real
 	// config file is untouched, and there is no meaningful edit to
 	// preserve, so the temp buffer is removed.
 	launchEditor func(bin string, args []string, tempPath string) error
 }
 
 // NewConfigEdit builds `config edit` (local): a kubectl-style edit loop on a
-// TEMP COPY, never in place — copy, launch $VISUAL/$EDITOR, parse+validate
+// TEMP COPY, never in place - copy, launch $VISUAL/$EDITOR, parse+validate
 // on exit, write back atomically only once the buffer validates.
 func NewConfigEdit(dir string) runtime.Command {
 	return &configEditCmd{dir: dir, launchEditor: execEditor}
@@ -60,18 +60,18 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 	realPath := config.FilePath(c.dir)
 
 	// Hard gate, checked once before any editing starts (not re-checked per
-	// loop iteration — env/TTY state cannot change mid-run). CanPrompt()
+	// loop iteration - env/TTY state cannot change mid-run). CanPrompt()
 	// already ORs "no TTY" and "--no-input"/NoInput, so one check covers
 	// both.
 	if !p.CanPrompt() {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("config edit needs a TTY — edit %s directly", realPath))
+			fmt.Sprintf("config edit needs a TTY - edit %s directly", realPath))
 	}
 
 	bin, args, ok := resolveEditor()
 	if !ok {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("config edit needs $VISUAL or $EDITOR set to launch an editor — edit %s directly", realPath))
+			fmt.Sprintf("config edit needs $VISUAL or $EDITOR set to launch an editor - edit %s directly", realPath))
 	}
 
 	tempPath, baseline, existed, err := newTempCopy(realPath)
@@ -83,7 +83,7 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 		if lerr := c.launchEditor(bin, args, tempPath); lerr != nil {
 			// A plain launch/non-zero-exit abort has no "rejected but
 			// meaningful edit" to preserve (the buffer is still whatever it
-			// was before this failed attempt) — clean it up rather than
+			// was before this failed attempt) - clean it up rather than
 			// leaving stray temp files behind.
 			_ = os.Remove(tempPath)
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
@@ -116,7 +116,7 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 
 		// Write back under the config lock with a compare-and-write check: if
 		// the real file changed (bytes differ or existence changed) while the
-		// editor was open, conflict — the user's edits are preserved at tempPath.
+		// editor was open, conflict - the user's edits are preserved at tempPath.
 		fnRan := false
 		writeErr := config.WithLock(ctx, c.dir, func() error {
 			fnRan = true
@@ -128,7 +128,7 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 				readErr = nil
 			}
 			if readErr != nil {
-				// A failed comparison read is not a write failure — the
+				// A failed comparison read is not a write failure - the
 				// write was never attempted. Say which step broke.
 				return clierr.New(clierr.CodeGeneric,
 					fmt.Sprintf("reading the config to check for concurrent changes failed; your edits are preserved at %s: %v", tempPath, readErr))
@@ -141,20 +141,20 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 		})
 		if writeErr != nil {
 			// Cancellation while waiting for the write lock passes through
-			// unchanged, like every other locked command — dressing it as a
+			// unchanged, like every other locked command - dressing it as a
 			// write failure would send the user diagnosing the wrong thing.
 			// The edits stay preserved at tempPath either way.
 			if errors.Is(writeErr, context.Canceled) {
 				return runtime.Result{}, writeErr
 			}
-			// Both the conflict clierr and I/O errors preserve tempPath — in
+			// Both the conflict clierr and I/O errors preserve tempPath - in
 			// the conflict case the brief requires it; for I/O failures the
 			// user's work must not be lost.
 			if ce, ok := errors.AsType[*clierr.Error](writeErr); ok {
 				// A clierr produced inside fn (conflict, read failure)
 				// already names the preserved temp path at its source; a
 				// failure BEFORE fn ran can only be lock acquisition, which
-				// cannot know the path — say the edits are safe for it. The
+				// cannot know the path - say the edits are safe for it. The
 				// distinction is the fnRan fact, not message sniffing.
 				if !fnRan {
 					return runtime.Result{}, ce.WithMessage(
@@ -176,7 +176,7 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 
 // promptReEdit asks whether to re-edit after an invalid buffer, defaulting
 // to yes. Anything not recognized as an explicit "no" (including a Prompter
-// error) is treated as "no" — abort-safe, never loops on garbage input.
+// error) is treated as "no" - abort-safe, never loops on garbage input.
 func promptReEdit(ctx context.Context, p runtime.Prompter) (bool, error) {
 	ans, err := p.Prompt(ctx, "re-edit? [Y/n]: ")
 	if err != nil {
@@ -267,7 +267,7 @@ func newTempCopy(realPath string) (tmpPath string, baseline []byte, existed bool
 }
 
 // checkEditRestrictions diffs the edited buffer against the pre-edit
-// baseline and rejects any change to servers or currentServer — the
+// baseline and rejects any change to servers or currentServer - the
 // registration/update/delete/use verbs are the single-write-path invariant's
 // only drivers of entry and pointer state; config edit's own compare-and-
 // write check (a raw byte comparison against a possibly-changed concurrent

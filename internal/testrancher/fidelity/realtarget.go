@@ -29,7 +29,7 @@ func jsonMarshalNoEscape(v any) ([]byte, error) {
 }
 
 // LazyBearer memoizes a bearer provisioned on first use. It caches only on
-// success — a failed provision leaves the slot empty so the next Get retries —
+// success - a failed provision leaves the slot empty so the next Get retries -
 // and serializes concurrent callers so provisioning happens at most once.
 type LazyBearer struct {
 	mu  sync.Mutex
@@ -127,10 +127,10 @@ func newStandardPassword() (string, error) {
 
 // standardBearer provisions the e2e-fid-standard local user (idempotently:
 // delete-before-create keeps kept-container reruns clean), binds the
-// baseline `user` global role — a bare /v3/users create attaches no global
+// baseline `user` global role - a bare /v3/users create attaches no global
 // role bindings, and a role-less user is not the spec's "standard identity":
 // it gets schema-hidden responses (an empty 200 collection, a bodyless 404)
-// rather than a baseline user's, so the role realizes that identity — and
+// rather than a baseline user's, so the role realizes that identity - and
 // logs in as it. Cleanup relies on Rancher cascading a deleted user's global
 // role bindings.
 func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
@@ -191,7 +191,7 @@ func (t *RealTarget) revokedBearer(ctx context.Context) (string, error) {
 
 // deleteStandardUser removes any prior e2e-fid-standard user by username
 // lookup. An absent user (empty data array) is clean; every HTTP failure,
-// malformed 200 shape, or rejected delete is surfaced — a silently-kept
+// malformed 200 shape, or rejected delete is surfaced - a silently-kept
 // stale user would break kept-run recovery at the subsequent create.
 func (t *RealTarget) deleteStandardUser(ctx context.Context) error {
 	body, status, err := t.adminJSON(ctx, http.MethodGet, "/v3/users?username="+standardUsername, nil, 0)
@@ -225,7 +225,7 @@ func (t *RealTarget) deleteStandardUser(ctx context.Context) error {
 }
 
 // login posts local-provider credentials and returns the bearer, accepting
-// both the Norman ({token}) and ext ({status.bearerToken}) response shapes —
+// both the Norman ({token}) and ext ({status.bearerToken}) response shapes -
 // the same tolerance internal/token's parseLoginResponse implements.
 func (t *RealTarget) login(ctx context.Context, user, pass string) (string, error) {
 	payload := map[string]any{"type": "localProvider", "username": user, "password": pass}
@@ -307,8 +307,8 @@ func (t *RealTarget) doJSON(ctx context.Context, method, path string, payload ma
 }
 
 // redactBody scrubs credential fields from a response body before it is
-// embedded in an error message; non-JSON bodies are summarized, never echoed
-// — an unexpected-status response can still carry a live bearer.
+// embedded in an error message; non-JSON bodies are summarized, never echoed -
+// an unexpected-status response can still carry a live bearer.
 func redactBody(raw []byte) string {
 	var decoded map[string]any
 	if err := json.Unmarshal(raw, &decoded); err != nil {

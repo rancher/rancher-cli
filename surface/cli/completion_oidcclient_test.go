@@ -34,7 +34,7 @@ func oidcClientServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 // TestLivePositionalOIDCClientCandidates asserts the generic Completable NSNone
 // management-kind fallback branch: `get
 // oidcclient <TAB>` lists v3 OIDCClients from the local (management) cluster
-// through the same generic path nodedriver uses — no per-kind case needed —
+// through the same generic path nodedriver uses - no per-kind case needed -
 // and hostile names are dropped by the sanitize charset.
 func TestLivePositionalOIDCClientCandidates(t *testing.T) {
 	t.Parallel()
@@ -51,7 +51,7 @@ func TestLivePositionalOIDCClientCandidates(t *testing.T) {
 
 // TestLivePositionalOIDCClientTokenBoundary asserts the management-token
 // boundary: a missing token or an exec-cred-only (IDOnly) capability cannot
-// authorize the management cluster list — nil, with ZERO requests.
+// authorize the management cluster list - nil, with ZERO requests.
 func TestLivePositionalOIDCClientTokenBoundary(t *testing.T) {
 	t.Parallel()
 	srv, hits := oidcClientServer(t)
@@ -133,7 +133,7 @@ func TestLivePositionalBespokeOIDCClientSecretName(t *testing.T) {
 
 // TestLivePositionalBespokeOIDCClientSecretNameNoFirstPositional asserts the
 // dependent-positional gate: a missing or unresolvable first positional
-// completes to nothing — never an error into the TAB stream, zero requests.
+// completes to nothing - never an error into the TAB stream, zero requests.
 func TestLivePositionalBespokeOIDCClientSecretNameNoFirstPositional(t *testing.T) {
 	t.Parallel()
 	srv, hits := oidcClientSecretsServer(t)

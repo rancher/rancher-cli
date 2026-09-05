@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestVersionVerbNeedsNoVault: version must work with no Vault env at all —
+// TestVersionVerbNeedsNoVault: version must work with no Vault env at all -
 // it dispatches before the Vault handler is constructed.
 func TestVersionVerbNeedsNoVault(t *testing.T) {
 	t.Setenv("VAULT_ADDR", "")
@@ -51,7 +51,7 @@ func TestRun(t *testing.T) {
 		{name: "unknown -x exit 2", args: []string{"-x"}, wantCode: 2, wantStderrContains: "get"},
 		// protocol verbs fall through to Serve (-1); no stdout or stderr output
 		{name: "get falls through", args: []string{"get"}, wantCode: -1},
-		// "get help": bare "help" in non-first position is not intercepted here —
+		// "get help": bare "help" in non-first position is not intercepted here -
 		// it reaches Serve's arg-count check. Diverges from "get --help" by design.
 		{name: "get help falls through", args: []string{"get", "help"}, wantCode: -1},
 	}

@@ -154,7 +154,7 @@ func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {
 
 // TestCreateSecretDryRunEffectNeverLeaksLiteralValue asserts DR-001 discipline:
 // engine.PlanCreate builds Target-only Effects (no diff, no object payload),
-// so a dry-run of a create secret leaks nothing — this test proves it by
+// so a dry-run of a create secret leaks nothing - this test proves it by
 // rendering the Effect to JSON and checking the literal never appears.
 func TestCreateSecretDryRunEffectNeverLeaksLiteralValue(t *testing.T) {
 	t.Parallel()
@@ -208,7 +208,7 @@ func TestCreateSecretIsDestructive(t *testing.T) {
 // TestCreateSecretProjectScopedExplicitBackingNamespaceEqualToProjectIDDoesNotWarn
 // distinguishes the precise statusEmpty signal from the old ns==projectID
 // heuristic: status.backingNamespace is explicitly SET, coincidentally to
-// the same value as the project id — the old heuristic would misfire a
+// the same value as the project id - the old heuristic would misfire a
 // warning here since it can't tell that apart from an empty status field.
 func TestCreateSecretProjectScopedExplicitBackingNamespaceEqualToProjectIDDoesNotWarn(t *testing.T) {
 	t.Parallel()
@@ -226,7 +226,7 @@ func TestCreateSecretProjectScopedExplicitBackingNamespaceEqualToProjectIDDoesNo
 	require.NoError(t, err)
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	assert.Empty(t, res.Warnings, "status.backingNamespace was explicitly set (even though it equals the project id) — no propagation warning")
+	assert.Empty(t, res.Warnings, "status.backingNamespace was explicitly set (even though it equals the project id) - no propagation warning")
 }
 
 func TestCreateSecretResultRedactsPayload(t *testing.T) {

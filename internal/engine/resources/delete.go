@@ -19,7 +19,7 @@ type deleteCmd struct {
 // NewDelete builds `delete <kind> <name>` (mutating) from a Kind. Plan fetches
 // the object, captures its resourceVersion, dry-run-deletes for an admission
 // preview, and returns an Effect plus an executor that deletes with the RV
-// precondition — the end-to-end proof of Approach B.
+// precondition - the end-to-end proof of Approach B.
 func NewDelete(k kinds.Kind, clients engine.ClusterClientFactory) runtime.Command {
 	return &deleteCmd{k: k, clients: clients}
 }
@@ -47,10 +47,10 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 // deleteFlags is get's flag set with the flags a delete (always a named op)
 // requires marked Required so the pipeline rejects before Plan:
 //   - an NSCluster kind's --cluster (it becomes the namespace; an empty value
-//     must not fall through to the local cluster — F3);
+//     must not fall through to the local cluster - F3);
 //   - an NSPlain kind's --namespace (an empty value would 404 opaquely).
 //
-// NSWorkspace deletes need nothing marked Required — the kind's
+// NSWorkspace deletes need nothing marked Required - the kind's
 // DefaultNamespace satisfies the named-op rule.
 func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := getFlags(k)
@@ -91,7 +91,7 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 
 // PlanFromFetched builds a delete Effect and exec closure from an object
 // already fetched by the caller. Both the dry-run admission preview and the
-// exec closure derive their resourceVersion from obj — no second GET occurs,
+// exec closure derive their resourceVersion from obj - no second GET occurs,
 // so the guard's safety decision and the deletion's precondition are bound to
 // the same read.
 func PlanFromFetched(ctx context.Context, client engine.ClusterClient, k kinds.Kind, ns, name string, obj *unstructured.Unstructured, effectCluster string) (safety.Effect, runtime.ExecuteFunc, error) {

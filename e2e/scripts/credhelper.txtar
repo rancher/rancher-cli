@@ -19,12 +19,12 @@ jsonquery stdout data.server e2e
 exec rancher auth logout e2e -o json
 jsonquery stdout 'data.deletedFrom.e2e.#' 1
 
-# the helper's own state proves the credential is GONE — a helper that
+# the helper's own state proves the credential is GONE - a helper that
 # reported success without deleting would still fail here. jsonquery decodes
 # the file (never string-match rendered JSON): zero keys in the creds map.
 jsonquery $WORK/helper-state.json 'creds.@keys.#' 0
 
-# post-logout: current server cleared and no credential held anywhere —
+# post-logout: current server cleared and no credential held anywhere -
 # the same check now fails (nonzero) with the typed not-logged-in error.
 ! exec rancher auth status -o json
 jsonquery stderr data.error.code NOT_LOGGED_IN

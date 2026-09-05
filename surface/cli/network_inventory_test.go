@@ -13,7 +13,7 @@ import (
 // preflight, a live token creation) and must declare Network: true so the
 // schema manifest reflects what they actually do. The generated kind-table
 // rows (runtime.ReadOnly/runtime.Mutating commands) always talk to the
-// server and declare Network: true at their one shared builder — outside
+// server and declare Network: true at their one shared builder - outside
 // this inventory's scope, which covers only the hand-authored Local set.
 var networkedLocalCommandInventory = map[string]bool{
 	"auth status":          true,
@@ -28,7 +28,7 @@ var networkedLocalCommandInventory = map[string]bool{
 // TestNetworkedLocalCommandsConformance asserts the Local command network
 // inventory bidirectionally: every reviewed entry must still declare
 // Network: true, and no other Local command may declare Network: true
-// without first being added to the reviewed inventory — so adding a live
+// without first being added to the reviewed inventory - so adding a live
 // preflight to a Local command forces a decision here instead of leaving
 // the schema manifest silently wrong, and no command can silently opt in
 // to the network badge without review.

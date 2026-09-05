@@ -15,7 +15,7 @@ import (
 )
 
 // assertSerializedWithLoadUnderLock proves two properties for a wrapped
-// command: (1) its deciding config load happens INSIDE the lock — a
+// command: (1) its deciding config load happens INSIDE the lock - a
 // change committed while the command was waiting is visible to it; and
 // (2) a second locked operation cannot start until the first finishes.
 func assertSerializedWithLoadUnderLock(t *testing.T, dir string, first func(), mutateWhileHeld func(), second func()) {
@@ -58,7 +58,7 @@ func assertSerializedWithLoadUnderLock(t *testing.T, dir string, first func(), m
 }
 
 // writeSentinelServer appends a server entry named "sentinel" to the
-// config file in dir using os.WriteFile of pre-marshaled bytes — never
+// config file in dir using os.WriteFile of pre-marshaled bytes - never
 // through WithLock (deadlock) or cfg.Write (same risk while a lock hook
 // is parked).
 func writeSentinelServer(t *testing.T, dir string) {

@@ -77,7 +77,7 @@ _rancher
 // nospace handling: candidates whose token ends in "/" (the machine-config
 // `<kind>/` prefix stage) or "=" (the template= output form) must be added
 // with an empty compadd suffix (-S with an empty string) so acceptance does
-// not append the space zsh adds by default — the next keystroke keeps
+// not append the space zsh adds by default - the next keystroke keeps
 // extending the same word. Finished candidates keep the default suffix
 // (a space).
 func TestZshContinuationCandidatesGetEmptySuffix(t *testing.T) {

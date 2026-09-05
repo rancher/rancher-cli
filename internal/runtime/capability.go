@@ -7,16 +7,16 @@ import "context"
 type CapabilityOutcome int
 
 const (
-	// CapabilityProceed means the preflight permits execution — it does NOT
+	// CapabilityProceed means the preflight permits execution - it does NOT
 	// prove the target API/CRD/route is installed and ready; the actual
 	// request stays authoritative. Proceed (affirmative evidence) and
 	// Unknown (no evidence) run the target identically TODAY, and the
-	// distinction is kept anyway — deliberately, as a contract — because
+	// distinction is kept anyway - deliberately, as a contract - because
 	// collapsing them would discard the detector's information the moment a
 	// consumer (verbose messaging, telemetry) wants it.
 	CapabilityProceed CapabilityOutcome = iota
 	// CapabilityDisabled means the feature reads effective-disabled and is
-	// not prime-required (see CapabilityPrimeRequired) — on ANY edition,
+	// not prime-required (see CapabilityPrimeRequired) - on ANY edition,
 	// including community and unknown. An explicit disabled reading is
 	// treated as certain regardless of what else is unknown about the
 	// server, because letting it fall through as Unknown would let a
@@ -26,21 +26,21 @@ const (
 	// statement true regardless of tier.
 	CapabilityDisabled
 	// CapabilityPrimeRequired means the feature reads effective-disabled AND
-	// prime-classified AND the server edition is affirmatively community —
+	// prime-classified AND the server edition is affirmatively community -
 	// the only outcome that returns the PRIME_REQUIRED error.
 	CapabilityPrimeRequired
 	// CapabilityUnknown covers everything else: either signal missing,
 	// malformed, forbidden, absent, unrecognized, or contradictory in a way
 	// the truth table does not resolve. Unknown never blocks and never
-	// surfaces a detector-side error — the target request executes and its
+	// surfaces a detector-side error - the target request executes and its
 	// own result/error is handled as if no detector existed.
 	CapabilityUnknown
 	// CapabilityUnsupported is CapabilityExtDiscovery's negative outcome: a
 	// readable discovery document that affirmatively lacks the named
-	// resource — the server is a version that never carries this workflow,
+	// resource - the server is a version that never carries this workflow,
 	// not a feature flag that could be turned on. Returns the
 	// CAPABILITY_UNSUPPORTED error. A discovery document that could not be
-	// read at all is CapabilityUnknown, never this outcome — the
+	// read at all is CapabilityUnknown, never this outcome - the
 	// unknown-never-blocks rule holds identically across tiers.
 	CapabilityUnsupported
 )
@@ -51,7 +51,7 @@ const (
 // worded per surface. The wording is a PRODUCT-TIER CLASSIFICATION, not a
 // per-server requirement claim: a capability can be community-usable on one
 // supported server version and Prime-gated on the next, so a static surface
-// must never assert "requires" — only the runtime PRIME_REQUIRED error does
+// must never assert "requires" - only the runtime PRIME_REQUIRED error does
 // that, backed by the detector's affirmative per-server evidence.
 const PrimeSentence = "A Rancher Prime capability; availability is decided by the connected server."
 
@@ -65,7 +65,7 @@ const PrimeMarker = "[Prime]"
 type CapabilityDecision struct {
 	Outcome CapabilityOutcome
 	// Server is the connected server's URL, for the PRIME_REQUIRED error's
-	// details.server — populated whenever the checker could resolve it,
+	// details.server - populated whenever the checker could resolve it,
 	// regardless of Outcome.
 	Server string
 	// EditionPrime is true when the connected server's edition is
@@ -77,8 +77,8 @@ type CapabilityDecision struct {
 
 // CapabilityChecker probes whether the resolved server permits a capability
 // requirement. It lives in internal/runtime (beside the pipeline contract it
-// serves) so Run can invoke it without runtime importing engine or provider
-// — the composed implementation lives in surface/cli, built from the
+// serves) so Run can invoke it without runtime importing engine or provider -
+// the composed implementation lives in surface/cli, built from the
 // provider's server-info probe and the engine feature client, and is handed
 // to Run as an invocation dependency via IO.Capability.
 type CapabilityChecker interface {

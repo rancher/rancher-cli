@@ -59,7 +59,7 @@ func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ ru
 			fmt.Sprintf("--network=%q is not valid; use true or false", networkStr))
 	}
 
-	// Parse and clamp the timeout before taking the lock — validation errors
+	// Parse and clamp the timeout before taking the lock - validation errors
 	// should not require the lock.
 	var parsedTimeout time.Duration
 	if timeoutStr != "" {
@@ -128,7 +128,7 @@ func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ ru
 // probes the keyring and never writes a pin.
 func completionCapabilityNote(dir string, cfg *config.Config) string {
 	if os.Getenv(config.EnvToken) != "" {
-		return "live completion enabled; RANCHER_CLI_TOKEN detected — full capability."
+		return "live completion enabled; RANCHER_CLI_TOKEN detected - full capability."
 	}
 	policy := config.EffectivePolicy(cfg.CredentialStore)
 	pin := config.ReadPin(dir)

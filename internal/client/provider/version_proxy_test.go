@@ -48,7 +48,7 @@ func newConnectProxy() *connectProxy {
 }
 
 // setTarget points rancherVersionProxyTargetHost at addr for the duration of
-// the caller's test — TestMain starts one proxy for the whole binary, and
+// the caller's test - TestMain starts one proxy for the whole binary, and
 // each test using it runs its own target server on a fresh loopback port.
 func (p *connectProxy) setTarget(t *testing.T, addr string) {
 	t.Helper()
@@ -121,12 +121,12 @@ var sharedConnectProxyForTests *connectProxy
 // the whole binary. net/http's ProxyFromEnvironment caches its environment
 // read behind a private, unresettable sync.Once, so a per-test t.Setenv
 // would arrive too late once any earlier test's request has already
-// resolved a proxy decision — setting it once here, before any test runs,
+// resolved a proxy decision - setting it once here, before any test runs,
 // makes that first resolution the one this package wants. Every other test
 // in this package targets a loopback (127.0.0.1) httptest server, which
 // httpproxy never proxies regardless of this setting (see
 // TestProxyFuncNeverProxiesLoopbackTarget in the httpx package), so only
-// rancherVersionProxyTargetHost — a real hostname, not a loopback literal —
+// rancherVersionProxyTargetHost - a real hostname, not a loopback literal -
 // actually routes through the fixture.
 //
 // Proxy variables inherited from the environment are cleared with

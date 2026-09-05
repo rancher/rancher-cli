@@ -47,7 +47,7 @@ jsonquery stdout data.machinePools.0.roles.2 worker
 stdout e2e-crt-real-token-c-other
 
 # Confirmed absence (IC-7) by display name: the harness's c-test has no
-# provisioning CR and no facade token fixture — the reserved note plus a
+# provisioning CR and no facade token fixture - the reserved note plus a
 # registration warning (--registration flag triggers the fetch), sections
 # absent, exit 0.
 exec rancher inspect cluster testcluster --registration -o json
@@ -68,7 +68,7 @@ jsonquery stdout warnings ''
 # "management.cattle.io/v3/clusters" would produce a double-slash URL
 # (/_test/status/local/management.cattle.io/v3/clusters//c-import) that
 # Go's http.ServeMux normalises away, leaving only 5 path segments instead
-# of the 6 handleStatusLever requires — the shim returns 400 Bad Request.
+# of the 6 handleStatusLever requires - the shim returns 400 Bad Request.
 # The behavior is unit-tested in task 2; this scenario covers the other
 # import-specific outputs.
 
@@ -88,7 +88,7 @@ stdout 'none \(imported or custom cluster\)'
 stdout 'node join \[not applicable: imported cluster\]:'
 
 # system member: seed the c-import namespace (required for namespaced CRTBs)
-# then create a system:// CRTB — follows the project-members.txtar pattern.
+# then create a system:// CRTB - follows the project-members.txtar pattern.
 exec rancher create namespace c-import --cluster local --apply
 exec rancher create resource -f crtb-system.yaml --apply --yes
 

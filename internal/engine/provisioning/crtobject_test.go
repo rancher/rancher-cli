@@ -12,8 +12,8 @@ import (
 )
 
 // TestDecodeCRTObjectIsPolicyNeutral proves the decoder returns values
-// exactly as decoded — including a still-unformatted "{token}"
-// placeholder — and never errors on one: detection is PlaceholderFields'
+// exactly as decoded - including a still-unformatted "{token}"
+// placeholder - and never errors on one: detection is PlaceholderFields'
 // job, and deciding what to do about it is the caller's (IC-4a).
 func TestDecodeCRTObjectIsPolicyNeutral(t *testing.T) {
 	t.Parallel()
@@ -47,8 +47,8 @@ func TestDecodeCRTObjectMalformedBody(t *testing.T) {
 }
 
 // TestDecodeCRTObjectWrongShape asserts the STRUCTURAL invariant: a body
-// that is valid JSON but not a Steve clusterregistrationtoken object —
-// missing metadata.namespace, metadata.name, or the status object — is
+// that is valid JSON but not a Steve clusterregistrationtoken object -
+// missing metadata.namespace, metadata.name, or the status object - is
 // the same typed decode error as malformed JSON, never a silently-empty
 // CRTObject. Without this, FetchDefaultCRT would hand inspect cluster a
 // successful-looking empty registration read and the IC-8 warning would
@@ -81,7 +81,7 @@ func TestDecodeCRTObjectWrongShape(t *testing.T) {
 	t.Run("status may be empty but must be PRESENT", func(t *testing.T) {
 		t.Parallel()
 		// A CRT whose controller has not filled status yet still carries the
-		// status object; empty FIELDS are fine — absence of the object is not.
+		// status object; empty FIELDS are fine - absence of the object is not.
 		obj, err := DecodeCRTObject("/v1/shape",
 			[]byte(`{"metadata":{"namespace":"c-aaa","name":"default-token"},"spec":{"clusterName":"c-aaa"},"status":{}}`))
 		require.NoError(t, err)
@@ -92,7 +92,7 @@ func TestDecodeCRTObjectWrongShape(t *testing.T) {
 
 // TestDecodeCRTCollectionWrongShapeElement asserts the same invariant per
 // collection element: one structurally invalid object fails the whole
-// decode with a typed error naming the path — consistent with the
+// decode with a typed error naming the path - consistent with the
 // existing malformed-body contract (decode failures abort; only the
 // PLACEHOLDER policy degrades per row).
 func TestDecodeCRTCollectionWrongShapeElement(t *testing.T) {
@@ -114,7 +114,7 @@ func TestDecodeCRTCollectionWrongShapeElement(t *testing.T) {
 
 // TestDecodeCRTCollectionEnvelopeInvariant asserts the collection ENVELOPE's
 // own shape rule: {"data":[]} is a VALID empty collection, while a
-// missing, null, or non-array data field is the typed wrong-shape error —
+// missing, null, or non-array data field is the typed wrong-shape error -
 // a bare {} or an error payload must never decode as a successful empty
 // list.
 func TestDecodeCRTCollectionEnvelopeInvariant(t *testing.T) {
@@ -172,7 +172,7 @@ func TestDecodeCRTCollectionDecodesEveryObject(t *testing.T) {
 // TestPlaceholderFieldsReportsEachProtectedField is IC-4a's reporter
 // contract, table-driven over the seven formatter-protected fields: the
 // reporter names exactly the placeholder-bearing field(s) and decides
-// nothing. Token is deliberately never reported — it is the splice
+// nothing. Token is deliberately never reported - it is the splice
 // SOURCE, not a template the formatter substitutes into.
 func TestPlaceholderFieldsReportsEachProtectedField(t *testing.T) {
 	t.Parallel()
@@ -241,7 +241,7 @@ func TestFetchDefaultCRTPathAndDecode(t *testing.T) {
 }
 
 // TestFetchDefaultCRTPropagatesRootError asserts that a transport/RBAC/404
-// failure surfaces as the RootClient's own typed error — inspect cluster
+// failure surfaces as the RootClient's own typed error - inspect cluster
 // degrades it to a warning (IC-8), which needs the error intact.
 func TestFetchDefaultCRTPropagatesRootError(t *testing.T) {
 	t.Parallel()

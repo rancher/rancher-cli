@@ -73,7 +73,7 @@ func TestTTLMillisecondsSubMillisecondIsValidation(t *testing.T) {
 	require.Greater(t, ttl, time.Duration(0))
 
 	_, err = TTLMilliseconds(ttl, "500us")
-	require.Error(t, err, "500us truncates to 0ms — must not silently become spec.ttl: 0")
+	require.Error(t, err, "500us truncates to 0ms - must not silently become spec.ttl: 0")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -93,7 +93,7 @@ func TestTTLSecondsSubSecondIsValidation(t *testing.T) {
 	require.Greater(t, ttl, time.Duration(0))
 
 	_, err = TTLSeconds(ttl, "500ms")
-	require.Error(t, err, "500ms truncates to 0s — must not silently become spec.ttl: 0")
+	require.Error(t, err, "500ms truncates to 0s - must not silently become spec.ttl: 0")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)

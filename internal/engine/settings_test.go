@@ -8,7 +8,7 @@ import (
 )
 
 // settingObj builds a fixture management.cattle.io/v3 Setting object with an
-// optional "value" and/or "default" top-level field — SettingValue's only
+// optional "value" and/or "default" top-level field - SettingValue's only
 // two inputs.
 func settingObj(value, def string, hasValue, hasDefault bool) *unstructured.Unstructured {
 	obj := map[string]any{"metadata": map[string]any{"name": "test-setting"}}

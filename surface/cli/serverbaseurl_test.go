@@ -26,7 +26,7 @@ func TestServerBaseURLConfiguredServer(t *testing.T) {
 
 // TestServerBaseURLEnvOverride asserts RANCHER_CLI_URL: the override clears the
 // stored server name (Identity), but ServerBaseURL must still resolve the
-// EFFECTIVE (overridden) base — never the stale configured one.
+// EFFECTIVE (overridden) base - never the stale configured one.
 func TestServerBaseURLEnvOverride(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()

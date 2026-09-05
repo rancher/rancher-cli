@@ -19,16 +19,16 @@ import (
 // tested wrapper that only appends to the Result/Effect those planners
 // already returned (membership.go's indented context line, secret.go's
 // project-scoped propagation warning, provisioning's stamped-identity and
-// version warnings) — none of which ever assigns to DisplayKind or
+// version warnings) - none of which ever assigns to DisplayKind or
 // DisplayName. Those three planners set both fields unconditionally:
 // DisplayKind from a kind-table Name (internal/engine/kinds's
 // TestAllKindsHaveNonEmptyName proves that value is never empty for any
 // row), DisplayName from a real object's returned name. So the identity
-// invariant holds by construction for every command in this set — no
+// invariant holds by construction for every command in this set - no
 // per-command render test has to reprove it individually.
 //
 // The generated "patch <kind>"/"delete <kind>" families (resources.NewPatch,
-// resources.NewDelete, and every guard wrapping them — guarded_delete.go,
+// resources.NewDelete, and every guard wrapping them - guarded_delete.go,
 // managementtoken.go's refuse/guard commands, provisioning/deletecluster.go)
 // are the same by-construction case and are matched by name prefix in
 // TestDryRunDisplayIdentityClosedWorldConformance below, not listed here one
@@ -58,7 +58,7 @@ var dryRunDisplayIdentityGenericCommands = map[string]bool{
 
 // dryRunBespokeEffectCommands is the reviewed, closed-world set of mutating
 // commands whose Plan constructs or overrides a safety.Effect's
-// DisplayKind/DisplayName directly — bypassing the generic planners'
+// DisplayKind/DisplayName directly - bypassing the generic planners'
 // by-construction guarantee above. Each value names the test(s) that
 // exercise the command's own Plan/exec end to end and assert
 // DisplayKind/DisplayName are non-empty and that the committed success
@@ -76,14 +76,14 @@ var dryRunBespokeEffectCommands = map[string]string{
 
 // dryRunGenericFamilyPrefixes names the two generated command families
 // whose every member (one per kind-table row) is covered by construction,
-// per dryRunDisplayIdentityGenericCommands' doc — matched by prefix so this
+// per dryRunDisplayIdentityGenericCommands' doc - matched by prefix so this
 // file does not have to enumerate all ~80 individual kind names.
 var dryRunGenericFamilyPrefixes = []string{"patch ", "delete "}
 
 // classifyDryRunDisplayIdentity reports whether name is accounted for by
 // the generic-by-construction set (explicit name, or a generated
 // patch/delete family member) or the reviewed bespoke inventory, or
-// neither (unclassified — a conformance failure).
+// neither (unclassified - a conformance failure).
 func classifyDryRunDisplayIdentity(name string) (generic, bespoke bool) {
 	if dryRunDisplayIdentityGenericCommands[name] {
 		return true, false
@@ -102,7 +102,7 @@ func classifyDryRunDisplayIdentity(name string) (generic, bespoke bool) {
 // above: every registered mutating command must classify as either
 // generic-by-construction or a reviewed bespoke entry, and every reviewed
 // entry must name a command the registry actually has. A future mutating
-// command — generic or bespoke — that ships without being classified here
+// command - generic or bespoke - that ships without being classified here
 // fails this test, the same closed-world posture
 // TestOutputShapeClosedWorldConformance and
 // TestDeliveryOnceOnlyClosedWorldConformance already hold the rest of the
@@ -122,36 +122,36 @@ func TestDryRunDisplayIdentityClosedWorldConformance(t *testing.T) {
 
 		generic, bespoke := classifyDryRunDisplayIdentity(d.Name)
 		assert.True(t, generic || bespoke,
-			"mutating command %q is not classified in the dry-run display-identity inventory — "+
+			"mutating command %q is not classified in the dry-run display-identity inventory - "+
 				"add it to dryRunDisplayIdentityGenericCommands (built purely from the shared generic "+
 				"planners) or dryRunBespokeEffectCommands (naming the test that verifies its "+
 				"DisplayKind/DisplayName) before it ships", d.Name)
 
 		// The generated "patch <kind>"/"delete <kind>" families register
 		// their command Name as the literal prefix plus the kind row's own
-		// Name field (patch.go, delete.go) — the exact value they pass as
+		// Name field (patch.go, delete.go) - the exact value they pass as
 		// DisplayKind. A non-empty suffix here is therefore real evidence
 		// that DisplayKind is non-empty for every one of these commands,
 		// not a restatement of the classification above.
 		for _, prefix := range dryRunGenericFamilyPrefixes {
 			if kindName, ok := strings.CutPrefix(d.Name, prefix); ok {
-				assert.NotEmpty(t, kindName, "command %q must carry a non-empty kind name after %q — its DisplayKind would be empty", d.Name, prefix)
+				assert.NotEmpty(t, kindName, "command %q must carry a non-empty kind name after %q - its DisplayKind would be empty", d.Name, prefix)
 			}
 		}
 	}
 
 	for name := range dryRunDisplayIdentityGenericCommands {
-		assert.True(t, seen[name], "dryRunDisplayIdentityGenericCommands entry %q names no registered mutating command — remove it or check the spelling", name)
+		assert.True(t, seen[name], "dryRunDisplayIdentityGenericCommands entry %q names no registered mutating command - remove it or check the spelling", name)
 	}
 	for name := range dryRunBespokeEffectCommands {
-		assert.True(t, seen[name], "dryRunBespokeEffectCommands entry %q names no registered mutating command — remove it or check the spelling", name)
+		assert.True(t, seen[name], "dryRunBespokeEffectCommands entry %q names no registered mutating command - remove it or check the spelling", name)
 	}
 }
 
 // TestDryRunDisplayIdentityClosedWorldConformanceCatchesAnUnclassifiedCommand
 // proves the forward direction actually fails when a mutating command is
-// absent from BOTH reviewed inventories: it trims "revoke" — a real
-// registered command — out of a copy of the actual bespoke inventory,
+// absent from BOTH reviewed inventories: it trims "revoke" - a real
+// registered command - out of a copy of the actual bespoke inventory,
 // installs that copy in place of the package var, and runs the real
 // classifyDryRunDisplayIdentity/registry walk that
 // TestDryRunDisplayIdentityClosedWorldConformance itself relies on. This

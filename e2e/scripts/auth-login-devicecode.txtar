@@ -2,8 +2,8 @@
 # SSL_CERT_FILE; Go honours that variable on Linux only.
 [!linux] skip 'Go reads SSL_CERT_FILE for the system trust store only on Linux'
 
-# Device-code login against the façade's IdP stub (spec FA-4.2): non-TTY is
-# allowed here (asserted by TestOAuthDeviceCodeFlowNonTTYAllowed) — no ttyin
+# Device-code login against the facade's IdP stub (spec FA-4.2): non-TTY is
+# allowed here (asserted by TestOAuthDeviceCodeFlowNonTTYAllowed) - no ttyin
 # needed. Login completes after the stub's pending polls; the stored
 # credential is asserted by exercising it, never by string-matching the
 # token itself.

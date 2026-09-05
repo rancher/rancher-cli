@@ -12,7 +12,7 @@ import (
 )
 
 // TestSchemaGroupsMatchRootAssembly is the SE-18 test: the manifest's Groups
-// reproduce the root assembly EXACTLY — section order and per-section command
+// reproduce the root assembly EXACTLY - section order and per-section command
 // order are both derived from the built root's own command tree (never a
 // hand-list), covering the leading fixed top-level section and the
 // ungrouped-entry section at its real position. Only commands the manifest
@@ -71,7 +71,7 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 	}
 
 	// SE-18 is a structural invariant (section order, per-section command
-	// order). For named groups, strip Desc before comparing — descs are set
+	// order). For named groups, strip Desc before comparing - descs are set
 	// separately in buildWiredRegistry and are not part of the assembly
 	// alignment contract. Unnamed ("") sections must never carry a Desc
 	// (they are positional bookmarks), so their full struct is compared
@@ -114,7 +114,7 @@ func TestSchemaProjectShadowing(t *testing.T) {
 	dir := t.TempDir()
 
 	// Precondition: both a "project" kind and a "project" group exist in the
-	// real manifest — if either disappears this test needs revisiting.
+	// real manifest - if either disappears this test needs revisiting.
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)
 	var hasKind bool
@@ -168,7 +168,7 @@ func TestSchemaProjectShadowing(t *testing.T) {
 // TestSchemaGroupDescsComplete is the conformance guard for groupDescs in
 // root.go: every named group in the built manifest must carry a non-empty
 // Desc. A group added to buildEntries without a matching groupDescs entry
-// silently ships a desc-less card — Desc has omitempty, renderGroupCard skips
+// silently ships a desc-less card - Desc has omitempty, renderGroupCard skips
 // an empty desc, the SE-18 structural test strips Desc before comparing, and
 // golden -update would bless the gap. This test turns that silent gap into a
 // build failure at the moment the group is added.
@@ -179,7 +179,7 @@ func TestSchemaGroupDescsComplete(t *testing.T) {
 			continue // unnamed sections are positional bookmarks, not selectable
 		}
 		assert.NotEmpty(t, g.Desc,
-			"group %q has no desc — add it to groupDescs in buildWiredRegistry", g.Name)
+			"group %q has no desc - add it to groupDescs in buildWiredRegistry", g.Name)
 	}
 }
 
@@ -201,7 +201,7 @@ func TestSchemaCommandGroupField(t *testing.T) {
 
 // TestSchemaKindGroupCollisionSweep iterates all kind names, keys, and aliases
 // against all named group names, then iterates all single-token command names
-// against the same set. Any overlap must be in the knownShadowings allowlist —
+// against the same set. Any overlap must be in the knownShadowings allowlist -
 // a new collision that is not listed here fails the build, forcing the author
 // to make the shadowing deliberate and documented.
 //
@@ -219,7 +219,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	require.NoError(t, err)
 
 	// knownShadowings maps each known collision name to a rationale comment.
-	// Add an entry here whenever a new deliberate collision is introduced —
+	// Add an entry here whenever a new deliberate collision is introduced -
 	// the test enforces that every collision is reviewed.
 	knownShadowings := map[string]string{
 		"project": "the project group wins the selector (revised 2026-08-20); the kind card is reachable via --kind and each card hints the other; renaming would churn the TOC layout",
@@ -239,7 +239,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 		for _, id := range identifiers {
 			if groupNames[id] {
 				assert.Contains(t, knownShadowings, id,
-					"kind %q (identifier %q) collides with group %q — add to knownShadowings with a rationale comment",
+					"kind %q (identifier %q) collides with group %q - add to knownShadowings with a rationale comment",
 					k.Name, id, id)
 			}
 		}
@@ -249,7 +249,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	for _, c := range m.Commands {
 		if !strings.Contains(c.Name, " ") && groupNames[c.Name] {
 			assert.Contains(t, knownShadowings, c.Name,
-				"command %q collides with group %q — command wins at tier 1, group card unreachable; add to knownShadowings with a rationale comment",
+				"command %q collides with group %q - command wins at tier 1, group card unreachable; add to knownShadowings with a rationale comment",
 				c.Name, c.Name)
 		}
 	}
@@ -284,6 +284,6 @@ func TestSchemaGroupKindCollisionsAreDeliberate(t *testing.T) {
 		}
 	}
 	for name := range deliberate {
-		assert.True(t, kindNames[name], "allowlisted collision %q no longer collides — remove it from the allowlist", name)
+		assert.True(t, kindNames[name], "allowlisted collision %q no longer collides - remove it from the allowlist", name)
 	}
 }

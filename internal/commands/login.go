@@ -31,7 +31,7 @@ type loginCmd struct {
 	// tlsPreflight verifies the server's certificate against caPEM (or
 	// system roots when caPEM is empty) before any credential is persisted.
 	// Plain login (an existing entry) still runs this: it enforces already-
-	// pinned trust, it just cannot change it — a certificate that no longer
+	// pinned trust, it just cannot change it - a certificate that no longer
 	// matches fails TLS_TRUST with the remediation in the message body, no
 	// machine hint (the new CA path is unknown). Delegated login (--url)
 	// never calls this directly: prepareRegistration already ran it as part
@@ -65,7 +65,7 @@ func (l loginCmd) idpClient() *http.Client {
 }
 
 // NewLogin builds the `auth login` command (local). The store is resolved
-// inside Execute from the config loaded under the config write lock — never
+// inside Execute from the config loaded under the config write lock - never
 // from the dependency-resolution snapshot, which can predate a concurrent
 // policy change (config-write-lock plan, review issue 2).
 func NewLogin(dir string) runtime.Command {
@@ -79,10 +79,10 @@ type loginVerifyFunc func(ctx context.Context, eff config.Effective) (string, er
 // tlsPreflightDefault performs the every-https-path TLS preflight: an
 // unauthenticated GET against the same /rancherversion endpoint the PS-8
 // version probe uses, built with caPEM as the trusted root (system roots
-// when empty). Only the TLS handshake matters here — any response status
+// when empty). Only the TLS handshake matters here - any response status
 // proves the certificate verified. A classified certificate-verification
 // failure returns tlstrust's structured TLS_TRUST error. Every other
-// failure (DNS, connection refused, timeout — the server is unreachable for
+// failure (DNS, connection refused, timeout - the server is unreachable for
 // reasons that have nothing to do with certificate trust) is deliberately
 // NOT surfaced as a failure here: that stays warn-only, folded into the
 // registration min-version check's "cannot determine" posture.
@@ -113,8 +113,8 @@ func serverLabel(serverURL string) string {
 
 // pinnedTrustFailure rewrites a TLS_TRUST error from plain login's preflight
 // (an existing entry's pinned CA no longer matches): the remediation is
-// config update-server, not a fully-known machine command — the new CA path
-// is unknown to the CLI — so the suggestion moves to the message body and no
+// config update-server, not a fully-known machine command - the new CA path
+// is unknown to the CLI - so the suggestion moves to the message body and no
 // hint is emitted, per the executable-hint contract. Non-TLS_TRUST errors
 // (including nil) pass through unchanged.
 func pinnedTrustFailure(err error, name string) error {
@@ -123,7 +123,7 @@ func pinnedTrustFailure(err error, name string) error {
 		return err
 	}
 	return ce.WithMessage(ce.Message +
-		fmt.Sprintf("; %s's pinned trust no longer matches — to change it, run: rancher config update-server %s --cacert <path>",
+		fmt.Sprintf("; %s's pinned trust no longer matches - to change it, run: rancher config update-server %s --cacert <path>",
 			shquote(name), shquote(name))).
 		WithHint("")
 }
@@ -163,7 +163,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	if a := in.Args(); len(a) > 0 {
 		name = a[0]
 		// An explicitly passed empty string is a caller bug (usually an
-		// unset shell variable), never a request to derive — deriving
+		// unset shell variable), never a request to derive - deriving
 		// here would silently register under a name the caller cannot
 		// predict.
 		if name == "" {
@@ -175,7 +175,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	cacert := in.String("cacert")
 
 	// The "legacy:" prefix is reserved for the legacy token shim's cache
-	// slots — checked unconditionally (a name in this namespace can never
+	// slots - checked unconditionally (a name in this namespace can never
 	// be a real entry; add-server rejects it the same way at creation).
 	if name != "" {
 		if ce := validateEntryName(name); ce != nil {
@@ -251,7 +251,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 // by an entry at a different URL. A derived name gets no hint: the name was
 // chosen by this command, not the caller, so a suggested update-server
 // command would re-point an entry the caller never named, and no single
-// alternate name can be suggested with certainty — the remediation lives in
+// alternate name can be suggested with certainty - the remediation lives in
 // the message body instead.
 func nameCollisionError(name, existingURL, canonical string, derived bool) *clierr.Error {
 	if derived {
@@ -265,7 +265,7 @@ func nameCollisionError(name, existingURL, canonical string, derived bool) *clie
 }
 
 // configUseServerHint returns the bare, shell-quoted `rancher config
-// use-server <name>` command — the pointer-switch hint every no-pointer
+// use-server <name>` command - the pointer-switch hint every no-pointer
 // login outcome below emits for a concrete name.
 func configUseServerHint(name string) string {
 	return "rancher config use-server " + shquote(name)
@@ -273,7 +273,7 @@ func configUseServerHint(name string) string {
 
 // loginUnknownNameError builds NOT_FOUND for an explicit name absent from
 // cfg's servers: candidates for a typo, plus body guidance toward the
-// registering spelling. No machine hint — the URL isn't known here.
+// registering spelling. No machine hint - the URL isn't known here.
 func loginUnknownNameError(cfg *config.Config, name string) *clierr.Error {
 	ce := serverNotFoundWithCandidates(cfg, name)
 	return ce.WithMessage(ce.Message + "; re-run with --url <url> to add it")
@@ -281,13 +281,13 @@ func loginUnknownNameError(cfg *config.Config, name string) *clierr.Error {
 
 // executeRegisterAndLogin is the `--url` path: register (add-if-missing,
 // same shared commit seam add-server uses) THEN authenticate against the
-// persisted entry — registration completes, atomic, before any auth flow
+// persisted entry - registration completes, atomic, before any auth flow
 // starts. A failed auth after this leaves a valid registered entry, a
 // first-class state, not a bug to roll back.
 func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input, p runtime.Prompter, cfg0 *config.Config, name, url, cacert string) (runtime.Result, error) {
 	// canonical is resolved once and reused to derive an absent name from
 	// the URL's host, to detect a collision with an existing entry under
-	// that name below, and as prepareRegistration's input — so a --url
+	// that name below, and as prepareRegistration's input - so a --url
 	// login parses the URL exactly once, and an invalid or
 	// unsupported-scheme URL is refused before any other work.
 	canonical, canonErr := canonicalizeServerURL(url)
@@ -302,8 +302,8 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		u, _ := neturl.Parse(canonical)
 		name = u.Hostname()
 		derived = true
-		// An IPv6 literal survives Hostname() with its colons — only the
-		// brackets are stripped — and a colon-bearing entry name reads as
+		// An IPv6 literal survives Hostname() with its colons - only the
+		// brackets are stripped - and a colon-bearing entry name reads as
 		// a URL fragment everywhere a name is printed or quoted, so
 		// derivation refuses it instead of coining one.
 		if strings.Contains(name, ":") {
@@ -321,7 +321,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 
 	existing, known := cfg0.Servers[name]
 	// A known name whose canonicalized URL disagrees is a different server
-	// hiding behind a trusted name — refuse before any network call, rather
+	// hiding behind a trusted name - refuse before any network call, rather
 	// than let a hijacking or a typo silently re-point the entry (or dial
 	// the wrong host first and only then fail deep inside registration).
 	// existing.URL is compared as stored: registration only ever stores it
@@ -331,7 +331,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 	}
 
 	// Known name, --cacert absent: prepare with the EXISTING entry's
-	// effective selector — the flag's absence is never treated as a switch
+	// effective selector - the flag's absence is never treated as a switch
 	// to system roots (that would silently strip a private CA on a plain
 	// re-login-with-add spelling).
 	caSelector := cacert
@@ -348,7 +348,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		// same offerGuidedTrust against the STORED selector, with the
 		// combined token+CA commit protocol that entry's re-prompt needs),
 		// and an explicit --cacert failure is never eligible for guided
-		// replacement — the user made an explicit trust statement. A new
+		// replacement - the user made an explicit trust statement. A new
 		// entry has no prior recorded identity, so there is never a
 		// changed-identity warning to show here.
 		accepted, version, _, gerr := offerGuidedTrust(ctx, err, p, l.tlsPreflight, canonical, "")
@@ -381,7 +381,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		// existing entry.
 		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeTLSTrust {
 			err = ce.WithMessage(ce.Message +
-				fmt.Sprintf("; %s is already registered — sign in to it directly: rancher auth login %s", shquote(name), shquote(name))).
+				fmt.Sprintf("; %s is already registered - sign in to it directly: rancher auth login %s", shquote(name), shquote(name))).
 				WithHint(config.LoginHintFor(name))
 		}
 	}
@@ -399,7 +399,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 
 // authenticatePlain authenticates an already-registered entry: no
 // registration ran for this call, so it re-verifies the pinned-trust
-// preflight itself, and an auth failure is final — there is no unlocked
+// preflight itself, and an auth failure is final - there is no unlocked
 // registration window behind it to recheck for staleness.
 func (l loginCmd) authenticatePlain(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caFingerprint string) (runtime.Result, error) {
 	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, "", "", caFingerprint, false, false)
@@ -409,7 +409,7 @@ func (l loginCmd) authenticatePlain(ctx context.Context, in runtime.Input, p run
 // delegated registration committed: caBytes and versionWarning are already
 // known from that registration's probe (re-running the preflight would
 // repeat the same network round trip, and dropping versionWarning here
-// would silently lose it — registration ran it, login must still surface
+// would silently lose it - registration ran it, login must still surface
 // it), and a failure gets the stale-hint recheck scoped to the
 // just-closed unlocked registration window. added is threaded straight
 // into LoginResult.
@@ -421,7 +421,7 @@ func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p
 // caSelector) and, on success, commits the credential under a fresh
 // config.WithLock acquisition. Only reached through authenticatePlain/
 // authenticateDelegated, which each fix delegated to the right constant
-// for their caller — no call site passes a bare bool literal.
+// for their caller - no call site passes a bare bool literal.
 func (l loginCmd) authenticateAndStore(
 	ctx context.Context, in runtime.Input, p runtime.Prompter,
 	name, serverURL, caSelector, caBytes, versionWarning, caFingerprint string,
@@ -432,7 +432,7 @@ func (l loginCmd) authenticateAndStore(
 	if !delegated {
 		// resolveRegistrationCA is the one place "resolve CA bytes only
 		// under https, and only when the selector names something" is
-		// encoded — sharing it here keeps this gate from drifting against
+		// encoded - sharing it here keeps this gate from drifting against
 		// prepareRegistration's copy.
 		b, raerr := resolveRegistrationCA(serverURL, caSelector)
 		if raerr != nil {
@@ -452,7 +452,7 @@ func (l loginCmd) authenticateAndStore(
 					// A consent was given but the candidate itself then
 					// failed to re-verify: gerr already describes THAT
 					// candidate, never the entry's still-failing stored
-					// trust — pinnedTrustFailure's "pinned trust no longer
+					// trust - pinnedTrustFailure's "pinned trust no longer
 					// matches" framing would misdescribe it.
 					return runtime.Result{}, gerr
 				}
@@ -462,7 +462,7 @@ func (l loginCmd) authenticateAndStore(
 	}
 
 	// snap binds the commit below to the entry state THIS preflight verified
-	// against — caSelector/caBytes here are always the pre-consent, stored
+	// against - caSelector/caBytes here are always the pre-consent, stored
 	// values (a guided-trust replacement never appears in the snapshot), so
 	// a concurrent writer that changed the entry between this preflight and
 	// the commit is still caught as drift, exactly as an unmodified plain
@@ -506,8 +506,8 @@ func (l loginCmd) authenticateAndStore(
 		return runtime.Result{}, authErr
 	}
 
-	// A provider-issued token is authenticated by construction — the server
-	// just issued it during the sign-in dance — so a second round-trip here
+	// A provider-issued token is authenticated by construction - the server
+	// just issued it during the sign-in dance - so a second round-trip here
 	// would be pure overhead, never a real check. --no-verify skips the
 	// round-trip for a pasted/piped token instead; the success text below
 	// says so.
@@ -620,22 +620,22 @@ func (l loginCmd) authenticateAndStore(
 	if added {
 		lines = append(lines, "server "+name+" added")
 	}
-	// Login never switches the pointer — only registration's
+	// Login never switches the pointer - only registration's
 	// bootstrap/repair rule does, and that never reaches THIS path (an
 	// already-registered entry). Advise whenever the pointer doesn't name
 	// what was just logged into, empty/dangling or a DIFFERENT valid
-	// entry alike — don't silently leave the operator wondering why the
+	// entry alike - don't silently leave the operator wondering why the
 	// next command still operates against a different server.
 	switch {
 	case !currentValid:
-		lines = append(lines, fmt.Sprintf("the current server is not set — switch to it with: rancher config use-server %s", shquote(name)))
+		lines = append(lines, fmt.Sprintf("the current server is not set - switch to it with: rancher config use-server %s", shquote(name)))
 	case currentServer != name:
-		lines = append(lines, fmt.Sprintf("the current server remains %s — switch to %s with: rancher config use-server %s",
+		lines = append(lines, fmt.Sprintf("the current server remains %s - switch to %s with: rancher config use-server %s",
 			shquote(currentServer), shquote(name), shquote(name)))
 	}
 	headline := fmt.Sprintf("logged in to %s (%s)", name, serverURL)
 	if !verified {
-		headline = fmt.Sprintf("token stored for %s (%s) — not verified", name, serverURL)
+		headline = fmt.Sprintf("token stored for %s (%s) - not verified", name, serverURL)
 	}
 	tr := runtime.TextLines(headline, lines...)
 	if !verified {
@@ -650,7 +650,7 @@ func (l loginCmd) authenticateAndStore(
 // authentication are separated by an unlocked window, so a concurrent
 // delete or repoint during that window must not produce a hint that
 // immediately fails NOT_FOUND or targets changed trust. This recheck is
-// read-only — it writes nothing — and never replaces authErr, which stays
+// read-only - it writes nothing - and never replaces authErr, which stays
 // the primary error either way.
 func decorateDelegatedAuthFailure(ctx context.Context, dir string, authErr error, snap authSnapshot) error {
 	return decorateDelegatedFailure(ctx, dir, authErr, snap, "")
@@ -671,8 +671,8 @@ func decorateDelegatedVerifyFailure(ctx context.Context, dir string, verifyErr e
 // and decorateDelegatedVerifyFailure: it rechecks CURRENT state before
 // deciding whether the retry hint is still the undo-the-registration command
 // (entry unchanged) or has to fall back to a plain "check it" pointer (entry
-// changed or vanished since registration), then appends extra — a caller's
-// own secondary-option sentence, or "" when there is none — to the message
+// changed or vanished since registration), then appends extra - a caller's
+// own secondary-option sentence, or "" when there is none - to the message
 // body either way. A failure that is not a structured error, or a context
 // already cancelled, skips the recheck and returns failure unchanged.
 func decorateDelegatedFailure(ctx context.Context, dir string, failure error, snap authSnapshot, extra string) error {
@@ -732,7 +732,7 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, newIdPClient f
 	// The provider flow is allowed without a TTY when --auth-provider is
 	// explicitly named: the finer-grained gates already inside it (SAML's
 	// NoInput check, basicAuth's per-prompt CanPrompt check, OAuth's lack of
-	// any TTY requirement) are the real gate — mirroring how `auth get-token`
+	// any TTY requirement) are the real gate - mirroring how `auth get-token`
 	// already runs its OAuth device-code/auth-code flows headlessly. Without
 	// an explicit provider, the paste-or-provider menu itself needs a TTY.
 	case p.CanPrompt() || in.String("auth-provider") != "":
@@ -742,7 +742,7 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, newIdPClient f
 	}
 	if err != nil {
 		// A typed clierr (from the provider flow, or an invalid menu pick) is
-		// already the right error to surface — the io.EOF/generic mapping
+		// already the right error to surface - the io.EOF/generic mapping
 		// below is for the plain-paste read paths only. An AcquireError
 		// carries its own primary and all the cleanup evidence, so it is
 		// surfaced whole.

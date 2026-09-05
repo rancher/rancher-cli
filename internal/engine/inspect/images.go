@@ -88,7 +88,7 @@ type imagesCmd struct {
 // NewImages builds `images [--cluster X | --all-clusters]`: every
 // container+init-container image across a cluster's pods, deduplicated and
 // counted. --all-clusters fans out per management cluster and degrades a
-// single cluster's failure to a warning — partial results beat none for a
+// single cluster's failure to a warning - partial results beat none for a
 // fleet-wide scan.
 func NewImages(clients engine.ClusterClientFactory) runtime.Command {
 	return &imagesCmd{clients: clients}
@@ -249,7 +249,7 @@ func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string
 		return runtime.Result{}, ctx.Err()
 	}
 	// Zero listed clusters is a verified-empty success. Every listed cluster
-	// failing is not partial access to a fleet — there is no fleet-wide
+	// failing is not partial access to a fleet - there is no fleet-wide
 	// answer left to return.
 	if len(ids) > 0 && len(failures) == len(ids) {
 		return runtime.Result{}, everyScanFailed(failures)
@@ -265,7 +265,7 @@ func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string
 
 // everyScanFailed is the hard error for a fleet-wide scan that reached no
 // cluster at all: partial results beat none, but here there are none. The
-// shape is deterministic — the shared code when every cluster failed the
+// shape is deterministic - the shared code when every cluster failed the
 // same way, GENERIC when they disagree, and causes in cluster id order.
 func everyScanFailed(failures map[string]error) error {
 	ids := make([]string, 0, len(failures))

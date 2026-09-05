@@ -20,7 +20,7 @@ import (
 
 // fakeOIDCClient is a minimal engine.ClusterClient serving both the
 // oidcclients GVR (Create + sequential poll Gets) and the secrets GVR (the
-// backing-Secret read), distinguished by gvr.Resource — both routes reach
+// backing-Secret read), distinguished by gvr.Resource - both routes reach
 // this same fake through stubOIDCFactory.Cluster, mirroring how a real
 // invocation reaches the same "local" cluster for both.
 type fakeOIDCClient struct {
@@ -36,7 +36,7 @@ type fakeOIDCClient struct {
 	secretErr   error
 	secretCalls int
 	// secretRespFunc, when set, overrides secretResp and is called once per
-	// secret GET — used to simulate the backing value changing between
+	// secret GET - used to simulate the backing value changing between
 	// rotate's Plan-time correlation read and its post-consumption
 	// delivery read.
 	secretRespFunc func() *unstructured.Unstructured
@@ -189,7 +189,7 @@ func TestCreateDescriptorDeclaresCapabilityAndOnceOnlySeam(t *testing.T) {
 
 // TestCreatePlanSendsBothRequiredTTLsAndDefaults asserts the CRD-required-TTL
 // contract: the manifest always carries both TTL fields, CLI-defaulted
-// (3600/86400) when the flags are omitted — the server does not default
+// (3600/86400) when the flags are omitted - the server does not default
 // them.
 func TestCreatePlanSendsBothRequiredTTLsAndDefaults(t *testing.T) {
 	t.Parallel()
@@ -206,7 +206,7 @@ func TestCreatePlanRequiresName(t *testing.T) {
 	t.Parallel()
 	// validateInput (the pipeline) enforces the required positional in
 	// production; Plan itself indexes Args()[0] and would panic on an
-	// empty slice if that invariant were ever bypassed — assert the
+	// empty slice if that invariant were ever bypassed - assert the
 	// Descriptor declares Required so the pipeline never lets that happen.
 	d := NewCreate(stubOIDCFactory{}, stubRootFactory{}, stubServerBase{}).Describe()
 	require.Len(t, d.Args, 1)
@@ -245,7 +245,7 @@ func TestParseWaitTimeoutAcceptsOmittedAndPositive(t *testing.T) {
 
 // TestCreateExecFullLifecycleSuccess drives Plan+exec end to end: create
 // succeeds, the wait predicate observes the initial secret, the backing
-// Secret decodes, and discovery succeeds — the Result carries the fixed
+// Secret decodes, and discovery succeeds - the Result carries the fixed
 // endpoints shape and CommittedContext.
 func TestCreateExecFullLifecycleSuccess(t *testing.T) {
 	withFastPoll(t)
@@ -292,15 +292,15 @@ func TestCreateExecFullLifecycleSuccess(t *testing.T) {
 	assert.Contains(t, res.OnceOnlyNotice, "shown exactly once")
 	assert.Equal(t, "oidcclient/my-app created\n"+
 		"  client id: client-abc\n"+
-		"  client secret: super-secret-value   (shown once — store it now)\n"+
+		"  client secret: super-secret-value   (shown once - store it now)\n"+
 		"  secret name: client-secret-1\n"+
 		"  issuer: https://rancher.example/oidc\n", res.Text)
 }
 
 // TestCreateExecDegradedDiscovery asserts the four degrade cases: malformed
 // JSON, incomplete (missing endpoint), issuer mismatch, and an HTTP-level
-// failure all take the SAME degraded path — endpoints omitted, issuer
-// derived from the effective base, one warning naming the failure — and
+// failure all take the SAME degraded path - endpoints omitted, issuer
+// derived from the effective base, one warning naming the failure - and
 // never fail an already-committed create.
 func TestCreateExecDegradedDiscovery(t *testing.T) {
 	cases := []struct {
@@ -346,7 +346,7 @@ func TestCreateExecDegradedDiscovery(t *testing.T) {
 
 // TestCreateExecImpossibleShapesAreTerminalNotTimeout asserts the two
 // impossible-shape cases (clientID present with >1 secret; any secret key
-// with no clientID) as IMMEDIATE, non-retryable errors — proven not to
+// with no clientID) as IMMEDIATE, non-retryable errors - proven not to
 // wait by using a long timeout the test would otherwise block on.
 func TestCreateExecImpossibleShapesAreTerminalNotTimeout(t *testing.T) {
 	cases := []struct {
@@ -396,7 +396,7 @@ func TestCreateExecImpossibleShapesAreTerminalNotTimeout(t *testing.T) {
 
 // TestCreateExecTimeoutIsNonRetryable asserts create's timeout contract: a
 // NEVER-satisfied predicate times out with a non-retryable error naming the
-// committed resource — retrying would create a second client.
+// committed resource - retrying would create a second client.
 func TestCreateExecTimeoutIsNonRetryable(t *testing.T) {
 	withFastPoll(t)
 	neverProvisioned := oidcClientObj("my-app", "", nil)
@@ -417,7 +417,7 @@ func TestCreateExecTimeoutIsNonRetryable(t *testing.T) {
 }
 
 // alwaysProceedCapability lets a full-pipeline test reach Plan/Execute
-// without a real capability checker — this file tests render/wait/discovery
+// without a real capability checker - this file tests render/wait/discovery
 // wiring, not the capability stage (covered elsewhere).
 type alwaysProceedCapability struct{}
 
@@ -465,7 +465,7 @@ func TestCreateFullPipelineFailingStdoutEmitsCommittedContext(t *testing.T) {
 
 // TestCreateOutputPolicyRejectsNameWithZeroRequests asserts that
 // `create oidc-client -o name` is rejected BEFORE Plan/capability
-// resolution — zero total requests, not merely zero mutation requests — so
+// resolution - zero total requests, not merely zero mutation requests - so
 // a caller can never invalidate-and-discard a once-only client secret by
 // picking -o name.
 func TestCreateOutputPolicyRejectsNameWithZeroRequests(t *testing.T) {

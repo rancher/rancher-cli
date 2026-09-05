@@ -111,7 +111,7 @@ func TestForeignSymlinkReplacedWithNotice(t *testing.T) {
 // The child's output goes to a FILE, deliberately not an os/exec pipe: SIGKILL
 // leaves hold_at's `sleep` child orphaned holding the write end, so a pipe would
 // make the caller's cmd.Wait block until that sleep expires. On a probe timeout
-// the captured output is logged — otherwise a seam that errored out early is
+// the captured output is logged - otherwise a seam that errored out early is
 // indistinguishable from one that is merely slow.
 func startHeld(t *testing.T, s *stub, home, seamEnv, holdFile string, reached func() bool) *exec.Cmd {
 	t.Helper()
@@ -179,7 +179,7 @@ func TestSigkillDuringStagingLeavesOldPairAndRerunCompletes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "versions/v1.2.3", current)
 
-	// Rerun collects the garbage (incl. the stale lock is NOT held — the
+	// Rerun collects the garbage (incl. the stale lock is NOT held - the
 	// kill left it; the error message names it, and removing it is safe by
 	// construction) and completes.
 	require.NoError(t, os.RemoveAll(filepath.Join(home, ".local", "share", "rancher-cli", ".install.lock")))
@@ -217,7 +217,7 @@ func TestSigkillAfterSwitchServesNewPair(t *testing.T) {
 
 	// The switch happened: the new pair is fully served through the links
 	// even though the epilogue, GC, and receipt never ran. BOTH links, not
-	// just the CLI — "pair" is the unit the switch is atomic over.
+	// just the CLI - "pair" is the unit the switch is atomic over.
 	for _, name := range []string{"rancher", "rancher-credential-vault"} {
 		out, err := exec.Command(filepath.Join(home, ".local", "bin", name), "--version").Output()
 		require.NoErrorf(t, err, "%s must execute through its link", name)
@@ -292,7 +292,7 @@ func TestMigrationRefusalOnSecondPathMutatesNothing(t *testing.T) {
 }
 
 // A refusal during an UPGRADE must leave the whole managed installation
-// untouched — the preflight runs before staging, switch, and GC.
+// untouched - the preflight runs before staging, switch, and GC.
 func TestRefusalOnManagedInstallLeavesLayoutUntouched(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
@@ -364,7 +364,7 @@ func TestConcurrentInstallErrorsOnHeldLock(t *testing.T) {
 	assert.Contains(t, errOut, "another install is in progress")
 	assert.Contains(t, errOut, lock, "the error must name the lock to remove")
 	assert.Equal(t, before, digestTree(t, bin),
-		"the loser must publish no links — it failed before any layout mutation")
+		"the loser must publish no links - it failed before any layout mutation")
 	// The loser's cleanup trap must not remove a lock it never acquired.
 	assert.DirExists(t, lock, "the loser must not release the winner's lock")
 }

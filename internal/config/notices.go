@@ -13,7 +13,7 @@ type NoticeSource interface {
 }
 
 // noticeBuffer is a small, mutex-guarded queue of operator-facing notices
-// recorded outside any pipeline Result — a credential store's first-pin
+// recorded outside any pipeline Result - a credential store's first-pin
 // notice, a keychain-degrade warning. Safe against a command-body goroutine
 // racing a lazily-resolving store: record and DrainNotices may be called
 // concurrently. A nil *noticeBuffer is a valid, permanently-empty source
@@ -25,7 +25,7 @@ type noticeBuffer struct {
 	notices []string
 }
 
-// record appends msg to the buffer in call order. A blank msg is a no-op —
+// record appends msg to the buffer in call order. A blank msg is a no-op -
 // callers may pass through a "no notice" zero value (warnLoosePerm's ""
 // return) without checking it first.
 func (b *noticeBuffer) record(msg string) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Validate checks a loaded Config's referential integrity — checks Load
+// Validate checks a loaded Config's referential integrity - checks Load
 // itself never runs (Load only nil-guards the Servers map; a dangling
 // current-server pointer otherwise surfaces lazily at
 // CurrentServerEntry()/Effective() call time, so repair commands can load a

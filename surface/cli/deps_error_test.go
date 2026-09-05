@@ -13,7 +13,7 @@ import (
 
 // TestResolveDepsFailureRendersError asserts the non-bare Action's resolveDeps
 // failure path: an invalid credential-store policy renders a structured
-// error on stderr — the envelope under -o json, the text block otherwise —
+// error on stderr - the envelope under -o json, the text block otherwise -
 // and exits 1, never a bare non-zero exit with an empty stderr.
 func TestResolveDepsFailureRendersError(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "bogus")

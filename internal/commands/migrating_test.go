@@ -126,7 +126,7 @@ func migratingReplacementCommands(t *testing.T, migrating string) []string {
 
 // TestMigratingReplacementCommandsResolve makes the disposition table
 // honest: every `rancher ...` replacement named in it must name a command
-// that actually exists — either verbatim (a bespoke command, or a
+// that actually exists - either verbatim (a bespoke command, or a
 // generated verb+kind leaf under its canonical singular name) or as a
 // generic verb applied to a kind's plural alias (e.g. "get clusters"
 // resolves to the "cluster" kind's available "get" verb). A future rename

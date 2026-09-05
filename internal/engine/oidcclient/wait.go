@@ -10,12 +10,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// pollInterval is the bespoke poll helper's tick — a package var so tests
+// pollInterval is the bespoke poll helper's tick - a package var so tests
 // can shrink it (resources.pollInterval's test-shrinkable pattern).
 var pollInterval = 2 * time.Second
 
 // defaultWaitTimeout is the bespoke verbs' default --timeout: a DELIBERATE
-// divergence from the generated wait's 120s defaultWaitTimeout — annotation
+// divergence from the generated wait's 120s defaultWaitTimeout - annotation
 // consumption takes seconds on a real server (both editions), unlike a
 // provisioning wait.
 const defaultWaitTimeout = 60 * time.Second
@@ -28,14 +28,14 @@ type waitOutcome struct {
 	done  bool
 	value string
 	// terminal, when non-nil, ends the wait IMMEDIATELY with this
-	// non-retryable error — an impossible or ambiguous observed shape a
+	// non-retryable error - an impossible or ambiguous observed shape a
 	// concurrent actor produced must never be misdiagnosed by waiting to
 	// timeout.
 	terminal *clierr.Error
 }
 
 // waitForOIDCClient mirrors resources.waitFor's poll contract for the
-// bespoke secret-lifecycle verbs — a separate seam because the generated
+// bespoke secret-lifecycle verbs - a separate seam because the generated
 // --for grammar expresses only status.state/conditions, not these key-set
 // predicates; it must never diverge from waitFor's
 // semantics: a transient Get error retries, a NOT_FOUND fails fast exactly
@@ -79,7 +79,7 @@ func waitForOIDCClient(
 		}
 		// Mirrors resources.waitFor's select exactly: deadline.Done() fires
 		// on EITHER the timeout elapsing or ctx being canceled by the
-		// caller — the two are not distinguished, matching waitFor's own
+		// caller - the two are not distinguished, matching waitFor's own
 		// behavior of always reporting the deadline branch as a timeout.
 		select {
 		case <-deadline.Done():

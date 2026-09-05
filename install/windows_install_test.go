@@ -1365,7 +1365,7 @@ func TestWindowsBootstrapPropagatesInstallerFailure(t *testing.T) {
 	assert.Contains(t, string(out), "tag grammar")
 }
 
-// shortPathName returns the 8.3 short form of an existing path — the form
+// shortPathName returns the 8.3 short form of an existing path - the form
 // some environments hand out in LOCALAPPDATA/APPDATA/TEMP (GitHub-hosted
 // runners, notably), where a naive string compare against the long form of
 // the same directory fails.

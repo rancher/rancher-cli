@@ -56,7 +56,7 @@ spec:
           type: object
           properties:
             # Rancher's real Setting carries its value TOP-LEVEL (a sibling
-            # of spec/status, not nested under either) — without these two
+            # of spec/status, not nested under either) - without these two
             # properties, envtest's structural schema silently prunes any
             # seeded top-level value/default (PS-8 e2e coverage needs both).
             value:   {type: string}
@@ -79,7 +79,7 @@ spec:
       subresources: {status: {}}
       schema:
         # User is Rancher-norman-style: displayName, principalIds, etc. live
-        # directly on the object root, not under spec — preserve everything
+        # directly on the object root, not under spec - preserve everything
         # so root-level fields round-trip like the real API.
         openAPIV3Schema:
           type: object
@@ -103,7 +103,7 @@ spec:
       schema:
         # UserAttribute is norman-style like User: GroupPrincipals and
         # LastLogin live directly on the object root, with no json tags on
-        # the real Go type — preserve everything so root-level fields
+        # the real Go type - preserve everything so root-level fields
         # round-trip like the real API.
         openAPIV3Schema:
           type: object
@@ -249,7 +249,7 @@ spec:
       schema:
         # The v3 Token type (pkg/apis/management.cattle.io/v3) carries its
         # fields (userId, authProvider, expiresAt, description, ...) at the
-        # object root — preserve everything so root-level fields round-trip.
+        # object root - preserve everything so root-level fields round-trip.
         openAPIV3Schema:
           type: object
           x-kubernetes-preserve-unknown-fields: true

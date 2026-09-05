@@ -1,11 +1,11 @@
 #!/bin/sh
-# Validates a release tag against the project tag grammar — deliberately
+# Validates a release tag against the project tag grammar - deliberately
 # narrower than SemVer: no leading zeros, prerelease only (alpha|beta|rc).N,
 # no build metadata, no slash. install.sh carries a byte-identical copy of
 # this regex (it is downloaded standalone and cannot source this file); a Go
 # test asserts the two stay identical.
 #
-# Called by release.yaml on every tag push; also a local pre-flight —
+# Called by release.yaml on every tag push; also a local pre-flight -
 # run `scripts/check-release-tag <tag>` before pushing a tag to know it
 # will pass the release guard.
 set -eu

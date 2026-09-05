@@ -1,7 +1,7 @@
 // quorum.go implements Task 8 (spec D-5): a pure etcd-quorum-impact
 // computation over a provisioningcluster patch's original and patched
 // objects. It is deliberately side-effect-free and imports nothing beyond
-// unstructured — the caller (resources.NewPatch's EffectEnricher hook,
+// unstructured - the caller (resources.NewPatch's EffectEnricher hook,
 // wired in surface/cli/root.go) decides what to do with the result.
 package provisioning
 
@@ -24,12 +24,12 @@ type QuorumDelta struct {
 // ComputeQuorumDelta compares the etcd member count (the sum of
 // spec.rkeConfig.machinePools[].quantity over pools with etcdRole: true)
 // between orig and patched. The second return is false when the count did
-// not change — e.g. a patch that only touches a non-etcd pool, or the
-// cluster's kubernetesVersion — meaning the caller has nothing to warn
+// not change - e.g. a patch that only touches a non-etcd pool, or the
+// cluster's kubernetesVersion - meaning the caller has nothing to warn
 // about. Note always states the before/after counts; it additionally notes
 // that an even etcd count does not improve fault tolerance over the next
 // odd count down, and separately that the drop loses the old quorum
-// majority, when each condition applies — the two are independent and may
+// majority, when each condition applies - the two are independent and may
 // both fire (e.g. 3 -> 2).
 func ComputeQuorumDelta(orig, patched *unstructured.Unstructured) (QuorumDelta, bool) {
 	before := etcdMemberCount(orig)
@@ -56,7 +56,7 @@ func ComputeQuorumDelta(orig, patched *unstructured.Unstructured) (QuorumDelta, 
 }
 
 // etcdMemberCount sums spec.rkeConfig.machinePools[].quantity over pools
-// with etcdRole: true. A pool with no quantity field defaults to 1 — the
+// with etcdRole: true. A pool with no quantity field defaults to 1 - the
 // rancher default for an unset machine pool size (createcluster.go, Task
 // 7, always sets it explicitly, but a hand-authored manifest or an RFC
 // 6902 patch removing the field must still be counted correctly).

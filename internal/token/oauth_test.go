@@ -56,7 +56,7 @@ func distinctLoopbackCert(t *testing.T) tls.Certificate {
 }
 
 // idpDeviceStub is a minimal RFC 8628 device-authorization identity
-// provider, standing in for testrancher's façade IdP stub: the token
+// provider, standing in for testrancher's facade IdP stub: the token
 // package cannot import testrancher (it imports token for a path
 // constant), so the split-origin fixtures below build their own.
 type idpDeviceStub struct {

@@ -100,7 +100,7 @@ func TestRenderWideFallsBackToTabularByteIdentical(t *testing.T) {
 
 // TestRenderWideAndTableRejectNonTabular asserts the closed-world contract:
 // there is no pretty-JSON fallback for -o table/-o wide. A payload that is
-// neither WideTabular nor Tabular is a rendering error for both formats —
+// neither WideTabular nor Tabular is a rendering error for both formats -
 // the caller's declared shape promised Tabular and its Data does not honor
 // that.
 func TestRenderWideAndTableRejectNonTabular(t *testing.T) {
@@ -169,7 +169,7 @@ func TestRenderRejectsUnknownFormat(t *testing.T) {
 }
 
 // TestRenderTemplateEmptySource: a bare "template=" must be an error, not a
-// silent bare-newline render — the pipeline's validateFormat rejects it, and
+// silent bare-newline render - the pipeline's validateFormat rejects it, and
 // Render's defense-in-depth contract for direct callers must match.
 func TestRenderTemplateEmptySource(t *testing.T) {
 	t.Parallel()
@@ -190,7 +190,7 @@ func TestRenderTemplateInvalidSource(t *testing.T) {
 
 // TestRenderJSONNoHTMLEscape above asserts the -o json path. The two below cover
 // the paths it does not: the shared EncodeJSON helper and the default/table
-// fallback for a non-Tabular payload — the fallback is what actually regressed
+// fallback for a non-Tabular payload - the fallback is what actually regressed
 // (bare `schema` emitted the escaped form for the `>` in descriptions).
 
 const escapeProbe = "a < b > c & d"
@@ -379,7 +379,7 @@ func TestRenderStyledStripInvariant(t *testing.T) {
 
 // TestRenderStyledNeverStylesIneligibleFormats asserts the eligibility rule: a
 // caller passing Enabled: true still gets byte-plain output for json, yaml,
-// name, and template — no flag or environment value can ever reach these
+// name, and template - no flag or environment value can ever reach these
 // formats, since the eligibility gate is structural, not caller-supplied.
 func TestRenderStyledNeverStylesIneligibleFormats(t *testing.T) {
 	t.Parallel()

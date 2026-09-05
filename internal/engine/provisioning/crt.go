@@ -1,6 +1,6 @@
 // crt.go implements the D-4 override for the clusterregistrationtoken row:
 // `get clusterregistrationtoken` reads Steve directly (the ONLY place the
-// real token is spliced into the command/manifest fields — the k8s proxy's
+// real token is spliced into the command/manifest fields - the k8s proxy's
 // own object carries the literal "{token}" placeholder in those fields;
 // rancher's steve formatter clusterregistrationtoken.go:24-72 does the
 // ReplaceAll at :69 using the object's own status.token as the real value),
@@ -34,10 +34,10 @@ const placeholderToken = "{token}"
 // placeholderError is the NAMED-get policy over PlaceholderFields' report:
 // one bad object IS the one thing the caller asked for, so failing loud is
 // correct (spec D-4; TestNewGetCRTPlaceholderGuardTable asserts the message).
-// The list path degrades in place instead — see the Execute list loop.
+// The list path degrades in place instead - see the Execute list loop.
 func placeholderError(path, field string) *clierr.Error {
 	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("clusterregistrationtoken at %s: field %q still carries the unformatted %s placeholder — the server never spliced in the real token",
+		fmt.Sprintf("clusterregistrationtoken at %s: field %q still carries the unformatted %s placeholder - the server never spliced in the real token",
 			path, field, placeholderToken))
 }
 
@@ -68,7 +68,7 @@ func crtRowFrom(o CRTObject) crtRow {
 }
 
 // crtRows is `get clusterregistrationtoken`'s payload; it implements
-// output.Tabular so `-o table` shows NAME/CLUSTER/EXPIRES — the full
+// output.Tabular so `-o table` shows NAME/CLUSTER/EXPIRES - the full
 // command/manifest set is still in the envelope Data for -o json/-o yaml.
 type crtRows []crtRow
 
@@ -91,7 +91,7 @@ type getCRTCmd struct {
 // Steve /v1 read instead of the generic dynamic-client Get/List, since only
 // Steve splices the real token into the command/manifest fields. Its
 // Descriptor mirrors resources.NewGet(k, ...) exactly (same Name, args,
-// flags) so the row's schema output is unchanged from Task 3 — only
+// flags) so the row's schema output is unchanged from Task 3 - only
 // execution is overridden.
 func NewGetCRT(k kinds.Kind, roots engine.RootClientFactory) runtime.Command {
 	return &getCRTCmd{k: k, roots: roots}
@@ -101,8 +101,8 @@ func NewGetCRT(k kinds.Kind, roots engine.RootClientFactory) runtime.Command {
 // resources.NewGet(k, ...) rather than hand-duplicating its flag-generation
 // logic (finding 6): a future change to getFlags automatically propagates
 // here too, instead of requiring this override to be updated in lockstep by
-// discipline alone. resources.NewGet's Describe() is a pure function of k —
-// it never touches its clients argument — so nil is safe to pass here.
+// discipline alone. resources.NewGet's Describe() is a pure function of k -
+// it never touches its clients argument - so nil is safe to pass here.
 func (c *getCRTCmd) Describe() runtime.Descriptor {
 	return resources.NewGet(c.k, nil).Describe()
 }
@@ -147,7 +147,7 @@ func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 
 	// NAMESPACE SEMANTICS (spec D-4/R3-3): always GET the root collection and
 	// filter the DECODED objects locally by metadata.namespace when
-	// --namespace is set — deterministic, and avoids assuming Steve's
+	// --namespace is set - deterministic, and avoids assuming Steve's
 	// query-filter grammar.
 	body, err := root.GetJSON(ctx, crtCollectionPath)
 	if err != nil {
@@ -167,8 +167,8 @@ func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		if selector != nil && !selector.Matches(labels.Set(v.Labels)) {
 			continue
 		}
-		// Finding 3: a bad row degrades in place — blank the offending
-		// field(s) and warn — rather than aborting the entire list, which
+		// Finding 3: a bad row degrades in place - blank the offending
+		// field(s) and warn - rather than aborting the entire list, which
 		// would hide every healthy row behind one unspliced token.
 		for _, field := range clearPlaceholderFields(v) {
 			warnings = append(warnings, fmt.Sprintf(
@@ -187,7 +187,7 @@ type refuseCRTPatchCmd struct {
 }
 
 // NewRefuseCRTPatch builds the patch override for the clusterregistrationtoken
-// row: a VALIDATION refusal — the row is read-only surface, and patching
+// row: a VALIDATION refusal - the row is read-only surface, and patching
 // registration tokens is not supported. Its Descriptor mirrors
 // resources.NewPatch(k, ...) exactly (same Name, args, flags) so the row's
 // schema output is unchanged from Task 3; Plan refuses before ever touching
@@ -199,8 +199,8 @@ func NewRefuseCRTPatch(k kinds.Kind) runtime.Command {
 // Describe derives the row's Descriptor from the LIVE generic
 // resources.NewPatch(k, ...) rather than hand-duplicating its flag-
 // generation logic (finding 6), for the same reason as getCRTCmd.Describe
-// above. resources.NewPatch's Describe() is a pure function of k — it never
-// touches its clients/src arguments — so nil is safe to pass for both here.
+// above. resources.NewPatch's Describe() is a pure function of k - it never
+// touches its clients/src arguments - so nil is safe to pass for both here.
 func (c *refuseCRTPatchCmd) Describe() runtime.Descriptor {
 	return resources.NewPatch(c.k, nil, nil).Describe()
 }
@@ -208,7 +208,7 @@ func (c *refuseCRTPatchCmd) Describe() runtime.Descriptor {
 func (c *refuseCRTPatchCmd) Plan(_ context.Context, _ runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 		c.k.Name+" is read-only: patching a clusterregistrationtoken is not supported; "+
-			"registration tokens are consumed, not edited — create a new one instead")
+			"registration tokens are consumed, not edited - create a new one instead")
 }
 
 var _ runtime.MutatingCommand = (*refuseCRTPatchCmd)(nil)

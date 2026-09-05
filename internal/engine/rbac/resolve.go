@@ -17,7 +17,7 @@ type ResolvedSubject struct {
 	UserID    string
 	Principal string
 	// PrincipalIDs holds ALL of the resolved user's principalIds (nil for
-	// groups and provisioning) — grant's duplicate detection uses them to
+	// groups and provisioning) - grant's duplicate detection uses them to
 	// match identity aliases of the same user.
 	PrincipalIDs []string
 	Provision    bool
@@ -78,7 +78,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			}
 			if isLocal {
 				// Local: id IS the user id (TrimPrefix, not a hash). The
-				// Get is direct ownership proof — no scan needed.
+				// Get is direct ownership proof - no scan needed.
 				pids, _, _ := unstructured.NestedStringSlice(obj.Object, "principalIds")
 				return ResolvedSubject{UserID: obj.GetName(), Principal: sub.Principal, PrincipalIDs: pids}, nil
 			}
@@ -92,7 +92,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		}
 
 		// External principal: always run the authoritative ownership scan.
-		// A verified hash-id hit is not sufficient — a second user may also
+		// A verified hash-id hit is not sufficient - a second user may also
 		// carry the same principal (GetUserByPrincipalID rejects duplicates
 		// regardless of names). Record whether the hash id was occupied by a
 		// non-owning user; provisioning cannot succeed in that case.
@@ -125,7 +125,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			if hashIDOccupied != "" {
 				// The deterministic id is occupied by a user that no
 				// longer owns this principal. EnsureUser would call
-				// Create and receive AlreadyExists — provisioning cannot
+				// Create and receive AlreadyExists - provisioning cannot
 				// succeed. Return a structured conflict.
 				return ResolvedSubject{}, clierr.New(clierr.CodeConflict,
 					fmt.Sprintf("principal %q cannot be provisioned: predicted user id %q is already occupied by a different identity; find the right user, or pass its id directly",
@@ -148,7 +148,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	}
 
 	// Bare name/id: exact-id Get wins outright (deliberate precedence
-	// change from MatchOneOrError's ambiguity detection — spec'd).
+	// change from MatchOneOrError's ambiguity detection - spec'd).
 	// On Get miss, list scan matches exact equality on displayName OR
 	// username; a single user matching both fields counts once;
 	// >1 match → AMBIGUOUS_SELECTION; 0 → NOT_FOUND.

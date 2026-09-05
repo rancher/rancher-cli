@@ -97,16 +97,16 @@ func TestLegacyTokenShimBindingIsInternalDeprecated(t *testing.T) {
 
 // TestDeleteProvisioningClusterBindingTracksKindRow asserts Finding 5's fix:
 // "delete provisioning-cluster" has no generic binding (kinds.Bindings()
-// skips it — the row is Deletable: false), so BuildRoot must compose an
+// skips it - the row is Deletable: false), so BuildRoot must compose an
 // EXTRA resolver entry for it derived from the provisioningcluster row's own
-// Binding, read via kinds.Lookup at composition time — never a hand-copied
+// Binding, read via kinds.Lookup at composition time - never a hand-copied
 // literal, which has no machine-checked link back to the row and can
 // silently drift from a future edit to the row's Binding in kinds.go. This
 // test asserts the schema-reported contract/stability for the op equals
 // kinds.Lookup("provisioningcluster").Binding exactly; before the fix (a
 // hand-copied literal in provider.NewResolver), temporarily editing the
 // row's Binding in kinds.go to a different contract/stability made this test
-// fail while the hand-copied literal silently kept the stale value — the
+// fail while the hand-copied literal silently kept the stale value - the
 // exact drift this composition now closes.
 func TestDeleteProvisioningClusterBindingTracksKindRow(t *testing.T) {
 	pcRow, ok := kinds.Lookup("provisioningcluster")
@@ -122,7 +122,7 @@ func TestDeleteProvisioningClusterBindingTracksKindRow(t *testing.T) {
 // descriptor to the surface it filters: the enum is a static literal in
 // schemaCmd.Describe(), so a new top-level verb (a new distinct first token of
 // a command name) must fail here until the literal is updated. Runs against
-// the full real registry — the only place every command is wired.
+// the full real registry - the only place every command is wired.
 func TestSchemaVerbEnumMatchesCommandVerbs(t *testing.T) {
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)
@@ -234,7 +234,7 @@ func TestSchemaManifestGolden(t *testing.T) {
 // TestSchemaTOCMarksEveryPrimeCommand cross-checks the full manifest against
 // the bare TOC: every bespoke command carrying prime:true in schema --all
 // must also carry prime:true in the TOC's groups[].commands[] entries.
-// Generated commands are skipped — the bare TOC collapses them into a
+// Generated commands are skipped - the bare TOC collapses them into a
 // per-group summary and never lists them individually.
 func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -283,7 +283,7 @@ func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 	}
 
 	// The group JSON card is a third projection of the same per-command
-	// prime flag — hold it to the identical rule so a prime command can
+	// prime flag - hold it to the identical rule so a prime command can
 	// never read prime-less on its own group's card.
 	for _, groupName := range []string{"cluster", "oidc-client"} {
 		card := runJSON("schema", groupName, "-o", "json")
@@ -307,7 +307,7 @@ func TestSchemaTOCMarksEveryPrimeCommand(t *testing.T) {
 // TestBuildRootFlagsPrimeCommandsInMetadata asserts every adapted ucli.Command
 // carries the Prime metadata flag exactly when the manifest says its
 // descriptor is Prime, and that a group carries the flag exactly when every
-// leaf underneath it does — the manifest is the source of truth, so this
+// leaf underneath it does - the manifest is the source of truth, so this
 // walks it rather than hardcoding a full command list.
 func TestBuildRootFlagsPrimeCommandsInMetadata(t *testing.T) {
 	wr, err := buildWiredRegistry("golden", config.ReadOnlyOverride)
@@ -425,7 +425,7 @@ func TestPrimeMarkerConformance(t *testing.T) {
 	require.NotZero(t, checkedCommands)
 }
 
-// lineForCommandName finds a rendered COMMANDS row by its canonical name —
+// lineForCommandName finds a rendered COMMANDS row by its canonical name -
 // the row's comma-joined name list may carry aliases after it (e.g.
 // "deployment, deployments, deploy:"), so a plain substring match on
 // "name:" alone would miss it.
@@ -474,7 +474,7 @@ func TestGroupPrimeMetadataEmptyGroupIsNotPrime(t *testing.T) {
 }
 
 // TestNoLowercasePrimeMarkerLiteral asserts the retired "[prime]" spelling
-// appears nowhere in the repository's Go, Markdown, or txtar files — the
+// appears nowhere in the repository's Go, Markdown, or txtar files - the
 // capitalized "[Prime]" is the one spelling. It walks the whole tree, not
 // just this package: the retired spelling lived in internal/runtime, and the
 // docs and skill are where a reader would copy it from.
@@ -512,7 +512,7 @@ func TestNoLowercasePrimeMarkerLiteral(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestSchemaTOCGolden asserts the bare `schema -o json` TOC shape — the
+// TestSchemaTOCGolden asserts the bare `schema -o json` TOC shape - the
 // progressive-disclosure contract (spec 2026-08-06): orientation payload,
 // not the manifest. Regenerate with -update; drift is a signal.
 func TestSchemaTOCGolden(t *testing.T) {
@@ -580,7 +580,7 @@ func TestKindOverridesReplaceExactlyTheirVerb(t *testing.T) {
 
 // markerCmd stands in for a real override: Describe().Name matches the
 // generic constructor's name (the override contract kinds.Bindings() depends
-// on — BINDING NOTE in the plan) while Usage carries a marker string so
+// on - BINDING NOTE in the plan) while Usage carries a marker string so
 // tests can tell it apart from the generic command. It implements
 // ReadCommand (not just Command) because reg.Validate requires every
 // registered command to satisfy ReadCommand or MutatingCommand.
@@ -597,7 +597,7 @@ func (m markerCmd) Execute(context.Context, runtime.Input, runtime.Prompter) (ru
 // TestKindOverrideSubstitutesExactlyItsVerb installs a marker override for
 // one control kind and proves: the overridden verb resolves to the marker
 // command, the kind's OTHER verbs stay generic, and an untouched kind is
-// byte-identical. NOT t.Parallel — it mutates the package-level
+// byte-identical. NOT t.Parallel - it mutates the package-level
 // kindOverrideTable.
 func TestKindOverrideSubstitutesExactlyItsVerb(t *testing.T) {
 	orig := kindOverrideTable
@@ -726,13 +726,13 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 
 // TestBuildRootWiresProvisioningClusterDelete asserts the D-6/R1-1 gotcha for
 // real: provisioningcluster's row stays Deletable: false, so
-// kinds.Bindings() never emits "delete provisioning-cluster" — the ONLY
+// kinds.Bindings() never emits "delete provisioning-cluster" - the ONLY
 // reason BuildRoot succeeds with the del override registered is the extra
 // resolver entry BuildRoot composes for that exact op string, derived from
 // the row's own Binding (see TestDeleteProvisioningClusterBindingTracksKindRow
 // for the derivation check). Before that entry existed in any form, this test
 // failed with wireEntry's "no resolver binding" error (verified during TDD
-// and again at self-review by temporarily removing the entry) — the
+// and again at self-review by temporarily removing the entry) - the
 // regression net this test now stands guard for.
 func TestBuildRootWiresProvisioningClusterDelete(t *testing.T) {
 	// Not t.Parallel: schemaCommandNames calls t.Setenv, which panics when
@@ -773,9 +773,9 @@ func (m markerDelCmd) Plan(context.Context, runtime.Input) (safety.Effect, runti
 // (Deletable: false, no del override in production) stands in for a
 // hypothetical second such kind: installing a del override for it here
 // must, with zero BuildRoot code changes, wire "delete node" and resolve it
-// to node's own row Binding — proving the loop's generality rather than a
+// to node's own row Binding - proving the loop's generality rather than a
 // coincidence that only happens to work for the one production entry. NOT
-// t.Parallel — it mutates the package-level kindOverrideTable (same
+// t.Parallel - it mutates the package-level kindOverrideTable (same
 // constraint as TestKindOverrideSubstitutesExactlyItsVerb).
 func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T) {
 	orig := kindOverrideTable
@@ -803,7 +803,7 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 	assert.Equal(t, string(nodeKind.Binding.Contract), contract)
 	assert.Equal(t, string(nodeKind.Binding.Stability), stability)
 
-	// provisioningcluster's own del override must still resolve too — the
+	// provisioningcluster's own del override must still resolve too - the
 	// loop composes every matching row, not just the last one iterated.
 	pcDelete := findCommand(delGroup.Commands, "provisioning-cluster")
 	require.NotNil(t, pcDelete, "delete provisioning-cluster must still be wired alongside the new override")
@@ -811,11 +811,11 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 
 // TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision asserts Finding 3
 // (fix-round 3): the delOverrides loop's "if row.Deletable { continue }"
-// branch had no test ever exercising it — every del override in production,
+// branch had no test ever exercising it - every del override in production,
 // and TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster's own
 // "node" stand-in, sits on a Deletable: false row. The comment above the
 // loop claims composing an extra "delete <name>" entry for a Deletable: true
-// row would collide with kinds.Bindings()'s own entry for that op — this
+// row would collide with kinds.Bindings()'s own entry for that op - this
 // test proves that claim rather than leaving it asserted-but-unverified.
 // "project" (Deletable: true, no override in production) stands in for a
 // hypothetical del override installed on an already-deletable kind:
@@ -824,7 +824,7 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 // error, not just "happens not to matter today" (verified during TDD by
 // temporarily removing the branch, which turned this test's BuildRoot call
 // into the "operation \"delete project\" resolved by both resolvers" error).
-// NOT t.Parallel — it mutates the package-level kindOverrideTable (same
+// NOT t.Parallel - it mutates the package-level kindOverrideTable (same
 // constraint as the sibling tests in this file).
 func TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision(t *testing.T) {
 	orig := kindOverrideTable
@@ -898,7 +898,7 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 
 // TestSchemaReportsConfigSourcedReadOnly is the external-review regression:
 // the schema command sits on the Adapt path that never calls resolveDeps, so
-// a config-file-sourced readOnly must still reach the manifest — not just
+// a config-file-sourced readOnly must still reach the manifest - not just
 // env/flag sources.
 func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -962,7 +962,7 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 // TestUnknownCommandRendersTextWithoutOutputFlag asserts the pre-pipeline
 // formatter's default: with no -o/--output anywhere on the raw command
 // line, an unmatched command name renders the short text form, not a JSON
-// envelope — the deterministic "scan miss falls back to text" rule.
+// envelope - the deterministic "scan miss falls back to text" rule.
 func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 	orig := rawArgv
 	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
@@ -984,8 +984,8 @@ func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 }
 
 // TestCommandNotFoundStyledWithColorAlways asserts that the errors the adapter
-// renders itself — raised before any command dispatches, so never passing
-// through the pipeline's own style resolution — still honor --color: the
+// renders itself - raised before any command dispatches, so never passing
+// through the pipeline's own style resolution - still honor --color: the
 // unknown-command error's prefix is ANSI-styled under --color=always (read
 // from raw argv, since flags never parsed) and byte-plain by default on a
 // non-terminal stderr.
@@ -1086,7 +1086,7 @@ func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
 	assert.Equal(t, "Error", env["kind"])
 }
 
-// exercise bug 2 repro: unknown command "version" is the friction item — the
+// exercise bug 2 repro: unknown command "version" is the friction item - the
 // hint must point at --version, not the generic `rancher schema` hint.
 func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	orig := rawArgv
@@ -1110,7 +1110,7 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	assert.Contains(t, env.Data.Error.Hint, "--version")
 
 	// A subgroup miss on the same literal name has no --version flag to
-	// point at (that flag is root-only) — it must get the generic hint.
+	// point at (that flag is root-only) - it must get the generic hint.
 	errOut.Reset()
 	CaptureArgv([]string{"-o", "json", "get", "version"})
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "version"}))
@@ -1146,7 +1146,7 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 	assert.Contains(t, env.Data.Error.Message, "provisioning-cluster")
 	assert.Equal(t, "rancher schema", env.Data.Error.Hint,
-		"no single concrete command names both provisioning-cluster and the missing name — the hint stays generic")
+		"no single concrete command names both provisioning-cluster and the missing name - the hint stays generic")
 
 	// "clusters" under delete → same targeted detail.
 	errOut.Reset()
@@ -1215,7 +1215,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		t.Logf("urfave -A error message: %q", env.Data.Error.Message)
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one")
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - list operations already span all namespaces; use --namespace where the kind accepts one")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 
@@ -1234,7 +1234,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		t.Logf("urfave --all-namespaces error message: %q", env.Data.Error.Message)
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one")
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - list operations already span all namespaces; use --namespace where the kind accepts one")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
 
@@ -1258,7 +1258,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 
 	t.Run("inspect user --cluster fails as an unknown flag", func(t *testing.T) {
 		// inspect user deliberately does NOT declare --cluster (the user
-		// kind is management-scoped, not cluster-scoped) — declaring it
+		// kind is management-scoped, not cluster-scoped) - declaring it
 		// just to reject it would put a dead flag in the schema and
 		// completion. Passing it must fail the same generic way any
 		// undeclared flag does.
@@ -1331,7 +1331,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 		var env errEnvelope
 		require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
-		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag — list operations already span all namespaces; use --namespace where the kind accepts one",
+		assert.Contains(t, env.Data.Error.Message, "there is no all-namespaces flag - list operations already span all namespaces; use --namespace where the kind accepts one",
 			"bare get group -A (path length 2) must yield the get-scoped wording, asserting the >= 2 boundary")
 		assert.Equal(t, "rancher schema", env.Data.Error.Hint)
 	})
@@ -1361,7 +1361,7 @@ func TestAllNamespacesHintsBothShareOpeningClause(t *testing.T) {
 }
 
 // An explicitly overridden config dir must not put a plain-text notice ahead
-// of the error envelope — stderr must parse as pure JSON, exactly as a
+// of the error envelope - stderr must parse as pure JSON, exactly as a
 // scripted session relies on.
 func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -1396,7 +1396,7 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 // load error (adapter.go:129-143) rather than failing the command, on BOTH a
 // before-only path (schema, Adapt-wired, no resolveDeps) and the completion
 // callback (Before runs, then completion returns before Action). This must
-// hold with no code change to resolveReadOnly/resolveDeps — the test only
+// hold with no code change to resolveReadOnly/resolveDeps - the test only
 // asserts existing behavior against regression.
 func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -1426,7 +1426,7 @@ func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 
 // TestGenerateShellCompletionListsTopLevelCommandNames asserts that
 // EnableShellCompletion activates default command-name completion for the
-// existing tree with no assembleCommands/wireEntry changes. Membership only —
+// existing tree with no assembleCommands/wireEntry changes. Membership only -
 // urfave-owned ordering/format is not ours to golden-test.
 func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -1437,7 +1437,7 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 	root.Writer = &out
 
 	// urfave's DefaultCompleteWithFlags reads the real os.Args (not the argv
-	// passed to Run) when invoked at the root command — it always assumes the
+	// passed to Run) when invoked at the root command - it always assumes the
 	// shell appended the completion flag last on the actual process args. Mirror
 	// that so the test drives the same code path a real TAB keystroke does.
 	argv := []string{"rancher", "--config", dir, "--generate-shell-completion"}
@@ -1456,7 +1456,7 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 // urfave's own divergent script. This asserts the INTENT, not urfave's own
 // help-topic mechanism: post-strip, "bash" is an unmatched subcommand name on
 // __completion, which now routes through the repo's standard CommandNotFound
-// seam — a structured JSON VALIDATION envelope on stderr at a non-zero exit,
+// seam - a structured JSON VALIDATION envelope on stderr at a non-zero exit,
 // the same envelope-everywhere contract every other unmatched command name
 // gets (see TestUnknownCommandIsValidationNotExitThree), not urfave's own
 // unhinted "No help topic" text and not a custom help Action (the command is
@@ -1498,7 +1498,7 @@ func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 // resolver marks ContractPublic must either belong to a kind whose row is
 // itself ContractPublic (generated verbs and the derived create ops inherit
 // the row's binding) or appear in the bespoke list below. Adding a
-// new public op compiles fine — this test is what turns the widened public
+// new public op compiles fine - this test is what turns the widened public
 // surface into a reviewed diff instead of silent drift.
 func TestPublicContractOpsAreListed(t *testing.T) {
 	t.Parallel()
@@ -1534,14 +1534,14 @@ func TestPublicContractOpsAreListed(t *testing.T) {
 		parts := strings.Split(op, " ")
 		kindName := parts[len(parts)-1]
 		assert.True(t, publicKindByName[kindName],
-			"op %q is ContractPublic but neither backs a public kind row nor is in bespokePublicOps — widening the public surface must be a reviewed edit there", op)
+			"op %q is ContractPublic but neither backs a public kind row nor is in bespokePublicOps - widening the public surface must be a reviewed edit there", op)
 	}
 }
 
 // TestCreateOpBindingsTrackKindRows asserts the derivation rule: every op in
 // derivedOpKinds must resolve to its kind row's Binding exactly, because
 // composeBindings derives them via the row rather than a hand-copied
-// literal in provider.NewResolver — the same drift-closure as
+// literal in provider.NewResolver - the same drift-closure as
 // TestDeleteProvisioningClusterBindingTracksKindRow. Ranging over the SAME
 // map production uses means a new derived op is covered the moment it is
 // added.
@@ -1599,7 +1599,7 @@ func TestFeaturePatchWarnsWhenFlagIsNotDynamic(t *testing.T) {
 	}
 }
 
-// versionServer serves a fixed /rancherversion body — enough for
+// versionServer serves a fixed /rancherversion body - enough for
 // primeFeatureCommunityWarning's ServerInfo call, no Feature route needed
 // since the enricher is exercised directly against an in-memory object.
 func versionServer(t *testing.T, rancherVersionBody string) *httptest.Server {
@@ -1629,7 +1629,7 @@ func primeFeatureObj(name string, prime, enabled bool) *unstructured.Unstructure
 
 // TestPrimeFeatureCommunityWarning asserts the advisory's trigger: a feature confirmed
 // prime-classified AND confirmed enabled warns only when the server is
-// confirmed community — never on Prime, never on an unreadable/unknown
+// confirmed community - never on Prime, never on an unreadable/unknown
 // edition, never for a non-prime feature, never for a disabled one.
 func TestPrimeFeatureCommunityWarning(t *testing.T) {
 	t.Parallel()

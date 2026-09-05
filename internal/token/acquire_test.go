@@ -50,7 +50,7 @@ func TestAcquireDerivedSuccess(t *testing.T) {
 	assert.Equal(t, ResultRevoked, cred.SessionTokenCleanup.Result)
 	recs := f.DeleteRequests()
 	require.Len(t, recs, 1)
-	assert.Equal(t, "v3", recs[0].Kind, "S is a v3 token on the json path: the façade answers json with the Norman shape")
+	assert.Equal(t, "v3", recs[0].Kind, "S is a v3 token on the json path: the facade answers json with the Norman shape")
 	assert.Equal(t, cred.Token, recs[0].Bearer, "S is revoked with D as the bearer")
 	assert.False(t, cred.SessionTokenUnmarked)
 	assert.NotEmpty(t, cred.SessionCreatedAt)
@@ -70,7 +70,7 @@ func TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn(t *testing.T) {
 		opts        testrancher.Options
 		wantD       CreateOutcome
 		wantDClean  RevokeResult
-		wantDeletes int    // total DELETEs the façade saw
+		wantDeletes int    // total DELETEs the facade saw
 		sDeleteMode string // "", "gone", "fail"
 		wantS       RevokeResult
 	}{
@@ -111,7 +111,7 @@ func TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn(t *testing.T) {
 }
 
 // TestAcquireCancellationDuringDerivedCreateStillRevokesSession asserts that cleanup
-// runs on a detached context: the façade sees S's DELETE after the
+// runs on a detached context: the facade sees S's DELETE after the
 // operation context is cancelled.
 func TestAcquireCancellationDuringDerivedCreateStillRevokesSession(t *testing.T) {
 	t.Parallel()
@@ -227,7 +227,7 @@ func TestAcquireErrorWithPrimaryKeepsEvidence(t *testing.T) {
 // TestAcquireSessionCreateKindKnowledge asserts what the acquisition knows
 // about S's kind without a name: a lost or unrecognizable synchronous
 // response leaves it unknown, a name-only Norman body is v3, and the
-// façade's shape option shows that a json request answered with an ext
+// facade's shape option shows that a json request answered with an ext
 // object is an ext S.
 func TestAcquireSessionCreateKindKnowledge(t *testing.T) {
 	t.Parallel()
@@ -308,7 +308,7 @@ func samlProviderFacade(t *testing.T, opts testrancher.Options) (*testrancher.Fa
 
 // handoffPrompter is the test's stand-in for the browser: it reads the
 // published login URL, remembers the request identity, and runs onHandoff
-// (usually a façade deposit) before the CLI's first poll.
+// (usually a facade deposit) before the CLI's first poll.
 type handoffPrompter struct {
 	// The embedded prompter is silent and non-TTY with NoInput false: the
 	// SAML gate refuses a NoInput prompter before the handoff.

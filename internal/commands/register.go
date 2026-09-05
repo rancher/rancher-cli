@@ -35,7 +35,7 @@ type registrationProbe struct {
 	// certificate: the fingerprint tlstrust.Classify already computed for
 	// the exact candidate this selector encodes. Every other registration
 	// path (add-server, update-server, an explicit --cacert) leaves it
-	// empty, and commitCreate then writes no fingerprint at all — an
+	// empty, and commitCreate then writes no fingerprint at all - an
 	// explicit CA replacement never carries one.
 	caFingerprint string
 }
@@ -63,7 +63,7 @@ func canonicalizeServerURL(rawURL string) (string, error) {
 		return "", clierr.New(clierr.CodeValidation, "invalid server URL: "+rawURL)
 	}
 	// Scheme is checked here, not only in prepareRegistration, so the
-	// error can echo the URL as the operator typed it — canonicalization
+	// error can echo the URL as the operator typed it - canonicalization
 	// strips path/query, and a fat-fingered URL is easier to spot whole.
 	if !config.IsSupportedScheme(canonical) {
 		return "", clierr.New(clierr.CodeValidation,
@@ -82,7 +82,7 @@ func canonicalizeServerURL(rawURL string) (string, error) {
 func prepareRegistration(ctx context.Context, tlsPreflight tlsPreflightFunc, canonicalURL, caSelector string) (registrationProbe, error) {
 	if !config.IsSupportedScheme(canonicalURL) {
 		// The same gate config.Effective's credential-read path applies
-		// (resolve.go) — a scheme it refuses must never reach a committed
+		// (resolve.go) - a scheme it refuses must never reach a committed
 		// entry or token: Effective would silently withhold the stored
 		// credential later, surfacing as an unexplained NOT_LOGGED_IN after
 		// a login that appeared to succeed.
@@ -114,7 +114,7 @@ func prepareRegistration(ctx context.Context, tlsPreflight tlsPreflightFunc, can
 }
 
 // validateEntryName rejects a server name reserved for the legacy token
-// shim's cache slots (names are born at registration now — add-server and
+// shim's cache slots (names are born at registration now - add-server and
 // login's delegated add both call this before any probe or write).
 func validateEntryName(name string) *clierr.Error {
 	switch {
@@ -128,7 +128,7 @@ func validateEntryName(name string) *clierr.Error {
 	return nil
 }
 
-// caPresence summarizes a stored CA selector's kind for a result envelope —
+// caPresence summarizes a stored CA selector's kind for a result envelope -
 // presence and shape only, never the bytes: "none" (system roots), "inline"
 // (a literal PEM), or "path" (a file path).
 func caPresence(selector string) string {
@@ -143,23 +143,23 @@ func caPresence(selector string) string {
 }
 
 // registrationConflict builds the CONFLICT a commit returns when the
-// re-verified state no longer matches what prepareRegistration verified —
+// re-verified state no longer matches what prepareRegistration verified -
 // naming step identifies which side of the commit drifted, for the message
 // only. This seam is shared by add's create path and update's two
 // validations, so it cannot know which top-level command the caller ran; a
 // hint would have to guess the verb (and update's callers already have an
-// entry that exists, so an add-server suggestion would itself conflict) —
+// entry that exists, so an add-server suggestion would itself conflict) -
 // there is no value here the CLI can name, so guidance stays in the message
 // and no hint is emitted. cause, when non-nil, is the resolution error a
-// failed recheckBytes call carried — a transient read failure (a brief
+// failed recheckBytes call carried - a transient read failure (a brief
 // permission change, an antivirus lock, an NFS hiccup) fails the same byte
 // comparison as genuine concurrent content drift, so naming it lets an
 // operator tell the two apart instead of guessing from unrelated timing.
 // No taxonomy change: CONFLICT stays the code either way.
 func registrationConflict(name, step string, cause error) *clierr.Error {
-	msg := fmt.Sprintf("server entry %q changed during registration (%s); no changes were written — re-run the command", name, step)
+	msg := fmt.Sprintf("server entry %q changed during registration (%s); no changes were written - re-run the command", name, step)
 	if cause != nil {
-		msg = fmt.Sprintf("server entry %q changed during registration (%s: %v); no changes were written — re-run the command", name, step, cause)
+		msg = fmt.Sprintf("server entry %q changed during registration (%s: %v); no changes were written - re-run the command", name, step, cause)
 	}
 	return clierr.New(clierr.CodeConflict, msg)
 }
@@ -175,12 +175,12 @@ func caUpdateArg(selector string) string {
 }
 
 // recheckBytes re-resolves selector under canonicalURL and requires the
-// result to equal want exactly — a resolution failure (rotated-away path) is
+// result to equal want exactly - a resolution failure (rotated-away path) is
 // itself a mismatch. Both add's existing-identical baseline and update's two
 // validations funnel through this: a "verified unchanged" or "verified
 // trusted" claim must rest on bytes actually re-read at commit time, never
 // the probe-time snapshot alone. The returned error is the resolution
-// failure, if any — nil on a genuine content mismatch — so a caller
+// failure, if any - nil on a genuine content mismatch - so a caller
 // building a CONFLICT message can name what actually went wrong.
 func recheckBytes(canonicalURL, selector, want string) (bool, error) {
 	now, err := resolveRegistrationCA(canonicalURL, selector)
@@ -204,7 +204,7 @@ type createOutcome struct {
 
 // bootstrapPointer sets cfg.CurrentServer to name when the pointer is empty
 // or dangling (names no configured server), and reports whether it did.
-// Shared by commitCreate and commitUpdate — pointer bootstrap/repair is a
+// Shared by commitCreate and commitUpdate - pointer bootstrap/repair is a
 // registration-only privilege; plain login and use-server never call this.
 func bootstrapPointer(cfg *config.Config, name string) bool {
 	if cfg.CurrentServer != "" {
@@ -220,14 +220,14 @@ func bootstrapPointer(cfg *config.Config, name string) bool {
 // add (never update-server, which runs commitUpdate instead): called under
 // config.WithLock immediately before any write, with the exact probe
 // prepareRegistration produced. It re-resolves probe.caSelector's bytes and
-// requires them to still equal probe.caBytes — a path-valued CA can rotate
+// requires them to still equal probe.caBytes - a path-valued CA can rotate
 // between the outside-the-lock probe and this commit, on both the
-// name-absent and the existing-identical path — then requires the name to
+// name-absent and the existing-identical path - then requires the name to
 // be absent, or present with the same canonical URL and CA selector
 // (whether it existed when prepareRegistration ran or was concurrently
 // created identically). Anything else is CONFLICT with no write. A commit
 // that proceeds on an absent name creates the entry; one that proceeds on an
-// identical existing entry is an entry no-op — servers[name] is not
+// identical existing entry is an entry no-op - servers[name] is not
 // rewritten, but the current-server pointer is still bootstrapped/repaired
 // when empty or dangling, and cfg.Write() runs only when something actually
 // changed (the entry, the pointer, or both).
@@ -301,7 +301,7 @@ type updateSource struct {
 
 // prepareUpdateSource snapshots existing's canonical URL, CA selector, and
 // (for a path-valued selector) resolved CA bytes, OUTSIDE any lock, before
-// prepareRegistration resolves the RESULTING selector — the two snapshots
+// prepareRegistration resolves the RESULTING selector - the two snapshots
 // are independent and commitUpdate validates both.
 func prepareUpdateSource(existing config.Server) (updateSource, error) {
 	caBytes, err := resolveRegistrationCA(existing.URL, existing.CA)
@@ -330,7 +330,7 @@ type updateOutcome struct {
 
 // updatePlan is commitUpdate's validated, not-yet-applied result: the entry
 // has not been written yet, so a caller that must purge credentials on a URL
-// change can do so BETWEEN validation and the write — delete-first ordering,
+// change can do so BETWEEN validation and the write - delete-first ordering,
 // matching delete-server: a purge failure must never leave config.yaml
 // already pointed at the new, credential-less address.
 type updatePlan struct {
@@ -343,7 +343,7 @@ type updatePlan struct {
 
 // validateUpdate runs update-server's TWO independently named validations,
 // called under config.WithLock before any purge or write. (1) SOURCE
-// BASELINE: the entry must still exist and match src exactly — canonical
+// BASELINE: the entry must still exist and match src exactly - canonical
 // URL, CA selector, and (for a path-valued source selector) resolved source
 // bytes; absence, field drift, or source-byte drift is CONFLICT. (2) RESULT
 // TRUST BINDING: the resulting selector (probe) must still resolve to the
@@ -374,7 +374,7 @@ func validateUpdate(cfg *config.Config, name string, src updateSource, probe reg
 }
 
 // applyUpdate writes plan's result (only when something changed) and
-// bootstraps/repairs the pointer when empty or dangling — even on a
+// bootstraps/repairs the pointer when empty or dangling - even on a
 // same-value update, for the same reason commitCreate's entry no-op does.
 // Callers that must purge credentials on a URL change do so between
 // validateUpdate and applyUpdate.
@@ -399,8 +399,8 @@ func applyUpdate(cfg *config.Config, plan updatePlan) (updateOutcome, error) {
 // authSnapshot is what login captures immediately before starting the auth
 // flow: the exact name, canonical URL, CA selector, and resolved CA bytes
 // authentication runs under. It is compared against the CURRENT entry at
-// two points — the credential-write commit seam, and the stale-hint recheck
-// after a failed delegated login — both via snapshotMatchesCurrent, so the
+// two points - the credential-write commit seam, and the stale-hint recheck
+// after a failed delegated login - both via snapshotMatchesCurrent, so the
 // two can never diverge into separately-maintained comparisons.
 type authSnapshot struct {
 	name         string
@@ -411,7 +411,7 @@ type authSnapshot struct {
 
 // snapshotMatchesCurrent reports whether name's CURRENT entry in cfg still
 // matches snap exactly: canonical URL, CA selector, and (for a path-valued
-// selector) the resolved bytes re-read right now — never the stored selector
+// selector) the resolved bytes re-read right now - never the stored selector
 // string alone, which cannot see a file that rotated in place.
 func snapshotMatchesCurrent(cfg *config.Config, snap authSnapshot) bool {
 	cur, ok := cfg.Servers[snap.name]
@@ -423,7 +423,7 @@ func snapshotMatchesCurrent(cfg *config.Config, snap authSnapshot) bool {
 }
 
 // commitUpdate composes validateUpdate and applyUpdate with no credential
-// purge in between — the shape callers without a URL-change side effect (and
+// purge in between - the shape callers without a URL-change side effect (and
 // tests) use directly. configUpdateServerCmd calls the two steps separately
 // so it can purge credentials between them.
 func commitUpdate(cfg *config.Config, name string, src updateSource, probe registrationProbe) (updateOutcome, error) {

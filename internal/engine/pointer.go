@@ -33,7 +33,7 @@ func PointerFor(keys []string) string {
 
 // SplitPointer splits an RFC 6901 JSON pointer into its unescaped segments.
 // The empty pointer (the whole document) yields nil; "/" yields
-// []string{""}, the top-level key that is the empty string — a different
+// []string{""}, the top-level key that is the empty string - a different
 // pointer from the whole document.
 func SplitPointer(p string) []string {
 	if p == "" {

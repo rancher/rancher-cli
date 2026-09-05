@@ -14,14 +14,14 @@ jsonquery stdout data.target digitaloceanconfigs/web-pool
 # preview time, named exactly.
 exec rancher create machine-config digitaloceanconfig typo-cfg --set regoin=nyc3 --dry-run -o json
 cp stdout typo-eff.json
-jsonquery typo-eff.json warnings.0 'field(s) pruned by the server: regoin — unknown field?'
+jsonquery typo-eff.json warnings.0 'field(s) pruned by the server: regoin - unknown field?'
 
 # no curated flags → fallthrough warning listing all unset fields.
 # (jsonquery exact-match can't encode the apostrophes; stdout pattern suffices)
 exec rancher create machine-config digitaloceanconfig min-cfg --dry-run -o json
 stdout 'stale: image, region, size, tags'
 
-# apply, then assert the ROOT-level driver fields on the CREATED config —
+# apply, then assert the ROOT-level driver fields on the CREATED config -
 # a spec-nested implementation fails here. sshPort is a STRING field on
 # the typed DO CRD (Rancher publishes IntFlag driver fields as strings):
 # a numeric --set value must submit as its literal string or the typed
@@ -58,7 +58,7 @@ jsonquery stdout data.region us-east-1
 jsonquery stdout data.instanceType t3a.medium
 
 # the two-step flow: create cluster references the config by kind/name,
-# paired with the DIGITALOCEAN credential fixture — a DO machine config
+# paired with the DIGITALOCEAN credential fixture - a DO machine config
 # with an EC2 credential would be incoherent on a real server.
 exec rancher create cluster do-1 --machine-config digitaloceanconfig/web-pool --cloud-credential e2e-do-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
 exec rancher get provisioning-cluster do-1 -o json

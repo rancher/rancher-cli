@@ -56,7 +56,7 @@ func firstNonEmptyEnv(primary, legacy string) string {
 // resolveAuthFlow returns the effective OAuth auth-flow: the flag value wins
 // when non-empty; otherwise RANCHER_CLI_OAUTH_AUTH_FLOW; otherwise
 // CATTLE_OAUTH_AUTH_FLOW (legacy spelling). This is the single source of truth
-// for both the native get-token path and the legacy token shim — both funnel
+// for both the native get-token path and the legacy token shim - both funnel
 // through oauthAuth, so the env resolution lives here once.
 func resolveAuthFlow(flag string) string {
 	if flag != "" {
@@ -221,7 +221,7 @@ func openBrowser(openURL string) error {
 
 	// The launch is delegated to an OS-specific opener (browser_windows.go /
 	// browser_other.go). The URL is never handed to a shell: non-Windows passes
-	// it as a single argv element, Windows uses the ShellExecute API — so a
+	// it as a single argv element, Windows uses the ShellExecute API - so a
 	// server-supplied authorize URL (which legitimately contains `&` between
 	// query parameters) cannot inject shell metacharacters.
 	return osOpenURL(openURL)
@@ -248,14 +248,14 @@ func startCallbackServer(listener net.Listener, expectedState string, resultCh c
 		// The state check gates entry into the one-shot handler itself, not
 		// just the error branch: an unsolicited/forged request (wrong or
 		// missing state) must get its own error response WITHOUT consuming
-		// once — otherwise the real IdP redirect that arrives afterward
+		// once - otherwise the real IdP redirect that arrives afterward
 		// finds once already fired and gets no response at all.
 		query := r.URL.Query()
 		state := query.Get("state")
 		if state != expectedState {
 			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
 			// No resultCh signal (the one-shot handler must stay armed for the
-			// real redirect) — but a forged/stray request as the ONLY request
+			// real redirect) - but a forged/stray request as the ONLY request
 			// this server ever sees would otherwise hang the flow silently for
 			// the full timeout. Tell the user why the wait continues.
 			p.Notice("ignored a callback with an invalid state; still waiting for the identity provider redirect")

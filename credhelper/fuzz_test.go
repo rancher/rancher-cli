@@ -10,7 +10,7 @@ import (
 )
 
 // FuzzCanonicalServerURL fuzzes the credential-identity function against
-// arbitrary server URLs. Never call t.Parallel() here — it panics inside
+// arbitrary server URLs. Never call t.Parallel() here - it panics inside
 // f.Fuzz.
 func FuzzCanonicalServerURL(f *testing.F) {
 	f.Add("https://example.com")
@@ -30,7 +30,7 @@ func FuzzCanonicalServerURL(f *testing.F) {
 	f.Fuzz(func(t *testing.T, raw string) {
 		result, err := CanonicalServerURL(raw) // (a): no panic
 
-		// (b) error/output exclusivity — mechanical shape only.
+		// (b) error/output exclusivity - mechanical shape only.
 		assert.Equal(t, err == nil, result != "", "raw=%q result=%q err=%v", raw, result, err)
 
 		if err != nil {

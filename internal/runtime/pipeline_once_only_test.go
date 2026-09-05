@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// partialWriteErr always fails, returning n bytes written before the error —
+// partialWriteErr always fails, returning n bytes written before the error -
 // n = 0 simulates a write that reports nothing accepted; n > 0 simulates a
 // partial write, so a caller can tell whether a once-only value may already
 // be on the wire.
@@ -45,7 +45,7 @@ func runOnceOnly(t *testing.T, out, errW *bytes.Buffer, res Result, format strin
 
 // TestFinishResultRequiresCommittedContextForDeliveryOnceOnly asserts the
 // command-bug guard: a DeliveryOnceOnly executor that returns a Result with
-// no CommittedContext must never render — the absence is a structured
+// no CommittedContext must never render - the absence is a structured
 // command-bug error, never a silent skip.
 func TestFinishResultRequiresCommittedContextForDeliveryOnceOnly(t *testing.T) {
 	t.Parallel()
@@ -82,7 +82,7 @@ func TestFinishOnceOnlyResultBuffersAndRenders(t *testing.T) {
 // TestFinishOnceOnlyResultFailingStdoutWriter proves 3b's render-failure
 // emission: when the single buffered write to stdout fails, the committed
 // resource/recovery context is emitted as a structured error envelope to
-// stderr — a working stderr channel exposes the full envelope — and
+// stderr - a working stderr channel exposes the full envelope - and
 // partialOutput reflects whether the failing write reported n > 0.
 func TestFinishOnceOnlyResultFailingStdoutWriter(t *testing.T) {
 	t.Parallel()
@@ -142,14 +142,14 @@ func TestFinishOnceOnlyResultFailingStdoutWriterProjectsCreateTokenDetails(t *te
 	details, ok := ce.Details.(clierr.CommittedContextDetails)
 	require.True(t, ok)
 	assert.Equal(t, []string{
-		"committed: Token t-abc123 — the change may already be on the server",
+		"committed: Token t-abc123 - the change may already be on the server",
 		"recover: delete token t-abc123, then create again",
 	}, details.TextDetails())
 }
 
 // TestFinishOnceOnlyResultFailingStdoutAndStderr proves the failure is
 // best-effort: even when stderr ALSO fails to accept the emitted envelope,
-// the pipeline still returns the correct classified error and exit code —
+// the pipeline still returns the correct classified error and exit code -
 // no channel left, but no panic and no silent success either.
 func TestFinishOnceOnlyResultFailingStdoutAndStderr(t *testing.T) {
 	t.Parallel()
@@ -173,8 +173,8 @@ func TestFinishOnceOnlyResultFailingStdoutAndStderr(t *testing.T) {
 // TestFinishOnceOnlyResultRecoversNoticeOnFailingWrite asserts the
 // notice-preservation invariant: a notice drained from the invocation's
 // NoticeSource before the buffered render must land in the replacement
-// committed-context error's envelope warnings — not vanish with the
-// discarded stdout buffer — under both a zero-byte and a partial final
+// committed-context error's envelope warnings - not vanish with the
+// discarded stdout buffer - under both a zero-byte and a partial final
 // write, and under both json and yaml (the two formats whose only copy of
 // the notice is embedded in the buffered envelope bytes rather than
 // mirrored straight to the real stderr).
@@ -220,7 +220,7 @@ func TestFinishOnceOnlyResultRecoversNoticeOnFailingWrite(t *testing.T) {
 // TestFinishOnceOnlyResultSuccessDeliversNoticeInEnvelope asserts the
 // success-path counterpart: a notice recorded before a once-only command's
 // buffered render lands in Result.Warnings and is fully delivered as part
-// of the json envelope actually written to real stdout — nothing left to
+// of the json envelope actually written to real stdout - nothing left to
 // recover, and draining is destructive (a second drain sees nothing).
 func TestFinishOnceOnlyResultSuccessDeliversNoticeInEnvelope(t *testing.T) {
 	t.Parallel()
@@ -247,7 +247,7 @@ func restrictiveOnceOnlyDesc() Descriptor {
 	return d
 }
 
-// refusingOnceOnlyMutating fails the test if Plan is ever invoked — proves
+// refusingOnceOnlyMutating fails the test if Plan is ever invoked - proves
 // the output-policy gate rejects BEFORE Plan (zero total requests), not
 // merely before Execute.
 type refusingOnceOnlyMutating struct {
@@ -264,7 +264,7 @@ func (r refusingOnceOnlyMutating) Plan(context.Context, Input) (safety.Effect, E
 
 // TestRunOutputPolicyRejectsNameBeforePlan asserts that a
 // once-only command's OutputPolicy rejects "name" (and any format outside
-// its allow-list) with VALIDATION before Plan runs at all — zero total
+// its allow-list) with VALIDATION before Plan runs at all - zero total
 // requests, not merely zero mutation requests.
 func TestRunOutputPolicyRejectsNameBeforePlan(t *testing.T) {
 	t.Parallel()
@@ -279,7 +279,7 @@ func TestRunOutputPolicyRejectsNameBeforePlan(t *testing.T) {
 }
 
 // TestRunOutputPolicyAcceptsEveryAllowedFormat proves every declared format
-// still carries the value through to render — the policy is a rejection
+// still carries the value through to render - the policy is a rejection
 // list, not an accidental narrowing of the accepted set.
 func TestRunOutputPolicyAcceptsEveryAllowedFormat(t *testing.T) {
 	t.Parallel()
@@ -311,7 +311,7 @@ type widgetTable struct{ Name string }
 func (w widgetTable) Columns() []string { return []string{"NAME"} }
 func (w widgetTable) Rows() [][]string  { return [][]string{{w.Name}} }
 
-// onceOnlyTextDesc is a ShapeText DeliveryOnceOnly descriptor — the shape
+// onceOnlyTextDesc is a ShapeText DeliveryOnceOnly descriptor - the shape
 // every once-only credential command (create token, create oidc-client,
 // oidc-client add-secret/rotate-secret) declares.
 func onceOnlyTextDesc() Descriptor {
@@ -324,12 +324,12 @@ func onceOnlyTextDesc() Descriptor {
 // TestFinishOnceOnlyResultWideRendersExactText asserts that "-o wide renders
 // exactly the Text" for once-only ShapeText commands: the shown-once secret
 // must reach the operator once, on stdout, identically under table and
-// wide — never duplicated onto the stderr warning channel (OnceOnlyNotice
+// wide - never duplicated onto the stderr warning channel (OnceOnlyNotice
 // suppresses only the already-embedded entry, matched by value; an
 // unrelated warning still mirrors to stderr as usual).
 func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
 	t.Parallel()
-	text := "token/t-abc created\n  bearer token: tok:xxxx   (shown once — store it now)\n"
+	text := "token/t-abc created\n  bearer token: tok:xxxx   (shown once - store it now)\n"
 	for _, format := range []string{"", "table", "wide"} {
 		t.Run("format "+format, func(t *testing.T) {
 			t.Parallel()
@@ -339,7 +339,7 @@ func TestFinishOnceOnlyResultWideRendersExactText(t *testing.T) {
 				Data:           map[string]string{"name": "t-abc", "bearerToken": "tok:xxxx"},
 				Text:           text,
 				Warnings:       []string{"unrelated-warning"},
-				OnceOnlyNotice: "this token value is shown exactly once — store it now",
+				OnceOnlyNotice: "this token value is shown exactly once - store it now",
 				CommittedContext: &CommittedContext{
 					ResourceKind: "Token", ResourceName: "t-abc", Recovery: "delete token t-abc, then create again",
 				},

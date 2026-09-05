@@ -39,7 +39,7 @@ func New(errw io.Writer, in io.Reader, noInput, isTTY bool) *Prompter {
 }
 
 // Discard is a Prompter currently used only by tests: prompts fail, notices
-// vanish. Kept deliberately despite no production callers — it is the test
+// vanish. Kept deliberately despite no production callers - it is the test
 // suite's standard fixture.
 func Discard() *Prompter {
 	return &Prompter{err: io.Discard, in: strings.NewReader(""), noInput: true}
@@ -88,8 +88,8 @@ func (p *Prompter) PromptSecret(ctx context.Context, label string) (string, erro
 // it directly, so the read runs in a goroutine; on cancellation the terminal
 // echo state is restored before returning so the shell prompt that follows is
 // not left silent. The goroutine may still be blocked on the fd after this
-// function returns (interrupting the blocking read itself is not possible)
-// — its eventual result is dropped into the buffered channel and never read
+// function returns (interrupting the blocking read itself is not possible) -
+// its eventual result is dropped into the buffered channel and never read
 // again.
 func (p *Prompter) readPasswordTTY(ctx context.Context, fd int) (string, error) {
 	state, err := term.GetState(fd)
@@ -132,7 +132,7 @@ func selectCancelable[T any](ctx context.Context, read func() (T, error), onCanc
 	}
 }
 
-// writeErr writes s to err under mu — held only for the write itself, never
+// writeErr writes s to err under mu - held only for the write itself, never
 // across a blocking read, so a concurrent Notice (e.g. from a background
 // callback handler) is never blocked behind a pending prompt.
 func (p *Prompter) writeErr(s string) {
@@ -143,7 +143,7 @@ func (p *Prompter) writeErr(s string) {
 
 // ReadLine reads a single line from In, honoring ctx, with NO TTY/NoInput gating.
 // It is for explicit programmatic input (e.g. --token-stdin) fed by a pipe or file
-// redirect, which is not a terminal — distinct from PromptSecret (interactive,
+// redirect, which is not a terminal - distinct from PromptSecret (interactive,
 // TTY-gated, no-echo). Returns io.EOF only when the read yields no bytes; data
 // present on the final read is returned with no error.
 func (p *Prompter) ReadLine(ctx context.Context) (string, error) {
@@ -153,7 +153,7 @@ func (p *Prompter) ReadLine(ctx context.Context) (string, error) {
 // readLine reads a single line in a goroutine and aborts on ctx cancellation.
 // A cancelled read abandons the goroutine (the process is exiting).
 // Creating a fresh Scanner per call is safe because callers read exactly once
-// (either stdin OR prompt, never both) — a single ungated ReadLine is fine.
+// (either stdin OR prompt, never both) - a single ungated ReadLine is fine.
 func (p *Prompter) readLine(ctx context.Context) (string, error) {
 	type res struct {
 		line string
@@ -175,7 +175,7 @@ func (p *Prompter) readLine(ctx context.Context) (string, error) {
 	select {
 	case <-ctx.Done():
 		// A cancelled read (Ctrl-C at a prompt) leaves the prompt line
-		// unterminated; end it so whatever renders next — the error text —
+		// unterminated; end it so whatever renders next - the error text -
 		// starts on its own line.
 		p.mu.Lock()
 		_, _ = fmt.Fprintln(p.err)

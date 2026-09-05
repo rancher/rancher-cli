@@ -26,7 +26,7 @@ const (
 )
 
 // fetchOIDCClient resolves the oidcclient kind row, a local-cluster client,
-// and the named OIDCClient in one call — the front half every
+// and the named OIDCClient in one call - the front half every
 // secret-lifecycle verb's Plan shares before its own validation (which
 // varies per verb: add-secret and rotate-secret both guard on
 // status.clientID being set, rotate-secret and remove-secret both resolve a
@@ -45,7 +45,7 @@ func fetchOIDCClient(ctx context.Context, clients engine.ClusterClientFactory, c
 }
 
 // errNotProvisioned is add-secret's and rotate-secret's shared Plan-time
-// guard error for a client whose status.clientID is empty — a manual status
+// guard error for a client whose status.clientID is empty - a manual status
 // patch could produce this even when status.clientSecrets is populated, so
 // neither verb may skip straight to a Secret read on the strength of the
 // secrets map alone.
@@ -56,7 +56,7 @@ func errNotProvisioned(clientName string) *clierr.Error {
 }
 
 // planAnnotationUpdate sets annotationKey to annotationValue on a deep copy
-// of orig and Plans the update — the get-object → set-annotation →
+// of orig and Plans the update - the get-object → set-annotation →
 // DiffObjects → PlanUpdate sequence every secret-lifecycle verb shares once
 // its own Plan-time validation has resolved the annotation value. Returns
 // the patched object too: execute needs the exact object client.Update will
@@ -71,7 +71,7 @@ func planAnnotationUpdate(ctx context.Context, client engine.ClusterClient, k ki
 }
 
 // preflightReadSecret GETs the backing Secret for clientID and discards the
-// result — add-secret's delivery preflight: a caller who cannot read the
+// result - add-secret's delivery preflight: a caller who cannot read the
 // backing Secret cannot be delivered the new value either, so this fails
 // BEFORE any dry-run/write, an ordinary pre-mutation RBAC/NOT_FOUND with no
 // committed-mutation details.
@@ -94,7 +94,7 @@ func secretKeySet(obj map[string]any) map[string]bool {
 	return out
 }
 
-// sortedKeysOf returns m's keys, sorted — for stable error messages.
+// sortedKeysOf returns m's keys, sorted - for stable error messages.
 func sortedKeysOf(m map[string]bool) []string {
 	return slices.Sorted(maps.Keys(m))
 }
@@ -136,7 +136,7 @@ func toSecretCandidates(names []string) []clierr.Candidate {
 }
 
 // resolveSecretName validates a requested secret name against the Plan-time
-// status.clientSecrets set. An explicitly named secret must exist — the
+// status.clientSecrets set. An explicitly named secret must exist - the
 // controller SILENTLY SKIPS an unknown name while still consuming the
 // annotation, which would poll to a timeout that misblames the controller,
 // so this check runs strictly before any write, listing the actual names

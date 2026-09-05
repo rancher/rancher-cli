@@ -105,7 +105,7 @@ func TestKubeconfigRequiresClusterFlag(t *testing.T) {
 // Round-2 repro: RANCHER_CLI_URL overriding a stored context's server used to
 // keep pairing the NEW url with the STORED server's CA and entry name.
 // Overriding only RANCHER_CLI_URL against a stored context must fall back to
-// RANCHER_CLI_CACERT (or none) and a host-derived name — never a stored CA
+// RANCHER_CLI_CACERT (or none) and a host-derived name - never a stored CA
 // against a URL it was never issued for.
 func TestKubeconfigEnvURLOverrideDropsStoredCAAndName(t *testing.T) {
 	prodCA := "-----BEGIN CERTIFICATE-----\nprod\n-----END CERTIFICATE-----\n"
@@ -126,7 +126,7 @@ func TestKubeconfigEnvURLOverrideDropsStoredCAAndName(t *testing.T) {
 }
 
 // The env override matching the stored server's own URL exactly is not a
-// mismatch — the stored CA/name still apply.
+// mismatch - the stored CA/name still apply.
 func TestKubeconfigEnvURLMatchingStoredServerKeepsStoredCAAndName(t *testing.T) {
 	prodCA := "-----BEGIN CERTIFICATE-----\nprod\n-----END CERTIFICATE-----\n"
 	dir := writeTestConfig(t, prodCA) // stored "prod" -> https://r.example.com, CA=prodCA
@@ -140,7 +140,7 @@ func TestKubeconfigEnvURLMatchingStoredServerKeepsStoredCAAndName(t *testing.T) 
 	require.NoError(t, err)
 	cluster := kc.Clusters["prod-c-ctx"]
 	require.NotNil(t, cluster, "got %v", kc.Clusters)
-	assert.Equal(t, []byte(prodCA), cluster.CertificateAuthorityData, "same URL is not a mismatch — the stored CA still applies")
+	assert.Equal(t, []byte(prodCA), cluster.CertificateAuthorityData, "same URL is not a mismatch - the stored CA still applies")
 }
 
 // DR-007 repro: kubeconfig used to call cfg.CurrentServer() directly, so an
@@ -152,7 +152,7 @@ func TestKubeconfigEnvOnlySession(t *testing.T) {
 	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
 	t.Setenv("RANCHER_CLI_URL", "https://env.example.com")
 	t.Setenv("RANCHER_CLI_CACERT", caPEM)
-	dir := t.TempDir() // no config.yaml at all — no stored context, no stored server
+	dir := t.TempDir() // no config.yaml at all - no stored context, no stored server
 
 	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-env"}}, nil)
@@ -191,7 +191,7 @@ func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
 }
 
 // A malformed server URL makes kube.BaseURL's url.Parse fail, falling back to
-// raw string trimming that preserves the original scheme case verbatim — the
+// raw string trimming that preserves the original scheme case verbatim - the
 // warning must still fire (case-insensitive, not-https rather than a literal
 // "http://" match) instead of silently skipping it (CW-7 review finding 10).
 func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {

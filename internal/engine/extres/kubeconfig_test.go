@@ -102,7 +102,7 @@ func TestCreateKubeconfigIncludeDefaultEntryTriState(t *testing.T) {
 		_, _, err := planKubeconfig(t, cmd, in{s: map[string]string{}})
 		require.NoError(t, err)
 		_, ok, _ := unstructured.NestedBool(client.created.Object, "spec", "includeDefaultEntry")
-		assert.False(t, ok, "omitted means absent from the manifest — server default")
+		assert.False(t, ok, "omitted means absent from the manifest - server default")
 	})
 
 	t.Run("true", func(t *testing.T) {
@@ -157,7 +157,7 @@ func TestCreateKubeconfigIsDestructive(t *testing.T) {
 	eff, exec, err := planKubeconfig(t, cmd, in{s: map[string]string{}})
 	require.NoError(t, err)
 	require.NotNil(t, exec)
-	assert.True(t, eff.Destructive, "the kubeconfig kind is Sensitive — create must gate on --yes")
+	assert.True(t, eff.Destructive, "the kubeconfig kind is Sensitive - create must gate on --yes")
 }
 
 func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
@@ -174,7 +174,7 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res.RawBytes)
 
-	wantHeader := `# ext kubeconfig "kubeconfig-abc" — shown exactly once; revoke with: rancher delete kubeconfig kubeconfig-abc` + "\n"
+	wantHeader := `# ext kubeconfig "kubeconfig-abc" - shown exactly once; revoke with: rancher delete kubeconfig kubeconfig-abc` + "\n"
 	assert.True(t, strings.HasPrefix(string(res.RawBytes), wantHeader))
 	assert.Equal(t, wantHeader+rawKC, string(res.RawBytes), "status.value must travel verbatim after the header")
 
@@ -190,7 +190,7 @@ func TestCreateKubeconfigExecEmitsHeaderThenValueVerbatim(t *testing.T) {
 
 // TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam asserts that create
 // kubeconfig opts into Delivery: DeliveryOnceOnly and restricts OutputPolicy
-// to "table" — the one format its RawBytes payload actually honors, since
+// to "table" - the one format its RawBytes payload actually honors, since
 // renderResult writes it verbatim regardless of -o.
 func TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam(t *testing.T) {
 	t.Parallel()
@@ -205,8 +205,8 @@ func TestCreateKubeconfigDescriptorDeclaresOnceOnlySeam(t *testing.T) {
 
 // TestCreateKubeconfigOutputPolicyRejectsJSONWithZeroRequests asserts the
 // pipeline-level enforcement: `create kubeconfig -o json` is rejected
-// before Plan ever runs — zero total requests, not merely zero mutation
-// requests — rather than silently accepting the flag and returning raw
+// before Plan ever runs - zero total requests, not merely zero mutation
+// requests - rather than silently accepting the flag and returning raw
 // kubeconfig bytes anyway.
 func TestCreateKubeconfigOutputPolicyRejectsJSONWithZeroRequests(t *testing.T) {
 	t.Parallel()

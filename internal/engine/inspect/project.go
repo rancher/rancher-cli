@@ -26,7 +26,7 @@ type projectCmd struct {
 // (prtbs), resourceQuota spec, and a usage summary, joined into one
 // document. Only the project itself is required: every other collector
 // degrades to a `degraded` entry and its warning rather than failing the
-// command. resourceQuota absence is not a failure — null is enough, no
+// command. resourceQuota absence is not a failure - null is enough, no
 // warning.
 func NewInspectProject(clients engine.ClusterClientFactory) runtime.Command {
 	return &projectCmd{clients: clients}
@@ -40,11 +40,11 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 		Usage:   "Inspect a project: namespaces, members, quota, and usage",
 		Desc: degradedContractDesc +
 			"Cluster resolution and the project resolve plus GET are required and hard-error. " +
-			"Degradable sections: namespaces (unavailable — the namespace rows, whose integer counts " +
+			"Degradable sections: namespaces (unavailable - the namespace rows, whose integer counts " +
 			"cannot represent an unknown), members (each row reports principal, displayName, role, binding, " +
-			"and system; unavailable — collected independently from the " +
-			"management plane, so downstream failures leave it intact), usage (unavailable — blocked by " +
-			"a downstream-client, membership, or pod-list failure), metrics (unavailable — request and " +
+			"and system; unavailable - collected independently from the " +
+			"management plane, so downstream failures leave it intact), usage (unavailable - blocked by " +
+			"a downstream-client, membership, or pod-list failure), metrics (unavailable - request and " +
 			"limit totals stay). A membership set that resolves to zero namespaces is a verified-empty " +
 			"scope: no workload or usage read is issued and nothing degrades.",
 		CommandType: runtime.ReadOnly,
@@ -161,11 +161,11 @@ func (c *projectCmd) downstreamSections(ctx context.Context, client engine.Clust
 	podKind, _ := kinds.Lookup("pod")
 	depKind, _ := kinds.Lookup("deployment")
 
-	// ONE cluster-wide List per kind, filtered client-side by membership —
+	// ONE cluster-wide List per kind, filtered client-side by membership -
 	// N per-namespace List pairs would cost 2N round trips for no reason.
 	// The two lists are independent reads feeding disjoint outputs, so they
 	// run concurrently (the errgroup/WaitGroup pattern inspect cluster uses);
-	// the degrade DECISIONS stay sequential after the join — recording both
+	// the degrade DECISIONS stay sequential after the join - recording both
 	// failures would hit the accumulator's duplicate-namespaces rule.
 	var (
 		podList, depList *unstructured.UnstructuredList
@@ -235,7 +235,7 @@ func (c *projectCmd) downstreamSections(ctx context.Context, client engine.Clust
 // projectMembers lists the project's prtbs from status.backingNamespace
 // (falling back to the project id namespace when absent), resolves display
 // names via rbac.ResolveMembers, and degrades a listing failure (typically
-// RBAC) to a warning plus a nil member slice (serializes "members":null —
+// RBAC) to a warning plus a nil member slice (serializes "members":null -
 // the pre-existing non-omitempty contract; [] means verified empty).
 func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, project *unstructured.Unstructured, sec *sections) ([]rbac.MemberRow, []string, error) {
 	backingNS, found, _ := unstructured.NestedString(project.Object, "status", "backingNamespace")
@@ -245,7 +245,7 @@ func projectMembers(ctx context.Context, mgmtClient engine.ClusterClient, projec
 	prtbKind, _ := kinds.Lookup("projectroletemplatebinding")
 	list, err := mgmtClient.List(ctx, prtbKind.GVR, backingNS, "")
 	if err != nil {
-		// nil (not empty) on unavailability: serializes "members":null — the
+		// nil (not empty) on unavailability: serializes "members":null - the
 		// pre-existing non-omitempty contract; [] means verified empty.
 		if herr := sec.Unavailable(sectionMembers, err); herr != nil {
 			return nil, nil, herr
@@ -344,7 +344,7 @@ func renderProjectText(r projectResult) string {
 		}
 		b.WriteString(mem + "\n")
 	case r.Namespaces != nil && len(r.Namespaces) == 0:
-		// A project with zero namespaces has nothing to measure — a
+		// A project with zero namespaces has nothing to measure - a
 		// verified-empty state, not an unavailable one. Namespaces null is a
 		// failed read, which says nothing about usage.
 		b.WriteString("  none (no namespaces)\n")
@@ -355,7 +355,7 @@ func renderProjectText(r projectResult) string {
 }
 
 // projectSectionHeaders is the fixed, always-present section header set
-// renderProjectText emits — every one of them, every call, regardless of
+// renderProjectText emits - every one of them, every call, regardless of
 // which sub-objects came back unavailable.
 var projectSectionHeaders = map[string]bool{
 	"PROJECT": true, "NAMESPACES": true, "MEMBERS": true, "QUOTA": true, "USAGE": true,
@@ -368,7 +368,7 @@ func styleProjectText(text string, s style.Style) string {
 	return runtime.BoldExactLines(text, projectSectionHeaders, s)
 }
 
-// writeSortedMap renders a nested map with recursively sorted keys —
+// writeSortedMap renders a nested map with recursively sorted keys -
 // canonical order, never Go map iteration order.
 func writeSortedMap(b *strings.Builder, m map[string]any, depth int) {
 	keys := make([]string, 0, len(m))

@@ -66,7 +66,7 @@ func cmdJSONQuery(ts *testscript.TestScript, neg bool, args []string) {
 
 // cmdJSONGet writes the value a gjson path selects to a file, so a later
 // command can consume it: jsonget <file> <gjson-path> <output-file>. A path
-// that selects nothing is a failure — a script that carries a value forward
+// that selects nothing is a failure - a script that carries a value forward
 // must never carry an empty one.
 func cmdJSONGet(ts *testscript.TestScript, neg bool, args []string) {
 	if neg {
@@ -106,7 +106,7 @@ func cmdSetenvFrom(ts *testscript.TestScript, neg bool, args []string) {
 
 // recordingT records what a testscript run logs and whether it failed,
 // standing in for the *testing.T a script would otherwise fail. A command's
-// own failure path can only be exercised through a running script —
+// own failure path can only be exercised through a running script -
 // *testscript.TestScript has no exported constructor.
 type recordingT struct {
 	mu     sync.Mutex
@@ -314,7 +314,7 @@ fac-token-1
 
 // cmdPathmatch asserts the named output stream contains a file path:
 // pathmatch <stdout|stderr> <path>. The path argument is compared with its
-// separators converted to the native form — the stdout/stderr assertions
+// separators converted to the native form - the stdout/stderr assertions
 // are regexps, and a Windows path's backslashes are invalid escapes there,
 // so a script asserting on a printed native path needs this command to stay
 // portable.
@@ -401,11 +401,11 @@ func cmdRawGet(ts *testscript.TestScript, neg bool, args []string) {
 // cmdSeedExecCache pre-warms the exec-credential cache `rancher auth
 // get-token` reads: seedexeccache <name> <cluster>. Scenarios that want
 // warm-cache state without exercising login use this instead of the
-// façade's cold create/login paths. Seeding through the real
+// facade's cold create/login paths. Seeding through the real
 // config.CacheKey/SetCachedCred keeps the key composition and file format
 // guaranteed-consistent with what get-token reads; a hand-written fixture
-// can't work here since the cache key embeds the façade's host:port, which
-// is dynamic per test run AND per-script now (FA-3) — the host comes from
+// can't work here since the cache key embeds the facade's host:port, which
+// is dynamic per test run AND per-script now (FA-3) - the host comes from
 // this script's own TEST_RANCHER_URL, not the global shim.
 func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	if len(args) != 2 {

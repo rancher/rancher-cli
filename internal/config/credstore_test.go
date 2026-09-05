@@ -64,7 +64,7 @@ func TestOpenStoreAutoProbesOnceThenPins(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The second OpenStore call reads the pin written by the first and never
-	// re-probes — this is the pin's own once-per-dir contract. probes still
+	// re-probes - this is the pin's own once-per-dir contract. probes still
 	// asserts the underlying keyringUsableOnce process-wide memoization: a
 	// second unpinned dir in the SAME process would reuse this cached result
 	// rather than probing again (deliberate: one process, one probe).
@@ -398,7 +398,7 @@ func TestDeleteExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
 
 // Round-2 pin: two config entries with different --name values ("acme-admin",
 // "acme-viewer") that both point at the same host each cache their own
-// exec-credential entry. Logging out one deletes BOTH — deliberately, not a
+// exec-credential entry. Logging out one deletes BOTH - deliberately, not a
 // bug: matching by config-entry name is structurally unreliable (a cache
 // entry embeds the name only by kubeconfig naming convention), so
 // host-wide delete is the safe direction. See DeleteTokenEverywhere's doc comment.
@@ -446,11 +446,11 @@ func TestKeyringDeleteTokenDeletesFileStore(t *testing.T) {
 }
 
 // TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile: DeleteLoginToken
-// now shares keyringStore.DeleteToken's XP-6 degrade — an unreachable
+// now shares keyringStore.DeleteToken's XP-6 degrade - an unreachable
 // keychain warns rather than turning `auth logout` into a hard failure, as
 // long as the file store deletes cleanly. DeleteLoginToken has no store
 // receiver to buffer this notice on, so it rides the return value instead
-// of stderr directly — the caller (config_delete_server.go, logout.go)
+// of stderr directly - the caller (config_delete_server.go, logout.go)
 // appends it to Result.Warnings or a failing error's WithWarnings ride.
 func TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile(t *testing.T) {
 	keyring.MockInitWithError(errors.New("keychain boom"))
@@ -485,7 +485,7 @@ func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
 
 // TestKeyringUnreachableGetReadsThroughToFile: a backend-unreachable error
 // (NOT ErrNotFound) with a valid token in the file store must return the
-// file token — the headless-with-keychain-pin case (XP-6).
+// file token - the headless-with-keychain-pin case (XP-6).
 func TestKeyringUnreachableGetReadsThroughToFile(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "file-token"))
@@ -500,7 +500,7 @@ func TestKeyringUnreachableGetReadsThroughToFile(t *testing.T) {
 
 // TestKeyringUnreachableGetDoubleMissKeepsKeyringError: when the file
 // store ALSO misses, the surfaced error must be the keyring transport
-// error (the token may exist in the unreachable keychain) — not
+// error (the token may exist in the unreachable keychain) - not
 // ErrNoToken, which would misread as "logged out".
 func TestKeyringUnreachableGetDoubleMissKeepsKeyringError(t *testing.T) {
 	dir := t.TempDir()
@@ -515,7 +515,7 @@ func TestKeyringUnreachableGetDoubleMissKeepsKeyringError(t *testing.T) {
 }
 
 // TestKeyringUnreachableGetSurfacesFileStoreFailure: an unreachable
-// keychain PLUS a broken credentials.yaml must surface both problems —
+// keychain PLUS a broken credentials.yaml must surface both problems -
 // the file-store failure must not be masked as a keychain-only issue.
 func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
 	dir := t.TempDir()
@@ -533,7 +533,7 @@ func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
 // TestKeyringUnreachableDeleteDeletesFile: delete under an unreachable
 // keychain still deletes the file store and reports success (spec XP-6:
 // same as a miss; logout's DeleteLoginToken independently surfaces
-// keyring errors) — and records a notice naming the unreachable keychain
+// keyring errors) - and records a notice naming the unreachable keychain
 // and the file-only delete, so the undeletable keychain copy (if any) is
 // never silent. The notice rides the store's own NoticeSource buffer, not
 // stderr directly.
@@ -556,7 +556,7 @@ func TestKeyringUnreachableDeleteDeletesFile(t *testing.T) {
 
 // TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable: an oversized
 // token must surface go-keyring's own message plainly, not the
-// "unreachable... locked keychain? no D-Bus session?" remedy — a
+// "unreachable... locked keychain? no D-Bus session?" remedy - a
 // data-size failure is not a connectivity one (XP-6 fix round, finding 6).
 func TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable(t *testing.T) {
 	dir := t.TempDir()
@@ -572,7 +572,7 @@ func TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable(t *testing.T) {
 
 // TestKeyringUnreachableSetRefusesWithRemedy: a login write under an
 // unreachable keychain must hard-fail with the env-var remedy and must
-// NOT create a plaintext credentials file — the anti-silent-downgrade
+// NOT create a plaintext credentials file - the anti-silent-downgrade
 // guarantee (XP-6, decided: guarantee wins on the write path).
 func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
 	dir := t.TempDir()
@@ -633,7 +633,7 @@ func TestCanonicalServerIdentityHTTPEquivalentSpellingsShareOneIdentity(t *testi
 
 func TestCanonicalServerIdentityHTTPAndHTTPSAreDistinct(t *testing.T) {
 	t.Parallel()
-	// The P1 finding: same host, different scheme — must produce DIFFERENT identities.
+	// The P1 finding: same host, different scheme - must produce DIFFERENT identities.
 	assert.NotEqual(t, CanonicalServerIdentity("http://host"), CanonicalServerIdentity("https://host"),
 		"http and https identities must be distinct")
 	assert.NotEqual(t, CanonicalServerIdentity("http://host:80"), CanonicalServerIdentity("https://host:443"),
@@ -674,11 +674,11 @@ func TestCanonicalServerHostHTTPEquivalentSpellings(t *testing.T) {
 
 // TestFileStoreCacheLockPreventsLostUpdate is the cross-instance lost-update
 // regression test for the token-cache.yaml flock. It simulates two kubectl
-// processes (two separate fileStore instances sharing the same dir — each has
+// processes (two separate fileStore instances sharing the same dir - each has
 // its own mu, so they do NOT contend on mu) writing to the cache concurrently.
 // setCachedLock fires while G1 holds the flock (after its read, before its
 // write). G2 tries to acquire the flock and blocks. When G1 releases, G2 reads
-// the updated file and writes its own entry — both keys must survive.
+// the updated file and writes its own entry - both keys must survive.
 // No t.Parallel(): uses the package-level setCachedLock hook.
 func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 	dir := t.TempDir()
@@ -713,7 +713,7 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 		t.Fatal("store1 never reached the lock hook")
 	}
 
-	// G1 is now holding the flock (inside the hook). Start G2 — it must block
+	// G1 is now holding the flock (inside the hook). Start G2 - it must block
 	// on the flock until G1 releases.
 	err2 := make(chan error, 1)
 	go func() {
@@ -727,7 +727,7 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 	require.NoError(t, <-err1, "store1.SetCachedCred must succeed")
 	require.NoError(t, <-err2, "store2.SetCachedCred must succeed")
 
-	// Both keys must survive — no lost update.
+	// Both keys must survive - no lost update.
 	_, _, errA := store1.GetCachedCred("key-a")
 	require.NoError(t, errA, "key-a must survive after concurrent write")
 	_, _, errB := store1.GetCachedCred("key-b")
@@ -737,7 +737,7 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 // TestFileStoreCacheLockPreventsLostUpdateOnExpiry asserts the reviewer's exact
 // interleaving: SetCachedCred (A, adding key-a) races GetCachedCred (B,
 // pruning an expired key-b). Without the fix, B reads the cache before A's
-// write, then prunes and writes a snapshot that does not include key-a — a
+// write, then prunes and writes a snapshot that does not include key-a - a
 // lost update. With the fix, B re-reads under the flock after A releases it
 // and therefore includes key-a in its written snapshot.
 // No t.Parallel(): uses the package-level setCachedLock and getCachedPruneHook.
@@ -806,7 +806,7 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 
 	// Unblock A: it writes {key-b(expired), key-c, key-a} and releases the flock.
 	// B then acquires the flock, re-reads that snapshot, prunes key-b, and
-	// writes {key-c, key-a} — both effects survive.
+	// writes {key-c, key-a} - both effects survive.
 	close(release)
 
 	require.NoError(t, <-errA, "store1.SetCachedCred must succeed")
@@ -830,7 +830,7 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 // lock-free read; before it acquires the flock, a concurrent SetCachedCred
 // (a re-auth for the same server+cluster+user in another process) refreshes
 // the SAME key with a valid credential. The lock-held re-read must detect the
-// refresh, keep the entry, and serve the fresh credential — not delete the
+// refresh, keep the entry, and serve the fresh credential - not delete the
 // just-created token and return ErrNoToken.
 // No t.Parallel(): uses the package-level getCachedPruneHook.
 func TestFileStoreCacheGetServesConcurrentlyRefreshedKey(t *testing.T) {
@@ -864,7 +864,7 @@ func TestFileStoreCacheGetServesConcurrentlyRefreshedKey(t *testing.T) {
 // DeleteAllCachedCreds must block on the flock while a concurrent
 // SetCachedCred's read-modify-write is in flight. Without the lock, the
 // Remove lands mid-write and the writer's write-back silently resurrects
-// the "deleted" entries — no error surfaced to either process.
+// the "deleted" entries - no error surfaced to either process.
 // No t.Parallel(): uses the package-level setCachedLock hook.
 func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 	dir := t.TempDir()
@@ -901,7 +901,7 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 		t.Fatal("SetCachedCred never reached the lock hook")
 	}
 
-	// The writer holds the flock (mid read-modify-write). Start the wipe —
+	// The writer holds the flock (mid read-modify-write). Start the wipe -
 	// it must wait for the write-back, then remove everything, so neither
 	// the pre-seeded key-a nor the concurrently written key-b survives.
 	// The hook is set only now, after the writer's own flock wait already
@@ -930,7 +930,7 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 // TestSetTokenLostUpdateWithoutConfigLock asserts the stale-snapshot bug class
 // for credentials.yaml: two fileStore instances (each with its own mu,
 // modelling two separate processes) both read the file, both update their
-// in-memory map, and both write — the second write overwrites the first.
+// in-memory map, and both write - the second write overwrites the first.
 // The test PASSES by asserting that loss; it documents the bug class that
 // wrapping SetToken calls in WithLock closes.
 // No t.Parallel(): uses the package-level setTokenHook.
@@ -1026,7 +1026,7 @@ func TestWithLockSerializesSetToken(t *testing.T) {
 		})
 	}()
 
-	// Wait for G1 to reach setTokenHook — it holds WithLock's process
+	// Wait for G1 to reach setTokenHook - it holds WithLock's process
 	// mutex and has read credentials.yaml but not yet written.
 	select {
 	case <-g1InHook:
@@ -1059,7 +1059,7 @@ func TestWithLockSerializesSetToken(t *testing.T) {
 	require.NoError(t, <-err1, "store1 SetToken must succeed")
 	require.NoError(t, <-err2, "store2 SetToken must succeed")
 
-	// Both tokens must survive — no lost update.
+	// Both tokens must survive - no lost update.
 	tok, err := store1.GetToken(ServerRef{Name: "alpha"})
 	require.NoError(t, err)
 	assert.Equal(t, "token-alpha", tok)

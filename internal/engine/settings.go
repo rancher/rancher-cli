@@ -8,7 +8,7 @@ import "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 // every caller that reads a Setting's effective value (provisioning's
 // kubernetes-versions merge, support-bundle's settings snapshot) so the
 // value-or-default fallback cannot drift between them. The bool reports
-// whether the object carried either field at all — false means the server
+// whether the object carried either field at all - false means the server
 // reports no value for this setting, which the support bundle renders as
 // key absence rather than an empty string.
 func SettingValue(obj *unstructured.Unstructured) (string, bool) {

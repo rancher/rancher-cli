@@ -25,8 +25,8 @@ func addServerForUpdateTests(t *testing.T, dir, name, url string) {
 
 // TestUpdateServerWriteFailureAfterPurgeNamesClearedCredentials: purge-then-
 // write is the safe ordering (a purge failure never leaves config.yaml
-// pointed at the new, credential-less address), but the reverse — a
-// successful purge followed by a write failure — must say so plainly: the
+// pointed at the new, credential-less address), but the reverse - a
+// successful purge followed by a write failure - must say so plainly: the
 // entry still names the OLD URL, but its token is already gone, so a
 // generic write-error message would look like nothing happened.
 func TestUpdateServerWriteFailureAfterPurgeNamesClearedCredentials(t *testing.T) {
@@ -36,7 +36,7 @@ func TestUpdateServerWriteFailureAfterPurgeNamesClearedCredentials(t *testing.T)
 
 	// Turn config.yaml into a symlink to a copy of itself: reads still
 	// resolve normally (Load follows the symlink), but atomicWriteFile
-	// explicitly refuses to write through a symlink — a deterministic,
+	// explicitly refuses to write through a symlink - a deterministic,
 	// single-file write failure that never touches credentials.yaml (a
 	// separate file in the same dir), so the purge below succeeds for real.
 	realPath := config.FilePath(dir)
@@ -63,7 +63,7 @@ func TestUpdateServerWriteFailureAfterPurgeNamesClearedCredentials(t *testing.T)
 // TestUpdateServerConflictNeverPurgesCredentials exercises the CONFLICT path
 // at the command level (not just commitUpdate directly): the injected
 // tlsPreflight rotates the entry's CA file's bytes between
-// prepareUpdateSource's read and the commit's re-check — a real command
+// prepareUpdateSource's read and the commit's re-check - a real command
 // Execute() call reaching a genuine two-phase conflict without any actual
 // concurrency. Purge only ever runs after validateUpdate succeeds, so a
 // conflict here must leave the stored token and config.yaml untouched.
@@ -106,12 +106,12 @@ func TestUpdateServerURLChangeClearsCredentials(t *testing.T) {
 	assert.Equal(t, []string{"url"}, data["changed"])
 	assert.Equal(t, true, data["credentialsCleared"])
 	// Same single-server shape as config delete-server (map keyed
-	// "backend"), not a flat list — both report DeleteTokenEverywhere's
+	// "backend"), not a flat list - both report DeleteTokenEverywhere's
 	// output and should look alike on the wire.
 	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"])
 	assert.Equal(t, "server qa1 updated\n"+
 		"  url: https://new.example.com (changed)\n"+
-		"  credentials cleared — log in again: rancher auth login 'qa1'\n", res.Text)
+		"  credentials cleared - log in again: rancher auth login 'qa1'\n", res.Text)
 
 	_, gerr := store.GetToken(config.ServerRef{Name: "qa1", URL: "https://new.example.com"})
 	require.ErrorIs(t, gerr, config.ErrNoToken)

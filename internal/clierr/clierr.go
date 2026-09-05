@@ -54,7 +54,7 @@ func (d PrimeRequiredDetails) TextDetails() []string {
 }
 
 // CapabilityUnsupportedDetails is CAPABILITY_UNSUPPORTED's structured
-// details payload — the discovery-based detector key and the server the
+// details payload - the discovery-based detector key and the server the
 // check ran against, mirroring PrimeRequiredDetails' shape for a
 // non-Prime capability gate (the ext.cattle.io API-discovery tier).
 type CapabilityUnsupportedDetails struct {
@@ -73,7 +73,7 @@ func (d CapabilityUnsupportedDetails) TextDetails() []string {
 // post-commit render failure on a Delivery: DeliveryOnceOnly command, a
 // missing/malformed delivered value, or a wait timeout. Naming the
 // resource and a non-mutating recovery keeps every post-commit failure
-// from reading as an invitation to blindly retry — retrying a committed
+// from reading as an invitation to blindly retry - retrying a committed
 // create/add/rotate creates a second credential. PartialOutput is set only
 // by the render-failure path, when the final stdout write may already have
 // exposed part of the payload.
@@ -89,11 +89,11 @@ type CommittedContextDetails struct {
 // TextDetails projects the committed resource, an optional partial-output
 // note, and the non-mutating recovery step onto indented lines. Retry
 // guidance comes from the error's own Retryable/Recovery fields, never a
-// generic line here — a blind "do not retry" would contradict a producer
+// generic line here - a blind "do not retry" would contradict a producer
 // whose stated recovery is exactly a re-run.
 func (d CommittedContextDetails) TextDetails() []string {
 	lines := []string{
-		fmt.Sprintf("committed: %s %s — the change may already be on the server", d.ResourceKind, d.ResourceName),
+		fmt.Sprintf("committed: %s %s - the change may already be on the server", d.ResourceKind, d.ResourceName),
 	}
 	if d.PartialOutput {
 		lines = append(lines, "partial output may already be on stdout")
@@ -205,7 +205,7 @@ func (e *Error) WithDetails(d TextDetails) *Error { e.Details = d; return e }
 // on the same channel as a success result's Warnings, but attached to a
 // command that ultimately failed. The field is never serialized as part of
 // the Error value itself (it carries no json tag and the field is
-// unexported) — a renderer reads it through Warnings() and places it at the
+// unexported) - a renderer reads it through Warnings() and places it at the
 // envelope's top level or as "# warning:" stderr lines, never under
 // data.error, so a warning cannot print twice.
 func (e *Error) WithWarnings(w ...string) *Error {
@@ -247,7 +247,7 @@ func Wrap(err error, msg string) *Error {
 }
 
 // AsNotFound returns err's *Error when err is a structured NOT_FOUND error,
-// nil otherwise — for callers that also need the concrete error (message,
+// nil otherwise - for callers that also need the concrete error (message,
 // hint) without a second chain walk.
 func AsNotFound(err error) *Error {
 	if ce, ok := errors.AsType[*Error](err); ok && ce.Code == CodeNotFound {

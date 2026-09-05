@@ -11,7 +11,7 @@ compdef _rancher rancher
 #   source <(rancher completion zsh)
 #
 # Minimum supported shell: zsh 5.0, with the completion system initialized
-# (compinit) — compdef, _describe, and _files come from it.
+# (compinit) - compdef, _describe, and _files come from it.
 
 _rancher() {
 	local -a opts
@@ -23,12 +23,12 @@ _rancher() {
 
 	if [[ "${opts[1]}" != "" ]]; then
 		# A candidate whose token ends in a continuation character is a
-		# prefix stage, not a finished argument — "amazonec2config/" expects
+		# prefix stage, not a finished argument - "amazonec2config/" expects
 		# a name after the slash, "template=" expects a Go template after the
 		# equals. compadd's default suffix (a space) would end the word on
 		# acceptance, so those are added with -S '' (empty suffix) and the
 		# next keystroke keeps extending the same word. fish and PowerShell
-		# need no equivalent — see the notes in fish.sh and pwsh.ps1.
+		# need no equivalent - see the notes in fish.sh and pwsh.ps1.
 		local -a __rancher_continuing __rancher_finished
 		local __rancher_candidate __rancher_token
 		for __rancher_candidate in "${opts[@]}"; do

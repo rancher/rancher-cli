@@ -87,7 +87,7 @@ func TestTargetsUserScopeSymlinkedCodexHomeDedupsToOne(t *testing.T) {
 	t.Setenv("COPILOT_HOME", "")
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".claude"), 0o755))
 
-	// CODEX_HOME is a symlink pointing at ~/.claude — same physical location,
+	// CODEX_HOME is a symlink pointing at ~/.claude - same physical location,
 	// different textual path. Both rows pass Detect(); without canonical dedup
 	// Targets would return two entries that Acquire would then self-conflict.
 	codexLink := filepath.Join(home, "codex-alias")
@@ -122,7 +122,7 @@ func TestTargetsUserScopeCaseAliasDedupsToOne(t *testing.T) {
 	claudeDir := filepath.Join(home, ".claude")
 	require.NoError(t, os.MkdirAll(claudeDir, 0o755))
 
-	// Upper-case variant of the same path — physically the same directory on
+	// Upper-case variant of the same path - physically the same directory on
 	// APFS but a different string. canonicalTarget must fold both to the same
 	// canonical key so Targets deduplicates them.
 	t.Setenv("CODEX_HOME", strings.ToUpper(claudeDir))

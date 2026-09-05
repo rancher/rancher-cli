@@ -11,9 +11,9 @@ import (
 
 // FuzzConfigLoad fuzzes Load against arbitrary file bytes. One worker-private
 // temp file is created once, outside f.Fuzz, and overwritten on every
-// iteration — no per-iteration TempDir or cleanup accumulation. Setup I/O
+// iteration - no per-iteration TempDir or cleanup accumulation. Setup I/O
 // failures fail distinctly (t.Fatal), never as parser findings. Never call
-// t.Parallel() here — it panics inside f.Fuzz.
+// t.Parallel() here - it panics inside f.Fuzz.
 func FuzzConfigLoad(f *testing.F) {
 	path := FilePath(f.TempDir())
 

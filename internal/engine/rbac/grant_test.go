@@ -15,7 +15,7 @@ import (
 )
 
 // roleGet returns a minimal role object for seeding fakeClient.gets at key
-// "/<name>" (empty namespace — roletemplates and globalroles are cluster-scoped).
+// "/<name>" (empty namespace - roletemplates and globalroles are cluster-scoped).
 func roleGet(name string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": name},
@@ -208,7 +208,7 @@ func TestGrantGlobalScope(t *testing.T) {
 // top of fakeClient: the dry-run create returns the submitted object
 // unchanged (a real server's dry-run response also carries a throwaway
 // generated suffix, which is exactly why grant discards it for the preview
-// identity — see eff.DisplayName below); the REAL (non-dry-run) create
+// identity - see eff.DisplayName below); the REAL (non-dry-run) create
 // returns an object carrying committedName, standing in for the server's
 // actual generateName assignment.
 type generateNameFakeClient struct {
@@ -571,7 +571,7 @@ func TestGrantProjectRoleAtClusterScopeRejected(t *testing.T) {
 
 // TestGrantCheckRolePreflightOrder verifies that checkRole runs before the
 // duplicate-binding list: if the role Get returns NOT_FOUND while the binding
-// list contains a stale duplicate, NOT_FOUND wins — a grant of a nonexistent
+// list contains a stale duplicate, NOT_FOUND wins - a grant of a nonexistent
 // role cannot proceed regardless of the duplicate.
 func TestGrantCheckRolePreflightOrder(t *testing.T) {
 	t.Parallel()

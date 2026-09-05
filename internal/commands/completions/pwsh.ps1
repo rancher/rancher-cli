@@ -50,7 +50,7 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
     # the final AST token is the current (partial) word and must be excluded.
     # The whole if-expression is wrapped in @(): PowerShell unrolls a
     # single-element array result of an if-expression to a bare String, and
-    # splatting a String enumerates its CHARACTERS — "get" would reach the
+    # splatting a String enumerates its CHARACTERS - "get" would reach the
     # binary as three arguments g, e, t. The outer @() re-wraps every branch.
     $middle = @(if ([string]::IsNullOrEmpty($wordToComplete)) {
         if ($tokens.Count -gt 1) { $tokens[1..($tokens.Count - 1)] }
@@ -59,8 +59,8 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
     })
     $cur = if ($null -ne $wordToComplete) { $wordToComplete } else { '' }
     # A -Native completer receives the current word's RAW extent text, so a
-    # quoted word arrives WITH its quotes ('a b c'). The parser's .Value —
-    # already collected into $tokens — is the unquoted form the binary must
+    # quoted word arrives WITH its quotes ('a b c'). The parser's .Value -
+    # already collected into $tokens - is the unquoted form the binary must
     # see. Applied only when the last in-range element is the current word
     # (extent text matches), so a mid-word cursor or the no-AST fallback
     # keeps the raw text.

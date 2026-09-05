@@ -22,12 +22,12 @@ type GroupPrincipalEntry struct {
 	Provider    string
 }
 
-// GroupPrincipalEntries walks one UserAttribute's GroupPrincipals map — the
+// GroupPrincipalEntries walks one UserAttribute's GroupPrincipals map - the
 // provider-keyed, untagged wire shape (GroupPrincipals.<provider>.Items[]
-// .metadata.name / .displayName; Principal's own fields ARE tagged) — into
+// .metadata.name / .displayName; Principal's own fields ARE tagged) - into
 // flat entries ordered (principal, provider). The same principal under two
 // providers is retained as two entries: distinct provider caches, no merge
-// or conflict logic here — callers decide.
+// or conflict logic here - callers decide.
 func GroupPrincipalEntries(obj *unstructured.Unstructured) []GroupPrincipalEntry {
 	byProvider, ok, _ := unstructured.NestedMap(obj.Object, "GroupPrincipals")
 	if !ok {
@@ -74,23 +74,23 @@ var UserAttrGVR = schema.GroupVersionResource{Group: "management.cattle.io", Ver
 // held-role enumeration: inspect project MEMBERS, inspect cluster MEMBERS,
 // a future inspect-user held-roles section, and any future revoke
 // machine-readable "holds" payload. Raw kinds (get crtb/prtb/
-// globalrolebinding) keep their native CRD field names — this shape is for
+// globalrolebinding) keep their native CRD field names - this shape is for
 // the derived layer only.
 type MemberRow struct {
 	Principal   string `json:"principal"`
 	DisplayName string `json:"displayName,omitempty"`
 	Role        string `json:"role"`
-	// Binding is the CRD object name — the join key back to the raw kind
+	// Binding is the CRD object name - the join key back to the raw kind
 	// (and what revoke needs as its input).
 	Binding string `json:"binding"`
-	// System marks Rancher-internal principals — detection is
+	// System marks Rancher-internal principals - detection is
 	// engine.IsSystemPrincipal (Rancher's system-prefix rule), never the
 	// display name.
 	System bool `json:"system,omitempty"`
 }
 
 // ResolveMembers enriches crtb/prtb bindings with display names from two
-// management-plane LISTs — Users (user display names; EnsureUser sets
+// management-plane LISTs - Users (user display names; EnsureUser sets
 // User.displayName from the provider principal) and UserAttributes (group
 // display names via GroupPrincipals.<provider>.Items[]). No Norman.
 //
@@ -99,8 +99,8 @@ type MemberRow struct {
 // subject does. LIST failures degrade to a warning (display names lost,
 // rows kept) EXCEPT caller cancellation/deadline, which returns an error
 // (lookupCanceled rule). Duplicate principal ownership and disagreeing
-// cached group names stay unresolved with a warning — never
-// last-listed-wins. Rows sort by (principal, role, binding) — binding
+// cached group names stay unresolved with a warning - never
+// last-listed-wins. Rows sort by (principal, role, binding) - binding
 // distinguishes rows sharing a principal and role, which keeps duplicate
 // out-of-band bindings deterministic; collision warnings by principal;
 // source-failure warnings users-before-userattributes.
@@ -117,7 +117,7 @@ func ResolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 
 	if len(userRefs) > 0 {
 		// Pre-flight, not just post-error: a prior call may have canceled
-		// the caller context without this LIST erroring — never issue a
+		// the caller context without this LIST erroring - never issue a
 		// request after cancellation.
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
@@ -180,7 +180,7 @@ func ResolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 
 // collectPrincipalRefs extracts an initial row per binding and indexes the
 // user and group principals it references. Only referenced principals are
-// indexed — directory corruption on unrelated principals must never attach
+// indexed - directory corruption on unrelated principals must never attach
 // a warning to (or influence) this card.
 //
 // Priority order here (userPrincipalName → groupPrincipalName → userName)
@@ -248,13 +248,13 @@ func resolveUserDisplayNames(ctx context.Context, mgmt engine.ClusterClient, use
 	for i := range list.Items {
 		u := list.Items[i].Object
 		d, _, _ := unstructured.NestedString(u, "displayName")
-		// User object names are unique — no ownership ambiguity for a
+		// User object names are unique - no ownership ambiguity for a
 		// bare userName reference.
 		if name := list.Items[i].GetName(); userRefs[name] {
 			display[name] = d
 		}
 		principals, _, _ := unstructured.NestedStringSlice(u, "principalIds")
-		// Ambiguity means multiple USERS advertising the id — a
+		// Ambiguity means multiple USERS advertising the id - a
 		// malformed principalIds slice repeating the id inside ONE
 		// User is a single owner, so de-duplicate per User first.
 		seenInUser := map[string]bool{}
@@ -269,7 +269,7 @@ func resolveUserDisplayNames(ctx context.Context, mgmt engine.ClusterClient, use
 			}
 		}
 	}
-	// ANY duplicate User ownership is ambiguous — even with equal
+	// ANY duplicate User ownership is ambiguous - even with equal
 	// display names (mirrors the RBAC resolver's duplicate-owner
 	// refusal). The display-disagreement rule for cached GROUP
 	// principals is handled separately in resolveGroupDisplayNames.
@@ -312,7 +312,7 @@ func resolveGroupDisplayNames(ctx context.Context, mgmt engine.ClusterClient, gr
 // setGroupResolved records a cached GROUP principal's display name,
 // detecting disagreement: a cache entry with a DIFFERENT name marks the id
 // collided (unresolved). The same name cached by many users' attributes is
-// the normal case, not a conflict — unlike duplicate User ownership, which
+// the normal case, not a conflict - unlike duplicate User ownership, which
 // is ambiguous even with equal names.
 func setGroupResolved(display map[string]string, collided map[string]bool, id, d string) {
 	if collided[id] {
@@ -327,7 +327,7 @@ func setGroupResolved(display map[string]string, collided map[string]bool, id, d
 }
 
 // lookupCanceled reports whether a failed optional lookup was aborted
-// because the CALLER's context was canceled or its deadline expired —
+// because the CALLER's context was canceled or its deadline expired -
 // mirrors internal/engine/inspect's own lookupCanceled (the two packages
 // share no common leaf to hang one copy from). A caller abort must
 // propagate as the command's error, never continue issuing requests behind

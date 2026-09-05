@@ -1,5 +1,5 @@
 # RANCHER_CLI_CREDENTIAL_STORE=file is already Setup's default (headless CI has
-# no keyring; deliberately why there is no `logout` txtar either) — set
+# no keyring; deliberately why there is no `logout` txtar either) - set
 # here explicitly too since delete-server deletes a real credential store.
 env RANCHER_CLI_CREDENTIAL_STORE=file
 
@@ -11,7 +11,7 @@ pathmatch stdout $RANCHER_CLI_CONFIG_DIR/config.yaml
 exec rancher config path -o json
 jsonquery stdout data.exists false
 
-# Seed a server + current-server pointer via a direct config-file write — no
+# Seed a server + current-server pointer via a direct config-file write - no
 # login flow needed just to populate config.yaml.
 mkdir $RANCHER_CLI_CONFIG_DIR
 cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
@@ -32,7 +32,7 @@ jsonquery stderr data.error.candidates.0.id acme
 
 # config delete-server end-to-end: removes the server, clears the
 # current-server pointer that named it, and reports the delete (file
-# backend; no stored token here, so deletedFrom is empty) — does NOT revoke
+# backend; no stored token here, so deletedFrom is empty) - does NOT revoke
 # the server-side token.
 exec rancher config delete-server acme -o json
 jsonquery stdout data.server acme
@@ -45,7 +45,7 @@ exec rancher config status -o json
 jsonquery stdout data.currentServer ''
 
 # config edit: the only path this harness can honestly drive without
-# scripting an interactive editor is the no-TTY gate — `exec` here has no
+# scripting an interactive editor is the no-TTY gate - `exec` here has no
 # terminal attached.
 ! exec rancher config edit
 stderr 'error \(VALIDATION\):'
@@ -63,7 +63,7 @@ jsonquery stdout data.currentServer qa1
 exec rancher config add-server qa1 --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT -o json
 jsonquery stdout data.unchanged true
 
-# a different URL under the same name is CONFLICT, never a silent upsert —
+# a different URL under the same name is CONFLICT, never a silent upsert -
 # the machine hint is the single, fully interpolated update-server command.
 ! exec rancher config add-server qa1 --url https://different.example.com -o json
 jsonquery stderr data.error.code CONFLICT
@@ -71,7 +71,7 @@ jsonquery stderr data.error.hint 'rancher config update-server ''qa1'' --url ''h
 
 # config update-server --clear-cacert (system roots) and a URL change
 # against a different host are exercised at the unit level
-# (config_update_server_test.go, register_test.go) — this harness's single
+# (config_update_server_test.go, register_test.go) - this harness's single
 # real server presents a self-signed cert, so clearing its CA or dialing a
 # different host cannot succeed here; the e2e coverage below stays limited
 # to what a real probe against the actual test server can prove.

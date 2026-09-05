@@ -1,8 +1,8 @@
 // Package provisioning holds the read-only cloud-credential resolver plus
-// its `get cloud-credential` listing surface — the D-1 slice of Tranche D.
+// its `get cloud-credential` listing surface - the D-1 slice of Tranche D.
 // SECRET HYGIENE (spec D-R2-1): every function here reads Kubernetes Secret
 // objects in cattle-global-data but retains ONLY key names and metadata
-// (name, the field.cattle.io/name annotation, creationTimestamp) — never a
+// (name, the field.cattle.io/name annotation, creationTimestamp) - never a
 // `data` VALUE. A `data` value must never flow into CloudCredRef, a
 // runtime.Result, or an error string.
 package provisioning
@@ -36,7 +36,7 @@ const (
 	// credentialConfigMarker is the fixed substring every driver's data key
 	// carries before its own config block (rancher credentialmapper.go:36-51;
 	// literals validator.go:435, aks/handler.go:247, vsphere/handler.go:55,
-	// cred/store.go:116) — the driver name is the key's prefix before this.
+	// cred/store.go:116) - the driver name is the key's prefix before this.
 	credentialConfigMarker = "credentialConfig-"
 )
 
@@ -57,7 +57,7 @@ type CloudCredRef struct {
 // Exact IDs ("cattle-global-data:cc-x" or bare "cc-x") are verified and
 // returned; anything else matches against display names. 0 matches →
 // NOT_FOUND with candidates; >1 → AMBIGUOUS_SELECTION requiring the ID.
-// Reads Secret objects but retains ONLY key names + metadata — never a
+// Reads Secret objects but retains ONLY key names + metadata - never a
 // data value (spec D-R2-1).
 func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (CloudCredRef, error) {
 	obj, err := resolveCredentialObj(ctx, clients, nameOrID)
@@ -70,7 +70,7 @@ func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFac
 // resolveCredentialObj is ResolveCloudCredential's shared innards, returning
 // the raw Secret so the read command can also derive Age from
 // creationTimestamp without a second resolve pass. Never inspects `data`
-// values — see the package doc.
+// values - see the package doc.
 func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (*unstructured.Unstructured, error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
@@ -91,7 +91,7 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 		}
 		// NOT_FOUND from the fast-path Get falls through to the list-based
 		// resolution below: the client curates 404s by literal kind name,
-		// which would surface "secret not found" — leaking the Secret
+		// which would surface "secret not found" - leaking the Secret
 		// implementation detail this resolver exists to hide. The list path's
 		// MatchOneOrError yields the domain-specific shape ("cloud credential
 		// not found") with proper candidates.
@@ -156,7 +156,7 @@ func displayNameOf(obj *unstructured.Unstructured) string {
 }
 
 // refFrom builds the public CloudCredRef from a Secret object, reading ONLY
-// metadata and `data` KEY NAMES — never a `data` value (spec D-R2-1).
+// metadata and `data` KEY NAMES - never a `data` value (spec D-R2-1).
 func refFrom(obj *unstructured.Unstructured) CloudCredRef {
 	name := obj.GetName()
 	return CloudCredRef{
@@ -167,7 +167,7 @@ func refFrom(obj *unstructured.Unstructured) CloudCredRef {
 	}
 }
 
-// driverFromDataKeys scans `data` KEY NAMES ONLY — never a value — for the
+// driverFromDataKeys scans `data` KEY NAMES ONLY - never a value - for the
 // first key containing "credentialConfig-"; Driver is the prefix before that
 // marker (rancher credentialmapper.go:36-51). Keys are sorted first so the
 // choice is deterministic if a secret somehow carries more than one.
@@ -193,17 +193,17 @@ func driverFromDataKeys(obj *unstructured.Unstructured) string {
 	return ""
 }
 
-// now is Age's clock, overridden in tests for a deterministic duration —
+// now is Age's clock, overridden in tests for a deterministic duration -
 // the same seam the kind-table renderer's AGE column uses.
 var now = time.Now
 
-// ageFrom renders metadata.creationTimestamp with duration.HumanDuration —
+// ageFrom renders metadata.creationTimestamp with duration.HumanDuration -
 // the formatter kubectl's own AGE column uses (translateTimestampSince).
 // A missing/unparseable timestamp renders blank, a deliberate house
 // deviation from kubectl's own "<unknown>" placeholder: no fabricated
 // values, no placeholders. (This function previously used
 // ShortHumanDuration, which is the wrong formatter, and "<unknown>" for
-// absent — neither is kept.)
+// absent - neither is kept.)
 func ageFrom(obj *unstructured.Unstructured) string {
 	ts := obj.GetCreationTimestamp()
 	if ts.IsZero() {
@@ -225,7 +225,7 @@ func rowFrom(obj *unstructured.Unstructured) cloudCredRow {
 }
 
 // cloudCredRows is `get cloud-credential`'s payload; it implements
-// output.Tabular so `-o table` shows NAME/DISPLAY/DRIVER/AGE — secret
+// output.Tabular so `-o table` shows NAME/DISPLAY/DRIVER/AGE - secret
 // material never appears in a column.
 type cloudCredRows []cloudCredRow
 
@@ -248,7 +248,7 @@ type getCloudCredCmd struct {
 }
 
 // NewGetCloudCredential builds `get cloud-credential` (read-only listing:
-// SecretName, DisplayName, Driver, Age — secret material NEVER shown).
+// SecretName, DisplayName, Driver, Age - secret material NEVER shown).
 func NewGetCloudCredential(clients engine.ClusterClientFactory) runtime.Command {
 	return &getCloudCredCmd{clients: clients}
 }

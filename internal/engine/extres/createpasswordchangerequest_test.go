@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// pcrInput is extres's shared `in` test double plus a bools map — `in`
+// pcrInput is extres's shared `in` test double plus a bools map - `in`
 // itself always returns false from Bool, which cannot express
 // --password-stdin.
 type pcrInput struct {
@@ -81,7 +81,7 @@ func TestCreatePasswordChangeRequestBuildsSpec(t *testing.T) {
 	data, ok := res.Data.(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, map[string]any{"userID": "u-abc123"}, data,
-		"Data must never carry the raw created object — its spec.newPassword echoes the plaintext")
+		"Data must never carry the raw created object - its spec.newPassword echoes the plaintext")
 }
 
 // TestCreatePasswordChangeRequestPasswordStdinRequired proves the flag is
@@ -100,7 +100,7 @@ func TestCreatePasswordChangeRequestPasswordStdinRequired(t *testing.T) {
 
 // TestCreatePasswordChangeRequestUnconfirmedIsCommittedFailure proves the
 // server's own synchronous confirmation is checked, not inferred from a
-// bare successful create — an object that comes back without a True
+// bare successful create - an object that comes back without a True
 // PasswordUpdated condition is a committed-context failure naming the
 // target user, not a silent success.
 func TestCreatePasswordChangeRequestUnconfirmedIsCommittedFailure(t *testing.T) {
@@ -131,7 +131,7 @@ func (f fakeFileSource) Read(string) ([]byte, error) { return f.body, f.err }
 // TestCreatePasswordChangeRequestOldServerDryRunNotFoundRefusesFriendly
 // proves the Plan dry-run's NOT_FOUND on a server without the workflow
 // reclassifies into the same CAPABILITY_UNSUPPORTED refusal the discovery
-// gate produces — never a raw NOT_FOUND about an unrelated resource.
+// gate produces - never a raw NOT_FOUND about an unrelated resource.
 func TestCreatePasswordChangeRequestOldServerDryRunNotFoundRefusesFriendly(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{createErr: clierr.New(clierr.CodeNotFound, "the server could not find the requested resource")}

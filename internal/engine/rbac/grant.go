@@ -61,7 +61,7 @@ func (grantCmd) Describe() runtime.Descriptor {
 
 // Plan verifies the role, resolves the subject, checks for a duplicate binding,
 // and plans a create. Preflight error policy: role verification (checkRole)
-// degrades on non-cancellation, non-NotFound errors — the server enforces the
+// degrades on non-cancellation, non-NotFound errors - the server enforces the
 // role constraint regardless, so blocking an RBAC-restricted granter from an
 // unreadable role object would be worse than a missed client-side check. Subject
 // resolution (ResolveSubject) is fatal on any error: the binding requires a
@@ -94,7 +94,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// checkRole runs before ResolveSubject and the duplicate-binding List:
 	// a bad role fails immediately without a subject round-trip. A role
 	// deleted out-of-band while a stale binding exists surfaces as
-	// NOT_FOUND — a grant of a nonexistent role cannot proceed regardless;
+	// NOT_FOUND - a grant of a nonexistent role cannot proceed regardless;
 	// a CONFLICT naming a role that no longer exists misleads.
 	if err := checkRole(ctx, client, role, scope.Kind); err != nil {
 		return safety.Effect{}, nil, err
@@ -120,7 +120,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		var hint string
 		// Alias-only match: the binding carries a different principal alias
 		// than the caller supplied. Revoke matches with aliasPrincipals=false
-		// and won't find it by the same spelling — name the exact principal
+		// and won't find it by the same spelling - name the exact principal
 		// stored in the binding, and the revoke command that removes it, so
 		// the caller can act precisely.
 		if !bindingMatchesSubject(b, rs, sub, false) {
@@ -182,7 +182,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	}
 	// generateName: the dry-run name is a throwaway server suffix; show
 	// the prefix pattern (same reasoning as project add-member did). The
-	// committed success text is unaffected — PlanCreate's exec closure
+	// committed success text is unaffected - PlanCreate's exec closure
 	// derives it from the REAL create's returned object name, never from
 	// this preview override.
 	eff.Target = bindKind.GVR.Resource + "/" + prefix + "*"
@@ -190,14 +190,14 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	eff.Diff = grantDiff(fields)
 	if rs.Provision {
 		eff.Warnings = append(eff.Warnings, fmt.Sprintf(
-			"no user exists for principal %q — Rancher will provision user %q when the binding applies",
+			"no user exists for principal %q - Rancher will provision user %q when the binding applies",
 			rs.Principal, ProvisionedUserID(rs.Principal)))
 	}
 	return eff, exec, nil
 }
 
 // grantDiff renders the authorization fields as create-diff entries:
-// JSON-pointer paths on the binding, From nil, To the submitted value —
+// JSON-pointer paths on the binding, From nil, To the submitted value -
 // EXACTLY the field set grant writes, nothing else (no /metadata,
 // /apiVersion, /kind), sorted for stable output.
 func grantDiff(fields map[string]any) []safety.DiffEntry {
@@ -252,9 +252,9 @@ func roleCandidates(pool []clierr.Candidate, needle string) []clierr.Candidate {
 // is planned. On NOT_FOUND it returns a structured error with nearby
 // candidates (roletemplates whose context is empty or matches scope, or
 // globalroles for global scope) and a discovery hint. On scope mismatch the
-// full at-scope pool is returned directly — the name is right, the scope is
+// full at-scope pool is returned directly - the name is right, the scope is
 // wrong, so nearness filtering would be misleading. A non-cancellation,
-// non-NotFound Get failure degrades gracefully — an RBAC-restricted granter
+// non-NotFound Get failure degrades gracefully - an RBAC-restricted granter
 // must not be blocked by an unreadable role object. Caller-context
 // cancellation always propagates.
 func checkRole(ctx context.Context, client engine.ClusterClient, role string, scope ScopeKind) error {
@@ -268,7 +268,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 	if err == nil {
 		// Scope check for non-global scopes: a roletemplate whose top-level
 		// context field is non-empty and differs from the requested scope is
-		// not usable there — catch it here so the raw webhook error does not
+		// not usable there - catch it here so the raw webhook error does not
 		// surface. Empty-context objects always pass (legacy/inherited roles).
 		if scope != ScopeGlobal {
 			if rtCtx, _, _ := unstructured.NestedString(obj.Object, "context"); rtCtx != "" && rtCtx != string(scope) {
@@ -286,7 +286,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		return nil
 	}
 	if !clierr.IsNotFound(err) {
-		// Degrade: see Plan's preflight error policy — the server enforces
+		// Degrade: see Plan's preflight error policy - the server enforces
 		// the role constraint; an unreadable role object must not block a
 		// legitimately permitted granter. Cancellation always propagates.
 		if ctx.Err() != nil {
@@ -338,7 +338,7 @@ func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind 
 // bindingMatchesSubject reports whether an existing binding is for the
 // same subject. The base rule (grant AND revoke): userName equals the
 // resolved id, or userPrincipalName/groupPrincipalName equals the
-// principal AS GIVEN by the caller (sub.Principal — what the spec
+// principal AS GIVEN by the caller (sub.Principal - what the spec
 // promises; NOT rs.Principal, which bare-name resolution rewrites to
 // preferredPrincipal). With aliasPrincipals (grant's duplicate detection
 // only), any of the resolved user's principalIds also matches, so a

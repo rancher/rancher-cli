@@ -20,7 +20,7 @@ type configUpdateServerCmd struct {
 // [--cacert ... | --clear-cacert]` (local): moves an existing entry's
 // address or trust without the credential purge delete-server would force.
 // A URL change still clears the stored login token and its exec-credential
-// cache (Decision 5 — a bearer token created by one host must never be
+// cache (Decision 5 - a bearer token created by one host must never be
 // presented to another); a CA-only change keeps them.
 func NewConfigUpdateServer(dir string) runtime.Command {
 	return &configUpdateServerCmd{dir: dir, tlsPreflight: tlsPreflightDefault}
@@ -127,7 +127,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			// The purge already ran (delete-first ordering) and cannot be
 			// undone; a write failure here must say so plainly rather than
 			// looking like an ordinary write error against still-live
-			// credentials — the entry still names the OLD URL, but its
+			// credentials - the entry still names the OLD URL, but its
 			// token is already gone.
 			return clierr.Wrap(err, fmt.Sprintf(
 				"credentials for %q were cleared, but writing the updated server entry failed: %v",
@@ -150,7 +150,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		"currentServer": out.currentServer, "unchanged": out.unchanged,
 		"changed": changed, "credentialsCleared": out.credentialsCleared,
 		// Same single-server deletedFrom shape as config delete-server
-		// (map keyed "backend") — this and delete-server report the same
+		// (map keyed "backend") - this and delete-server report the same
 		// DeleteTokenEverywhere primitive's output and should look alike.
 		"deletedFrom": map[string][]string{"backend": deletedFrom}, "deletedCache": deletedCache,
 	}}
@@ -176,7 +176,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	}
 	credentialsClearedLine := ""
 	if out.credentialsCleared {
-		credentialsClearedLine = fmt.Sprintf("credentials cleared — log in again: rancher auth login %s", shquote(out.name))
+		credentialsClearedLine = fmt.Sprintf("credentials cleared - log in again: rancher auth login %s", shquote(out.name))
 		lines = append(lines, credentialsClearedLine)
 	}
 	if len(deletedCache) > 0 {

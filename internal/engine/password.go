@@ -10,10 +10,10 @@ import (
 
 // ReadPasswordStdin reads and validates a --password-stdin value, the one
 // shared input path for every command in the user-password workflow: there
-// is no --password flag, ever, on any of them — a flag value lands in shell
+// is no --password flag, ever, on any of them - a flag value lands in shell
 // history and process listings. The flag itself must be set (a VALIDATION
 // error otherwise); its value is always the invocation's whole stdin with at
-// most one trailing newline (or CRLF) trimmed — never other whitespace,
+// most one trailing newline (or CRLF) trimmed - never other whitespace,
 // which a password may legitimately contain.
 func ReadPasswordStdin(src FileSource, in runtime.Input) (string, error) {
 	if !in.Bool("password-stdin") {
@@ -25,7 +25,7 @@ func ReadPasswordStdin(src FileSource, in runtime.Input) (string, error) {
 		return "", clierr.New(clierr.CodeGeneric, fmt.Sprintf("reading --password-stdin: %v", err))
 	}
 	password := string(raw)
-	// Exactly one trailing newline or CRLF pair is trimmed — never a bare
+	// Exactly one trailing newline or CRLF pair is trimmed - never a bare
 	// trailing carriage return or any other byte, which a password may
 	// legitimately end with.
 	if trimmed, ok := strings.CutSuffix(password, "\r\n"); ok {

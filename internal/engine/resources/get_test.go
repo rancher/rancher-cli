@@ -216,7 +216,7 @@ func TestGetRoleTemplateListsWithColumns(t *testing.T) {
 
 // TestGetNodeDriverListsWithColumns asserts the nodedriver row's read surface:
 // the served v3 NodeDriver carries spec.displayName (string) and spec.active/
-// spec.builtin (bools — rendered through the table renderer's bool fallback).
+// spec.builtin (bools - rendered through the table renderer's bool fallback).
 // The non-builtin driver's JSON omits spec.builtin entirely (omitempty on the
 // wire) and its BUILTIN cell must still render "false", not blank.
 func TestGetNodeDriverListsWithColumns(t *testing.T) {
@@ -338,7 +338,7 @@ func TestGetDescribeNilFactory(t *testing.T) {
 
 // TestGetDescribeInheritsCapability asserts the requirement-inheritance rule: a
 // kind row's Capability flows unchanged into the generated get command's
-// Descriptor — one source, never a separately authored value.
+// Descriptor - one source, never a separately authored value.
 func TestGetDescribeInheritsCapability(t *testing.T) {
 	t.Parallel()
 	req := runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"}
@@ -443,7 +443,7 @@ func TestGetWaitNotFoundCurated(t *testing.T) {
 
 // TestGetNamedNotFoundWithHintPassesThrough asserts Fix 1's has-hint guard: a
 // NOT_FOUND that already carries a hint (e.g. resolveVersion's unsupported-
-// group diagnostic) must pass through verbatim — its message and hint must
+// group diagnostic) must pass through verbatim - its message and hint must
 // not be overwritten by the generic "<kind> not found: <name>" curation.
 func TestGetNamedNotFoundWithHintPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -463,7 +463,7 @@ func TestGetNamedNotFoundWithHintPassesThrough(t *testing.T) {
 
 // TestGetNamedNonNotFoundPassesThrough asserts that a non-NOT_FOUND error from the
 // client reaches the caller unchanged (code, message) without re-wrapping.
-// Uses delClient (defined in delete_test.go) — the two stubs serve the same
+// Uses delClient (defined in delete_test.go) - the two stubs serve the same
 // purpose; a fourth type would be the duplication.
 func TestGetNamedNonNotFoundPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -610,7 +610,7 @@ func TestRouteIgnoresUntypedProjectOnNonScopableKinds(t *testing.T) {
 }
 
 // decodeEnvelope decodes a rendered envelope for the given format (json or
-// yaml — sigs.k8s.io/yaml marshals through JSON, so both round-trip through
+// yaml - sigs.k8s.io/yaml marshals through JSON, so both round-trip through
 // json.Unmarshal-compatible structures) into v. Tests must decode and assert
 // fields, never string-match the rendered document.
 func decodeEnvelope(t *testing.T, format string, b []byte, v any) {
@@ -882,7 +882,7 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 	t.Run("WaitFailsOnStalled kind waiting for Stalled carries no advisory", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			// A satisfied Stalled=True wait is the controller's real verdict, not a
-			// stale birth default — the freshSuccessWarning must be suppressed when
+			// stale birth default - the freshSuccessWarning must be suppressed when
 			// the wait target is condition=Stalled.
 			freshStalledObj := func() *unstructured.Unstructured {
 				obj := conditionObj("Stalled", "True")
@@ -905,7 +905,7 @@ func TestGetWaitFreshSuccessWarning(t *testing.T) {
 
 // TestGetEnrichersAttachWarnings asserts NewGet's variadic GetEnricher hook: it
 // runs against the named object on a named get, and against every item on a
-// list get — never against items an enricher does not match.
+// list get - never against items an enricher does not match.
 func TestGetEnrichersAttachWarnings(t *testing.T) {
 	t.Parallel()
 	warnPromoted := func(_ context.Context, obj *unstructured.Unstructured) (string, bool) {
@@ -965,7 +965,7 @@ func TestWaitElapsed(t *testing.T) {
 		{5 * time.Minute, "5m0s", "5m → second-rounded 5m0s"},
 		// Hour-scale: full precision is deliberate (not the coarser AGE-column form).
 		{2*time.Hour + 15*time.Minute + 30*time.Second, "2h15m30s", "2h15m30s stays at hour scale"},
-		{1*time.Hour + 0*time.Minute + 1*time.Second, "1h0m1s", "1h0m1s — zero-minute field retained"},
+		{1*time.Hour + 0*time.Minute + 1*time.Second, "1h0m1s", "1h0m1s - zero-minute field retained"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.comment, func(t *testing.T) {
@@ -976,7 +976,7 @@ func TestWaitElapsed(t *testing.T) {
 }
 
 // userObj builds a user fixture whose principalIds is exactly the given
-// slice — nil sets the field to a JSON null, not an absent key; use
+// slice - nil sets the field to a JSON null, not an absent key; use
 // userObjNoPrincipals for a genuinely absent field.
 func userObj(name string, principals []any) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{
@@ -997,7 +997,7 @@ func userObjNonArrayPrincipals(name string, val any) unstructured.Unstructured {
 }
 
 // TestIsSystemManagedBoundaryFixtures asserts the per-element predicate exactly
-// against Rancher's user-store prefix "system://" — the full boundary
+// against Rancher's user-store prefix "system://" - the full boundary
 // set: near-miss prefixes, non-string elements, mixed arrays (asserting the
 // per-element fail-open cast), non-array fields, and an absent field.
 func TestIsSystemManagedBoundaryFixtures(t *testing.T) {
@@ -1033,8 +1033,8 @@ func TestIsSystemManagedBoundaryFixtures(t *testing.T) {
 
 func TestSystemHiddenWarningWording(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "1 system account hidden — pass --include-system to show it", systemHiddenWarning(1, "system account"))
-	assert.Equal(t, "4 system accounts hidden — pass --include-system to show them", systemHiddenWarning(4, "system account"))
+	assert.Equal(t, "1 system account hidden - pass --include-system to show it", systemHiddenWarning(1, "system account"))
+	assert.Equal(t, "4 system accounts hidden - pass --include-system to show them", systemHiddenWarning(4, "system account"))
 }
 
 // TestGetUsersHidesSystemAccountsByDefault covers the LIST default: a system
@@ -1053,7 +1053,7 @@ func TestGetUsersHidesSystemAccountsByDefault(t *testing.T) {
 	require.Len(t, tbl.items, 1)
 	assert.Equal(t, "u-alice", tbl.items[0].GetName())
 	require.Len(t, res.Warnings, 1)
-	assert.Equal(t, "1 system account hidden — pass --include-system to show it", res.Warnings[0])
+	assert.Equal(t, "1 system account hidden - pass --include-system to show it", res.Warnings[0])
 }
 
 // TestGetUsersIncludeSystemShowsAll covers --include-system: every object is

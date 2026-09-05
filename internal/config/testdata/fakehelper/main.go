@@ -2,7 +2,7 @@
 // FAKEHELPER_MODE: ok (in-memory via state file), notfound, unsupported,
 // fail, garbage, hang, expired, expiresat (uses FAKEHELPER_EXPIRESAT),
 // badexpiry (get returns a token with a non-RFC3339 expiresAt), silent
-// (store/erase exit 0 with NO stdout — protocol-compliant empty success;
+// (store/erase exit 0 with NO stdout - protocol-compliant empty success;
 // get behaves like ok), commit-fail / commit-garbage / commit-hang (store
 // persists the credential and only then fails, answers garbage, or hangs).
 // FAKEHELPER_STATE points at a JSON state file.
@@ -46,7 +46,7 @@ func main() {
 	// it on stdout AFTER acquisition, hold for the duration. Used by the
 	// cross-process lock tests (contention, bounded wait, death). The caller
 	// supplies the full lock-file path so the file name has exactly one
-	// definition (helperRecordsLockName in internal/config) — a hardcoded
+	// definition (helperRecordsLockName in internal/config) - a hardcoded
 	// copy here would silently turn the contention tests into false passes
 	// if the real name ever changed.
 	if len(os.Args) >= 4 && os.Args[1] == "lockhold" {

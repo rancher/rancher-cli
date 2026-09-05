@@ -129,7 +129,7 @@ func TestErrorDetailsSerialization(t *testing.T) {
 }
 
 // TestWithWarningsNotSerializedDirectly asserts that the warning ride never
-// appears through a direct json.Marshal of *Error — only a renderer reading
+// appears through a direct json.Marshal of *Error - only a renderer reading
 // Warnings() places it, at the envelope's top level, never under data.error.
 func TestWithWarningsNotSerializedDirectly(t *testing.T) {
 	e := New(CodeGeneric, "boom").WithWarnings("cert expires soon")
@@ -203,8 +203,8 @@ func TestWrapPreservesClassification(t *testing.T) {
 // execArgv runs a hint through /bin/sh with `rancher` shadowed by a shell
 // function that prints each argument it receives, separated by a byte no
 // shell-quoted value can produce unescaped (0x1e). This recovers the EXACT
-// argv a machine hint would invoke — proving it is valid, single-command
-// POSIX sh — without running the real binary. Fails the test if hint is not
+// argv a machine hint would invoke - proving it is valid, single-command
+// POSIX sh - without running the real binary. Fails the test if hint is not
 // executable shell syntax at all (the failure mode a stray placeholder like
 // "<url>" produces: sh reads it as redirection).
 func execArgv(t *testing.T, hint string) []string {

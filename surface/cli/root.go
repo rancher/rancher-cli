@@ -31,7 +31,7 @@ import (
 // entry is one command's declarative registration: its verb group and a single
 // constructor taking runDeps. The constructor pulls whatever it needs (client
 // factory, file source, config dir/store) off runDeps and ignores the rest, so
-// adding a command is one row here — the compiler enforces the dependency set,
+// adding a command is one row here - the compiler enforces the dependency set,
 // with no per-shape adapter or wiring switch.
 type entry struct {
 	group string
@@ -41,7 +41,7 @@ type entry struct {
 	// factory at all (the skill entries), and commands that resolve config/store
 	// themselves, lazily, inside Execute on their own schedule (the token shim,
 	// which must not let a broken config.yaml block a warm cache hit). bare can
-	// never supply a client factory — a command needing one cannot be bare.
+	// never supply a client factory - a command needing one cannot be bare.
 	// Schema, completion, and wireEntry validation are unaffected.
 	bare bool
 	make func(runDeps) runtime.Command
@@ -142,7 +142,7 @@ func buildEntries() []entry {
 // sets, for exactly one kind row. The row remains the single source of
 // schema/completion/routing identity; only execution changes. A kind
 // whose row would not generate a verb (Deletable:false + del override)
-// still gets the override's command — that is how provisioningcluster
+// still gets the override's command - that is how provisioningcluster
 // delete ships guarded without a bare Deletable flip (spec D-R1-3).
 type kindOverride struct {
 	get   func(k kinds.Kind, d runDeps) runtime.Command
@@ -156,7 +156,7 @@ type kindOverride struct {
 }
 
 // delOverrideOnNonDeletable reports whether ov installs a del override for a
-// kind whose own row stays Deletable: false — the one combination both
+// kind whose own row stays Deletable: false - the one combination both
 // buildEntries (does a delete command get generated at all) and BuildRoot's
 // delOverrides loop (does an extra resolver binding need composing, since
 // kinds.Bindings() never emits "delete <name>" for a non-Deletable row)
@@ -173,7 +173,7 @@ func delOverrideOnNonDeletable(k kinds.Kind, ov kindOverride) bool {
 //
 // clusterregistrationtoken (Task 5, spec D-4): get is a Steve /v1 read (the
 // only place the real token is spliced into the command/manifest fields);
-// patch is refused outright — the row is read-only surface.
+// patch is refused outright - the row is read-only surface.
 // featureRestartWarning returns the advisory for a feature whose read
 // status.dynamic is false: the server must restart to apply the change, and
 // until it has come back the next command can fail confusingly.
@@ -182,11 +182,11 @@ func featureRestartWarning(orig *unstructured.Unstructured) (string, bool) {
 	if !found || dynamic {
 		return "", false
 	}
-	return "this feature flag is not dynamic: the server restarts itself to apply it — wait for the server to come back before running more commands", true
+	return "this feature flag is not dynamic: the server restarts itself to apply it - wait for the server to come back before running more commands", true
 }
 
 // primeFeatureCommunityWarning warns that a rendered Feature's VALUE column
-// reads enabled — via spec.value or the status.default fallback — only
+// reads enabled - via spec.value or the status.default fallback - only
 // because that reading never reflects a community server's own build gate:
 // Rancher's own Feature.Enabled() disables any status.prime:true feature on
 // a non-Prime build ahead of spec.value/status.default/lockedValue (see
@@ -194,7 +194,7 @@ func featureRestartWarning(orig *unstructured.Unstructured) (string, bool) {
 // what is stored but inert about what the server will do. clients must be
 // the concrete client factory that exposes ServerInfo; any other
 // implementation (never true in production) gets a no-op enricher. Unknown
-// edition never warns — the fact asserted here is "this server is
+// edition never warns - the fact asserted here is "this server is
 // confirmed community", never guessed.
 func primeFeatureCommunityWarning(clients engine.ClusterClientFactory) resources.GetEnricher {
 	f, ok := clients.(*clientFactory)
@@ -221,7 +221,7 @@ var kindOverrideTable = map[string]kindOverride{
 		patch:    func(k kinds.Kind, d runDeps) runtime.Command { return provisioning.NewRefuseCRTPatch(k) },
 		refusals: map[string]string{"patch": "read-only: consumed, not edited"},
 	},
-	// managementtoken: patch is refused — writes go through Rancher's auth
+	// managementtoken: patch is refused - writes go through Rancher's auth
 	// lifecycle; the CLI does not bypass it. Delete is guarded against removing
 	// the token backing the current session.
 	"managementtoken": {
@@ -232,7 +232,7 @@ var kindOverrideTable = map[string]kindOverride{
 		refusals: map[string]string{"patch": "writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); the CLI does not bypass it"},
 	},
 	// feature: patching a flag whose status.dynamic is false takes effect
-	// only after the server restarts itself — on a single-node server that
+	// only after the server restarts itself - on a single-node server that
 	// is a real outage window, and the CLI otherwise says nothing. Advisory
 	// only, never a gate. get carries the community-edition counterpart: a
 	// prime-classified feature that reads enabled is inert there regardless
@@ -257,7 +257,7 @@ var kindOverrideTable = map[string]kindOverride{
 		del: func(k kinds.Kind, d runDeps) runtime.Command { return rbac.NewDeleteUser(k, d.clients) },
 	},
 	// provisioningcluster (Task 8, spec D-5): patch keeps the generic
-	// diff/redaction/RV-precondition behavior — only an advisory etcd-quorum
+	// diff/redaction/RV-precondition behavior - only an advisory etcd-quorum
 	// preview is added, via the EffectEnricher seam, never a gate.
 	"provisioningcluster": {
 		patch: func(k kinds.Kind, d runDeps) runtime.Command {
@@ -269,7 +269,7 @@ var kindOverrideTable = map[string]kindOverride{
 		},
 		// del (Task 9, spec D-6): the row stays Deletable: false (no generic
 		// verb would be generated), but the override still supplies a
-		// bespoke, guarded delete command — the exact D-R1-3 point. See
+		// bespoke, guarded delete command - the exact D-R1-3 point. See
 		// BuildRoot's extra "delete provisioning-cluster" resolver, derived
 		// from this row's own Binding: kinds.Bindings() never emits a
 		// binding for this op since the row is not Deletable, so wireEntry
@@ -281,7 +281,7 @@ var kindOverrideTable = map[string]kindOverride{
 }
 
 // kindOverrides returns the override registry. The FUNCTION is the loop's
-// seam — buildEntries calls this, never the var directly — so later tasks
+// seam - buildEntries calls this, never the var directly - so later tasks
 // (and tests) have exactly one place to swap the table.
 func kindOverrides() map[string]kindOverride {
 	return kindOverrideTable
@@ -289,7 +289,7 @@ func kindOverrides() map[string]kindOverride {
 
 // schemaKinds builds the manifest's kind rows (SE-8) with the effective verb
 // surface (SE-17) from the same two sources buildEntries generates commands
-// from — the kind table and the override registry — so the manifest cannot
+// from - the kind table and the override registry - so the manifest cannot
 // drift from what is actually registered: a refusals entry surfaces as
 // "refused"; a del override on a Deletable: false row surfaces delete as
 // "available" (the provisioningcluster case); a delete neither the row nor
@@ -297,7 +297,7 @@ func kindOverrides() map[string]kindOverride {
 //
 // "create" verb state: only kinds with NoCreateViaManifest set carry a
 // "create" entry (state=refused, note=the restriction message). Kinds without
-// the field are omitted from "create" — absence means no reviewed restriction
+// the field are omitted from "create" - absence means no reviewed restriction
 // is recorded, not that create-resource is guaranteed to accept the kind.
 func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime.SchemaKind {
 	out := make([]runtime.SchemaKind, 0, len(rows))
@@ -342,7 +342,7 @@ func schemaKinds(rows []kinds.Kind, overrides map[string]kindOverride) []runtime
 
 // registeredVerbState describes a verb that HAS a registered command:
 // available unless the override marks it a refusal. Contract/stability come from
-// the row's own Binding — the same source kinds.Bindings() (and BuildRoot's
+// the row's own Binding - the same source kinds.Bindings() (and BuildRoot's
 // del-override resolver) feed the resolver from.
 func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.VerbState {
 	vs := runtime.VerbState{
@@ -359,10 +359,10 @@ func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.Ver
 
 // wireEntry validates one entry and returns its urfave leaf plus the
 // command's registered name (BuildRoot records it in the entry's root
-// section — SE-18). It probes Describe() with zero deps (Describe must be
+// section - SE-18). It probes Describe() with zero deps (Describe must be
 // dir/store/client-independent), checks the name's group matches the declared
-// group, requires every engine command — read or mutating (CommandType !=
-// Local) — to resolve to a binding, registers the probe, and wires it through
+// group, requires every engine command - read or mutating (CommandType !=
+// Local) - to resolve to a binding, registers the probe, and wires it through
 // the single run adapter.
 func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string, e entry) (*ucli.Command, string, error) {
 	if e.make == nil {
@@ -392,7 +392,7 @@ func wireEntry(reg *runtime.Registry, resolver runtime.Resolver, version string,
 }
 
 // groupUsages documents the known verb groups. A group discovered from the
-// entries but absent here still gets a (usage-less) group command — command
+// entries but absent here still gets a (usage-less) group command - command
 // reachability never depends on an allowlist.
 var groupUsages = map[string]string{
 	"auth":        "Auth operations",
@@ -421,8 +421,8 @@ var groupUsages = map[string]string{
 // (ParseArgTail/classifyCurrentWordV2): equals-form flag values, partial flag
 // names, and bare words are each routed to the appropriate candidate
 // generator. The classification lives in completeCurrentWordV2, shared with
-// the root command's own ShellComplete; only the bare-word branch — the
-// alias-aware subcommand listing — is supplied here.
+// the root command's own ShellComplete; only the bare-word branch - the
+// alias-aware subcommand listing - is supplied here.
 func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 	if rawProtoV2 {
 		completeCurrentWordV2(ctx, cmd, func(w io.Writer) {
@@ -491,12 +491,12 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 		if eq := strings.Index(rawCurrentWord, "="); eq > 0 {
 			// Equals-form flag value (e.g. --output=json<TAB>, --project=p1<TAB>):
 			// route through the full dispatch pipeline (enum → live), the same as
-			// the leaf path does — BUT only when the flag is a recognized global
+			// the leaf path does - BUT only when the flag is a recognized global
 			// value-taking flag. resolveFlagCanonical falls back to the bare trimmed
 			// name for any unknown flag, so without this guard a per-leaf flag like
 			// --cluster= would resolve to FlagName:"cluster", get dispatched, and
 			// fire a live cluster-list HTTP request before any kind is chosen.
-			// An empty Descriptor is passed — enumCandidates and liveCandidates
+			// An empty Descriptor is passed - enumCandidates and liveCandidates
 			// both fall back to globalArgSpecs for global flags, so --output enum
 			// candidates are found without any leaf flags.
 			spelling := rawCurrentWord[:eq]
@@ -526,7 +526,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 	}
 	// Space-form flag value (e.g. `get --output <TAB>`, `rancher -o <TAB>`):
 	// if the last token in the arg tail is a value-taking flag, the current
-	// word is its partial value — route through the full dispatch pipeline
+	// word is its partial value - route through the full dispatch pipeline
 	// (enum → live), the same as the leaf path does, and skip the bare-word
 	// branch. An empty Descriptor is sufficient; enum and live both fall back
 	// to globalArgSpecs for global flags.
@@ -543,13 +543,13 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 // printCompletionCandidate writes one completion candidate line using
 // formatCandidate (the single format source), followed by a newline.
 // Mirrors urfave's own printCommandSuggestions format ("name:usage", or a
-// bare name when usage is empty) — unexported in urfave, so reproduced here
+// bare name when usage is empty) - unexported in urfave, so reproduced here
 // rather than golden-tested against its exact output.
 func printCompletionCandidate(w io.Writer, name, usage string) {
 	_, _ = fmt.Fprintln(w, formatCandidate(name, usage))
 }
 
-// groupPrimeMetadata flags a group Prime when every one of its leaves is —
+// groupPrimeMetadata flags a group Prime when every one of its leaves is -
 // an all-Prime group carries the same marker as its members do, a mixed one
 // carries none. It reads the leaves' own metadata rather than the schema
 // manifest on purpose: the help rows under this group row are rendered from
@@ -595,7 +595,7 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 // actions can read them (c.Bool("dry-run"), c.String("config"), ...).
 // derivedOpKinds maps every bespoke op whose surface IS a single kind row's
 // resource to that row's key. Their bindings are derived from the rows at
-// composition time — never hand-copied literals in provider.NewResolver —
+// composition time - never hand-copied literals in provider.NewResolver -
 // so an edit to a row's Binding propagates to every op it backs.
 // TestCreateOpBindingsTrackKindRows ranges over this same map, so a new
 // entry is covered the moment it is added. The namespace mutations ride the
@@ -624,14 +624,14 @@ var derivedOpKinds = map[string]string{
 // bespokePublicOps is the closed, reviewed set of ContractPublic ops with
 // no single backing kind row (they span several listed Public API kinds).
 // TestPublicContractOpsAreListed consumes it both ways: an op here must
-// resolve public, and a public op must be here or back a public kind row —
+// resolve public, and a public op must be here or back a public kind row -
 // so widening the public surface is always a reviewed edit to this file or
 // the kind table, never silent.
 var bespokePublicOps = map[string]bool{
 	"grant":  true,
 	"revoke": true,
 	// The user-management workflow: the two-resource User+Secret create
-	// and the create-only ext.cattle.io PasswordChangeRequest — the same
+	// and the create-only ext.cattle.io PasswordChangeRequest - the same
 	// public surface family as the ext token/kubeconfig commands.
 	"create user":                    true,
 	"create password-change-request": true,
@@ -664,8 +664,8 @@ func composeBindings() (runtime.Resolver, error) {
 		derivedOps[op] = row.Binding
 	}
 	// A kindOverrideTable row whose del override sits on a Deletable: false
-	// kind (D-R1-3) never gets a binding from kinds.Bindings() above — the
-	// row is not Deletable, so kinds.Bindings() skips "delete <name>" for it —
+	// kind (D-R1-3) never gets a binding from kinds.Bindings() above - the
+	// row is not Deletable, so kinds.Bindings() skips "delete <name>" for it -
 	// which would otherwise fail wireEntry's check. Rather than hand-copy
 	// each such row's Binding into a literal that could silently drift from
 	// an edit to the row, derive one resolver entry per override, read from
@@ -736,7 +736,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 
 	// support-bundle needs the registry (for its own rancher/schema.json
 	// collector) in scope at construction time, so it is wired here rather
-	// than in buildEntries — the same reason schema.go's fixed command is
+	// than in buildEntries - the same reason schema.go's fixed command is
 	// built inline below instead of through the declarative table.
 	entries := append(buildEntries(), entry{group: "", make: func(d runDeps) runtime.Command {
 		return observe.NewSupportBundle(d.clients, func() any { return reg.Schema(version, config.MinRancherVersion) })
@@ -758,21 +758,21 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	}
 
 	// schema is a fixed command backed by the registry (no dir/store, no
-	// binding). Its read-only resolver is config.ReadOnlyOverride itself —
+	// binding). Its read-only resolver is config.ReadOnlyOverride itself -
 	// the process-wide stash root's Before hook populates below, using the
 	// SAME resolution buildIO reads for every other command.
 	schemaCmd := runtime.NewSchemaCommand(reg, version, config.MinRancherVersion, readOnly)
 	reg.Register(schemaCmd)
 
 	// completion is a fixed command backed by the registry (no dir/store,
-	// no binding): reg.Register puts it in the manifest — Adapt alone
+	// no binding): reg.Register puts it in the manifest - Adapt alone
 	// registers nothing, and the command would silently vanish from
 	// `rancher schema` with no test failure.
 	completionCmd := commands.NewCompletion()
 	reg.Register(completionCmd)
 
 	// groupDescs carries the operator-facing desc for each named group.
-	// Unnamed ("") sections are positional bookmarks — no desc.
+	// Unnamed ("") sections are positional bookmarks - no desc.
 	groupDescs := map[string]string{
 		"auth":   "Authenticate with a Rancher server, manage API tokens, and inspect the session.",
 		"config": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
@@ -787,7 +787,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		// prompt that references it.
 		"project":     "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",
 		"oidc-client": "Manage OIDC client secrets for Rancher's embedded OIDC provider; `create oidc-client` creates the client itself.",
-		// "cluster" is both a command group and a management KIND name —
+		// "cluster" is both a command group and a management KIND name -
 		// the same deliberate collision "project" already carries (see
 		// TestSchemaGroupKindCollisionsAreDeliberate), covered by the same
 		// allowlist. Lifecycle CRUD (`create cluster`, `delete
@@ -803,7 +803,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 
 	// The manifest's ordered sections mirror assembleCommands below exactly
 	// (SE-18): the fixed top-level commands lead, then each entry group at
-	// first appearance — the ungrouped ("") run at its real position — with
+	// first appearance - the ungrouped ("") run at its real position - with
 	// commands in registration order. Empty groups are skipped, as in
 	// assembleCommands.
 	sections := []runtime.SchemaGroup{{Name: "", Commands: []string{
@@ -839,7 +839,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	// Install aliasAwareGroupComplete on every verb group (any command that
 	// has subcommands). For groups whose leaves carry Aliases this lists
 	// canonical name + aliases; for others (config, auth, etc.) it lists
-	// canonical names only — same as urfave's default, but with the
+	// canonical names only - same as urfave's default, but with the
 	// v2-protocol flag-name branch that DefaultCompleteWithFlags lacks (so
 	// `config --<TAB>` and `get --<TAB>` both yield flag candidates under v2).
 	for _, cmd := range commandsList {
@@ -850,7 +850,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 
 	rootShellComplete := func(ctx context.Context, c *ucli.Command) {
 		// v2 protocol: use rawCurrentWord (stripped from argv), classified by
-		// the same shared routing the verb groups use — so root-level flag-value
+		// the same shared routing the verb groups use - so root-level flag-value
 		// sites (`rancher -o <TAB>`, `rancher --output=<TAB>`) reach the dispatch
 		// pipeline instead of the command listing. The bare-word branch keeps
 		// the top-level command listing. For v1, fall back to
@@ -882,7 +882,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		OnUsageError:    onUsageError,
 		// urfave's auto-appended completion command is renamed and kept hidden
 		// machinery only: its subcommands are stripped so it can never emit
-		// urfave's own (divergent) scripts — `completion <shell>` (wired below,
+		// urfave's own (divergent) scripts - `completion <shell>` (wired below,
 		// via Adapt like schema) is the one script-emitting surface.
 		EnableShellCompletion:      true,
 		ShellCompletionCommandName: "__completion",

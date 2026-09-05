@@ -48,6 +48,6 @@ complete -c rancher -e
 # handling here: fish itself withholds the trailing space for completions
 # ending in / = @ : . , - (complete -a entries carry AUTO_SPACE and fish's
 # resolve_auto_space turns those suffixes into NO_SPACE), so acceptance keeps
-# the cursor in the same token. bash and zsh need explicit handling — see
+# the cursor in the same token. bash and zsh need explicit handling - see
 # bash.sh and zsh.sh.
 complete -c rancher -f -a '(__rancher_perform_completion)'

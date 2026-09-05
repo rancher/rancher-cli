@@ -40,7 +40,7 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Network:     true,
 		Auth:        true,
-		// RawBytes is a bare kubeconfig YAML document — it never varies with
+		// RawBytes is a bare kubeconfig YAML document - it never varies with
 		// -o, so every format but the default table would silently accept
 		// and then ignore it (the create kubeconfig precedent).
 		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table"}},
@@ -55,7 +55,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	}
 	// Effective (not CurrentServerEntry) so an env-only session (RANCHER_CLI_URL/
 	// RANCHER_CLI_TOKEN, no stored server) works exactly like every other
-	// command — kubeconfig used to be the one command that didn't.
+	// command - kubeconfig used to be the one command that didn't.
 	eff, err := cfg.Effective(c.store)
 	if err != nil {
 		return runtime.Result{}, err
@@ -78,7 +78,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	}
 
 	// Effective already cleared eff.CA/eff.ServerName if RANCHER_CLI_URL diverged
-	// from the stored server — every command sharing this choke point, not
+	// from the stored server - every command sharing this choke point, not
 	// just kubeconfig, so there is nothing kubeconfig-specific left to check
 	// here.
 	caPEM, err := config.ResolveCA(eff.CA)
@@ -89,15 +89,15 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	base := kube.BaseURL(eff.URL)
 	if !strings.HasPrefix(strings.ToLower(base), "https://") {
 		// client-go silently refuses to wire exec-credential auth for a non-https
-		// server (no error, no Authorization header) — warn so the resulting
+		// server (no error, no Authorization header) - warn so the resulting
 		// kubeconfig's silent 401s are explainable (CW-7). Inverted (warn on
 		// NOT-https, case-insensitive) rather than matching "http://" literally:
 		// BaseURL's error-fallback path can return a malformed or differently
 		// cased scheme that a literal "http://" prefix check would miss.
-		p.Notice("server URL is not https; kubectl will silently skip exec-credential auth — use https")
+		p.Notice("server URL is not https; kubectl will silently skip exec-credential auth - use https")
 	}
 	// eff.ServerName is empty for an env-only session, or when the env
-	// override just moved the URL away from the stored server — synthesize a
+	// override just moved the URL away from the stored server - synthesize a
 	// stable entry name from the server host instead.
 	serverName := eff.ServerName
 	if serverName == "" {

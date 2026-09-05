@@ -61,7 +61,7 @@ func TestExecStoreGarbageResponse(t *testing.T) {
 }
 
 func TestExecStoreMissingBinary(t *testing.T) {
-	t.Setenv("PATH", t.TempDir()) // empty PATH dir — helper absent
+	t.Setenv("PATH", t.TempDir()) // empty PATH dir - helper absent
 	st, err := OpenStore("exec:nosuch", t.TempDir())
 	require.NoError(t, err, "construction is lazy; failure surfaces on use")
 	_, err = st.GetToken(execRef())
@@ -105,7 +105,7 @@ func TestExecStoreSilentStoreErase(t *testing.T) {
 	assert.NoError(t, st.DeleteToken(execRef()))
 }
 
-// Expiry tests inject the clock directly on execStore (same package) —
+// Expiry tests inject the clock directly on execStore (same package) -
 // deterministic, no time.Now dependence anywhere.
 
 func TestExecStoreExpiryCaching(t *testing.T) {

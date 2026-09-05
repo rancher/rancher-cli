@@ -14,7 +14,7 @@ const (
 )
 
 // Request is the JSON object the CLI writes to a helper's stdin. ServerURL is
-// always in canonical form (CanonicalServerURL) — the canonical value is the
+// always in canonical form (CanonicalServerURL) - the canonical value is the
 // wire contract, so helpers may key storage on it verbatim.
 type Request struct {
 	ProtocolVersion int    `json:"protocolVersion"`
@@ -29,7 +29,7 @@ type Request struct {
 // store response declaring the helper read-only. Erased, on an erase
 // response, reports whether a stored credential actually existed and was
 // removed: true = deleted, false = nothing was stored, absent = the helper
-// cannot tell (the CLI then reports the erase as a deletion — the safe,
+// cannot tell (the CLI then reports the erase as a deletion - the safe,
 // over-reporting direction).
 type Response struct {
 	ProtocolVersion int    `json:"protocolVersion"`
@@ -40,12 +40,12 @@ type Response struct {
 }
 
 // EraseOutcome is a Handler's answer to Erase: was a credential actually
-// deleted? EraseUnknown is the zero value — a helper that cannot tell
+// deleted? EraseUnknown is the zero value - a helper that cannot tell
 // returns it and the response simply omits the erased field.
 type EraseOutcome int
 
 const (
-	EraseUnknown       EraseOutcome = iota // cannot tell — reported as deleted downstream
+	EraseUnknown       EraseOutcome = iota // cannot tell - reported as deleted downstream
 	EraseDeleted                           // a stored credential existed and is gone
 	EraseNothingStored                     // nothing was stored; the erase was a no-op
 )

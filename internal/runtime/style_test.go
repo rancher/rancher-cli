@@ -13,7 +13,7 @@ import (
 
 // TestStylesForEligibility asserts the eligibility rule ahead of activation:
 // only ""/"table"/"wide" ever produce an Enabled Style, regardless of
-// --color, TTY-ness, or the environment — json, yaml, name, and template
+// --color, TTY-ness, or the environment - json, yaml, name, and template
 // always get the disabled zero value.
 func TestStylesForEligibility(t *testing.T) {
 	for _, format := range []string{"", "table", "wide"} {
@@ -141,7 +141,7 @@ func TestRenderResultTableHeaderStyledStripInvariant(t *testing.T) {
 func TestRenderResultShownOnceLineBoldStripInvariant(t *testing.T) {
 	t.Parallel()
 	d := Descriptor{Name: "create token", Delivery: DeliveryOnceOnly, Shape: ShapeText}
-	shownOnce := "this token value is shown exactly once — store it now"
+	shownOnce := "this token value is shown exactly once - store it now"
 	res := Result{
 		Kind:           "TokenCreated",
 		Data:           map[string]string{"name": "t-abc"},
@@ -156,7 +156,7 @@ func TestRenderResultShownOnceLineBoldStripInvariant(t *testing.T) {
 	_, ce = renderResult(IO{Out: &styledOut, Err: &styledErr, Format: "table", Color: "always", OutTTY: true, ErrTTY: true}, d, res)
 	require.Nil(t, ce)
 
-	assert.Equal(t, plainErr.String(), styledErr.String(), "the shown-once warning is silenced on both paths — nothing left to style")
+	assert.Equal(t, plainErr.String(), styledErr.String(), "the shown-once warning is silenced on both paths - nothing left to style")
 	assert.NotEqual(t, plainOut.String(), styledOut.String())
 	assert.Equal(t, plainOut.String(), style.Strip(styledOut.String()))
 
@@ -230,7 +230,7 @@ func TestRenderResultStyledTextCalledWithActiveStyle(t *testing.T) {
 
 // TestRenderResultStyledTextKeepsShownOnceBold asserts the composition rule:
 // a DeliveryOnceOnly Result that also sets StyledText keeps the shown-once
-// line's bold — the two treatments compose instead of the builder silencing
+// line's bold - the two treatments compose instead of the builder silencing
 // the credential emphasis; a line the builder already styled is not wrapped
 // twice.
 func TestRenderResultStyledTextKeepsShownOnceBold(t *testing.T) {
@@ -241,7 +241,7 @@ func TestRenderResultStyledTextKeepsShownOnceBold(t *testing.T) {
 		Kind:             "CredentialCreated",
 		Data:             map[string]string{"name": "x"},
 		Text:             plain,
-		OnceOnlyNotice:   "this value is shown exactly once — store it now",
+		OnceOnlyNotice:   "this value is shown exactly once - store it now",
 		CommittedContext: &CommittedContext{ResourceKind: "Credential", ResourceName: "x", Recovery: "get credential x"},
 		StyledText: func(s style.Style) string {
 			return StyleLines(plain, s, func(i int, body string) (string, bool) {
@@ -341,7 +341,7 @@ func TestStyleSchemaTOCColorsPrimeMarkers(t *testing.T) {
 	primeRow := lineContainingRT(t, styled, "cluster set-autoscaling")
 	assert.Contains(t, primeRow, greenPrime, "a Prime command row's marker is green")
 
-	scaleRow := lineContainingRT(t, styled, "cluster scale —")
+	scaleRow := lineContainingRT(t, styled, "cluster scale - ")
 	assert.NotContains(t, scaleRow, "\x1b[", "a non-Prime row stays entirely plain")
 }
 
@@ -408,7 +408,7 @@ func TestStyleSchemaFilteredTOCStripInvariant(t *testing.T) {
 }
 
 // TestStyleSchemaGroupCardStripInvariant asserts the group card's bold spans:
-// the "group: <name>" header line and the "commands:" label, nothing else —
+// the "group: <name>" header line and the "commands:" label, nothing else -
 // plus the strip invariant and the inactive-style identity.
 func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
 	t.Parallel()
@@ -442,7 +442,7 @@ func TestStyleSchemaGroupCardStripInvariant(t *testing.T) {
 // TestStyleSchemaGroupCardColorsPrimeHeader asserts an all-Prime group's
 // "group: <name>" header carries a green "[Prime]" span alongside its
 // existing whole-line bold, and that its Prime member's own row is
-// colorized too — while a non-Prime group's header and rows carry none.
+// colorized too - while a non-Prime group's header and rows carry none.
 func TestStyleSchemaGroupCardColorsPrimeHeader(t *testing.T) {
 	t.Parallel()
 	s := style.Style{Enabled: true}
@@ -465,8 +465,8 @@ func TestStyleSchemaGroupCardColorsPrimeHeader(t *testing.T) {
 }
 
 // TestStyleSchemaCommandCardStripInvariant asserts the command card's bold
-// spans — the title line, each section label token (not its values), and
-// every flag name (not its type/description/env) — plus the strip
+// spans - the title line, each section label token (not its values), and
+// every flag name (not its type/description/env) - plus the strip
 // invariant and the inactive-style identity.
 func TestStyleSchemaCommandCardStripInvariant(t *testing.T) {
 	t.Parallel()
@@ -597,8 +597,8 @@ func TestStyleSchemaCommandCardAbsentSectionNoTheft(t *testing.T) {
 
 // TestStyleSchemaCommandCardDescCollision asserts the structural anchoring:
 // a Desc line that starts with (or equals) a section-label word must stay
-// plain while the real label — before Desc for contract/gates, after it for
-// examples/exit codes/global flags — gets the bold. The card text mirrors
+// plain while the real label - before Desc for contract/gates, after it for
+// examples/exit codes/global flags - gets the bold. The card text mirrors
 // renderCommandCard's section order.
 func TestStyleSchemaCommandCardDescCollision(t *testing.T) {
 	t.Parallel()

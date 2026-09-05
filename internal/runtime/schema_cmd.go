@@ -21,7 +21,7 @@ type schemaCmd struct {
 	// readOnly resolves this invocation's read-only state (config + env +
 	// flag OR'd) at Execute time. schema is wired via Adapt, which never
 	// calls resolveDeps, so it has no other way to see --config/--read-only
-	// or the loaded config — surface/cli hands over the SAME resolution
+	// or the loaded config - surface/cli hands over the SAME resolution
 	// buildIO uses for every other command (one resolver, two consumers).
 	// nil is treated as "inactive" (registry_test's stub registrations).
 	readOnly func() (bool, []string)
@@ -36,14 +36,14 @@ func (s *schemaCmd) Describe() Descriptor {
 	return Descriptor{
 		Name:  "schema",
 		Usage: "Print the capability manifest, optionally filtered to one command",
-		Desc:  "Multi-word command names (\"get pod\") work as a single selector — pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
+		Desc:  "Multi-word command names (\"get pod\") work as a single selector - pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
 		Args:  []ArgSpec{{Name: "command", Type: "string"}},
 		Flags: []ArgSpec{
 			{Name: "all", Type: "bool",
 				Desc: "print the complete capability manifest in structured output (the table view stays the table of contents)"},
 			{Name: "kind", Type: "bool",
 				Desc: "resolve the selector as a kind, not a command"},
-			// The verb enum is a static literal — the descriptor cannot see
+			// The verb enum is a static literal - the descriptor cannot see
 			// the registry's full command set at Describe time. The surface
 			// test TestSchemaVerbEnumMatchesCommandVerbs asserts it to the real
 			// registry's distinct first name tokens; a new verb fails there
@@ -55,7 +55,7 @@ func (s *schemaCmd) Describe() Descriptor {
 				Desc: "show only commands with this verb (the first word of the command name)"},
 			{Name: "destructive", Type: "bool",
 				Desc: "show only destructive commands (destructive true or dependsOnInput)"},
-			// Contracts PRESENT in the manifest, not every declared safety.Contract —
+			// Contracts PRESENT in the manifest, not every declared safety.Contract -
 			// asserted by TestSchemaContractEnumMatchesCommandContracts.
 			{Name: "contract", Type: "string",
 				Enum: []string{"public", "internal"},
@@ -72,13 +72,13 @@ func (s *schemaCmd) Describe() Descriptor {
 }
 
 // CompleteArgs implements ShellCompleter: `schema <TAB>` offers every valid
-// schema selector, offline from the registry alone (SE-12) — full command
-// names; command aliases in their full typed form ("get pods", "get po" —
+// schema selector, offline from the registry alone (SE-12) - full command
+// names; command aliases in their full typed form ("get pods", "get po" -
 // never the bare leaf alias, which Execute's selection would reject; the verb
 // comes from the command name's first token); and kind names, keys, and
 // aliases as bare tokens. The set is deduplicated (a command/kind collision
 // like kubeconfig yields one candidate) and deterministically sorted. Every
-// candidate resolves through Execute's own selection logic — a command match
+// candidate resolves through Execute's own selection logic - a command match
 // wins a collision, a kind identifier falls through to the kind view.
 func (s *schemaCmd) CompleteArgs(_ context.Context, _ ConfigView) []string {
 	m := s.reg.Schema(s.cliVersion, s.minRancherVersion)
@@ -109,7 +109,7 @@ func (s *schemaCmd) CompleteArgs(_ context.Context, _ ConfigView) []string {
 			add(a)
 		}
 	}
-	// Named group selectors — every group name resolves via Execute's third
+	// Named group selectors - every group name resolves via Execute's third
 	// tier; unnamed ("") sections are not selectable.
 	for _, g := range m.Groups {
 		if g.Name != "" {
@@ -187,7 +187,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		}
 	}
 	// Resolution order (SE-5/SE-6 revised 2026-08-20): groups sit in the
-	// COMMAND tier — command, then group, then kind — because --kind exists
+	// COMMAND tier - command, then group, then kind - because --kind exists
 	// to reach a shadowed kind, while nothing could reach a group shadowed
 	// by a kind (the "project" collision). Named groups only: the unnamed
 	// ("") sections are positional bookmarks, not selectable. The group
@@ -215,7 +215,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 		// The reverse hint: a kind reached while a same-name group exists
 		// names the other view, mirroring the command card's kind-view
 		// hint. The hint carries the GROUP's own name (g.Name), never the
-		// kind's canonical Name — a kind reached via an alias that equals
+		// kind's canonical Name - a kind reached via an alias that equals
 		// a group name must not hint a selector that resolves elsewhere.
 		if g, collides := lookupGroup(m.Groups, want); collides {
 			line, hint := collisionFooter("command group: rancher schema "+g.Name, g.Name)
@@ -349,7 +349,7 @@ func allConflict(mode string) error {
 }
 
 // lookupKind resolves a positional selector against the manifest's kind rows
-// by exact match on the canonical name, the key, or any alias — manifest data
+// by exact match on the canonical name, the key, or any alias - manifest data
 // only, mirroring kinds.Lookup without importing it (SE-5).
 func lookupKind(ks []SchemaKind, want string) (SchemaKind, bool) {
 	for _, k := range ks {
@@ -366,7 +366,7 @@ func lookupKind(ks []SchemaKind, want string) (SchemaKind, bool) {
 // filterGroups prunes each ordered section to the retained command names and
 // drops empty sections, preserving relative order (SE-18's consistency rule:
 // the manifest never carries two contradictory command sets). Desc is
-// intentionally omitted from filtered sections — a filtered section covers
+// intentionally omitted from filtered sections - a filtered section covers
 // only the retained commands, not the full set the group desc was written for.
 func filterGroups(gs []SchemaGroup, keep map[string]bool) []SchemaGroup {
 	var out []SchemaGroup
@@ -393,7 +393,7 @@ func collisionFooter(line, hint string) (string, string) {
 }
 
 // lookupGroup resolves a positional selector against the manifest's named
-// group sections. Unnamed ("") sections are not selectable — they are
+// group sections. Unnamed ("") sections are not selectable - they are
 // positional bookmarks, not identifiers.
 func lookupGroup(gs []SchemaGroup, want string) (SchemaGroup, bool) {
 	if want == "" {
@@ -429,7 +429,7 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	// multi-token selector is command-shaped (kinds are single tokens,
 	// always) so the kind half of the dual guidance is noise; only a bare
 	// single token is genuinely either. The dual tier names both commands in
-	// the message — an "X or Y" pair is never a hint — while the other two
+	// the message - an "X or Y" pair is never a hint - while the other two
 	// tiers name one command, which the Hint carries.
 	commandShaped := len(strings.Fields(want)) > 1
 	var noun, guidance, hint string
@@ -463,11 +463,11 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 
 // nearestSelectors finds SE-4's nearest matches: a case-insensitive substring
 // search of want over command names and full alias forms (the "<verb> <alias>"
-// shape matchesAlias resolves) plus kind names, keys, and aliases — every
+// shape matchesAlias resolves) plus kind names, keys, and aliases - every
 // candidate deduplicated to its selectable name (a command/kind collision
 // yields one candidate), sorted, capped. kindOnly restricts the search to
 // kinds, matching --kind's forced interpretation. commandOnly skips the kind
-// scan for multi-token (command-shaped) queries — kinds are always single
+// scan for multi-token (command-shaped) queries - kinds are always single
 // tokens, so the kind half of the search is noise for a query like "get pdo".
 func nearestSelectors(m Manifest, want string, kindOnly, commandOnly bool) []string {
 	q := strings.ToLower(want)
@@ -496,7 +496,7 @@ func nearestSelectors(m Manifest, want string, kindOnly, commandOnly bool) []str
 	// Named group selectors are single-token (like kinds) and now directly
 	// resolvable. Include them when neither --kind (groups are not kinds) nor
 	// commandOnly (multi-token query cannot substring-match a group name in a
-	// useful way) is active — consistent with the group-tier guard in Execute.
+	// useful way) is active - consistent with the group-tier guard in Execute.
 	if !kindOnly && !commandOnly {
 		for _, g := range m.Groups {
 			if g.Name != "" && strings.Contains(strings.ToLower(g.Name), q) {
@@ -524,7 +524,7 @@ func kindMatchesSubstring(k SchemaKind, q string) bool {
 }
 
 // matchesSubstring reports whether the lowercased query q occurs in c's name
-// or in any alias — the full "<verb> <alias>" form when the name is verbed,
+// or in any alias - the full "<verb> <alias>" form when the name is verbed,
 // the bare alias otherwise.
 func matchesSubstring(c SchemaCommand, q string) bool {
 	if strings.Contains(strings.ToLower(c.Name), q) {
@@ -545,7 +545,7 @@ func matchesSubstring(c SchemaCommand, q string) bool {
 
 // CommandAliasNames returns every full alias name c answers to: aliases on
 // generated commands are BARE kind aliases (get.go:48 copies k.Aliases, e.g.
-// "pods", "po" — the existing schema.txtar canary asserts `aliases.0 ==
+// "pods", "po" - the existing schema.txtar canary asserts `aliases.0 ==
 // pods`), so a full alias name is "<verb> <alias>" with the verb taken from
 // c.Name. nil for an unverbed c.Name (a bare fixed command carries no
 // resolvable alias form) or a command with no aliases. Exported so a second

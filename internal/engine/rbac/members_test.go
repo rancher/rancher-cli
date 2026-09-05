@@ -106,7 +106,7 @@ func TestResolveMembersCollisionStaysUnresolved(t *testing.T) {
 func TestResolveMembersDuplicateUserOwnershipSameDisplay(t *testing.T) {
 	t.Parallel()
 	// Duplicate USER ownership is ambiguous even when both owners carry the
-	// SAME display name — mirrors the RBAC resolver's duplicate-owner refusal.
+	// SAME display name - mirrors the RBAC resolver's duplicate-owner refusal.
 	fc := &fakeClient{
 		users: []map[string]any{
 			userObj("u-1", "Same Name", "", "okta_user://dup"),
@@ -145,7 +145,7 @@ func TestResolveMembersUnrelatedCollisionsStaySilent(t *testing.T) {
 
 func TestResolveMembersGroupDisplayDisagreement(t *testing.T) {
 	t.Parallel()
-	// Cached GROUP principals collide only on DISAGREEING display names —
+	// Cached GROUP principals collide only on DISAGREEING display names -
 	// the same name cached by many users is the normal case, not a conflict.
 	fc := &fakeClient{
 		listsByGVR: map[string]*unstructured.UnstructuredList{
@@ -177,7 +177,7 @@ func TestResolveMembersGroupDisplayDisagreement(t *testing.T) {
 
 func TestResolveMembersRepeatedPrincipalIDInOneUserIsNotACollision(t *testing.T) {
 	t.Parallel()
-	// One malformed User repeating the same principal id is ONE owner —
+	// One malformed User repeating the same principal id is ONE owner -
 	// ambiguity means multiple Users, never a duplicated slice entry.
 	fc := &fakeClient{
 		users: []map[string]any{
@@ -326,7 +326,7 @@ func (c *cancelAfterUsersClient) List(ctx context.Context, gvr schema.GroupVersi
 func TestResolveMembersNoRequestAfterMidFlightCancel(t *testing.T) {
 	t.Parallel()
 	// The users LIST SUCCEEDS but the caller context is canceled by the
-	// time it returns — the userattributes LIST must never be issued and
+	// time it returns - the userattributes LIST must never be issued and
 	// the command must abort, not succeed on partial enrichment.
 	ctx, cancel := context.WithCancel(t.Context())
 	fc := &cancelAfterUsersClient{

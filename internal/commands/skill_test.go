@@ -72,7 +72,7 @@ func TestSkillInstallStatusUninstallRoundTrip(t *testing.T) {
 	require.Len(t, rows, 1)
 	assert.Equal(t, skillinstall.VerdictInSync, rows[0].Verdict)
 
-	// exit 7 asserts the skew case — the e2e harness can only assert nonzero,
+	// exit 7 asserts the skew case - the e2e harness can only assert nonzero,
 	// so THIS test owns the exact value.
 	res, err = NewSkillStatus("v9.9.9").(skillStatusCmd).Execute(t.Context(), in, nil)
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestSkillInstallBatchPreflightAllOrNothing(t *testing.T) {
 
 // Execution-time failure mid-batch: remaining targets attempted; the
 // structured error carries per-target outcomes (Details) AND cleanup
-// warnings (the error's own warning ride) — a sweep warning must survive
+// warnings (the error's own warning ride) - a sweep warning must survive
 // the error path, not just Result.Warnings.
 func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 	home := skillHome(t, ".agents", ".claude")
@@ -191,7 +191,7 @@ func TestSkillInstallPartialFailureCarriesOutcomesAndWarnings(t *testing.T) {
 
 	// Default-format text: the cleanup warning (WithWarnings) prints as a
 	// "# warning:" line ahead of the error, then the outcomes projection
-	// (Details.TextDetails) — one channel each, never both under data.error.
+	// (Details.TextDetails) - one channel each, never both under data.error.
 	var errBuf bytes.Buffer
 	_ = runtime.RenderError(&errBuf, "", ce)
 	text := errBuf.String()

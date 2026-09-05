@@ -12,7 +12,7 @@ import (
 // machine-local probe state, deliberately separate from config.yaml (a
 // portable user declaration): copying config.yaml to another machine must
 // not carry a keychain pin, and pinning into config would erase the record
-// that the user chose auto. Single value, atomic write, last-writer-wins —
+// that the user chose auto. Single value, atomic write, last-writer-wins -
 // concurrent pinners compute the same probe result, so no lock is needed.
 const pinFileName = "credstore-pin"
 
@@ -29,7 +29,7 @@ const NoticeFirstPinKeychain = "pinned credential store: keychain"
 func PinPath(dir string) string { return filepath.Join(dir, pinFileName) }
 
 // PlatformKeychainLabel names the OS-native keychain auto tries first on
-// this machine's platform, purely from runtime.GOOS — never a probe. `config
+// this machine's platform, purely from runtime.GOOS - never a probe. `config
 // status` uses it to answer "what will auto pick?" before any pin exists,
 // without the side effects (or latency) of actually trying the keychain.
 func PlatformKeychainLabel() string {
@@ -71,7 +71,7 @@ func EffectivePolicy(cfgPolicy string) string {
 
 // EffectivePolicyWithSource returns the effective credential-store policy
 // and where it came from: "env" (RANCHER_CLI_CREDENTIAL_STORE), "config"
-// (config.yaml's credentialStore), or "default" (nothing set — auto).
+// (config.yaml's credentialStore), or "default" (nothing set - auto).
 // `config status` reports this pair; EffectivePolicy is the value-only form
 // every resolution path uses, so the two can never disagree.
 func EffectivePolicyWithSource(cfgPolicy string) (policy, source string) {
@@ -85,7 +85,7 @@ func EffectivePolicyWithSource(cfgPolicy string) (policy, source string) {
 }
 
 // RepinForLogin re-probes at login time (only under auto): login is rare,
-// interactive, and the moment a new credential is written — the one place a
+// interactive, and the moment a new credential is written - the one place a
 // machine pinned "file" by an accident of first run (e.g. over SSH) can
 // upgrade to the keychain. It is upgrade-only and reads the pin FIRST: a
 // keychain pin is never re-probed, so a transient keychain hiccup can never
@@ -100,11 +100,11 @@ func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, string,
 		return current, "", nil
 	}
 	if ReadPin(dir) == "keychain" {
-		// Already on the keychain — never probe, never downgrade.
+		// Already on the keychain - never probe, never downgrade.
 		return current, "", nil
 	}
 	// Pin is "file" or absent: this is the only place we probe, and only to
-	// upgrade. If the keychain is unusable, keep the file backend as-is — no
+	// upgrade. If the keychain is unusable, keep the file backend as-is - no
 	// rewrite, no duplicate plaintext notice. keyringUsableOnce shares its
 	// memoized result with OpenStore's own auto-probe above, so a single
 	// `rancher login` process never pays the (bounded) probe cost twice.

@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # ORACLE_IMAGE is the single bump point for the community golden oracle: one
 # literal tag+digest, changed only through a reviewed golden-regeneration
-# change. PRIME_ORACLE_IMAGE is the opt-in Prime oracle (E2E_REAL_PRIME=1) —
+# change. PRIME_ORACLE_IMAGE is the opt-in Prime oracle (E2E_REAL_PRIME=1) -
 # it has no goldens; the suite only boots and smoke-checks it.
 ORACLE_IMAGE="rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
@@ -21,7 +21,7 @@ PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:07334615
 # with extra SANs, for a remote box (e.g. a Windows VM on the LAN) that will
 # reach the oracle by a hostname/IP other than 127.0.0.1. Rancher's listener
 # (rancher/dynamiclistener) adds a SAN for any hostname/SNI it is queried
-# with, signed by the same CA already captured in ca.pem — no separate CA
+# with, signed by the same CA already captured in ca.pem - no separate CA
 # per SAN, so priming before the remote box connects only avoids its first
 # request racing the cert regeneration.
 EXTRA_SANS="${E2E_REAL_EXTRA_SANS:-}"
@@ -80,7 +80,7 @@ echo $$ >"${LOCK_DIR}/pid"
 
 cleanup() {
   status=$?
-  # Diagnostics fire on EVERY failure — kept runs (recording, reconciling)
+  # Diagnostics fire on EVERY failure - kept runs (recording, reconciling)
   # are exactly the ones that need them. Only removal is gated on keep mode.
   if [ ${status} -ne 0 ]; then
     echo "==> last 200 container log lines:"
@@ -171,7 +171,7 @@ reuse_state() {
 
 if [ "${E2E_REAL_KEEP:-}" = "1" ] && reuse_state; then
   echo "==> reusing healthy kept container"
-  # A kept container was not necessarily primed for THIS run's SAN list —
+  # A kept container was not necessarily primed for THIS run's SAN list -
   # the knob may appear (or change) between runs against the same
   # container. Priming is idempotent (dynamiclistener adds a SAN once),
   # and the CA is unchanged by it, so re-prime unconditionally.
@@ -188,7 +188,7 @@ else
   echo "==> booting ${ORACLE_IMAGE}"
   # --privileged is required: the image runs an embedded k3s (containerd, CNI,
   # kernel mounts) that will not start unprivileged. It is an accepted tradeoff
-  # here — the image is digest-pinned, the port is loopback-bound by default
+  # here - the image is digest-pinned, the port is loopback-bound by default
   # (BIND_ADDR), and the container is ephemeral (removed unless
   # E2E_REAL_KEEP=1).
   # A kept container self-heals: patching a non-dynamic Feature makes the

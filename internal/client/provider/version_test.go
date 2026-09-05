@@ -100,7 +100,7 @@ func TestRancherVersionGarbageBodyReturnsError(t *testing.T) {
 
 // TestRancherVersionNon200ReturnsError asserts the non-200 path: any status other
 // than 200 (e.g. 404 from a non-Rancher server, 503 during startup) is a read
-// failure — never silently treated as an unknown version.
+// failure - never silently treated as an unknown version.
 func TestRancherVersionNon200ReturnsError(t *testing.T) {
 	t.Parallel()
 	srv := newVersionFake(t, func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +131,7 @@ func TestRancherVersionUnreachableReturnsError(t *testing.T) {
 // TestRancherVersionTimesOutOnUnresponsiveServer asserts the request is
 // bounded by requestTimeout rather than hanging forever, and that a timeout
 // surfaces through the same error path as any other connectivity failure
-// (TestRancherVersionUnreachableReturnsError) — not a new shape.
+// (TestRancherVersionUnreachableReturnsError) - not a new shape.
 func TestRancherVersionTimesOutOnUnresponsiveServer(t *testing.T) {
 	// Not t.Parallel(): shrinks the package-global requestTimeout.
 	restore := SetRequestTimeoutForTest(20 * time.Millisecond)
@@ -179,7 +179,7 @@ func TestRancherVersionPathValuedCA(t *testing.T) {
 
 // TestGetServerInfoDecodesEdition asserts RancherPrime's string-wire decode
 // (not a JSON boolean): "true"/"false" (any case/whitespace) decode to their
-// Edition; absent or garbage decode to EditionUnknown — never treated as
+// Edition; absent or garbage decode to EditionUnknown - never treated as
 // community.
 func TestGetServerInfoDecodesEdition(t *testing.T) {
 	t.Parallel()
@@ -211,7 +211,7 @@ func TestGetServerInfoDecodesEdition(t *testing.T) {
 
 // TestGetServerInfoPropagatesReadErrors asserts that GetServerInfo shares
 // RancherVersion's classified-failure behavior (malformed body, non-200,
-// unreachable) rather than swallowing it into EditionUnknown — the
+// unreachable) rather than swallowing it into EditionUnknown - the
 // capability detector's caller decides how to fold a probe error.
 func TestGetServerInfoPropagatesReadErrors(t *testing.T) {
 	t.Parallel()

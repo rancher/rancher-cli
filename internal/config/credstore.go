@@ -23,9 +23,9 @@ var ErrNoToken = errors.New("no stored token")
 
 // LegacyCachePrefix is the reserved exec-credential cache-slot prefix written
 // by the legacy token shim (`rancher token`). The prefix is defined here so
-// every site that needs it — internal/token/token.go (native rejection guard),
+// every site that needs it - internal/token/token.go (native rejection guard),
 // internal/token/shim.go (slot construction), surface/cli/completion_token.go
-// (AC-6 ambiguity filter) — shares one constant; a future rename or second
+// (AC-6 ambiguity filter) - shares one constant; a future rename or second
 // reserved namespace compiles instead of silently diverging.
 const LegacyCachePrefix = "legacy:"
 
@@ -39,7 +39,7 @@ func IsLegacyCacheSlot(name string) bool {
 const keyringService = "rancher-cli"
 
 // keyringObserverFn is an optional test hook called on every keyring operation
-// performed through keyringStore (Get, Set, Delete). Nil by default — no-op in
+// performed through keyringStore (Get, Set, Delete). Nil by default - no-op in
 // production. Set via SetKeyringObserverForTest to count keyring calls from any
 // test, including tests in other packages (e.g. surface/cli_test).
 var keyringObserverFn func(op string)
@@ -98,7 +98,7 @@ type CachedCredInfo struct {
 // CacheKey scopes an exec-credential cache entry by server identity and
 // cluster, so the same --name used against two servers never collides.
 // serverHost must be a canonical server identity (CanonicalServerIdentity
-// output) so that equivalent URL spellings — including http vs https — produce
+// output) so that equivalent URL spellings - including http vs https - produce
 // distinct keys. The parameter is named serverHost for historical reasons.
 func CacheKey(name, serverHost, cluster string) string {
 	return name + "@" + serverHost + "/" + cluster
@@ -126,7 +126,7 @@ func NewFileStore(dir string) CredStore {
 // interactive login under that backend.
 func CredentialsFilePath(dir string) string { return filepath.Join(dir, "credentials.yaml") }
 
-// newFileStore builds a fileStore recording onto nb — the shared-buffer
+// newFileStore builds a fileStore recording onto nb - the shared-buffer
 // constructor keyringStore uses for its file-backed cache; NewFileStore
 // gives a standalone fileStore its own buffer.
 func newFileStore(dir string, nb *noticeBuffer) *fileStore {
@@ -168,7 +168,7 @@ var getCachedPruneHook func()
 // holding it, then releases. The caller must hold f.mu over the entire call so
 // that same-process goroutines never contend on the flock; the flock then
 // serializes across different fileStore instances (separate processes).
-// Plain reads stay lock-free — atomic-rename writes keep them consistent. The
+// Plain reads stay lock-free - atomic-rename writes keep them consistent. The
 // lock is required for every read-modify-write, which covers SetCachedCred,
 // DeleteCachedCred, and the prune branches of GetCachedCred and ListCachedCreds.
 func (f *fileStore) withCacheLock(fn func() error) error {
@@ -196,7 +196,7 @@ var warnedLoosePerm sync.Map // path -> struct{}
 // unremarked (CS-1). It notices at most once per path per process; every
 // later call for the same path returns "". On Windows this Unix-perm check
 // is SKIPPED via permCheckApplicable (NTFS ignores mode bits; Mode().Perm()
-// is synthetic there and would false-positive on every file) — the
+// is synthetic there and would false-positive on every file) - the
 // owner-only DACL set by hardenACL at write time is the guarantee on that
 // platform. The caller decides where the notice goes: a fileStore method
 // records it on its own buffer, while ReadOnlyCachedCred (no store
@@ -264,7 +264,7 @@ func (f *fileStore) GetToken(ref ServerRef) (string, error) {
 
 // SetToken is a lock-free read-modify-write of credentials.yaml: any
 // COMMAND that reaches it must run inside config.WithLock (the command
-// sites' lock boundary tests are the enforcement point) — a direct call
+// sites' lock boundary tests are the enforcement point) - a direct call
 // from a new command reintroduces the concurrent lost-update this file's
 // tests pin.
 func (f *fileStore) SetToken(ref ServerRef, token string) error {
@@ -346,7 +346,7 @@ func (f *fileStore) writeCache(m map[string]cachedCred) error {
 func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// Lock-free read: no flock needed for a pure read — atomic-rename writes
+	// Lock-free read: no flock needed for a pure read - atomic-rename writes
 	// keep reads consistent.
 	m, err := f.readCache()
 	if err != nil {
@@ -361,12 +361,12 @@ func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
 	}
 	// Expired: prune under the flock. Re-read under the lock so the written
 	// snapshot includes any concurrent SetCachedCred writes that landed since
-	// the lock-free read above — without the re-read, pruning without the lock
+	// the lock-free read above - without the re-read, pruning without the lock
 	// is a read-modify-write that clobbers concurrent writes (lost-update).
 	// Re-check the entry itself in the re-read (mirroring ListCachedCreds's
 	// prune): the key that was expired at the lock-free read may have been
 	// refreshed by a concurrent SetCachedCred for the same slot and must not
-	// be deleted — serve the fresh credential instead.
+	// be deleted - serve the fresh credential instead.
 	if getCachedPruneHook != nil {
 		getCachedPruneHook()
 	}
@@ -430,7 +430,7 @@ func (f *fileStore) DeleteAllCachedCreds() error {
 	// The wipe honors the same cross-process lock as every other
 	// token-cache.yaml write: an unlocked Remove can interleave with a
 	// concurrent flock-held read-modify-write, whose write-back then
-	// silently resurrects the "deleted" entries — the lost-update class the
+	// silently resurrects the "deleted" entries - the lost-update class the
 	// flock exists to close. The lock file is separate from the data file,
 	// so removing the data file under the lock is safe.
 	return f.withCacheLock(func() error {
@@ -445,7 +445,7 @@ func (f *fileStore) DeleteAllCachedCreds() error {
 func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// Lock-free read: no flock needed for a pure read — atomic-rename writes
+	// Lock-free read: no flock needed for a pure read - atomic-rename writes
 	// keep reads consistent.
 	m, err := f.readCache()
 	if err != nil {
@@ -466,7 +466,7 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 			Expiry:  cred.Expiry,
 		}
 		if info.Name == "" {
-			// Legacy bare entry: no record fields — surface the raw key as the name.
+			// Legacy bare entry: no record fields - surface the raw key as the name.
 			info.Name = key
 		}
 		out = append(out, info)
@@ -507,13 +507,13 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 }
 
 // keyringStore keeps long-lived login tokens in the OS keychain, but forwards
-// the ephemeral exec-cred cache to a file store — the keychain has no list API,
+// the ephemeral exec-cred cache to a file store - the keychain has no list API,
 // and a single file is an enumerable single source of truth.
 type keyringStore struct {
 	cache   CredStore
 	pinHint string // non-empty when selected via the auto pin (Task 2 uses it)
 	// notices is the SAME buffer as cache's (both constructed from one
-	// newNoticeBuffer() call below) — one buffer, not two merged on drain,
+	// newNoticeBuffer() call below) - one buffer, not two merged on drain,
 	// so DrainNotices sees a loose-permission notice from the wrapped file
 	// cache and a keychain-unreachable notice from this store in true
 	// record order.
@@ -536,12 +536,12 @@ func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 func (k *keyringStore) DrainNotices() []string { return k.notices.DrainNotices() }
 
 // keyringUnreachable reports whether err is a backend-unreachable keyring
-// failure — a transport/connection-class error (Linux: godbus "no session
+// failure - a transport/connection-class error (Linux: godbus "no session
 // bus" on headless; macOS: locked/unavailable Keychain; Windows:
-// Credential Manager transport) — as opposed to a clean miss
+// Credential Manager transport) - as opposed to a clean miss
 // (keyring.ErrNotFound, which is NOT unreachable) or an oversized-value
-// failure (keyring.ErrSetDataTooBig — wincred rejects a Set over 2560
-// bytes, macOS's security CLI over 4096 — a data-size problem, not a
+// failure (keyring.ErrSetDataTooBig - wincred rejects a Set over 2560
+// bytes, macOS's security CLI over 4096 - a data-size problem, not a
 // connectivity one). go-keyring exposes no typed transport errors, so any
 // other non-miss failure is treated as unreachable; for reads that errs
 // toward resilience, and the write path hard-fails either way.
@@ -562,7 +562,7 @@ func (k *keyringStore) GetToken(ref ServerRef) (string, error) {
 		// working after an upgrade re-pin; they age out via logout/re-login.
 		return k.cache.GetToken(ref)
 	}
-	// Backend unreachable (XP-6): degrade the READ to the file store — a
+	// Backend unreachable (XP-6): degrade the READ to the file store - a
 	// valid token in credentials.yaml must keep working on a machine whose
 	// pinned keychain is temporarily unusable (headless SSH, locked
 	// keychain). Reads create no new plaintext, so this is pure resilience;
@@ -572,12 +572,12 @@ func (k *keyringStore) GetToken(ref ServerRef) (string, error) {
 	case ferr == nil:
 		return ftok, nil
 	case errors.Is(ferr, ErrNoToken):
-		// Double miss: surface the keyring error, not ErrNoToken — the
+		// Double miss: surface the keyring error, not ErrNoToken - the
 		// token may exist in the unreachable keychain, and "no stored
 		// token" would misread as logged-out.
 		return "", fmt.Errorf("keyring get %q: %w%s", ref.Name, err, k.pinHint)
 	default:
-		// The file store FAILED (malformed/unreadable credentials.yaml) —
+		// The file store FAILED (malformed/unreadable credentials.yaml) -
 		// a distinct problem the user must see; don't mask it as a
 		// keychain-only issue.
 		return "", fmt.Errorf("keyring get %q: %w%s; file credential store: %w", ref.Name, err, k.pinHint, ferr)
@@ -654,7 +654,7 @@ func (k *keyringStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitO
 }
 
 // priorState classifies where the effective prior token for ref lives and
-// returns the keychain's own raw prior when it holds one — the only value a
+// returns the keychain's own raw prior when it holds one - the only value a
 // compensation may restore. The classification is fixed before the write
 // and never revised by the read-back.
 func (k *keyringStore) priorState(ref ServerRef) (raw string, hasKeyringPrior bool, src PriorSource) {
@@ -679,13 +679,13 @@ func (k *keyringStore) priorState(ref ServerRef) (raw string, hasKeyringPrior bo
 }
 
 // setError renders a failed keychain write. XP-6 write path: NEVER silently
-// degrade a login write to the plaintext file — the pin's guarantee is that
+// degrade a login write to the plaintext file - the pin's guarantee is that
 // a transient keychain failure cannot downgrade the machine's storage.
 // Refuse with the explicit opt-in remedy instead.
 func (k *keyringStore) setError(ref ServerRef, err error) error {
 	if keyringUnreachable(err) {
 		return fmt.Errorf(
-			"keyring set %q: %w — credential keychain is unreachable (locked keychain? no D-Bus session?); the token was NOT stored; set %s=file to store credentials in a permission-restricted file instead, or restore keychain access%s",
+			"keyring set %q: %w - credential keychain is unreachable (locked keychain? no D-Bus session?); the token was NOT stored; set %s=file to store credentials in a permission-restricted file instead, or restore keychain access%s",
 			ref.Name, err, EnvCredentialStore, k.pinHint)
 	}
 	return fmt.Errorf("keyring set %q: %w%s", ref.Name, err, k.pinHint)
@@ -697,12 +697,12 @@ func (k *keyringStore) DeleteToken(ref ServerRef) error {
 	}
 	err := keyringBackend.Delete(keyringService, ref.Name)
 	if keyringUnreachable(err) {
-		// XP-6: treat unreachable like a miss — delete the file store below
-		// (removing plaintext is strictly safe) — but say so: the keychain
+		// XP-6: treat unreachable like a miss - delete the file store below
+		// (removing plaintext is strictly safe) - but say so: the keychain
 		// copy, if any, could not be checked. auth logout's DeleteLoginToken
 		// independently surfaces keyring errors, so nothing is silently
 		// left behind on that path.
-		k.notices.record(fmt.Sprintf("keyring delete %q: %v — keychain unreachable, deleted the file store only%s", ref.Name, err, k.pinHint))
+		k.notices.record(fmt.Sprintf("keyring delete %q: %v - keychain unreachable, deleted the file store only%s", ref.Name, err, k.pinHint))
 	}
 	// Read-through symmetry with GetToken: a token may live in the file store
 	// under an earlier "file" pin, so clear it here too (absent is not an error).
@@ -724,9 +724,9 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 
 // DeleteTokenEverywhere is single-server logout's delete point (ARCHITECTURE.md): it
 // deletes a server's login token from BOTH backends, unconditionally and
-// independently of policy — read-through made the file store part of the
+// independently of policy - read-through made the file store part of the
 // effective read path under every policy, so every logout must delete it, and
-// the keychain may still hold a token from before a backend flip — AND
+// the keychain may still hold a token from before a backend flip - AND
 // deletes every exec-credential cache entry cached against serverURL's host
 // (the cache is file-backed regardless of policy, CS-5). No backend's
 // failure short-circuits another; per-backend errors are joined so a live
@@ -739,20 +739,20 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 // embeds the config-entry name only by kubeconfig naming convention, so
 // matching by name is structurally unreliable, while over-deleting a
 // neighbor account on the same host costs it one silent re-auth on next use
-// (the exec plugin re-creates transparently) — under-deleting leaves a live
+// (the exec plugin re-creates transparently) - under-deleting leaves a live
 // credential behind after the user asked to log out, the exact failure this
 // function exists to prevent.
 //
 // `logout --all` does NOT loop this per server: deleting N servers' worth of
 // host-scoped cache entries one at a time costs O(servers × cache entries)
-// of the same file, and — unlike a single-server logout, which has no other
-// way to reach a cache entry cached against a server no longer configured —
+// of the same file, and - unlike a single-server logout, which has no other
+// way to reach a cache entry cached against a server no longer configured -
 // still misses orphaned/bare entries that match no configured server. See
 // DeleteAllExecCache, which `--all` calls once instead.
 func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, policy string) (fromBackends, deletedCache, notices []string, err error) {
 	fromBackends, notices, err = DeleteLoginToken(ctx, dir, ref, policy)
 	// cacheStore is a throwaway *fileStore never exposed to any caller as a
-	// NoticeSource — the same reasoning DeleteLoginToken's own throwaway fs
+	// NoticeSource - the same reasoning DeleteLoginToken's own throwaway fs
 	// documents below: a loose-permission notice on token-cache.yaml would
 	// otherwise be drained by no one and silently lost.
 	cacheStore := newFileStore(dir, &noticeBuffer{})
@@ -767,7 +767,7 @@ func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, polic
 // DeleteLoginToken deletes a server's login token from the keychain, file
 // store, and every helper the records file says was asked to store a
 // credential for the server. The exec union covers: the current policy's
-// helper (with the current identity) and every older record — so a policy
+// helper (with the current identity) and every older record - so a policy
 // change between login and logout never strands a helper credential. Used directly by
 // DeleteTokenEverywhere (single-server logout) and by `logout --all` (which deletes
 // every configured server's token this way, then wipes the exec-credential
@@ -777,17 +777,17 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 	if kerr := keyringBackend.Delete(keyringService, ref.Name); kerr == nil {
 		from = append(from, "keychain")
 	} else if errors.Is(kerr, keyring.ErrNotFound) {
-		// nothing stored in the keychain backend — fine
+		// nothing stored in the keychain backend - fine
 	} else if keyringUnreachable(kerr) {
 		// Mirror keyringStore.DeleteToken's XP-6 degrade: an unreachable
 		// keychain must not turn `auth logout` into a hard failure when
 		// the file store still deletes cleanly. No store receiver exists
 		// here (DeleteLoginToken is a package-level function) to buffer
 		// this on, so it rides the return value straight to the caller
-		// instead — the command body appends it to Result.Warnings, or it
+		// instead - the command body appends it to Result.Warnings, or it
 		// rides the resulting error via WithWarnings if a later step
 		// fails.
-		notices = append(notices, fmt.Sprintf("keyring delete %q: %v — keychain unreachable, deleted the file store only", ref.Name, kerr))
+		notices = append(notices, fmt.Sprintf("keyring delete %q: %v - keychain unreachable, deleted the file store only", ref.Name, kerr))
 	} else {
 		errs = append(errs, fmt.Errorf("keyring delete %q: %w", ref.Name, kerr))
 	}
@@ -800,7 +800,7 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 			from = append(from, "file")
 		}
 	case errors.Is(terr, ErrNoToken):
-		// nothing stored in the file backend — fine
+		// nothing stored in the file backend - fine
 	default:
 		// NEVER report a successful delete when the file store is
 		// unreadable/corrupt: a live plaintext token may remain.
@@ -808,13 +808,13 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 	}
 
 	// Exec helpers: erase through the union of the current policy's helper
-	// (with the current identity) and every recorded entry for this server —
+	// (with the current identity) and every recorded entry for this server -
 	// a policy change between login and logout must not strand a helper
 	// credential. The records lock spans erase + unrecord.
 	// One deduplicated target list, in a stable order: the policy's helper
 	// (when any) first, then the recorded entries as stored. Dedup is
-	// helperRecords.add — the same append-if-absent every record write
-	// uses — on a throwaway in-memory list (its dirty flag is never read
+	// helperRecords.add - the same append-if-absent every record write
+	// uses - on a throwaway in-memory list (its dirty flag is never read
 	// here), so the package has exactly one dedup implementation.
 	var targets helperRecords
 	if name, ok := execHelperName(policy); ok {
@@ -838,7 +838,7 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 		errs = append(errs, lerr)
 	}
 	// fs is a throwaway *fileStore never exposed to any caller as a
-	// NoticeSource — its own buffer (a loose-permission notice on
+	// NoticeSource - its own buffer (a loose-permission notice on
 	// credentials.yaml, say) would otherwise be drained by no one.
 	notices = append(notices, fs.DrainNotices()...)
 	return from, notices, errors.Join(errs...)
@@ -876,18 +876,18 @@ func eraseHelperCredential(dir string, e HelperRecord) (deleted bool, err error)
 }
 
 // DeleteAllExecCache wipes the ENTIRE exec-credential cache file in one
-// operation and returns the keys it removed — the cheap, complete
+// operation and returns the keys it removed - the cheap, complete
 // counterpart to DeleteTokenEverywhere's per-server host-scoped delete, used by `logout
 // --all`. A single full-file wipe, rather than N per-server host-scoped
 // deletes, is both cheaper (one read-and-truncate instead of
 // O(servers × cache entries)) and more complete: it also catches orphaned
 // entries (a legacy bare entry with no Server field, or one cached against a
-// server later removed from config.yaml) that no per-server delete — keyed to
-// a currently-configured server's host — could ever reach.
+// server later removed from config.yaml) that no per-server delete - keyed to
+// a currently-configured server's host - could ever reach.
 //
 // notices carries any notice the throwaway *fileStore this function
 // constructs records on its own buffer (a loose-permission finding on
-// token-cache.yaml, say) — that buffer is never exposed to any caller as a
+// token-cache.yaml, say) - that buffer is never exposed to any caller as a
 // NoticeSource, so it must be drained and returned here instead of left to
 // go out of scope unread, on every return path including the error ones.
 func DeleteAllExecCache(dir string) (keys, notices []string, err error) {
@@ -913,12 +913,12 @@ func DeleteAllExecCache(dir string) (keys, notices []string, err error) {
 // The target identity is computed via CanonicalServerIdentity (full canonical
 // URL, scheme included). For current-format records whose Server carries a
 // full URL (contains "://"), the comparison is a byte-for-byte equality
-// check against the target identity — http://host and https://host are
+// check against the target identity - http://host and https://host are
 // therefore distinct. For legacy records whose Server carries only a host
 // (no scheme), the record is normalized using the target's scheme and
 // compared by canonical host; HOST:80 deletes for http://host and HOST:443
 // deletes for https://host. A legacy record matches either scheme's delete
-// for the same host (unavoidable — the record carries no scheme; failing
+// for the same host (unavoidable - the record carries no scheme; failing
 // to delete is worse than over-deleting).
 func DeleteExecCacheForServer(store CredStore, serverURL string) ([]string, error) {
 	identity := CanonicalServerIdentity(serverURL)
@@ -1005,12 +1005,12 @@ func ServerHost(raw string) string {
 }
 
 // OpenStore selects a store by policy. policy is the config-file-level
-// declaration; RANCHER_CLI_CREDENTIAL_STORE, when set, outranks it — same
-// precedence as everywhere else env beats config — so an explicit "keychain"
+// declaration; RANCHER_CLI_CREDENTIAL_STORE, when set, outranks it - same
+// precedence as everywhere else env beats config - so an explicit "keychain"
 // argument here can still resolve to the file backend under that env var.
 // Explicit policies ("keychain"/"file") are honored directly and never
 // consult the pin. "auto" reads the pin; when unpinned it probes ONCE, pins
-// the outcome, and produces a notice — discarded here (use OpenStoreWithNotice
+// the outcome, and produces a notice - discarded here (use OpenStoreWithNotice
 // on the login path, or NewLazyStore on the lazy path, to route the notice).
 // Unknown policies are hard errors (CS-6).
 func OpenStore(policy, dir string) (CredStore, error) {
@@ -1038,8 +1038,8 @@ func execHelperName(policy string) (string, bool) {
 
 // checkPolicy returns CS-6's error for an unknown effective policy value p.
 // Both openStoreResolved and NewLazyStore call this so the valid-policy
-// allowlist is defined exactly once — adding a new backend means updating
-// this one allowlist — both paths share it, so they cannot silently diverge.
+// allowlist is defined exactly once - adding a new backend means updating
+// this one allowlist - both paths share it, so they cannot silently diverge.
 func checkPolicy(p string) error {
 	if name, ok := execHelperName(p); ok {
 		if !credhelper.ValidHelperName(name) {
@@ -1121,7 +1121,7 @@ var keyringProbe = func() bool {
 
 // keyringUsable runs keyringProbe bounded to keyringProbeTimeout, treating a
 // timeout as unusable. The probe goroutine may outlive the timeout (the exec
-// is not cancellable) — acceptable for a once-per-login probe. probe/timeout
+// is not cancellable) - acceptable for a once-per-login probe. probe/timeout
 // are snapshotted before the goroutine starts so a test restoring the package
 // vars right after the timeout fires never races with the leaked goroutine's
 // read of them. Package var so tests can count/stub probes.
@@ -1163,7 +1163,7 @@ func resetKeyringUsableCache() {
 // so the next call to keyringUsableOnce re-runs the probe. It registers a
 // t.Cleanup that resets the cache again at test teardown, so later tests in
 // the same process get a fresh probe too. Call this from any package whose
-// tests need a clean probe — the unexported resetKeyringUsableCache is not
+// tests need a clean probe - the unexported resetKeyringUsableCache is not
 // reachable outside this package.
 //
 // The calling test MUST NOT use t.Parallel(): keyringUsable and the cache are

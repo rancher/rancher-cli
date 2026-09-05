@@ -100,7 +100,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 
 	// The three probes below are independent network calls (version, identity,
 	// token) with nothing but eff in common; run them concurrently via
-	// errgroup (already a repo dependency — internal/engine/inspect/images.go
+	// errgroup (already a repo dependency - internal/engine/inspect/images.go
 	// uses the same pattern) rather than tripling/quadrupling auth status's
 	// wall-clock latency running them one after another. Each probe writes
 	// only to its own dedicated result variables, so there is no data race
@@ -108,7 +108,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	// group (they self-degrade to null+warning), so g.Wait()'s return is
 	// always nil. The result/warning ASSEMBLY below happens only after
 	// g.Wait() joins all three, in a FIXED field order (version, identity,
-	// token) — so the payload and warnings list stay deterministic
+	// token) - so the payload and warnings list stay deterministic
 	// regardless of which goroutine happens to finish first.
 	var (
 		rancherVersion *string
@@ -177,7 +177,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 // non-auto credential policy and an auto policy on a fresh machine before
 // any pin is recorded both produce a legitimately empty value that warrants
 // the same honest marker.
-// Warnings are NOT duplicated here — they arrive on stderr via the
+// Warnings are NOT duplicated here - they arrive on stderr via the
 // pipeline's stderr mirror.
 func renderAuthCheckText(
 	ok bool,
@@ -255,7 +255,7 @@ func renderAuthCheckText(
 }
 
 // authCheckSectionHeaders is the fixed, always-present section header set
-// renderAuthCheckText emits — every one of them, every call, regardless of
+// renderAuthCheckText emits - every one of them, every call, regardless of
 // which sub-objects came back null.
 var authCheckSectionHeaders = map[string]bool{
 	"AUTH STATUS": true, "VERSIONS": true, "IDENTITY": true,
@@ -264,7 +264,7 @@ var authCheckSectionHeaders = map[string]bool{
 
 // styleAuthCheckText applies auth status's bold spans to text, the plain
 // rendering renderAuthCheckText already produced: every section header
-// (bold, whole line), plus the "  ok: false" row in yellow — only the false
+// (bold, whole line), plus the "  ok: false" row in yellow - only the false
 // case; a healthy "  ok: true" stays plain, matching what an operator would
 // scan for.
 func styleAuthCheckText(text string, ok bool, s style.Style) string {
@@ -282,8 +282,8 @@ func styleAuthCheckText(text string, ok bool, s style.Style) string {
 
 // checkMinRancherVersion evaluates the server's stamped version (from GET
 // /rancherversion) against config.MinRancherVersion (PS-8, warn-only floor).
-// Any failure to read it at all — connectivity, a non-200 response, an
-// unrecognized body — is folded into the same "cannot determine" posture as
+// Any failure to read it at all - connectivity, a non-200 response, an
+// unrecognized body - is folded into the same "cannot determine" posture as
 // an unparseable value (a dev/head build): auth status's own success never
 // depends on this read.
 // rancherVersion is nil only on a read failure; supported is nil whenever
@@ -304,7 +304,7 @@ func (a authCheckCmd) checkMinRancherVersion(ctx context.Context, eff config.Eff
 // checkIdentity runs the PS-2 identity probe. A nil identity field (only
 // possible when a test builds authCheckCmd directly without going through
 // NewAuthCheck) is treated as "not wired for this check" and stays silently
-// null — auth status's own success never depends on it either way. Any other
+// null - auth status's own success never depends on it either way. Any other
 // failure (RBAC denial, timeout, the ext.cattle.io group/resource being
 // absent) degrades to null plus a warning, never a check failure.
 func (a authCheckCmd) checkIdentity(ctx context.Context, eff config.Effective) (any, string) {
@@ -319,19 +319,19 @@ func (a authCheckCmd) checkIdentity(ctx context.Context, eff config.Effective) (
 }
 
 // errV3TokenNotFound signals that the management.cattle.io/v3 Token object was
-// absent — the management API is always present on a running Rancher server, so
+// absent - the management API is always present on a running Rancher server, so
 // this unambiguously means the token was revoked or rotated, never a missing
 // API group. tokenWarning treats this specially to emit the "re-authenticate"
 // advisory rather than the ext.cattle.io group-absent wording.
 var errV3TokenNotFound = errors.New("v3 token not found on the server")
 
 // rotatedTokenAdvisory is the warning text for a token whose server-side
-// record is absent — shared by the v3 and ext NotFound branches of
+// record is absent - shared by the v3 and ext NotFound branches of
 // tokenWarning so the two messages cannot drift independently as the probe
 // grows.
-const rotatedTokenAdvisory = "token metadata unavailable: stored token not found on the server (revoked or rotated) — re-authenticate with rancher auth login"
+const rotatedTokenAdvisory = "token metadata unavailable: stored token not found on the server (revoked or rotated) - re-authenticate with rancher auth login"
 
-// probeToken runs the PS-2 token probe for the EFFECTIVE token (eff.Token —
+// probeToken runs the PS-2 token probe for the EFFECTIVE token (eff.Token -
 // never the stored credential directly, so a RANCHER_CLI_TOKEN override is
 // always the one reported on). The "ext/" prefix sniff is the one the
 // token package's bearer validation uses, applied here to the long-lived
@@ -340,12 +340,12 @@ const rotatedTokenAdvisory = "token metadata unavailable: stored token not found
 // For ext/ tokens the probe delegates to a.token (EffectiveTokenMetadata).
 // For all other tokens (management.cattle.io/v3, the common case for Rancher
 // 2.15 UI-created sessions) the probe delegates to a.v3token (V3TokenMetadata)
-// and reports the same five-field shape — name, kind (derived/session),
+// and reports the same five-field shape - name, kind (derived/session),
 // provider, expiresAt, current.
 //
 // A nil a.token or a.v3token (possible when a test builds authCheckCmd directly
 // without going through NewAuthCheck) is treated as "not wired for this check"
-// and stays silently null — the same "not wired" posture checkIdentity documents
+// and stays silently null - the same "not wired" posture checkIdentity documents
 // for a.identity == nil.
 //
 // An empty eff.Token (no token at all) returns (nil, nil): in practice
@@ -355,7 +355,7 @@ const rotatedTokenAdvisory = "token metadata unavailable: stored token not found
 //
 // probeToken returns the raw probe outcome rather than a classified warning:
 // classifying a NotFound (see tokenWarning) needs the version probe's result,
-// which — now that all three probes run concurrently — is only known once every
+// which - now that all three probes run concurrently - is only known once every
 // probe has joined, not from inside this one.
 func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any, error) {
 	if eff.Token == "" {
@@ -401,10 +401,10 @@ func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any
 
 // tokenWarning turns probeToken's raw outcome into the null-plus-warning text.
 // errV3TokenNotFound (a missing management.cattle.io/v3 Token object) always
-// maps to the "re-authenticate" advisory — the management API is always present,
+// maps to the "re-authenticate" advisory - the management API is always present,
 // so the absent object is unambiguously stale/revoked, not a missing API group.
 //
-// A CodeNotFound on the ext token GET is ambiguous by error code alone — it
+// A CodeNotFound on the ext token GET is ambiguous by error code alone - it
 // means either the ext.cattle.io group itself is absent (below the 2.14 floor)
 // or the group is present but the specific named token object was
 // deleted/rotated server-side (a stale RANCHER_CLI_TOKEN or credential-store
@@ -429,7 +429,7 @@ func tokenWarning(err error, supported *bool) string {
 // posture both identity and token metadata degrade to: RBAC denial, a
 // timeout, and the ext.cattle.io group/resource being missing (below the
 // 2.14 floor, or genuinely absent for some other reason on a >= 2.14
-// server) are all warn-only — auth status's own success (`ok`) never depends
+// server) are all warn-only - auth status's own success (`ok`) never depends
 // on either probe. The missing-group wording deliberately does not reuse
 // EvalMinVersionSupport's below-floor text: a server the version check
 // already reported as >= 2.14 must not also be told it is below the

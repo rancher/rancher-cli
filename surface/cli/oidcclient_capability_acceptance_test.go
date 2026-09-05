@@ -22,7 +22,7 @@ import (
 // (feature "oidc-provider"). It asserts the four
 // detector outcomes live through the pipeline on a GENERATED verb (get
 // oidcclient), and PRIME_REQUIRED before Plan on `create resource -f` with an
-// oidcclient manifest — the coverage rule's gating half going non-vacuous.
+// oidcclient manifest - the coverage rule's gating half going non-vacuous.
 
 // oidcAcceptanceServer serves /rancherversion, the oidc-provider Feature GET,
 // and the oidcclients list/get routes, counting target-resource hits
@@ -77,7 +77,7 @@ func oidcErrEnvelope(t *testing.T, stdout, stderr []byte) grErrEnvelope {
 
 // TestOIDCClientCapabilityFourOutcomesLive asserts the four detector outcomes
 // live through runtime.Run on a generated verb (get oidcclient): proceed
-// (target request runs), unknown (target request still runs — the
+// (target request runs), unknown (target request still runs - the
 // unknown-never-blocks rule), disabled (VALIDATION, zero target requests),
 // and PRIME_REQUIRED (zero target requests).
 func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
@@ -89,7 +89,7 @@ func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
 	t.Run("proceed: feature enabled", func(t *testing.T) {
 		// Prime edition, not community: a prime-classified feature's
 		// enabled reading is only trustworthy once the server is confirmed
-		// NOT community (see decideCapability) — a community edition with
+		// NOT community (see decideCapability) - a community edition with
 		// prime:true always resolves PRIME_REQUIRED regardless of enabled.
 		srv, hits := oidcAcceptanceServer(t,
 			`{"Version":"v2.16.0","RancherPrime":"true"}`,
@@ -165,7 +165,7 @@ func TestOIDCClientCapabilityFourOutcomesLive(t *testing.T) {
 }
 
 // oidcClientManifest writes a minimal, spec-complete OIDCClient manifest
-// (both TTL fields are CRD-required — see the kind row's doc comment) to a
+// (both TTL fields are CRD-required - see the kind row's doc comment) to a
 // temp file and returns its path.
 func oidcClientManifest(t *testing.T) string {
 	t.Helper()
@@ -182,7 +182,7 @@ func oidcClientManifest(t *testing.T) string {
 // TestCreateResourceOIDCClientManifestPrimeRequired asserts the create-gating
 // seam's real-table acceptance: `create resource -f` with an oidcclient
 // manifest resolves the row's Capability requirement via
-// createCmd.ResolveCapability and answers PRIME_REQUIRED BEFORE Plan runs —
+// createCmd.ResolveCapability and answers PRIME_REQUIRED BEFORE Plan runs -
 // the target oidcclients GVR sees zero requests, proving the capability
 // resolver stage runs strictly before the server-side dry-run.
 func TestCreateResourceOIDCClientManifestPrimeRequired(t *testing.T) {
@@ -210,7 +210,7 @@ func TestCreateResourceOIDCClientManifestPrimeRequired(t *testing.T) {
 
 // TestCreateResourceOIDCClientManifestDisabledAfterEnabled asserts the
 // disabled-after-enabled orphan case: a feature that was on and is now
-// explicitly off (spec.value=false) still serves its CRD — a create would
+// explicitly off (spec.value=false) still serves its CRD - a create would
 // otherwise commit against a controller that stopped reconciling. The
 // capability resolver must refuse before Plan makes any target request,
 // the same as the PRIME_REQUIRED path above.

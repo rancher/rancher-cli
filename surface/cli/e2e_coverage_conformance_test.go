@@ -15,7 +15,7 @@ import (
 
 // execLineRE matches a testscript line invoking the built binary: an
 // optional leading "[cond]" guard, then an optional "!" (testscript
-// negation) in its own group, before "exec rancher <args>" — testscript's
+// negation) in its own group, before "exec rancher <args>" - testscript's
 // own grammar strips a leading guard first and only then checks for "!", so
 // a valid conditional-negative line is always written "[cond] ! exec ...",
 // never the reverse. Group 1 is the guard, group 2 the negation marker (""
@@ -33,15 +33,15 @@ const minParsedInvocations = 374
 
 // manifestAttribution is the name+alias index every exec line's tokens are
 // matched against: every manifest command name (fixed and generated), plus
-// each command's aliases resolved via runtime.CommandAliasNames — the same
-// resolution matchesAlias (internal/runtime/schema_cmd.go) uses — so a fixed
+// each command's aliases resolved via runtime.CommandAliasNames - the same
+// resolution matchesAlias (internal/runtime/schema_cmd.go) uses - so a fixed
 // command growing an alias stays covered without this gate ever changing.
 type manifestAttribution struct {
 	names   map[string]bool
 	aliases map[string]string // "<verb> <alias>" -> real command name
 	// boolFlags maps every global flag spelling (each side of a "-o/--output"
 	// style name, split apart) to whether runtime.GlobalFlags declares it
-	// Type "bool" — the schema's own arity source, never a hand-kept list
+	// Type "bool" - the schema's own arity source, never a hand-kept list
 	// that can drift from it. A spelling absent from this map (an unknown or
 	// per-command flag) defaults to taking a value, matching prior behavior.
 	boolFlags map[string]bool
@@ -71,7 +71,7 @@ func buildManifestAttribution(t *testing.T) manifestAttribution {
 // name: skip leading global flag tokens (and their value, unless the flag is
 // the single-token "--x=y" form or a manifest-declared boolean flag, neither
 // of which consumes a following token), then match the longest manifest
-// command name (at most two words — no manifest command is longer) that is a
+// command name (at most two words - no manifest command is longer) that is a
 // prefix of what remains, resolving aliases the same way. Returns "", false
 // when no prefix of any length matches.
 func attribute(tokens []string, a manifestAttribution) (string, bool) {
@@ -126,7 +126,7 @@ func TestAttributeFlagArity(t *testing.T) {
 }
 
 // TestExecLineRE is execLineRE's grammar specification: which lines match,
-// which don't, and — for a match — the negation and command groups it
+// which don't, and - for a match - the negation and command groups it
 // extracts. Includes testscript's real guard-then-negation order and the
 // rejected reverse order testscript itself never accepts.
 func TestExecLineRE(t *testing.T) {
@@ -163,7 +163,7 @@ func TestExecLineRE(t *testing.T) {
 // TestEveryFixedCommandHasAnE2EScenario asserts that every fixed command in
 // the schema manifest is invoked by at least one `exec rancher` line
 // somewhere under e2e/scripts/*.txtar, and that the parser used to find
-// those invocations can attribute every such line to a real command — a
+// those invocations can attribute every such line to a real command - a
 // parser gap can otherwise hide a missing scenario just as effectively as
 // the scenario itself being absent.
 func TestEveryFixedCommandHasAnE2EScenario(t *testing.T) {
@@ -197,11 +197,11 @@ func TestEveryFixedCommandHasAnE2EScenario(t *testing.T) {
 			// A negated line (proving an unknown command is rejected) or a
 			// bare "<group> --generate-shell-completion" line (listing a
 			// group's own subcommands, naming none of them) is unattributable
-			// by design, not by parser gap — never counted as coverage,
+			// by design, not by parser gap - never counted as coverage,
 			// never flagged as a parser failure. Accepted limitation: a
 			// negated line naming a real, typo'd command (`! exec rancher
 			// craete token`) is excluded the same way and so passes this
-			// gate — testscript itself is what proves the typo's failure.
+			// gate - testscript itself is what proves the typo's failure.
 			if negated || slices.Contains(tokens, "--generate-shell-completion") {
 				continue
 			}
@@ -210,7 +210,7 @@ func TestEveryFixedCommandHasAnE2EScenario(t *testing.T) {
 	}
 
 	assert.GreaterOrEqual(t, total, minParsedInvocations,
-		"parsed only %d exec rancher invocations across e2e/scripts/*.txtar, want >= %d — the line regex may be matching too little",
+		"parsed only %d exec rancher invocations across e2e/scripts/*.txtar, want >= %d - the line regex may be matching too little",
 		total, minParsedInvocations)
 
 	slices.Sort(unattributed)

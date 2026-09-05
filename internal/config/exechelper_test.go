@@ -120,7 +120,7 @@ func fakeHelperState(t *testing.T, statePath string) (map[string]string, []strin
 }
 
 // waitForLocked starts cmd and blocks until it prints "locked" (the fake
-// helper's lockhold mode prints it AFTER flock acquisition) — so the parent
+// helper's lockhold mode prints it AFTER flock acquisition) - so the parent
 // can never race the child to the lock. The read runs in a goroutine and is
 // raced against a 5s timer: a blocking pipe read cannot observe a deadline
 // by itself, and a child that never writes would otherwise hang the test.

@@ -26,13 +26,13 @@ import (
 var clustersGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
 
 // rootTimeout bounds the rootClient's HTTP requests. A package var (rather
-// than a constant) so tests can shrink it — mirrors keyringProbeTimeout's
+// than a constant) so tests can shrink it - mirrors keyringProbeTimeout's
 // test-shrinkable pattern in internal/config/credstore.go.
 var rootTimeout = 30 * time.Second
 
 // clientFactory implements engine.ClusterClientFactory for one invocation.
 // Config + credentials resolve exactly once (RF-1): one server, one token,
-// one context snapshot per invocation — a concurrent `auth login` cannot
+// one context snapshot per invocation - a concurrent `auth login` cannot
 // swap identity between Plan and Execute.
 type clientFactory struct {
 	dir   string
@@ -45,7 +45,7 @@ type clientFactory struct {
 	// clustersOnce fetches the management cluster LIST at most once per
 	// invocation: ResolveCluster used to List on every unmemoized name, so
 	// resolving N distinct display names (create kubeconfig --clusters a,b,c)
-	// cost N network round trips — the name→id memo below only helped repeat
+	// cost N network round trips - the name→id memo below only helped repeat
 	// names. Every ResolveCluster call now matches against this one cached
 	// list instead.
 	clustersOnce sync.Once
@@ -99,7 +99,7 @@ func (f *clientFactory) Cluster(_ context.Context, clusterID string) (engine.Clu
 		return nil, clierr.New(clierr.CodeValidation, "cluster id must not be empty")
 	}
 	// Resolve config+credentials before locking: sync.Once serializes its own
-	// first run, so the mutex only needs to guard the cache map — not the
+	// first run, so the mutex only needs to guard the cache map - not the
 	// one-time config file read.
 	eff, err := f.resolve()
 	if err != nil {
@@ -148,7 +148,7 @@ func (f *clientFactory) Root() (engine.RootClient, error) {
 }
 
 // rootClient implements engine.RootClient over httpx: one TLS-configured
-// http.Client, bearer always attached (one policy — even for routes that
+// http.Client, bearer always attached (one policy - even for routes that
 // are unauthenticated server-side), GET only.
 type rootClient struct {
 	base  string
@@ -216,7 +216,7 @@ func (f *clientFactory) Identity() (string, error) {
 }
 
 // ServerBaseURL implements engine.ServerBaseURLProvider: the same
-// kube.BaseURL(eff.URL) value Root() bakes into rootClient.base — scheme
+// kube.BaseURL(eff.URL) value Root() bakes into rootClient.base - scheme
 // preserved, no trailing slash, honoring a RANCHER_CLI_URL override or an
 // http development server. Deliberately NOT eff.ServerName (Identity's
 // display-only value): that name is cleared under a URL override and
@@ -235,7 +235,7 @@ func (f *clientFactory) ServerBaseURL() (string, error) {
 // colon) the payload's "token" claim is used when "token_kind" is "v3"; for
 // ext-kind JWTs the backing token is an ext.cattle.io Token (a different
 // resource), so "" is returned and the guard skips. Unparseable bearers also
-// return "" — the guard is best-effort convenience, not an authorization
+// return "" - the guard is best-effort convenience, not an authorization
 // decision; the server enforces authz on the delete itself.
 // Returns "" when no credential is stored or resolved. The secret half is
 // never exposed.
@@ -254,7 +254,7 @@ func (f *clientFactory) ActiveTokenID() (string, error) {
 // or empty input.
 //
 // NO signature verification is performed: this is a local footgun guard
-// resolving the caller's own identity hint, not an authorization decision —
+// resolving the caller's own identity hint, not an authorization decision -
 // the server enforces authz on the delete itself.
 func jwtTokenID(bearer string) string {
 	if id, _, ok := strings.Cut(bearer, ":"); ok {
@@ -284,7 +284,7 @@ func jwtTokenID(bearer string) string {
 // clusters returns the management cluster LIST, fetched at most once per
 // invocation regardless of how many distinct names ResolveCluster is asked
 // to resolve. Concurrent callers block on the same sync.Once rather than
-// racing duplicate Lists — unlike the per-name memo below, there is no
+// racing duplicate Lists - unlike the per-name memo below, there is no
 // per-name work to save by racing, so there is nothing "benign" to gain by
 // not locking here.
 func (f *clientFactory) clusters(ctx context.Context) (*unstructured.UnstructuredList, error) {
@@ -300,8 +300,8 @@ func (f *clientFactory) clusters(ctx context.Context) (*unstructured.Unstructure
 }
 
 // ResolveCluster accepts a cluster id or display name (agents pass names;
-// rancher-ai-mcp accepts both — keep the semantics aligned). The matching now
-// delegates to projects.MatchOneOrError — the same match/error-construction
+// rancher-ai-mcp accepts both - keep the semantics aligned). The matching now
+// delegates to projects.MatchOneOrError - the same match/error-construction
 // contract ResolveProject and resolveUser already share (this was one of the
 // last two unmigrated copies; see MatchOneOrError's doc comment for the one
 // caller that deliberately still diverges).
@@ -351,7 +351,7 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 // runDeps bundles everything a command constructor might need for one run: the
 // per-run cluster client factory, the file source for -f input, and the
 // resolved config dir/store. Each entry's constructor takes what it needs and
-// ignores the rest, so a command is one entry row — no per-shape adapter or
+// ignores the rest, so a command is one entry row - no per-shape adapter or
 // wiring switch.
 type runDeps struct {
 	clients      engine.ClusterClientFactory
@@ -367,7 +367,7 @@ type runDeps struct {
 // adaptEntry wires one declarative entry through the single run path: it
 // resolves the config dir/store, builds the client factory and file source,
 // stamps server identity, derives the resolver binding, and runs the command
-// through the pipeline. The registry probe passes a zero runDeps — a
+// through the pipeline. The registry probe passes a zero runDeps - a
 // constructor MUST NOT touch its deps in Describe() (Describe is
 // dir/store/client-independent); one that does would panic here rather than in
 // production.
@@ -377,7 +377,7 @@ type runDeps struct {
 // Schema, completion, and wireEntry validation are unaffected.
 func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runDeps) runtime.Command) *ucli.Command {
 	// probe is the SAME zero-runDeps instance used for both Describe() and the
-	// ShellCompleter type-assert below — its dir field is permanently "". A
+	// ShellCompleter type-assert below - its dir field is permanently "". A
 	// completer wired here is later called with this exact probe at real
 	// TAB time too, so CompleteArgs must use only its dir PARAMETER, never
 	// receiver state (a completer reading its own dir field would pass a unit
@@ -426,7 +426,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				}
 				// The store is the drain handle for every notice recorded
 				// outside a Result (a lazy first-pin notice, a keychain
-				// degrade) — wired here so renderErr/renderResult can drain
+				// degrade) - wired here so renderErr/renderResult can drain
 				// it ahead of rendering.
 				if ns, ok := store.(runtime.NoticeSource); ok {
 					io.Notices = ns

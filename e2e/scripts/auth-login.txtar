@@ -1,4 +1,4 @@
-# config-flow: never sets RANCHER_CLI_URL/RANCHER_CLI_TOKEN — the point is to prove
+# config-flow: never sets RANCHER_CLI_URL/RANCHER_CLI_TOKEN - the point is to prove
 # the STORED token (E2E-A-002), not an env override, drives auth.
 
 stdin token.txt
@@ -24,7 +24,7 @@ jsonquery stdout 'data.deletedCache.#' 1
 # instead.
 stdin noverify-token.txt
 exec rancher auth login e2e-noverify --url https://127.0.0.1:1 --token-stdin --no-verify
-stdout 'token stored for e2e-noverify \(https://127.0.0.1:1\) — not verified'
+stdout 'token stored for e2e-noverify \(https://127.0.0.1:1\) - not verified'
 grep e2e-noverify $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 -- token.txt --

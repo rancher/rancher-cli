@@ -12,12 +12,12 @@ import (
 )
 
 // unresolved marks a dynamic (non-literal) fragment inside a flattened hint
-// string — a value flattenHint could not trace back to a literal (a function
+// string - a value flattenHint could not trace back to a literal (a function
 // parameter, a field, a call to a function outside this file set, or a
 // call/ident this walk's best-effort resolution gives up on). It uses the
 // Unicode object-replacement character, which cannot appear in ordinary Go
 // source text, so it can never collide with a real literal fragment and
-// never accidentally bridges two literal fragments across a dynamic gap —
+// never accidentally bridges two literal fragments across a dynamic gap -
 // the exact "string concatenation trick" this test must not be dodged by:
 // "prefix" + dynamicPart + "suffix" flattens to "prefix￼suffix", never
 // "prefixsuffix", so a banned pattern split across the dynamic boundary can
@@ -50,7 +50,7 @@ func hintGrammarViolation(literal string) string {
 	case placeholderRE.MatchString(literal):
 		return "contains a <placeholder> for a value that must either be spliced in or dropped"
 	case strings.Count(literal, "rancher ") > 1:
-		return "names more than one rancher invocation — not single-command-shaped"
+		return "names more than one rancher invocation - not single-command-shaped"
 	default:
 		return ""
 	}
@@ -61,7 +61,7 @@ func hintGrammarViolation(literal string) string {
 // by string concatenation, fmt.Sprintf, a local variable, or a call to a
 // same-tree helper function still gets its literal pieces checked. Anything
 // it cannot trace to a literal becomes the unresolved sentinel rather than
-// being silently skipped — see the sentinel's own doc for why that is safe.
+// being silently skipped - see the sentinel's own doc for why that is safe.
 type flattener struct {
 	funcsByName map[string][]*ast.FuncDecl
 }
@@ -146,7 +146,7 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 
 // flattenReturns resolves every return statement in fd's body against fd's
 // own local assignments, unioning every candidate result expression's
-// flattened literals — a helper with more than one return path (an enum
+// flattened literals - a helper with more than one return path (an enum
 // list vs. a formatted command, say) gets every path checked.
 func (fl *flattener) flattenReturns(fd *ast.FuncDecl, depth int) []string {
 	if fd.Body == nil {
@@ -169,9 +169,9 @@ func (fl *flattener) flattenReturns(fd *ast.FuncDecl, depth int) []string {
 
 // collectLocalAssigns scans body for every identifier assignment (`:=`, `=`,
 // `+=`, and `var` declarations) and returns every right-hand side ever bound
-// to each name. It is deliberately imprecise about control flow — collecting
+// to each name. It is deliberately imprecise about control flow - collecting
 // every candidate value a name could hold, not just the one live at a given
-// call site — because this is a lint-level check, not a compiler: a false
+// call site - because this is a lint-level check, not a compiler: a false
 // negative (missing a literal fragment) only means a hint that dodges
 // detection here, not a wrongly-failed build; a false positive would.
 func collectLocalAssigns(body *ast.BlockStmt) map[string][]ast.Expr {
@@ -201,16 +201,16 @@ func collectLocalAssigns(body *ast.BlockStmt) map[string][]ast.Expr {
 // TestHintGrammarConformance is the corpus-grammar tripwire: it statically
 // resolves every WithHint(...) call site's argument, and every composite
 // literal's Hint: field value, to their literal string content (as far as a
-// best-effort AST walk can trace it — see flattener) and fails the build on
+// best-effort AST walk can trace it - see flattener) and fails the build on
 // any literal that violates the hint-normalization ruling (a "run:" prefix,
 // an " OR " double-command, [optional] brackets, a <placeholder>, or more
 // than one rancher invocation in one hint). The Hint: field check catches
 // hints that reach the wire through a struct literal instead of
-// clierr.Error.WithHint — e.g. a domain-specific "hint" JSON field on a
+// clierr.Error.WithHint - e.g. a domain-specific "hint" JSON field on a
 // command's own result payload.
 //
-// Static AST resolution — rather than grepping the built binary's string
-// table or the raw source text — is the one approach here that cannot be
+// Static AST resolution - rather than grepping the built binary's string
+// table or the raw source text - is the one approach here that cannot be
 // dodged by string-concatenation tricks: banned substrings split across a
 // "prefix" + dynamicCall() + "suffix" expression are joined through the
 // dynamic gap by the unresolved sentinel (see its doc), so a pattern that
@@ -220,7 +220,7 @@ func collectLocalAssigns(body *ast.BlockStmt) map[string][]ast.Expr {
 //
 // A hint this walk cannot trace to any literal at all (built entirely from
 // values outside this file set, e.g. a config-file value) produces only the
-// unresolved sentinel, which matches no banned pattern — that is this
+// unresolved sentinel, which matches no banned pattern - that is this
 // approach's known blind spot, not a loophole: nothing here CAN dodge it by
 // construction (a real banned literal fragment, wherever it lives in the
 // expression tree, is still walked and checked), it is simply the limit of

@@ -2,7 +2,7 @@ env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # NSNone + Scope Management: the empty-version ext.cattle.io kinds route to
-# LOCAL unconditionally — no --cluster flag is even generated (Downstream-only
+# LOCAL unconditionally - no --cluster flag is even generated (Downstream-only
 # per getFlags), so this alone proves routing never touches a --cluster target.
 exec rancher get tokens -o json
 jsonquery stdout 'data.#' 0
@@ -16,12 +16,12 @@ exec rancher delete token ext-kinds-token --apply --yes
 
 exec rancher get kubeconfigs -o json
 
-# Unlike tokens (façade-instance-local; the derived-create path never
+# Unlike tokens (facade-instance-local; the derived-create path never
 # touches envtest), kubeconfig's list is NOT asserted empty here:
 # create-kubeconfig.txtar's own scenario persists a real named copy via
-# the façade's forwardNamedCreate (so a get/delete by the generated name
+# the facade's forwardNamedCreate (so a get/delete by the generated name
 # works end to end), and testscript scenarios share one envtest cluster
-# and run concurrently — the same reason the Feature list below is not
+# and run concurrently - the same reason the Feature list below is not
 # asserted empty either.
 exec rancher create resource -f kubeconfig.yaml --apply --yes
 exec rancher get kubeconfig ext-kinds-kubeconfig -o json
@@ -35,7 +35,7 @@ exec rancher delete kubeconfig ext-kinds-kubeconfig --apply --yes
 # lockedValue), which this harness does not emulate. The list is NOT
 # asserted empty: testscript scenarios share one envtest cluster and run
 # concurrently, and oidc-client-secrets.txtar legitimately seeds a real
-# "oidc-provider" Feature to exercise Prime-capability gating end to end —
+# "oidc-provider" Feature to exercise Prime-capability gating end to end -
 # a fixed, production-real name that cannot be scenario-namespaced the way
 # ordinary test objects are.
 exec rancher get features -o json

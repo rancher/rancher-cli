@@ -15,9 +15,9 @@ import (
 // (the legacy CLI's exec-credential plugin). It adapts the legacy flags onto
 // the native get-token machinery. --user is a cache-slot component and the
 // basic-auth username default; it carries no principal claim and does not
-// select among stored login credentials — stored-login selection follows the
+// select among stored login credentials - stored-login selection follows the
 // same server-ranking a nameless native call uses (current server, then sorted
-// name). Deprecated by design — it retires with the kubeconfigs that need it;
+// name). Deprecated by design - it retires with the kubeconfigs that need it;
 // agents and new kubeconfigs use `auth get-token`.
 //
 // The `token` entry in root.go is marked bare: adaptEntry never calls
@@ -93,7 +93,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	}
 	cluster := strings.TrimSpace(in.String("cluster"))
 
-	// Resolve the config directory via ResolveDir only — never config.Load —
+	// Resolve the config directory via ResolveDir only - never config.Load -
 	// so a broken config.yaml cannot block the fast path.
 	dir := c.dir
 	if dir == "" {
@@ -105,7 +105,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	}
 
 	// Fast path: probe token-cache.yaml directly (no config.yaml read needed).
-	// A broken config.yaml therefore cannot block a warm cache hit — this is
+	// A broken config.yaml therefore cannot block a warm cache hit - this is
 	// the guarantee the shim exists to provide for unattended exec-credential
 	// plugin invocations, and it is proven end-to-end by token-shim.txtar.
 	probedKey, noticed, r, hit, warn := shimProbeFlagCache(dir, name, server, cluster, p)
@@ -153,7 +153,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	// IO.Notices for this command, so notices the store buffered during the
 	// credential work above (a first-run keychain-unavailable fallback, a
 	// loose-permission finding) have no pipeline drain. Drain them here, on
-	// success and failure alike, and ride them on the Result or error — a
+	// success and failure alike, and ride them on the Result or error - a
 	// ShapeExecJSON result mirrors every warning to stderr as a
 	// "# warning:" line under every format, and kubectl surfaces an
 	// exec-credential plugin's stderr.
@@ -164,7 +164,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	// warn (the fast-path probe's loose-permission finding, if any) is
 	// independent of hit/miss AND of success/failure: the probe's global
 	// dedup already marked the path seen, so this is the only carrier left.
-	// The probe ran before any store work — it delivers first.
+	// The probe ran before any store work - it delivers first.
 	if warn != "" {
 		notices = append([]string{warn}, notices...)
 	}
@@ -179,16 +179,16 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 }
 
 // shimProbeFlagCache is the shim's fast-path cache probe: reads token-cache.yaml
-// directly via config.ReadOnlyCachedCred — no config.yaml parse required. The
+// directly via config.ReadOnlyCachedCred - no config.yaml parse required. The
 // probe itself is probeCacheWith (shared with probeFlagCache), so key
 // computation, hit construction, and the hit/miss/notice classification stay
 // in one place. Returns (key, noticed, result, hit, warn). noticed is true
 // when the probe fired a "cache read failed" notice (a real, non-ErrNoToken
 // error); the caller sets ProbedNoticed so runWithParams's resolved-key
-// re-check is quiet only when the fast path already emitted a notice — a
+// re-check is quiet only when the fast path already emitted a notice - a
 // clean miss does NOT silence a distinct error on the resolved key
 // (notice-zero fix). warn is ReadOnlyCachedCred's standalone-function
-// return notice (a loose-permission finding on token-cache.yaml) — already
+// return notice (a loose-permission finding on token-cache.yaml) - already
 // folded into r.Warnings on a hit; the caller must still carry it forward
 // on a miss, since r is discarded there.
 func shimProbeFlagCache(dir, name, server, cluster string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {

@@ -47,7 +47,7 @@ func TestSetCompletionNetworkFalse(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, cfg.Completion.Network)
 	// --network=false carries no capability note, so Text falls to the same
-	// fallback headline --timeout alone uses below — never empty.
+	// fallback headline --timeout alone uses below - never empty.
 	assert.Equal(t, "completion settings updated\n", res.Text)
 }
 

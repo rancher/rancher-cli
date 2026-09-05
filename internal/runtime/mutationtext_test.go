@@ -44,13 +44,13 @@ func TestMutationTextStyledTextBoldsFirstLineOnly(t *testing.T) {
 }
 
 // TestAccentLineColorsDetailLineYellowKeepingHeadlineBold asserts the common
-// accent shape (config delete-server's "was current — pointer cleared"): the
+// accent shape (config delete-server's "was current - pointer cleared"): the
 // accented detail line turns yellow, the headline keeps its own bold, and
 // every other line stays plain.
 func TestAccentLineColorsDetailLineYellowKeepingHeadlineBold(t *testing.T) {
 	t.Parallel()
-	res := TextLines("server x deleted", "was current — pointer cleared", "credentials removed (keychain)")
-	res = AccentLine(res, "was current — pointer cleared")
+	res := TextLines("server x deleted", "was current - pointer cleared", "credentials removed (keychain)")
+	res = AccentLine(res, "was current - pointer cleared")
 	enabled := style.Style{Enabled: true}
 
 	styled := res.StyledText(enabled)
@@ -67,10 +67,10 @@ func TestAccentLineColorsDetailLineYellowKeepingHeadlineBold(t *testing.T) {
 
 // TestAccentLineOnHeadlineReplacesBoldWithYellow asserts login --no-verify's
 // shape: when the accented line IS the headline, yellow replaces bold rather
-// than compounding with it — one emphasis, the alarming one.
+// than compounding with it - one emphasis, the alarming one.
 func TestAccentLineOnHeadlineReplacesBoldWithYellow(t *testing.T) {
 	t.Parallel()
-	headline := "token stored for prod (https://prod.example.com) — not verified"
+	headline := "token stored for prod (https://prod.example.com) - not verified"
 	res := TextLines(headline)
 	res = AccentLine(res, headline)
 	styled := res.StyledText(style.Style{Enabled: true})
@@ -83,7 +83,7 @@ func TestAccentLineOnHeadlineReplacesBoldWithYellow(t *testing.T) {
 // TestRenderResultStyledTextKeepsShownOnceBold to the helper-built case: a
 // DeliveryOnceOnly command that builds its Result from MutationText (the
 // real shape every once-only create/secret-op command uses) keeps BOTH the
-// helper's own headline bold and the shown-once line's bold — the two
+// helper's own headline bold and the shown-once line's bold - the two
 // treatments compose, neither one silences the other.
 func TestRenderResultMutationTextKeepsShownOnceBold(t *testing.T) {
 	t.Parallel()
@@ -94,7 +94,7 @@ func TestRenderResultMutationTextKeepsShownOnceBold(t *testing.T) {
 		Data:           map[string]string{"name": "x"},
 		Text:           mt.Text,
 		StyledText:     mt.StyledText,
-		OnceOnlyNotice: "this value is shown exactly once — store it now",
+		OnceOnlyNotice: "this value is shown exactly once - store it now",
 	}
 
 	var plainOut, styledOut bytes.Buffer

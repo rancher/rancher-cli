@@ -115,7 +115,7 @@ func TestLoginPlainExistingEntryRejectsUntrustedCert(t *testing.T) {
 	details, ok := ce.Details.(tlstrust.Details)
 	require.True(t, ok)
 	assert.Equal(t, tlstrust.KindUnknownAuthority, details.Kind)
-	assert.Empty(t, ce.Hint, "the new CA path is unknown — remediation belongs in the body, never a hint")
+	assert.Empty(t, ce.Hint, "the new CA path is unknown - remediation belongs in the body, never a hint")
 	assert.Contains(t, ce.Message, "rancher config update-server 'prod' --cacert")
 
 	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
@@ -123,8 +123,8 @@ func TestLoginPlainExistingEntryRejectsUntrustedCert(t *testing.T) {
 }
 
 // TestLoginPastedTokenRejectsUntrustedCertBeforePersisting asserts the same
-// gate for the interactive paste path (promptForToken), which — like
-// --token-stdin — makes no network call of its own before this preflight.
+// gate for the interactive paste path (promptForToken), which - like
+// --token-stdin - makes no network call of its own before this preflight.
 func TestLoginPastedTokenRejectsUntrustedCertBeforePersisting(t *testing.T) {
 	t.Parallel()
 	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
@@ -199,7 +199,7 @@ func TestLoginProviderFlowReloginUsesStoredCAWithoutCacert(t *testing.T) {
 
 // TestLoginPlainStoredCAPathMissingNamesEntry asserts the stored-path arm: once
 // a CA path stored with an entry disappears from disk, plain login is a hard
-// local error naming the entry and the exact repair command — never a
+// local error naming the entry and the exact repair command - never a
 // silent system-roots fallback.
 func TestLoginPlainStoredCAPathMissingNamesEntry(t *testing.T) {
 	t.Parallel()
@@ -213,7 +213,7 @@ func TestLoginPlainStoredCAPathMissingNamesEntry(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, `"prod"`)
 	assert.Contains(t, ce.Message, "rancher config delete-server 'prod'")
-	assert.Empty(t, ce.Hint, "no name-appropriate single command exists — restore the file, or delete-server — so no hint is emitted")
+	assert.Empty(t, ce.Hint, "no name-appropriate single command exists - restore the file, or delete-server - so no hint is emitted")
 }
 
 func TestLoginHostnameMismatchNeverSuggestsCacert(t *testing.T) {
@@ -275,7 +275,7 @@ func TestLoginPlainPreflightSkipsHTTPServers(t *testing.T) {
 // TestLoginPlainPreflightUnreachableServerNeverFailsLogin asserts that this
 // preflight narrows to certificate trust only: an unreachable server (no
 // TLS to classify at all) keeps a warn-only posture rather than becoming a
-// new hard failure mode for login — for a --token-stdin login, which makes
+// new hard failure mode for login - for a --token-stdin login, which makes
 // no other network call, this means login succeeds outright.
 func TestLoginPlainPreflightUnreachableServerNeverFailsLogin(t *testing.T) {
 	t.Parallel()
@@ -289,7 +289,7 @@ func TestLoginPlainPreflightUnreachableServerNeverFailsLogin(t *testing.T) {
 
 // TestLoginPlainPreflightRunsBeforeTokenRead asserts the ordering the created-token
 // safety depends on: a failed preflight must surface before any token is
-// read or auth flow launched — with garbage on stdin, the TLS_TRUST error
+// read or auth flow launched - with garbage on stdin, the TLS_TRUST error
 // (not a token-shape error) must come back.
 func TestLoginPlainPreflightRunsBeforeTokenRead(t *testing.T) {
 	t.Parallel()
@@ -304,7 +304,7 @@ func TestLoginPlainPreflightRunsBeforeTokenRead(t *testing.T) {
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code, "the preflight must fire before token reading/validation")
 }
 
-// TestLoginHTTPServerIgnoresStaleStoredCAFile: CA resolution is https-only —
+// TestLoginHTTPServerIgnoresStaleStoredCAFile: CA resolution is https-only -
 // a stored CA path that no longer exists must not break a login to an
 // http:// server that never verifies a certificate.
 func TestLoginHTTPServerIgnoresStaleStoredCAFile(t *testing.T) {

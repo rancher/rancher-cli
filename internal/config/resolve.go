@@ -18,7 +18,7 @@ var goos = runtime.GOOS
 // ResolveDir returns the config directory using precedence:
 // flag > RANCHER_CLI_CONFIG_DIR > $XDG_CONFIG_HOME/rancher > default.
 // The default is ~/.config/rancher, except on Windows where it is
-// os.UserConfigDir()/rancher (%APPDATA%\rancher) — the platform
+// os.UserConfigDir()/rancher (%APPDATA%\rancher) - the platform
 // convention. The Unix/macOS default is deliberately NOT moved to
 // UserConfigDir (that would relocate existing macOS users' config to
 // ~/Library/Application Support with no migration).
@@ -37,7 +37,7 @@ func ResolveDir(flagDir string) (string, error) {
 			return filepath.Join(dir, "rancher"), nil
 		}
 		// %AppData% unset (rare): fall through to the home-relative path
-		// rather than failing — same shape the CLI has always produced.
+		// rather than failing - same shape the CLI has always produced.
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -64,7 +64,7 @@ func ResolveCA(s string) (string, error) {
 }
 
 // SameServerURL reports whether a and b address the same server. Defined as
-// equality of credhelper.CanonicalServerURL outputs — the one server-identity
+// equality of credhelper.CanonicalServerURL outputs - the one server-identity
 // algorithm, shared with the helper wire protocol and helper records.
 // Falls back to exact string equality when either side fails to canonicalize,
 // so a malformed value never spuriously counts as a match.
@@ -86,7 +86,7 @@ type Effective struct {
 	// KnownServers is the configured server inventory (name → URL),
 	// carried so a downstream consumer that finds URL empty (no current
 	// server, no env) can answer with the re-login shortcut instead of
-	// the blank-machine wording — see ErrNotLoggedInFor and kube.RESTConfig.
+	// the blank-machine wording - see ErrNotLoggedInFor and kube.RESTConfig.
 	KnownServers map[string]string
 }
 
@@ -104,8 +104,8 @@ func IsSupportedSchemeURL(rawURL string) bool {
 	return IsSupportedScheme(cu)
 }
 
-// IsSupportedScheme reports whether canonicalURL — a value already produced
-// by credhelper.CanonicalServerURL — carries an http or https scheme. Cheap
+// IsSupportedScheme reports whether canonicalURL - a value already produced
+// by credhelper.CanonicalServerURL - carries an http or https scheme. Cheap
 // sibling of IsSupportedSchemeURL for callers that canonicalized (and paid
 // that parse) one line earlier; raw, unvalidated input goes through
 // IsSupportedSchemeURL instead.
@@ -118,7 +118,7 @@ func IsSupportedScheme(canonicalURL string) bool {
 // Ordering is deliberate: the effective URL and env token are resolved BEFORE
 // any credential-store access, so (a) RANCHER_CLI_TOKEN works even when the
 // configured store is broken (CI escape hatch), and (b) a stored token is
-// read only when the effective URL still addresses the server it belongs to —
+// read only when the effective URL still addresses the server it belongs to -
 // a divergent RANCHER_CLI_URL never receives another server's credential.
 func (c *Config) Effective(store CredStore) (Effective, error) {
 	var eff Effective
@@ -172,7 +172,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 // readOnlyActive and readOnlySources carry the process-wide resolved
 // read-only state (config readOnly + RANCHER_CLI_READONLY env + --read-only
 // flag, OR'd together), set once by the CLI adapter's root Before hook
-// before any command dispatches — a process-wide stash so the resolved state
+// before any command dispatches - a process-wide stash so the resolved state
 // crosses layers. internal/runtime must not import internal/config, so the runtime
 // pipeline and the schema command never call this directly: surface/cli
 // reads it into runtime.IO.ReadOnly, and passes ReadOnlyOverride itself as

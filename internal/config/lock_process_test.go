@@ -40,7 +40,7 @@ func startConfigWrite(t *testing.T, dir, serverName string, nolock bool) (<-chan
 	// One goroutine, strictly ordered: drain stdout to EOF, only then Wait.
 	// Wait closes the StdoutPipe when the process exits, so a concurrent
 	// Wait races the scanner and can kill it mid-drain ("read |0: file
-	// already closed"), silently dropping the child's final lines — the
+	// already closed"), silently dropping the child's final lines - the
 	// os/exec-documented misuse this harness shipped with, caught in CI by
 	// the in-band scanner-error instrumentation.
 	go func() {
@@ -49,7 +49,7 @@ func startConfigWrite(t *testing.T, dir, serverName string, nolock bool) (<-chan
 			lines <- sc.Text()
 		}
 		// A scanner read error would close the lines channel while the child
-		// may still be running — indistinguishable from a silent child exit.
+		// may still be running - indistinguishable from a silent child exit.
 		// Surface it as an in-band line so whatever assertion trips next
 		// names the real cause.
 		if err := sc.Err(); err != nil {
@@ -101,7 +101,7 @@ func waitExit(t *testing.T, waitCh <-chan error, who string, timeout time.Durati
 // TestConfigWriteNoLockLosesUpdate is the red test that asserts the lost-update
 // bug class: two processes that load config.yaml before either writes will
 // clobber each other's entry. The test PASSES by asserting the deterministic
-// loss — exactly one of two server entries survives. This is the bug class
+// loss - exactly one of two server entries survives. This is the bug class
 // that WithLock closes.
 //
 // Protocol: both children print "ready" → parent creates start → both poll
@@ -124,7 +124,7 @@ func TestConfigWriteNoLockLosesUpdate(t *testing.T) {
 	// Both are running. Release the start barrier so they both load.
 	createSignal(t, dir, "start")
 
-	// Both must report "loaded" — they now hold stale snapshots (both read
+	// Both must report "loaded" - they now hold stale snapshots (both read
 	// an empty Servers map before either wrote).
 	expectLine(t, linesA, "loaded", "A", 10*time.Second)
 	expectLine(t, linesB, "loaded", "B", 10*time.Second)
@@ -137,7 +137,7 @@ func TestConfigWriteNoLockLosesUpdate(t *testing.T) {
 
 	// Load the resulting config. Because both children loaded an empty map
 	// and each wrote a 1-entry map, the second write atomically overwrites
-	// the first — exactly one entry survives. The assertion documents the
+	// the first - exactly one entry survives. The assertion documents the
 	// bug class: concurrent unprotected writes produce a deterministic
 	// lost update.
 	cfg, err := Load(FilePath(dir))
@@ -150,7 +150,7 @@ func TestConfigWriteNoLockLosesUpdate(t *testing.T) {
 // second's load happens after the first's write, and both entries survive.
 //
 // The contention window (300ms) proves the second process is parked on the
-// flock and has not yet loaded — its "loaded" must appear after the first's
+// flock and has not yet loaded - its "loaded" must appear after the first's
 // "done" in the combined event stream.
 //
 // No t.Parallel(): uses fakeHelperOnce (shared package-level binary build).
@@ -163,7 +163,7 @@ func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
 	expectLine(t, linesA, "ready", "A", 10*time.Second)
 	expectLine(t, linesB, "ready", "B", 10*time.Second)
 
-	// Both are running and blocked on start. Release start — both will now
+	// Both are running and blocked on start. Release start - both will now
 	// race for the flock. One acquires it and loads; the other blocks.
 	createSignal(t, dir, "start")
 
@@ -192,7 +192,7 @@ func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
 		close(combined)
 	}()
 
-	// Wait for the FIRST "loaded" — the child that won the flock race. Note
+	// Wait for the FIRST "loaded" - the child that won the flock race. Note
 	// its identity as "first".
 	var firstWho string
 	select {
@@ -249,7 +249,7 @@ func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
 
 	// Assert event ordering: the second child's "loaded" must appear after
 	// the first child's "done". This proves the second read happened after
-	// the first write — the serialization the flock provides.
+	// the first write - the serialization the flock provides.
 	firstDoneIdx := -1
 	secondLoadedIdx := -1
 	for i, ev := range eventLog {
@@ -266,7 +266,7 @@ func TestConfigWriteWithLockPreservesUpdate(t *testing.T) {
 		"second child's loaded (idx %d) must come after first child's done (idx %d); log: %v",
 		secondLoadedIdx, firstDoneIdx, eventLog)
 
-	// Both server entries must survive — no lost update.
+	// Both server entries must survive - no lost update.
 	cfg, err := Load(FilePath(dir))
 	require.NoError(t, err)
 	assert.Contains(t, cfg.Servers, "server-a", "server-a must survive")

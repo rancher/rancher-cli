@@ -24,7 +24,7 @@ func ValidHelperName(name string) bool { return helperNameRE.MatchString(name) }
 // The canonical escape policy: url.Parse hands back an already-unescaped
 // host, and every byte of it is emitted as-is except the two byte values a
 // host escape can legitimately introduce AND Go's zone-id grammar accepts
-// back in escaped form — a literal '%' (RFC 6874's %25 prefixes an IPv6
+// back in escaped form - a literal '%' (RFC 6874's %25 prefixes an IPv6
 // zone id) becomes %25 and a space becomes %20. Nothing else is
 // re-escaped: net/url's own escaper rejects every other byte value when it
 // arrives as an escape inside a zone id (it only accepts them raw), so

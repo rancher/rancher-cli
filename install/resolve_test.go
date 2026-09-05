@@ -33,7 +33,7 @@ func TestDryRunResolvesStableLatest(t *testing.T) {
 
 // TestStable404WithTokenHintsAtScope covers F2: when a token is present and
 // the stable-latest endpoint returns 404, the error must suggest the token may
-// lack access (scope/SSO) — not just steer the user toward --pre.
+// lack access (scope/SSO) - not just steer the user toward --pre.
 func TestStable404WithTokenHintsAtScope(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
@@ -121,11 +121,11 @@ func TestDryRunWritesNothing(t *testing.T) {
 	_, _, code := runInstall(t, s, append(envHome(home), envTmpDir(tmp)...), "--dry-run")
 	require.Equal(t, 0, code)
 	assert.Equal(t, before, digestTree(t, home)+digestTree(t, tmp),
-		"dry-run must not touch the filesystem — HOME or TMPDIR")
+		"dry-run must not touch the filesystem - HOME or TMPDIR")
 }
 
 // digestTree captures type, mode, symlink target, and regular-file content
-// hash for every entry — mode+path alone would miss a rewritten receipt or
+// hash for every entry - mode+path alone would miss a rewritten receipt or
 // binary.
 func digestTree(t *testing.T, root string) string {
 	t.Helper()
@@ -378,7 +378,7 @@ func TestAuthenticatedBootstrapSnippet(t *testing.T) {
 			).Replace(s)
 		})
 	// Recording curl wrapper: logs every argv it receives, then execs the
-	// real curl — the seam proving the token travels ONLY via stdin config.
+	// real curl - the seam proving the token travels ONLY via stdin config.
 	wrapDir, argvLog, wrapEnv := recordingCurlWrapper(t)
 
 	cmd := exec.Command("sh", "-c", snippet) // fixed test literal; no user input reaches the shell
@@ -401,13 +401,13 @@ func TestAuthenticatedBootstrapSnippet(t *testing.T) {
 	argv, err := os.ReadFile(argvLog)
 	require.NoError(t, err, "the curl wrapper must have recorded invocations")
 	assert.NotContains(t, string(argv), "test-token-123",
-		"the token must never appear in any curl argv — stdin config only")
+		"the token must never appear in any curl argv - stdin config only")
 }
 
 // TestBootstrapFetchFailureRunsNothing runs the ANONYMOUS README one-liner
 // with an unreachable URL. The pipe form's documented trade-off: sh reads
 // EOF and exits 0 (POSIX sh has no pipefail), curl's error is the only
-// signal, and nothing executes — no filesystem effect anywhere.
+// signal, and nothing executes - no filesystem effect anywhere.
 func TestBootstrapFetchFailureRunsNothing(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()
@@ -421,7 +421,7 @@ func TestBootstrapFetchFailureRunsNothing(t *testing.T) {
 	cmd.Env = []string{"HOME=" + home, "PATH=" + toolPath(t, baseTools...), "TMPDIR=" + tmp}
 	before := digestTree(t, home)
 	out, runErr := cmd.CombinedOutput()
-	require.NoErrorf(t, runErr, "the pipe form exits 0 on a fetch failure — sh of empty input; output: %s", out)
+	require.NoErrorf(t, runErr, "the pipe form exits 0 on a fetch failure - sh of empty input; output: %s", out)
 	assert.Contains(t, string(out), "curl", "curl's error text is the user's only failure signal")
 	assert.Equal(t, before, digestTree(t, home), "nothing may execute on a failed fetch")
 	entries, readErr := os.ReadDir(tmp)
@@ -498,10 +498,10 @@ func TestBinDirFromEnv(t *testing.T) {
 // assertions are preserved.
 //
 // Row names:
-//   - NoGhStaysAnonymous    — no gh binary, no env token: requests anonymous
-//   - GhTokenFallback       — gh supplies a token; header set, never in argv
-//   - EnvTokenBeatsGhFallback — GH_TOKEN env var takes precedence; gh not queried
-//   - WrongHostDegrades     — gh exits non-zero for the host; install degrades silently
+//   - NoGhStaysAnonymous - no gh binary, no env token: requests anonymous
+//   - GhTokenFallback - gh supplies a token; header set, never in argv
+//   - EnvTokenBeatsGhFallback - GH_TOKEN env var takes precedence; gh not queried
+//   - WrongHostDegrades - gh exits non-zero for the host; install degrades silently
 func TestGhTokenFallback(t *testing.T) {
 	t.Parallel()
 
@@ -629,7 +629,7 @@ func TestGhTokenFallback(t *testing.T) {
 				argv, readErr := os.ReadFile(argvLog)
 				require.NoError(t, readErr, "curl wrapper must have recorded invocations")
 				assert.NotContains(t, string(argv), tc.wantNoTokenInArgv,
-					"token must never appear in any curl argv — stdin config only")
+					"token must never appear in any curl argv - stdin config only")
 			}
 		})
 	}
@@ -669,7 +669,7 @@ func TestTagGrammarSharedSource(t *testing.T) {
 
 // TestHostnameDerivationForGhToken verifies that resolve_token derives the
 // correct hostname from BASE_URL variants: plain host:port, userinfo
-// (user:pass@host), userinfo with @ in the password, and bracketed-IPv6 —
+// (user:pass@host), userinfo with @ in the password, and bracketed-IPv6 -
 // all must call gh auth token with only the bare hostname.
 func TestHostnameDerivationForGhToken(t *testing.T) {
 	t.Parallel()
@@ -699,7 +699,7 @@ func TestHostnameDerivationForGhToken(t *testing.T) {
 			wantHost: "::1",
 		},
 		{
-			// Password contains @ — only the greedy ##*@ strip reaches the
+			// Password contains @ - only the greedy ##*@ strip reaches the
 			// real host; the non-greedy #*@ form yields "ssw0rd@example.com".
 			name:     "userinfo-at-in-password",
 			baseURL:  "https://user:p@ssw0rd@example.com:8443/path",
@@ -734,7 +734,7 @@ func TestGhBootstrapSnippet(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
 	// Early access ships prereleases only, and the README one-liner carries
-	// --pre — the fixture mirrors that reality (--pre needs a JSON parser
+	// --pre - the fixture mirrors that reality (--pre needs a JSON parser
 	// on PATH, hence jq below).
 	writeRelease(s, "v0.1.0-alpha.1", false)
 
@@ -751,7 +751,7 @@ func TestGhBootstrapSnippet(t *testing.T) {
 		"esac\n")
 
 	// The README one-liner, byte-identical, with --dry-run appended to its
-	// flags — the stub gh serves install.sh for the contents-API call;
+	// flags - the stub gh serves install.sh for the contents-API call;
 	// RANCHER_CLI_INSTALL_BASE_URL redirects install.sh's curl calls.
 	snippet := `gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main" -H "Accept: application/vnd.github.raw" | sh -s -- --pre --dry-run`
 	assertSnippetMatchesDoc(t, "README.md", `gh api "repos/rancher/rancher-cli/contents/install.sh?ref=main"`,

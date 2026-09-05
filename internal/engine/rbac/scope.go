@@ -32,8 +32,8 @@ type Scope struct {
 // ResolveScope maps the --project/--cluster/--global flags to a Scope.
 // Exactly one scope must be selected; --project may be qualified by
 // --cluster (or the context cluster). Cluster scope requires the EXPLICIT
-// --cluster flag — the context-cluster fallback applies only inside
-// project resolution — so an unscoped invocation errors instead of
+// --cluster flag - the context-cluster fallback applies only inside
+// project resolution - so an unscoped invocation errors instead of
 // silently granting cluster-wide.
 func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (Scope, error) {
 	global := in.Bool("global")

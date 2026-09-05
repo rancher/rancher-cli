@@ -30,7 +30,7 @@ func (c *deploymentCmd) Describe() runtime.Descriptor {
 		Usage:   "Inspect a deployment and the pods it selects",
 		Desc: degradedContractDesc +
 			"Cluster resolution, the namespace, and the deployment GET are required and hard-error. " +
-			"Degradable section: pods (unavailable — the selector-scoped pod list; the pods field is null).",
+			"Degradable section: pods (unavailable - the selector-scoped pod list; the pods field is null).",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
@@ -101,10 +101,10 @@ type deploymentResult struct {
 
 // renderDeploymentText builds `inspect deployment`'s default-format text
 // (sibling of inspect cluster/pod's own text renderers): the deployment
-// identity, the replica summary, one line per matched pod in list order —
+// identity, the replica summary, one line per matched pod in list order -
 // "pods: unavailable" when the pods section is degraded (the list could not
 // be read; "none" would be indistinguishable from a selector matching zero
-// pods), "pods: none" only for a genuine empty match — and one line per
+// pods), "pods: none" only for a genuine empty match - and one line per
 // degraded finding (the block is omitted entirely when there are none).
 func renderDeploymentText(name, ns, cluster string, dep map[string]any, pods []map[string]any, degraded []sectionOutcome) runtime.Result {
 	ready, _, _ := unstructured.NestedInt64(dep, "status", "readyReplicas")

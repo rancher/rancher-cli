@@ -34,7 +34,7 @@ func leafOf(t *testing.T, c tls.Certificate) *x509.Certificate {
 // TestClassifyUntypedUnknownAuthorityLeafOnly is the live-incident repro: a
 // leaf issued by an absent CA, presented WITHOUT that CA (dynamiclistener's
 // leaf-only shape), failing with an untyped platform error. It must
-// classify unknownAuthority with the --cacert guidance — not invalidChain
+// classify unknownAuthority with the --cacert guidance - not invalidChain
 // with contact-the-operator.
 func TestClassifyUntypedUnknownAuthorityLeafOnly(t *testing.T) {
 	t.Parallel()
@@ -51,7 +51,7 @@ func TestClassifyUntypedUnknownAuthorityLeafOnly(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, KindUnknownAuthority, details.Kind)
 	assert.Equal(t, Fingerprint(leaf), details.Fingerprint,
-		"the candidate must be the presented leaf — the only pinnable certificate observed")
+		"the candidate must be the presented leaf - the only pinnable certificate observed")
 }
 
 // TestClassifyUntypedUnknownAuthorityFullChain: the same untrusted server
@@ -114,11 +114,11 @@ func TestClassifyUntypedHostnameMismatch(t *testing.T) {
 }
 
 // TestClassifyUntypedMatchingHostIsNotMismatch: a chain valid for the
-// dialed host (port stripped) must NOT read as hostnameMismatch — it falls
+// dialed host (port stripped) must NOT read as hostnameMismatch - it falls
 // through to the trust reasoning and classifies unknownAuthority. This
 // deliberately covers platform-only distrust of a sound chain (revoked
-// root, CT policy): the --cacert remedy is mechanically real there — a
-// pinned pool uses Go's verifier — and the details fingerprint supports the
+// root, CT policy): the --cacert remedy is mechanically real there - a
+// pinned pool uses Go's verifier - and the details fingerprint supports the
 // out-of-band check before anyone pins.
 func TestClassifyUntypedMatchingHostIsNotMismatch(t *testing.T) {
 	t.Parallel()
@@ -148,7 +148,7 @@ func TestClassifyUntypedEmptyHost(t *testing.T) {
 
 // TestClassifyUntypedExtraneousStaleCertDoesNotReadAsExpired: a server
 // bundling an unrelated expired certificate beside an in-window untrusted
-// leaf must classify unknownAuthority — the stale bystander is not on the
+// leaf must classify unknownAuthority - the stale bystander is not on the
 // leaf's signing path and its dates say nothing about why verification
 // failed.
 func TestClassifyUntypedExtraneousStaleCertDoesNotReadAsExpired(t *testing.T) {

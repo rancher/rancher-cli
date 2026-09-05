@@ -9,7 +9,7 @@ import (
 )
 
 // checkFlagValues scans argv for the space-form "--flag next-flag" pattern
-// where a value-taking flag's next token is itself a registered flag spelling —
+// where a value-taking flag's next token is itself a registered flag spelling -
 // the hallmark of an unset shell variable between two flags (e.g.
 // --cloud-credential $DEMO_CC --k8s-version with DEMO_CC unset). Returns a
 // VALIDATION error naming both flags on the first match; nil when clean.
@@ -51,7 +51,7 @@ func checkFlagValues(descriptorFlags []runtime.ArgSpec, argv []string, inComplet
 		if flagIsKnown(next, all) {
 			return clierr.New(clierr.CodeValidation,
 				fmt.Sprintf(
-					"flag %s got flag %s as its value — empty shell variable? check that the value for %s is set, or use %s=<value> to pass a literal flag-like string",
+					"flag %s got flag %s as its value - empty shell variable? check that the value for %s is set, or use %s=<value> to pass a literal flag-like string",
 					token, next, token, token))
 		}
 		// next starts with "-" but is not a registered flag (e.g. "-1.5"): valid value.

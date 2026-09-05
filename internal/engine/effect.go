@@ -15,12 +15,12 @@ import (
 // its submission against what the server accepted (create machine-config's
 // pruned-key warning, MC-12); PlanCreate delegates here, so every existing
 // create keeps its Effect byte-for-byte. The Effect carries no
-// contract/stability — the resolver Binding drives the pipeline's gates and
+// contract/stability - the resolver Binding drives the pipeline's gates and
 // the manifest is the only published source. resultKind names the Result
 // envelope kind.
-// effectCluster is the cluster the mutation semantically targets — NOT the
+// effectCluster is the cluster the mutation semantically targets - NOT the
 // proxy the client connects through (see PlanCreate's original PE-5 note).
-// displayKind is the kind table's canonical CLI name — the ONLY source for
+// displayKind is the kind table's canonical CLI name - the ONLY source for
 // default-format text (never resultKind, which is the envelope Result.Kind
 // and may be a Kubernetes/API identity such as "Cluster" or "Secret").
 // destructive is the caller's per-kind policy.
@@ -44,8 +44,8 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		// The committed identity is the RETURNED object's name — the real,
-		// server-assigned name (including a generateName result) — never
+		// The committed identity is the RETURNED object's name - the real,
+		// server-assigned name (including a generateName result) - never
 		// the dry-run preview's Effect.DisplayName, which a generateName
 		// caller (grant) may have rewritten to a "prefix*" placeholder.
 		res := runtime.MutationText(displayKind, created.GetName(), "created")
@@ -57,7 +57,7 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 }
 
 // PlanCreate previews a create via server-side dry-run and returns the
-// Effect plus the closure that performs the real create — the observed
+// Effect plus the closure that performs the real create - the observed
 // variant with the dry-run response discarded. See PlanCreateObserved for
 // the parameter contract.
 func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {

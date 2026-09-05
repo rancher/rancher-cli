@@ -19,7 +19,7 @@ type logoutCmd struct {
 
 // NewLogout builds `auth logout` (local): clear the stored login token for a
 // server and delete matching exec-credential cache entries via
-// config.DeleteTokenEverywhere — the single delete point (ARCHITECTURE.md). Keeps the
+// config.DeleteTokenEverywhere - the single delete point (ARCHITECTURE.md). Keeps the
 // server config entries; `auth delete-token` remains for clearing
 // cache entries outside a logout.
 func NewLogout(dir string) runtime.Command {
@@ -100,7 +100,7 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 // went. Silent success is for scripts (exit code + JSON envelope); a person
 // deserves the confirmation. It renders every deletedFrom entry, not just
 // the requested targets: logout --all's orphaned-helper sweep reports
-// records whose server name never made it into config (no URL known) — the
+// records whose server name never made it into config (no URL known) - the
 // text must not diverge from the JSON envelope for exactly the
 // crash-recovery case that sweep exists to catch. Logout never clears the
 // current-server pointer (including --all): the entry survives,
@@ -140,11 +140,11 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 
 // styleLogoutText applies auth logout's bold spans to text, the plain
 // rendering renderLogoutText already produced: each server's opener line
-// ("logged out of <name> (<url>)"), bold, whole line — its detail line
+// ("logged out of <name> (<url>)"), bold, whole line - its detail line
 // stays plain. openers is renderLogoutText's own per-server block count
 // (len(deletedFrom), the same map it iterates), so the opener lines are the
-// even-indexed lines up to openers*2 — a structural position, not a scan
-// for the "logged out of" text — leaving the optional trailing
+// even-indexed lines up to openers*2 - a structural position, not a scan
+// for the "logged out of" text - leaving the optional trailing
 // exec-credential cache-count line (which lands at that same index range's
 // end) untouched.
 func styleLogoutText(text string, openers int, s style.Style) string {
@@ -240,7 +240,7 @@ func writeLogoutStamps(cfg *config.Config, stamped bool, notices []string) []str
 // deleteAll is `logout --all`'s delete path: it deletes every target's login
 // token (both backends, same as deleteTargets) but wipes the WHOLE
 // exec-credential cache once via config.DeleteAllExecCache rather than
-// looping a per-server host-scoped delete — cheaper, and it also catches
+// looping a per-server host-scoped delete - cheaper, and it also catches
 // orphaned/bare cache entries that match no configured server (which no
 // per-server delete, keyed to a currently-configured server's host, could
 // ever reach). See DeleteAllExecCache's doc for why.
@@ -284,7 +284,7 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 // LogoutAllPartialFailure is deleteAll's structured payload for a
 // mid-sequence failure: everything already deleted before the failing step,
 // so a caller decoding the error sees exactly what succeeded rather than a
-// bare failure that looks like nothing happened — the credentials for
+// bare failure that looks like nothing happened - the credentials for
 // LoggedOut/DeletedFrom/DeletedCache are already gone regardless of which
 // later step failed.
 type LogoutAllPartialFailure struct {
@@ -310,22 +310,22 @@ func (p LogoutAllPartialFailure) TextDetails() []string {
 	if len(p.DeletedCache) > 0 {
 		lines = append(lines, "cached kubectl credentials removed: "+strings.Join(p.DeletedCache, ", "))
 	}
-	lines = append(lines, "those credentials are gone regardless of this failure — re-run auth logout --all to finish")
+	lines = append(lines, "those credentials are gone regardless of this failure - re-run auth logout --all to finish")
 	return lines
 }
 
 // deleteFailure shapes a delete-step failure: the caller's own cancellation
 // (Ctrl-C during a contended lock wait inside the delete) passes through
-// unchanged so errors.Is(err, context.Canceled) keeps working — dressing it
+// unchanged so errors.Is(err, context.Canceled) keeps working - dressing it
 // as a delete failure would send the user diagnosing helper problems.
 // Anything else keeps its classification (a lock timeout stays LOCK_TIMEOUT
 // and retryable) under the step-prefixed message, plus the
 // LogoutAllPartialFailure details so nothing already deleted is vaporized
-// just because a later step in the same --all run failed — its TextDetails
+// just because a later step in the same --all run failed - its TextDetails
 // projection's first line already names what was already logged out, so no
 // separate hint repeats the same fact. notices carries every notice
 // (keychain-unreachable degrades, say) already recorded by a step that ran
-// successfully before this one failed — the pipeline discards Result on an
+// successfully before this one failed - the pipeline discards Result on an
 // error return, so this is their only ride back to the operator.
 func deleteFailure(step string, err error, done []string, deletedFrom map[string][]string, deletedCache []string, notices []string) error {
 	return wrapUnlessCanceled(err, func(err error) error {

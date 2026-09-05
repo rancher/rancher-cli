@@ -16,7 +16,7 @@ import (
 
 // TestCompositesRejectProjectScope asserts PC-3's composite-rejection rule: the
 // non-project inspect composites bypass Route, so without an explicit check
-// the global --project flag would reach them and be silently ignored — the
+// the global --project flag would reach them and be silently ignored - the
 // exact no-op class DR-004 removed --project for.
 func TestCompositesRejectProjectScope(t *testing.T) {
 	tests := []struct {
@@ -250,7 +250,7 @@ func TestSectionsCancellationReturnsOriginalError(t *testing.T) {
 }
 
 // TestSectionsRejectsContractViolations covers the central validation. Every
-// case is a programmer error — the vocabulary, states, and target grammars
+// case is a programmer error - the vocabulary, states, and target grammars
 // are fixed in code and no server value can reach them.
 func TestSectionsRejectsContractViolations(t *testing.T) {
 	t.Parallel()
@@ -287,7 +287,7 @@ func TestSectionsRejectsContractViolations(t *testing.T) {
 }
 
 // TestOwnerTargetRoundTrip verifies the canonical encoding survives both the
-// core group and a grouped apiVersion, with and without a cluster prefix —
+// core group and a grouped apiVersion, with and without a cluster prefix -
 // the ambiguity a slash-joined target would have introduced.
 func TestOwnerTargetRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -363,8 +363,8 @@ func TestTargetEscapingStaysOneToOne(t *testing.T) {
 	assert.Equal(t, "plain", escapeTargetComponent("plain"), "an ordinary value is untouched")
 }
 
-// TestSectionsEscapesTokenTarget verifies a server-derived token target — a
-// container name, a cluster id — cannot break the owner-target grammar, and
+// TestSectionsEscapesTokenTarget verifies a server-derived token target - a
+// container name, a cluster id - cannot break the owner-target grammar, and
 // that the entry and its warning carry the same escaped value.
 func TestSectionsEscapesTokenTarget(t *testing.T) {
 	t.Parallel()

@@ -122,7 +122,7 @@ func (c skillInstallCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 	failed := false
 	for _, l := range leases {
 		// A changed target reports the version it now carries; a failed
-		// target reports none — nothing was installed there.
+		// target reports none - nothing was installed there.
 		o := skillinstall.Outcome{Target: l.Target(), Action: "changed", CLIVersion: c.version}
 		w, err := l.Install(c.version, force)
 		warnings = append(warnings, w...)

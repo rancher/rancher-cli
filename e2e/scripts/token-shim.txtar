@@ -1,6 +1,6 @@
 # Token shim end to end: a token derived from the stored login, warm cache
 # hit, distinct cache slots, and schema binding. The shim derives its token
-# from the stored login by design —
+# from the stored login by design -
 # kubeconfig exec-credential plugins run non-interactively, so the only
 # viable path is to consume the session credential that `auth login` already
 # stored. The different-user step succeeds (not fails) because the stored
@@ -25,7 +25,7 @@ jsonquery stdout kind ExecCredential
 ! jsonquery stdout status.token ''
 ! stderr .
 
-# Poison config.yaml then verify the warm hit still succeeds — this is the
+# Poison config.yaml then verify the warm hit still succeeds - this is the
 # end-to-end proof that resolveDeps is bypassed for the `token` entry (the
 # `token` entry is marked bare: true). The unit test
 # TestLegacyTokenCacheHitIgnoresBrokenConfig exercises Execute directly;

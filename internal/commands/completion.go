@@ -11,7 +11,7 @@ type completionCmd struct{}
 
 // NewCompletion builds the `completion <shell>` command: it emits an
 // in-repo, registry-wired shell completion script. This is deliberately our
-// own command rather than unhiding urfave's auto-appended built-in — that
+// own command rather than unhiding urfave's auto-appended built-in - that
 // built-in bypasses reg.Register entirely, so it would never appear in
 // `rancher schema`, and an advertised-surface CLI cannot have a load-bearing
 // command its own manifest denies exists.
@@ -39,7 +39,7 @@ func (completionCmd) Describe() runtime.Descriptor {
 
 // Execute renders the requested shell's script verbatim (RawBytes: no
 // envelope, identical output under every -o). shell is guaranteed present,
-// non-empty, and one of runtime.ShellCompletionShells() here — both the
+// non-empty, and one of runtime.ShellCompletionShells() here - both the
 // missing-arg and unknown-shell cases are the free Required/Enum VALIDATION
 // in runtime.validateInput, before Execute ever runs.
 func (completionCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
@@ -48,7 +48,7 @@ func (completionCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prom
 }
 
 // CompleteArgs implements runtime.ShellCompleter: the completion command
-// completes its own shell argument. view is unused — the shell list is fixed.
+// completes its own shell argument. view is unused - the shell list is fixed.
 func (completionCmd) CompleteArgs(_ context.Context, _ runtime.ConfigView) []string {
 	return runtime.ShellCompletionShells()
 }

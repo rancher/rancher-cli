@@ -10,13 +10,13 @@ import (
 // ScrubPaths returns a shallow copy of obj with every listed path deleted.
 // A path is a []string key sequence addressing object fields; segments are
 // fixed keys and never traverse arrays. The copy is shallow at the top
-// level: nested maps along a path are deep-copied only as far as needed —
-// and at most once per parent, even when several paths share one — so the
+// level: nested maps along a path are deep-copied only as far as needed -
+// and at most once per parent, even when several paths share one - so the
 // original objects are not mutated. Shared by the resources table's
 // -o json/yaml redaction (kind RedactPaths) and DiffObjects's skipped-path
 // scrub, so path-removal semantics cannot drift between the two. The two
-// callers have different stakes — RedactPaths hides credentials, the diff
-// scrub hides noise — so a semantics change for one (e.g. fail-closed on an
+// callers have different stakes - RedactPaths hides credentials, the diff
+// scrub hides noise - so a semantics change for one (e.g. fail-closed on an
 // unexpected shape, or descending into arrays) must deliberately consider
 // the other.
 func ScrubPaths(obj map[string]any, paths [][]string) map[string]any {
@@ -34,7 +34,7 @@ func ScrubPaths(obj map[string]any, paths [][]string) map[string]any {
 // credential back verbatim on the commit response even though it never
 // returns one on a later read. It removes the kind's declared redactPaths
 // (a named field like User's root-level password) and, for a sensitive
-// kind, a Secret-shaped payload's data/stringData — the same two guards
+// kind, a Secret-shaped payload's data/stringData - the same two guards
 // the patch preview-diff redaction applies, so the seams cannot silently
 // diverge on what counts as a credential. Every executor that places a
 // server-echoed object in Result.Data wraps itself here.

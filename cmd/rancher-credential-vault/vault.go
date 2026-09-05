@@ -18,7 +18,7 @@ import (
 // vaultHandler stores one secret per credential identity in KV v2 at
 // <mount>/data/<path>/<sha256hex(serverURL+"\n"+name)>. The CLI sends
 // canonical serverURLs (the wire contract); hex-only key segments make path
-// escape impossible whatever the inputs. erase uses the metadata endpoint —
+// escape impossible whatever the inputs. erase uses the metadata endpoint -
 // the data endpoint only soft-deletes the latest version, which would
 // violate the protocol's erase contract.
 //
@@ -93,7 +93,7 @@ func (h *vaultHandler) do(method, url string, body any) (int, []byte, error) {
 
 // httpError builds the error for a non-2xx Vault response: the verb, the
 // status, Vault's own error reason from the response body (the {"errors":
-// [...]} envelope, or raw text for a non-JSON body), and — on 403 only —
+// [...]} envelope, or raw text for a non-JSON body), and - on 403 only -
 // a parenthetical policy hint naming the capabilities the verb needs. The
 // body must lead: a 403 can be an invalid/expired token just as well as a
 // missing policy capability, and Vault's body says which (live-exercise
@@ -134,7 +134,7 @@ func vaultErrors(body []byte) string {
 	return strings.Join(strings.Fields(string(body)), " ")
 }
 
-// policyHint names the capability a 403 for a VALID token points at — one
+// policyHint names the capability a 403 for a VALID token points at - one
 // template for every verb, so a wording change lands once.
 func (h *vaultHandler) policyHint(capability, kind string) string {
 	return fmt.Sprintf("if the token is valid, the policy needs %s on %s/%s/%s/*", capability, h.mount, kind, h.path)
@@ -186,12 +186,12 @@ func (h *vaultHandler) Store(serverURL, name, token string) error {
 
 func (h *vaultHandler) Erase(serverURL, name string) (credhelper.EraseOutcome, error) {
 	// Vault's metadata DELETE is idempotent and does not say whether
-	// anything existed, so ProbeErase answers through h.Get — presence here
+	// anything existed, so ProbeErase answers through h.Get - presence here
 	// can never diverge from what a get would say (a soft-deleted latest
 	// version, an empty token, or a mismatched identity all read as absent
 	// in both). A policy without read on the data path (a delete-only
 	// service account) gets a denied read in Vault's audit log and an
-	// "unknown" outcome — never a failure. Best-effort under concurrent
+	// "unknown" outcome - never a failure. Best-effort under concurrent
 	// stores; see ProbeErase's doc.
 	return credhelper.ProbeErase(
 		func() (*credhelper.Credentials, error) { return h.Get(serverURL, name) },

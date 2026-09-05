@@ -7,8 +7,8 @@
 # Also the manual repair tool when a release run needs re-driving
 # (e.g. after deleting a duplicate): with gh authenticated and the
 # built assets at hand, run
-#   TAG=vX.Y.Z GITHUB_REPOSITORY=rancher/rancher-cli scripts/release-upsert dist/*
-# — idempotent; existing assets are replaced (--clobber), the release's
+#   TAG=vX.Y.Z GITHUB_REPOSITORY=rancher/rancher-cli scripts/release-upsert dist/* -
+# idempotent; existing assets are replaced (--clobber), the release's
 # draft/published state is left alone.
 #
 # Two ways a release is cut: pushing a tag (this script creates the
@@ -19,7 +19,7 @@
 # Why list-and-count instead of `gh release view` or
 # GET /releases/tags/<tag>: drafts are not tag-bound until publish, so
 # the tags endpoint cannot see them at all, and `gh release view` exits
-# 1 for both "not found" and "API failure" — either shortcut misreads a
+# 1 for both "not found" and "API failure" - either shortcut misreads a
 # state and recreates the duplicate this script exists to prevent.
 # Duplicates are not hypothetical: two releases carried
 # tag_name v0.1.0-alpha.1 on 2026-08-12 (a published one from the UI
@@ -36,16 +36,16 @@ set -eu
 # grep alone exits 1 on zero matches; that one is safe to absorb once
 # the listing itself is known-good.
 tags="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[].tag_name')" || {
-  echo "::error::failed to list releases — cannot tell whether $TAG already has one; not creating anything" >&2
+  echo "::error::failed to list releases - cannot tell whether $TAG already has one; not creating anything" >&2
   exit 1
 }
 existing="$(printf '%s\n' "$tags" | grep -cxF "$TAG" || true)"
 
 if [ "$existing" -gt 1 ]; then
-  echo "::error::$existing releases already exist for $TAG — delete the duplicates, then re-run" >&2
+  echo "::error::$existing releases already exist for $TAG - delete the duplicates, then re-run" >&2
   exit 1
 elif [ "$existing" -eq 1 ]; then
-  echo "release for $TAG already exists — uploading assets to it"
+  echo "release for $TAG already exists - uploading assets to it"
   gh release upload "$TAG" "$@" --clobber
 else
   prerelease=""

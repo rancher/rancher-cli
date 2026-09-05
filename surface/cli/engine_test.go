@@ -80,7 +80,7 @@ func TestFactoryResolvesEffectiveOnce(t *testing.T) {
 // TestFactoryServerInfoFetchesOnce asserts the shared invocation-scoped probe:
 // ServerInfo hits /rancherversion at most once per clientFactory (per
 // invocation) no matter how many times it is called, and a second,
-// independent clientFactory (a second invocation) fetches again — no
+// independent clientFactory (a second invocation) fetches again - no
 // cross-invocation caching.
 func TestFactoryServerInfoFetchesOnce(t *testing.T) {
 	t.Parallel()
@@ -115,7 +115,7 @@ func TestFactoryServerInfoFetchesOnce(t *testing.T) {
 	f2 := newClientFactory(dir, store)
 	_, err = f2.ServerInfo(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, 2, hits, "a new invocation must fetch again — no cross-invocation caching")
+	assert.Equal(t, 2, hits, "a new invocation must fetch again - no cross-invocation caching")
 }
 
 func TestFactoryRejectsEmptyClusterID(t *testing.T) {
@@ -321,7 +321,7 @@ func TestRegistryBindingLookup(t *testing.T) {
 }
 
 // makeJWT builds a minimal JWT string (header.payload.sig) for tests. The
-// signature segment is garbage — jwtTokenID intentionally skips verification.
+// signature segment is garbage - jwtTokenID intentionally skips verification.
 func makeJWT(payload map[string]any) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
 	p, _ := json.Marshal(payload)
@@ -345,7 +345,7 @@ func TestJWTTokenIDV3JWT(t *testing.T) {
 }
 
 // TestJWTTokenIDExtJWT verifies that a Rancher JWT with token_kind=ext returns
-// "" — the backing ext.cattle.io Token cannot match a management-token name.
+// "" - the backing ext.cattle.io Token cannot match a management-token name.
 func TestJWTTokenIDExtJWT(t *testing.T) {
 	t.Parallel()
 	tok := makeJWT(map[string]any{"token": "ext-abc-123", "token_kind": "ext"})
@@ -379,7 +379,7 @@ func TestActiveTokenIDV3JWT(t *testing.T) {
 }
 
 // TestActiveTokenIDIDSecret verifies the full factory path for an id:secret
-// bearer — the id half is returned.
+// bearer - the id half is returned.
 func TestActiveTokenIDIDSecret(t *testing.T) {
 	t.Parallel()
 	f := newClientFactory(writeTestConfig(t), &countingStore{token: "mytoken:mysecret"})

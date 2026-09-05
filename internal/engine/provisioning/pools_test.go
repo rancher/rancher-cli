@@ -15,7 +15,7 @@ import (
 
 // familyClient fakes the Get/Update pair every cluster-family verb
 // exercises: Get serves a fixed object (or getErr), Update records every
-// call — dry-run and real — for assertion.
+// call - dry-run and real - for assertion.
 type familyClient struct {
 	obj    *unstructured.Unstructured
 	getErr error
@@ -105,7 +105,7 @@ func TestClusterMachinePools(t *testing.T) {
 	t.Run("present but empty machinePools reports found=true", func(t *testing.T) {
 		obj := familyClusterObj("mid-transition", "1", []any{}, false)
 		pools, found := clusterMachinePools(obj)
-		assert.True(t, found, "the field exists — a different shape from wholly absent")
+		assert.True(t, found, "the field exists - a different shape from wholly absent")
 		assert.Empty(t, pools)
 	})
 
@@ -115,7 +115,7 @@ func TestClusterMachinePools(t *testing.T) {
 		require.True(t, found)
 		require.Len(t, pools, 1)
 
-		// Mutating the returned slice must not affect a second extraction —
+		// Mutating the returned slice must not affect a second extraction -
 		// NestedSlice always deep-copies (findMachinePool/scale rely on this).
 		pools[0].(map[string]any)["quantity"] = int64(99)
 		again, _ := clusterMachinePools(obj)

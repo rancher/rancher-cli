@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// garbageBearer is the malformed credential IdentityGarbage sends — the same
+// garbageBearer is the malformed credential IdentityGarbage sends - the same
 // literal on every target so recordings are comparable.
 const garbageBearer = "not-a-real-token"
 
@@ -30,8 +30,8 @@ func RunProbe(ctx context.Context, tgt Target, p Probe) ([]ObservationResult, er
 }
 
 // runProbe is RunProbe with an injectable per-step deadline. Teardown is
-// installed BEFORE setup runs and always executes — after a partial setup
-// failure, an observation failure, a capture failure, or success — with the
+// installed BEFORE setup runs and always executes - after a partial setup
+// failure, an observation failure, a capture failure, or success - with the
 // captures resolved so far. Every teardown error is collected and joined
 // with the primary error; none is dropped.
 func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (results []ObservationResult, err error) {
@@ -86,7 +86,7 @@ func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (
 			}
 			captured[name] = v
 		}
-		// Normalize and retain the completed observation either way — on a
+		// Normalize and retain the completed observation either way - on a
 		// capture failure it is returned for diagnostics.
 		Normalize(res.Body, rules)
 		results = append(results, res)
@@ -105,7 +105,7 @@ func resolveCapture(raw map[string]any, c Capture) (string, error) {
 	if c.ExtBearerName {
 		derived, ok := NameFromExtBearer(v)
 		if !ok {
-			// The captured value is a credential — its shape may be wrong,
+			// The captured value is a credential - its shape may be wrong,
 			// but it can still be a live secret. Never embed it in the error.
 			return "", fmt.Errorf("captured value is not ext-shaped (want ext/<name>:<secret>)")
 		}
@@ -185,8 +185,8 @@ func attempt(ctx context.Context, tgt Target, o Observation, captured map[string
 }
 
 // doResilient sends the request build produces and, on a transport-level
-// connection reset (errors.Is(err, syscall.ECONNRESET)), retries exactly once
-// — but only for idempotent methods (GET/PUT/DELETE/HEAD). A POST is never
+// connection reset (errors.Is(err, syscall.ECONNRESET)), retries exactly once -
+// but only for idempotent methods (GET/PUT/DELETE/HEAD). A POST is never
 // retried: a reset that lands after the server has committed the mutation but
 // before its response reaches the client would, on retry, create a second
 // resource and orphan the first. build is invoked afresh per attempt so each

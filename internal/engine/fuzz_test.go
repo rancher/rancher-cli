@@ -18,14 +18,14 @@ const sentinelMarker = "SENTINEL-MARKER-VALUE"
 // fuzzed paths per iteration exercise the multi-path grouping (paths
 // sharing a head bucket, sibling leaves, shared parents) that a single
 // path never reaches. The document is built from the fuzzed paths
-// themselves — maps only — with segments HEX-ENCODED into the keys, so no
+// themselves - maps only - with segments HEX-ENCODED into the keys, so no
 // key can contain the sentinel as a substring (otherwise a fuzzed segment
 // holding the marker would false-fail the search after a correct
 // deletion). Prefix-colliding paths are normalized at construction (a
 // path that is a prefix of the other would overwrite the other's
 // intermediate map with its sentinel leaf); duplicates collapse. Each blob
 // is NUL-split into segments, the same encoding FuzzParseArgTail uses.
-// Never call t.Parallel() here — it panics inside f.Fuzz.
+// Never call t.Parallel() here - it panics inside f.Fuzz.
 func FuzzScrubPaths(f *testing.F) {
 	f.Add("secret", "password")
 	f.Add("secret\x00password", "secret\x00token")
@@ -71,7 +71,7 @@ func FuzzScrubPaths(f *testing.F) {
 	})
 }
 
-// isPathPrefix reports whether a is a (non-strict) prefix of b — such
+// isPathPrefix reports whether a is a (non-strict) prefix of b - such
 // pairs cannot coexist in one document (a's sentinel leaf occupies the
 // map b needs as an intermediate), so the harness retains only the first.
 func isPathPrefix(a, b []string) bool {

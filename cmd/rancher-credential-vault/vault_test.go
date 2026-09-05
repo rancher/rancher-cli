@@ -106,7 +106,7 @@ func TestVaultStoreGetErase(t *testing.T) {
 	creds, err = h.Get(u, n)
 	require.NoError(t, err)
 	assert.Nil(t, creds, "erased credential reads as not-found")
-	// erase idempotent on missing — and it says so
+	// erase idempotent on missing - and it says so
 	outcome, eerr = h.Erase(u, n)
 	require.NoError(t, eerr)
 	assert.Equal(t, credhelper.EraseNothingStored, outcome, "erase of a missing credential reports a no-op")
@@ -244,7 +244,7 @@ func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
 }
 
 // routeVault serves per-route status/body pairs so mixed-capability policies
-// (e.g. delete allowed, read denied) can be modeled — unlike errBodyVault,
+// (e.g. delete allowed, read denied) can be modeled - unlike errBodyVault,
 // which fails every request identically.
 func routeVault(t *testing.T, routes map[string]func(w http.ResponseWriter)) *vaultHandler {
 	t.Helper()
@@ -263,7 +263,7 @@ func routeVault(t *testing.T, routes map[string]func(w http.ResponseWriter)) *va
 // erase's presence read shares Get's semantics (a 200 whose data is
 // null/empty reads as absent, exactly as a get would), and a denied read
 // under a delete-only policy yields an UNKNOWN outcome with a successful
-// erase — never a failure, never a fabricated deletion.
+// erase - never a failure, never a fabricated deletion.
 func TestVaultEraseOutcomeClassification(t *testing.T) {
 	t.Run("delete-only policy: probe denied, erase succeeds, outcome unknown", func(t *testing.T) {
 		h := routeVault(t, map[string]func(http.ResponseWriter){

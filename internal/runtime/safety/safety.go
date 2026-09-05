@@ -32,7 +32,7 @@ const (
 // Stability is the support contract of an operation, independent of
 // Contract: today's rows pair {public,stable} and {internal,beta}, and
 // Deprecated's designated first row is the legacy v3 Token kind
-// (Token.management.cattle.io — still serving UI session tokens and some
+// (Token.management.cattle.io - still serving UI session tokens and some
 // derived tokens in Rancher 2.15), which will land as internal/deprecated
 // with its writes behind --allow-deprecated.
 type Stability string
@@ -57,7 +57,7 @@ type DiffEntry struct {
 }
 
 // Effect is the server-computed preview of a mutation (from Plan). Contract and
-// Stability are NOT serialized — the schema manifest is the single published
+// Stability are NOT serialized - the schema manifest is the single published
 // source for those; the internal Binding continues to drive the --allow-deprecated
 // gate in the pipeline. Server is stamped by the surface adapter (Branch 2);
 // Cluster is set by the command's Plan.
@@ -65,14 +65,14 @@ type Effect struct {
 	Action Action `json:"action"`
 	Target string `json:"target"`
 	// DisplayKind is the canonical CLI kind from the kind table (e.g.
-	// "globalrolebinding", "management-token", "provisioning-cluster") —
+	// "globalrolebinding", "management-token", "provisioning-cluster") -
 	// NEVER an API plural or a Kubernetes kind. Every default-format
 	// mutation text renders from DisplayKind, never from Target (an API
 	// resource plural unsuited for display). A Plan that omits it is a
 	// command bug (checkPlan).
 	DisplayKind string `json:"displayKind"`
 	// DisplayName is the resource name, or a generateName prefix plus "*"
-	// for a preview whose real name is not yet known (dry-run text only —
+	// for a preview whose real name is not yet known (dry-run text only -
 	// the committed success identity is derived from the returned object
 	// and never carries the "*" suffix). A Plan that omits it is a command
 	// bug (checkPlan).
@@ -86,11 +86,11 @@ type Effect struct {
 	Destructive       bool        `json:"destructive"`
 	// Warnings are advisory preview notes rendered with the Effect BEFORE
 	// confirmation (version-not-in-discovery, etcd-quorum impact, deletion
-	// cascade). They never gate — gating is Action/Destructive/Stability's
-	// job — they inform the user/agent deciding whether to --apply.
+	// cascade). They never gate - gating is Action/Destructive/Stability's
+	// job - they inform the user/agent deciding whether to --apply.
 	// json:"-" DELIBERATELY (review R2-6): the Effect marshals inside the
 	// envelope's data field, and renderEffect copies these into the
-	// envelope's top-level warnings — serializing here too would emit
+	// envelope's top-level warnings - serializing here too would emit
 	// every warning twice (data.warnings + warnings).
 	Warnings []string `json:"-"`
 }

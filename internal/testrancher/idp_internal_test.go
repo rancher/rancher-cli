@@ -13,7 +13,7 @@ import (
 
 // TestIdPStubIssuesIDTokenForAuthorizationCodeGrant asserts the stub's
 // authorization-code grant: any non-empty code yields an id_token the
-// façade's login then accepts.
+// facade's login then accepts.
 func TestIdPStubIssuesIDTokenForAuthorizationCodeGrant(t *testing.T) {
 	t.Parallel()
 	f := New(Options{EnableIdP: true})

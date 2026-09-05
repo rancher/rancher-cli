@@ -130,8 +130,8 @@ func checkerFor(t *testing.T, srv *httptest.Server) *capabilityChecker {
 	return newCapabilityChecker(f)
 }
 
-// TestCapabilityCheckerPrimeRequiredEndToEnd proves the full composition —
-// provider server-info probe + engine feature client — against a fake
+// TestCapabilityCheckerPrimeRequiredEndToEnd proves the full composition -
+// provider server-info probe + engine feature client - against a fake
 // server: a Prime-classified, disabled feature on a community server yields
 // PRIME_REQUIRED, with Server populated for the error's details.
 func TestCapabilityCheckerPrimeRequiredEndToEnd(t *testing.T) {
@@ -176,7 +176,7 @@ func TestCapabilityCheckerDisabledOnCommunityServerEndToEnd(t *testing.T) {
 
 // TestCapabilityCheckerForbiddenFeatureGetIsUnknown proves the detector
 // suppresses its own failure (a forbidden Feature GET) rather than blocking
-// or surfacing a detector-side error — the unknown outcome lets the real
+// or surfacing a detector-side error - the unknown outcome lets the real
 // target request speak.
 func TestCapabilityCheckerForbiddenFeatureGetIsUnknown(t *testing.T) {
 	t.Parallel()
@@ -188,7 +188,7 @@ func TestCapabilityCheckerForbiddenFeatureGetIsUnknown(t *testing.T) {
 
 // TestCapabilityCheckerOneEditionFetchSharedWithFeatureCheck proves the
 // one-fetch-per-invocation requirement using the SAME checker
-// (and therefore the same underlying clientFactory) for two Check calls —
+// (and therefore the same underlying clientFactory) for two Check calls -
 // the memoized ServerInfo must not re-fetch.
 func TestCapabilityCheckerOneEditionFetchSharedAcrossChecks(t *testing.T) {
 	t.Parallel()
@@ -257,7 +257,7 @@ func TestCapabilityCheckerExtDiscoveryProceed(t *testing.T) {
 
 // TestCapabilityCheckerExtDiscoveryUnsupported proves the negative case: a
 // readable discovery document that affirmatively lacks the resource is
-// CapabilityUnsupported, not Unknown — an older server that never carries
+// CapabilityUnsupported, not Unknown - an older server that never carries
 // this workflow, not a signal read failure.
 func TestCapabilityCheckerExtDiscoveryUnsupported(t *testing.T) {
 	t.Parallel()
@@ -297,7 +297,7 @@ func TestCapabilityCheckerExtDiscoveryUnreadableIsUnknown(t *testing.T) {
 }
 
 // TestCapabilityCheckerNonPrimeEnabledFeatureSkipsEditionFetch makes sure
-// the common case — a non-prime-classified feature that is enabled —
+// the common case - a non-prime-classified feature that is enabled -
 // decides on the Feature alone and never pays the /rancherversion round
 // trip: edition can never change this outcome, since decideCapability's
 // PRIME_REQUIRED branch requires prime=true.
@@ -327,7 +327,7 @@ func TestCapabilityCheckerNonPrimeEnabledFeatureSkipsEditionFetch(t *testing.T) 
 // TestCapabilityCheckerDefaultEnabledPrimeFeatureOnCommunityIsPrimeRequired
 // asserts the live-captured community shape: a Prime-classified feature whose Feature
 // object reads enabled=true only because status.default is true (spec.value
-// unset — no operator ever touched it) must still resolve PRIME_REQUIRED on
+// unset - no operator ever touched it) must still resolve PRIME_REQUIRED on
 // a confirmed community server. Rancher's own Feature.Enabled() disables any
 // prime feature on a non-Prime build ahead of status.default, so trusting
 // this Feature object's enabled=true reading would let a mutation through

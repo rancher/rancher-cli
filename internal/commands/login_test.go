@@ -55,7 +55,7 @@ func (errReader) Read([]byte) (int, error) { return 0, errors.New("boom") }
 
 // lineReader yields one line at a time without buffering, so multiple
 // sequential Prompt/PromptSecret calls (each creating a fresh bufio.Scanner
-// per ui.Prompter.readLine) don't lose data to a Scanner's internal buffer —
+// per ui.Prompter.readLine) don't lose data to a Scanner's internal buffer -
 // a shared strings.Reader over multi-line input loses everything past the
 // first line once one Scanner over-reads it. Copied from
 // internal/token/token_test.go (unexported there too) rather than imported,
@@ -85,7 +85,7 @@ func stdinPrompter(tok string) *ui.Prompter {
 }
 
 // beforeReadPrompter wraps a Prompter and runs before once, immediately
-// before the FIRST ReadLine call reaches the wrapped Prompter — the seam
+// before the FIRST ReadLine call reaches the wrapped Prompter - the seam
 // used to simulate a concurrent config change landing in the unlocked
 // window between registration commit and the credential-write lock (a
 // --token-stdin login reads its token via ReadLine).
@@ -118,7 +118,7 @@ func filePolicyDir(t *testing.T) (string, config.CredStore) {
 }
 
 // seedServer writes name/url/ca directly into dir's config.yaml, bypassing
-// registration entirely — for tests that need an already-registered entry
+// registration entirely - for tests that need an already-registered entry
 // without exercising add-server/delegated-login themselves. When current is
 // true, name becomes the current-server pointer.
 func seedServer(t *testing.T, dir, name, url, ca string, current bool) {
@@ -133,7 +133,7 @@ func seedServer(t *testing.T, dir, name, url, ca string, current bool) {
 }
 
 // newPlainLoginCmd builds a loginCmd with the credential store fixed via a
-// factory and tlsPreflight left nil (the documented inert default) —
+// factory and tlsPreflight left nil (the documented inert default) -
 // mirroring NewLogin's wiring for direct struct construction in tests that
 // exercise an already-registered entry (Case B) and must never dial out.
 func newPlainLoginCmd(dir string, store config.CredStore) *loginCmd {
@@ -152,8 +152,8 @@ func TestLoginCompletesServerNames(t *testing.T) {
 }
 
 // setErrStore wraps a real store, failing the token write with a fixed
-// error. The failure is injected at SetTokenWithOutcome — the method the
-// commit path calls — so SetToken delegating to it keeps both spellings on
+// error. The failure is injected at SetTokenWithOutcome - the method the
+// commit path calls - so SetToken delegating to it keeps both spellings on
 // the same behavior.
 type setErrStore struct {
 	config.CredStore
@@ -193,7 +193,7 @@ func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 }
 
 // TestLoginRejectsLegacyPrefixedName is the round-7 finding-3 repro: a
-// "legacy:"-prefixed name must be rejected before any auth or config write —
+// "legacy:"-prefixed name must be rejected before any auth or config write -
 // such a server entry would win the token shim's exact-name stored-login
 // tier and defeat its documented server-ranking guarantee.
 func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
@@ -216,7 +216,7 @@ func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 
 // TestLoginOtherStoreErrorAborts asserts the deliberate new behavior (What it
 // costs): a failed credential write after a successful delegated
-// registration leaves the freshly added entry behind — a valid first-class
+// registration leaves the freshly added entry behind - a valid first-class
 // state, not rolled back.
 func TestLoginOtherStoreErrorAborts(t *testing.T) {
 	t.Parallel()
@@ -306,7 +306,7 @@ func TestLoginTokenStdinRejectsProviderFlags(t *testing.T) {
 
 // TestLoginProviderFlowNonTTYAllowedWithExplicitProvider mirrors get-token's
 // own TestOAuthDeviceCodeFlowNonTTYAllowed: naming --auth-provider explicitly
-// must reach the provider flow without a TTY — the finer-grained gates
+// must reach the provider flow without a TTY - the finer-grained gates
 // inside it (OAuth needs none for device-code) are the real gate, not
 // login's own outer CanPrompt check.
 func TestLoginProviderFlowNonTTYAllowedWithExplicitProvider(t *testing.T) {
@@ -337,7 +337,7 @@ func TestLoginTokenViaPrompt(t *testing.T) {
 	// isTTY=true, noInput=false -> CanPrompt. Two prompts now fire (EXT-R-8's
 	// paste-or-provider menu, then the secret itself), so the input needs a
 	// reader that doesn't lose the second line to Scanner over-read (see
-	// lineReader's doc comment) — a plain strings.Reader would drop "id:sec".
+	// lineReader's doc comment) - a plain strings.Reader would drop "id:sec".
 	p := ui.New(&bytes.Buffer{}, newLineReader("1", "id:sec"), false, true)
 	in := args{a: []string{"acme"}}
 	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
@@ -373,7 +373,7 @@ func TestLoginUnknownNameNoURLIsNotFoundWithCandidates(t *testing.T) {
 
 // TestLoginCacertWithoutURLKnownNameIsValidationWithInterpolatedHint asserts
 // the three-way name split: a KNOWN name gets a fully interpolated
-// update-server hint — trust changes belong to registration.
+// update-server hint - trust changes belong to registration.
 func TestLoginCacertWithoutURLKnownNameIsValidationWithInterpolatedHint(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
@@ -387,7 +387,7 @@ func TestLoginCacertWithoutURLKnownNameIsValidationWithInterpolatedHint(t *testi
 }
 
 // TestLoginCacertWithoutURLUnknownNameIsNotFound asserts that the NOT_FOUND row
-// wins over any --cacert-driven hint when the typed name is unknown — a
+// wins over any --cacert-driven hint when the typed name is unknown - a
 // suggested command must be valid verbatim, and update-server against an
 // unknown name would deterministically fail.
 func TestLoginCacertWithoutURLUnknownNameIsNotFound(t *testing.T) {
@@ -424,7 +424,7 @@ func TestLoginNoNameNoURLZeroEntriesIsNotLoggedIn(t *testing.T) {
 }
 
 // TestLoginNoNameNoURLOneEntryNoPointerNeverSelectsImplicitly asserts that
-// login never auto-selects the sole entry — a success there would
+// login never auto-selects the sole entry - a success there would
 // authenticate a target the pointer still doesn't name, so the very next
 // command would fail NOT_LOGGED_IN anyway. It fails with a paste-valid
 // use-server hint instead.
@@ -476,7 +476,7 @@ func TestLoginExplicitNameWithUnsetPointerSucceedsWithAdvisory(t *testing.T) {
 }
 
 // TestLoginExplicitNameNeverSwitchesValidPointer: logging into a second,
-// already-registered server must never move a VALID current-server pointer —
+// already-registered server must never move a VALID current-server pointer -
 // login can never switch, only registration's bootstrap/repair rule can, and
 // that never reaches an already-registered entry.
 func TestLoginExplicitNameNeverSwitchesValidPointer(t *testing.T) {
@@ -490,7 +490,7 @@ func TestLoginExplicitNameNeverSwitchesValidPointer(t *testing.T) {
 	// A success logging into a registered-but-not-current server must not
 	// look like a bare, unremarkable success: the pointer still names a
 	// DIFFERENT server, so every next command keeps operating against
-	// "prod" unless the operator switches — advise it plainly.
+	// "prod" unless the operator switches - advise it plainly.
 	assert.Contains(t, res.Text, "the current server remains 'prod'")
 	assert.Contains(t, res.Text, "rancher config use-server 'qa'")
 
@@ -561,7 +561,7 @@ func TestLoginEmptyPromptToken(t *testing.T) {
 // network call at all, so nothing but the registration seam's own scheme
 // gate stops an ftp:// (or any non-http(s)) URL from committing an entry
 // and a token that config.Effective would then silently refuse to ever
-// return — an apparently successful login that reads NOT_LOGGED_IN on the
+// return - an apparently successful login that reads NOT_LOGGED_IN on the
 // very next command.
 func TestLoginDelegatedRejectsUnsupportedScheme(t *testing.T) {
 	t.Parallel()
@@ -582,7 +582,7 @@ func TestLoginDelegatedRejectsUnsupportedScheme(t *testing.T) {
 
 // TestLoginEmptyNameArgumentRefused asserts that an explicitly passed empty
 // name (an unset shell variable, usually) is a validation error, never a
-// silent fall-through to host derivation — and never an entry.
+// silent fall-through to host derivation - and never an entry.
 func TestLoginEmptyNameArgumentRefused(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
@@ -605,7 +605,7 @@ func TestLoginEmptyNameArgumentRefused(t *testing.T) {
 }
 
 // TestLoginUnsupportedSchemeEchoesRawURL asserts that the scheme refusal
-// shows the URL as typed — canonicalization strips path and query, and a
+// shows the URL as typed - canonicalization strips path and query, and a
 // fat-fingered URL is easier to spot whole.
 func TestLoginUnsupportedSchemeEchoesRawURL(t *testing.T) {
 	t.Parallel()
@@ -622,7 +622,7 @@ func TestLoginUnsupportedSchemeEchoesRawURL(t *testing.T) {
 // TestLoginDerivedNameIPv6LiteralRefused asserts that a name is never
 // derived from an IPv6 literal: Hostname() keeps its colons, and a
 // colon-bearing entry name reads as a URL fragment everywhere a name is
-// printed — the refusal names the explicit-name spelling instead.
+// printed - the refusal names the explicit-name spelling instead.
 func TestLoginDerivedNameIPv6LiteralRefused(t *testing.T) {
 	t.Parallel()
 	dir, store := filePolicyDir(t)
@@ -676,7 +676,7 @@ func TestLoginDerivedNameSameURLProceedsAsKnownEntry(t *testing.T) {
 
 // TestLoginDerivedNameCollisionDifferentSchemeRefusesBeforeAnyProbe asserts
 // that a derived name already registered under a different canonical URL
-// refuses pre-network, naming the taken entry and its URL, with no hint —
+// refuses pre-network, naming the taken entry and its URL, with no hint -
 // an update-server hint would silently re-point an entry the caller never
 // named, and no alternate name can be suggested with certainty.
 func TestLoginDerivedNameCollisionDifferentSchemeRefusesBeforeAnyProbe(t *testing.T) {
@@ -760,14 +760,14 @@ func TestLoginDelegatedIdenticalURLDifferentCacertConflicts(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Contains(t, ce.Hint, "update-server")
-	assert.Contains(t, ce.Hint, "--cacert", "the URL matched — only the CA differed, so the hint must not suggest --url")
+	assert.Contains(t, ce.Hint, "--cacert", "the URL matched - only the CA differed, so the hint must not suggest --url")
 	assert.NotContains(t, ce.Hint, "--url")
 }
 
 // TestLoginDelegatedDifferentURLIsValidationBeforeAnyProbe asserts that a known
 // name whose registered URL disagrees with --url is refused immediately,
 // with a code and wording distinct from the shared registration commit's own
-// CONFLICT (TestCommitCreateExistingDifferentURLConflictsWithUpdateHint) —
+// CONFLICT (TestCommitCreateExistingDifferentURLConflictsWithUpdateHint) -
 // this check runs before any network call, so a name reused for the wrong
 // server is never even dialed.
 func TestLoginDelegatedDifferentURLIsValidationBeforeAnyProbe(t *testing.T) {
@@ -791,7 +791,7 @@ func TestLoginDelegatedDifferentURLIsValidationBeforeAnyProbe(t *testing.T) {
 }
 
 // TestLoginDelegatedCanonicallyEqualURLDifferentSpellingFallsThrough asserts
-// that the hijack check compares CANONICAL identity, not literal spelling —
+// that the hijack check compares CANONICAL identity, not literal spelling -
 // re-login-with-add using a differently-cased/ported spelling of the same
 // server stays the existing idempotent no-op, never the new VALIDATION.
 func TestLoginDelegatedCanonicallyEqualURLDifferentSpellingFallsThrough(t *testing.T) {
@@ -806,7 +806,7 @@ func TestLoginDelegatedCanonicallyEqualURLDifferentSpellingFallsThrough(t *testi
 }
 
 // TestLoginDelegatedInvalidURLOnKnownNameFallsThroughToRegistrationError
-// asserts that the hijack check only acts on a URL it could canonicalize — a
+// asserts that the hijack check only acts on a URL it could canonicalize - a
 // malformed --url on a known name still surfaces prepareRegistration's own
 // invalid-URL error, not the new VALIDATION message.
 func TestLoginDelegatedInvalidURLOnKnownNameFallsThroughToRegistrationError(t *testing.T) {
@@ -994,7 +994,7 @@ func TestLoginDelegatedFailedAuthCancellationNoHint(t *testing.T) {
 // TestLoginDeleteBetweenRegisterAndStoreThenReregisterAtNewURLNeverSurfacesOldToken
 // asserts that a concurrent delete-then-recreate at a DIFFERENT URL during the
 // unlocked auth window must never let the old token become live for the new
-// address — the credential-write commit seam must conflict on the URL
+// address - the credential-write commit seam must conflict on the URL
 // mismatch, never write under the stale name alone.
 func TestLoginDeleteBetweenRegisterAndStoreThenReregisterAtNewURLNeverSurfacesOldToken(t *testing.T) {
 	t.Parallel()
@@ -1136,7 +1136,7 @@ func TestLoginCanonicalizesStoredURL(t *testing.T) {
 
 // TestLoginResolvesStoreFromLockedConfig asserts a race: a credentialStore
 // policy change committed while login waits for the config lock must be
-// honored — the token lands in the backend the NEW policy names, not the
+// honored - the token lands in the backend the NEW policy names, not the
 // dependency-resolution snapshot's.
 func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 	dir := t.TempDir()
@@ -1217,7 +1217,7 @@ func TestLoginSerializedUnderConfigLock(t *testing.T) {
 // extLoginFakeOpts configures the httptest fake server standing in for
 // Rancher across the EXT-R-8 provider-flow tests: the IdP dance
 // (/v1-public/*) and the ext Token store create/revoke, both reached ONLY
-// through the /k8s/clusters/local proxy prefix — a bare /apis/... path is
+// through the /k8s/clusters/local proxy prefix - a bare /apis/... path is
 // deliberately unregistered, so a proxy-path regression 404s here exactly as
 // it would against a real Rancher.
 type extLoginFakeOpts struct {
@@ -1323,7 +1323,7 @@ func TestLoginProviderFlowExtAbsentFallsBackToSessionToken(t *testing.T) {
 // asserts the ext token create call is bounded by httpx's client-level
 // timeout rather than hanging on an unresponsive server, and that a timeout
 // surfaces as a plain error distinct from the 404 (ext group absent)
-// fallback shape — the two must never collapse into the same behavior.
+// fallback shape - the two must never collapse into the same behavior.
 func TestLoginProviderFlowDerivedCreateTimeoutIsBoundedAndNotMistakenForExtAbsent(t *testing.T) {
 	// Not t.Parallel(): shrinks the package-global httpx.DefaultTimeout,
 	// which would race other parallel subtests' real requests.
@@ -1397,7 +1397,7 @@ func TestLoginProviderFlowTTLPlumbedToCreateBodyInMilliseconds(t *testing.T) {
 
 // TestLoginProviderFlowOmitsTTLFromCreateBodyWhenAbsent asserts createDerivedToken's
 // omit-when-unset idiom (fix #5) end to end: no --ttl must mean the derived token create
-// request body carries no "ttl" key at all, not an explicit ttl: 0 — the
+// request body carries no "ttl" key at all, not an explicit ttl: 0 - the
 // unit tests in duration_test.go cover TTLMilliseconds itself, but not that
 // login's own request-building actually omits the key.
 func TestLoginProviderFlowOmitsTTLFromCreateBodyWhenAbsent(t *testing.T) {
@@ -1694,7 +1694,7 @@ func (k *commitThenErrorKeyring) Delete(service, user string) error {
 
 // depositingPrompter stands in for the browser on the SAML path: it reads
 // the published login URL and runs onHandoff before the CLI's first poll.
-// The embedded prompter is silent and non-TTY with NoInput false — the SAML
+// The embedded prompter is silent and non-TTY with NoInput false - the SAML
 // gate refuses a NoInput prompter before any handoff.
 type depositingPrompter struct {
 	runtime.Prompter
@@ -1870,7 +1870,7 @@ func TestLoginSuccessWithFailedSessionCleanupWarns(t *testing.T) {
 	assert.Contains(t, joined, "--apply --yes --allow-deprecated")
 	residual := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
 	require.Len(t, residual, 1)
-	assert.Equal(t, clierr.TokenKindV3, residual[0].Ref.Kind, "the façade answers a json request with the Norman shape by default")
+	assert.Equal(t, clierr.TokenKindV3, residual[0].Ref.Kind, "the facade answers a json request with the Norman shape by default")
 }
 
 // TestLoginReadOnlyHelperRecoveryMatrix asserts finishUnsupportedStore's
@@ -1995,7 +1995,7 @@ func TestLoginTLSFailureKeepsCertificateFactsInText(t *testing.T) {
 
 // TestLoginLostResponseRecoveryNamesBothCollections asserts recovery for a
 // marked S whose login response was lost: its kind is unknown, so the
-// procedure lists both token collections for the marker; with the façade
+// procedure lists both token collections for the marker; with the facade
 // answering the json request with an ext object, the leftover really is
 // in the ext collection, which a v3-only search would have missed.
 func TestLoginLostResponseRecoveryNamesBothCollections(t *testing.T) {
@@ -2168,9 +2168,9 @@ func TestLoginAuthStageFailureCarriesDetails(t *testing.T) {
 	assert.Contains(t, d.Recovery, "rancher get tokens")
 }
 
-// newTLSFacade serves the façade over TLS with fix's certificate, answering
+// newTLSFacade serves the facade over TLS with fix's certificate, answering
 // /rancherversion itself: guided trust re-verifies a consented certificate
-// through the version preflight, which the façade does not serve.
+// through the version preflight, which the facade does not serve.
 func newTLSFacade(t *testing.T, fix tlsFixture, f *testrancher.Facade) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2191,7 +2191,7 @@ func newTLSFacade(t *testing.T, fix tlsFixture, f *testrancher.Facade) *httptest
 // cleanup, local compensation, D revoke, and the primary each land in
 // their own field of the decoded JSON envelope. The config write that
 // fails is the guided-trust commit, so the login runs over a self-signed
-// façade with consent given. Not parallel: it mutates the package-level
+// facade with consent given. Not parallel: it mutates the package-level
 // trustCommitConfigWriteHookForTest.
 func TestLoginCombinedWorstCaseCarriesFourDistinctErrors(t *testing.T) {
 	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
@@ -2244,7 +2244,7 @@ func (s *compensationFailingStore) SetTokenWithOutcome(ref config.ServerRef, tok
 }
 
 // TestLoginUnknownDerivedLeavesOneMarkedToken asserts the state the recovery
-// procedure starts from: after a lost create response exactly one façade
+// procedure starts from: after a lost create response exactly one facade
 // token carries the marker, and the recovery names re-login, the
 // kind-correct list command, and the marker. The procedure itself is
 // executed with the real binary by e2e/scripts/login-recovery.txtar.

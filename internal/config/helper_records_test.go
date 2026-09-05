@@ -63,7 +63,7 @@ func TestHelperRecordsConcurrentAddsLoseNothing(t *testing.T) {
 // caller-supplied path; the tests build it from helperRecordsLockName so the
 // lock and prints "locked" AFTER acquisition; waitForLocked (fixtures file)
 // blocks on that stdout line, so the parent can never race the child to the
-// lock. Real compiled-binary runs — actual OS lock behavior on every
+// lock. Real compiled-binary runs - actual OS lock behavior on every
 // platform including Windows LockFileEx.
 
 func TestHelperRecordsLockCrossProcessContention(t *testing.T) {
@@ -100,7 +100,7 @@ func TestHelperRecordsLockReleasedOnProcessDeath(t *testing.T) {
 	_, _ = child.Process.Wait()
 
 	err := withHelperRecordsLock(t.Context(), dir, func(s *helperRecords) error { return nil })
-	assert.NoError(t, err, "OS must release a dead process's lock — no stale-lock recovery")
+	assert.NoError(t, err, "OS must release a dead process's lock - no stale-lock recovery")
 }
 
 func TestExecStoreSetTokenWritesIntentBeforeStore(t *testing.T) {
@@ -131,7 +131,7 @@ func TestExecStoreSetTokenUnsupportedRemovesIntent(t *testing.T) {
 
 func TestExecStoreUnsupportedPersistFailureIsHardError(t *testing.T) {
 	// The unsupported sentinel may ONLY be returned once its intent removal
-	// is durably persisted — otherwise login would warn-and-succeed while a
+	// is durably persisted - otherwise login would warn-and-succeed while a
 	// stale intent keeps a nothing-storing helper on every future delete.
 	useFakeHelper(t, "unsupported")
 	dir := t.TempDir()
@@ -184,7 +184,7 @@ func TestExecStoreDeleteTokenFailureKeepsHelperRecord(t *testing.T) {
 
 func TestExecStoreFirstPersistFailureAbortsBeforeHelper(t *testing.T) {
 	// Write-ahead contract: if the INTENT cannot be recorded, the helper is
-	// never invoked — no remote credential without a cleanup record.
+	// never invoked - no remote credential without a cleanup record.
 	statePath := useFakeHelper(t, "ok")
 	dir := t.TempDir()
 	restore := setHelperRecordsPersistForTest(func(string, *helperRecords) error {
@@ -204,7 +204,7 @@ func TestExecStoreFirstPersistFailureAbortsBeforeHelper(t *testing.T) {
 // Deterministic interleaving tests: execStoreLockedHook fires while the
 // helper-records lock is HELD, so the test can choose exactly which operation owns
 // the lock first, start the competitor (which must block on the lock), then
-// release — both orders proven, both operations required to succeed, exact
+// release - both orders proven, both operations required to succeed, exact
 // final helper/record state asserted. Not parallel (package-level hook).
 
 func TestExecStoreStoreThenEraseInterleaving(t *testing.T) {

@@ -1,5 +1,5 @@
 // Package inspect holds the read composites (`inspect pod`, `inspect
-// deployment`, `images`, `usage`) — bespoke ReadCommands that join
+// deployment`, `images`, `usage`) - bespoke ReadCommands that join
 // several cluster reads into one document. Metrics and log fetch failures
 // degrade to Result.Warnings; only core object fetch failures are command
 // errors.
@@ -25,7 +25,7 @@ import (
 
 // A composite runs several collectors per invocation, and a caller
 // authorized for some but not all of them is the normal state for a
-// non-admin. Required collectors (identity, scope, substance — declared per
+// non-admin. Required collectors (identity, scope, substance - declared per
 // command and mode) keep full error identity and hard-error. Every other
 // collector degrades: its section is recorded here, the payload keeps its
 // existing null/omitted/empty convention, and the command still exits 0.
@@ -61,7 +61,7 @@ const (
 
 // targetRule is the target format a section's entries must carry. A section
 // is either whole (no target, always unavailable) or per-item (a target,
-// always partial) — the matrix declares which, and mixing the two would let
+// always partial) - the matrix declares which, and mixing the two would let
 // one section report contradictory states.
 type targetRule int
 
@@ -269,17 +269,17 @@ func (s *sections) Finalize() ([]sectionOutcome, []string) {
 
 // lookupCanceled reports whether a failed optional lookup was aborted
 // because the CALLER's context was canceled or its deadline expired. The
-// optional lookups degrade only on ordinary availability failures — a
+// optional lookups degrade only on ordinary availability failures - a
 // caller abort must propagate as the command's error, never continue
 // issuing requests behind a warning. Two complementary checks: ctx.Err()
 // consults the caller context's OWN state, which survives any error
-// wrapping — the production adapters rebuild their errors from strings
+// wrapping - the production adapters rebuild their errors from strings
 // (provider's mapErr, the root client's GetJSON), so the sentinel never
 // survives the chain there; the errors.Is walk covers callers and fakes
 // that DO preserve the cause. An adapter-owned per-request deadline firing
-// while the caller's context is still active — the provider's opCtx child
+// while the caller's context is still active - the provider's opCtx child
 // timeout (internal/client/provider requestTimeout) or the root
-// http.Client's timeout (surface/cli rootTimeout) — is deliberately NOT
+// http.Client's timeout (surface/cli rootTimeout) - is deliberately NOT
 // cancellation: neither check trips (the caller ctx is fine and the
 // rebuilt error carries no sentinel), so it degrades to a warning like any
 // other availability failure.
@@ -320,7 +320,7 @@ type ownerTargetParts struct {
 // ownerTarget builds the canonical owner identity shared by inspect pod and
 // both images modes: <apiVersion>|<kind>|<ns>|<name>|<uid>, prefixed with
 // <clusterID>| in all-clusters mode. API version and UID are identity
-// fields in owner resolution — the same ns/kind/name in another group, or a
+// fields in owner resolution - the same ns/kind/name in another group, or a
 // recreated generation, is a DIFFERENT owner.
 // Every component is server data, so each is escaped before the join.
 func ownerTarget(clusterID, ns string, ref ownerRef) string {
@@ -367,7 +367,7 @@ func rejectProject(in runtime.Input, cmd string) error {
 	return clierr.New(clierr.CodeValidation, "--project does not apply to "+cmd)
 }
 
-// podMetricsGVR is a metrics GVR constant — deliberately not a kind-table
+// podMetricsGVR is a metrics GVR constant - deliberately not a kind-table
 // row: the metrics pseudo-kinds are not user-addressable nouns, only fetched
 // internally here.
 var podMetricsGVR = schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "pods"}
@@ -392,11 +392,11 @@ var recursableOwnerKinds = map[string]bool{
 
 // ownerChain walks obj's controller ownerRef chain, fetching each recursable
 // owner in turn. Unknown owner kinds (no kind-table row, or not one of the
-// recursable controller kinds) are reported as-is and end the walk — never an
+// recursable controller kinds) are reported as-is and end the walk - never an
 // error, per the spec's risk note on custom controllers. A fetch failure
 // keeps the ref info and records a partial outcome under section instead of
 // aborting the walk; clusterID prefixes the owner target in all-clusters
-// mode and is empty otherwise. The bool reports whether the walk degraded —
+// mode and is empty otherwise. The bool reports whether the walk degraded -
 // callers that treat a partially-walked chain as unverified need it. The
 // error is the caller's cancellation, to propagate.
 func ownerChain(ctx context.Context, client engine.ClusterClient, sec *sections, section, clusterID, ns string, obj *unstructured.Unstructured) ([]map[string]any, bool, error) {
@@ -494,6 +494,6 @@ func kindGroupName(apiVersion, kind, name string) string {
 }
 
 // degradedContractDesc is the schema-desc sentence every composite carries
-// verbatim — one source, so the documented degraded contract cannot drift
+// verbatim - one source, so the documented degraded contract cannot drift
 // per command when the payload shape evolves.
 const degradedContractDesc = "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. "

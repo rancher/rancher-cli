@@ -4,14 +4,14 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 exec rancher create project members-proj --cluster testcluster --apply
 
 # the fallback backing namespace IS the project id; it must EXIST before a
-# PRTB create can succeed — the harness runs no Rancher controllers.
+# PRTB create can succeed - the harness runs no Rancher controllers.
 exec rancher create namespace members-proj --cluster local --apply
 
 # seed a user fixture: Sensitive-kind creates need --apply --yes.
 exec rancher create resource -f user.yaml --apply --yes
 
 # regression: users are a flat/norman-style kind (root-level displayName,
-# principalIds — not spec-nested); root fields must round-trip through the
+# principalIds - not spec-nested); root fields must round-trip through the
 # CRD fixture like the real API.
 exec rancher get user u-alice -o json
 jsonquery stdout data.displayName alice

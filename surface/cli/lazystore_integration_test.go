@@ -15,7 +15,7 @@ import (
 
 // seedDeleteConfig writes a minimal config with one server/context and a
 // file-store token, returning the config dir. Auto policy (env scrubbed
-// by TestMain, empty config policy), NO pin — the fresh-profile shape.
+// by TestMain, empty config policy), NO pin - the fresh-profile shape.
 func seedDeleteConfig(t *testing.T) string {
 	t.Helper()
 	keyring.MockInit()

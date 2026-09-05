@@ -26,7 +26,7 @@ setenvfrom USERID user-id.txt
 exec rancher get user $USERID -o json
 jsonquery stdout data.username e2e-new-user
 
-# the backing Secret exists — never assert its password value (hygiene).
+# the backing Secret exists - never assert its password value (hygiene).
 rawget core/v1/secrets cattle-local-user-passwords $USERID secret.raw.json
 jsonquery secret.raw.json metadata.name $USERID
 

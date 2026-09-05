@@ -17,7 +17,7 @@ import (
 var GVR = schema.GroupVersionResource{Group: "ext.cattle.io", Version: "v1", Resource: "selfusers"}
 
 // New returns the bare SelfUser object a probe must POST. An empty spec is
-// sufficient — the server fills status.userID from the caller's bearer
+// sufficient - the server fills status.userID from the caller's bearer
 // token.
 func New() *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
@@ -27,7 +27,7 @@ func New() *unstructured.Unstructured {
 }
 
 // UserID extracts status.userID from the SelfUser returned by a successful
-// probe. It returns "" when the field is absent — an empty id with no error
+// probe. It returns "" when the field is absent - an empty id with no error
 // is a real case the caller must guard against.
 func UserID(obj *unstructured.Unstructured) string {
 	id, _, _ := unstructured.NestedString(obj.Object, "status", "userID")

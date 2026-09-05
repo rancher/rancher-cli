@@ -2,7 +2,7 @@ env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # Seed a real user and a system account (principalIds carrying a system://
-# entry) — the CLI reads the management CRD directly, so without the
+# entry) - the CLI reads the management CRD directly, so without the
 # SystemFilter default it would leak what Rancher's own user store hides.
 exec rancher create resource -f real-user.yaml --apply --yes
 exec rancher create resource -f sys-user.yaml --apply --yes
@@ -14,7 +14,7 @@ exec rancher create resource -f sys-user.yaml --apply --yes
 exec rancher get users -o json
 jsonquery stdout 'data.#(metadata.name=="u-hsu-real").metadata.name' u-hsu-real
 jsonquery stdout 'data.#(metadata.name=="u-hsu-sys").metadata.name' ''
-jsonquery stdout warnings.0 '1 system account hidden — pass --include-system to show it'
+jsonquery stdout warnings.0 '1 system account hidden - pass --include-system to show it'
 
 # --include-system: the system account is listed too, no warning.
 exec rancher get users --include-system -o json

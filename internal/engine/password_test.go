@@ -22,8 +22,8 @@ func (i stdinInput) Args() []string          { return nil }
 
 // TestReadPasswordStdinTrimsExactlyOneLineEnding asserts the documented
 // trim contract: at most one trailing newline or CRLF pair is removed,
-// and a bare trailing carriage return — or any other byte a password may
-// legitimately end with — survives.
+// and a bare trailing carriage return - or any other byte a password may
+// legitimately end with - survives.
 func TestReadPasswordStdinTrimsExactlyOneLineEnding(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

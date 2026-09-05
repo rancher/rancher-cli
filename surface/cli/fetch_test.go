@@ -12,8 +12,8 @@ import (
 // TestNewCompletionClientBoundsUnresponsiveServer asserts newCompletionClient
 // itself bounds requests via its Options.Timeout, independent of any
 // ctx deadline the caller happens to add. FetchClustersForTest is called
-// with a bare, deadline-free context — the same shape a caller that forgot
-// to wrap ctx with completionTimeout() would use — so the client's own
+// with a bare, deadline-free context - the same shape a caller that forgot
+// to wrap ctx with completionTimeout() would use - so the client's own
 // timeout is the only thing that can stop this from hanging forever.
 func TestNewCompletionClientBoundsUnresponsiveServer(t *testing.T) {
 	t.Parallel()

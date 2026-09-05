@@ -48,7 +48,7 @@ func TestResolveScopeNoneIsValidationError(t *testing.T) {
 
 func TestResolveScopeCluster(t *testing.T) {
 	// ResolveDownstreamCluster resolves the explicit flag; with a bare id
-	// and no clusters listed it may pass the id through or resolve it —
+	// and no clusters listed it may pass the id through or resolve it -
 	// read internal/engine/route.go before finalizing this fake's data.
 	got, err := ResolveScope(t.Context(), fakeFactory{c: &fakeClient{}}, stubInput{strings: map[string]string{"cluster": "c-x"}})
 	require.NoError(t, err)

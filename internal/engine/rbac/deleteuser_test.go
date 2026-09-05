@@ -111,7 +111,7 @@ func TestDeleteUserPlanAppendsCascadeWarning(t *testing.T) {
 // TestDeleteUserSelfDeleteRefused verifies that attempting to delete the
 // currently authenticated user is refused with a VALIDATION error. With
 // pre-Plan guard timing the curated refusal fires before the inner Plan's
-// server-side dry-run — the inner dry-run must not execute on refusal.
+// server-side dry-run - the inner dry-run must not execute on refusal.
 func TestDeleteUserSelfDeleteRefused(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
@@ -173,7 +173,7 @@ func TestDeleteUserProbeNotFoundSkips(t *testing.T) {
 }
 
 // TestDeleteUserRawClusterErrorRefusesRetryably verifies that a raw (non-clierr)
-// Cluster() construction failure is wrapped in the retryable GENERIC refusal —
+// Cluster() construction failure is wrapped in the retryable GENERIC refusal -
 // an ambiguous construction failure must cost a retry rather than risk a lockout.
 // Assertions use errors.As rather than ErrorIs because guardVerifyRefusal embeds
 // the original text in the message without wrapping the error identity; the
@@ -196,7 +196,7 @@ func TestDeleteUserRawClusterErrorRefusesRetryably(t *testing.T) {
 
 // TestDeleteUserCliErrClusterErrorPassesThrough verifies that a clierr-coded
 // Cluster() failure passes through with its original code and retryability
-// intact — the guard must not rewrap a structured error.
+// intact - the guard must not rewrap a structured error.
 // Assertions after errors.As replicate runtime.toClierr normalization: a
 // *clierr.Error found by errors.As is returned unchanged by toClierr.
 func TestDeleteUserCliErrClusterErrorPassesThrough(t *testing.T) {
@@ -217,7 +217,7 @@ func TestDeleteUserCliErrClusterErrorPassesThrough(t *testing.T) {
 
 // TestDeleteUserUnclassifiedCliErrClusterErrorRefusesRetryably verifies that a
 // Cluster() failure with the mapErr catch-all shape (CodeGeneric, no hint,
-// Retryable false) is refused retryably rather than passed through unchanged —
+// Retryable false) is refused retryably rather than passed through unchanged -
 // it is indistinguishable from transport noise and must not short-circuit the
 // self-delete guard with a non-retryable generic error.
 func TestDeleteUserUnclassifiedCliErrClusterErrorRefusesRetryably(t *testing.T) {
@@ -239,7 +239,7 @@ func TestDeleteUserUnclassifiedCliErrClusterErrorRefusesRetryably(t *testing.T) 
 
 // TestDeleteUserCliErrProbeErrorPassesThrough verifies that a clierr-coded
 // SelfUser probe failure (e.g. CodeAuth) passes through with its original
-// code and retryability intact — the guard must not rewrap a structured error
+// code and retryability intact - the guard must not rewrap a structured error
 // from the probe path. Assertions replicate runtime.toClierr normalization.
 func TestDeleteUserCliErrProbeErrorPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -281,7 +281,7 @@ func TestDeleteUserCancellation(t *testing.T) {
 }
 
 // TestDeleteUserNonexistentProbesBeforeNotFound verifies that with pre-Plan
-// guard timing the self-delete probe fires before inner.Plan — so a mistyped
+// guard timing the self-delete probe fires before inner.Plan - so a mistyped
 // target name triggers one identity probe before the 404. Accepted tradeoff:
 // a curated lockout refusal with a hint beats raw webhook text on a real
 // server; the extra probe on mistyped targets is a cheap read-equivalent call.
@@ -304,7 +304,7 @@ func TestDeleteUserNonexistentProbesBeforeNotFound(t *testing.T) {
 
 // TestDeleteUserMapErrDefaultProbeErrorRefusesRetryably verifies that a probe
 // error matching mapErr's catch-all default (CodeGeneric, no hint, Retryable
-// false) is treated as transport noise — the guard refuses retryably rather
+// false) is treated as transport noise - the guard refuses retryably rather
 // than passing the unclassified fault through as a diagnostic.
 func TestDeleteUserMapErrDefaultProbeErrorRefusesRetryably(t *testing.T) {
 	t.Parallel()

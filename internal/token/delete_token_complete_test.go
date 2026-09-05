@@ -79,7 +79,7 @@ func TestDeleteTokenCompleteArgsEmptyViewDirYieldsNil(t *testing.T) {
 		"tok", time.Now().Add(time.Hour),
 		"ctx", "rancher.example.com", "c-abc",
 	))
-	// Command has a real dir but view has empty dir — without d.dir fallback,
+	// Command has a real dir but view has empty dir - without d.dir fallback,
 	// must return nil (not the entries from cacheDir).
 	cmd := token.NewDeleteTokenCommand(cacheDir, store)
 	sc := cmd.(runtime.ShellCompleter)

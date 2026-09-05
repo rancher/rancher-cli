@@ -15,7 +15,7 @@ import (
 // stream with that stream's own TTY-ness, so stdout and stderr can land on
 // different results from the same flag and environment values.
 //
-// An empty NO_COLOR counts as unset — a common shell accident, not a
+// An empty NO_COLOR counts as unset - a common shell accident, not a
 // deliberate opt-out. CLICOLOR_FORCE=0 and FORCE_COLOR=0 count as unset.
 // When both force variables are set and disagree, whichever is not "0"
 // wins; neither ordering is an error.
@@ -39,7 +39,7 @@ func forceSet(v string) bool { return v != "" && v != "0" }
 
 // stylesFor resolves the per-stream Style for one invocation. Both are the
 // zero (disabled) Style whenever the invocation's format is not among the
-// styleable set (table/default/wide) — json, yaml, name, and template stay
+// styleable set (table/default/wide) - json, yaml, name, and template stay
 // plain no matter what --color, NO_COLOR, or a force variable says.
 func stylesFor(streams IO) (out, err style.Style) {
 	if !textRenderFormat(streams.Format) {
@@ -57,7 +57,7 @@ func stylesFor(streams IO) (out, err style.Style) {
 // helper: it splits text into lines, hands each line's body (trailing
 // newline removed) to transform with its index, and re-attaches the newline
 // to a transformed result. Lines transform declines (ok=false) pass through
-// byte-identical, as does the whole text on a disabled Style — keeping the
+// byte-identical, as does the whole text on a disabled Style - keeping the
 // newline re-attachment logic in exactly one place. Exported so a command
 // package outside runtime can anchor its own default-format text view to
 // structural facts (an exact header, a known line index) it already knows,
@@ -81,8 +81,8 @@ func StyleLines(text string, s style.Style, transform func(i int, body string) (
 	return strings.Join(lines, "")
 }
 
-// boldShownOnceLine wraps the line ending in ShownOnceSuffix — the
-// once-only credential value's own line — in bold, leaving every other
+// boldShownOnceLine wraps the line ending in ShownOnceSuffix - the
+// once-only credential value's own line - in bold, leaving every other
 // line and all whitespace untouched.
 func boldShownOnceLine(text string, s style.Style) string {
 	return StyleLines(text, s, func(_ int, body string) (string, bool) {

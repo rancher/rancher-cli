@@ -11,17 +11,17 @@
 [windows] skip 'wincred is always usable, so auto never falls back to file'
 
 # E2E-A-003: clears Setup's RANCHER_CLI_CREDENTIAL_STORE=file default so the
-# "auto" pin path actually runs — a script-side exemption since
+# "auto" pin path actually runs - a script-side exemption since
 # testscript.Env carries no script name for Setup to special-case.
 env RANCHER_CLI_CREDENTIAL_STORE=
 
 # Headless is the ONLY environment this script runs in (see the darwin skip),
 # so the auto probe always fails fast here: expect the "file" pin and the
-# plaintext-fallback notice — NOT the usable-branch "pinned credential store:
+# plaintext-fallback notice - NOT the usable-branch "pinned credential store:
 # keychain" notice, which needs a real keychain session no CI/container has.
 # The usable branch's coverage is the unit test
 # TestLoginSequenceFreshAutoUsableKeychain plus interactive macOS use.
-# (First-ever execution of this script — Linux acceptance 2026-07-13 — found
+# (First-ever execution of this script - Linux acceptance 2026-07-13 - found
 # it asserting the usable-branch notice; adjudication gist 6252584.)
 stdin token.txt
 exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --token-stdin

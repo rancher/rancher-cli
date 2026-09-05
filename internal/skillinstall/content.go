@@ -26,17 +26,17 @@ const (
 
 	// OwnerMarkerFile is a rendered tree member (digested like any other
 	// file): one line of OwnerValue. Leftover staging classification reads
-	// THIS file — complete-or-absent by construction when written via
-	// temp+rename — never the truncatable SKILL.md frontmatter.
+	// THIS file - complete-or-absent by construction when written via
+	// temp+rename - never the truncatable SKILL.md frontmatter.
 	OwnerMarkerFile = ".rancher-skill-owner"
 
 	// digestSentinel replaces the digest value in the canonical view so the
-	// digest never hashes bytes containing itself. Fixed forever — part of
+	// digest never hashes bytes containing itself. Fixed forever - part of
 	// the digest contract.
 	digestSentinel = "digest-pending-0000000000000000000000000000000000000000000000000000000000000000"
 )
 
-// ErrNonRegular marks a tree entry that is not a regular file — symlinks,
+// ErrNonRegular marks a tree entry that is not a regular file - symlinks,
 // FIFOs, and devices are rejected rather than read.
 var ErrNonRegular = errors.New("tree contains a non-regular file")
 
@@ -97,7 +97,7 @@ func loadSource() (map[string][]byte, error) {
 }
 
 // ReadTree loads an installed tree for digesting. Every entry must be a
-// regular file per its Lstat type — WalkDir does not follow directory
+// regular file per its Lstat type - WalkDir does not follow directory
 // symlinks, and this check refuses file symlinks BEFORE any read, so a
 // link pointing outside the installation is never opened.
 func ReadTree(dir string) (map[string][]byte, error) {
@@ -133,7 +133,7 @@ func ReadTree(dir string) (map[string][]byte, error) {
 }
 
 // stampSkillMD appends the metadata block to the original frontmatter
-// TEXTUALLY — name/description bytes stay untouched (no YAML re-marshal of
+// TEXTUALLY - name/description bytes stay untouched (no YAML re-marshal of
 // the whole document, which would reflow the description).
 func stampSkillMD(orig []byte, cliVersion, digest string) ([]byte, error) {
 	fm, body, err := splitSkillMD(orig)
@@ -163,7 +163,7 @@ func stampSkillMD(orig []byte, cliVersion, digest string) ([]byte, error) {
 // stamp with the sentinel, digest that canonical view, then stamp for real.
 // The tree includes the owner marker file: a one-line, rename-atomic
 // ownership signal that staging (and installed trees) carry as a first-
-// class digested member — sweep classification never depends on parsing a
+// class digested member - sweep classification never depends on parsing a
 // possibly-truncated SKILL.md.
 func Rendered(cliVersion string) (map[string][]byte, error) {
 	files, err := loadSource()
@@ -228,7 +228,7 @@ func replaceDigestValue(skillMD []byte, repl string) ([]byte, bool) {
 }
 
 // ReadInstallRecord parses the metadata block of an installed SKILL.md.
-// ok=false means no parseable frontmatter metadata — a foreign file.
+// ok=false means no parseable frontmatter metadata - a foreign file.
 func ReadInstallRecord(skillMD []byte) (InstallRecord, bool) {
 	fm, _, err := splitSkillMD(skillMD)
 	if err != nil {

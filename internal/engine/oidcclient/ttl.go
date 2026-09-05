@@ -11,7 +11,7 @@ import (
 )
 
 // maxTTLSeconds is the largest whole-second value whose conversion back to
-// a time.Duration (seconds * time.Second) cannot overflow int64 — the true
+// a time.Duration (seconds * time.Second) cannot overflow int64 - the true
 // server/time.Duration bound (math.MaxInt64/int64(time.Second)), not an
 // arbitrary product limit. Both OIDCClientSpec TTL fields are wire int64
 // seconds, so this is also the largest value the server itself could
@@ -20,12 +20,12 @@ const maxTTLSeconds = int64(math.MaxInt64) / int64(time.Second)
 
 // strictTTLSeconds converts a --token-ttl/--refresh-ttl flag to the
 // CRD-required whole-second wire value. raw == "" means the flag was
-// omitted: the caller applies its OWN default (3600/86400) — the CLI's
+// omitted: the caller applies its OWN default (3600/86400) - the CLI's
 // default, never the server's, since both OIDCClientSpec TTL fields are
 // CRD-required with no server-side defaulting. A supplied value must be a
 // positive whole number of seconds: any sub-second/fractional remainder,
 // zero, or negative value is VALIDATION, never silently truncated or
-// reinterpreted as omission — the existing TTLSeconds/TTLMilliseconds
+// reinterpreted as omission - the existing TTLSeconds/TTLMilliseconds
 // zero-is-omission sentinel precedent is deliberately not reused here for
 // exactly that reason.
 func strictTTLSeconds(flag, raw string) (int64, error) {
@@ -55,7 +55,7 @@ func strictTTLSeconds(flag, raw string) (int64, error) {
 // rewrapTTLFlagName corrects extres.ParseTTL's error, which hardcodes
 // "--ttl" (create token/create kubeconfig's actual flag name) in its
 // Message and Hint, into the flag this command really has (--token-ttl or
-// --refresh-ttl) — ParseTTL cannot name a flag it does not know about, so a
+// --refresh-ttl) - ParseTTL cannot name a flag it does not know about, so a
 // caller with a differently-named flag must correct the wording before it
 // reaches the user. WithMessage preserves everything else (code, cause,
 // retryable, candidates, details), so only Hint needs a second fix-up.

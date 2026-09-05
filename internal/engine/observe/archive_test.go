@@ -111,7 +111,7 @@ func TestCreateArchiveRefusesSymlink(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 
 	target, err := os.Readlink(path)
-	require.NoError(t, err, "the symlink itself must survive — O_EXCL refuses it, never follows it")
+	require.NoError(t, err, "the symlink itself must survive - O_EXCL refuses it, never follows it")
 	assert.Equal(t, filepath.Join(dir, "nowhere"), target)
 }
 
@@ -168,7 +168,7 @@ func TestArchiveWriterEmptyEntries(t *testing.T) {
 
 // TestArchiveWriterStreamsBeforeClose is the memory-bound proof: entries
 // reach disk as Add is called, not all at once on Close, so a collector
-// feeding this writer never needs to hold the whole collection in memory —
+// feeding this writer never needs to hold the whole collection in memory -
 // only the one entry it is currently adding.
 func TestArchiveWriterStreamsBeforeClose(t *testing.T) {
 	t.Parallel()

@@ -20,7 +20,7 @@ func (alwaysProceedCapabilityChecker) Check(context.Context, runtime.CapabilityR
 }
 
 // TestRecoveryHint asserts the single shared spelling every verb's recovery
-// text is built from — a future wording change only has to happen here.
+// text is built from - a future wording change only has to happen here.
 func TestRecoveryHint(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "get oidcclient my-app -o json", recoveryHint("my-app"))
@@ -28,7 +28,7 @@ func TestRecoveryHint(t *testing.T) {
 
 // TestOidcClientKindResolvesWithoutPanicking asserts oidcClientKind's
 // tripwire: it panics if the "oidcclient" row is ever renamed or removed
-// from kinds.go without this package being updated in lockstep — every
+// from kinds.go without this package being updated in lockstep - every
 // bespoke descriptor's Capability, GVR, and Sensitive flag come from this
 // one lookup, so a silent zero-value fallback here would silently weaken
 // the Prime gate every one of them shares. This test asserts today's row

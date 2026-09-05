@@ -17,7 +17,7 @@ import (
 // both "why empty" and "where did the budget go" are answerable from one
 // run. The trace goes to stderr only; candidates on stdout stay
 // byte-identical whether or not the variable is set, and the trace is
-// emitted only while a completion request is being served — never on a
+// emitted only while a completion request is being served - never on a
 // regular command.
 
 var (

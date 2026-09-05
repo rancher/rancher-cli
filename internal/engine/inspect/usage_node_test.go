@@ -12,7 +12,7 @@ import (
 )
 
 // nodeObj, nodeMetricsObj, and nodeMetricsObjPtr move here VERBATIM from
-// topnode_test.go (which this task deletes) — without this move, deleting
+// topnode_test.go (which this task deletes) - without this move, deleting
 // topnode_test.go breaks compilation of this file:
 
 func nodeObj(name string) *unstructured.Unstructured {
@@ -32,7 +32,7 @@ func nodeMetricsObjPtr(name, cpu, memory string) *unstructured.Unstructured {
 	}}
 }
 
-// podOnNode is NOT defined here — Task 2 already added it to usage_test.go;
+// podOnNode is NOT defined here - Task 2 already added it to usage_test.go;
 // this file just uses it.
 
 func TestUsageByNodeJoinsNodeMetrics(t *testing.T) {
@@ -128,7 +128,7 @@ func TestUsageByNodeSingleNodeDegradesWithoutMetricsServer(t *testing.T) {
 	pods := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		*podOnNode("ns1", "p1", "n1", "50m", "64Mi", "100m", "128Mi"),
 	}}
-	// No nodeMetricsGVR object registered — fake.Get returns error for missing object.
+	// No nodeMetricsGVR object registered - fake.Get returns error for missing object.
 	client := newFakeClient().
 		withObject(nodeKind.GVR, "", "n1", nodeObj("n1")).
 		withList(podKind.GVR, pods)
@@ -204,7 +204,7 @@ func TestUsageByNodeGetNotFoundCurated(t *testing.T) {
 }
 
 // A pod whose spec.nodeName names a node absent from the List (deleted mid-run
-// or partial RBAC) must still produce a row — USAGE empty, REQUEST/LIMIT from
+// or partial RBAC) must still produce a row - USAGE empty, REQUEST/LIMIT from
 // the pod spec.
 func TestUsageByNodeGhostNodeKeepsRow(t *testing.T) {
 	t.Parallel()

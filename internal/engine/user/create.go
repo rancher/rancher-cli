@@ -20,7 +20,7 @@ import (
 )
 
 // secretGVR/secretNamespace name the backing password Secret every local
-// user's credential lives in — a same-named v1 Secret in
+// user's credential lives in - a same-named v1 Secret in
 // cattle-local-user-passwords, owned (via an ownerReference the webhook adds
 // itself) by the User it belongs to.
 var secretGVR = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}
@@ -28,12 +28,12 @@ var secretGVR = schema.GroupVersionResource{Group: "", Version: "v1", Resource: 
 const secretNamespace = "cattle-local-user-passwords"
 
 // userKind returns the user kind row. A missing/renamed row is a programmer
-// error, not a runtime condition to recover from — mirrors
+// error, not a runtime condition to recover from - mirrors
 // internal/engine/oidcclient's oidcClientKind panic and its rationale.
 func userKind() kinds.Kind {
 	k, ok := kinds.Lookup("user")
 	if !ok {
-		panic("user kind row not found in kinds.go — renamed or removed without updating internal/engine/user")
+		panic("user kind row not found in kinds.go - renamed or removed without updating internal/engine/user")
 	}
 	return k
 }
@@ -46,7 +46,7 @@ type createCmd struct {
 // NewCreate builds `create user <username> --password-stdin
 // [--display-name] [--enabled]` (mutating): the composite that creates a
 // local Rancher user through the sanctioned two-resource public-API
-// workflow, in the oidc-client-create mold — both resources' server-side
+// workflow, in the oidc-client-create mold - both resources' server-side
 // dry-run previews run at Plan time, through the ONE safety pipeline.
 func NewCreate(clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
 	return &createCmd{clients: clients, src: src}
@@ -57,7 +57,7 @@ func (createCmd) Describe() runtime.Descriptor {
 		Name:  "create user",
 		Usage: "Create a local user",
 		Desc: "Creates the management.cattle.io/v3 User, then a same-named Secret in " +
-			"cattle-local-user-passwords carrying the password — the server hashes it on " +
+			"cattle-local-user-passwords carrying the password - the server hashes it on " +
 			"write (never the CLI). Requires the connected server's user-password workflow " +
 			"(ext.cattle.io PasswordChangeRequest support is the declared marker).",
 		CommandType: runtime.Mutating,
@@ -65,7 +65,7 @@ func (createCmd) Describe() runtime.Descriptor {
 			{Name: "username", Type: "string", Required: true, Desc: "local username (the server assigns the object's own id)"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag — a flag value would land in shell history; the server enforces a minimum length, 12 by default)"},
+			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)"},
 			{Name: "display-name", Type: "string", Desc: "display name (default: the username)"},
 			{Name: "enabled", Type: "string", Enum: []string{"true", "false"}, Desc: "account enabled state (server default true)"},
 		},
@@ -116,7 +116,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	// PlanCreateObserved's own executor is discarded, same rationale as
 	// oidc-client-create: this command's executor runs the Secret step too,
 	// which the generic shape does not express. previewUser's dry-run
-	// generateName expansion is a preview only — the real committed name is
+	// generateName expansion is a preview only - the real committed name is
 	// not known until execute creates the User for real.
 	eff, previewUser, _, err := engine.PlanCreateObserved(ctx, client, k.GVR, "", userObj, engine.LocalCluster, k.Name, "User", k.Sensitive)
 	if err != nil {
@@ -124,7 +124,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	}
 
 	// The enforcing net: prove THIS server accepts the Secret create before
-	// anything commits — on a server without the workflow, the namespace
+	// anything commits - on a server without the workflow, the namespace
 	// does not exist and this dry-run fails, which the declared-signal
 	// capability gate (Run, before Plan) should already have caught; this
 	// is the backstop for the rare case that signal itself was unreadable.
@@ -144,7 +144,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	}
 	// The name is never stated: previewUser.GetName() is a dry-run-only
 	// placeholder that will not match the Secret's real committed name
-	// (assigned only once the User create commits for real) — naming it
+	// (assigned only once the User create commits for real) - naming it
 	// here would read as a promise the apply-time output then contradicts.
 	eff.Warnings = append(eff.Warnings, fmt.Sprintf("also creates a v1/Secret in %s to hold the password", secretNamespace))
 
@@ -157,7 +157,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 // execute runs strictly in this order: User create -> Secret create. A
 // Secret failure after the User committed returns a non-retryable error
 // carrying CommittedContextDetails whose recovery creates the missing
-// Secret directly — NOT `create password-change-request`, which requires
+// Secret directly - NOT `create password-change-request`, which requires
 // an existing password Secret to change and 401s ("failed to get password
 // secret") against a user that has none yet. `create resource -f -` is
 // used instead of `create secret --from-literal` for the same reason
@@ -171,7 +171,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		return runtime.Result{}, err
 	}
 	name := createdUser.GetName()
-	recovery := fmt.Sprintf(`the user %s was created without a password — set one without it touching argv or shell history: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | rancher create resource -f - --cluster local --apply --yes (a password containing a double quote or backslash must be JSON-escaped in the manifest)`, name, name)
+	recovery := fmt.Sprintf(`the user %s was created without a password - set one without it touching argv or shell history: echo '{"apiVersion":"v1","kind":"Secret","metadata":{"name":"%s","namespace":"cattle-local-user-passwords"},"stringData":{"password":"'"$PASSWORD"'"}}' | rancher create resource -f - --cluster local --apply --yes (a password containing a double quote or backslash must be JSON-escaped in the manifest)`, name, name)
 
 	secretObj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1",

@@ -13,8 +13,8 @@ import (
 )
 
 // passwordChangeRequestGVR names the ext.cattle.io PasswordChangeRequest
-// resource: cluster-scoped and create-only — its own discovery advertises no
-// get/list/delete verb, a command resource rather than a stored one — so
+// resource: cluster-scoped and create-only - its own discovery advertises no
+// get/list/delete verb, a command resource rather than a stored one - so
 // unlike Token/Kubeconfig it carries no kinds.go row: a table row that could
 // never support get/list/delete would only mislead the generic verb
 // machinery into offering commands the server always rejects.
@@ -28,7 +28,7 @@ type createPasswordChangeRequestCmd struct {
 // NewCreatePasswordChangeRequest builds `create password-change-request
 // <user> --password-stdin` (mutating): submits an ext.cattle.io/v1
 // PasswordChangeRequest, the password-change side of the user-password
-// workflow `create user` also uses. The request completes synchronously —
+// workflow `create user` also uses. The request completes synchronously -
 // the server reports the change already applied in the create response,
 // never a controller the caller must wait on.
 func NewCreatePasswordChangeRequest(clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
@@ -47,7 +47,7 @@ func (createPasswordChangeRequestCmd) Describe() runtime.Descriptor {
 			{Name: "user", Type: "string", Required: true, Desc: "user `id` (see: rancher get users)"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag — a flag value would land in shell history; the server enforces a minimum length, 12 by default)"},
+			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)"},
 		},
 		Examples: []string{
 			`echo -n "$NEWPASSWORD" | rancher create password-change-request u-abc123 --password-stdin --apply --yes`,
@@ -83,7 +83,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 	}
 	// The request resource is unnamed (create-only, no metadata.name):
 	// PlanCreate's generic Effect-building derives DisplayName from the
-	// dry-run response's name, which would be empty here — built by hand
+	// dry-run response's name, which would be empty here - built by hand
 	// instead, naming the target user rather than the (nonexistent) object.
 	if _, err := client.Create(ctx, passwordChangeRequestGVR, "", obj, true); err != nil {
 		return safety.Effect{}, nil, engine.RefuseUnsupportedWorkflow(err,
@@ -117,7 +117,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 		res := runtime.MutationText("password-change-request", userID, "completed")
 		res.Kind = "PasswordChangeRequestCompleted"
 		// Never the raw created object: its spec.newPassword field echoes
-		// the plaintext value verbatim — Data is a hand-built, deliberately
+		// the plaintext value verbatim - Data is a hand-built, deliberately
 		// password-free shape instead, the same posture
 		// internal/engine/oidcclient's create takes with its Data map.
 		res.Data = map[string]any{"userID": userID}
@@ -127,7 +127,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 }
 
 // passwordUpdated reports whether created's status carries a True
-// PasswordUpdated condition — the server's own synchronous confirmation,
+// PasswordUpdated condition - the server's own synchronous confirmation,
 // never inferred from the create call's bare success.
 func passwordUpdated(created *unstructured.Unstructured) bool {
 	updated := false

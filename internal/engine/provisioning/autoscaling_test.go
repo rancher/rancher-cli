@@ -63,7 +63,7 @@ func TestSetAutoscalingRejectsMinGreaterThanMax(t *testing.T) {
 }
 
 // TestSetAutoscalingRejectsNegativeMinOrMax asserts that a negative bound is
-// always rejected client-side, on any pool shape — sizes are counts, never
+// always rejected client-side, on any pool shape - sizes are counts, never
 // negative, regardless of role.
 func TestSetAutoscalingRejectsNegativeMinOrMax(t *testing.T) {
 	t.Parallel()

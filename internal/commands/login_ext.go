@@ -22,7 +22,7 @@ import (
 // returned error carries when a token may have been left behind.
 //
 // caPEM is the CA snapshot Execute already resolved (explicit --cacert, else
-// the entry the naming algorithm would select's stored CA) — resolved once,
+// the entry the naming algorithm would select's stored CA) - resolved once,
 // before any request in the login operation, so this never rediscovers
 // trust independently by re-reading a path or ignoring a stored CA the way
 // a bare config.ResolveCA(in.String("cacert")) would on a same-server

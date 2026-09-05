@@ -59,7 +59,7 @@ _rancher
 }
 
 // TestZshStderrNotLeakedToTerminal verifies the zsh script suppresses the
-// binary's stderr the way fish.sh, bash.sh, and pwsh.ps1 already do — a
+// binary's stderr the way fish.sh, bash.sh, and pwsh.ps1 already do - a
 // binary that rejects the request (e.g. a stale install that predates the
 // v2 protocol) must degrade to "no candidates", not splat errors onto the
 // command line being edited.

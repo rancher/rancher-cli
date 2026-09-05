@@ -22,7 +22,7 @@ type Options struct {
 // plugin, so a caller must never rely on dial/TLS-handshake timeouts alone
 // to cap an unresponsive server). Callers that already bound the request
 // via a shorter context deadline (a per-path timeout var, tested and
-// shrinkable) pass that value instead — it always wins since it fires
+// shrinkable) pass that value instead - it always wins since it fires
 // first, and DefaultTimeout serves those callers only as a backstop against
 // a future refactor that drops the context wrap. A package var, not a
 // constant, so tests can shrink it via SetDefaultTimeoutForTest.
@@ -93,7 +93,7 @@ func newTransport(tlsConfig *tls.Config) *http.Transport {
 }
 
 // Do executes req and reads the full response body, closing it before
-// returning — the one request/response shape every hand-rolled Rancher API
+// returning - the one request/response shape every hand-rolled Rancher API
 // caller in this codebase needs (token's provider dance, login's ext-token
 // create/revoke), so it lives here once instead of once per package.
 func Do(client *http.Client, req *http.Request) (*http.Response, []byte, error) {

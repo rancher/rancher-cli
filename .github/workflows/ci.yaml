@@ -71,7 +71,7 @@ jobs:
         timeout-minutes: 20
   install-windows:
     # The installer's behavior and security tests (token handling,
-    # checksums, the atomic junction switch) only execute on Windows —
+    # checksums, the atomic junction switch) only execute on Windows -
     # everywhere else they skip, so without this job they would never
     # run in CI.
     runs-on: windows-latest

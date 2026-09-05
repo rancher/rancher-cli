@@ -99,12 +99,12 @@ func SetWaitForFlockHookForTest(fn func()) (restore func()) {
 // WithLock runs fn while holding the config-directory write lock: an
 // exclusive flock on <dir>/config.lock plus the process-level semaphore.
 // Every load→modify→write of config.yaml or credentials.yaml runs inside
-// it, so the read that decides is the read that wins. NOT re-entrant — a
+// it, so the read that decides is the read that wins. NOT re-entrant - a
 // nested WithLock call deadlocks by design until the wait deadline (it is
 // a bug, and a loud one).
 //
-// ctx is the command's context: cancellation (Ctrl-C) aborts BOTH waits —
-// the in-process semaphore and the cross-process flock — immediately; the
+// ctx is the command's context: cancellation (Ctrl-C) aborts BOTH waits -
+// the in-process semaphore and the cross-process flock - immediately; the
 // lockWaitTimeout deadline covers the two waits together, not each.
 //
 // Lock ordering: the config lock is outermost with ONE exception, the
@@ -113,8 +113,8 @@ func SetWaitForFlockHookForTest(fn func()) (restore func()) {
 // this lock never acquires that one. Code holding the token-cache lock or
 // the helper-records lock must never acquire this lock.
 //
-// RANCHER_CLI_CONFIG_NO_LOCK (any non-empty value) skips the flock —
-// escape hatch for filesystems with broken advisory locking — while the
+// RANCHER_CLI_CONFIG_NO_LOCK (any non-empty value) skips the flock -
+// escape hatch for filesystems with broken advisory locking - while the
 // process semaphore still serializes in-process callers.
 func WithLock(ctx context.Context, dir string, fn func() error) error {
 	waitCtx, cancel := context.WithTimeout(ctx, lockWaitTimeout)
@@ -132,7 +132,7 @@ func WithLock(ctx context.Context, dir string, fn func() error) error {
 	// Both select arms can be ready when the caller's context is already
 	// canceled, and Go may pick the semaphore send. Re-check before ANY
 	// filesystem work or the callback: a canceled command must never
-	// mutate — the env opt-out path below has no later context check at
+	// mutate - the env opt-out path below has no later context check at
 	// all, and even the flock path would create the config directory first.
 	if err := waitCtx.Err(); err != nil {
 		return lockWaitError(err, lockWaitInProcess)
@@ -156,8 +156,8 @@ func WithLock(ctx context.Context, dir string, fn func() error) error {
 
 // lockWaitStage says which of the two waits timed out, so the error can
 // point at the right suspect: an exhausted IN-PROCESS wait means this very
-// process holds the lock — a concurrent goroutine or a nested WithLock call
-// (a bug) — while a cross-process wait points at another rancher process.
+// process holds the lock - a concurrent goroutine or a nested WithLock call
+// (a bug) - while a cross-process wait points at another rancher process.
 type lockWaitStage int
 
 const (
@@ -166,7 +166,7 @@ const (
 )
 
 // lockWaitError classifies a failed lock wait: the caller's own
-// cancellation (Ctrl-C) passes through as-is — it is not a lock problem —
+// cancellation (Ctrl-C) passes through as-is - it is not a lock problem -
 // while a deadline or contention failure gets a stage-specific actionable
 // message and the escape-hatch hint.
 func lockWaitError(err error, stage lockWaitStage) error {
@@ -175,7 +175,7 @@ func lockWaitError(err error, stage lockWaitStage) error {
 	}
 	msg := "locking the configuration directory (another rancher process may be writing): "
 	if stage == lockWaitInProcess {
-		msg = "waiting for the configuration lock held by this same process (a concurrent goroutine, or a nested WithLock call — a bug): "
+		msg = "waiting for the configuration lock held by this same process (a concurrent goroutine, or a nested WithLock call - a bug): "
 	}
 	return clierr.Retryable(clierr.CodeLockTimeout,
 		msg+err.Error()+"; on a filesystem with broken file locking, skip the flock with RANCHER_CLI_CONFIG_NO_LOCK=1").

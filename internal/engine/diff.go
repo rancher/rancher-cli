@@ -45,8 +45,8 @@ func isSkippedPath(path string) bool {
 // scrubValue returns v with every skipped path under prefix removed. Used
 // whenever a value that can be a map is emitted wholesale into a DiffEntry
 // (type mismatches and leaf changes), so no branch can leak a skipped field
-// inside a larger emitted subtree. Skipped paths address object fields only —
-// every segment is a fixed key, never an array index — so a non-map value
+// inside a larger emitted subtree. Skipped paths address object fields only -
+// every segment is a fixed key, never an array index - so a non-map value
 // cannot contain one and is returned unchanged, as is any map when no
 // skipped path can lie under prefix (no allocation on subtrees like /spec).
 // The removal itself is ScrubPaths, the same copy-on-write scrub the
@@ -57,7 +57,7 @@ func scrubValue(prefix string, v any) any {
 		return v
 	}
 	// prefix has one "/" per segment, so its segment count relativizes a
-	// matching skipped path by slicing — no re-parsing.
+	// matching skipped path by slicing - no re-parsing.
 	depth := strings.Count(prefix, "/")
 	var rel [][]string
 	for i, p := range skippedPointers {

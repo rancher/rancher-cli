@@ -40,7 +40,7 @@ func TestSchemaViewMarshalDelegation(t *testing.T) {
 		var out, errBuf bytes.Buffer
 		_, ce := Run(t.Context(), cmd, tin{}, IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
 		require.Nil(t, ce)
-		assert.True(t, strings.HasPrefix(out.String(), "rancher test — "),
+		assert.True(t, strings.HasPrefix(out.String(), "rancher test - "),
 			"format %q renders the TOC Text, not the view's table", format)
 		assert.NotContains(t, out.String(), "NAME", "the view's NAME column must not render under %q", format)
 	}
@@ -49,7 +49,7 @@ func TestSchemaViewMarshalDelegation(t *testing.T) {
 // TestSchemaFormatCompat is the SE-2 matrix for W4: every selection shape
 // (bare, command, kind, filtered-to-zero) rendered under json, yaml, name, and
 // template, asserted on decoded fields. `-o name` emits the selection's name
-// set one per line — for bare and filtered selections that is the command
+// set one per line - for bare and filtered selections that is the command
 // names (NEW: it previously emitted nothing).
 func TestSchemaFormatCompat(t *testing.T) {
 	t.Parallel()
@@ -98,8 +98,8 @@ func TestSchemaFormatCompat(t *testing.T) {
 		return out.String()
 	}
 	// assertCardData checks the cardView JSON shape used by command selections:
-	// the command's fields are flattened to the top level — name at root, no
-	// commands wrapper array — plus globalExitCodes always present.
+	// the command's fields are flattened to the top level - name at root, no
+	// commands wrapper array - plus globalExitCodes always present.
 	assertCardData := func(t *testing.T, data map[string]any, tc shapeTC) {
 		t.Helper()
 		require.Len(t, tc.wantCmds, 1, "card selection must have exactly one command name")
@@ -108,7 +108,7 @@ func TestSchemaFormatCompat(t *testing.T) {
 		assert.NotContains(t, data, "commands", "flattened: no commands wrapper array")
 	}
 	// assertKindData checks the kindView JSON shape used by kind selections:
-	// the kind's fields are at top level — name, verbs — no commands or groups wrapper.
+	// the kind's fields are at top level - name, verbs - no commands or groups wrapper.
 	assertKindData := func(t *testing.T, data map[string]any, tc shapeTC) {
 		t.Helper()
 		assert.Equal(t, tc.wantKind, data["name"])

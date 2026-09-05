@@ -17,7 +17,7 @@ import (
 
 // The helper-records file remembers which exec helpers were asked to store
 // which credential identities, so a later delete can erase through every
-// helper that may hold a token — regardless of what the credential-store
+// helper that may hold a token - regardless of what the credential-store
 // policy says by then. Machine-local state (like the credstore pin), never
 // portable config. Records are written BEFORE the helper store runs
 // (write-ahead): a stale record after a failed store is harmless because
@@ -64,7 +64,7 @@ func (s *helperRecords) remove(e HelperRecord) {
 }
 
 // forServer returns the recorded entries for a config-entry name. Helper names
-// are validated in withHelperRecordsLock's load loop before any callback runs —
+// are validated in withHelperRecordsLock's load loop before any callback runs -
 // entries that reach a callback have already passed ValidHelperName.
 func (s *helperRecords) forServer(name string) []HelperRecord {
 	var out []HelperRecord
@@ -78,8 +78,8 @@ func (s *helperRecords) forServer(name string) []HelperRecord {
 
 // withHelperRecordsLock serializes a whole operation on the helper-records file
 // across processes: flock (LockFileEx on Windows; released by the OS on
-// process death) with a bounded wait, load, run fn — which may also invoke
-// helper store/erase while holding the lock, by design — then persist if
+// process death) with a bounded wait, load, run fn - which may also invoke
+// helper store/erase while holding the lock, by design - then persist if
 // dirty. The lock spanning the helper calls is what makes a concurrent
 // login's re-store never race a logout's erase-then-unrecord.
 func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecords) error) error {
@@ -136,13 +136,13 @@ func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecor
 // DeleteOrphanedHelperCredentials erases EVERY remaining recorded helper credential,
 // independently of what config.yaml still lists. `logout --all` calls it after
 // deleting the configured servers so a credential whose server name never
-// reached config.yaml — a crash (or failed config write) between a successful
+// reached config.yaml - a crash (or failed config write) between a successful
 // helper store and the config write leaves the helper holding a live token
-// plus a helper record no configured-server logout can reach — is still
+// plus a helper record no configured-server logout can reach - is still
 // deleted. Runs under the helper-records lock; each entry's helper name has
 // already passed ValidHelperName in the lock loader. Entries whose erase
 // succeeds are removed; failures are retained for a later retry and their
-// errors joined. Returns the records whose credential was actually deleted —
+// errors joined. Returns the records whose credential was actually deleted -
 // structured, so callers never re-parse a name that may itself contain any
 // separator character.
 func DeleteOrphanedHelperCredentials(ctx context.Context, dir string) ([]HelperRecord, error) {

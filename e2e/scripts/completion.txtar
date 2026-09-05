@@ -1,5 +1,5 @@
 # Hermetic and network-free by construction: shell completion never touches
-# the server. Script emission is a unit-level golden concern (byte-exact) —
+# the server. Script emission is a unit-level golden concern (byte-exact) -
 # this only asserts the substrings a real .bashrc source relies on.
 exec rancher completion bash
 stdout 'generate-shell-completion'
@@ -10,7 +10,7 @@ stderr 'error \(VALIDATION\):'
 
 # Callback driving: --generate-shell-completion must be LAST (checkShellCompleteFlag
 # looks only at the final argument). Default urfave suggestions and our
-# alias-aware override both arrive as "name:usage" lines — anchor on the name
+# alias-aware override both arrive as "name:usage" lines - anchor on the name
 # prefix, never a whole line (urfave-owned ordering/usage text is not ours to
 # assert exactly).
 exec rancher get --generate-shell-completion
@@ -22,7 +22,7 @@ stdout '(?m)^v3token:'
 stdout '(?m)^v3tokens:'
 
 # Seed a server via a direct config-file write (config-commands.txtar's
-# precedent) — no login flow needed just to populate config.yaml. The
+# precedent) - no login flow needed just to populate config.yaml. The
 # config-local ShellCompleter path prints one BARE candidate per line (no
 # ":usage" suffix), so this anchors on the whole line.
 mkdir $RANCHER_CLI_CONFIG_DIR
@@ -35,7 +35,7 @@ stdout '(?m)^acme$'
 exec rancher config --generate-shell-completion
 stdout '(?m)^set-completion:'
 
-# AC-28: equals-form site — --by=n emits ALL four --by=<candidate> full tokens.
+# AC-28: equals-form site - --by=n emits ALL four --by=<candidate> full tokens.
 # The binary emits all enum candidates; the shell prefix-filters them (AC-21a).
 # Assert all four values appear (round-2 finding 15: the enum emits all four, not
 # just those matching the typed prefix).
@@ -47,12 +47,12 @@ stdout '(?m)^--by=node$'
 stdout '(?m)^--by=project$'
 stdout '(?m)^--by=pod$'
 
-# AC-15a: inspect alias suggestion — po and deploy appear in inspect group.
+# AC-15a: inspect alias suggestion - po and deploy appear in inspect group.
 exec rancher inspect --generate-shell-completion
 stdout '(?m)^po:'
 stdout '(?m)^deploy:'
 
-# AC-15a: inspect alias invocation — binary dispatches via alias, not "unknown command".
+# AC-15a: inspect alias invocation - binary dispatches via alias, not "unknown command".
 # Restore seed config (directory already exists from line 25; no mkdir needed).
 cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 ! exec rancher inspect po --namespace default missing-pod
@@ -139,7 +139,7 @@ stdout '(?m)^e2e-compl-user2$'
 env RANCHER_CLI_TOKEN=
 
 # Corrupt config: the SC-1 hard requirement extends to the TAB-time
-# callback, not just the Before-path — a missing/corrupt config must
+# callback, not just the Before-path - a missing/corrupt config must
 # degrade to empty output, exit 0, never error text (an error line would be
 # offered as a shell candidate).
 cp garbage-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml

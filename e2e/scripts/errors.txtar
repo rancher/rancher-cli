@@ -27,7 +27,7 @@ jsonquery stderr data.error.code VALIDATION
 stderr 'rancher schema'
 
 # -o yaml renders the same structured error envelope as -o json, serialized
-# as YAML — not JSON dressed up as one.
+# as YAML - not JSON dressed up as one.
 ! exec rancher get project definitely-absent --cluster testcluster -o yaml
 stderr 'code: NOT_FOUND'
 stderr 'kind: Error'

@@ -25,7 +25,7 @@ func schemaManifest(t *testing.T) runtime.Manifest {
 // over the full kinds × {get,patch,delete} domain, a verb whose state is
 // available OR refused has a registered generated command "<verb> <name>"
 // (a refusal is a registered command that declines at Plan), and an absent
-// verb has none — both directions, derived from manifest data alone.
+// verb has none - both directions, derived from manifest data alone.
 // Kinds may carry additional verb states beyond the three core generated verbs
 // (e.g. a "create" refused state for kinds that reject create-resource); those
 // extra entries are not checked here.
@@ -60,7 +60,7 @@ func TestSchemaKindVerbSurfaceMatchesRegisteredCommands(t *testing.T) {
 // discover that create-resource rejects v3 Token manifests without running a
 // live command. Only kinds that actively refuse create via NoCreateViaManifest
 // carry this verb state; the absence of "create" in other kinds' verb maps
-// does not mean create is available — it means no reviewed restriction was
+// does not mean create is available - it means no reviewed restriction was
 // recorded (agents should treat absence as unknown, not available).
 func TestSchemaManagementTokenCreateRefused(t *testing.T) {
 	m := schemaManifest(t)

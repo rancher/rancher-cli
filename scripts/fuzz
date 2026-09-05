@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 # go1.26.5: a hanging input runs to fuzztime and exits green). Detection is
 # therefore this external watchdog, not -timeout.
 #
-# Budget model, four named parts — never one blob:
+# Budget model, four named parts - never one blob:
 #   FUZZTIME (the actual fuzzing) + fuzzminimizetime (explicit, below) +
 #   a fixed startup/shutdown allowance (cold compile, baseline-corpus
 #   replay, worker teardown) = the outer watchdog deadline. A failure found
@@ -29,7 +29,7 @@ if ! [[ "${FUZZTIME}" =~ ^[0-9]+[sm]$ ]]; then
 fi
 
 fuzz_seconds() {
-  # 10#: force decimal — a leading-zero value ("08s") passes the regex but
+  # 10#: force decimal - a leading-zero value ("08s") passes the regex but
   # would otherwise be parsed as octal by shell arithmetic and rejected
   # with an internal diagnostic instead of a validation error.
   local n="${FUZZTIME%[sm]}"
@@ -43,11 +43,11 @@ fuzz_seconds() {
 #
 # Runs cmd under Bash job control: `set -m` inside the subshell puts the
 # background job in its OWN process group with PGID == its PID (verified on
-# stock Darwin Bash — no setsid, which Darwin does not ship). If cmd is
+# stock Darwin Bash - no setsid, which Darwin does not ship). If cmd is
 # still running at deadline_seconds, the watchdog negative-PID-kills the
 # whole group (TERM, then KILL after a short grace) and the run is reported
 # as a distinct, timeout-specific failure (exit 124, a
-# "watchdog: ... exceeded ...s" message) — never conflated with an ordinary
+# "watchdog: ... exceeded ...s" message) - never conflated with an ordinary
 # go test property failure, whose real exit status is preserved. An EXIT
 # trap reaps both the command and the watchdog's own sleep on every path.
 run_with_watchdog() {
@@ -64,17 +64,17 @@ run_with_watchdog() {
     # Capture-and-reassert $?: an EXIT trap's own commands (the kills below)
     # would otherwise silently overwrite the subshell's real exit status
     # with their own (e.g. "no such process" once the target already
-    # exited) — a bash trap-status gotcha, not exercised by bash -n/-x
+    # exited) - a bash trap-status gotcha, not exercised by bash -n/-x
     # inspection alone.
     # shellcheck disable=SC2329 # invoked indirectly via `trap ... EXIT` below
-    # Every kill below targets a process (group) that may already be gone —
+    # Every kill below targets a process (group) that may already be gone -
     # under errexit, a failing kill is a command failure like any other and
     # would abort the trap (or the main body) before its cleanup finished.
     reap_and_reexit() {
       local ec=$?
       kill -- "-${cmd_pid}" 2>/dev/null || true
       # Group-kill, never bare-PID: the watchdog is a subshell whose
-      # deadline `sleep` is a CHILD in the same process group — killing
+      # deadline `sleep` is a CHILD in the same process group - killing
       # only the subshell PID orphans the sleep to PID 1 for up to the
       # full deadline (and can keep CI step pipes alive after exit).
       kill -- "-${watchdog_pid}" 2>/dev/null || true
@@ -136,7 +136,7 @@ run_fuzz_target() {
 # group-kill, not just single-PID kill).
 selftest() {
   # Each case also proves the watchdog timer's whole process GROUP is
-  # gone afterward — a bare-PID kill would leave the deadline sleep
+  # gone afterward - a bare-PID kill would leave the deadline sleep
   # orphaned to PID 1 while the case itself still reported success.
   WATCHDOG_PID_FILE="$(mktemp)"
 

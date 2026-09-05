@@ -94,7 +94,7 @@ func (c *removeSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 		return waitOutcome{done: true}
 	}
 	// remove-secret's timeout is NOT retryable: the stated recovery is a
-	// read first, per its contract — Plan-time validation (kept strict)
+	// read first, per its contract - Plan-time validation (kept strict)
 	// would fail a naive re-run whose first attempt landed after the last
 	// poll.
 	_, err := waitForOIDCClient(ctx, client, k.GVR, clientName, timeout, check,
@@ -111,7 +111,7 @@ func (c *removeSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 	}
 
 	res := runtime.MutationText("oidcclient", clientName, "patched",
-		"secret "+secretName+" removed — anything using it stops working")
+		"secret "+secretName+" removed - anything using it stops working")
 	res.Kind = "OIDCClientSecretRemoved"
 	res.Data = map[string]any{"clientID": clientID, "secretName": secretName}
 	return res, nil

@@ -31,13 +31,13 @@ const (
 
 	// extTokensPath is the ext token collection behind the local-cluster
 	// proxy. It repeats production's token.ExtTokensPath as a literal
-	// because the token package's own tests exercise this façade, and an
+	// because the token package's own tests exercise this facade, and an
 	// import of token here would make that a cycle; a test asserts the two
 	// stay equal.
 	extTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
 
 	// v3TokensPath is the deprecated management.cattle.io/v3 token
-	// collection behind the local-cluster proxy — where a session token
+	// collection behind the local-cluster proxy - where a session token
 	// Rancher created through /v1-public/login lives, and therefore the
 	// route that revokes it.
 	v3TokensPath = "/k8s/clusters/local/apis/management.cattle.io/v3/tokens"
@@ -54,7 +54,7 @@ const (
 
 	// CRTCollectionPath is the Steve /v1 collection route for
 	// clusterregistrationtokens (Task 5, spec D-4). It must match
-	// internal/engine/provisioning's own crtCollectionPath — duplicated there
+	// internal/engine/provisioning's own crtCollectionPath - duplicated there
 	// rather than imported, since production code cannot import this test-only
 	// package. internal/testrancher/fidelity consumes THIS constant (it may
 	// import its parent), so the only remaining intentional duplicate is
@@ -63,7 +63,7 @@ const (
 
 	// rke2ReleasePath/k3sReleasePath are the channel-server release routes
 	// (Task 6, spec D-7). Must match internal/engine/provisioning's own
-	// rke2ReleasePath/k3sReleasePath constants — duplicated here for the
+	// rke2ReleasePath/k3sReleasePath constants - duplicated here for the
 	// same reason as crtCollectionPath above.
 	rke2ReleasePath = "/v1-rke2-release/release"
 	k3sReleasePath  = "/v1-k3s-release/release"
@@ -80,7 +80,7 @@ const (
 	// collection behind the local-cluster proxy: create-only, no CRD
 	// registered for it in e2e/testdata/crds (a plain CRD would reject the
 	// unnamed create the real command sends, or persist an object no
-	// controller ever confirms), so the façade owns the route outright.
+	// controller ever confirms), so the facade owns the route outright.
 	PasswordChangeRequestsCollectionPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/passwordchangerequests"
 )
 
@@ -91,11 +91,11 @@ type User struct {
 	UserID   string
 }
 
-// Options configures a Facade instance. Every façade instance is meant to be
+// Options configures a Facade instance. Every facade instance is meant to be
 // per-script (FA-3): its counters and token store are not safe to share
 // across concurrent scripts.
 type Options struct {
-	// Fallthrough handles every request the façade does not own: the
+	// Fallthrough handles every request the facade does not own: the
 	// existing bearer-checked router in front of envtest.
 	Fallthrough http.Handler
 	// Legacy makes the derived token create branch of the token POST 404 (ErrExtGroupAbsent),
@@ -112,17 +112,17 @@ type Options struct {
 	// authorization_pending before a token is issued; defaults to 2.
 	IdPPendingPolls int
 	// IdPURL, when set, is the external origin (scheme://host[:port]) the
-	// azureADProvider document names for its endpoints, and the façade stops
+	// azureADProvider document names for its endpoints, and the facade stops
 	// serving /idp/* itself; the caller serves IdPHandler there. Empty keeps
-	// the stub on the façade's own origin.
+	// the stub on the facade's own origin.
 	IdPURL string
 	// SeedToken, when set, is accepted as a valid bearer for the derived token create
-	// endpoint alongside façade-issued tokens — the static seed token every
+	// endpoint alongside facade-issued tokens - the static seed token every
 	// existing e2e script already authenticates with (FA-1: "the derived token create
-	// requires a valid façade-issued (or seed) bearer").
+	// requires a valid facade-issued (or seed) bearer").
 	SeedToken string
 	// ExtraProviders are provider types listed alongside localProvider, for
-	// a flow the façade does not itself serve (the SAML authtokens flow
+	// a flow the facade does not itself serve (the SAML authtokens flow
 	// completes in the browser).
 	ExtraProviders []string
 	// Users are the named users the facade authenticates; defaults to one
@@ -215,7 +215,7 @@ type Options struct {
 	EnableSAMLAuthTokens bool
 }
 
-// record is one façade-issued token.
+// record is one facade-issued token.
 type record struct {
 	name            string
 	secret          string
@@ -223,7 +223,7 @@ type record struct {
 	clusterName     string
 	description     string
 	userID          string
-	// kind is the resource the façade pretends to have created, "ext" or
+	// kind is the resource the facade pretends to have created, "ext" or
 	// "v3". It is fixed when the record is created, whatever shape the
 	// client is later shown, because a server creates one definite kind.
 	kind string
@@ -294,21 +294,21 @@ type Facade struct {
 }
 
 // LoginDescriptions returns the descriptions the token-creating requests of
-// a login carried — the login POST and the derived token create POST — in order.
+// a login carried - the login POST and the derived token create POST - in order.
 func (f *Facade) LoginDescriptions() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.descriptions)
 }
 
-// LoginCount is how many login POSTs the façade answered.
+// LoginCount is how many login POSTs the facade answered.
 func (f *Facade) LoginCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.logins
 }
 
-// DerivedCreateRequests is how many derived token create POSTs the façade received, whatever it
+// DerivedCreateRequests is how many derived token create POSTs the facade received, whatever it
 // answered.
 func (f *Facade) DerivedCreateRequests() int {
 	f.mu.Lock()
@@ -331,7 +331,7 @@ func (f *Facade) AuthTokensRequests() []AuthTokensRequest {
 	return slices.Clone(f.authTokensReqs)
 }
 
-// TokenCount is how many tokens the façade holds.
+// TokenCount is how many tokens the facade holds.
 func (f *Facade) TokenCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -463,7 +463,7 @@ func New(opts Options) *Facade {
 	return f
 }
 
-// ValidBearer reports whether token is a façade-issued, unrevoked, unexpired
+// ValidBearer reports whether token is a facade-issued, unrevoked, unexpired
 // bearer (instance clock). Revoked tokens are removed from the store, so
 // "unrevoked" and "present" are the same condition here.
 func (f *Facade) ValidBearer(bearer string) bool {
@@ -480,7 +480,7 @@ func (f *Facade) ValidBearer(bearer string) bool {
 	return false
 }
 
-// ServeHTTP dispatches auth paths to the façade's own handlers; everything
+// ServeHTTP dispatches auth paths to the facade's own handlers; everything
 // else falls through to opts.Fallthrough (FA-0: layer, don't grow).
 func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.opts.RequestHook != nil {
@@ -531,7 +531,7 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // IdPHandler serves the device-code identity-provider stub for a caller
 // that hosts it on its own origin (Options.IdPURL). It answers POST
 // /idp/devicecode and POST /idp/token; anything else is 404, and every
-// route is 404 when the façade was built without EnableIdP.
+// route is 404 when the facade was built without EnableIdP.
 func (f *Facade) IdPHandler() http.Handler {
 	if f.idp == nil {
 		return http.NotFoundHandler()
@@ -714,12 +714,12 @@ func dropConnection(w http.ResponseWriter) {
 }
 
 // namedBodyFallthrough reads r's body and, when it carries its own
-// metadata.name (a full CR — `create resource -f`), restores the body and
+// metadata.name (a full CR - `create resource -f`), restores the body and
 // falls through to the real envtest store unchanged, answering w itself and
 // reporting handled=true; an unnamed body (an imperative create-only
 // resource's own shape) is left unhandled, body returned for the caller to
 // decode. Shared by the handlers whose resource also has a CRD behind the
-// fallthrough (tokens, kubeconfigs) — passwordchangerequests has none, so
+// fallthrough (tokens, kubeconfigs) - passwordchangerequests has none, so
 // its handler reads its own body directly instead of calling this.
 func (f *Facade) namedBodyFallthrough(w http.ResponseWriter, r *http.Request) (body []byte, handled bool) {
 	body, err := io.ReadAll(r.Body)
@@ -911,7 +911,7 @@ func (f *Facade) handleNormanTokensPOST(w http.ResponseWriter, r *http.Request) 
 
 // handleExtCollection lists every ext record as a TokenList. With a
 // fallthrough, the records the real apiserver holds are listed first and
-// the façade's own appended, so a listing shows both.
+// the facade's own appended, so a listing shows both.
 func (f *Facade) handleExtCollection(w http.ResponseWriter, r *http.Request) {
 	if !f.authorizedBearer(r) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -1142,9 +1142,9 @@ func (f *Facade) deleteMode(rec *record) string {
 // ASSUMPTION (needs a fidelity probe against a real server): the real
 // server's status.value is a full kubeconfig document embedding a live,
 // revocable bearer scoped to spec.clusters, with entries Rancher's own
-// formatter builds (server URL, CA, impersonation-ready user). This façade
+// formatter builds (server URL, CA, impersonation-ready user). This facade
 // fills status.value with a fixture kubeconfig naming spec.clusters (or
-// "local" when empty) and an inert placeholder server/token — enough for
+// "local" when empty) and an inert placeholder server/token - enough for
 // the command's own success path (it only checks status.value is
 // non-empty), never a claim about the real document's shape; the persisted
 // object's own spec is real, forwarded verbatim.
@@ -1190,10 +1190,10 @@ func (f *Facade) handleKubeconfigsPOST(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, obj)
 }
 
-// forwardNamedCreate persists a named copy of an unnamed façade-owned create
+// forwardNamedCreate persists a named copy of an unnamed facade-owned create
 // into envtest's real CRD, through the fallthrough router (bypassing this
-// façade's own route dispatch, exactly like a named `create resource -f`
-// request would) — so a later get/delete by the generated name succeeds
+// facade's own route dispatch, exactly like a named `create resource -f`
+// request would) - so a later get/delete by the generated name succeeds
 // against the real store. Errors are silently ignored: the caller's own
 // synthetic response has already answered the client, and a persistence gap
 // here surfaces as its own explicit failure, a later get/delete 404.
@@ -1237,8 +1237,8 @@ func stringsFromAny(v any) []string {
 
 // kubeconfigValueFixture builds a deterministic, valid kubeconfig document
 // naming each requested cluster (or "local" for an empty list) via the
-// repo's own clientcmdapi.Config + clientcmd.Write path — the same one
-// internal/commands/kubeconfig.go uses — rather than hand-built YAML, so a
+// repo's own clientcmdapi.Config + clientcmd.Write path - the same one
+// internal/commands/kubeconfig.go uses - rather than hand-built YAML, so a
 // cluster name carrying a YAML-significant character still encodes
 // correctly. One shared "rancher" AuthInfo carries every context, mirroring
 // the real store's single reused credential. See handleKubeconfigsPOST's
@@ -1270,13 +1270,13 @@ func kubeconfigValueFixture(clusters []string, currentContext string) (string, e
 
 // handlePasswordChangeRequestsPOST serves `create password-change-request`'s
 // create-only ext PasswordChangeRequest resource: no CRD backs this route
-// (see PasswordChangeRequestsCollectionPath), so the façade owns both the
+// (see PasswordChangeRequestsCollectionPath), so the facade owns both the
 // dry-run preview (echoed with no status, proving the workflow is present)
 // and the real POST, which the real server completes synchronously.
 //
 // ASSUMPTION (needs a fidelity probe against a real server): the real
-// server's response shape beyond the PasswordUpdated condition this façade
-// fills — additional conditions, a resource name, or timestamps the command
+// server's response shape beyond the PasswordUpdated condition this facade
+// fills - additional conditions, a resource name, or timestamps the command
 // does not read today.
 func (f *Facade) handlePasswordChangeRequestsPOST(w http.ResponseWriter, r *http.Request) {
 	if !f.authorizedBearer(r) {
@@ -1310,9 +1310,9 @@ func (f *Facade) handlePasswordChangeRequestsPOST(w http.ResponseWriter, r *http
 	writeJSON(w, http.StatusCreated, obj)
 }
 
-// decodeSpec reads body's "spec" field into a generic map — echoed verbatim
+// decodeSpec reads body's "spec" field into a generic map - echoed verbatim
 // by every create-only ext resource handler so no per-field struct can drop
-// a flag the real command sends — answering w with a malformed-body error
+// a flag the real command sends - answering w with a malformed-body error
 // and reporting ok=false on decode failure. Shared by
 // handleKubeconfigsPOST and handlePasswordChangeRequestsPOST.
 func decodeSpec(w http.ResponseWriter, body []byte) (spec map[string]any, ok bool) {
@@ -1328,7 +1328,7 @@ func decodeSpec(w http.ResponseWriter, body []byte) (spec map[string]any, ok boo
 
 // writeMalformedBody answers a request whose body could not be decoded with
 // a 400 carrying a Kubernetes-shaped Status object, the same error shape a
-// real apiserver's decode failure returns — never a silent 201 over a
+// real apiserver's decode failure returns - never a silent 201 over a
 // zero-value fixture.
 func writeMalformedBody(w http.ResponseWriter, err error) {
 	writeJSON(w, http.StatusBadRequest, map[string]any{
@@ -1341,7 +1341,7 @@ func writeMalformedBody(w http.ResponseWriter, err error) {
 	})
 }
 
-// crtFixture is one façade-served clusterregistrationtoken. Token is the
+// crtFixture is one facade-served clusterregistrationtoken. Token is the
 // deterministic real value spliced into the seven command/manifest fields,
 // mirroring rancher's own steve formatter (clusterregistrationtoken.go:
 // 24-72, the ReplaceAll at :69). ClusterName mirrors the real CRD's
@@ -1392,8 +1392,8 @@ func crtBody(fx crtFixture) map[string]any {
 }
 
 // handleCRTCollection serves the Steve /v1 collection envelope for every
-// fixture in crtFixtures — the caller (NewGetCRT) filters by namespace
-// locally, so the façade always returns the full set regardless of query
+// fixture in crtFixtures - the caller (NewGetCRT) filters by namespace
+// locally, so the facade always returns the full set regardless of query
 // string.
 func (f *Facade) handleCRTCollection(w http.ResponseWriter, r *http.Request) {
 	if !f.authorizedBearer(r) {
@@ -1438,13 +1438,13 @@ var (
 )
 
 // handleRelease serves a channel-server release collection envelope
-// ({"data":[{"version": "..."}, ...]}) — the "data" key is kept identical to
+// ({"data":[{"version": "..."}, ...]}) - the "data" key is kept identical to
 // internal/engine/provisioning's fetchReleaseVersions decode (channelserver
 // model/config.go:22-30's own collection key; the acceptance pass against a
 // real server corrects this fixture if the real shape differs). Unlike the
-// façade's other routes, this one is deliberately UNAUTHENTICATED: rancher's
+// facade's other routes, this one is deliberately UNAUTHENTICATED: rancher's
 // routes.go:139-140 registers it as a bare mux route server-side, so no
-// authorizedBearer check gates it here — RootClient still sends credentials
+// authorizedBearer check gates it here - RootClient still sends credentials
 // to it (spec D-10's one-policy rule), but the fixture must accept the
 // request regardless, exactly like the real server would.
 func (f *Facade) handleRelease(w http.ResponseWriter, versions []string) {
@@ -1477,7 +1477,7 @@ func bearerFromHeader(r *http.Request) string {
 
 // newToken issues the next deterministic name/secret pair from the
 // instance-local counter, shared by /v1-public/login (the session token) and
-// the derived token create endpoint (the derived token) — the same mechanism that makes a
+// the derived token create endpoint (the derived token) - the same mechanism that makes a
 // provider login consume two counter slots.
 func (f *Facade) newToken(clusterName string, ttlMs int64) *record {
 	f.mu.Lock()
@@ -1579,7 +1579,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
-	// This JSON is a test fixture read by the CLI, not embedded in HTML — keep
+	// This JSON is a test fixture read by the CLI, not embedded in HTML - keep
 	// `<`, `>`, `&` literal, matching internal/output/render.go's convention.
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(v)

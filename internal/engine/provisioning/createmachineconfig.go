@@ -1,7 +1,7 @@
 // createmachineconfig.go implements `create machine-config <kind> <name>`
 // (spec MC-1..MC-13): guided authoring of the rke-machine-config.cattle.io
 // CR that `create cluster --machine-config <kind>/<name>` references.
-// Driver fields sit at the CR ROOT alongside apiVersion/kind/metadata —
+// Driver fields sit at the CR ROOT alongside apiVersion/kind/metadata -
 // machine-config resources have NO spec wrapper (rancher's
 // dynamicschema.addConfigSchema publishes driver fields as top-level
 // ResourceFields).
@@ -37,7 +37,7 @@ type doCuratedFlag struct {
 	isBool bool
 }
 
-// doCuratedFlags — field names source-confirmed against the DigitalOcean
+// doCuratedFlags - field names source-confirmed against the DigitalOcean
 // machine driver (kinds.MachineConfigFieldsFor's file doc names the exact
 // upstream files); the Curated set in kinds/machineconfigfields.go asserts
 // the same seven fields.
@@ -70,7 +70,7 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 		Usage: "Create a machine config for a node-driver cluster pool",
 		Desc: "Creates a standalone rke-machine-config.cattle.io CR in fleet-default; " +
 			"reference it afterwards with `create cluster --machine-config <kind>/<name>` " +
-			"(the two-step node-driver flow). Driver fields sit at the CR root — there is " +
+			"(the two-step node-driver flow). Driver fields sit at the CR root - there is " +
 			"no spec wrapper. digitaloceanconfig has curated flags; amazonec2config, " +
 			"azureconfig, harvesterconfig, and vmwarevsphereconfig take their fields via " +
 			"--set key=value. Credential-carried fields are rejected: credentials belong " +
@@ -101,12 +101,12 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// build validates input and assembles the machine-config CR. Pure — no
+// build validates input and assembles the machine-config CR. Pure - no
 // ctx, no network (MC-10). Validation order: kind (the runtime layer's
 // Enum already guards it once registered; build re-checks defensively),
 // --set key=value shape, Kubernetes envelope-key rejection (MC-6:
-// apiVersion/kind/metadata/status are object identity, not driver fields
-// — refused before any overlay), duplicates, curated collisions and
+// apiVersion/kind/metadata/status are object identity, not driver fields -
+// refused before any overlay), duplicates, curated collisions and
 // kind-scoping (MC-7/MC-7a), credential-field rejection (MC-8).
 func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructured, kinds.Kind, error) {
 	args := in.Args()
@@ -125,8 +125,8 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 			fmt.Sprintf("argument <kind>=%q is not a machine-config kind; one of: %s", kindName, machineConfigKindsHint()))
 	}
 
-	// Credential rejection (MC-8) folds case — lowercased key → the
-	// canonical casing from the metadata — so no casing of a credential
+	// Credential rejection (MC-8) folds case - lowercased key → the
+	// canonical casing from the metadata - so no casing of a credential
 	// field slips past and persists a secret as a plaintext CR field.
 	meta, _ := kinds.MachineConfigFieldsFor(k.Name)
 	credential := map[string]string{}
@@ -148,7 +148,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	var entries []setEntry
 	seen := map[string]bool{}
 	for i, entry := range in.Strings("set") {
-		// Shape errors identify the occurrence by 1-based index only —
+		// Shape errors identify the occurrence by 1-based index only -
 		// never by content: a malformed entry may be a pasted secret, and
 		// reflecting it would echo it to stderr and into shell history/CI
 		// logs.
@@ -174,7 +174,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		entries = append(entries, setEntry{key: key, raw: raw})
 	}
 
-	// Curated flags: kind-scoping (MC-7a) by PRESENCE — a set flag on a
+	// Curated flags: kind-scoping (MC-7a) by PRESENCE - a set flag on a
 	// foreign kind is refused, never ignored or written to a foreign CR.
 	fields := map[string]any{}
 	for _, cf := range doCuratedFlags {
@@ -245,7 +245,7 @@ func (c createMachineConfigCmd) Plan(ctx context.Context, in runtime.Input) (saf
 // prunedKeyWarning compares the submitted TOP-LEVEL driver keys (minus the
 // Kubernetes envelope: apiVersion, kind, metadata, status) against the
 // dry-run response's top-level keys and names every key the server
-// silently dropped — rke-machine-config CRDs may prune unknown fields, so
+// silently dropped - rke-machine-config CRDs may prune unknown fields, so
 // a typo surfaces at preview time rather than as a silently thinner CR
 // (MC-12). Presence, not value, decides: a key submitted with a null
 // value that vanishes server-side is pruned like any other. Returns ""
@@ -265,13 +265,13 @@ func prunedKeyWarning(submitted, dryRun map[string]any) string {
 		return ""
 	}
 	sort.Strings(pruned)
-	return fmt.Sprintf("field(s) pruned by the server: %s — unknown field?", strings.Join(pruned, ", "))
+	return fmt.Sprintf("field(s) pruned by the server: %s - unknown field?", strings.Join(pruned, ", "))
 }
 
 // fallthroughWarning returns a warning when the kind has curated VALUE fields
 // (non-bool) that were left unset. Bool fields (monitoring, ipv6,
 // privateNetworking) carry tri-state semantics and can't go stale like
-// value defaults — they are excluded. Returns "" when all value fields are
+// value defaults - they are excluded. Returns "" when all value fields are
 // set or the kind has none. The unset field names are sorted for a stable
 // message.
 func fallthroughWarning(kindName string, in runtime.Input) string {
@@ -290,7 +290,7 @@ func fallthroughWarning(kindName string, in runtime.Input) string {
 		if fieldIsBool[field] {
 			continue
 		}
-		// Skip curated fields that have no entry in the doCuratedFlags map —
+		// Skip curated fields that have no entry in the doCuratedFlags map -
 		// a future kind with its own Curated set but no doCuratedFlags entries
 		// would produce an empty-string flag name, making IsSet meaningless and
 		// every such field appear spuriously unset. Presence in the flag map is
@@ -310,7 +310,7 @@ func fallthroughWarning(kindName string, in runtime.Input) string {
 	sort.Strings(unset)
 	return "unset field(s) inherit the node driver's declared defaults, which may be stale: " +
 		strings.Join(unset, ", ") +
-		" — set them explicitly (a stale default, such as a retired image, makes provisioning fail)"
+		" - set them explicitly (a stale default, such as a retired image, makes provisioning fail)"
 }
 
 // articleFor returns "an" when s starts with a vowel, "a" otherwise.
@@ -326,8 +326,8 @@ var _ runtime.MutatingCommand = (*createMachineConfigCmd)(nil)
 // parseSetValue decodes a --set value against Rancher's node-driver
 // schema (FlagToField in rancher's
 // pkg/controllers/management/drivers/nodedriver/utils.go): a JSON bool,
-// array, or null is taken in its decoded form — BoolFlag publishes a
-// "boolean" field, StringSliceFlag an "array[string]" (Nullable) field —
+// array, or null is taken in its decoded form - BoolFlag publishes a
+// "boolean" field, StringSliceFlag an "array[string]" (Nullable) field -
 // but a JSON NUMBER stays the literal string, because IntFlag fields are
 // published as "string" (a backward-compat choice upstream) and a typed
 // CRD rejects a JSON number for them. Anything that is not valid JSON is

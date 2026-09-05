@@ -52,9 +52,9 @@ var _ runtime.Input = crtInput{}
 
 // fakeRootClient is a real-server-over-mock RootClient: it issues a real
 // HTTP GET against an httptest.Server and maps the response the same way
-// production's rootClient does (engine.RootClient's documented contract —
+// production's rootClient does (engine.RootClient's documented contract -
 // 404 -> NOT_FOUND, else non-2xx -> GENERIC), so crt.go's own decode/guard
-// logic — not a hand-rolled substitute for it — is what these tests
+// logic - not a hand-rolled substitute for it - is what these tests
 // exercise.
 type fakeRootClient struct {
 	srv *httptest.Server
@@ -234,7 +234,7 @@ func TestNewGetCRTNotFound(t *testing.T) {
 
 // TestNewGetCRTMalformedBody is spec D-10's transport case (review R2-5):
 // a body that is not valid JSON must decode to a typed CodeGeneric error
-// naming "decoding" and the path — never a panic, never an empty/zero
+// naming "decoding" and the path - never a panic, never an empty/zero
 // Result standing in for the failure silently.
 func TestNewGetCRTMalformedBody(t *testing.T) {
 	t.Parallel()
@@ -263,7 +263,7 @@ func TestNewGetCRTMalformedBody(t *testing.T) {
 // Steve read always GETs the root collection and filters DECODED objects
 // locally. A bare list returns every namespace; --namespace narrows to one,
 // and the OTHER namespace's token must appear NOWHERE in the filtered
-// output — the leak assertion.
+// output - the leak assertion.
 func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 	t.Parallel()
 	objs := []map[string]any{
@@ -288,7 +288,7 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 
 	// --namespace c-aaa: only that namespace's row, and c-bbb's token is
 	// absent from the ENTIRE marshaled output, not merely "the right one is
-	// present" — the real leak check.
+	// present" - the real leak check.
 	res, err = rc.Execute(t.Context(), crtInput{ns: "c-aaa"}, nil)
 	require.NoError(t, err)
 	filtered, ok := res.Data.(crtRows)
@@ -307,11 +307,11 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 
 // TestNewGetCRTListDegradesBadRowInsteadOfAborting is finding 3's fix: a
 // list containing one row with an unspliced "{token}" placeholder must NOT
-// abort the whole result (the pre-fix behavior — one bad row hid every
+// abort the whole result (the pre-fix behavior - one bad row hid every
 // healthy row). Instead the bad row's offending field is blanked, a warning
 // names the row and field, and the two healthy rows survive untouched. The
 // placeholder itself must still never reach output as data anywhere in the
-// marshaled result — the fix changes the mechanism (abort -> blank+warn),
+// marshaled result - the fix changes the mechanism (abort -> blank+warn),
 // never the placeholder ban itself.
 func TestNewGetCRTListDegradesBadRowInsteadOfAborting(t *testing.T) {
 	t.Parallel()
@@ -360,7 +360,7 @@ func TestNewGetCRTListDegradesBadRowInsteadOfAborting(t *testing.T) {
 // TestNewGetCRTNamedGetOnBadRowStaysStrict is finding 3's regression proof
 // for the branch the fix must NOT touch: a single-object get ("named"
 // branch, with a name arg) on a row carrying an unspliced placeholder must
-// still fail loud with the typed CodeGeneric error — the list-degrade
+// still fail loud with the typed CodeGeneric error - the list-degrade
 // behavior above applies only to the no-name-arg list path.
 // TestNewGetCRTPlaceholderGuardTable already exercises this exhaustively
 // over all seven guarded fields; this test asserts the same contract narrowly
@@ -409,7 +409,7 @@ func TestNewRefuseCRTPatchRejectsAsReadOnly(t *testing.T) {
 
 // TestNewGetCRTDescribeMirrorsGenericGet asserts the schema-parity contract
 // (finding 6): the override's Descriptor must be STRUCT-EQUAL to what the
-// LIVE resources.NewGet(k, ...) generates for this row — not to a
+// LIVE resources.NewGet(k, ...) generates for this row - not to a
 // hand-duplicated literal that can silently drift out of sync with the
 // generator (resources/get.go's getFlags) while still passing. Mirrors
 // deletecluster_test.go's TestDeleteProvisioningClusterDescribeMirrorsGeneric

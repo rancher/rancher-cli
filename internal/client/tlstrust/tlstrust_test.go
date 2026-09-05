@@ -91,7 +91,7 @@ func selfSignedLeaf(t *testing.T, san string) (tls.Certificate, *x509.Certificat
 
 // dialFail starts an httptest TLS server presenting leafCert, issues a GET
 // against it with an empty trust store (or explicit roots) and an explicit
-// SNI/hostname-check name, and returns the resulting client.Do error — the
+// SNI/hostname-check name, and returns the resulting client.Do error - the
 // real failed-handshake error this package classifies. serverName is set
 // explicitly (rather than left to default to the dial address's literal IP)
 // so hostname verification checks against a cert's DNSNames rather than
@@ -189,7 +189,7 @@ func TestClassifyNullableDetailsOnEmptyChain(t *testing.T) {
 }
 
 // TestDetailsTextDetailsAllFieldsPresent asserts the full projection order:
-// certificate, issuer, fingerprint, valid — each only when the underlying
+// certificate, issuer, fingerprint, valid - each only when the underlying
 // field is present.
 func TestDetailsTextDetailsAllFieldsPresent(t *testing.T) {
 	d := Details{
@@ -210,7 +210,7 @@ func TestDetailsTextDetailsAllFieldsPresent(t *testing.T) {
 
 // TestDetailsTextDetailsNullableFieldsOmitLines asserts the nullable-details
 // case (classifyKind's empty-chain path): every field but Kind may be
-// absent, and an absent field prints no line — never an empty label.
+// absent, and an absent field prints no line - never an empty label.
 func TestDetailsTextDetailsNullableFieldsOmitLines(t *testing.T) {
 	assert.Empty(t, Details{Kind: KindInvalidChain}.TextDetails())
 }
@@ -292,7 +292,7 @@ func TestFingerprintIsSHA256HexOfDER(t *testing.T) {
 }
 
 // TestClassifyProxyObservedChainDiffersFromDirect proves the classification
-// reflects whatever chain the real client actually verified against — here
+// reflects whatever chain the real client actually verified against - here
 // standing in for an intercepting proxy by simply using a distinct CA/leaf
 // pair from the "direct" test above, since Classify never re-dials: it can
 // only ever report the chain its caller's own failed request observed.
@@ -307,7 +307,7 @@ func TestClassifyProxyObservedChainDiffersFromDirect(t *testing.T) {
 
 // TestClassifyExpiredDetailsDescribeTheFailingCertificate: for every kind
 // except unknown authority, the details must describe the certificate that
-// failed verification — never the candidate anchor, which for an expired
+// failed verification - never the candidate anchor, which for an expired
 // leaf under a valid CA would be the (not expired, differently named) CA.
 func TestClassifyExpiredDetailsDescribeTheFailingCertificate(t *testing.T) {
 	ca, caKey := genCA(t, "test-ca")
@@ -345,7 +345,7 @@ func TestClassifyUnknownAuthorityDetailsDescribeTheCandidateAnchor(t *testing.T)
 }
 
 // TestClassifyNotYetValidIntermediate: the verifier flags the certificate
-// whose validity actually failed — a future-dated INTERMEDIATE under a
+// whose validity actually failed - a future-dated INTERMEDIATE under a
 // currently-valid leaf must classify as not-yet-valid (check the clock),
 // never as expired (renew the cert), which chain[0]'s dates would imply.
 func TestClassifyNotYetValidIntermediate(t *testing.T) {
@@ -574,7 +574,7 @@ func TestKindOfRealHandshakePerKind(t *testing.T) {
 // TestClassifyUnknownAuthorityLeafOnlyLabelsServingCertificate asserts:
 // when the presented chain carries no valid issuer, the
 // fingerprint describes the server's own certificate, never a certificate
-// authority — the label and the message wording must say so, and
+// authority - the label and the message wording must say so, and
 // Certificate()/IsLeafCertificate() must expose the fact so a consent flow
 // never mislabels what it is asking the operator to trust.
 func TestClassifyUnknownAuthorityLeafOnlyLabelsServingCertificate(t *testing.T) {
@@ -621,7 +621,7 @@ func TestDetailsCertificateNilOnNullableDetails(t *testing.T) {
 }
 
 // TestClassifyNotYetValidCarriesNotBefore: the structured payload must let
-// the user confirm the "check the local clock" hint — NotBefore is the one
+// the user confirm the "check the local clock" hint - NotBefore is the one
 // field that says when the certificate becomes valid.
 func TestClassifyNotYetValidCarriesNotBefore(t *testing.T) {
 	ca, caKey := genCA(t, "test-ca")

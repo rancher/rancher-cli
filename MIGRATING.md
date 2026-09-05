@@ -1,13 +1,13 @@
 # Migrating from the legacy Rancher CLI
 
-Config and credentials are not imported — run `rancher auth login` once per
+Config and credentials are not imported - run `rancher auth login` once per
 server. The old `cli2.json` is not read, not migrated, and not deleted by this
-CLI — it may contain plaintext credentials; remove it yourself
+CLI - it may contain plaintext credentials; remove it yourself
 (`rm ~/.rancher/cli2.json`, or the legacy `$RANCHER_CONFIG_DIR` location).
 
 Output is enveloped JSON/YAML/table (`-o table|json|yaml`, plus `-o name` for
 IDs only); table is the default for interactive use. Mutating commands need
-`--apply` (and `--yes` for destructive ones) — there is no implicit write.
+`--apply` (and `--yes` for destructive ones) - there is no implicit write.
 Run `rancher schema` to discover the full command surface, including flags,
 contract, and stability, without reading docs.
 
@@ -22,32 +22,32 @@ conformance test (`internal/commands/migrating_test.go` +
 | Legacy | Disposition |
 |---|---|
 | `login` (alias `l`) | → `rancher auth login` |
-| `context switch` | REMOVED — scope is per-invocation; set the active server pointer with `rancher config use-server` |
-| `context current` | REMOVED — scope is per-invocation; `rancher config status` shows the current server; `rancher config list-servers` lists all (active marked with *) |
+| `context switch` | REMOVED - scope is per-invocation; set the active server pointer with `rancher config use-server` |
+| `context current` | REMOVED - scope is per-invocation; `rancher config status` shows the current server; `rancher config list-servers` lists all (active marked with *) |
 | `clusters ls` | → `rancher get clusters` |
 | `clusters create` | → `rancher create cluster <name> --import` (imported), `--custom` (custom cluster), or `--machine-config <kind/name> --cloud-credential <id>` (node-driver) |
-| `clusters import` | DROPPED — same reason as `clusters create` |
-| `clusters add-node` | DROPPED — RKE1 node-driver docker-command workflow; no CAPI/RKE2 equivalent surfaced |
-| `clusters delete` (alias `rm`) | → `rancher delete provisioning-cluster <name> --apply --yes` — the `cluster` kind itself is `Deletable: false`; deletion goes through the backing `provisioningcluster` kind |
-| `clusters export` | DROPPED — no export/backup command surfaced |
+| `clusters import` | DROPPED - same reason as `clusters create` |
+| `clusters add-node` | DROPPED - RKE1 node-driver docker-command workflow; no CAPI/RKE2 equivalent surfaced |
+| `clusters delete` (alias `rm`) | → `rancher delete provisioning-cluster <name> --apply --yes` - the `cluster` kind itself is `Deletable: false`; deletion goes through the backing `provisioningcluster` kind |
+| `clusters export` | DROPPED - no export/backup command surfaced |
 | `clusters kubeconfig` (alias `kf`) | → `rancher kubeconfig --cluster <id>` |
 | `clusters add-member-role` | → `rancher grant <subject> --role <r> --cluster <c> --apply --yes` |
 | `clusters delete-member-role` | → `rancher revoke <subject> [--role <r>] --cluster <c> --apply --yes` |
-| `clusters list-roles` | → `rancher get roletemplates` — filter the `context` field (`cluster`/`project`, and empty is admitted by the webhook): `-o json` + `data.#(context=="cluster")#`, or read the CONTEXT table column |
+| `clusters list-roles` | → `rancher get roletemplates` - filter the `context` field (`cluster`/`project`, and empty is admitted by the webhook): `-o json` + `data.#(context=="cluster")#`, or read the CONTEXT table column |
 | `clusters list-members` | → `rancher get clusterroletemplatebindings --cluster <id>` (MEMBER/ROLE/CLUSTER table; add `-o json` for full objects) |
 | `machines ls` | → `rancher get machines` |
 | `namespaces ls` | → `rancher get namespaces` (`--project <p>` lists a project's project namespaces) |
 | `namespaces create` | → `rancher create namespace <name> [--project <p>]` |
 | `namespaces delete` (alias `rm`) | → `rancher delete namespace <name>` |
-| `namespaces move` | → `rancher project remove-namespace <ns> --project <old>` then `rancher project add-namespace <ns> --project <new>` — an explicit two-step, never an implicit move (spec PC-4) |
+| `namespaces move` | → `rancher project remove-namespace <ns> --project <old>` then `rancher project add-namespace <ns> --project <new>` - an explicit two-step, never an implicit move (spec PC-4) |
 | `nodes ls` | → `rancher get nodes` |
-| `nodes delete` (alias `rm`) | DROPPED — the `node` kind is `Deletable: false`; use `kubectl delete node` via `rancher kubeconfig --cluster <id>` + kubectl, or the Rancher UI |
+| `nodes delete` (alias `rm`) | DROPPED - the `node` kind is `Deletable: false`; use `kubectl delete node` via `rancher kubeconfig --cluster <id>` + kubectl, or the Rancher UI |
 | `projects ls` | → `rancher get projects` |
 | `projects create` | → `rancher create project <name> --cluster <id> [--description] [--quota-limit ...] [--namespace-default-quota ...]` |
 | `projects delete` (alias `rm`) | → `rancher delete project <id>` |
 | `projects add-member-role` | → `rancher grant <subject> --role <r> --project <p> --cluster <c> --apply --yes` |
 | `projects delete-member-role` | → `rancher revoke <subject> [--role <r>] --project <p> --cluster <c> --apply --yes` |
-| `projects list-roles` | → `rancher get roletemplates` — filter the `context` field: `-o json` + `data.#(context=="project")#`, or read the CONTEXT table column |
+| `projects list-roles` | → `rancher get roletemplates` - filter the `context` field: `-o json` + `data.#(context=="project")#`, or read the CONTEXT table column |
 | `projects list-members` | → `rancher inspect project <name-or-id>` (MEMBERS section, display names resolved); raw objects: `rancher get projectroletemplatebindings --namespace <backing-namespace> -o json` |
 | `ps` | → `rancher get deployments` / `rancher get pods` (+ `rancher inspect deployment`) |
 | `inspect <type> <id>` | → `rancher get <kind> <name> -o json` (+ `rancher inspect pod/deployment/project` composites) |
@@ -59,10 +59,10 @@ conformance test (`internal/commands/migrating_test.go` +
 | `settings ls` | → `rancher get settings` |
 | `settings get` | → `rancher get setting <name>` |
 | `settings set` | → `rancher patch setting <name> --patch '<RFC 6902 JSON patch>' --apply` |
-| `ssh <node>` | DROPPED — RKE1/node-driver only, Norman-only; keep the legacy binary for this |
-| `token` | Existing Rancher-generated kubeconfigs that call `rancher token` keep working after a binary swap — the shim delegates to `auth get-token` machinery and takes `--server <url>`, `--user <user-id>`, and `--cacerts <path>`. Regenerate kubeconfigs (`rancher kubeconfig --cluster <id>`) to move them to `auth get-token` directly. Server-side token management: `rancher get tokens` / `create token` / `delete token`. Local exec-credential cache: `auth list-tokens` / `auth delete-token`. |
+| `ssh <node>` | DROPPED - RKE1/node-driver only, Norman-only; keep the legacy binary for this |
+| `token` | Existing Rancher-generated kubeconfigs that call `rancher token` keep working after a binary swap - the shim delegates to `auth get-token` machinery and takes `--server <url>`, `--user <user-id>`, and `--cacerts <path>`. Regenerate kubeconfigs (`rancher kubeconfig --cluster <id>`) to move them to `auth get-token` directly. Server-side token management: `rancher get tokens` / `create token` / `delete token`. Local exec-credential cache: `auth list-tokens` / `auth delete-token`. |
 | `token delete` | → `rancher auth delete-token` |
-| `up -f compose.yml` | DROPPED — compose-era, no replacement |
+| `up -f compose.yml` | DROPPED - compose-era, no replacement |
 | `wait <type> <id>` | → `rancher get <kind> <name> --wait` |
 
 ## `rancher kubeconfig`
@@ -70,14 +70,14 @@ conformance test (`internal/commands/migrating_test.go` +
 `rancher kubeconfig --cluster <id-or-name>` emits a bare kubeconfig YAML
 document to stdout. Its user entry runs `rancher auth get-token` as a
 kubectl exec-credential plugin, so no long-lived token is ever written to
-disk — only the CLI's own short-lived cache. It replaces the legacy
+disk - only the CLI's own short-lived cache. It replaces the legacy
 `kubectl` passthrough's purpose; the CLI itself does not wrap kubectl.
 
 **PATH note:** the exec stanza runs `rancher` by name, so the `rancher`
 binary must be on `PATH` for kubectl to authenticate.
 
 **Merging into your default kubeconfig** (the command only writes to
-stdout — it never touches `~/.kube/config`):
+stdout - it never touches `~/.kube/config`):
 
 ```
 KUBECONFIG=~/.kube/config:<(rancher kubeconfig --cluster X) kubectl config view --flatten > merged && mv merged ~/.kube/config
@@ -87,7 +87,7 @@ KUBECONFIG=~/.kube/config:<(rancher kubeconfig --cluster X) kubectl config view 
 CLI) `rancher kubeconfig`'s exec mode is not the only option: `rancher create
 kubeconfig [--clusters ...] --apply` creates a server-side, embedded, revocable
 kubeconfig (same as the Dashboard's "Download KubeConfig") that needs no
-local `rancher` binary to authenticate — the output goes straight to stdout,
+local `rancher` binary to authenticate - the output goes straight to stdout,
 with a shown-once notice on where its server-assigned name is.
 
 ## `--wait` on named `get`

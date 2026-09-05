@@ -1,12 +1,12 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# cattle-system is seeded by the harness (TestMain) — the logs and
+# cattle-system is seeded by the harness (TestMain) - the logs and
 # support-bundle target tables both hardcode it.
 exec rancher create resource -f agent-pod.yaml --cluster testcluster --apply
 
 # agent: DownstreamOnly, cattle-system/app=cattle-cluster-agent. envtest has
-# no scheduler/kubelet, so the pod never binds — log fetch against an unbound
+# no scheduler/kubelet, so the pod never binds - log fetch against an unbound
 # pod still succeeds with an empty body (inspect.txtar's precedent), which is
 # exactly the "empty body IS a yield" boundary this asserts on the honest
 # side: one entry, not a zero-pods error.
@@ -26,14 +26,14 @@ jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.candidates.0.id agent-pod
 
 # server: LocalOnly. No app=rancher pods (nor a rancher Deployment) exist on
-# the local cluster in this harness — the Docker-install degradation is the
+# the local cluster in this harness - the Docker-install degradation is the
 # honest assertion available without a running Rancher server.
 ! exec rancher logs server -o json
 jsonquery stderr data.error.code NOT_FOUND
-jsonquery stderr data.error.message 'no rancher pods on the local cluster — single-node Docker install? server logs live in `docker logs <container>`'
+jsonquery stderr data.error.message 'no rancher pods on the local cluster - single-node Docker install? server logs live in `docker logs <container>`'
 
 # kube-api-auth: the seeded management Cluster c-test has no
-# spec.localClusterAuthEndpoint.enabled — non-ACE, so the ACE precheck must
+# spec.localClusterAuthEndpoint.enabled - non-ACE, so the ACE precheck must
 # reject before any pod fetch is attempted.
 ! exec rancher logs kube-api-auth --cluster testcluster -o json
 jsonquery stderr data.error.code NOT_FOUND

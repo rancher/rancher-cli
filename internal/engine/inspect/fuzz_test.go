@@ -10,7 +10,7 @@ import (
 
 // FuzzOwnerTargetRoundTrip fuzzes ownerTarget/splitOwnerTarget/
 // escapeTargetComponent against server-derived strings this CLI never
-// validated. Never call t.Parallel() here — it panics inside f.Fuzz.
+// validated. Never call t.Parallel() here - it panics inside f.Fuzz.
 func FuzzOwnerTargetRoundTrip(f *testing.F) {
 	f.Add("", "v1", "Pod", "default", "web-1", "u-1")
 	f.Add("c-aaa", "apps/v1", "ReplicaSet", "web", "web-7d9", "u-2")
@@ -23,10 +23,10 @@ func FuzzOwnerTargetRoundTrip(f *testing.F) {
 	f.Add("%25", "%7C", "%", "%%", "a|b|c", "u")
 
 	f.Fuzz(func(t *testing.T, clusterID, apiVersion, kind, ns, name, uid string) {
-		// (a) no panic on arbitrary raw targets — malformed arity
+		// (a) no panic on arbitrary raw targets - malformed arity
 		// legitimately yields ok=false. Two probes: a truly arbitrary
 		// string (reaches zero-through-five-field arities the six-join
-		// below never can — it always carries five separators), and the
+		// below never can - it always carries five separators), and the
 		// unescaped six-join (reaches six-and-over arities).
 		splitOwnerTarget(uid)
 		raw := strings.Join([]string{clusterID, apiVersion, kind, ns, name, uid}, ownerTargetSep)

@@ -20,7 +20,7 @@ import (
 
 // conditionMessageLimit is the text-view truncation bound for condition
 // messages (IC-1a "truncated sanely"); the JSON envelope always carries
-// the full message. Join commands are exempt — they are copy-pasted.
+// the full message. Join commands are exempt - they are copy-pasted.
 const conditionMessageLimit = 120
 
 // capiClusterNameLabel is the CAPI label key used to filter Machine objects
@@ -52,7 +52,7 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 		Name:        "inspect cluster",
 		Aliases:     k.Aliases,
 		Usage:       "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration",
-		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, each row reporting principal, displayName, role, binding (the CRD object name), and system; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is system-prefixed (Rancher's system principals, e.g. system://provisioning/...) carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). The registration section is withheld by default because it embeds a live cluster join token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show it. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause. " + degradedContractDesc + "Cluster resolution and the management Cluster GET are required and hard-error. Degradable sections: provisioning (unavailable — the correlation, one entry covering the status, machinePools, and machines it leaves absent), machines (unavailable — a machine list that failed after a successful correlation), members (unavailable — the binding list; display-name enrichment failures stay advisory warnings), registration (unavailable — the token read).",
+		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion - observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning - the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, each row reporting principal, displayName, role, binding (the CRD object name), and system; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is system-prefixed (Rancher's system principals, e.g. system://provisioning/...) carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message - preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster - provisioning spec.rkeConfig absent - notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). The registration section is withheld by default because it embeds a live cluster join token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show it. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause. " + degradedContractDesc + "Cluster resolution and the management Cluster GET are required and hard-error. Degradable sections: provisioning (unavailable - the correlation, one entry covering the status, machinePools, and machines it leaves absent), machines (unavailable - a machine list that failed after a successful correlation), members (unavailable - the binding list; display-name enrichment failures stay advisory warnings), registration (unavailable - the token read).",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
 		Flags: []runtime.ArgSpec{{
@@ -120,8 +120,8 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	// machine lookup, and the member list. Each leg writes only its own
 	// variables; a non-nil leg error is the caller's cancellation, which
 	// aborts the group. The registration fetch stays AFTER the join: it
-	// needs the provisioning leg's imported verdict, and — asserted by the
-	// cancellation tests — a join-token fetch must never be issued once the
+	// needs the provisioning leg's imported verdict, and - asserted by the
+	// cancellation tests - a join-token fetch must never be issued once the
 	// caller has gone away. Warnings are appended in a fixed order after
 	// the join so output stays deterministic.
 	var (
@@ -153,7 +153,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 			res.Machines = machs
 			if res.Cluster.KubernetesVersion == "" {
 				// IC-4b: pending clusters carry only the DESIRED version on the
-				// provisioning spec; "" stays "" — never a fabricated value.
+				// provisioning spec; "" stays "" - never a fabricated value.
 				desired, _, _ := unstructured.NestedString(prov.Object, "spec", "kubernetesVersion")
 				res.Cluster.KubernetesVersion = desired
 			}
@@ -185,7 +185,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		case lookup == provUnavailable && reg != nil:
 			// imported is UNKNOWN, not false: the provisioning correlation
 			// was unreadable, so the node-join fields cannot be annotated
-			// either way. Advisory — the section itself is present and
+			// either way. Advisory - the section itself is present and
 			// usable, only its applicability verdict is missing.
 			warnings = append(warnings,
 				"cannot determine whether the node-join commands apply: the provisioning correlation was unavailable")
@@ -229,7 +229,7 @@ const (
 // correlateProvisioningCluster LISTs provisioning Clusters in
 // fleet-default and selects the unique object whose status.clusterName
 // equals the resolved management cluster id. metadata.name is the
-// user-supplied provisioning name and spec.displayName can be renamed —
+// user-supplied provisioning name and spec.displayName can be renamed -
 // neither correlates reliably (IC-4). Zero matches is confirmed absence
 // (IC-7); a list failure or multiple matches is "could not determine"
 // (IC-7a), each recorded as one `provisioning` degraded entry: the
@@ -237,7 +237,7 @@ const (
 // lookup are all absent, so its fan-out gets one entry and one warning,
 // not one per missing key. The third return is the IC-7 confirmed-absence
 // note (non-empty only when provAbsent), scoped to the namespace that was
-// searched — derived from provKind.DefaultNamespace, never a second
+// searched - derived from provKind.DefaultNamespace, never a second
 // hardcoded string. An expired context is the one list failure that does
 // NOT degrade: it returns as the error.
 func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient, sec *sections, clusterID string) (*unstructured.Unstructured, provLookup, string, error) {
@@ -269,7 +269,7 @@ func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient
 // statusFrom reads exactly what provisioning.cattle.io/v1.ClusterStatus
 // exposes: ready and conditions (type/status/reason/message). Conditions
 // are ALWAYS a non-nil slice so the marshaled envelope carries
-// "conditions":[] (IC-5); no phase/transitioning/error fields — they
+// "conditions":[] (IC-5); no phase/transitioning/error fields - they
 // belong to other API representations and never appear on this CR.
 //
 // The Ready field is derived from the Ready condition when present:
@@ -290,8 +290,8 @@ func statusFrom(prov *unstructured.Unstructured) *clusterStatus {
 }
 
 // agentFrom reads the management Cluster's Connected and Ready conditions.
-// Returns nil when neither exists — a management object without them (the
-// e2e façade fixtures, a mid-import cluster) simply omits the section.
+// Returns nil when neither exists - a management object without them (the
+// e2e facade fixtures, a mid-import cluster) simply omits the section.
 // Only an explicit "True"/"False" status sets a field: "Unknown" (the normal
 // pre-reconciliation state before the first agent heartbeat) is not a verdict
 // and never collapses into disconnected.
@@ -327,7 +327,7 @@ func agentFrom(obj *unstructured.Unstructured) *agentStatus {
 
 // machinePoolsFrom reads spec.rkeConfig.machinePools: name,
 // machineConfigRef kind/name, quantity, and the etcd/controlplane/worker
-// roles as a sorted string slice. Always returns a non-nil slice — the
+// roles as a sorted string slice. Always returns a non-nil slice - the
 // CALLER's pointer distinguishes "correlated but poolless" (pointer to
 // empty, IC-9) from "section absent" (nil pointer, IC-7/7a).
 func machinePoolsFrom(prov *unstructured.Unstructured) []machinePool {
@@ -374,14 +374,14 @@ func machinePoolsFrom(prov *unstructured.Unstructured) []machinePool {
 // fetchRegistration reads the default registration token via the IC-4a
 // fetch and applies inspect's OWN placeholder policy over the
 // policy-neutral reporter: a placeholder-bearing field is dropped (its
-// omitempty tag makes it disappear from the wire) and warned about — an
+// omitempty tag makes it disappear from the wire) and warned about - an
 // advisory warning, since the section is still present and usable. A
-// failed read — Root() or the fetch — omits the whole section as a
+// failed read - Root() or the fetch - omits the whole section as a
 // `registration` degraded entry (IC-8), except an expired context, which
 // returns as the error.
 // When NO surfaced field survives (all five empty after placeholder
-// drops, or a server response with every field empty) the section is nil
-// — absent from the wire, never "registration":{}. The named-get and
+// drops, or a server response with every field empty) the section is nil -
+// absent from the wire, never "registration":{}. The named-get and
 // list-get policies live solely in their respective callers in
 // internal/engine/provisioning.
 func (c *clusterCmd) fetchRegistration(ctx context.Context, sec *sections, clusterID string) (*registration, []string, error) {
@@ -419,7 +419,7 @@ func (c *clusterCmd) fetchRegistration(ctx context.Context, sec *sections, clust
 		reg.ManifestURL = obj.ManifestURL
 	}
 	// Withheld, Hint, and NotApplicable are never assigned inside this
-	// function — their only write sites are in Execute, after this
+	// function - their only write sites are in Execute, after this
 	// returns. Zero all three before the DeepEqual so that if a write
 	// site is ever added here the emptiness verdict stays anchored to
 	// the surfaced string fields rather than silently changing. DeepEqual
@@ -499,10 +499,10 @@ func machineErrorMessage(obj map[string]any) string {
 	return anyCond
 }
 
-// clusterResult is `inspect cluster`'s payload — the JSON shape IS the
+// clusterResult is `inspect cluster`'s payload - the JSON shape IS the
 // agent contract (IC-5). Pointer semantics carry the tri-state: nil =
 // section absent (never null/{}), a nil *[]machinePool = absent while a
-// pointer to an empty slice marshals "machinePools":[] (IC-9 vs IC-7/7a —
+// pointer to an empty slice marshals "machinePools":[] (IC-9 vs IC-7/7a -
 // Go's omitempty drops non-nil empty slices, so a plain slice cannot
 // distinguish them). ProvisioningNote is RESERVED for confirmed absence,
 // at the root.
@@ -520,12 +520,12 @@ type clusterResult struct {
 	Degraded []sectionOutcome `json:"degraded,omitempty"`
 }
 
-// agentStatus is the MANAGEMENT Cluster's agent-connectivity view — the
+// agentStatus is the MANAGEMENT Cluster's agent-connectivity view - the
 // Connected and Ready conditions the provisioning-derived status never
 // carries (a live exercise saw status.ready stay true through a real agent
 // outage). Tri-state per the clusterResult pointer convention: the section
 // is nil when neither condition exists; each field is nil when its own
-// condition is absent — nothing is fabricated. Message carries the first
+// condition is absent - nothing is fabricated. Message carries the first
 // failing condition's message, preferring Connected's.
 type agentStatus struct {
 	Connected *bool  `json:"connected,omitempty"`
@@ -601,7 +601,7 @@ type machinePool struct {
 	Quantity          int64    `json:"quantity"`
 	Roles             []string `json:"roles"`
 	// AutoscalingMinSize/MaxSize are nil on a manual pool (both absent
-	// server-side) and both set together on an autoscaled one — the CRD's
+	// server-side) and both set together on an autoscaled one - the CRD's
 	// write-side CEL requires both or neither. On an autoscaled pool,
 	// Quantity is the autoscaler's current count, not operator intent: the
 	// autoscaler re-asserts its own count within its loop, and the
@@ -643,15 +643,15 @@ func withheldHint(clusterID string) string {
 	return "rancher get clusterregistrationtoken default-token --namespace " + clusterID
 }
 
-// registration carries BOTH workflow pairs explicitly — the node pair
-// (custom-cluster join) and the import pair (imported-cluster manifest) —
+// registration carries BOTH workflow pairs explicitly - the node pair
+// (custom-cluster join) and the import pair (imported-cluster manifest) -
 // plus manifestUrl; one is never substituted for the other. Every field
 // is individually omitempty so a placeholder-bearing or empty field
 // DISAPPEARS from the wire rather than marshaling "" (IC-5).
 //
 // When --registration is absent the struct carries only Withheld=true,
 // Message, and Hint, serializing as
-// {"withheld":true,"message":"...","hint":"..."} — the same keys in the
+// {"withheld":true,"message":"...","hint":"..."} - the same keys in the
 // envelope, a shape that is distinct from both the live-data case (string
 // fields present) and the unavailable case (key absent). Text rendering checks
 // Withheld before rendering fields.
@@ -664,7 +664,7 @@ type registration struct {
 	// NotApplicable names registration fields that are present but do not
 	// apply to this cluster's creation mode: an imported cluster
 	// (provisioning spec.rkeConfig absent) has no node-join workflow, so
-	// nodeCommand/insecureNodeCommand are annotated rather than dropped —
+	// nodeCommand/insecureNodeCommand are annotated rather than dropped -
 	// the JSON contract is additive and consumers may rely on field presence.
 	// Never names a field the payload does not carry.
 	NotApplicable []string `json:"notApplicable,omitempty"`
@@ -678,7 +678,7 @@ type registration struct {
 }
 
 // The registration field names shared by the notApplicable writer
-// (markNodeCommandsInapplicable) and the text renderer — one literal,
+// (markNodeCommandsInapplicable) and the text renderer - one literal,
 // no silent typo drift between the two sides.
 const (
 	regFieldNodeCommand         = "nodeCommand"
@@ -687,7 +687,7 @@ const (
 
 // markNodeCommandsInapplicable annotates the node-join pair as not
 // applicable (imported cluster). A placeholder-dropped or server-empty
-// command stays unannotated — the list never names an absent field.
+// command stays unannotated - the list never names an absent field.
 func (r *registration) markNodeCommandsInapplicable() {
 	if r.NodeCommand != "" {
 		r.NotApplicable = append(r.NotApplicable, regFieldNodeCommand)
@@ -710,7 +710,7 @@ func regLabel(label string, notApplicable bool) string {
 // multi-section text view (a summary row cannot carry conditions, pools,
 // and join commands). Omitted sections render a CONCISE availability
 // marker in place; the detailed cause lives only in Result.Warnings,
-// which the runtime prints to stderr — never duplicated here.
+// which the runtime prints to stderr - never duplicated here.
 func renderClusterText(r clusterResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "CLUSTER\n  id: %s\n  name: %s\n  kubernetesVersion: %s\n  state: %s\n",
@@ -725,7 +725,7 @@ func renderClusterText(r clusterResult) string {
 	b.WriteString("\nREGISTRATION\n")
 	switch {
 	case r.Registration != nil && r.Registration.Withheld:
-		b.WriteString("  registration: withheld (contains join credentials) — rerun with --registration\n")
+		b.WriteString("  registration: withheld (contains join credentials) - rerun with --registration\n")
 	case r.Registration == nil:
 		b.WriteString("  registration: not available\n")
 	default:
@@ -739,7 +739,7 @@ func renderClusterText(r clusterResult) string {
 }
 
 // clusterSectionHeaders is the fixed, always-present section header set
-// renderClusterText emits — every one of them, every call, regardless of
+// renderClusterText emits - every one of them, every call, regardless of
 // which sub-objects came back unavailable.
 var clusterSectionHeaders = map[string]bool{
 	"CLUSTER": true, "CONDITIONS": true, "MACHINE POOLS": true,
@@ -755,7 +755,7 @@ func styleClusterText(text string, s style.Style) string {
 
 // renderAgentLine appends the agent-connectivity line to the CLUSTER
 // section. Each clause renders only what the server explicitly reported:
-// no Connected/Ready verdicts, no line. Ready=True alone renders nothing —
+// no Connected/Ready verdicts, no line. Ready=True alone renders nothing -
 // "ready" without a connectivity verdict would overstate the report.
 func renderAgentLine(b *strings.Builder, ag *agentStatus) {
 	if ag == nil {
@@ -763,7 +763,7 @@ func renderAgentLine(b *strings.Builder, ag *agentStatus) {
 	}
 	msg := ""
 	if ag.Message != "" {
-		msg = " — " + truncateRunes(engine.Printable(ag.Message), conditionMessageLimit)
+		msg = " - " + truncateRunes(engine.Printable(ag.Message), conditionMessageLimit)
 	}
 	switch ag.verdict() {
 	case agentDisconnected:
@@ -852,14 +852,14 @@ func renderMachinesSection(b *strings.Builder, r clusterResult) {
 		b.WriteString("  machines: unavailable\n")
 	case len(*r.Machines) == 0 && r.MachinePools != nil && len(*r.MachinePools) == 0:
 		// Same signal as the MACHINE POOLS empty state: a poolless
-		// provisioning CR means imported or custom — no CAPI Machines is
+		// provisioning CR means imported or custom - no CAPI Machines is
 		// the expected shape, not a gap.
 		b.WriteString("  none (imported or custom cluster)\n")
 	case len(*r.Machines) == 0:
 		b.WriteString("  none\n")
 	default:
 		for _, m := range *r.Machines {
-			// Name and phase are server-sourced strings too — same
+			// Name and phase are server-sourced strings too - same
 			// sanitizer as the error message and the members section.
 			fmt.Fprintf(b, "  %s  %s\n", engine.Printable(m.Name), engine.Printable(m.Phase))
 			if m.Error != "" {

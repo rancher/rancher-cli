@@ -42,7 +42,7 @@ var (
 	dynCli     dynamic.Interface
 	// proxy rewrites into the envtest apiserver; built once in TestMain
 	// (concurrency-safe) and shared by the global router AND every
-	// per-script router newRouter builds — only the bearer check varies per
+	// per-script router newRouter builds - only the bearer check varies per
 	// instance, never the transport.
 	proxy *httputil.ReverseProxy
 )
@@ -51,20 +51,20 @@ var (
 // id:secret format (the auth-login scenario stores and replays it).
 const testToken = "e2e:secret"
 
-// legacyScripts marks per-script façade instances that must run in legacy
+// legacyScripts marks per-script facade instances that must run in legacy
 // mode (the ext.cattle.io create route 404s), keyed by txtar base name
 // (matched against the testscript WorkDir, "script-<name>").
 var legacyScripts = map[string]bool{
 	"get-token-legacy": true,
 }
 
-// scriptOptions adjusts a script's own façade options before the façade is
+// scriptOptions adjusts a script's own facade options before the facade is
 // built, keyed the way legacyScripts is.
 var scriptOptions = map[string]func(*testrancher.Options){
 	"login-recovery": func(o *testrancher.Options) { o.DropDerivedCreateResponseOnce = true },
 }
 
-// scriptChecks run after their script, with the façade it ran against, for
+// scriptChecks run after their script, with the facade it ran against, for
 // the assertions a script cannot make about what the server recorded.
 var scriptChecks = map[string]func(t testscript.T, f *testrancher.Facade){
 	"login-recovery":   checkLoginRecovery,
@@ -72,7 +72,7 @@ var scriptChecks = map[string]func(t testscript.T, f *testrancher.Facade){
 }
 
 // scriptSkipped reports whether the script ended in a skip (a `[!unix]
-// skip` line, for one), in which case the façade saw none of the requests
+// skip` line, for one), in which case the facade saw none of the requests
 // a scriptChecks entry asserts on and the check must not run. Deferred
 // functions run after a skip too, so this is the only place to tell the
 // two teardowns apart. testscript's T is backed by *testing.T, whose
@@ -167,7 +167,7 @@ func checkExecTokenReuse(t testscript.T, f *testrancher.Facade) {
 // newRouter builds the shim's cluster-proxy handler: a bearer check via
 // validBearer, then the /k8s/clusters/<id> prefix rewrite into the shared
 // envtest reverse proxy. It is a constructor, not a single shared instance,
-// because auth scenarios need their own façade's ValidBearer composed in
+// because auth scenarios need their own facade's ValidBearer composed in
 // without a union of issued-token sets across scripts (FA-2/FA-3):
 // deterministic per-instance token names/secrets mean two scripts can hold
 // the literal same bearer, and a shared validity set would keep one
@@ -201,7 +201,7 @@ func TestMain(m *testing.M) {
 	// reason Setup's own scriptName derivation fails loudly: a typo'd key or
 	// a renamed txtar must be an obvious harness-drift error, never a
 	// confusing scenario failure (e.g. get-token-legacy.txtar's stderr
-	// assertion failing because its façade silently ran non-legacy).
+	// assertion failing because its facade silently ran non-legacy).
 	for name := range legacyScripts {
 		if _, err := os.Stat(filepath.Join("scripts", name+".txtar")); err != nil {
 			panic(fmt.Sprintf("legacyScripts references missing scripts/%s.txtar: %v", name, err))
@@ -231,7 +231,7 @@ func TestMain(m *testing.M) {
 	binPath = filepath.Join(tmp, "rancher"+ext)
 
 	// Building the binary and starting envtest have no data dependency on
-	// each other — run them concurrently so `make e2e` pays max(build,
+	// each other - run them concurrently so `make e2e` pays max(build,
 	// envtest-start) instead of their sum.
 	env := &envtest.Environment{CRDDirectoryPaths: []string{filepath.Join("testdata", "crds")}}
 	var cfg *rest.Config
@@ -251,7 +251,7 @@ func TestMain(m *testing.M) {
 	startEnv := func() error {
 		var err error
 		if cfg, err = env.Start(); err != nil {
-			// The hint mirrors scripts/e2e's exact invocation — keep the two
+			// The hint mirrors scripts/e2e's exact invocation - keep the two
 			// in lockstep so a direct `go test` resolves the same binaries.
 			return fmt.Errorf("envtest (run via `make e2e`, which sets KUBEBUILDER_ASSETS; otherwise run "+
 				"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1 use 1.34.0 -p path` and export it): %w", err)
@@ -275,10 +275,10 @@ func TestMain(m *testing.M) {
 		Transport: transport,
 	}
 
-	// The global TLS server stays alive for its own narrow job — flipstatus
-	// mutates shared envtest state through it (commands_test.go) — but no
+	// The global TLS server stays alive for its own narrow job - flipstatus
+	// mutates shared envtest state through it (commands_test.go) - but no
 	// script's TEST_RANCHER_URL points at it anymore; TestScenarios' Setup
-	// gives every script its own façade-wrapped router instead.
+	// gives every script its own facade-wrapped router instead.
 	mux := http.NewServeMux()
 	mux.Handle("/", newRouter(func(t string) bool { return t == testToken }))
 	mux.HandleFunc("PUT /_test/status/", handleStatusLever)
@@ -305,13 +305,13 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// buildAndStartEnv runs build and startEnv concurrently — they have no data
+// buildAndStartEnv runs build and startEnv concurrently - they have no data
 // dependency on each other, so `make e2e` pays max(build, envtest-start)
 // instead of their sum. If either fails, stopEnv runs first when startEnv
 // actually succeeded: errgroup.Wait blocks until BOTH goroutines return, so
 // envStarted is settled by the time it's read here regardless of which
 // goroutine failed. A build failure after envtest already started must
-// still stop it — otherwise the etcd/kube-apiserver child processes outlive
+// still stop it - otherwise the etcd/kube-apiserver child processes outlive
 // this function.
 func buildAndStartEnv(build, startEnv func() error, stopEnv func()) error {
 	var envStarted bool
@@ -334,7 +334,7 @@ func buildAndStartEnv(build, startEnv func() error, stopEnv func()) error {
 }
 
 // DR-011 repro: a build failure racing a slower, successful envtest start
-// must still stop envtest — the goroutine leaked etcd/kube-apiserver
+// must still stop envtest - the goroutine leaked etcd/kube-apiserver
 // processes before this fix, since env.Stop() was only reachable via the
 // sequential path after m.Run(), never on this early-panic path.
 func TestBuildAndStartEnvStopsEnvOnBuildFailureAfterEnvStarted(t *testing.T) {
@@ -390,8 +390,8 @@ func TestBuildAndStartEnvNoErrorDoesNotStop(t *testing.T) {
 
 // TestRouterValidatesSeedAndFacadeBearersAcrossRevocation proves the
 // per-script wiring TestScenarios' Setup builds: a router composed from
-// "seed OR this instance's façade.ValidBearer" authorizes both the static
-// seed token and a façade-created bearer through the cluster proxy, and stops
+// "seed OR this instance's facade.ValidBearer" authorizes both the static
+// seed token and a facade-created bearer through the cluster proxy, and stops
 // authorizing the created bearer the moment it is revoked.
 func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
 	var facade *testrancher.Facade
@@ -432,7 +432,7 @@ func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
 	require.NoError(t, json.NewDecoder(createResp.Body).Decode(&created))
 	require.NotEmpty(t, created.Status.BearerToken)
 
-	assert.Equal(t, http.StatusOK, getClusters(created.Status.BearerToken), "a façade-created bearer must authorize")
+	assert.Equal(t, http.StatusOK, getClusters(created.Status.BearerToken), "a facade-created bearer must authorize")
 
 	delReq, err := http.NewRequest(http.MethodDelete, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens/fac-token-1", nil)
 	require.NoError(t, err)
@@ -510,7 +510,7 @@ func TestScenarios(t *testing.T) {
 			// client-go's exec-credential plugin (kubectl, `rancher auth
 			// get-token`) refuses to wire in exec auth over a plaintext
 			// http:// server (the same credential-hygiene rule that keeps
-			// bearer tokens off http), so the façade must be TLS and scripts
+			// bearer tokens off http), so the facade must be TLS and scripts
 			// must be able to trust it. Scripts get this as INLINE PEM, not
 			// a file path: config.Effective's CA and kube.RESTConfig
 			// consume eff.CA as raw PEM bytes directly (only auth
@@ -525,12 +525,12 @@ func TestScenarios(t *testing.T) {
 			// Global CA trust for every script (env-only and config-flow alike):
 			// RANCHER_CLI_CACERT is env-effective everywhere Effective() is consulted.
 			// It does NOT reach `rancher kubeconfig`'s embedded CA, which reads
-			// only the config FILE's server entry — config-flow scripts pass
+			// only the config FILE's server entry - config-flow scripts pass
 			// --cacert on login for that.
 			e.Setenv("RANCHER_CLI_CACERT", facadeCACertPEM)
 			e.Setenv("RANCHER_CLI_CONFIG_DIR", filepath.Join(e.WorkDir, "rancher-config"))
 			// E2E-A-003: credstore-pin.txtar clears this itself as its first
-			// line (`env RANCHER_CLI_CREDENTIAL_STORE=`) — testscript.Env carries
+			// line (`env RANCHER_CLI_CREDENTIAL_STORE=`) - testscript.Env carries
 			// no script name, so the exemption lives in the script.
 			e.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 			// Go reads SSL_CERT_FILE into the system pool on Linux only; the
@@ -586,7 +586,7 @@ func seedManagementCluster() {
 // support-bundle target tables both hardcode it, and per-script creation
 // races across scripts sharing this one apiserver. "cattle-global-data" is
 // Task 7's cloud-credential namespace (seedCloudCredential's Secret lives
-// there) — seeded here for the same reason. "cattle-local-user-passwords" is
+// there) - seeded here for the same reason. "cattle-local-user-passwords" is
 // where `create user` writes the backing password Secret.
 func seedNamespaces() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
@@ -603,7 +603,7 @@ func seedNamespaces() {
 }
 
 // seedCloudCredential creates the fixture cloud-credential Secrets in
-// cattle-global-data — global and one-time (Task 7, review R2-2):
+// cattle-global-data - global and one-time (Task 7, review R2-2):
 // `create cluster`'s node-driver e2e scenarios resolve --cloud-credential
 // by display name, and a per-script Setup creating these same fixtures
 // would race AlreadyExists across every script sharing this one envtest
@@ -612,7 +612,7 @@ func seedNamespaces() {
 // two-step flow pairs a DO config with a DO credential. The data
 // key/value mirror cloudcred.go's driver-detection contract
 // (<driver>credentialConfig-<key>); "ZHVtbXk=" is the base64 encoding of
-// "dummy" — ResolveCloudCredential never reads a data VALUE (spec
+// "dummy" - ResolveCloudCredential never reads a data VALUE (spec
 // D-R2-1), so the content is an arbitrary placeholder.
 func seedCloudCredential() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
@@ -644,7 +644,7 @@ func seedCloudCredential() {
 // for role completion e2e rows. RoleTemplates carry a top-level "context"
 // field (cluster-scoped CRD with x-kubernetes-preserve-unknown-fields: true
 // at root, so the field is retained). GlobalRole is cluster-scoped with no
-// context field — fetchGlobalRoles lists by name only.
+// context field - fetchGlobalRoles lists by name only.
 func seedRoleObjects() {
 	rtGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "roletemplates"}
 	for _, rt := range []struct {
@@ -708,7 +708,7 @@ func seedUserObjects() {
 
 // seedUserAttributeObjects creates a UserAttribute fixture for
 // inspect-user.txtar: UserAttribute carries no kind-table row (it is an
-// enrichment source, not an operator-facing resource — `create resource -f`
+// enrichment source, not an operator-facing resource - `create resource -f`
 // cannot address it), so it is seeded here directly like the role and user
 // fixtures above. One group principal under one provider is enough for the
 // composite's groups section and its held-bindings group matching to have
@@ -736,7 +736,7 @@ func seedUserAttributeObjects() {
 }
 
 // seedManagementToken creates the management.cattle.io/v3 Token whose name
-// matches the harness credential id ("e2e" — the id portion of
+// matches the harness credential id ("e2e" - the id portion of
 // testToken "e2e:secret"). Seeding it globally (rather than per-script)
 // ensures auth status's PS-2 v3 fallback probe returns deterministic metadata
 // regardless of script execution order, and lets management-token.txtar's

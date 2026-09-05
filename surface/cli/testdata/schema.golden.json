@@ -224,7 +224,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Removes spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize from the named pool, built from the fetched object so a half-set pool still clears cleanly. A pool that already carries neither field succeeds as a no-op, so a retry always converges. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object — dry-run/apply --yes.",
+      "desc": "Removes spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize from the named pool, built from the fetched object so a half-set pool still clears cleanly. A pool that already carries neither field succeeds as a no-op, so a retry always converges. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
       "destructive": "true",
       "examples": [
         "rancher cluster clear-autoscaling my-cluster --pool pool1 --apply --yes"
@@ -268,7 +268,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster. Pause is cluster-wide only — no per-pool pause exists server-side, so this verb takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object — dry-run/apply --yes.",
+      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster. Pause is cluster-wide only - no per-pool pause exists server-side, so this verb takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
       "destructive": "true",
       "examples": [
         "rancher cluster pause-autoscaling my-cluster --apply --yes"
@@ -306,7 +306,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster, restoring autoscaler management of every pool that carries min/max config. Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object — dry-run/apply --yes.",
+      "desc": "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster, restoring autoscaler management of every pool that carries min/max config. Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
       "destructive": "true",
       "examples": [
         "rancher cluster resume-autoscaling my-cluster --apply --yes"
@@ -344,7 +344,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Patches spec.rkeConfig.machinePools[].quantity on the named pool, resolved by name to its array index at patch-build time. Refuses when the pool carries autoscalingMinSize/MaxSize and autoscaling is not paused: the server would accept the edit and apply it, but the cluster autoscaler re-asserts its own count within its loop, silently reverting the change minutes later — pause-autoscaling is the sanctioned override. Refuses on a cluster with no machine pools (imported, custom, or local). provisioningcluster is a Sensitive kind, so every scale is Destructive regardless of direction, the same as a generic patch on the same object — dry-run/apply --yes. --nodes 0 is schema-legal on every pool, including a control-plane/etcd pool; no invented floor.",
+      "desc": "Patches spec.rkeConfig.machinePools[].quantity on the named pool, resolved by name to its array index at patch-build time. Refuses when the pool carries autoscalingMinSize/MaxSize and autoscaling is not paused: the server would accept the edit and apply it, but the cluster autoscaler re-asserts its own count within its loop, silently reverting the change minutes later - pause-autoscaling is the sanctioned override. Refuses on a cluster with no machine pools (imported, custom, or local). provisioningcluster is a Sensitive kind, so every scale is Destructive regardless of direction, the same as a generic patch on the same object - dry-run/apply --yes. --nodes 0 is schema-legal on every pool, including a control-plane/etcd pool; no invented floor.",
       "destructive": "true",
       "examples": [
         "rancher cluster scale my-cluster --pool pool1 --nodes 3 --apply --yes"
@@ -392,7 +392,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. Mirrors the CRD's validation client-side — --min and --max are both required and must both be >= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool — so a bad value is rejected with flag names before the server round-trip; the server remains the authority. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object — dry-run/apply --yes. From this point the pool's quantity is managed by the cluster autoscaler, not the operator.",
+      "desc": "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. Mirrors the CRD's validation client-side - --min and --max are both required and must both be >= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool - so a bad value is rejected with flag names before the server round-trip; the server remains the authority. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object - dry-run/apply --yes. From this point the pool's quantity is managed by the cluster autoscaler, not the operator.",
       "destructive": "true",
       "examples": [
         "rancher cluster set-autoscaling my-cluster --pool pool1 --min 2 --max 5 --apply --yes"
@@ -693,7 +693,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Creates a single machine pool; repeatable pool flags are not supported yet, so a multi-pool cluster must go through `create resource -f` with a full manifest. Before the server-side dry-run, the command resolves the caller's identity via the ext.cattle.io SelfUser probe and stamps it into the creatorId annotation (rancher-webhook's validator requires the annotation on dry-run even though its mutator only stamps it on real creates). If the probe fails, a \"creatorId not stamped\" warning is emitted and the create proceeds unstamped — rancher-webhook may then deny the dry-run, but a real --apply create is still expected to succeed (the mutator stamps identity server-side on real creates).",
+      "desc": "Creates a single machine pool; repeatable pool flags are not supported yet, so a multi-pool cluster must go through `create resource -f` with a full manifest. Before the server-side dry-run, the command resolves the caller's identity via the ext.cattle.io SelfUser probe and stamps it into the creatorId annotation (rancher-webhook's validator requires the annotation on dry-run even though its mutator only stamps it on real creates). If the probe fails, a \"creatorId not stamped\" warning is emitted and the create proceeds unstamped - rancher-webhook may then deny the dry-run, but a real --apply create is still expected to succeed (the mutator stamps identity server-side on real creates).",
       "destructive": "false",
       "examples": [
         "rancher create cluster imported-1 --import --apply",
@@ -841,7 +841,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Creates a standalone rke-machine-config.cattle.io CR in fleet-default; reference it afterwards with `create cluster --machine-config <kind>/<name>` (the two-step node-driver flow). Driver fields sit at the CR root — there is no spec wrapper. digitaloceanconfig has curated flags; amazonec2config, azureconfig, harvesterconfig, and vmwarevsphereconfig take their fields via --set key=value. Credential-carried fields are rejected: credentials belong on a cloud credential (cc-* secret), never on a machine config.",
+      "desc": "Creates a standalone rke-machine-config.cattle.io CR in fleet-default; reference it afterwards with `create cluster --machine-config <kind>/<name>` (the two-step node-driver flow). Driver fields sit at the CR root - there is no spec wrapper. digitaloceanconfig has curated flags; amazonec2config, azureconfig, harvesterconfig, and vmwarevsphereconfig take their fields via --set key=value. Credential-carried fields are rejected: credentials belong on a cloud credential (cc-* secret), never on a machine config.",
       "destructive": "false",
       "examples": [
         "rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --dry-run",
@@ -952,7 +952,7 @@
       "commandType": "mutating",
       "contract": "internal",
       "delivery": "onceOnly",
-      "desc": "Creates the client, waits for the server to provision it, reads the initial client secret once, and reads the live discovery document — printing a complete relying-app configuration (clientID, clientSecret, issuer, endpoints) in one document.",
+      "desc": "Creates the client, waits for the server to provision it, reads the initial client secret once, and reads the live discovery document - printing a complete relying-app configuration (clientID, clientSecret, issuer, endpoints) in one document.",
       "destructive": "true",
       "examples": [
         "rancher create oidc-client my-app --redirect-uri https://example.invalid/callback --apply --yes"
@@ -1029,7 +1029,7 @@
       ],
       "flags": [
         {
-          "desc": "read the new password from stdin (required; there is no --password flag — a flag value would land in shell history; the server enforces a minimum length, 12 by default)",
+          "desc": "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)",
           "name": "password-stdin",
           "type": "bool"
         }
@@ -1255,14 +1255,14 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Creates the management.cattle.io/v3 User, then a same-named Secret in cattle-local-user-passwords carrying the password — the server hashes it on write (never the CLI). Requires the connected server's user-password workflow (ext.cattle.io PasswordChangeRequest support is the declared marker).",
+      "desc": "Creates the management.cattle.io/v3 User, then a same-named Secret in cattle-local-user-passwords carrying the password - the server hashes it on write (never the CLI). Requires the connected server's user-password workflow (ext.cattle.io PasswordChangeRequest support is the declared marker).",
       "destructive": "true",
       "examples": [
         "echo -n \"$PASSWORD\" | rancher create user alice --password-stdin --apply --yes"
       ],
       "flags": [
         {
-          "desc": "read the new password from stdin (required; there is no --password flag — a flag value would land in shell history; the server enforces a minimum length, 12 by default)",
+          "desc": "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)",
           "name": "password-stdin",
           "type": "bool"
         },
@@ -5648,7 +5648,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion — observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning — the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, each row reporting principal, displayName, role, binding (the CRD object name), and system; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is system-prefixed (Rancher's system principals, e.g. system://provisioning/...) carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message — preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster — provisioning spec.rkeConfig absent — notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). The registration section is withheld by default because it embeds a live cluster join token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show it. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause. Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Cluster resolution and the management Cluster GET are required and hard-error. Degradable sections: provisioning (unavailable — the correlation, one entry covering the status, machinePools, and machines it leaves absent), machines (unavailable — a machine list that failed after a successful correlation), members (unavailable — the binding list; display-name enrichment failures stay advisory warnings), registration (unavailable — the token read).",
+      "desc": "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion - observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning - the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, each row reporting principal, displayName, role, binding (the CRD object name), and system; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is system-prefixed (Rancher's system principals, e.g. system://provisioning/...) carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message - preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster - provisioning spec.rkeConfig absent - notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). The registration section is withheld by default because it embeds a live cluster join token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show it. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause. Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Cluster resolution and the management Cluster GET are required and hard-error. Degradable sections: provisioning (unavailable - the correlation, one entry covering the status, machinePools, and machines it leaves absent), machines (unavailable - a machine list that failed after a successful correlation), members (unavailable - the binding list; display-name enrichment failures stay advisory warnings), registration (unavailable - the token read).",
       "flags": [
         {
           "desc": "show registration section (contains join credentials; withheld by default); also available via: rancher get clusterregistrationtoken default-token --namespace <cluster-id>",
@@ -5679,7 +5679,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Cluster resolution, the namespace, and the deployment GET are required and hard-error. Degradable section: pods (unavailable — the selector-scoped pod list; the pods field is null).",
+      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Cluster resolution, the namespace, and the deployment GET are required and hard-error. Degradable section: pods (unavailable - the selector-scoped pod list; the pods field is null).",
       "flags": [
         {
           "desc": "target cluster `id|name`",
@@ -5759,7 +5759,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Cluster resolution and the project resolve plus GET are required and hard-error. Degradable sections: namespaces (unavailable — the namespace rows, whose integer counts cannot represent an unknown), members (each row reports principal, displayName, role, binding, and system; unavailable — collected independently from the management plane, so downstream failures leave it intact), usage (unavailable — blocked by a downstream-client, membership, or pod-list failure), metrics (unavailable — request and limit totals stay). A membership set that resolves to zero namespaces is a verified-empty scope: no workload or usage read is issued and nothing degrades.",
+      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Cluster resolution and the project resolve plus GET are required and hard-error. Degradable sections: namespaces (unavailable - the namespace rows, whose integer counts cannot represent an unknown), members (each row reports principal, displayName, role, binding, and system; unavailable - collected independently from the management plane, so downstream failures leave it intact), usage (unavailable - blocked by a downstream-client, membership, or pod-list failure), metrics (unavailable - request and limit totals stay). A membership set that resolves to zero namespaces is a verified-empty scope: no workload or usage read is issued and nothing degrades.",
       "flags": [
         {
           "desc": "target cluster `id|name`",
@@ -5791,7 +5791,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. The user is required and hard-errors when unreadable; every other section degrades. The positional accepts a user id, username, displayName, or a fully qualified user principal (local://…, <provider>_user://…) — the principal form is the one way to name a user unambiguously when ids and display names collide. data.user carries identity (id, username, displayName, enabled, principals, created, system) plus everything Rancher records per user in UserAttributes: groups (memberships as last synced by Rancher, refreshed at login, a flat array of {principal, displayName, provider}), lastLogin, lastRefresh and needsRefresh (the group-sync cache's own state), disableAfter and deleteAfter (per-user inactivity overrides), and extra (per-provider audit extras, [provider][key] -> values; Rancher writes principalid and username today). All of them share one fate: when the UserAttributes read failed for any reason other than a verified absence (a user who has never logged in has none), every one is omitted from the wire — never an empty list — with the failure recorded in data.degraded; an omitted optional field on a healthy read simply is not set. data.roles.{global,clusters,projects} lists role bindings that EXIST for the user or any of their group principals. Roles are facts about bindings — never a computed statement of what the user can do (that is a permissions question, answered only by the server, and this command never asks it). Each row is the shared member shape (principal, displayName, role, binding, system); clusters and projects group rows by scope instance, with a best-effort displayName looked up per entry. Because the completeness of the role sections depends on the user's group principals, a failed groups read blocks all three too (their completeness would otherwise be unverifiable) — recorded in data.degraded alongside groups.",
+      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. The user is required and hard-errors when unreadable; every other section degrades. The positional accepts a user id, username, displayName, or a fully qualified user principal (local://…, <provider>_user://…) - the principal form is the one way to name a user unambiguously when ids and display names collide. data.user carries identity (id, username, displayName, enabled, principals, created, system) plus everything Rancher records per user in UserAttributes: groups (memberships as last synced by Rancher, refreshed at login, a flat array of {principal, displayName, provider}), lastLogin, lastRefresh and needsRefresh (the group-sync cache's own state), disableAfter and deleteAfter (per-user inactivity overrides), and extra (per-provider audit extras, [provider][key] -> values; Rancher writes principalid and username today). All of them share one fate: when the UserAttributes read failed for any reason other than a verified absence (a user who has never logged in has none), every one is omitted from the wire - never an empty list - with the failure recorded in data.degraded; an omitted optional field on a healthy read simply is not set. data.roles.{global,clusters,projects} lists role bindings that EXIST for the user or any of their group principals. Roles are facts about bindings - never a computed statement of what the user can do (that is a permissions question, answered only by the server, and this command never asks it). Each row is the shared member shape (principal, displayName, role, binding, system); clusters and projects group rows by scope instance, with a best-effort displayName looked up per entry. Because the completeness of the role sections depends on the user's group principals, a failed groups read blocks all three too (their completeness would otherwise be unverifiable) - recorded in data.degraded alongside groups.",
       "group": "inspect",
       "name": "inspect user",
       "network": true,
@@ -9281,7 +9281,7 @@
       ],
       "auth": false,
       "commandType": "readOnly",
-      "desc": "Multi-word command names (\"get pod\") work as a single selector — pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
+      "desc": "Multi-word command names (\"get pod\") work as a single selector - pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
       "examples": [
         "rancher schema -o json",
         "rancher schema get pod -o json"
@@ -9595,7 +9595,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a project namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns project-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket. Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Required collectors hard-error: cluster resolution and the pod list always; project resolution and the membership list with --project; the project and namespace maps with --by project; the node list with --by node, or the named node GET with --by node --node N. Degradable section: metrics (unavailable — requests and limits stay). A scope that resolves to zero namespaces is verified empty: no pod or metrics read is issued.",
+      "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a project namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns project-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket. Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Required collectors hard-error: cluster resolution and the pod list always; project resolution and the membership list with --project; the project and namespace maps with --by project; the node list with --by node, or the named node GET with --by node --node N. Degradable section: metrics (unavailable - requests and limits stay). A scope that resolves to zero namespaces is verified empty: no pod or metrics read is issued.",
       "flags": [
         {
           "desc": "target cluster `id|name`",
@@ -9731,7 +9731,7 @@
       "name": "FORCE_COLOR"
     },
     {
-      "desc": "when non-empty, skip the cross-process config write lock — escape hatch for filesystems with broken file locking",
+      "desc": "when non-empty, skip the cross-process config write lock - escape hatch for filesystems with broken file locking",
       "name": "RANCHER_CLI_CONFIG_NO_LOCK"
     },
     {
@@ -10883,7 +10883,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "server configuration — tune, never remove",
+          "note": "server configuration - tune, never remove",
           "state": "absent"
         },
         "get": {
@@ -10912,7 +10912,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "server configuration — tune, never remove",
+          "note": "server configuration - tune, never remove",
           "state": "absent"
         },
         "get": {
@@ -11369,7 +11369,7 @@
       "verbs": {
         "create": {
           "contract": "internal",
-          "note": "token creation must go through Rancher's auth lifecycle — use 'rancher create token' (the ext.cattle.io kind) for new tokens",
+          "note": "token creation must go through Rancher's auth lifecycle - use 'rancher create token' (the ext.cattle.io kind) for new tokens",
           "stability": "deprecated",
           "state": "refused"
         },

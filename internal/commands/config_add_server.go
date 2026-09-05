@@ -13,7 +13,7 @@ type configAddServerCmd struct {
 }
 
 // NewConfigAddServer builds `config add-server <name> --url <url>
-// [--cacert <path|PEM>]` (local): the registration path's add caller —
+// [--cacert <path|PEM>]` (local): the registration path's add caller -
 // establishes trust and records a server entry, bootstrapping/repairing the
 // current-server pointer when it is empty or dangling. Never an upsert: an
 // existing name with a different URL or CA is CONFLICT.

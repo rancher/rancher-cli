@@ -65,7 +65,7 @@ func TestRenderedPreservesNameAndDescription(t *testing.T) {
 }
 
 // TestDigestRoundTrip: recomputing the canonical digest over the rendered
-// tree equals the stamped value — install-then-status in-sync depends on it.
+// tree equals the stamped value - install-then-status in-sync depends on it.
 func TestDigestRoundTrip(t *testing.T) {
 	SetSource(testSource(t))
 	files, err := Rendered("v1.2.3")
@@ -107,7 +107,7 @@ func TestReadInstallRecordForeign(t *testing.T) {
 	assert.False(t, ok)
 }
 
-// ReadTree rejects anything that is not a regular file — an internal file
+// ReadTree rejects anything that is not a regular file - an internal file
 // symlink must never be followed (it could read outside the installation).
 func TestReadTreeRejectsNonRegularEntries(t *testing.T) {
 	skipIfNoSymlinks(t)

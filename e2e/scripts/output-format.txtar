@@ -2,7 +2,7 @@
 # template rendering run before/without any server call, so schema and
 # config path carry the whole scenario.
 
-# VALIDATION: the -o value set is closed — an unrecognized format renders as
+# VALIDATION: the -o value set is closed - an unrecognized format renders as
 # the short operator-facing text block, not the envelope it failed to
 # resolve, before the command runs.
 ! exec rancher schema -o csv

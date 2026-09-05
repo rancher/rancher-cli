@@ -87,7 +87,7 @@ func TestLegacyTokenSlotSeparation(t *testing.T) {
 // APIVersion, and that ExpirationTimestamp is nil when the derived token create response
 // carries no expiresAt (the zero-expiry case the shim opts into caching).
 func TestLegacyTokenEmitsV1Beta1(t *testing.T) {
-	// The create succeeds but returns no expiresAt — a zero-expiry token that
+	// The create succeeds but returns no expiresAt - a zero-expiry token that
 	// the native get-token would refuse to cache; the shim (legacyShim)
 	// caches it and must not set ExpirationTimestamp in the emitted credential.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +202,7 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 	_, _, cerr := store.GetCachedCred(unscopedKey)
 	require.NoError(t, cerr, "the cache slot must be the unscoped (no cluster) key")
 
-	// The scoped key (with "c-ctx") must be absent — proving the context cluster
+	// The scoped key (with "c-ctx") must be absent - proving the context cluster
 	// was not used.
 	scopedKey := config.CacheKey("legacy:testcluster", serverID, "c-ctx")
 	_, _, cerr = store.GetCachedCred(scopedKey)
@@ -221,7 +221,7 @@ func TestLegacyTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
 	serverID := config.CanonicalServerIdentity("https://r.ex")
 	key := config.CacheKey("legacy:alice", serverID, "c-1")
 	require.NoError(t, store.SetCachedCred(key, "cached-tok", time.Now().Add(time.Hour), "legacy:alice", serverID, "c-1"))
-	// Poison config.yaml — the shim must not read it on a warm cache hit.
+	// Poison config.yaml - the shim must not read it on a warm cache hit.
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
@@ -340,7 +340,7 @@ func TestLegacyTokenRejectsEmptyUser(t *testing.T) {
 }
 
 // TestLegacyTokenRejectsWhitespaceUser verifies that a whitespace-only --user
-// is also rejected — strings.TrimSpace catches what an == "" check would miss.
+// is also rejected - strings.TrimSpace catches what an == "" check would miss.
 func TestLegacyTokenRejectsWhitespaceUser(t *testing.T) {
 	t.Parallel()
 	cmd := NewLegacyTokenCommand(t.TempDir(), nil).(runtime.ReadCommand)
@@ -392,7 +392,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
 
-	// Call with canonical name — writes the cache slot.
+	// Call with canonical name - writes the cache slot.
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "alice"}},
 		ui.Discard())
@@ -412,7 +412,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 	_, _, err = store.GetCachedCred(canonicalKey)
 	require.NoError(t, err, "canonical key must be present after any invocation")
 
-	// Execute with padded user — must NOT create the padded slot.
+	// Execute with padded user - must NOT create the padded slot.
 	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "  alice"}},
 		ui.Discard())
@@ -426,7 +426,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 // TestLegacyTokenPaddedClusterHitsSameCacheSlot is the Fix-4 test for --cluster:
 // a padded cluster value ("  local  ") must be trimmed to "local" before the cache
 // slot is computed. This also exercises the resolveClusterIDForCreate short-circuit for
-// "local" — no cluster-list HTTP round-trip is needed, keeping the server stub minimal.
+// "local" - no cluster-list HTTP round-trip is needed, keeping the server stub minimal.
 func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound) // looks like legacy Rancher with no ext.cattle.io
@@ -442,7 +442,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 
 	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
 
-	// Call with canonical cluster — writes the cache slot.
+	// Call with canonical cluster - writes the cache slot.
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "alice", "cluster": "local"}},
 		ui.Discard())
@@ -458,7 +458,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 	_, _, err = store.GetCachedCred(canonicalKey)
 	require.NoError(t, err, "canonical key must be present after the first invocation")
 
-	// Execute with padded cluster — must NOT create a distinct padded slot.
+	// Execute with padded cluster - must NOT create a distinct padded slot.
 	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "alice", "cluster": "  local  "}},
 		ui.Discard())
@@ -473,7 +473,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 // picking up stored current-context state. A config whose current context names a
 // same-host server entry ("wrong-server") whose GetToken hard-errors is paired with
 // a "right-server" entry (sorted first) that has a valid stored login token. A shim
-// invocation with the shared host URL, no --cluster, no --cacerts must succeed — it
+// invocation with the shared host URL, no --cluster, no --cacerts must succeed - it
 // must not call cfg.Effective (needsEff gated), must pick the CA from sorted order
 // not current-context (caForServer ignoreCurrentContext), and must pick the stored login
 // credential from rank-3 (sorted) not rank-2 (current-context). This test catches:
@@ -589,7 +589,7 @@ func TestLegacyTokenStoreNoticeRidesFailure(t *testing.T) {
 
 	dir := t.TempDir()
 	// No stored login token: the shim falls through to the interactive
-	// provider flow, whose provider listing 404s — a hard failure.
+	// provider flow, whose provider listing 404s - a hard failure.
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -611,7 +611,7 @@ func TestLegacyTokenStoreNoticeRidesFailure(t *testing.T) {
 
 // TestLegacyTokenProbeWarnRidesLoadFailure asserts the probe's loose-permission
 // finding surviving a slow-path failure: the probe's global dedup marks the
-// cache path seen on first check, so the warning has no second chance — a
+// cache path seen on first check, so the warning has no second chance - a
 // cache miss followed by a broken config.yaml must still carry it on the
 // error.
 func TestLegacyTokenProbeWarnRidesLoadFailure(t *testing.T) {

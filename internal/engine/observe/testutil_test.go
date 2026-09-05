@@ -33,7 +33,7 @@ type objKey struct {
 
 // fakeClient is a table-driven engine.ClusterClient fake: objects keyed by
 // GVR+ns+name serve Get; lists keyed by GVR+ns serve List (the selector is
-// recorded, not filtered — tests assert on the recorded selector directly).
+// recorded, not filtered - tests assert on the recorded selector directly).
 type selKey struct {
 	gvr      schema.GroupVersionResource
 	ns       string

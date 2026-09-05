@@ -17,7 +17,7 @@ import (
 )
 
 // defaultTokenTTLSeconds/defaultRefreshTTLSeconds are the CLI's OWN defaults
-// for the CRD-required TTL fields — the server does not default them: a
+// for the CRD-required TTL fields - the server does not default them: a
 // create missing either field fails against a real server, on both the
 // Prime and community editions.
 const (
@@ -35,7 +35,7 @@ type createCmd struct {
 // [--scope]... [--token-ttl] [--refresh-ttl] [--timeout]` (mutating): the
 // curated create for Rancher's embedded OIDC provider, structurally
 // precedented by `create token` (a single-backing-row derived op with
-// flag→spec mapping and a once-only sensitive value) — but, unlike the ext
+// flag→spec mapping and a once-only sensitive value) - but, unlike the ext
 // Token store, OIDCClient is a plain CRD with no name generation, so <name>
 // is a required, user-chosen positional.
 func NewCreate(clients engine.ClusterClientFactory, roots engine.RootClientFactory, serverBase engine.ServerBaseURLProvider) runtime.Command {
@@ -47,7 +47,7 @@ func (createCmd) Describe() runtime.Descriptor {
 		Name:  "create oidc-client",
 		Usage: "Create an OIDC client for Rancher's embedded OIDC provider",
 		Desc: "Creates the client, waits for the server to provision it, reads the initial " +
-			"client secret once, and reads the live discovery document — printing a complete " +
+			"client secret once, and reads the live discovery document - printing a complete " +
 			"relying-app configuration (clientID, clientSecret, issuer, endpoints) in one document.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
@@ -161,7 +161,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 
 // execute runs strictly in this order: mutation -> status wait ->
 // backing-Secret GET (decode) -> discovery GET/degrade -> buffered
-// render. This closure never writes stdout — "shown exactly once"
+// render. This closure never writes stdout - "shown exactly once"
 // describes finishResult's buffered render, not an intermediate step here.
 func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k kinds.Kind, obj *unstructured.Unstructured, timeout time.Duration) (runtime.Result, error) {
 	created, err := client.Create(ctx, k.GVR, "", obj, false)
@@ -241,7 +241,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 // endpoints and issuer, or degrades: a static issuer derived from the SAME
 // resolved base and no endpoints, with a warning naming what failed.
 // Discovery failure (a blip, a proxy, the server's 500 when zero clients
-// exist racing a concurrent delete) never fails a committed create — a
+// exist racing a concurrent delete) never fails a committed create - a
 // failure here would read as retryable, and a retry creates a second client.
 func (c *createCmd) discover(ctx context.Context, base string) (*oidcEndpoints, string, []string) {
 	fallbackIssuer := base + "/oidc"
@@ -265,8 +265,8 @@ func (c *createCmd) discover(ctx context.Context, base string) (*oidcEndpoints, 
 	return endpoints, issuer, nil
 }
 
-// oidcEndpoints is the fixed, flat projection of the discovery document —
-// never the raw document — userinfo is omitted when the server omits it.
+// oidcEndpoints is the fixed, flat projection of the discovery document -
+// never the raw document - userinfo is omitted when the server omits it.
 type oidcEndpoints struct {
 	Authorization string `json:"authorization"`
 	Token         string `json:"token"`
@@ -288,7 +288,7 @@ type discoveryDocument struct {
 // equal effectiveBase+"/oidc", and the authorization/token/jwks endpoints
 // the advertised authorization-code/S256 flow needs must be present.
 // Malformed JSON, a missing required endpoint, or an issuer mismatch are
-// all reported as validation errors — the caller degrades on any of them,
+// all reported as validation errors - the caller degrades on any of them,
 // never distinguishing "malformed" from "wrong" for the purpose of the
 // create Result.
 func validateDiscovery(body []byte, effectiveBase string) (*oidcEndpoints, string, error) {
@@ -314,13 +314,13 @@ func validateDiscovery(body []byte, effectiveBase string) (*oidcEndpoints, strin
 // impossibleCreateShape builds create's terminal, non-retryable error for
 // an observed shape the controller alone could never produce: a secret key
 // present with no clientID, or more than one secret on the FIRST
-// observation — a concurrent add after this create's own mutation. A
+// observation - a concurrent add after this create's own mutation. A
 // completed controller plus a concurrent actor must never be misdiagnosed
 // as a dead/disabled provider by waiting to timeout.
 func impossibleCreateShape(name string, secrets map[string]any) *clierr.Error {
 	keys := slices.Sorted(maps.Keys(secrets))
 	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("oidc-client %s: observed an impossible secret shape (keys: %v) — a concurrent actor changed this client while create was waiting", name, keys)).
+		fmt.Sprintf("oidc-client %s: observed an impossible secret shape (keys: %v) - a concurrent actor changed this client while create was waiting", name, keys)).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "OIDCClient", ResourceName: name,
 			Recovery: recoveryHint(name),
@@ -328,7 +328,7 @@ func impossibleCreateShape(name string, secrets map[string]any) *clierr.Error {
 }
 
 // createTimeoutError builds create's timeout error: NON-RETRYABLE (a
-// clierr.Error defaults Retryable to false) — retrying a create whose
+// clierr.Error defaults Retryable to false) - retrying a create whose
 // mutation already committed would create a second client. Names
 // oidc-provider as the likely cause (with the flag off, the server accepts
 // the create but status never populates) and points at the object for
@@ -346,7 +346,7 @@ func createTimeoutError(name string) *clierr.Error {
 // error, a missing/malformed secret) with clierr.CommittedContextDetails,
 // preserving the original error's Code/Hint/Retryable when it is already a
 // *clierr.Error (e.g. RBAC/NOT_FOUND from the backing-Secret read) rather
-// than flattening it to CodeGeneric — a caller inspecting Retryable to
+// than flattening it to CodeGeneric - a caller inspecting Retryable to
 // decide whether to retry must see the classification the underlying read
 // actually carried, not always false.
 func committedPartialSuccess(err error, kind, name, secretName, recovery string) *clierr.Error {

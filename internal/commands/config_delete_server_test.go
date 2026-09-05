@@ -61,12 +61,12 @@ func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 
 	after, err := os.ReadFile(path)
 	require.NoError(t, err)
-	assert.Equal(t, before, after, "config file must be byte-identical when delete fails — the write must never be reached")
+	assert.Equal(t, before, after, "config file must be byte-identical when delete fails - the write must never be reached")
 
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
 	_, ok := cfg.Servers["acme"]
-	assert.True(t, ok, "server entry must still be present after a failed delete (benign failure direction: creds gone, server still configured — never the reverse)")
+	assert.True(t, ok, "server entry must still be present after a failed delete (benign failure direction: creds gone, server still configured - never the reverse)")
 	assert.Equal(t, "acme", cfg.CurrentServer, "current server must be untouched too")
 }
 
@@ -84,7 +84,7 @@ func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *tes
 	assert.True(t, data["currentServerCleared"].(bool), "current server pointer cleared when the deleted server was current")
 	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"])
 	assert.Equal(t, "server acme deleted\n"+
-		"  was current — pointer cleared\n"+
+		"  was current - pointer cleared\n"+
 		"  credentials removed (file)\n", res.Text)
 
 	cfg, err := config.Load(config.FilePath(dir))
@@ -147,7 +147,7 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 
 // TestConfigDeleteServerWritesNoCredstorePin is SUPPLEMENTARY coverage of
 // the delete's own store-independence (spec R2-1): it bypasses resolveDeps
-// by construction, so it passes before AND after the adapter swap — the
+// by construction, so it passes before AND after the adapter swap - the
 // real resolveDeps regression lives in surface/cli's through-the-root
 // tests (Task 3 Step 0). This one asserts that the command itself never
 // resolves the injected store.
@@ -247,7 +247,7 @@ func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 // merge-order-under-failure scenario: a notice recorded by an earlier,
 // successful step (a keychain-unreachable degrade during the token delete)
 // rides the error produced when a LATER step (the exec-credential cache
-// delete) fails — the pipeline discards the command's Result on error, so
+// delete) fails - the pipeline discards the command's Result on error, so
 // WithWarnings is the notice's only ride. Default format prints the warning
 // ahead of the error text; json/yaml carry it in the same error envelope's
 // top-level warnings field, never inside data.error.

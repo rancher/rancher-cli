@@ -188,7 +188,7 @@ func grHandler(opts *serverOpts) http.Handler {
 
 	mux := http.NewServeMux()
 
-	// RoleTemplate GET by name — any name is accepted; checkRole only needs
+	// RoleTemplate GET by name - any name is accepted; checkRole only needs
 	// a non-error response to confirm the role exists.
 	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates/", func(w http.ResponseWriter, r *http.Request) {
 		grWriteJSON(w, map[string]any{
@@ -198,7 +198,7 @@ func grHandler(opts *serverOpts) http.Handler {
 		})
 	})
 
-	// GlobalRole GET by name — any name is accepted.
+	// GlobalRole GET by name - any name is accepted.
 	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/globalroles/", func(w http.ResponseWriter, r *http.Request) {
 		grWriteJSON(w, map[string]any{
 			"apiVersion": "management.cattle.io/v3",
@@ -214,7 +214,7 @@ func grHandler(opts *serverOpts) http.Handler {
 		}))
 	})
 
-	// User GET — u-abc found, provisioned hash 404.
+	// User GET - u-abc found, provisioned hash 404.
 	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/users/u-abc", func(w http.ResponseWriter, r *http.Request) {
 		grWriteJSON(w, map[string]any{
 			"apiVersion":   "management.cattle.io/v3",
@@ -229,7 +229,7 @@ func grHandler(opts *serverOpts) http.Handler {
 		grWriteStatus(w, http.StatusNotFound, "NotFound", "user not found")
 	})
 
-	// User LIST — for provisioning fallback (no user with okta principal).
+	// User LIST - for provisioning fallback (no user with okta principal).
 	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/users", func(w http.ResponseWriter, r *http.Request) {
 		grWriteJSON(w, grKubeList([]map[string]any{
 			grUserItem("u-abc", []string{"local://u-abc"}),
@@ -404,7 +404,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
 	provID := rbac.ProvisionedUserID("okta_user://ghost")
-	provWarn := "no user exists for principal \"okta_user://ghost\" — Rancher will provision user \"" + provID + "\" when the binding applies"
+	provWarn := "no user exists for principal \"okta_user://ghost\" - Rancher will provision user \"" + provID + "\" when the binding applies"
 
 	t.Run("grant project preview", func(t *testing.T) {
 		opts := &serverOpts{}

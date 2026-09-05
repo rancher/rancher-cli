@@ -13,7 +13,7 @@ import (
 var outputFormatCandidates = []string{"table", "wide", "json", "yaml", "name", "template=", "template={{.}}"}
 
 // TestRootSpaceFormOutputCompletion: `rancher -o <TAB>` (space form, empty
-// current word) must emit exactly the output-format candidate set — not
+// current word) must emit exactly the output-format candidate set - not
 // command names. Before the fix, rootShellComplete always routed through
 // nameLikeCandidates, so a flag-value site at root listed top-level commands.
 func TestRootSpaceFormOutputCompletion(t *testing.T) {
@@ -111,7 +111,7 @@ func TestRootPartialFlagNameStillCompletes(t *testing.T) {
 
 // TestRootUnknownFlagEqualsFormNoCandidates: an equals-form value for a flag
 // that is NOT a recognized global value-taking flag (e.g. the per-leaf
-// --cluster) must produce zero candidates at root — the same guard the group
+// --cluster) must produce zero candidates at root - the same guard the group
 // path carries, which also keeps live HTTP from firing before a kind is chosen.
 func TestRootUnknownFlagEqualsFormNoCandidates(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.

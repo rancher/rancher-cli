@@ -37,14 +37,14 @@ type Outcome struct {
 
 // Report is the details payload on a partial-failure error: the per-target
 // outcomes. Cleanup warnings ride the error's own WithWarnings instead of a
-// field here — one channel, no details/top-level duplicate.
+// field here - one channel, no details/top-level duplicate.
 type Report struct {
 	Outcomes []Outcome `json:"outcomes"`
 }
 
 // TextDetails projects the first three outcomes onto one line each, a
-// "… and N more" line when there are more, and a pointer at the full report
-// — the default format stays one screen even for a large batch.
+// "… and N more" line when there are more, and a pointer at the full report -
+// the default format stays one screen even for a large batch.
 func (r Report) TextDetails() []string {
 	shown := min(len(r.Outcomes), 3)
 	lines := make([]string, 0, shown+2)
@@ -71,7 +71,7 @@ const (
 	probePrefix     = ".rancher-skill-probe-"
 )
 
-// DefaultLockDir is the production lock domain: the OS-user cache dir —
+// DefaultLockDir is the production lock domain: the OS-user cache dir -
 // stable per OS user and deliberately NOT the CLI config dir, because
 // RANCHER_CLI_CONFIG_DIR is a supported isolation mechanism while the
 // filesystem targets it locks are shared.
@@ -85,14 +85,14 @@ func DefaultLockDir() (string, error) {
 
 // canonicalTarget resolves dir for lock keying: the longest existing
 // ancestor is resolved through symlinks and the nonexistent remainder is
-// appended textually — two paths addressing the same physical target key
+// appended textually - two paths addressing the same physical target key
 // the same lock even when reached through symlinked parents.
 //
 // On Windows (NTFS) and macOS (APFS) the result is further lowercased: both
 // filesystems are case-insensitive by default, so a case-only alias of the
 // same directory must produce the same key. A case-sensitive volume on those
 // platforms degrades only to two lock files for two genuinely distinct
-// directories — the safe direction.
+// directories - the safe direction.
 func canonicalTarget(dir string) string {
 	fold := func(s string) string {
 		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
@@ -125,7 +125,7 @@ func lockFilePath(lockDir, targetDir string) string {
 	return filepath.Join(lockDir, "skill-locks", hex.EncodeToString(sum[:])+".lock")
 }
 
-// renameHook, when non-nil, runs between remove and rename — the
+// renameHook, when non-nil, runs between remove and rename - the
 // deterministic crash seam for tests. Always nil in production.
 var renameHook func() error
 
@@ -134,7 +134,7 @@ var renameHook func() error
 func SetRenameHookForTest(f func() error) { renameHook = f }
 
 // Lease is one validated, locked target. Only a held lease can mutate.
-// Every lease — including one whose target is absent — holds a real lock
+// Every lease - including one whose target is absent - holds a real lock
 // in the OS-user-cache lock domain (DefaultLockDir); there is no lock-less path.
 type Lease struct {
 	target Target
@@ -162,7 +162,7 @@ func refuseSymlink(dir string) error {
 
 // owned reports whether dir is an installation of ours: exact OwnerKey/
 // OwnerValue match in SKILL.md metadata. SKILL.md itself is Lstat-checked
-// first — a symlinked or otherwise non-regular SKILL.md is NEVER followed
+// first - a symlinked or otherwise non-regular SKILL.md is NEVER followed
 // and can prove nothing, so the target is foreign until a user decides.
 func owned(dir string) (bool, InstallRecord, error) {
 	p := filepath.Join(dir, "SKILL.md")
@@ -227,8 +227,8 @@ func probeWritable(parent string) error {
 }
 
 // Acquire validates and locks every target in sorted-Dir order before
-// anything can mutate. Locks live under lockDir — in production
-// DefaultLockDir(), the OS-user cache dir — so harness paths are never
+// anything can mutate. Locks live under lockDir - in production
+// DefaultLockDir(), the OS-user cache dir - so harness paths are never
 // touched to acquire one, and an absent uninstall target is serialized
 // exactly like a present one (the appear-mid-batch race is closed by the
 // lock, not by rechecking). Any failure releases all held locks: zero changed.
@@ -285,7 +285,7 @@ func ReleaseAll(leases []*Lease) {
 
 // markerComplete reports whether dir carries the complete owner marker
 // file. The marker is written via temp+rename, so it is complete-or-absent
-// by construction — never a truncation judgment call.
+// by construction - never a truncation judgment call.
 func markerComplete(dir string) (bool, error) {
 	info, err := os.Lstat(filepath.Join(dir, OwnerMarkerFile))
 	if err != nil {
@@ -306,9 +306,9 @@ func markerComplete(dir string) (bool, error) {
 
 // cleanStaging classifies leftovers in crash-safe buckets: stray marker TMP
 // FILES in our namespace → removed; EMPTY staging dir (crash before the
-// marker landed — carries no data) → removed; complete-marker staging dir
+// marker landed - carries no data) → removed; complete-marker staging dir
 // (ours) → removed; anything else → warned, never removed. A
-// removal/inspection failure is an error — installing next to leftovers we
+// removal/inspection failure is an error - installing next to leftovers we
 // cannot clear risks compounding partial state.
 func cleanStaging(parent string) (warnings []string, err error) {
 	entries, err := os.ReadDir(parent)
@@ -356,7 +356,7 @@ func cleanStaging(parent string) (warnings []string, err error) {
 }
 
 // stageHook, when non-nil, runs before each staged file write, and
-// postStageHook after population but before staged-tree validation — the
+// postStageHook after population but before staged-tree validation - the
 // deterministic failure/corruption seams for tests. Always nil in production.
 var (
 	stageHook     func(relPath string) error
@@ -396,11 +396,11 @@ func validateStaged(staging string) error {
 }
 
 // Install writes the rendered tree at the leased target. Guarantee:
-// ABSENT-OR-CONSISTENT — the final rename is atomic; a crash between
+// ABSENT-OR-CONSISTENT - the final rename is atomic; a crash between
 // remove and rename leaves the target absent, repaired by re-running.
 // Every pre-rename failure removes the staging dir; a cleanup failure is
 // reported alongside the primary error, never swallowed. SKILL.md is
-// written FIRST so the leftover staging entry is owner-marked from its first file —
+// written FIRST so the leftover staging entry is owner-marked from its first file -
 // an interrupted population can never strand foreign-looking leftovers.
 func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 	t := l.target
@@ -427,7 +427,7 @@ func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 		}
 		return primary
 	}
-	// Owner marker FIRST — temp file written OUTSIDE staging (in the
+	// Owner marker FIRST - temp file written OUTSIDE staging (in the
 	// parent, our marker-tmp namespace), then renamed into the still-EMPTY
 	// staging dir. The rename is atomic, so staging transitions
 	// empty→marked with no intermediate non-empty-unmarked state: every
@@ -494,8 +494,8 @@ func (l *Lease) Install(cliVersion string, force bool) ([]string, error) {
 	return warnings, err
 }
 
-// Uninstall removes the leased owned installation. Absent = no-op success
-// — stable under the held OS-user-cache lock: a concurrent rancher install
+// Uninstall removes the leased owned installation. Absent = no-op success -
+// stable under the held OS-user-cache lock: a concurrent rancher install
 // of the same target serializes on the same lock file, so absence cannot
 // flip mid-operation.
 func (l *Lease) Uninstall() (bool, error) {

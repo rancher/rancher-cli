@@ -80,7 +80,7 @@ func (c *rotateSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 		return safety.Effect{}, nil, err
 	}
 
-	// Plan-time internal correlation read — held in memory, never printed:
+	// Plan-time internal correlation read - held in memory, never printed:
 	// this doubles as rotate's delivery preflight (a caller who cannot read
 	// the backing Secret now cannot be delivered the new value either), so
 	// a FORBIDDEN/NOT_FOUND here is an ordinary pre-mutation refusal, no
@@ -122,7 +122,7 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 		}
 		// Full-value comparison, never lastFiveCharacters: a five-character
 		// suffix can collide across a rotation, which would strand a
-		// consumed rotation in a timeout — the highest-cost partial
+		// consumed rotation in a timeout - the highest-cost partial
 		// success this predicate exists to avoid.
 		if v == oldValue {
 			return waitOutcome{terminal: rotateUnchangedValueError(clientName, secretName, getRecovery)}
@@ -166,7 +166,7 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 // classified Retryable, or any error that never went through clierr's
 // classification at all (a raw transport error), is transient. A
 // *clierr.Error that is NOT retryable (RBAC, NOT_FOUND) is a definitive,
-// terminal failure — waiting for the deadline could never fix it.
+// terminal failure - waiting for the deadline could never fix it.
 func isTransientSecretReadError(err error) bool {
 	ce, ok := err.(*clierr.Error)
 	if !ok {

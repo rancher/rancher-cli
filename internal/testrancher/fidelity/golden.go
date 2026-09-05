@@ -16,8 +16,8 @@ type ObservationResult struct {
 	Body        map[string]any `json:"body,omitempty"`
 }
 
-// Golden is one probe's recorded truth. OracleImage is provenance — the
-// literal image reference the recording ran against — and is deliberately
+// Golden is one probe's recorded truth. OracleImage is provenance - the
+// literal image reference the recording ran against - and is deliberately
 // excluded from Diff.
 type Golden struct {
 	OracleImage  string              `json:"oracleImage"`
@@ -33,8 +33,8 @@ func GoldenPath(dir, probeName string) string {
 // LoadGolden reads one golden. A missing file satisfies
 // errors.Is(err, os.ErrNotExist) so callers can distinguish not-yet-recorded
 // from corrupt. The path is built by trusted callers from a fixed testdata
-// root and a probe name — the suites legitimately address it via a "../.."
-// relative path — never from external input, so it is read directly. The
+// root and a probe name - the suites legitimately address it via a "../.."
+// relative path - never from external input, so it is read directly. The
 // gosec G304 answer here is provenance, not a ".." reject that would break
 // those relative paths.
 func LoadGolden(path string) (Golden, error) {

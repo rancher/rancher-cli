@@ -31,7 +31,7 @@ type Subject struct {
 // qualified principal infers its kind by a CLOSED rule: "local" and
 // "_user"-suffixed prefixes are users; "_group"-suffixed prefixes plus
 // Rancher's documented group aliases (github_org, github_team) are
-// groups; any other prefix is not inferred — an explicit --type decides
+// groups; any other prefix is not inferred - an explicit --type decides
 // it, and without one it is a validation error. An explicit --type
 // contradicting an inferred kind is a validation error, mirroring the
 // spec's inference-conflict rule. Principals with the "system:" prefix

@@ -20,7 +20,7 @@ func planRemoveSecret(t *testing.T, cmd runtime.Command, in runtime.Input) (safe
 
 // TestRemoveSecretDescriptorHasNoOnceOnlySeam asserts the one bespoke command
 // that delivers no once-only value: remove-secret carries Capability but
-// NEITHER OutputPolicy NOR Delivery — it is not in the once-only inventory.
+// NEITHER OutputPolicy NOR Delivery - it is not in the once-only inventory.
 func TestRemoveSecretDescriptorHasNoOnceOnlySeam(t *testing.T) {
 	t.Parallel()
 	d := NewRemoveSecret(stubOIDCFactory{}).Describe()
@@ -72,7 +72,7 @@ func TestRemoveSecretExecSuccess(t *testing.T) {
 	assert.Equal(t, "client-secret-2", data["secretName"])
 	assert.Nil(t, res.CommittedContext, "remove delivers no once-only value")
 	assert.Equal(t, "oidcclient/my-app patched\n"+
-		"  secret client-secret-2 removed — anything using it stops working\n", res.Text)
+		"  secret client-secret-2 removed - anything using it stops working\n", res.Text)
 }
 
 // TestRemoveSecretExecTimeoutIsNonRetryable asserts remove's contract: the
@@ -98,9 +98,9 @@ func TestRemoveSecretExecTimeoutIsNonRetryable(t *testing.T) {
 	assert.True(t, details.Committed)
 	assert.Contains(t, details.Recovery, "re-run only while the key remains")
 	// Non-retryable: the projection's recover line must never invite an
-	// unconditional retry — it names the read-first condition verbatim.
+	// unconditional retry - it names the read-first condition verbatim.
 	assert.Equal(t, []string{
-		"committed: OIDCClient my-app — the change may already be on the server",
+		"committed: OIDCClient my-app - the change may already be on the server",
 		"recover: " + details.Recovery,
 	}, details.TextDetails())
 }

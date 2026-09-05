@@ -29,7 +29,7 @@ func TestCompletionCommandRegisteredWithShellCompletionField(t *testing.T) {
 // TestCompletionEmissionHasNoSideEffects is the external-review no-
 // side-effects regression: emission must never touch config/store/pin. It
 // deliberately does NOT force RANCHER_CLI_CREDENTIAL_STORE=file like every
-// other test in this package — leaving the store policy at its "auto"
+// other test in this package - leaving the store policy at its "auto"
 // default is what would expose a rewire onto adaptEntry (which calls
 // resolveDeps -> OpenStore, and OpenStore's auto path writes credstore-pin
 // on first use). A fresh, empty config dir must remain byte-for-byte empty

@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// pemFromServer encodes srv's TLS certificate as a CERTIFICATE PEM block —
+// pemFromServer encodes srv's TLS certificate as a CERTIFICATE PEM block -
 // the same encoding e2e/harness_test.go uses for its TLS shim's CA material.
 func pemFromServer(t *testing.T, srv *httptest.Server) []byte {
 	t.Helper()
@@ -79,7 +79,7 @@ func TestRootClientRejectsUnknownCA(t *testing.T) {
 func TestRootClientTimesOut(t *testing.T) {
 	// review R1-4: timeout case. Server hangs past the client deadline; the
 	// test injects a short timeout via the factory seam rather than waiting
-	// out the 30s default — a package-var/option seam for the timeout
+	// out the 30s default - a package-var/option seam for the timeout
 	// (mirroring keyringProbeTimeout's test-shrinkable pattern in
 	// internal/config/credstore.go). Not run with t.Parallel(): it mutates
 	// the shared rootTimeout package var, and this package's other
@@ -141,9 +141,9 @@ func (i argsInput) IsSet(string) bool       { return false }
 func (i argsInput) Args() []string          { return i.args }
 
 // TestInspectClusterCancellationThroughProductionAdapters drives inspect
-// cluster's Execute through the REAL per-invocation clientFactory — the real
+// cluster's Execute through the REAL per-invocation clientFactory - the real
 // provider client for the management Get and provisioning LIST, and the real
-// rootClient for the registration fetch — against one httptest server. Both
+// rootClient for the registration fetch - against one httptest server. Both
 // production adapters rebuild their errors from strings (provider.mapErr;
 // rootClient.GetJSON's clierr formatting), so the context sentinel never
 // survives the chain: this asserts that a canceled optional lookup still
@@ -229,7 +229,7 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 // the cancellation boundary through the production root client: the root
 // http.Client's own request timeout (rootTimeout) expiring while the CALLER's
 // context is still active is an ordinary availability failure, not a
-// cancellation — the command succeeds, only the registration section is
+// cancellation - the command succeeds, only the registration section is
 // omitted, and the warning carries the deadline wording (so agents can tell
 // timeout from RBAC). Not run with t.Parallel(): it mutates the shared
 // rootTimeout package var via setRootTimeoutForTest.

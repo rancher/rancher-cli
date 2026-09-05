@@ -29,7 +29,7 @@ import (
 // the client connection and piping bytes to/from resolve(r.Host), recording
 // every host:port it was asked to tunnel to (in the form the client sent,
 // before resolution). Any other method is rejected, matching a real forward
-// proxy's TLS posture — it never terminates or inspects the tunneled bytes.
+// proxy's TLS posture - it never terminates or inspects the tunneled bytes.
 type connectProxy struct {
 	srv     *httptest.Server
 	resolve func(hostport string) string
@@ -101,7 +101,7 @@ func (p *connectProxy) tunneledTargets() []string {
 // loopbackResolver redirects hostname:port to realAddr, leaving any other
 // host untouched. It backs both the proxy fixture's own dial-through and a
 // client Transport's DialContext, so a hostname-shaped (not IP-literal)
-// target can be used everywhere a loopback listener actually answers —
+// target can be used everywhere a loopback listener actually answers -
 // httpproxy's "never proxy a loopback address" rule only inspects IP
 // literals, so a hostname stays subject to normal proxy routing decisions.
 func loopbackResolver(hostname, realAddr string) func(hostport string) string {
@@ -157,7 +157,7 @@ func newLoopbackTLSTarget(t *testing.T, host string) (certPEM string, srv *httpt
 }
 
 // nonLoopbackIPv4 returns the machine's first non-loopback IPv4 address, or
-// "" if none is usable — sandboxed CI sometimes exposes loopback only.
+// "" if none is usable - sandboxed CI sometimes exposes loopback only.
 func nonLoopbackIPv4(t *testing.T) string {
 	t.Helper()
 	addrs, err := net.InterfaceAddrs()
@@ -247,9 +247,9 @@ func TestNewProxyUnreachableErrorNamesProxyAddress(t *testing.T) {
 }
 
 // TestProxyFuncNeverProxiesLoopbackTarget asserts the documented Go stdlib
-// behavior httpx.New's proxy wiring relies on — golang.org/x/net/http/httpproxy
+// behavior httpx.New's proxy wiring relies on - golang.org/x/net/http/httpproxy
 // treats an IP-literal loopback host as never-proxied regardless of any
-// configured proxy — so a future refactor of that wiring cannot silently
+// configured proxy - so a future refactor of that wiring cannot silently
 // change it.
 func TestProxyFuncNeverProxiesLoopbackTarget(t *testing.T) {
 	t.Parallel()
@@ -264,7 +264,7 @@ func TestProxyFuncNeverProxiesLoopbackTarget(t *testing.T) {
 
 // TestNewHTTPSProxyEnvVarRoutesThroughFixture exercises real HTTPS_PROXY/
 // NO_PROXY values end to end against httpx.New's TLS/CA/dialer setup. It
-// does NOT exercise httpx.New's own Proxy: http.ProxyFromEnvironment field —
+// does NOT exercise httpx.New's own Proxy: http.ProxyFromEnvironment field -
 // that assignment is overwritten below, deliberately, because
 // http.ProxyFromEnvironment caches its environment read process-wide behind
 // a private, unresettable sync.Once inside net/http: the first httpx client

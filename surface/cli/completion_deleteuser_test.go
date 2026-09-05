@@ -24,7 +24,7 @@ func TestLivePositionalDeleteUserCandidates(t *testing.T) {
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 
 	assert.Contains(t, got, "u-alice", "user id must be a candidate")
-	assert.NotContains(t, got, "alice", "username must not be offered for delete user — rejected verbatim")
+	assert.NotContains(t, got, "alice", "username must not be offered for delete user - rejected verbatim")
 	assert.NotContains(t, got, "u-sys", "system user id must be excluded")
 	assert.NotContains(t, got, "system-svc", "system username must be excluded")
 	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
@@ -32,7 +32,7 @@ func TestLivePositionalDeleteUserCandidates(t *testing.T) {
 
 // TestLivePositionalDeleteUserTokenBoundary asserts the management-token
 // boundary: missing token or exec-cred-only (IDOnly) capability cannot
-// authorize the management user list — nil, with ZERO requests.
+// authorize the management user list - nil, with ZERO requests.
 func TestLivePositionalDeleteUserTokenBoundary(t *testing.T) {
 	t.Parallel()
 	srv, hits := userServer(t)
@@ -80,14 +80,14 @@ func TestLivePositionalPatchUserCandidates(t *testing.T) {
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 
 	assert.Contains(t, got, "u-alice", "user id must be a candidate")
-	assert.NotContains(t, got, "alice", "username must not be offered for patch user — rejected verbatim")
+	assert.NotContains(t, got, "alice", "username must not be offered for patch user - rejected verbatim")
 	assert.NotContains(t, got, "u-sys", "system user id must be excluded")
 	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
 }
 
 // TestLivePositionalInspectUserCandidates asserts the third inspect positional
 // exception: `inspect user <TAB>` routes through the same "user" kind
-// branch get/patch/delete already use — ids only, system accounts excluded.
+// branch get/patch/delete already use - ids only, system accounts excluded.
 func TestLivePositionalInspectUserCandidates(t *testing.T) {
 	t.Parallel()
 	srv, hits := userServer(t)

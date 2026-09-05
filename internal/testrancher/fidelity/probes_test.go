@@ -61,7 +61,7 @@ func TestOracleOnlyProbesHaveNoFacadeGolden(t *testing.T) {
 		path := GoldenPath(filepath.Join("testdata", "facade"), p.Name)
 		_, err := os.Stat(path)
 		assert.True(t, os.IsNotExist(err),
-			"oracle-only probe %s must not have a façade golden at %s", p.Name, path)
+			"oracle-only probe %s must not have a facade golden at %s", p.Name, path)
 	}
 }
 
@@ -77,7 +77,7 @@ func TestEveryProbeHasItsRecordedGoldens(t *testing.T) {
 		facadePath := GoldenPath(filepath.Join("testdata", "facade"), p.Name)
 		_, err = os.Stat(facadePath)
 		assert.NoError(t, err,
-			"divergence-pinned probe %s must have a façade golden at %s", p.Name, facadePath)
+			"divergence-pinned probe %s must have a facade golden at %s", p.Name, facadePath)
 	}
 }
 

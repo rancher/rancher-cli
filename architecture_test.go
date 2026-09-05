@@ -17,7 +17,7 @@ const modulePrefix = "github.com/rancher/rancher-cli/"
 
 // TestArchitectureDocMatchesImports parses ARCHITECTURE.md's mermaid
 // dependency graph and fails when it diverges from the real package-level
-// import graph — missing edges, phantom edges, or undocumented packages.
+// import graph - missing edges, phantom edges, or undocumented packages.
 // Dependency-documentation drift (finding L-5/UD-3) becomes a build failure.
 func TestArchitectureDocMatchesImports(t *testing.T) {
 	t.Parallel()
@@ -27,10 +27,10 @@ func TestArchitectureDocMatchesImports(t *testing.T) {
 	realEdges := realImportEdges(t)
 
 	for e := range docEdges {
-		assert.True(t, realEdges[e], "doc claims edge %s — not present in code", e)
+		assert.True(t, realEdges[e], "doc claims edge %s - not present in code", e)
 	}
 	for e := range realEdges {
-		assert.True(t, docEdges[e], "code has edge %s — missing from ARCHITECTURE.md", e)
+		assert.True(t, docEdges[e], "code has edge %s - missing from ARCHITECTURE.md", e)
 	}
 	for pkg := range packagesOnDisk(t) {
 		assert.True(t, nodes[pkg], "package %s exists but is not in the diagram", pkg)

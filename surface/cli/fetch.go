@@ -72,7 +72,7 @@ func equalsFormCandidates(spelling string, values []string) []string {
 // resolveStaticEnum returns enum candidates for a flag-value site, sorted.
 // Called for both space-form (bare values) and equals-form (full tokens).
 // Static enums are compiled-in literals, not server data, so the AC-21
-// shell-safe charset does not gate them — "template={{.}}" must survive.
+// shell-safe charset does not gate them - "template={{.}}" must survive.
 // Live candidates keep sanitizeCandidates at their own call sites.
 func resolveStaticEnum(enum []string, site CompletionSite) []string {
 	sorted := append([]string{}, enum...)
@@ -110,7 +110,7 @@ func newCompletionClient(caPEM string) (*http.Client, error) {
 }
 
 // k8sItemsList is the minimal envelope for a Kubernetes-style list response
-// (used by the Rancher management API — /k8s/clusters/... endpoints).
+// (used by the Rancher management API - /k8s/clusters/... endpoints).
 // Finding 10: Norman /v3 endpoints return {"data":[...]}, but the management K8s
 // proxy returns the standard k8s {"items":[...]} envelope.
 type k8sItemsList struct {
@@ -272,12 +272,12 @@ func projectCandidates(items []map[string]any) []string {
 
 // fetchRoleTemplates lists management RoleTemplates and returns the names
 // of those whose top-level context field equals roleContext ("project" or
-// "cluster"). Management list: requires a management token — exec-cred-only
+// "cluster"). Management list: requires a management token - exec-cred-only
 // capabilities (IDOnly) return nil without a request, same boundary as
 // fetchClusters/fetchProjects. The filter is client-side: the RoleTemplate
 // CRD (management.cattle.io_roletemplates) declares no spec.selectableFields
 // entry for the context field, so the Kubernetes fieldSelector mechanism only
-// covers metadata.name and metadata.namespace — any context= filter must be
+// covers metadata.name and metadata.namespace - any context= filter must be
 // applied after the full list is fetched.
 func fetchRoleTemplates(ctx context.Context, hc *http.Client, cap TokenCapability, roleContext string) []string {
 	if cap.Token == "" || cap.IDOnly {
@@ -363,7 +363,7 @@ func fetchK8sResources(ctx context.Context, hc *http.Client, cap TokenCapability
 }
 
 // fetchPods lists pods in namespace, filtered by selector, via the
-// management K8s proxy — for `logs --pod` completion (logsPodCandidates).
+// management K8s proxy - for `logs --pod` completion (logsPodCandidates).
 // namespace and selector come from the curated observe.Targets table, never
 // user input, so no path-injection guard is needed on them the way
 // isValidSegment guards clusterID. Returns nil on any error.
@@ -377,25 +377,25 @@ func fetchPods(ctx context.Context, hc *http.Client, cap TokenCapability, cluste
 
 // fetchCloudCredentials lists the Secrets in cattle-global-data and returns
 // candidates for create cluster's --cloud-credential flag. The conventions
-// are mirrored from internal/engine/provisioning/cloudcred.go — the same
-// path create cluster's Plan resolves the flag through — because completion
+// are mirrored from internal/engine/provisioning/cloudcred.go - the same
+// path create cluster's Plan resolves the flag through - because completion
 // reads over raw HTTP (AC-20/AC-22), never a ClusterClient: the fixed
 // cattle-global-data namespace, the "cc-" secret-name prefix, the
 // field.cattle.io/name display annotation, and the "credentialConfig-"
 // data-key marker (fetchProjects mirrors projects/resolve.go the same way).
 //
 // SECRET HYGIENE (cloudcred.go spec D-R2-1): only metadata and `data` KEY
-// NAMES are read — a `data` VALUE must never flow into a candidate.
+// NAMES are read - a `data` VALUE must never flow into a candidate.
 //
 // Candidates:
-//   - secret name (cc-xxxxx id) — always; ResolveCloudCredential's exact-ID
+//   - secret name (cc-xxxxx id) - always; ResolveCloudCredential's exact-ID
 //     fast path accepts it deterministically.
-//   - display name — ONLY when it resolves unambiguously (MatchOneOrError's
+//   - display name - ONLY when it resolves unambiguously (MatchOneOrError's
 //     doctrine): unique among the credentials' display names and not equal
 //     to any credential id. A suggestion must never fail with
 //     AMBIGUOUS_SELECTION at execution time.
 //
-// Management list: requires a management token — exec-cred-only capabilities
+// Management list: requires a management token - exec-cred-only capabilities
 // (IDOnly) return nil without a request, same boundary as fetchClusters.
 func fetchCloudCredentials(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
 	if cap.Token == "" || cap.IDOnly {
@@ -411,7 +411,7 @@ func fetchCloudCredentials(ctx context.Context, hc *http.Client, cap TokenCapabi
 
 // cloudCredentialCandidates extracts credential ids and uniquely-resolving
 // display names from a cattle-global-data secrets list. Reads metadata and
-// data KEY NAMES only — never a data value (see fetchCloudCredentials).
+// data KEY NAMES only - never a data value (see fetchCloudCredentials).
 func cloudCredentialCandidates(items []map[string]any) []string {
 	type ccEntry struct{ id, display string }
 	var entries []ccEntry
@@ -461,7 +461,7 @@ func cloudCredentialCandidates(items []map[string]any) []string {
 	return sanitizeCandidates(out)
 }
 
-// hasCredentialConfigKey scans `data` KEY NAMES ONLY — never a value — for
+// hasCredentialConfigKey scans `data` KEY NAMES ONLY - never a value - for
 // the credentialConfig- marker (cloudcred.go driverFromDataKeys).
 func hasCredentialConfigKey(item map[string]any) bool {
 	data, _ := item["data"].(map[string]any)
@@ -520,15 +520,15 @@ func fetchUserEntries(ctx context.Context, hc *http.Client, cap TokenCapability)
 // prefix "system:") are excluded.
 //
 // Candidates:
-//   - metadata.name id — always emitted; Get-by-id resolution is deterministic.
-//   - username — emitted ONLY when it uniquely resolves: no other non-system user
+//   - metadata.name id - always emitted; Get-by-id resolution is deterministic.
+//   - username - emitted ONLY when it uniquely resolves: no other non-system user
 //     carries the same string as their username OR displayName. A user whose own
 //     displayName equals their own username is not double-counted (self-collision
 //     does not suppress). This mirrors the ambiguity check in ResolveSubject so
 //     that a candidate offered by completion will not fail with AMBIGUOUS_SELECTION
 //     at execution time.
 //
-// Management list: requires a management token — exec-cred-only capabilities
+// Management list: requires a management token - exec-cred-only capabilities
 // (IDOnly) return nil without a request, same boundary as fetchRoleTemplates.
 func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
 	entries := fetchUserEntries(ctx, hc, cap)
@@ -567,7 +567,7 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 
 // fetchUserIDs lists management Users and returns only their metadata.name ids.
 // Used for kind-positional completion (get/delete/patch user) where the command
-// addresses users by metadata.name only — bare usernames are rejected verbatim.
+// addresses users by metadata.name only - bare usernames are rejected verbatim.
 // System-account filtering matches fetchUsers. Management-token boundary: same
 // as fetchUsers (IDOnly or no token → nil, zero requests).
 func fetchUserIDs(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
@@ -598,7 +598,7 @@ func isSystemUserItem(item map[string]any) bool {
 }
 
 // fetchOIDCClientSecretNames GETs the single named OIDCClient and returns
-// its status.clientSecrets key names — the dependent secret-name
+// its status.clientSecrets key names - the dependent secret-name
 // completion for oidc-client rotate-secret/remove-secret. Requires a full
 // management token, same boundary as the client-name completion above; any
 // fetch error (including a not-found client) degrades to nil.
@@ -623,7 +623,7 @@ func fetchOIDCClientSecretNames(ctx context.Context, hc *http.Client, cap TokenC
 }
 
 // fetchClusterFamilyPoolNames GETs the single named provisioning Cluster in
-// ns and returns its spec.rkeConfig.machinePools[].name entries — the
+// ns and returns its spec.rkeConfig.machinePools[].name entries - the
 // dependent --pool completion every cluster-family verb shares, keyed off
 // the typed <cluster> positional. Any fetch error (including a not-found
 // cluster) degrades to nil, same as fetchOIDCClientSecretNames.

@@ -35,15 +35,15 @@ type IO struct {
 	// "never"); "" and "auto" are equivalent. Validated by Run before use.
 	Color string
 	// OutTTY and ErrTTY report whether stdout and stderr are each a real
-	// terminal — decided independently, since one stream can be redirected
+	// terminal - decided independently, since one stream can be redirected
 	// while the other is not (`rancher get pod | less` still colors
 	// stderr). Distinct from IsTTY above, which is stdin-only and feeds the
 	// prompter, not styling.
 	OutTTY bool
 	ErrTTY bool
 
-	// ReadOnly is the OR of three sources — config `readOnly: true`, a
-	// non-empty RANCHER_CLI_READONLY, and --read-only — resolved once per
+	// ReadOnly is the OR of three sources - config `readOnly: true`, a
+	// non-empty RANCHER_CLI_READONLY, and --read-only - resolved once per
 	// invocation by the CLI adapter. Strictly one-way: no flag disables a
 	// config/env-sourced read-only. Run refuses every Mutating command
 	// while it is set, before Plan (which sends real write-verb requests
@@ -60,7 +60,7 @@ type IO struct {
 
 	// Capability is the invocation-scoped capability checker, wired by
 	// adaptEntry's non-bare branch. Run invokes it only when the resolved
-	// command's Descriptor carries a CapabilityRequirement — ordinary
+	// command's Descriptor carries a CapabilityRequirement - ordinary
 	// commands pay nothing, and adapters that never serve requirement-
 	// bearing commands may leave it nil. A requirement-bearing command
 	// reaching Run with a nil checker is mis-wiring and fails loudly.
@@ -68,7 +68,7 @@ type IO struct {
 
 	// Notices drains operator-facing advisories recorded outside any
 	// Result by this invocation's credential-store dependency (a first-pin
-	// notice, a keychain-degrade warning) — wired from the resolved store
+	// notice, a keychain-degrade warning) - wired from the resolved store
 	// wherever one exists; nil for a command with no store dependency
 	// (schema, a bare local command). renderResult, renderEffect, renderErr,
 	// and finishOnceOnlyResult each drain it exactly once, feeding the one
@@ -79,7 +79,7 @@ type IO struct {
 // NoticeSource drains buffered operator-facing notices in the order they
 // were recorded, destructively: a call returns only what was recorded since
 // the previous drain. Implemented by a credential store so that resolving it
-// lazily — possibly racing a command-body goroutine — never loses a notice
+// lazily - possibly racing a command-body goroutine - never loses a notice
 // recorded outside any Result. Draining must not itself force a lazy store to
 // resolve: a command that never touches credentials must still see zero
 // store-init side effects.
@@ -111,8 +111,8 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	}
 
 	// The output-policy gate runs immediately after format-syntax
-	// validation and before EVERYTHING else — read-only/dry-run gates,
-	// input validation, capability resolution, Plan — so a rejected format
+	// validation and before EVERYTHING else - read-only/dry-run gates,
+	// input validation, capability resolution, Plan - so a rejected format
 	// makes zero total requests, not merely zero mutation requests: a
 	// once-only command's caller can never silently discard the value it
 	// delivers by picking an unsupported -o.
@@ -136,14 +136,14 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	}
 
 	// Capability detection is a mandatory stage for any command carrying a
-	// requirement — commands never opt in or out — and runs after
+	// requirement - commands never opt in or out - and runs after
 	// server/credential resolution but before any resource access (reads)
 	// or the server-side dry-run Plan (mutations), so a Prime-backed kind
 	// that may not exist on a community server never gets to 404 first.
 	//
 	// The static descriptor value is validated BEFORE its IsSet use: IsSet
 	// (Tier != "") cannot see a half-set value, so validating after it
-	// fails open — only a fully valid zero value selects the resolver.
+	// fails open - only a fully valid zero value selects the resolver.
 	if ce := ValidCapabilityShape(d.Capability, d.Name); ce != nil {
 		return 0, renderErr(streams, ce)
 	}
@@ -155,7 +155,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 			if err != nil {
 				return 0, renderErr(streams, toClierr(err))
 			}
-			// Then the resolver's return — an arbitrary runtime value
+			// Then the resolver's return - an arbitrary runtime value
 			// startup validation never saw. A malformed value is a command
 			// bug, stopped before the checker and Plan/Execute.
 			if ce := ValidCapabilityShape(req, d.Name); ce != nil {
@@ -301,7 +301,7 @@ func validateColor(color string) *clierr.Error {
 // validateOutputPolicy enforces a Descriptor's OutputPolicy: a command that
 // restricts formats (typically to exclude "name", which would silently
 // discard a once-only value) rejects an unsupported format here, before any
-// capability resolution or network work — the zero OutputPolicy always
+// capability resolution or network work - the zero OutputPolicy always
 // passes.
 func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
 	if d.OutputPolicy.Allows(format) {
@@ -396,11 +396,11 @@ func missingFlagError(f ArgSpec) *clierr.Error {
 // CapabilityDisabled reuses the existing VALIDATION taxonomy; only
 // CapabilityPrimeRequired returns the structured PRIME_REQUIRED error.
 // Identifiers, identical for static and resolver-supplied requirements:
-// the PRIME_REQUIRED message names the command (d.Name — for generated
+// the PRIME_REQUIRED message names the command (d.Name - for generated
 // verbs that carries the kind; for create resource it names the command, a
 // reviewed acceptance until the capability Name identifier lands) and its
 // details.feature carries req.Feature, the machine-readable identifier.
-// The Disabled message names req.Feature directly and carries no details —
+// The Disabled message names req.Feature directly and carries no details -
 // the remedy is the feature flag, not an entitlement. Its wording forks on
 // dec.EditionPrime: a known-Prime server gets the actionable "enable
 // feature <name>"; every other edition gets a statement that holds
@@ -420,7 +420,7 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 				fmt.Sprintf("%s is disabled; enable it on the connected server", req.Feature))
 		}
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("%s is disabled on this server; availability is decided by the connected server — %s",
+			fmt.Sprintf("%s is disabled on this server; availability is decided by the connected server - %s",
 				req.Feature, clierr.LearnMorePrimeURL))
 	case CapabilityPrimeRequired:
 		return clierr.New(clierr.CodePrimeRequired,
@@ -439,7 +439,7 @@ func checkCapability(ctx context.Context, d Descriptor, req CapabilityRequiremen
 // ValidCapabilityShape reports the malformation in req as a CodeGeneric
 // error, or nil when req is valid: the complete zero value, or a known Tier
 // with a non-empty Feature (and, for CapabilityExtDiscovery, a non-empty
-// Unsupported). It does not hide behind IsSet (Tier != "") — a half-set
+// Unsupported). It does not hide behind IsSet (Tier != "") - a half-set
 // value ({Feature set, Tier ""}) would otherwise read as absent and skip
 // every gate that keys on IsSet, including the coverage rule's
 // Capability-bearing filter. Shared by Registry.Validate, kinds'
@@ -497,29 +497,29 @@ func tableFormat(format string) bool {
 }
 
 // textRenderFormat reports whether format renders a ShapeText Result's Text
-// field verbatim: table/default, plus "wide" — for a ShapeText command,
+// field verbatim: table/default, plus "wide" - for a ShapeText command,
 // -o wide is table-family (no separate wide body exists for text).
 func textRenderFormat(format string) bool {
 	return tableFormat(format) || format == "wide"
 }
 
 // checkResultShape verifies res's actual payload against d's declared
-// OutputShape — the closed-world conformance contract every registered
+// OutputShape - the closed-world conformance contract every registered
 // command commits to. A mismatch is a command bug, the same posture as
 // payloadExclusivityRule: the command populated the wrong Result field (or
 // none) for the shape its own Descriptor declares.
 //
 // The check is scoped to the render path the requested format actually
 // takes. ShapeTabular and the RawBytes/Raw payloads (ShapeBytes,
-// ShapeExecJSON) back every format identically — Tabular Data renders the
+// ShapeExecJSON) back every format identically - Tabular Data renders the
 // same envelope-or-table content regardless of -o, and the RawBytes/Raw
-// branches in renderResult never look at format at all — so those three
+// branches in renderResult never look at format at all - so those three
 // checks apply unconditionally. ShapeText is different: Text is read only
 // by the table-family render path (textRenderFormat); -o json/-o yaml
 // render the envelope over Data exactly as before, and -o name/-o template
 // do the same (render.go's existing "-o name over non-Tabular Data emits
 // nothing" contract), so an unpopulated Text is not a shape violation
-// there — checking it under those formats would reject an unimplemented
+// there - checking it under those formats would reject an unimplemented
 // command's Data-only rendering even though nothing about that rendering
 // is actually broken.
 func checkResultShape(d Descriptor, res Result, format string) *clierr.Error {
@@ -557,7 +557,7 @@ func checkResultShape(d Descriptor, res Result, format string) *clierr.Error {
 }
 
 // envelopeCarriesWarnings reports whether the output format serializes the
-// full structured envelope to the user — code, hint, details, and the
+// full structured envelope to the user - code, hint, details, and the
 // top-level "warnings" key alike: only json and yaml do. Every other format
 // (table, name, template, "") writes a plain-text projection instead, so a
 // field that lives only in the envelope would otherwise be silently dropped.
@@ -566,7 +566,7 @@ func envelopeCarriesWarnings(format string) bool {
 }
 
 // mirrorWarnings writes each entry of warnings to w as a "# warning: <w>"
-// line, skipping an entry already counted in silent — a value-matched
+// line, skipping an entry already counted in silent - a value-matched
 // multiset, not positional: Plan-time Effect.Warnings are prepended to a
 // Result's Warnings before rendering, so a suppressed entry (the
 // once-only advisory) is not reliably first. Decremented per skip so a
@@ -588,14 +588,14 @@ func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s sty
 
 // renderResult renders res per d's declared shape, having first drained
 // streams' NoticeSource and merged it ahead of res.Warnings (recorded
-// earliest, delivered first — the same merge order RenderError applies on
+// earliest, delivered first - the same merge order RenderError applies on
 // the error path). The returned notices are the drained entries NOT YET
 // irrevocably delivered by a write independent of streams.Out succeeding:
 // nil when the branch taken mirrors warnings straight to the real stderr
 // (Text, RawBytes, Raw, and every non-json/yaml envelope format) or when
 // nothing was recorded; the drained slice itself when nothing was written
 // at all (an early command-bug return) or when the only place the notices
-// landed is inside the json/yaml bytes just handed to streams.Out — bytes a
+// landed is inside the json/yaml bytes just handed to streams.Out - bytes a
 // once-only caller may still discard if the real stdout write that follows
 // fails. An ordinary (non-buffered) caller's streams.Out IS real stdout, so
 // it has nothing left to do with a non-nil return on success; only a
@@ -650,7 +650,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
 		// Mirror every Warnings entry to stderr except OnceOnlyNotice
-		// (matched by value — see that field's doc for why position
+		// (matched by value - see that field's doc for why position
 		// cannot be trusted), whose content Text already embeds via
 		// ShownOnceSuffix: one channel, no double-print for that one;
 		// every other warning, including a mutation's Plan-time advisory,
@@ -689,7 +689,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	env.Warnings = res.Warnings
 	env.Summary = res.Summary
 	// The Summary annotation line prints over the table under both ""/
-	// "table" and "wide" — `get --wait`'s wide output is table-family too,
+	// "table" and "wide" - `get --wait`'s wide output is table-family too,
 	// not a separate body, so the wait line belongs on it as well.
 	if textRenderFormat(streams.Format) && res.Summary != "" {
 		if _, err := fmt.Fprintln(streams.Out, res.Summary); err != nil {
@@ -704,22 +704,22 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// format embeds the full envelope (json/yaml). Mirror the
 	// "# warning: <w>" stderr convention for every other format: table/default
 	// (where a user looks at the rendered rows), name (whose stdout is the raw
-	// name field — no envelope), and template (whose stdout is the template
-	// expansion — no envelope). json/yaml carry warnings inside the envelope;
+	// name field - no envelope), and template (whose stdout is the template
+	// expansion - no envelope). json/yaml carry warnings inside the envelope;
 	// mirroring there would double-print.
 	if !envelopeCarriesWarnings(streams.Format) {
 		mirrorWarnings(streams.Err, res.Warnings, nil, errStyle)
 		return nil, nil
 	}
 	// json/yaml: the notices are embedded only in the envelope bytes just
-	// written to streams.Out, not mirrored anywhere else — report them back
+	// written to streams.Out, not mirrored anywhere else - report them back
 	// so a caller writing into a discardable buffer can recover them if the
 	// real write that follows fails.
 	return notices, nil
 }
 
 // renderEffect renders a --dry-run preview. table/default/wide (wide is
-// table-family here too — there is no separate wide body for a preview)
+// table-family here too - there is no separate wide body for a preview)
 // render the pipeline-owned dryRunText body; json/yaml keep today's Effect
 // envelope unchanged, as do the raw formats (name/template), which read the
 // envelope's target field.
@@ -734,8 +734,8 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 		if _, err := streams.Out.Write([]byte(dryRunText(eff))); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
 		}
-		// Effect.Warnings are deliberately excluded from dryRunText's body
-		// — mirror them to stderr here so they are not silently dropped,
+		// Effect.Warnings are deliberately excluded from dryRunText's body -
+		// mirror them to stderr here so they are not silently dropped,
 		// the same contract renderResult's Text branch applies to
 		// Result.Warnings.
 		mirrorWarnings(streams.Err, eff.Warnings, nil, errStyle)
@@ -748,7 +748,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	}
 	// renderTable (render.go) encodes env.Data alone, so envelope-level
 	// warnings vanish for every format that does not serialize the full
-	// envelope — table, name, template. Mirror the "# warning: <w>" stderr
+	// envelope - table, name, template. Mirror the "# warning: <w>" stderr
 	// convention renderResult uses for those formats; json/yaml carry warnings
 	// inside the envelope and must not double-print.
 	if !envelopeCarriesWarnings(streams.Format) {
@@ -759,7 +759,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 
 // dryRunText renders --dry-run's default-format preview body: the action and
 // DisplayKind/DisplayName identity (a generateName preview may carry a
-// trailing "*" — never the committed success identity), the target
+// trailing "*" - never the committed success identity), the target
 // server/cluster when set, a change summary from the Effect's diff entries,
 // and the confirmation gate line naming the flags a real run needs.
 // Effect.Warnings are deliberately NOT part of this body (see renderEffect).
@@ -776,7 +776,7 @@ func dryRunText(eff safety.Effect) string {
 		// printed verbatim: it is valid as-is for a JSON Patch op's "path".
 		lines = append(lines, fmt.Sprintf("%s: %v -> %v", d.Path, d.From, d.To))
 	}
-	gate := "dry run — re-run with --apply"
+	gate := "dry run - re-run with --apply"
 	if eff.Destructive {
 		gate += " --yes"
 	}
@@ -788,7 +788,7 @@ func dryRunText(eff safety.Effect) string {
 // renderErr writes ce to stderr in the invocation's requested format, after
 // draining streams' NoticeSource: a notice recorded earlier in this
 // invocation (e.g. a lazy store's first-pin notice surfacing on the failure
-// path) leads ce's own error-carried warnings — RenderError's notices
+// path) leads ce's own error-carried warnings - RenderError's notices
 // parameter is documented as recorded-earliest-first for exactly this call.
 func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 	_, errStyle := stylesFor(streams)
@@ -808,18 +808,18 @@ func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notice
 }
 
 // RenderError writes ce to w in format: the structured envelope, byte-for-byte
-// what json/yaml have always emitted, for those two formats — yaml serializes
-// as YAML, not JSON dressed up as one — and a short operator-facing text block
+// what json/yaml have always emitted, for those two formats - yaml serializes
+// as YAML, not JSON dressed up as one - and a short operator-facing text block
 // for every other format, including an unrecognized one (an untrusted format
 // value renders as text rather than being guessed at as an envelope). This
 // is the always-plain convenience form of RenderErrorStyled: every
-// production render site — the pipeline and surface/cli's own pre-dispatch
-// failures alike — resolves a style and calls RenderErrorStyled directly.
+// production render site - the pipeline and surface/cli's own pre-dispatch
+// failures alike - resolves a style and calls RenderErrorStyled directly.
 //
 // notices and ce's own warning ride (WithWarnings) are merged in one fixed
-// order — notices first (recorded earliest, e.g. a NoticeSource drained
+// order - notices first (recorded earliest, e.g. a NoticeSource drained
 // ahead of the failing step), then ce.Warnings() (attached by the failing
-// step itself) — and placed at the envelope's top-level "warnings" field for
+// step itself) - and placed at the envelope's top-level "warnings" field for
 // json/yaml, or as "# warning:" stderr lines ahead of the error text
 // otherwise. Never inside the error payload itself, so a warning cannot
 // print twice.
@@ -830,7 +830,7 @@ func RenderError(w io.Writer, format string, ce *clierr.Error, notices ...string
 // RenderErrorStyled is RenderError with presentation control: s styles the
 // "error (CODE):" prefix red and the "hint:"/"# warning:" prefixes cyan and
 // yellow respectively, applied only when format is among the styleable set
-// (table/default/wide) — json, yaml, name, and template render byte-identical
+// (table/default/wide) - json, yaml, name, and template render byte-identical
 // to RenderError regardless of s, the same eligibility rule RenderStyled
 // enforces for the table renderer.
 func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Style, notices ...string) error {
@@ -854,8 +854,8 @@ func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Sty
 
 // errorText renders ce as the default-format stderr block: a header line
 // naming the code (and "retryable" when the error is retryable), an indented
-// hint line when present, an indented candidates line — each candidate
-// rendered "name (id)" — when present, and finally the details payload's own
+// hint line when present, an indented candidates line - each candidate
+// rendered "name (id)" - when present, and finally the details payload's own
 // projected lines (detailsTextLines) when one is attached. s styles the
 // "error (CODE):" and "hint:" prefixes only, never the message/hint body.
 func errorText(ce *clierr.Error, s style.Style) string {
@@ -883,9 +883,9 @@ func errorText(ce *clierr.Error, s style.Style) string {
 
 // detailsFallbackLine is the neutral line rendered when a details payload
 // reached the renderer without going through clierr.Error.WithDetails (an
-// Error literal setting Details directly, for example) — a command bug, not
+// Error literal setting Details directly, for example) - a command bug, not
 // a supported way to ship an unreviewed details type.
-const detailsFallbackLine = "additional detail recorded — re-run with -o json to inspect"
+const detailsFallbackLine = "additional detail recorded - re-run with -o json to inspect"
 
 // detailsTextLines projects an error's Details field onto its default-format
 // text lines: the payload's own TextDetails() when it implements the
@@ -903,12 +903,12 @@ func detailsTextLines(details any) []string {
 // finishResult enforces the SuccessExitCodes declaration, renders the
 // result, and surfaces the declared status. An undeclared status is an
 // internal error rendered through renderErr like every other pipeline
-// error. For an ORDINARY command a render failure — a shape-contract
-// violation (checkResultShape) or a stdout write failure — is rendered to
+// error. For an ORDINARY command a render failure - a shape-contract
+// violation (checkResultShape) or a stdout write failure - is rendered to
 // stderr exactly once here, so a non-zero exit is never silent regardless
 // of what already committed server-side. A Delivery: DeliveryOnceOnly
 // command instead renders through finishOnceOnlyResult, which buffers the
-// render and emits a committed-context error to stderr on failure — see
+// render and emits a committed-context error to stderr on failure - see
 // that function's doc.
 func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	if !allowedExitStatus(d.SuccessExitCodes, res.ExitStatus) {
@@ -919,7 +919,7 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 		return finishOnceOnlyResult(streams, d, res)
 	}
 	// streams.Out here is the invocation's real stdout (never a discardable
-	// buffer — only finishOnceOnlyResult writes into one), so a nil error
+	// buffer - only finishOnceOnlyResult writes into one), so a nil error
 	// means whatever renderResult returned as "not yet delivered" already
 	// landed for real.
 	notices, ce := renderResult(streams, d, res)
@@ -932,24 +932,24 @@ func finishResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 
 // finishOnceOnlyResult renders a DeliveryOnceOnly command's result BUFFERED:
 // the payload is encoded fully into memory (Warnings still render to the
-// real stderr immediately — only the once-only stdout payload is
+// real stderr immediately - only the once-only stdout payload is
 // buffered), then written to the real stdout in a single Write. A
 // DeliveryOnceOnly executor MUST return a non-nil Result.CommittedContext
 // on every successful return; its absence is a command-bug error, never a
 // silent skip, since a later render failure would otherwise have nothing
 // to report. When the buffered render fails, or the final single write
 // fails, the failure is emitted as a structured, non-retryable error
-// envelope to stderr (best-effort — its own write failure is ignored, and
+// envelope to stderr (best-effort - its own write failure is ignored, and
 // the caller still gets the correct exit code): it names the resource the
 // mutation already committed, whether the final write may have exposed a
 // partial value (n > 0 on the failing write), and the non-mutating
-// recovery — never inviting a blind retry of a mutation that already
+// recovery - never inviting a blind retry of a mutation that already
 // happened.
 func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Error) {
 	// Computed once for every error path below: the paths after the
 	// renderResult call must not go through renderErr, whose own drain would
 	// hit the already-emptied NoticeSource and whose styles are recomputed
-	// per call — the drained notices ride each error's warnings instead.
+	// per call - the drained notices ride each error's warnings instead.
 	_, errStyle := stylesFor(streams)
 	if res.CommittedContext == nil {
 		return 0, renderErrDrained(streams, clierr.New(clierr.CodeGeneric,
@@ -961,7 +961,7 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 	buffered.Out = &buf
 	// pending is nil when renderResult already delivered every notice for
 	// real (mirrored straight to the real streams.Err, unaffected by the Out
-	// swap above) — non-nil only when the notices' one and only delivery so
+	// swap above) - non-nil only when the notices' one and only delivery so
 	// far is inside buf, which the caller below might still discard.
 	pending, ce := renderResult(buffered, d, res)
 	if ce != nil {
@@ -976,7 +976,7 @@ func finishOnceOnlyResult(streams IO, d Descriptor, res Result) (int, *clierr.Er
 		// buf held the only copy of any json/yaml-embedded notice; it is
 		// about to be discarded, so pending rides the replacement error
 		// instead. A pending nil here (the text/RawBytes/Raw/non-json-yaml
-		// branches) means nothing to add — those notices already reached
+		// branches) means nothing to add - those notices already reached
 		// the real stderr inside the renderResult call above, independent
 		// of this failing stdout write.
 		return 0, renderErrDrained(streams, committedContextError(res.CommittedContext, n > 0, err.Error()).

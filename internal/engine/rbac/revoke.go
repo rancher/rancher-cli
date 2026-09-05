@@ -24,7 +24,7 @@ type RevokeFailure struct {
 }
 
 // RevokePartialFailure is revoke's execute-phase details payload: what
-// this execution actually knows — deleted by this run, the failed delete,
+// this execution actually knows - deleted by this run, the failed delete,
 // and never-attempted names. No claim about current server state.
 type RevokePartialFailure struct {
 	Deleted     []string      `json:"deleted"`
@@ -45,7 +45,7 @@ func (p RevokePartialFailure) TextDetails() []string {
 	if len(p.Unattempted) > 0 {
 		lines = append(lines, "not attempted: "+strings.Join(p.Unattempted, ", "))
 	}
-	lines = append(lines, "deleted bindings are gone — re-run revoke to remove the rest")
+	lines = append(lines, "deleted bindings are gone - re-run revoke to remove the rest")
 	return lines
 }
 
@@ -57,7 +57,7 @@ type revokeCmd struct {
 // (mutating, destructive): deletes the subject's role binding(s) at the
 // scope. Without --role every binding for the subject at the scope goes;
 // with --role only that role's. Multi-binding deletion is sequential and
-// non-atomic — previewed via an Effect warning and reported on failure
+// non-atomic - previewed via an Effect warning and reported on failure
 // via the RevokePartialFailure details payload.
 func NewRevoke(clients engine.ClusterClientFactory) runtime.Command {
 	return &revokeCmd{clients: clients}
@@ -127,7 +127,7 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	heldRoles := map[string]bool{}
 	for i := range list.Items {
 		b := &list.Items[i]
-		// No aliasPrincipals: the spec's revoke contract is narrower —
+		// No aliasPrincipals: the spec's revoke contract is narrower -
 		// a provisioned binding is revocable by the SAME principal
 		// string that granted it, plus resolved-userName matches.
 		if !bindingMatchesSubject(b, rs, sub, false) {
@@ -156,7 +156,7 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 		} else {
 			// bindKind.Name, NOT bindKind.GVR.Resource: kinds.Lookup
 			// matches Name/Key/Aliases only, and the plural GVR
-			// resource string is not among them for prtb/crtb — a
+			// resource string is not among them for prtb/crtb - a
 			// GVR-based hint would name a command that doesn't exist.
 			// Scope the hint so it returns the same binding set revoke
 			// was searching; without a scope the get falls back to an
@@ -166,7 +166,7 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 				hint = fmt.Sprintf("rancher get %s --namespace %s -o json", bindKind.Name, clierr.ShellQuote(scope.NS))
 			case ScopeCluster:
 				hint = fmt.Sprintf("rancher get %s --cluster %s -o json", bindKind.Name, clierr.ShellQuote(scope.Cluster))
-			default: // ScopeGlobal — no namespace qualifier needed
+			default: // ScopeGlobal - no namespace qualifier needed
 				hint = "rancher get " + bindKind.Name + " -o json"
 			}
 		}

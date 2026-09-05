@@ -92,7 +92,7 @@ func TestMapErrServiceUnavailable(t *testing.T) {
 // resourceVersion mismatch from a concurrent writer (e.g. a reconciling
 // controller) is retryable with plain wording, never the raw Kubernetes
 // "the object has been modified" message. A duplicate-name AlreadyExists is
-// the other HTTP 409 predicate and stays non-retryable — retrying it without
+// the other HTTP 409 predicate and stays non-retryable - retrying it without
 // changing the name never succeeds.
 func TestMapErrConflictRetryable(t *testing.T) {
 	gr := schema.GroupResource{Group: "provisioning.cattle.io", Resource: "clusters"}
@@ -181,7 +181,7 @@ func TestMapErrDeniedFallback(t *testing.T) {
 // agent drop: the proxy answers with a plain-text 5xx body ("error trying
 // to reach service: cluster agent disconnected") that client-go wraps as a
 // generic InternalError StatusError with an UnexpectedServerResponse cause.
-// Same underlying condition as the pre-registration 503 — classified
+// Same underlying condition as the pre-registration 503 - classified
 // retryable with a matching hint. A genuine k8s-Status InternalError (e.g.
 // Rancher's stale-precondition delete, fidelity/probes.go) must NOT match.
 func TestMapErrAgentDisconnected(t *testing.T) {

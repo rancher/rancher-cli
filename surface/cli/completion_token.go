@@ -28,7 +28,7 @@ type TokenCapability struct {
 
 // completionConnection is the read-only resolved connection for a TAB request.
 // It mirrors Config.Effective precedence (finding 7) without touching the
-// credential store. Scope (cluster/project) is not connection state — it
+// credential store. Scope (cluster/project) is not connection state - it
 // comes from the typed arg tail alone, extracted at the dispatch layer.
 type completionConnection struct {
 	ServerURL string
@@ -80,10 +80,10 @@ func resolveCompletionConnection() completionConnection {
 // It uses resolveCompletionConnection for URL/CA (finding 7) so env overrides
 // (RANCHER_CLI_URL, RANCHER_CLI_CACERT) are honoured.
 //
-//   - AC-4: RANCHER_CLI_TOKEN env — full capability (management + downstream).
-//   - AC-5: file credential store login token — full capability (explicit file
+//   - AC-4: RANCHER_CLI_TOKEN env - full capability (management + downstream).
+//   - AC-5: file credential store login token - full capability (explicit file
 //     policy or pinned to file only; unpinned auto does NOT qualify, AC-5).
-//   - AC-6: single unexpired exec-cred cache entry for server+cluster —
+//   - AC-6: single unexpired exec-cred cache entry for server+cluster -
 //     downstream-scoped (ID-only for cluster-dependent sites, AC-6a).
 //
 // Returns a zero TokenCapability (Token=="") when no usable source is found.
@@ -114,13 +114,13 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 		dir = v.ConfigDir()
 	}
 
-	// AC-4: env token — full management capability.
+	// AC-4: env token - full management capability.
 	if tok := os.Getenv(config.EnvToken); tok != "" {
 		completionDebugf("token: %s (full capability)", config.EnvToken)
 		return TokenCapability{Token: tok, IDOnly: false, ServerURL: conn.ServerURL, CACert: conn.CACert}
 	}
 
-	// AC-5: file credential store — full management capability.
+	// AC-5: file credential store - full management capability.
 	// Only when the store policy explicitly targets the file (AC-5, finding 8).
 	// Pass the effective URL so fileStoreTokenSilent looks up the credential for
 	// the server whose URL MATCHES the effective URL, not the stored current server
@@ -131,7 +131,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 		return TokenCapability{Token: tok, IDOnly: false, ServerURL: conn.ServerURL, CACert: conn.CACert}
 	}
 
-	// AC-6: exec-cred cache — downstream-scoped, ID-only.
+	// AC-6: exec-cred cache - downstream-scoped, ID-only.
 	if clusterID == "" {
 		completionDebugf("stop: no token: no %s, no file-store login for this URL, and no --cluster for the exec-credential cache", config.EnvToken)
 		return TokenCapability{}
@@ -146,7 +146,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 	}
 	// Exclude legacy:-prefixed cache entries before the single-entry ambiguity
 	// check (AC-6a). Shim slots (written by `rancher token` for ACE kubeconfigs)
-	// are never completion candidates — a user never selects them via --name, and
+	// are never completion candidates - a user never selects them via --name, and
 	// the native get-token command explicitly rejects them. Filtering here
 	// preserves AC-6a's fail-closed semantics for genuinely ambiguous NATIVE
 	// entries: shim + one native → native resolves; shim only → no candidates.
@@ -175,7 +175,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 // fileStoreTokenSilent reads the login token from the file credential store
 // WITHOUT logging a warnLoosePerm warning (AC-23, finding 8). Returns "" when:
 //   - policy is not explicitly file, OR pin does not resolve to file (AC-5:
-//     unpinned auto does NOT qualify — we only read when the user explicitly
+//     unpinned auto does NOT qualify - we only read when the user explicitly
 //     chose file storage or has pinned the store to file)
 //   - credentials.yaml is absent or unreadable
 //   - no stored server URL matches effectiveURL (round-2 finding 3: cross-server
@@ -197,14 +197,14 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 	}
 	policy := config.EffectivePolicy(cfg.CredentialStore)
 	pin := config.ReadPin(dir)
-	// AC-5: explicit file policy OR pin resolved to file — not unpinned auto.
+	// AC-5: explicit file policy OR pin resolved to file - not unpinned auto.
 	isFile := policy == "file" || (policy == "auto" && pin == "file")
 	if !isFile {
 		completionDebugf("file store skipped: credential store policy=%s pin=%q (needs file)", policy, pin)
 		return ""
 	}
 
-	// The current server wins when its URL is the effective URL — the same
+	// The current server wins when its URL is the effective URL - the same
 	// priority internal/token's serverCandidateRank gives the
 	// authenticated-command path. Completion is deliberately STRICTER than
 	// that shared ranking: a current server without a stored token yields
@@ -227,7 +227,7 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 	for name, srv := range cfg.Servers {
 		if config.SameServerURL(srv.URL, effectiveURL) {
 			if matchName != "" {
-				// Ambiguous: two stored servers share the same URL — skip.
+				// Ambiguous: two stored servers share the same URL - skip.
 				completionDebugf("file store skipped: servers %q and %q both have URL %s and neither is current", matchName, name, effectiveURL)
 				return ""
 			}
@@ -262,7 +262,7 @@ func flagPresent(argTail []string, flagName string) bool {
 // (covering "true"/"false"/"1"/"0"/"t"/"f"/"T"/"F"/"TRUE"/"FALSE" etc.); an
 // unparseable value is treated as present (mid-edit token). Used by
 // roleVocabulary so that "--global=false", "--global=0", "--global=False" do
-// not select the global vocabulary — unlike string flags, any boolean-false
+// not select the global vocabulary - unlike string flags, any boolean-false
 // spelling is unambiguous and should not trigger the mid-edit heuristic.
 func boolFlagSet(argTail []string, flagName string) bool {
 	long := "--" + flagName

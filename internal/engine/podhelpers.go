@@ -10,7 +10,7 @@ import (
 
 // ContainerNames returns the name of every container in pod, spec.containers
 // then spec.initContainers, so callers that walk a pod's containers (log
-// fetching) see the whole pod rather than only its long-running containers —
+// fetching) see the whole pod rather than only its long-running containers -
 // an init container stuck in CrashLoopBackOff is the canonical case its logs
 // must not be silently skipped. Shared by every caller that walks a pod's
 // containers (inspect pod, logs, support-bundle) so container discovery
@@ -34,7 +34,7 @@ func ContainerNames(pod map[string]any) []string {
 
 // SelectorFrom decodes a deployment's FULL spec.selector (matchLabels AND
 // matchExpressions) into a rendered label selector string. A nil or empty
-// selector is an error — never "", which as a List selector would return
+// selector is an error - never "", which as a List selector would return
 // every pod in the namespace and misrepresent it as the deployment's own.
 func SelectorFrom(dep *unstructured.Unstructured) (string, error) {
 	selMap, found, err := unstructured.NestedMap(dep.Object, "spec", "selector")

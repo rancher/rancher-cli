@@ -229,7 +229,7 @@ func TestDo(t *testing.T) {
 		assert.Equal(t, `{"ok":true}`, string(body))
 
 		// The body reader is already closed by Do; a second read must not hang
-		// or panic — it's just empty.
+		// or panic - it's just empty.
 		n, _ := resp.Body.Read(make([]byte, 1))
 		assert.Equal(t, 0, n)
 	})

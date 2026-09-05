@@ -15,7 +15,7 @@ import (
 )
 
 // quotaKeys is ResourceQuotaLimit's 13 fixed fields (rancher/rancher
-// resource_quota_types.go) — the CRD is structural, so the API server
+// resource_quota_types.go) - the CRD is structural, so the API server
 // silently PRUNES any other key rather than rejecting it; VALIDATION with
 // this list in the hint beats a silent no-op. "extended" (arbitrary resource
 // names) is out of scope for this flag.
@@ -74,7 +74,7 @@ func parseQuotaPairs(s string) (map[string]any, error) {
 }
 
 // quotaKeySetDiff returns the sorted union of keys present in exactly one of
-// a, b — the symmetric difference named in the mismatch error.
+// a, b - the symmetric difference named in the mismatch error.
 func quotaKeySetDiff(a, b map[string]any) []string {
 	var diff []string
 	for k := range a {
@@ -92,7 +92,7 @@ func quotaKeySetDiff(a, b map[string]any) []string {
 }
 
 // buildQuotaSpecs validates and parses --quota-limit/--namespace-default-quota
-// (mandatory-together, matching key sets — webhook-verified constraints
+// (mandatory-together, matching key sets - webhook-verified constraints
 // enforced client-side per spec PC-8) and returns the two limit maps, both
 // nil if neither flag was given.
 func buildQuotaSpecs(in runtime.Input) (limit, nsDefault map[string]any, err error) {
@@ -192,7 +192,7 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	}
 	// --cluster accepts a display name or id uniformly (spec §3); resolve to
 	// the id before it becomes the namespace, spec.clusterName, and Effect
-	// target — build validated it is non-empty.
+	// target - build validated it is non-empty.
 	cluster, err = c.clients.ResolveCluster(ctx, cluster)
 	if err != nil {
 		return safety.Effect{}, nil, err

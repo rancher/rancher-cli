@@ -20,8 +20,8 @@ import (
 // CRTObject is the policy-neutral decoded view of one Steve
 // clusterregistrationtoken object: identity plus the seven formatter-
 // protected command/manifest fields and the token/expiry. Values are
-// carried exactly as decoded — including a still-unformatted "{token}"
-// placeholder — because deciding what to do about a placeholder is the
+// carried exactly as decoded - including a still-unformatted "{token}"
+// placeholder - because deciding what to do about a placeholder is the
 // caller's job, not the decoder's.
 type CRTObject struct {
 	Namespace   string
@@ -44,11 +44,11 @@ type CRTObject struct {
 
 // guardedFieldPtrs returns pointers into the seven command/manifest fields
 // the Steve formatter's ReplaceAll protects, paired with their JSON field
-// name — the single definition PlaceholderFields (report) and
+// name - the single definition PlaceholderFields (report) and
 // clearPlaceholderFields (blank) enumerate from, so the guarded-field set
 // can never drift between the callers. Token and ExpiresAt are
 // deliberately excluded: they are not template strings the formatter
-// substitutes into — Token IS the substitution source.
+// substitutes into - Token IS the substitution source.
 func (o *CRTObject) guardedFieldPtrs() []struct {
 	name string
 	val  *string
@@ -69,7 +69,7 @@ func (o *CRTObject) guardedFieldPtrs() []struct {
 
 // PlaceholderFields reports the JSON field names of o's protected fields
 // still carrying the literal "{token}" placeholder (the k8s proxy's own
-// unformatted value — the server never spliced in the real token).
+// unformatted value - the server never spliced in the real token).
 // Policy-neutral by design: it reports, the caller decides. Named get
 // rejects, list get blanks and warns, inspect cluster omits and warns.
 func PlaceholderFields(o CRTObject) []string {
@@ -83,7 +83,7 @@ func PlaceholderFields(o CRTObject) []string {
 }
 
 // clearPlaceholderFields blanks any protected field still carrying the
-// placeholder and returns the blanked field names (nil when o was clean) —
+// placeholder and returns the blanked field names (nil when o was clean) -
 // the list get's degrade-in-place mechanism, expressed over the same
 // guarded-field set so the two views cannot drift.
 func clearPlaceholderFields(o *CRTObject) []string {
@@ -99,12 +99,12 @@ func clearPlaceholderFields(o *CRTObject) []string {
 
 // crtView is the thin wire decode of a Steve clusterregistrationtoken
 // object: only the fields this package reads (the dynamic-client design
-// position — no generated type for this kind). ALL SEVEN formatter-
+// position - no generated type for this kind). ALL SEVEN formatter-
 // protected fields (rancher clusterregistrationtoken.go's commandFields
 // set) plus Token and ExpiresAt are modeled, so none silently vanishes
 // from output or evades the placeholder reporter. Status is a POINTER so
 // a payload carrying no status object at all is distinguishable from one
-// whose status fields are empty — the shape invariant in validate
+// whose status fields are empty - the shape invariant in validate
 // requires the object's presence.
 type crtView struct {
 	ID       string `json:"id"`
@@ -134,8 +134,8 @@ type crtViewStatus struct {
 // validate enforces the minimum structural invariant every Steve
 // clusterregistrationtoken object carries: a non-empty
 // metadata.namespace, a non-empty metadata.name, and a PRESENT status
-// object (its fields may be empty — a controller may not have filled
-// them yet — but the object itself is always served). json.Unmarshal
+// object (its fields may be empty - a controller may not have filled
+// them yet - but the object itself is always served). json.Unmarshal
 // alone would silently accept {} or an unrelated payload, and a caller
 // like FetchDefaultCRT would then treat a structurally invalid response
 // as a successful empty read instead of surfacing an error (IC-8).
@@ -174,8 +174,8 @@ func (v crtView) object() CRTObject {
 // DecodeCRTObject decodes a single Steve object body into the policy-
 // neutral view. A malformed body (never valid JSON) OR a structurally
 // invalid one (valid JSON missing metadata.namespace, metadata.name, or
-// the status object — the invariant validate states) is a typed
-// CodeGeneric error naming the path — never a panic, never an empty
+// the status object - the invariant validate states) is a typed
+// CodeGeneric error naming the path - never a panic, never an empty
 // CRTObject standing in for a decode failure.
 func DecodeCRTObject(path string, body []byte) (CRTObject, error) {
 	var v crtView
@@ -191,14 +191,14 @@ func DecodeCRTObject(path string, body []byte) (CRTObject, error) {
 
 // DecodeCRTCollection decodes a Steve collection envelope ({"data": [...]}).
 // The ENVELOPE carries its own shape invariant: a JSON-ARRAY "data" field
-// must be present — {"data":[]} is a valid empty collection, while a
+// must be present - {"data":[]} is a valid empty collection, while a
 // missing, null, or non-array data field is a typed wrong-shape error (a
 // bare {} or an error payload must never pass as a successful empty
 // collection). Data is a slice POINTER so absent/null are detectable (nil
-// pointer), and a non-array value fails json.Unmarshal itself — both land
+// pointer), and a non-array value fails json.Unmarshal itself - both land
 // in the same typed "decoding <path>" CodeGeneric contract. Element
 // decoding then applies DecodeCRTObject's per-object invariant: decode
-// failures abort the whole collection — only the PLACEHOLDER policy
+// failures abort the whole collection - only the PLACEHOLDER policy
 // degrades per row, and that lives in the callers.
 func DecodeCRTCollection(path string, body []byte) ([]CRTObject, error) {
 	var env struct {
@@ -222,9 +222,9 @@ func DecodeCRTCollection(path string, body []byte) ([]CRTObject, error) {
 	return out, nil
 }
 
-// FetchDefaultCRT reads a cluster's default registration token —
+// FetchDefaultCRT reads a cluster's default registration token -
 // "<managementClusterID>/default-token" on the same Steve /v1 path the
-// get override reads — and returns the policy-neutral decoded object.
+// get override reads - and returns the policy-neutral decoded object.
 // Narrow by design and used ONLY by inspect cluster's registration
 // section: a single default-token fetch cannot back the collection get,
 // which fetches the whole Steve collection, preserves tokens across

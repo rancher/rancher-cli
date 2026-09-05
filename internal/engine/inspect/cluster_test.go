@@ -285,7 +285,7 @@ func TestInspectClusterVersionPrecedence(t *testing.T) {
 }
 
 // TestInspectClusterProvisioningAbsent is IC-7: the LIST succeeded and
-// matched zero objects — confirmed absence. provisioningNote at the ROOT,
+// matched zero objects - confirmed absence. provisioningNote at the ROOT,
 // status/machinePools keys absent from the wire, NOT an error, NO warning
 // for it (the note is the signal).
 func TestInspectClusterProvisioningAbsent(t *testing.T) {
@@ -313,7 +313,7 @@ func TestInspectClusterProvisioningAbsent(t *testing.T) {
 
 // TestInspectClusterProvisioningUnavailable is IC-7a's unavailable branch:
 // the lookup failed (RBAC/discovery/transport), so an agent must NOT read
-// "definitely none" — no note, a warning naming the cause, NOT an error.
+// "definitely none" - no note, a warning naming the cause, NOT an error.
 func TestInspectClusterProvisioningUnavailable(t *testing.T) {
 	t.Parallel()
 	mgmtKind := mustKind(t, "cluster")
@@ -332,7 +332,7 @@ func TestInspectClusterProvisioningUnavailable(t *testing.T) {
 
 	doc, _ := marshaledDoc(t, res.Data)
 	_, hasNote := doc["provisioningNote"]
-	assert.False(t, hasNote, "unavailable is NOT the absence note — the distinction is the contract (IC-7a)")
+	assert.False(t, hasNote, "unavailable is NOT the absence note - the distinction is the contract (IC-7a)")
 	_, hasStatus := doc["status"]
 	assert.False(t, hasStatus)
 	_, hasPools := doc["machinePools"]
@@ -341,7 +341,7 @@ func TestInspectClusterProvisioningUnavailable(t *testing.T) {
 
 // TestInspectClusterProvisioningAmbiguous is IC-7a's ambiguous branch:
 // multiple provisioning CRs reporting the same status.clusterName is a
-// server-side anomaly — treated as unavailable, never as a pick-one.
+// server-side anomaly - treated as unavailable, never as a pick-one.
 func TestInspectClusterProvisioningAmbiguous(t *testing.T) {
 	t.Parallel()
 	mgmtKind := mustKind(t, "cluster")
@@ -370,7 +370,7 @@ func TestInspectClusterProvisioningAmbiguous(t *testing.T) {
 }
 
 // TestInspectClusterRegistrationUnavailable is IC-8: any registration
-// read failure — the fetch itself or Root() — omits the section and warns.
+// read failure - the fetch itself or Root() - omits the section and warns.
 func TestInspectClusterRegistrationUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -406,7 +406,7 @@ func TestInspectClusterRegistrationUnavailable(t *testing.T) {
 // TestInspectClusterContextCancellationPropagates asserts the degrade
 // boundary: only ordinary availability failures degrade the optional
 // sections. A canceled or deadline-expired context during either optional
-// lookup IS the command's error — execution stops (no further requests),
+// lookup IS the command's error - execution stops (no further requests),
 // nothing degrades to a warning, and the exit is non-zero via the
 // standard toClierr path.
 func TestInspectClusterContextCancellationPropagates(t *testing.T) {
@@ -456,7 +456,7 @@ func TestInspectClusterContextCancellationPropagates(t *testing.T) {
 // TestInspectClusterCancellationThroughRealProviderClient re-proves the
 // cancellation boundary through the PRODUCTION adapter. The provider's List
 // passes every failure through mapErr, which rebuilds a *clierr.Error from
-// err.Error() — the context sentinel does not survive the chain, so an
+// err.Error() - the context sentinel does not survive the chain, so an
 // errors.Is check alone would degrade a canceled LIST to a warning and keep
 // issuing requests. The fake-based test above wraps the sentinel directly
 // and cannot catch that regression; this one drives Execute with a real
@@ -510,7 +510,7 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 // OTHER side of the cancellation boundary through the production adapter: the
 // provider's own per-request child deadline (opCtx) expiring while the
 // CALLER's context is still active is an ordinary availability failure, not a
-// cancellation — the command succeeds, the provisioning sections degrade to a
+// cancellation - the command succeeds, the provisioning sections degrade to a
 // warning that carries the deadline wording (so agents can tell timeout from
 // RBAC), and the registration lookup still proceeds. Not run with
 // t.Parallel(): it shrinks the provider's shared request timeout via
@@ -576,7 +576,7 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 	regMap, _ := reg.(map[string]any)
 	_, hasNA := regMap["notApplicable"]
 	assert.False(t, hasNA,
-		"imported is UNKNOWN under a degraded correlation — the node-join fields are neither annotated nor claimed applicable; the advisory warning carries the uncertainty")
+		"imported is UNKNOWN under a degraded correlation - the node-join fields are neither annotated nor claimed applicable; the advisory warning carries the uncertainty")
 	assert.Equal(t, "/v1/management.cattle.io.clusterregistrationtokens/c-abc/default-token", root.path,
 		"the registration fetch was issued despite the provisioning timeout")
 }
@@ -614,8 +614,8 @@ func TestInspectClusterRegistrationPlaceholderFieldDropped(t *testing.T) {
 
 // TestInspectClusterRegistrationNothingUsableOmitsSection asserts the
 // absent-is-never-{} contract for the registration section: when NO
-// surfaced field survives — every field placeholder-dropped, or the
-// server returned all five empty — the registration key is ABSENT from
+// surfaced field survives - every field placeholder-dropped, or the
+// server returned all five empty - the registration key is ABSENT from
 // the wire, never "registration":{}. The per-field placeholder warnings
 // are unchanged; an all-empty successful response adds no warning. Text
 // mode renders the existing "registration: not available" marker.
@@ -665,7 +665,7 @@ func TestInspectClusterRegistrationNothingUsableOmitsSection(t *testing.T) {
 		}
 		res, doc, _ := run(t, overrides)
 
-		assert.Empty(t, res.Warnings, "server-empty is not a placeholder — no new warning")
+		assert.Empty(t, res.Warnings, "server-empty is not a placeholder - no new warning")
 		_, hasReg := doc["registration"]
 		assert.False(t, hasReg, "registration must be ABSENT from the wire, never {}")
 		assert.Contains(t, res.Text, "registration: not available")
@@ -698,7 +698,7 @@ func TestInspectClusterRegistrationWindowsPlaceholderSuppressed(t *testing.T) {
 
 	doc, _ := marshaledDoc(t, res.Data)
 	reg, ok := doc["registration"].(map[string]any)
-	require.True(t, ok, "registration section must be present — the five surfaced fields are clean")
+	require.True(t, ok, "registration section must be present - the five surfaced fields are clean")
 	for _, field := range []string{"nodeCommand", "insecureNodeCommand", "command", "insecureCommand", "manifestUrl"} {
 		_, ok := reg[field]
 		assert.True(t, ok, "registration.%s must be present", field)
@@ -707,10 +707,10 @@ func TestInspectClusterRegistrationWindowsPlaceholderSuppressed(t *testing.T) {
 
 // TestInspectClusterResolutionErrors asserts IC-2/IC-14's argument failures
 // through the provider's REAL error vocabulary (clientFactory.ResolveCluster
-// delegates to projects.MatchOneOrError — the same contract get cluster's
+// delegates to projects.MatchOneOrError - the same contract get cluster's
 // named path uses): an unknown name-or-id is the structured NOT_FOUND
 // ("cluster not found: ..."), an ambiguous display name is the structured
-// AMBIGUOUS_SELECTION carrying candidates. Both fail BEFORE any read —
+// AMBIGUOUS_SELECTION carrying candidates. Both fail BEFORE any read -
 // zero management Gets, zero provisioning LISTs, zero CRT fetches.
 func TestInspectClusterResolutionErrors(t *testing.T) {
 	t.Parallel()
@@ -749,7 +749,7 @@ func TestInspectClusterResolutionErrors(t *testing.T) {
 }
 
 // TestInspectClusterMgmtGetErrorIsCommandError is IC-6: the management
-// Cluster read is the only hard requirement — failure there IS the
+// Cluster read is the only hard requirement - failure there IS the
 // command's error, and no further read is attempted.
 func TestInspectClusterMgmtGetErrorIsCommandError(t *testing.T) {
 	t.Parallel()
@@ -839,7 +839,7 @@ func TestInspectClusterTextSections(t *testing.T) {
 
 	assert.Contains(t, text,
 		"sudo docker run -d --privileged --net=host --name=cattle-agent rancher/rancher-agent --server https://rancher.example --token "+longToken,
-		"join commands render FULL-WIDTH and are never truncated — they are meant to be copy-pasted")
+		"join commands render FULL-WIDTH and are never truncated - they are meant to be copy-pasted")
 	assert.Contains(t, text, "https://rancher.example/v3/import/"+longToken+".yaml")
 }
 
@@ -969,7 +969,7 @@ func TestRenderClusterTextMembersSection(t *testing.T) {
 	assert.Contains(t, text, "MEMBERS\n  DevOps Team (github_org://8341)  cluster-member\n  okta_user://never  cluster-member\n")
 }
 
-// TestClusterMembersLookupTriState asserts the LOOKUP → tri-state mapping —
+// TestClusterMembersLookupTriState asserts the LOOKUP → tri-state mapping -
 // not just the serialization of hand-built pointers: failed LIST → nil +
 // warning; successful empty LIST → non-nil empty; canceled → error.
 func TestClusterMembersLookupTriState(t *testing.T) {
@@ -1007,7 +1007,7 @@ func TestClusterMembersLookupTriState(t *testing.T) {
 }
 
 // TestClusterMembersBindingRoundTrips asserts that the memberRow's binding key
-// equals the seeded CRD object's own name — the join key back to `get
+// equals the seeded CRD object's own name - the join key back to `get
 // crtb`.
 func TestClusterMembersBindingRoundTrips(t *testing.T) {
 	t.Parallel()
@@ -1027,7 +1027,7 @@ func TestClusterMembersBindingRoundTrips(t *testing.T) {
 	assert.Equal(t, "crtb-9fjq2", (*members)[0].Binding)
 }
 
-// TestClusterMachinesLookupTriState asserts the LOOKUP → tri-state mapping —
+// TestClusterMachinesLookupTriState asserts the LOOKUP → tri-state mapping -
 // not just the serialization of hand-built pointers: failed LIST → nil +
 // warning; successful empty LIST → non-nil empty; canceled → error.
 // Mirrors TestClusterMembersLookupTriState.
@@ -1070,7 +1070,7 @@ func TestClusterMachinesLookupTriState(t *testing.T) {
 
 // TestClusterMachinesWithCreateError is the live-exercise scenario: a CAPI
 // Machine carrying a CreateError condition surfaces the message in both text
-// and JSON — the DO 422 that was otherwise invisible to every rancher command.
+// and JSON - the DO 422 that was otherwise invisible to every rancher command.
 func TestClusterMachinesWithCreateError(t *testing.T) {
 	t.Parallel()
 	mgmtKind := mustKind(t, "cluster")
@@ -1357,7 +1357,7 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, []any{"nodeCommand", "insecureNodeCommand"}, reg["notApplicable"])
 		for _, field := range []string{"nodeCommand", "insecureNodeCommand", "command", "insecureCommand", "manifestUrl"} {
-			assert.Contains(t, reg, field, "no field is dropped — additive contract")
+			assert.Contains(t, reg, field, "no field is dropped - additive contract")
 		}
 
 		assert.Contains(t, res.Text, "node join [not applicable: imported cluster]:")
@@ -1433,7 +1433,7 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 		assert.Equal(t, false, agent["ready"])
 		assert.Equal(t, "Cluster agent is not connected", agent["message"])
 
-		assert.Contains(t, res.Text, "agent: disconnected — Cluster agent is not connected")
+		assert.Contains(t, res.Text, "agent: disconnected - Cluster agent is not connected")
 		require.NotEmpty(t, res.Warnings)
 		assert.Equal(t, "cluster agent is not connected: Cluster agent is not connected", res.Warnings[0])
 	})
@@ -1527,7 +1527,7 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 
 		require.NotEmpty(t, res.Warnings)
 		assert.Equal(t, "cluster is not ready: provisioning", res.Warnings[0])
-		assert.Contains(t, res.Text, "agent: not ready — provisioning")
+		assert.Contains(t, res.Text, "agent: not ready - provisioning")
 	})
 
 	t.Run("connected but not ready renders the variant", func(t *testing.T) {
@@ -1540,7 +1540,7 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 		require.NoError(t, err)
 
-		assert.Contains(t, res.Text, "agent: connected (not ready — kubelet down)")
+		assert.Contains(t, res.Text, "agent: connected (not ready - kubelet down)")
 		require.NotEmpty(t, res.Warnings)
 		assert.Equal(t, "cluster is not ready: kubelet down", res.Warnings[0])
 	})
@@ -1602,11 +1602,11 @@ func TestInspectClusterRegistrationWithheldByDefault(t *testing.T) {
 	t.Parallel()
 	client, root := inspectClusterFixture(t)
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
-	// No b map — default behavior.
+	// No b map - default behavior.
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 
-	assert.Empty(t, res.Warnings, "withheld is intentional — no warning")
+	assert.Empty(t, res.Warnings, "withheld is intentional - no warning")
 	assert.Equal(t, "", root.path, "no fetch issued when --registration is absent")
 
 	doc, raw := marshaledDoc(t, res.Data)
@@ -1851,7 +1851,7 @@ func TestStyleClusterTextStripInvariant(t *testing.T) {
 // TestInspectClusterAutoscaledPoolReportsMinMax asserts the cluster-family
 // enrichment: a pool carrying autoscalingMinSize/MaxSize surfaces both in
 // the JSON envelope and the text card, and the ClusterAutoscalerDeployment
-// Ready condition — a plain status.conditions entry — flows through the
+// Ready condition - a plain status.conditions entry - flows through the
 // generic condition walk with no allowlist to bypass.
 func TestInspectClusterAutoscaledPoolReportsMinMax(t *testing.T) {
 	t.Parallel()

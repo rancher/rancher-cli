@@ -27,7 +27,7 @@ func TestParseArgTail(t *testing.T) {
 		hasMarker   bool
 		want        CompletionSite
 	}{
-		// v2 protocol cases (hasMarker=true) — currentWord classified first.
+		// v2 protocol cases (hasMarker=true) - currentWord classified first.
 		{
 			name:        "v2: empty currentWord, no args → positional 0",
 			args:        []string{},
@@ -107,7 +107,7 @@ func TestParseArgTail(t *testing.T) {
 			hasMarker:   true,
 			want:        CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster", EqualsForm: false, Partial: "c-"},
 		},
-		// v1 protocol cases (hasMarker=false) — last-token-as-partial heuristic.
+		// v1 protocol cases (hasMarker=false) - last-token-as-partial heuristic.
 		{
 			name:      "v1: empty args → positional 0",
 			args:      []string{},
@@ -261,7 +261,7 @@ func TestSanitizedArgsStripsEmptyCurField(t *testing.T) {
 }
 
 // TestParseArgTailRepeatableFlagArity asserts MC-6a's completion arity: a
-// stringSlice flag takes a value on EVERY occurrence — a second --set after
+// stringSlice flag takes a value on EVERY occurrence - a second --set after
 // a completed first one is a flag-value site, and a completed pair counts
 // no positional.
 func TestParseArgTailRepeatableFlagArity(t *testing.T) {

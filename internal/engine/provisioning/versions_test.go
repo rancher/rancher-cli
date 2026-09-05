@@ -17,7 +17,7 @@ import (
 
 // releaseHandler builds an httptest handler serving a fixed release
 // envelope ({"data":[{"version": "..."}, ...]}) at exactly the given path,
-// 404ing everything else — the channel-server route contract FetchVersions
+// 404ing everything else - the channel-server route contract FetchVersions
 // consumes (RootClientFactory.Root().GetJSON).
 func releaseHandler(t *testing.T, routes map[string][]string) http.HandlerFunc {
 	t.Helper()
@@ -45,7 +45,7 @@ func settingObj(name, value string) *unstructured.Unstructured {
 }
 
 // settingsClient builds a fakeClient (defined in cloudcred_test.go, same
-// package) whose objects map is keyed by Setting name — versions.go reads
+// package) whose objects map is keyed by Setting name - versions.go reads
 // Settings by name via ClusterClient.Get, exactly what fakeClient.Get
 // serves.
 func settingsClient(objs map[string]*unstructured.Unstructured) *fakeClient {
@@ -139,7 +139,7 @@ func TestFetchVersionsSupportedEvaluation(t *testing.T) {
 
 // TestFetchVersionsDegradesOnOlderServer proves a 404 on one distro's
 // channel-server route (an older Rancher server) degrades to the OTHER
-// distro's rows plus a warning — never an error (spec D-7).
+// distro's rows plus a warning - never an error (spec D-7).
 func TestFetchVersionsDegradesOnOlderServer(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
@@ -169,7 +169,7 @@ func TestFetchVersionsDegradesOnOlderServer(t *testing.T) {
 // fetch (each distro's release call now runs concurrently with the other,
 // finding 7/8) still degrades each distro on its own: a 404 on k3s alone,
 // on rke2 alone, and on both at once all yield the OTHER distro's rows (or
-// none, for "both") plus one warning per omitted distro — never an error,
+// none, for "both") plus one warning per omitted distro - never an error,
 // and never a false warning for the distro that DID resolve.
 func TestFetchVersionsDegradesEachDistroIndependently(t *testing.T) {
 	t.Parallel()
@@ -222,7 +222,7 @@ func TestFetchVersionsDegradesEachDistroIndependently(t *testing.T) {
 
 // TestFetchVersionsMalformedReleaseBody is spec D-10's transport case
 // (Task 5's precedent, review R2-5): a body that is not valid JSON must
-// decode to a typed CodeGeneric error naming "decoding" — never a panic,
+// decode to a typed CodeGeneric error naming "decoding" - never a panic,
 // never an empty rows slice standing in for the failure silently.
 func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
 	t.Parallel()
@@ -252,7 +252,7 @@ func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
 
 // TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministically
 // asserts review finding 2: when BOTH distros' release fetch hard-fails at
-// close to the same time (not a 404-degrade — a genuine 500), the returned
+// close to the same time (not a 404-degrade - a genuine 500), the returned
 // error must be rke2's (distroSpecs' fixed first entry), deterministically,
 // never whichever goroutine happened to race to completion first, and never
 // wrapped in "context canceled" by a sibling's cancellation (the bug an
@@ -274,7 +274,7 @@ func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministica
 
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce, "the rke2 error must still be reachable through any wrapping")
-	assert.Contains(t, ce.Message, rke2ReleasePath, "the surfaced error must be rke2's — the deterministic winner, never whichever raced first")
+	assert.Contains(t, ce.Message, rke2ReleasePath, "the surfaced error must be rke2's - the deterministic winner, never whichever raced first")
 	assert.NotContains(t, ce.Message, k3sReleasePath, "the unwrapped error must be rke2's alone, not a merged/generic one")
 
 	assert.ErrorContains(t, err, k3sReleasePath, "the k3s failure must be visible somewhere, not silently dropped")
@@ -284,7 +284,7 @@ func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministica
 // asserts review finding 1: clients.Cluster() now resolves BEFORE the
 // release-fetch fan-out starts, so when it fails at the same time a release
 // fetch would also have failed, the caller must see the client-resolution
-// error — the more fundamental root cause — never a release-fetch error.
+// error - the more fundamental root cause - never a release-fetch error.
 // This is deliberate, accepted-as-is behavior (not something to "fix"); this
 // test exists only so a future change cannot silently flip the precedence
 // without a test failing.
@@ -354,7 +354,7 @@ func TestNewGetKubernetesVersionsExecuteTabularRendersSupportedColumn(t *testing
 
 	// The JSON envelope must also carry the raw range for transparency.
 	// Encoded with SetEscapeHTML(false), matching render.go's own convention
-	// (internal/output/render.go) — the production path never HTML-escapes
+	// (internal/output/render.go) - the production path never HTML-escapes
 	// "<"/">" in a version-range string.
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -457,7 +457,7 @@ func TestFetchVersionsNewestPicksSemverMaxNotLexicographic(t *testing.T) {
 		rke2ReleasePath: {"v1.9.2+rke2r1", "v1.10.1+rke2r1"},
 		// Empty k3s route serves a clean empty list; with no default-version
 		// settings in this fixture, missing-default warnings are generated
-		// and deliberately ignored — this test asserts Newest only.
+		// and deliberately ignored - this test asserts Newest only.
 		k3sReleasePath: {},
 	}))
 	defer srv.Close()
@@ -504,7 +504,7 @@ func TestFetchVersionsNewestReleaseNumberTieBreaker(t *testing.T) {
 
 // TestFetchVersionsNewestNotMarkedWhenAllVersionsUnparseable verifies that
 // when every version string in a distro fails to parse (e.g. garbage data
-// from the channel server), no row is marked Newest — the guard must never
+// from the channel server), no row is marked Newest - the guard must never
 // fabricate a Newest entry for an unparseable version string.
 func TestFetchVersionsNewestNotMarkedWhenAllVersionsUnparseable(t *testing.T) {
 	t.Parallel()

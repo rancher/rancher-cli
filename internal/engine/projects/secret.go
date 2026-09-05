@@ -19,7 +19,7 @@ const projectScopedSecretLabel = "management.cattle.io/project-scoped-secret"
 
 // parseLiteralPairs parses a comma-separated k=v list for --from-literal.
 // Unlike quota pairs, an empty value is valid (e.g. an intentionally blank
-// secret entry). Values containing a comma can't be expressed this way —
+// secret entry). Values containing a comma can't be expressed this way -
 // the VALIDATION message points at create resource -f instead.
 func parseLiteralPairs(s string) (map[string]any, error) {
 	return parsePairs(s, true, func(pair string) error {
@@ -36,7 +36,7 @@ type createSecretCmd struct {
 // [--type <t>]` (mutating) with two routing modes: bare (--namespace
 // required, ordinary namespaced Secret on the target cluster) and
 // project-scoped (--project + --project-scoped, written on the management
-// cluster into the project's backing namespace — Rancher's own
+// cluster into the project's backing namespace - Rancher's own
 // GetProjectBackingNamespace fallback semantics, spec PC-9).
 func NewCreateSecret(clients engine.ClusterClientFactory) runtime.Command {
 	return &createSecretCmd{clients: clients}

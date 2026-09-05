@@ -32,7 +32,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	projectKind, _ := kinds.Lookup("project")
 
 	// Fetch all projects from the management-plane (local cluster, scoped to
-	// this downstream cluster's id — same query ResolveProject uses).
+	// this downstream cluster's id - same query ResolveProject uses).
 	mgmtClient, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return runtime.Result{}, err
@@ -44,7 +44,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	if err != nil {
 		// Member path (mirrors projects.ResolveProject): a project member
 		// cannot LIST the collection, but a named --project can still be
-		// fetched directly — their per-project usage stays reachable.
+		// fetched directly - their per-project usage stays reachable.
 		ce, ok := errors.AsType[*clierr.Error](err)
 		if !ok || ce.Code != clierr.CodeRBAC {
 			return runtime.Result{}, err
@@ -79,11 +79,11 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	}
 
 	// When --project X is given, resolve to a single id against the project
-	// list already fetched above — calling projects.ResolveProject here would
+	// list already fetched above - calling projects.ResolveProject here would
 	// repeat the identical management-plane List (and open a TOCTOU window
 	// between the two fetches). Uses the canonical MatchByIDOrDisplay algorithm
 	// (union with ambiguity, same as ResolveProject and ResolveCluster).
-	// The member fallback above already resolved filterID by direct get —
+	// The member fallback above already resolved filterID by direct get -
 	// exact id only, nothing to match.
 	if projectFlag != "" && !memberFallback {
 		ids := make([]string, 0, len(displayByID))
@@ -134,7 +134,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		return usageResult(byProject, rows, displayByID, sec), nil
 	}
 
-	// Pod List — namespace-scoped when --namespace narrows to one namespace.
+	// Pod List - namespace-scoped when --namespace narrows to one namespace.
 	pods, err := client.List(ctx, podKind.GVR, namespace, "")
 	if err != nil {
 		return runtime.Result{}, err
@@ -153,7 +153,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		grouped[bucket] = append(grouped[bucket], pod)
 	}
 
-	// Ensure every known project has a row, even with zero pods — but only in
+	// Ensure every known project has a row, even with zero pods - but only in
 	// the unfiltered case. --namespace/--node narrow a set, so a project with
 	// no matching pods is an empty set (absent row), while --project names a
 	// bucket, which always gets its row.

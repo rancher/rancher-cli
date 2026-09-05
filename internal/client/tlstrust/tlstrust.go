@@ -7,8 +7,8 @@
 // on the failed handshake (tls.CertificateVerificationError.
 // UnverifiedCertificates) rather than opening a second connection to
 // re-observe it. That chain came from the exact route the caller's http.Client
-// actually dialed — proxy decision, CONNECT tunneling, SNI, dialer, TLS
-// minimum, and timeout all already applied — so there is nothing left to
+// actually dialed - proxy decision, CONNECT tunneling, SNI, dialer, TLS
+// minimum, and timeout all already applied - so there is nothing left to
 // clone: a fresh, naive dial would risk observing a different peer (for
 // example a proxy's certificate instead of Rancher's), while the failed
 // handshake's own capture cannot drift from the route that produced it. The
@@ -69,7 +69,7 @@ type Details struct {
 	leaf bool
 	// cert is the exact certificate Details describes (the candidate anchor
 	// for KindUnknownAuthority, the offending certificate for every other
-	// kind). Never serialized — a consent flow that must persist trust
+	// kind). Never serialized - a consent flow that must persist trust
 	// reads it through Certificate(); JSON consumers see only the
 	// projected fields.
 	cert *x509.Certificate
@@ -81,7 +81,7 @@ type Details struct {
 func (d Details) Certificate() *x509.Certificate { return d.cert }
 
 // IsLeafCertificate reports whether the fingerprint/subject shown describe
-// the server's own certificate rather than a certificate authority —
+// the server's own certificate rather than a certificate authority -
 // meaningful only when Kind is KindUnknownAuthority.
 func (d Details) IsLeafCertificate() bool { return d.leaf }
 
@@ -90,8 +90,8 @@ func (d Details) IsLeafCertificate() bool { return d.leaf }
 // may be absent when no candidate anchor could be extracted from the
 // presented chain, and an absent field prints no line at all. For
 // KindUnknownAuthority the first line names WHICH certificate the
-// fingerprint describes — "certificate authority" or, when the chain
-// carried no valid issuer, "serving certificate" — so the card is never
+// fingerprint describes - "certificate authority" or, when the chain
+// carried no valid issuer, "serving certificate" - so the card is never
 // read as naming a CA it cannot check against a fetched CA file.
 func (d Details) TextDetails() []string {
 	var lines []string
@@ -129,7 +129,7 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	if !ok {
 		return nil
 	}
-	// Unknown authority shows the CANDIDATE ANCHOR — the certificate a user
+	// Unknown authority shows the CANDIDATE ANCHOR - the certificate a user
 	// could pin. Every other kind shows the certificate that actually
 	// failed verification (the anchor may be a perfectly valid CA while the
 	// leaf is expired; describing the CA there would point the operator at
@@ -155,11 +155,11 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	case KindUnknownAuthority:
 		msg := "the server presented a certificate signed by an unknown authority; " +
 			"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert; " +
-			"if this server was already trusted, check the subject and issuer shown here — a certificate you don't recognize can mean something in the network path is intercepting TLS"
+			"if this server was already trusted, check the subject and issuer shown here - a certificate you don't recognize can mean something in the network path is intercepting TLS"
 		if details.leaf {
 			msg = "the server presented a certificate signed by an unknown authority, with no separate certificate authority in the chain; " +
 				"obtain the certificate through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert; " +
-				"if this server was already trusted, check the subject and issuer shown here — a certificate you don't recognize can mean something in the network path is intercepting TLS"
+				"if this server was already trusted, check the subject and issuer shown here - a certificate you don't recognize can mean something in the network path is intercepting TLS"
 		}
 		return clierr.New(clierr.CodeTLSTrust, msg).
 			WithDetails(details)
@@ -233,16 +233,16 @@ func terminalOriginIs(err error, want httpx.Origin) bool {
 // tls.CertificateVerificationError at all (not a certificate-verification
 // failure) or when the underlying handshake failed before any certificate
 // could be parsed (chain is empty; Details will carry a Kind with no
-// metadata — the nullable-details case).
+// metadata - the nullable-details case).
 //
 // When the verification error carries none of the typed x509 errors, the
 // failure came from a platform verifier (the system-roots path on macOS and
 // Windows hands verification to the OS, which reports failures as bare
-// strings — Go's own verifier is used only when a custom root pool is set).
+// strings - Go's own verifier is used only when a custom root pool is set).
 // Classification must not depend on platform error strings, so the captured
 // chain is reclassified from evidence the chain itself carries (see
-// reclassifyUntyped). Without this, the most common first-contact case — a
-// self-signed Rancher server dialed with system roots on macOS — lands in
+// reclassifyUntyped). Without this, the most common first-contact case - a
+// self-signed Rancher server dialed with system roots on macOS - lands in
 // invalidChain with a contact-the-operator hint instead of unknownAuthority
 // with the --cacert hint.
 func classifyKind(err error, host string, now time.Time) (kind Kind, chain []*x509.Certificate, offending *x509.Certificate, ok bool) {
@@ -273,7 +273,7 @@ func classifyVerifyError(verr error, chain []*x509.Certificate, now time.Time) (
 	}
 	if invalidErr, isInvalid := errors.AsType[x509.CertificateInvalidError](verr); isInvalid && invalidErr.Reason == x509.Expired {
 		// x509 uses one Reason for both directions; disambiguate on the
-		// certificate the verifier actually flagged — a not-yet-valid
+		// certificate the verifier actually flagged - a not-yet-valid
 		// INTERMEDIATE alongside a currently-valid leaf must not read as
 		// "expired" (chain[0]'s dates say nothing about the flagged cert).
 		flagged := invalidErr.Cert
@@ -294,28 +294,28 @@ func classifyVerifyError(verr error, chain []*x509.Certificate, now time.Time) (
 // reclassifyUntyped classifies a platform verifier's untyped failure from
 // the captured chain alone. Re-verifying against the system pool is NOT an
 // option: on macOS a pool returned by x509.SystemCertPool routes Verify
-// straight back to the platform verifier — the same untyped error, a loop.
+// straight back to the platform verifier - the same untyped error, a loop.
 // System roots are not enumerable there, so the checks are ones the chain
 // itself can answer, in the typed verifier's own precedence order:
 //
 //  1. validity window of every considered certificate (expired/notYetValid);
 //  2. the leaf's hostname match (hostnameMismatch);
 //  3. everything else is unknownAuthority, mirroring Go's own taxonomy:
-//     Go's verifier reports EVERY unresolvable path — self-signed leaf,
-//     leaf whose issuer was not presented, private CA — as
+//     Go's verifier reports EVERY unresolvable path - self-signed leaf,
+//     leaf whose issuer was not presented, private CA - as
 //     x509.UnknownAuthorityError, and reserves its invalid-chain reasons
 //     for typed CertificateInvalidError values the platform path never
 //     produces. The pinnable candidate is CandidateAnchor's business, as
 //     on the typed path. The deliberate edge: a PUBLICLY-chained server
 //     the platform distrusts for platform-only reasons (revoked root, CT
 //     policy) also lands here, and the --cacert remedy is mechanically
-//     real for it too — a pinned pool uses Go's verifier — while the
+//     real for it too - a pinned pool uses Go's verifier - while the
 //     fingerprint in the details supports the out-of-band check before
 //     anyone pins anything.
 //
 // ok=false only for an empty chain (nothing to reason from), keeping the
 // nullable-details invalidChain fallback. Window checks consult only the
-// anchor path — the signature-valid route from the leaf — never the raw
+// anchor path - the signature-valid route from the leaf - never the raw
 // presented chain: a server can bundle an unrelated stale certificate (an
 // old expired root, a leftover intermediate), and blaming its dates would
 // misread an unknown-authority failure as "expired" with a renew-it hint
@@ -379,7 +379,7 @@ func CandidateAnchor(chain []*x509.Certificate) *x509.Certificate {
 
 // anchorPath returns the contiguous signature-valid path CandidateAnchor
 // walks, from the observed leaf up to the candidate anchor inclusive. The
-// path — not the raw presented chain — is what evidence-based reasoning may
+// path - not the raw presented chain - is what evidence-based reasoning may
 // consult: certificates outside it were presented but play no verified role,
 // so attributing a failure to one of them would blame a bystander.
 func anchorPath(chain []*x509.Certificate) []*x509.Certificate {
@@ -420,7 +420,7 @@ func findIssuer(current *x509.Certificate, chain []*x509.Certificate, used []boo
 	return -1
 }
 
-// Fingerprint is the SHA-256 digest of cert's DER bytes, lowercase hex —
+// Fingerprint is the SHA-256 digest of cert's DER bytes, lowercase hex -
 // the one stable hash input and encoding for trust metadata everywhere it is
 // recorded or displayed.
 func Fingerprint(cert *x509.Certificate) string {

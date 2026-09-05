@@ -15,7 +15,7 @@ import (
 // inference of a future command's shape. Checked bidirectionally against the
 // real registry by TestOutputShapeClosedWorldConformance: every registered
 // command must appear here with the shape its Descriptor actually declares,
-// and every entry must name a command the registry actually has — so an
+// and every entry must name a command the registry actually has - so an
 // unreviewed shape (or a shape that silently drifted) fails the build, the
 // same posture as oidcOnceOnlyInventory.
 var outputShapeInventory = map[string]runtime.OutputShape{
@@ -225,7 +225,7 @@ var bytesAndExecJSONOutputPolicy = map[string]runtime.OutputPolicy{
 // bidirectionally over the real, registered command set: every registered
 // command must have a reviewed inventory entry with the exact shape its
 // Descriptor declares, and every inventory entry must name a command the
-// registry actually has — so a new command without a reviewed shape (or a
+// registry actually has - so a new command without a reviewed shape (or a
 // shape that silently drifted from the reviewed value) fails the build.
 func TestOutputShapeClosedWorldConformance(t *testing.T) {
 	t.Parallel()
@@ -238,7 +238,7 @@ func TestOutputShapeClosedWorldConformance(t *testing.T) {
 		seen[d.Name] = true
 
 		want, ok := outputShapeInventory[d.Name]
-		if !assert.True(t, ok, "command %q has no reviewed entry in outputShapeInventory — add one deliberately", d.Name) {
+		if !assert.True(t, ok, "command %q has no reviewed entry in outputShapeInventory - add one deliberately", d.Name) {
 			continue
 		}
 		assert.Equal(t, want, d.Shape, "command %q declares shape %s but the reviewed inventory says %s", d.Name, d.Shape, want)
@@ -251,13 +251,13 @@ func TestOutputShapeClosedWorldConformance(t *testing.T) {
 	}
 
 	for name := range outputShapeInventory {
-		assert.True(t, seen[name], "outputShapeInventory entry %q names no registered command — remove it or check the spelling", name)
+		assert.True(t, seen[name], "outputShapeInventory entry %q names no registered command - remove it or check the spelling", name)
 	}
 }
 
 // TestOutputShapeClosedWorldConformanceCatchesADeletedEntry proves the
 // bidirectional check actually fails when a reviewed entry goes missing
-// from the inventory — the mechanism once_only_conformance_test.go's
+// from the inventory - the mechanism once_only_conformance_test.go's
 // pattern relies on, exercised directly here rather than only by manual
 // verification.
 func TestOutputShapeClosedWorldConformanceCatchesADeletedEntry(t *testing.T) {

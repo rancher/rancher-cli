@@ -54,7 +54,7 @@ func TestCapabilityCoverageCoveredPasses(t *testing.T) {
 
 func TestCapabilityCoverageMissingCommandIsUncovered(t *testing.T) {
 	t.Parallel()
-	// No registered entry at all for a Capability-bearing kind's op — the
+	// No registered entry at all for a Capability-bearing kind's op - the
 	// gap the retired tripwire existed to catch, expressed generically.
 	res := checkCapabilityCoverage(capabilityCoverageInput{
 		rows:       []kinds.Kind{gatedWidgetRow()},
@@ -83,7 +83,7 @@ func TestCapabilityCoverageAllowlistedOpPasses(t *testing.T) {
 }
 
 // coveredWidgetVerbs registers get/patch/delete widget as already covered,
-// so the create-edge tests below exercise only the "create resource" op —
+// so the create-edge tests below exercise only the "create resource" op -
 // the generic verb enumeration runs over every row in rows regardless of
 // createOp, and would otherwise flag get/patch/delete widget too.
 func coveredWidgetVerbs() map[string]registeredCommand {
@@ -179,10 +179,10 @@ func TestCapabilityCoverageDanglingRefusalFails(t *testing.T) {
 
 // TestCapabilityCoverageRealWiring runs the coverage rule against the actual
 // registry. The gating half is LIVE and non-vacuous as of the oidcclient row
-// (2026-08-26, the first Capability-bearing kind — feature "oidc-provider"):
+// (2026-08-26, the first Capability-bearing kind - feature "oidc-provider"):
 // its generated get/patch/delete each copy the row's requirement into their
 // own Descriptor (resources/get.go, patch.go, delete.go), and `create
-// resource` is covered structurally via its CapabilityResolver — so
+// resource` is covered structurally via its CapabilityResolver - so
 // uncoveredGated now exercises the real coverage rule, not just the
 // pure-function tests above. The classification half has been LIVE since
 // before: every registered op must resolve to a kind mapping or
@@ -219,7 +219,7 @@ func TestCapabilityCoverageRealWiring(t *testing.T) {
 
 // TestCapabilityCoverageStaleMappingKeyFails: an extraOps/derivedOps entry
 // naming a kind key with no row must fail the rule, never silently mark the
-// op covered — a stale key after a kind rename would otherwise let a gated
+// op covered - a stale key after a kind rename would otherwise let a gated
 // kind reachable only through that op ship ungated while the rule stayed
 // green.
 func TestCapabilityCoverageStaleMappingKeyFails(t *testing.T) {

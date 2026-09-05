@@ -7,7 +7,7 @@ import (
 // NewResolver returns the bespoke op map: bindings for non-generic operations
 // only (composites, auth-adjacent). Bindings for generated generic ops
 // (get/delete <kind>) are owned by the kind table (kinds.Bindings) and composed
-// in at BuildRoot — an op defined by both sources fails composition. Keys are
+// in at BuildRoot - an op defined by both sources fails composition. Keys are
 // the canonical-singular Descriptor.Name; promotions of a bespoke op are edits
 // here only.
 func NewResolver() map[string]safety.Binding {
@@ -32,13 +32,13 @@ func NewResolver() map[string]safety.Binding {
 		// backing kind row, not a Public API resource).
 		"token": {Contract: safety.ContractInternal, Stability: safety.Deprecated},
 		// create resource takes any kind; create machine-config spans the
-		// five machine-config kinds — no single row for either.
+		// five machine-config kinds - no single row for either.
 		"create resource":       {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"create machine-config": {Contract: safety.ContractInternal, Stability: safety.Beta},
 		// create user and create password-change-request front Rancher's
 		// documented user-management workflow: the two-resource User +
 		// password-Secret create, and the ext.cattle.io
-		// PasswordChangeRequest resource — the same public surface family
+		// PasswordChangeRequest resource - the same public surface family
 		// as the ext token/kubeconfig commands above. Public/stable by
 		// that membership, unlike the inspect composites below (pure CLI
 		// value-adds). PasswordChangeRequest has no backing kind row: the

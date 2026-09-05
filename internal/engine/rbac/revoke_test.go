@@ -328,13 +328,13 @@ func TestRevokePartialFailure(t *testing.T) {
 		"deleted: crtb-alpha",
 		"failed: crtb-beta (CONFLICT: rv conflict)",
 		"not attempted: crtb-gamma",
-		"deleted bindings are gone — re-run revoke to remove the rest",
+		"deleted bindings are gone - re-run revoke to remove the rest",
 	}, pf.TextDetails())
 }
 
 // TestRevokePartialFailureTextDetailsOmitsEmptyLines asserts the two
 // conditional lines: "deleted" and "not attempted" print only when their
-// slice is non-empty — the first delete in a batch has nothing deleted yet,
+// slice is non-empty - the first delete in a batch has nothing deleted yet,
 // and the last has nothing left unattempted.
 func TestRevokePartialFailureTextDetailsOmitsEmptyLines(t *testing.T) {
 	t.Parallel()
@@ -343,7 +343,7 @@ func TestRevokePartialFailureTextDetailsOmitsEmptyLines(t *testing.T) {
 	}
 	assert.Equal(t, []string{
 		"failed: crtb-alpha (CONFLICT: rv conflict)",
-		"deleted bindings are gone — re-run revoke to remove the rest",
+		"deleted bindings are gone - re-run revoke to remove the rest",
 	}, pf.TextDetails())
 }
 
@@ -352,7 +352,7 @@ func TestRevokeStaleHashIDOccupiedConflict(t *testing.T) {
 	// A user was provisioned as ProvisionedUserID("okta_user://alice").
 	// Its principal has since been replaced with okta_user://renamed and no
 	// other user owns okta_user://alice. Revoking okta_user://alice must
-	// return CodeConflict (occupied-id, cannot provision) — not NOT_FOUND or
+	// return CodeConflict (occupied-id, cannot provision) - not NOT_FOUND or
 	// a silent match of the renamed user's bindings.
 	requestedPrincipal := "okta_user://alice"
 	id := ProvisionedUserID(requestedPrincipal)
@@ -414,7 +414,7 @@ func TestRevokeGlobalScope(t *testing.T) {
 
 // TestRevokeMultiBindingBoldsEveryConfirmationLine asserts a multi-binding
 // revoke's styled text bolds each per-binding confirmation line, not only
-// the first — every line is a headline.
+// the first - every line is a headline.
 func TestRevokeMultiBindingBoldsEveryConfirmationLine(t *testing.T) {
 	t.Parallel()
 	text := "globalrolebinding/grb-a deleted\nglobalrolebinding/grb-b deleted\n"

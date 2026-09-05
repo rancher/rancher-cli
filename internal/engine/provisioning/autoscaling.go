@@ -18,8 +18,8 @@ import (
 // clusterAutoscalingCapability is the static Prime requirement every
 // autoscaling verb's Descriptor carries directly, with no backing kind row
 // underneath: the provisioningcluster row stays community (community
-// clusters use it constantly), so only these four verbs — never the kind
-// row, never `cluster scale` — gate on it.
+// clusters use it constantly), so only these four verbs - never the kind
+// row, never `cluster scale` - gate on it.
 var clusterAutoscalingCapability = runtime.CapabilityRequirement{
 	Tier:    runtime.CapabilityPrime,
 	Feature: "cluster-autoscaling",
@@ -42,11 +42,11 @@ func (setAutoscalingCmd) Describe() runtime.Descriptor {
 		Name:  "cluster set-autoscaling",
 		Usage: "Turn on cluster-autoscaler management for a machine pool",
 		Desc: "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. " +
-			"Mirrors the CRD's validation client-side — --min and --max are both required and must both be " +
-			">= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool — so a bad " +
+			"Mirrors the CRD's validation client-side - --min and --max are both required and must both be " +
+			">= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool - so a bad " +
 			"value is rejected with flag names before the server round-trip; the server remains the " +
 			"authority. provisioningcluster is a Sensitive kind, so this is Destructive like every other " +
-			"mutation on the same object — dry-run/apply --yes. From this point the pool's quantity is " +
+			"mutation on the same object - dry-run/apply --yes. From this point the pool's quantity is " +
 			"managed by the cluster autoscaler, not the operator.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
@@ -102,8 +102,8 @@ type clearAutoscalingCmd struct {
 
 // NewClearAutoscaling builds `cluster clear-autoscaling <cluster> --pool
 // <name>` (mutating, prime): returns the named pool to manual quantity. The
-// patch is built from the fetched object — remove ops only for the fields
-// actually present — so a half-set pool still clears cleanly, and a pool
+// patch is built from the fetched object - remove ops only for the fields
+// actually present - so a half-set pool still clears cleanly, and a pool
 // that already carries neither field succeeds as a no-op rather than
 // surfacing a raw path-not-found error.
 func NewClearAutoscaling(clients engine.ClusterClientFactory) runtime.Command {
@@ -118,7 +118,7 @@ func (clearAutoscalingCmd) Describe() runtime.Descriptor {
 			"pool, built from the fetched object so a half-set pool still clears cleanly. A pool that " +
 			"already carries neither field succeeds as a no-op, so a retry always converges. " +
 			"provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on " +
-			"the same object — dry-run/apply --yes.",
+			"the same object - dry-run/apply --yes.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
 		Flags: []runtime.ArgSpec{

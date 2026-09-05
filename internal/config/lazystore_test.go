@@ -46,8 +46,8 @@ func TestLazyStoreResolvesBackendExactlyOnce(t *testing.T) {
 // to catch a torn read; the many iterations also give DrainNotices a real
 // chance to land on both sides of the resolution window, not just win a
 // scheduling fluke once. Whichever side it lands on, the result must be
-// exactly one of two valid states — the pre-resolution empty read, or the
-// fully-resolved backend's own notice — never anything else (a partial
+// exactly one of two valid states - the pre-resolution empty read, or the
+// fully-resolved backend's own notice - never anything else (a partial
 // slice, a length mismatch, or the backend's notice with a resolution that
 // somehow never finished).
 func TestLazyStoreDrainNoticesRacesFirstResolution(t *testing.T) {
@@ -77,7 +77,7 @@ func TestLazyStoreDrainNoticesRacesFirstResolution(t *testing.T) {
 		switch len(drained) {
 		case 0:
 			// DrainNotices ran (or the resolved check landed) before
-			// resolution completed — the valid pre-resolution empty read.
+			// resolution completed - the valid pre-resolution empty read.
 		case 1:
 			assert.Equal(t, []string{"backend notice"}, drained,
 				"iteration %d: a non-empty drain must be exactly the fully-resolved backend's own notice", i)
@@ -182,7 +182,7 @@ func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 
 // TestLoginSequenceFreshAutoUnusableKeychain: same sequence with an
 // unusable keychain. RepinForLogin returns the lazy store unchanged;
-// SetToken resolves it — file pin, exactly one plaintext notice recorded on
+// SetToken resolves it - file pin, exactly one plaintext notice recorded on
 // the lazy store's own NoticeSource buffer (not stderr directly), no
 // first-pin-keychain notice, token in credentials.yaml. The single
 // probe count proves keyringUsableOnce's memo is shared between

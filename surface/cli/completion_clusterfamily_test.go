@@ -111,7 +111,7 @@ var clusterFamilyPoolDescriptor = runtime.Descriptor{
 }
 
 // setClusterFamilyCompletionConfig points completion at srv with network
-// completion enabled and a management token — the same stored-config/env
+// completion enabled and a management token - the same stored-config/env
 // setup logsPodCandidates' own tests use, since clusterFamilyPoolCandidates
 // resolves its capability via resolveCompletionToken internally rather than
 // taking one as a parameter (self-contained, like logsPodCandidates).

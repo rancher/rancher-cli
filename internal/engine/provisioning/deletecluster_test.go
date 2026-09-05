@@ -88,7 +88,7 @@ func planDeleteCluster(t *testing.T, cmd runtime.Command, in runtime.Input) (saf
 // TestDeleteProvisioningClusterRefusesLocal asserts the D-6 guard's core
 // property: the literal argument "local" is refused with CodeValidation.
 // The guard runs after inner.Plan, so the object must exist for the refusal
-// to fire — inner.Plan confirms existence and completes the dry-run before
+// to fire - inner.Plan confirms existence and completes the dry-run before
 // the guard checks the argument.
 func TestDeleteProvisioningClusterRefusesLocal(t *testing.T) {
 	t.Parallel()
@@ -110,7 +110,7 @@ func TestDeleteProvisioningClusterRefusesLocal(t *testing.T) {
 
 // TestDeleteProvisioningClusterCarriesCascadeWarning asserts the second D-6
 // addition: a normal (non-"local") delete's Effect carries the cascade
-// statement in Warnings, never as a diff entry or a gate — Destructive is
+// statement in Warnings, never as a diff entry or a gate - Destructive is
 // already true via the wrapped generic delete, so no separate flag is
 // needed to require --yes.
 func TestDeleteProvisioningClusterCarriesCascadeWarning(t *testing.T) {

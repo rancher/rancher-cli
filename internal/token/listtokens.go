@@ -9,7 +9,7 @@ import (
 )
 
 // credList renders cached exec-credential entries as a NAME SERVER CLUSTER
-// EXPIRY table. The composite Key is deliberately not a column — it stays in
+// EXPIRY table. The composite Key is deliberately not a column - it stays in
 // the JSON/YAML payload but never surfaces raw in the table.
 type credList []config.CachedCredInfo
 

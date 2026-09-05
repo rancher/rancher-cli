@@ -29,7 +29,7 @@ type WideTabular interface {
 }
 
 // TemplatePrefix marks an --output value as Go template source: everything
-// after it is the template. The single source of truth for the prefix — the
+// after it is the template. The single source of truth for the prefix - the
 // pipeline's format validation and Render both key off it.
 const TemplatePrefix = "template="
 
@@ -56,11 +56,11 @@ func Render(w io.Writer, format string, env *Envelope) error {
 }
 
 // RenderStyled is Render with presentation control: under "table" or the ""
-// default, s bolds the rendered header row — applied to the header LINE
+// default, s bolds the rendered header row - applied to the header LINE
 // after tabwriter has already column-aligned it, never to a column's own
 // bytes, which would inflate the byte-counted widths tabwriter measures.
 // "wide" gets the same treatment; every other format ignores s and renders
-// byte-identical to Render, regardless of s.Enabled — json, yaml, name, and
+// byte-identical to Render, regardless of s.Enabled - json, yaml, name, and
 // template stay plain no matter what the caller passes.
 func RenderStyled(w io.Writer, format string, env *Envelope, s style.Style) error {
 	switch format {
@@ -104,7 +104,7 @@ func RenderStyled(w io.Writer, format string, env *Envelope, s style.Style) erro
 
 // renderTemplate executes a Go template over the JSON view of env.Data with
 // managedFields scrubbed. Templates address the same shape agents see under
-// -o json — CW-4. UseNumber preserves large int64 values verbatim.
+// -o json - CW-4. UseNumber preserves large int64 values verbatim.
 func renderTemplate(w io.Writer, src string, env *Envelope) error {
 	tmpl, err := template.New("out").Parse(src)
 	if err != nil {
@@ -112,7 +112,7 @@ func renderTemplate(w io.Writer, src string, env *Envelope) error {
 	}
 	// Execute the template over the JSON view of data, so templates address
 	// the same shape agents see under -o json (and json.Marshaler-only
-	// payloads like get's table are reachable at all) — CW-4. Decode with
+	// payloads like get's table are reachable at all) - CW-4. Decode with
 	// UseNumber so a large int64 (byte counts, unix-nano timestamps) prints
 	// verbatim as json.Number instead of round-tripping through float64 and
 	// rendering as scientific notation.
@@ -148,7 +148,7 @@ func encodeJSON(w io.Writer, v any) error {
 }
 
 // renderTable is -o table (and the "" default): the closed-world contract
-// requires Data to implement Tabular — there is no pretty-JSON fallback. A
+// requires Data to implement Tabular - there is no pretty-JSON fallback. A
 // non-Tabular Data value here is a command bug: the command's declared
 // OutputShape promised Tabular and its Data does not honor that.
 func renderTable(w io.Writer, env *Envelope, s style.Style) error {
@@ -161,7 +161,7 @@ func renderTable(w io.Writer, env *Envelope, s style.Style) error {
 
 // renderWide is -o wide: it prefers WideTabular's superset columns/rows and
 // falls back to plain Tabular (byte-identical to -o table) for every payload
-// that carries no wide-only columns — presentation, not a scope change. Like
+// that carries no wide-only columns - presentation, not a scope change. Like
 // renderTable, there is no pretty-JSON fallback for non-Tabular Data.
 func renderWide(w io.Writer, env *Envelope, s style.Style) error {
 	if wt, ok := env.Data.(WideTabular); ok {
@@ -178,7 +178,7 @@ func writeTable(w io.Writer, cols []string, rows [][]string, s style.Style) erro
 	if !s.Enabled {
 		return writePlainTable(w, cols, rows)
 	}
-	// Bold the header LINE in the already-aligned output — bolding a
+	// Bold the header LINE in the already-aligned output - bolding a
 	// column's own bytes before tabwriter measures it would inflate that
 	// column's width. The writer styles only the bytes up to the first
 	// newline and streams every row through unchanged, so the table is
@@ -222,7 +222,7 @@ func (h *headerBoldWriter) Write(p []byte) (int, error) {
 }
 
 // flush releases header bytes still held when the stream carried no newline
-// at all — a headerless fragment stays unstyled, byte-identical to the
+// at all - a headerless fragment stays unstyled, byte-identical to the
 // plain render.
 func (h *headerBoldWriter) flush() error {
 	if h.done || len(h.header) == 0 {

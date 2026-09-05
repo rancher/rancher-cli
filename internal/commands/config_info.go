@@ -62,7 +62,7 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 		return runtime.Result{}, err
 	}
 	policy, source := config.EffectivePolicyWithSource(cfg.CredentialStore)
-	// The pin is auto's probed backend choice — meaningless (and, when
+	// The pin is auto's probed backend choice - meaningless (and, when
 	// stale, actively misleading) under any explicit policy, so it is
 	// reported only when the effective policy is auto.
 	pin := ""
@@ -70,7 +70,7 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 		pin = config.ReadPin(c.dir)
 	}
 	// Before any pin exists (no login yet, no prior probe), name what auto
-	// will try first on this machine — a static GOOS-derived label, never a
+	// will try first on this machine - a static GOOS-derived label, never a
 	// live probe, so `config status` stays read-only.
 	defaultBackend := ""
 	if policy == "auto" && pin == "" {
@@ -91,7 +91,7 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 		fields = append(fields, field{"credentialStoreDefault", defaultBackend})
 	}
 
-	// Completion settings — always present so `config status` can answer
+	// Completion settings - always present so `config status` can answer
 	// "why does TAB show no candidates?" without knowing whether completion
 	// was ever configured. CompletionTimeoutWithRaw resolves effective vs.
 	// raw in one pass so the two cannot disagree.

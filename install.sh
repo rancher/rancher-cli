@@ -62,7 +62,7 @@ EOF
 }
 
 # curl_authed <extra-header|""> <curl-args...>: single owner of the
-# token→curl channel. The token travels via --config on stdin — never in
+# token→curl channel. The token travels via --config on stdin - never in
 # argv. Every tokened request in this script calls this function.
 # Untokened requests (anonymous fetch branches, CDN leg of fetch_asset)
 # call curl directly.
@@ -98,7 +98,7 @@ fetch() {
 #
 # Single tokened request without -L writes the body to "$_out" and captures
 # the HTTP code and redirect Location via -w. On 200 the file already holds
-# the asset — done, one request. On 302/301 (real GitHub signed CDN redirect)
+# the asset - done, one request. On 302/301 (real GitHub signed CDN redirect)
 # the small redirect body in "$_out" is overwritten by a plain untokened fetch
 # of the Location URL; the signed URL is self-authenticating and the token
 # must never leave $API_URL. Security property: identical to the previous
@@ -152,7 +152,7 @@ fetch_asset_ids() {
     # listing page; skip the redundant tags-endpoint round trip.
     _rel_json="$REL_JSON"
   else
-    # Capture body and HTTP code in one variable — no temp file.
+    # Capture body and HTTP code in one variable - no temp file.
     # curl appends '\n<code>' after the body via -w; split on the last newline:
     #   _meta_code = everything after the final newline (the 3-digit status)
     #   _meta_body = everything before it (the JSON response body)
@@ -168,7 +168,7 @@ fetch_asset_ids() {
 *}"
     if [ "$_meta_rc" -ne 0 ] || [ "$_meta_code" != "200" ]; then
       METADATA_FAIL_CODE="${_meta_code:-error}"
-      warn "release metadata not readable with this token (HTTP ${_meta_code:-error}) — falling back to direct download"
+      warn "release metadata not readable with this token (HTTP ${_meta_code:-error}) - falling back to direct download"
       return 0
     fi
     _rel_json="$_meta_body"
@@ -212,13 +212,13 @@ EOF
     SHA256SUMS_ASSET_ID="${_ids_rest##* }"
   fi
   _awk_note=""
-  [ -z "${_used_awk:-}" ] || _awk_note=" — note: id extraction without jq or python3 is best-effort; install one of them if the release assets look correct"
+  [ -z "${_used_awk:-}" ] || _awk_note=" - note: id extraction without jq or python3 is best-effort; install one of them if the release assets look correct"
   [ -n "$CLI_ASSET_ID" ] || \
-    err "asset not found in release $TAG: $CLI_ASSET — verify the release assets exist${_awk_note}"
+    err "asset not found in release $TAG: $CLI_ASSET - verify the release assets exist${_awk_note}"
   [ -n "$HELPER_ASSET_ID" ] || \
-    err "asset not found in release $TAG: $HELPER_ASSET — verify the release assets exist${_awk_note}"
+    err "asset not found in release $TAG: $HELPER_ASSET - verify the release assets exist${_awk_note}"
   [ -n "$SHA256SUMS_ASSET_ID" ] || \
-    err "asset not found in release $TAG: SHA256SUMS — verify the release assets exist${_awk_note}"
+    err "asset not found in release $TAG: SHA256SUMS - verify the release assets exist${_awk_note}"
 }
 
 validate_tag() {
@@ -283,7 +283,7 @@ resolve_tag() {
     _probe="$(curl --proto '=https' --tlsv1.2 -sI -o /dev/null \
       -w '%{http_code} %{redirect_url}' "$BASE_URL/$REPO/releases/latest")" || _rc=$?
   fi
-  [ "$_rc" -eq 0 ] || err "release resolution request failed (curl exit $_rc) — network, TLS, or proxy problem"
+  [ "$_rc" -eq 0 ] || err "release resolution request failed (curl exit $_rc) - network, TLS, or proxy problem"
   _code="${_probe%% *}"
   _redirect="${_probe#* }"
   # Only GitHub's first-release 404 means "no stable release"; 401/403/429/
@@ -292,11 +292,11 @@ resolve_tag() {
     30?) : ;;
     404)
       if [ -z "$TOKEN" ]; then
-        err "no stable release found — an internal repository needs auth (gh auth login or GH_TOKEN); on a public repository this means: use --pre or --version <tag>"
+        err "no stable release found - an internal repository needs auth (gh auth login or GH_TOKEN); on a public repository this means: use --pre or --version <tag>"
       fi
-      err "no stable release yet — use --pre or --version <tag>; with a token set this can also mean the token lacks access to an internal repository (scope/SSO)"
+      err "no stable release yet - use --pre or --version <tag>; with a token set this can also mean the token lacks access to an internal repository (scope/SSO)"
       ;;
-    *) err "release resolution failed (HTTP $_code) — check token/rate limits and retry" ;;
+    *) err "release resolution failed (HTTP $_code) - check token/rate limits and retry" ;;
   esac
   case "$_redirect" in
     */tag/*) TAG="${_redirect##*/tag/}" ;;
@@ -324,18 +324,18 @@ resolve_pre_tag() {
   while :; do
     # Page cap: runaway-loop backstop against non-API responses (captive portal,
     # JSON object); not a release search window limit.
-    [ "$_page" -gt 100 ] && err "release listing: page cap reached (100 pages) — non-API response or runaway loop"
+    [ "$_page" -gt 100 ] && err "release listing: page cap reached (100 pages) - non-API response or runaway loop"
     if ! _body="$(fetch "$API_URL/repos/$REPO/releases?per_page=100&page=$_page")"; then
       if [ -z "$TOKEN" ]; then
-        err "release listing request failed (page $_page) — an internal repository needs auth: authenticate gh (gh auth login) or set GH_TOKEN"
+        err "release listing request failed (page $_page) - an internal repository needs auth: authenticate gh (gh auth login) or set GH_TOKEN"
       fi
       err "release listing request failed (page $_page)"
     fi
     _n="$(printf '%s' "$_body" | _count)"
     case "$_n" in
-      ''|*[!0-9]*) err "release listing parse failed (page $_page) — unexpected response (captive portal?)" ;;
+      ''|*[!0-9]*) err "release listing parse failed (page $_page) - unexpected response (captive portal?)" ;;
     esac
-    [ "$_n" -eq 0 ] && err "no published release found — the listing is exhausted"
+    [ "$_n" -eq 0 ] && err "no published release found - the listing is exhausted"
     TAG="$(printf '%s' "$_body" | _parse)"
     if [ -n "$TAG" ]; then
       validate_tag "$TAG"
@@ -349,7 +349,7 @@ resolve_pre_tag() {
 }
 
 verify_checksums() {
-  # Each asset independently: exactly ONE entry, then its digest — a
+  # Each asset independently: exactly ONE entry, then its digest - a
   # combined count would accept a duplicated CLI entry masking a missing
   # helper entry, leaving one binary entirely unchecked.
   for _a in "$CLI_ASSET" "$HELPER_ASSET"; do
@@ -364,7 +364,7 @@ verify_checksums() {
 # authenticated gh takes the unavailable path (notice; fatal only with
 # --verify-attestation). A capable client's verification failure is fatal.
 #
-# Attestation verification talks to github.com regardless of BASE_URL —
+# Attestation verification talks to github.com regardless of BASE_URL -
 # that is where release attestations live. The auth check here is
 # deliberately NOT scoped to the download host.
 gh_capable() {
@@ -390,7 +390,7 @@ resolve_token() {
   note "using gh auth token"
 }
 
-# hold_at: test-only SIGKILL seam — blocks while the named file exists.
+# hold_at: test-only SIGKILL seam - blocks while the named file exists.
 hold_at() {
   [ -n "${1:-}" ] || return 0
   while [ -e "$1" ]; do sleep 0.1; done
@@ -406,7 +406,7 @@ file_sum() {
 }
 
 # Idempotent same-tag path: an existing version dir is reused ONLY if both
-# binaries match the freshly downloaded SHA256SUMS — an .ok marker or
+# binaries match the freshly downloaded SHA256SUMS - an .ok marker or
 # executable bit proves nothing about content.
 version_dir_intact() {
   [ -f "$1/rancher" ] && [ -f "$1/rancher-credential-vault" ] || return 1
@@ -434,13 +434,13 @@ install_link() {
 
 # Receipt: atomic, JSON-escaped, best-effort (warn, never fail the install).
 # Input is guaranteed newline-free (has_raw_controls rejects \n up front:
-# awk cannot preserve trailing newlines — it never sees whether input ended
-# with its record separator — so newline-bearing paths skip the receipt
+# awk cannot preserve trailing newlines - it never sees whether input ended
+# with its record separator - so newline-bearing paths skip the receipt
 # rather than silently recording a wrong path).
 json_escape() {
   printf '%s' "$1" | awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/,"\\t"); gsub(/\r/,"\\r"); gsub(/\010/,"\\b"); gsub(/\014/,"\\f"); print}'
 }
-# has_raw_controls: any byte the receipt cannot represent faithfully —
+# has_raw_controls: any byte the receipt cannot represent faithfully -
 # every C0 byte except tab/CR/backspace/formfeed. Newline is deliberately
 # in the reject set (see json_escape).
 has_raw_controls() {
@@ -498,7 +498,7 @@ parse_args() {
 }
 
 # grep/awk/tr are load-bearing (tag grammar, checksum selection, receipt
-# guard — a missing tr would fail the control-byte guard OPEN), so they are
+# guard - a missing tr would fail the control-byte guard OPEN), so they are
 # preflighted like the rest.
 preflight_tools() {
   for tool in curl uname mktemp chmod mv ln readlink grep awk tr; do
@@ -519,29 +519,29 @@ probe_platform() {
   case "$OS" in
     Linux) OS="linux"; MV_REPLACE="mv -T" ;;
     Darwin) OS="darwin"; MV_REPLACE="mv -h" ;;
-    *) err "unsupported platform $OS/$ARCH — download manually: $BASE_URL/$REPO/releases" ;;
+    *) err "unsupported platform $OS/$ARCH - download manually: $BASE_URL/$REPO/releases" ;;
   esac
   case "$ARCH" in
     x86_64|amd64) ARCH="amd64" ;;
     aarch64|arm64) ARCH="arm64" ;;
     s390x) ARCH="s390x" ;;
-    *) err "unsupported platform $OS/$ARCH — download manually: $BASE_URL/$REPO/releases" ;;
+    *) err "unsupported platform $OS/$ARCH - download manually: $BASE_URL/$REPO/releases" ;;
   esac
   if [ "$OS" = "darwin" ] && [ "$ARCH" = "s390x" ]; then
-    err "unsupported platform darwin/s390x — download manually: $BASE_URL/$REPO/releases"
+    err "unsupported platform darwin/s390x - download manually: $BASE_URL/$REPO/releases"
   fi
 }
 
 resolve() {
   resolve_tag
-  # Asset names must match release.yaml's build loop — the two lists stay in lockstep.
+  # Asset names must match release.yaml's build loop - the two lists stay in lockstep.
   CLI_ASSET="rancher-$OS-$ARCH"
   HELPER_ASSET="rancher-credential-vault-$OS-$ARCH"
   DL_BASE="$BASE_URL/$REPO/releases/download/$TAG"
 
   if [ -n "$DRY_RUN" ]; then
     # Run id resolution now so the preview shows the true download source.
-    # Contract: resolution GETs only — when TOKEN is set, one additional
+    # Contract: resolution GETs only - when TOKEN is set, one additional
     # metadata GET, but no filesystem writes, no lock, no attestation.
     fetch_asset_ids
     printf 'tag: %s\n' "$TAG"
@@ -569,7 +569,7 @@ download() {
   ln -s /dev/null "$_mv_probe/a"
   ln -s /dev/null "$_mv_probe/b"
   $MV_REPLACE "$_mv_probe/b" "$_mv_probe/a" 2>/dev/null || \
-    err "mv does not support the required no-follow replace (-T/-h) — unsupported mv implementation (BusyBox?)"
+    err "mv does not support the required no-follow replace (-T/-h) - unsupported mv implementation (BusyBox?)"
   rm -rf "$_mv_probe"
 
   WORK="$(mktemp -d)"
@@ -591,7 +591,7 @@ download() {
     if ! fetch "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET"; then
       _dlmsg="download failed: $DL_BASE/$CLI_ASSET (404 = tag '$TAG' has no such asset)"
       if [ -n "$TOKEN" ] && [ -n "$METADATA_FAIL_CODE" ]; then
-        _dlmsg="$_dlmsg — or the token lacks access to an internal repository (scope/SSO); release metadata was also unreadable (HTTP $METADATA_FAIL_CODE)"
+        _dlmsg="$_dlmsg - or the token lacks access to an internal repository (scope/SSO); release metadata was also unreadable (HTTP $METADATA_FAIL_CODE)"
       fi
       err "$_dlmsg"
     fi
@@ -632,7 +632,7 @@ stage() {
   # delete every version dir (CURRENT_TARGET="" matches nothing) and the
   # atomic switch would nest inside it instead of replacing it.
   if [ -e "$DATA_DIR/current" ] && [ ! -L "$DATA_DIR/current" ]; then
-    err "$DATA_DIR/current exists but is not a symlink — the layout is corrupt; remove it and rerun"
+    err "$DATA_DIR/current exists but is not a symlink - the layout is corrupt; remove it and rerun"
   fi
 
   # Preflight BOTH public paths before ANY layout mutation (staging, switch,
@@ -640,7 +640,7 @@ stage() {
   # a new pair while the install reports failure.
   for _name in rancher rancher-credential-vault; do
     if [ -d "$BIN_DIR/$_name" ] && [ ! -L "$BIN_DIR/$_name" ]; then
-      err "$BIN_DIR/$_name is a directory — refusing to replace it"
+      err "$BIN_DIR/$_name is a directory - refusing to replace it"
     fi
   done
 
@@ -658,7 +658,7 @@ stage() {
 
   VDIR="$DATA_DIR/versions/$TAG"
   if [ -d "$VDIR" ] && version_dir_intact "$VDIR"; then
-    note "version $TAG already present and intact — repairing links"
+    note "version $TAG already present and intact - repairing links"
   else
     [ -d "$VDIR" ] && VDIR="$DATA_DIR/versions/$TAG.2"
     STAGING_DIR="$DATA_DIR/versions/$TAG.staging.$$"
@@ -695,7 +695,7 @@ link() {
   ln -s "versions/${VDIR##*/}" "$_tmp_link"
   $MV_REPLACE "$_tmp_link" "$DATA_DIR/current"
   [ "$(readlink "$DATA_DIR/current")" = "versions/${VDIR##*/}" ] || \
-    err "current switch failed verification — rerun the installer"
+    err "current switch failed verification - rerun the installer"
   hold_at "${RANCHER_CLI_INSTALL_HOLD_AFTER_SWITCH:-}"
 
   # Post-switch GC: the pre-staging pass necessarily kept the then-current old
@@ -713,7 +713,7 @@ link() {
 epilogue() {
   # Epilogue: verify the links resolve, prove the install, print next steps.
   if [ ! -x "$BIN_DIR/rancher" ] || [ ! -x "$BIN_DIR/rancher-credential-vault" ]; then
-    err "installed links do not resolve — rerun the installer"
+    err "installed links do not resolve - rerun the installer"
   fi
   note "installed: $("$BIN_DIR/rancher" --version)"
   case ":$PATH:" in
@@ -726,7 +726,7 @@ epilogue() {
       esac ;;
   esac
   # Shadow scan: another rancher/rancher-credential-vault elsewhere on PATH
-  # can shadow this install — either by PATH order or by a shell's command
+  # can shadow this install - either by PATH order or by a shell's command
   # hash cached before these links existed. The installer cannot fix a
   # parent shell's hash; it can name the hazard. warn (not note) so -q
   # cannot hide a shadowed install. set -f spans the whole loop: the
@@ -745,7 +745,7 @@ epilogue() {
         continue
       fi
       # A convenience symlink pointing back at this install runs the
-      # identical binary — not a shadow, no warning. Follow the chain
+      # identical binary - not a shadow, no warning. Follow the chain
       # (update-alternatives-style layouts use two hops), resolving
       # relative targets against each link's own directory, then compare
       # the final path canonicalized physically (cd + pwd -P resolves
@@ -769,7 +769,7 @@ epilogue() {
           continue
         fi
       fi
-      warn "another $_b exists at $_d/$_b — it may shadow this install (check PATH order; run 'hash -r' or 'rehash' in open shells)"
+      warn "another $_b exists at $_d/$_b - it may shadow this install (check PATH order; run 'hash -r' or 'rehash' in open shells)"
     done
   done
   set +f

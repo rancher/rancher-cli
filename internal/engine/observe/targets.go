@@ -52,7 +52,7 @@ type Target struct {
 }
 
 // Targets is the curated table (design spec LS-1), verbatim: namespaces,
-// selectors, and containers are source-verified against rancher/rancher —
+// selectors, and containers are source-verified against rancher/rancher -
 // do not re-derive them.
 var Targets = []Target{
 	{Name: "server", LocalOnly: true, Namespace: "cattle-system", Selector: "app=rancher"},
@@ -88,7 +88,7 @@ func Names() []string {
 
 // Resolved is the concrete, cluster-bound result of resolving a Target for
 // one invocation: the client to fetch logs through, the cluster it targets,
-// the namespace pods were found in, and the pods themselves — possibly
+// the namespace pods were found in, and the pods themselves - possibly
 // empty; the caller (the logs command) decides whether an empty result is
 // fatal, since "zero pods" and "every fetch failed" collapse to the same
 // yield-nothing outcome.
@@ -106,7 +106,7 @@ const (
 	fleetNamespaceDownstream = "cattle-fleet-system"
 	fleetNamespaceLegacy     = "fleet-system"
 
-	dockerInstallHint = "no rancher pods on the local cluster — single-node Docker install? " +
+	dockerInstallHint = "no rancher pods on the local cluster - single-node Docker install? " +
 		"server logs live in `docker logs <container>`"
 	nonACEHint = "cluster has no authorized cluster endpoint (kube-api-auth runs only on ACE clusters)"
 )
@@ -124,7 +124,7 @@ func Resolve(ctx context.Context, clients engine.ClusterClientFactory, t Target,
 	return ResolveOnCluster(ctx, clients, t, clusterID)
 }
 
-// Applicable reports whether t can run against clusterID at all — a
+// Applicable reports whether t can run against clusterID at all - a
 // LocalOnly target against a downstream cluster, or a DownstreamOnly target
 // against the local cluster, is never applicable. Callers that iterate a
 // target × cluster matrix themselves (support-bundle) check this BEFORE
@@ -269,7 +269,7 @@ func resolveServerPods(ctx context.Context, client engine.ClusterClient) (string
 // fleet Clusters by the provisioning name, not the mgmt id), its
 // spec.agentNamespace, falling through to the local/downstream defaults and
 // finally the legacy fleet-system namespace when no pods match. Every read
-// in the chain degrades silently to the next default on error/absence —
+// in the chain degrades silently to the next default on error/absence -
 // per the design spec, "no-permission" is a fall-through, not a failure.
 func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClient, clusterID string) (string, []unstructured.Unstructured, error) {
 	isLocal := clusterID == engine.LocalCluster

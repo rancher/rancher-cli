@@ -22,7 +22,7 @@ const projectLabel = "field.cattle.io/projectId"
 // algorithm ResolveProject and resolveUser both need, mirroring
 // ResolveCluster's collision semantics exactly (surface/cli's
 // clientFactory.ResolveCluster): an id match and any display-name matches
-// are collected as a union of candidate ids, not an id-wins short-circuit —
+// are collected as a union of candidate ids, not an id-wins short-circuit -
 // a value matching one item's id AND a different item's displayName is
 // ambiguous, not a silent id match. Callers own the entity-specific error
 // message; this returns the matched id set (0, 1, or 2+) plus idFound and
@@ -59,7 +59,7 @@ func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string)
 //
 // On NOT_FOUND, cands is returned as-is (discovery hints). On ambiguity,
 // cands is narrowed to only the entries whose ID is in the matched set and
-// sorted by ID for deterministic output — never the full list.
+// sorted by ID for deterministic output - never the full list.
 func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) string, cands []clierr.Candidate, notFoundMsg, notFoundHint string, ambiguousMsg func(idFound bool, displayMatchCount int) string, ambiguousHint string) (string, error) {
 	matched, idFound, displayMatchCount := MatchByIDOrDisplay(nameOrID, ids, displayOf)
 	switch len(matched) {
@@ -90,8 +90,8 @@ func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) st
 // ResolveProject maps a project display name or id to its metadata.name.
 // The list is the primary path: it resolves display names and enforces the
 // id-vs-display ambiguity guard. A project MEMBER cannot list the
-// collection — member grants are get-on-the-named-object, never
-// list-on-the-collection — so a forbidden list falls back to a direct get
+// collection - member grants are get-on-the-named-object, never
+// list-on-the-collection - so a forbidden list falls back to a direct get
 // by nameOrID: exact id only, no display-name resolution (impossible
 // without the list). Without the fallback, `inspect project <id>` turned a
 // question the member is allowed to ask into an RBAC error.
@@ -139,7 +139,7 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 // usage's collectByProject: when a caller cannot LIST the projects
 // collection (member grants are get-on-object, never list-on-collection),
 // it fetches nameOrID directly. Returns the object on success. On failure:
-// a NOT_FOUND when the id does not exist (a typo, or a display name —
+// a NOT_FOUND when the id does not exist (a typo, or a display name -
 // unresolvable without a list; exit 4, never masked as RBAC); listErr
 // augmented with the exact-id hint when the get is also forbidden; the
 // get's own error verbatim for anything else, so a transient failure keeps
@@ -154,7 +154,7 @@ func ResolveByGet(ctx context.Context, client engine.ClusterClient, clusterID, n
 	switch {
 	case isClassified && ge.Code == clierr.CodeNotFound:
 		return nil, clierr.New(clierr.CodeNotFound, "project not found: "+nameOrID+
-			"; you cannot list projects, so display names cannot be resolved — "+
+			"; you cannot list projects, so display names cannot be resolved - "+
 			"pass the exact project id (metadata.name)")
 	case isClassified && ge.Code == clierr.CodeRBAC:
 		return nil, listErr.WithMessage(listErr.Message +
@@ -169,7 +169,7 @@ func ResolveByGet(ctx context.Context, client engine.ClusterClient, clusterID, n
 // project-scoped secrets live in for projectID: status.backingNamespace,
 // falling back to the project id itself when that field is absent or empty
 // (older Rancher, or a project not yet touched by the propagation
-// controller) — Rancher's own GetProjectBackingNamespace semantics.
+// controller) - Rancher's own GetProjectBackingNamespace semantics.
 // statusEmpty reports whether that fallback fired, for callers that need to
 // know precisely (a project could coincidentally set backingNamespace to
 // the project id itself; comparing ns == projectID can't distinguish that
@@ -196,7 +196,7 @@ func BackingNamespace(ctx context.Context, clients engine.ClusterClientFactory, 
 // remove-namespace all enforce membership with, kept in one place so a
 // wording change never drifts across call sites. detail is call-site
 // specific prose (list-scoping advice differs from a mutation-target
-// mismatch) appended to the message — never a hint, since neither call
+// mismatch) appended to the message - never a hint, since neither call
 // site's guidance is a single concrete command.
 func NotMemberError(namespace, projectID, detail string) error {
 	return clierr.New(clierr.CodeValidation,
@@ -204,7 +204,7 @@ func NotMemberError(namespace, projectID, detail string) error {
 }
 
 // SetMembership stamps obj (a namespace) with the project membership label
-// and annotation — the one place the label+annotation encoding lives, so
+// and annotation - the one place the label+annotation encoding lives, so
 // create-namespace and add-namespace can never drift on what "member" means.
 func SetMembership(obj *unstructured.Unstructured, clusterID, projectID string) {
 	_ = unstructured.SetNestedField(obj.Object, projectID, "metadata", "labels", projectLabel)
@@ -212,7 +212,7 @@ func SetMembership(obj *unstructured.Unstructured, clusterID, projectID string) 
 }
 
 // ClearMembership removes the project membership label and annotation from
-// obj (a namespace) — SetMembership's inverse, kept beside it.
+// obj (a namespace) - SetMembership's inverse, kept beside it.
 func ClearMembership(obj *unstructured.Unstructured) {
 	unstructured.RemoveNestedField(obj.Object, "metadata", "labels", projectLabel)
 	unstructured.RemoveNestedField(obj.Object, "metadata", "annotations", projectLabel)
@@ -234,7 +234,7 @@ func ProjectSelector(projectID string) (string, error) {
 
 // ProjectNamespaces returns the set of namespace names carrying the
 // projectID membership label on the downstream cluster. An empty result is
-// not an error — callers decide whether that means "no members" or
+// not an error - callers decide whether that means "no members" or
 // "unknown project".
 func ProjectNamespaces(ctx context.Context, client engine.ClusterClient, projectID string) (map[string]bool, error) {
 	selector, err := ProjectSelector(projectID)

@@ -25,7 +25,7 @@ const v3TokensPath = token.V3TokensPath
 
 // recordingHandler captures every request it receives, for asserting a
 // create-discrimination or unknown-name case actually fell through instead of
-// being served by the façade itself.
+// being served by the facade itself.
 type recordingHandler struct {
 	requests []*http.Request
 	bodies   [][]byte
@@ -35,7 +35,7 @@ func (r *recordingHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	body, _ := io.ReadAll(req.Body)
 	r.requests = append(r.requests, req)
 	r.bodies = append(r.bodies, body)
-	w.WriteHeader(http.StatusTeapot) // distinctive: never a code the façade itself would return
+	w.WriteHeader(http.StatusTeapot) // distinctive: never a code the facade itself would return
 }
 
 func newFacade(t *testing.T, opts testrancher.Options, fall *recordingHandler) (*testrancher.Facade, *httptest.Server) {
@@ -422,7 +422,7 @@ func TestNamedGetServedUnknownFallsThroughAndListMerges(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(listBody, &list))
 	assert.Equal(t, "TokenList", list.Kind)
-	require.Len(t, list.Items, 1, "the fallthrough served no items, so only the façade record is listed")
+	require.Len(t, list.Items, 1, "the fallthrough served no items, so only the facade record is listed")
 	assert.Equal(t, "fac-token-1", list.Items[0].Metadata.Name)
 }
 
@@ -510,7 +510,7 @@ func TestNamedGetAndDeleteRejectUnauthorizedBearer(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, delResp.StatusCode, "DELETE with bearer %q must 401", bearer)
 	}
 
-	// The token is still valid after both rejections — neither failed call revoked it.
+	// The token is still valid after both rejections - neither failed call revoked it.
 	getResp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+extTokensPath+"/fac-token-1", nil, tok.Status.BearerToken)
 	assert.Equal(t, http.StatusOK, getResp.StatusCode)
 }
@@ -554,7 +554,7 @@ func TestDeviceCodePendingThenTokenIncludesIDToken(t *testing.T) {
 
 // TestFacadeIdPURLPointsProviderAtExternalOrigin asserts the split-origin
 // wiring: with IdPURL set, the azureADProvider document names the external
-// origin for every endpoint and the façade itself no longer answers /idp/*,
+// origin for every endpoint and the facade itself no longer answers /idp/*,
 // while IdPHandler serves the stub for that external server.
 func TestFacadeIdPURLPointsProviderAtExternalOrigin(t *testing.T) {
 	t.Parallel()
@@ -583,7 +583,7 @@ func TestFacadeIdPURLPointsProviderAtExternalOrigin(t *testing.T) {
 	local, err := http.Post(srv.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
 	require.NoError(t, err)
 	_ = local.Body.Close()
-	assert.Equal(t, http.StatusNotFound, local.StatusCode, "the façade must not serve the IdP on its own origin when IdPURL is set")
+	assert.Equal(t, http.StatusNotFound, local.StatusCode, "the facade must not serve the IdP on its own origin when IdPURL is set")
 
 	idp := httptest.NewServer(f.IdPHandler())
 	t.Cleanup(idp.Close)
@@ -593,7 +593,7 @@ func TestFacadeIdPURLPointsProviderAtExternalOrigin(t *testing.T) {
 	assert.Equal(t, http.StatusOK, ext.StatusCode)
 }
 
-// TestIdPHandlerWithoutIdPIsNotFound asserts that a façade built without
+// TestIdPHandlerWithoutIdPIsNotFound asserts that a facade built without
 // EnableIdP still hands out a usable handler: every route is 404 instead of
 // a nil-receiver panic.
 func TestIdPHandlerWithoutIdPIsNotFound(t *testing.T) {
@@ -617,7 +617,7 @@ func testPublicKeyB64(t *testing.T) string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// nameOfBearer returns the resource name a façade bearer carries: the text
+// nameOfBearer returns the resource name a facade bearer carries: the text
 // between an optional "ext/" prefix and the secret separator.
 func nameOfBearer(bearer string) string {
 	name, _, _ := strings.Cut(strings.TrimPrefix(bearer, "ext/"), ":")
@@ -728,7 +728,7 @@ func TestFacadeKubeconfigLoginIsAnExtObjectWithAName(t *testing.T) {
 }
 
 // TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx asserts the
-// façade's model of the server: a deterministic 4xx proves nothing was
+// facade's model of the server: a deterministic 4xx proves nothing was
 // created, so no record exists after it; any other forced status models a
 // commit the client never learned of, so the record exists.
 func TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx(t *testing.T) {
@@ -856,7 +856,7 @@ func TestFacadeAuthTokenDepositOnCommand(t *testing.T) {
 }
 
 // TestFacadeExtTokenListAndDryRunDelete asserts what the CLI's get and delete
-// verbs need against the façade: the ext collection lists every ext record
+// verbs need against the facade: the ext collection lists every ext record
 // with a resourceVersion, a dry-run delete with the current precondition
 // changes nothing, a stale precondition is refused with 409, and every
 // attempt is recorded with its dry-run flag and precondition. The record is

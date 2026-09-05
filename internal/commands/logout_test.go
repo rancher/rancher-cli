@@ -101,7 +101,7 @@ func TestLogoutAll(t *testing.T) {
 	require.ErrorIs(t, err, config.ErrNoToken)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	assert.Equal(t, "acme", cfg.CurrentServer, "logout --all no longer resets the pointer — a credential-less entry is a valid state")
+	assert.Equal(t, "acme", cfg.CurrentServer, "logout --all no longer resets the pointer - a credential-less entry is a valid state")
 }
 
 // TestLogoutAllOnEmptyConfigReturnsText asserts that logging out of every
@@ -182,7 +182,7 @@ func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
 
 // Round-3 repro: --all's per-server host-scoped delete (round 2) missed a
 // legacy bare entry (no Server field) and an entry cached against a server
-// no longer in config.yaml — neither is reachable by any per-server delete.
+// no longer in config.yaml - neither is reachable by any per-server delete.
 // --all must catch both via the full-cache wipe.
 func TestLogoutAllCatchesOrphanedCacheEntries(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme")
@@ -316,7 +316,7 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 // not be vaporized. "acme" is a plain file-store entry (its deletion never touches
 // the helper-records file at all, exec policy or not); "ghost" is an
 // orphaned EXEC-helper record, opened directly against the "exec:fake"
-// backend independent of cfg's own "file" policy — matching how a real
+// backend independent of cfg's own "file" policy - matching how a real
 // orphan arises (left behind by a PAST exec policy, swept regardless of
 // the CURRENT one). Only the orphan sweep's persist write is refused.
 func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
@@ -340,8 +340,8 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 	fileStore := config.NewFileStore(dir)
 	require.NoError(t, fileStore.SetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"}, "id:sec"))
 
-	// A helper credential for a name never written to config.yaml — the
-	// orphan the sweep step exists to reach — opened directly against
+	// A helper credential for a name never written to config.yaml - the
+	// orphan the sweep step exists to reach - opened directly against
 	// exec:fake regardless of cfg's "file" policy above.
 	execStore, err := config.OpenStore("exec:fake", dir)
 	require.NoError(t, err)
@@ -349,7 +349,7 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 
 	// credhelper-provenance.yaml (internal/config's helperRecordsFileName)
 	// behind a symlink: reads during the sweep still resolve, but its
-	// persist write is refused — the per-server loop (file-backed "acme")
+	// persist write is refused - the per-server loop (file-backed "acme")
 	// and exec-cache wipe never touch this file, so they complete for real
 	// first.
 	recordsPath := filepath.Join(dir, "credhelper-provenance.yaml")
@@ -376,7 +376,7 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 	require.NotEmpty(t, lines)
 	assert.Equal(t, "already logged out: acme", lines[0])
 	assert.Contains(t, lines, "credentials removed: acme: file")
-	assert.Equal(t, "those credentials are gone regardless of this failure — re-run auth logout --all to finish",
+	assert.Equal(t, "those credentials are gone regardless of this failure - re-run auth logout --all to finish",
 		lines[len(lines)-1])
 
 	_, gerr := fileStore.GetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"})
@@ -387,7 +387,7 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 // safety property the server-registration restructure adds: registration
 // (config.yaml) commits BEFORE any authentication or credential write, in
 // its own lock cycle. A registration-time config-write failure must
-// therefore leave no helper credential behind at all — the interleaving
+// therefore leave no helper credential behind at all - the interleaving
 // (helper store succeeds, then config write fails) that used to strand a
 // credential is now structurally impossible, because delegated login can
 // no longer reach the credential-write step without registration's own
@@ -405,7 +405,7 @@ func TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential(t *testing
 
 	dir := t.TempDir()
 	// A real config behind a symlink at the config path: config.Load follows
-	// it fine, but atomicWriteFile refuses to write THROUGH a symlink — so
+	// it fine, but atomicWriteFile refuses to write THROUGH a symlink - so
 	// cfg.Write fails deterministically inside commitCreate's registration
 	// commit, before login's auth flow (and so its credential write) ever
 	// starts.
@@ -427,7 +427,7 @@ func TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential(t *testing
 }
 
 // TestLogoutAllNeverRepairsADanglingCurrentServer asserts the retired repair
-// behavior: logout --all is a pure credential-store writer now — pointer
+// behavior: logout --all is a pure credential-store writer now - pointer
 // bootstrap/repair is registration's privilege alone, so a dangling pointer
 // survives --all exactly as it was.
 func TestLogoutAllNeverRepairsADanglingCurrentServer(t *testing.T) {
@@ -452,7 +452,7 @@ func TestLogoutAllNeverRepairsADanglingCurrentServer(t *testing.T) {
 
 // TestDeleteFailureCancellationPassesThrough asserts the fourth-review P1: a
 // delete interrupted by the caller's own cancellation must surface as
-// context.Canceled through logout's failure shaping — never rewrapped into
+// context.Canceled through logout's failure shaping - never rewrapped into
 // the generic "failed to log out" clierr, which severs the errors.Is chain
 // and reads as a helper fault.
 func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
@@ -495,7 +495,7 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 		pf := LogoutAllPartialFailure{LoggedOut: []string{"prod"}}
 		assert.Equal(t, []string{
 			"already logged out: prod",
-			"those credentials are gone regardless of this failure — re-run auth logout --all to finish",
+			"those credentials are gone regardless of this failure - re-run auth logout --all to finish",
 		}, pf.TextDetails())
 	})
 
@@ -511,7 +511,7 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 			"credentials removed: prod: keychain, file",
 			"credentials removed: staging: keychain",
 			"cached kubectl credentials removed: k1, k2",
-			"those credentials are gone regardless of this failure — re-run auth logout --all to finish",
+			"those credentials are gone regardless of this failure - re-run auth logout --all to finish",
 		}, pf.TextDetails())
 	})
 }
@@ -519,7 +519,7 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 // TestDeleteFailurePreservesLockTimeout asserts the exercise-8/9-fixes review
 // finding: a LOCK_TIMEOUT surfacing from the token-cache or helper-records
 // lock inside the delete must keep its code and retryability through logout's
-// failure shaping — flattening it to GENERIC hides exit 8 and the retry
+// failure shaping - flattening it to GENERIC hides exit 8 and the retry
 // signal from scripted callers.
 func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	t.Parallel()
@@ -538,11 +538,11 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 }
 
 // TestLogoutTextAndCurrentServerClearedReported verifies the TTY story: logout
-// is no longer silent — the text names the server, its URL, the backends the
-// token was removed from, and that the current server was cleared — and the
+// is no longer silent - the text names the server, its URL, the backends the
+// token was removed from, and that the current server was cleared - and the
 // envelope carries currentServerCleared for programs.
 // TestLogoutNeverClearsPointerAndOmitsCurrentServerClearedField asserts the
-// envelope change: currentServerCleared is REMOVED from LogoutResult —
+// envelope change: currentServerCleared is REMOVED from LogoutResult -
 // logout is a pure credential-store writer and the pointer is untouched
 // even for the current server.
 func TestLogoutNeverClearsPointerAndOmitsCurrentServerClearedField(t *testing.T) {
@@ -565,7 +565,7 @@ func TestLogoutNeverClearsPointerAndOmitsCurrentServerClearedField(t *testing.T)
 
 // TestLogoutTextNoCurrentServerClearWhenOtherServer makes sure logging out a
 // server other than the current one says nothing about the current server
-// pointer — it was not touched.
+// pointer - it was not touched.
 func TestLogoutTextNoCurrentServerClearWhenOtherServer(t *testing.T) {
 	dir, _ := seedLogout(t, "acme", "acme", "other")
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), args{a: []string{"other"}}, ui.Discard())
@@ -581,7 +581,7 @@ func TestLogoutTextNoCurrentServerClearWhenOtherServer(t *testing.T) {
 
 // TestStyleLogoutTextStripInvariant asserts auth logout's bold spans: each
 // server's opener line is bold, whole line; its detail line stays plain;
-// the trailing exec-credential cache-count line stays plain too — plus the
+// the trailing exec-credential cache-count line stays plain too - plus the
 // strip invariant and the inactive-style identity.
 func TestStyleLogoutTextStripInvariant(t *testing.T) {
 	t.Parallel()

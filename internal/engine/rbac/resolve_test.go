@@ -297,7 +297,7 @@ func TestResolveSubjectExternalPrincipalHashHitOccupiedConflict(t *testing.T) {
 	// A user was provisioned as hash(okta_user://alice). Its principal has
 	// since been replaced with okta_user://renamed and no other user owns
 	// okta_user://alice. EnsureUser would derive the same id and get
-	// AlreadyExists — provisioning must be blocked with CodeConflict, not
+	// AlreadyExists - provisioning must be blocked with CodeConflict, not
 	// silently entered.
 	requestedPrincipal := "okta_user://alice"
 	id := ProvisionedUserID(requestedPrincipal)
@@ -344,7 +344,7 @@ func TestResolveSubjectExternalPrincipalHashHitAmbiguousOwners(t *testing.T) {
 
 func TestResolveSubjectExternalPrincipalAmbiguousOwners(t *testing.T) {
 	// Two non-system users share the same principal (malformed cluster);
-	// neither has the hash id — forces the fallback-scan-only path.
+	// neither has the hash id - forces the fallback-scan-only path.
 	// Resolution must return AMBIGUOUS_SELECTION regardless of list order.
 	principal := "okta_user://shared"
 	user1 := userObj("u-aaa", "Alice", "alice", principal)
@@ -372,7 +372,7 @@ func TestResolveSubjectExternalPrincipalAmbiguousOwners(t *testing.T) {
 
 func TestResolveSubjectExternalPrincipalListScanHit(t *testing.T) {
 	// User exists under a non-hash id (e.g. created before EnsureUser, or
-	// renamed) — the principalIds list scan must find it.
+	// renamed) - the principalIds list scan must find it.
 	c := &fakeClient{users: []map[string]any{userObj("user-vwq4j", "Admin", "admin", "okta_user://alice", "local://user-vwq4j")}}
 	got, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Principal: "okta_user://alice"})
 	require.NoError(t, err)
@@ -400,7 +400,7 @@ func TestResolveSubjectBareByUsername(t *testing.T) {
 }
 
 func TestResolveSubjectBareUsernameDisplayCollision(t *testing.T) {
-	// User A has displayName "dev"; user B has username "dev" — input "dev" is ambiguous.
+	// User A has displayName "dev"; user B has username "dev" - input "dev" is ambiguous.
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-aaa", "dev", "aaa", "local://u-aaa"),
 		userObj("u-bbb", "", "dev", "local://u-bbb"),
@@ -414,7 +414,7 @@ func TestResolveSubjectBareUsernameDisplayCollision(t *testing.T) {
 }
 
 func TestResolveSubjectBareSameUserBothFields(t *testing.T) {
-	// One user whose displayName and username are both "ops" — matches once, not ambiguous.
+	// One user whose displayName and username are both "ops" - matches once, not ambiguous.
 	c := &fakeClient{users: []map[string]any{
 		userObj("u-ops", "ops", "ops", "local://u-ops"),
 	}}

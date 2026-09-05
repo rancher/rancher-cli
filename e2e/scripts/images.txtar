@@ -1,5 +1,5 @@
 # Owner-chain walk (pod→ReplicaSet→Deployment, UID staleness) is covered by
-# unit tests only — envtest runs no controller-manager, so no real ReplicaSets
+# unit tests only - envtest runs no controller-manager, so no real ReplicaSets
 # exist to walk.
 
 env RANCHER_CLI_URL=$TEST_RANCHER_URL

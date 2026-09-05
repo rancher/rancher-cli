@@ -68,7 +68,7 @@ func TestPrimeDescriptionMarksHelpWithoutTouchingUsage(t *testing.T) {
 
 // TestAdaptSetsPrimeMetadataFlag asserts Adapt stamps the Prime metadata flag
 // on a Capability.Tier == CapabilityPrime command, and leaves it unset on an
-// ordinary command — the seam the help and schema renderers read the marker
+// ordinary command - the seam the help and schema renderers read the marker
 // from, distinct from primeDescription's urfave DESCRIPTION seam.
 func TestAdaptSetsPrimeMetadataFlag(t *testing.T) {
 	t.Parallel()
@@ -97,7 +97,7 @@ func TestAdaptedPrimeCommandShowsHelpMarker(t *testing.T) {
 // TestAdaptedPrimeCommandDescriptionIsGreenWhenStyled asserts the leaf
 // --help DESCRIPTION block renders PrimeSentence in green under the same
 // color-activation rule every other styled render uses, and plain when
-// styling is off — while an ordinary command's --help (no DESCRIPTION at
+// styling is off - while an ordinary command's --help (no DESCRIPTION at
 // all) carries no color anywhere.
 func TestAdaptedPrimeCommandDescriptionIsGreenWhenStyled(t *testing.T) {
 	t.Parallel()
@@ -130,7 +130,7 @@ func TestAdaptedPrimeCommandDescriptionIsGreenWhenStyled(t *testing.T) {
 // TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker closes the loop the
 // runtime unit test opens: Adapt() never wires IO.Capability, so actually
 // EXECUTING a requirement-bearing command through the bare path must hit the
-// pipeline's loud mis-wiring error — never silently proceed.
+// pipeline's loud mis-wiring error - never silently proceed.
 func TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker(t *testing.T) {
 	t.Parallel()
 	var out, errOut bytes.Buffer
@@ -152,7 +152,7 @@ func TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker(t *testing.T) {
 
 // TestArgsUsageRendersRequiredAndOptionalArgs asserts PS-9's helper: required
 // Args render "<name>", optional Args render "[name]", space-joined in
-// declared order — the SAME Descriptor.Args the manifest publishes, so help
+// declared order - the SAME Descriptor.Args the manifest publishes, so help
 // text cannot drift from schema. Args with a non-empty Enum render the
 // pipe-joined values instead of the bare name.
 func TestArgsUsageRendersRequiredAndOptionalArgs(t *testing.T) {
@@ -292,7 +292,7 @@ func (c *sliceEchoCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// emptyTabularData is a Tabular fixture with no rows — the table-format
+// emptyTabularData is a Tabular fixture with no rows - the table-format
 // closed-world contract requires Tabular Data even for a payload that
 // carries nothing to display.
 type emptyTabularData struct{}

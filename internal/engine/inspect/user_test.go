@@ -111,7 +111,7 @@ func TestInspectUserProjectListForbiddenDegradesOnlyThatSection(t *testing.T) {
 
 func TestInspectUserGroupsForbiddenBlocksAllThreeHeldSections(t *testing.T) {
 	// A direct binding AND an otherwise-matching group binding are both
-	// present; neither may render once groups degrade — held completeness
+	// present; neither may render once groups degrade - held completeness
 	// is unknowable without the user's group principals.
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
 	c := newFakeClient().
@@ -344,7 +344,7 @@ func TestInspectUserCancellationDuringClusterEnrichmentAbortsBeforeProjects(t *t
 
 // TestInspectUserNoEffectiveVocabulary asserts the retired vocabulary
 // stays retired: roles are facts about bindings, permissions are the
-// server's answer — neither "effective" nor the old "held" qualifier
+// server's answer - neither "effective" nor the old "held" qualifier
 // may reappear in the command's user-facing strings.
 func TestInspectUserNoEffectiveVocabulary(t *testing.T) {
 	cmd := newUserCmdFake(newFakeClient())
@@ -418,7 +418,7 @@ func listOfGRB(items ...*unstructured.Unstructured) *unstructured.UnstructuredLi
 // TestInspectUserMalformedProjectBindingSurfacesWarning asserts the composite
 // end of the blank-scope drop: a matched prtb with no projectName never
 // renders (no blank PROJECT heading), and the omission reaches the caller
-// as a named warning — losing the collectRoles wiring must fail here, not
+// as a named warning - losing the collectRoles wiring must fail here, not
 // only in the rbac unit test.
 func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
@@ -448,8 +448,8 @@ func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
 // TestStyleUserTextStripInvariant asserts inspect user's bold spans: the
 // dynamic USER header (by prefix, since it carries [system]/[disabled]
 // qualifiers), the GROUPS/ROLES headers (exact), and each dynamic role
-// sub-header (by prefix, since it carries a scope label) — all bold, whole
-// line — plus the strip invariant and the inactive-style identity.
+// sub-header (by prefix, since it carries a scope label) - all bold, whole
+// line - plus the strip invariant and the inactive-style identity.
 func TestStyleUserTextStripInvariant(t *testing.T) {
 	t.Parallel()
 	disabled := false

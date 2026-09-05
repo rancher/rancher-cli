@@ -5,7 +5,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # binding, a crtb on the pre-seeded c-test cluster (displayName
 # "testcluster"), and a prtb on a freshly created project. The matching
 # UserAttribute (u-bob, group okta_group://eng) is a harness-global fixture
-# (seedUserAttributeObjects) — UserAttribute has no kind-table row, so
+# (seedUserAttributeObjects) - UserAttribute has no kind-table row, so
 # `create resource -f` cannot address it.
 exec rancher create resource -f user.yaml --apply --yes
 
@@ -55,7 +55,7 @@ jsonquery stdout data.user.id u-bob
 exec rancher inspect user 'Bob Example' -o json
 jsonquery stdout data.user.id u-bob
 
-# Never-logged-in user: no UserAttribute object exists for it — verified
+# Never-logged-in user: no UserAttribute object exists for it - verified
 # empty groups, never a degraded read.
 exec rancher create resource -f user-nologin.yaml --apply --yes
 exec rancher inspect user u-nologin -o json

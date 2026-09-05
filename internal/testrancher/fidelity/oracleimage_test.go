@@ -21,7 +21,7 @@ func parseScriptImagePin(t *testing.T, script, name string) string {
 	t.Helper()
 	re := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*%s\s*=\s*"([^"]*)"\s*$`, regexp.QuoteMeta(name)))
 	m := re.FindStringSubmatch(script)
-	require.NotEmptyf(t, m, "scripts/e2e-real: no %s=\"...\" assignment found — the pin literal moved or was removed", name)
+	require.NotEmptyf(t, m, "scripts/e2e-real: no %s=\"...\" assignment found - the pin literal moved or was removed", name)
 	return m[1]
 }
 
@@ -41,7 +41,7 @@ func TestOracleImagePinsMatchGoldens(t *testing.T) {
 
 	assert.NotEqual(t, oracleImage, primeImage, "PRIME_ORACLE_IMAGE must differ from ORACLE_IMAGE")
 	assert.True(t, strings.HasPrefix(primeImage, "registry.rancher.com/"),
-		"PRIME_ORACLE_IMAGE %q must come from registry.rancher.com — no goldens exist yet to pin it against, so this is the whole check", primeImage)
+		"PRIME_ORACLE_IMAGE %q must come from registry.rancher.com - no goldens exist yet to pin it against, so this is the whole check", primeImage)
 
 	checked := 0
 	err = filepath.WalkDir("testdata", func(path string, d fs.DirEntry, err error) error {
@@ -61,5 +61,5 @@ func TestOracleImagePinsMatchGoldens(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	require.NotZero(t, checked, "no golden under testdata carried a non-empty oracleImage — the walk or the field name drifted")
+	require.NotZero(t, checked, "no golden under testdata carried a non-empty oracleImage - the walk or the field name drifted")
 }

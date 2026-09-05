@@ -19,7 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// ccInput is a full runtime.Input fake (String + Bool + Args maps) — the
+// ccInput is a full runtime.Input fake (String + Bool + Args maps) - the
 // cloudcred_test.go and versions_test.go `in`/noArgsInput fakes only ever
 // need one axis, but create cluster's flag surface exercises all three.
 type ccInput struct {
@@ -38,18 +38,18 @@ var _ runtime.Input = ccInput{}
 
 // ccRecClient is a recording engine.ClusterClient fake: Get/List serve fixed
 // objects (credential secrets, Settings) while Create records the built
-// object exactly as PlanCreate's dry-run/real-write sequence sends it —
+// object exactly as PlanCreate's dry-run/real-write sequence sends it -
 // mirrors projects_test.go's recClient, extended with the Get/List a
 // node-driver Plan also needs (cloud-credential resolution).
 //
 // probeErr, probeEmpty, and probeUserID control the ext.cattle.io SelfUser
 // Create probe added by the creatorId stamping feature. Precedence:
 // probeErr (checked first) > probeEmpty > probeUserID/default. Only one of
-// these fields may be non-zero — misuse panics in Create. Calls with
-// selfuser.GVR are NOT recorded into created/dryRuns — only
+// these fields may be non-zero - misuse panics in Create. Calls with
+// selfuser.GVR are NOT recorded into created/dryRuns - only
 // provisioning-cluster creates are. When none is set, probeUserID defaults
 // to "u-default": every test's created object then carries the creatorId
-// annotation with that synthetic id (a deliberate side effect — a fixture
+// annotation with that synthetic id (a deliberate side effect - a fixture
 // asserting clean annotations must set probeErr or probeEmpty to opt out).
 // probeEmpty returns a SelfUser WITHOUT status.userID (empty id, nil error).
 //
@@ -57,9 +57,9 @@ var _ runtime.Input = ccInput{}
 // provisioning-cluster GVR (used to exercise the stamp-warning-fold-on-
 // PlanCreate-error path). returnCreatorID, when non-empty, overrides the
 // creatorId annotation in the object returned from a real (non-dry-run)
-// provisioning-cluster create — used to test post-apply verification.
+// provisioning-cluster create - used to test post-apply verification.
 // returnNoAnnotations strips ALL annotations from that returned object
-// (a trimmed create response) — post-apply verification must then skip,
+// (a trimmed create response) - post-apply verification must then skip,
 // not report a false mismatch.
 type ccRecClient struct {
 	objects             map[string]*unstructured.Unstructured
@@ -170,7 +170,7 @@ func requireValidation(t *testing.T, err error) *clierr.Error {
 }
 
 // TestCreateClusterImportedOmitsRKEConfigEntirely asserts the nil-vs-{}
-// discriminator (rancher cluster/controller.go:493,666 —
+// discriminator (rancher cluster/controller.go:493,666 -
 // NormalizeCluster(newCluster, cluster.Spec.RKEConfig == nil) treats a nil
 // RKEConfig as "not managed by RKE"): an imported cluster's built object
 // must carry NO spec.rkeConfig key at all, not an empty map.
@@ -416,7 +416,7 @@ func TestCreateClusterNodeDriverMalformedMachineConfigIsValidation(t *testing.T)
 
 // TestMachineConfigKindsTracksKindsTable proves machineConfigKinds() returns
 // exactly the five node-driver config kinds Task 3 specifies. The expected
-// set is spelled out here as literal kind keys — deliberately NOT
+// set is spelled out here as literal kind keys - deliberately NOT
 // recomputed by filtering kinds.All() on kinds.MachineConfigGroup, which
 // would just be the production code's own selection restated: a partial
 // edit to only one of kinds.go's five machine-config rows (e.g. a typo'd
@@ -440,7 +440,7 @@ func TestMachineConfigKindsTracksKindsTable(t *testing.T) {
 }
 
 // TestMachineConfigFlagDescListsClosedKindSet asserts the schema-visible Desc of
-// --machine-config to the closed kind set, spelled as a LITERAL — deliberately
+// --machine-config to the closed kind set, spelled as a LITERAL - deliberately
 // not recomputed via machineConfigKindsHint(), which would restate the
 // production derivation (same independent-source doctrine as
 // TestMachineConfigKindsTracksKindsTable). The Desc is derived from the same
@@ -562,7 +562,7 @@ func TestCreateClusterVersionWarningAbsentWhenDiscovered(t *testing.T) {
 
 // TestCreateClusterVersionWarningSkippedOnFetchVersionsError proves
 // FetchVersions failing (an unreachable/erroring root client) degrades to no
-// warning at all, silently — the server is the authority, discovery is
+// warning at all, silently - the server is the authority, discovery is
 // advisory (never a hard failure baked into a warn-only check).
 func TestCreateClusterVersionWarningSkippedOnFetchVersionsError(t *testing.T) {
 	t.Parallel()
@@ -585,7 +585,7 @@ func TestCreateClusterVersionWarningSkippedOnFetchVersionsError(t *testing.T) {
 }
 
 // errRootFactory's Root() always errors, standing in for an unreachable
-// server — FetchVersions must surface this to the caller (not panic), and
+// server - FetchVersions must surface this to the caller (not panic), and
 // versionWarnings must degrade it to "no warning" rather than propagate it.
 type errRootFactory struct{}
 
@@ -619,14 +619,14 @@ func TestNewCreateClusterDescribe(t *testing.T) {
 // Cases: stamped-success (probe returns a valid id), error-degrade (probe
 // errors), empty-id-degrade (probe returns no status.userID), malformed-id-
 // degrade (probe returns an id failing the DNS-1123-ish pattern), and
-// ordering (both a version warning and the stamp warning present — stamp
+// ordering (both a version warning and the stamp warning present - stamp
 // comes last).
 func TestCreateClusterCreatorID(t *testing.T) {
 	t.Parallel()
 
 	// Set up a version server reused by the ordering case only. t.Cleanup,
 	// NOT defer: the subtests are parallel, so a defer would close the
-	// server when this parent function returns — before the subtests run —
+	// server when this parent function returns - before the subtests run -
 	// silently degrading versionWarnings to nil. t.Cleanup waits for
 	// parallel subtests to finish.
 	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
@@ -677,7 +677,7 @@ func TestCreateClusterCreatorID(t *testing.T) {
 		},
 		{
 			// ordering: both a version warning (version not in discovery list)
-			// and a stamp warning are present — stamp must come last.
+			// and a stamp warning are present - stamp must come last.
 			name:     "ordering-stamp-after-version",
 			probeErr: errors.New("probe fail"),
 			objects: map[string]*unstructured.Unstructured{
@@ -746,7 +746,7 @@ func TestCreateClusterCreatorID(t *testing.T) {
 // stamp warning survives to what the pipeline actually renders. Real
 // client errors are ALWAYS clierr-mapped, and the pipeline's toClierr
 // unwraps to the innermost *clierr.Error, discarding any fmt.Errorf
-// wrapper text — so for the production shape the context must ride the
+// wrapper text - so for the production shape the context must ride the
 // clierr Hint. The plain-error case keeps the string wrapper.
 func TestCreateClusterStampWarningFoldedIntoPlanCreateError(t *testing.T) {
 	t.Parallel()
@@ -763,7 +763,7 @@ func TestCreateClusterStampWarningFoldedIntoPlanCreateError(t *testing.T) {
 		require.Error(t, err)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce,
-			"the clierr must remain extractable — toClierr depends on it")
+			"the clierr must remain extractable - toClierr depends on it")
 		assert.Equal(t, "dry-run denied by webhook", ce.Message)
 		assert.Contains(t, ce.Hint, stampWarningPrefix,
 			"the stamp context must live where the envelope renders it")

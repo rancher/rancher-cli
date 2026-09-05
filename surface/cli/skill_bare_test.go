@@ -18,7 +18,7 @@ import (
 // TestCreateResourceEntryIsNonBareAndImplementsCapabilityResolver is the
 // complement of TestTokenEntryIsMarkedBare: create resource must be wired
 // through adaptEntry's non-bare branch, where io.Capability is set on every
-// command — a bare entry never gets a checker, so a bare create resource
+// command - a bare entry never gets a checker, so a bare create resource
 // would resolve a requirement no checker could ever enforce. The command
 // resources.NewCreate returns must also implement runtime.CapabilityResolver,
 // so the seam cannot be dropped in a refactor without failing here.
@@ -67,7 +67,7 @@ func TestSkillEntriesAreMarkedBare(t *testing.T) {
 
 // TestSkillStatusRunsWithInvalidConfig proves that skill status completes and
 // produces a result envelope even when the Rancher config path resolves to a
-// regular file — a shape that would cause resolveDeps to fail with "not a
+// regular file - a shape that would cause resolveDeps to fail with "not a
 // directory". The bare adapter path must never reach resolveDeps.
 func TestSkillStatusRunsWithInvalidConfig(t *testing.T) {
 	// Sandbox HOME and cache dirs so no harness or lock state leaks in from the real home.
@@ -79,7 +79,7 @@ func TestSkillStatusRunsWithInvalidConfig(t *testing.T) {
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("COPILOT_HOME", "")
 
-	// Invalid config dir: a regular file — resolveDeps would fail with an
+	// Invalid config dir: a regular file - resolveDeps would fail with an
 	// OS-level "not a directory" error when building the config file path.
 	badCfg := filepath.Join(t.TempDir(), "not-a-dir")
 	require.NoError(t, os.WriteFile(badCfg, []byte("dummy"), 0o600))

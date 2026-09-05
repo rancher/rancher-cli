@@ -22,7 +22,7 @@ import (
 func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter) ucli.ShellCompleteFunc {
 	return func(ctx context.Context, c *ucli.Command) {
 		// Strip command routing tokens from rawArgv using the invoked urfave
-		// command's lineage depth — NOT the canonical descriptor name string.
+		// command's lineage depth - NOT the canonical descriptor name string.
 		// This handles leading global flags (--output json get pod) and alias
 		// invocations (inspect po → depth 2) correctly (finding 2).
 		tail := stripRoutingPrefixByCmd(rawArgv, c)
@@ -73,8 +73,8 @@ func nameLikeCandidates(c *ucli.Command, currentWord string) []string {
 
 // formatCandidate returns the "name:usage" or bare "name" completion line,
 // matching urfave's own printCommandSuggestions format (unexported upstream).
-// All three emission paths — printCompletionCandidate, flagNameCandidates,
-// and subcommandCandidates — call this so the format lives in one place.
+// All three emission paths - printCompletionCandidate, flagNameCandidates,
+// and subcommandCandidates - call this so the format lives in one place.
 func formatCandidate(name, usage string) string {
 	if usage != "" {
 		return name + ":" + usage
@@ -87,7 +87,7 @@ func formatCandidate(name, usage string) string {
 // flag on the command and the root's persistent globals.
 //
 // Hidden-flag exclusion: only *ucli.BoolFlag.Hidden is checked because urfave's
-// Flag interface has no generic hidden-check method — urfave's own
+// Flag interface has no generic hidden-check method - urfave's own
 // printFlagSuggestions has the identical gap. No hidden non-bool global flag
 // exists today, but one added in the future would appear in suggestions.
 // This is a latent limitation inherited from urfave, not a local oversight.
@@ -154,7 +154,7 @@ func subcommandCandidates(c *ucli.Command, currentWord string) []string {
 // by primary name (Names()[0]). Flags from c take precedence over root flags
 // with the same primary name. When c is the root itself, only c.Flags is used.
 //
-// Latent gap: only c and c.Root() are merged — intermediate ancestor commands
+// Latent gap: only c and c.Root() are merged - intermediate ancestor commands
 // in the lineage are skipped. urfave's own flag resolution walks the full
 // Lineage(), so a flag defined on an intermediate group node (not a leaf, not
 // root) resolves at runtime but never appears in completion suggestions. No
@@ -202,7 +202,7 @@ func dispatchSite(
 		}
 		// Machine-config `<kind>/` prefixes for create cluster: compiled-in
 		// kind-table literals (kinds.MachineConfigGroup rows), not server
-		// data — served statically like an enum, before (and regardless of)
+		// data - served statically like an enum, before (and regardless of)
 		// the network gate. The live layer owns the `<kind>/partial` form.
 		if cands := machineConfigPrefixCandidates(site, d); len(cands) > 0 {
 			return cands
@@ -210,7 +210,7 @@ func dispatchSite(
 		// create machine-config's --set keys: compiled-in kind-table field
 		// metadata, kind-scoped from the typed tail. OWNERSHIP, not
 		// first-match: the site is fully static, so even an empty result
-		// terminates the dispatch here — no delegation, no live layer.
+		// terminates the dispatch here - no delegation, no live layer.
 		if cands, owned := machineConfigSetKeyCandidates(site, d, tail); owned {
 			return cands
 		}
@@ -245,8 +245,8 @@ func dispatchSite(
 
 // enumCandidates returns static enum candidates for a flag-value site.
 // The output flag's enum is global (every command shares one ArgSpec), so
-// it is filtered against the resolved leaf's OutputPolicy here — the one
-// point every -o/--output completion passes through — rather than offering
+// it is filtered against the resolved leaf's OutputPolicy here - the one
+// point every -o/--output completion passes through - rather than offering
 // a value the command would reject.
 func enumCandidates(site CompletionSite, d runtime.Descriptor) []string {
 	all := append(append([]runtime.ArgSpec{}, d.Flags...), globalArgSpecs...)
@@ -278,8 +278,8 @@ func allowedOutputEnum(enum []string, policy runtime.OutputPolicy) []string {
 }
 
 // positionalEnumCandidates returns static enum candidates for a positional
-// site — Descriptor.Args[site.Index].Enum filtered by the typed partial
-// (MC-14) — plus an OWNERSHIP flag: owned is true whenever the indexed arg
+// site - Descriptor.Args[site.Index].Enum filtered by the typed partial
+// (MC-14) - plus an OWNERSHIP flag: owned is true whenever the indexed arg
 // carries an Enum, in which case the caller must terminate the dispatch
 // with these candidates even when the filter matched nothing (an unmatched
 // partial must not fall through to the delegation/live layers and
@@ -311,7 +311,7 @@ func positionalEnumCandidates(site CompletionSite, d runtime.Descriptor) ([]stri
 func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, c *ucli.Command, tail []string) []string {
 	// Role flag-value sites derive scope from the typed tail only
 	// (roleVocabulary); the cluster fallback chain, segment validation,
-	// and display-name resolution below must not run for them — an
+	// and display-name resolution below must not run for them - an
 	// inherited invalid or display-name cluster would otherwise suppress
 	// role completion that never needed a cluster at all.
 	// Twin requirement: siteNeedsCluster also carries an explicit
@@ -346,13 +346,13 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	}
 
 	// A cluster-family verb's --pool is dependent on its own <cluster>
-	// positional, not a typed --cluster flag — self-contained like
+	// positional, not a typed --cluster flag - self-contained like
 	// logsPodCandidates above.
 	if site.Kind == SiteFlagValue && site.FlagName == "pool" && clusterFamilyPositionalKind[d.Name] {
 		return clusterFamilyPoolCandidates(ctx, site, d, tail)
 	}
 
-	// Scope comes from the typed tail only — nothing inherited (no config, no
+	// Scope comes from the typed tail only - nothing inherited (no config, no
 	// env) may place or filter completion. A typed --project is its own
 	// announcement; absent flags leave the values empty.
 	clusterValue := ""
@@ -398,7 +398,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// token is available, issue the optional cluster-resolution request to map
 	// display name → ID. Exec-cred-only (IDOnly) skips this (can't authorize
 	// the management cluster list).
-	// Finding 6: gate resolution on siteNeedsCluster — cluster/context VALUE
+	// Finding 6: gate resolution on siteNeedsCluster - cluster/context VALUE
 	// sites don't need a resolved ID (they fetch the list anyway) and must not
 	// issue two cluster-list requests.
 	resolvedClusterID := clusterValue
@@ -444,7 +444,7 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 			// extraction, leaving
 			// clusterValue="". This explicit false prevents liveCandidates' cluster
 			// early-return from silently killing role completion when clusterValue is
-			// empty. Both guards must hold together — changing either one without the
+			// empty. Both guards must hold together - changing either one without the
 			// other breaks role TAB.
 			return false
 		case "machine-config", "cloud-credential":
@@ -460,10 +460,10 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 		return false
 	}
 	// Downstream kinds served by a downstream K8s proxy need a cluster ID, but
-	// only when the kind is Completable — resolution is pointless for a kind
+	// only when the kind is Completable - resolution is pointless for a kind
 	// livePositionalCandidates will reject (round-4 finding 3).
 	// Management NSCluster (project) lists resources in the cluster's namespace
-	// via the management API — also needs a cluster ID (explicit carve-out).
+	// via the management API - also needs a cluster ID (explicit carve-out).
 	return (k.Scope == kinds.Downstream && k.Completable) || (k.Scope == kinds.Management && k.Policy == kinds.NSCluster)
 }
 
@@ -514,10 +514,10 @@ const (
 
 // roleVocabulary maps the typed tail's scope flags to a role vocabulary,
 // reproducing rbac.ResolveScope's scope→vocabulary mapping and conflict
-// REJECTION — but by flag PRESENCE (flagPresent), a deliberate mid-edit
+// REJECTION - but by flag PRESENCE (flagPresent), a deliberate mid-edit
 // heuristic, not ResolveScope's value parsing: a completion line is
 // unfinished by nature ("--project= <TAB>" is about to receive a value),
-// and completion only suggests — a heuristic mismatch costs an unhelpful
+// and completion only suggests - a heuristic mismatch costs an unhelpful
 // list, never a wrong mutation. The context/env/config cluster fallbacks
 // are deliberately NOT consulted: grant/revoke refuse implicit scope, so
 // completion must not suggest a vocabulary the command would reject.
@@ -545,7 +545,7 @@ func roleVocabulary(tail []string) roleVocab {
 // tail is threaded from liveCandidates for role scope detection (roleVocabulary).
 // hc is the single per-dispatch client (finding 9).
 // For role sites, clusterID and effectiveProject are intentionally empty and
-// ignored — role scope is derived exclusively from tail via roleVocabulary,
+// ignored - role scope is derived exclusively from tail via roleVocabulary,
 // never from inherited env/config values.
 func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability, clusterID, effectiveProject string, tail []string) []string {
 	var raw []string
@@ -564,7 +564,7 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 	case "node":
 		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/nodes", "")
 	case "machine-config":
-		// Live `<kind>/partial` form only — the bare `<kind>/` prefixes are
+		// Live `<kind>/partial` form only - the bare `<kind>/` prefixes are
 		// compiled-in and served statically by machineConfigPrefixCandidates
 		// before the network gate. Returns directly: the composed tokens
 		// carry a "/" that the shared sanitize/equals-form tail below would
@@ -599,11 +599,11 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 // target positional to its curated namespace/selector (observe.Targets) and
 // lists pods there. fleet-agent's namespace is resolved dynamically at
 // Execute time, not from the static table, so it has nothing to complete
-// from here and returns no candidates — a degradation by design, not a
+// from here and returns no candidates - a degradation by design, not a
 // failure, matching the uncurated-machine-config precedent. A DownstreamOnly
 // target (agent, kube-api-auth) needs a cluster typed on the tail; a
 // display name is resolved to its cluster id the same way the generic
-// pipeline does it — completion must work with whichever spelling the
+// pipeline does it - completion must work with whichever spelling the
 // operator used for --cluster.
 func logsPodCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, tail []string) []string {
 	targetTok := firstPositionalToken(tail, d.Flags)
@@ -655,7 +655,7 @@ func logsPodCandidates(ctx context.Context, site CompletionSite, d runtime.Descr
 // on a new downstream kind row needs NO dispatch edit.
 // tail is the already-computed leaf arg tail from the callback (round-2
 // finding 6: do not re-derive from rawArgv using the old canonical-prefix
-// helper — that breaks alias invocations and leading global flags).
+// helper - that breaks alias invocations and leading global flags).
 // Round-2 finding 7: only get/patch/delete leaves get live positional completion
 // (AC-10); inspect leaves do NOT (AC-15a is aliases only, not live completion).
 // hc is the single per-dispatch client (finding 9).
@@ -669,7 +669,7 @@ func livePositionalCandidates(
 	tail []string,
 ) []string {
 	// Bespoke single-kind ops (the oidc-client lifecycle verb group):
-	// derivedOpKinds supplies safety Binding only, never completion — this
+	// derivedOpKinds supplies safety Binding only, never completion - this
 	// is the data-driven completion seam commit 3 adds. Index 0 (the
 	// client name) reuses the SAME generic management-kind listing path
 	// get/patch/delete use; index 1 (secret-name, rotate/remove only) is a
@@ -681,7 +681,7 @@ func livePositionalCandidates(
 
 	// Cluster-family verbs' <cluster> positional names a provisioning
 	// cluster, not the generic "cluster" kind AC-10/inspect exceptions
-	// below resolve — handled before that gate, which these command names
+	// below resolve - handled before that gate, which these command names
 	// would otherwise fail.
 	if clusterFamilyPositionalKind[d.Name] {
 		if site.Index != 0 {
@@ -706,7 +706,7 @@ func livePositionalCandidates(
 	}
 
 	// Gate on AC-10 verbs (get/patch/delete only), with three named
-	// exceptions — inspect cluster, inspect project, and inspect user.
+	// exceptions - inspect cluster, inspect project, and inspect user.
 	// Every other inspect leaf retains the deny.
 	if !isAC10Verb(d.Name) && d.Name != inspectClusterCompletionException &&
 		d.Name != inspectProjectCompletionException && d.Name != inspectUserCompletionException {
@@ -728,7 +728,7 @@ func livePositionalCandidates(
 			return fetchProjects(ctx, hc, cap, clusterID)
 		case "nodedriver":
 			// Management-plane list served by the local cluster; requires a
-			// management token — exec-cred-only capabilities (IDOnly) cannot
+			// management token - exec-cred-only capabilities (IDOnly) cannot
 			// authorize it, same boundary as fetchClusters (zero requests).
 			if cap.IDOnly {
 				return nil
@@ -736,7 +736,7 @@ func livePositionalCandidates(
 			return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
 		case "user":
 			// Kind-positional user completion (get/delete/patch): address by
-			// metadata.name only — bare usernames are rejected verbatim by these
+			// metadata.name only - bare usernames are rejected verbatim by these
 			// commands. Grant/revoke subject completion (above) keeps the full
 			// id+username union. System accounts filtered.
 			return fetchUserIDs(ctx, hc, cap)
@@ -744,7 +744,7 @@ func livePositionalCandidates(
 			return provisioningClusterPositionalCandidates(ctx, hc, cap, tail)
 		default:
 			// Any other Completable NSNone management kind (e.g. oidcclient):
-			// list via the local cluster, the same shape as nodedriver — a
+			// list via the local cluster, the same shape as nodedriver - a
 			// full management token is required, since exec-cred-only
 			// (IDOnly) capabilities cannot authorize a management-plane list.
 			if k.Policy != kinds.NSNone {
@@ -780,11 +780,11 @@ func livePositionalCandidates(
 
 // provisioningClusterPositionalCandidates lists provisioning.cattle.io/v1
 // Cluster names on the local management cluster, honoring --namespace or
-// falling back to the kind's DefaultNamespace (fleet-default) — shared by
+// falling back to the kind's DefaultNamespace (fleet-default) - shared by
 // get/delete provisioning-cluster's generic positional (via the
 // "provisioning-cluster" case above) and every cluster-family bespoke
 // verb's <cluster> positional (via clusterFamilyPositionalKind below).
-// Requires a full management token — IDOnly exec-cred tokens cannot
+// Requires a full management token - IDOnly exec-cred tokens cannot
 // authorize management-plane lists (same boundary as nodedriver).
 func provisioningClusterPositionalCandidates(ctx context.Context, hc *http.Client, cap TokenCapability, tail []string) []string {
 	if cap.IDOnly {
@@ -807,7 +807,7 @@ func provisioningClusterPositionalCandidates(ctx context.Context, hc *http.Clien
 // clusterFamilyPositionalKind is the closed set of cluster-family bespoke
 // verbs whose index-0 positional is a provisioning-cluster name (not the
 // generic get/patch/delete "cluster" kind, which names a MANAGEMENT
-// cluster) — the completion-only sibling of root.go's derivedOpKinds,
+// cluster) - the completion-only sibling of root.go's derivedOpKinds,
 // consulted by livePositionalCandidates before the generic AC-10 gate,
 // which these bespoke command names would otherwise fail.
 var clusterFamilyPositionalKind = map[string]bool{
@@ -821,7 +821,7 @@ var clusterFamilyPositionalKind = map[string]bool{
 // clusterFamilyPoolCandidates completes a cluster-family verb's --pool
 // flag: resolves the typed <cluster> positional to its provisioning Cluster
 // object (namespace from --namespace or fleet-default) and lists its
-// machine pool names — a DEPENDENT flag site, the same shape
+// machine pool names - a DEPENDENT flag site, the same shape
 // bespokeSingleKindPositional's index-1 secret-name completion uses for
 // oidc-client, but keyed off a positional rather than another flag. Fully
 // self-contained like logsPodCandidates: there is no --cluster flag on
@@ -863,9 +863,9 @@ func clusterFamilyPoolCandidates(ctx context.Context, site CompletionSite, d run
 
 // machineConfigPrefixCandidates serves the `<kind>/` prefixes for create
 // cluster's --machine-config flag while the typed value has no "/" yet.
-// The kinds are compiled-in literals — every kinds.MachineConfigGroup row,
+// The kinds are compiled-in literals - every kinds.MachineConfigGroup row,
 // the same single source createcluster.go's VALIDATION hint and schema desc
-// derive from — not server data, so like resolveStaticEnum the AC-21
+// derive from - not server data, so like resolveStaticEnum the AC-21
 // shell-safe charset does not gate them: the "/" (and trailing "/") must
 // survive. Returns nil for every other site; the live layer
 // (machineConfigNameCandidates) owns the `<kind>/partial` form.
@@ -897,11 +897,11 @@ func machineConfigPrefixCandidates(site CompletionSite, d runtime.Descriptor) []
 // TRUST BOUNDARY (AC-21): the NAME segments are server data and are
 // sanitized with the shell-safe charset (inside fetchK8sResources) BEFORE
 // composition; the `<kind>/` prefix is a compiled-in kind-table literal
-// appended afterwards — the composed token deliberately carries a "/"
+// appended afterwards - the composed token deliberately carries a "/"
 // without widening the global charset, the same doctrine as
 // resolveStaticEnum's compiled-in enum values.
 //
-// Management-plane list on the local cluster: requires a management token —
+// Management-plane list on the local cluster: requires a management token -
 // exec-cred-only capabilities (IDOnly) return nil with zero requests, the
 // same boundary as fetchClusters.
 func machineConfigNameCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability) []string {
@@ -932,13 +932,13 @@ func machineConfigNameCandidates(ctx context.Context, hc *http.Client, site Comp
 // tokens for create machine-config's --set flag (MC-16): the kind is read
 // from the typed tail's first positional, and the candidates are that
 // kind's Known driver fields MINUS the MC-8 credential set MINUS the
-// curated-flag fields — MC-7 rejects a curated key via --set
+// curated-flag fields - MC-7 rejects a curated key via --set
 // unconditionally and MC-8 rejects credential keys, so neither may ever
 // be suggested (suggestions valid verbatim). Uncurated kinds (empty
 // Known) get no candidates.
 //
 // OWNERSHIP: the returned bool is true for EVERY --set value site of
-// create machine-config — the site is fully static (no live source
+// create machine-config - the site is fully static (no live source
 // exists), so the dispatcher must terminate with the result even when it
 // is empty: an unmatched partial, a missing/unknown kind, an uncurated
 // kind, or a value-in-progress (Partial carrying "=") all end the
@@ -990,17 +990,17 @@ func machineConfigSetKeyCandidates(site CompletionSite, d runtime.Descriptor, ta
 }
 
 // bespokeSingleKindOps maps a bespoke op whose surface is a single kind
-// row's resource to that row's key, for completion — a data-driven
+// row's resource to that row's key, for completion - a data-driven
 // mapping, never per-name exceptions.
 // derivedOpKinds (root.go) is the sibling mapping for safety Binding
-// derivation — kept separate on purpose, since a future bespoke op could
+// derivation - kept separate on purpose, since a future bespoke op could
 // need one without the other.
 var bespokeSingleKindOps = map[string]string{
 	"oidc-client add-secret":    "oidcclient",
 	"oidc-client rotate-secret": "oidcclient",
 	"oidc-client remove-secret": "oidcclient",
 	// create password-change-request's <user> positional names an EXISTING
-	// user by id — completes against the user kind exactly like get/patch/
+	// user by id - completes against the user kind exactly like get/patch/
 	// delete user's own positional. create user's <username> positional is
 	// deliberately absent here: it is a NEW username the operator is
 	// choosing, never an existing one to complete against.
@@ -1012,7 +1012,7 @@ var bespokeSingleKindOps = map[string]string{
 // the same generic management-kind path get/patch/delete use; index 1
 // (present only on rotate-secret/remove-secret's secret-name) is a
 // DEPENDENT positional resolved via a client-scoped GET of index 0's
-// already-typed value — a missing or unresolvable first positional
+// already-typed value - a missing or unresolvable first positional
 // completes to nothing, never an error into the TAB stream.
 func bespokeSingleKindPositional(ctx context.Context, hc *http.Client, site CompletionSite, d runtime.Descriptor, cap TokenCapability, kindKey string, tail []string) []string {
 	k, ok := kinds.Lookup(kindKey)
@@ -1101,7 +1101,7 @@ const (
 
 // isAC10Verb reports whether the descriptor name starts with an AC-10 verb
 // (get, patch, delete). inspect leaves do NOT get live positional
-// completion through this predicate — the three narrow exceptions are
+// completion through this predicate - the three narrow exceptions are
 // inspectClusterCompletionException (IC-3), inspectProjectCompletionException,
 // and inspectUserCompletionException, each checked by name at the gate;
 // AC-15a adds inspect aliases, not live-name completion.

@@ -47,7 +47,7 @@ func TestRepinForLoginUpgradesFileToKeychain(t *testing.T) {
 }
 
 // Reviewer repro: a fresh unpinned dir with an unusable keychain previously
-// paid the (bounded) probe cost twice in one login — once via OpenStore's
+// paid the (bounded) probe cost twice in one login - once via OpenStore's
 // auto-probe (which pins "file"), once more via RepinForLogin re-probing
 // since the pin is now "file" not "keychain". Both calls must share one
 // memoized probe.
@@ -100,7 +100,7 @@ func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
 // The production loginCmd.Execute path is covered by
 // TestLoginFirstPinNoticeReachesWarnings in internal/commands/login_test.go,
 // where OpenStoreWithNotice always runs before RepinForLogin and pins the dir
-// first — so the else branch is dead on that path.
+// first - so the else branch is dead on that path.
 func TestRepinForLoginFreshPinNotices(t *testing.T) {
 	dir := t.TempDir()
 	resetKeyringUsableCache()

@@ -180,7 +180,7 @@ func TestClassifyCreateExtVersionWithoutTokenKindIsNotKnown(t *testing.T) {
 	require.Error(t, perr)
 }
 
-// TestClassifyCreateKubeconfigLoginExtShape asserts the façade's kubeconfig
+// TestClassifyCreateKubeconfigLoginExtShape asserts the facade's kubeconfig
 // login response (an ext Token object) end to end through the kind reader
 // and the classifier: known, ext kind, usable ext bearer.
 func TestClassifyCreateKubeconfigLoginExtShape(t *testing.T) {

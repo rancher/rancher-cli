@@ -1,7 +1,7 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# imported: spec.rkeConfig is OMITTED entirely (nil, not {}) — the pin.
+# imported: spec.rkeConfig is OMITTED entirely (nil, not {}) - the pin.
 exec rancher create cluster imported-1 --import --apply
 # The envtest harness has no SelfUser store, so creatorId stamping degrades
 # to a warning. This assertion asserts the degrade path on every create.

@@ -1,7 +1,7 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# seed and read back via the explicit --cluster flag (Downstream kind —
+# seed and read back via the explicit --cluster flag (Downstream kind -
 # routing is always typed per invocation, nothing inherited from stored state)
 exec rancher create resource -f cm.yaml --cluster testcluster --apply
 exec rancher get configmap ctx-cm --cluster testcluster --namespace default -o json

@@ -5,7 +5,7 @@ package token
 import "golang.org/x/sys/windows"
 
 // shellExecute is windows.ShellExecute, indirected so a test can capture the
-// arguments — proving the URL is passed opaquely with no command line — without
+// arguments - proving the URL is passed opaquely with no command line - without
 // actually launching a browser.
 var shellExecute = windows.ShellExecute
 

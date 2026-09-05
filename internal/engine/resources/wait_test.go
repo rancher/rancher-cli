@@ -192,7 +192,7 @@ func TestWaitSatisfiedRancherStatePathUnchanged(t *testing.T) {
 // TestWaitSatisfiedStatusStateIsCaseSensitive is the round-2 repro for
 // finding 4: the case-insensitive compare belongs only to the status.phase
 // fallback. status.state is Rancher's own vocabulary (lowercase, e.g.
-// "active") and must stay an exact match — a case-insensitive compare
+// "active") and must stay an exact match - a case-insensitive compare
 // there would let a "state=Active" wait spuriously match "active" today,
 // then wrongly match "aCtIvE" tomorrow.
 func TestWaitSatisfiedStatusStateIsCaseSensitive(t *testing.T) {
@@ -301,7 +301,7 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 
 // TestGetClusterBareWaitAppliesRowDefault asserts IC-11 at the command boundary:
 // a bare `get cluster <name> --wait` (no --for) applies the row's
-// WaitDefault end to end — the command resolves the expression from the
+// WaitDefault end to end - the command resolves the expression from the
 // kind row, parses it, and polls until the Ready condition flips. The
 // polling fake satisfies the condition only on the THIRD Get, so a
 // non-polling shortcut or a wrong default expression fails loudly.
@@ -562,7 +562,7 @@ func TestWaitForStalledEmptyMessageRendersConditionShape(t *testing.T) {
 
 // TestWaitForSkipsUnsettledGenerations asserts the exercise-11 settle gate: an
 // object whose status.observedGeneration lags metadata.generation carries
-// conditions from an older spec — the wait must keep polling instead of
+// conditions from an older spec - the wait must keep polling instead of
 // trusting a satisfied condition or a Stalled abort on it.
 func TestWaitForSkipsUnsettledGenerations(t *testing.T) {
 	withFastPoll(t)
@@ -621,7 +621,7 @@ func TestWaitTimeoutWithUnsettledObservationShowsCaveat(t *testing.T) {
 // TestWaitForUnsettledUnstalledSucceedsImmediately asserts that the generation
 // staleness gate is scoped to failOnStalled=true kinds. A non-opted kind
 // (failOnStalled=false) must check waitSatisfied on every poll regardless of
-// observedGeneration lag — so a permanently-unsettled object whose condition
+// observedGeneration lag - so a permanently-unsettled object whose condition
 // is already satisfied at the first Get succeeds immediately instead of
 // polling until timeout (which was the pre-settlement-gate behaviour and must
 // be preserved for non-opted kinds).
@@ -703,7 +703,7 @@ func TestFreshSuccessWarning(t *testing.T) {
 		assert.Contains(t, w, "re-check shortly")
 		assert.Contains(t, w, "rancher get gitrepo repo-1 --namespace team-a",
 			"the re-check must target the namespace the wait resolved")
-		assert.NotContains(t, w, "conditions", "the advisory is condition-agnostic — state= waits satisfy it too")
+		assert.NotContains(t, w, "conditions", "the advisory is condition-agnostic - state= waits satisfy it too")
 
 		clusterScoped := freshSuccessWarning(young, "gitrepo", "repo-1", "")
 		assert.Contains(t, clusterScoped, "rancher get gitrepo repo-1")

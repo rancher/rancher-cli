@@ -73,7 +73,7 @@ type extToken struct {
 // accepting both the v3 Norman shape (top-level token/expiresAt) and the
 // ext.cattle.io/v1 Token shape (status.bearerToken/status.expiresAt) for the
 // transition period while Rancher migrates session tokens. The ext bearer
-// keeps its "ext/" prefix — the server authenticator parses it back out of
+// keeps its "ext/" prefix - the server authenticator parses it back out of
 // the Bearer header, so it is opaque data here.
 func parseLoginResponse(body []byte) (Token, error) {
 	if kind, ok := LoginResponseShape(body); ok && kind == TokenKindExt {

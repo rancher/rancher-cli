@@ -12,7 +12,7 @@ import (
 // families no other wiring source encodes: create machine-config backs
 // every rke-machine-config row through one --kind-enum command; grant and
 // revoke back both binding rows (they operate at cluster or project scope);
-// the inspect composites map to their declared PRIMARY target kind only —
+// the inspect composites map to their declared PRIMARY target kind only -
 // incidental follow-up reads (inspect's owner-reference chain) stay outside
 // the gate deliberately. Adding a family here is a reviewed
 // edit, same as kindOverrideTable or derivedOpKinds.
@@ -27,7 +27,7 @@ var capabilityCoverageExtraOps = map[string][]string{
 	"inspect user":          {"user"},
 	// create user touches the user kind row directly (the composite's User
 	// half) alongside its own ext.cattle.io-discovery Capability
-	// requirement — mapped here so a future Capability gate on the user
+	// requirement - mapped here so a future Capability gate on the user
 	// kind itself would also flag this op for review, same as inspect user.
 	"create user": {"user"},
 }
@@ -36,7 +36,7 @@ var capabilityCoverageExtraOps = map[string][]string{
 // with no kind linkage at all: auth/config/local ops, and kind-adjacent ops
 // deliberately classified as outside the gate. A new op present in neither a
 // kind mapping nor this allowlist fails TestCapabilityCoverageRealWiring
-// with a "classify this op" message — silence is impossible, the property
+// with a "classify this op" message - silence is impossible, the property
 // the retired tripwire (TestNoKindDeclaresCapabilityUntilCreateGatingLands)
 // had.
 var capabilityCoverageAllowlist = map[string]string{
@@ -69,7 +69,7 @@ var capabilityCoverageAllowlist = map[string]string{
 	"logs":                           "bespoke log read, no kind row",
 	"usage":                          "bespoke discovery read, no kind row",
 	"support-bundle":                 "diagnostic bundle collector, no kind row",
-	"create password-change-request": "ext.cattle.io PasswordChangeRequest is create-only (no get/list/delete verb), so it carries no kind row — its own ext.cattle.io-discovery Capability requirement is declared directly on the command",
+	"create password-change-request": "ext.cattle.io PasswordChangeRequest is create-only (no get/list/delete verb), so it carries no kind row - its own ext.cattle.io-discovery Capability requirement is declared directly on the command",
 }
 
 // registeredCommand is the minimal shape the coverage rule needs from a
@@ -101,7 +101,7 @@ type capabilityCoverageInput struct {
 }
 
 // capabilityCoverageResult is what checkCapabilityCoverage reports. All
-// three fields are conformance failures — every field must be empty for the
+// three fields are conformance failures - every field must be empty for the
 // rule to pass.
 type capabilityCoverageResult struct {
 	// uncoveredGated lists an op that targets a Capability-bearing kind
@@ -112,13 +112,13 @@ type capabilityCoverageResult struct {
 	// nor the allowlist.
 	unclassified []string
 	// danglingRefusals lists an override's refusals entry with no
-	// corresponding constructor — a refusal marker that cannot fire.
+	// corresponding constructor - a refusal marker that cannot fire.
 	danglingRefusals []string
 	// unknownKinds lists a mapping entry (override, derived op, extra op)
-	// whose kind key resolves to no row — a stale or typo'd key. Without
+	// whose kind key resolves to no row - a stale or typo'd key. Without
 	// this, checkOne would mark the op covered and silently skip the row
 	// lookup, so a later Capability-bearing kind reachable only through
-	// that op would ship ungated while the rule stayed green — the exact
+	// that op would ship ungated while the rule stayed green - the exact
 	// silence the rule exists to make impossible.
 	unknownKinds []string
 }
@@ -147,7 +147,7 @@ func overrideVerbConstructor(ov kindOverride, verb string) func(kinds.Kind, runD
 // mapping source and the registered commands' shapes, it reports every
 // Capability-bearing kind reachable through an uncovered command, every
 // registered op neither mapped to a kind nor allowlisted, and every
-// dangling refusal marker. It never constructs a command — registered
+// dangling refusal marker. It never constructs a command - registered
 // carries the shape (capability, resolver) the caller already extracted,
 // which is what lets the rule run identically against synthetic rows and
 // the real registry.
@@ -157,7 +157,7 @@ func checkCapabilityCoverage(in capabilityCoverageInput) capabilityCoverageResul
 		rowByKey[k.Key] = k
 	}
 
-	// refusedOps: op names a kindOverride marks a structural refusal for —
+	// refusedOps: op names a kindOverride marks a structural refusal for -
 	// exempt from the Capability-carrying requirement (the refusal declines
 	// before any network access, the same rationale as NoCreateViaManifest's
 	// zero-return) but still classified.
@@ -238,7 +238,7 @@ func checkCapabilityCoverage(in capabilityCoverageInput) capabilityCoverageResul
 			continue
 		}
 		res.unclassified = append(res.unclassified,
-			fmt.Sprintf("%s: classify this op — add it to a kind mapping or the reviewed allowlist", op))
+			fmt.Sprintf("%s: classify this op - add it to a kind mapping or the reviewed allowlist", op))
 	}
 
 	sort.Strings(res.uncoveredGated)

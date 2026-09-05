@@ -20,7 +20,7 @@ import (
 // truncating that version at the same offset leaves it intact and it runs in
 // full. With RANCHER_CLI_VERSION set the pre-wrap script bypasses network
 // resolution, reaches `note "downloading ..."`, and writes to stdout before
-// the fetch fails — the `require.Empty(out)` assertion below would fail
+// the fetch fails - the `require.Empty(out)` assertion below would fail
 // against the pre-wrap script, proving the wrap is load-bearing.
 func TestTruncatedScriptMidFunctionExecutesNothing(t *testing.T) {
 	t.Parallel()
@@ -66,7 +66,7 @@ func TestTruncatedScriptMidFunctionExecutesNothing(t *testing.T) {
 		"RANCHER_CLI_INSTALL_BASE_URL=http://127.0.0.1:1",
 	}
 	require.Error(t, cmd.Run(), "truncated script mid-function must exit non-zero (syntax error)")
-	require.Empty(t, out.String(), "syntax error must produce no stdout — pre-wrap script would output 'downloading ...' here")
+	require.Empty(t, out.String(), "syntax error must produce no stdout - pre-wrap script would output 'downloading ...' here")
 	require.Equal(t, homeSnap, digestTree(t, home),
 		"truncated script must not write anything to HOME")
 	require.Equal(t, tmpSnap, digestTree(t, tmp),
@@ -76,7 +76,7 @@ func TestTruncatedScriptMidFunctionExecutesNothing(t *testing.T) {
 // TestTruncatedScriptAtFunctionBoundaryIsSilentNoOp documents the accepted
 // silent-no-op property: a download cut exactly after the last complete
 // function definition but before `main "$@"` leaves the interpreter with
-// only declarations and no entry point. Exit 0, nothing installed — the
+// only declarations and no entry point. Exit 0, nothing installed - the
 // same trade-off rustup accepts.
 func TestTruncatedScriptAtFunctionBoundaryIsSilentNoOp(t *testing.T) {
 	t.Parallel()

@@ -13,7 +13,7 @@ import (
 // usage line with args, the command-declared flags, the contract line, the
 // gate line (SE-3), Desc as body, examples, and a footer of the global
 // exit-code strip plus one pointer line to the global flags. Per-command
-// error codes are deliberately absent — no per-command source of truth
+// error codes are deliberately absent - no per-command source of truth
 // exists yet (SE-16). Rendered via Result.Text under default/table only;
 // the structured formats keep serving Result.Data.
 func renderCommandCard(m Manifest, c SchemaCommand) string {
@@ -92,8 +92,8 @@ func flagLine(f ArgSpec) string {
 	return line
 }
 
-// contractLine renders the command's contract facts in SE-1's order —
-// commandType · contract · stability · destructive · network · auth — omitting
+// contractLine renders the command's contract facts in SE-1's order -
+// commandType · contract · stability · destructive · network · auth - omitting
 // segments with no value (contract/stability unresolved, destructive unset,
 // network/auth false).
 func contractLine(c SchemaCommand) string {
@@ -124,7 +124,7 @@ func contractLine(c SchemaCommand) string {
 // Gates is gateLine's structured twin: the flags a command unconditionally
 // requires before executing a mutation, as a list the manifest can carry
 // per command. A destructive "dependsOnInput" command is not represented
-// here beyond --apply — the destructive field signals the conditional
+// here beyond --apply - the destructive field signals the conditional
 // --yes. Nil for read-only and local commands.
 func Gates(ct CommandType, destructive, stability string) []string {
 	if ct != Mutating {
@@ -145,8 +145,8 @@ func gateLine(ct CommandType, destructive, stability string) string {
 	case Local:
 		return "gates: none (local command)"
 	case Mutating:
-		// The flag set comes from Gates — the single source shared with the
-		// manifest's gates field — and only the dependsOnInput prose (a
+		// The flag set comes from Gates - the single source shared with the
+		// manifest's gates field - and only the dependsOnInput prose (a
 		// conditional --yes the structured list deliberately omits) is
 		// layered on here, right after --apply.
 		gates := Gates(ct, destructive, stability)
@@ -166,7 +166,7 @@ func gateLine(ct CommandType, destructive, stability string) string {
 
 // renderGroupCard builds the operator-facing card for one command group:
 // the group name, its desc (when set), bespoke member commands as individual
-// name — usage lines, and generated per-kind commands collapsed to one summary
+// name - usage lines, and generated per-kind commands collapsed to one summary
 // line (reusing generatedCommandNames/countGenerated via groupView.generatedCount
 // so the collapse is consistent with the TOC). Rendered via Result.Text under
 // default/table only; the structured formats keep serving Result.Data.
@@ -189,7 +189,7 @@ func renderGroupCard(m Manifest, gv groupView) string {
 			b.WriteString("  " + tocLine(c) + "\n")
 		}
 		if gv.generatedCount > 0 {
-			fmt.Fprintf(&b, "  %s — generated for %d kinds; rancher schema <kind> for any kind's card\n",
+			fmt.Fprintf(&b, "  %s - generated for %d kinds; rancher schema <kind> for any kind's card\n",
 				gv.generatedPattern, gv.generatedCount)
 		}
 	}
@@ -245,7 +245,7 @@ func renderKindCard(m Manifest, k SchemaKind) string {
 }
 
 // kindNamespaceLine renders the kind's namespace policy plus the routing
-// flags a named op needs — the card counterpart of the kinds package's
+// flags a named op needs - the card counterpart of the kinds package's
 // NamespacePolicy semantics, computed from manifest strings only.
 func kindNamespaceLine(k SchemaKind) string {
 	switch k.NamespacePolicy {
@@ -269,8 +269,8 @@ func kindNamespaceLine(k SchemaKind) string {
 }
 
 // verbLine renders one verb of the SE-5 table, worded exactly per spec:
-// `available (contract · stability)` | `refused — <note>` |
-// `not available — <reason>` | `not available`. The degenerate shapes
+// `available (contract · stability)` | `refused - <note>` |
+// `not available - <reason>` | `not available`. The degenerate shapes
 // (available without a binding, refused without a note) drop the empty
 // segment rather than rendering stray punctuation.
 func verbLine(verb string, vs VerbState) string {
@@ -289,19 +289,19 @@ func verbLine(verb string, vs VerbState) string {
 		return verb + ": available"
 	case VerbRefused:
 		if vs.Note != "" {
-			return verb + ": refused — " + vs.Note
+			return verb + ": refused - " + vs.Note
 		}
 		return verb + ": refused"
 	default:
 		if vs.Note != "" {
-			return verb + ": not available — " + vs.Note
+			return verb + ": not available - " + vs.Note
 		}
 		return verb + ": not available"
 	}
 }
 
 // readOnlyLine renders the session's read-only banner for the TOC text
-// views — both of them, so tocView's unconditional readOnly fields mirror
+// views - both of them, so tocView's unconditional readOnly fields mirror
 // text on the bare and filtered paths alike (schema disclosure spec).
 func readOnlyLine(m Manifest) string {
 	if !m.ReadOnly {
@@ -319,7 +319,7 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 	byName := commandIndex(m.Commands)
 	genCount := countGenerated(m.Commands, generated)
 	var b strings.Builder
-	fmt.Fprintf(&b, "rancher %s — %d commands · %d kinds\n", m.CLIVersion, len(m.Commands), len(m.Kinds))
+	fmt.Fprintf(&b, "rancher %s - %d commands · %d kinds\n", m.CLIVersion, len(m.Commands), len(m.Kinds))
 	b.WriteString(readOnlyLine(m))
 	blockDone := false
 	for _, g := range m.Groups {
@@ -332,7 +332,7 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 		// contains generated commands (SE-9: one collapsed line for all of them).
 		if pGenCount > 0 && !blockDone {
 			blockDone = true
-			fmt.Fprintf(&b, "\nget/patch/delete <kind> — %d generated commands across %d kinds\n",
+			fmt.Fprintf(&b, "\nget/patch/delete <kind> - %d generated commands across %d kinds\n",
 				genCount, len(m.Kinds))
 			b.WriteString("  kind view: rancher schema <kind>\n")
 		}
@@ -352,12 +352,12 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 			b.WriteString(indent + tocLine(c) + "\n")
 		}
 		// All-generated section: show desc so users know what the section covers,
-		// then a per-group collapsed summary — analogous to the group card's treatment.
+		// then a per-group collapsed summary - analogous to the group card's treatment.
 		if len(bespoke) == 0 && pGenCount > 0 {
 			if g.Desc != "" {
 				b.WriteString(indent + g.Desc + "\n")
 			}
-			fmt.Fprintf(&b, "%s%s <kind> — generated for %d kinds; rancher schema <kind> for any kind's card\n",
+			fmt.Fprintf(&b, "%s%s <kind> - generated for %d kinds; rancher schema <kind> for any kind's card\n",
 				indent, g.Name, pGenCount)
 		}
 	}
@@ -378,13 +378,13 @@ func renderTOC(m Manifest) string { return renderTOCText(m, true) }
 
 // renderFilteredTOC builds the filter/search result view (SE-10/SE-11):
 // a match-count header naming the active filters, every retained command as
-// its own line in pruned-section order (no vocabulary collapse — the matches
+// its own line in pruned-section order (no vocabulary collapse - the matches
 // ARE the content), a search's matching fragment where the match is not
 // already visible in the line, and the `-o json` pointer. Zero hits render
 // the no-matches message alone; the caller returns success either way.
 // primeGroups names the groups whose every member is Prime in the FULL
 // manifest (allPrimeGroups); m here is already filtered, and a filtered
-// subset must never decide a label's marker — a mixed group whose only
+// subset must never decide a label's marker - a mixed group whose only
 // surviving member is Prime stays a plain label.
 func renderFilteredTOC(m Manifest, f schemaFilters, primeGroups map[string]bool) string {
 	filters := strings.Join(f.describe(), " ")
@@ -420,22 +420,22 @@ func renderFilteredTOC(m Manifest, f schemaFilters, primeGroups map[string]bool)
 	return b.String()
 }
 
-// tocLine renders one TOC entry: `name — usage`, or the bare name when the
+// tocLine renders one TOC entry: `name - usage`, or the bare name when the
 // command carries no usage line. A Prime requirement inserts a "[Prime]"
 // marker right after the usage separator, as the first word of the usage
-// column — `name — [Prime]` when the command carries no usage line either.
+// column - `name - [Prime]` when the command carries no usage line either.
 // The bare and filtered TOCs, and the group card, all render through this
 // one function, so the marker cannot appear in one and not the others.
 func tocLine(c SchemaCommand) string {
 	switch {
 	case c.Usage == "" && c.Prime:
-		return c.Name + " — " + PrimeMarker
+		return c.Name + " - " + PrimeMarker
 	case c.Usage == "":
 		return c.Name
 	case c.Prime:
-		return c.Name + " — " + PrimeMarker + " " + c.Usage
+		return c.Name + " - " + PrimeMarker + " " + c.Usage
 	default:
-		return c.Name + " — " + c.Usage
+		return c.Name + " - " + c.Usage
 	}
 }
 
@@ -455,7 +455,7 @@ func allPrimeGroups(m Manifest) map[string]bool {
 
 // groupAllPrime reports whether every command named in g.Commands is Prime,
 // checked against the full manifest command index (bespoke and generated
-// members alike) — a group can never be marked Prime by omitting a member,
+// members alike) - a group can never be marked Prime by omitting a member,
 // and an empty or wholly-unknown group is never Prime.
 func groupAllPrime(g SchemaGroup, byName map[string]SchemaCommand) bool {
 	if len(g.Commands) == 0 {
@@ -471,7 +471,7 @@ func groupAllPrime(g SchemaGroup, byName map[string]SchemaCommand) bool {
 
 // countGenerated counts how many commands in cmds appear in the generated
 // set. Used by both renderTOCText's collapsed-line N and tocView.toc()'s
-// GeneratedCommandCount — shared computation, same number.
+// GeneratedCommandCount - shared computation, same number.
 func countGenerated(cmds []SchemaCommand, generated map[string]bool) int {
 	n := 0
 	for _, c := range cmds {
@@ -484,7 +484,7 @@ func countGenerated(cmds []SchemaCommand, generated map[string]bool) int {
 
 // generatedCommandNames derives the generated command set from the kind
 // vocabulary (SE-17's rule: available and refused verbs are registered
-// commands, absent verbs are not) — never from name-shape guessing.
+// commands, absent verbs are not) - never from name-shape guessing.
 func generatedCommandNames(ks []SchemaKind) map[string]bool {
 	out := map[string]bool{}
 	for _, k := range ks {

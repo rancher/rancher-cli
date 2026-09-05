@@ -26,7 +26,7 @@ const (
 	statusSkippedNotApplicable = "skipped: not applicable"
 )
 
-// settingsAllowlist is the ONLY settings support-bundle ever reads —
+// settingsAllowlist is the ONLY settings support-bundle ever reads -
 // diagnostic identifiers, never a full settings dump (cacerts, registry pull
 // secrets, and friends are secret-adjacent and must never ship).
 var settingsAllowlist = []string{
@@ -63,9 +63,9 @@ type supportBundleCmd struct {
 
 // NewSupportBundle builds `support-bundle [--targets ...|all] [--clusters
 // a,b|*] [--since <dur>] [--tail N=10000] [-f out]` (SB-1): packs every
-// API-reachable diagnostic surface — curated component logs, cluster/node
+// API-reachable diagnostic surface - curated component logs, cluster/node
 // state, per-namespace events, and the CLI's own settings/features/schema
-// snapshot — into one tar.gz, tri-state manifested so support can tell
+// snapshot - into one tar.gz, tri-state manifested so support can tell
 // "not applicable" from "collector failed" at a glance.
 func NewSupportBundle(clients engine.ClusterClientFactory, schema func() any) runtime.Command {
 	return &supportBundleCmd{clients: clients, schema: schema, now: time.Now}
@@ -235,7 +235,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 }
 
 // renderBundleText builds support-bundle's default-format text: the written
-// path, an items/size summary (size IEC-formatted for operators — the raw
+// path, an items/size summary (size IEC-formatted for operators - the raw
 // byte count stays in Data for -o json), and a last line naming skipped/
 // errored counts, present only when either is non-zero.
 func renderBundleText(path string, items int, bytesWritten int64, skipped, errored int) runtime.Result {
@@ -247,7 +247,7 @@ func renderBundleText(path string, items int, bytesWritten int64, skipped, error
 }
 
 // formatIECBytes renders n using IEC binary units (KiB/MiB/GiB/...), one
-// decimal place, e.g. "3.2 MiB" — plain "<n> B" below 1024. Unit selection
+// decimal place, e.g. "3.2 MiB" - plain "<n> B" below 1024. Unit selection
 // accounts for the print-time rounding: a value %.1f would round up to
 // "1024.0" (anything >= 1023.95 in the current unit) rolls into the next
 // unit instead, so 1048575 renders "1.0 MiB", never "1024.0 KiB". The roll
@@ -297,7 +297,7 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 
 // resolveBundleClusters resolves --clusters: "" or "*" discovers local plus
 // every management Cluster the caller can list (via the already-fetched
-// local client — the caller has no separate local-client failure mode to
+// local client - the caller has no separate local-client failure mode to
 // worry about, since it needed local before calling this anyway); an
 // explicit comma-separated list is resolved token by token (the "local"
 // literal short-circuits).
@@ -305,9 +305,9 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 // The two error returns are NOT interchangeable. discoveryErr is a
 // non-fatal signal on the default/"*" path: fleet-wide listing failed
 // (RBAC denied listing Clusters, ...), so the returned clusters degrade to
-// local-only — the caller must record discoveryErr as a manifest error
+// local-only - the caller must record discoveryErr as a manifest error
 // entry rather than silently shipping a bundle that only covers local
-// while claiming fleet coverage. err is fatal — an explicit --clusters
+// while claiming fleet coverage. err is fatal - an explicit --clusters
 // token that fails to resolve aborts the whole command, same as any other
 // VALIDATION-class failure.
 func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, raw string) (clusters []string, discoveryErr error, err error) {
@@ -348,7 +348,7 @@ func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFact
 
 // collectSettings fetches every allowlisted setting; a setting absent on
 // this Rancher version is silently skipped (not every version ships every
-// allowlisted setting) — never a full dump, and a missing setting is not a
+// allowlisted setting) - never a full dump, and a missing setting is not a
 // collector failure.
 func collectSettings(ctx context.Context, local engine.ClusterClient) (map[string]string, []byte) {
 	values := map[string]string{}
@@ -370,7 +370,7 @@ func collectSettings(ctx context.Context, local engine.ClusterClient) (map[strin
 
 // featureRow's bool fields carry NO `omitempty`: "off" (false) and "not
 // collected" (field absent) must not serialize to the same bytes in a
-// triage bundle — a support engineer reading features.json needs to see
+// triage bundle - a support engineer reading features.json needs to see
 // `"value":false` explicitly, not a missing key.
 type featureRow struct {
 	Name        string `json:"name"`
@@ -400,7 +400,7 @@ func collectFeatures(ctx context.Context, local engine.ClusterClient) ([]byte, e
 // collectCluster gathers one cluster's cluster.json/nodes.json plus every
 // applicable target's logs, streaming each into bw as it is collected, and
 // returns the manifest items and the set of namespaces any attempted
-// target resolved to (for the caller's per-namespace events collection) —
+// target resolved to (for the caller's per-namespace events collection) -
 // cattle-system is always included, per the design spec.
 func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string) {
 	var items []manifestItem
@@ -447,7 +447,7 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 		resolved, err := ResolveOnCluster(ctx, clients, t, clusterID)
 		if err != nil {
 			if nf := clierr.AsNotFound(err); nf != nil && nf.Message == nonACEHint {
-				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: fmt.Sprintf("skipped: not applicable — %s", nonACEHint)})
+				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: fmt.Sprintf("skipped: not applicable - %s", nonACEHint)})
 			} else {
 				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: errorStatus(err)})
 			}
@@ -468,7 +468,7 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 
 // collectTargetLogs streams every matched pod/container's current log into
 // bw, plus a best-effort previous-container log (silently omitted when
-// there is none — a fresh container has never restarted, which is the
+// there is none - a fresh container has never restarted, which is the
 // common case, not a failure).
 func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *int64, since *int64, bw *ArchiveWriter) {
 	for i := range resolved.Pods {
@@ -523,8 +523,8 @@ func collectEvents(ctx context.Context, clients engine.ClusterClientFactory, clu
 }
 
 // eventTimestamp reads the first present field among lastTimestamp,
-// eventTime, and metadata.creationTimestamp — an Event may carry any subset
-// of them depending on the emitting controller — falling back to the zero
+// eventTime, and metadata.creationTimestamp - an Event may carry any subset
+// of them depending on the emitting controller - falling back to the zero
 // time (sorts last) when none parse as RFC3339.
 func eventTimestamp(u unstructured.Unstructured) time.Time {
 	for _, path := range [][]string{{"lastTimestamp"}, {"eventTime"}, {"metadata", "creationTimestamp"}} {
@@ -554,6 +554,6 @@ sharing outside your organization.
 
 This bundle covers the API-reachable plane only. For node-level diagnostics
 (journald, the rancher-system-agent unit, OS state) see
-rancherlabs/support-tools' node collector — the two bundles are
+rancherlabs/support-tools' node collector - the two bundles are
 complementary by design.
 `

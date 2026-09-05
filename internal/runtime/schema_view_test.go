@@ -40,7 +40,7 @@ func readOnlyTOCManifest() Manifest {
 
 // TestTOCViewBareMirrorsTheTOC asserts the spec'd bare TOC JSON shape:
 // header facts, groups with name+usage entries, kind NAMES only, the
-// global exit map — and none of the full-manifest sections.
+// global exit map - and none of the full-manifest sections.
 func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	t.Parallel()
 	b, err := json.Marshal(newTOCView(readOnlyTOCManifest(), true))
@@ -66,7 +66,7 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 
 	// Generated commands are COLLAPSED on the bare path: absent from the
 	// per-group commands list, represented instead by a generated summary
-	// object — exactly what renderTOC does (spec'd collapse mirror).
+	// object - exactly what renderTOC does (spec'd collapse mirror).
 	// All-generated groups carry no commands key (omitempty), so the
 	// iteration uses a nil-safe type assertion.
 	var flat []string
@@ -78,7 +78,7 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	}
 	assert.Equal(t, []string{"auth login"}, flat, "only non-generated commands appear in the per-group commands list on the bare TOC")
 
-	// Full-manifest sections must be absent — the mirror rule. effectSchema
+	// Full-manifest sections must be absent - the mirror rule. effectSchema
 	// left this list deliberately: it is a global contract, disclosed on the
 	// bare TOC like the exit map.
 	for _, absent := range []string{"commands", "kindsDetail", "envVars", "globalFlags", "errorCodes", "exitCodes"} {
@@ -87,13 +87,13 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 }
 
 // TestTOCViewFilteredOmitsBareOnlyFields asserts the spec'd conditionality: a filtered
-// selection has no kinds, no kindCount, no globalExitCodes — its text
+// selection has no kinds, no kindCount, no globalExitCodes - its text
 // header renders a match count and no exit strip.
 func TestTOCViewFilteredOmitsBareOnlyFields(t *testing.T) {
 	t.Parallel()
 	m := readOnlyTOCManifest()
 	// Retain only the GENERATED "get pod": the filtered TOC does not
-	// collapse — the matches ARE the content — so it must list per line.
+	// collapse - the matches ARE the content - so it must list per line.
 	m.Commands = m.Commands[1:2]
 	m.Groups = []SchemaGroup{{Name: "get", Commands: []string{"get pod"}}}
 	b, err := json.Marshal(newTOCView(m, false))
@@ -119,8 +119,8 @@ func TestTOCViewNameRows(t *testing.T) {
 		"-o name is unchanged: EVERY selection command, generated included")
 }
 
-// TestCardViewFlattensTheCommand asserts the spec'd card shape: data IS the command —
-// fields at top level, no commands array — plus globalExitCodes and the
+// TestCardViewFlattensTheCommand asserts the spec'd card shape: data IS the command -
+// fields at top level, no commands array - plus globalExitCodes and the
 // kindViewHint mirror of the text card's collision pointer.
 func TestCardViewFlattensTheCommand(t *testing.T) {
 	t.Parallel()
@@ -138,7 +138,7 @@ func TestCardViewFlattensTheCommand(t *testing.T) {
 	assert.NotContains(t, got, "commands", "flattened: no wrapper array")
 	assert.NotContains(t, got, "kinds")
 	assert.NotContains(t, got, "envVars")
-	// readOnly propagates from manifest — unconditional bool like tocJSON.
+	// readOnly propagates from manifest - unconditional bool like tocJSON.
 	assert.Equal(t, true, got["readOnly"])
 	assert.Equal(t, []any{"RANCHER_CLI_READONLY"}, got["readOnlySources"])
 }
@@ -180,7 +180,7 @@ func TestCardViewNameRows(t *testing.T) {
 }
 
 // TestKindViewMarshalsTheRowOnly asserts the spec'd kind view: a kind selection's data
-// is the kind row — verb STATE included, per-verb flags deliberately not
+// is the kind row - verb STATE included, per-verb flags deliberately not
 // (the two-step: schema <kind> then schema <verb> <kind>).
 func TestKindViewMarshalsTheRowOnly(t *testing.T) {
 	t.Parallel()
@@ -227,7 +227,7 @@ func TestTOCGeneratedCountMatchesTheText(t *testing.T) {
 	t.Parallel()
 	m := readOnlyTOCManifest()
 	text := renderTOC(m)
-	re := regexp.MustCompile(`— (\d+) generated commands across`)
+	re := regexp.MustCompile(` - (\d+) generated commands across`)
 	match := re.FindStringSubmatch(text)
 	require.NotNil(t, match, "bare TOC must render the collapsed generated-commands line for this fixture")
 	want, err := strconv.Atoi(match[1])

@@ -1,6 +1,6 @@
 // Package fidelity defines the probe vocabulary for the testrancher fidelity
 // oracle: probes recorded against a real, pinned Rancher and replayed against
-// the e2e composite façade.
+// the e2e composite facade.
 package fidelity
 
 import (
@@ -24,7 +24,7 @@ const (
 )
 
 // Target is one server a probe executes against: the real Rancher oracle or
-// the e2e composite façade.
+// the e2e composite facade.
 type Target interface {
 	// BaseURL is the server root without a trailing slash.
 	BaseURL() string
@@ -51,7 +51,7 @@ type RequestSpec struct {
 // Capture extracts one value from an observation's raw (pre-normalization)
 // response body. Path is dotted. ExtBearerName additionally derives the token
 // name embedded in an ext-style bearer ("ext/<name>:<secret>") from the
-// captured string — the imperative create response carries its credential only
+// captured string - the imperative create response carries its credential only
 // under status.bearerToken, so the created name is not otherwise available.
 type Capture struct {
 	Path          string
@@ -62,7 +62,7 @@ type Capture struct {
 // normalized response is recorded in the golden. Captures maps a placeholder
 // name to a Capture into this observation's response; later observations and
 // teardown steps reference it as {name}. A declared capture that cannot be
-// resolved or transformed FAILS the probe — capture-dependent requests never
+// resolved or transformed FAILS the probe - capture-dependent requests never
 // execute against a synthetic URL, and no golden is saved.
 type Observation struct {
 	Name     string
@@ -81,7 +81,7 @@ type NormalizeRule struct {
 
 // Step is a fixture action run before or after a probe's observations.
 // Fixture behavior asserted by the oracle belongs in Observations, never
-// here — steps exist only for cleanup and idempotency. captured is the
+// here - steps exist only for cleanup and idempotency. captured is the
 // probe's resolved capture set: empty during setup, complete during
 // teardown, usable via {name} placeholders in step-built paths.
 type Step struct {
@@ -90,7 +90,7 @@ type Step struct {
 }
 
 // Probe is data, not code: an ordered sequence of observations recorded
-// against the oracle and asserted against the composite façade.
+// against the oracle and asserted against the composite facade.
 type Probe struct {
 	Name         string
 	Setup        []Step
@@ -98,12 +98,12 @@ type Probe struct {
 	Normalize    []NormalizeRule
 	Teardown     []Step
 	// FacadeDivergence, when non-empty, marks a known divergence: the
-	// conformance test asserts the façade matches its own recorded golden
+	// conformance test asserts the facade matches its own recorded golden
 	// (testdata/facade/<probe>.json) exactly AND that that golden still
 	// differs from the oracle golden.
 	FacadeDivergence string
 	// OracleOnly probes run in record and verify-real modes only: skipped
-	// by conformance, never have a façade golden.
+	// by conformance, never have a facade golden.
 	OracleOnly bool
 }
 

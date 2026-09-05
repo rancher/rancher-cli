@@ -15,7 +15,7 @@ import (
 )
 
 // nospaceBashes returns every distinct bash to exercise: the PATH one plus
-// /bin/bash when it differs (macOS ships stock bash 3.2 there — the shell
+// /bin/bash when it differs (macOS ships stock bash 3.2 there - the shell
 // the continuation handling must work on WITHOUT compopt). The assertions
 // are on COMPREPLY content, which is version-independent, so running under
 // bash 3 and 4+ asserts that no 4+-only construct sneaked into the code path.
@@ -50,7 +50,7 @@ func nospaceBashes(t *testing.T) []string {
 // cwd and HOME (so filename-fallback cases run against a controlled corpus
 // and tilde expansion is testable); disableCompopt runs `enable -n compopt`
 // first, which removes the builtin on bash 4+ and is a harmless error on
-// bash 3 — the one lever that makes the bash-3-only fallback path
+// bash 3 - the one lever that makes the bash-3-only fallback path
 // exercisable under ANY harness bash (e.g. Linux CI without a bash 3).
 type bashDriverOpts struct {
 	workDir        string
@@ -60,7 +60,7 @@ type bashDriverOpts struct {
 // bashCompletionEntries drives the full __rancher_bash_autocomplete in
 // insert mode (COMP_TYPE unset, the first-TAB path) under bashBin against a
 // fake rancher emitting candidateLines, and returns the resulting COMPREPLY
-// entries VERBATIM — trailing spaces preserved, one "R:" line per entry.
+// entries VERBATIM - trailing spaces preserved, one "R:" line per entry.
 // compopt is deliberately NOT stubbed: outside a live completion call it
 // fails exactly as it is absent on bash 3, so the code path exercised here
 // is the compopt-free one every bash shares.
@@ -131,9 +131,9 @@ printf 'DONE\n'
 // continuation handling: the script is registered with -o nospace (readline
 // never appends the argument-ending space itself), so the script marks each
 // candidate's own boundary in COMPREPLY. A FINISHED candidate carries an
-// explicit trailing space; a candidate ending in a continuation character —
+// explicit trailing space; a candidate ending in a continuation character -
 // "amazonec2config/" expects a name after the slash, "template=" expects a
-// Go template after the equals — carries none, so accepting it keeps the
+// Go template after the equals - carries none, so accepting it keeps the
 // cursor in the same word for the second-stage completion. This needs no
 // compopt, so bash 3.2 (macOS stock) and bash 4+ behave identically; the
 // test runs under every available bash. Multiple matches only ever insert
@@ -209,7 +209,7 @@ func TestBashCompletionCandidateBoundaries(t *testing.T) {
 
 // TestBashCompletionRegistersNospace asserts the registration line itself: the
 // candidate-boundary contract above only holds if readline's own space
-// appending is off, and that must be the compspec option -o nospace —
+// appending is off, and that must be the compspec option -o nospace -
 // set at registration precisely because bash 3 has no compopt to set it
 // per-invocation.
 func TestBashCompletionRegistersNospace(t *testing.T) {
@@ -248,7 +248,7 @@ func fallbackCorpus(t *testing.T) string {
 // fallback: with no compopt the script cannot re-enable readline's appended
 // space for the -o default fallback, so it must generate the file/directory
 // candidates itself with the same per-candidate boundaries its own
-// candidates carry — "/" (no space) after directories, a trailing space
+// candidates carry - "/" (no space) after directories, a trailing space
 // after regular files, names escaped with printf %q so a plain name with a
 // space inserts as one shell word. compopt is disabled in the driver
 // (enable -n on bash 4+, already absent on bash 3), so this exercises the
@@ -319,7 +319,7 @@ func TestBash3FallbackGeneratesFileCandidates(t *testing.T) {
 }
 
 // TestModernBashKeepsNativeFallback asserts the bash 4+ side: when compopt IS
-// available the script must NOT take the self-generated path — COMPREPLY
+// available the script must NOT take the self-generated path - COMPREPLY
 // stays empty so readline's own -o default filename completion (with its
 // native quoting, tilde handling, and the compopt-restored space) owns the
 // fallback exactly as before. Skips when no harness bash has compopt.

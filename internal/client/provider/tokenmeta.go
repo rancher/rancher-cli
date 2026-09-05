@@ -15,10 +15,10 @@ var mgmtTokensGVR = schema.GroupVersionResource{Group: "management.cattle.io", V
 
 // TokenMetadata is the ext.cattle.io/v1 Token metadata `auth status`'s PS-2
 // token probe reads back for the EFFECTIVE token (eff.Token, never the
-// stored credential directly — RANCHER_CLI_TOKEN overrides the store and this
+// stored credential directly - RANCHER_CLI_TOKEN overrides the store and this
 // must report on whichever one is actually authenticating the request).
 // Kind carries the RAW spec.kind value ("session" for Rancher's own login
-// flow, empty for CLI-derived tokens per createTokenCmd) — the command
+// flow, empty for CLI-derived tokens per createTokenCmd) - the command
 // layer, not this probe, turns it into a display label, the same
 // fetch-raw/interpret-in-the-command split RancherVersion uses for
 // checkMinRancherVersion.
@@ -47,13 +47,13 @@ func getToken(ctx context.Context, eff config.Effective, gvr schema.GroupVersion
 	return obj, nil
 }
 
-// EffectiveTokenMetadata GETs the ext.cattle.io/v1 Token named name — the id
+// EffectiveTokenMetadata GETs the ext.cattle.io/v1 Token named name - the id
 // portion of eff.Token after its "ext/" prefix (the same id-shape sniff the
 // token package's bearer validation applies to a token the login created,
 // here applied to the long-lived effective credential). Callers pre-check
 // the prefix themselves; non-ext tokens fall through to V3TokenMetadata.
 // Always targets engine.LocalCluster, like RancherVersion and Identity.
-// Errors are clierr-mapped for the caller's warn-only degradation — this
+// Errors are clierr-mapped for the caller's warn-only degradation - this
 // probe's own success never gates auth status's `ok`.
 func EffectiveTokenMetadata(ctx context.Context, eff config.Effective, name string) (TokenMetadata, error) {
 	obj, err := getToken(ctx, eff, extTokensGVR, name)

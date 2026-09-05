@@ -74,7 +74,7 @@ func decodeEnvelope(t *testing.T, b []byte) map[string]any {
 	return env
 }
 
-// refusingPlanMutating fails the test if Plan is ever invoked — used to
+// refusingPlanMutating fails the test if Plan is ever invoked - used to
 // prove the read-only gate refuses a mutating command BEFORE dispatch, since
 // Plan performs real network calls unconditionally (including for
 // --dry-run).
@@ -220,7 +220,7 @@ func TestRunDeprecatedGateUsesBinding(t *testing.T) {
 
 // TestRenderEffectWarningsJSONOnce covers case (a) from the plan (D-10b,
 // review R2-6): an Effect.Warnings note rides the -o json dry-run envelope's
-// top-level "warnings" exactly once — Effect.Warnings' json:"-" tag must not
+// top-level "warnings" exactly once - Effect.Warnings' json:"-" tag must not
 // let it leak into env.data too.
 func TestRenderEffectWarningsJSONOnce(t *testing.T) {
 	t.Parallel()
@@ -246,7 +246,7 @@ func TestRenderEffectWarningsJSONOnce(t *testing.T) {
 // TestRenderEffectTableRendersDryRunTextWarningsToStderr asserts the pipeline-
 // owned dry-run text renderer: table/default format renders the
 // action/kind/name/gate text body on stdout, and Effect.Warnings reach the
-// operator via the stderr "# warning:" channel — never duplicated into the
+// operator via the stderr "# warning:" channel - never duplicated into the
 // text body itself.
 func TestRenderEffectTableRendersDryRunTextWarningsToStderr(t *testing.T) {
 	t.Parallel()
@@ -266,12 +266,12 @@ func TestRenderEffectTableRendersDryRunTextWarningsToStderr(t *testing.T) {
 	assert.Equal(t, "update widget/x\n"+
 		"  server: prod\n"+
 		"  cluster: c-x\n"+
-		"  dry run — re-run with --apply to execute\n", out.String())
+		"  dry run - re-run with --apply to execute\n", out.String())
 	assert.Equal(t, "# warning: note-a\n", errBuf.String())
 }
 
 // TestRenderEffectWideMatchesTable asserts that -o wide renders the dry-run
-// preview byte-identical to table/default — there is no separate wide body
+// preview byte-identical to table/default - there is no separate wide body
 // for an Effect preview.
 func TestRenderEffectWideMatchesTable(t *testing.T) {
 	t.Parallel()
@@ -290,7 +290,7 @@ func TestRenderEffectWideMatchesTable(t *testing.T) {
 		IO{Out: &wideOut, Err: io.Discard, Format: "wide", DryRun: true}, safety.Binding{})
 	require.Nil(t, ce)
 	assert.Equal(t, tableOut.String(), wideOut.String())
-	assert.Contains(t, tableOut.String(), "dry run — re-run with --apply --yes to execute")
+	assert.Contains(t, tableOut.String(), "dry run - re-run with --apply --yes to execute")
 }
 
 // TestDryRunTextDiffLines asserts the change-summary content: each Effect.Diff
@@ -311,12 +311,12 @@ func TestDryRunTextDiffLines(t *testing.T) {
 	require.Nil(t, ce)
 	assert.Equal(t, "update deployment/nginx\n"+
 		"  /spec/replicas: 1 -> 3\n"+
-		"  dry run — re-run with --apply to execute\n", out.String())
+		"  dry run - re-run with --apply to execute\n", out.String())
 }
 
 // TestRenderEffectRawFormatsWarningsToStderr covers the round-4 High+Low-1 fix:
 // raw-output formats (-o name, -o template=...) carry only the target field on
-// stdout — the Effect envelope's "warnings" key is never emitted. renderEffect
+// stdout - the Effect envelope's "warnings" key is never emitted. renderEffect
 // must mirror each warning to stderr as "# warning: <w>" so they are not
 // silently dropped (same contract as renderResult under raw formats).
 func TestRenderEffectRawFormatsWarningsToStderr(t *testing.T) {
@@ -347,7 +347,7 @@ func TestRenderEffectRawFormatsWarningsToStderr(t *testing.T) {
 // notes ride together, each appearing exactly once, in -o json dry-run
 // output, in the original order. The default/table dry-run body has no
 // dedicated text renderer yet (see
-// TestRenderEffectWarningsTableStderrOnlyDryRunTableHasNoTextRendererYet) —
+// TestRenderEffectWarningsTableStderrOnlyDryRunTableHasNoTextRendererYet) -
 // only json/yaml and the raw formats are exercised here.
 func TestRenderEffectWarningsCombineDryRun(t *testing.T) {
 	newCmd := func() fakeMutating {
@@ -531,7 +531,7 @@ func TestRawResultBypassesEnvelope(t *testing.T) {
 }
 
 // TestEnvelopeHasNoContractOrStability verifies that contract/stability are
-// NOT serialized into the output envelope — the schema manifest is the single
+// NOT serialized into the output envelope - the schema manifest is the single
 // published source; per-result stamping was removed in the contract redesign.
 func TestEnvelopeHasNoContractOrStability(t *testing.T) {
 	t.Parallel()
@@ -573,7 +573,7 @@ func TestValidateInput(t *testing.T) {
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
 	// Positional args get the same Enum check Flags already had (external
-	// review finding 6) — a command like `completion <shell>` can rely on
+	// review finding 6) - a command like `completion <shell>` can rely on
 	// this generic path instead of hand-rolling its own.
 	t.Run("bad positional enum", func(t *testing.T) {
 		cmd := fakeRead{d: Descriptor{Name: "x", CommandType: Local, Args: []ArgSpec{
@@ -622,7 +622,7 @@ func TestRunRejectsResultWithBothRawFields(t *testing.T) {
 }
 
 // TestQuietErrorStillRendersText asserts that a quiet stdout format (-o name,
-// whose stdout is bare identifiers) still surfaces an error on stderr — as
+// whose stdout is bare identifiers) still surfaces an error on stderr - as
 // text, since name is not json/yaml.
 func TestQuietErrorStillRendersText(t *testing.T) {
 	t.Parallel()
@@ -827,7 +827,7 @@ func TestRenderResultShapeMismatchIsCommandBug(t *testing.T) {
 // TestMutatingShapeViolationStillEmitsDiagnosticsAfterCommit asserts a
 // pipeline-wide guarantee: a mutating command whose executor already
 // committed state, but whose returned Result fails shape validation, must
-// still exit non-zero with a rendered diagnostic on stderr — never a silent
+// still exit non-zero with a rendered diagnostic on stderr - never a silent
 // exit 1 with zero bytes on both streams after the change has already
 // landed server-side. Any future render path that returns an error from
 // renderResult without rendering it first will fail this matrix.
@@ -868,7 +868,7 @@ func TestMutatingShapeViolationStillEmitsDiagnosticsAfterCommit(t *testing.T) {
 // TestRenderResultShapeTextUntouchedUnderJSONAndYAML asserts the coexistence
 // rule: a ShapeText command whose Text is not yet populated must still
 // render its Data envelope unchanged under -o json/-o yaml (and under -o
-// name/-o template, which read Data the same way) — only the table-family
+// name/-o template, which read Data the same way) - only the table-family
 // render path (table/default/wide) actually reads Text, so an empty Text
 // is not a shape violation anywhere else. This is the exact contract that
 // lets a not-yet-implemented ShapeText command's -o json keep working
@@ -926,7 +926,7 @@ func TestRenderResultShapeTextRendersUnderWide(t *testing.T) {
 // TestRenderResultEnvelopeWarningsTableStderr covers Finding 4 of the
 // adjudicated review (pipeline.go:251): renderResult's envelope path set
 // env.Warnings but never wrote anything to stderr, and renderTable
-// (output/render.go) only ever reads env.Data — so in default/table format
+// (output/render.go) only ever reads env.Data - so in default/table format
 // every Result's warnings silently vanished (e.g. `top node`'s
 // metrics-server-absent warning, `inspect` warnings). This is pre-existing
 // and broader than provisioning. Table/default mode must now write each
@@ -998,7 +998,7 @@ func (f fooTabularData) Rows() [][]string  { return [][]string{{f.Foo}} }
 // requested by the adjudication for Finding 4: it demonstrates the
 // pre-existing bug (every command's warnings vanished in default/table
 // output, not just provisioning's) is fixed, using a Result shaped exactly
-// like `top node`'s real output — Kind "NodeMetrics", an output.Tabular Data
+// like `top node`'s real output - Kind "NodeMetrics", an output.Tabular Data
 // payload, and the one metrics-unavailable warning topnode.go emits when
 // metrics-server is absent. Before the fix, this warning was silently
 // dropped in table/default
@@ -1027,7 +1027,7 @@ func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
 
 // TestRenderResultRawFormatsWarningsToStderr asserts the round-3 High-1 fix:
 // raw-output formats (-o name, -o template=...) carry only the named field on
-// stdout — the envelope's warnings key is never emitted. renderResult must
+// stdout - the envelope's warnings key is never emitted. renderResult must
 // mirror each warning to stderr as "# warning: <w>" so they are not silently
 // dropped.
 func TestRenderResultRawFormatsWarningsToStderr(t *testing.T) {
@@ -1057,7 +1057,7 @@ func TestRenderResultRawFormatsWarningsToStderr(t *testing.T) {
 
 // TestRunValidatesOutputFormat asserts the -o contract: the closed set of
 // literals plus template=<go-template>, validated BEFORE the command runs.
-// Anything else is a structured VALIDATION error — never Go template source.
+// Anything else is a structured VALIDATION error - never Go template source.
 func TestRunValidatesOutputFormat(t *testing.T) {
 	t.Parallel()
 
@@ -1245,12 +1245,12 @@ func TestRenderErrDetailsBlock(t *testing.T) {
 	t.Parallel()
 	ce := clierr.New(clierr.CodeConflict, "boom").
 		WithHint("retry").
-		WithDetails(stubTextDetails{lines: []string{"committed: Widget w1 — the change may already be on the server", "recover: get widget w1 -o json"}})
+		WithDetails(stubTextDetails{lines: []string{"committed: Widget w1 - the change may already be on the server", "recover: get widget w1 -o json"}})
 	var errBuf bytes.Buffer
 	_ = renderErr(IO{Err: &errBuf, Format: ""}, ce)
 	assert.Equal(t, "error (CONFLICT): boom\n"+
 		"  hint: retry\n"+
-		"  committed: Widget w1 — the change may already be on the server\n"+
+		"  committed: Widget w1 - the change may already be on the server\n"+
 		"  recover: get widget w1 -o json\n", errBuf.String())
 
 	errBuf.Reset()
@@ -1332,7 +1332,7 @@ func (s *stubNoticeSource) DrainNotices() []string {
 
 // TestRenderErrMergesNoticeSourceAheadOfWarnings asserts the merge order: a
 // drained NoticeSource notice (recorded earliest) leads the error's own
-// WithWarnings ride, each in its own record order — under both the default
+// WithWarnings ride, each in its own record order - under both the default
 // text form and the json/yaml envelope.
 func TestRenderErrMergesNoticeSourceAheadOfWarnings(t *testing.T) {
 	t.Parallel()
@@ -1374,12 +1374,12 @@ func TestRenderErrDrainsNoticeSourceWithNoErrorWarnings(t *testing.T) {
 	warnings, ok := env["warnings"].([]any)
 	require.True(t, ok)
 	assert.Equal(t, []any{"keychain unavailable; credentials will be stored in plaintext"}, warnings)
-	assert.Empty(t, notices.notices, "drain must be destructive — nothing left to drain a second time")
+	assert.Empty(t, notices.notices, "drain must be destructive - nothing left to drain a second time")
 }
 
 // TestRunOrdinaryCommandDrainsNoticeSourceOnSuccess asserts the success-path
 // drain for a plain (non-once-only) command: a notice recorded on the
-// invocation's NoticeSource leads Result.Warnings — under the default
+// invocation's NoticeSource leads Result.Warnings - under the default
 // format it mirrors to stderr ahead of any Result.Warnings entry, and under
 // -o json it lands inside the same envelope's warnings field, in that
 // order. Draining is destructive.
@@ -1421,7 +1421,7 @@ func TestRunOrdinaryCommandDrainsNoticeSourceOnSuccess(t *testing.T) {
 // warning-delivery fix for the raw-output shapes: ShapeBytes (RawBytes) and
 // ShapeExecJSON (Raw) results never had an envelope to carry Warnings, and
 // the RawBytes/Raw branches used to return before the stderr mirror loop
-// ran at all — silently dropping them under every format, not just
+// ran at all - silently dropping them under every format, not just
 // json/yaml. Both branches now mirror unconditionally.
 func TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat(t *testing.T) {
 	t.Parallel()
@@ -1526,7 +1526,7 @@ func TestResultSummaryAppearsInJSONEnvelope(t *testing.T) {
 }
 
 // TestResultSummaryRequiresTabularData asserts the runtime rule that Summary
-// rides only over Tabular Data — the JSON-fallback-era pattern of a Summary
+// rides only over Tabular Data - the JSON-fallback-era pattern of a Summary
 // line papering over non-Tabular Data is a command bug now that the
 // fallback itself is gone.
 func TestResultSummaryRequiresTabularData(t *testing.T) {
@@ -1565,7 +1565,7 @@ func TestResultSummaryPrintsUnderWideToo(t *testing.T) {
 }
 
 // TestResultEmptySummaryAbsentFromJSONEnvelope proves that an empty
-// Result.Summary emits NO "summary" key — the envelope must be byte-identical
+// Result.Summary emits NO "summary" key - the envelope must be byte-identical
 // to a non-wait result (additive, not always-present).
 func TestResultEmptySummaryAbsentFromJSONEnvelope(t *testing.T) {
 	t.Parallel()

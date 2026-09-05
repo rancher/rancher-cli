@@ -27,8 +27,8 @@ func createMachineConfigDescriptor() runtime.Descriptor {
 }
 
 // TestMachineConfigSetKeyCandidates asserts MC-16: kind-scoped key
-// candidates = Known − Credential − Curated, as key= continuation tokens,
-// in space and equals form, only for create machine-config's --set — and
+// candidates = Known - Credential - Curated, as key= continuation tokens,
+// in space and equals form, only for create machine-config's --set - and
 // the case OWNS that site for every kind (owned even when empty).
 func TestMachineConfigSetKeyCandidates(t *testing.T) {
 	t.Parallel()
@@ -71,7 +71,7 @@ func TestMachineConfigSetKeyCandidates(t *testing.T) {
 		require.NotEmpty(t, f.Curated)
 		for _, cur := range f.Curated {
 			assert.NotContains(t, got, cur+"=",
-				"curated key %q must never be suggested — MC-7 rejects it via --set", cur)
+				"curated key %q must never be suggested - MC-7 rejects it via --set", cur)
 		}
 	})
 
@@ -169,7 +169,7 @@ func TestMachineConfigSetKeysServedWithoutNetwork(t *testing.T) {
 
 // TestMachineConfigSetSiteOwnershipStopsLiveLayer asserts the ownership
 // contract through dispatchSite with the network gate ON: an unmatched
-// --set partial terminates with zero candidates and zero HTTP requests —
+// --set partial terminates with zero candidates and zero HTTP requests -
 // the fully static site never reaches the live layer.
 func TestMachineConfigSetSiteOwnershipStopsLiveLayer(t *testing.T) {
 	// NOT parallel: mutates storedConfig.

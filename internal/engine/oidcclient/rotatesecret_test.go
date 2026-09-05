@@ -120,7 +120,7 @@ func TestRotateSecretPlanNamedSecretNotFoundListsCandidates(t *testing.T) {
 // TestRotateSecretPlanCorrelationReadFailureIsOrdinaryPreMutationRefusal
 // asserts the FORBIDDEN-at-read contract: a caller who cannot read the
 // backing Secret at Plan time cannot be delivered the new value either, so
-// this fails BEFORE the mutation — ordinary RBAC, no committed details.
+// this fails BEFORE the mutation - ordinary RBAC, no committed details.
 func TestRotateSecretPlanCorrelationReadFailureIsOrdinaryPreMutationRefusal(t *testing.T) {
 	t.Parallel()
 	obj := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
@@ -171,7 +171,7 @@ func TestRotateSecretExecSuccessDeliversNewValue(t *testing.T) {
 	require.NotNil(t, res.CommittedContext)
 	assert.Equal(t, "oidcclient/my-app patched\n"+
 		"  secret client-secret-1 rotated\n"+
-		"  client secret: new-value   (shown once — store it now)\n", res.Text)
+		"  client secret: new-value   (shown once - store it now)\n", res.Text)
 }
 
 // TestRotateSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce
@@ -182,8 +182,8 @@ func TestRotateSecretExecSuccessDeliversNewValue(t *testing.T) {
 // (the shown-once note), so the shown-once note does NOT land at
 // Warnings[0] once merged. This proves the note is excluded from the
 // table-family stderr mirror only by value, not by position, while the
-// unrelated Plan-time advisory — the one warning an operator must not
-// lose — still reaches stderr.
+// unrelated Plan-time advisory - the one warning an operator must not
+// lose - still reaches stderr.
 func TestRotateSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t *testing.T) {
 	withFastPoll(t)
 	planObj := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
@@ -214,12 +214,12 @@ func TestRotateSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t 
 		"the Plan-time safety advisory must still reach stderr after the merge")
 	assert.NotContains(t, errBuf.String(), "shown exactly once",
 		"the shown-once note must not double-print to stderr")
-	assert.Contains(t, out.String(), "client secret: new-value   (shown once — store it now)")
+	assert.Contains(t, out.String(), "client secret: new-value   (shown once - store it now)")
 }
 
 // hangingSecretAfterFirstRead's secrets-GVR Get returns normally the first
 // time (Plan's correlation read), then blocks on its context until it is
-// canceled — proves rotate's per-tick correlation read inside check() is
+// canceled - proves rotate's per-tick correlation read inside check() is
 // bound by waitForOIDCClient's own deadline, not the command's outer
 // (test-lifetime, effectively unbounded) context.
 type hangingSecretAfterFirstRead struct {
@@ -305,7 +305,7 @@ func (f *secretErrAfterFirstRead) Get(ctx context.Context, gvr schema.GroupVersi
 }
 
 // alwaysErrSecretRead succeeds on the first secrets-GVR Get, then returns
-// err on every read after — for asserting the never-recovers-before-deadline
+// err on every read after - for asserting the never-recovers-before-deadline
 // case, where secretErrAfterFirstRead's exhaustion-then-success shape would
 // let the wait succeed instead of time out.
 type alwaysErrSecretRead struct {
@@ -328,7 +328,7 @@ func (f *alwaysErrSecretRead) Get(ctx context.Context, gvr schema.GroupVersionRe
 // TestRotateSecretExecTransientSecretReadRetriesUntilSuccess asserts that
 // check()'s per-tick Secret read must tolerate a transient error and keep
 // polling, mirroring waitForOIDCClient's own contract for its OIDCClient
-// Get — both a clierr.Error explicitly classified Retryable and a raw
+// Get - both a clierr.Error explicitly classified Retryable and a raw
 // (unclassified) transport error count as transient.
 func TestRotateSecretExecTransientSecretReadRetriesUntilSuccess(t *testing.T) {
 	cases := []struct {
@@ -396,7 +396,7 @@ func TestRotateSecretExecPerTickRBACReadIsTerminal(t *testing.T) {
 // TestRotateSecretExecTimeoutAfterConsumptionCarriesCommittedDetails asserts
 // that when the annotation is already consumed but the Secret stays
 // unreadable on every tick, the eventual timeout must still carry
-// committed context — the rotation may have succeeded even though
+// committed context - the rotation may have succeeded even though
 // delivery never confirmed it.
 func TestRotateSecretExecTimeoutAfterConsumptionCarriesCommittedDetails(t *testing.T) {
 	withFastPoll(t)
@@ -450,14 +450,14 @@ func TestRotateSecretExecTimeoutIsRetryable(t *testing.T) {
 	// projection's own recover line must echo the SAME recovery verbatim,
 	// never a generic "do not retry" that would contradict it.
 	assert.Equal(t, []string{
-		"committed: OIDCClient my-app — the change may already be on the server",
+		"committed: OIDCClient my-app - the change may already be on the server",
 		"recover: " + details.Recovery,
 	}, details.TextDetails())
 }
 
 // TestRotateSecretUnchangedValueProjectsCommittedDetails asserts the
 // should-be-impossible rotate-unchanged terminal error: non-retryable, and
-// its projection echoes the same re-check recovery TextDetails renders —
+// its projection echoes the same re-check recovery TextDetails renders -
 // never an invitation to retry a rotation whose value never actually moved.
 func TestRotateSecretUnchangedValueProjectsCommittedDetails(t *testing.T) {
 	t.Parallel()
@@ -469,7 +469,7 @@ func TestRotateSecretUnchangedValueProjectsCommittedDetails(t *testing.T) {
 	assert.True(t, details.Committed)
 	assert.Equal(t, recovery, details.Recovery)
 	assert.Equal(t, []string{
-		"committed: OIDCClient my-app — the change may already be on the server",
+		"committed: OIDCClient my-app - the change may already be on the server",
 		"recover: " + recovery,
 	}, details.TextDetails())
 }

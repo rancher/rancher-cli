@@ -27,7 +27,7 @@ func TestCheckFlagValuesIncident(t *testing.T) {
 	assert.Contains(t, ce.Message, "--k8s-version")
 	assert.Contains(t, ce.Message, "value for --cloud-credential")
 	assert.Contains(t, ce.Message, "--cloud-credential=<value>")
-	assert.Empty(t, ce.Hint, "the empty-shell-variable guidance lives in the message, not a hint — <value> is a genuine placeholder, never a known literal")
+	assert.Empty(t, ce.Hint, "the empty-shell-variable guidance lives in the message, not a hint - <value> is a genuine placeholder, never a known literal")
 }
 
 func TestCheckFlagValuesEqualsFormPasses(t *testing.T) {
@@ -41,7 +41,7 @@ func TestCheckFlagValuesEqualsFormPasses(t *testing.T) {
 
 func TestCheckFlagValuesShortFlagNormalValue(t *testing.T) {
 	t.Parallel()
-	// -o json — short alias, normal non-flag value; must pass.
+	// -o json - short alias, normal non-flag value; must pass.
 	ce := checkFlagValues(nil, []string{"get", "cluster", "-o", "json"}, false)
 	assert.Nil(t, ce)
 }
@@ -78,7 +78,7 @@ func TestCheckFlagValuesEndOfFlagsMarker(t *testing.T) {
 func TestCheckFlagValuesBoolFlagAdjacency(t *testing.T) {
 	t.Parallel()
 	// --dry-run (bool) followed immediately by --cloud-credential (value-taking
-	// with a real value): no fire — the bool flag has no next-value slot to eat.
+	// with a real value): no fire - the bool flag has no next-value slot to eat.
 	flags := []runtime.ArgSpec{
 		{Name: "cloud-credential", Type: "string"},
 	}
@@ -90,7 +90,7 @@ func TestCheckFlagValuesBoolFlagAdjacency(t *testing.T) {
 func TestCheckFlagValuesV1DanglingFlagNoFire(t *testing.T) {
 	t.Parallel()
 	// v1-shaped rawArgv ending in a dangling value-taking flag: the i+1 <
-	// len(argv) guard means there is no next token to examine — no fire.
+	// len(argv) guard means there is no next token to examine - no fire.
 	flags := []runtime.ArgSpec{{Name: "cloud-credential", Type: "string"}}
 	argv := []string{"create", "cluster", "--cloud-credential"}
 	ce := checkFlagValues(flags, argv, false)

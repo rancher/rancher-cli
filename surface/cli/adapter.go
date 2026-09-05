@@ -20,7 +20,7 @@ import (
 // `rancher clusters scale ... --apply`). (--config and --debug are on root in root.go.)
 //
 // These TTY usage strings are the operator-facing counterpart of the schema
-// descriptions in runtime.GlobalFlags() (registry.go) — two deliberately
+// descriptions in runtime.GlobalFlags() (registry.go) - two deliberately
 // separate strings (terse here, fuller there), kept in sync by hand.
 func GlobalFlags() []ucli.Flag {
 	return []ucli.Flag{
@@ -139,7 +139,7 @@ func buildIO(c *ucli.Command) runtime.IO {
 	}
 }
 
-// fileIsTTY reports whether w is a terminal file descriptor — false for any
+// fileIsTTY reports whether w is a terminal file descriptor - false for any
 // writer that is not an *os.File (a buffer, a pipe destination that is not
 // itself the terminal).
 func fileIsTTY(w io.Writer) bool {
@@ -203,7 +203,7 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 		OnUsageError:              onUsageError,
 		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
 			// Flags have already parsed successfully at this point, so the
-			// invocation's own --output value is trusted directly — no raw-argv
+			// invocation's own --output value is trusted directly - no raw-argv
 			// scan needed here, unlike commandNotFound/onUsageError below.
 			if ce := checkFlagValues(d.Flags, rawArgv, completionActive()); ce != nil {
 				_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
@@ -236,8 +236,8 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 
 // primeDescription is the normal `--help` marker seam: urfave's own default
 // help template renders a command's Description in a DESCRIPTION: block
-// (Usage feeds every other consumer — the TOC, the manifest, the command
-// card's usage line — and must never carry the marker). "" leaves urfave's
+// (Usage feeds every other consumer - the TOC, the manifest, the command
+// card's usage line - and must never carry the marker). "" leaves urfave's
 // DESCRIPTION: block absent, exactly as for every non-Prime command today.
 func primeDescription(d runtime.Descriptor) string {
 	if d.Capability.Tier == runtime.CapabilityPrime {
@@ -251,7 +251,7 @@ func primeDescription(d runtime.Descriptor) string {
 const primeMetadataKey = "prime"
 
 // primeMetadata returns a Metadata map flagging a Prime descriptor, or nil
-// for an ordinary one — nil leaves urfave's Metadata absent, exactly as
+// for an ordinary one - nil leaves urfave's Metadata absent, exactly as
 // before this flag existed.
 func primeMetadata(d runtime.Descriptor) map[string]any {
 	if d.Capability.Tier != runtime.CapabilityPrime {
@@ -284,7 +284,7 @@ func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 // config.LoadAndStore encapsulates the Load + NewLazyStore pairing. The store
 // is LAZY: policy-name validation happens here (fail fast on every
 // resolveDeps-backed command), but the auto probe / credstore-pin write /
-// config-dir creation defer to the first credential call — an invocation
+// config-dir creation defer to the first credential call - an invocation
 // that never touches credentials leaves no store-init side effects
 // (spec LS-1; Windows acceptance FAIL 2).
 func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
@@ -305,7 +305,7 @@ func exit(ce *clierr.Error) error {
 }
 
 // hintEntry pairs a matcher with the extra MESSAGE-body detail it selects
-// (never a hint — none of these entries has a single concrete, runnable
+// (never a hint - none of these entries has a single concrete, runnable
 // command to offer beyond the generic schema pointer every caller falls
 // back to) and an optional hint override for the rare entry that does have
 // one. Both receive the same input as match so one entry can vary its
@@ -412,25 +412,25 @@ func isAllNamespacesFlag(err error) bool {
 	return strings.HasSuffix(msg, ": -A") || strings.HasSuffix(msg, ": -all-namespaces")
 }
 
-// allNamespacesEntry is the kubectl-reflex -A/--all-namespaces entry —
+// allNamespacesEntry is the kubectl-reflex -A/--all-namespaces entry -
 // addressable by name so tests assert on THIS entry, not a table position.
 //
 // c.Path() returns the root-to-leaf segment slice (urfave v3 Path()),
 // so a `get pod` leaf reports ["rancher","get","pod"]; the `get` group
 // itself reports ["rancher","get"]. The positional p[1]=="get" check
-// matches only commands directly under the `get` group — a "get" segment
+// matches only commands directly under the `get` group - a "get" segment
 // anywhere deeper in the path (e.g. a hypothetical `auth get-token`) does
 // not trigger the detail.
 var allNamespacesEntry = hintEntry[usageErrorInput]{
 	// kubectl reflex -A/--all-namespaces: the flag exists nowhere.
 	// Under the get group the wording explains that lists already
 	// span all namespaces; elsewhere the base message alone covers it.
-	// One entry, wording chosen here — no order-dependent
+	// One entry, wording chosen here - no order-dependent
 	// specialize-then-generalize pair.
 	match: func(in usageErrorInput) bool { return isAllNamespacesFlag(in.err) },
 	detail: func(in usageErrorInput) string {
 		if p := in.c.Path(); len(p) >= 2 && p[1] == "get" {
-			return noAllNamespacesFlag + " — list operations already span all namespaces; use --namespace where the kind accepts one"
+			return noAllNamespacesFlag + " - list operations already span all namespaces; use --namespace where the kind accepts one"
 		}
 		return noAllNamespacesFlag
 	},
@@ -451,7 +451,7 @@ func usageErrorGuidance(c *ucli.Command, err error) (detail, hint string) {
 // commandNotFound is urfave/cli's seam for an unmatched command/subcommand
 // name (registered as root's and every group's CommandNotFound). Without it,
 // urfave's own DefaultShowCommandHelp hard-codes a plain-text "No help topic
-// for '<name>'" on stderr and exits 3 — indistinguishable from the AUTH exit
+// for '<name>'" on stderr and exits 3 - indistinguishable from the AUTH exit
 // code documented for exit 3, and with no structured error for a script to
 // parse. CommandNotFoundFunc has no error return, so rendering and the
 // process exit both happen here directly, mirroring how urfave's own
@@ -471,12 +471,12 @@ func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 
 // onUsageError is urfave/cli's seam for a flag-parse failure (unknown flag,
 // bad value, missing value). Without it, urfave prints a plain-text
-// "Incorrect Usage: ..." line and falls through to help text — no structured
+// "Incorrect Usage: ..." line and falls through to help text - no structured
 // error for a script to parse, mirroring the gap commandNotFound closes for
 // unmatched command names. Wired on the root command and on every leaf and
 // group command via the adapters, since urfave checks OnUsageError on the
 // command node whose own flags failed to parse, not the root's. This
-// command's own flags failed to parse, so — like commandNotFound — the
+// command's own flags failed to parse, so - like commandNotFound - the
 // rendering format comes from a raw-argv scan, not a parsed --output value.
 func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
 	msg := err.Error() + "; pass --help for usage"

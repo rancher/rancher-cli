@@ -9,7 +9,7 @@ import (
 // lazyStore defers backend resolution (the auto probe, the credstore-pin
 // write, the plaintext notice) to the FIRST credential method call, so a
 // command that never touches credentials triggers no store-init side
-// effects — no probe latency, no pin, no config-dir creation (LS-1).
+// effects - no probe latency, no pin, no config-dir creation (LS-1).
 // resolve runs at most once; its result (or error) is cached for the
 // process lifetime and returned as-is from every call (callers keep their
 // existing error wrapping, spec R1-3).
@@ -21,10 +21,10 @@ type lazyStore struct {
 	// resolved flips true (via atomic.Bool, not a plain bool guarded by
 	// once alone) only after store/err are fully written, so DrainNotices
 	// can safely read them from any goroutine without forcing resolution
-	// itself — checking resolved is a query, never a trigger.
+	// itself - checking resolved is a query, never a trigger.
 	resolved atomic.Bool
 	// notices holds the first-pin/plaintext-fallback notice recorded during
-	// resolution — a lazyStore is constructed once per invocation, never
+	// resolution - a lazyStore is constructed once per invocation, never
 	// shared with another store, so it owns this buffer outright (contrast
 	// keyringStore, which shares one with its wrapped file cache).
 	notices *noticeBuffer
@@ -44,7 +44,7 @@ func NewLazyStore(policy, dir string) (CredStore, error) {
 	return &lazyStore{notices: nb, resolve: func() (CredStore, error) {
 		store, notice, err := openStoreResolved(p, dir)
 		// The lazy path resolves inside a credential operation (SetToken,
-		// GetToken, …), outside any pipeline Result — record it on this
+		// GetToken, …), outside any pipeline Result - record it on this
 		// store's own buffer instead of writing to stderr directly; the
 		// invocation's NoticeSource drain (renderErr/renderResult) picks it
 		// up wherever this store is wired onto IO.Notices.
@@ -65,9 +65,9 @@ func (l *lazyStore) backend() (CredStore, error) {
 // an invocation that never calls a credential method must see zero
 // store-init side effects (LS-1) even though the pipeline always drains
 // before rendering. Once resolution has happened (by any caller, at any
-// point before this call), the underlying backend's own notices — a later
+// point before this call), the underlying backend's own notices - a later
 // loose-permission finding, say, not just the first-pin notice recorded
-// during resolution — are drained too, in the order they would naturally
+// during resolution - are drained too, in the order they would naturally
 // occur (the pin notice is always recorded before resolved flips true).
 func (l *lazyStore) DrainNotices() []string {
 	out := l.notices.DrainNotices()

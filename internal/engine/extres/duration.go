@@ -20,18 +20,18 @@ var leadingDaysRe = regexp.MustCompile(`^(\d+)d(.*)$`)
 // maxDays bounds the day count before it is multiplied into a time.Duration
 // (int64 nanoseconds): unbounded, a large-enough day count wraps the int64
 // multiplication and silently produces a small positive duration instead of
-// failing — e.g. 213504d wraps to roughly 25 minutes. maxDays is the largest
+// failing - e.g. 213504d wraps to roughly 25 minutes. maxDays is the largest
 // day count whose *24h product cannot overflow.
 const maxDays = int64(math.MaxInt64) / int64(24*time.Hour)
 
 // ParseTTL parses a --ttl flag: Go duration syntax (90m, 12h), optionally
 // prefixed by a leading "<integer>d" days segment (1d = 24h) that may itself
 // be followed by a plain Go duration ("1d12h"). At most one days segment is
-// accepted, and only as the leading token — "12h1d" (not leading), "1d2d"
+// accepted, and only as the leading token - "12h1d" (not leading), "1d2d"
 // (a second days segment), "1.5d" (fractional days), and a bare number with
 // no unit ("90") are all VALIDATION, since none of them satisfy either
 // branch below. Empty string means "no TTL" (server default). A negative
-// result, from either branch, is VALIDATION — never-expires is not exposed
+// result, from either branch, is VALIDATION - never-expires is not exposed
 // by this flag.
 func ParseTTL(s string) (time.Duration, error) {
 	if s == "" {
@@ -75,7 +75,7 @@ func invalidTTL(s string) error {
 
 // TTLMilliseconds converts a parsed, positive TTL to the milliseconds the
 // Token spec expects, rejecting a sub-millisecond, nonzero duration that
-// would otherwise silently become spec.ttl: 0 — the server's own
+// would otherwise silently become spec.ttl: 0 - the server's own
 // "use the default" sentinel, not what the caller asked for. ttl <= 0
 // (absent --ttl) returns 0, nil so callers can keep their existing
 // `if ttl > 0` idiom to omit the field entirely.

@@ -24,7 +24,7 @@ type createCmd struct {
 	clients engine.ClusterClientFactory
 	src     engine.FileSource
 	// lookupGVK resolves a manifest's apiVersion+kind to a table row.
-	// Defaults to kinds.LookupGVK; production wiring never overrides it —
+	// Defaults to kinds.LookupGVK; production wiring never overrides it -
 	// test-only injection lets resolver-mechanics tests prove behavior
 	// against a synthetic Capability-bearing row without a way to register
 	// one in the closed-world kinds table.
@@ -33,7 +33,7 @@ type createCmd struct {
 	// parseOnce memoizes the manifest parse to exactly one read per
 	// invocation: ResolveCapability and Plan both need the unmarshaled
 	// object and its resolved kind row, and -f - reads stdin, which is
-	// single-shot. parsePath is the filename the memo was primed with —
+	// single-shot. parsePath is the filename the memo was primed with -
 	// both callers read it from the same Input in the same invocation, so
 	// a mismatch is a command-bug, never a re-read.
 	parseOnce sync.Once
@@ -44,8 +44,8 @@ type createCmd struct {
 }
 
 // NewCreate builds `create resource -f <file>` (mutating): it reads a single
-// manifest document, resolves its apiVersion+kind to a table row (closed-world
-// — an un-tabled kind is a VALIDATION error), reconciles the manifest's
+// manifest document, resolves its apiVersion+kind to a table row (closed-world -
+// an un-tabled kind is a VALIDATION error), reconciles the manifest's
 // namespace with the routing flags per the kind's NamespacePolicy, and previews
 // the create through the shared PlanCreate. It also implements
 // runtime.CapabilityResolver: the resolved kind row's requirement is what
@@ -75,7 +75,7 @@ func (*createCmd) Describe() runtime.Descriptor {
 
 // createClusterFlag is clusterFlag with create's own contract: the manifest
 // can supply the cluster (see overrideInput), so the flag is not
-// schema-required — routing rejects only when neither source names one.
+// schema-required - routing rejects only when neither source names one.
 func createClusterFlag() runtime.ArgSpec {
 	f := ClusterFlag(false)
 	f.Desc = "target cluster `id|name` (the manifest may supply it)"
@@ -152,7 +152,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 // filename flag, reading and resolving it at most once per invocation
 // regardless of how many callers (ResolveCapability, Plan) ask. A mismatch
 // between the path this memo was primed with and the path a later caller
-// asks about is a command bug, not a re-read — both callers read the same
+// asks about is a command bug, not a re-read - both callers read the same
 // Input in the same invocation, so they cannot legitimately disagree.
 func (c *createCmd) parseManifest(in runtime.Input) (*unstructured.Unstructured, kinds.Kind, error) {
 	path := in.String(flagFilename)
@@ -170,7 +170,7 @@ func (c *createCmd) parseManifest(in runtime.Input) (*unstructured.Unstructured,
 // readAndResolve performs the manifest parse itself: read, enforce the
 // exactly-one-document rule, unmarshal, and resolve the kind via the
 // injected lookup. Every error here is one of the manifest-shape VALIDATION
-// errors Plan has always produced — they now surface one stage earlier (from
+// errors Plan has always produced - they now surface one stage earlier (from
 // the capability stage, via ResolveCapability) when that runs first, but the
 // rendered envelope is byte-identical.
 func (c *createCmd) readAndResolve(path string) (*unstructured.Unstructured, kinds.Kind, error) {
@@ -203,7 +203,7 @@ func (c *createCmd) readAndResolve(path string) (*unstructured.Unstructured, kin
 
 // reconcile applies the kind's NamespacePolicy to the manifest namespace and
 // the routing flags, returning the overrides Route should see. A conflict
-// between the manifest and an explicit flag is a VALIDATION error — flags fill
+// between the manifest and an explicit flag is a VALIDATION error - flags fill
 // gaps, they never silently override the manifest.
 func (c *createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Input, manifestNS string) (map[string]string, error) {
 	overrides := map[string]string{}

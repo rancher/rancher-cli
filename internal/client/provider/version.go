@@ -13,7 +13,7 @@ import (
 
 // rancherVersionResponse is the minimal wire shape of GET /rancherversion.
 // RancherPrime is serialized as the STRING "true"/"false" (not a JSON
-// boolean) — decoded via parseEdition, never unmarshaled as bool.
+// boolean) - decoded via parseEdition, never unmarshaled as bool.
 type rancherVersionResponse struct {
 	Version      string `json:"Version"`
 	RancherPrime string `json:"RancherPrime"`
@@ -27,7 +27,7 @@ type Edition int
 const (
 	// EditionUnknown covers every case that is not an affirmative "true" or
 	// "false": the field absent, malformed, or carrying an unrecognized
-	// value. Unknown is not community — callers must not treat it as false.
+	// value. Unknown is not community - callers must not treat it as false.
 	EditionUnknown Edition = iota
 	EditionCommunity
 	EditionPrime
@@ -93,7 +93,7 @@ func fetchVersionResponse(ctx context.Context, eff config.Effective) (rancherVer
 // unauthenticated GET /rancherversion endpoint for `auth status`'s PS-8 floor
 // check. Unlike the previous server-version Setting, this endpoint requires no
 // RBAC permissions and reflects the binary's actual stamped version rather than
-// an editable config object — it is equivalent to checking the running binary,
+// an editable config object - it is equivalent to checking the running binary,
 // not a user-editable value. Any error (connectivity, non-200 status,
 // unrecognized response body) is returned as-is; the caller folds it into
 // PS-8's warn-only "cannot determine" posture rather than failing the check.
@@ -109,7 +109,7 @@ func RancherVersion(ctx context.Context, eff config.Effective) (string, error) {
 }
 
 // GetServerInfo reads the server's version and edition from the same
-// unauthenticated GET /rancherversion endpoint RancherVersion uses — the
+// unauthenticated GET /rancherversion endpoint RancherVersion uses - the
 // capability detector's edition signal. Any error is returned as-is; the
 // caller folds it into the detector's unknown outcome rather than failing.
 func GetServerInfo(ctx context.Context, eff config.Effective) (ServerInfo, error) {

@@ -110,7 +110,7 @@ func TestMachineConfigPrefixCandidatesStatic(t *testing.T) {
 // TestMachineConfigPrefixesServedWithoutNetwork asserts the static layer's
 // position BEFORE the network gate: the prefixes are compiled-in kind-table
 // literals (not server data), so they are served with completion.network
-// off and zero HTTP requests — same doctrine as static enums.
+// off and zero HTTP requests - same doctrine as static enums.
 func TestMachineConfigPrefixesServedWithoutNetwork(t *testing.T) {
 	// NOT parallel: mutates storedConfig.
 	var hits atomic.Int32
@@ -204,7 +204,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 
 // TestLiveFlagValueCloudCredentialCandidates asserts the --cloud-credential
 // site: ids (secret names) always; display names only when they resolve
-// unambiguously (ResolveCloudCredential's doctrine — a suggestion must never
+// unambiguously (ResolveCloudCredential's doctrine - a suggestion must never
 // fail with AMBIGUOUS_SELECTION at execution time); non-credential secrets
 // excluded; hostile display names dropped by the charset.
 func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {

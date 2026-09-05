@@ -38,7 +38,7 @@ func newVerifyFake(t *testing.T, wantToken string) *httptest.Server {
 	return srv
 }
 
-// verifyLoginCmd wires the real provider.Preflight into loginCmd.verify —
+// verifyLoginCmd wires the real provider.Preflight into loginCmd.verify -
 // unlike newPlainLoginCmd's nil-skip default, these tests exercise the
 // verification round-trip itself.
 func verifyLoginCmd(dir string, store config.CredStore) *loginCmd {
@@ -106,7 +106,7 @@ func TestLoginNoVerifyStoresAgainstDeadServerWithExactText(t *testing.T) {
 	in := args{b: map[string]bool{"token-stdin": true, "no-verify": true}, a: []string{"prod"}}
 	res, err := verifyLoginCmd(dir, store).Execute(t.Context(), in, stdinPrompter("id:sec\n"))
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(res.Text, "token stored for prod (https://127.0.0.1:1) — not verified"))
+	assert.True(t, strings.HasPrefix(res.Text, "token stored for prod (https://127.0.0.1:1) - not verified"))
 	assert.Equal(t, false, res.Data.(map[string]any)["verified"], "the round-trip was skipped via --no-verify")
 
 	tok, terr := store.GetToken(config.ServerRef{Name: "prod"})
@@ -159,7 +159,7 @@ func TestLoginProviderFlowSkipsVerifyEvenWhenWired(t *testing.T) {
 
 // TestLoginDelegatedVerifiesTokenBeforeStoring asserts that the verification
 // round-trip also runs on the --url (delegated) path, immediately after this
-// login's own registration commits — not only for an already-registered
+// login's own registration commits - not only for an already-registered
 // entry.
 func TestLoginDelegatedVerifiesTokenBeforeStoring(t *testing.T) {
 	t.Parallel()
@@ -175,7 +175,7 @@ func TestLoginDelegatedVerifiesTokenBeforeStoring(t *testing.T) {
 // verify failure on the --url (delegated) path is decorated exactly like any
 // other delegated auth failure: the message keeps the undo-the-registration
 // guidance and the hint stays the retry command, not the --no-verify hint a
-// plain (already-registered) login's verify failure gets — an orphaned
+// plain (already-registered) login's verify failure gets - an orphaned
 // registration is the bigger problem, so undoing it is the safe default
 // action, not silently storing a token against a server the operator just
 // failed to reach. --no-verify still gets mentioned, but only in the message

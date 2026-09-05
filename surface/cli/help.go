@@ -22,7 +22,7 @@ func init() {
 
 // printStyledHelp renders templ through urfave's own template engine,
 // adding a "bold" function resolved from this invocation's --color value
-// and the target writer's TTY-ness — the same activation rule every other
+// and the target writer's TTY-ness - the same activation rule every other
 // styled render site uses. data is always the *ucli.Command whose help is
 // being shown (cmd.Root() for root help); a data of a different shape (only
 // possible on the FishCompletionTemplate path, which never calls this
@@ -46,7 +46,7 @@ func printStyledHelp(w io.Writer, templ string, data any) {
 // primeMark returns the plain (uncolored) "[Prime] " prefix for a Prime
 // command's usage text, or "" for an ordinary one. It stays uncolored so the
 // COMMANDS block's wrap computes column widths off plain text length, same
-// as any other row — coloring happens afterward, in colorPrimeMark.
+// as any other row - coloring happens afterward, in colorPrimeMark.
 func primeMark(cmd *ucli.Command) string {
 	if commandIsPrime(cmd) {
 		return runtime.PrimeMarker + " "
@@ -92,7 +92,7 @@ func helpStyle(cmd *ucli.Command) style.Style {
 }
 
 // errStyle is helpStyle's twin for the ERR stream, styling errors the
-// adapter renders itself — before or outside the runtime pipeline, which
+// adapter renders itself - before or outside the runtime pipeline, which
 // resolves its own styles. colorValue is passed in rather than read off cmd
 // because two callers fire before this invocation's flags have parsed and
 // must scan raw argv for it. No format gate here: RenderErrorStyled already
@@ -122,7 +122,7 @@ func colonOffsetCommands(cmds []*ucli.Command, fixed int) int {
 }
 
 // commandsBlock is the colon-aligned COMMANDS list shared by
-// rootCommandHelpTemplate and subcommandHelpTemplate — the two shapes that
+// rootCommandHelpTemplate and subcommandHelpTemplate - the two shapes that
 // ever show one. It replaces urfave's own comma-joined, colon-less
 // visibleCommandCategoryTemplate/visibleCommandTemplate, which cannot be
 // overridden (they are unexported template names urfave always re-parses).
@@ -179,7 +179,7 @@ var commandHelpTemplate = `{{bold "NAME:"}}
 {{bold "GLOBAL OPTIONS:"}}{{template "visiblePersistentFlagTemplate" .}}{{end}}
 `
 
-// subcommandHelpTemplate is urfave's SubcommandHelpTemplate (a group — has
+// subcommandHelpTemplate is urfave's SubcommandHelpTemplate (a group - has
 // visible subcommands) with bold section headers, the DESCRIPTION block
 // moved above USAGE, and a colon-aligned COMMANDS list in place of the
 // stock comma-joined rows.

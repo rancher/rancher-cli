@@ -54,7 +54,7 @@ func TestResolveCapabilityNoCreateViaManifestReturnsZero(t *testing.T) {
 	cmd := &createCmd{clients: &recFactory{client: &createClient{}}, src: mapFileSource{"m.yaml": []byte(deploymentManifest)},
 		lookupGVK: func(string, string) (kinds.Kind, bool) { return k, true }}
 	req, err := cmd.ResolveCapability(t.Context(), input{s: map[string]string{"filename": "m.yaml"}})
-	require.NoError(t, err, "a NoCreateViaManifest row must not fail ResolveCapability — Plan's own refusal handles it")
+	require.NoError(t, err, "a NoCreateViaManifest row must not fail ResolveCapability - Plan's own refusal handles it")
 	assert.Equal(t, runtime.CapabilityRequirement{}, req)
 }
 
@@ -74,7 +74,7 @@ func TestResolveCapabilityNoRequirementTouchesNoNetwork(t *testing.T) {
 
 // TestResolveCapabilityErrorParity asserts that every manifest-shape error
 // ResolveCapability can surface is exactly the VALIDATION error Plan has
-// always produced — same shared parse, same envelope, one stage earlier.
+// always produced - same shared parse, same envelope, one stage earlier.
 func TestResolveCapabilityErrorParity(t *testing.T) {
 	t.Parallel()
 	t.Run("unreadable file", func(t *testing.T) {

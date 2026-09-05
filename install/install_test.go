@@ -46,7 +46,7 @@ func TestChecksumMismatchIsFatal(t *testing.T) {
 	s := newStub(t)
 	writeRelease(s, "v1.2.3", false)
 	s.setLatest("v1.2.3")
-	// Tamper the CURRENT platform's CLI asset — derived, not hardcoded, so
+	// Tamper the CURRENT platform's CLI asset - derived, not hardcoded, so
 	// the test exercises a mismatch on every supported platform (a fixed
 	// list omitted linux-s390x and would pass untested there).
 	s.setAsset("v1.2.3/rancher-"+runtime.GOOS+"-"+runtime.GOARCH, []byte("tampered"))
@@ -57,7 +57,7 @@ func TestChecksumMismatchIsFatal(t *testing.T) {
 
 // TestChecksumEntryPerAssetCompleteness asserts that each asset needs exactly
 // one SHA256SUMS entry: a missing helper entry, and a duplicated CLI entry
-// standing in for it, must both be fatal — a combined-count check would
+// standing in for it, must both be fatal - a combined-count check would
 // accept the duplicate and leave the helper entirely unchecked.
 func TestChecksumEntryPerAssetCompleteness(t *testing.T) {
 	t.Parallel()
@@ -228,14 +228,14 @@ func TestInternalRepoTokenModeInstalls(t *testing.T) {
 	// Token must arrive as an Authorization header on API asset requests.
 	assert.Equal(t, "Bearer test-internal-token", s.lastAuthHeader())
 
-	// Token must never appear in any curl argv — stdin config only.
+	// Token must never appear in any curl argv - stdin config only.
 	argv, err := os.ReadFile(argvLog)
 	require.NoError(t, err, "curl wrapper must have been invoked")
 	assert.NotContains(t, string(argv), "test-internal-token",
 		"token must never appear in any curl argv")
 
 	// Direct-200 path: each of the three assets (CLI, helper, SHA256SUMS)
-	// must be fetched in exactly one API request — no re-download after probe.
+	// must be fetched in exactly one API request - no re-download after probe.
 	assert.Equal(t, 3, s.apiAssetRequestCount(),
 		"direct-200 mode: exactly one API request per asset")
 
@@ -273,7 +273,7 @@ func TestInternalRepoAnonymousFailsClearly(t *testing.T) {
 // TestMissingAssetInPrivateModeFails covers the "asset not found in release"
 // error path: the release metadata is readable but a named asset is genuinely
 // absent (broken/partial release). The error must name the missing asset.
-// Uses the awk fallback (no jq/python3 on PATH — baseTools only).
+// Uses the awk fallback (no jq/python3 on PATH - baseTools only).
 func TestMissingAssetInPrivateModeFails(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
@@ -316,8 +316,8 @@ func TestMissingAssetInPrivateModeFails(t *testing.T) {
 
 // TestAdversarialBodyDoesNotConfuseAwkFallback is the discrimination test for
 // the /"body":/ exit bound. The hand-built release JSON has no SHA256SUMS in
-// the assets array, but places literal url/name lines — matching exactly what
-// awk's patterns look for — as top-level JSON fields AFTER the "body": line.
+// the assets array, but places literal url/name lines - matching exactly what
+// awk's patterns look for - as top-level JSON fields AFTER the "body": line.
 // An unbounded awk would scan past "body": and extract fake id 999999; the
 // bounded awk must exit at "body": and report "asset not found" instead.
 //
@@ -381,7 +381,7 @@ func TestAdversarialBodyDoesNotConfuseAwkFallback(t *testing.T) {
 		"bounded awk must stop at body: and not extract the fake id")
 	assert.Contains(t, errOut, "SHA256SUMS")
 	assert.NotContains(t, errOut, "999999",
-		"fake id 999999 must not appear — awk must have exited at the body: line")
+		"fake id 999999 must not appear - awk must have exited at the body: line")
 }
 
 // TestScopedTokenPublicRepoFallsBackToBrowserPath covers finding 2: a token is
@@ -395,7 +395,7 @@ func TestScopedTokenPublicRepoFallsBackToBrowserPath(t *testing.T) {
 	// NOT private: browser download URLs work fine.
 	writeRelease(s, "v1.2.3", false)
 	s.setLatest("v1.2.3")
-	// Metadata endpoint returns 403 — simulates a narrowly-scoped PAT.
+	// Metadata endpoint returns 403 - simulates a narrowly-scoped PAT.
 	s.setReleaseTagStatus(403)
 
 	home := t.TempDir()
@@ -471,7 +471,7 @@ func TestPrivateRepoTokenModeWith302Redirect(t *testing.T) {
 	assert.NotContains(t, string(argv), "test-302-token",
 		"token must never appear in any curl argv")
 
-	// 302 path: one API probe and one CDN fetch per asset — three of each.
+	// 302 path: one API probe and one CDN fetch per asset - three of each.
 	assert.Equal(t, 3, s.apiAssetRequestCount(),
 		"302 mode: exactly one API request per asset")
 	assert.Equal(t, 3, s.cdnAssetRequestCount(),
@@ -482,7 +482,7 @@ func TestPrivateRepoTokenModeWith302Redirect(t *testing.T) {
 // where TOKEN is present but the metadata endpoint returns 403 (scope/SSO
 // denied) and the repo is private: download falls back to browser URLs which
 // 404, and the error must name BOTH the asset failure AND the metadata failure
-// code — so the user knows the real cause is their token, not a missing asset.
+// code - so the user knows the real cause is their token, not a missing asset.
 func TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
@@ -588,7 +588,7 @@ func TestParserFirstWithAdversarialBody(t *testing.T) {
 
 // TestEpilogueWarnsWhenAnotherBinaryShadowsInstall covers the PATH shadow
 // scan: a rancher binary elsewhere on PATH (dev installs, package managers)
-// can shadow the fresh links by PATH order or a stale shell command hash —
+// can shadow the fresh links by PATH order or a stale shell command hash -
 // the installer must name the hazard and the remedy.
 func TestEpilogueWarnsWhenAnotherBinaryShadowsInstall(t *testing.T) {
 	t.Parallel()
@@ -665,7 +665,7 @@ func TestVersionChangeIsNamedAtSwitch(t *testing.T) {
 
 // TestShadowScanIgnoresConvenienceSymlink asserts the false-positive fix: a
 // symlink elsewhere on PATH that points back at the installed binary runs
-// the identical code — the scan must stay silent for absolute, relative,
+// the identical code - the scan must stay silent for absolute, relative,
 // and chained (update-alternatives-style) links alike.
 func TestShadowScanIgnoresConvenienceSymlink(t *testing.T) {
 	t.Parallel()
@@ -676,7 +676,7 @@ func TestShadowScanIgnoresConvenienceSymlink(t *testing.T) {
 				filepath.Join(home, ".local", "bin", "rancher"),
 				filepath.Join(dir, "rancher")))
 		},
-		// Relative from home/convenience into home/.local/bin — the
+		// Relative from home/convenience into home/.local/bin - the
 		// ln -s ../bin/rancher style the canonicalization must resolve.
 		"relative target": func(t *testing.T, home, dir string) {
 			t.Helper()
@@ -684,7 +684,7 @@ func TestShadowScanIgnoresConvenienceSymlink(t *testing.T) {
 				filepath.Join("..", ".local", "bin", "rancher"),
 				filepath.Join(dir, "rancher")))
 		},
-		// Two hops, both relative — the update-alternatives layout the
+		// Two hops, both relative - the update-alternatives layout the
 		// chain resolution must follow to the end.
 		"chained target": func(t *testing.T, home, dir string) {
 			t.Helper()

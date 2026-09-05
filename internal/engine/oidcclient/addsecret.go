@@ -66,7 +66,7 @@ func (c *addSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effec
 	}
 
 	// Delivery preflight: verify the backing Secret is readable BEFORE any
-	// dry-run/write — a manage-oidc-clients-only persona could not be
+	// dry-run/write - a manage-oidc-clients-only persona could not be
 	// delivered the new value either way, so refuse pre-mutation rather
 	// than generate an undeliverable secret.
 	if err := preflightReadSecret(ctx, c.clients, clientID); err != nil {
@@ -110,7 +110,7 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 				fmt.Sprintf("timed out waiting for oidc-client %s to add a secret", clientName)).
 				WithDetails(clierr.CommittedContextDetails{
 					Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName,
-					Recovery: "check " + getRecovery + "; if a new key landed its value was never shown — rotate that key by name",
+					Recovery: "check " + getRecovery + "; if a new key landed its value was never shown - rotate that key by name",
 				})
 		})
 	if err != nil {
@@ -137,14 +137,14 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 }
 
 // addSecretAmbiguousShape builds add-secret's terminal, non-retryable error
-// for any key-set transition other than exactly-baseline-plus-one-new-key
-// — a bare "one new key" check would bless a concurrent removal
+// for any key-set transition other than exactly-baseline-plus-one-new-key -
+// a bare "one new key" check would bless a concurrent removal
 // (baseline {1} -> observed {2} has exactly one new key too), so a missing
 // baseline key, a second new key, or any other shape must all fail
 // immediately rather than be misread as success.
 func addSecretAmbiguousShape(clientName string, baseline, current map[string]bool) *clierr.Error {
 	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("oidc-client %s: observed an unexpected secret-set change while adding a secret (baseline %v, observed %v) — a concurrent actor changed this client while add-secret was waiting",
+		fmt.Sprintf("oidc-client %s: observed an unexpected secret-set change while adding a secret (baseline %v, observed %v) - a concurrent actor changed this client while add-secret was waiting",
 			clientName, sortedKeysOf(baseline), sortedKeysOf(current))).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName,

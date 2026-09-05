@@ -13,7 +13,7 @@ import (
 
 // collectByNode groups pods by spec.nodeName for REQUEST/LIMIT columns and
 // fetches metrics.k8s.io node metrics for USAGE columns. Node USAGE is
-// intentionally not the sum of pod metrics — it is true machine consumption
+// intentionally not the sum of pod metrics - it is true machine consumption
 // including system overhead (parity with old `top node`). A missing metrics
 // server degrades the USAGE columns to empty plus one warning. Pods with no
 // spec.nodeName (pending/unscheduled) are excluded. Nodes with zero pods still
@@ -81,13 +81,13 @@ func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClien
 	for _, pod := range pods.Items {
 		nn, _, _ := unstructured.NestedString(pod.Object, "spec", "nodeName")
 		if nn == "" {
-			continue // pending/unscheduled — excluded per spec UU-19
+			continue // pending/unscheduled - excluded per spec UU-19
 		}
 		grouped[nn] = append(grouped[nn], pod)
 	}
 
 	// Pods on nodes absent from the List (deleted mid-run, partial RBAC) keep
-	// their row — USAGE stays empty, REQUEST/LIMIT reflect the pod's spec.
+	// their row - USAGE stays empty, REQUEST/LIMIT reflect the pod's spec.
 	for nn := range grouped {
 		if _, ok := rows[nn]; !ok {
 			rows[nn] = resourceTotals{}

@@ -36,7 +36,7 @@ func newTable(k kinds.Kind, items []unstructured.Unstructured, single bool) tabl
 }
 
 // MarshalJSON emits the bare object for a named get, or a bare array of
-// objects for a list — never {"items":...} — so gjson paths like
+// objects for a list - never {"items":...} - so gjson paths like
 // `data.metadata.name` (single) and `data.0.metadata.name`/`data.#` (list)
 // address the real object graph. sigs.k8s.io/yaml marshals through JSON, so
 // this fixes -o yaml too; no separate MarshalYAML is needed.
@@ -90,7 +90,7 @@ func (t table) Rows() [][]string {
 }
 
 // WideColumns is the -o wide column set: NAME plus every column, Wide or
-// not, plus AGE last — the output.WideTabular superset.
+// not, plus AGE last - the output.WideTabular superset.
 func (t table) WideColumns() []string {
 	cols := make([]string, 0, len(t.k.Columns)+2)
 	cols = append(cols, "NAME")
@@ -118,7 +118,7 @@ func (t table) WideRows() [][]string {
 }
 
 // ageCell renders metadata.creationTimestamp as kubectl's own AGE column
-// does — duration.HumanDuration since now() — built in on every KIND table,
+// does - duration.HumanDuration since now() - built in on every KIND table,
 // like NAME. A missing or unparseable timestamp renders blank: nothing is
 // fabricated, no placeholder.
 func ageCell(o map[string]any) string {
@@ -151,7 +151,7 @@ func conditionCell(o map[string]any, c kinds.Column) string {
 
 // pathCell projects a column value from Path/AltPaths/Bool/Default/Join.
 // Join renders a string-array Path comma-joined in server order. Otherwise
-// every path — Path first, then each AltPaths entry, in order — is tried
+// every path - Path first, then each AltPaths entry, in order - is tried
 // through the typed leaf ladder (see ladderCell); the first path with a
 // present leaf wins. When no path yields anything: the Bool marker's
 // absent→"false" fallback applies, then Default, then blank.
@@ -177,11 +177,11 @@ func pathCell(o map[string]any, c kinds.Column) string {
 }
 
 // ladderCell tries one path through the typed leaf ladder: NestedString →
-// NestedBool → NestedInt64 → NestedFloat64 — the first present leaf renders
+// NestedBool → NestedInt64 → NestedFloat64 - the first present leaf renders
 // (string: as-is; bool: strconv.FormatBool; int64: strconv.FormatInt;
 // float64: strconv.FormatFloat with 'g' and the shortest round-trip
 // precision, which may emit exponent form for extreme magnitudes). A leaf
-// that is present as a string but empty is NOT considered present — the
+// that is present as a string but empty is NOT considered present - the
 // caller falls through to the next path, preserving the existing
 // first-non-empty-string-wins contract for AltPaths. A present zero (int64
 // or float64) renders as a real value, "0", never blank.

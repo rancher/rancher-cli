@@ -1,5 +1,5 @@
 // Package engine holds pure domain operations. It depends on the runtime
-// contracts and safety types only — never on the provider adapter, urfave,
+// contracts and safety types only - never on the provider adapter, urfave,
 // or the terminal.
 package engine
 
@@ -38,7 +38,7 @@ type ClusterClient interface {
 
 // LogOptions parameterizes a Logs call. SinceSeconds and TailLines are both
 // pointers because nil (unset) and *0 (an explicit zero) are different
-// requests to corev1.PodLogOptions — SinceSeconds' nil means "no limit" vs
+// requests to corev1.PodLogOptions - SinceSeconds' nil means "no limit" vs
 // *0 meaning "since now" (silently empty output); TailLines' nil means "no
 // limit" vs *0 meaning "request exactly zero lines". A plain int64 here
 // would let a caller that forgets to set TailLines silently ask for zero
@@ -67,12 +67,12 @@ type ClusterClientFactory interface {
 }
 
 // RootClient is the GET-only port for reads against the Rancher server
-// ROOT (Steve /v1 collections, the channel-server release routes) — the
+// ROOT (Steve /v1 collections, the channel-server release routes) - the
 // surfaces ClusterClient's per-cluster /k8s/clusters/<id> proxy cannot
 // reach. GET-only BY DESIGN: no write verb exists on this port, keeping
 // the tranche's zero-Norman / writes-through-CRDs posture structural
 // (spec D-10). Every call sends the session's credentials, including to
-// routes that happen to be unauthenticated server-side — one policy, no
+// routes that happen to be unauthenticated server-side - one policy, no
 // anonymous special-casing (spec D-10).
 type RootClient interface {
 	// GetJSON GETs path (absolute, starting "/") against the server root
@@ -88,7 +88,7 @@ type RootClientFactory interface {
 }
 
 // ServerBaseURLProvider exposes the canonical, resolved server base URL
-// (scheme preserved, no trailing slash) — the SAME value RootClient's
+// (scheme preserved, no trailing slash) - the SAME value RootClient's
 // requests are built against, including a RANCHER_CLI_URL override or an
 // http development server. Narrow by design: only a command that must
 // construct a URL itself (discovery, and its degraded fallback) needs this;
@@ -99,7 +99,7 @@ type ServerBaseURLProvider interface {
 }
 
 // SessionTokenNamer exposes the ID component of the current session's bearer
-// credential — the part before ":" in the stored "id:secret" token. Only the
+// credential - the part before ":" in the stored "id:secret" token. Only the
 // ID (the token object name) is returned; the secret never crosses this
 // boundary. Used by the management-token delete guard to detect when the
 // target name matches the token backing the active session.

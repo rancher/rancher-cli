@@ -24,13 +24,13 @@ import (
 )
 
 var updateFacade = flag.Bool("update-facade", false,
-	"record façade goldens for divergence-pinned probes (wave-4 reconciliation)")
+	"record facade goldens for divergence-pinned probes (wave-4 reconciliation)")
 
 // fidelityDir is the fidelity library's testdata root, relative to this
 // package directory (e2e/).
 var fidelityDir = filepath.Join("..", "internal", "testrancher", "fidelity", "testdata")
 
-// compositeTarget is the fidelity Target for the same façade-plus-envtest
+// compositeTarget is the fidelity Target for the same facade-plus-envtest
 // composite TestScenarios wires per script: testrancher.Facade in front, the
 // bearer-checked router behind, envtest behind that.
 type compositeTarget struct {
@@ -72,7 +72,7 @@ func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (str
 			}
 			name, ok := fidelity.NameFromExtBearer(bearer)
 			if !ok {
-				return "", fmt.Errorf("façade bearer is not ext-shaped (credential value withheld)")
+				return "", fmt.Errorf("facade bearer is not ext-shaped (credential value withheld)")
 			}
 			if err := c.deleteToken(ctx, name); err != nil {
 				return "", err
@@ -98,7 +98,7 @@ func (c *compositeTarget) derivedBearer(ctx context.Context) (string, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("façade login: status %d", resp.StatusCode)
+		return "", fmt.Errorf("facade login: status %d", resp.StatusCode)
 	}
 	var created struct {
 		Status struct {
@@ -109,7 +109,7 @@ func (c *compositeTarget) derivedBearer(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if created.Status.BearerToken == "" {
-		return "", errors.New("façade login: empty bearerToken")
+		return "", errors.New("facade login: empty bearerToken")
 	}
 	return created.Status.BearerToken, nil
 }
@@ -127,7 +127,7 @@ func (c *compositeTarget) deleteToken(ctx context.Context, name string) error {
 	}
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("revoking façade token %s: status %d", name, resp.StatusCode)
+		return fmt.Errorf("revoking facade token %s: status %d", name, resp.StatusCode)
 	}
 	return nil
 }
@@ -152,7 +152,7 @@ func TestFidelityConformance(t *testing.T) {
 			facadePath := fidelity.GoldenPath(filepath.Join(fidelityDir, "facade"), p.Name)
 			if p.FacadeDivergence == "" {
 				assert.Empty(t, fidelity.Diff(oracle, got),
-					"façade diverges from the oracle; either fix the façade or pin with FacadeDivergence + a façade golden")
+					"facade diverges from the oracle; either fix the facade or pin with FacadeDivergence + a facade golden")
 				return
 			}
 
@@ -161,11 +161,11 @@ func TestFidelityConformance(t *testing.T) {
 			}
 			facadeGolden, err := fidelity.LoadGolden(facadePath)
 			require.NoError(t, err,
-				"divergence-pinned probe %s needs a façade golden: run with -update-facade", p.Name)
+				"divergence-pinned probe %s needs a facade golden: run with -update-facade", p.Name)
 			assert.Empty(t, fidelity.Diff(facadeGolden, got),
-				"façade drifted from its own pin (%s)", p.FacadeDivergence)
+				"facade drifted from its own pin (%s)", p.FacadeDivergence)
 			assert.NotEmpty(t, fidelity.Diff(oracle, facadeGolden),
-				"façade now matches the oracle: remove the FacadeDivergence pin and its façade golden")
+				"facade now matches the oracle: remove the FacadeDivergence pin and its facade golden")
 		})
 	}
 }

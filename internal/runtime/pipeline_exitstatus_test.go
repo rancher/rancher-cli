@@ -45,7 +45,7 @@ func TestRunHonorsDeclaredExitStatus(t *testing.T) {
 }
 
 // TestRunRejectsUndeclaredExitStatus: an undeclared status is an internal
-// error — JSON error envelope on stderr, nothing on stdout, status 0.
+// error - JSON error envelope on stderr, nothing on stdout, status 0.
 func TestRunRejectsUndeclaredExitStatus(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer

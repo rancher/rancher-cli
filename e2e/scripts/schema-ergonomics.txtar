@@ -1,5 +1,5 @@
 # The plain-text schema views ARE the operator contract under the default
-# format — this scenario string-matches stdout on purpose (the one place
+# format - this scenario string-matches stdout on purpose (the one place
 # that is correct); structured shapes stay with schema.txtar's jsonquery.
 
 # SE-1/SE-3: a destructive mutating command's card renders the contract line
@@ -12,12 +12,12 @@ stdout '(?m)^gates: --apply --yes$'
 # patch refusal with its note
 exec rancher schema clusterregistrationtoken
 stdout '(?m)^kind: clusterregistrationtoken$'
-stdout '(?m)^  patch: refused — read-only: consumed, not edited$'
+stdout '(?m)^  patch: refused - read-only: consumed, not edited$'
 
 # SE-11: --search finds matches and exits 0
 exec rancher schema --search kubeconfig
 stdout 'commands match --search "kubeconfig"'
-stdout '(?m)^  create kubeconfig — '
+stdout '(?m)^  create kubeconfig - '
 
 # SE-11: zero hits print the no-matches message naming the filter, exit 0
 exec rancher schema --search zzz-no-such-term

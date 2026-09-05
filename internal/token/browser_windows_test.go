@@ -10,8 +10,8 @@ import (
 
 // TestOSOpenURLDoesNotShellInterpret guards the Windows RCE fix without opening
 // a browser: it stubs the ShellExecute call and asserts osOpenURL hands the URL
-// to the API opaquely — the full URL, metacharacters and all, as the target,
-// with no command-line arguments — so there is no shell for a server-supplied
+// to the API opaquely - the full URL, metacharacters and all, as the target,
+// with no command-line arguments - so there is no shell for a server-supplied
 // authorize URL to inject into. The old `cmd /c start` path built a command
 // line; this proves the current path does not.
 func TestOSOpenURLDoesNotShellInterpret(t *testing.T) {
@@ -32,7 +32,7 @@ func TestOSOpenURLDoesNotShellInterpret(t *testing.T) {
 		t.Fatalf("URL not passed opaquely:\n got  %q\n want %q", got, u)
 	}
 	if gotArgs != nil {
-		t.Fatalf("ShellExecute got command arguments %q — must be nil (no command line, no shell)",
+		t.Fatalf("ShellExecute got command arguments %q - must be nil (no command line, no shell)",
 			windows.UTF16PtrToString(gotArgs))
 	}
 	if v := windows.UTF16PtrToString(gotVerb); v != "open" {

@@ -13,7 +13,7 @@ import (
 )
 
 // deniedFallbackMessage substitutes for a Forbidden/Unauthorized error
-// whose message is empty — Rancher's proxy paths reject an
+// whose message is empty - Rancher's proxy paths reject an
 // invalid/insufficient token with an empty-body 403 (and a direct k8s
 // endpoint may do the same with a 401), and apierrors' err.Error() passes
 // that through verbatim, so the envelope would otherwise carry a code
@@ -46,39 +46,39 @@ func mapErr(err error) error {
 	case apierrors.IsConflict(err):
 		// A resourceVersion precondition race: some other writer (e.g. a
 		// reconciling controller) updated the object between the read and
-		// this write. The object itself is fine — a fresh
+		// this write. The object itself is fine - a fresh
 		// read-modify-write against the current version resolves it, so
 		// this is retryable, and the raw Kubernetes wording ("the object
 		// has been modified") never reaches the caller.
 		return clierr.Retryable(clierr.CodeConflict,
 			"the resource changed on the server since it was last read; retry the command")
 	case apierrors.IsAlreadyExists(err):
-		// A duplicate name on create — retrying without changing the name
+		// A duplicate name on create - retrying without changing the name
 		// never succeeds.
 		return clierr.New(clierr.CodeConflict, err.Error())
 	case apierrors.IsInvalid(err) || apierrors.IsBadRequest(err):
 		return clierr.New(clierr.CodeValidation, err.Error())
 	case apierrors.IsServiceUnavailable(err):
 		return clierr.Retryable(clierr.CodeGeneric,
-			err.Error()+" — its agent may not be registered yet; retry once the cluster is active")
+			err.Error()+" - its agent may not be registered yet; retry once the cluster is active")
 	case errors.Is(err, context.DeadlineExceeded):
-		// A hung request expires the client timeout without any HTTP status —
+		// A hung request expires the client timeout without any HTTP status -
 		// client-go hands back a url.Error wrapping context.DeadlineExceeded.
 		// This arm serves management-plane reads and downstream agent-tunnel
 		// reads alike, and the two causes are indistinguishable here, so the
 		// message names both; which cluster to inspect is unknown here, so
 		// no hint names one.
 		return clierr.Retryable(clierr.CodeGeneric,
-			err.Error()+" — the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected (check with: rancher inspect cluster <cluster-id>)")
+			err.Error()+" - the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected (check with: rancher inspect cluster <cluster-id>)")
 	case isUnexpectedServerError(err):
 		msg := err.Error()
-		// The substring refines the message only — it is never the classifier,
+		// The substring refines the message only - it is never the classifier,
 		// so a reworded proxy body still lands retryable with the generic
 		// proxy-path wording instead of silently flipping non-retryable.
 		if strings.Contains(msg, "cluster agent disconnected") {
-			msg += " — retry once the cluster reconnects"
+			msg += " - retry once the cluster reconnects"
 		} else {
-			msg += " — often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed"
+			msg += " - often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed"
 		}
 		return clierr.Retryable(clierr.CodeGeneric, msg)
 	default:
@@ -98,7 +98,7 @@ func withDeniedFallback(ce *clierr.Error, status int) *clierr.Error {
 }
 
 // isUnexpectedServerError reports client-go's wrapping of a non-Status
-// 5xx body (InternalError reason + UnexpectedServerResponse cause) — the
+// 5xx body (InternalError reason + UnexpectedServerResponse cause) - the
 // shape every Rancher proxy-path failure takes, because the proxy answers
 // with plain text (e.g. "error trying to reach service: cluster agent
 // disconnected"). A genuine k8s-Status 500, like Rancher's

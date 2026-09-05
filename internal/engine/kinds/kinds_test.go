@@ -17,7 +17,7 @@ import (
 // cliOnlyKinds are table rows with no rancher-ai-mcp tool counterpart at
 // the recorded vocabulary snapshot (mcp-kinds-050e375.json): the tranche-D
 // provisioning surface predates MCP provisioning tools. Revisit when the
-// MCP vocabulary grows provisioning kinds — a key appearing in BOTH this
+// MCP vocabulary grows provisioning kinds - a key appearing in BOTH this
 // set and a future fixture must fail, so stale exemptions cannot linger.
 var cliOnlyKinds = map[string]bool{
 	"amazonec2config": true, "azureconfig": true, "digitaloceanconfig": true,
@@ -46,14 +46,14 @@ func TestConformsToMCPVocabulary(t *testing.T) {
 		}
 		w, ok := want[k.Key]
 		if !ok {
-			t.Errorf("kind %q not in the MCP fixture — vocabulary drift", k.Key)
+			t.Errorf("kind %q not in the MCP fixture - vocabulary drift", k.Key)
 			continue
 		}
 		if k.GVR.Group != w.Group || k.GVR.Version != w.Version || k.GVR.Resource != w.Resource {
 			t.Errorf("kind %q GVR %v diverges from MCP %+v", k.Key, k.GVR, w)
 		}
 	}
-	// Bidirectional: every fixture key must exist in the table — a dropped
+	// Bidirectional: every fixture key must exist in the table - a dropped
 	// kind must fail conformance, not silently shrink the surface.
 	for key := range want {
 		if _, ok := have[key]; !ok {
@@ -61,11 +61,11 @@ func TestConformsToMCPVocabulary(t *testing.T) {
 		}
 	}
 	// Staleness guard: a cliOnlyKinds exemption must not linger once the MCP
-	// vocabulary actually grows to cover that kind — if it appears in the
+	// vocabulary actually grows to cover that kind - if it appears in the
 	// fixture, the exemption is stale and must be removed.
 	for key := range cliOnlyKinds {
 		if _, ok := want[key]; ok {
-			t.Errorf("cliOnlyKinds %q now present in the MCP fixture — remove the stale exemption", key)
+			t.Errorf("cliOnlyKinds %q now present in the MCP fixture - remove the stale exemption", key)
 		}
 	}
 }
@@ -97,7 +97,7 @@ func TestValidateRejectsDuplicateKey(t *testing.T) {
 }
 
 // mixedConditionColumn returns a Column that illegally combines Condition
-// with Path — used by the mixed-field rejection tests.
+// with Path - used by the mixed-field rejection tests.
 func mixedConditionColumn() Column {
 	return Column{Header: "READY", Condition: "Ready", Path: []string{"status", "ready"}}
 }
@@ -124,7 +124,7 @@ func TestValidateRejectsConditionMixedWithPathFields(t *testing.T) {
 func TestValidateFirstDefectWinsPerKindTableOrder(t *testing.T) {
 	t.Parallel()
 	// Kind 1: clean identifiers, but column mixes Condition with Path.
-	// Kind 2: identifier "foo" collides with kind 1's Name — but the loop
+	// Kind 2: identifier "foo" collides with kind 1's Name - but the loop
 	// never reaches it because kind 1's column defect fires first.
 	fixture := []Kind{
 		{
@@ -173,7 +173,7 @@ func TestBindingsGeneratedPerKind(t *testing.T) {
 	assert.Equal(t, safety.Stable, dp.Stability)
 
 	_, ok = b["delete cluster"]
-	assert.False(t, ok, "clusters are not deletable — no delete binding")
+	assert.False(t, ok, "clusters are not deletable - no delete binding")
 }
 
 func TestLookupByNameAliasAndKey(t *testing.T) {
@@ -228,7 +228,7 @@ func TestProjectScopable(t *testing.T) {
 
 // TestClusterRowsCarryWaitDefaultConditionReady asserts IC-10/IC-11 at the
 // row level: BOTH cluster rows' bare---wait default is the LITERAL
-// "condition=Ready". A literal expectation on purpose — a silent row edit
+// "condition=Ready". A literal expectation on purpose - a silent row edit
 // must fail here, not round-trip.
 func TestClusterRowsCarryWaitDefaultConditionReady(t *testing.T) {
 	t.Parallel()
@@ -291,7 +291,7 @@ func TestValidateKindsRejectsEmptyName(t *testing.T) {
 // setting Effect.DisplayKind from a kind's Name, and checkPlan rejecting
 // an empty DisplayKind/DisplayName as a command bug, this proves every
 // generated create/patch/delete command has a valid dry-run and success
-// display identity by construction — no per-command exercise needed for
+// display identity by construction - no per-command exercise needed for
 // the ~130 generated commands, unlike the bespoke Plans, which each
 // assert the same fact directly on their own Effect (grant, revoke,
 // project add/remove-namespace, the OIDC client secret lifecycle, create
@@ -317,7 +317,7 @@ func TestUserRowDeletableAndCompletable(t *testing.T) {
 
 // TestValidateRejectsBadFirstAlias asserts the plural-first alias invariant: a row
 // whose Aliases[0] is not plural(hyphen-stripped Name) must fail validateKinds,
-// and a row with no aliases at all also fails — every row must register its plural.
+// and a row with no aliases at all also fails - every row must register its plural.
 func TestValidateRejectsBadFirstAlias(t *testing.T) {
 	t.Parallel()
 	bad := []Kind{
@@ -341,7 +341,7 @@ func TestValidateRejectsBadFirstAlias(t *testing.T) {
 }
 
 // TestHintTokenResolvesForAllKinds proves that hintToken(k) is a token
-// Lookup recognizes for every kind in the table — i.e. the plural token the
+// Lookup recognizes for every kind in the table - i.e. the plural token the
 // not-found hint prints is a real command the CLI accepts. Hyphenated kinds
 // ("fleet-cluster") register an unhyphenated plural alias ("fleetclusters")
 // that hintToken must use instead of plural(k.Name).
@@ -385,8 +385,8 @@ func TestNotFoundCuratedHyphenatedKind(t *testing.T) {
 }
 
 // TestNotFoundCuratedDownstreamCarriesCluster asserts that a Downstream-scoped
-// kind's list hint carries the invocation's own --cluster value, shell-quoted
-// — the list command a Downstream kind's hint names is never valid without it.
+// kind's list hint carries the invocation's own --cluster value, shell-quoted -
+// the list command a Downstream kind's hint names is never valid without it.
 func TestNotFoundCuratedDownstreamCarriesCluster(t *testing.T) {
 	t.Parallel()
 	k, ok := Lookup("deployment")
@@ -413,7 +413,7 @@ func TestLookupGVK(t *testing.T) {
 		{"v1", "Pod", "pod", true},                                   // core group apiVersion has no slash
 		{"apps/v1", "Widget", "", false},
 		{"unknown.io/v1", "Deployment", "", false},
-		{"apps/v1beta1", "Deployment", "", false}, // version MUST match for fixed-version rows — never silently dispatch a v1beta1 manifest on the v1 GVR
+		{"apps/v1beta1", "Deployment", "", false}, // version MUST match for fixed-version rows - never silently dispatch a v1beta1 manifest on the v1 GVR
 		{"batch/v2", "Job", "", false},
 	}
 	for _, tt := range tests {
@@ -516,7 +516,7 @@ func TestValidateGroupResourceUniqueness(t *testing.T) {
 	require.Error(t, err, "duplicate Group+Resource must fail validation")
 	require.ErrorContains(t, err, "ByGVR cannot distinguish them")
 
-	// The real table must still pass — no current Group+Resource collisions.
+	// The real table must still pass - no current Group+Resource collisions.
 	require.NoError(t, Validate(), "shipped table must validate")
 }
 
@@ -544,8 +544,8 @@ func TestValidateRejectsJoinMisuse(t *testing.T) {
 }
 
 // TestValidateRejectsMalformedCapability asserts the shared full-shape
-// validator at the kind-table boundary — the counterpart of
-// runtime's Registry.Validate tests — for all three malformations: set but
+// validator at the kind-table boundary - the counterpart of
+// runtime's Registry.Validate tests - for all three malformations: set but
 // unknown tier, a known tier with an empty Feature, and Feature set with no
 // Tier (the half-set value that would otherwise read as absent under
 // IsSet and vanish from every gate).
@@ -599,7 +599,7 @@ func TestValidateRejectsCountMisuse(t *testing.T) {
 
 // TestValidateRejectsSystemFilterMisuse asserts SystemFilter's three required
 // fields: a non-empty Path with no empty segment, a non-empty Prefix, and a
-// non-empty Label — independent of the Columns axes.
+// non-empty Label - independent of the Columns axes.
 func TestValidateRejectsSystemFilterMisuse(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {

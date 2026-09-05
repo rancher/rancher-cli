@@ -241,7 +241,7 @@ func TestWorkloadImagesMemoKeyIsolatesUID(t *testing.T) {
 	// Two pods reference the SAME ReplicaSet name with different uids: a
 	// stale pod from a deleted generation and a live one. The fetched
 	// object carries the new uid, so the stale ref must uid-mismatch and
-	// stand as its own first-level row — two rows, two resolutions.
+	// stand as its own first-level row - two rows, two resolutions.
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		ownedPod("stale", "web", "app:1", "app-rs", "rs-OLD"),
 		ownedPod("live", "web", "app:2", "app-rs", "rs-NEW"),
@@ -263,9 +263,9 @@ func TestWorkloadImagesMemoKeyIsolatesUID(t *testing.T) {
 func TestWorkloadImagesIdentityIsolatesAPIVersion(t *testing.T) {
 	t.Parallel()
 	podKind, _ := kinds.Lookup("pod")
-	// Everything held constant — namespace, kind, name, uid (synthetic
+	// Everything held constant - namespace, kind, name, uid (synthetic
 	// duplicate, deliberately), image, terminal shape (non-recursable kind,
-	// so neither owner is fetched) — EXCEPT the API group. Two rows with
+	// so neither owner is fetched) - EXCEPT the API group. Two rows with
 	// exact identities proves apiVersion alone separates the memo and
 	// aggregation keys; a key that dropped apiVersion would collapse them.
 	withOwner := func(podName, apiVersion string) unstructured.Unstructured {

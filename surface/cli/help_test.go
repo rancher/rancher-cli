@@ -148,8 +148,8 @@ func TestColonOffsetCommandsAlignsOnLongestJoinedNames(t *testing.T) {
 
 // TestStyledHelpCommandRowShowsAliases renders `rancher get --help` (a
 // subcommand card whose leaves include kinds with declared aliases) and
-// asserts that a leaf's full name list — canonical name plus every alias,
-// comma-joined — renders before the colon, matching urfave's own stock
+// asserts that a leaf's full name list - canonical name plus every alias,
+// comma-joined - renders before the colon, matching urfave's own stock
 // comma-joined listing rather than the canonical name alone.
 func TestStyledHelpCommandRowShowsAliases(t *testing.T) {
 	t.Parallel()
@@ -227,8 +227,8 @@ func TestStyledHelpPrimeRowWrapsAtSameColumnAsPlainRow(t *testing.T) {
 	assert.Equal(t, nonPrimeCol, primeCol, "the usage column starts at the same offset for every row")
 }
 
-// setNoColorEnv sets all three color-activating env vars to empty — "unset"
-// per ActivateColor's own contract — so a "plain" (--color not passed)
+// setNoColorEnv sets all three color-activating env vars to empty - "unset"
+// per ActivateColor's own contract - so a "plain" (--color not passed)
 // render is actually plain, regardless of what the test runner's own
 // shell has set.
 func setNoColorEnv(t *testing.T) {

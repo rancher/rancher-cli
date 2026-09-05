@@ -72,8 +72,8 @@ func CaptureArgv(args []string) {
 
 // SanitizedArgs strips ALL --rancher-completion-* tokens from os.Args so
 // urfave never sees unknown flags. It strips both the proto sentinel and any
-// --rancher-completion-cur=... token wherever they appear — not just at
-// position 0 — as a deliberate defense-in-depth measure: if either token
+// --rancher-completion-cur=... token wherever they appear - not just at
+// position 0 - as a deliberate defense-in-depth measure: if either token
 // appears at an unexpected position (e.g. due to a future shell-script change
 // or caller error), it is still suppressed rather than forwarded to urfave.
 // Call as root.Run(ctx, SanitizedArgs(os.Args)).
@@ -206,7 +206,7 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 		arg := args[i]
 		if strings.HasPrefix(arg, "-") {
 			if eq := strings.Index(arg, "="); eq > 0 {
-				// --flag=value in argv (v1 or complete value) — not a "last flag" scenario.
+				// --flag=value in argv (v1 or complete value) - not a "last flag" scenario.
 				lastFlagSpelling = ""
 				lastFlagCanonical = ""
 				continue
@@ -219,7 +219,7 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 					lastFlagSpelling = ""
 					lastFlagCanonical = ""
 				} else {
-					// Flag is the last token in args — currentWord is the partial value.
+					// Flag is the last token in args - currentWord is the partial value.
 					lastFlagSpelling = arg
 					lastFlagCanonical = canonical
 				}
@@ -247,11 +247,11 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 }
 
 // scanOutputFormat performs a raw-argv scan for an -o/--output value when no
-// parsed flag can be trusted yet — an unmatched command or a flag-parse
+// parsed flag can be trusted yet - an unmatched command or a flag-parse
 // failure can fire before urfave finishes parsing this invocation's own
 // --output. It recognizes all four accepted spellings (-o v, -o=v, --output
 // v, --output=v) via the same canonical-name/arity primitives ParseArgTail
-// and checkFlagValues already use — no second flag grammar — stops at the
+// and checkFlagValues already use - no second flag grammar - stops at the
 // first "--" (positionals after the delimiter never select an error's
 // rendering), and a trailing output flag with no following token selects no
 // format (an empty result, same as never having typed one). A later

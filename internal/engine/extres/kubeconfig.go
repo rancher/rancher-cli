@@ -21,7 +21,7 @@ type createKubeconfigCmd struct {
 // NewCreateKubeconfig builds `create kubeconfig [--clusters a,b|*|local]
 // [--current-context <c>] [--ttl <dur>] [--description <d>]
 // [--include-default-entry true|false]` (mutating): a SEPARATE command from
-// the local, exec-credential `kubeconfig` — this one creates a server-side,
+// the local, exec-credential `kubeconfig` - this one creates a server-side,
 // embedded, revocable kubeconfig via the ext Kubeconfig store. The store
 // ignores metadata.name/generateName exactly like Token, so neither is set.
 func NewCreateKubeconfig(clients engine.ClusterClientFactory) runtime.Command {
@@ -52,7 +52,7 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 		// looks at the format for a RawBytes payload), so every format
 		// other than the bare table default would silently accept and then
 		// ignore whatever the operator asked for. OutputPolicy accepts only
-		// "table" — the one format this command actually honors — and
+		// "table" - the one format this command actually honors - and
 		// rejects everything else, including "name", pre-Plan.
 		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table"}},
 		Delivery:     runtime.DeliveryOnceOnly,
@@ -170,7 +170,7 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 					Committed: true, ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery,
 				})
 		}
-		header := fmt.Sprintf("# ext kubeconfig %q — shown exactly once; revoke with: rancher delete kubeconfig %s\n", name, name)
+		header := fmt.Sprintf("# ext kubeconfig %q - shown exactly once; revoke with: rancher delete kubeconfig %s\n", name, name)
 		return runtime.Result{
 			RawBytes:         append([]byte(header), []byte(value)...),
 			CommittedContext: &runtime.CommittedContext{ResourceKind: "Kubeconfig", ResourceName: name, Recovery: recovery},

@@ -8,23 +8,23 @@ without reading docs, and non-interactive output is a stable, versioned JSON env
 ## Overview
 
 **Resource operations go exclusively through Rancher's Kubernetes API.** Every `get` /
-`create` / `delete` request is a client-go call against Rancher's k8s proxy —
+`create` / `delete` request is a client-go call against Rancher's k8s proxy -
 `/k8s/clusters/local` for management-plane kinds, `/k8s/clusters/<id>` for downstream
 clusters. There is no Norman/`v3` code on the resource path.
 
 **Two documented exceptions: interactive auth-provider login, and root reads.** `auth
 get-token` (the kubectl exec-credential plugin) authenticates against Rancher's legacy
-public endpoints — `/v1-public/authproviders` — because no Kubernetes-native login
+public endpoints - `/v1-public/authproviders` - because no Kubernetes-native login
 equivalent exists yet; migrating it is the intended first job of the reserved
 `RancherClient` port (see [Key design decisions](#key-design-decisions)). The other is
 `engine.RootClient`, a GET-only read port for Steve `/v1` collections and the
-channel-server release routes that no per-cluster `/k8s/clusters/<id>` proxy can reach —
+channel-server release routes that no per-cluster `/k8s/clusters/<id>` proxy can reach -
 writes remain CRD-through-proxy exclusively; nothing on this port can mutate state.
 
 **Output envelope.** All commands emit the versioned `cli.rancher.io/v1` envelope on
 stdout and exit with a typed code (`AUTH`, `RBAC`, `VALIDATION`, `CONFLICT`,
 `NOT_FOUND`, `CONFIRMATION_REQUIRED`, `DRY_RUN_NOT_APPLICABLE`, `AMBIGUOUS_SELECTION`,
-`NOT_LOGGED_IN`, `GENERIC`) — with two raw exceptions. `auth
+`NOT_LOGGED_IN`, `GENERIC`) - with two raw exceptions. `auth
 get-token`'s stdout is a bare `ExecCredential` JSON object for kubectl to parse; that
 command sets `runtime.Result.Raw`, which tells the pipeline to emit `Data` with no
 envelope. `kubeconfig`'s stdout is a bare kubeconfig YAML document; that command sets
@@ -33,7 +33,7 @@ envelope and no encoding.
 
 ## Layer map
 
-Responsibilities only — **dependencies live in exactly one place, the mermaid diagram
+Responsibilities only - **dependencies live in exactly one place, the mermaid diagram
 below.** The `architecture_test.go` conformance test parses that diagram and fails the
 build if it drifts from the real package import graph, so there is no "depends on"
 column here to fall out of sync (keeping two hand-written views of the same facts is
@@ -53,26 +53,26 @@ what drifted the previous revision of this doc).
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (cluster/namespace, plus `--project` resolution and membership validation) and table projection. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and project-namespace lookup. |
-| `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing — reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
+| `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing - reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
 | `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (create the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
-| `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) — the sanctioned two-resource public-API user-password workflow, never Norman. |
-| `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (writes must go through Rancher's auth lifecycle) and `delete` is guarded — deleting the token backing the active CLI session is rejected with a hint to use `auth logout` instead. |
+| `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) - the sanctioned two-resource public-API user-password workflow, never Norman. |
+| `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (writes must go through Rancher's auth lifecycle) and `delete` is guarded - deleting the token backing the active CLI session is rejected with a hint to use `auth logout` instead. |
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands, plus a delete-user override that guards against self-deletion: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
-| `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe — used by the auth status identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
+| `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe - used by the auth status identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→contract `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery + typed clients) aimed at the Rancher k8s proxy endpoint, every one over `HTTPClient`, the single client-go `http.Client` carrying the same-origin redirect policy. |
 | `internal/client/httpx` | Constructs the hardened `*http.Client`s: `New` (TLS floor / CA / insecure, proxy, timeouts) for Rancher-origin callers (`internal/token`'s auth flows, `internal/client/provider`'s `/rancherversion` probe, `surface/cli`'s GET-only `engine.RootClient`), `NewExternal` (operating-system roots only) for identity-provider endpoints, the shared `RejectCrossOriginRedirect` policy every client carries, and the closed `Origin` tuple those decisions compare. |
-| `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, attributes it to a request by normalized origin (`ClassifyForOrigin`, `KindOf`), and picks the candidate trust anchor from the chain the failed handshake itself already observed — no separate probe dial. |
+| `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, attributes it to a request by normalized origin (`ClassifyForOrigin`, `KindOf`), and picks the candidate trust anchor from the chain the failed handshake itself already observed - no separate probe dial. |
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl-parity, MF-2). |
 | `internal/output/style` | Presentation-only ANSI wrap functions (bold/red/yellow/cyan) gated by an enable flag, plus a strip function that restores the exact unstyled bytes. |
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
 | `internal/skillinstall` | Installs the embedded rancher agents skill into coding-agent harness skill directories (claude, codex, copilot, agents) with env-override support, user/project scope resolution, presence detection, and provenance/digest stamping. |
 | `internal/testrancher` | Test-only fake of Rancher's public auth surface (`/v1-public/*`) and the ext.cattle.io/v1 Token store's imperative create/revoke behavior, for the e2e harness and unit tests. No production package may import it. |
-| `internal/testrancher/fidelity` | The fidelity oracle for that fake: data-defined probes recorded against a real, digest-pinned Rancher (`make e2e-real`) and replayed against the composite façade by `make e2e`, so drift from real-server behavior fails the build or is pinned as an explicit, machine-checked divergence. Test-only. |
+| `internal/testrancher/fidelity` | The fidelity oracle for that fake: data-defined probes recorded against a real, digest-pinned Rancher (`make e2e-real`) and replayed against the composite facade by `make e2e`, so drift from real-server behavior fails the build or is pinned as an explicit, machine-checked divergence. Test-only. |
 
 ## Package dependency diagram
 
@@ -294,21 +294,21 @@ graph TD
 ## Command pipeline
 
 Every command runs through `runtime.Run`, which type-switches on the command interface.
-Before that switch, every command — read or mutating — passes through stages the switch
+Before that switch, every command - read or mutating - passes through stages the switch
 never sees: `validateFormat` (closes the `-o` value set) → read-only refusal for
 `Mutating` commands → `--dry-run` applicability → `validateInput` → the **capability
 stage**.
 
 **Capability stage (static or deferred).** A command's capability requirement (e.g.
-"requires Rancher Prime") is either declared statically on its `Descriptor` — every
-generated verb copies it from the kind row — or, when the static value is absent,
+"requires Rancher Prime") is either declared statically on its `Descriptor` - every
+generated verb copies it from the kind row - or, when the static value is absent,
 resolved from the invocation input by an optional `CapabilityResolver` the command
 implements. `create resource -f` is the one resolver today: its Descriptor is
 kind-independent, and the manifest names the kind only after Plan would otherwise
 resolve it, so the static stage alone would silently un-gate a Prime-backed kind reached
 through a manifest. Whichever value is in play, `Run` validates it in full (not merely
-`IsSet`) before use — a half-set value (`{Feature, no Tier}`) is a startup/command-bug
-rejection, never silently read as absent — then runs the SAME check against it: before
+`IsSet`) before use - a half-set value (`{Feature, no Tier}`) is a startup/command-bug
+rejection, never silently read as absent - then runs the SAME check against it: before
 any resource access (reads) or the server-side dry-run `Plan` issues (mutations), so a
 Prime-backed kind that may not exist on a community server never gets to 404 first. A
 static requirement always wins; a command cannot carry both a static requirement and a
@@ -327,7 +327,7 @@ with no capability checker wired fails loudly rather than silently skipping the 
      unknown → structured error before any gate.
    - `Action == delete` ⇒ `Destructive == true`.
    - `Effect.Action` is validated against the closed enum; the resolver `Binding` drives
-     gate inputs — the command's Plan cannot override the contract or stability.
+     gate inputs - the command's Plan cannot override the contract or stability.
    - `Effect.Server` is stamped from the factory's resolved identity; `Effect.Cluster` is
      set by Plan. Dry-run output and gating state *where* the mutation lands.
 3. `--dry-run` renders the Effect and stops (the executor closure is discarded).
@@ -338,19 +338,19 @@ with no capability checker wired fails loudly rather than silently skipping the 
 
 **Server-side dry-run has real RBAC semantics.** `--dry-run` sends `DryRunAll` to the API
 server, which authorizes it with the *same* verb as the real write. An agent with
-read-only permissions gets an `RBAC` error (exit code 6) from `--dry-run` — that means
+read-only permissions gets an `RBAC` error (exit code 6) from `--dry-run` - that means
 "the write would be denied", **not** "dry-run is broken".
 
 **Deliberate Plan-time network write: `create cluster` creatorId pre-stamping.** Before
 the server-side dry-run, `create cluster` resolves the caller's identity via the
-ext.cattle.io/v1 SelfUser probe — a real (non-dry-run) Create — and stamps the
+ext.cattle.io/v1 SelfUser probe - a real (non-dry-run) Create - and stamps the
 resolved id into the `field.cattle.io/creatorId` annotation. rancher-webhook's mutator
 stamps this annotation from `userInfo` on real creates but skips dry-run, while its
 validator requires the annotation on dry-run; pre-stamping makes the dry-run honest. If
 the probe fails, a `"creatorId not stamped"` warning is emitted and the create proceeds
-unstamped — rancher-webhook may then deny the dry-run, but a real `--apply` create is
+unstamped - rancher-webhook may then deny the dry-run, but a real `--apply` create is
 still expected to succeed (the mutator stamps identity server-side on real creates).
-These are the two deliberate network writes before or during Plan — `create cluster` uses the SelfUser
+These are the two deliberate network writes before or during Plan - `create cluster` uses the SelfUser
 probe for creatorId stamping, and `delete user` uses it for the self-delete guard. The
 `delete user` guard runs pre-Plan (before the server-side dry-run): Rancher's own users
 webhook refuses a self-delete dry-run before a post-Plan guard could fire, surfacing raw
@@ -364,23 +364,23 @@ prompter)` → render. `--dry-run` on a read command is rejected with
 **Text-mode results.** A command may set `runtime.Result.Text` for a user-facing plain
 default rendering (e.g. `logs`): under format `""`/`table` the pipeline writes `Text`
 verbatim to stdout and `Warnings` to stderr as `# warning: <w>` lines, while `json`/
-`yaml`/template/`-o name` still render the normal envelope over `Data` — mutually
+`yaml`/template/`-o name` still render the normal envelope over `Data` - mutually
 exclusive with `RawBytes`.
 
 **`CommandType: local` does not mean offline.** `auth status` and `auth get-token` are
 `local` (they own their own I/O rather than going through the cluster-client factory) yet
 both do network + auth. The manifest's per-command `network` and `auth` booleans are the
-authoritative "does this touch the network / need credentials" signal — not
+authoritative "does this touch the network / need credentials" signal - not
 `commandType`.
 
 ## Generic verbs & registration
 
 **Kind table (`internal/engine/kinds`).** One row per resource kind: `Key` (canonical
-MCP-vocabulary key — `managementcluster`, `project`, `pod`, …), `Name` (CLI-facing
-singular — `cluster`, `project`, `pod`), `Aliases`, `GVR`, `Namespaced`, `Scope`
+MCP-vocabulary key - `managementcluster`, `project`, `pod`, …), `Name` (CLI-facing
+singular - `cluster`, `project`, `pod`), `Aliases`, `GVR`, `Namespaced`, `Scope`
 (`management` | `downstream`), `Deletable`, `Binding` (contract/stability for the generated
 generic ops), and table `Columns`. `Key` is conformance-tested against a recorded fixture
-copied from rancher-ai-mcp (`testdata/mcp-kinds-050e375.json`) — the test matches on
+copied from rancher-ai-mcp (`testdata/mcp-kinds-050e375.json`) - the test matches on
 `Key`, never `Name`, so the CLI's user-facing vocabulary can evolve independently of the
 MCP identity.
 
@@ -392,11 +392,11 @@ MCP identity.
 - Nameless *list* requests may omit both. `delete` marks the required flags at the
   urfave layer, so they fail with `VALIDATION` before Plan runs.
 
-**Binding ownership — one source per op.** The kind table owns bindings for the
+**Binding ownership - one source per op.** The kind table owns bindings for the
 *generated* generic ops (`get <kind>` for every kind, `delete <kind>` for deletable
 kinds). The provider's bespoke `Resolver` owns everything else (today just `create
 project`). `runtime.ComposeResolvers` merges the two and **rejects any op resolved by
-both** at `BuildRoot`. Every engine command — read or mutating — must resolve to a
+both** at `BuildRoot`. Every engine command - read or mutating - must resolve to a
 binding, or `BuildRoot` fails.
 
 **Declarative registration (`surface/cli/root.go`).** Commands live in one `entry` table
@@ -405,13 +405,13 @@ table: probes `Describe()` for nil-safety, validates (unique name; command name 
 space-separated tokens and its group matches the leading token; `commandType` matches the
 implemented interface; engine commands resolve to a binding), registers into the registry
 for schema, and wires the adapter. Command groups are derived from the entries in
-first-appearance order — there is **no group allowlist**; an unknown group still yields a
+first-appearance order - there is **no group allowlist**; an unknown group still yields a
 reachable command.
 
 **Extension checklist:**
 
 - New resource kind → add a kind-table row (plus a fixture entry if MCP defines the key).
-  No new code — `get`/`delete` are generated from the row.
+  No new code - `get`/`delete` are generated from the row.
 - New bespoke command → add an `entry`-table row, plus a `Resolver`-map row if it is an
   engine command. Everything else (name shape, binding coverage, interface/commandType
   agreement) is validated at `BuildRoot`.
@@ -420,7 +420,7 @@ reachable command.
 
 **Login and the credential store.** `auth login` stores a manually supplied token; it
 records the server entry only when given `--url` for a name that doesn't exist yet
-(delegating to the same registration path `config add-server` uses) — otherwise the entry
+(delegating to the same registration path `config add-server` uses) - otherwise the entry
 must already exist, added by `config add-server` or a prior delegated login. The store
 backend is resolved by `config.OpenStoreWithNotice` (login's
 eager path) with strict precedence:
@@ -429,7 +429,7 @@ eager path) with strict precedence:
 file > one-time probe.
 
 Under the default `auto` policy the backend is probed **once per machine** and the result
-(`keychain` or `file`) is written to a machine-local `credstore-pin` file (0600) — never
+(`keychain` or `file`) is written to a machine-local `credstore-pin` file (0600) - never
 into `config.yaml`, which is a portable user declaration that must not carry
 machine-specific probe state. First resolution emits a notice: on the login path it is
 returned as a string and routed into `res.Warnings` (appears in the JSON/YAML envelope);
@@ -444,8 +444,8 @@ fallback. `auth status` surfaces `credentialStore: {policy, pinned}`.
 **Keyring read-through and logout delete.** With the keychain backend, `GetToken` falls
 through to the file store on a keychain miss, so tokens written before an upgrade re-pin
 keep working. `config.DeleteLoginToken` deletes a server's login token from **both**
-backends unconditionally — because read-through makes the file store part of the
-effective read path under every policy — aggregating per-backend errors with
+backends unconditionally - because read-through makes the file store part of the
+effective read path under every policy - aggregating per-backend errors with
 `errors.Join` and reporting which backends were deleted.
 
 Logout has two paths, not one, because they need different completeness/cost tradeoffs:
@@ -455,15 +455,15 @@ Logout has two paths, not one, because they need different completeness/cost tra
   rather than by config-entry name is deliberate fail-safe behavior, not an oversight: a
   cache entry embeds the entry name only by kubeconfig naming convention (structurally
   unreliable to match on), while over-deleting a neighbor account on the same host costs
-  it one silent re-auth on next use (the exec plugin re-creates transparently) —
+  it one silent re-auth on next use (the exec plugin re-creates transparently) -
   under-deleting leaves a live credential behind after the user asked to log out.
-- **`--all`** calls `DeleteLoginToken` per configured server (never `DeleteTokenEverywhere` — a
+- **`--all`** calls `DeleteLoginToken` per configured server (never `DeleteTokenEverywhere` - a
   per-server host-scoped cache delete, looped over every server, would cost
   O(servers × cache entries) of the same file) and then `config.DeleteAllExecCache`
   **once**, which wipes the whole cache file in one operation. This is not merely
-  cheaper: it is the only path that reaches an orphaned cache entry — a legacy bare
+  cheaper: it is the only path that reaches an orphaned cache entry - a legacy bare
   entry with no `Server` field, or one cached against a server since removed from
-  `config.yaml` — that no per-server, host-scoped delete could ever match. Both fixes
+  `config.yaml` - that no per-server, host-scoped delete could ever match. Both fixes
   are required for the "no orphaned live tokens" guarantee to hold for `--all`; keep
   both. `auth delete-token` remains available for clearing cache entries outside a
   logout.
@@ -478,27 +478,27 @@ against every record and **deletes all matches**, and is **idempotent** (zero ma
 success, never `NOT_FOUND`) so teardown scripts stay green.
 
 **CS-5 posture (accepted).** Even under the keychain backend, the exec-credential cache
-— live short-lived bearer tokens — still lives in `token-cache.yaml` on disk (0600). The
+- live short-lived bearer tokens - still lives in `token-cache.yaml` on disk (0600). The
 OS keychain has no list API, and `auth list-tokens` needs enumeration, so the cache is
 file-backed regardless of policy. Accepted trade-off.
 
 **Config-directory lock inventory.** Three advisory cross-process locks guard their
 respective files via `flock` (released by the OS on process exit):
 
-- `<dir>/config.lock` — guards `config.yaml` and `credentials.yaml` writes; taken at
+- `<dir>/config.lock` - guards `config.yaml` and `credentials.yaml` writes; taken at
   command level via `config.WithLock`.
-- `<dir>/token-cache.lock` — guards every cache write: `SetCachedCred`,
+- `<dir>/token-cache.lock` - guards every cache write: `SetCachedCred`,
   `DeleteCachedCred`, `DeleteAllCachedCreds`, and the prune paths of
   `GetCachedCred` and `ListCachedCreds`; taken by `withCacheLock`. Plain
   reads stay lock-free. The credstore pin file (`credstore-pin`) is
-  deliberately lock-free — last-writer-wins by design (see `pin.go`).
-- `<dir>/credhelper-provenance.lock` — guards the helper-records file; taken by
+  deliberately lock-free - last-writer-wins by design (see `pin.go`).
+- `<dir>/credhelper-provenance.lock` - guards the helper-records file; taken by
   `withHelperRecordsLock`.
 
 One ordering rule holds across all three: the config lock is always outermost. Code
 holding either of the other two locks must never acquire it. `RANCHER_CLI_CONFIG_NO_LOCK`
-(any non-empty value) skips the `flock` — escape hatch for filesystems with broken
-advisory locking — while the process-level semaphore still serializes in-process callers.
+(any non-empty value) skips the `flock` - escape hatch for filesystems with broken
+advisory locking - while the process-level semaphore still serializes in-process callers.
 
 **Auth-provider subsystem (`internal/token`).** Login discovers providers at
 `/v1-public/authproviders` and then runs the matching flow: **basic**
@@ -513,7 +513,7 @@ The native surface has no skip-verify flag; only the legacy `rancher token` shim
 `get-token`'s stored-credential fast path resolves a `--cluster` display
 name to its id the same way `get`/`patch` do, sharing
 `internal/engine/projects.MatchByIDOrDisplay`'s id-or-display collision
-algorithm rather than carrying its own copy — hence the `token -->
+algorithm rather than carrying its own copy - hence the `token -->
 projects` edge above.
 
 **Environment overrides.** Applied over the file-based context, env always wins:
@@ -521,7 +521,7 @@ projects` edge above.
 | Variable | Effect |
 |---|---|
 | `RANCHER_CLI_URL` | Override the effective server URL. |
-| `RANCHER_CLI_TOKEN` | Override the bearer token directly — used as-is, never read from or written to the store. |
+| `RANCHER_CLI_TOKEN` | Override the bearer token directly - used as-is, never read from or written to the store. |
 | `RANCHER_CLI_CACERT` | Override the CA bundle. |
 | `RANCHER_CLI_CONFIG_DIR` | Config directory (below `--config`, above `$XDG_CONFIG_HOME/rancher` then `~/.config/rancher`). |
 | `RANCHER_CLI_CREDENTIAL_STORE` | Highest-precedence credential-store policy (`keychain` \| `file` \| `auto`). |
@@ -535,7 +535,7 @@ from a legacy `cli2.json`. Run `rancher auth login` once per server instead.
 `currentServer` pointer only. No cluster or project is ever persisted or implied.
 `--cluster` routes to a downstream cluster (required wherever routing is needed);
 `--project` filters Downstream namespaced kinds to a project's project namespaces.
-Defaults may never filter or place — a missing scope flag either widens the operation
+Defaults may never filter or place - a missing scope flag either widens the operation
 or is a `VALIDATION` error, never a silent fallback to stored state.
 
 **Deferred `ClusterClientFactory` (once-only identity).** `engine.ClusterClientFactory`
@@ -544,18 +544,18 @@ effective connection **once per invocation** under a `sync.Once`. `Cluster(id)` 
 and memoizes a `ClusterClient` per cluster ID under a mutex (safe under future concurrent
 fan-out); `""` is rejected. `ResolveCluster(nameOrID)` maps a display name or ID to a
 cluster ID (matching `metadata.name` or `spec.displayName`), memoized per invocation.
-Server identity is deliberately **not** on the port interface — it lives on the concrete
+Server identity is deliberately **not** on the port interface - it lives on the concrete
 factory and the adapter reads it to stamp `Effect.Server`, so a `Plan`/`Execute` pair can
 never see two different servers.
 
-**Approach B — Plan returns the executor.** `MutatingCommand.Plan` returns the
+**Approach B - Plan returns the executor.** `MutatingCommand.Plan` returns the
 `ExecuteFunc` closure rather than the pipeline calling a separate `Execute` method. The
 object, resourceVersion, and client that Execute uses are captured at Plan time, so
 Execute structurally cannot act on anything Plan did not preview.
 
 **Pipeline-stamped gate inputs.** Contract, stability, destructiveness, and server identity
-that drive the gates are stamped by the pipeline from the resolver binding and factory —
-never read from values the command returned — so a command cannot weaken its own gates.
+that drive the gates are stamped by the pipeline from the resolver binding and factory -
+never read from values the command returned - so a command cannot weaken its own gates.
 
 **Machine-local pin file.** The credential-store decision is a machine-local probe result
 (`credstore-pin`), not portable config, and needs no lock: concurrent first-runs
@@ -568,18 +568,18 @@ table whose MCP keys are conformance-tested, and each op's safety binding has ex
 owner (kind table for generated ops, bespoke `Resolver` for the rest), with overlaps
 rejected at `BuildRoot`.
 
-Verb reservation. get/create/patch/delete are reserved for kind-table resources — a GVR, a name, stored server state, and the full contract those verbs imply (list/named duality, --wait, -o name, generated siblings, schema kind vocabulary). Computed or derived views get dedicated verbs (inspect, top, usage, images). This mirrors kubectl's own get vs top/describe split and is deliberate: a hypothetical get usage could not be named, waited on, or deleted without breaking get's own contract. New surface work follows this rule.
+Verb reservation. get/create/patch/delete are reserved for kind-table resources - a GVR, a name, stored server state, and the full contract those verbs imply (list/named duality, --wait, -o name, generated siblings, schema kind vocabulary). Computed or derived views get dedicated verbs (inspect, top, usage, images). This mirrors kubectl's own get vs top/describe split and is deliberate: a hypothetical get usage could not be named, waited on, or deleted without breaking get's own contract. New surface work follows this rule.
 
 **Two layers over one substrate.** Generic verbs are the exact, declarative substrate,
 generated from the kind table: `get`/`patch` for every row, `delete` behind the row's
-`Deletable` flag — an allowlist, because delete is irreversible and each kind earns the
+`Deletable` flag - an allowlist, because delete is irreversible and each kind earns the
 verb on review. `create` is the one verb the table cannot generate (a creation input
 shape is not expressible as a table row), so it is bespoke per kind, with
-`create resource -f` as the manifest-driven generic path. Task-level commands —
-`grant`/`revoke`, `create project`, … — compose over the same Plan* substrate and add
+`create resource -f` as the manifest-driven generic path. Task-level commands -
+`grant`/`revoke`, `create project`, … - compose over the same Plan* substrate and add
 resolution and ergonomics (subject lookup, duplicate detection, partial-failure
 reporting); both layers run the one safety pipeline. The RBAC binding kinds
-(PRTB/CRTB/GRB) are intentionally mutable through BOTH layers — kubectl parity, where
+(PRTB/CRTB/GRB) are intentionally mutable through BOTH layers - kubectl parity, where
 `kubectl create rolebinding` is the sugar and `kubectl apply -f` the substrate:
 `grant`/`revoke` for operators, the raw verbs for manifest-driven and declarative flows.
 
@@ -589,30 +589,30 @@ manifest: per-command args/flags, `commandType`, `destructive`
 `stability`, and aliases, plus the global flags, error-code enum, and an `effectSchema`
 (the `Effect` field names and the closed `Action` enum) so agents can parse `--dry-run`
 output from the manifest alone. `contract` and `stability` are NOT serialized in Effect
-or Result envelopes — the schema manifest is the single published source.
+or Result envelopes - the schema manifest is the single published source.
 
 **Reserved `RancherClient` port.** `ClusterClient` covers the two cluster-scoped endpoint
 families (`/k8s/clusters/local` and `/k8s/clusters/<id>`). Management-*plane* operations
-that are not operations on any cluster — creating a token, generating a kubeconfig — need
+that are not operations on any cluster - creating a token, generating a kubeconfig - need
 a third scope against the Rancher server itself. That port, `RancherClient`, is reserved
 now and added when the first consumer needs it: migrating `internal/token` off its
 hand-rolled Norman HTTP, the `auth status` preflight, and a future `rancher kubeconfig`
 command. The factory struct is the seam that will later hand out both.
 
-**Two-layer e2e test shim.** `e2e/harness_test.go`'s router — a bearer check plus the
-`/k8s/clusters/<id>` proxy into envtest — stays exactly what it always was: a router, not
-a Rancher emulator. `internal/testrancher` is a separate façade layered in front of it:
+**Two-layer e2e test shim.** `e2e/harness_test.go`'s router - a bearer check plus the
+`/k8s/clusters/<id>` proxy into envtest - stays exactly what it always was: a router, not
+a Rancher emulator. `internal/testrancher` is a separate facade layered in front of it:
 the public auth endpoints (`/v1-public/authproviders`, `/v1-public/login`) and the
 ext.cattle.io/v1 Token store's imperative create/revoke behavior are matched first and
-served by the façade; everything else falls through to the router untouched. Every txtar
-script gets its own façade + TLS server instance, composed over the one shared envtest
+served by the facade; everything else falls through to the router untouched. Every txtar
+script gets its own facade + TLS server instance, composed over the one shared envtest
 reverse-proxy transport, so deterministic per-instance token names and secrets stay
 collision-free across parallel scripts. `internal/testrancher` is test-only by
-convention — `architecture_test.go` asserts no production package imports it.
+convention - `architecture_test.go` asserts no production package imports it.
 
 **Dynamic client, not typed Rancher structs.** Every resource flows through
 the Kubernetes dynamic client and unstructured objects; the CLI imports no
-rancher/rancher code. One binary serves many server versions — the CLI
+rancher/rancher code. One binary serves many server versions - the CLI
 declares a warn-only minimum (2.14) and the server's schema is authoritative
 at request time, where compiled-in typed structs would encode exactly one
 release's shape. The safety model already leans on the server for
@@ -620,7 +620,7 @@ correctness (previews are server-computed dry-runs under real admission and
 RBAC), the kind table's generated verbs are only possible untyped, and parts
 of the surface (ext.cattle.io, CAPI) resolve served versions by discovery at
 call time. The stated cost is no compile-time field safety; the mitigations
-are structural — field paths verified against Rancher source during design
+are structural - field paths verified against Rancher source during design
 review, conformance tests asserting the vocabulary, live acceptance exercises
 against real servers, and thin hand-owned structs (a few fields, decoded
 locally) where a specific shape matters. kubectl makes the same choice for
@@ -638,13 +638,13 @@ into `permission denied` (kubernetes/kubectl#708). The design here avoids that b
 a single dedicated lock file per protected data set rather than locking the data files
 themselves, and by exposing `RANCHER_CLI_CONFIG_NO_LOCK` as an escape hatch for
 filesystems with broken advisory locking. The grouping rule: one lock per set of
-files that must change together atomically — `config.yaml` and `credentials.yaml`
+files that must change together atomically - `config.yaml` and `credentials.yaml`
 share `config.lock` because login/logout must keep the server registration and its
 credential in agreement, while the exec-credential cache and the helper records
 evolve independently and each get their own lock. Cancellation (Ctrl-C) covers
 lock acquisition end to end and the deletes' helper-records waits; the
-store-interface paths reachable inside a locked span — credential-helper
-subprocess calls and cache-lock waits — remain bounded by their own timeouts but
+store-interface paths reachable inside a locked span - credential-helper
+subprocess calls and cache-lock waits - remain bounded by their own timeouts but
 are not interruptible, because `CredStore` carries no context parameter.
 Threading a context through that interface is a tracked follow-up
 (auth-token-modernization). Waits are bounded at 60 s; a

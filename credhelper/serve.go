@@ -33,8 +33,8 @@ type Handler interface {
 // ProbeErase is the erase shape for a backend with no atomic
 // delete-and-report operation (Vault's metadata delete, most cloud secret
 // stores): probe presence via the helper's own get semantics, then run the
-// delete REGARDLESS of what the probe said. Any probe error — including a
-// denied read under a delete-only policy — reads as EraseUnknown, never a
+// delete REGARDLESS of what the probe said. Any probe error - including a
+// denied read under a delete-only policy - reads as EraseUnknown, never a
 // failure; only the delete itself can fail the erase. Best-effort by
 // nature: a store committing between probe and delete stales the outcome
 // (see CREDENTIAL_HELPERS.md). Backends that know their own state should

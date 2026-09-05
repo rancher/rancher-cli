@@ -15,14 +15,14 @@ type configDeleteServerCmd struct {
 	dir string
 	// delete is the credential/exec-cache delete, injectable for tests
 	// (the authcheck preflight-seam pattern, authcheck.go); defaults to
-	// config.DeleteTokenEverywhere — the single delete point (ARCHITECTURE.md), whose
+	// config.DeleteTokenEverywhere - the single delete point (ARCHITECTURE.md), whose
 	// only other caller is auth logout.
 	delete func(ctx context.Context, dir string, ref config.ServerRef, policy string) (fromBackends, deletedCache, notices []string, err error)
 }
 
 // NewConfigDeleteServer builds `config delete-server <name>` (local): removes
 // a configured server (clearing the current-server pointer when it names it)
-// and deletes its stored credentials — the orphaned-creds cleanup nothing
+// and deletes its stored credentials - the orphaned-creds cleanup nothing
 // else performs today. It does NOT revoke the server-side token (that is
 // `auth logout --revoke`, ledgered/out of scope).
 func NewConfigDeleteServer(dir string) runtime.Command {
@@ -41,11 +41,11 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 }
 
 // Execute's ordering is safety-critical: delete credentials FIRST, and abort
-// on delete failure before touching cfg or writing anything — the config
+// on delete failure before touching cfg or writing anything - the config
 // file stays byte-identical to before the call. Only after a successful
 // delete does the single config write (server removed, current-server
 // pointer cleared if it named the deleted server) happen. A delete failure
-// must never leave a live orphaned token behind a disappeared server entry —
+// must never leave a live orphaned token behind a disappeared server entry -
 // the exact bug this command exists to kill; the benign failure direction is
 // creds gone + server still configured, never the reverse.
 func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
@@ -109,7 +109,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		data["recovery"] = recoveryData
 	}
 	res := runtime.Result{Kind: "DeletedServer", Data: data, Warnings: notices}
-	const pointerClearedLine = "was current — pointer cleared"
+	const pointerClearedLine = "was current - pointer cleared"
 	var lines []string
 	if currentCleared {
 		lines = append(lines, pointerClearedLine)

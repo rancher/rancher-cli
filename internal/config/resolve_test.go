@@ -98,11 +98,11 @@ func TestEffectiveFromFile(t *testing.T) {
 
 // Round-3 repro: a RANCHER_CLI_URL override pointing at a DIFFERENT server than
 // the stored context's must never carry that stored server's CA or display
-// name into the new Effective — every command through Effective (get,
+// name into the new Effective - every command through Effective (get,
 // create, patch, delete, auth status, kubeconfig) shares this one choke
 // point, not just kubeconfig.
 // Round-4 repro: an explicit default port (:443 https, :80 http) spelled out
-// on one side and omitted on the other is the same server, not divergence —
+// on one side and omitted on the other is the same server, not divergence -
 // the third normalization axis to recur here (after case, then trailing
 // slash), asserted in one exported matrix so a fourth lands in one place too.
 func TestSameServerURL(t *testing.T) {
@@ -133,7 +133,7 @@ func TestSameServerURL(t *testing.T) {
 
 		{"empty vs non-empty (no stored context)", "https://r.ex", "", false},
 		{"both empty", "", "", true},
-		{"malformed falls back to exact equality — mismatch", "not a url: ::", "https://r.ex", false},
+		{"malformed falls back to exact equality - mismatch", "not a url: ::", "https://r.ex", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -284,7 +284,7 @@ func (r *recordingStore) GetToken(ref ServerRef) (string, error) {
 	return "", ErrNoToken
 }
 
-// failingStore errors on every token read — stands in for a broken helper.
+// failingStore errors on every token read - stands in for a broken helper.
 type failingStore struct{ CredStore }
 
 func (failingStore) GetToken(ServerRef) (string, error) {
@@ -321,7 +321,7 @@ func TestEffectiveEquivalentURLStillReadsToken(t *testing.T) {
 func TestSameServerURLMatchesCanonicalForm(t *testing.T) {
 	t.Parallel()
 	// Equivalence per SameServerURL must be exactly equality of
-	// credhelper.CanonicalServerURL outputs — one algorithm, no drift.
+	// credhelper.CanonicalServerURL outputs - one algorithm, no drift.
 	a, b := "HTTPS://EXAMPLE.com:443/path", "https://example.com"
 	ca, err := credhelper.CanonicalServerURL(a)
 	require.NoError(t, err)
@@ -337,8 +337,8 @@ func TestSameServerURLMatchesCanonicalForm(t *testing.T) {
 // TestEffectiveKeepsKnownServersWithResolvedContext asserts the server
 // inventory survives context resolution: the resolved-context branch used
 // to rebuild eff as a struct literal, zeroing KnownServers. The inventory
-// must be present in BOTH states — resolved
-// context and no context — because kube.RESTConfig consumes it exactly when
+// must be present in BOTH states - resolved
+// context and no context - because kube.RESTConfig consumes it exactly when
 // the URL came out empty (e.g. a hand-edited server entry with no URL).
 func TestEffectiveKeepsKnownServersWithResolvedContext(t *testing.T) {
 	store := NewFileStore(t.TempDir())

@@ -48,7 +48,7 @@ func TestSchemaMergesResolverContract(t *testing.T) {
 
 // TestSchemaManifestExitCodes asserts SE-16: the manifest's NEW exitCodes map
 // carries an exit status for every code in ErrorCodes, matching what clierr
-// itself reports — ErrorCodes stays untouched (additive rule).
+// itself reports - ErrorCodes stays untouched (additive rule).
 func TestSchemaManifestExitCodes(t *testing.T) {
 	t.Parallel()
 	m := NewRegistry(stubResolver{}).Schema("v-test", "2.14")
@@ -169,7 +169,7 @@ func TestValidatePassesWellFormedExtDiscoveryCapability(t *testing.T) {
 
 // TestValidateRejectsFeatureWithoutTier asserts the full-shape validator at the
 // registry boundary: a half-set value ({Feature set, Tier ""}) reads as
-// absent under IsSet and would otherwise vanish from every gate — it must
+// absent under IsSet and would otherwise vanish from every gate - it must
 // be a startup rejection instead.
 func TestValidateRejectsFeatureWithoutTier(t *testing.T) {
 	t.Parallel()
@@ -220,7 +220,7 @@ func TestOnceOnlyOutputPolicyExcludesName(t *testing.T) {
 
 // TestValidateRejectsUnspecifiedShape asserts the closed-world OutputShape
 // contract: the zero value (ShapeUnspecified) is never valid on a registered
-// descriptor — an omitted Shape field must fail at startup, never silently
+// descriptor - an omitted Shape field must fail at startup, never silently
 // default to Tabular.
 func TestValidateRejectsUnspecifiedShape(t *testing.T) {
 	t.Parallel()
@@ -264,7 +264,7 @@ func TestValidatePassesDeliveryOnceOnlyOnMutating(t *testing.T) {
 }
 
 // fakeReadWithResolver is a ReadCommand that also implements
-// CapabilityResolver — used to assert the registry's mutual-exclusion rule.
+// CapabilityResolver - used to assert the registry's mutual-exclusion rule.
 type fakeReadWithResolver struct{ fakeRead }
 
 func (f fakeReadWithResolver) ResolveCapability(context.Context, Input) (CapabilityRequirement, error) {
@@ -273,7 +273,7 @@ func (f fakeReadWithResolver) ResolveCapability(context.Context, Input) (Capabil
 
 // TestValidateRejectsStaticCapabilityAndResolverTogether asserts the
 // mutual-exclusion rule: a static requirement and CapabilityResolver on the
-// same command are two sources for one value — the resolver would be dead
+// same command are two sources for one value - the resolver would be dead
 // code that silently loses to static-wins, so it is a startup rejection.
 func TestValidateRejectsStaticCapabilityAndResolverTogether(t *testing.T) {
 	t.Parallel()
@@ -289,7 +289,7 @@ func TestValidateRejectsStaticCapabilityAndResolverTogether(t *testing.T) {
 // no production command carrying a requirement yet, a test-registered prime
 // command asserts the manifest fields (prime + learnMore ride together,
 // projected from the one product-owned URL constant) and the EXACT
-// classification sentence — the static surfaces state a product-tier
+// classification sentence - the static surfaces state a product-tier
 // classification, never a per-server "requires" claim, so an accidental
 // rewording fails here rather than shipping unnoticed.
 func TestSchemaPrimeCommandProjection(t *testing.T) {

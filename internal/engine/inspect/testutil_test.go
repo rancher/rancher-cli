@@ -41,7 +41,7 @@ type objKey struct {
 
 // fakeClient is a table-driven engine.ClusterClient fake: objects keyed by
 // GVR+ns+name serve Get; lists keyed by GVR serve List (the selector is
-// recorded, not filtered — tests assert on the recorded selector directly).
+// recorded, not filtered - tests assert on the recorded selector directly).
 // mu guards the recorded-call slices: the --all-clusters fan-out drives a
 // distinct fakeClient per goroutine, but the shared management-cluster
 // fakeClient and fakeFactory are still hit concurrently under -race.
@@ -53,7 +53,7 @@ type fakeClient struct {
 	getCalls []objKey
 
 	lists          map[schema.GroupVersionResource]*unstructured.UnstructuredList
-	listsByNS      map[objKey]*unstructured.UnstructuredList // key: {gvr, ns, ""} — takes precedence over lists
+	listsByNS      map[objKey]*unstructured.UnstructuredList // key: {gvr, ns, ""} - takes precedence over lists
 	listErrs       map[schema.GroupVersionResource]error
 	listSelectors  []string
 	listNamespaces []string                      // parallel to listSelectors: the ns each List call carried
@@ -145,7 +145,7 @@ func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns
 	return &unstructured.UnstructuredList{}, nil
 }
 
-// listed reports whether any List call asked for that kind — the seam for
+// listed reports whether any List call asked for that kind - the seam for
 // short-circuit tests, which must fail when a skipped read is issued.
 func (f *fakeClient) listed(gvr schema.GroupVersionResource) bool {
 	f.mu.Lock()

@@ -176,7 +176,7 @@ func TestDeleteSameNameTwoURLsErasesBoth(t *testing.T) {
 	require.NoError(t, st.SetToken(ServerRef{Name: "prod", URL: "https://b.example.com"}, "tok-b"))
 
 	// Delete with only the CURRENT URL: the recorded old identity must be
-	// erased too — replayed verbatim from the helper records, not reconstructed.
+	// erased too - replayed verbatim from the helper records, not reconstructed.
 	from, _, derr := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://b.example.com"}, "exec:fake")
 	require.NoError(t, derr)
 	assert.Contains(t, from, "helper:fake")
@@ -192,7 +192,7 @@ func TestDeleteSameNameTwoURLsErasesBoth(t *testing.T) {
 func TestDeleteMixedSuccessPersistsPartialRemovals(t *testing.T) {
 	// Two helpers recorded for one server. buildFakeHelper ships
 	// rancher-credential-fake2 (byte-identical copy) which reads
-	// FAKEHELPER2_* env vars, falling back to FAKEHELPER_* — so fake2 can
+	// FAKEHELPER2_* env vars, falling back to FAKEHELPER_* - so fake2 can
 	// fail while fake succeeds. Delete then errors, fake's entry is removed
 	// AND PERSISTED, fake2's entry survives on disk for retry.
 	keyring.MockInit()
@@ -226,7 +226,7 @@ func TestDeleteLoginTokenRejectsInvalidPolicyHelperName(t *testing.T) {
 	// "exec:../evil" passes the "exec:" prefix check but fails ValidHelperName:
 	// DeleteLoginToken must error (not silently skip) and must not attempt to
 	// exec anything. The helper-records file is empty, so file/keychain deletes also
-	// report nothing — only the validation error is returned.
+	// report nothing - only the validation error is returned.
 	_, _, err := DeleteLoginToken(t.Context(), dir, execRef(), "exec:../evil")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "../evil", "error must name the invalid helper")
@@ -249,7 +249,7 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	from, _, err := DeleteLoginToken(t.Context(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
 	require.NoError(t, err, "a leftover crash record deletes as success")
 	// Nothing was ever stored, so the no-op erase is not reported as a
-	// deletion (friction-4 semantics) — the replay and the cleanup below
+	// deletion (friction-4 semantics) - the replay and the cleanup below
 	// are the crash-boundary guarantees this test asserts.
 	assert.NotContains(t, from, "helper:fake")
 	assert.Contains(t, fakeHelperLog(t, statePath), "erase https://rancher.example.com prod",
@@ -262,7 +262,7 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 
 // TestDeleteLoginTokenNoOpEraseNotReported asserts live-exercise friction 4:
 // when the helper holds no credential for the identity, the delete still runs
-// the idempotent erase, but must NOT report the helper in deletedFrom — the
+// the idempotent erase, but must NOT report the helper in deletedFrom - the
 // output could not distinguish a no-op from an actual deletion. The policy
 // names the helper, so the identity is a delete target even with no
 // helper record and nothing stored.
@@ -279,7 +279,7 @@ func TestDeleteLoginTokenNoOpEraseNotReported(t *testing.T) {
 
 // TestDeleteLoginTokenCancellableWhileRecordsLockHeld asserts the third-review
 // P1: a delete waiting on a contended helper-records lock must be
-// interruptible by the caller's context — before this, the wait was built
+// interruptible by the caller's context - before this, the wait was built
 // from context.Background() and Ctrl-C during logout could not reach it
 // (while the command also held the config write lock, blocking every other
 // invocation on the machine).

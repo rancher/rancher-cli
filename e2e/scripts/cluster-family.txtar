@@ -2,7 +2,7 @@ env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # Seed a pooled cluster: one manual worker pool and one already-autoscaled
-# pool — the guard matrix needs both shapes on one object. The four
+# pool - the guard matrix needs both shapes on one object. The four
 # Prime-gated verbs below proceed regardless of edition in this harness: it
 # has no /rancherversion route, so the capability checker's ServerInfo probe
 # fails and the outcome degrades to Unknown, which never blocks (the live
@@ -60,7 +60,7 @@ stdout 'cluster autoscaler resumed'
 exec rancher cluster resume-autoscaling e2e-family-scale --apply --yes
 stdout 'already running'
 
-# An imported cluster carries no machine pools at all — the same shape a
+# An imported cluster carries no machine pools at all - the same shape a
 # real "local" cluster has. Never named "local" here: this harness's other
 # scenarios (create-cluster.txtar) assume no "local" provisioning-cluster
 # exists, and every txtar script here shares one envtest cluster.

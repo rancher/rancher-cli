@@ -32,7 +32,7 @@ func userListServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 // TestLivePositionalPasswordChangeRequestUserCandidates asserts
 // bespokeSingleKindOps' create-password-change-request entry: `create
 // password-change-request <TAB>` lists existing user ids through the same
-// generic management-kind path get/patch/delete user uses — no per-command
+// generic management-kind path get/patch/delete user uses - no per-command
 // completer needed.
 func TestLivePositionalPasswordChangeRequestUserCandidates(t *testing.T) {
 	t.Parallel()
@@ -48,7 +48,7 @@ func TestLivePositionalPasswordChangeRequestUserCandidates(t *testing.T) {
 }
 
 // TestPositionalCreateUserUsernameHasNoLiveCompletion proves create user's
-// <username> positional deliberately gets no live completion — it names a
+// <username> positional deliberately gets no live completion - it names a
 // NEW username, never an existing one.
 func TestPositionalCreateUserUsernameHasNoLiveCompletion(t *testing.T) {
 	t.Parallel()

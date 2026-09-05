@@ -23,7 +23,7 @@ type waitCond struct {
 }
 
 // isStalledTarget reports whether the caller is explicitly waiting FOR the
-// Stalled condition itself — the one case where seeing it is the answer,
+// Stalled condition itself - the one case where seeing it is the answer,
 // not an abort, and where a fresh satisfied result is the controller's real
 // verdict rather than a birth-time default. Shared by the abort check and
 // the fresh-success advisory gate so the exemption cannot drift.
@@ -33,7 +33,7 @@ func (c waitCond) isStalledTarget() bool {
 
 // parseWaitCondition parses a --for expression (either the user's explicit
 // flag or a kind's WaitDefault) into a waitCond. JSONPath is deliberately
-// unsupported — that grammar belongs to `kubectl wait` via `rancher
+// unsupported - that grammar belongs to `kubectl wait` via `rancher
 // kubeconfig`. Callers resolve the empty-expression default (if any) via
 // kinds.Kind.WaitDefault before calling; an empty expr here is invalid.
 func parseWaitCondition(forExpr string) (waitCond, error) {
@@ -49,7 +49,7 @@ func parseWaitCondition(forExpr string) (waitCond, error) {
 		case !hasStatus:
 			status = "True"
 		case status == "":
-			// "condition=<Type>=" with nothing after the second "=" — a real
+			// "condition=<Type>=" with nothing after the second "=" - a real
 			// condition status is never empty, so this would wait forever.
 			return waitCond{}, invalidForErr(forExpr)
 		}
@@ -61,7 +61,7 @@ func parseWaitCondition(forExpr string) (waitCond, error) {
 func invalidForErr(forExpr string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("--for %q is not a supported wait grammar; use state=<value> or condition=<Type>[=<Status>]; "+
-			"JSONPath is not supported — use kubectl wait via rancher kubeconfig for that", forExpr))
+			"JSONPath is not supported - use kubectl wait via rancher kubeconfig for that", forExpr))
 }
 
 // waitFor polls client.Get every pollInterval until cond is satisfied, the
@@ -90,7 +90,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			// The generation staleness gate applies only to kstatus-opted
 			// kinds (failOnStalled=true). A controller that has not
 			// reconciled the object's current generation yet has written
-			// none of the conditions we are about to trust — a freshly
+			// none of the conditions we are about to trust - a freshly
 			// created object can carry a default Ready=True before its
 			// controller ever runs. When the object tracks
 			// observedGeneration and it lags, nothing on it is meaningful:
@@ -110,7 +110,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 				}
 				// Stalled=True is the kstatus abort convention (Fleet sets it on a
 				// failed GitRepo clone while still reporting Ready=True), so it
-				// fails the wait even when the target condition reads satisfied —
+				// fails the wait even when the target condition reads satisfied -
 				// unless Stalled itself is what the caller is waiting for. Opt-in
 				// per kind row (WaitFailsOnStalled): not every controller treats
 				// Stalled as terminal, so a kind must be known-kstatus to abort.
@@ -163,7 +163,7 @@ func resolvedState(obj *unstructured.Unstructured) (value string, fromState bool
 // waitSatisfied checks whether obj meets cond: state-kind matches
 // status.state exactly, falling back to a case-insensitive match against
 // status.phase when status.state is absent (phase values are capitalized,
-// e.g. "Running" — exact status.state values are Rancher's own vocabulary
+// e.g. "Running" - exact status.state values are Rancher's own vocabulary
 // and stay exact-match), and (when matched via status.state) requires
 // status.transitioning != "yes"; condition-kind matches any
 // status.conditions[] entry with the target type+status.
@@ -191,7 +191,7 @@ func waitSatisfied(obj *unstructured.Unstructured, cond waitCond) bool {
 
 // conditionStatus returns the status and message of the first
 // status.conditions[] entry whose type matches name, and whether one was
-// found — the scan shared by waitSatisfied and summarizeState. Rides
+// found - the scan shared by waitSatisfied and summarizeState. Rides
 // engine.EachCondition for the shared decoding logic; stops at the first
 // match.
 func conditionStatus(obj map[string]any, name string) (status, message string, ok bool) {
@@ -232,7 +232,7 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 // settled reports whether the object's controller has reconciled its
 // current generation: when status.observedGeneration is present and lags
 // metadata.generation, every condition describes an older spec and cannot
-// be trusted. Objects without the field report settled — plenty of kinds
+// be trusted. Objects without the field report settled - plenty of kinds
 // never track generations.
 //
 // Omitempty reality: a freshly created object whose controller never ran
@@ -276,11 +276,11 @@ func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns stri
 	}
 	recheck := fmt.Sprintf("rancher get %s %s", kindName, name)
 	if ns != "" {
-		// The re-check must target the same namespace the wait resolved —
+		// The re-check must target the same namespace the wait resolved -
 		// a copy-pasted command falling back to the kind's default
 		// workspace could 404 or, worse, report a same-named stranger.
 		recheck += " --namespace " + ns
 	}
-	return fmt.Sprintf("wait satisfied %s — a fresh %s's status may predate its controller's verdict; re-check shortly with: %s",
+	return fmt.Sprintf("wait satisfied %s - a fresh %s's status may predate its controller's verdict; re-check shortly with: %s",
 		when, kindName, recheck)
 }

@@ -32,7 +32,7 @@ func TestAddSecretDescriptorDeclaresCapabilityAndOnceOnlySeam(t *testing.T) {
 // TestAddSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite asserts the
 // never-provisioned VALIDATION branch: a client created while the
 // controller was off has no status.clientID, and add-secret must refuse
-// BEFORE the backing-Secret GET or any dry-run/update — zero secret reads,
+// BEFORE the backing-Secret GET or any dry-run/update - zero secret reads,
 // zero mutation requests.
 func TestAddSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite(t *testing.T) {
 	t.Parallel()
@@ -51,7 +51,7 @@ func TestAddSecretPlanNeverProvisionedFailsBeforeAnyReadOrWrite(t *testing.T) {
 
 // TestAddSecretPlanPreflightRBACIsOrdinaryPreMutationRefusal asserts the
 // manage-oidc-clients-only persona: the backing-Secret preflight failing
-// with RBAC/NOT_FOUND is an ORDINARY pre-mutation error — no committed
+// with RBAC/NOT_FOUND is an ORDINARY pre-mutation error - no committed
 // details (nothing mutated), and zero annotation writes.
 func TestAddSecretPlanPreflightRBACIsOrdinaryPreMutationRefusal(t *testing.T) {
 	t.Parallel()
@@ -100,7 +100,7 @@ func TestAddSecretExecSuccessDeliversTheOneNewKey(t *testing.T) {
 	assert.Equal(t, "client-secret-2", res.CommittedContext.SecretName)
 	assert.Equal(t, "oidcclient/my-app patched\n"+
 		"  secret client-secret-2 added\n"+
-		"  client secret: new-secret-value   (shown once — store it now)\n", res.Text)
+		"  client secret: new-secret-value   (shown once - store it now)\n", res.Text)
 }
 
 // TestAddSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce
@@ -138,13 +138,13 @@ func TestAddSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t *te
 		"the Plan-time safety advisory must still reach stderr after the merge")
 	assert.NotContains(t, errBuf.String(), "shown exactly once",
 		"the shown-once note must not double-print to stderr")
-	assert.Contains(t, out.String(), "client secret: new-secret-value   (shown once — store it now)")
+	assert.Contains(t, out.String(), "client secret: new-secret-value   (shown once - store it now)")
 }
 
 // TestAddSecretExecAmbiguousTransitionsAreTerminal asserts the two ambiguous
 // key-set transitions: a concurrent REMOVE (baseline
 // {1} -> observed {2} has exactly one new key, which a bare "one new key"
-// check would wrongly bless) and a concurrent TWO-ADD (two new keys) — both
+// check would wrongly bless) and a concurrent TWO-ADD (two new keys) - both
 // must fail immediately, non-retryable, never deliver a possibly-wrong key.
 func TestAddSecretExecAmbiguousTransitionsAreTerminal(t *testing.T) {
 	cases := []struct {
@@ -196,9 +196,9 @@ func TestAddSecretExecTimeoutIsNonRetryable(t *testing.T) {
 	require.True(t, ok)
 	assert.True(t, details.Committed)
 	// Non-retryable: the projection's recover line must never claim a
-	// blind retry is safe — it names a re-check, then a rotate-by-name.
+	// blind retry is safe - it names a re-check, then a rotate-by-name.
 	assert.Equal(t, []string{
-		"committed: OIDCClient my-app — the change may already be on the server",
+		"committed: OIDCClient my-app - the change may already be on the server",
 		"recover: " + details.Recovery,
 	}, details.TextDetails())
 	assert.Contains(t, details.Recovery, "rotate that key by name")

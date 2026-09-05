@@ -8,7 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
-// Test exports — package-internal functions exposed for invariant and fetch tests.
+// Test exports - package-internal functions exposed for invariant and fetch tests.
 // Only one export file exists (finding 13). Adjust identifiers to match what was
 // actually implemented in earlier tasks; fix the alias, not the test, on any mismatch.
 

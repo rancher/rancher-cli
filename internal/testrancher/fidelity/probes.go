@@ -18,12 +18,12 @@ import (
 const crtCollectionPath = testrancher.CRTCollectionPath
 
 // localSecretsPath is the kube-proxy path prefix for core/v1 Secrets in the
-// local cluster — the exact URL shape client-go's dynamic client produces for
+// local cluster - the exact URL shape client-go's dynamic client produces for
 // internal/client/provider's Create/Update/Delete calls.
 const localSecretsPath = "/k8s/clusters/local/api/v1/namespaces/default/secrets"
 
 // All returns the first-slice probe set: bearer-validation and RBAC-denial
-// auth probes, façade-owned ext-token mutation probes, and kube-proxy
+// auth probes, facade-owned ext-token mutation probes, and kube-proxy
 // mutation-pipeline probes. Each family's oracle target is documented in the
 // spec ("which layer it oracles").
 func All() []Probe {
@@ -39,9 +39,9 @@ func All() []Probe {
 // userPasswordWorkflowProbes asserts the facts `create user`/`create
 // password-change-request`'s capability gate depends on: the ext.cattle.io
 // discovery documents the checker parses (group-level preferred version,
-// then the resource list naming passwordchangerequests) — read by a
+// then the resource list naming passwordchangerequests) - read by a
 // standard, non-admin identity, since the discovery is readable regardless
-// of the caller's RBAC and the checker relies on that — and the
+// of the caller's RBAC and the checker relies on that - and the
 // cattle-local-user-passwords namespace the password Secret is written
 // into. A golden diff here on a future server version means this workflow's
 // wire shape changed and the capability gate/create-user composite need a
@@ -77,7 +77,7 @@ func userPasswordWorkflowProbes() []Probe {
 // truth table decides on: the unauthenticated edition string and a named
 // Feature's effective-value and prime-classification fields. oidc-provider
 // is the one live case known to be un-tiered pre-v2.16 (status.prime false
-// on both editions) — a golden diff here means the server started
+// on both editions) - a golden diff here means the server started
 // classifying it, which changes what outcome the detector produces.
 func capabilityProbes() []Probe {
 	return []Probe{
@@ -105,9 +105,9 @@ func authProbes() []Probe {
 		}
 	}
 	// Same delta for all three bearer-rejection identities: the composite
-	// façade's bearer check rejects the read with a bodyless 401, where the
+	// facade's bearer check rejects the read with a bodyless 401, where the
 	// real server answers 401 application/json with a Norman error envelope.
-	const bearer401Divergence = "façade bearer-check returns a bodyless 401 with an empty Content-Type; the oracle returns 401 application/json with a Norman error body {message,status,type}"
+	const bearer401Divergence = "facade bearer-check returns a bodyless 401 with an empty Content-Type; the oracle returns 401 application/json with a Norman error body {message,status,type}"
 	noToken := crtGet("auth/no-token", IdentityNone)
 	noToken.FacadeDivergence = bearer401Divergence
 	garbage := crtGet("auth/garbage-token", IdentityGarbage)
@@ -133,7 +133,7 @@ func authProbes() []Probe {
 			{Path: "spec.userID", Replace: "<user-id>"},
 			{Path: "spec.userPrincipal.name", Replace: "<principal>"},
 		},
-		FacadeDivergence: "façade create returns a Token carrying only {apiVersion,kind,metadata:{name,resourceVersion},status:{bearerToken,expiresAt}}; the oracle returns the full ext Token with metadata (labels, generateName, uid), spec (ttl, userID, userPrincipal), and status (current/expired/lastUpdateTime)",
+		FacadeDivergence: "facade create returns a Token carrying only {apiVersion,kind,metadata:{name,resourceVersion},status:{bearerToken,expiresAt}}; the oracle returns the full ext Token with metadata (labels, generateName, uid), spec (ttl, userID, userPrincipal), and status (current/expired/lastUpdateTime)",
 		Teardown:         []Step{deleteFixture("created standard token", token.ExtTokensPath+"/{tokname}")},
 	}
 
@@ -174,7 +174,7 @@ func authProbes() []Probe {
 
 func tokProbes() []Probe {
 	// The created name is derived from the ext-shaped bearer under
-	// status.bearerToken — the same mechanism RealTarget.revokedBearer
+	// status.bearerToken - the same mechanism RealTarget.revokedBearer
 	// uses, and one that holds whatever metadata the response carries.
 	create := Observation{
 		Name:     "create",
@@ -184,17 +184,17 @@ func tokProbes() []Probe {
 	namedPath := token.ExtTokensPath + "/{tokname}"
 	revokeLeftover := deleteFixture("created token", namedPath)
 
-	// The façade's ext-token store returns a sparse Token; every full-Token
+	// The facade's ext-token store returns a sparse Token; every full-Token
 	// observation therefore diverges on shape (missing metadata labels/uid,
 	// spec.userPrincipal, and status.hash/current/expired/lastUpdateTime, plus
-	// an empty spec.clusterName the façade emits on GET).
-	const tokenShapeDivergence = "façade returns a Token carrying {metadata.name/rv, status:{bearerToken,expiresAt}} on create and {metadata.name/rv, spec.clusterName, status.expiresAt} on GET; the oracle returns the full ext Token with metadata labels/generateName/uid, spec ttl/userID/userPrincipal, and status hash/current/expired/lastUpdateTime"
+	// an empty spec.clusterName the facade emits on GET).
+	const tokenShapeDivergence = "facade returns a Token carrying {metadata.name/rv, status:{bearerToken,expiresAt}} on create and {metadata.name/rv, spec.clusterName, status.expiresAt} on GET; the oracle returns the full ext Token with metadata labels/generateName/uid, spec ttl/userID/userPrincipal, and status hash/current/expired/lastUpdateTime"
 
 	// The create/get/revoke Token bodies carry the acting admin's per-install
 	// user id (spec.userID, the cattle.io/user-id label, and the userPrincipal
 	// name "local://<id>"), which differs across fresh boots; scrub it exactly
 	// as auth/standard-create does for its own user. metadata.labels.* stays
-	// probe-level on purpose — as a default rule it would blank meaningful
+	// probe-level on purpose - as a default rule it would blank meaningful
 	// labels on other kinds (e.g. the mut/* Secrets).
 	tokenIdentity := func() []NormalizeRule {
 		return []NormalizeRule{
@@ -251,7 +251,7 @@ func tokProbes() []Probe {
 			NormalizeRule{Path: "message", Replace: "<message>"},
 			NormalizeRule{Path: "details.causes.message", Replace: "<message>"},
 		),
-		FacadeDivergence: "façade returns 409 Conflict with no body where the 2.14.3 oracle returns 500 InternalError with a k8s Status for a stale preconditions.resourceVersion delete; the create observation also diverges on Token shape (minimal vs full).",
+		FacadeDivergence: "facade returns 409 Conflict with no body where the 2.14.3 oracle returns 500 InternalError with a k8s Status for a stale preconditions.resourceVersion delete; the create observation also diverges on Token shape (minimal vs full).",
 		Teardown:         []Step{revokeLeftover},
 	}
 
@@ -268,7 +268,7 @@ func tokProbes() []Probe {
 			NormalizeRule{Path: "details.name", Replace: "<name>"},
 			NormalizeRule{Path: "message", Replace: "<message>"},
 		),
-		FacadeDivergence: "façade create and revoke return a sparse Token; the oracle returns the full ext Token (metadata labels/generateName/uid, spec userPrincipal, status hash/current/expired/lastUpdateTime). The 404 gone observation conforms.",
+		FacadeDivergence: "facade create and revoke return a sparse Token; the oracle returns the full ext Token (metadata labels/generateName/uid, spec userPrincipal, status hash/current/expired/lastUpdateTime). The 404 gone observation conforms.",
 	}
 	return []Probe{createShape, dryrunDelete, stalePrecondition, revoke}
 }
@@ -353,7 +353,7 @@ func mutProbes() []Probe {
 		Teardown:  []Step{deleteFixture("del fixture", localSecretsPath+"/e2e-fid-del")},
 	}
 
-	// The dry-run PUT and the real PUT send the byte-identical body — the
+	// The dry-run PUT and the real PUT send the byte-identical body - the
 	// CLI safety invariant is that execution applies exactly the object the
 	// preview rendered, so the probe must not vary it between the two.
 	planned := secretUpdate("e2e-fid-seq", "{rv1}", "planned")
@@ -378,7 +378,7 @@ func mutProbes() []Probe {
 }
 
 // adminDo sends one admin-authenticated request for fixture steps and
-// returns the status code. Transport and bearer failures are real errors —
+// returns the status code. Transport and bearer failures are real errors -
 // steps surface them, never swallow them.
 func adminDo(ctx context.Context, tgt Target, method, path, body string) (int, error) {
 	tok, err := tgt.Bearer(ctx, IdentityAdmin)
@@ -411,7 +411,7 @@ func adminDo(ctx context.Context, tgt Target, method, path, body string) (int, e
 
 // deleteFixture DELETEs pathTemplate (captures resolved) as admin. Only an
 // explicit 404 or a 2xx counts as clean; auth and transport failures are
-// surfaced. An unresolved template is surfaced too — the fixture may have
+// surfaced. An unresolved template is surfaced too - the fixture may have
 // materialized without its capture resolving, and a silent skip would leak
 // it on a kept server.
 func deleteFixture(name, pathTemplate string) Step {

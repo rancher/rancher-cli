@@ -64,7 +64,7 @@ func (serverSwitchCmd) Describe() runtime.Descriptor {
 		Name:        "config use-server",
 		Usage:       "Switch the current server",
 		CommandType: runtime.Local,
-		// Required:false — a missing name is handled here with an AMBIGUOUS_SELECTION
+		// Required:false - a missing name is handled here with an AMBIGUOUS_SELECTION
 		// candidate list (server names), richer than the generic validateInput error.
 		Args:     []runtime.ArgSpec{{Name: "name", Type: "string"}},
 		Examples: []string{"rancher config use-server prod"},
@@ -110,9 +110,9 @@ func (serverSwitchCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) 
 // serverNotFoundWithCandidates builds the NOT_FOUND error `config
 // delete-server` and `auth logout` both return for an unknown server name:
 // every currently configured server offered back as a selectable candidate
-// (finding 6 — this was byte-for-byte duplicated between the two commands).
+// (finding 6 - this was byte-for-byte duplicated between the two commands).
 // `config use-server`'s own not-found path stays a plain NOT_FOUND with no
-// candidates (deliberately out of scope for this consolidation — ledgered
+// candidates (deliberately out of scope for this consolidation - ledgered
 // as a follow-up, not implemented here).
 func serverNotFoundWithCandidates(cfg *config.Config, name string) *clierr.Error {
 	cands := make([]clierr.Candidate, 0, len(cfg.Servers))
@@ -124,7 +124,7 @@ func serverNotFoundWithCandidates(cfg *config.Config, name string) *clierr.Error
 }
 
 // cachedCredsRemovedLine renders the "<n> cached kubectl credentials
-// removed" summary line delete-server and update-server both print — the
+// removed" summary line delete-server and update-server both print - the
 // two commands report the same DeleteTokenEverywhere output and must read
 // alike.
 func cachedCredsRemovedLine(n int) string {

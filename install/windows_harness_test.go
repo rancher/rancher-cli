@@ -28,7 +28,7 @@ func deriveWindowsInstallerPlatforms() []string {
 	}
 	m := platformLoopRe.FindStringSubmatch(string(raw))
 	if m == nil {
-		panic("release.yaml: no `for platform in ...; do` build loop found — it moved or was reworded")
+		panic("release.yaml: no `for platform in ...; do` build loop found - it moved or was reworded")
 	}
 	var out []string
 	for p := range strings.FieldsSeq(m[1]) {
@@ -237,7 +237,7 @@ func ghStubDir(t *testing.T, mode string) (dir, argvLog string, env []string) {
 }
 
 // canonicalPath returns the filesystem's own final name for an existing
-// path (resolving reparse points and 8.3 short forms — runner TEMP dirs
+// path (resolving reparse points and 8.3 short forms - runner TEMP dirs
 // arrive short); a path that cannot be resolved is cleaned as given.
 func canonicalPath(p string) string {
 	if r, err := filepath.EvalSymlinks(p); err == nil {

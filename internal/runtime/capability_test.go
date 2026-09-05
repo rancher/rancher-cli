@@ -32,7 +32,7 @@ func primeDesc(name string) Descriptor {
 		Capability: CapabilityRequirement{Tier: CapabilityPrime, Feature: "widget-feature"}}
 }
 
-// refusingExecuteRead fails the test if Execute is ever invoked — the read
+// refusingExecuteRead fails the test if Execute is ever invoked - the read
 // counterpart of refusingPlanMutating, proving the capability stage refuses
 // BEFORE any resource access.
 type refusingExecuteRead struct {
@@ -88,7 +88,7 @@ func TestRunCapabilityUnknownExecutesNormally(t *testing.T) {
 
 // TestRunCapabilityNilCheckerFailsLoud asserts the mis-wiring guard: a
 // requirement-bearing command registered without a checker is a harness
-// defect, not an unknown signal — it must error, never silently skip the
+// defect, not an unknown signal - it must error, never silently skip the
 // mandatory stage.
 func TestRunCapabilityNilCheckerFailsLoud(t *testing.T) {
 	t.Parallel()

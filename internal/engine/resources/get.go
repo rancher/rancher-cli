@@ -49,7 +49,7 @@ type getCmd struct {
 }
 
 // GetEnricher inspects one rendered object and optionally returns a warning
-// to attach to Result.Warnings — the read-path counterpart to NewPatch's
+// to attach to Result.Warnings - the read-path counterpart to NewPatch's
 // EffectEnricher. It runs once per rendered object: once for a named get,
 // once per item for a list.
 type GetEnricher func(ctx context.Context, obj *unstructured.Unstructured) (string, bool)
@@ -62,7 +62,7 @@ func NewGet(k kinds.Kind, clients engine.ClusterClientFactory, enrich ...GetEnri
 }
 
 // enrichWarnings runs every enricher against obj, collecting every warning
-// triggered — never just the first.
+// triggered - never just the first.
 func (c getCmd) enrichWarnings(ctx context.Context, obj *unstructured.Unstructured) []string {
 	var out []string
 	for _, e := range c.enrich {
@@ -114,7 +114,7 @@ func (c getCmd) Describe() runtime.Descriptor {
 // clusterFlag and namespaceFlag are the single source for the two routing
 // flags shared across get/delete/patch (via getFlags) and create, so their
 // schema/TTY description lives in one place. required is true for kinds that
-// always route to a downstream cluster — the schema must never advertise an
+// always route to a downstream cluster - the schema must never advertise an
 // invocation Route would reject. NSCluster kinds and create resource pass
 // false and override Desc: the former lists across clusters when the flag is
 // omitted, the latter can take the cluster from the manifest.
@@ -288,7 +288,7 @@ func hideSystemManaged(items []unstructured.Unstructured, f *kinds.PrefixFilter)
 // isSystemManaged reports whether any element of the string array at f.Path
 // has f.Prefix. A non-array or absent field is never hidden; each element is
 // string-asserted independently, and a non-string element is skipped rather
-// than disqualifying the whole array — Rancher's user-store transformer casts
+// than disqualifying the whole array - Rancher's user-store transformer casts
 // each principalIds element the same way and continues past failed casts.
 func isSystemManaged(obj unstructured.Unstructured, f *kinds.PrefixFilter) bool {
 	val, found, err := unstructured.NestedFieldNoCopy(obj.Object, f.Path...)
@@ -309,19 +309,19 @@ func isSystemManaged(obj unstructured.Unstructured, f *kinds.PrefixFilter) bool 
 }
 
 // systemHiddenWarning renders the announced-filtering warning, pluralized
-// from Label with no literal "(s)": "1 system account hidden — pass
-// --include-system to show it" / "4 system accounts hidden — pass
+// from Label with no literal "(s)": "1 system account hidden - pass
+// --include-system to show it" / "4 system accounts hidden - pass
 // --include-system to show them".
 func systemHiddenWarning(count int, label string) string {
 	noun, pronoun := label, "it"
 	if count != 1 {
 		noun, pronoun = kinds.Plural(label), "them"
 	}
-	return fmt.Sprintf("%d %s hidden — pass --include-system to show %s", count, noun, pronoun)
+	return fmt.Sprintf("%d %s hidden - pass --include-system to show %s", count, noun, pronoun)
 }
 
 // waitElapsed renders the wait summary's elapsed display: Go's
-// second-rounded duration format at or above one second (1m35s, 2h15m30s —
+// second-rounded duration format at or above one second (1m35s, 2h15m30s -
 // full seconds precision, never truncated to a coarser unit). This
 // deliberately diverges from the AGE-column short form (hours-only for long
 // durations) which is the k8s table idiom; wait summaries warrant the full
@@ -361,16 +361,16 @@ func hasName(in runtime.Input) bool {
 // namespace set, used for caller-side membership validation and list
 // filtering (the generic Downstream NSPlain path). Selector is a server-side
 // label selector, used only by the namespace-kind special case (Members is
-// nil there — membership is enforced by the server, not the caller).
+// nil there - membership is enforced by the server, not the caller).
 type ProjectScope struct {
 	Members  map[string]bool
 	Selector string
 }
 
-// TypedProject returns the --project value the user typed — THE project
+// TypedProject returns the --project value the user typed - THE project
 // accessor. Project scope is a filter, and no default may filter: only an
 // explicit per-invocation flag ever scopes anything. Exported so every
-// project-scope consumer — Route, usage, and the composites — shares this
+// project-scope consumer - Route, usage, and the composites - shares this
 // one seam.
 func TypedProject(in runtime.Input) string { return in.String(FlagProject) }
 
@@ -420,9 +420,9 @@ func resolveProjectScope(ctx context.Context, clients engine.ClusterClientFactor
 //
 // "per scope" (NSNone, NSPlain): a Management kind is served by the local proxy
 // ("local"); a Downstream kind resolves --cluster (name-or-id) via
-// ResolveCluster — the flag is required, a VALIDATION error when absent.
+// ResolveCluster - the flag is required, a VALIDATION error when absent.
 //
-// SAFETY (review F3) — for NSCluster kinds an empty --cluster must NEVER
+// SAFETY (review F3) - for NSCluster kinds an empty --cluster must NEVER
 // silently become "local" (ResolveCluster("") returns LocalCluster, which as a
 // namespace targets the local cluster's own resources): an empty --cluster is
 // allowed only for a nameless list (namespace "" = across all clusters);
@@ -477,7 +477,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		return engine.LocalCluster, nspace, engine.LocalCluster, nil, nil
 
 	case kinds.NSPlain:
-		// Namespace is a pure input requirement — check it before any network
+		// Namespace is a pure input requirement - check it before any network
 		// resolution so a missing --namespace fails fast. A named op with an
 		// empty --namespace would pass ns="" to the API and 404 opaquely; a
 		// nameless list keeps ns="" (all-namespaces), which is valid and useful.
@@ -512,7 +512,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		}
 		return clientCluster, ns, effectCluster, &ProjectScope{Members: members}, nil
 
-	default: // NSNone — cluster-scoped, no namespace
+	default: // NSNone - cluster-scoped, no namespace
 		if scopable {
 			return routeNamespaceKind(ctx, clients, k, in)
 		}

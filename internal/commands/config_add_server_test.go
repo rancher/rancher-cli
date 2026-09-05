@@ -111,7 +111,7 @@ func TestAddServerRequiresURL(t *testing.T) {
 }
 
 // TestAddServerRejectsUnsupportedScheme: an ftp:// (or any non-http(s))
-// URL must never commit an entry — config.Effective's credential-read
+// URL must never commit an entry - config.Effective's credential-read
 // path would silently withhold the token for it later, reading as an
 // unexplained NOT_LOGGED_IN after an apparently successful add.
 func TestAddServerRejectsUnsupportedScheme(t *testing.T) {

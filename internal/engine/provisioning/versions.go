@@ -25,7 +25,7 @@ const (
 	// rke2ReleasePath and k3sReleasePath are the unauthenticated mux routes
 	// rancher's routes.go:139-140 registers server-side for the
 	// channel-server release lists. RootClient sends credentials to them
-	// anyway, per the one-policy rule (spec D-10) — no anonymous
+	// anyway, per the one-policy rule (spec D-10) - no anonymous
 	// special-casing.
 	rke2ReleasePath = "/v1-rke2-release/release"
 	k3sReleasePath  = "/v1-k3s-release/release"
@@ -71,7 +71,7 @@ type Version struct {
 	// Supported reports whether Version falls inside the server's
 	// ui-k8s-supported-versions-range setting (spec D-7's
 	// in-supported-range?, review R1-5). nil = range setting absent or
-	// unparseable — unknown, not false.
+	// unparseable - unknown, not false.
 	Supported *bool `json:"supported,omitempty"`
 }
 
@@ -161,14 +161,14 @@ type rangeClause struct {
 
 // rangeTokenRE scans a raw range string for `>=`/`<=`/`>`/`<`/`=` immediately
 // (optionally with whitespace) followed by a `MAJOR.MINOR[.PATCH|.x]`
-// operand — the entire grammar spec D-7 requires, and nothing more. A
+// operand - the entire grammar spec D-7 requires, and nothing more. A
 // string with no such token (empty, or genuinely unparseable garbage) never
 // matches, which is exactly how parseSupportedRange reports "advisory data
 // unavailable" without a special-case.
 var rangeTokenRE = regexp.MustCompile(`(>=|<=|>|<|=)\s*(\d+)\.(\d+)(?:\.(\d+)|\.(x))?`)
 
 // parseSupportedRange parses raw into its AND-ed comparator clauses. ok is
-// false when raw carries no recognizable clause at all (empty or garbage) —
+// false when raw carries no recognizable clause at all (empty or garbage) -
 // the caller's contract is "unknown", never an error: the range is
 // advisory (spec D-7).
 func parseSupportedRange(raw string) (clauses []rangeClause, ok bool) {
@@ -195,7 +195,7 @@ func parseSupportedRange(raw string) (clauses []rangeClause, ok bool) {
 
 // compareTriple compares (aMajor,aMinor,aPatch) to (bMajor,bMinor,bPatch),
 // returning -1/0/1. When wildcard is set the patch position is dropped from
-// the comparison entirely — that is what a ".x" operand means.
+// the comparison entirely - that is what a ".x" operand means.
 func compareTriple(aMajor, aMinor, aPatch, bMajor, bMinor, bPatch int, wildcard bool) int {
 	if aMajor != bMajor {
 		if aMajor < bMajor {
@@ -241,9 +241,9 @@ func clauseHolds(c rangeClause, major, minor, patch int) bool {
 
 // versionSupported evaluates rawVersion (a RAW, un-normalized channel-server
 // version string) against rangeRaw, the advisory
-// ui-k8s-supported-versions-range setting value. nil means "unknown" — an
+// ui-k8s-supported-versions-range setting value. nil means "unknown" - an
 // absent/empty/unparseable range, or a version string normalizeVersion
-// cannot resolve to at least MAJOR.MINOR — never an error, per spec D-7.
+// cannot resolve to at least MAJOR.MINOR - never an error, per spec D-7.
 func versionSupported(rangeRaw, rawVersion string) *bool {
 	clauses, ok := parseSupportedRange(rangeRaw)
 	if !ok {
@@ -274,11 +274,11 @@ func versionSupported(rangeRaw, rawVersion string) *bool {
 
 // fetchReleaseVersions GETs path against root and decodes its channel-server
 // release envelope ({"data":[{"version": "..."}, ...]}, channelserver
-// model/config.go:22-30 — the collection key is "data", matched against the
+// model/config.go:22-30 - the collection key is "data", matched against the
 // fixture testrancher serves; the acceptance pass against a real server
 // corrects this if the shape differs). A malformed body is a typed
 // CodeGeneric error naming "decoding" and path, mirroring Task 5's
-// decodeCRTCollection contract exactly — never a panic, never an empty slice
+// decodeCRTCollection contract exactly - never a panic, never an empty slice
 // standing in for the failure silently. Any error root.GetJSON itself
 // returns (including a 404) is returned as-is, already clierr-mapped.
 func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path string) ([]string, error) {
@@ -303,7 +303,7 @@ func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path stri
 
 // getSettingValue reads the named management.cattle.io/v3 Setting and
 // returns its value; ANY failure (not found, RBAC, decode) degrades to ""
-// rather than propagating — a missing/empty setting means "no default
+// rather than propagating - a missing/empty setting means "no default
 // marked" / "range unknown", never an error (spec D-7). SettingValue's
 // presence bool is deliberately dropped: this path treats absent and empty
 // identically by that same rule.
@@ -319,7 +319,7 @@ func getSettingValue(ctx context.Context, client engine.ClusterClient, name stri
 // distroResult carries one distro's full concurrent-fetch outcome: its
 // release list (on success), a 404-degrade warning, a hard release-fetch
 // error, and its default-version setting value. One struct, one slice
-// (results[i], indexed by distroSpecs[i]) rather than four parallel slices —
+// (results[i], indexed by distroSpecs[i]) rather than four parallel slices -
 // each distro's outcome lives in one place instead of being reconstructed by
 // tracking a positional index across separate slices.
 type distroResult struct {
@@ -370,7 +370,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	// Each distro's release fetch and default-version setting read, plus
 	// the shared supported-range setting read, depend only on the
 	// already-resolved root/client above, never on each other, so they run
-	// concurrently via a PLAIN errgroup.Group — never errgroup.WithContext
+	// concurrently via a PLAIN errgroup.Group - never errgroup.WithContext
 	// (review finding 2): WithContext's shared derived context cancels
 	// every sibling goroutine's in-flight request the instant ANY of them
 	// returns a non-nil error, which would turn a genuine hard failure on
@@ -382,7 +382,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	// variable), so there is no data race between them and g.Wait()'s own
 	// error is always nil. The precedence rules below apply only AFTER
 	// every goroutine has joined, reading the per-distro slots in
-	// distroSpecs' fixed order — so which error (if any) surfaces never
+	// distroSpecs' fixed order - so which error (if any) surfaces never
 	// depends on which goroutine happened to finish first.
 	results := make([]distroResult, len(distroSpecs))
 	var rangeRaw string
@@ -414,7 +414,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	_ = g.Wait() // every goroutine above self-degrades into its own slot; the group's own error is always nil.
 
 	// A hard (non-404) release-fetch error surfaces deterministically: the
-	// first one in distroSpecs' fixed order (rke2 before k3s) wins —
+	// first one in distroSpecs' fixed order (rke2 before k3s) wins -
 	// matching the pre-parallelization sequential behavior, where rke2's
 	// error was always seen first because k3s was never even attempted in
 	// that failure path. A hard failure on the OTHER distro too is never
@@ -464,7 +464,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 // (/v1-rke2-release/release and /v1-k3s-release/release) with the
 // default-version Settings into one table. A 404 on either release route
 // (an older server that predates that route) degrades to the other
-// distro's rows alone — never an error; the omission is only visible as a
+// distro's rows alone - never an error; the omission is only visible as a
 // warning on NewGetKubernetesVersions's Result, since this function's
 // signature carries no warnings channel (Task 7 consumes exactly this
 // shape).
@@ -518,7 +518,7 @@ type getKubernetesVersionsCmd struct {
 
 // NewGetKubernetesVersions builds `get kubernetes-versions`: merges the
 // channel-server release lists (/v1-rke2-release/release and
-// /v1-k3s-release/release — unauthenticated mux routes server-side,
+// /v1-k3s-release/release - unauthenticated mux routes server-side,
 // rancher routes.go:139-140; credentials sent anyway per the RootClient
 // one-policy rule) with the default-version Settings into one table.
 func NewGetKubernetesVersions(roots engine.RootClientFactory, clients engine.ClusterClientFactory) runtime.Command {

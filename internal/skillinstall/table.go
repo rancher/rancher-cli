@@ -23,7 +23,7 @@ type Harness struct {
 	UserDir    func() (string, error)
 	ProjectDir func(cwd string) string
 	Detect     func() bool
-	// AliasOf collapses this row's PROJECT scope into another row's dir —
+	// AliasOf collapses this row's PROJECT scope into another row's dir -
 	// copilot reads the shared .agents/skills in-repo.
 	AliasOf string
 }

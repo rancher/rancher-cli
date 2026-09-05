@@ -44,7 +44,7 @@ func TestTrustCardSameFingerprintCarriesNoWarning(t *testing.T) {
 }
 
 // callCountingPrompter wraps a *ui.Prompter and counts Prompt/Notice calls
-// so a test can assert guided trust never engaged at all — distinct from
+// so a test can assert guided trust never engaged at all - distinct from
 // engaging and being declined, which reads identically from the returned
 // error alone.
 type callCountingPrompter struct {
@@ -58,7 +58,7 @@ func (p *callCountingPrompter) Prompt(ctx context.Context, msg string) (string, 
 }
 
 // driftingPrompter answers the consent prompt "y" but, on its first call,
-// first mutates the config directory — simulating a concurrent writer
+// first mutates the config directory - simulating a concurrent writer
 // changing the entry during the interactive gap between the preflight and
 // the locked commit.
 type driftingPrompter struct {
@@ -113,7 +113,7 @@ func TestLoginPlainUnknownAuthorityCardLabelsLeafOnlyServingCertificate(t *testi
 }
 
 // seedServerCAFingerprint sets an already-seeded entry's recorded
-// CAFingerprint directly — the state a prior guided-trust consent would
+// CAFingerprint directly - the state a prior guided-trust consent would
 // have left, without running that consent flow again.
 func seedServerCAFingerprint(t *testing.T, dir, name, fingerprint string) {
 	t.Helper()
@@ -190,8 +190,8 @@ func TestLoginPlainChangedIdentityDeclineKeepsByteIdenticalRefusal(t *testing.T)
 }
 
 // TestLoginPlainPreGuidedEntryFallsBackToFirstContact asserts that an
-// entry with an existing CA but no recorded CAFingerprint — one that
-// arrived via an explicit --cacert, never through guided trust — reads as
+// entry with an existing CA but no recorded CAFingerprint - one that
+// arrived via an explicit --cacert, never through guided trust - reads as
 // first contact: there is no recorded identity to compare against, so no
 // changed-identity warning is shown, even though the entry is not new.
 func TestLoginPlainPreGuidedEntryFallsBackToFirstContact(t *testing.T) {
@@ -201,7 +201,7 @@ func TestLoginPlainPreGuidedEntryFallsBackToFirstContact(t *testing.T) {
 
 	dir, store := filePolicyDir(t)
 	// A stale explicit CA that no longer verifies (a different, unrelated
-	// certificate) — CAFingerprint stays empty, exactly as an explicit
+	// certificate) - CAFingerprint stays empty, exactly as an explicit
 	// --cacert entry always leaves it.
 	stale := selfSignedFixture(t, "unrelated.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	seedServer(t, dir, "prod", srv.URL, stale.pem, false)
@@ -358,7 +358,7 @@ func TestLoginPlainUnknownAuthorityEntryDriftDuringConsentReturnsConflict(t *tes
 	cfg, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)
 	assert.Equal(t, "-----BEGIN CERTIFICATE-----concurrent", cfg.Servers["prod"].CA,
-		"the concurrent writer's CA must survive — the consented candidate must never overwrite it")
+		"the concurrent writer's CA must survive - the consented candidate must never overwrite it")
 }
 
 func TestLoginPlainUnknownAuthorityTokenWriteFailureAbortsBeforeConfigWrite(t *testing.T) {
@@ -474,7 +474,7 @@ func TestLoginDelegatedDerivedNameGuidedTrustAcceptedCommitsCAAndFingerprint(t *
 // TestLoginDelegatedKnownEntryRotatedCANeverAutoTrusts asserts the scope
 // boundary: guided trust on the --url path applies only to a genuinely new
 // entry. An already-registered entry re-run with --url and no --cacert
-// keeps today's non-interactive refusal even in a promptable session — a
+// keeps today's non-interactive refusal even in a promptable session - a
 // rotated CA on a known entry is a plain-login (`auth login <name>`)
 // concern, which runs the combined token+CA commit protocol instead.
 func TestLoginDelegatedKnownEntryRotatedCANeverAutoTrusts(t *testing.T) {
@@ -499,7 +499,7 @@ func TestLoginDelegatedKnownEntryRotatedCANeverAutoTrusts(t *testing.T) {
 
 // controllableStore wraps a real CredStore and fails a chosen call ordinal
 // on a counter shared by the token write and the compensation it hands
-// back (call 1 is the write, call 2 the undo) — used to exercise the commit
+// back (call 1 is the write, call 2 the undo) - used to exercise the commit
 // protocol's abort-before-config-write and compensation-failure paths,
 // neither of which a real backend failure is practical to trigger on
 // demand.

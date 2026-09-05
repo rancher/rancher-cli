@@ -16,7 +16,7 @@ import (
 const fileName = "config.yaml"
 
 // LoginHintFor returns the bare, shell-quoted `rancher auth login <name>`
-// command for name — the concrete login hint every not-logged-in outcome
+// command for name - the concrete login hint every not-logged-in outcome
 // below emits when (and only when) a name is known. Replaces the retired
 // LoginHint constant, which could not carry a concrete name under the
 // executable-hint contract (a machine hint is a complete command, never a
@@ -29,7 +29,7 @@ func LoginHintFor(name string) string {
 // HAVE the loaded config and can see stored servers: the current-server
 // pointer is empty, dangling, or (after a logout, which never touches the
 // pointer) simply credential-less, but server entries survive either way,
-// so the answer to "am I logged in" is "no — and here is the shortcut
+// so the answer to "am I logged in" is "no - and here is the shortcut
 // back", never a hint that implies a blank machine. With no stored
 // servers it falls back to the blank-machine wording, which is then
 // accurate.
@@ -43,12 +43,12 @@ func (c *Config) ErrNotLoggedIn() *clierr.Error {
 
 // ErrNotLoggedInFor is ErrNotLoggedIn's core over a name→URL map, usable by
 // callers that carry Effective.KnownServers instead of a loaded Config
-// (kube.RESTConfig — the shared client factory behind nearly every server
+// (kube.RESTConfig - the shared client factory behind nearly every server
 // command). Exact zero/one/many outcomes: zero known servers puts onboarding
 // guidance in the message BODY with no machine hint (neither a name nor a
 // URL is known, so nothing here is a real value to interpolate); exactly one
 // gets a concrete quoted login hint; more than one lists every name as a
-// selectable candidate plus body guidance, again with no template hint — a
+// selectable candidate plus body guidance, again with no template hint - a
 // rewritten constructor cannot adopt the executable-hint contract and keep a
 // placeholder form.
 func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
@@ -62,7 +62,7 @@ func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 	}
 	sort.Strings(names)
 	if len(names) == 1 {
-		return clierr.New(clierr.CodeNotLoggedIn, "not logged in — no current server").
+		return clierr.New(clierr.CodeNotLoggedIn, "not logged in - no current server").
 			WithHint(LoginHintFor(names[0]))
 	}
 	cands := make([]clierr.Candidate, 0, len(names))
@@ -70,7 +70,7 @@ func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 		cands = append(cands, clierr.Candidate{ID: n, Name: n})
 	}
 	return clierr.New(clierr.CodeNotLoggedIn,
-		"not logged in — no current server; configured servers: "+strings.Join(names, ", ")+
+		"not logged in - no current server; configured servers: "+strings.Join(names, ", ")+
 			"; select one with: rancher config use-server <name>").
 		WithCandidates(cands)
 }
@@ -234,14 +234,14 @@ func RecordOwnerState(rec SupersededToken, currentUserID string) OwnerState {
 
 // Config is the on-disk CLI configuration. Beyond server entries and
 // per-machine preferences it holds exactly one piece of session state: the
-// current-server pointer. Scope (cluster, project) is never persisted —
+// current-server pointer. Scope (cluster, project) is never persisted -
 // every command takes it per invocation.
 type Config struct {
 	CurrentServer   string            `json:"currentServer,omitempty"`
 	Servers         map[string]Server `json:"servers,omitempty"`
 	CredentialStore string            `json:"credentialStore,omitempty"`
 	// ReadOnly is one of the three OR'd sources (config/env/flag) that put a
-	// session into read-only mode — see runtime.IO.ReadOnly. One-way: there
+	// session into read-only mode - see runtime.IO.ReadOnly. One-way: there
 	// is no per-invocation override to turn this back off from here.
 	ReadOnly bool `json:"readOnly,omitempty"`
 	// TokenReuse lets auth get-token create and use one plugin-created login
@@ -249,7 +249,7 @@ type Config struct {
 	// Default off; set via `config set-token-reuse`. Governs only entries
 	// whose provenance is execLogin.
 	TokenReuse bool `json:"tokenReuse,omitempty"`
-	// Completion holds per-machine completion preferences (not user config —
+	// Completion holds per-machine completion preferences (not user config -
 	// live completion is inherently machine-dependent). Stored inline in
 	// config.yaml for discoverability; see `config set-completion`.
 	// No omit tag: the block is written even when empty so it stays visible.
@@ -318,7 +318,7 @@ func LoadAndStore(dir string) (*Config, CredStore, error) {
 // Write persists the config as 0600 YAML, creating the dir at 0700.
 // Write itself is lock-free: any COMMAND doing load-modify-write must run
 // the whole span inside config.WithLock (the command sites' lock boundary
-// tests are the enforcement point) — a direct load→Write from a new command
+// tests are the enforcement point) - a direct load→Write from a new command
 // reintroduces the concurrent lost-update the lock exists to prevent.
 func (c *Config) Write() error {
 	if c.path == "" {
@@ -338,7 +338,7 @@ func (c *Config) Path() string { return c.path }
 func (c *Config) SetPath(p string) { c.path = p }
 
 // CurrentServerEntry resolves the server the current-server pointer names.
-// A dangling pointer errors here, at use time — Load stays lenient so repair
+// A dangling pointer errors here, at use time - Load stays lenient so repair
 // commands (config use-server, auth logout --all) can load and fix the file.
 func (c *Config) CurrentServerEntry() (string, Server, error) {
 	if c.CurrentServer == "" {

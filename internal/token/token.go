@@ -97,11 +97,11 @@ type loginInput struct {
 // own cache check when its resolved key equals ProbedKey, preventing a double
 // "cache read failed" notice on a real store error.
 // ProbedNoticed is true when the fast-path probe fired a "cache read failed"
-// notice — a real (non-ErrNoToken) store error. When true, the resolved-key
+// notice - a real (non-ErrNoToken) store error. When true, the resolved-key
 // re-check is quiet so the notice fires exactly once (not zero times: a clean
 // miss on the flag key does NOT suppress a distinct error on the resolved key).
 //
-// legacyShim marks the caller as the legacy token shim — the one structural
+// legacyShim marks the caller as the legacy token shim - the one structural
 // fact behind every shim-only behavior, folded into a single field so a
 // caller cannot compile with some of the behaviors and not the others. Only
 // shim.go (same package) sets it. It drives:
@@ -119,7 +119,7 @@ type loginInput struct {
 //   - legacy cache slots: a config.LegacyCachePrefix Name passes
 //     runWithParams's reservation guard; every other caller is blocked.
 //
-// SkipVerify disables TLS verification. Only the legacy token shim sets it —
+// SkipVerify disables TLS verification. Only the legacy token shim sets it -
 // Rancher-generated kubeconfigs pass --skip-verify verbatim. The native
 // surface has no skip-verify flag anywhere; pin the CA instead.
 type runParams struct {
@@ -167,7 +167,7 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			"rancher auth get-token --server https://rancher.example.com --cluster c-1 --name prod",
 		},
 		// The exec-credential plugin's stdout is a bare ExecCredential object
-		// kubectl parses directly — no envelope exists to vary with -o. table
+		// kubectl parses directly - no envelope exists to vary with -o. table
 		// (the default) and json are the two forms this command has ever
 		// honored; every other value is now rejected pre-Plan instead of
 		// being silently ignored.
@@ -193,7 +193,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	// Require --cluster BEFORE the cache probe, not only in resolveConn: a
 	// still-valid cache entry keyed with an empty cluster component (written
 	// before the flag became required) would otherwise be served without ever
-	// reaching resolveConn's check — a token returned for a cluster the
+	// reaching resolveConn's check - a token returned for a cluster the
 	// caller didn't name. The pipeline's validateInput normally rejects this
 	// first; this guards direct Execute callers. The shim keeps its unscoped
 	// path via runWithParams, which run() never fronts for it.
@@ -225,7 +225,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime.Prompter) (runtime.Result, error) {
 	// Reject any --name starting with the legacy prefix unless the caller is
 	// the shim (legacyShim, an unexported field only shim.go sets). This
-	// guard lives here — not just in run() — so every runWithParams caller is
+	// guard lives here - not just in run() - so every runWithParams caller is
 	// protected, not only the CLI-flag path.
 	if config.IsLegacyCacheSlot(params.Name) && !params.legacyShim {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -260,7 +260,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// double any "cache read failed" notice on a real store error.
 		// When the keys differ (e.g. cluster sourced from config, not from flags),
 		// this is the first probe for the resolved key. quiet is set only when the
-		// fast-path probe NOTICED a real store error (ProbedNoticed) — a clean miss
+		// fast-path probe NOTICED a real store error (ProbedNoticed) - a clean miss
 		// on the flag key must NOT suppress a distinct error on the resolved key,
 		// which would degrade the invariant from "exactly once" to "zero notices".
 		if cacheKey != params.ProbedKey {
@@ -341,7 +341,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		switch {
 		case tokenExpiry.IsZero() && !params.legacyShim:
 			// A zero expiry would be cached and read back as never-expiring
-			// (GetCachedCred only evicts a past, non-zero expiry) — never
+			// (GetCachedCred only evicts a past, non-zero expiry) - never
 			// cache an immortal stale token on the native path. The legacy
 			// `token` shim opts in: the legacy CLI cached these
 			// indefinitely, and the read path already treats zero expiry
@@ -349,7 +349,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			p.Notice("not caching: the new token has no expiry")
 		case rancherToken.noDiskCache:
 			// A credential-helper short-lived token served through the legacy
-			// fallback is memory-only by contract — never write it to disk.
+			// fallback is memory-only by contract - never write it to disk.
 			p.Notice("not caching: the credential helper serves this token from memory only")
 		default:
 			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, params.Name, serverID, clusterID); cacheErr != nil {
@@ -380,7 +380,7 @@ func (t tokenCmd) cachedResultQ(key string, quiet bool, p runtime.Prompter) (run
 // computeCacheProbeKey validates and normalizes name, server, and cluster into
 // the cache-key string that both probeFlagCache and shimProbeFlagCache use.
 // Keeping this logic here means future scheme, normalization, or CacheKey-shape
-// changes need only be applied once — the "fast-path probed key == slow-path
+// changes need only be applied once - the "fast-path probed key == slow-path
 // resolved key" invariant and the notice-once suppression both depend on the two
 // probes producing identical keys. Returns ("", false) when the probe is
 // impossible: a required field is empty, the URL is not parseable, or the scheme
@@ -401,7 +401,7 @@ func computeCacheProbeKey(name, server, cluster string) (string, bool) {
 }
 
 // probeFlagCache attempts a flag-only cache probe when name and server are both
-// given — the same fast-path logic run uses, factored out so the legacy token
+// given - the same fast-path logic run uses, factored out so the legacy token
 // shim can call it before runWithParams. Returns (key, noticed, result, hit).
 // A miss or any condition that makes the probe impossible returns ("", false, {}, false).
 // The key is returned even on a miss so the caller can set ProbedKey; noticed
@@ -426,10 +426,10 @@ func (t tokenCmd) probeFlagCache(name, server, cluster string, p runtime.Prompte
 // computeCacheProbeKey, read through read, and classify the outcome. Shared
 // by probeFlagCache (store-backed) and shimProbeFlagCache (direct read-only
 // file probe) so hit construction and the notice-once/notice-zero
-// classification — noticed is true only for a real, non-ErrNoToken error —
+// classification - noticed is true only for a real, non-ErrNoToken error -
 // cannot drift between the two paths. warn is a notice read returned
 // alongside the token (a loose-permission finding on the shim's direct file
-// read, say) — fired independently of hit/miss, since read may notice
+// read, say) - fired independently of hit/miss, since read may notice
 // before it even knows whether the key is present.
 func probeCacheWith(name, server, cluster string, read func(string) (string, time.Time, string, error), p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
 	key, ok := computeCacheProbeKey(name, server, cluster)
@@ -500,7 +500,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 	}
 	// Resolve each argument against the cached record set: a bare display name
 	// matches EVERY entry with that name (a legacy bare entry and a scoped entry
-	// sharing the name are the same logical credential — deleting cached tokens
+	// sharing the name are the same logical credential - deleting cached tokens
 	// is always safe, they re-auth), and the full composite key matches one.
 	// Deletion is idempotent: an unknown or already-deleted name is a success
 	// with nothing removed, so teardown scripts can call it unconditionally.
@@ -723,7 +723,7 @@ func SetSAMLTimingForTest(timeout, interval time.Duration) (restore func()) {
 // samlAuth signs in through the browser: it publishes a URL carrying a
 // request id and a public key, then polls Rancher's authtokens collection
 // for the encrypted token the browser deposits there. Nothing here creates a
-// token — the server does, out of band — so every failure after the URL is
+// token - the server does, out of band - so every failure after the URL is
 // published leaves a session token that may exist and can only be found
 // through the handoff this returns. The created token is always v3 and never
 // carries a description, so it can never be marked.
@@ -974,13 +974,13 @@ func generateKey() (string, error) {
 
 // resolveConn fills server/CA/cluster from flags, falling back to the CLI config
 // (which already merges env over the file). Flags win over config. An explicit
-// --server with no --cacert never inherits the CURRENT context's CA — that CA
+// --server with no --cacert never inherits the CURRENT context's CA - that CA
 // belongs to whatever server the context happens to point at, which may differ
 // from the server just named; instead it borrows the CA of the configured
 // server entry whose URL actually matches (see caForServer).
 // When ignoreCurrentContext is true caForServer's current-server CA preference is
 // suppressed: an empty --cluster stays unscoped, and among same-host CA
-// candidates sorted order wins instead of the current-server entry — driven
+// candidates sorted order wins instead of the current-server entry - driven
 // purely by the flags, never by stored current-context state.
 // resolveConn accepts the three flag values that drive connection resolution
 // as plain strings rather than a runtime.Input, so callers (runWithParams)
@@ -992,7 +992,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 	// Normalize the flag value's scheme here, once: it must happen before
 	// caForServer below, and a config-sourced server (from eff.URL) is always
 	// already scheme-qualified (login rejects a schemeless --server), so
-	// there is no second site left needing this. Guarded on explicitServer —
+	// there is no second site left needing this. Guarded on explicitServer -
 	// an empty server must stay "" for the fallback-to-config check below,
 	// not become the bogus non-empty "https://".
 	if explicitServer {
@@ -1001,7 +1001,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 
 	// A ignoreCurrentContext caller is flag-driven by definition: an absent
 	// --server must fail here, never be filled from the config's current
-	// context below. This also keeps the needsEff gate honest — past this
+	// context below. This also keeps the needsEff gate honest - past this
 	// point server == "" implies !ignoreCurrentContext.
 	if server == "" && ignoreCurrentContext {
 		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required")
@@ -1010,7 +1010,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 	// The native get-token path requires --cluster: a token must never be created
 	// for a cluster the caller didn't name. Shim calls (ignoreCurrentContext) keep
 	// the legacy semantic where an empty --cluster is a deliberate unscoped
-	// create — still purely flag-driven, never filled from stored state.
+	// create - still purely flag-driven, never filled from stored state.
 	if cluster == "" && !ignoreCurrentContext {
 		return "", "", "", clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
@@ -1020,13 +1020,13 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 		if cerr != nil {
 			return "", "", "", cerr
 		}
-		// cfg.Effective reads the current server's credential from the store —
+		// cfg.Effective reads the current server's credential from the store -
 		// GetToken for a server that may be entirely unrelated to the --server
 		// the caller wants. Call it only when a field actually needs it:
 		// URL from config (server == "") or CA from the current server
 		// (!explicitServer). With an explicit --server and ignoreCurrentContext (every
 		// shim call), config.yaml may still be needed for caForServer, but
-		// Effective must not run — a hard store error for an unrelated server must
+		// Effective must not run - a hard store error for an unrelated server must
 		// never abort an otherwise healthy create.
 		// needsEff mirrors the two Effective fields consumed below:
 		//   - eff.URL when server == ""
@@ -1085,12 +1085,12 @@ func applyDefaultScheme(s string) string {
 }
 
 // extTokensPath and ErrExtGroupAbsent are reached ONLY through the Rancher
-// proxy path on the LOCAL cluster's apiserver — ext.cattle.io is an
+// proxy path on the LOCAL cluster's apiserver - ext.cattle.io is an
 // aggregated/CRD API, never served at the server root, so a bare /apis/...
 // 404s on every Rancher.
 const ExtTokensPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"
 
-// ErrExtGroupAbsent signals a 404 on the derived token create call itself — the aggregated
+// ErrExtGroupAbsent signals a 404 on the derived token create call itself - the aggregated
 // ext.cattle.io API isn't served (an older Rancher), not that some other
 // resource is missing.
 var ErrExtGroupAbsent = errors.New("ext.cattle.io not served")
@@ -1110,8 +1110,8 @@ var (
 // token (bearer bearerToken), scoped to clusterID when set (spec.clusterName,
 // the same field internal/engine/extres/create.go's `create token --cluster`
 // uses), carrying description as spec.description. It returns what the create
-// left behind — the resource name, bearer, and expiry when the response
-// identified them — on the error path too, so a caller that must clean up
+// left behind - the resource name, bearer, and expiry when the response
+// identified them - on the error path too, so a caller that must clean up
 // knows what exists. ErrExtGroupAbsent signals the group-level 404 that means
 // an older Rancher; errCredentialUnauthorized and errCredentialForbidden
 // signal a 401 and a 403 (the bearer credential is bad, or lacks the
@@ -1288,17 +1288,17 @@ func serverCandidateRank(name, wantName, curServer string) int {
 // credential store's token instead of the config's CA. Multiple Servers entries can share a BaseURL (e.g. re-login
 // under a new --name against the same host); serverCandidateRank orders
 // them deterministically, and every candidate in that order is tried in
-// turn — the first one with an actual stored token wins, so a
+// turn - the first one with an actual stored token wins, so a
 // higher-ranked-but-tokenless sibling never masks a lower-ranked one that
 // does have a token. p is noticed only when more than one candidate AT THE
-// WINNING RANK had a stored token — an exact --name match (rank 0) winning
+// WINNING RANK had a stored token - an exact --name match (rank 0) winning
 // outright is a certainty, not a tie-break, even if some unrelated
 // lower-ranked server also happens to have a stale token.
 // ignoreCurrentContext gates every non-sorted tier: wantName is forced to ""
 // (the shim's name is a cache-slot label, never an entry-name preference, so
 // ranks 0 and 1 must not fire even against a hand-edited "legacy:"-named
 // entry) and curServer is forced to "" (rank 2, the operator's
-// interactive-session state) — stored-login selection falls directly to
+// interactive-session state) - stored-login selection falls directly to
 // rank-3 (deterministic sorted order), consistent with how ignoreCurrentContext
 // gates the cluster and CA fallbacks in resolveConn/caForServer.
 // A provenance tier precedes every rank: user entries before plugin login
@@ -1338,9 +1338,9 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 	})
 
 	hitsByRank := map[int][]storedCredential{}
-	// firstHardErr remembers the FIRST non-not-found helper/store failure — a
+	// firstHardErr remembers the FIRST non-not-found helper/store failure - a
 	// missing helper binary, timeout, malformed response, version mismatch,
-	// backend outage — so a genuinely misconfigured store is surfaced rather
+	// backend outage - so a genuinely misconfigured store is surfaced rather
 	// than silently treated as "no credential" and papered over by the
 	// interactive fallback. A clean miss (ErrNoToken / empty token) is skipped.
 	var firstHardErr error
@@ -1369,7 +1369,7 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 		return hs[0], true, nil
 	}
 	// No candidate produced a token. If any candidate failed with a hard
-	// error, surface it — a helper misconfiguration must not silently fall
+	// error, surface it - a helper misconfiguration must not silently fall
 	// through to interactive auth.
 	return storedCredential{}, false, firstHardErr
 }
@@ -1380,9 +1380,9 @@ const clustersPath = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
 
 // resolveClusterIDForCreate resolves clusterID (an id, a display name, "", or
 // "local") to its Cluster id before creating, using the stored login
-// credential as bearer. It shares projects.MatchOneOrError — the same
+// credential as bearer. It shares projects.MatchOneOrError - the same
 // collision-and-narrowing helper get/patch's ResolveCluster and the
-// cloud-credential resolver use — so an id match never short-circuits
+// cloud-credential resolver use - so an id match never short-circuits
 // ahead of checking every cluster's spec.displayName (id/display
 // collisions are ambiguous, never a silent id-wins create), and ambiguous
 // errors list only the colliding candidates. One list call serves both
@@ -1450,19 +1450,19 @@ const legacyTokenTTL = 15 * time.Minute
 // *pluginCredentialRejected are the two 401 outcomes, and a 403 is an RBAC
 // error; see classifyRejection. An unreadable config.yaml is noticed
 // and also falls through to errNoStoredCredential (the config load failure
-// itself is never returned as a hard error here — see the doc on the
-// —no-input leftovers in the package's fix history). Any other non-nil error
+// itself is never returned as a hard error here - see the doc on the -
+// no-input leftovers in the package's fix history). Any other non-nil error
 // is a real failure (network/TLS/5xx, or an unresolvable --cluster) that
 // the caller must surface directly.
 // ignoreCurrentContext is forwarded to storedTokenForServer to gate rank-2
-// (current-server preference) — see runParams.legacyShim.
+// (current-server preference) - see runParams.legacyShim.
 // The second result is the token-reuse setting as this call read it, so the
 // caller decides the plugin lane without loading config.yaml again; a config
 // it could not read reads as off.
 func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, bool, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
-		p.Notice(fmt.Sprintf("config unreadable: %v — skipping token creation from the stored credential", err))
+		p.Notice(fmt.Sprintf("config unreadable: %v - skipping token creation from the stored credential", err))
 		return Token{}, false, errNoStoredCredential
 	}
 	sc, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, ignoreCurrentContext, p)
@@ -1547,14 +1547,14 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 }
 
 // caForServer returns the CA of the configured server entry whose URL matches
-// server (compared by scheme+host via SameServerURL), or "" if none matches —
+// server (compared by scheme+host via SameServerURL), or "" if none matches -
 // an explicit --server with no --cacert never silently borrows a different
 // server's trust root. When multiple entries share a host and ignoreCurrentContext
 // is false, the current server wins; ties are broken by sorted entry
 // name (the same determinism storedTokenForServer uses at ranks 2 and 3), so
 // repeated calls with the same config always return the same CA regardless of
 // map-iteration order. When ignoreCurrentContext is true the current-server
-// preference is suppressed and sorted order alone determines the winner —
+// preference is suppressed and sorted order alone determines the winner -
 // consistent with how ignoreCurrentContext gates the rank-2 fallback.
 func caForServer(cfg *config.Config, server string, ignoreCurrentContext bool) string {
 	matches := matchingServerNames(cfg, server)

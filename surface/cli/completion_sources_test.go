@@ -10,7 +10,7 @@ import (
 )
 
 // TestGetGroupCompletionListsAliases asserts the alias-aware override: `get
-// <TAB>` must list each kind leaf's Aliases alongside its canonical name —
+// <TAB>` must list each kind leaf's Aliases alongside its canonical name -
 // urfave's own default listing (printCommandSuggestions) prints only the
 // canonical Name, so `po<TAB>` would otherwise complete solely toward "pod".
 func TestGetGroupCompletionListsAliases(t *testing.T) {
@@ -31,8 +31,8 @@ func TestGetGroupCompletionListsAliases(t *testing.T) {
 // only replaces the subcommand-listing branch: a "-"-prefixed current word
 // still defers to urfave's own flag-suggestion behavior, not the alias
 // listing. The `get` group command owns no flags itself (they live on each
-// kind leaf), so upstream's own default already produces empty output here
-// — the same empty result before and after this override is what "preserved"
+// kind leaf), so upstream's own default already produces empty output here -
+// the same empty result before and after this override is what "preserved"
 // means; the regression this guards against is the override always
 // printing aliases regardless of branch.
 func TestGetGroupCompletionFlagBranchPreserved(t *testing.T) {

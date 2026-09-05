@@ -59,7 +59,7 @@ func TestCanonicalizeServerURLInvalidURL(t *testing.T) {
 // TestPrepareRegistrationRejectsUnsupportedScheme asserts that a scheme
 // CanonicalServerURL accepts but config.Effective's credential-read path
 // would later refuse (anything but http/https) must never reach a
-// committed entry or token — it would otherwise commit successfully and
+// committed entry or token - it would otherwise commit successfully and
 // then silently withhold the stored credential on every later command,
 // surfacing as an unexplained NOT_LOGGED_IN.
 func TestPrepareRegistrationRejectsUnsupportedScheme(t *testing.T) {
@@ -131,7 +131,7 @@ func TestCommitCreateAbsentNamePathRotationBetweenProbeAndCommit(t *testing.T) {
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.Empty(t, cfg.Servers, "no entry write on CA rotation conflict")
 	assert.Empty(t, cfg.CurrentServer, "no pointer write on CA rotation conflict")
-	assert.Empty(t, ce.Hint, "this seam is shared by 3 callers and cannot name the right verb — no hint, guidance stays in the message")
+	assert.Empty(t, ce.Hint, "this seam is shared by 3 callers and cannot name the right verb - no hint, guidance stays in the message")
 }
 
 func TestCommitCreateAbsentNamePathDisappearsBetweenProbeAndCommit(t *testing.T) {
@@ -224,7 +224,7 @@ func TestCommitCreateExistingDifferentURLConflictsWithUpdateHint(t *testing.T) {
 }
 
 // TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint asserts
-// that a same-URL/different-CA conflict must hint --cacert, never --url —
+// that a same-URL/different-CA conflict must hint --cacert, never --url -
 // the URL didn't change, so an --url hint would execute as a no-op and
 // silently discard the trust change the caller asked for.
 func TestCommitCreateExistingSameURLDifferentCAConflictsWithCacertHint(t *testing.T) {

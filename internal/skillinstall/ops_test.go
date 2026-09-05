@@ -112,7 +112,7 @@ func TestForeignRefusedWithoutForce(t *testing.T) {
 	assert.Equal(t, VerdictInSync, v)
 }
 
-// A symlinked SKILL.md is the privileged install record path — it must never
+// A symlinked SKILL.md is the privileged install record path - it must never
 // be followed. The linked-to file contains VALID owner-marked content: if
 // the link were followed the verdict would be in-sync; foreign proves the
 // outside bytes were never read.
@@ -198,7 +198,7 @@ func TestUninstall(t *testing.T) {
 	assert.Equal(t, VerdictAbsent, v)
 }
 
-// Crash between remove and rename leaves ABSENT (never mixed) — asserted via
+// Crash between remove and rename leaves ABSENT (never mixed) - asserted via
 // the deterministic renameHook seam, not by staging simulation.
 func TestCrashBetweenRemoveAndRenameLeavesAbsent(t *testing.T) {
 	SetSource(testSource(t))
@@ -222,8 +222,8 @@ func TestCrashBetweenRemoveAndRenameLeavesAbsent(t *testing.T) {
 }
 
 // Staging sweep buckets: empty dir removed (pre-marker crash leftover),
-// complete-marker dir removed (ours), non-empty unmarked dir — including
-// the truncated-SKILL.md crash shape — kept AND warned.
+// complete-marker dir removed (ours), non-empty unmarked dir - including
+// the truncated-SKILL.md crash shape - kept AND warned.
 func TestStagingSweepBuckets(t *testing.T) {
 	SetSource(testSource(t))
 	tg := targetIn(t)
@@ -368,7 +368,7 @@ func TestUninstallAbsentLeaseBlocksConcurrentInstall(t *testing.T) {
 // The lock key is canonical: a path reached through a symlinked parent
 // and its physical path key the SAME lock file, and a lease held on one
 // blocks acquisition through the other. (Config-dir independence is
-// structural: the production domain is DefaultLockDir — os.UserCacheDir —
+// structural: the production domain is DefaultLockDir - os.UserCacheDir -
 // which RANCHER_CLI_CONFIG_DIR never influences.)
 func TestLockKeyCanonicalAcrossSymlinkedParents(t *testing.T) {
 	skipIfNoSymlinks(t)

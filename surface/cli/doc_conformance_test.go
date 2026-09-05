@@ -19,7 +19,7 @@ import (
 // generated-command counts paragraph and the Commands table. These tests
 // derive the same facts from the live schema manifest (the single source of
 // surface truth) and fail the build on drift. A failure here means COMMANDS.md
-// went stale — update COMMANDS.md, not these tests.
+// went stale - update COMMANDS.md, not these tests.
 
 const (
 	countsAnchor = "surface-counts"
@@ -74,7 +74,7 @@ type surfaceCounts struct {
 // get/patch/delete-per-kind set and the fixed remainder, and computes the
 // counts COMMANDS.md claims. A "delete <kind>" wired by an override on a
 // non-deletable row (delete provisioning-cluster) is generated like any
-// other — deriving from the manifest rather than kinds.Bindings() handles
+// other - deriving from the manifest rather than kinds.Bindings() handles
 // that without special-casing.
 func deriveSurface(t *testing.T) (counts surfaceCounts, generated, fixed []string, manifest map[string]bool) {
 	t.Helper()
@@ -122,7 +122,7 @@ func deriveSurface(t *testing.T) (counts surfaceCounts, generated, fixed []strin
 // delete-on-non-deletable wiring) reshapes the surface without moving any
 // count, and REFERENCE.md's verb prose would go stale silently. The
 // override list mirrors surface/cli/root.go's kindOverrideTable and
-// COMMANDS.md's counts-paragraph prose — change them together.
+// COMMANDS.md's counts-paragraph prose - change them together.
 func TestGeneratedCommandMembership(t *testing.T) {
 	overrides := []string{"delete provisioning-cluster"}
 
@@ -158,9 +158,9 @@ func TestGeneratedCommandMembership(t *testing.T) {
 	sort.Strings(missing)
 	sort.Strings(extra)
 	assert.Empty(t, missing,
-		"generated commands expected from the kind table (plus overrides) but absent from the manifest — update REFERENCE.md's verb prose and this test's override list together")
+		"generated commands expected from the kind table (plus overrides) but absent from the manifest - update REFERENCE.md's verb prose and this test's override list together")
 	assert.Empty(t, extra,
-		"generated commands in the manifest with no kind-table or override justification — update REFERENCE.md's verb prose and this test's override list together")
+		"generated commands in the manifest with no kind-table or override justification - update REFERENCE.md's verb prose and this test's override list together")
 }
 
 // TestSurfaceCountsMatchManifest asserts COMMANDS.md's counts paragraph (the
@@ -174,7 +174,7 @@ func TestSurfaceCountsMatchManifest(t *testing.T) {
 	// Collapse the paragraph's line wrapping so the regex sees one line.
 	flat := strings.Join(strings.Fields(anchoredBlock(t, "COMMANDS.md", countsAnchor)), " ")
 	re := regexp.MustCompile("the (\\d+)-kind table: `get <kind>` \\((\\d+)\\), `patch <kind>` \\((\\d+)\\), " +
-		"`delete <kind>` \\((\\d+) — (\\d+) deletable kinds.*\\) — (\\d+) generated commands, (\\d+) total")
+		"`delete <kind>` \\((\\d+) - (\\d+) deletable kinds.*\\) - (\\d+) generated commands, (\\d+) total")
 	m := re.FindStringSubmatch(flat)
 	require.NotNil(t, m,
 		"COMMANDS.md's surface-counts paragraph no longer matches its expected sentence shape; keep the counts in the established sentence (or rework this regex alongside a deliberate rewording): %q", flat)
@@ -199,24 +199,24 @@ func TestSurfaceCountsMatchManifest(t *testing.T) {
 	}
 	for i, r := range real {
 		assert.Equal(t, r.want, claims[i],
-			"COMMANDS.md claims %d for %s; the live surface has %d — update COMMANDS.md, not this test",
+			"COMMANDS.md claims %d for %s; the live surface has %d - update COMMANDS.md, not this test",
 			claims[i], r.what, r.want)
 	}
 }
 
 // TestCRTPatchRefusalClaim asserts REFERENCE.md's verb prose
-// "patch clusterregistrationtoken is refused — read-only" to the override
+// "patch clusterregistrationtoken is refused - read-only" to the override
 // that implements it. Membership cannot see this: a refusing override
 // replaces the generic patch under the same command name, so removing the
-// refusal changes no command set. The assertion is behavioral — the override
+// refusal changes no command set. The assertion is behavioral - the override
 // must exist and its Plan must refuse.
 func TestCRTPatchRefusalClaim(t *testing.T) {
 	t.Parallel()
 	o, ok := kindOverrides()["clusterregistrationtoken"]
 	require.True(t, ok,
-		"REFERENCE.md claims patch clusterregistrationtoken is refused, but the kind has no override — update REFERENCE.md and this test together")
+		"REFERENCE.md claims patch clusterregistrationtoken is refused, but the kind has no override - update REFERENCE.md and this test together")
 	require.NotNil(t, o.patch,
-		"REFERENCE.md claims patch clusterregistrationtoken is refused, but the override supplies no patch replacement — update REFERENCE.md and this test together")
+		"REFERENCE.md claims patch clusterregistrationtoken is refused, but the override supplies no patch replacement - update REFERENCE.md and this test together")
 
 	var crt kinds.Kind
 	found := false
@@ -232,16 +232,16 @@ func TestCRTPatchRefusalClaim(t *testing.T) {
 	require.True(t, ok, "the clusterregistrationtoken patch override must build a mutating command")
 	_, _, err := mc.Plan(t.Context(), nil)
 	require.Error(t, err,
-		"REFERENCE.md claims patch clusterregistrationtoken is refused, but Plan accepted — update REFERENCE.md and this test together")
+		"REFERENCE.md claims patch clusterregistrationtoken is refused, but Plan accepted - update REFERENCE.md and this test together")
 	assert.ErrorContains(t, err, "read-only")
 }
 
 // TestKindClaimsMatchTable asserts the kind names REFERENCE.md's prose singles
-// out — deletable in the counts paragraph, not deletable in the verbs
-// section — to the kind table. The counts alone can stay balanced while two
+// out - deletable in the counts paragraph, not deletable in the verbs
+// section - to the kind table. The counts alone can stay balanced while two
 // kinds swap Deletable; this catches the swap the moment it contradicts a
 // named claim. The claims map mirrors COMMANDS.md's counts paragraph and
-// REFERENCE.md's Kinds & verbs prose — change them together.
+// REFERENCE.md's Kinds & verbs prose - change them together.
 func TestKindClaimsMatchTable(t *testing.T) {
 	t.Parallel()
 	claims := map[string]bool{
@@ -272,15 +272,15 @@ func TestKindClaimsMatchTable(t *testing.T) {
 	for name, wantDeletable := range claims {
 		k, ok := byName[name]
 		require.True(t, ok,
-			"COMMANDS.md's counts paragraph and REFERENCE.md's Kinds & verbs prose name kind %q, which is not in the kind table — update them and this claims map together", name)
+			"COMMANDS.md's counts paragraph and REFERENCE.md's Kinds & verbs prose name kind %q, which is not in the kind table - update them and this claims map together", name)
 		assert.Equal(t, wantDeletable, k.Deletable,
-			"COMMANDS.md's counts paragraph and REFERENCE.md's Kinds & verbs prose claim kind %q deletable=%v but the kind table says %v — update them and this claims map together",
+			"COMMANDS.md's counts paragraph and REFERENCE.md's Kinds & verbs prose claim kind %q deletable=%v but the kind table says %v - update them and this claims map together",
 			name, wantDeletable, k.Deletable)
 	}
 }
 
 // primeMarker is COMMANDS.md's exact per-row label for a Prime-only
-// command's Purpose cell — the same runtime.PrimeSentence every other
+// command's Purpose cell - the same runtime.PrimeSentence every other
 // rendered surface (command card, --help) uses, so the label cannot drift
 // into its own wording.
 const primeMarker = runtime.PrimeSentence
@@ -345,7 +345,7 @@ type commandTableRow struct {
 	rest string
 }
 
-// commandRows parses each row of COMMANDS.md's Commands table — the ONE
+// commandRows parses each row of COMMANDS.md's Commands table - the ONE
 // parser every table-conformance test shares. The name is the first cell's
 // leading backtick-quoted string, cut at the first token that starts an
 // argument or flag (<, [, -, or (). Command names may be multi-word
@@ -378,7 +378,7 @@ func commandRows(t *testing.T) []commandTableRow {
 // TestCommandsTableMatchesManifest asserts COMMANDS.md's Commands table to the
 // live manifest, both ways: every fixed command has a row, and every row
 // names a real command. Generated get/patch/delete-per-kind commands are
-// exempt from needing rows — the counts paragraph covers them.
+// exempt from needing rows - the counts paragraph covers them.
 func TestCommandsTableMatchesManifest(t *testing.T) {
 	_, _, fixed, manifest := deriveSurface(t)
 
@@ -394,7 +394,7 @@ func TestCommandsTableMatchesManifest(t *testing.T) {
 		}
 	}
 	assert.Empty(t, missing,
-		"commands in the schema manifest but missing from COMMANDS.md's Commands table — update COMMANDS.md, not this test")
+		"commands in the schema manifest but missing from COMMANDS.md's Commands table - update COMMANDS.md, not this test")
 
 	var unknown []string
 	for name := range rows {
@@ -404,5 +404,5 @@ func TestCommandsTableMatchesManifest(t *testing.T) {
 	}
 	sort.Strings(unknown)
 	assert.Empty(t, unknown,
-		"COMMANDS.md Commands table rows that name no command in the schema manifest — update COMMANDS.md, not this test")
+		"COMMANDS.md Commands table rows that name no command in the schema manifest - update COMMANDS.md, not this test")
 }

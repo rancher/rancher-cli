@@ -73,7 +73,7 @@ func TestRepoContractAgainstEnvtest(t *testing.T) {
 
 // TestUpdateStaleResourceVersionConflicts is the patch precondition end to end:
 // an update carrying a resourceVersion the server has since advanced past must
-// 409, and the provider must map that to CONFLICT — the guarantee patch relies
+// 409, and the provider must map that to CONFLICT - the guarantee patch relies
 // on so a concurrent modification is never a lost write.
 func TestUpdateStaleResourceVersionConflicts(t *testing.T) {
 	t.Parallel()

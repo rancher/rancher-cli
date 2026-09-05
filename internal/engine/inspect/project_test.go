@@ -79,7 +79,7 @@ func setUpProjectFixture(t *testing.T, backingNamespace string) (*fakeFactory, *
 	downstream.withList(nsKind.GVR, &unstructured.UnstructuredList{
 		Items: []unstructured.Unstructured{nsListItem("ns-a"), nsListItem("ns-b")},
 	})
-	// Cluster-wide lists (ns=""), filtered client-side by membership — asserts
+	// Cluster-wide lists (ns=""), filtered client-side by membership - asserts
 	// the single-List-per-kind design (no more per-namespace List loop).
 	downstream.withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		podListItem("ns-a", "pod-a1"), podListItem("ns-b", "pod-b1"), podListItem("ns-b", "pod-b2"),
@@ -294,7 +294,7 @@ func TestInspectProjectPodListDeniedBlocksUsage(t *testing.T) {
 	}, data.Degraded)
 	assert.Equal(t, "usage unavailable: pods unknown (pods is forbidden)", res.Warnings[1])
 	// The deployment list runs concurrently with the pod list and SUCCEEDS
-	// here — a readable deployment list must not restore a namespace section
+	// here - a readable deployment list must not restore a namespace section
 	// whose pod counts are unknown.
 	assert.True(t, downstream.listed(depKind.GVR), "the lists fan out together")
 }
@@ -341,7 +341,7 @@ func TestInspectProjectMetricsOnlyFailureKeepsUsage(t *testing.T) {
 
 // TestInspectProjectZeroMembersSkipsWorkloadLists covers the verified-empty
 // short-circuit: membership was read and is empty, so the workload and
-// metrics reads that could not have contributed rows are never issued — a
+// metrics reads that could not have contributed rows are never issued - a
 // denial on them must not turn a verified-empty project into a failure.
 func TestInspectProjectZeroMembersSkipsWorkloadLists(t *testing.T) {
 	t.Parallel()
@@ -557,7 +557,7 @@ func TestProjectMemberJSONContract(t *testing.T) {
 	assert.JSONEq(t, `{"principal":"local://u-a","role":"project-owner","binding":"prtb-abc"}`, string(b))
 }
 
-// TestProjectMembersNullVsEmptyContract asserts the WHOLE-payload encoding —
+// TestProjectMembersNullVsEmptyContract asserts the WHOLE-payload encoding -
 // the pre-existing non-omitempty field: nil slice → "members":null
 // (unavailable), empty slice → "members":[] (verified empty).
 func TestProjectMembersNullVsEmptyContract(t *testing.T) {
@@ -601,7 +601,7 @@ func TestProjectMemberSystemJSONContract(t *testing.T) {
 
 // TestInspectProjectNotFoundCurated asserts Fix 1: the post-Resolve project Get
 // returns a hint-less NOT_FOUND; it must be curated to "project not found:
-// <id>" with a list hint — the same shape inspect cluster uses.
+// <id>" with a list hint - the same shape inspect cluster uses.
 func TestInspectProjectNotFoundCurated(t *testing.T) {
 	t.Parallel()
 	projectKind := mustKind(t, "project")
@@ -659,7 +659,7 @@ func TestInspectProjectGetDeniedIsHardRBAC(t *testing.T) {
 }
 
 // TestInspectProjectNotFoundWithHintPassesThrough asserts that an already-curated
-// NOT_FOUND (one that already carries a hint) passes through unchanged — a
+// NOT_FOUND (one that already carries a hint) passes through unchanged - a
 // resolver's candidates error must not be re-wrapped.
 func TestInspectProjectNotFoundWithHintPassesThrough(t *testing.T) {
 	t.Parallel()

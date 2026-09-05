@@ -213,7 +213,7 @@ func TestUsageByProjectNodeFilter(t *testing.T) {
 
 // TestUsageByProjectMemberFallbackWithProjectFlag asserts the member path
 // (review round 2): a forbidden projects List with --project set falls back
-// to a direct get of the named project — a member's per-project usage stays
+// to a direct get of the named project - a member's per-project usage stays
 // reachable even though they cannot list the collection.
 func TestUsageByProjectMemberFallbackWithProjectFlag(t *testing.T) {
 	t.Parallel()
@@ -243,8 +243,8 @@ func TestUsageByProjectMemberFallbackWithProjectFlag(t *testing.T) {
 }
 
 // TestUsageByProjectForbiddenListWithoutFlagKeepsRBAC makes sure the
-// no-flag member case stays an honest RBAC error — usage across ALL
-// projects genuinely requires list — with a hint naming the --project form
+// no-flag member case stays an honest RBAC error - usage across ALL
+// projects genuinely requires list - with a hint naming the --project form
 // that works for a member.
 func TestUsageByProjectForbiddenListWithoutFlagKeepsRBAC(t *testing.T) {
 	t.Parallel()

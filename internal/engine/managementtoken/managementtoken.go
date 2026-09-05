@@ -22,7 +22,7 @@ type refusePatchCmd struct {
 }
 
 // NewRefusePatch builds the patch override for the management-token row: a
-// VALIDATION refusal — writes to management.cattle.io/v3 Token must go
+// VALIDATION refusal - writes to management.cattle.io/v3 Token must go
 // through Rancher's auth lifecycle (key generation, TTL clamp, identity
 // derivation). Its Descriptor mirrors resources.NewPatch(k, ...) exactly so
 // the row's schema/completion surface is unchanged; Plan refuses before any
@@ -37,7 +37,7 @@ func (c *refusePatchCmd) Describe() runtime.Descriptor {
 
 func (c *refusePatchCmd) Plan(_ context.Context, _ runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		c.k.Name+": patch is not supported — writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); "+
+		c.k.Name+": patch is not supported - writes go through Rancher's auth lifecycle (key generation, TTL clamp, identity derivation); "+
 			"the CLI does not bypass it; use the Rancher API or UI to manage token fields")
 }
 
@@ -53,7 +53,7 @@ type deleteGuardCmd struct {
 // NewDeleteGuard builds the delete override for the management-token row.
 // It is bespoke rather than using resources.NewGuardedDelete because the
 // name-match path needs to issue exactly one GET for both the isDerived check
-// and the exec's resourceVersion precondition — a second GET in the inner
+// and the exec's resourceVersion precondition - a second GET in the inner
 // Plan is deliberately avoided to close the TOCTOU window between the guard
 // decision and execution.
 //
@@ -97,8 +97,8 @@ func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	}
 	// Name matches the active session token: fetch the object once, decide
 	// isDerived, and either refuse or return PlanFromFetched. The single GET
-	// binds both the isDerived check and the exec's resourceVersion precondition
-	// — a second GET is deliberately avoided to close the TOCTOU window between
+	// binds both the isDerived check and the exec's resourceVersion precondition -
+	// a second GET is deliberately avoided to close the TOCTOU window between
 	// the guard decision and execution.
 	clientCluster, ns, effectCluster, _, err := resources.Route(ctx, c.clients, c.k, in, true)
 	if err != nil {
@@ -118,13 +118,13 @@ func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	}
 	isDerived, _, _ := unstructured.NestedBool(obj.Object, "isDerived")
 	if isDerived {
-		// Derived token: deletion supported — build plan from the
+		// Derived token: deletion supported - build plan from the
 		// already-fetched object so the exec's RV precondition is
 		// bound to this read, not a second one.
 		return resources.PlanFromFetched(ctx, mgmt, c.k, ns, args[0], obj, effectCluster)
 	}
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		"refusing to delete "+c.k.Name+" "+args[0]+": this token backs the current CLI session — deleting it would cut off the CLI's own access mid-command; "+
+		"refusing to delete "+c.k.Name+" "+args[0]+": this token backs the current CLI session - deleting it would cut off the CLI's own access mid-command; "+
 			"switch credentials first (re-login or set RANCHER_CLI_TOKEN), then delete this token from another session or the Rancher UI")
 }
 

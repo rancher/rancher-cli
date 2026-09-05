@@ -87,7 +87,7 @@ func TestInspectDeploymentHonorsMatchExpressions(t *testing.T) {
 
 // TestInspectDeploymentPodListDeniedNullsPods is the deployment anchor: a
 // caller who may read the deployment but not its pods gets the deployment,
-// a null pods list, and one entry — the whole document used to be lost.
+// a null pods list, and one entry - the whole document used to be lost.
 func TestInspectDeploymentPodListDeniedNullsPods(t *testing.T) {
 	t.Parallel()
 	depKind := mustKind(t, "deployment")

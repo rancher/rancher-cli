@@ -16,13 +16,13 @@ const (
 )
 
 // Style wraps text in ANSI escape codes when Enabled, and returns text
-// unchanged otherwise — the one flag every wrap method consults.
+// unchanged otherwise - the one flag every wrap method consults.
 type Style struct {
 	Enabled bool
 }
 
 // Bold, Red, Yellow, Cyan, and Green each wrap text in the named SGR code
-// and a trailing reset. Disabled or empty text passes through unchanged —
+// and a trailing reset. Disabled or empty text passes through unchanged -
 // an empty wrap would place codes around nothing visible.
 func (s Style) Bold(text string) string   { return s.wrap(ansiBold, text) }
 func (s Style) Red(text string) string    { return s.wrap(ansiRed, text) }

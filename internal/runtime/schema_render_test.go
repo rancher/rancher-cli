@@ -233,11 +233,11 @@ func TestSchemaKindCardFields(t *testing.T) {
 	require.GreaterOrEqual(t, verbsAt, 0)
 	assert.Equal(t, "  get: available (internal · beta)", lines[verbsAt+1])
 	assert.Equal(t, "  patch: available (internal · beta)", lines[verbsAt+2])
-	assert.Equal(t, "  delete: not available — controller-owned; delete the owning source object", lines[verbsAt+3])
+	assert.Equal(t, "  delete: not available - controller-owned; delete the owning source object", lines[verbsAt+3])
 }
 
 // TestSchemaKindCardPrimeTrait asserts the kind card's "prime" trait, appended
-// alongside sensitive/completable — a projection of SchemaKind.Prime, never
+// alongside sensitive/completable - a projection of SchemaKind.Prime, never
 // a separately authored string.
 func TestSchemaKindCardPrimeTrait(t *testing.T) {
 	t.Parallel()
@@ -310,9 +310,9 @@ func TestSchemaKindVerbLine(t *testing.T) {
 	}{
 		{"available with binding", VerbState{State: VerbAvailable, Contract: "internal", Stability: "beta"}, "get: available (internal · beta)"},
 		{"available without binding", VerbState{State: VerbAvailable}, "get: available"},
-		{"refused with note", VerbState{State: VerbRefused, Note: "read-only: consumed, not edited"}, "get: refused — read-only: consumed, not edited"},
+		{"refused with note", VerbState{State: VerbRefused, Note: "read-only: consumed, not edited"}, "get: refused - read-only: consumed, not edited"},
 		{"refused without note", VerbState{State: VerbRefused}, "get: refused"},
-		{"reasoned absence", VerbState{State: VerbAbsent, Note: "expires on its own TTL"}, "get: not available — expires on its own TTL"},
+		{"reasoned absence", VerbState{State: VerbAbsent, Note: "expires on its own TTL"}, "get: not available - expires on its own TTL"},
 		{"plain absence", VerbState{State: VerbAbsent}, "get: not available"},
 	}
 	for _, tc := range cases {
@@ -375,7 +375,7 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	text := renderTOC(tocManifest())
 	lines := strings.Split(text, "\n")
 
-	assert.Equal(t, "rancher v9.9 — 7 commands · 1 kinds", lines[0],
+	assert.Equal(t, "rancher v9.9 - 7 commands · 1 kinds", lines[0],
 		"header carries the CLI version and derived counts")
 
 	idx := func(line string) int {
@@ -383,17 +383,17 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 		require.GreaterOrEqual(t, i, 0, "missing TOC line %q\nfull TOC:\n%s", line, text)
 		return i
 	}
-	schemaAt := idx("schema — Print the capability manifest")
-	completionAt := idx("completion — Emit a completion script")
+	schemaAt := idx("schema - Print the capability manifest")
+	completionAt := idx("completion - Emit a completion script")
 	authHdrAt := idx("auth:")
-	authAt := idx("  auth login — Log in")
-	blockAt := idx("get/patch/delete <kind> — 2 generated commands across 1 kinds")
+	authAt := idx("  auth login - Log in")
+	blockAt := idx("get/patch/delete <kind> - 2 generated commands across 1 kinds")
 	blockPointerAt := idx("  kind view: rancher schema <kind>")
 	getHdrAt := idx("get:")
-	kvAt := idx("  get kubernetes-versions — List installable versions")
-	grantAt := idx("grant — Grant a role")
+	kvAt := idx("  get kubernetes-versions - List installable versions")
+	grantAt := idx("grant - Grant a role")
 	patchHdrAt := idx("patch:")
-	patchSummaryAt := idx("  patch <kind> — generated for 1 kinds; rancher schema <kind> for any kind's card")
+	patchSummaryAt := idx("  patch <kind> - generated for 1 kinds; rancher schema <kind> for any kind's card")
 	stripAt := idx("exit codes: GENERIC=1 · VALIDATION=2")
 	pointerAt := idx("full manifest: rancher schema --all -o json")
 
@@ -410,7 +410,7 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	assert.Less(t, patchSummaryAt, stripAt)
 	assert.Less(t, stripAt, pointerAt)
 
-	assert.NotContains(t, lines, "  get pod — List pods", "generated commands collapse into the block, not individual lines")
+	assert.NotContains(t, lines, "  get pod - List pods", "generated commands collapse into the block, not individual lines")
 	assert.Equal(t, 1, strings.Count(text, "get/patch/delete <kind>"), "exactly one global vocabulary block")
 }
 
@@ -419,16 +419,16 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 // names the full alias form; a desc match shows the surrounding fragment with
 // ellipses.
 // TestTocLinePrimeMarker asserts the "[Prime]" marker tocLine inserts right
-// after the usage separator — the single function feeding the bare TOC, the
+// after the usage separator - the single function feeding the bare TOC, the
 // filtered TOC, and group cards, so the marker cannot appear in one and not
 // the others.
 func TestTocLinePrimeMarker(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "get widget — [Prime] List widgets",
+	assert.Equal(t, "get widget - [Prime] List widgets",
 		tocLine(SchemaCommand{Name: "get widget", Usage: "List widgets", Prime: true}))
-	assert.Equal(t, "get widget — [Prime]",
+	assert.Equal(t, "get widget - [Prime]",
 		tocLine(SchemaCommand{Name: "get widget", Prime: true}))
-	assert.Equal(t, "get pod — List pods",
+	assert.Equal(t, "get pod - List pods",
 		tocLine(SchemaCommand{Name: "get pod", Usage: "List pods"}))
 }
 
@@ -442,7 +442,7 @@ func TestSchemaFilteredTOCCarriesPrimeMarker(t *testing.T) {
 		Groups:   []SchemaGroup{{Name: "get", Commands: []string{"get widget"}}},
 	}
 	text := renderFilteredTOC(m, schemaFilters{}, allPrimeGroups(m))
-	assert.Contains(t, text, "get widget — [Prime] List widgets")
+	assert.Contains(t, text, "get widget - [Prime] List widgets")
 }
 
 // TestRenderFilteredTOCMarksGroupLabelFromFullManifest asserts the filtered
@@ -476,7 +476,7 @@ func TestRenderFilteredTOCMarksGroupLabelFromFullManifest(t *testing.T) {
 }
 
 // TestGroupAllPrimeRequiresEveryMember asserts groupAllPrime checks every
-// member of a group against the full manifest command index — a group with
+// member of a group against the full manifest command index - a group with
 // no members, one non-Prime member, or an unknown member name is never
 // marked Prime; a group whose every named member is Prime is.
 func TestGroupAllPrimeRequiresEveryMember(t *testing.T) {

@@ -26,8 +26,8 @@ import (
 )
 
 // hashDir hashes each file's path, ModTime (nanoseconds), size, and contents.
-// Including ModTime ensures that an atomic same-byte rewrite — which produces a
-// new inode and a changed ModTime even when content is identical — is detectable
+// Including ModTime ensures that an atomic same-byte rewrite - which produces a
+// new inode and a changed ModTime even when content is identical - is detectable
 // (round-3 finding 5: content hash alone cannot detect same-byte atomic rewrites).
 func hashDir(t *testing.T, dir string) string {
 	t.Helper()
@@ -51,7 +51,7 @@ func hashDir(t *testing.T, dir string) string {
 }
 
 // AC-22: No keyring call on any completion path (round-3 finding 3).
-// Uses config.SetKeyringObserverForTest to count actual keyring ops — unlike
+// Uses config.SetKeyringObserverForTest to count actual keyring ops - unlike
 // MockInitWithError alone, the observer proves keyring was structurally never
 // reached, not just that errors were handled gracefully.
 // Setup: keychain-pinned config, live completion ON, cluster value present so
@@ -376,7 +376,7 @@ func TestAC26SanitizationDropsShellMetachars(t *testing.T) {
 	assert.Equal(t, []string{"good.name", "valid_1"}, got)
 }
 
-// AC-27: Completion path writes nothing to disk — snapshot before/after (round-3
+// AC-27: Completion path writes nothing to disk - snapshot before/after (round-3
 // finding 5). hashDir includes path + ModTime + size + content, so an atomic
 // same-byte rewrite is detected via the changed ModTime. runErr is asserted nil
 // so a failed invocation cannot masquerade as a no-write success.
@@ -385,7 +385,7 @@ func TestAC26SanitizationDropsShellMetachars(t *testing.T) {
 // seeded with one valid AND one expired exec-cred entry. The existing
 // ListCachedCreds/GetCachedCred prune expired entries on read by writing the
 // cache file (AC-6a violation). After a full live dispatch the snapshot must be
-// unchanged — proving no prune-on-read write occurred.
+// unchanged - proving no prune-on-read write occurred.
 func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	// NOT parallel: mutates storedConfig, rawArgv, and env globals (finding 14,
 	// round-3 finding 4).
@@ -445,8 +445,8 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 //   - surface/cli adapter.go + root.go root.Flags (live ucli flags, 11 total)
 //   - argtail.go globalArgSpecs (value-classification)
 //
-// If any source drifts — a flag added to adapter.go but not to globalArgSpecs,
-// or vice versa — this test fails immediately rather than silently misclassifying
+// If any source drifts - a flag added to adapter.go but not to globalArgSpecs,
+// or vice versa - this test fails immediately rather than silently misclassifying
 // completions.
 func TestGlobalFlagSetsAgree(t *testing.T) {
 	t.Parallel()
@@ -471,7 +471,7 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 	sort.Strings(specNames)
 
 	// Extract canonical names from root.Flags (live ucli flags built by BuildRoot).
-	// root.Flags = [debug, config] ++ GlobalFlags() — 12 total.
+	// root.Flags = [debug, config] ++ GlobalFlags() - 12 total.
 	root, err := surfacecli.BuildRoot("test")
 	require.NoError(t, err)
 	rootFlagNames := make([]string, 0)
@@ -488,7 +488,7 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 
 // TestGroupLiveFlagValueCandidates verifies that value-taking global flags
 // without a static enum (--context, --project) at the group level route through
-// the full dispatch pipeline and return live candidates when network is enabled —
+// the full dispatch pipeline and return live candidates when network is enabled -
 // matching the leaf path's behavior (get pod --context <TAB> already works via
 // the leaf's descriptor; this test asserts the same for the group level). Also
 // verifies --config yields no candidates gracefully (no enum, no live site, shell
@@ -500,7 +500,7 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 // returns false for unrecognized flags. The equals-form branch must apply the same
 // guard: get --cluster=<TAB>, get --namespace=<TAB>, get --node=<TAB> must all
 // produce ZERO HTTP requests at the group level (no kind is chosen yet, so firing
-// a live fetch is a premature network request — the security assertion for this fix).
+// a live fetch is a premature network request - the security assertion for this fix).
 //
 // NOT parallel: mutates rawArgv/rawCurrentWord globals, storedConfig, and env.
 func TestGroupLiveFlagValueCandidates(t *testing.T) {
@@ -563,7 +563,7 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 
 	// Round-4 finding 1 (HIGH/SECURITY): per-leaf flags in equals-form must not fire
 	// live HTTP requests at the group level. The equals-form branch previously built a
-	// SiteFlagValue unconditionally — resolveFlagCanonical fell back to the bare name
+	// SiteFlagValue unconditionally - resolveFlagCanonical fell back to the bare name
 	// for any --foo= token, so --cluster= resolved to FlagName:"cluster" and triggered
 	// the liveFlagValueCandidates cluster-list fetch before any kind was chosen.
 	t.Run("get --cluster= equals-form zero-requests", func(t *testing.T) {

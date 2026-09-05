@@ -11,8 +11,8 @@ import (
 
 // errorContainsRE matches the banned spelling: a positive Contains
 // assertion over err.Error()'s string, which testify expresses directly as
-// ErrorContains(t, err, ...). The negative form — NotContains over
-// err.Error() — is deliberately NOT matched: testify has no
+// ErrorContains(t, err, ...). The negative form - NotContains over
+// err.Error() - is deliberately NOT matched: testify has no
 // ErrorNotContains, so that spelling is the only way to assert a substring
 // is absent from an error.
 var errorContainsRE = regexp.MustCompile(`(assert|require)\.Contains\(\s*t,\s*[A-Za-z]*[eE]rr\.Error\(\)`)

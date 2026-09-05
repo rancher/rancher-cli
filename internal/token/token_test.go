@@ -125,7 +125,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		// the cache must be untouched — nothing deleted
+		// the cache must be untouched - nothing deleted
 		_, _, gerr := store.GetCachedCred("keep/u/c")
 		require.NoError(t, gerr)
 	})
@@ -187,7 +187,7 @@ func TestGetTokenServerRequired(t *testing.T) {
 func TestGetTokenNoClusterRejectsBeforeCacheProbe(t *testing.T) {
 	// A still-valid cache entry keyed with an empty cluster component (written
 	// before --cluster became required) must NOT be served: the native command
-	// rejects a missing --cluster before any cache read — a token must never
+	// rejects a missing --cluster before any cache read - a token must never
 	// be returned for a cluster the caller didn't name.
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
@@ -250,7 +250,7 @@ func TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey(t *testing.T) {
 	// Seed a legacy host-only key (CanonicalServerIdentity("host") → "host").
 	legacyKey := config.CacheKey("prod", config.CanonicalServerIdentity("host"), "c-1")
 	require.NoError(t, store.SetCachedCred(legacyKey, "legacy-tok", time.Now().Add(time.Hour), "prod", "host", "c-1"))
-	// Break config so the full path cannot proceed — if the fast path
+	// Break config so the full path cannot proceed - if the fast path
 	// erroneously returns "legacy-tok" we never reach this error.
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
@@ -259,7 +259,7 @@ func TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey(t *testing.T) {
 		tin{s: map[string]string{"server": "host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
 	// The fast path must miss, causing the full path to fail on the broken
-	// config — proving "legacy-tok" was not returned.
+	// config - proving "legacy-tok" was not returned.
 	require.Error(t, err, "schemeless --server must not serve a legacy host-only cache record")
 }
 
@@ -337,8 +337,8 @@ func TestGetTokenCreatesFromStoredLoginCredential(t *testing.T) {
 // error directly.
 // TestGetTokenLegacyFallbackCachesWithBoundedTTL is the round-3 repro for
 // finding 5: a legacy (pre-ext.cattle.io) Rancher's stored-credential
-// fallback must still be cached — with a bounded, conservative TTL, since
-// the raw stored token carries no expiry of its own — rather than never
+// fallback must still be cached - with a bounded, conservative TTL, since
+// the raw stored token carries no expiry of its own - rather than never
 // (a zero expiry trips round-2's own no-zero-expiry-cache gate, forcing a
 // full create-then-404 round trip on every single invocation).
 func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
@@ -398,7 +398,7 @@ func TestGetTokenFallsBackToInteractiveWhenCreateRejected(t *testing.T) {
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
-	// SAML under a non-interactive prompter fast-fails AUTH — the point here
+	// SAML under a non-interactive prompter fast-fails AUTH - the point here
 	// is that the flow reached the provider dance at all.
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -434,7 +434,7 @@ func TestGetTokenCreateTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 	}))
 	// close(block) before srv.Close(): Close waits for in-flight handlers to
 	// return, and the derived token create handler is still parked on <-block after the
-	// client gives up — closing the server first would deadlock.
+	// client gives up - closing the server first would deadlock.
 	defer func() { close(block); srv.Close() }()
 
 	dir := t.TempDir()
@@ -522,7 +522,7 @@ func TestGetTokenCachesCreatedExpiry(t *testing.T) {
 }
 
 // TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry is the round-2 repro for
-// finding 1: a derived token create response with no expiresAt must never be cached — a
+// finding 1: a derived token create response with no expiresAt must never be cached - a
 // zero expiry reads back as never-expiring (GetCachedCred only evicts a
 // past, non-zero expiry), so caching it would serve a stale token forever.
 func TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry(t *testing.T) {
@@ -642,7 +642,7 @@ func TestGetTokenCreateScopesToCluster(t *testing.T) {
 // TestGetTokenClusterDisplayNameResolves is the round-3 repro for finding
 // 3: an unresolved display name passed to --cluster must resolve to the
 // cluster's id (via the cluster list, using the stored credential) before
-// creating — a raw, unresolved display name must never reach spec.clusterName.
+// creating - a raw, unresolved display name must never reach spec.clusterName.
 func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	var gotCluster, gotAuth string
 	var listHits atomic.Int32
@@ -720,7 +720,7 @@ func TestGetTokenClusterMissErrorsWithoutCreating(t *testing.T) {
 // TestGetTokenClusterIDDisplayCollisionIsAmbiguous is the round-4 repro:
 // resolveClusterIDForCreate must not let an id-based match short-circuit ahead
 // of checking every cluster's spec.displayName too. A string that matches
-// one cluster's id AND a different cluster's display name is ambiguous —
+// one cluster's id AND a different cluster's display name is ambiguous -
 // silently creating a token scoped to the id match would produce a token
 // for the wrong cluster whenever an admin names a cluster's display name
 // after another cluster's raw id.
@@ -788,7 +788,7 @@ func TestGetTokenRejectsLegacyPrefixName(t *testing.T) {
 
 // TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup verifies that the
 // reserved-prefix rejection happens BEFORE any cache read: a warm legacy:-slot
-// entry must not be served — the VALIDATION error must surface even when the
+// entry must not be served - the VALIDATION error must surface even when the
 // cache holds a valid token for that key. Without the run()-level guard this
 // test fails because probeFlagCache returns a cache hit before runWithParams
 // ever checks IsLegacyCacheSlot.
@@ -809,7 +809,7 @@ func TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorContains(t, ce, "legacy:")
 
-	// The cache entry must be untouched — it was never served.
+	// The cache entry must be untouched - it was never served.
 	tok, _, cerr := store.GetCachedCred(key)
 	require.NoError(t, cerr, "cache entry must still be present")
 	assert.Equal(t, "warm-tok", tok, "cache entry must be untouched")
@@ -829,7 +829,7 @@ func (s *errCacheStore) GetCachedCred(key string) (string, time.Time, error) {
 
 // TestCacheReadErrorNoticedOnce verifies that a single get-token invocation
 // with a store that errors on GetCachedCred produces the "cache read failed"
-// notice exactly once — even when the resolved cache key differs from the
+// notice exactly once - even when the resolved cache key differs from the
 // fast-path probed key (which happens whenever the current context fills in a
 // non-empty cluster). The original fix-4 fixture had no current-context
 // cluster, so flagKey == cacheKey; the sub-test below exercises the masked
@@ -874,7 +874,7 @@ func candidateIDsToken(cs []clierr.Candidate) []string {
 
 // TestStoredTokenForServerNoticeScopedToWinningRank is the round-4 repro
 // for the cosmetic finding: the multiple-candidates notice must fire only
-// when the WINNING rank itself had more than one token-bearing candidate —
+// when the WINNING rank itself had more than one token-bearing candidate -
 // a rank-0 exact --name win must stay silent even if an unrelated,
 // lower-ranked server happens to also carry a stale token.
 func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
@@ -945,7 +945,7 @@ func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
 	// --cluster and a valid (httpx.New parses it into a cert pool) --cacert
 	// are set explicitly so resolveConn's OWN config.yaml read is skipped
-	// (all three of server/cluster/caIn are non-empty) — the point of this
+	// (all three of server/cluster/caIn are non-empty) - the point of this
 	// test is storedCredToken's separate, unconditional config.Load call.
 	_, err := cmd.Execute(t.Context(),
 		tin{
@@ -956,14 +956,14 @@ func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
 			},
 		},
 		ui.New(&notices, strings.NewReader(""), true, false))
-	require.Error(t, err, "no stored credential and no reachable interactive provider — some error is expected")
+	require.Error(t, err, "no stored credential and no reachable interactive provider - some error is expected")
 	assert.Contains(t, notices.String(), "config unreadable")
 }
 
 // TestStoredTokenForServerTieBreak is the round-2 repro for finding 8: two
-// Servers entries sharing a BaseURL must resolve deterministically —
+// Servers entries sharing a BaseURL must resolve deterministically -
 // preferring the current context's server, else the lexicographically
-// smallest name — not whichever a Go map iteration happens to yield.
+// smallest name - not whichever a Go map iteration happens to yield.
 func TestStoredTokenForServerTieBreak(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "tok-a"))
@@ -995,7 +995,7 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 
 // TestStoredTokenForServerExhaustsCandidatesWithNoToken is the round-3
 // repro for finding 1: the tie-break's chosen candidate having no stored
-// token must not mask a sibling that does — every candidate is tried, not
+// token must not mask a sibling that does - every candidate is tried, not
 // just the top-ranked one.
 func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
@@ -1039,7 +1039,7 @@ func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
 // hand-edited file, or one written before auth login rejected the prefix)
 // must NOT win the exact-name tier for a shim call. Under ignoreCurrentContext,
 // wantName is a cache-slot label with no entry-name preference, so selection
-// follows sorted order alone — "aaa" here, not the exact-name match, which
+// follows sorted order alone - "aaa" here, not the exact-name match, which
 // sorts after it.
 func TestStoredTokenForServerIgnoreCurrentContextSkipsLegacyNamedEntry(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
@@ -1201,7 +1201,7 @@ func TestResolveConnConfigFallback(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "https://flag.example", server)
 		assert.Equal(t, "c-1", cluster)
-		assert.Empty(t, ca, "no configured entry matches — never borrow the current server's CA for a different server")
+		assert.Empty(t, ca, "no configured entry matches - never borrow the current server's CA for a different server")
 	})
 
 	t.Run("empty cluster is a validation error on the native path", func(t *testing.T) {
@@ -1311,7 +1311,7 @@ func TestBasicAuthExtTokenResponse(t *testing.T) {
 
 func TestGetTokenCacheHitExtToken(t *testing.T) {
 	// An ext-issued bearer ("ext/<name>:<value>") must round-trip the exec-cred
-	// cache byte-for-byte — the ext/ prefix is opaque data (EXT-3).
+	// cache byte-for-byte - the ext/ prefix is opaque data (EXT-3).
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r.ex", "c-1"), "ext/token-abc:secretxyz", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
@@ -1439,7 +1439,7 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 
 	// openBrowser stub: drives the local callback synchronously (queuing the
 	// buffered resultCh before the select ever runs), then cancels the caller
-	// ctx. Ordering is deterministic — no goroutine race, no timing window.
+	// ctx. Ordering is deterministic - no goroutine race, no timing window.
 	openBrowserStub := func(authURL string) error {
 		u, err := url.Parse(authURL)
 		if err != nil {
@@ -1494,7 +1494,7 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	// openBrowser stub: never drives the callback — cancels the caller ctx
+	// openBrowser stub: never drives the callback - cancels the caller ctx
 	// immediately instead, so by the time the wait select runs, ctx.Done() is
 	// already the only ready case (deterministic, no timing window).
 	openBrowserStub := func(authURL string) error {
@@ -1567,7 +1567,7 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 }
 
 // DR-009 repro: an unsolicited request with the wrong (or no) state must not
-// consume the callback's one-shot handler — otherwise the real IdP redirect
+// consume the callback's one-shot handler - otherwise the real IdP redirect
 // that arrives afterward gets no response at all.
 func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 	t.Parallel()
@@ -1631,11 +1631,11 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 	require.NoError(t, err, "the real redirect must still be processed after a forged wrong-state request")
 	require.NotNil(t, tok)
 	assert.Contains(t, noticeBuf.String(), "invalid state",
-		"a forged-only callback must not hang silently — the user must see why the wait continues")
+		"a forged-only callback must not hang silently - the user must see why the wait continues")
 }
 
 // DR-010 repro: samlAuth's poll select had no ctx.Done() case, unlike the
-// OAuth authcode flow's equivalent select — SIGTERM/caller cancellation was
+// OAuth authcode flow's equivalent select - SIGTERM/caller cancellation was
 // only honored on the next poll tick instead of promptly. Shrinking the poll
 // interval and cancelling well before the first tick proves the fix: without
 // the ctx.Done() case, samlAuth would not return until that first tick fired.
@@ -1649,7 +1649,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 	// cancellation wins the select before the first poll tick fires, so the
 	// bubble never blocks on real network I/O.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound) // token never ready — keeps polling
+		w.WriteHeader(http.StatusNotFound) // token never ready - keeps polling
 	}))
 	defer srv.Close()
 
@@ -1658,7 +1658,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 		input := &loginInput{server: srv.URL}
 
 		go func() {
-			time.Sleep(50 * time.Millisecond) // fake clock — before the first 500ms tick
+			time.Sleep(50 * time.Millisecond) // fake clock - before the first 500ms tick
 			cancel()
 		}()
 
@@ -1669,7 +1669,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 		// Fake time: RSA keygen and scheduling cost zero, so elapsed is the
-		// cancel goroutine's 50ms exactly — anything at or past the tick
+		// cancel goroutine's 50ms exactly - anything at or past the tick
 		// means the select waited for the poll instead of the cancellation.
 		assert.Less(t, elapsed, samlPollInterval,
 			"must abort on ctx cancellation, not wait for the next poll tick")
@@ -1677,7 +1677,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 }
 
 // blockingReader never returns from Read, so readLine's scan goroutine cannot
-// win the select against a cancelled context — making the ctrl-C test deterministic.
+// win the select against a cancelled context - making the ctrl-C test deterministic.
 type blockingReader struct{}
 
 func (blockingReader) Read([]byte) (int, error) { select {} }
@@ -1759,7 +1759,7 @@ func TestGetTokenHostPortWarmCacheHit(t *testing.T) {
 	store := config.NewFileStore(dir)
 	key := config.CacheKey("prod", config.CanonicalServerIdentity("https://host:8443"), "c-1")
 	require.NoError(t, store.SetCachedCred(key, "tok-8443", time.Now().Add(time.Hour), "prod", "https://host:8443", "c-1"))
-	// Break config — if fast path misses the full path fails, proving no hit.
+	// Break config - if fast path misses the full path fails, proving no hit.
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
@@ -1792,7 +1792,7 @@ func TestGetTokenIPv6WarmCacheHit(t *testing.T) {
 }
 
 // TestGetTokenMalformedServerNoFastPathCacheHit verifies that a malformed
-// --server value (e.g. https://[::1 — unclosed bracket) cannot produce a
+// --server value (e.g. https://[::1 - unclosed bracket) cannot produce a
 // fast-path cache hit even when a matching cache record exists under the
 // lowercased fallback identity.
 func TestGetTokenMalformedServerNoFastPathCacheHit(t *testing.T) {
@@ -1805,7 +1805,7 @@ func TestGetTokenMalformedServerNoFastPathCacheHit(t *testing.T) {
 	fallbackID := config.CanonicalServerIdentity(malformed)
 	key := config.CacheKey("prod", fallbackID, "c-1")
 	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
-	// Break config — if fast path incorrectly hits, no error is returned.
+	// Break config - if fast path incorrectly hits, no error is returned.
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
@@ -1853,7 +1853,7 @@ func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 			hits.Add(1)
 			// Return a provider so the code advances past provider discovery.
 			// The interactive prompter (ui.Discard, NoInput=true) then fails
-			// with CodeAuth — the point is the server was reached.
+			// with CodeAuth - the point is the server was reached.
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
 			return
@@ -1862,7 +1862,7 @@ func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// addr is "127.0.0.1:PORT" — the schemeless form of the TLS server's address.
+	// addr is "127.0.0.1:PORT" - the schemeless form of the TLS server's address.
 	addr := srv.Listener.Addr().String()
 
 	dir := t.TempDir()
@@ -1923,7 +1923,7 @@ func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 	srv.StartTLS()
 	defer srv.Close()
 
-	// addr is "[::1]:PORT" — the schemeless form of the TLS server's address.
+	// addr is "[::1]:PORT" - the schemeless form of the TLS server's address.
 	addr := srv.Listener.Addr().String()
 
 	dir := t.TempDir()
@@ -2049,7 +2049,7 @@ func TestBasicAuthUsernameDefault(t *testing.T) {
 
 // TestBasicAuthTrimsPaddedUsername is the round-7 finding-4 repro: a
 // non-blank answer with incidental padding (a paste with a trailing newline,
-// an autocomplete artifact) must be trimmed before it is sent — previously
+// an autocomplete artifact) must be trimmed before it is sent - previously
 // TrimSpace was used only for the emptiness check and the raw " bob " went
 // into the login POST body.
 func TestBasicAuthTrimsPaddedUsername(t *testing.T) {
@@ -2133,7 +2133,7 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 // TestNeedsEffGateEachDisjunct is the structural assertion for the needsEff gate in
 // resolveConn. For each combination of inputs where ALL three disjuncts are
 // false, cfg.Effective (and its GetToken call) must not fire. errGetTokenStore
-// errors on GetToken for "unrelated" — if Effective is called unexpectedly,
+// errors on GetToken for "unrelated" - if Effective is called unexpectedly,
 // resolveConn returns an error and the test fails.
 //
 //   - Disjunct 1: server == ""
@@ -2203,7 +2203,7 @@ func TestNeedsEffGateEachDisjunct(t *testing.T) {
 
 // TestResolveConnIgnoreCurrentContextRequiresServer asserts the resolveConn side of the
 // blank---server class: a ignoreCurrentContext caller with no server must get the
-// "--server is required" validation error without cfg.Effective ever running —
+// "--server is required" validation error without cfg.Effective ever running -
 // never the stored current-context URL. errGetTokenStore errors on GetToken
 // for "unrelated", so an unexpected Effective call would surface as a different
 // error and fail the assertions below.

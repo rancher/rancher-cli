@@ -20,15 +20,15 @@ func parseWorkflowPlatforms(t *testing.T, path string) []string {
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
 	m := platformLoopRe.FindStringSubmatch(string(raw))
-	require.NotNilf(t, m, "%s: no `for platform in ...; do` build loop found — it moved or was reworded", path)
+	require.NotNilf(t, m, "%s: no `for platform in ...; do` build loop found - it moved or was reworded", path)
 	return strings.Fields(m[1])
 }
 
-// installerPlatforms is every release platform install.sh must serve —
+// installerPlatforms is every release platform install.sh must serve -
 // derived from release.yaml rather than duplicated, so harness_test.go's
 // stub release assets cannot drift from what a real release actually
 // publishes. Windows is excluded: the shell installer serves POSIX
-// platforms only, by design — it has no Windows binary format to install.
+// platforms only, by design - it has no Windows binary format to install.
 var installerPlatforms = deriveInstallerPlatforms()
 
 func deriveInstallerPlatforms() []string {
@@ -38,7 +38,7 @@ func deriveInstallerPlatforms() []string {
 	}
 	m := platformLoopRe.FindStringSubmatch(string(raw))
 	if m == nil {
-		panic("release.yaml: no `for platform in ...; do` build loop found — it moved or was reworded")
+		panic("release.yaml: no `for platform in ...; do` build loop found - it moved or was reworded")
 	}
 	var out []string
 	for p := range strings.FieldsSeq(m[1]) {
@@ -64,7 +64,7 @@ func TestPlatformMatrixConformance(t *testing.T) {
 	assert.ElementsMatch(t, release, ci, "release.yaml and ci.yaml must build-check the same platform set")
 
 	// platformMappingCases has multiple uname aliases per platform (e.g. both
-	// "x86_64" and "amd64" map to linux/amd64) — dedupe before comparing sets.
+	// "x86_64" and "amd64" map to linux/amd64) - dedupe before comparing sets.
 	seen := map[string]bool{}
 	var installSHAccepts []string
 	for _, tc := range platformMappingCases {

@@ -11,7 +11,7 @@ import (
 // (PROTECTED_DACL_SECURITY_INFORMATION): without the PROTECTED flag the
 // parent directory's inherited ACEs would remain and the restriction
 // would be cosmetic. Called by atomicWriteFile on the temp file BEFORE
-// any data is written and before the rename — an intra-volume
+// any data is written and before the rename - an intra-volume
 // MoveFileEx retains the security descriptor, so the final file carries
 // this DACL with no exposure window. This is the Windows counterpart of
 // the Unix 0600 chmod, which NTFS ignores.

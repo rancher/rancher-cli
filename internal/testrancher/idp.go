@@ -9,7 +9,7 @@ import (
 const defaultIdPPendingPolls = 2
 
 // idpStub fakes an RFC 8628 device-authorization identity provider: one
-// active device-code session at a time, which is all a single façade
+// active device-code session at a time, which is all a single facade
 // instance (one script) ever drives concurrently.
 type idpStub struct {
 	pendingTotal int

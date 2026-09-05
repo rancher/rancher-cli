@@ -1,9 +1,9 @@
 // pools.go implements the cluster-family verbs' shared machine-pool
 // resolution: fetching a provisioning Cluster by name and locating a pool by
-// name — never by array index, so no user-facing surface ever exposes a
+// name - never by array index, so no user-facing surface ever exposes a
 // positional index that could shift between read and patch (the
 // resourceVersion precondition, not a stale index, is what catches a pool
-// added or removed concurrently) — plus the fetch→resolve→mutate→diff→plan
+// added or removed concurrently) - plus the fetch→resolve→mutate→diff→plan
 // spine every pool-mutating verb (scale, set-autoscaling, clear-autoscaling)
 // shares.
 package provisioning
@@ -24,11 +24,11 @@ import (
 // clusterAutoscalerPausedAnnotation is the operator-facing pause switch on
 // the provisioning Cluster (capr/common.go: the template controller
 // propagates it to the CAPI Cluster, where the autoscaler controller reads
-// it). Pause is cluster-wide only — no per-pool pause exists server-side.
+// it). Pause is cluster-wide only - no per-pool pause exists server-side.
 const clusterAutoscalerPausedAnnotation = "provisioning.cattle.io/cluster-autoscaler-paused"
 
 // clusterNamespaceFlag is the shared --namespace flag every cluster-family
-// verb exposes, defaulting to clusterNamespace (fleet-default) when absent —
+// verb exposes, defaulting to clusterNamespace (fleet-default) when absent -
 // the same DefaultNamespace `delete provisioning-cluster` resolves against.
 // Unlike `create cluster`, which fixes the namespace with no flag, a family
 // verb's target may live in another fleet workspace.
@@ -71,7 +71,7 @@ func fetchClusterFamilyTarget(ctx context.Context, clients engine.ClusterClientF
 // clusterMachinePools reads spec.rkeConfig.machinePools as a fresh, mutable
 // copy (unstructured.NestedSlice always deep-copies) ready for in-place pool
 // mutation and a matching SetNestedSlice write-back. found reports only
-// whether the field itself is present — a present-but-empty list (found,
+// whether the field itself is present - a present-but-empty list (found,
 // zero length) is a different shape from a wholly absent one, and callers
 // that treat both as "no pools" must say so accurately.
 func clusterMachinePools(cluster *unstructured.Unstructured) (pools []any, found bool) {
@@ -79,7 +79,7 @@ func clusterMachinePools(cluster *unstructured.Unstructured) (pools []any, found
 	return pools, found
 }
 
-// findMachinePool locates poolName's index in pools by exact name match —
+// findMachinePool locates poolName's index in pools by exact name match -
 // the CLI's own name→index mapping, computed fresh from the read that also
 // backs the resourceVersion precondition.
 func findMachinePool(pools []any, poolName string) (index int, ok bool) {
@@ -105,7 +105,7 @@ func poolAutoscaled(pool map[string]any) bool {
 }
 
 // poolRequiresPositiveMin reports whether pool carries a control-plane or
-// etcd role — the CRD's CEL requires autoscalingMinSize > 0 on such a pool
+// etcd role - the CRD's CEL requires autoscalingMinSize > 0 on such a pool
 // (a control-plane/etcd pool can never scale to zero members).
 func poolRequiresPositiveMin(pool map[string]any) bool {
 	etcd, _, _ := unstructured.NestedBool(pool, "etcdRole")
@@ -116,7 +116,7 @@ func poolRequiresPositiveMin(pool map[string]any) bool {
 // autoscalingPaused reports whether cluster carries the pause annotation.
 // The strict "true" comparison mirrors the server's own check
 // (rancher capr: the autoscaler controller reads this annotation with the
-// identical strict compare) — an operator-set "True" is not paused
+// identical strict compare) - an operator-set "True" is not paused
 // server-side either, so tolerance here would diverge from server truth.
 func autoscalingPaused(cluster *unstructured.Unstructured) bool {
 	v, _, _ := unstructured.NestedString(cluster.Object, "metadata", "annotations", clusterAutoscalerPausedAnnotation)
@@ -124,9 +124,9 @@ func autoscalingPaused(cluster *unstructured.Unstructured) bool {
 }
 
 // poolLessClusterError refuses a family verb against a cluster with no
-// machine pools to operate on — never the raw server 4xx or no-op an
+// machine pools to operate on - never the raw server 4xx or no-op an
 // absent-pools shape would otherwise produce. fieldPresent distinguishes a
-// wholly pool-less cluster (imported, custom, or local — the field itself
+// wholly pool-less cluster (imported, custom, or local - the field itself
 // is absent) from one whose machinePools field exists but is currently
 // empty, which is never an imported/custom shape and must not claim to be.
 func poolLessClusterError(clusterName, verb string, fieldPresent bool) *clierr.Error {
@@ -156,13 +156,13 @@ func poolNotFoundError(clusterName, poolName string) *clierr.Error {
 // nobody can audit later.
 func autoscaledPoolGuardError(clusterName, poolName string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"pool %q on cluster %q is managed by the cluster autoscaler; the server accepts a manual quantity edit but the autoscaler reasserts its own count minutes later — pause autoscaling first to scale manually",
+		"pool %q on cluster %q is managed by the cluster autoscaler; the server accepts a manual quantity edit but the autoscaler reasserts its own count minutes later - pause autoscaling first to scale manually",
 		poolName, clusterName)).
 		WithHint(fmt.Sprintf("rancher cluster pause-autoscaling %s", clierr.ShellQuote(clusterName)))
 }
 
 // provisioningClusterSensitive reads the provisioningcluster kind row's
-// Sensitive flag — every family mutation threads it into its Effect's
+// Sensitive flag - every family mutation threads it into its Effect's
 // Destructive parameter, the same way every other bespoke PlanUpdate/
 // PlanCreate caller in the codebase threads its own kind row's Sensitive
 // flag. A command cannot carry a lighter gate than the generic surface
@@ -170,13 +170,13 @@ func autoscaledPoolGuardError(clusterName, poolName string) *clierr.Error {
 func provisioningClusterSensitive() bool {
 	row, ok := kinds.Lookup("provisioningcluster")
 	if !ok {
-		panic("provisioningcluster kind row not found in kinds.go — renamed or removed without updating internal/engine/provisioning")
+		panic("provisioningcluster kind row not found in kinds.go - renamed or removed without updating internal/engine/provisioning")
 	}
 	return row.Sensitive
 }
 
 // wrapWithContextLine wraps exec to append contextLine as an indented detail
-// line after the base "<kind>/<name> <verb>" success text — the shape
+// line after the base "<kind>/<name> <verb>" success text - the shape
 // clear-autoscaling and pause/resume-autoscaling each need beyond the plain
 // mutation text PlanUpdate's own exec produces.
 func wrapWithContextLine(exec runtime.ExecuteFunc, contextLine string) runtime.ExecuteFunc {

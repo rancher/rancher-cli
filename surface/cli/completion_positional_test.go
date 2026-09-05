@@ -15,7 +15,7 @@ import (
 )
 
 // TestPositionalEnumCandidatesStatic asserts MC-14/MC-15: a positional site
-// whose ArgSpec carries an Enum is OWNED by the static layer — served
+// whose ArgSpec carries an Enum is OWNED by the static layer - served
 // index-aware and partial-filtered, with an unmatched partial owned but
 // empty; an enum-less positional (the <name> site) and an out-of-range
 // index are not owned.
@@ -82,8 +82,8 @@ func (r *recordingCompleter) CompleteArgs(context.Context, runtime.ConfigView) [
 
 // TestPositionalEnumOwnershipStopsLowerLayers asserts the ownership contract
 // through dispatchSite: an unmatched partial on an enum-carrying positional
-// terminates with zero candidates and ZERO lower-layer activity — no
-// CompleteArgs delegation, no live fetch — while an enum-less positional
+// terminates with zero candidates and ZERO lower-layer activity - no
+// CompleteArgs delegation, no live fetch - while an enum-less positional
 // still delegates.
 func TestPositionalEnumOwnershipStopsLowerLayers(t *testing.T) {
 	// NOT parallel: mutates storedConfig.

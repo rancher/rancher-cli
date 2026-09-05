@@ -115,12 +115,12 @@ func TestStripRoutingPrefix(t *testing.T) {
 }
 
 // Finding 2: stripRoutingPrefixByCmd tests (leading globals, alias depth).
-// These call stripRoutingPrefixByDepth directly from dispatch.go — the function
+// These call stripRoutingPrefixByDepth directly from dispatch.go - the function
 // is defined there and NOT redefined here (round-2 finding 2: redefinition is a
 // compile error).
 func TestStripRoutingPrefixByCmdLeadingGlobalFlags(t *testing.T) {
 	t.Parallel()
-	// --output json before "get pod" — two non-flag routing tokens to skip (depth=2).
+	// --output json before "get pod" - two non-flag routing tokens to skip (depth=2).
 	argv := []string{"--output", "json", "get", "pod", "--cluster", "prod"}
 	got := stripRoutingPrefixByDepth(argv, 2)
 	assert.Equal(t, []string{"--cluster", "prod"}, got)
@@ -128,7 +128,7 @@ func TestStripRoutingPrefixByCmdLeadingGlobalFlags(t *testing.T) {
 
 func TestStripRoutingPrefixByCmdAlias(t *testing.T) {
 	t.Parallel()
-	// "inspect po arg" — alias "po" for "pod"; depth=2 means skip "inspect" and "po".
+	// "inspect po arg" - alias "po" for "pod"; depth=2 means skip "inspect" and "po".
 	argv := []string{"inspect", "po", "mydeployment"}
 	got := stripRoutingPrefixByDepth(argv, 2)
 	assert.Equal(t, []string{"mydeployment"}, got)
@@ -203,7 +203,7 @@ func TestNoClusterNoRequests(t *testing.T) {
 
 // TestNetworkGateZeroHits asserts that a reachable server receives zero requests
 // when Completion.Network is FALSE. The site chosen (--cluster, non-enum) would
-// reach liveCandidates if the gate at dispatch.go were absent — deleting that
+// reach liveCandidates if the gate at dispatch.go were absent - deleting that
 // gate causes this test to fail.
 func TestNetworkGateZeroHits(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
@@ -267,7 +267,7 @@ func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {
 	defer cancel()
 	hc := &http.Client{}
 	got := liveFlagValueCandidates(ctx, hc, site, cap, "", "", nil)
-	// All candidates returned — shell does the "c-" prefix filter.
+	// All candidates returned - shell does the "c-" prefix filter.
 	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
 }
 
@@ -345,7 +345,7 @@ func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
 }
 
 // Round-4 finding 1: bare-dot namespace segments ("..", "...") must be rejected
-// by isValidSegment — they path-normalize on proxies, silently dropping scope.
+// by isValidSegment - they path-normalize on proxies, silently dropping scope.
 func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	for _, ns := range []string{"..", "..."} {
@@ -408,7 +408,7 @@ func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 }
 
 // Round-4 finding 3: a non-completable downstream kind (e.g. "get service")
-// must not trigger a cluster-list resolution request — siteNeedsCluster must
+// must not trigger a cluster-list resolution request - siteNeedsCluster must
 // return false for non-completable kinds.
 func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
@@ -427,7 +427,7 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
-	// "service" is Downstream but Completable:false — siteNeedsCluster must
+	// "service" is Downstream but Completable:false - siteNeedsCluster must
 	// return false, so no cluster-resolution request fires and liveCandidates
 	// short-circuits to nil before any HTTP call.
 	tail := []string{"--cluster", "somedisplay"}
@@ -578,7 +578,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 // TestLiveCandidatesRoleBypassesClusterPreflight is the preflight-bypass
 // regression for role sites (layer b): an inherited cluster value that fails
 // isValidSegment ("prod cluster" has a space) must NOT suppress role
-// completion — roleSite bypasses the cluster pipeline entirely.
+// completion - roleSite bypasses the cluster pipeline entirely.
 func TestLiveCandidatesRoleBypassesClusterPreflight(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	srv, hits := roleServer(t)
@@ -638,7 +638,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		t.Parallel()
 		// "get pod" goes through kindForDescriptor/isAC10Verb, not the subject branch.
 		// With no cluster in cap and no clusterID, the namespace-scoped pod path
-		// returns nil — what matters is that it does NOT call the user endpoint.
+		// returns nil - what matters is that it does NOT call the user endpoint.
 		var hits atomic.Int32
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			hits.Add(1)
@@ -651,7 +651,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		// With no --namespace in tail, livePositionalCandidates returns nil for
-		// namespace-scoped resources — the important thing is the user endpoint is not hit.
+		// namespace-scoped resources - the important thing is the user endpoint is not hit.
 		livePositionalCandidates(ctx, srv.Client(), site, d, cap, "c-abc", "", nil)
 		// The user list endpoint is at /k8s/clusters/local/apis/management.cattle.io/v3/users;
 		// "get pod" would hit /k8s/clusters/c-abc/... or nothing (no ns). Either way, no
@@ -705,7 +705,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 // TestLiveCandidatesSubjectBypassesClusterPreflight is the preflight-bypass
 // regression for subject sites: an inherited cluster value that fails
 // isValidSegment ("prod cluster" has a space) must NOT suppress subject
-// completion — subjectSite bypasses the cluster pipeline entirely.
+// completion - subjectSite bypasses the cluster pipeline entirely.
 func TestLiveCandidatesSubjectBypassesClusterPreflight(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	srv, hits := userServer(t)

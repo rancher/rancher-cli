@@ -23,7 +23,7 @@ import (
 
 // provisioningClusterGVR is the provisioning.cattle.io/v1 Cluster GVR
 // `create cluster` writes, read from the kind table's provisioningcluster
-// row — the same live anchor derivedOpKinds relies on (surface/cli), so a
+// row - the same live anchor derivedOpKinds relies on (surface/cli), so a
 // row rename breaks both by the same key instead of leaving a hand-copied
 // GVR silently compiling. The init-time panic guards a static-table miss
 // that any test run or binary startup surfaces immediately; there is no
@@ -38,7 +38,7 @@ var provisioningClusterGVR = func() schema.GroupVersionResource {
 }()
 
 // provisioningClusterDisplayKind is the same row's canonical CLI kind name
-// ("provisioning-cluster") — the display identity `create cluster`'s
+// ("provisioning-cluster") - the display identity `create cluster`'s
 // default-format text and dry-run preview use, matching the wording
 // `delete provisioning-cluster` already uses for the same resource.
 var provisioningClusterDisplayKind = func() string {
@@ -51,7 +51,7 @@ var provisioningClusterDisplayKind = func() string {
 
 // creatorIDAnnotation is rancher-webhook's creator identity annotation.
 // The webhook's mutator stamps it from userInfo on real creates but skips
-// dry-run, while its validator requires the match on dry-run too — so the
+// dry-run, while its validator requires the match on dry-run too - so the
 // CLI pre-stamps it to keep server-side dry-run honest. On a real create
 // the mutator overwrites it with the same value.
 const creatorIDAnnotation = "field.cattle.io/creatorId"
@@ -63,17 +63,17 @@ const creatorIDAnnotation = "field.cattle.io/creatorId"
 const stampWarningPrefix = "creatorId not stamped"
 
 // validUserIDRe is DNS-1123-ish: lowercase alphanumerics, dots, and
-// hyphens, starting with a lowercase alphanumeric — the shape of Rancher
+// hyphens, starting with a lowercase alphanumeric - the shape of Rancher
 // User object names stored in status.userID.
 var validUserIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*$`)
 
 // clusterNamespace is the fixed fleet workspace every provisioning Cluster
-// lands in — kinds.go's provisioningcluster row DefaultNamespace; `create
+// lands in - kinds.go's provisioningcluster row DefaultNamespace; `create
 // cluster` has no --namespace flag, unlike the generic NSWorkspace commands.
 const clusterNamespace = "fleet-default"
 
 // machineConfigKinds derives the closed set of machine-config kind keys
-// `--machine-config <kind>/<name>` accepts from kinds.All() — a strict
+// `--machine-config <kind>/<name>` accepts from kinds.All() - a strict
 // subset of the kind table, so an otherwise-valid kind key (e.g. "pod") is
 // still rejected here. Recomputed on every call: kinds.All() is a cheap
 // slice copy over a handful of rows, and nothing else in this codebase
@@ -91,7 +91,7 @@ func machineConfigKinds() map[string]bool {
 	return out
 }
 
-// machineConfigKindNames renders machineConfigKinds sorted — the single
+// machineConfigKindNames renders machineConfigKinds sorted - the single
 // source for create cluster's VALIDATION hint, create machine-config's
 // <kind> Enum (MC-2), and both schema descs.
 func machineConfigKindNames() []string {
@@ -105,7 +105,7 @@ func machineConfigKindNames() []string {
 }
 
 // machineConfigKindsHint renders the closed kind set for flag descriptions
-// and VALIDATION hints — one derivation shared by every mention, so the
+// and VALIDATION hints - one derivation shared by every mention, so the
 // spellings cannot drift.
 func machineConfigKindsHint() string {
 	return strings.Join(machineConfigKindNames(), ", ")
@@ -142,7 +142,7 @@ type createClusterCmd struct {
 
 // NewCreateCluster builds `create cluster <name>` (mutating): an imported
 // cluster omits spec.rkeConfig entirely (rancher cluster/controller.go:
-// 493,666 — NormalizeCluster(newCluster, cluster.Spec.RKEConfig == nil)
+// 493,666 - NormalizeCluster(newCluster, cluster.Spec.RKEConfig == nil)
 // treats a nil RKEConfig as "not managed by RKE"; nil, not {}, is the
 // discriminator); a custom cluster sets spec.rkeConfig: {} with no machine
 // pools (nodes register out of band); a node-driver cluster carries exactly
@@ -165,7 +165,7 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 			"the creatorId annotation (rancher-webhook's validator requires the annotation " +
 			"on dry-run even though its mutator only stamps it on real creates). If the " +
 			"probe fails, a \"" + stampWarningPrefix + "\" warning is emitted and the " +
-			"create proceeds unstamped — rancher-webhook may then deny the dry-run, but " +
+			"create proceeds unstamped - rancher-webhook may then deny the dry-run, but " +
 			"a real --apply create is still expected to succeed (the mutator stamps " +
 			"identity server-side on real creates).",
 		CommandType: runtime.Mutating,
@@ -251,7 +251,7 @@ func (createClusterCmd) build(in runtime.Input) (*unstructured.Unstructured, clu
 		if k8sVersion != "" {
 			_ = unstructured.SetNestedField(obj.Object, k8sVersion, "spec", "kubernetesVersion")
 		}
-		// spec.rkeConfig is deliberately never touched here — nil, never {}.
+		// spec.rkeConfig is deliberately never touched here - nil, never {}.
 
 	case modeCustom:
 		if k8sVersion == "" {
@@ -296,7 +296,7 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	}
 	// machineConfigKinds() is a strict subset of the kind table (every row
 	// whose GVR.Group is rke-machine-config.cattle.io), so this lookup always
-	// succeeds — it exists only to read K8sKind's exact casing (kinds.go's
+	// succeeds - it exists only to read K8sKind's exact casing (kinds.go's
 	// own source-ref: rancher convert.Capitalize(driverName+"Config"),
 	// dynamicschema.go:66-84,304-337) rather than duplicating that rule here.
 	cfgTableKind, found := kinds.Lookup(cfgKind)
@@ -311,7 +311,7 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	}
 	etcd, controlplane, worker := in.Bool("etcd"), in.Bool("controlplane"), in.Bool("worker")
 	// Per-pool validation (rancher template.go:328-342): a pool needs at
-	// least one role. NO cluster-wide all-three-roles rule — that check is
+	// least one role. NO cluster-wide all-three-roles rule - that check is
 	// meaningless with exactly one pool by design (see Describe's Usage);
 	// the duplicate-pool-name check template.go also runs is vacuous for
 	// the same reason and is left for the future multi-pool path.
@@ -328,7 +328,7 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	_ = unstructured.SetNestedField(obj.Object, k8sVersion, "spec", "kubernetesVersion")
 	// machineConfigRef's APIVersion is left unset: an empty ObjectReference
 	// APIVersion defaults server-side to rke-machine-config.cattle.io/v1
-	// (rancher capr/common.go:106) — never set it explicitly here.
+	// (rancher capr/common.go:106) - never set it explicitly here.
 	pool := map[string]any{
 		"name":             poolName,
 		"etcdRole":         etcd,
@@ -344,10 +344,10 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 }
 
 // stampCreatorID resolves the caller's identity and stamps the creatorId
-// annotation onto obj. It returns "" on success, or a degrade warning —
+// annotation onto obj. It returns "" on success, or a degrade warning -
 // stamping is advisory: failure never blocks the command. The SelfUser
-// probe is a real (non-dry-run) create — the resource is a create-only
-// "whoami" virtual object — making this the file's one deliberate
+// probe is a real (non-dry-run) create - the resource is a create-only
+// "whoami" virtual object - making this the file's one deliberate
 // network write during Plan, before any --apply gate.
 func stampCreatorID(ctx context.Context, client engine.ClusterClient, obj *unstructured.Unstructured) string {
 	probeResult, err := client.Create(ctx, selfuser.GVR, "", selfuser.New(), false)
@@ -400,7 +400,7 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 	if err != nil {
 		if stampWarning != "" {
 			// The pipeline's error normalization unwraps to the innermost
-			// *clierr.Error and renders ONLY its own fields — a fmt.Errorf
+			// *clierr.Error and renders ONLY its own fields - a fmt.Errorf
 			// wrapper's text never reaches the envelope. Real client errors
 			// are always clierr-mapped, so the stamping context must ride
 			// the clierr Hint to survive; the string wrapper remains only
@@ -430,7 +430,7 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 			}
 			if dataMap, ok := result.Data.(map[string]any); ok {
 				gotID, _, _ := unstructured.NestedString(dataMap, "metadata", "annotations", creatorIDAnnotation)
-				// An empty gotID means the response carried no annotations —
+				// An empty gotID means the response carried no annotations -
 				// a trimmed create response is indistinguishable from a
 				// dropped annotation, so skip (can't verify) rather than
 				// emit a false mismatch.
@@ -454,7 +454,7 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 // D-7; review R1-2): a version absent from the merged rke2/k3s discovery
 // list appends one warning naming the distro defaults, appended to
 // Effect.Warnings BEFORE confirmation. Any FetchVersions error (server
-// unreachable, older server) degrades to no warning at all, silently — the
+// unreachable, older server) degrades to no warning at all, silently - the
 // server is the authority on whether the version is real; discovery here is
 // advisory only and must never turn into a hard failure of an otherwise
 // valid create.

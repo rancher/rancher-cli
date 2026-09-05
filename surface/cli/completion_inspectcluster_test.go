@@ -54,7 +54,7 @@ func TestInspectClusterPositionalCompletesLive(t *testing.T) {
 
 // TestInspectClusterPositionalIDOnlyBoundary asserts the IDOnly boundary as
 // it applies to the cluster fetch (IC-16): an exec-cred-only capability
-// cannot authorize the management cluster list — nil, zero requests.
+// cannot authorize the management cluster list - nil, zero requests.
 func TestInspectClusterPositionalIDOnlyBoundary(t *testing.T) {
 	t.Parallel()
 	srv, hits := managementClusterServer(t)
@@ -71,7 +71,7 @@ func TestInspectClusterPositionalIDOnlyBoundary(t *testing.T) {
 
 // TestOtherInspectLeavesRetainPositionalDeny asserts the retained deny:
 // the exceptions are exactly `inspect cluster`, `inspect project`, and
-// `inspect user` — pod and deployment stay excluded with zero requests.
+// `inspect user` - pod and deployment stay excluded with zero requests.
 func TestOtherInspectLeavesRetainPositionalDeny(t *testing.T) {
 	t.Parallel()
 	srv, hits := managementClusterServer(t)
@@ -112,14 +112,14 @@ func TestInspectProjectPositionalCompletes(t *testing.T) {
 	defer cancel()
 
 	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "c-abc", "", nil)
-	// ids AND uniquely-resolving display names are candidates — the
+	// ids AND uniquely-resolving display names are candidates - the
 	// user-visible point of the feature is completing project NAMES.
 	assert.Contains(t, got, "p-cvrp4")
 	assert.Contains(t, got, "p-xyz12")
 	assert.Contains(t, got, "Default")
 	assert.Contains(t, got, "System")
 	// projectCandidates' validity filter must survive the new exception:
-	// an ambiguous display name (two projects named Twin) is never offered —
+	// an ambiguous display name (two projects named Twin) is never offered -
 	// a suggestion must resolve verbatim.
 	assert.NotContains(t, got, "Twin")
 	assert.Contains(t, got, "p-dup1")

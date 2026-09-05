@@ -73,7 +73,7 @@ func TestEmptyVersionResolvedViaDiscovery(t *testing.T) {
 
 // TestEmptyPreferredVersionIsNotCached guards the cache-poisoning fix: a group
 // whose preferred version is the empty string must error with an actionable
-// hint, and the empty value must NOT be memoized — a later call re-consults
+// hint, and the empty value must NOT be memoized - a later call re-consults
 // discovery so a group that starts serving a version can recover without
 // recreating the client.
 func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
@@ -146,7 +146,7 @@ func TestResolveVersionErrorReturnsEarlyFromGet(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		// resolveVersion's hint is preserved via early return, not curation.
 		assert.Contains(t, ce.Message, "rancher schema", "resolveVersion message must survive early return unchanged")
-		// The message must not be the curated format — curateNotFound never ran.
+		// The message must not be the curated format - curateNotFound never ran.
 		assert.NotContains(t, ce.Message, "not found: m-1", "resolveVersion diagnostic must not be overwritten by curation")
 	})
 
@@ -420,7 +420,7 @@ func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Empty(t, ce.Hint, "unknown GVR must not be curated — no hint expected")
+	assert.Empty(t, ce.Hint, "unknown GVR must not be curated - no hint expected")
 }
 
 // TestClientDeleteCuratesKnownGVRNotFound asserts that Delete curates a hint-less

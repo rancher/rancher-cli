@@ -59,7 +59,7 @@ func TestSupportBundleManifestTriState(t *testing.T) {
 		flagTargets:  "server,agent",
 		flagClusters: "local,c-1",
 	}})
-	require.NoError(t, err, "a degraded target must never fail the whole command — partial bundles ship")
+	require.NoError(t, err, "a degraded target must never fail the whole command - partial bundles ship")
 
 	m := manifestFrom(t, path)
 	assert.Contains(t, findItem(t, m, "server", engine.LocalCluster).Status, "error:")
@@ -77,7 +77,7 @@ func TestSupportBundleManifestTriState(t *testing.T) {
 }
 
 // TestFormatIECBytes asserts the IEC byte formatter's exact output at each unit
-// boundary — the raw byte count stays in Data for -o json; this is only the
+// boundary - the raw byte count stays in Data for -o json; this is only the
 // operator-facing text rendering.
 func TestFormatIECBytes(t *testing.T) {
 	t.Parallel()
@@ -91,7 +91,7 @@ func TestFormatIECBytes(t *testing.T) {
 		{1536, "1.5 KiB"},
 		{1023 * 1024, "1023.0 KiB"},
 		// One byte under each unit boundary rounds to "1024.0" in the
-		// smaller unit at print time — it must roll into the larger unit.
+		// smaller unit at print time - it must roll into the larger unit.
 		{1<<20 - 1, "1.0 MiB"},
 		{1 << 20, "1.0 MiB"},
 		{3355443, "3.2 MiB"},
@@ -255,7 +255,7 @@ func TestCollectFeaturesSerializesFalseValues(t *testing.T) {
 	require.NoError(t, err)
 
 	// A dropped key here would be indistinguishable from "collector never
-	// populated this field" — omitempty on a bool is exactly that trap.
+	// populated this field" - omitempty on a bool is exactly that trap.
 	assert.Contains(t, string(data), `"value":false`)
 	assert.Contains(t, string(data), `"default":false`)
 	assert.Contains(t, string(data), `"lockedValue":false`)

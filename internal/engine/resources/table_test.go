@@ -20,11 +20,11 @@ import (
 // (NestedString → NestedBool → NestedInt64 → NestedFloat64): string leaves
 // render verbatim, bool leaves render "true"/"false" (the nodedriver row's
 // ACTIVE/BUILTIN columns are bools in the served v3 NodeDriver), an ABSENT
-// field in a Bool-marked column renders "false" — rancher's
+// field in a Bool-marked column renders "false" - rancher's
 // NodeDriverSpec.Builtin is `json:"builtin,omitempty"`, so a non-builtin
-// driver omits the field entirely — an absent field in an unmarked
-// (string-typed) column stays blank, and — the inversion from the renderer's
-// former string/bool-only behavior — a present int64 leaf (TTL) now renders
+// driver omits the field entirely - an absent field in an unmarked
+// (string-typed) column stays blank, and - the inversion from the renderer's
+// former string/bool-only behavior - a present int64 leaf (TTL) now renders
 // its decimal value instead of blanking.
 func TestTableRowsRenderBoolLeaves(t *testing.T) {
 	t.Parallel()
@@ -334,7 +334,7 @@ func TestRedactKindPathsBlanksDiffEntries(t *testing.T) {
 
 // TestTableRowsRenderJoinAndDefault covers the two column axes the user
 // kind row needs: Join renders a string-array field comma-joined in server
-// order (principalIds — every element, no ordering assumption), and
+// order (principalIds - every element, no ordering assumption), and
 // Default renders when the field is absent (User.enabled is an omitempty
 // *bool whose absence means enabled).
 func TestTableRowsRenderJoinAndDefault(t *testing.T) {
@@ -403,7 +403,7 @@ func TestTableRowsRenderSettingProvenance(t *testing.T) {
 // TestTableRowsRenderFeatureBoolStatus asserts Feature's VALUE/DEFAULT/DYNAMIC/
 // LOCKED columns: all are plain status bools (or, for VALUE, the merged
 // spec.value/status.default fallback) verified live against a v2.14.3
-// Rancher server on 2026-08-18. lockedValue is an omitempty *bool — absent
+// Rancher server on 2026-08-18. lockedValue is an omitempty *bool - absent
 // (unlocked) must render blank, never "false", since a locked-false feature
 // is a real, different state. VALUE is asserted both directions: spec.value
 // absent falls through to status.default, and spec.value present (even
@@ -446,8 +446,8 @@ func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 }
 
 // TestTableRowsRenderFeaturePrimeOnlyColumn asserts PRIME-ONLY: it renders the
-// wire's status.prime classification (true/false), and blank — never
-// "false" — when an older server omits the field: absent is not false,
+// wire's status.prime classification (true/false), and blank - never
+// "false" - when an older server omits the field: absent is not false,
 // nothing is fabricated.
 func TestTableRowsRenderFeaturePrimeOnlyColumn(t *testing.T) {
 	t.Parallel()
@@ -508,7 +508,7 @@ func TestTableRowsRenderCount(t *testing.T) {
 
 // TestTableRowsRenderAge asserts the AGE built-in: it is the LAST column on
 // every kind table, formatted with duration.HumanDuration since the now()
-// seam, and blank for an absent or unparseable creationTimestamp — never a
+// seam, and blank for an absent or unparseable creationTimestamp - never a
 // fabricated "0s".
 func TestTableRowsRenderAge(t *testing.T) {
 	restore := now
@@ -539,8 +539,8 @@ func TestTableRowsRenderAge(t *testing.T) {
 }
 
 // TestTableWideColumnsAndRowsOrder asserts the -o wide superset: WideColumns
-// includes every column (Wide or not) in declaration order with AGE last —
-// after the wide columns, not spliced in the middle — while the narrow
+// includes every column (Wide or not) in declaration order with AGE last -
+// after the wide columns, not spliced in the middle - while the narrow
 // Columns/Rows omit the Wide-marked columns entirely.
 func TestTableWideColumnsAndRowsOrder(t *testing.T) {
 	t.Parallel()

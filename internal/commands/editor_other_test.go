@@ -16,7 +16,7 @@ import (
 // non-Windows validation-error path: with neither $VISUAL nor $EDITOR
 // set, config edit must fail naming both vars. Build-tagged !windows
 // because defaultEditor() always returns "notepad" on Windows
-// (editor_windows.go), making this path unreachable there — see
+// (editor_windows.go), making this path unreachable there - see
 // TestResolveEditorFallsBackToNotepadOnWindows in editor_windows_test.go
 // for the Windows-side positive contract.
 func TestConfigEditMissingEditorIsValidationNamingBothVars(t *testing.T) {
@@ -37,7 +37,7 @@ func TestConfigEditMissingEditorIsValidationNamingBothVars(t *testing.T) {
 // baked-in editor default, so resolveEditor's VISUAL/EDITOR validation
 // path (tested above) stays reachable. The "notepad" value is the
 // Windows build's concern (editor_windows.go), exercised by the Windows
-// acceptance pass — it cannot execute here.
+// acceptance pass - it cannot execute here.
 func TestDefaultEditorEmptyOffWindows(t *testing.T) {
 	assert.Empty(t, defaultEditor())
 }

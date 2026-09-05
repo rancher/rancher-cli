@@ -87,7 +87,7 @@ func TestDeleteGuardRefusesSessionToken(t *testing.T) {
 }
 
 // TestDeleteGuardDerivedTokenPassesThrough verifies that a derived token whose
-// name matches the active session ID is NOT refused — Rancher's /v3/tokens
+// name matches the active session ID is NOT refused - Rancher's /v3/tokens
 // handler explicitly permits current-derived-token deletion.
 func TestDeleteGuardDerivedTokenPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -210,17 +210,17 @@ func TestDeleteGuardDescribeMatchesGenericDelete(t *testing.T) {
 
 // TestDeleteGuardDerivedTokenExecUsesGuardFetchRV verifies that the guard's
 // name-match path issues exactly one GET and binds the delete's resourceVersion
-// precondition to that fetch — not to a second read. If two GETs occurred, a
+// precondition to that fetch - not to a second read. If two GETs occurred, a
 // concurrent isDerived flip could make the guard decide on a derived object
 // while the execution deletes a non-derived (now live) session token.
 func TestDeleteGuardDerivedTokenExecUsesGuardFetchRV(t *testing.T) {
 	t.Parallel()
 	k := managementTokenKind(t)
 
-	// First GET: derived token, rv "999" — what the guard should decide from.
+	// First GET: derived token, rv "999" - what the guard should decide from.
 	first := tokenObjDerived("my-token-abc", true)
 	first.SetResourceVersion("999")
-	// Second GET: isDerived flipped to false, rv "9000" — what a second read would see.
+	// Second GET: isDerived flipped to false, rv "9000" - what a second read would see.
 	second := tokenObjDerived("my-token-abc", false)
 	second.SetResourceVersion("9000")
 

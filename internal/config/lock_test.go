@@ -36,7 +36,7 @@ func TestWithLockPropagatesErrorAndReleases(t *testing.T) {
 	})
 	require.ErrorIs(t, err, sentinel)
 
-	// the lock must have been released — a second WithLock must succeed
+	// the lock must have been released - a second WithLock must succeed
 	err2 := WithLock(t.Context(), dir, func() error { return nil })
 	require.NoError(t, err2)
 }
@@ -76,7 +76,7 @@ func TestWithLockSerializesGoroutines(t *testing.T) {
 	// Remove the hook so B doesn't also block on it once it acquires.
 	restore()
 
-	// Launch B — it closes bStarted immediately before calling WithLock,
+	// Launch B - it closes bStarted immediately before calling WithLock,
 	// then blocks on the process mutex (A still holds it via the hook).
 	bStarted := make(chan struct{})
 	bDone := make(chan struct{})
@@ -96,7 +96,7 @@ func TestWithLockSerializesGoroutines(t *testing.T) {
 		t.Fatal("timed out waiting for B to start")
 	}
 
-	// A still holds the lock. bDone must NOT fire — prove B is blocked, not
+	// A still holds the lock. bDone must NOT fire - prove B is blocked, not
 	// just unscheduled. If it fires here the serialization is broken.
 	select {
 	case <-bDone:
@@ -141,7 +141,7 @@ func TestWithLockTimeoutIsActionable(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
-	assert.True(t, ce.Retryable, "a lock timeout is transient — the holder finishes")
+	assert.True(t, ce.Retryable, "a lock timeout is transient - the holder finishes")
 	assert.Contains(t, ce.Hint, "RANCHER_CLI_CONFIG_NO_LOCK")
 }
 
@@ -179,8 +179,8 @@ func TestSetLockHookForTestFiresWhileHeld(t *testing.T) {
 }
 
 // TestWithLockCancellationUnblocksWaits asserts the review finding: Ctrl-C
-// (context cancellation) must abort BOTH waits promptly — the in-process
-// semaphore wait and the cross-process flock wait — and surface as the
+// (context cancellation) must abort BOTH waits promptly - the in-process
+// semaphore wait and the cross-process flock wait - and surface as the
 // caller's own cancellation, not as a lock timeout.
 // No t.Parallel(): holds the package-level semaphore and the flock.
 func TestWithLockCancellationUnblocksWaits(t *testing.T) {
@@ -254,7 +254,7 @@ func TestWithLockCancellationUnblocksWaits(t *testing.T) {
 
 // TestWithLockPreCanceledContextNeverRunsFn asserts the re-review P1: when the
 // caller's context is already canceled, both acquisition select arms are
-// ready and Go may pick the semaphore send — fn must still never run, with
+// ready and Go may pick the semaphore send - fn must still never run, with
 // or without the flock (the env opt-out path has no later context check),
 // and no filesystem work may happen first.
 // No t.Parallel(): t.Setenv in the second case.

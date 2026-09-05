@@ -24,12 +24,12 @@ import (
 // requestTimeout bounds every non-streaming API operation. Watch/stream
 // calls (none yet) must exempt themselves at the call site. A package var
 // (rather than a constant) so tests can shrink it via
-// SetRequestTimeoutForTest — the keyringProbeTimeout test-shrinkable
+// SetRequestTimeoutForTest - the keyringProbeTimeout test-shrinkable
 // pattern in internal/config/credstore.go.
 var requestTimeout = 30 * time.Second
 
 // SetRequestTimeoutForTest shrinks the per-request timeout and returns a
-// restore func. In non-test code so other packages' tests can reach it —
+// restore func. In non-test code so other packages' tests can reach it -
 // mirrors config.SetExecHelperTimeoutForTest. Callers must not run in
 // parallel with tests issuing real requests.
 func SetRequestTimeoutForTest(d time.Duration) (restore func()) {
@@ -77,7 +77,7 @@ type dynamicClient struct {
 
 	// clusterID is the --cluster value this client's proxy targets, carried
 	// only so a curated NOT_FOUND hint for a Downstream-scoped kind can name
-	// a complete list command — it plays no role in request routing itself.
+	// a complete list command - it plays no role in request routing itself.
 	clusterID string
 
 	mu       sync.Mutex
@@ -131,7 +131,7 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 	// Discovery runs OUTSIDE the lock: ServerGroups() is a network round-trip
 	// bounded by the discovery config's transport timeout, and holding r.mu
 	// across it would serialize every concurrent version-resolving call behind
-	// one slow endpoint. Benign race by design — concurrent missers each
+	// one slow endpoint. Benign race by design - concurrent missers each
 	// resolve and converge on the same value (mirrors the factory's
 	// ResolveCluster memo). Do NOT reintroduce a lock around the call below.
 	groups, err := r.disc.ServerGroups()
@@ -168,7 +168,7 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 // curateNotFound enriches a hint-less NOT_FOUND error with the curated
 // "<kind> not found: <name>" message and a list hint when the GVR resolves to a
 // known kind row. The has-hint guard protects any hinted NOT_FOUND arriving at
-// this seam — resolveVersion diagnostics return early from the caller before
+// this seam - resolveVersion diagnostics return early from the caller before
 // reaching curateNotFound, so they are not protected by this guard but by that
 // early return. Errors from GVRs not in the kinds table pass through unchanged.
 // LIST and Create callers must not call this; only the named-object methods

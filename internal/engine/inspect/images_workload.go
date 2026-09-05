@@ -34,7 +34,7 @@ type imageWorkloadRow struct {
 type imageWorkloadRows []imageWorkloadRow
 
 // ownerKey memoizes resolution per first-level controller reference
-// (IM-15): apiVersion and uid are part of the identity — same kind/name in
+// (IM-15): apiVersion and uid are part of the identity - same kind/name in
 // another API group or a recreated generation is a different owner.
 type ownerKey struct{ ns, apiVersion, kind, name, uid string }
 
@@ -77,7 +77,7 @@ func workloadImagesFor(ctx context.Context, client engine.ClusterClient, sec *se
 		// failures degrade to an ownerResolution entry and return nil, so
 		// this abort never fires for a single pod's bad owner. A new error
 		// return inside ownerChain would turn per-pod degradation into a
-		// whole-scan abort here — keep that contract.
+		// whole-scan abort here - keep that contract.
 		id, rerr := resolveWorkload(ctx, client, sec, clusterID, ns, pod, memo)
 		if rerr != nil {
 			return nil, rerr
@@ -133,7 +133,7 @@ func resolveWorkload(ctx context.Context, client engine.ClusterClient, sec *sect
 	if err != nil {
 		return workloadIdentity{}, err
 	}
-	// IM-16: any walk failure retains the FIRST-level reference — a
+	// IM-16: any walk failure retains the FIRST-level reference - a
 	// partially-walked chain's last element is an unverified guess.
 	src := owners[len(owners)-1]
 	if degraded {

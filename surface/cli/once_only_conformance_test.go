@@ -12,7 +12,7 @@ import (
 // oidcOnceOnlyInventory is the reviewed, closed-world set of commands that
 // declare Delivery: DeliveryOnceOnly: a REVIEWED mapping, never automatic
 // inference of a future secret-bearing command. An entry may be listed here
-// before its command is registered —
+// before its command is registered -
 // TestDeliveryOnceOnlyClosedWorldConformance asserts only over commands the
 // registry actually has, so an early entry activates automatically the day
 // its command registers, with no test change.
@@ -31,7 +31,7 @@ var oidcOnceOnlyInventory = map[string]bool{
 // format but the bare table default would silently accept and then ignore
 // it. Every other once-only descriptor must equal
 // runtime.OnceOnlyOutputPolicy() exactly, and a zero-value OutputPolicy is
-// never accepted anywhere — that would allow -o name and reintroduce the
+// never accepted anywhere - that would allow -o name and reintroduce the
 // hazard the once-only OutputPolicy exists to prevent.
 var bespokeOutputPolicyExempt = map[string]runtime.OutputPolicy{
 	"create kubeconfig": {AllowedFormats: []string{"table"}},
@@ -51,7 +51,7 @@ func onceOnlyOutputPolicyOK(name string, p runtime.OutputPolicy) bool {
 // TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException asserts
 // the fix's core claim: a zero-value OutputPolicy is never accepted, and a
 // non-canonical policy is accepted ONLY for the named exception's exact
-// value — a future once-only command that forgets
+// value - a future once-only command that forgets
 // OutputPolicy: runtime.OnceOnlyOutputPolicy() must fail this check, not
 // pass it by accident.
 func TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException(t *testing.T) {
@@ -69,7 +69,7 @@ func TestOnceOnlyOutputPolicyOKRejectsZeroValueOutsideTheNamedException(t *testi
 // TestDeliveryOnceOnlyClosedWorldConformance asserts the once-only marker
 // bidirectionally over the real, registered command set: every registered
 // inventory entry must declare Delivery: DeliveryOnceOnly, and every
-// registered command that declares it must be a reviewed inventory entry —
+// registered command that declares it must be a reviewed inventory entry -
 // so a future secret-bearing command cannot silently opt out of the safety
 // seam, and no command can silently opt in without review.
 func TestDeliveryOnceOnlyClosedWorldConformance(t *testing.T) {
@@ -86,7 +86,7 @@ func TestDeliveryOnceOnlyClosedWorldConformance(t *testing.T) {
 		}
 		if isOnceOnly {
 			assert.True(t, inInventory,
-				"command %q declares Delivery: DeliveryOnceOnly but is not in the reviewed once-only inventory — this is a closed-world mapping, add it deliberately", d.Name)
+				"command %q declares Delivery: DeliveryOnceOnly but is not in the reviewed once-only inventory - this is a closed-world mapping, add it deliberately", d.Name)
 			assert.True(t, onceOnlyOutputPolicyOK(d.Name, d.OutputPolicy),
 				"command %q declares an OutputPolicy that is neither runtime.OnceOnlyOutputPolicy() nor the named zero-value exception (create kubeconfig only)", d.Name)
 		}

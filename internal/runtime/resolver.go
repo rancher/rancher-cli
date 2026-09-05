@@ -17,7 +17,7 @@ func (m MapResolver) Resolve(op string) (safety.Binding, bool) { b, ok := m[op];
 // out from under the other consumers of the same map.
 func (m MapResolver) All() map[string]safety.Binding { return maps.Clone(m) }
 
-// ComposeResolvers merges two resolvers, rejecting any op defined by both — a
+// ComposeResolvers merges two resolvers, rejecting any op defined by both - a
 // single source per op (the kind table OR the bespoke map, never both).
 // BuildRoot fails on the returned error.
 func ComposeResolvers(a, b Resolver) (Resolver, error) {

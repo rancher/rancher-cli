@@ -89,7 +89,7 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	}
 
 	// With zero resolved pods, skip the name filter and fall through to
-	// the no-logs NOT_FOUND below — it names the target, namespace, and
+	// the no-logs NOT_FOUND below - it names the target, namespace, and
 	// cluster, which is the actual problem; "pod not found" with an empty
 	// candidate list would point at a list that does not exist.
 	if podFilter := in.String(flagPod); podFilter != "" && len(resolved.Pods) > 0 {
@@ -143,7 +143,7 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 
 // parseTailFlag defaults an empty --tail to 200 and rejects anything that is
 // not a non-negative integer with a VALIDATION error. Returns *int64 (never
-// nil) matching LogOptions.TailLines' pointer type — nil there means "field
+// nil) matching LogOptions.TailLines' pointer type - nil there means "field
 // unset", which a --tail value, defaulted or explicit, never is.
 func parseTailFlag(raw string) (*int64, error) {
 	if raw == "" {
@@ -161,7 +161,7 @@ func parseTailFlag(raw string) (*int64, error) {
 // parseSinceFlag wraps extres.ParseTTL for the duration GRAMMAR without its
 // zero-sentinel semantics (LS-2): omitted → nil (no limit); a parsed
 // duration → *int64(seconds); an explicit zero ("0s") → VALIDATION, since a
-// pointer *0 means "logs since now" to PodLogOptions.SinceSeconds — silently
+// pointer *0 means "logs since now" to PodLogOptions.SinceSeconds - silently
 // empty output, never what --since 0s meant to ask for.
 func parseSinceFlag(raw string) (*int64, error) {
 	if raw == "" {
@@ -180,7 +180,7 @@ func parseSinceFlag(raw string) (*int64, error) {
 }
 
 // mergeText renders entries as the Text-mode default: every log line
-// prefixed with "[pod/container]", interleaved in fetch order (LS-2) — no
+// prefixed with "[pod/container]", interleaved in fetch order (LS-2) - no
 // timestamp re-sort in v1; --timestamps lets callers sort themselves.
 func mergeText(entries []logEntry) string {
 	var b strings.Builder

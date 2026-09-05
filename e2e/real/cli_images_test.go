@@ -159,7 +159,7 @@ func TestCLIImagesWorkload(t *testing.T) {
 	// The successful row match (workload.name == depName) is itself proof the
 	// owner-chain walk succeeded: a degraded walk falls back to the
 	// first-level ownerRef (the ReplicaSet), so a failed walk would produce a
-	// row with the RS name, not the Deployment name — and the row search above
+	// row with the RS name, not the Deployment name - and the row search above
 	// would not have matched. Verify no warning mentions the deployment to
 	// double-confirm no degradation path was taken.
 	for _, w := range env.Warnings {

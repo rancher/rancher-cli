@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// deferredDesc builds a Descriptor carrying no static requirement — the
+// deferredDesc builds a Descriptor carrying no static requirement - the
 // create-resource shape, whose requirement depends on the manifest and is
 // supplied only through CapabilityResolver.
 func deferredDesc(name string) Descriptor {
@@ -39,7 +39,7 @@ func (r resolverRead) ResolveCapability(context.Context, Input) (CapabilityRequi
 	return r.resolved, r.resolveErr
 }
 
-// refusingExecuteResolverRead fails the test if Execute is ever invoked —
+// refusingExecuteResolverRead fails the test if Execute is ever invoked -
 // the resolver counterpart of refusingExecuteRead, proving the deferred
 // capability stage refuses BEFORE any resource access.
 type refusingExecuteResolverRead struct {
@@ -60,7 +60,7 @@ func (r refusingExecuteResolverRead) ResolveCapability(context.Context, Input) (
 }
 
 // refusingPlanResolverMutating fails the test if Plan is ever invoked,
-// proving the deferred capability stage runs before Plan — the mode-1
+// proving the deferred capability stage runs before Plan - the mode-1
 // ordering invariant, same as refusingPlanMutating asserts for the static path.
 type refusingPlanResolverMutating struct {
 	d        Descriptor
@@ -183,7 +183,7 @@ func TestRunResolverCheckedBeforePlan(t *testing.T) {
 
 // TestRunStaticCapabilityNeverConsultsResolver asserts static-wins precedence
 // directly at Run: a command implementing both a static requirement and
-// CapabilityResolver never has its resolver called — the two cannot
+// CapabilityResolver never has its resolver called - the two cannot
 // legitimately coexist (the registry rejects it at startup), but Run's own
 // precedence is asserted independently here.
 func TestRunStaticCapabilityNeverConsultsResolver(t *testing.T) {

@@ -29,7 +29,7 @@ type stub struct {
 	caPath string // PEM of the stub's TLS cert, for CURL_CA_BUNDLE
 
 	// mu guards everything below: tests configure the stub from the test
-	// goroutine while handler goroutines read — without the mutex those are
+	// goroutine while handler goroutines read - without the mutex those are
 	// data races under the mandated -race.
 	mu               sync.Mutex
 	releases         []map[string]any  // newest first, like the API
@@ -265,7 +265,7 @@ func toolPath(t *testing.T, tools ...string) string {
 	return dir
 }
 
-// fakeUname returns a dir whose uname reports the given kernel/machine —
+// fakeUname returns a dir whose uname reports the given kernel/machine -
 // the seam for table-testing the platform map beyond the host arch.
 func fakeUname(t *testing.T, kernel, machine string) string {
 	t.Helper()
@@ -382,12 +382,12 @@ func runInstall(t *testing.T, s *stub, extraEnv []string, args ...string) (strin
 	// quoted env var mangles the separators and writes relative to the CWD;
 	// comparing the package directory before and after catches the stray file.
 	// Parallel tests share this directory, so the failure can surface in a
-	// concurrently running test's comparison — the diff still names the stray
+	// concurrently running test's comparison - the diff still names the stray
 	// file, which is what identifies the offending fake.
 	before := packageDirNames(t)
 	cmd := exec.Command("sh", append([]string{script}, args...)...)
 	// Hermetic PATH by default: baseTools only, so a developer's real
-	// authenticated gh (or stray jq) can never leak into a test — a capable
+	// authenticated gh (or stray jq) can never leak into a test - a capable
 	// real gh would attempt live attestation calls against stub assets.
 	// Tests needing optional tools pass their own PATH via extraEnv
 	// (last duplicate wins).
@@ -439,7 +439,7 @@ func envTmpDir(dir string) []string { return []string{"TMPDIR=" + dir} }
 
 // mvWithoutNoFollow returns a PATH dir whose mv rejects the no-follow replace
 // flags (-T/-h) like BusyBox's does, delegating every other invocation to the
-// real mv named by REAL_MV — the seam for the capability probe. The returned
+// real mv named by REAL_MV - the seam for the capability probe. The returned
 // env carries REAL_MV and must be passed to runInstall.
 func mvWithoutNoFollow(t *testing.T) (string, []string) {
 	t.Helper()
@@ -470,7 +470,7 @@ func ghStub(t *testing.T, script string) string {
 
 // recordingCurlWrapper builds a dir containing a curl script that logs every
 // argument (one per line) to a file, then execs the real curl. The dir has a
-// deliberate space in its name — guarding against broken quoting in any code
+// deliberate space in its name - guarding against broken quoting in any code
 // that interpolates the path rather than passing it via env. Returns the dir
 // path, the argv log path, and the env slice (RANCHER_TEST_ARGV_LOG and
 // RANCHER_TEST_REAL_CURL) that wire them up.
@@ -495,11 +495,11 @@ func recordingCurlWrapper(t *testing.T) (dir, argvLog string, env []string) {
 // docSnippet reads a markdown documentation file relative to the module
 // root (one level up from the test package, like the rest of the file
 // reads ../install.sh) and returns the dedented 4-space code block that
-// contains anchorLine. anchorLine may match any line inside the block —
+// contains anchorLine. anchorLine may match any line inside the block -
 // the function expands to the full contiguous extent in both directions.
 // Leading 4 spaces are stripped from every line.
 //
-// A failure here means the doc and the test literal drifted —
+// A failure here means the doc and the test literal drifted -
 // update both together.
 func docSnippet(t *testing.T, filename, anchorLine string) string {
 	t.Helper()
@@ -515,7 +515,7 @@ func docSnippet(t *testing.T, filename, anchorLine string) string {
 		}
 	}
 	require.NotEqualf(t, -1, anchor,
-		"%s: no 4-space-indented line containing %q — update the test literal and the doc together",
+		"%s: no 4-space-indented line containing %q - update the test literal and the doc together",
 		filename, anchorLine)
 	start := anchor
 	for start > 0 && strings.HasPrefix(lines[start-1], "    ") {
@@ -534,9 +534,9 @@ func docSnippet(t *testing.T, filename, anchorLine string) string {
 
 // assertSnippetMatchesDoc asserts that transform(got) equals the doc block
 // extracted by docSnippet. The shared failure message reminds both sides
-// of the contract — doc and test literal — must move together.
+// of the contract - doc and test literal - must move together.
 func assertSnippetMatchesDoc(t *testing.T, docFile, anchorLine, got string, transform func(string) string) {
 	t.Helper()
 	assert.Equal(t, docSnippet(t, docFile, anchorLine), transform(got),
-		"%s snippet drifted — update the test literal and the doc together", docFile)
+		"%s snippet drifted - update the test literal and the doc together", docFile)
 }

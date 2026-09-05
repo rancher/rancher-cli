@@ -3,28 +3,28 @@
 An AI-native operations CLI for [Rancher Manager](https://github.com/rancher/rancher).
 
 A greenfield rewrite of the Rancher CLI, built so a terminal coding agent
-(Claude Code, Codex, …) can drive Rancher as a first-class user — and
+(Claude Code, Codex, …) can drive Rancher as a first-class user - and
 operators get the same commands with readable table output.
 
-- **Structured, versioned output** — nearly every command emits one JSON
+- **Structured, versioned output** - nearly every command emits one JSON
   envelope under `-o json` (YAML under `-o yaml`), versioned as
   `cli.rancher.io/v1`; the default is readable text for an operator at a
-  terminal. Five terminal-integration commands are exceptions — details:
+  terminal. Five terminal-integration commands are exceptions - details:
   [REFERENCE.md](REFERENCE.md#output-formats).
-- **Self-describing surface** — `rancher schema` lists every command, flag,
+- **Self-describing surface** - `rancher schema` lists every command, flag,
   contract, and gate; agents orient themselves without docs.
-- **Machine-readable errors** — the same envelope as a success, under
+- **Machine-readable errors** - the same envelope as a success, under
   `-o json`/`-o yaml`, with next-step hints; a short text block otherwise.
-- **Branchable exit codes** — scripts and agents branch on the code without
+- **Branchable exit codes** - scripts and agents branch on the code without
   parsing anything.
-- **Plan/apply safety** — a server-computed preview before every mutation,
+- **Plan/apply safety** - a server-computed preview before every mutation,
   with explicit gates for destructive effects.
 
 [Install](#install) · [Quickstart](#quickstart) ·
 [Commands](COMMANDS.md) · [Reference](REFERENCE.md) ·
 [Migration](MIGRATING.md) · [Contributing](AGENTS.md)
 
-<!-- demo: asciinema/GIF slot — fill from rehearsal recordings -->
+<!-- demo: asciinema/GIF slot - fill from rehearsal recordings -->
 
 ## Install
 
@@ -36,7 +36,7 @@ On Windows (PowerShell 7 or Windows PowerShell 5.1):
 
 > [!NOTE]
 > While the repository is internal the anonymous forms above fail. Use
-> `gh` instead (authenticated once via `gh auth login`) — the installer
+> `gh` instead (authenticated once via `gh auth login`) - the installer
 > picks up gh's token automatically, and it never appears in process
 > arguments:
 
@@ -46,7 +46,7 @@ PowerShell:
 
     iex "& { $(gh api 'repos/rancher/rancher-cli/contents/install.ps1?ref=main' -H 'Accept: application/vnd.github.raw' | Out-String) } -Pre"
 
-`--pre` (`-Pre` in PowerShell) selects the newest prerelease — early
+`--pre` (`-Pre` in PowerShell) selects the newest prerelease - early
 access ships prereleases only; drop it once a stable release exists.
 Prerelease resolution on Linux and macOS needs `jq` or `python3` on PATH.
 
@@ -75,8 +75,8 @@ provenance verification mandatory, `--dry-run` prints the plan without
 writing anything, `-q` suppresses progress notes. Set `GH_TOKEN` or
 `GITHUB_TOKEN` for internal or rate-limited use.
 
-PowerShell takes the same options as parameters — `-Version <tag>`,
-`-Pre`, `-BinDir <dir>`, `-VerifyAttestation`, `-DryRun`, `-Quiet` — with
+PowerShell takes the same options as parameters - `-Version <tag>`,
+`-Pre`, `-BinDir <dir>`, `-VerifyAttestation`, `-DryRun`, `-Quiet` - with
 the same env twins. The pipe form cannot pass parameters; wrap the script
 in a scriptblock instead:
 
@@ -87,7 +87,7 @@ in a scriptblock instead:
 <details>
 <summary>Update, rollback &amp; uninstall</summary>
 
-To update, rerun the install command — resolution finds the newer release
+To update, rerun the install command - resolution finds the newer release
 and the switch is atomic. To downgrade or roll back, rerun with
 `--version <tag>` (`-Version <tag>`).
 
@@ -136,7 +136,7 @@ waits): [REFERENCE.md](REFERENCE.md#cluster-provisioning).
 [`skills/rancher/SKILL.md`](skills/rancher/SKILL.md) teaches an AI coding
 agent to operate this CLI: auth, discovery, the dry-run/apply safety loop,
 structured errors, and waits. It follows the open
-[Agent Skills](https://agentskills.io) standard — install it into Claude
+[Agent Skills](https://agentskills.io) standard - install it into Claude
 Code, Codex, or GitHub Copilot CLI:
 
     rancher skill install
@@ -175,8 +175,8 @@ Every server-mutating command runs one pipeline, in order:
 
 1. `--dry-run` previews a server-computed effect (action, diff, warnings)
    and changes nothing.
-2. `--apply` executes. A bare mutating invocation — no `--dry-run`, no
-   `--apply` — is refused with `CONFIRMATION_REQUIRED`, and the refusal
+2. `--apply` executes. A bare mutating invocation - no `--dry-run`, no
+   `--apply` - is refused with `CONFIRMATION_REQUIRED`, and the refusal
    names the exact flags required.
 3. `--yes` stacks on `--apply` (never alone) when the effect is
    destructive: every `delete`, `revoke`, writes to sensitive kinds, and
@@ -186,7 +186,7 @@ Every server-mutating command runs one pipeline, in order:
 5. Updates and deletes carry a
    [resourceVersion](https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-versions)
    precondition from their own
-   plan — if the resource changes between the plan's preview and execution,
+   plan - if the resource changes between the plan's preview and execution,
    the mutation fails (exit `5`) instead of clobbering. A separate
    `--dry-run` invocation is a preview only; the later `--apply` run
    re-plans and binds its precondition to the state it sees then. Creates have no
@@ -197,7 +197,7 @@ destructive".
 
 Why this shape: the CLI is agent-first. Intent is stated in
 machine-checkable flags, never inferred, and there is no interactive "are
-you sure?" prompt — a prompt cannot be scripted, retried, or audited.
+you sure?" prompt - a prompt cannot be scripted, retried, or audited.
 Every refusal is a structured error naming exactly what is missing, so an
 agent (or a script) escalates deliberately or stops.
 
@@ -205,7 +205,7 @@ agent (or a script) escalates deliberately or stops.
 > `--dry-run` runs a real
 > [server-side dry-run](https://kubernetes.io/docs/reference/using-api/api-concepts/#dry-run)
 > and needs the same RBAC verb
-> as the write — read-only credentials get an `RBAC` error. That means the
+> as the write - read-only credentials get an `RBAC` error. That means the
 > write would be denied, not that dry-run is broken.
 
 Each server operation carries a contract (`public` | `internal`) and
@@ -216,7 +216,7 @@ Read-only mode: [REFERENCE.md](REFERENCE.md#read-only-mode).
 ## Output & exit codes
 
 Nearly every command emits one JSON document per invocation under `-o json`
-— an `apiVersion`-versioned envelope agents can depend on (exceptions:
+- an `apiVersion`-versioned envelope agents can depend on (exceptions:
 [REFERENCE.md](REFERENCE.md#output-formats)):
 
 ```json
@@ -235,7 +235,7 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
 - **Errors** follow the same contract as a success: under `-o json`/
   `-o yaml` they are the envelope, error object under `data`, any warnings
   folded into the envelope's own `warnings` array. Use `-o json` for the
-  envelope — including errors:
+  envelope - including errors:
 
   ```json
   { "apiVersion": "cli.rancher.io/v1", "kind": "Error",
@@ -257,7 +257,7 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
   `11` capability unsupported · `1` generic.
   Rancher's proxy paths reject an invalid or insufficient token as a 403
   (`RBAC`, exit `6`), not a 401 (`AUTH`, exit `3`).
-- **Discovery:** `rancher schema -o json` is the orientation payload —
+- **Discovery:** `rancher schema -o json` is the orientation payload -
   commands, kinds, and exit codes as a compact table of contents;
   `rancher schema --all -o json` is the complete manifest, and the single
   source for contract and stability. `rancher schema <command|kind|group>`
@@ -277,7 +277,7 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
 - **Environment overrides** (precedence flag > env > file): the full table
   of available environment overrides is in
   [REFERENCE.md](REFERENCE.md#environment-variables).
-- **Migration:** config and credentials are not imported — run `rancher auth
+- **Migration:** config and credentials are not imported - run `rancher auth
   login` once per server.
 
 ## Shell completion
@@ -287,7 +287,7 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
     rancher completion fish > ~/.config/fish/completions/rancher.fish
     rancher completion pwsh | Out-String | Invoke-Expression   # add to $PROFILE
 
-Completion is offline-only by default — it never touches the network and
+Completion is offline-only by default - it never touches the network and
 degrades to no candidates, never an error. Live resource-name completion
 is an opt-in: `rancher config set-completion --network=true`. Shell
 version floors, offline guarantees, and live-completion detail:
@@ -295,19 +295,19 @@ version floors, offline guarantees, and live-completion detail:
 
 ## Documentation
 
-- [COMMANDS.md](COMMANDS.md) — the command catalog, by group (operators).
-- [REFERENCE.md](REFERENCE.md) — platforms and credential stores, install
+- [COMMANDS.md](COMMANDS.md) - the command catalog, by group (operators).
+- [REFERENCE.md](REFERENCE.md) - platforms and credential stores, install
   internals, completion, scoping, kinds and verbs, cluster provisioning,
   composites, access management, diagnostics, output formats, read-only
   mode, server-version support, kubectl integration, TLS (operators,
   automation authors).
-- [ARCHITECTURE.md](ARCHITECTURE.md) — layer map and design decisions
+- [ARCHITECTURE.md](ARCHITECTURE.md) - layer map and design decisions
   (contributors).
-- [CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md) — credential-helper
+- [CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md) - credential-helper
   protocol and examples (integrators).
-- [MIGRATING.md](MIGRATING.md) — moving from the legacy Rancher CLI
+- [MIGRATING.md](MIGRATING.md) - moving from the legacy Rancher CLI
   (operators).
-- [skills/rancher/SKILL.md](skills/rancher/SKILL.md) — the agent skill
+- [skills/rancher/SKILL.md](skills/rancher/SKILL.md) - the agent skill
   (agents and their authors).
 
 ## Development
@@ -321,14 +321,14 @@ Requires Go 1.26+ to build from source:
     make e2e-real     # verify recorded fidelity goldens against a real Rancher in Docker
     make              # the full ci pipeline (build + validate)
 
-`make e2e-real` boots the pinned `rancher/rancher` image (~5–7 min) and
+`make e2e-real` boots the pinned `rancher/rancher` image (~5-7 min) and
 checks that the fake Rancher the e2e suite runs against still behaves
 like the real one; `make e2e-real-update` re-records those goldens.
 
 One-time setup: `git config core.hooksPath .githooks` enables the
 pre-commit `make validate` gate.
 
-Manual testing: `scripts/dev <args>` — never run the binary directly; it
+Manual testing: `scripts/dev <args>` - never run the binary directly; it
 forces an isolated config dir and a file credential store so a manual run
 cannot touch your real config or OS keychain. Contributor guide:
 [AGENTS.md](AGENTS.md).
@@ -337,7 +337,7 @@ cannot touch your real config or OS keychain. Contributor guide:
 
 Questions and discussion: the [Rancher forums](http://forums.rancher.com/)
 and [Rancher Slack](https://slack.rancher.io/). Bugs and feature requests:
-[rancher/rancher issues](https://github.com/rancher/rancher/issues) — the
+[rancher/rancher issues](https://github.com/rancher/rancher/issues) - the
 central hub for Rancher product issues.
 
 For security issues, check the

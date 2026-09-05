@@ -34,9 +34,9 @@ var (
 // NUL-joined blob plus an explicit presence bool (native fuzzing has no
 // []string primitive; a real argv token never contains a NUL byte). The
 // presence bool exists because NUL-splitting alone cannot distinguish zero
-// args from one empty arg — strings.Split("", "\x00") is []string{""} —
+// args from one empty arg - strings.Split("", "\x00") is []string{""} -
 // and the two classify differently (the positional ordinal shifts). Never
-// call t.Parallel() here — it panics inside f.Fuzz.
+// call t.Parallel() here - it panics inside f.Fuzz.
 func FuzzParseArgTail(f *testing.F) {
 	type seed struct {
 		argsBlob    string
@@ -95,7 +95,7 @@ func FuzzParseArgTail(f *testing.F) {
 			return
 		}
 
-		// (c) v1: Partial is empty or derived from the FINAL argument — the
+		// (c) v1: Partial is empty or derived from the FINAL argument - the
 		// last-token-as-partial heuristic's only two non-empty sources are
 		// the final arg's after-= suffix (equals form) and the final arg
 		// verbatim (the value slot of a preceding value-taking flag).
@@ -107,7 +107,7 @@ func FuzzParseArgTail(f *testing.F) {
 				"v1 Partial %q not derived from final arg %q", site.Partial, last)
 		}
 
-		// And the whole v1 classification must be currentWord-invariant —
+		// And the whole v1 classification must be currentWord-invariant -
 		// the fallback branch never reads currentWord.
 		other := ParseArgTail(args, currentWord+"\x01differs", false, fuzzLeaf, fuzzGlobals)
 		assert.Equal(t, site, other)

@@ -15,7 +15,7 @@ import (
 // TestReadOnlyCachedCredNoticesLoosePermissions asserts ReadOnlyCachedCred's
 // standalone-function notice return (no store receiver exists to buffer it
 // on): a group/world-readable token-cache.yaml notices once, and the
-// second read for the same path is silent — the same dedupe fileStore's
+// second read for the same path is silent - the same dedupe fileStore's
 // own loose-permission check applies, since both share the underlying
 // warnLoosePermFI implementation.
 func TestReadOnlyCachedCredNoticesLoosePermissions(t *testing.T) {

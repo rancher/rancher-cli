@@ -18,8 +18,8 @@ import (
 // ShortLivedTokenStore is the optional interface a CredStore implements when it
 // can report the in-memory expiry of the last short-lived token it served for
 // an identity. get-token's legacy (pre-ext.cattle.io) fallback consults it so a
-// helper-created short-lived token is never written to the on-disk cache past —
-// or at all beyond — its real expiry.
+// helper-created short-lived token is never written to the on-disk cache past -
+// or at all beyond - its real expiry.
 type ShortLivedTokenStore interface {
 	ShortLivedTokenExpiry(ref ServerRef) (time.Time, bool)
 }
@@ -78,7 +78,7 @@ func (s *execStore) binary() string { return "rancher-credential-" + s.helper }
 // invoke runs one helper verb with req on stdin and decodes the response.
 // Decoding is verb-aware: get MUST return versioned JSON (not-found is a
 // JSON response without a token), while store/erase may exit 0 with EMPTY
-// stdout — a protocol-compliant success. Version is validated only when a
+// stdout - a protocol-compliant success. Version is validated only when a
 // response body is present. Helper stderr is surfaced in errors.
 func (s *execStore) invoke(verb string, req credhelper.Request) (*credhelper.Response, error) {
 	req.ProtocolVersion = credhelper.ProtocolVersion
@@ -157,7 +157,7 @@ func (s *execStore) GetToken(ref ServerRef) (string, error) {
 	}
 	// Validate expiresAt FIRST, before any token-presence branch: a malformed
 	// timestamp is a hard malformed-response error even on a token-less
-	// response — never silently treated as not-found or non-expiring.
+	// response - never silently treated as not-found or non-expiring.
 	exp, err := s.parseExpiry(resp)
 	if err != nil {
 		return "", err
@@ -195,8 +195,8 @@ func (s *execStore) GetToken(ref ServerRef) (string, error) {
 // ShortLivedTokenExpiry reports the in-memory cached expiry for ref's identity
 // (canonical URL + name), and true, when the last token this store served for
 // it carried an expiresAt (a short-lived, memory-only credential). It returns
-// false when no such token was cached — a long-lived token, or none served yet
-// this process — or when ref cannot be canonicalized.
+// false when no such token was cached - a long-lived token, or none served yet
+// this process - or when ref cannot be canonicalized.
 func (s *execStore) ShortLivedTokenExpiry(ref ServerRef) (time.Time, bool) {
 	req, err := wireRequest(ref)
 	if err != nil {
@@ -234,8 +234,8 @@ func (s *execStore) SetToken(ref ServerRef, token string) error {
 }
 
 // SetTokenWithOutcome is SetToken reporting what the write did. The
-// protocol has no read or snapshot operation — a helper's get may create a
-// fresh credential rather than reveal persisted state — so the prior token
+// protocol has no read or snapshot operation - a helper's get may create a
+// fresh credential rather than reveal persisted state - so the prior token
 // is always unknown and no compensation is ever offered. A helper that
 // failed to answer may still have stored the credential, which is why an
 // invocation error reports possiblyCommitted rather than a clean refusal;
@@ -266,7 +266,7 @@ func (s *execStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutc
 			return ierr // intent stays: idempotent erase cleans up later
 		}
 		if resp.Unsupported {
-			// Nothing stored — drop the intent, and persist that removal
+			// Nothing stored - drop the intent, and persist that removal
 			// BEFORE returning the sentinel: were the removal to fail, the
 			// joined result must read as a hard error, never as clean
 			// read-only success (login would warn-and-succeed while a stale
@@ -287,7 +287,7 @@ func (s *execStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutc
 
 // eraseCredential runs the erase verb and interprets the response's erased
 // field: deleted unless the helper affirmatively said nothing was stored
-// (an absent field reads as deleted — the safe, over-reporting direction
+// (an absent field reads as deleted - the safe, over-reporting direction
 // for logout's deletedFrom). The single interpretation every erase path
 // shares.
 func (s *execStore) eraseCredential(req credhelper.Request) (deleted bool, err error) {
@@ -317,7 +317,7 @@ func (s *execStore) DeleteToken(ref ServerRef) error {
 		}
 		// One erase implementation for every path, on this store's own
 		// invoker. The deletion report is deliberately dropped:
-		// DeleteToken's contract carries no such signal — wire it through
+		// DeleteToken's contract carries no such signal - wire it through
 		// when a caller needs one.
 		if _, ierr := s.eraseCredential(req); ierr != nil {
 			return ierr // entry (if any) stays for retry

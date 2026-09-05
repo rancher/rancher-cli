@@ -18,7 +18,7 @@ import (
 )
 
 // systemPrincipalPrefix is Rancher's user-store hide-system predicate
-// (user_store.go, "filter system users out of the api") — deliberately
+// (user_store.go, "filter system users out of the api") - deliberately
 // narrower than engine.IsSystemPrincipal ("system:"), which carries RBAC
 // subject semantics for a different purpose. Mirrors kinds.go's user row
 // SystemFilter.
@@ -34,7 +34,7 @@ type userCmd struct {
 }
 
 // NewInspectUser builds `inspect user <user>`: one document answering who a
-// user is and what roles they hold everywhere — never what they can
+// user is and what roles they hold everywhere - never what they can
 // actually do (that is a permissions question, answered only by the server,
 // out of scope here and everywhere else in this CLI today).
 func NewInspectUser(clients engine.ClusterClientFactory) runtime.Command {
@@ -50,7 +50,7 @@ func (c *userCmd) Describe() runtime.Descriptor {
 		Desc: degradedContractDesc +
 			"The user is required and hard-errors when unreadable; every other section degrades. " +
 			"The positional accepts a user id, username, displayName, or a fully qualified user " +
-			"principal (local://…, <provider>_user://…) — the principal form is the one way to name " +
+			"principal (local://…, <provider>_user://…) - the principal form is the one way to name " +
 			"a user unambiguously when ids and display names collide. " +
 			"data.user carries identity (id, username, displayName, enabled, principals, created, " +
 			"system) plus everything Rancher records per user in UserAttributes: groups (memberships " +
@@ -60,16 +60,16 @@ func (c *userCmd) Describe() runtime.Descriptor {
 			"audit extras, [provider][key] -> values; Rancher writes principalid and username today). " +
 			"All of them share one fate: when the UserAttributes read failed for any reason other " +
 			"than a verified absence (a user who has never logged in has none), every one is omitted " +
-			"from the wire — never an empty list — with the failure recorded in data.degraded; an " +
+			"from the wire - never an empty list - with the failure recorded in data.degraded; an " +
 			"omitted optional field on a healthy read simply is not set. " +
 			"data.roles.{global,clusters,projects} lists role bindings that EXIST for the user or any " +
-			"of their group principals. Roles are facts about bindings — never a computed statement " +
+			"of their group principals. Roles are facts about bindings - never a computed statement " +
 			"of what the user can do (that is a permissions question, answered only by the server, " +
 			"and this command never asks it). Each row is the shared member shape (principal, " +
 			"displayName, role, binding, system); clusters and projects group rows by scope instance, " +
 			"with a best-effort displayName looked up per entry. Because the completeness of the role " +
 			"sections depends on the user's group principals, a failed groups read blocks all three " +
-			"too (their completeness would otherwise be unverifiable) — recorded in data.degraded " +
+			"too (their completeness would otherwise be unverifiable) - recorded in data.degraded " +
 			"alongside groups.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "user", Type: "string", Required: true, Desc: "id|username|displayName|principal"}},
@@ -132,14 +132,14 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 }
 
 // userAttributes reads the UserAttribute GET-BY-ID (never a list) and
-// fills identity's UserAttribute-sourced fields in place — one field
+// fills identity's UserAttribute-sourced fields in place - one field
 // list, no copy step to keep in sync. It returns the flat
 // group-principal set the role collectors match against and whether
 // the role sections are blocked. NotFound is a verified-empty user
 // (never logged in): groups is a non-nil empty slice, every other
 // field stays absent, role collectors run normally. Any other failure
 // degrades groups (nil, omitted from the wire) AND blocks all three
-// role collectors — their completeness is unknowable without the
+// role collectors - their completeness is unknowable without the
 // user's group principals, so a direct-only result would misrepresent
 // a group-held-only user as verified-complete.
 func userAttributes(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string, identity *userIdentity) (groupPrincipals []string, blocked bool, err error) {
@@ -172,7 +172,7 @@ func userAttributes(ctx context.Context, mgmt engine.ClusterClient, sec *section
 		// lastLogin, disableAfter, and deleteAfter carry json tags on the
 		// UserAttribute type; the untagged siblings (GroupPrincipals,
 		// LastRefresh, NeedsRefresh, ExtraByProvider, UserName) serialize
-		// under their Go field names — verified against a live server.
+		// under their Go field names - verified against a live server.
 		identity.Groups = &rows
 		identity.LastLogin, _, _ = unstructured.NestedString(obj.Object, "lastLogin")
 		identity.LastRefresh, _, _ = unstructured.NestedString(obj.Object, "LastRefresh")
@@ -186,8 +186,8 @@ func userAttributes(ctx context.Context, mgmt engine.ClusterClient, sec *section
 	}
 }
 
-// parseUserAttributeExtra maps ExtraByProvider — per-provider audit
-// extras, [provider → [key → values]] — dropping non-conforming leaves
+// parseUserAttributeExtra maps ExtraByProvider - per-provider audit
+// extras, [provider → [key → values]] - dropping non-conforming leaves
 // rather than failing the read. Rancher writes exactly two inner keys
 // today (principalid, username); the map is passed through as-is so a
 // future key surfaces without a CLI change.
@@ -229,7 +229,7 @@ func parseUserAttributeExtra(obj *unstructured.Unstructured) map[string]map[stri
 }
 
 // parseUserAttributeGroups maps the shared rbac walk of GroupPrincipals
-// into the composite's wire rows — flat, totally ordered (principal,
+// into the composite's wire rows - flat, totally ordered (principal,
 // provider), duplicates across providers retained (distinct provider
 // caches, no merge or conflict logic).
 func parseUserAttributeGroups(obj *unstructured.Unstructured) []userGroup {
@@ -243,7 +243,7 @@ func parseUserAttributeGroups(obj *unstructured.Unstructured) []userGroup {
 
 // droppedScopeWarning names role bindings omitted because their scope id
 // was empty (a malformed binding with no projectName/namespace): the roles
-// are real but unattributable to a scope — dropping them silently would
+// are real but unattributable to a scope - dropping them silently would
 // misreport, merging them under a blank heading would be worse.
 func droppedScopeWarning(scope string, bindings []string) []string {
 	if len(bindings) == 0 {
@@ -255,7 +255,7 @@ func droppedScopeWarning(scope string, bindings []string) []string {
 
 // roleDisplayNames builds the enrichment map heldRow consumes: the user's
 // own display name for every own-identity principal (and the id itself),
-// and each group principal's cached display name — blanked when two
+// and each group principal's cached display name - blanked when two
 // provider caches disagree, never chosen arbitrarily (the same
 // blank-on-disagreement rule ResolveMembers applies).
 func roleDisplayNames(identity userIdentity, userID string, principalIDs []string, groups *[]userGroup) map[string]string {
@@ -285,9 +285,9 @@ func roleDisplayNames(identity userIdentity, userID string, principalIDs []strin
 	return names
 }
 
-// collectRoles runs the three binding collectors sequentially — global,
+// collectRoles runs the three binding collectors sequentially - global,
 // then clusters (with per-entry displayName enrichment), then projects
-// (same enrichment) — so a caller cancellation during either enrichment
+// (same enrichment) - so a caller cancellation during either enrichment
 // aborts before the next collector issues a single request. Each collector
 // degrades independently on its own list failure.
 func collectRoles(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string, principalIDs, groupPrincipals []string, displayNames map[string]string) (rolesResult, []string, error) {
@@ -349,7 +349,7 @@ func collectRoles(ctx context.Context, mgmt engine.ClusterClient, sec *sections,
 // clusterDisplayName is a best-effort per-entry GET: an id is never
 // replaced by a display name, so an unreadable cluster silently omits
 // DisplayName rather than failing the section. Caller cancellation
-// propagates — enrichment never swallows ctx.Err() or keeps issuing
+// propagates - enrichment never swallows ctx.Err() or keeps issuing
 // requests after cancellation.
 func clusterDisplayName(ctx context.Context, mgmt engine.ClusterClient, clusterID string) (string, error) {
 	clusterKind, _ := kinds.Lookup("cluster")
@@ -418,7 +418,7 @@ type userGroup struct {
 
 // userIdentity is data.user. Groups and every field after it come from
 // the same UserAttributes collector and share its tri-state: Groups nil
-// (omitted) means degraded, in which case the rest are also omitted —
+// (omitted) means degraded, in which case the rest are also omitted -
 // never a fabricated absence. LastRefresh/NeedsRefresh describe the
 // group-sync cache; DisableAfter/DeleteAfter are per-user inactivity
 // overrides; Extra is Rancher's per-provider audit extras
@@ -473,8 +473,8 @@ type userResult struct {
 
 // renderUserText is the default rendering: an IDENTITY block, a GROUPS
 // block, then a tri-state ROLES block per collector.
-// renderUserText receives the RESOLVE-TIME own-identity set — the same
-// snapshot heldRow classified against — never a set rebuilt from the
+// renderUserText receives the RESOLVE-TIME own-identity set - the same
+// snapshot heldRow classified against - never a set rebuilt from the
 // identity section's own, later Get: two reads of the same user can
 // disagree (a concurrent IdP login changing principalIds) and a rebuilt
 // set would mislabel a direct row as group-held.
@@ -490,21 +490,21 @@ func renderUserText(r userResult, own map[string]bool) string {
 // renderUserText emits: GROUPS and ROLES render unconditionally, every
 // call. The USER header (always line 0, with optional bracketed
 // qualifiers) and the role sub-headers (dynamic scope labels, matched by
-// prefix below the ROLES header — see userRoleSubheaderPrefixes) are
+// prefix below the ROLES header - see userRoleSubheaderPrefixes) are
 // handled separately in styleUserText.
 var userSectionHeaders = map[string]bool{"GROUPS": true, "ROLES": true}
 
 // userRoleSubheaderPrefixes are the literal tokens renderRoles always emits
 // first for a role sub-header, whose full line varies (a scope label after
 // GLOBAL/CLUSTER/PROJECT, or ": unavailable" when that scope's read
-// failed). A role ROW never collides with these — it renders four-space
+// failed). A role ROW never collides with these - it renders four-space
 // indented, not two.
 var userRoleSubheaderPrefixes = []string{"  GLOBAL", "  CLUSTER", "  PROJECT"}
 
 // styleUserText applies inspect user's bold spans to text, the plain
 // rendering renderUserText already produced: the USER header (always the
 // first line; its full text varies with " [system]"/" [disabled]"
-// qualifiers), the GROUPS/ROLES headers (exact), and each role sub-header —
+// qualifiers), the GROUPS/ROLES headers (exact), and each role sub-header -
 // bold, whole line. Sub-header prefix matching is scoped to the lines BELOW
 // the ROLES header: the GROUPS block shares the two-space indent and its
 // rows carry provider-owned display names, so a group named "GLOBAL-…"
@@ -649,7 +649,7 @@ func renderRoles(b *strings.Builder, r userResult, own map[string]bool) {
 	}
 }
 
-// scopeLabel renders "displayName (id)" when enriched, "id" otherwise — an
+// scopeLabel renders "displayName (id)" when enriched, "id" otherwise - an
 // id is never replaced by a display name, only accompanied by it.
 func scopeLabel(id, displayName string) string {
 	if displayName == "" {
@@ -659,7 +659,7 @@ func scopeLabel(id, displayName string) string {
 }
 
 // renderRoleRow prints one memberRow. The parenthetical names the holding
-// principal only when it is a GROUP's — a direct row's principal is
+// principal only when it is a GROUP's - a direct row's principal is
 // already the user's own and would otherwise state the obvious (or, for
 // the empty-principalIds fallback row, misleadingly show the user's own
 // id as if it were a separate holder).

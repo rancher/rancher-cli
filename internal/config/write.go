@@ -7,7 +7,7 @@ import (
 )
 
 // WriteRawConfig atomically writes already-validated config YAML bytes
-// verbatim to path (0600) — `config edit`'s write-back path. It writes the
+// verbatim to path (0600) - `config edit`'s write-back path. It writes the
 // user's edited buffer byte-for-byte rather than re-marshaling through a
 // parsed *Config (which Config.Write does): re-marshaling would silently
 // drop any field the parsed Config struct does not carry (the same
@@ -25,7 +25,7 @@ var hardenACLHook = hardenACL
 
 // HardenTempFileACL exposes hardenACL to other internal packages whose own
 // temp files hold config/credential content but which don't go through
-// atomicWriteFile — e.g. the config-edit scratch file (newTempCopy), which
+// atomicWriteFile - e.g. the config-edit scratch file (newTempCopy), which
 // sits open in the editor for the duration of an edit and deserves the same
 // owner-only DACL as atomicWriteFile's real writes.
 func HardenTempFileACL(path string) error {
@@ -49,7 +49,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	tmpPath := tmp.Name()
-	// closeAndRemove closes before removing — Windows can't remove an open
+	// closeAndRemove closes before removing - Windows can't remove an open
 	// file (no FILE_SHARE_DELETE by default), so Remove-before-Close
 	// silently leaks the temp file there.
 	closeAndRemove := func() {

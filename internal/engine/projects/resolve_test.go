@@ -151,7 +151,7 @@ func TestMatchOneOrError(t *testing.T) {
 	t.Run("ambiguity narrows candidates to the colliders only", func(t *testing.T) {
 		t.Parallel()
 		// Three items, two colliding on the display name: the error's
-		// candidates must exclude the non-collider — asserted at the helper
+		// candidates must exclude the non-collider - asserted at the helper
 		// so every caller inherits the narrowing.
 		threeIDs := []string{"a-1", "a-2", "a-3"}
 		threeDisplay := map[string]string{"a-1": "Shared", "a-2": "Shared", "a-3": "Solo"}
@@ -222,7 +222,7 @@ func TestResolveProjectForbiddenListAndGetSurfacesRBACWithHint(t *testing.T) {
 
 // TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound asserts the
 // review-round shape: when the fallback get says the id does not exist,
-// NOT_FOUND (exit 4) is the answer — a typo must not masquerade as an
+// NOT_FOUND (exit 4) is the answer - a typo must not masquerade as an
 // RBAC denial (exit 6), and scripts branch on that difference.
 func TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound(t *testing.T) {
 	t.Parallel()
@@ -241,7 +241,7 @@ func TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound(t *testing.T) {
 }
 
 // TestResolveProjectNonRBACListErrorPropagates verifies that only a
-// forbidden list triggers the get fallback — any other list failure
+// forbidden list triggers the get fallback - any other list failure
 // surfaces as-is.
 func TestResolveProjectNonRBACListErrorPropagates(t *testing.T) {
 	t.Parallel()
@@ -288,7 +288,7 @@ func TestResolveProjectAmbiguousDisplayName(t *testing.T) {
 
 func TestResolveProjectIDCollidesWithDifferentProjectsDisplayName(t *testing.T) {
 	t.Parallel()
-	// project A's id equals project B's display name — an id-wins
+	// project A's id equals project B's display name - an id-wins
 	// short-circuit would silently resolve to A; ResolveCluster's collision
 	// semantics say this is ambiguous instead.
 	client := &listClient{lists: map[string]*unstructured.UnstructuredList{
@@ -412,7 +412,7 @@ var _ engine.ClusterClient = (*listClient)(nil)
 // TestResolveProjectForbiddenListGetTransientErrorPropagates verifies the
 // fallback get's own error survives verbatim when it is neither NOT_FOUND
 // nor RBAC: a transient failure (timeout, 5xx) must keep its code and
-// Retryable flag — mislabeling it as the list's RBAC denial would stop a
+// Retryable flag - mislabeling it as the list's RBAC denial would stop a
 // caller from retrying.
 func TestResolveProjectForbiddenListGetTransientErrorPropagates(t *testing.T) {
 	t.Parallel()
@@ -426,5 +426,5 @@ func TestResolveProjectForbiddenListGetTransientErrorPropagates(t *testing.T) {
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeGeneric, cerr.Code, "the get's own code survives")
-	assert.True(t, cerr.Retryable, "retryability survives — callers branch on it")
+	assert.True(t, cerr.Retryable, "retryability survives - callers branch on it")
 }

@@ -200,7 +200,7 @@ func TestUsageProjectUnknownProjectErrors(t *testing.T) {
 
 // TestUsageProjectEmptyMembersReturnsEmptyAggregate asserts the empty-project
 // consistency decision (get's behavior wins): an empty member set is a valid
-// empty result, not an error — a typo'd project name already fails loudly at
+// empty result, not an error - a typo'd project name already fails loudly at
 // ResolveProject with NOT_FOUND, so an existing-but-empty project legitimately
 // has nothing, exactly like `get pods --project empty` returns zero rows.
 func TestUsageProjectEmptyMembersReturnsEmptyAggregate(t *testing.T) {
@@ -419,7 +419,7 @@ func podOnNode(ns, name, nodeName, cpuReq, memReq, cpuLim, memLim string) *unstr
 	return p
 }
 
-// --node must narrow the default (namespace) grouping — never a silent no-op.
+// --node must narrow the default (namespace) grouping - never a silent no-op.
 func TestUsageNodeFilterDefaultGrouping(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")

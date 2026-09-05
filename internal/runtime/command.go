@@ -19,7 +19,7 @@ const (
 // CapabilityTier is the enum of gated capability tiers a command or kind may
 // require. A future tier is added here, never as a second boolean. The enum
 // is an extension POINT, not a claim of shared machinery: each tier brings
-// its own decide function, outcome, and pipeline branch — the type exists so
+// its own decide function, outcome, and pipeline branch - the type exists so
 // that addition is type-checked.
 type CapabilityTier string
 
@@ -30,7 +30,7 @@ const (
 	CapabilityPrime CapabilityTier = "prime"
 	// CapabilityExtDiscovery: the command requires a server-side ext.cattle.io
 	// workflow that older servers do not carry at all (no Feature flag gates
-	// it — the resource is simply absent). Its detector reads the
+	// it - the resource is simply absent). Its detector reads the
 	// ext.cattle.io/v1 API discovery document for the named resource (see
 	// CapabilityUnsupported).
 	CapabilityExtDiscovery CapabilityTier = "extDiscovery"
@@ -92,12 +92,12 @@ type ArgSpec struct {
 // OutputShape is a command's declared success-result shape: the closed-world
 // contract every registered command commits to for its default-format
 // rendering. ShapeUnspecified is the zero value and is never valid on a
-// registered descriptor — an omitted field does not silently become
+// registered descriptor - an omitted field does not silently become
 // Tabular; Registry.Validate rejects it at wiring time.
 type OutputShape int
 
 const (
-	ShapeUnspecified OutputShape = iota // zero value — invalid, never valid on a registered descriptor
+	ShapeUnspecified OutputShape = iota // zero value - invalid, never valid on a registered descriptor
 	ShapeTabular                        // Data implements output.Tabular
 	ShapeText                           // Result.Text is set (Data may still accompany it for -o json)
 	ShapeBytes                          // Result.RawBytes (kubeconfig, completion)
@@ -120,7 +120,7 @@ func (s OutputShape) String() string {
 	}
 }
 
-// Descriptor is a command's self-description (no contract/stability — those come
+// Descriptor is a command's self-description (no contract/stability - those come
 // from the resolver at schema-generation time). Args are positional; Flags are
 // named `--flags`. Both feed the schema manifest, and Flags are wired into the
 // urfave command by the surface adapter.
@@ -152,7 +152,7 @@ type Descriptor struct {
 	// SuccessExitCodes declares every exit status a SUCCESSFUL result may
 	// carry. Empty means {0}. When declared it must contain 0 exactly once;
 	// additional values must be positive, unique, and disjoint from the
-	// error exits in clierr.CodeExits() — Registry.Validate enforces the
+	// error exits in clierr.CodeExits() - Registry.Validate enforces the
 	// declaration and finishResult rejects an undeclared returned status.
 	SuccessExitCodes []int
 	// OutputPolicy restricts which -o/--output formats this command accepts
@@ -166,7 +166,7 @@ type Descriptor struct {
 	// shown exactly once (DeliveryOnceOnly; the zero value is ordinary).
 	// Registry.Validate permits it only when CommandType is Mutating. Run
 	// selects BUFFERED rendering for it and requires a non-nil
-	// Result.CommittedContext after a successful executor return — its
+	// Result.CommittedContext after a successful executor return - its
 	// absence is a command-bug error, never a silent skip. OutputPolicy is
 	// independent: a DeliveryOnceOnly command may still accept every
 	// format (create kubeconfig's RawBytes payload is format-independent).
@@ -199,7 +199,7 @@ type CommittedContext struct {
 	// (empty for commands with no secret-name concept, e.g. create token).
 	SecretName string
 	// Recovery is the non-mutating action a caller should take after a
-	// post-commit failure — never a suggestion to retry the mutation.
+	// post-commit failure - never a suggestion to retry the mutation.
 	Recovery string
 }
 
@@ -208,17 +208,17 @@ type Input interface {
 	String(name string) string
 	Bool(name string) bool
 	// Strings returns every occurrence of a stringSlice flag, ordered, one
-	// entry per occurrence — never comma-split (MC-6a).
+	// entry per occurrence - never comma-split (MC-6a).
 	Strings(name string) []string
 	// IsSet reports whether the named flag was explicitly provided on the
-	// command line — the tri-state seam for boolean flags (MC-5a: an
+	// command line - the tri-state seam for boolean flags (MC-5a: an
 	// omitted bool is distinguishable from an explicit false).
 	IsSet(name string) bool
 	Args() []string
 }
 
 // Result is a command's success payload, rendered into the output envelope.
-// Raw=true tells the pipeline to emit Data as bare JSON with NO envelope — used
+// Raw=true tells the pipeline to emit Data as bare JSON with NO envelope - used
 // only by the `auth get-token` exec-credential plugin, whose stdout kubectl parses as a
 // single ExecCredential object.
 type Result struct {
@@ -226,22 +226,22 @@ type Result struct {
 	Data any
 	// Warnings render to stderr as "# warning: <w>" lines under format ""/
 	// "table" for BOTH paths renderResult supports (the Text branch and the
-	// envelope/Data branch), and also under name/template — their stdout is
+	// envelope/Data branch), and also under name/template - their stdout is
 	// raw (no envelope), so the stderr mirror is the only delivery path.
 	// json/yaml carry Warnings inside the envelope; no stderr write, no
 	// double print.
 	Warnings []string
 	// OnceOnlyNotice is the advisory sentence for the single value a
 	// DeliveryOnceOnly command's Text already shows inline, marked with
-	// ShownOnceSuffix — e.g. "this client secret is shown exactly once —
-	// store it now" beside a Text line ending "...   (shown once — store
+	// ShownOnceSuffix - e.g. "this client secret is shown exactly once -
+	// store it now" beside a Text line ending "...   (shown once - store
 	// it now)". The two are related, not identical: build both together
 	// with MutationText's companion OnceOnlyLine so a command cannot set
 	// one without the other. The pipeline prepends OnceOnlyNotice to
-	// Warnings ahead of any other command-declared warning — before a
+	// Warnings ahead of any other command-declared warning - before a
 	// mutating command's Plan-time Effect.Warnings are themselves
 	// prepended (runMutating), so OnceOnlyNotice does not land at
-	// Warnings[0] once merged — and, for a Text-render format, excludes
+	// Warnings[0] once merged - and, for a Text-render format, excludes
 	// that exact string from the stderr mirror by value (not position, for
 	// the same reason) so the operator sees the note once, not twice.
 	// Every other Warnings entry, including ones from Plan time, still
@@ -253,7 +253,7 @@ type Result struct {
 	OnceOnlyNotice string
 	Raw            bool
 	// RawBytes, when non-nil, is written to stdout verbatim with NO envelope
-	// and no encoding — used by `kubeconfig`, whose stdout must be a bare
+	// and no encoding - used by `kubeconfig`, whose stdout must be a bare
 	// YAML document. Mutually exclusive with Raw; renderResult rejects a
 	// Result that sets both.
 	RawBytes []byte
@@ -264,14 +264,14 @@ type Result struct {
 	// sets both.
 	Text string
 	// StyledText, when set, renders Text through the invocation's active
-	// output Style instead of writing Text verbatim — the table-family
+	// output Style instead of writing Text verbatim - the table-family
 	// render path (renderResult's Text branch) calls it with the resolved
 	// Style and writes its return value; every other format ignores it and
 	// renders Data as usual. StyledText(style.Style{}) must return Text
 	// unchanged, and style.Strip(StyledText(s)) must equal Text
 	// byte-for-byte for any s: styling may only add ANSI escapes around
 	// Text's own bytes, never change them. checkResultShape rejects a
-	// non-nil StyledText paired with an empty Text — the pairing is a
+	// non-nil StyledText paired with an empty Text - the pairing is a
 	// command bug, not a valid combination. A func field is unmarshalable;
 	// tagged json:"-" so marshaling a Result directly (as some tests do,
 	// independent of the real envelope encoding, which only ever encodes
@@ -310,7 +310,7 @@ type ReadCommand interface {
 }
 
 // ExecuteFunc performs the mutation a Plan previewed. It closes over the
-// planned object, resourceVersion, and client — executing anything other
+// planned object, resourceVersion, and client - executing anything other
 // than what was planned is unrepresentable.
 type ExecuteFunc func(ctx context.Context) (Result, error)
 

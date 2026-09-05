@@ -10,7 +10,7 @@ func TestEachConditionStopsWhenCallbackReturnsFalse(t *testing.T) {
 	t.Parallel()
 	obj := map[string]any{"status": map[string]any{"conditions": []any{
 		map[string]any{"type": "A", "status": "True"},
-		"malformed entry — skipped, not counted",
+		"malformed entry - skipped, not counted",
 		map[string]any{"type": "B", "status": "False", "reason": "r", "message": "m"},
 		map[string]any{"type": "C", "status": "True"},
 	}}}

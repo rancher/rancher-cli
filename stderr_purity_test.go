@@ -11,7 +11,7 @@ import (
 // stderrAllowlist names every production source file allowed to reference
 // os.Stderr directly. Every other pipeline-owned diagnostic goes through
 // runtime.IO.Err (wired to the invocation's real stderr), so every drain
-// feeds exactly one render and decides what an operator sees from there —
+// feeds exactly one render and decides what an operator sees from there -
 // a stray os.Stderr write bypasses that decision entirely, e.g. printing
 // under -o json when the machine contract promises stderr is the error
 // envelope or empty.
@@ -21,11 +21,11 @@ import (
 //   - main.go: a startup failure (before any pipeline, or the embedded
 //     skill tree, exists to route through).
 //   - internal/commands/config_edit.go: the external editor subprocess is
-//     deliberately attached to the process's own stderr — it is not a
+//     deliberately attached to the process's own stderr - it is not a
 //     rendered diagnostic.
 //   - credhelper/serve.go and cmd/rancher-credential-vault/main.go: each is
 //     its OWN process, invoked by kubectl (or a credential helper caller)
-//     as a subprocess — no envelope exists there to carry anything.
+//     as a subprocess - no envelope exists there to carry anything.
 //   - surface/cli/completion_debug.go: the opt-in completion trace runs in
 //     the shell's completion child and must observe phases from process
 //     start (config load included), before any runtime.IO exists; the
@@ -71,10 +71,10 @@ func TestNoStrayStderrWriterOutsideAllowlist(t *testing.T) {
 	}
 
 	for path := range seen {
-		assert.True(t, stderrAllowlist[path], "%s references os.Stderr directly — either route the diagnostic through runtime.IO.Err/NoticeSource, or add it to stderrAllowlist with a reviewed reason", path)
+		assert.True(t, stderrAllowlist[path], "%s references os.Stderr directly - either route the diagnostic through runtime.IO.Err/NoticeSource, or add it to stderrAllowlist with a reviewed reason", path)
 	}
 	for path := range stderrAllowlist {
-		assert.True(t, seen[path], "%s is allowlisted but no longer references os.Stderr — prune the stale entry", path)
+		assert.True(t, seen[path], "%s is allowlisted but no longer references os.Stderr - prune the stale entry", path)
 	}
 }
 

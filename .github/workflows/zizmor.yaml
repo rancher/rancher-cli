@@ -23,7 +23,7 @@ jobs:
       - uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
         with:
           # Code-scanning SARIF upload needs GitHub Advanced Security, which
-          # internal-visibility repos don't have — findings gate the job via
+          # internal-visibility repos don't have - findings gate the job via
           # exit code and surface as PR annotations instead. When the repo
           # goes public, flip advanced-security to true, drop annotations,
           # and restore the job-level `security-events: write` permission.

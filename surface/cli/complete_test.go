@@ -106,7 +106,7 @@ func TestFetchClusters401YieldsEmpty(t *testing.T) {
 	assert.Empty(t, got)
 }
 
-// AC-24 / finding 11: two-request path — cluster display-name resolution +
+// AC-24 / finding 11: two-request path - cluster display-name resolution +
 // downstream listing. Finding 3: retargeted at resolveDisplayNameToClusterID
 // (the real production path in dispatch.go); resolveClusterDisplayName was dead
 // code and has been deleted.
@@ -227,7 +227,7 @@ func TestProjectCandidatesDeduplicates(t *testing.T) {
 		// Second item with the same display name: displayFreq["staging"]==2 → display dropped,
 		// but the two distinct IDs must each appear exactly once (IDs are unique here).
 		{"metadata": map[string]any{"name": "p-bbb"}, "spec": map[string]any{"displayName": "staging"}},
-		// Third item: unique display name — should appear once alongside its ID.
+		// Third item: unique display name - should appear once alongside its ID.
 		{"metadata": map[string]any{"name": "p-ccc"}, "spec": map[string]any{"displayName": "prod"}},
 	}
 	got := projectCandidates(items)
@@ -279,7 +279,7 @@ func TestNoNetworkOnStaticSite(t *testing.T) {
 // TestSchemaVerbFlagValueCompletionSurfaces drives `schema --verb <TAB>`
 // through the real Adapt-installed ShellComplete callback (BuildRoot +
 // root.Run, v2 protocol): the flag-value site must surface the descriptor's
-// --verb enum via the layer-1 enumCandidates path — offline, sorted, exactly
+// --verb enum via the layer-1 enumCandidates path - offline, sorted, exactly
 // the enum set. Hermetic: no config file, network gate off, file credential
 // store; a network or keyring touch would fail the empty-config run.
 func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
@@ -305,7 +305,7 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
 
 	// The expected set is the descriptor's own enum (sorted, as
-	// resolveStaticEnum emits) — no third hand-copied verb list; the enum's
+	// resolveStaticEnum emits) - no third hand-copied verb list; the enum's
 	// content is asserted against the registry by TestSchemaVerbEnumMatchesCommandVerbs.
 	var want []string
 	for _, f := range runtime.NewSchemaCommand(nil, "", "", nil).Describe().Flags {
@@ -426,7 +426,7 @@ func TestGVRPathNamedGroup(t *testing.T) {
 // dispatch layer; no network is involved. Multi-token selector candidates
 // ("get pods") are dropped at this layer by the AC-21 completion charset
 // (sanitizeCandidates rejects spaces), so the shell sees the single-token
-// subset — the full candidate set is asserted at the runtime layer by
+// subset - the full candidate set is asserted at the runtime layer by
 // TestSchemaPositionalCompletionShape.
 func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")

@@ -16,7 +16,7 @@ import (
 
 // fakeClient is a minimal engine.ClusterClient for the extres commands: it
 // records every Create call (dry-run and real) and, on a real create, can
-// assign a server-generated name and merge an injected status — standing in
+// assign a server-generated name and merge an injected status - standing in
 // for the ext Token/Kubeconfig store's create-only response shape.
 type fakeClient struct {
 	dryRuns   []bool
@@ -148,7 +148,7 @@ func TestCreateTokenIsDestructive(t *testing.T) {
 	eff, exec, err := planToken(t, cmd, in{s: map[string]string{}})
 	require.NoError(t, err)
 	require.NotNil(t, exec)
-	assert.True(t, eff.Destructive, "the token kind is Sensitive — create must gate on --yes")
+	assert.True(t, eff.Destructive, "the token kind is Sensitive - create must gate on --yes")
 }
 
 // TestCreateTokenDryRunEffectDoesNotLeak asserts the shown-once discipline at
@@ -195,7 +195,7 @@ func TestCreateTokenExecMapsBearerTokenAndWarns(t *testing.T) {
 	// table/wide.
 	assert.Empty(t, res.Warnings)
 	assert.Contains(t, res.OnceOnlyNotice, "shown exactly once")
-	assert.Equal(t, "token/token-xyz created\n  bearer token: ext/token-xyz:secretvalue   (shown once — store it now)\n  expires: 2026-08-01T00:00:00Z\n", res.Text)
+	assert.Equal(t, "token/token-xyz created\n  bearer token: ext/token-xyz:secretvalue   (shown once - store it now)\n  expires: 2026-08-01T00:00:00Z\n", res.Text)
 
 	require.Len(t, client.dryRuns, 2, "one dry-run from Plan, one real create from exec")
 	assert.False(t, client.dryRuns[1])
@@ -222,7 +222,7 @@ func TestCreateTokenDescriptorDeclaresOnceOnlySeam(t *testing.T) {
 // TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess asserts 3e's
 // missing-value contract: an empty status.bearerToken after a committed
 // Create is a non-retryable error naming the token and the delete-then-
-// recreate recovery — never a bare generic failure that could read as
+// recreate recovery - never a bare generic failure that could read as
 // retryable (retrying would create a second token).
 func TestCreateTokenExecEmptyBearerTokenIsCommittedPartialSuccess(t *testing.T) {
 	t.Parallel()

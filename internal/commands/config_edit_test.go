@@ -55,7 +55,7 @@ func TestConfigEditNoTTYIsValidationNamingPath(t *testing.T) {
 
 // TestConfigEditEditorNonZeroExitAbortsRealFileUntouched drives the REAL
 // (unfaked) execEditor default via /usr/bin/false, proving the exec.Command
-// wiring itself — not just the injectable seam — treats a non-zero exit as
+// wiring itself - not just the injectable seam - treats a non-zero exit as
 // abort.
 func TestConfigEditEditorNonZeroExitAbortsRealFileUntouched(t *testing.T) {
 	t.Setenv("VISUAL", "")
@@ -73,7 +73,7 @@ func TestConfigEditEditorNonZeroExitAbortsRealFileUntouched(t *testing.T) {
 	assert.Equal(t, before, after, "real config file must be untouched after an editor abort")
 
 	leftover, _ := filepath.Glob(filepath.Join(dir, ".rancher-config-edit-*"))
-	assert.Empty(t, leftover, "no meaningful edit exists yet on a plain editor abort — the temp buffer is cleaned up")
+	assert.Empty(t, leftover, "no meaningful edit exists yet on a plain editor abort - the temp buffer is cleaned up")
 }
 
 func TestConfigEditLenientParseAcceptsUnknownFieldAndPreservesItOnWrite(t *testing.T) {
@@ -81,7 +81,7 @@ func TestConfigEditLenientParseAcceptsUnknownFieldAndPreservesItOnWrite(t *testi
 	dir := t.TempDir()
 	withUnknownField := "readOnly: true\nfutureField: hello\n"
 
-	// Prove Load itself accepts it — the same leniency edit must mirror.
+	// Prove Load itself accepts it - the same leniency edit must mirror.
 	tmp := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(tmp, []byte(withUnknownField), 0600))
 	_, loadErr := config.Load(tmp)
@@ -190,7 +190,7 @@ func TestConfigEditFinalWriteFailurePreservesBufferOnSymlinkedConfig(t *testing.
 	require.NoError(t, err)
 	assert.YAMLEq(t, validConfigYAML, string(got))
 
-	// The symlink itself, and its target, must be untouched — atomicWriteFile
+	// The symlink itself, and its target, must be untouched - atomicWriteFile
 	// refuses BEFORE any rename.
 	targetAfter, err := os.ReadFile(target)
 	require.NoError(t, err)
@@ -321,7 +321,7 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 
 // TestConfigEditCanceledLockWaitPassesThrough asserts the re-review P2 finding:
 // a cancellation hitting the write-lock wait must surface as the caller's
-// own context.Canceled — never dressed as "writing config failed" — while
+// own context.Canceled - never dressed as "writing config failed" - while
 // the edits stay preserved in the temp file.
 func TestConfigEditCanceledLockWaitPassesThrough(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
@@ -374,8 +374,8 @@ func TestConfigEditReadFailureNamedAsReadFailure(t *testing.T) {
 }
 
 // TestConfigEditLockTimeoutNamesPreservedEdits asserts the fourth-review P2:
-// when lock acquisition itself times out — before the write-back closure
-// ever runs — the error must still tell the user their edits are preserved
+// when lock acquisition itself times out - before the write-back closure
+// ever runs - the error must still tell the user their edits are preserved
 // at the temp path; that branch is the one guaranteed-safe case and was the
 // only one not saying so.
 // No t.Parallel(): package-level lock hook and timeout seam.

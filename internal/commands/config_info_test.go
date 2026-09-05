@@ -39,9 +39,9 @@ func assertCompletion(t *testing.T, res runtime.Result) map[string]any {
 	require.True(t, ok, "completion must be a nested map[string]any")
 
 	// Regression guard against two real prior shapes:
-	//   flat-dotted (completion.network etc.) — shipped briefly on main before
+	//   flat-dotted (completion.network etc.) - shipped briefly on main before
 	//     the nested shape was settled;
-	//   camelCase (completionNetwork etc.) — existed as a working-tree
+	//   camelCase (completionNetwork etc.) - existed as a working-tree
 	//     changeset on 2026-08-10, dropped before merge.
 	// Both forms were concrete code, not speculation.
 	for _, dead := range []string{
@@ -60,7 +60,7 @@ func assertCompletion(t *testing.T, res runtime.Result) map[string]any {
 
 // TestStyleConfigInfoTextStripInvariant asserts config status's bold span: the
 // "completion:" section label is bold, whole line; every flat "key: value"
-// line stays plain — plus the strip invariant and the inactive-style
+// line stays plain - plus the strip invariant and the inactive-style
 // identity.
 func TestStyleConfigInfoTextStripInvariant(t *testing.T) {
 	t.Parallel()
@@ -220,7 +220,7 @@ func TestConfigInfoEffectiveStoreSources(t *testing.T) {
 		assert.Equal(t, false, data["exists"])
 		assert.Equal(t, config.FilePath(dir), data["path"])
 		_, ok := data["credentialStoreDefault"]
-		assert.False(t, ok, "once pinned, the platform default is moot — the pin is the actual answer")
+		assert.False(t, ok, "once pinned, the platform default is moot - the pin is the actual answer")
 	})
 
 	t.Run("default auto with no pin yet names the platform default, read-only", func(t *testing.T) {
@@ -230,7 +230,7 @@ func TestConfigInfoEffectiveStoreSources(t *testing.T) {
 		data := execConfigInfo(t, dir)
 		assert.Equal(t, "auto", data["credentialStore"])
 		_, pinned := data["pin"]
-		assert.False(t, pinned, "no pin exists yet — reporting one would imply a probe ran")
+		assert.False(t, pinned, "no pin exists yet - reporting one would imply a probe ran")
 		assert.Equal(t, config.PlatformKeychainLabel(), data["credentialStoreDefault"])
 		_, err := os.Stat(config.PinPath(dir))
 		assert.True(t, os.IsNotExist(err), "config status must never write the pin itself")

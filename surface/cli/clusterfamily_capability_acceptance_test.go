@@ -18,7 +18,7 @@ import (
 
 // This file is the cluster-family acceptance coverage for the capability
 // gate on a STATIC Capability requirement authored directly on a bespoke
-// command's Descriptor, with no backing kind row underneath — the case the
+// command's Descriptor, with no backing kind row underneath - the case the
 // axis was built for but the oidcclient acceptance coverage (a kind-row
 // Capability) never exercises. It asserts the same four detector outcomes live
 // through the pipeline on `cluster set-autoscaling`.
@@ -61,7 +61,7 @@ func clusterFamilyAcceptanceServer(t *testing.T, rancherVersion, featureBody str
 }
 
 // clusterAutoscalingFeatureObj builds a minimal, wire-realistic Feature JSON
-// body for "cluster-autoscaling" — same shape oidcFeatureObj builds for
+// body for "cluster-autoscaling" - same shape oidcFeatureObj builds for
 // "oidc-provider".
 func clusterAutoscalingFeatureObj(prime, defaultVal bool) string {
 	return fmt.Sprintf(`{"kind":"Feature","apiVersion":"management.cattle.io/v3",
@@ -73,7 +73,7 @@ func clusterAutoscalingFeatureObj(prime, defaultVal bool) string {
 // outcomes live through runtime.Run on a bespoke command carrying a static
 // Capability literal (cluster set-autoscaling): proceed and unknown both
 // reach the target GET, disabled and PRIME_REQUIRED both refuse before any
-// target request — the same shape TestOIDCClientCapabilityFourOutcomesLive
+// target request - the same shape TestOIDCClientCapabilityFourOutcomesLive
 // asserts for a kind-row Capability.
 func TestClusterFamilyCapabilityFourOutcomesLive(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -119,7 +119,7 @@ func TestClusterFamilyCapabilityFourOutcomesLive(t *testing.T) {
 	t.Run("prime required: community edition, prime-classified feature enabled only by its status.default", func(t *testing.T) {
 		// The live-captured community shape: a community server's cluster-autoscaling
 		// Feature reads enabled=true purely from status.default (no
-		// operator ever set spec.value) — Rancher's own Feature.Enabled()
+		// operator ever set spec.value) - Rancher's own Feature.Enabled()
 		// still disables it server-side on a non-Prime build, so this must
 		// resolve PRIME_REQUIRED, not proceed.
 		srv, hits := clusterFamilyAcceptanceServer(t,
@@ -152,8 +152,8 @@ func TestClusterFamilyCapabilityFourOutcomesLive(t *testing.T) {
 }
 
 // TestClusterScaleCarriesNoCapability asserts the family's proof-of-both-cases
-// requirement: `cluster scale` — the community verb sitting beside the four
-// Prime-gated ones in the SAME group — carries no Capability requirement at
+// requirement: `cluster scale` - the community verb sitting beside the four
+// Prime-gated ones in the SAME group - carries no Capability requirement at
 // all, so it never consults the detector regardless of server edition.
 func TestClusterScaleCarriesNoCapability(t *testing.T) {
 	d := provisioning.NewScale(nil).Describe()

@@ -153,7 +153,7 @@ func TestPatchSensitiveKindIsDestructive(t *testing.T) {
 	assert.True(t, eff.Destructive, "patching a sensitive kind must be destructive")
 
 	// Round-2: redaction is now gated on Sensitive (same flag as the --yes
-	// gate above), not the literal "secret" kind — but a Sensitive kind
+	// gate above), not the literal "secret" kind - but a Sensitive kind
 	// whose payload isn't under /data or /stringData must see no behavior
 	// change: the redaction condition fires, the path-shape check just never
 	// matches, so the real values still reach the Effect.
@@ -226,7 +226,7 @@ func TestValueCarriesEscapesSlashKey(t *testing.T) {
 // TestPatchRedactsUserPasswordFromResult asserts the patch-response redaction
 // seam: a User's password reaches the server in the patch (the fake client
 // echoes back exactly what was submitted, as a real server does), but the
-// committed Result never carries it — mirroring create's redaction of the
+// committed Result never carries it - mirroring create's redaction of the
 // same field.
 func TestPatchRedactsUserPasswordFromResult(t *testing.T) {
 	t.Parallel()
@@ -366,8 +366,8 @@ func TestPatchNonNotFoundPassesThrough(t *testing.T) {
 }
 
 // TestPatchClusterResolvesDisplayName is the round-2 repro for finding 3:
-// patch must resolve a cluster's positional name the same way get does —
-// id hit, display hit, ambiguous, and miss — so the two commands agree on
+// patch must resolve a cluster's positional name the same way get does -
+// id hit, display hit, ambiguous, and miss - so the two commands agree on
 // what a name means for the managementcluster kind.
 func TestPatchClusterResolvesDisplayName(t *testing.T) {
 	t.Parallel()
@@ -508,7 +508,7 @@ func TestPatchInvalidOpsRejected(t *testing.T) {
 
 // TestPatchExecPhaseNotFoundCurated asserts the post-confirmation TOCTOU path:
 // the object is deleted between the dry-run and the real update; the dynamic
-// client curates the NOT_FOUND (Fix 3 — client-level curation covers this,
+// client curates the NOT_FOUND (Fix 3 - client-level curation covers this,
 // dissolving the earlier patch.go exec-wrapper approach). The fake simulates
 // the pre-curated shape the real client now produces.
 func TestPatchExecPhaseNotFoundCurated(t *testing.T) {

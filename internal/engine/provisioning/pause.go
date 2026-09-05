@@ -18,7 +18,7 @@ type pauseAutoscalingCmd struct {
 }
 
 // NewPauseAutoscaling builds `cluster pause-autoscaling <cluster>`
-// (mutating, prime): sets the pause annotation. No --pool flag — pause is
+// (mutating, prime): sets the pause annotation. No --pool flag - pause is
 // cluster-wide only, since no per-pool pause exists server-side.
 func NewPauseAutoscaling(clients engine.ClusterClientFactory) runtime.Command {
 	return &pauseAutoscalingCmd{clients: clients}
@@ -29,11 +29,11 @@ func (pauseAutoscalingCmd) Describe() runtime.Descriptor {
 		Name:  "cluster pause-autoscaling",
 		Usage: "Pause the cluster autoscaler cluster-wide",
 		Desc: "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning " +
-			"Cluster. Pause is cluster-wide only — no per-pool pause exists server-side, so this verb " +
+			"Cluster. Pause is cluster-wide only - no per-pool pause exists server-side, so this verb " +
 			"takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving " +
 			"every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. " +
 			"Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is " +
-			"Destructive like every other mutation on the same object — dry-run/apply --yes.",
+			"Destructive like every other mutation on the same object - dry-run/apply --yes.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
 		Flags:       []runtime.ArgSpec{clusterNamespaceFlag},
@@ -69,7 +69,7 @@ func (resumeAutoscalingCmd) Describe() runtime.Descriptor {
 		Desc: "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning " +
 			"Cluster, restoring autoscaler management of every pool that carries min/max config. " +
 			"Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is " +
-			"Destructive like every other mutation on the same object — dry-run/apply --yes.",
+			"Destructive like every other mutation on the same object - dry-run/apply --yes.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
 		Flags:       []runtime.ArgSpec{clusterNamespaceFlag},
@@ -90,7 +90,7 @@ var _ runtime.MutatingCommand = (*resumeAutoscalingCmd)(nil)
 
 // planAutoscalerPause implements both pause and resume: set or clear the
 // pause annotation, converging (no-op success) when the cluster is already
-// in the target state — the same retry contract clear-autoscaling gives an
+// in the target state - the same retry contract clear-autoscaling gives an
 // agent that finds nothing left to do.
 func planAutoscalerPause(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input, pause bool) (safety.Effect, runtime.ExecuteFunc, error) {
 	client, obj, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in)

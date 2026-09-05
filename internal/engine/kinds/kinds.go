@@ -27,7 +27,7 @@ type Column struct {
 	Header string
 	Path   []string // unstructured.NestedString path; empty = metadata.name
 	// AltPaths are fallback NestedString paths tried in order when Path
-	// (and earlier alternates) yield no non-empty string — the first
+	// (and earlier alternates) yield no non-empty string - the first
 	// non-empty value renders. Lets one column project a field that lives
 	// under different keys per object (crtb/prtb MEMBER: userName |
 	// groupPrincipalName | userPrincipalName).
@@ -38,7 +38,7 @@ type Column struct {
 	// (string-typed) columns keep rendering absent fields blank.
 	Bool bool
 	// Default, when non-empty, renders when Path (and AltPaths) yield
-	// nothing — for fields whose ABSENCE means a non-blank value, e.g.
+	// nothing - for fields whose ABSENCE means a non-blank value, e.g.
 	// User.enabled is an omitempty *bool whose nil means true. Mutually
 	// exclusive with Bool (both are absent-fallbacks; Bool is the
 	// false-when-absent special case).
@@ -46,8 +46,8 @@ type Column struct {
 	// Join marks Path as naming a string-ARRAY field: every element
 	// renders comma-joined in server order (e.g. User.principalIds).
 	// Deliberately not "first element": Rancher's server code treats
-	// principal order as meaningless — every consumer scans the whole
-	// slice — so projecting one index would assert an ordering contract
+	// principal order as meaningless - every consumer scans the whole
+	// slice - so projecting one index would assert an ordering contract
 	// the server never made. Mutually exclusive with Bool and Condition;
 	// AltPaths are not consulted.
 	Join bool
@@ -55,8 +55,8 @@ type Column struct {
 	// entry of this type instead of Path/AltPaths (which are ignored):
 	// status True renders the type name ("Ready"), False renders
 	// "Not<Type>" ("NotReady"), anything else renders verbatim
-	// ("Unknown") — the kubectl node-STATUS idiom. An absent condition —
-	// or a degenerate entry with no status — renders blank: nothing is
+	// ("Unknown") - the kubectl node-STATUS idiom. An absent condition -
+	// or a degenerate entry with no status - renders blank: nothing is
 	// fabricated. Exists because Rancher's Norman-computed status.state
 	// never appears on raw CRD reads.
 	//
@@ -66,14 +66,14 @@ type Column struct {
 	Condition string
 	// Wide marks the column secondary: -o table omits it, -o wide includes
 	// it (after every non-Wide column, in declaration order). Orthogonal to
-	// every projection mode above — any column, whatever its axis, may
+	// every projection mode above - any column, whatever its axis, may
 	// carry Wide.
 	Wide bool
 	// Count names the path to a map or slice field; the cell renders its
 	// length: absent → blank, present-but-empty → "0" (a real count, never
 	// fabricated). Covers configmap/secret DATA, serviceaccount SECRETS.
 	// Mutually exclusive with Path, AltPaths, Bool, Default, Join, and
-	// Condition — validateKinds enforces.
+	// Condition - validateKinds enforces.
 	Count []string
 }
 
@@ -83,17 +83,17 @@ type Column struct {
 type NamespacePolicy string
 
 const (
-	// NSNone: cluster-scoped resource — no namespace flag.
+	// NSNone: cluster-scoped resource - no namespace flag.
 	NSNone NamespacePolicy = "none"
 	// NSCluster: the namespace IS a cluster id (project,
-	// clusterroletemplatebinding) — --cluster flag, resolved via
+	// clusterroletemplatebinding) - --cluster flag, resolved via
 	// ResolveCluster, required for named ops; client is management.
 	NSCluster NamespacePolicy = "cluster"
 	// NSWorkspace: management-plane namespace with a default (fleet,
-	// provisioning, CAPI kinds — all default fleet-default) — --namespace
+	// provisioning, CAPI kinds - all default fleet-default) - --namespace
 	// flag with DefaultNamespace fallback, NO --cluster; client is management.
 	NSWorkspace NamespacePolicy = "workspace"
-	// NSPlain: ordinary namespace — --namespace flag, required for named
+	// NSPlain: ordinary namespace - --namespace flag, required for named
 	// ops; --cluster routes when Scope is Downstream. For the one Management
 	// NSPlain kind (projectroletemplatebinding) --namespace is a project id.
 	NSPlain NamespacePolicy = "plain"
@@ -106,22 +106,22 @@ type Kind struct {
 	GVR              schema.GroupVersionResource
 	Policy           NamespacePolicy // namespace semantics + flag generation
 	DefaultNamespace string          // NSWorkspace fallback ("" elsewhere)
-	K8sKind          string          // manifest `kind:` value ("Deployment") — consumed by parity branch 2 reverse lookup
+	K8sKind          string          // manifest `kind:` value ("Deployment") - consumed by parity branch 2 reverse lookup
 	Scope            Scope
 	Deletable        bool // false = no generic delete generated (clusters, nodes)
 	// NoDeleteReason states, for a Deletable: false row, why generic delete
-	// is absent — surfaced by `rancher schema` (SE-7). "" renders a plain
+	// is absent - surfaced by `rancher schema` (SE-7). "" renders a plain
 	// "not available". Meaningless on Deletable: true rows; leave empty.
 	NoDeleteReason string
 	Sensitive      bool // patch on this kind is Destructive (parity branch 2)
 	// WaitDefault is the --for expression bare --wait applies; "" = no default
-	// (bare --wait rejects) — an explicit --for is honored regardless. Set only
+	// (bare --wait rejects) - an explicit --for is honored regardless. Set only
 	// for kinds where the expression is grounded in a real, well-known
 	// status.state/status.conditions shape; when in doubt, leave empty.
 	WaitDefault string
 	// WaitFailsOnStalled marks the kind's controller as kstatus-conformant
 	// and gates BOTH consequences: the Stalled=True fail-fast (abort the
-	// wait even when the awaited condition reads satisfied — Fleet sets
+	// wait even when the awaited condition reads satisfied - Fleet sets
 	// Ready=True alongside Stalled=True on a failed GitRepo clone) AND the
 	// fresh-success advisory warning (freshSuccessWarning), AND the
 	// generation staleness gate (settled). Opt-in per row because not every
@@ -147,8 +147,8 @@ type Kind struct {
 	Binding     safety.Binding
 	Columns     []Column // extra table columns beyond NAME
 	// RedactPaths lists dot-path field paths (each as a []string key sequence)
-	// scrubbed from every serialized representation — list/get JSON/YAML output
-	// and patch diff From/To entries — because they carry live credentials. The
+	// scrubbed from every serialized representation - list/get JSON/YAML output
+	// and patch diff From/To entries - because they carry live credentials. The
 	// root-level token field on management.cattle.io/v3 Token is the canonical
 	// example. Scrubbing is removal in JSON/YAML output and "<redacted>" in diff
 	// entries (matching the existing sensitive-diff convention).
@@ -176,7 +176,7 @@ type Kind struct {
 // PrefixFilter marks objects whose string-array field at Path carries an
 // element with the given Prefix as system-managed. Matching is PER ELEMENT:
 // each element is string-asserted independently and a non-string element is
-// skipped, never fatal — matching Rancher's own transformer, which casts
+// skipped, never fatal - matching Rancher's own transformer, which casts
 // each principalIds element independently and continues past failed casts.
 type PrefixFilter struct {
 	Path   []string // string-array field, e.g. principalIds
@@ -189,7 +189,7 @@ type PrefixFilter struct {
 // for the alias-invariant check in validateKinds, by hintToken's fallback, and
 // by external callers that need a plain plural form without registering a kind
 // (e.g. get's Usage string). Identical semantics to the former resources.plural,
-// which is now removed — this is the canonical single copy.
+// which is now removed - this is the canonical single copy.
 func Plural(name string) string {
 	switch {
 	case strings.HasSuffix(name, "s"), strings.HasSuffix(name, "x"),
@@ -213,7 +213,7 @@ func isVowel(b byte) bool {
 
 // hintToken derives the CLI plural token for a kind's NOT_FOUND hint. The
 // table invariant (enforced by validateKinds) is that Aliases[0] is always
-// the plural of the hyphen-stripped name — "fleet-cluster" → "fleetclusters".
+// the plural of the hyphen-stripped name - "fleet-cluster" → "fleetclusters".
 // When no alias is registered, plural(hyphen-stripped Name) is the fallback.
 func hintToken(k Kind) string {
 	if len(k.Aliases) > 0 {
@@ -224,7 +224,7 @@ func hintToken(k Kind) string {
 
 // NotFoundCurated returns the curated NOT_FOUND error for a named-get miss:
 // "<kind> not found: <name>" with a hint naming the list command. The dynamic
-// client calls this after mapErr when ByGVR resolves the GVR to a kind row —
+// client calls this after mapErr when ByGVR resolves the GVR to a kind row -
 // that is the single seam, and it passes the --cluster value the failing
 // invocation itself was already scoped to. Exported so test helpers can
 // build the expected curated shape without duplicating the hint formula.
@@ -232,7 +232,7 @@ func hintToken(k Kind) string {
 // so the hint carries it; a Management-scoped kind's list command needs no
 // cluster and clusterID is ignored.
 //
-// Rule: an error that ALREADY CARRIES A HINT is already curated — the dynamic
+// Rule: an error that ALREADY CARRIES A HINT is already curated - the dynamic
 // client checks for an existing hint in curateNotFound and passes such errors
 // through untouched. Only hint-less NOT_FOUNDs (the raw apiserver passthrough)
 // get the "<kind> not found: <name>" treatment.
@@ -289,7 +289,7 @@ func ByGVR(gvr schema.GroupVersionResource) (Kind, bool) {
 
 // MachineConfigGroup is the GVR group shared by every rke-machine-config
 // kind row below (amazonec2config, azureconfig, digitaloceanconfig,
-// harvesterconfig, vmwarevsphereconfig) — the single source createcluster.go
+// harvesterconfig, vmwarevsphereconfig) - the single source createcluster.go
 // filters kinds.All() on to derive the --machine-config kind set.
 const MachineConfigGroup = "rke-machine-config.cattle.io"
 
@@ -361,7 +361,7 @@ var table = []Kind{
 		Completable: true,
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		// status.updatedReplicas/availableReplicas are omitempty ints: zero is
-		// ABSENT on the wire, so Default:"0" carries it — without it we'd
+		// ABSENT on the wire, so Default:"0" carries it - without it we'd
 		// render blank where kubectl shows 0 under the same header (the
 		// User.enabled Default:"true" pattern, applied to a numeric absence).
 		Columns: []Column{
@@ -507,7 +507,7 @@ var table = []Kind{
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
-		// K8sKind "Cluster" is shared with provisioningcluster/capicluster —
+		// K8sKind "Cluster" is shared with provisioningcluster/capicluster -
 		// branch 2's manifest reverse lookup disambiguates by apiVersion group.
 		Key: "fleetcluster", Name: "fleet-cluster", Aliases: []string{"fleetclusters", "fleet-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clusters"},
@@ -521,13 +521,13 @@ var table = []Kind{
 	{
 		// Setting is a flat CRD: value/default/customized/source live at the
 		// object root, not under spec/status. An effective-value VALUE column
-		// (value when set, else default) is a plain string AltPaths fallback —
+		// (value when set, else default) is a plain string AltPaths fallback -
 		// but some settings (cacerts and friends) carry credential-adjacent
 		// material in value/default, and support-bundle's settingsAllowlist
 		// (internal/engine/observe/bundle.go) deliberately withholds every
 		// setting outside a short named list. The Column axes have no
 		// per-object, name-keyed conditional (Path/AltPaths/Default/Join/Bool/
-		// Condition all project the same field(s) for every row) — expressing
+		// Condition all project the same field(s) for every row) - expressing
 		// "reveal for these names, withhold for the rest" needs a hook this
 		// package does not have, so VALUE stays unshipped rather than bending
 		// an axis. CUSTOMIZED and SOURCE carry no secret material (provenance
@@ -535,7 +535,7 @@ var table = []Kind{
 		Key: "setting", Name: "setting", Aliases: []string{"settings"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "settings"},
 		Policy: NSNone, K8sKind: "Setting", Scope: Management, Deletable: false, Sensitive: true,
-		NoDeleteReason: "server configuration — tune, never remove",
+		NoDeleteReason: "server configuration - tune, never remove",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			{Header: "CUSTOMIZED", Path: []string{"customized"}},
@@ -554,18 +554,18 @@ var table = []Kind{
 		Key: "feature", Name: "feature", Aliases: []string{"features"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"},
 		Policy: NSNone, K8sKind: "Feature", Scope: Management, Deletable: false, Sensitive: true,
-		NoDeleteReason: "server configuration — tune, never remove",
+		NoDeleteReason: "server configuration - tune, never remove",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			// VALUE is the merged effective value: spec.value (*bool,
-			// omitempty — absent means "follow default") falling through to
+			// omitempty - absent means "follow default") falling through to
 			// status.default when absent, via the typed leaf ladder's
 			// bool-typed AltPaths fallback.
 			{Header: "VALUE", Path: []string{"spec", "value"}, AltPaths: [][]string{{"status", "default"}}},
 			{Header: "DEFAULT", Path: []string{"status", "default"}},
 			{Header: "DYNAMIC", Path: []string{"status", "dynamic"}},
 			{Header: "LOCKED", Path: []string{"status", "lockedValue"}},
-			// PRIME-ONLY renders the wire's status.prime — the feature's
+			// PRIME-ONLY renders the wire's status.prime - the feature's
 			// classification, never server-edition detection (a
 			// prime-classified feature reads effective-false on BOTH
 			// community and Prime-with-it-disabled). No Bool: an older
@@ -581,7 +581,7 @@ var table = []Kind{
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		// The Norman v3 user store hides any user whose principalIds carry a
 		// system:// entry from every API response (user_store.go, "filter
-		// system users out of the api") — this row reads the management CRD
+		// system users out of the api") - this row reads the management CRD
 		// directly and would otherwise leak what the product hides.
 		// Deliberately NARROWER than engine.IsSystemPrincipal ("system:"):
 		// that predicate carries RBAC subject semantics; this one mirrors
@@ -589,20 +589,20 @@ var table = []Kind{
 		// intent, not drift.
 		SystemFilter: &PrefixFilter{Path: []string{"principalIds"}, Prefix: "system://", Label: "system account"},
 		// The v3 User type carries a root-level password field, write-only
-		// on the CLI's side but echoed back verbatim in a create response —
+		// on the CLI's side but echoed back verbatim in a create response -
 		// a server never returns it on a later read, only on the create
 		// that set it.
 		RedactPaths: [][]string{{"password"}},
 		// PRINCIPALS renders every principal raw, comma-joined in server
 		// order (local://m-x, system://local, okta_user://…): the auth
 		// provider and the system-account marker exactly as the server
-		// states them, with no derivation and no ordering assumption —
+		// states them, with no derivation and no ordering assumption -
 		// Rancher's own code treats principal order as meaningless (every
 		// consumer scans the whole slice). The id prefix carries no type
 		// signal at all: EnsureUser creates u-* ids for external-SSO users
 		// and system accounts alike, and locally-seeded users get m-* ids.
 		// ENABLED: v3 User.enabled is an omitempty *bool whose absence
-		// means enabled — Default carries that.
+		// means enabled - Default carries that.
 		Columns: []Column{
 			{Header: "DISPLAY", Path: []string{"displayName"}},
 			{Header: "USERNAME", Path: []string{"username"}},
@@ -649,7 +649,7 @@ var table = []Kind{
 	},
 	{
 		// The one Management + NSPlain kind: --namespace is a project id, not a
-		// cluster id — reflected in the generated flag help.
+		// cluster id - reflected in the generated flag help.
 		Key: "projectroletemplatebinding", Name: "projectroletemplatebinding", Aliases: []string{"projectroletemplatebindings", "prtb"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projectroletemplatebindings"},
 		Policy: NSPlain, K8sKind: "ProjectRoleTemplateBinding", Scope: Management, Deletable: true, Sensitive: true,
@@ -664,16 +664,16 @@ var table = []Kind{
 	},
 	{
 		// OIDCClient (management.cattle.io/v3, cluster-scoped) is the server
-		// side of Rancher's embedded OIDC provider (feature "oidc-provider") —
+		// side of Rancher's embedded OIDC provider (feature "oidc-provider") -
 		// the first kind row to carry a Capability requirement. Sensitive: true escalates
 		// generic patch to --yes: patch can set the same lifecycle annotations
 		// (create/regenerate/remove a client secret) the curated oidc-client
-		// verbs gate behind confirmation, waiting, and one-time delivery — the
+		// verbs gate behind confirmation, waiting, and one-time delivery - the
 		// nodedriver precedent for a generic path that reaches a Rancherism the
 		// curated commands exist to hide. Both TTL spec fields are CRD-required
 		// (no server defaulting); the curated create command supplies its own
 		// 3600/86400 defaults. status.clientSecrets' createdAt/lastUsedAt are
-		// unix-seconds STRINGS with no epoch rendering in this table layer — a
+		// unix-seconds STRINGS with no epoch rendering in this table layer - a
 		// LAST-USED column is deliberately cut rather than shown raw.
 		// DeleteCascadeWarning: the backing Secret carries an OwnerReference to
 		// this object (Kubernetes GC, not the oidc-provider controller), so
@@ -702,7 +702,7 @@ var table = []Kind{
 		// READY's wire type was contested (CRD printer column vs. the audit
 		// table); the CRD's additionalPrinterColumns declares
 		// status.ready's type as "string" (verified in the audit appendix),
-		// so a plain Path is correct — the typed leaf ladder renders a real
+		// so a plain Path is correct - the typed leaf ladder renders a real
 		// bool leaf identically if the wire ever carries one.
 		Columns: []Column{
 			{Header: "VERSION", Path: []string{"spec", "kubernetesVersion"}},
@@ -750,14 +750,14 @@ var table = []Kind{
 		// Empty GVR version: ext.cattle.io is resolved via discovery at call
 		// time; group absence means an older Rancher without the aggregated
 		// imperative API (both kinds shipped in v2.12; the CLI's own
-		// supported floor is now 2.14 — PS-8).
+		// supported floor is now 2.14 - PS-8).
 		Key: "token", Name: "token", Aliases: []string{"tokens"},
 		GVR:    schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "tokens"},
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns: []Column{
 			// USER/KIND/EXPIRES/DESCRIPTION are plain strings on the wire;
-			// there is still no EXPIRED bool column — EXPIRES carries the
+			// there is still no EXPIRED bool column - EXPIRES carries the
 			// signal.
 			{Header: "USER", Path: []string{"spec", "userID"}},
 			{Header: "KIND", Path: []string{"spec", "kind"}},
@@ -785,12 +785,12 @@ var table = []Kind{
 		// management.cattle.io/v3 Token carries the raw credential at root-level
 		// .token (writeOnly in Norman; plaintext when Rancher's token-hashing
 		// feature is off, which is the default). Scrub it from every serialized
-		// representation — get/list JSON/YAML output and patch diff entries.
+		// representation - get/list JSON/YAML output and patch diff entries.
 		RedactPaths: [][]string{{"token"}},
 		// Token creation must go through Rancher's auth lifecycle (key
 		// generation, TTL clamp, identity derivation). Use `create token` (the
 		// ext.cattle.io kind) for new tokens instead.
-		NoCreateViaManifest: "token creation must go through Rancher's auth lifecycle — use 'rancher create token' (the ext.cattle.io kind) for new tokens",
+		NoCreateViaManifest: "token creation must go through Rancher's auth lifecycle - use 'rancher create token' (the ext.cattle.io kind) for new tokens",
 	},
 	{
 		Key: "kubeconfig", Name: "kubeconfig", Aliases: []string{"kubeconfigs"},
@@ -799,7 +799,7 @@ var table = []Kind{
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns: []Column{
 			// TTL and TOKENS/CLUSTERS are omitted: the audit couldn't verify
-			// their exact wire paths against a live server — not a renderer
+			// their exact wire paths against a live server - not a renderer
 			// limit. Add them once a verifying environment confirms the
 			// paths (TOKENS/CLUSTERS would be Count-expressible).
 			{Header: "SUMMARY", Path: []string{"status", "summary"}},
@@ -815,9 +815,9 @@ var table = []Kind{
 		// machinedriver_data.go:24-39). "Amazonec2Config" is literal-confirmed in
 		// rancher's own tests (status_test.go:70); the other four machine-config
 		// kinds below follow the same capitalization rule but are not individually
-		// literal-confirmed — verify against a real server before relying on the
+		// literal-confirmed - verify against a real server before relying on the
 		// exact casing in a live/Windows acceptance pass.
-		// Sensitive: false deliberately — these CONFIGS carry instance parameters
+		// Sensitive: false deliberately - these CONFIGS carry instance parameters
 		// (region, size, image) for the node driver; credentials live in the
 		// driver's cc-* Secret, not on this resource.
 		Key: "amazonec2config", Name: "amazonec2config", Aliases: []string{"amazonec2configs"},
@@ -857,7 +857,7 @@ var table = []Kind{
 
 	{
 		// The server-side registry of node drivers (management.cattle.io/v3
-		// NodeDriver) — the discovery surface behind `create cluster`'s
+		// NodeDriver) - the discovery surface behind `create cluster`'s
 		// node-driver mode. Read surface only for now: Deletable: false, and
 		// Sensitive: true so the generated patch (toggling spec.active flips
 		// driver availability platform-wide, like a setting/feature) escalates
@@ -865,7 +865,7 @@ var table = []Kind{
 		// (machine_types.go): displayName is a string; active and builtin are
 		// BOOLS (Bool: true), rendered via the table renderer's bool fallback.
 		// builtin is `json:"builtin,omitempty"` upstream, so a non-builtin
-		// driver omits the field — Bool makes the absent field render "false"
+		// driver omits the field - Bool makes the absent field render "false"
 		// instead of blank (active, `json:"active"`, is always present, but
 		// is marked too: it is boolean-typed all the same).
 		Key: "nodedriver", Name: "nodedriver", Aliases: []string{"nodedrivers"},
@@ -884,7 +884,7 @@ var table = []Kind{
 
 	{
 		// Namespace = the cluster's management namespace; NSPlain gives the
-		// --namespace flag. Deletable: false — CRTs are consumed, not deleted, in
+		// --namespace flag. Deletable: false - CRTs are consumed, not deleted, in
 		// the generic verb surface. This row carries identity only: its get is
 		// overridden to a Steve read and its patch is refused (Task 5).
 		Key: "clusterregistrationtoken", Name: "clusterregistrationtoken", Aliases: []string{"clusterregistrationtokens", "crt"},
@@ -915,7 +915,7 @@ func Bindings() map[string]safety.Binding {
 
 // ProjectScopable reports whether --project applies to k (PC-3): a
 // Downstream NSPlain kind validates/filters by project membership, plus the
-// one carve-out — the namespace kind itself (NSNone/Downstream), which
+// one carve-out - the namespace kind itself (NSNone/Downstream), which
 // converts an unnamed --project into a label-selector list rather than a
 // rejection (Route's default branch). Every other kind rejects a non-empty
 // project outright. This is the single source of the rule; Route and the
@@ -928,7 +928,7 @@ func ProjectScopable(k Kind) bool {
 }
 
 // LookupGVK resolves a manifest's apiVersion+kind to a table row. Group,
-// VERSION, and K8sKind must all match — four rows share K8sKind "Cluster"
+// VERSION, and K8sKind must all match - four rows share K8sKind "Cluster"
 // across groups, and a version mismatch (apps/v1beta1 Deployment) must be
 // rejected, never silently dispatched on the table's fixed GVR. Rows with an
 // empty GVR.Version (CAPI) match any version of their group.
@@ -972,7 +972,7 @@ func validateKinds(ts []Kind) error {
 		}
 		// Name is every generic create/patch/delete Effect's DisplayKind
 		// (engine.PlanCreate/PlanUpdate/resources.PlanFromFetched pass it
-		// straight through) — an empty value here would pass unnoticed
+		// straight through) - an empty value here would pass unnoticed
 		// until checkPlan rejects the resulting Effect as a command bug on
 		// the kind's first real mutation.
 		if k.Name == "" {
@@ -1052,7 +1052,7 @@ func validateKinds(ts []Kind) error {
 	// Group+Resource uniqueness: ByGVR must resolve unambiguously. Two rows may
 	// share a Resource name across different Groups (e.g. four "clusters" kinds
 	// across management.cattle.io, provisioning.cattle.io, cluster.x-k8s.io, and
-	// fleet.cattle.io), but no two rows may share the same Group+Resource — that
+	// fleet.cattle.io), but no two rows may share the same Group+Resource - that
 	// would make ByGVR return the wrong kind for whichever row comes second.
 	// This check runs after the per-kind loop so that a per-kind defect (column,
 	// alias) always takes precedence in the first-defect-wins ordering.

@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 # Two same-tag runs (a UI-created release pushing the tag, racing a manual
-# re-push) must not both see zero existing releases and both create one —
+# re-push) must not both see zero existing releases and both create one -
 # tag_name v0.1.0-alpha.1 carried two releases on 2026-08-12 from exactly
 # that race. cancel-in-progress stays false: the queued run must still run
 # and take release-upsert's idempotent upload branch, not vanish.
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          # No cache restore anywhere on the release path — neither Go
+          # No cache restore anywhere on the release path - neither Go
           # modules here nor envtest assets for make e2e below: caches are
           # writable from PR/main runs, and a poisoned entry could reach
           # release artifacts (zizmor cache-poisoning). Modules are
@@ -46,7 +46,7 @@ jobs:
       - run: make validate
       - run: make e2e
 
-  # Only checkout, build, attest, and upload run with write access — no
+  # Only checkout, build, attest, and upload run with write access - no
   # third-party installs (apt, lint tooling, envtest) execute in a job that
   # holds contents/id-token/attestations permissions.
   publish:
@@ -74,7 +74,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           mkdir -p dist
-          # Asset names must match install.sh's CLI_ASSET/HELPER_ASSET construction — the two lists stay in lockstep.
+          # Asset names must match install.sh's CLI_ASSET/HELPER_ASSET construction - the two lists stay in lockstep.
           for platform in linux/amd64 linux/arm64 linux/s390x darwin/amd64 darwin/arm64 windows/amd64; do
             goos="${platform%/*}"
             goarch="${platform#*/}"

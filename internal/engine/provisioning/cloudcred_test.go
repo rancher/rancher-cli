@@ -34,7 +34,7 @@ func (f *fakeClient) Get(_ context.Context, _ schema.GroupVersionResource, _ str
 		return obj, nil
 	}
 	// Return the realistic curated clierr shape the dynamic client produces on
-	// a 404 for the secrets GVR — this is the shape the fast-path fall-through
+	// a 404 for the secrets GVR - this is the shape the fast-path fall-through
 	// fix must treat as NOT_FOUND and route to the list-based resolution path.
 	return nil, clierr.New(clierr.CodeNotFound, "secret not found: "+name).
 		WithHint("list with: rancher get secrets")
@@ -71,7 +71,7 @@ var _ engine.ClusterClient = (*fakeClient)(nil)
 // fakeFactory hands back a fixed ClusterClient for any cluster id.
 type fakeFactory struct {
 	c engine.ClusterClient
-	// clusterErr, when set, makes Cluster return this error instead of c —
+	// clusterErr, when set, makes Cluster return this error instead of c -
 	// the injectable-error seam review finding 1 needs to assert
 	// clients.Cluster()'s precedence over a simultaneous release-fetch
 	// failure (versions.go's fetchVersionsDetailed).
@@ -105,7 +105,7 @@ func (i in) Args() []string          { return i.args }
 var _ runtime.Input = in{}
 
 // secretObj builds a fixture cattle-global-data Secret: metadata.name,
-// optional annotations, optional data (key/value — values may be any type,
+// optional annotations, optional data (key/value - values may be any type,
 // including a []byte sentinel for the hygiene test, since production code
 // only ever reads data KEY NAMES).
 func secretObj(name string, annotations map[string]string, data map[string]any) *unstructured.Unstructured {
@@ -195,7 +195,7 @@ func TestResolveCloudCredentialNotFound(t *testing.T) {
 // a cc-* exact-id Get returns the curated "secret not found" shape (the dynamic
 // client curates 404s by literal kind name), the resolver must fall through to
 // the list-based path and return the domain-specific "cloud credential not found"
-// shape — NOT "secret not found". Candidates come from the list.
+// shape - NOT "secret not found". Candidates come from the list.
 func TestResolveCloudCredentialExactIDMissFallsThroughToListPath(t *testing.T) {
 	t.Parallel()
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -221,7 +221,7 @@ func TestResolveCloudCredentialExactIDMissFallsThroughToListPath(t *testing.T) {
 // its *credentialConfig- data key) must resolve via BOTH its bare name and
 // its "cattle-global-data:<name>" namespaced form. Before the fix, the
 // namespaced form fell through the List path and matched against the
-// unstripped nameOrID, which never equals a bare object id — NOT_FOUND.
+// unstripped nameOrID, which never equals a bare object id - NOT_FOUND.
 func TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID(t *testing.T) {
 	t.Parallel()
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -409,7 +409,7 @@ func TestResolveCloudCredentialNeverLeaksSecretValue(t *testing.T) {
 	assert.NotContains(t, fmt.Sprintf("%+v", singleResult), sentinel)
 
 	// An ambiguous/not-found error path also builds candidates from these
-	// same secrets — assert its rendering is clean too.
+	// same secrets - assert its rendering is clean too.
 	_, err = ResolveCloudCredential(t.Context(), factory, "no-such-credential")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), sentinel)

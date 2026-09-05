@@ -37,10 +37,10 @@ var ColorModes = []string{"auto", "always", "never"}
 
 // OutputPolicy restricts which -o/--output formats a command accepts. The
 // zero value (empty AllowedFormats) accepts every OutputFormats literal
-// plus template=<src> — today's behavior for every command that does not
+// plus template=<src> - today's behavior for every command that does not
 // opt in. A declared AllowedFormats is a closed allow-list: entries must be
 // OutputFormats literals or the literal "template" (standing for any
-// template=<src> value, regardless of source) — Registry.Validate rejects
+// template=<src> value, regardless of source) - Registry.Validate rejects
 // anything else.
 type OutputPolicy struct {
 	AllowedFormats []string
@@ -66,7 +66,7 @@ func (p OutputPolicy) Allows(format string) bool {
 // Delivery: DeliveryOnceOnly descriptor declares: every format except
 // "name", which would silently discard a once-only value under -o name's
 // NAME-column-only projection. The ONE shared constructor every once-only
-// command calls — never a second hand-authored copy of this list, so a
+// command calls - never a second hand-authored copy of this list, so a
 // future change to the once-only contract (adding or excluding a format)
 // only has to be made here.
 func OnceOnlyOutputPolicy() OutputPolicy {
@@ -74,7 +74,7 @@ func OnceOnlyOutputPolicy() OutputPolicy {
 }
 
 // OutputFormatCompletions is what -o <TAB> suggests: the literal formats plus
-// the template form — the bare prefix for discoverability and a seed template
+// the template form - the bare prefix for discoverability and a seed template
 // that runs as-is on any command (renders the whole data view) for the user
 // to build on. The template entries are deliberately absent from the schema
 // enum, which stays the closed literal set.
@@ -82,7 +82,7 @@ var OutputFormatCompletions = append(append([]string{}, OutputFormats...),
 	output.TemplatePrefix, output.TemplatePrefix+"{{.}}")
 
 // ShellCompletionShells returns the single shared list of shells
-// `completion <shell>` emits scripts for — a fresh slice on every call, so
+// `completion <shell>` emits scripts for - a fresh slice on every call, so
 // no caller can mutate the canonical order out from under the others.
 func ShellCompletionShells() []string { return []string{"bash", "zsh", "fish", "pwsh"} }
 
@@ -127,7 +127,7 @@ func EnvVars() []EnvVar {
 		{Name: "NO_COLOR", Flag: "--color", Desc: "when non-empty, turn off styling under --color=auto"},
 		{Name: "CLICOLOR_FORCE", Flag: "--color", Desc: "when set to a value other than \"0\", turn on styling under --color=auto"},
 		{Name: "FORCE_COLOR", Flag: "--color", Desc: "same as CLICOLOR_FORCE; when both are set and disagree, whichever is not \"0\" wins"},
-		{Name: "RANCHER_CLI_CONFIG_NO_LOCK", Desc: "when non-empty, skip the cross-process config write lock — escape hatch for filesystems with broken file locking"},
+		{Name: "RANCHER_CLI_CONFIG_NO_LOCK", Desc: "when non-empty, skip the cross-process config write lock - escape hatch for filesystems with broken file locking"},
 		{Name: "RANCHER_CLI_COMPLETION_DEBUG", Desc: "when non-empty, trace each phase of a shell completion request to stderr (config load, token source, budget, requests, candidate count); stdout is unchanged"},
 		{Name: "RANCHER_CLI_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "OAuth flow: devicecode or authcode"},
 		{Name: "RANCHER_CLI_OAUTH_CALLBACK_PORT", Desc: "local callback port for the authcode OAuth flow"},
@@ -160,7 +160,7 @@ type SchemaCommand struct {
 	// Prime is a projection of Descriptor.Capability: true when the command
 	// carries the Rancher Prime capability classification (a product-tier
 	// marker; whether the connected server gates it is decided at run
-	// time). Never separately authored — the source of
+	// time). Never separately authored - the source of
 	// truth is the requirement itself.
 	Prime bool `json:"prime,omitempty"`
 	// LearnMore rides beside Prime for the planning moment of the nudge
@@ -172,10 +172,10 @@ type SchemaCommand struct {
 	// executes a mutation: --apply for every mutating command, --yes when
 	// destructive is "true", --allow-deprecated on a deprecated binding.
 	// A destructive "dependsOnInput" command may additionally demand --yes
-	// at run time — the destructive field carries that signal. Empty for
+	// at run time - the destructive field carries that signal. Empty for
 	// read-only and local commands.
 	Gates []string `json:"gates,omitempty"`
-	// Group is the root section this command renders under (informational —
+	// Group is the root section this command renders under (informational -
 	// Manifest.Groups carries the ordered sections; SE-18). "" for the two
 	// positional-root sections (fixed top-level and ungrouped entries).
 	Group string `json:"group,omitempty"`
@@ -187,8 +187,8 @@ type SchemaCommand struct {
 	// ordinary delivery.
 	Delivery string `json:"delivery,omitempty"`
 	// Shape is a projection of Descriptor.Shape: the command's declared
-	// success-result shape (tabular, text, bytes, execJSON). Always present
-	// — Registry.Validate rejects an undeclared (unspecified) shape on
+	// success-result shape (tabular, text, bytes, execJSON). Always present -
+	// Registry.Validate rejects an undeclared (unspecified) shape on
 	// every registered command.
 	Shape string `json:"shape"`
 }
@@ -214,7 +214,7 @@ type VerbState struct {
 
 // SchemaKind is one kind row in the manifest (SE-8): identity, routing, and
 // the effective verb surface. Built by the surface layer (which sees both the
-// kind table and its overrides) and handed to the registry at BuildRoot —
+// kind table and its overrides) and handed to the registry at BuildRoot -
 // runtime owns the DTO, not its construction.
 type SchemaKind struct {
 	Name             string   `json:"name"`
@@ -283,7 +283,7 @@ type Manifest struct {
 	MinRancherVersion string `json:"minRancherVersion"`
 	OutputAPIVersion  string `json:"outputApiVersion"`
 	// ReadOnly reports this invocation's resolved read-only state (config +
-	// env + flag OR'd) — an agent reading the manifest sees the session
+	// env + flag OR'd) - an agent reading the manifest sees the session
 	// cannot mutate BEFORE trying. ReadOnlySources names the active
 	// source(s); empty when ReadOnly is false.
 	ReadOnly        bool     `json:"readOnly"`
@@ -303,15 +303,15 @@ type Manifest struct {
 	Kinds  []SchemaKind  `json:"kinds,omitempty"`
 	Groups []SchemaGroup `json:"groups,omitempty"`
 	// ShellCompletion lists the shells `completion <shell>` emits scripts
-	// for — one capability field so an agent or docs tool can discover
+	// for - one capability field so an agent or docs tool can discover
 	// completion support without parsing the command list. Always present.
 	ShellCompletion []string `json:"shellCompletion"`
 }
 
 // SchemaGroup is one ordered root section (SE-18): sections appear in EXACT
 // root-assembly order with commands in registration order. The two
-// positional-root sections — the leading fixed top-level commands and the
-// ungrouped-entry run — carry Name "" and are distinguished by position.
+// positional-root sections - the leading fixed top-level commands and the
+// ungrouped-entry run - carry Name "" and are distinguished by position.
 // Named groups carry a Desc that rancher schema <group> surfaces as the
 // group card; unnamed sections are desc-less.
 type SchemaGroup struct {
@@ -340,7 +340,7 @@ func NewRegistry(r Resolver) *Registry { return &Registry{resolver: r} }
 
 func (reg *Registry) Register(c Command) { reg.cmds = append(reg.cmds, c) }
 
-// SetKinds installs the manifest's kind rows — built by the surface layer
+// SetKinds installs the manifest's kind rows - built by the surface layer
 // from the kind table and its overrides, same direction as resolver bindings.
 func (reg *Registry) SetKinds(ks []SchemaKind) { reg.kinds = ks }
 
@@ -442,7 +442,7 @@ func (reg *Registry) Validate() error {
 // binding. minRancherVersion is threaded through from the caller (like
 // cliVersion) rather than imported: internal/runtime must not import
 // internal/config, where the const lives. ReadOnly/ReadOnlySources are left
-// at their zero value here — that state is per-invocation, not registry
+// at their zero value here - that state is per-invocation, not registry
 // data; the schema command overlays it after calling Schema.
 func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 	m := Manifest{

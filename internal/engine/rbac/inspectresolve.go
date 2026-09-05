@@ -18,7 +18,7 @@ import (
 // rbac resolution pieces as ResolveSubject but deliberately divergent from
 // it: ResolveSubject rejects system users terminally, skips them in scans,
 // uses grant-vocabulary error messages, and can PROVISION an unowned
-// principal — all wrong for a read-only inspection. Here: system users
+// principal - all wrong for a read-only inspection. Here: system users
 // resolve normally (their card carries the system marker); nothing is ever
 // provisioned (an unowned external principal is NOT_FOUND); a group
 // principal or an unrecognized principal prefix is VALIDATION-rejected
@@ -37,7 +37,7 @@ func ResolveInspectUser(ctx context.Context, clients engine.ClusterClientFactory
 }
 
 // resolveInspectUserPrincipal resolves a fully qualified principal argument.
-// Ownership is proven by scanning Users' principalIds — the only
+// Ownership is proven by scanning Users' principalIds - the only
 // authoritative source; a deterministic predicted-user-id GET is not used,
 // since the scan alone already covers every case the prediction would
 // only optimize.
@@ -52,7 +52,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 	case engine.IsSystemPrincipal(principal):
 		// A system principal is still a USER-owned principal (Rancher's
 		// system users), so it takes the ownership-scan path below like any
-		// other qualified principal — never rejected as an unknown prefix.
+		// other qualified principal - never rejected as an unknown prefix.
 	case prefix == "local" || strings.HasSuffix(prefix, "_user"):
 		// Recognized user-principal form.
 	case strings.HasSuffix(prefix, "_group") || prefix == "github_org" || prefix == "github_team":
@@ -99,7 +99,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 // divergence from inspect project/cluster's MatchOneOrError union
 // semantics, which match displayName only and never let an exact id beat a
 // collision); on a Get miss, username/displayName collisions become
-// AMBIGUOUS_SELECTION. System users resolve at every step — never excluded,
+// AMBIGUOUS_SELECTION. System users resolve at every step - never excluded,
 // never terminal.
 func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, userGVR schema.GroupVersionResource, bare string) (ResolvedSubject, error) {
 	obj, err := client.Get(ctx, userGVR, "", bare)
@@ -156,7 +156,7 @@ func resolvedInspectUser(u *unstructured.Unstructured) ResolvedSubject {
 // PreferredPrincipalOrID is the shared own-principal selection rule: the
 // first local:// principal, else the first principalIds element, else the
 // user id itself. Both ResolveInspectUser and the held-bindings matcher use
-// this rule for a direct binding's row principal — never a second,
+// this rule for a direct binding's row principal - never a second,
 // independently invented one.
 func PreferredPrincipalOrID(userID string, principalIDs []string) string {
 	if len(principalIDs) == 0 {

@@ -18,7 +18,7 @@ type ArchiveEntry struct {
 
 // ArchiveWriter streams entries into a gzip-compressed tar one at a time,
 // so a collector holds at most the one entry currently in flight rather
-// than the whole collection — a fleet-wide bundle's memory footprint stays
+// than the whole collection - a fleet-wide bundle's memory footprint stays
 // bounded by the largest single entry, not the sum of everything collected.
 type ArchiveWriter struct {
 	file   *os.File
@@ -31,8 +31,8 @@ type ArchiveWriter struct {
 }
 
 // CreateArchive opens path with O_CREATE|O_EXCL and 0600 and returns a
-// writer ready for Add. An existing file — or a symlink, which O_EXCL
-// refuses since the link itself exists — is VALIDATION naming the path,
+// writer ready for Add. An existing file - or a symlink, which O_EXCL
+// refuses since the link itself exists - is VALIDATION naming the path,
 // never truncated or followed.
 func CreateArchive(path string) (*ArchiveWriter, error) {
 	return createArchiveWith(path, func(w io.Writer) io.Writer { return w })
@@ -55,7 +55,7 @@ func createArchiveWith(path string, wrap func(io.Writer) io.Writer) (*ArchiveWri
 }
 
 // Add streams one entry into the archive immediately. Once Add has failed,
-// every later Add is a no-op returning that same error — a collector can
+// every later Add is a no-op returning that same error - a collector can
 // keep calling Add without checking every return and let Close report and
 // clean up the failure.
 func (w *ArchiveWriter) Add(entry ArchiveEntry) error {
@@ -106,8 +106,8 @@ func (w *ArchiveWriter) Close() (int64, error) {
 	return w.total, nil
 }
 
-// Discard abandons the archive after a failure unrelated to Add or Close —
-// a caller that cannot finish assembling the entries it already streamed —
+// Discard abandons the archive after a failure unrelated to Add or Close -
+// a caller that cannot finish assembling the entries it already streamed -
 // closing the underlying handles and removing the partial file.
 func (w *ArchiveWriter) Discard() {
 	_ = w.tw.Close()

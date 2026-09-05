@@ -12,7 +12,7 @@ import (
 
 // TestScaleUpIsAlwaysDestructive asserts the rev-5 ruling: provisioningcluster
 // is a Sensitive kind, so every scale is Destructive regardless of
-// direction — the same gate a generic patch on the same object already
+// direction - the same gate a generic patch on the same object already
 // demands.
 func TestScaleUpIsAlwaysDestructive(t *testing.T) {
 	t.Parallel()
@@ -109,7 +109,7 @@ func TestScalePoolLessClusterRefuses(t *testing.T) {
 
 // TestScalePoolLessClusterFieldPresentButEmptyRefuses asserts that a cluster
 // whose machinePools field is present but currently empty gets a distinct
-// refusal from a wholly pool-less one — it is not an imported/custom
+// refusal from a wholly pool-less one - it is not an imported/custom
 // shape, so the message must not claim to be.
 func TestScalePoolLessClusterFieldPresentButEmptyRefuses(t *testing.T) {
 	t.Parallel()

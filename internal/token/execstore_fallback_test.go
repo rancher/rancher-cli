@@ -128,7 +128,7 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 // URL uses an unsupported scheme (ftp://), Config.Effective must not invoke
 // the exec credential helper before post-resolution validation rejects it.
 //
-// The fakehelper is in "ok" mode — any invocation writes a get entry to the
+// The fakehelper is in "ok" mode - any invocation writes a get entry to the
 // state log (creating the file). The state file absent after the command
 // proves zero helper calls.
 func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
@@ -189,7 +189,7 @@ func TestGetTokenHelperNotFoundFallsBackToInteractive(t *testing.T) {
 	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		ui.Discard())
-	// SAML under a non-interactive prompter fast-fails AUTH — the point is that
+	// SAML under a non-interactive prompter fast-fails AUTH - the point is that
 	// the flow reached the interactive provider dance at all.
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)

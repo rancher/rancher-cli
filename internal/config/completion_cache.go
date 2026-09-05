@@ -21,7 +21,7 @@ func ReadOnlyCachedCreds(dir string) ([]CachedCredInfo, error) {
 // file is an empty cache, not an error. Never writes to disk. Deliberately
 // SILENT on loose permissions: completion paths read through here, and any
 // stderr output would appear as a TAB candidate (the same rationale as
-// ReadFileTokenSilent) — the shim's fast-path reader warns instead. The
+// ReadFileTokenSilent) - the shim's fast-path reader warns instead. The
 // remaining readCache parity is intentional: no in-process mu (read-only),
 // no expiry pruning (documented on ReadOnlyCachedCred), no cross-process
 // flock (read-only; atomic-rename writes keep reads consistent).
@@ -87,22 +87,22 @@ func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
 // config.yaml can never block a warm cache hit.
 //
 // Expired shim slots are pruned only by store-backed readers (ListCachedCreds
-// and the list-tokens/completion path) — a deliberate bounded-growth tradeoff
+// and the list-tokens/completion path) - a deliberate bounded-growth tradeoff
 // for the config-free fast path: the shim's dominant invocation is a warm
 // cache hit, and pruning requires a config.yaml read (for the store policy)
 // that the fast path exists specifically to avoid.
 //
 // The returned notice (a loose-permission finding, at most once per path per
 // process) is a standalone function's return value, not a buffered
-// NoticeSource write — there is no store receiver here to buffer it on. The
+// NoticeSource write - there is no store receiver here to buffer it on. The
 // shim's caller appends a non-empty notice to Result.Warnings; it is fired
 // regardless of hit or miss, since the permission check runs before the key
 // lookup.
 func ReadOnlyCachedCred(dir, key string) (token string, expiry time.Time, notice string, err error) {
 	path := filepath.Join(dir, "token-cache.yaml")
 	// Open once and use handle.Stat() for the permission warning so this
-	// fast path — a fresh OS process on every kubectl exec-credential
-	// refresh — pays a single syscall instead of two (os.ReadFile + os.Stat).
+	// fast path - a fresh OS process on every kubectl exec-credential
+	// refresh - pays a single syscall instead of two (os.ReadFile + os.Stat).
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -112,7 +112,7 @@ func ReadOnlyCachedCred(dir, key string) (token string, expiry time.Time, notice
 	}
 	defer func() { _ = f.Close() }()
 
-	// Notice on loose permissions like fileStore.readCache does — this is
+	// Notice on loose permissions like fileStore.readCache does - this is
 	// the shim's dominant read path, and unlike the completion readers
 	// sharing loadCacheMap, its stdout is not a TAB-completion candidate
 	// list, so a notice here is safe to surface.

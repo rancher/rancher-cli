@@ -103,7 +103,7 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 	})
 	t.Run("env-only tokenless URL overriding a different configured current server stays AUTH with no hint", func(t *testing.T) {
 		// Effective clears ServerName when RANCHER_CLI_URL diverges from the
-		// configured current server (resolve.go) — RESTConfig must not
+		// configured current server (resolve.go) - RESTConfig must not
 		// resurrect a name that Effective deliberately dropped.
 		_, err := RESTConfig(config.Effective{URL: "https://env.ex", CA: "PEM"}, "local")
 		var ce *clierr.Error

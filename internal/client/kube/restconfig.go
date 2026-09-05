@@ -44,8 +44,8 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	if eff.Token == "" {
 		// eff.URL is resolved (a current server or RANCHER_CLI_URL exists) but
 		// no token. A concrete configured ServerName is the designed
-		// post-add state under two-phase registration — added but never
-		// logged in, or logged out — so it is NOT_LOGGED_IN with a concrete
+		// post-add state under two-phase registration - added but never
+		// logged in, or logged out - so it is NOT_LOGGED_IN with a concrete
 		// login hint. An env-only RANCHER_CLI_URL carries no name to
 		// interpolate (Effective clears ServerName on a mismatched env URL,
 		// or never had one on a blank machine), so it stays AUTH with body

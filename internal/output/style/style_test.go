@@ -75,7 +75,7 @@ func TestStripNoEscapesUnchanged(t *testing.T) {
 }
 
 // TestStripUnterminatedEscape asserts a malformed sequence with no
-// terminating 'm' is left in place rather than silently eaten — Strip only
+// terminating 'm' is left in place rather than silently eaten - Strip only
 // removes sequences it can fully recognize.
 func TestStripUnterminatedEscape(t *testing.T) {
 	t.Parallel()

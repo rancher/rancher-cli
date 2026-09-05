@@ -15,8 +15,8 @@ type guardedDeleteCmd struct {
 	// prePlan controls when the guard runs relative to the inner Plan.
 	//
 	// false (PostPlan, the default via NewGuardedDelete): the inner Plan
-	// runs first — existence confirmed, resourceVersion captured, dry-run
-	// admission preview completed — then the guard may refuse. A nonexistent
+	// runs first - existence confirmed, resourceVersion captured, dry-run
+	// admission preview completed - then the guard may refuse. A nonexistent
 	// target fails NOT_FOUND before the guard fires. Tradeoff: a refused
 	// delete still performed the harmless server-side dry-run.
 	//
@@ -24,8 +24,8 @@ type guardedDeleteCmd struct {
 	// inner Plan's server-side dry-run. Required when the server itself would
 	// refuse the dry-run with a rawer version of the guard's own message
 	// (e.g. the self-delete webhook on users), so the curated refusal always
-	// wins over raw webhook text. Cost: the guard fires — including any
-	// identity probe — even for nonexistent targets (a mistyped name triggers
+	// wins over raw webhook text. Cost: the guard fires - including any
+	// identity probe - even for nonexistent targets (a mistyped name triggers
 	// one probe before the 404). For user deletion the probe is a cheap
 	// read-equivalent call; the accepted tradeoff is documented at
 	// NewGuardedDeletePrePlan. A third timing variant is the signal to move
@@ -49,7 +49,7 @@ func NewGuardedDelete(k kinds.Kind, clients engine.ClusterClientFactory, guard f
 // NewGuardedDeletePrePlan wraps the generic delete with the guard running
 // before the inner Plan's server-side dry-run (prePlan=true). Use when the
 // server itself would refuse the dry-run with a rawer version of the guard's
-// own message — the curated refusal must win. See the prePlan field doc for
+// own message - the curated refusal must win. See the prePlan field doc for
 // the complete every-invocation-probe cost and accepted tradeoff.
 func NewGuardedDeletePrePlan(k kinds.Kind, clients engine.ClusterClientFactory, guard func(ctx context.Context, in runtime.Input) error, warnings ...string) runtime.Command {
 	return newGuardedDelete(k, clients, true, guard, warnings...)

@@ -16,7 +16,7 @@ import (
 )
 
 // fakeUserClient serves both the users GVR and the secrets GVR, distinguished
-// by gvr.Resource — mirrors how a real invocation reaches the same "local"
+// by gvr.Resource - mirrors how a real invocation reaches the same "local"
 // cluster client for both create steps.
 type fakeUserClient struct {
 	userPreviewName string
@@ -171,7 +171,7 @@ func TestCreatePasswordStdinRequired(t *testing.T) {
 // proves the composite's result path passes through
 // engine.RedactMutationResult (the hashed password/salt never reach -o
 // json/yaml) and that the committed identity is the REAL server-assigned
-// name — never the dry-run preview's placeholder.
+// name - never the dry-run preview's placeholder.
 func TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity(t *testing.T) {
 	t.Parallel()
 	client := &fakeUserClient{userPreviewName: "u-preview1", userRealName: "u-real2"}
@@ -197,10 +197,10 @@ func TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity(t *tes
 // TestCreateSecretFailureAfterUserCommittedNamesRecovery proves the
 // committed-context requirement: a Secret failure after the User committed
 // must never invite a blind retry (which would create a second User). The
-// recovery creates the missing Secret directly via `create resource -f -`
-// — NOT `create password-change-request`, which changes an existing
+// recovery creates the missing Secret directly via `create resource -f -` -
+// NOT `create password-change-request`, which changes an existing
 // password Secret and fails ("failed to get password secret") against a
-// user that has none — and must never carry the password as a literal argv
+// user that has none - and must never carry the password as a literal argv
 // token the way `create secret --from-literal` would.
 func TestCreateSecretFailureAfterUserCommittedNamesRecovery(t *testing.T) {
 	t.Parallel()
@@ -235,7 +235,7 @@ func TestCreateOldServerSecretDryRunNotFoundRefusesFriendly(t *testing.T) {
 	client := &fakeUserClient{userPreviewName: "u-preview1"}
 	client.secretCreateErr = clierr.New(clierr.CodeNotFound, "namespaces \"cattle-local-user-passwords\" not found")
 	// secretCreateErr also applies to the dry-run branch in this fake's
-	// Create — override it to return the error unconditionally.
+	// Create - override it to return the error unconditionally.
 	dryRunClient := &notFoundOnSecretDryRunClient{fakeUserClient: client}
 	_, _, err := plan(t, dryRunClient, fakeSrc{body: []byte("correctHorseBattery1\n")}, planInput("alice"))
 	require.Error(t, err)
@@ -247,7 +247,7 @@ func TestCreateOldServerSecretDryRunNotFoundRefusesFriendly(t *testing.T) {
 
 // notFoundOnSecretDryRunClient wraps fakeUserClient to fail the Secret
 // dry-run specifically (fakeUserClient's own dry-run branch always
-// succeeds) — the one path this suite needs to fail that no flag on the
+// succeeds) - the one path this suite needs to fail that no flag on the
 // base fake expresses.
 type notFoundOnSecretDryRunClient struct{ *fakeUserClient }
 

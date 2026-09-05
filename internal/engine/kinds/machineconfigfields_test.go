@@ -28,7 +28,7 @@ func TestMachineConfigFieldsCoverEveryMachineConfigKind(t *testing.T) {
 }
 
 // TestMachineConfigCredentialFieldsLiteral asserts the credential-carried
-// field set per kind as LITERALS — deliberately not derived, so a partial
+// field set per kind as LITERALS - deliberately not derived, so a partial
 // edit to the metadata cannot silently move expectation and result
 // together (independent-source doctrine). Source-confirmed against
 // rancher's DriverData (machinedriver_data.go); see the file doc comment.
@@ -67,8 +67,8 @@ func TestMachineConfigFieldsDigitaloceanVocabulary(t *testing.T) {
 }
 
 // TestMachineConfigFieldsInvariants: Known contains every Curated key and
-// no Credential key — a curated flag always writes a known field, and the
-// completion set (Known − Curated − Credential, MC-16) can be computed by
+// no Credential key - a curated flag always writes a known field, and the
+// completion set (Known - Curated - Credential, MC-16) can be computed by
 // subtraction alone, so no candidate can be one validation rejects.
 func TestMachineConfigFieldsInvariants(t *testing.T) {
 	t.Parallel()

@@ -99,8 +99,8 @@ __rancher_bash_autocomplete() {
 
     # Match by literal prefix in bash rather than `compgen -W "${tokens[*]}"`:
     # compgen -W word-splits and command-substitutes its wordlist, so a
-    # candidate containing $(...) — e.g. a config context/server name the
-    # server-side completer echoes back — would execute on TAB. A quoted
+    # candidate containing $(...) - e.g. a config context/server name the
+    # server-side completer echoes back - would execute on TAB. A quoted
     # comparison keeps every candidate a literal.
     local matches=()
     local __rancher_candidate
@@ -131,16 +131,16 @@ __rancher_bash_autocomplete() {
       # boundary instead. A FINISHED candidate gets an explicit trailing
       # space appended, so accepting it still ends the argument; a candidate
       # ending in a continuation character is a prefix stage, not a finished
-      # argument — "amazonec2config/" expects a name after the slash,
-      # "template=" expects a Go template after the equals — and gets none,
+      # argument - "amazonec2config/" expects a name after the slash,
+      # "template=" expects a Go template after the equals - and gets none,
       # so the cursor stays in the same word for the second-stage
       # completion. This is the git-completion pattern, chosen over a
       # per-invocation `compopt -o nospace` because compopt does not exist
       # on bash 3 (macOS stock): candidate-side spaces behave identically on
-      # bash 3 and 4+. Multiple matches are unaffected either way — readline
+      # bash 3 and 4+. Multiple matches are unaffected either way - readline
       # inserts only the common prefix, which never reaches a trailing space
       # ("pod " and "pods " share only "pod"). fish and PowerShell need no
-      # equivalent — see the notes in fish.sh and pwsh.ps1.
+      # equivalent - see the notes in fish.sh and pwsh.ps1.
       COMPREPLY=()
       local __rancher_match
       for __rancher_match in "${matches[@]}"; do
@@ -154,15 +154,15 @@ __rancher_bash_autocomplete() {
       # No candidates from the binary: hand off to filename completion.
       #
       # bash 4+ (compopt exists): COMPREPLY stays empty so readline's own
-      # -o default fallback runs, and its appended space — which the
+      # -o default fallback runs, and its appended space - which the
       # registration-level -o nospace would strip after a completed file
-      # name — is re-enabled for this invocation. Readline then owns
+      # name - is re-enabled for this invocation. Readline then owns
       # quoting, tilde handling, and boundaries natively.
       #
       # bash 3 (macOS stock, no compopt): the native fallback would insert
       # completed file names with NO argument delimiter at all, so generate
       # the candidates here instead, with the same per-candidate boundaries
-      # the script's own candidates carry — "/" (no space) after
+      # the script's own candidates carry - "/" (no space) after
       # directories, a trailing space after everything else. Entries are
       # escaped with printf %q (a bash 3.2 builtin) because readline
       # inserts COMPREPLY entries verbatim (this compspec has no

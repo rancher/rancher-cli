@@ -10,8 +10,8 @@ import (
 // rendering renderTOC/renderTOCText/renderFilteredTOC already produced from
 // m: the header line (bold, whole line) and every named group label (bold);
 // primeGroups is allPrimeGroups of the unfiltered manifest.
-// It then colors "[Prime]" green wherever it structurally belongs — an
-// all-Prime group's own label, and a Prime command's row — anchored on the
+// It then colors "[Prime]" green wherever it structurally belongs - an
+// all-Prime group's own label, and a Prime command's row - anchored on the
 // same line indexes computed from the still-plain text, so a Desc line that
 // happens to contain the literal token is never touched. Command rows are
 // otherwise left unbolded.
@@ -52,7 +52,7 @@ func plainLines(text string) []string {
 }
 
 // primeCommandLines returns the exact tocLine rendering of every Prime
-// command in cmds — the row text primeRowIndexes matches against to find
+// command in cmds - the row text primeRowIndexes matches against to find
 // which rendered lines carry a "[Prime]" marker to colorize.
 func primeCommandLines(cmds []SchemaCommand) []string {
 	var lines []string
@@ -66,11 +66,11 @@ func primeCommandLines(cmds []SchemaCommand) []string {
 
 // primeRowIndexes finds, in text's ORIGINAL (unstyled) line layout, the
 // index of every line whose content (after stripping the group indent)
-// starts with one of rows — the exact set of Prime command rows to
+// starts with one of rows - the exact set of Prime command rows to
 // colorize. A prefix match, rather than exact equality, so a filtered-TOC
 // search fragment appended after the usage text still colorizes correctly.
 // Two rows can never be prefixes of each other: every needle is the whole
-// command name followed by the " — " separator, and command names are
+// command name followed by the " - " separator, and command names are
 // unique, so a needle matches exactly its own row.
 func primeRowIndexes(text string, rows []string) map[int]bool {
 	at := map[int]bool{}
@@ -145,7 +145,7 @@ type labelRule struct {
 // flagRowIndexes returns the line indexes of the flag rows belonging to the
 // flags section that starts at headerIdx: the consecutive lines after the
 // header up to the first blank line. Anchoring to the section range keeps a
-// Desc line that merely LOOKS like a flag row ("  --word ...") plain — the
+// Desc line that merely LOOKS like a flag row ("  --word ...") plain - the
 // same rule the labels follow, applied to the rows.
 func flagRowIndexes(text string, headerIdx int) map[int]bool {
 	rows := map[int]bool{}
@@ -190,10 +190,10 @@ func labelIndexes(text string, rules []labelRule) map[int]string {
 // plain rendering renderGroupCard already produced: the "group: <name>"
 // header line (bold, whole line) and the "commands:" label line. The
 // group's Desc renders before the commands label, so the label anchors on
-// its last exact occurrence — and only when the section actually rendered
+// its last exact occurrence - and only when the section actually rendered
 // (hasCommands), so an absent section can never donate its bold to a Desc
-// line that happens to equal the label. isPrime — the same flag
-// renderGroupCard used to append " [Prime]" to the header — additionally
+// line that happens to equal the label. isPrime - the same flag
+// renderGroupCard used to append " [Prime]" to the header - additionally
 // colors that marker green within the header's bold span; bespoke is the
 // group's own member commands, used to colorize each Prime member's row.
 func styleSchemaGroupCard(text string, hasCommands, isPrime bool, bespoke []SchemaCommand, s style.Style) string {
@@ -228,9 +228,9 @@ func styleSchemaGroupCard(text string, hasCommands, isPrime bool, bespoke []Sche
 // plain rendering renderCommandCard already produced: the title line (bold,
 // whole line), each section label token, and every flag name. The values
 // following a label, the examples block, and the exit-codes row are left
-// plain. Anchoring follows the card's render order — contract/gates precede
+// plain. Anchoring follows the card's render order - contract/gates precede
 // the Desc block (first occurrence), examples/exit codes/global flags
-// follow it (last occurrence) — and the conditional sections (flags,
+// follow it (last occurrence) - and the conditional sections (flags,
 // examples) anchor only when the caller says they rendered, so an absent
 // section can never donate its bold to a Desc line that equals the label.
 // The gates line's destructive prose carries no marker token in the
