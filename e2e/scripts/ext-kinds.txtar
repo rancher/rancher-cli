@@ -15,8 +15,14 @@ jsonquery stdout data.spec.description ext-kinds-token-desc
 exec rancher delete token ext-kinds-token --apply --yes
 
 exec rancher get kubeconfigs -o json
-jsonquery stdout 'data.#' 0
 
+# Unlike tokens (façade-instance-local; the derived-create path never
+# touches envtest), kubeconfig's list is NOT asserted empty here:
+# create-kubeconfig.txtar's own scenario persists a real named copy via
+# the façade's forwardNamedCreate (so a get/delete by the generated name
+# works end to end), and testscript scenarios share one envtest cluster
+# and run concurrently — the same reason the Feature list below is not
+# asserted empty either.
 exec rancher create resource -f kubeconfig.yaml --apply --yes
 exec rancher get kubeconfig ext-kinds-kubeconfig -o json
 jsonquery stdout data.spec.description ext-kinds-kubeconfig-desc

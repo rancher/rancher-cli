@@ -20,6 +20,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 const (
@@ -61,6 +64,21 @@ const (
 	// same reason as crtCollectionPath above.
 	rke2ReleasePath = "/v1-rke2-release/release"
 	k3sReleasePath  = "/v1-k3s-release/release"
+
+	// KubeconfigsCollectionPath is the ext Kubeconfig collection behind the
+	// local-cluster proxy. `create kubeconfig` posts an unnamed object here
+	// (the store ignores metadata.name/generateName, like Token); a POST
+	// carrying its own metadata.name (`create resource -f`) falls through to
+	// envtest's real kubeconfigs.ext.cattle.io CRD instead. Exported for
+	// internal/testrancher/fidelity, which may import its parent.
+	KubeconfigsCollectionPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/kubeconfigs"
+
+	// PasswordChangeRequestsCollectionPath is the ext PasswordChangeRequest
+	// collection behind the local-cluster proxy: create-only, no CRD
+	// registered for it in e2e/testdata/crds (a plain CRD would reject the
+	// unnamed create the real command sends, or persist an object no
+	// controller ever confirms), so the façade owns the route outright.
+	PasswordChangeRequestsCollectionPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/passwordchangerequests"
 )
 
 // Options configures a Facade instance. Every façade instance is meant to be
@@ -208,16 +226,17 @@ type Facade struct {
 	opts Options
 	idp  *idpStub
 
-	mu             sync.Mutex
-	counter        int
-	tokens         map[string]*record
-	descriptions   []string
-	deletes        []DeleteRecord
-	authTokensReqs []AuthTokensRequest
-	authTokens     map[string]string // request id → encrypted base64 bearer
-	logins         int
-	derivedCreates int
-	dropped        bool
+	mu                sync.Mutex
+	counter           int
+	kubeconfigCounter int
+	tokens            map[string]*record
+	descriptions      []string
+	deletes           []DeleteRecord
+	authTokensReqs    []AuthTokensRequest
+	authTokens        map[string]string // request id → encrypted base64 bearer
+	logins            int
+	derivedCreates    int
+	dropped           bool
 }
 
 // LoginDescriptions returns the descriptions the token-creating requests of
@@ -373,6 +392,10 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleDelete(w, r, "v3", strings.TrimPrefix(r.URL.Path, v3TokensPath+"/"))
 	case f.opts.EnableSAMLAuthTokens && strings.HasPrefix(r.URL.Path, authTokensPathPrefix):
 		f.handleAuthTokens(w, r, strings.TrimPrefix(r.URL.Path, authTokensPathPrefix))
+	case r.Method == http.MethodPost && r.URL.Path == KubeconfigsCollectionPath:
+		f.handleKubeconfigsPOST(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == PasswordChangeRequestsCollectionPath:
+		f.handlePasswordChangeRequestsPOST(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == CRTCollectionPath:
 		f.handleCRTCollection(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, CRTCollectionPath+"/"):
@@ -561,15 +584,20 @@ func dropConnection(w http.ResponseWriter) {
 	_ = conn.Close()
 }
 
-func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
+// namedBodyFallthrough reads r's body and, when it carries its own
+// metadata.name (a full CR — `create resource -f`), restores the body and
+// falls through to the real envtest store unchanged, answering w itself and
+// reporting handled=true; an unnamed body (an imperative create-only
+// resource's own shape) is left unhandled, body returned for the caller to
+// decode. Shared by the handlers whose resource also has a CRD behind the
+// fallthrough (tokens, kubeconfigs) — passwordchangerequests has none, so
+// its handler reads its own body directly instead of calling this.
+func (f *Facade) namedBodyFallthrough(w http.ResponseWriter, r *http.Request) (body []byte, handled bool) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "reading body", http.StatusBadRequest)
-		return
+		return nil, true
 	}
-	// A full CR (create resource -f) carries metadata.name; a derived token create request
-	// (CreateDerivedToken) is a bare {"spec": ...} body. Restore the body
-	// before any fallthrough so the real handler can read it again.
 	var probe struct {
 		Metadata *struct {
 			Name string `json:"name"`
@@ -579,6 +607,14 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 	if probe.Metadata != nil && probe.Metadata.Name != "" {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		f.fallthroughTo(w, r)
+		return nil, true
+	}
+	return body, false
+}
+
+func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
+	body, handled := f.namedBodyFallthrough(w, r)
+	if handled {
 		return
 	}
 
@@ -835,6 +871,217 @@ func (f *Facade) deleteMode(rec *record) string {
 		return f.opts.DerivedDeleteMode
 	}
 	return ""
+}
+
+// handleKubeconfigsPOST serves `create kubeconfig`'s create-only ext
+// Kubeconfig store: a request carrying its own metadata.name (`create
+// resource -f`) falls through to envtest's real CRD, unchanged; an unnamed
+// request (the command's own store-generated-identity shape, mirroring
+// handleTokensPOST) is answered directly, ?dryRun=All echoing the object
+// with no status, a real POST additionally filling status.value AND
+// forwarding a named copy to envtest (forwardNamedCreate) so a later
+// get/delete kubeconfig <name> succeeds against the real store.
+//
+// ASSUMPTION (needs a fidelity probe against a real server): the real
+// server's status.value is a full kubeconfig document embedding a live,
+// revocable bearer scoped to spec.clusters, with entries Rancher's own
+// formatter builds (server URL, CA, impersonation-ready user). This façade
+// fills status.value with a fixture kubeconfig naming spec.clusters (or
+// "local" when empty) and an inert placeholder server/token — enough for
+// the command's own success path (it only checks status.value is
+// non-empty), never a claim about the real document's shape; the persisted
+// object's own spec is real, forwarded verbatim.
+func (f *Facade) handleKubeconfigsPOST(w http.ResponseWriter, r *http.Request) {
+	body, handled := f.namedBodyFallthrough(w, r)
+	if handled {
+		return
+	}
+
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	spec, ok := decodeSpec(w, body)
+	if !ok {
+		return
+	}
+
+	f.mu.Lock()
+	f.kubeconfigCounter++
+	n := f.kubeconfigCounter
+	f.mu.Unlock()
+	name := fmt.Sprintf("fac-kubeconfig-%d", n)
+
+	obj := map[string]any{
+		"apiVersion": "ext.cattle.io/v1",
+		"kind":       "Kubeconfig",
+		"metadata":   map[string]any{"name": name},
+		"spec":       spec,
+	}
+	if !slices.Contains(r.URL.Query()["dryRun"], "All") {
+		f.forwardNamedCreate(r, "Kubeconfig", "ext.cattle.io/v1", name, spec)
+		clusters := stringsFromAny(spec["clusters"])
+		currentContext, _ := spec["currentContext"].(string)
+		value, err := kubeconfigValueFixture(clusters, currentContext)
+		if err != nil {
+			http.Error(w, "building kubeconfig fixture: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		obj["status"] = map[string]any{"value": value, "summary": "Complete"}
+	}
+	writeJSON(w, http.StatusCreated, obj)
+}
+
+// forwardNamedCreate persists a named copy of an unnamed façade-owned create
+// into envtest's real CRD, through the fallthrough router (bypassing this
+// façade's own route dispatch, exactly like a named `create resource -f`
+// request would) — so a later get/delete by the generated name succeeds
+// against the real store. Errors are silently ignored: the caller's own
+// synthetic response has already answered the client, and a persistence gap
+// here surfaces as its own explicit failure, a later get/delete 404.
+func (f *Facade) forwardNamedCreate(r *http.Request, kind, apiVersion, name string, spec map[string]any) {
+	body, err := json.Marshal(map[string]any{
+		"apiVersion": apiVersion,
+		"kind":       kind,
+		"metadata":   map[string]any{"name": name},
+		"spec":       spec,
+	})
+	if err != nil {
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, r.URL.String(), bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	f.fallthroughTo(httptest.NewRecorder(), req)
+}
+
+// stringsFromAny converts a decoded JSON array (element type always any) to
+// a string slice, skipping non-string entries; nil for anything else,
+// including an absent field.
+func stringsFromAny(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, e := range arr {
+		if s, ok := e.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// kubeconfigValueFixture builds a deterministic, valid kubeconfig document
+// naming each requested cluster (or "local" for an empty list) via the
+// repo's own clientcmdapi.Config + clientcmd.Write path — the same one
+// internal/commands/kubeconfig.go uses — rather than hand-built YAML, so a
+// cluster name carrying a YAML-significant character still encodes
+// correctly. One shared "rancher" AuthInfo carries every context, mirroring
+// the real store's single reused credential. See handleKubeconfigsPOST's
+// ASSUMPTION comment.
+func kubeconfigValueFixture(clusters []string, currentContext string) (string, error) {
+	if len(clusters) == 0 {
+		clusters = []string{"local"}
+	}
+	if currentContext == "" {
+		currentContext = clusters[0]
+	}
+	const authInfoName = "rancher"
+	cfg := clientcmdapi.Config{
+		Clusters:       map[string]*clientcmdapi.Cluster{},
+		AuthInfos:      map[string]*clientcmdapi.AuthInfo{authInfoName: {Token: "fac-kubeconfig-token"}},
+		Contexts:       map[string]*clientcmdapi.Context{},
+		CurrentContext: currentContext,
+	}
+	for _, c := range clusters {
+		cfg.Clusters[c] = &clientcmdapi.Cluster{Server: "https://facade.example.invalid/k8s/clusters/" + c}
+		cfg.Contexts[c] = &clientcmdapi.Context{Cluster: c, AuthInfo: authInfoName}
+	}
+	b, err := clientcmd.Write(cfg)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// handlePasswordChangeRequestsPOST serves `create password-change-request`'s
+// create-only ext PasswordChangeRequest resource: no CRD backs this route
+// (see PasswordChangeRequestsCollectionPath), so the façade owns both the
+// dry-run preview (echoed with no status, proving the workflow is present)
+// and the real POST, which the real server completes synchronously.
+//
+// ASSUMPTION (needs a fidelity probe against a real server): the real
+// server's response shape beyond the PasswordUpdated condition this façade
+// fills — additional conditions, a resource name, or timestamps the command
+// does not read today.
+func (f *Facade) handlePasswordChangeRequestsPOST(w http.ResponseWriter, r *http.Request) {
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "reading body", http.StatusBadRequest)
+		return
+	}
+	spec, ok := decodeSpec(w, body)
+	if !ok {
+		return
+	}
+
+	obj := map[string]any{
+		"apiVersion": "ext.cattle.io/v1",
+		"kind":       "PasswordChangeRequest",
+		"metadata":   map[string]any{},
+		"spec":       spec,
+	}
+	if !slices.Contains(r.URL.Query()["dryRun"], "All") {
+		obj["status"] = map[string]any{
+			"summary": "Complete",
+			"conditions": []map[string]any{
+				{"type": "PasswordUpdated", "status": "True"},
+			},
+		}
+	}
+	writeJSON(w, http.StatusCreated, obj)
+}
+
+// decodeSpec reads body's "spec" field into a generic map — echoed verbatim
+// by every create-only ext resource handler so no per-field struct can drop
+// a flag the real command sends — answering w with a malformed-body error
+// and reporting ok=false on decode failure. Shared by
+// handleKubeconfigsPOST and handlePasswordChangeRequestsPOST.
+func decodeSpec(w http.ResponseWriter, body []byte) (spec map[string]any, ok bool) {
+	var req struct {
+		Spec map[string]any `json:"spec"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeMalformedBody(w, err)
+		return nil, false
+	}
+	return req.Spec, true
+}
+
+// writeMalformedBody answers a request whose body could not be decoded with
+// a 400 carrying a Kubernetes-shaped Status object, the same error shape a
+// real apiserver's decode failure returns — never a silent 201 over a
+// zero-value fixture.
+func writeMalformedBody(w http.ResponseWriter, err error) {
+	writeJSON(w, http.StatusBadRequest, map[string]any{
+		"kind":       "Status",
+		"apiVersion": "v1",
+		"status":     "Failure",
+		"message":    "malformed request body: " + err.Error(),
+		"reason":     "BadRequest",
+		"code":       http.StatusBadRequest,
+	})
 }
 
 // crtFixture is one façade-served clusterregistrationtoken. Token is the
