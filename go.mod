@@ -11,7 +11,7 @@ replace (
 
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11
-	github.com/gofrs/flock v0.13.0
+	github.com/gofrs/flock v0.13.1
 	github.com/rogpeppe/go-internal v1.16.0
 	github.com/stretchr/testify v1.12.1
 	github.com/tidwall/gjson v1.19.0
