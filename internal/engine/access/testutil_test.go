@@ -21,7 +21,7 @@ type scripted struct {
 
 // fakeClient records every review it receives and answers from a script
 // in order; when the script is exhausted it repeats the last entry.
-// Fan-out tests pin fanOutLimit to 1 so the sorted key order is the call
+// Fan-out tests set fanOutLimit to 1 so the sorted key order is the call
 // order.
 type fakeClient struct {
 	mu        sync.Mutex
@@ -115,6 +115,40 @@ func (f *fakeClient) Delete(context.Context, schema.GroupVersionResource, string
 
 func (f *fakeClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
 	return "", errors.New("logs is not used by access")
+}
+
+// fakeFactory hands out one client for the caller and one per impersonated
+// user, recording who was impersonated.
+type fakeFactory struct {
+	caller       *fakeClient
+	impersonated map[string]*fakeClient
+	Impersonated []string
+	resolve      map[string]string
+	ResolveCalls int
+	ClusterErr   error
+}
+
+func (f *fakeFactory) Cluster(context.Context, string) (engine.ClusterClient, error) {
+	if f.ClusterErr != nil {
+		return nil, f.ClusterErr
+	}
+	return f.caller, nil
+}
+
+func (f *fakeFactory) ImpersonatedCluster(_ context.Context, _ string, as engine.Impersonation) (engine.ClusterClient, error) {
+	f.Impersonated = append(f.Impersonated, as.User)
+	if c, ok := f.impersonated[as.User]; ok {
+		return c, nil
+	}
+	return f.caller, nil
+}
+
+func (f *fakeFactory) ResolveCluster(_ context.Context, s string) (string, error) {
+	f.ResolveCalls++
+	if id, ok := f.resolve[s]; ok {
+		return id, nil
+	}
+	return s, nil
 }
 
 // review builds a decoded 2xx review response of the given kind with the
