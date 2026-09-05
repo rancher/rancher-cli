@@ -396,6 +396,12 @@ anything under them, is refused with `VALIDATION`; so is a replace of
 `/metadata` or of the whole object whose value carries them. The server
 sets both fields; the CLI always sends them back exactly as fetched.
 
+Every `diff[].path` a dry-run reports (in `-o json` and in the default text
+render) is an RFC 6901 JSON Pointer — `~1` for a literal `/` and `~0` for a
+literal `~` inside a key, so a domain-prefixed label or annotation key
+renders as one escaped segment. The string is usable verbatim as a JSON
+Patch op's `path`.
+
 ## Cluster provisioning
 
 Rancher's provisioning model (node drivers, machine pools, imported and
