@@ -10,6 +10,12 @@ set -euo pipefail
 # it has no goldens; the suite only boots and smoke-checks it.
 ORACLE_IMAGE="rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
+# K3S_IMAGE is the downstream cluster the oracle imports on every boot, so
+# the fidelity facts that need a downstream (the access-downstream family)
+# record against the pinned oracle rather than an external server. One
+# literal tag+digest, bumped through a reviewed golden-regeneration change
+# like ORACLE_IMAGE.
+K3S_IMAGE="rancher/k3s:v1.34.4-k3s1@sha256:a5f627f1ed014dede348fdc77bc7e452d03712a8daff000e0f2667d28f9a2d11"
 
 # The harness reaches the oracle through the CLI's own Rancher-scoped HTTP
 # client: it honours HTTPS_PROXY/HTTP_PROXY/NO_PROXY from this shell (a
@@ -37,11 +43,27 @@ if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
   CONTAINER="rancher-cli-e2e-real-prime"
   HOST_PORT="8444"
   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real-prime"
+  SUBNET="172.30.2.0/24"
 else
   CONTAINER="rancher-cli-e2e-real"
   HOST_PORT="8443"
   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real"
+  SUBNET="172.30.1.0/24"
 fi
+# The oracle and its downstream share a user-defined network with fixed
+# addresses. Pods inside k3s cannot resolve Docker container names (k3s
+# hands CoreDNS the node's upstream and drops Docker's loopback embedded
+# DNS), so the agent reaches the oracle by IP: the oracle's server-url is
+# https://ORACLE_IP and its leaf certificate carries that IP as a SAN.
+NETWORK="${CONTAINER}-net"
+ORACLE_IP="${SUBNET%.0/24}.2"
+K3S_IP="${SUBNET%.0/24}.3"
+K3S_CONTAINER="${CONTAINER}-k3s"
+DOWNSTREAM_NAME="downstream"
+DOWNSTREAM_ID=""
+# The Prime oracle is boot-and-smoke only (no goldens), so it imports no
+# downstream: the extra boot time and failure mode would guard nothing.
+downstream_wanted() { [ "${E2E_REAL_PRIME:-}" != "1" ]; }
 # Dial where the port is actually published: a LAN bind publishes ONLY on
 # that address (loopback /ping may still answer through Docker Desktop's
 # userspace proxy, which makes a loopback BASE_URL pass the waits and then
@@ -85,9 +107,12 @@ cleanup() {
   if [ ${status} -ne 0 ]; then
     echo "==> last 200 container log lines:"
     docker logs --tail 200 "${CONTAINER}" 2>&1 | sed 's/^/[rancher] /' || true
+    echo "==> downstream agent log lines:"
+    docker exec "${K3S_CONTAINER}" kubectl -n cattle-system logs deploy/cattle-cluster-agent --tail 50 2>&1 | sed 's/^/[agent] /' || true
   fi
   if [ "${E2E_REAL_KEEP:-}" != "1" ]; then
-    docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -f "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
+    docker network rm "${NETWORK}" >/dev/null 2>&1 || true
     rm -f "${STATE_FILE}"
   fi
   rm -rf "${LOCK_DIR}"
@@ -140,6 +165,125 @@ prime_extra_sans() {
   done
 }
 
+# api runs an authenticated request against the oracle with the admin token
+# on the header, never on argv beyond this function; bodies come on stdin.
+api() {
+  curl -s --cacert "${CA_FILE}" --max-time 30 -H "Authorization: Bearer ${ADMIN_TOKEN}" -H 'Content-Type: application/json' "$@"
+}
+
+ensure_network() {
+  docker network inspect "${NETWORK}" >/dev/null 2>&1 && return 0
+  docker network create --subnet "${SUBNET}" "${NETWORK}" >/dev/null
+}
+
+prime_ip_san() {
+  # dynamiclistener adds the Host of a request as a SAN of the leaf it
+  # serves next, signed by the same CA already in CA_FILE. The agent
+  # dials https://ORACLE_IP and pins that CA by checksum, so the IP must be
+  # on the leaf before the import manifest is applied.
+  echo "==> priming TLS SAN for ${ORACLE_IP}"
+  curl -sk --max-time 5 -H "Host: ${ORACLE_IP}" "${BASE_URL}/ping" >/dev/null || true
+  for _ in $(seq 1 12); do
+    if openssl s_client -connect "${DIAL_ADDR}:${HOST_PORT}" -servername "${ORACLE_IP}" </dev/null 2>/dev/null       | openssl x509 -noout -ext subjectAltName 2>/dev/null | grep -q "IP Address:${ORACLE_IP}"; then
+      return 0
+    fi
+    sleep 5
+  done
+  echo "error: the oracle's certificate did not gain the SAN ${ORACLE_IP}" >&2
+  return 1
+}
+
+boot_k3s() {
+  docker rm -f "${K3S_CONTAINER}" >/dev/null 2>&1 || true
+  echo "==> booting downstream ${K3S_IMAGE}"
+  # --privileged for the same reason as the oracle (containerd, CNI, kernel
+  # mounts); the container has no published port and is reachable only on
+  # the private network.
+  # A kept downstream gets the oracle's restart policy so both survive a
+  # Docker restart together; suite mode stays policy-free like the oracle.
+  restart_args=""
+  [ "${E2E_REAL_KEEP:-}" != "1" ] || restart_args="--restart unless-stopped"
+  # shellcheck disable=SC2086
+  docker run -d --name "${K3S_CONTAINER}" --privileged ${restart_args} \
+    --network "${NETWORK}" --ip "${K3S_IP}" --tmpfs /run --tmpfs /var/run \
+    "${K3S_IMAGE}" server --disable traefik --disable servicelb --disable metrics-server >/dev/null
+  echo "==> waiting for the downstream node"
+  for _ in $(seq 1 60); do
+    if docker exec "${K3S_CONTAINER}" kubectl get nodes 2>/dev/null | grep -q ' Ready '; then
+      return 0
+    fi
+    sleep 3
+  done
+  echo "error: the downstream node was not Ready within 3 minutes" >&2
+  return 1
+}
+
+# import_downstream registers the k3s container as an imported cluster and
+# sets DOWNSTREAM_ID to its management cluster id once it is active.
+import_downstream() {
+  echo "==> importing the downstream cluster"
+  api -o /dev/null -X POST "${BASE_URL}/v1/provisioning.cattle.io.clusters" -d @- <<JSON
+{"type":"provisioning.cattle.io.cluster","metadata":{"name":"${DOWNSTREAM_NAME}","namespace":"fleet-default"},"spec":{}}
+JSON
+  DOWNSTREAM_ID=""
+  for _ in $(seq 1 60); do
+    DOWNSTREAM_ID="$(api "${BASE_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${DOWNSTREAM_NAME}" \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",{}).get("clusterName",""))' 2>/dev/null || true)"
+    [ -z "${DOWNSTREAM_ID}" ] || break
+    sleep 2
+  done
+  [ -n "${DOWNSTREAM_ID}" ] || { echo "error: the imported cluster got no management cluster id within 2 minutes" >&2; return 1; }
+  reg=""
+  for _ in $(seq 1 60); do
+    reg="$(api "${BASE_URL}/v3/clusterregistrationtokens?clusterId=${DOWNSTREAM_ID}" \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin).get("data",[]); print(d[0].get("token","") if d else "")' 2>/dev/null || true)"
+    [ -z "${reg}" ] || break
+    sleep 2
+  done
+  [ -n "${reg}" ] || { echo "error: no cluster registration token within 2 minutes" >&2; return 1; }
+  # The manifest bakes CATTLE_SERVER (the server-url, https://ORACLE_IP) and
+  # CATTLE_CA_CHECKSUM at fetch time and pulls rancher-agent at the oracle's
+  # version; apply it with the downstream's own kubectl.
+  curl -s --cacert "${CA_FILE}" --max-time 30 "${BASE_URL}/v3/import/${reg}_${DOWNSTREAM_ID}.yaml" \
+    | docker exec -i "${K3S_CONTAINER}" kubectl apply -f - >/dev/null
+  wait_for_downstream_active
+}
+
+wait_for_downstream_active() {
+  echo "==> waiting for the downstream cluster ${DOWNSTREAM_ID} to be active"
+  for _ in $(seq 1 60); do
+    state="$(api "${BASE_URL}/v3/clusters/${DOWNSTREAM_ID}" \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin).get("state",""))' 2>/dev/null || true)"
+    [ "${state}" = "active" ] && { wait_for_downstream_proxy; return; }
+    sleep 6
+  done
+  echo "error: the downstream cluster did not become active within 6 minutes" >&2
+  return 1
+}
+
+# wait_for_downstream_proxy waits until the proxy path serves the downstream
+# steadily. "active" arrives while the cluster agent still restarts itself
+# once after registering; a request in that window answers a plain-text 500
+# "cluster agent disconnected", which is a real proxy fact and would be
+# recorded as one. Six consecutive answers three seconds apart cover the
+# restart window seen on the pinned image.
+wait_for_downstream_proxy() {
+  echo "==> waiting for the proxy path to /k8s/clusters/${DOWNSTREAM_ID} to settle"
+  steady=0
+  for _ in $(seq 1 60); do
+    code="$(api -o /dev/null -w '%{http_code}' "${BASE_URL}/k8s/clusters/${DOWNSTREAM_ID}/version")" || code=""
+    if [ "${code}" = "200" ]; then
+      steady=$((steady + 1))
+      [ "${steady}" -ge 6 ] && return 0
+    else
+      steady=0
+    fi
+    sleep 3
+  done
+  echo "error: the proxy path to the downstream did not settle within 3 minutes" >&2
+  return 1
+}
+
 reuse_state() {
   [ -f "${STATE_FILE}" ] || return 1
   cid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["containerId"])' "${STATE_FILE}" 2>/dev/null)" || return 1
@@ -169,16 +313,78 @@ reuse_state() {
   [ "${code}" = "200" ]
 }
 
+# reuse_downstream reports whether the kept downstream is the same
+# container, from the currently pinned k3s image, and still active on the
+# oracle; it sets DOWNSTREAM_ID. A failure rebuilds the downstream alone
+# (rebuild_downstream): the oracle's boot is the expensive part and it just
+# passed its own checks.
+reuse_downstream() {
+  k3s_cid="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["k3sContainerId"])' "${STATE_FILE}" 2>/dev/null)" || return 1
+  k3s_running="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}" 2>/dev/null)" || return 1
+  [ "${k3s_cid}" = "${k3s_running}" ] || return 1
+  saved_k3s_image="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["k3sImage"])' "${STATE_FILE}" 2>/dev/null)" || return 1
+  [ "${saved_k3s_image}" = "${K3S_IMAGE}" ] || {
+    echo "==> kept downstream was created from a different k3s image; rebuilding it"
+    return 1
+  }
+  DOWNSTREAM_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["downstream"])' "${STATE_FILE}" 2>/dev/null)" || return 1
+  state="$(api "${BASE_URL}/v3/clusters/${DOWNSTREAM_ID}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("state",""))' 2>/dev/null || true)"
+  [ "${state}" = "active" ]
+}
+
+# rebuild_downstream removes the kept downstream (container and imported
+# cluster) and imports a fresh one into the running oracle.
+rebuild_downstream() {
+  echo "==> kept downstream is unhealthy; rebuilding it against the running oracle"
+  # The stale registration goes first and is confirmed gone before the
+  # container is removed: a DELETE that stalls then fails the run with the
+  # old container still present, never with a registered cluster that has
+  # no agent behind it.
+  code="$(api -o /dev/null -w '%{http_code}' -X DELETE "${BASE_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${DOWNSTREAM_NAME}")" || true
+  if [ "${code}" != "404" ]; then
+    for _ in $(seq 1 60); do
+      code="$(api -o /dev/null -w '%{http_code}' "${BASE_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${DOWNSTREAM_NAME}")" || true
+      [ "${code}" = "404" ] && break
+      sleep 2
+    done
+    [ "${code}" = "404" ] || { echo "error: the stale imported cluster did not go away within 2 minutes" >&2; return 1; }
+  fi
+  docker rm -f "${K3S_CONTAINER}" >/dev/null 2>&1 || true
+  prime_ip_san
+  boot_k3s
+  import_downstream
+  write_state
+}
+
+# write_state records what a kept run needs to reuse both containers.
+write_state() {
+  cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"
+  k3s_cid=""
+  if downstream_wanted; then
+    k3s_cid="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}")"
+  fi
+  (
+    umask 177
+    python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2],"oracleImage":sys.argv[3],"k3sContainerId":sys.argv[4],"k3sImage":sys.argv[5],"downstream":sys.argv[6]},open(sys.argv[7],"w"))' \
+      "${cid}" "${ADMIN_TOKEN}" "${ORACLE_IMAGE}" "${k3s_cid}" "${K3S_IMAGE}" "${DOWNSTREAM_ID}" "${STATE_FILE}"
+  )
+}
+
 if [ "${E2E_REAL_KEEP:-}" = "1" ] && reuse_state; then
   echo "==> reusing healthy kept container"
+  if downstream_wanted && ! reuse_downstream; then
+    rebuild_downstream
+  fi
   # A kept container was not necessarily primed for THIS run's SAN list -
   # the knob may appear (or change) between runs against the same
   # container. Priming is idempotent (dynamiclistener adds a SAN once),
   # and the CA is unchanged by it, so re-prime unconditionally.
   [ -z "${EXTRA_SANS}" ] || prime_extra_sans
 else
-  docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+  docker rm -f "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
+  docker network rm "${NETWORK}" >/dev/null 2>&1 || true
   rm -f "${STATE_FILE}"
+  ensure_network
   BOOTSTRAP_PW="$(head -c 18 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 20)"
   # Keep the bootstrap password out of argv (visible via `ps` and
   # `docker inspect`): write it to a 0600 env file under the 0700 state dir,
@@ -199,6 +405,7 @@ else
   [ "${E2E_REAL_KEEP:-}" != "1" ] || RESTART_ARGS="--restart unless-stopped"
   # shellcheck disable=SC2086
   docker run -d --name "${CONTAINER}" --privileged ${RESTART_ARGS} \
+    --network "${NETWORK}" --ip "${ORACLE_IP}" \
     -p "${BIND_ADDR}:${HOST_PORT}:443" \
     --env-file "${ENV_FILE}" \
     "${ORACLE_IMAGE}" >/dev/null
@@ -217,22 +424,23 @@ else
 {"username":"admin","password":"${BOOTSTRAP_PW}"}
 JSON
 )"
+  # server-url is what the downstream agent dials (baked into the import
+  # manifest): the oracle's address on the private network. Nothing the
+  # harness records echoes it; the harness itself keeps dialing BASE_URL.
   curl -s --cacert "${CA_FILE}" -o /dev/null "${BASE_URL}/v3/settings/server-url" \
     -X PUT -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' \
-    -d "{\"value\":\"${BASE_URL}\"}"
+    -d "{\"value\":\"https://${ORACLE_IP}\"}"
   ADMIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3/tokens" \
     -H "Authorization: Bearer ${LOGIN_TOKEN}" -H 'Content-Type: application/json' -d @- <<'JSON' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
 {"description":"e2e-fid oracle"}
 JSON
 )"
-  if [ "${E2E_REAL_KEEP:-}" = "1" ]; then
-    cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"
-    (
-      umask 177
-      python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2],"oracleImage":sys.argv[3]},open(sys.argv[4],"w"))' \
-        "${cid}" "${ADMIN_TOKEN}" "${ORACLE_IMAGE}" "${STATE_FILE}"
-    )
+  if downstream_wanted; then
+    prime_ip_san
+    boot_k3s
+    import_downstream
   fi
+  [ "${E2E_REAL_KEEP:-}" != "1" ] || write_state
 fi
 
 export E2E_REAL_URL="${BASE_URL}"
@@ -240,6 +448,7 @@ export E2E_REAL_ADMIN_TOKEN="${ADMIN_TOKEN}"
 E2E_REAL_CACERT="$(cat "${CA_FILE}")"
 export E2E_REAL_CACERT
 export E2E_REAL_ORACLE_IMAGE="${ORACLE_IMAGE}"
+export E2E_REAL_DOWNSTREAM="${DOWNSTREAM_ID}"
 
 if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
   # No goldens for the Prime oracle: golden verification runs only against

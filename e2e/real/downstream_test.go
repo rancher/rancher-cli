@@ -20,9 +20,11 @@ import (
 
 // TestDownstream records or verifies the goldens for every probe marked
 // Downstream: true, against the downstream cluster named by
-// E2E_REAL_DOWNSTREAM. It skips entirely when that variable is unset: the
-// pinned Docker oracle (scripts/e2e-real) has no downstream cluster, so this
-// suite never runs there and TestOracle never covers these probes.
+// E2E_REAL_DOWNSTREAM. scripts/e2e-real imports a pinned k3s cluster into
+// the oracle and sets the variable, so the goldens carry the oracle image
+// pin; an external Rancher with its own downstream can be probed by hand
+// through scripts/e2e-real-downstream. Unset, the suite skips entirely, and
+// TestOracle never covers these probes.
 func TestDownstream(t *testing.T) {
 	downstream := os.Getenv("E2E_REAL_DOWNSTREAM")
 	if downstream == "" {

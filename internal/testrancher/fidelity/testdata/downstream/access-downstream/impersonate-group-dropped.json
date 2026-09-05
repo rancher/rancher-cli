@@ -1,5 +1,5 @@
 {
-  "oracleImage": "external:v2.15.0-dev",
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
   "observations": [
     {
       "name": "whoami",
@@ -15,8 +15,6 @@
           "userInfo": {
             "extra": "\u003cextra\u003e",
             "groups": [
-              "\u003cgroup\u003e",
-              "\u003cgroup\u003e",
               "system:authenticated",
               "system:cattle:authenticated"
             ],
