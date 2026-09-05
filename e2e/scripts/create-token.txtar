@@ -1,0 +1,24 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# token is a Sensitive kind: bare --apply is refused before anything commits
+# (Plan's own dry-run POST still runs against the façade — fac-token-1 is
+# minted and discarded, never surfaced to the caller).
+! exec rancher create token --apply
+stderr 'error \(CONFIRMATION_REQUIRED\):'
+stderr 're-run with --yes'
+
+# dry-run preview: the Effect only — no bearer is ever previewed. Consumes
+# fac-token-2, also discarded.
+exec rancher create token --ttl 90d --description e2e-ci --dry-run -o json
+jsonquery stdout data.action create
+jsonquery stdout data.destructive true
+jsonquery stdout data.displayKind token
+
+# apply: Plan's own preview POST (fac-token-3, discarded) runs first, then
+# the real create (fac-token-4) — the one the caller actually sees.
+exec rancher create token --ttl 90d --description e2e-ci --apply --yes -o json
+jsonquery stdout data.name fac-token-4
+jsonquery stdout data.bearerToken ext/fac-token-4:fac-secret-4
+! jsonquery stdout data.expiresAt ''
+jsonquery stdout 'warnings.0' 'this token value is shown exactly once — store it now'
