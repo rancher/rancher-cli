@@ -40,6 +40,14 @@ func TestValidateRejectsInvalidProbes(t *testing.T) {
 			p.OracleOnly = true
 			p.FacadeDivergence = "some reason"
 		}, "mutually exclusive"},
+		{"downstream and oracle-only", func(p *Probe) {
+			p.Downstream = true
+			p.OracleOnly = true
+		}, "mutually exclusive"},
+		{"downstream with divergence pin", func(p *Probe) {
+			p.Downstream = true
+			p.FacadeDivergence = "some reason"
+		}, "mutually exclusive"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

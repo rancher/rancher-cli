@@ -33,6 +33,10 @@ type Target interface {
 	// Bearer resolves admin, standard, or revoked to a bearer token. The
 	// executor never calls it for none or garbage.
 	Bearer(ctx context.Context, id Identity) (string, error)
+	// Downstream is the id of a downstream cluster the target can reach
+	// through the proxy, or empty when it has none. The facade always
+	// returns empty.
+	Downstream() string
 }
 
 // RequestSpec is one HTTP request. Path, Query values, Headers values, and
@@ -105,6 +109,13 @@ type Probe struct {
 	// OracleOnly probes run in record and verify-real modes only: skipped
 	// by conformance, never have a facade golden.
 	OracleOnly bool
+	// Downstream marks a probe that needs a downstream cluster reached
+	// through the proxy: RunProbe seeds the "downstream" capture from the
+	// target's Downstream() before the first observation and refuses to
+	// run (never records) when the target has none. Recorded under
+	// testdata/downstream, never under oracle or facade; skipped by
+	// conformance and by TestOracle.
+	Downstream bool
 }
 
 // Validate enforces the probe-definition invariants from the spec.
@@ -130,6 +141,12 @@ func (p Probe) Validate() error {
 	}
 	if p.OracleOnly && p.FacadeDivergence != "" {
 		return fmt.Errorf("probe %s: OracleOnly and FacadeDivergence are mutually exclusive", p.Name)
+	}
+	if p.Downstream && p.OracleOnly {
+		return fmt.Errorf("probe %s: Downstream and OracleOnly are mutually exclusive", p.Name)
+	}
+	if p.Downstream && p.FacadeDivergence != "" {
+		return fmt.Errorf("probe %s: Downstream and FacadeDivergence are mutually exclusive", p.Name)
 	}
 	return nil
 }

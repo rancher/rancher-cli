@@ -17,8 +17,9 @@ import (
 )
 
 type fakeTarget struct {
-	srv     *httptest.Server
-	bearers map[Identity]string
+	srv        *httptest.Server
+	bearers    map[Identity]string
+	downstream string
 }
 
 func (f *fakeTarget) BaseURL() string      { return f.srv.URL }
@@ -26,6 +27,7 @@ func (f *fakeTarget) Client() *http.Client { return f.srv.Client() }
 func (f *fakeTarget) Bearer(_ context.Context, id Identity) (string, error) {
 	return f.bearers[id], nil
 }
+func (f *fakeTarget) Downstream() string { return f.downstream }
 
 func TestRunProbeThreadsCapturesAndNormalizes(t *testing.T) {
 	t.Parallel()
@@ -472,4 +474,45 @@ func TestNameFromExtBearer(t *testing.T) {
 	assert.Equal(t, "fac-token-3", name)
 	_, ok = NameFromExtBearer("not-an-ext-bearer")
 	assert.False(t, ok)
+}
+
+func TestRunProbeSeedsDownstreamCapture(t *testing.T) {
+	t.Parallel()
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}, downstream: "c-abc123"}
+
+	p := Probe{
+		Name:       "fam/downstream",
+		Downstream: true,
+		Observations: []Observation{
+			{Name: "get", Request: RequestSpec{Method: "GET", Path: "/k8s/clusters/{downstream}/things", Identity: IdentityAdmin}},
+		},
+	}
+	_, err := RunProbe(t.Context(), tgt, p)
+	require.NoError(t, err)
+	assert.Equal(t, "/k8s/clusters/c-abc123/things", gotPath)
+}
+
+func TestRunProbeRefusesDownstreamProbeWithoutTarget(t *testing.T) {
+	t.Parallel()
+	var hit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hit = true }))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+	p := Probe{
+		Name:       "fam/downstream",
+		Downstream: true,
+		Observations: []Observation{
+			{Name: "get", Request: RequestSpec{Method: "GET", Path: "/k8s/clusters/{downstream}/things", Identity: IdentityAdmin}},
+		},
+	}
+	_, err := RunProbe(t.Context(), tgt, p)
+	require.ErrorContains(t, err, "no downstream cluster")
+	assert.False(t, hit, "a downstream probe without a target must never record against a synthetic URL")
 }

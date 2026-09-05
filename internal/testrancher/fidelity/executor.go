@@ -39,6 +39,13 @@ func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (
 		return nil, verr
 	}
 	captured := map[string]string{}
+	if p.Downstream {
+		id := tgt.Downstream()
+		if id == "" {
+			return nil, fmt.Errorf("probe %s: target has no downstream cluster", p.Name)
+		}
+		captured["downstream"] = id
+	}
 	runStep := func(s Step) error {
 		sctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
