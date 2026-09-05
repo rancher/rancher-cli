@@ -48,6 +48,9 @@ func TestValidateRejectsInvalidProbes(t *testing.T) {
 			p.Downstream = true
 			p.FacadeDivergence = "some reason"
 		}, "mutually exclusive"},
+		{"normalize rule with both replace and keep-prefix", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "status.userInfo.groups", Replace: "x", KeepPrefix: "system:"}}
+		}, "mutually exclusive"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

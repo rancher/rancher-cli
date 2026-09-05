@@ -35,6 +35,11 @@ func TestExpectedProbeSet(t *testing.T) {
 		"mut/rv-precondition-delete", "mut/dryrun-then-apply",
 		"capability/edition-and-oidc-provider-classification",
 		"user-password-workflow/discovery-and-namespace",
+		"access-downstream/caller-without-cluster-access", "access-downstream/impersonation-refused",
+		"access-downstream/subject-without-cluster-access", "access-downstream/nonexistent-user",
+		"access-downstream/nonexistent-service-account", "access-downstream/service-account-identity",
+		"access-downstream/impersonate-group-dropped", "access-downstream/rules-review-complete",
+		"access-downstream/sar-without-right", "access-downstream/version-field-accepted",
 	}
 	var got []string
 	for _, p := range All() {
@@ -93,6 +98,32 @@ func TestEveryDownstreamProbeHasItsRecordedGolden(t *testing.T) {
 		path := GoldenPath(filepath.Join("testdata", "downstream"), p.Name)
 		_, err := os.Stat(path)
 		require.NoError(t, err, "downstream probe %s must have a recorded golden at %s", p.Name, path)
+	}
+}
+
+func TestDownstreamWhoamiProbesNormalizeExtra(t *testing.T) {
+	t.Parallel()
+	whoamiPaths := map[string]bool{downstreamWhoami: true, localWhoami: true}
+	for _, p := range All() {
+		if !p.Downstream {
+			continue
+		}
+		hasWhoami := false
+		for _, o := range p.Observations {
+			if whoamiPaths[o.Request.Path] {
+				hasWhoami = true
+			}
+		}
+		if !hasWhoami {
+			continue
+		}
+		hasExtraRule := false
+		for _, r := range p.Normalize {
+			if r.Path == "status.userInfo.extra" {
+				hasExtraRule = true
+			}
+		}
+		assert.True(t, hasExtraRule, "%s has a whoami observation but no status.userInfo.extra normalize rule", p.Name)
 	}
 }
 

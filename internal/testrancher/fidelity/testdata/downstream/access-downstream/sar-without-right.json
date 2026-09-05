@@ -1,0 +1,23 @@
+{
+  "oracleImage": "external:v2.15.0-dev",
+  "observations": [
+    {
+      "name": "sar",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "details": {
+          "group": "\u003cscrubbed\u003e",
+          "kind": "\u003cscrubbed\u003e"
+        },
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "metadata": {},
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    }
+  ]
+}

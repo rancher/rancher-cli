@@ -33,7 +33,222 @@ func All() []Probe {
 	probes = append(probes, mutProbes()...)
 	probes = append(probes, capabilityProbes()...)
 	probes = append(probes, userPasswordWorkflowProbes()...)
+	probes = append(probes, accessDownstreamProbes()...)
 	return probes
+}
+
+// accessDownstreamProbes asserts the proxy behaviors the access suite relies
+// on that only appear on a downstream cluster: the local route drops
+// Impersonate-User and Impersonate-Group, so cluster-access refusal,
+// impersonation refusal, and a service account's own identity are
+// unrecordable against the local-only pinned oracle. Recorded against
+// whatever Rancher E2E_REAL_URL names, with E2E_REAL_DOWNSTREAM set to a
+// downstream cluster it has.
+//
+// Unlike the pinned Docker oracle, this target is a real, named instance:
+// its admin caller has a real identity, real group memberships, and a real
+// login history. A downstream golden holds status codes, Content-Types, and
+// the strings Kubernetes or Rancher fix in code (error shapes, field names,
+// literal messages for names this suite itself chose, like
+// "u-nonexistent99"); every value the instance chose - user and token ids,
+// identity-provider principals, e-mail addresses, group names, credential
+// ids, timestamps, and cluster ids embedded inside messages - is
+// normalized, never recorded verbatim. The standard user is provisioned
+// fresh per target, so its username is normalized wherever it appears; the
+// admin identity is stable across runs but still holds real personal data,
+// so its username and its userInfo.extra and groups are normalized the
+// same way.
+// downstreamWhoami and localWhoami are the SelfSubjectReview endpoints the
+// access-downstream family posts to; probes_test.go checks every observation
+// against these same constants to require the whoami privacy rules below.
+const (
+	downstreamWhoami = "/k8s/clusters/{downstream}/apis/authentication.k8s.io/v1/selfsubjectreviews"
+	localWhoami      = "/k8s/clusters/local/apis/authentication.k8s.io/v1/selfsubjectreviews"
+)
+
+// whoamiPrivacyRules normalizes the two userInfo fields every whoami
+// response carries that the instance, not Kubernetes or Rancher, chose:
+// extra (identity-provider principals with e-mail addresses, the live
+// token id, username aliases) is replaced whole, and groups keeps only the
+// system:-prefixed elements a fact like "system:masters is absent" or a
+// service account's own group set depends on. Returns a fresh slice per
+// call so callers can append probe-specific rules without aliasing.
+func whoamiPrivacyRules() []NormalizeRule {
+	return []NormalizeRule{
+		{Path: "status.userInfo.extra", Replace: "<extra>"},
+		{Path: "status.userInfo.groups", KeepPrefix: "system:"},
+		{Path: "status.userInfo.uid", Replace: "<uid>"},
+	}
+}
+
+func accessDownstreamProbes() []Probe {
+	const (
+		downstreamReview = "/k8s/clusters/{downstream}/apis/authorization.k8s.io/v1/"
+		whoBody          = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
+		ssrrBody         = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectRulesReview","spec":{"namespace":"default"}}`
+		ssarBody         = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"list","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		sarAnonBody      = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:anonymous","groups":["system:unauthenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		nonexistentUser  = "u-nonexistent99"
+		nonexistentSA    = "system:serviceaccount:default:nonexistent-sa"
+		defaultSA        = "system:serviceaccount:default:default"
+	)
+
+	callerWithoutAccess := Probe{
+		Name:       "access-downstream/caller-without-cluster-access",
+		Downstream: true,
+		Observations: []Observation{
+			{Name: "whoami", Request: RequestSpec{Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityStandard}},
+		},
+		Normalize: append(whoamiPrivacyRules(), NormalizeRule{Path: "Message", Replace: "<message>"}),
+	}
+
+	impersonationRefused := Probe{
+		Name:       "access-downstream/impersonation-refused",
+		Downstream: true,
+		Observations: []Observation{
+			{
+				Name:     "admin-whoami",
+				Request:  RequestSpec{Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityAdmin},
+				Captures: map[string]Capture{"adminUser": {Path: "status.userInfo.username"}},
+			},
+			{
+				Name: "impersonate",
+				Request: RequestSpec{
+					Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityStandard,
+					Headers: map[string]string{"Impersonate-User": "{adminUser}"},
+				},
+			},
+		},
+		Normalize: append(whoamiPrivacyRules(), NormalizeRule{Path: "status.userInfo.username", Replace: "<user-id>"}),
+	}
+
+	subjectWithoutAccess := Probe{
+		Name:       "access-downstream/subject-without-cluster-access",
+		Downstream: true,
+		Observations: []Observation{
+			{
+				Name:     "standard-whoami-local",
+				Request:  RequestSpec{Method: http.MethodPost, Path: localWhoami, Body: whoBody, Identity: IdentityStandard},
+				Captures: map[string]Capture{"stdUser": {Path: "status.userInfo.username"}},
+			},
+			{
+				Name: "impersonate",
+				Request: RequestSpec{
+					Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityAdmin,
+					Headers: map[string]string{"Impersonate-User": "{stdUser}"},
+				},
+			},
+		},
+		Normalize: append(whoamiPrivacyRules(),
+			NormalizeRule{Path: "status.userInfo.username", Replace: "<user-id>"},
+			NormalizeRule{Path: "Message", Replace: "<message>"},
+		),
+	}
+
+	nonexistentUserProbe := Probe{
+		Name:       "access-downstream/nonexistent-user",
+		Downstream: true,
+		Observations: []Observation{
+			{
+				Name: "impersonate",
+				Request: RequestSpec{
+					Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityAdmin,
+					Headers: map[string]string{"Impersonate-User": nonexistentUser},
+				},
+			},
+		},
+		Normalize: append(whoamiPrivacyRules(), NormalizeRule{Path: "Message", Replace: "<message>"}),
+	}
+
+	nonexistentServiceAccount := Probe{
+		Name:       "access-downstream/nonexistent-service-account",
+		Downstream: true,
+		Observations: []Observation{
+			{
+				Name: "impersonate",
+				Request: RequestSpec{
+					Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityAdmin,
+					Headers: map[string]string{"Impersonate-User": nonexistentSA},
+				},
+			},
+		},
+		Normalize: whoamiPrivacyRules(),
+	}
+
+	serviceAccountIdentity := Probe{
+		Name:       "access-downstream/service-account-identity",
+		Downstream: true,
+		Observations: []Observation{
+			{
+				Name: "impersonate",
+				Request: RequestSpec{
+					Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityAdmin,
+					Headers: map[string]string{"Impersonate-User": defaultSA},
+				},
+			},
+		},
+		Normalize: whoamiPrivacyRules(),
+	}
+
+	impersonateGroupDropped := Probe{
+		Name:       "access-downstream/impersonate-group-dropped",
+		Downstream: true,
+		Observations: []Observation{
+			{
+				Name: "whoami",
+				Request: RequestSpec{
+					Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityAdmin,
+					Headers: map[string]string{"Impersonate-Group": "system:masters"},
+				},
+			},
+		},
+		Normalize: append(whoamiPrivacyRules(), NormalizeRule{Path: "status.userInfo.username", Replace: "<user-id>"}),
+	}
+
+	rulesReviewComplete := Probe{
+		Name:       "access-downstream/rules-review-complete",
+		Downstream: true,
+		Observations: []Observation{
+			{Name: "ssrr", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "selfsubjectrulesreviews", Body: ssrrBody, Identity: IdentityAdmin}},
+		},
+		Normalize: []NormalizeRule{
+			{Path: "status.resourceRules", Replace: "<scrubbed>"},
+			{Path: "status.nonResourceRules", Replace: "<scrubbed>"},
+		},
+	}
+
+	sarWithoutRight := Probe{
+		Name:       "access-downstream/sar-without-right",
+		Downstream: true,
+		Observations: []Observation{
+			{
+				Name: "sar",
+				Request: RequestSpec{
+					Method: http.MethodPost, Path: downstreamReview + "subjectaccessreviews", Body: sarAnonBody, Identity: IdentityAdmin,
+					Headers: map[string]string{"Impersonate-User": defaultSA},
+				},
+			},
+		},
+		Normalize: []NormalizeRule{
+			{Path: "message", Replace: "<message>"},
+			{Path: "details.*", Replace: "<scrubbed>"},
+		},
+	}
+
+	versionFieldAccepted := Probe{
+		Name:       "access-downstream/version-field-accepted",
+		Downstream: true,
+		Observations: []Observation{
+			{Name: "ssar", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "selfsubjectaccessreviews", Body: ssarBody, Identity: IdentityAdmin}},
+		},
+		Normalize: []NormalizeRule{{Path: "status.reason", Replace: "<reason>"}},
+	}
+
+	return []Probe{
+		callerWithoutAccess, impersonationRefused, subjectWithoutAccess, nonexistentUserProbe,
+		nonexistentServiceAccount, serviceAccountIdentity, impersonateGroupDropped, rulesReviewComplete,
+		sarWithoutRight, versionFieldAccepted,
+	}
 }
 
 // userPasswordWorkflowProbes asserts the facts `create user`/`create

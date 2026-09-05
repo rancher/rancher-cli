@@ -1,0 +1,27 @@
+{
+  "oracleImage": "external:v2.15.0-dev",
+  "observations": [
+    {
+      "name": "ssar",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SelfSubjectAccessReview",
+        "metadata": {},
+        "spec": {
+          "resourceAttributes": {
+            "namespace": "default",
+            "resource": "pods",
+            "verb": "list",
+            "version": "v1"
+          }
+        },
+        "status": {
+          "allowed": true,
+          "reason": "\u003creason\u003e"
+        }
+      }
+    }
+  ]
+}

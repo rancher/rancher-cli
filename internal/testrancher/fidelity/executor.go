@@ -141,8 +141,12 @@ func runObservation(ctx context.Context, tgt Target, o Observation, captured map
 		ContentType: strings.Split(resp.Header.Get("Content-Type"), ";")[0],
 	}
 	var decoded map[string]any
-	if len(rawBody) > 0 && json.Unmarshal(rawBody, &decoded) == nil {
-		res.Body = decoded
+	if len(rawBody) > 0 {
+		if json.Unmarshal(rawBody, &decoded) == nil {
+			res.Body = decoded
+		} else {
+			res.Text = strings.TrimSpace(string(rawBody))
+		}
 	}
 	return res, decoded, nil
 }

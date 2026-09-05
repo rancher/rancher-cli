@@ -1,6 +1,9 @@
 package fidelity
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // DefaultNormalizeRules scrub the volatile or secret fields present on most
 // Rancher and Kubernetes response bodies. Presence is preserved - a
@@ -29,14 +32,14 @@ func DefaultNormalizeRules() []NormalizeRule {
 // map[string]any/[]any trees straight out of encoding/json.
 func Normalize(body map[string]any, rules []NormalizeRule) {
 	for _, r := range rules {
-		applyRule(body, strings.Split(r.Path, "."), r.Replace)
+		applyRule(body, strings.Split(r.Path, "."), r)
 	}
 }
 
-func applyRule(node any, segs []string, replace string) {
+func applyRule(node any, segs []string, r NormalizeRule) {
 	if arr, ok := node.([]any); ok {
 		for _, el := range arr {
-			applyRule(el, segs, replace)
+			applyRule(el, segs, r)
 		}
 		return
 	}
@@ -48,31 +51,68 @@ func applyRule(node any, segs []string, replace string) {
 	if len(rest) == 0 {
 		if head == "*" {
 			for k := range m {
-				setOrDelete(m, k, replace)
+				setOrDelete(m, k, r)
 			}
 			return
 		}
-		setOrDelete(m, head, replace)
+		setOrDelete(m, head, r)
 		return
 	}
 	if head == "*" {
 		for _, v := range m {
-			applyRule(v, rest, replace)
+			applyRule(v, rest, r)
 		}
 		return
 	}
 	if v, present := m[head]; present {
-		applyRule(v, rest, replace)
+		applyRule(v, rest, r)
 	}
 }
 
-func setOrDelete(m map[string]any, key, replace string) {
-	if _, present := m[key]; !present {
+func setOrDelete(m map[string]any, key string, r NormalizeRule) {
+	v, present := m[key]
+	if !present {
 		return
 	}
-	if replace == "" {
+	if r.KeepPrefix != "" {
+		kept, err := keepPrefix(v, r.KeepPrefix)
+		if err != nil {
+			// The addressed value is not the array of strings the rule
+			// expects. It was named because it carries instance data, so
+			// it is never left in place: the whole value becomes the
+			// placeholder, and the golden's shape shows the misuse.
+			m[key] = "<group>"
+			return
+		}
+		m[key] = kept
+		return
+	}
+	if r.Replace == "" {
 		delete(m, key)
 		return
 	}
-	m[key] = replace
+	m[key] = r.Replace
+}
+
+// keepPrefix replaces every element of arr not starting with prefix with
+// "<group>", keeping order and count. arr must be a []any of strings; any
+// other shape is an error.
+func keepPrefix(arr any, prefix string) ([]any, error) {
+	elems, ok := arr.([]any)
+	if !ok {
+		return nil, fmt.Errorf("KeepPrefix: value is not an array")
+	}
+	out := make([]any, len(elems))
+	for i, el := range elems {
+		s, ok := el.(string)
+		if !ok {
+			return nil, fmt.Errorf("KeepPrefix: element %d is not a string", i)
+		}
+		if strings.HasPrefix(s, prefix) {
+			out[i] = s
+		} else {
+			out[i] = "<group>"
+		}
+	}
+	return out, nil
 }

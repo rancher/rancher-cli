@@ -46,7 +46,16 @@ func TestOracleImagePinsMatchGoldens(t *testing.T) {
 	checked := 0
 	err = filepath.WalkDir("testdata", func(path string, d fs.DirEntry, err error) error {
 		require.NoError(t, err)
-		if d.IsDir() || !strings.HasSuffix(path, ".json") {
+		if d.IsDir() {
+			if d.Name() == "downstream" {
+				// Downstream goldens are recorded against an externally
+				// supplied Rancher, never the pinned Docker oracle; their
+				// oracleImage carries "external:<version>", not this pin.
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".json") {
 			return nil
 		}
 		g, loadErr := LoadGolden(path)

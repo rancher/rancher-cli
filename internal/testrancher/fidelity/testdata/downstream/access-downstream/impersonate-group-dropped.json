@@ -1,0 +1,29 @@
+{
+  "oracleImage": "external:v2.15.0-dev",
+  "observations": [
+    {
+      "name": "whoami",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e"
+        },
+        "status": {
+          "userInfo": {
+            "extra": "\u003cextra\u003e",
+            "groups": [
+              "\u003cgroup\u003e",
+              "\u003cgroup\u003e",
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "\u003cuser-id\u003e"
+          }
+        }
+      }
+    }
+  ]
+}

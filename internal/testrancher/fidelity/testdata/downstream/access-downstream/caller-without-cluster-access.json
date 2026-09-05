@@ -1,0 +1,19 @@
+{
+  "oracleImage": "external:v2.15.0-dev",
+  "observations": [
+    {
+      "name": "whoami",
+      "status": 403,
+      "contentType": "text/plain",
+      "body": {
+        "Cause": null,
+        "Code": {
+          "Code": "Forbidden",
+          "Status": 403
+        },
+        "FieldName": "",
+        "Message": "\u003cmessage\u003e"
+      }
+    }
+  ]
+}

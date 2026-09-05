@@ -8,12 +8,17 @@ import (
 	"reflect"
 )
 
-// ObservationResult is one observation's normalized recorded response.
+// ObservationResult is one observation's normalized recorded response. Body
+// carries a decoded JSON response; Text carries a trimmed non-JSON one. A
+// response is one or the other, never both, and Text is never normalized -
+// a text body that carries a per-boot value needs a different probe design,
+// not a regex over free text.
 type ObservationResult struct {
 	Name        string         `json:"name"`
 	Status      int            `json:"status"`
 	ContentType string         `json:"contentType"`
 	Body        map[string]any `json:"body,omitempty"`
+	Text        string         `json:"text,omitempty"`
 }
 
 // Golden is one probe's recorded truth. OracleImage is provenance - the
@@ -82,6 +87,9 @@ func Diff(want, got Golden) []string {
 		}
 		if w.ContentType != g.ContentType {
 			diffs = append(diffs, fmt.Sprintf("%s contentType: want %q, got %q", w.Name, w.ContentType, g.ContentType))
+		}
+		if w.Text != g.Text {
+			diffs = append(diffs, fmt.Sprintf("%s text: want %q, got %q", w.Name, w.Text, g.Text))
 		}
 		if !reflect.DeepEqual(w.Body, g.Body) {
 			wantJSON, _ := json.Marshal(w.Body)

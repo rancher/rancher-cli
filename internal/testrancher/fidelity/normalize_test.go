@@ -63,6 +63,57 @@ func TestNormalizeMissingPathIsNoOp(t *testing.T) {
 	assert.Equal(t, map[string]any{"kind": "Secret"}, body)
 }
 
+func TestKeepPrefixKeepsMatchingScrubsOthers(t *testing.T) {
+	t.Parallel()
+	out, err := keepPrefix([]any{"system:masters", "genericsaml_group://admins", "system:authenticated"}, "system:")
+	require.NoError(t, err)
+	assert.Equal(t, []any{"system:masters", "<group>", "system:authenticated"}, out, "order and count are kept")
+}
+
+func TestKeepPrefixAllKept(t *testing.T) {
+	t.Parallel()
+	out, err := keepPrefix([]any{"system:a", "system:b"}, "system:")
+	require.NoError(t, err)
+	assert.Equal(t, []any{"system:a", "system:b"}, out)
+}
+
+func TestKeepPrefixAllReplaced(t *testing.T) {
+	t.Parallel()
+	out, err := keepPrefix([]any{"azuread_user://x", "okta_user://y"}, "system:")
+	require.NoError(t, err)
+	assert.Equal(t, []any{"<group>", "<group>"}, out)
+}
+
+func TestKeepPrefixNonArrayIsAnError(t *testing.T) {
+	t.Parallel()
+	_, err := keepPrefix("not-an-array", "system:")
+	require.Error(t, err)
+}
+
+// TestKeepPrefixRuleNeverLeavesANonArrayInPlace asserts a KeepPrefix rule
+// addressing a value that is not an array of strings replaces it whole:
+// the rule named the value because it carries instance data.
+func TestKeepPrefixRuleNeverLeavesANonArrayInPlace(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{"status": map[string]any{"userInfo": map[string]any{"groups": "admins@example.com"}}}
+	Normalize(body, []NormalizeRule{{Path: "status.userInfo.groups", KeepPrefix: "system:"}})
+	assert.Equal(t, "<group>", body["status"].(map[string]any)["userInfo"].(map[string]any)["groups"])
+}
+
+func TestNormalizeKeepPrefixAppliesThroughAPath(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{
+		"status": map[string]any{
+			"userInfo": map[string]any{
+				"groups": []any{"system:masters", "genericsaml_group://admins", "system:authenticated"},
+			},
+		},
+	}
+	Normalize(body, []NormalizeRule{{Path: "status.userInfo.groups", KeepPrefix: "system:"}})
+	groups := body["status"].(map[string]any)["userInfo"].(map[string]any)["groups"]
+	assert.Equal(t, []any{"system:masters", "<group>", "system:authenticated"}, groups)
+}
+
 func TestNormalizeTerminalWildcardScrubsEveryKey(t *testing.T) {
 	t.Parallel()
 	body := map[string]any{

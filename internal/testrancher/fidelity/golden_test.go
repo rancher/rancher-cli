@@ -89,3 +89,18 @@ func TestDiffReportsBodyNameAndContentTypeMismatches(t *testing.T) {
 	require.Len(t, diffs, 1)
 	assert.Contains(t, diffs[0], "contentType")
 }
+
+func TestDiffReportsTextMismatch(t *testing.T) {
+	t.Parallel()
+	base := Golden{Observations: []ObservationResult{
+		{Name: "impersonate", Status: 403, ContentType: "text/plain", Text: "not allowed"},
+	}}
+	changed := Golden{Observations: []ObservationResult{
+		{Name: "impersonate", Status: 403, ContentType: "text/plain", Text: "different"},
+	}}
+	diffs := Diff(base, changed)
+	require.Len(t, diffs, 1)
+	assert.Contains(t, diffs[0], "text")
+	assert.Contains(t, diffs[0], `"not allowed"`)
+	assert.Contains(t, diffs[0], `"different"`)
+}

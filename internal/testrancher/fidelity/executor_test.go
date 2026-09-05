@@ -498,6 +498,51 @@ func TestRunProbeSeedsDownstreamCapture(t *testing.T) {
 	assert.Equal(t, "/k8s/clusters/c-abc123/things", gotPath)
 }
 
+func TestRunProbeRecordsTrimmedTextForNonJSONBody(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("  unable to create token: boom  \n"))
+	}))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+	p := Probe{
+		Name: "fam/text",
+		Observations: []Observation{
+			{Name: "get", Request: RequestSpec{Method: "GET", Path: "/x", Identity: IdentityAdmin}},
+		},
+	}
+	results, err := RunProbe(t.Context(), tgt, p)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "unable to create token: boom", results[0].Text, "the raw body is trimmed")
+	assert.Nil(t, results[0].Body, "a non-JSON body is never also decoded")
+}
+
+func TestRunProbeRecordsBodyNotTextForJSON(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"a": "b"})
+	}))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+	p := Probe{
+		Name: "fam/json",
+		Observations: []Observation{
+			{Name: "get", Request: RequestSpec{Method: "GET", Path: "/x", Identity: IdentityAdmin}},
+		},
+	}
+	results, err := RunProbe(t.Context(), tgt, p)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "b", results[0].Body["a"])
+	assert.Empty(t, results[0].Text, "a JSON body is never also recorded as text")
+}
+
 func TestRunProbeRefusesDownstreamProbeWithoutTarget(t *testing.T) {
 	t.Parallel()
 	var hit bool

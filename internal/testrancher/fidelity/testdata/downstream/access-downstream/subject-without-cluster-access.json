@@ -1,0 +1,41 @@
+{
+  "oracleImage": "external:v2.15.0-dev",
+  "observations": [
+    {
+      "name": "standard-whoami-local",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e"
+        },
+        "status": {
+          "userInfo": {
+            "extra": "\u003cextra\u003e",
+            "groups": [
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "\u003cuser-id\u003e"
+          }
+        }
+      }
+    },
+    {
+      "name": "impersonate",
+      "status": 403,
+      "contentType": "text/plain",
+      "body": {
+        "Cause": null,
+        "Code": {
+          "Code": "Forbidden",
+          "Status": 403
+        },
+        "FieldName": "",
+        "Message": "\u003cmessage\u003e"
+      }
+    }
+  ]
+}

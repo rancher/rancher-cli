@@ -77,10 +77,16 @@ type Observation struct {
 // NormalizeRule scrubs one field of a recorded body. Path is dotted; a "*"
 // segment matches every key of an object, and arrays are always traversed
 // element-wise. A non-empty Replace overwrites the value in place; an empty
-// Replace deletes the field.
+// Replace deletes the field. KeepPrefix, mutually exclusive with Replace,
+// treats the addressed value as an array of strings: every element that
+// does not start with the prefix is replaced by "<group>" in place, order
+// and count kept, so a fact like "system:masters is absent from the
+// caller's groups" survives while every instance-chosen element (a SAML
+// group principal name, say) does not.
 type NormalizeRule struct {
-	Path    string
-	Replace string
+	Path       string
+	Replace    string
+	KeepPrefix string
 }
 
 // Step is a fixture action run before or after a probe's observations.
@@ -147,6 +153,11 @@ func (p Probe) Validate() error {
 	}
 	if p.Downstream && p.FacadeDivergence != "" {
 		return fmt.Errorf("probe %s: Downstream and FacadeDivergence are mutually exclusive", p.Name)
+	}
+	for _, r := range p.Normalize {
+		if r.Replace != "" && r.KeepPrefix != "" {
+			return fmt.Errorf("probe %s: normalize rule %s: Replace and KeepPrefix are mutually exclusive", p.Name, r.Path)
+		}
 	}
 	return nil
 }
