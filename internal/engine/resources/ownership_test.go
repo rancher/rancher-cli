@@ -95,19 +95,21 @@ func TestPatchWarnsWhenAnApplyManagerOwnsAChangedField(t *testing.T) {
 	}
 }
 
-// TestApplyOwnersHandlesKeysDiffPathsCannotSplit asserts the shapes the plain
-// segment walk got wrong: a label or annotation key containing "/" is one
-// f: key in managed fields but two segments in a diff path; an all-digit
-// map key is a map key, not a list index; an entry whose fieldsV1 is empty
-// owns nothing; and one manager with two entries is reported once.
-func TestApplyOwnersHandlesKeysDiffPathsCannotSplit(t *testing.T) {
+// TestApplyOwnersHandlesEscapedKeysAndDigitKeys asserts the shapes a plain
+// segment walk must get right: a label or annotation key containing "/" is
+// one f: key in managed fields and one escaped segment in a diff pointer,
+// distinct from a path through two separate keys of the unescaped halves;
+// an all-digit map key is a map key, not a list index; an entry whose
+// fieldsV1 is empty owns nothing; and one manager with two entries is
+// reported once.
+func TestApplyOwnersHandlesEscapedKeysAndDigitKeys(t *testing.T) {
 	t.Parallel()
 	o := objFromJSON(t, `{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"cm","managedFields":[
 	  {"manager":"flux","operation":"Apply","fieldsType":"FieldsV1","fieldsV1":{"f:metadata":{"f:annotations":{"f:app.kubernetes.io/name":{}},"f:labels":{"f:kustomize.toolkit.fluxcd.io/name":{}}},"f:data":{"f:9090":{}}}},
 	  {"manager":"flux","operation":"Apply","apiVersion":"v2","fieldsType":"FieldsV1","fieldsV1":{"f:data":{"f:9090":{}}}},
 	  {"manager":"empty-apply","operation":"Apply","fieldsType":"FieldsV1","fieldsV1":{}},
-	  {"manager":"tie","operation":"Apply","fieldsType":"FieldsV1","fieldsV1":{"f:data":{"f:a/b":{}}}},
-	  {"manager":"tie-loser","operation":"Apply","fieldsType":"FieldsV1","fieldsV1":{"f:data":{"f:a":{"f:c":{}}}}}
+	  {"manager":"slash-key","operation":"Apply","fieldsType":"FieldsV1","fieldsV1":{"f:data":{"f:a/b":{}}}},
+	  {"manager":"nested-keys","operation":"Apply","fieldsType":"FieldsV1","fieldsV1":{"f:data":{"f:a":{"f:b":{}}}}}
 	]}}`)
 	mf, _, err := unstructured.NestedSlice(o.Object, "metadata", "managedFields")
 	require.NoError(t, err)
@@ -115,12 +117,14 @@ func TestApplyOwnersHandlesKeysDiffPathsCannotSplit(t *testing.T) {
 		path string
 		want []string
 	}{
-		{"/metadata/annotations/app.kubernetes.io/name", []string{"flux"}},
-		{"/metadata/labels/kustomize.toolkit.fluxcd.io/name", []string{"flux"}},
+		{"/metadata/annotations/app.kubernetes.io~1name", []string{"flux"}},
+		{"/metadata/labels/kustomize.toolkit.fluxcd.io~1name", []string{"flux"}},
 		{"/metadata/annotations/app.kubernetes.io", nil},
-		// Diff paths are unescaped, so a key "a" with child "b" and a key
-		// "a/b" read the same; the longest matching key wins, by contract.
-		{"/data/a/b", []string{"tie"}},
+		// /data/a/b (two segments, through nested keys) and /data/a~1b (one
+		// escaped segment, the literal key "a/b") are distinct pointers with
+		// distinct owners.
+		{"/data/a/b", []string{"nested-keys"}},
+		{"/data/a~1b", []string{"slash-key"}},
 		{"/data/9090", []string{"flux"}},
 		{"/data/8080", nil},
 		{"/spec/anything", nil},
