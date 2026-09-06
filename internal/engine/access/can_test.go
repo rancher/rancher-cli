@@ -191,7 +191,7 @@ func TestCanClusterScopedResourceRejectsProjectBeforeLookup(t *testing.T) {
 // does.
 func TestCanDescriptorClusterFlagCarriesTheStandardMessage(t *testing.T) {
 	t.Parallel()
-	for _, cmd := range []runtime.Command{NewCan(nil, nil)} {
+	for _, cmd := range []runtime.Command{NewCan(nil, nil), NewList(nil, nil)} {
 		d := cmd.Describe()
 		i := slices.IndexFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "cluster" })
 		require.GreaterOrEqual(t, i, 0, d.Name)
