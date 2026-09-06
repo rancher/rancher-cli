@@ -264,6 +264,7 @@ graph TD
     access --> kinds
     access --> rbac
     access --> projects
+    access --> runtime
     access --> clierr
 
     provisioning --> selfuser
