@@ -21,6 +21,7 @@ import (
 var outputShapeInventory = map[string]runtime.OutputShape{
 	"access can":                        runtime.ShapeText,
 	"access list":                       runtime.ShapeText,
+	"access who-can":                    runtime.ShapeText,
 	"auth delete-token":                 runtime.ShapeText,
 	"auth get-token":                    runtime.ShapeExecJSON,
 	"auth list-tokens":                  runtime.ShapeTabular,

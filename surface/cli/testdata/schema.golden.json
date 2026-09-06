@@ -146,6 +146,86 @@
     {
       "args": [
         {
+          "desc": "Kubernetes verb (get, list, create, ...) or, with --non-resource-url, an HTTP verb",
+          "name": "verb",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "resource plural, singular, short name, or resource.group; optionally /<name>; omitted with --non-resource-url",
+          "name": "resource",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "public",
+      "desc": "Reads the subjects named in the cluster's RoleBindings and ClusterRoleBindings, adds system:masters, and posts one SubjectAccessReview per subject as you (per namespace with --project or --all-namespaces). Every row is the server's decision; a subject whose groups Rancher does not know is unknown when denied, never denied. Exit 13 when a row has a request issue or is unknown because the authorizer returned an evaluation error; an allowed answer with an evaluation error stays allowed and warns.",
+      "examples": [
+        "rancher access who-can delete pods --cluster prod -n team-a",
+        "rancher access who-can get secrets --cluster prod --project p-cvrp4 -o json",
+        "rancher access who-can get nodes --cluster prod --show-denied",
+        "rancher access who-can post --non-resource-url /healthz --cluster prod"
+      ],
+      "flags": [
+        {
+          "desc": "cluster name or id the question is about",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "namespace the question is about",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "A"
+          ],
+          "desc": "ask in every namespace you can list, one row per subject per namespace",
+          "name": "all-namespaces",
+          "type": "bool"
+        },
+        {
+          "desc": "API group when the resource name exists in several groups",
+          "name": "group",
+          "type": "string"
+        },
+        {
+          "desc": "subresource such as status or log",
+          "name": "subresource",
+          "type": "string"
+        },
+        {
+          "desc": "ask about a non-resource path such as /healthz instead of a resource",
+          "name": "non-resource-url",
+          "type": "string"
+        },
+        {
+          "desc": "list the denied subjects in the text output too",
+          "name": "show-denied",
+          "type": "bool"
+        }
+      ],
+      "group": "access",
+      "name": "access who-can",
+      "network": true,
+      "shape": "text",
+      "stability": "beta",
+      "successExitCodes": [
+        0,
+        13
+      ],
+      "toolset": "core",
+      "usage": "List the subjects the cluster's authorizer allows to perform a verb on a resource"
+    },
+    {
+      "args": [
+        {
           "name": "name",
           "type": "string"
         }
@@ -10139,9 +10219,10 @@
     {
       "commands": [
         "access can",
-        "access list"
+        "access list",
+        "access who-can"
       ],
-      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, and the rules a subject holds in a namespace. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
+      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, and which subjects the bindings name that may perform a verb on a resource. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
       "name": "access"
     },
     {

@@ -147,8 +147,9 @@ func storeAccessConfig(t *testing.T, f *accessFixture, network bool) string {
 	return dir
 }
 
-func canDescriptor() runtime.Descriptor  { return access.NewCan(nil, nil).Describe() }
-func listDescriptor() runtime.Descriptor { return access.NewList(nil, nil).Describe() }
+func canDescriptor() runtime.Descriptor    { return access.NewCan(nil, nil).Describe() }
+func listDescriptor() runtime.Descriptor   { return access.NewList(nil, nil).Describe() }
+func whoCanDescriptor() runtime.Descriptor { return access.NewWhoCan(nil, nil).Describe() }
 
 func accessCtx(t *testing.T) context.Context {
 	t.Helper()
@@ -357,4 +358,43 @@ func TestAccessSubjectFlagOffersUsers(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestAccessWhoCanSharesTheQuestionSites asserts who-can completes its
+// verb, resource, --group, and --subresource exactly as access can does
+// (same vocabularies, same discovery roots, same request budget), and that
+// it has no --as site: nothing is offered and nothing is fetched.
+func TestAccessWhoCanSharesTheQuestionSites(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := whoCanDescriptor()
+
+	verb := CompletionSite{Kind: SitePositional, Index: 0}
+	assert.Equal(t, sorted(access.ResourceVerbs), dispatchSite(accessCtx(t), verb, d, nil, nil, nil))
+	assert.Equal(t, sorted(access.HTTPVerbs), dispatchSite(accessCtx(t), verb, d, nil, nil, []string{"--non-resource-url", "/healthz"}))
+	assert.Empty(t, f.served(), "verbs are compiled in")
+
+	resource := CompletionSite{Kind: SitePositional, Index: 1}
+	assert.Equal(t, []string{"deployments", "ingresses", "nodes", "pods", "services"},
+		liveCandidates(accessCtx(t), resource, d, nil, []string{"get", "--cluster", "c-abc12"}))
+	assert.Len(t, f.served(), 2, "an id-shaped cluster costs the two discovery roots only")
+	assert.Nil(t, liveCandidates(accessCtx(t), resource, d, nil, []string{"get", "--cluster", "c-abc12", "--non-resource-url", "/healthz"}),
+		"no resource positional beside --non-resource-url")
+
+	f.reset()
+	group := CompletionSite{Kind: SiteFlagValue, FlagName: "group", FlagSpelling: "--group"}
+	assert.Equal(t, []string{"apps", "gateway.example.io", "networking.k8s.io"},
+		liveCandidates(accessCtx(t), group, d, nil, []string{"get", "deployments", "--cluster", "c-abc12"}))
+	sub := CompletionSite{Kind: SiteFlagValue, FlagName: "subresource", FlagSpelling: "--subresource"}
+	assert.Equal(t, []string{"exec", "log", "status"},
+		liveCandidates(accessCtx(t), sub, d, nil, []string{"get", "pods", "--cluster", "c-abc12"}))
+	assert.Equal(t, []string{"exec", "log", "status"},
+		liveCandidates(accessCtx(t), sub, d, nil, []string{"get", "--show-denied", "pods", "--cluster", "c-abc12"}),
+		"a boolean flag consumes no positional")
+
+	f.reset()
+	as := CompletionSite{Kind: SiteFlagValue, FlagName: "as", FlagSpelling: "--as"}
+	assert.Nil(t, liveCandidates(accessCtx(t), as, d, nil, nil))
+	assert.Empty(t, f.served(), "who-can has no --as; nothing is fetched for it")
 }

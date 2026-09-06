@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 188,
+  "commandCount": 189,
   "effectSchema": {
     "actions": [
       "create",
@@ -329,9 +329,13 @@
         {
           "name": "access list",
           "usage": "List the rules a subject holds in a namespace, as the cluster's authorizer reports them"
+        },
+        {
+          "name": "access who-can",
+          "usage": "List the subjects the cluster's authorizer allows to perform a verb on a resource"
         }
       ],
-      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, and the rules a subject holds in a namespace. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
+      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, and which subjects the bindings name that may perform a verb on a resource. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
       "name": "access"
     },
     {

@@ -65,8 +65,9 @@ func NewResolver() map[string]safety.Binding {
 		// proxy: a public API with no backing kind row, since a review is
 		// posted, never listed or deleted. Beta while the suite is being
 		// built out.
-		"access can":  {Contract: safety.ContractPublic, Stability: safety.Beta},
-		"access list": {Contract: safety.ContractPublic, Stability: safety.Beta},
+		"access can":     {Contract: safety.ContractPublic, Stability: safety.Beta},
+		"access list":    {Contract: safety.ContractPublic, Stability: safety.Beta},
+		"access who-can": {Contract: safety.ContractPublic, Stability: safety.Beta},
 
 		"logs":           {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"support-bundle": {Contract: safety.ContractInternal, Stability: safety.Beta},

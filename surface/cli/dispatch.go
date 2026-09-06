@@ -309,13 +309,20 @@ func positionalEnumCandidates(site CompletionSite, d runtime.Descriptor) ([]stri
 	return out, true
 }
 
-// accessVerbCandidates owns `access can`'s verb positional: the HTTP verbs
-// when --non-resource-url is on the line, the Kubernetes resource verbs
-// otherwise. Compiled-in vocabularies, served like an enum, before the
-// network gate. Ownership, not first-match: an unmatched partial ends the
-// dispatch with no candidates.
+// accessQuestionCommand reports whether a command asks an authorization
+// question with the shared verb/resource grammar, so its verb, resource,
+// --group, and --subresource sites complete alike.
+func accessQuestionCommand(name string) bool {
+	return name == "access can" || name == "access who-can"
+}
+
+// accessVerbCandidates owns the verb positional of the access question
+// commands: the HTTP verbs when --non-resource-url is on the line, the
+// Kubernetes resource verbs otherwise. Compiled-in vocabularies, served
+// like an enum, before the network gate. Ownership, not first-match: an
+// unmatched partial ends the dispatch with no candidates.
 func accessVerbCandidates(site CompletionSite, d runtime.Descriptor, tail []string) ([]string, bool) {
-	if d.Name != "access can" || site.Index != 0 {
+	if !accessQuestionCommand(d.Name) || site.Index != 0 {
 		return nil, false
 	}
 	vocab := access.ResourceVerbs
@@ -472,11 +479,11 @@ func isClusterIDShaped(s string) bool {
 // (finding 5), with an explicit carve-out for project: it is Management scope
 // but lists projects in a cluster's namespace, so it also needs a cluster ID.
 func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
-	// access can's resource positional and its --group/--subresource values
-	// come from the target cluster's discovery: a display name must resolve
-	// first. --as is deliberately absent: it reads management users and
-	// needs no cluster.
-	if d.Name == "access can" {
+	// The access question commands' resource positional and their
+	// --group/--subresource values come from the target cluster's
+	// discovery: a display name must resolve first. --as is deliberately
+	// absent: it reads management users and needs no cluster.
+	if accessQuestionCommand(d.Name) {
 		switch site.Kind {
 		case SitePositional:
 			return site.Index == 1
@@ -644,11 +651,11 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 			raw = fetchUsers(ctx, hc, cap)
 		}
 	case "subresource":
-		if d.Name == "access can" {
+		if accessQuestionCommand(d.Name) {
 			raw = fetchSubresources(ctx, hc, cap, clusterID, positionalAt(tail, d.Flags, 1), extractFlagValue(tail, "group"))
 		}
 	case "group":
-		if d.Name == "access can" {
+		if accessQuestionCommand(d.Name) {
 			raw = fetchAPIGroups(ctx, hc, cap, clusterID)
 		}
 	default:
@@ -755,7 +762,7 @@ func livePositionalCandidates(
 		return provisioningClusterPositionalCandidates(ctx, hc, cap, tail)
 	}
 
-	if d.Name == "access can" {
+	if accessQuestionCommand(d.Name) {
 		if site.Index != 1 || extractFlagValue(tail, "non-resource-url") != "" {
 			return nil
 		}

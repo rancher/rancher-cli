@@ -118,6 +118,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 |---|---|
 | `access can <verb> [<resource>[/<name>]]` | Ask the cluster's authorizer whether you (or `--as` a subject) can perform a verb on a resource; exit 0 allowed, 12 denied, 13 unknown |
 | `access list` | List the rules you (or `--as` a subject) hold in a namespace as the authorizer reports them; exit 13 when any namespace is incomplete |
+| `access who-can <verb> [<resource>[/<name>]]` | List the subjects the cluster's bindings name that the authorizer allows to perform a verb on a resource, one SubjectAccessReview each; denied rows with `--show-denied`; exit 13 when a row has a request issue or is unknown because the authorizer returned an evaluation error |
 
 ## Logs & support
 
@@ -159,6 +160,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 49-kind table: `get <kind>` (49), `patch <kind>`
 (49), `delete <kind>` (31 - 30 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-129 generated commands, 188 total together with the fixed commands above. The authoritative, always-current list is
+129 generated commands, 189 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

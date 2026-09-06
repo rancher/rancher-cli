@@ -101,6 +101,7 @@ func buildEntries() []entry {
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectUser(d.clients) }},
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewCan(d.clients, nil) }},
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewList(d.clients, nil) }},
+		{group: "access", make: func(d runDeps) runtime.Command { return access.NewWhoCan(d.clients, nil) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetCloudCredential(d.clients) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetKubernetesVersions(d.roots, d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewGrant(d.clients) }},
@@ -641,8 +642,9 @@ var bespokePublicOps = map[string]bool{
 	"create password-change-request": true,
 	// The authorization reviews are a public Kubernetes API with no kind
 	// row to back them: a review is posted, never listed or deleted.
-	"access can":  true,
-	"access list": true,
+	"access can":     true,
+	"access list":    true,
+	"access who-can": true,
 }
 
 // lookupRow resolves a kind-table key to its row, shared by the derived-op
@@ -804,8 +806,9 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		"cluster": "Scale a machine pool or manage cluster-autoscaler settings on a provisioning cluster; " +
 			"lifecycle is `create cluster` and `delete provisioning-cluster`, reads are `get provisioning-cluster`.",
 		"inspect": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
-		"access": "Server-computed authorization answers: whether a subject can perform a verb on a resource, and the rules a subject holds in a namespace. " +
-			"Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
+		"access": "Server-computed authorization answers: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, " +
+			"and which subjects the bindings name that may perform a verb on a resource. Every answer comes from SubjectAccessReview or " +
+			"SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
 		"get":    "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
 		"patch":  "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",
 		"delete": "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
