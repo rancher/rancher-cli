@@ -3,6 +3,7 @@ package cli
 import (
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/output/style"
@@ -35,6 +36,8 @@ func printStyledHelp(w io.Writer, templ string, data any) {
 	ucli.HelpPrinterCustom(w, templ, data, map[string]any{
 		"bold":                s.Bold,
 		"colonOffsetCommands": colonOffsetCommands,
+		"sortedCommands":      sortedCommands,
+		"sortedFlags":         sortedFlags,
 		"primeMark":           primeMark,
 		"colorPrimeMark":      func(cmd *ucli.Command, wrapped string) string { return colorPrimeMark(s, cmd, wrapped) },
 		"colorPrimeDescription": func(cmd *ucli.Command, wrapped string) string {
@@ -121,13 +124,42 @@ func colonOffsetCommands(cmds []*ucli.Command, fixed int) int {
 	return longest + fixed
 }
 
-// commandsBlock is the colon-aligned COMMANDS list shared by
+// sortedCommands returns the commands ordered by canonical name. Help lists
+// commands alphabetically so a reader can scan for one; the command tree
+// itself, and the schema manifest that mirrors it, keep registration
+// order, so this sorts a copy and never the tree.
+func sortedCommands(cmds []*ucli.Command) []*ucli.Command {
+	out := slices.Clone(cmds)
+	slices.SortFunc(out, func(a, b *ucli.Command) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
+
+// sortedFlags returns the flags ordered by their first (long) name, so
+// OPTIONS and GLOBAL OPTIONS read alphabetically. A copy: the command's
+// own flag slice keeps its declaration order.
+func sortedFlags(flags []ucli.Flag) []ucli.Flag {
+	out := slices.Clone(flags)
+	slices.SortFunc(out, func(a, b ucli.Flag) int { return strings.Compare(a.Names()[0], b.Names()[0]) })
+	return out
+}
+
+// commandsBlock is the colon-aligned, alphabetical COMMANDS list shared by
 // rootCommandHelpTemplate and subcommandHelpTemplate - the two shapes that
 // ever show one. It replaces urfave's own comma-joined, colon-less
 // visibleCommandCategoryTemplate/visibleCommandTemplate, which cannot be
 // overridden (they are unexported template names urfave always re-parses).
-const commandsBlock = `{{ $cv := colonOffsetCommands .VisibleCommands 5 }}{{range .VisibleCommands}}
+const commandsBlock = `{{ $cmds := sortedCommands .VisibleCommands }}{{ $cv := colonOffsetCommands $cmds 5 }}{{range $cmds}}
    {{$s := printf "%s:" (join .Names ", ")}}{{$s}}{{ $sp := subtract $cv (offset $s 3) }}{{ indent $sp ""}}{{colorPrimeMark . (wrap (print (primeMark .) .Usage) $cv)}}{{end}}`
+
+// flagsBlock and persistentFlagsBlock are urfave's visibleFlagTemplate and
+// visiblePersistentFlagTemplate over an alphabetical copy of the flags;
+// like the command templates, urfave's own are unexported and cannot be
+// overridden in place.
+const flagsBlock = `{{range $i, $e := sortedFlags .VisibleFlags}}
+   {{wrap $e.String 6}}{{end}}`
+
+const persistentFlagsBlock = `{{range $i, $e := sortedFlags .VisiblePersistentFlags}}
+   {{wrap $e.String 6}}{{end}}`
 
 // rootCommandHelpTemplate is urfave's RootCommandHelpTemplate with bold
 // section headers, the DESCRIPTION block moved above USAGE, and a
@@ -151,7 +183,7 @@ var rootCommandHelpTemplate = `{{bold "NAME:"}}
 
 {{bold "GLOBAL OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if .VisibleFlags}}
 
-{{bold "GLOBAL OPTIONS:"}}{{template "visibleFlagTemplate" .}}{{end}}{{if .Copyright}}
+{{bold "GLOBAL OPTIONS:"}}` + flagsBlock + `{{end}}{{if .Copyright}}
 
 {{bold "COPYRIGHT:"}}
    {{template "copyrightTemplate" .}}{{end}}
@@ -174,9 +206,9 @@ var commandHelpTemplate = `{{bold "NAME:"}}
 
 {{bold "OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if .VisibleFlags}}
 
-{{bold "OPTIONS:"}}{{template "visibleFlagTemplate" .}}{{end}}{{if .VisiblePersistentFlags}}
+{{bold "OPTIONS:"}}` + flagsBlock + `{{end}}{{if .VisiblePersistentFlags}}
 
-{{bold "GLOBAL OPTIONS:"}}{{template "visiblePersistentFlagTemplate" .}}{{end}}
+{{bold "GLOBAL OPTIONS:"}}` + persistentFlagsBlock + `{{end}}
 `
 
 // subcommandHelpTemplate is urfave's SubcommandHelpTemplate (a group - has
@@ -199,7 +231,7 @@ var subcommandHelpTemplate = `{{bold "NAME:"}}
 
 {{bold "OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if .VisibleFlags}}
 
-{{bold "OPTIONS:"}}{{template "visibleFlagTemplate" .}}{{end}}{{if .VisiblePersistentFlags}}
+{{bold "OPTIONS:"}}` + flagsBlock + `{{end}}{{if .VisiblePersistentFlags}}
 
-{{bold "GLOBAL OPTIONS:"}}{{template "visiblePersistentFlagTemplate" .}}{{end}}
+{{bold "GLOBAL OPTIONS:"}}` + persistentFlagsBlock + `{{end}}
 `

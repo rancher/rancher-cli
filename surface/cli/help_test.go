@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -254,4 +256,61 @@ func indexOf(t *testing.T, text, substr string) int {
 	i := bytes.Index([]byte(text), []byte(substr))
 	require.GreaterOrEqual(t, i, 0, "expected %q to appear in:\n%s", substr, text)
 	return i
+}
+
+// helpRowPattern matches a help row: exactly three spaces, then the name
+// column. Wrapped continuation lines are indented deeper and skipped.
+var helpRowPattern = regexp.MustCompile(`^   (\S+)`)
+
+// helpSectionFirstTokens returns the first token of every row under the
+// named section header (up to the next blank line), with a trailing ':'
+// or ',' removed: the canonical command name of a COMMANDS row, the long
+// flag of an OPTIONS row.
+func helpSectionFirstTokens(t *testing.T, text, header string) []string {
+	t.Helper()
+	_, after, ok := strings.Cut(text, header+"\n")
+	require.True(t, ok, "help has a %s section:\n%s", header, text)
+	var out []string
+	for line := range strings.SplitSeq(after, "\n") {
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+		m := helpRowPattern.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		out = append(out, strings.TrimRight(m[1], ":,"))
+	}
+	require.NotEmpty(t, out, "section %s has rows", header)
+	return out
+}
+
+// TestStyledHelpListsCommandsAndFlagsAlphabetically asserts every help
+// card lists its commands and its flags in alphabetical order, while the
+// command tree keeps its registration order (the schema manifest mirrors
+// the tree, not the help).
+func TestStyledHelpListsCommandsAndFlagsAlphabetically(t *testing.T) {
+	t.Parallel()
+	root := renderHelp(t, "never")
+	commands := helpSectionFirstTokens(t, root, "COMMANDS:")
+	assert.True(t, slices.IsSorted(commands), "root commands: %v", commands)
+	assert.Equal(t, "access", commands[0])
+	globals := helpSectionFirstTokens(t, root, "GLOBAL OPTIONS:")
+	assert.True(t, slices.IsSorted(globals), "root global options: %v", globals)
+	assert.Equal(t, "--allow-deprecated", globals[0])
+
+	group := renderHelp(t, "never", "access")
+	assert.True(t, slices.IsSorted(helpSectionFirstTokens(t, group, "COMMANDS:")))
+
+	leaf := renderHelp(t, "never", "access", "can")
+	options := helpSectionFirstTokens(t, leaf, "OPTIONS:")
+	assert.True(t, slices.IsSorted(options), "leaf options: %v", options)
+	assert.Equal(t, "--as", options[0])
+	assert.Contains(t, options, "--help")
+	leafGlobals := helpSectionFirstTokens(t, leaf, "GLOBAL OPTIONS:")
+	assert.True(t, slices.IsSorted(leafGlobals), "leaf global options: %v", leafGlobals)
+
+	built, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	assert.Equal(t, "schema", built.Commands[0].Name, "the tree keeps registration order; only the help is sorted")
 }
