@@ -355,10 +355,12 @@ func groupLabel(g string) string {
 	return g
 }
 
-// writeTable writes a header and rows with every column fitted to its
+// tableLines renders a header and rows with every column fitted to its
 // widest cell, two spaces between columns, no trailing spaces, each line
-// prefixed with indent.
-func writeTable(b *strings.Builder, indent string, header []string, rows [][]string) {
+// prefixed with indent. The header is the first line and every later line
+// is one row in order, so a caller that writes its own text between rows
+// still measures the columns over the whole table.
+func tableLines(indent string, header []string, rows [][]string) []string {
 	widths := make([]int, len(header))
 	for i, h := range header {
 		widths[i] = utf8.RuneCountInString(h)
@@ -368,7 +370,7 @@ func writeTable(b *strings.Builder, indent string, header []string, rows [][]str
 			widths[i] = max(widths[i], utf8.RuneCountInString(c))
 		}
 	}
-	line := func(cells []string) {
+	line := func(cells []string) string {
 		var l strings.Builder
 		l.WriteString(indent)
 		for i, c := range cells {
@@ -378,12 +380,21 @@ func writeTable(b *strings.Builder, indent string, header []string, rows [][]str
 			}
 		}
 		// An empty last cell (a row without NAMES) leaves no trailing pad.
-		b.WriteString(strings.TrimRight(l.String(), " "))
-		b.WriteString("\n")
+		return strings.TrimRight(l.String(), " ")
 	}
-	line(header)
+	out := make([]string, 0, len(rows)+1)
+	out = append(out, line(header))
 	for _, r := range rows {
-		line(r)
+		out = append(out, line(r))
+	}
+	return out
+}
+
+// writeTable writes the fitted table as one block.
+func writeTable(b *strings.Builder, indent string, header []string, rows [][]string) {
+	for _, l := range tableLines(indent, header, rows) {
+		b.WriteString(l)
+		b.WriteString("\n")
 	}
 }
 

@@ -26,6 +26,10 @@ const (
 	exitUnknown = 13
 
 	oneDenialNote = "one cluster-access denial applies to all listed namespaces"
+
+	// groupsUnknownNote marks a negative answer about a subject whose real
+	// groups are unknown: it proves nothing, so the row is unknown.
+	groupsUnknownNote = "groups unknown"
 )
 
 type canCmd struct {
@@ -116,9 +120,14 @@ type parsedCan struct {
 	scope    scopeFlags
 }
 
-// parseCan validates the command line. Every rule here fires before the
-// first request.
-func parseCan(in runtime.Input) (parsedCan, error) {
+// parseCan validates the access can command line: a question that never
+// accepts --all-namespaces.
+func parseCan(in runtime.Input) (parsedCan, error) { return parseQuestion(in, false) }
+
+// parseQuestion validates a question command line (access can, access
+// who-can). Every rule here fires before the first request; allowAll says
+// whether --all-namespaces is accepted.
+func parseQuestion(in runtime.Input, allowAll bool) (parsedCan, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
 		return parsedCan{}, clierr.New(clierr.CodeValidation, "a verb is required")
@@ -165,7 +174,7 @@ func parseCan(in runtime.Input) (parsedCan, error) {
 		return parsedCan{}, err
 	}
 	p.as = as
-	p.scope = scopeFlags{namespace: in.String(flagNamespace), project: in.String(flagProject), allNamespaces: in.Bool(flagAllNamespaces)}
+	p.scope = scopeFlags{namespace: in.String(flagNamespace), project: in.String(flagProject), allNamespaces: in.Bool(flagAllNamespaces), allowAll: allowAll}
 	if err := validateSelectors(p.scope); err != nil {
 		return parsedCan{}, err
 	}
@@ -267,7 +276,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	ask := func(ctx context.Context, namespace string) (Outcome, reviewResult) {
 		var r reviewResult
 		if plan.Identity == IdentitySAR {
-			r = postReview(ctx, plan.Client, engine.ReviewSubjectAccess, subjectAccessReviewObject(p.question, namespace, sarUser(plan), plan.Groups))
+			r = postReview(ctx, plan.Client, engine.ReviewSubjectAccess, subjectAccessReviewObject(p.question, namespace, sarUser(plan.Subject), plan.Groups))
 		} else {
 			r = postReview(ctx, plan.Client, engine.ReviewSelfSubjectAccess, accessReviewObject(p.question, namespace))
 		}
@@ -278,7 +287,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 		if plan.GroupsFrom == GroupsAuthenticatedOnly && outcome.Decision == DecisionDenied {
 			// The subject's real groups are unknown; a negative answer
 			// proves nothing.
-			outcome.Decision, outcome.Note = DecisionUnknown, "groups unknown"
+			outcome.Decision, outcome.Note = DecisionUnknown, groupsUnknownNote
 		}
 		return outcome, r
 	}
@@ -371,11 +380,13 @@ func (c *canCmd) renderDenial(out canResult, scope Scope, plan identityPlan, clu
 	return runtime.Result{Kind: "AccessDecision", Data: out, ExitStatus: exitDenied, Text: canText(out, false)}
 }
 
-func sarUser(plan identityPlan) string {
-	if plan.Subject.Kind == KindGroup {
+// sarUser is the SubjectAccessReview's spec.user for a subject: empty for
+// a group, whose question is asked by groups alone.
+func sarUser(subject AccessSubject) string {
+	if subject.Kind == KindGroup {
 		return ""
 	}
-	return plan.Subject.Name
+	return subject.Name
 }
 
 func isCollectionVerb(v string) bool {
