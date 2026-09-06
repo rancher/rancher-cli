@@ -1,0 +1,52 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "ssrr",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SelfSubjectRulesReview",
+        "metadata": {},
+        "spec": {},
+        "status": {
+          "incomplete": false,
+          "nonResourceRules": [
+            {
+              "nonResourceURLs": [
+                "/api",
+                "/api/*",
+                "/apis",
+                "/apis/*",
+                "/healthz",
+                "/livez",
+                "/openapi",
+                "/openapi/*",
+                "/readyz",
+                "/version",
+                "/version/"
+              ],
+              "verbs": [
+                "get"
+              ]
+            },
+            {
+              "nonResourceURLs": [
+                "/healthz",
+                "/livez",
+                "/readyz",
+                "/version",
+                "/version/"
+              ],
+              "verbs": [
+                "get"
+              ]
+            }
+          ],
+          "resourceRules": "\u003cunordered\u003e"
+        }
+      }
+    }
+  ]
+}

@@ -40,6 +40,9 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access-downstream/nonexistent-service-account", "access-downstream/service-account-identity",
 		"access-downstream/impersonate-group-dropped", "access-downstream/rules-review-complete",
 		"access-downstream/sar-without-right", "access-downstream/version-field-accepted",
+		"access/whoami-through-proxy", "access/impersonate-user-dropped-on-local",
+		"access/rules-review-standard-user-default", "access/self-access-review-with-version",
+		"access/subject-access-review-right-and-anonymous",
 	}
 	var got []string
 	for _, p := range All() {
@@ -300,5 +303,22 @@ func TestDryrunThenApplySendsByteIdenticalBodies(t *testing.T) {
 		require.NotEmpty(t, dryRun)
 		assert.Equal(t, dryRun, apply,
 			"execution must apply exactly the object the preview rendered")
+	}
+}
+
+// TestAccessProbesAreRegistered asserts the access family is reachable
+// through All, so the golden-presence gate covers it.
+func TestAccessProbesAreRegistered(t *testing.T) {
+	t.Parallel()
+	names := map[string]bool{}
+	for _, p := range All() {
+		names[p.Name] = true
+	}
+	for _, want := range []string{
+		"access/whoami-through-proxy", "access/impersonate-user-dropped-on-local",
+		"access/rules-review-standard-user-default", "access/self-access-review-with-version",
+		"access/subject-access-review-right-and-anonymous",
+	} {
+		assert.True(t, names[want], want)
 	}
 }

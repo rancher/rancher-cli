@@ -482,6 +482,24 @@ applies - this is Rancher behavior, not a CLI choice. For both commands,
 partial failures leave already-created (or already-deleted) bindings in
 place. Omitting `--role` on `revoke` revokes every role at the scope.
 
+`access can` and `access list` ask the cluster's own authorizer through
+the Rancher proxy (SelfSubjectAccessReview, SubjectAccessReview,
+SelfSubjectRulesReview); nothing is inferred from bindings. For
+`access can`, `--as` names a user, a group (`--type group` or a group
+principal), or `system:serviceaccount:<ns>:<name>`; for `access list`,
+`--as` names a user or a service account only (no server operation
+lists a group's rules; a group is refused with a validation error that
+points at `access can`). A named user is impersonated when
+your GlobalRoles allow it; otherwise the CLI asks a SubjectAccessReview
+about the user with the group principals Rancher has cached for it. The
+management cluster never impersonates: `access can --cluster local --as`
+uses SubjectAccessReview and `access list --as` refuses there. Exit
+codes: `can` 0 allowed, 12 denied, 13 unknown; `list` 13 when any
+namespace answered incompletely or not at all. Every answer states its
+source (`authorizer`, `rancherProxy`, `scopeDiscovery`, `request`,
+`mixed`) and identity (`caller`, `impersonated`,
+`subjectAccessReview`).
+
 ## Diagnostics & support
 
 `logs`/`support-bundle` cover only what Rancher's own Kubernetes API can reach.

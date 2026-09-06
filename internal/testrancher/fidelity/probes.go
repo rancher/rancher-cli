@@ -34,6 +34,7 @@ func All() []Probe {
 	probes = append(probes, capabilityProbes()...)
 	probes = append(probes, userPasswordWorkflowProbes()...)
 	probes = append(probes, accessDownstreamProbes()...)
+	probes = append(probes, accessProbes()...)
 	return probes
 }
 
@@ -249,6 +250,92 @@ func accessDownstreamProbes() []Probe {
 		nonexistentServiceAccount, serviceAccountIdentity, impersonateGroupDropped, rulesReviewComplete,
 		sarWithoutRight, versionFieldAccepted,
 	}
+}
+
+// accessProbes records what the access commands rely on from the
+// authorization and authentication review endpoints through the proxy on
+// the management cluster. OracleOnly: the facade has no review endpoints;
+// the e2e shim models them for the scenario suite. The downstream half of
+// the suite's facts (the impersonation refusal, the cluster-access refusal,
+// a service account the cluster does not have) needs a cluster behind
+// /k8s/clusters/<id>, which this oracle does not have.
+func accessProbes() []Probe {
+	const (
+		reviews  = "/k8s/clusters/local/apis/authorization.k8s.io/v1/"
+		whoami   = "/k8s/clusters/local/apis/authentication.k8s.io/v1/selfsubjectreviews"
+		ssrrBody = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectRulesReview","spec":{"namespace":"default"}}`
+		ssarBody = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"list","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		sarAnon  = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:anonymous","groups":["system:unauthenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		whoBody  = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
+	)
+	// The username, the principal, and the token id are all created per
+	// run (the standard identity is a fresh user each time): the facts
+	// here are the group set and the extra keys the proxy attaches, not
+	// which user was asked.
+	userField := []NormalizeRule{
+		{Path: "status.userInfo.username", Replace: "<user-id>"},
+		{Path: "status.userInfo.uid", Replace: ""},
+		{Path: "status.userInfo.extra.principalid", Replace: "<principal>"},
+		{Path: "status.userInfo.extra.requesttokenid", Replace: "<token-id>"},
+	}
+	return []Probe{
+		{
+			// The standard user's identity through the proxy: the
+			// impersonating service account presents the Rancher user id
+			// and Rancher's group set (system:authenticated and
+			// system:cattle:authenticated), never the SA's own groups.
+			Name: "access/whoami-through-proxy", OracleOnly: true,
+			Observations: []Observation{{Name: "whoami", Request: RequestSpec{Method: http.MethodPost, Path: whoami, Body: whoBody, Identity: IdentityStandard}}},
+			Normalize:    userField,
+		},
+		{
+			// Impersonate-User on the local route is dropped, not refused:
+			// the answer is 201 with the caller's own identity, where a
+			// honored header for a nonexistent user would be a refusal.
+			Name: "access/impersonate-user-dropped-on-local", OracleOnly: true,
+			Observations: []Observation{{Name: "whoami-with-header", Request: RequestSpec{Method: http.MethodPost, Path: whoami, Body: whoBody,
+				Headers: map[string]string{"Impersonate-User": "u-nonexistent"}, Identity: IdentityAdmin}}},
+			Normalize: userField,
+		},
+		{
+			// A rules review on a stock management cluster answers
+			// complete, and reports the standard user's non-resource rules
+			// as Rancher's fixed set for that role. The resource rules are
+			// scrubbed: their ORDER varies run to run (the aggregation
+			// follows binding creation) and one of them names the
+			// per-run user id, so the recorded fact is incomplete: false
+			// plus the non-resource set. The CLI sorts and merges the
+			// resource rules itself before rendering them.
+			Name: "access/rules-review-standard-user-default", OracleOnly: true,
+			Observations: []Observation{{Name: "ssrr", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "selfsubjectrulesreviews", Body: ssrrBody, Identity: IdentityStandard}}},
+			Normalize:    []NormalizeRule{{Path: "status.resourceRules", Replace: "<unordered>"}},
+		},
+		{
+			// spec.resourceAttributes.version is accepted; a negative
+			// answer carries no reason; a positive one names the binding.
+			Name: "access/self-access-review-with-version", OracleOnly: true,
+			Observations: []Observation{
+				{Name: "standard", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "selfsubjectaccessreviews", Body: ssarBody, Identity: IdentityStandard}},
+				{Name: "admin", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "selfsubjectaccessreviews", Body: ssarBody, Identity: IdentityAdmin}},
+			},
+			// The admin's reason names its boot-generated globaladmin
+			// binding; the fact recorded is that a reason is present and
+			// the answer allowed, so the text is replaced.
+			Normalize: []NormalizeRule{{Path: "status.reason", Replace: "<reason>"}},
+		},
+		{
+			// A SubjectAccessReview needs the create right on the
+			// management cluster: the standard user is refused with a
+			// Kubernetes Status body, the admin is answered;
+			// system:anonymous with system:unauthenticated is denied
+			// without a reason.
+			Name: "access/subject-access-review-right-and-anonymous", OracleOnly: true,
+			Observations: []Observation{
+				{Name: "standard-refused", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "subjectaccessreviews", Body: sarAnon, Identity: IdentityStandard}},
+				{Name: "admin-anonymous", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "subjectaccessreviews", Body: sarAnon, Identity: IdentityAdmin}},
+			},
+			Normalize: []NormalizeRule{{Path: "message", Replace: "<message>"}, {Path: "details.*", Replace: "<scrubbed>"}},
+		}}
 }
 
 // userPasswordWorkflowProbes asserts the facts `create user`/`create

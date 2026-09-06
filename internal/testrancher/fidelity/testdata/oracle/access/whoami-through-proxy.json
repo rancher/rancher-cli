@@ -1,0 +1,36 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "whoami",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e"
+        },
+        "status": {
+          "userInfo": {
+            "extra": {
+              "principalid": "\u003cprincipal\u003e",
+              "requesthost": [
+                "127.0.0.1:8443"
+              ],
+              "requesttokenid": "\u003ctoken-id\u003e",
+              "username": [
+                "e2e-fid-standard"
+              ]
+            },
+            "groups": [
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "\u003cuser-id\u003e"
+          }
+        }
+      }
+    }
+  ]
+}

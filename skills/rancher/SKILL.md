@@ -434,10 +434,16 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
 Roles are facts about bindings that exist - what `grant`/`revoke` create and
 delete, what the `inspect project`/`inspect cluster` MEMBERS sections list,
 and what `inspect user`'s ROLES section enumerates across every scope for one
-subject. Permissions - what a subject can actually do - are a different thing:
-only the server can answer that (aggregation, inheritance, and group sync all
-live there), and nothing in the CLI computes it. Never present a role list as
-permissions.
+subject. Permissions are what a subject can actually do, and only the server
+can answer that: `rancher access can <verb> <resource> --cluster <c> [-n <ns>]
+[--as <subject>]` asks the authorizer for one decision (exit 0 allowed, 12
+denied, 13 unknown; `--as` takes a user, a group principal, or a service
+account) and `rancher access list --cluster <c> [-n <ns>] [--as <user or
+service account>]` lists the rules it reports (never a group: ask a point
+question instead). Read `data.decision`,
+`data.reason` (the server's own words), `data.resultSource`, and
+`data.identity`; `unknown` means the server could not say, never "no".
+Never present a role list as permissions.
 
 - `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` -
   grant a role at project, cluster, or global scope. Subject is a user/group

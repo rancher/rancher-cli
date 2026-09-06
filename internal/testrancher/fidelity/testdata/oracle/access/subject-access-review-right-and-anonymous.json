@@ -1,0 +1,48 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "standard-refused",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "details": {
+          "group": "\u003cscrubbed\u003e",
+          "kind": "\u003cscrubbed\u003e"
+        },
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "metadata": {},
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    },
+    {
+      "name": "admin-anonymous",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SubjectAccessReview",
+        "metadata": {},
+        "spec": {
+          "groups": [
+            "system:unauthenticated"
+          ],
+          "resourceAttributes": {
+            "namespace": "default",
+            "resource": "pods",
+            "verb": "get",
+            "version": "v1"
+          },
+          "user": "system:anonymous"
+        },
+        "status": {
+          "allowed": false
+        }
+      }
+    }
+  ]
+}
