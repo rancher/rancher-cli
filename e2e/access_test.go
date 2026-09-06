@@ -75,6 +75,13 @@ func TestAccessFixtureThroughTheRealAuthorizer(t *testing.T) {
 	assert.False(t, sarAllowed(t, "system:anonymous", []string{"system:unauthenticated"},
 		"team-a", "apps", "deployments", "get"),
 		"the anonymous identity is never credited with the authenticated group's grant")
+
+	assert.True(t, sarAllowed(t, "u-bob", []string{"okta_group://eng", "system:authenticated"}, "team-b", "", "configmaps", "get"),
+		"a cached member of okta_group://eng may get configmaps in team-b")
+	assert.True(t, sarAllowed(t, "oidc-external@corp", authenticated, "team-b", "", "secrets", "get"),
+		"the external username is bound directly in team-b")
+	assert.False(t, sarAllowed(t, "oidc-external@corp", authenticated, "team-b", "", "pods", "get"),
+		"and holds nothing else there")
 }
 
 // accessRunner runs the built binary against a facade whose router records

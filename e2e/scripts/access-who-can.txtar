@@ -1,0 +1,123 @@
+# access who-can: binding subjects as candidates, one SubjectAccessReview
+# each as the caller, Rancher's cached group members, the unknown-groups
+# rule, --project rows and the cluster-wide collapse, --show-denied, the
+# management cluster, a non-resource question, and the refusals.
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# admin asks who can get pods in team-a: e2e-std (RoleBinding), e2e-admin
+# and system:masters (allowed before RBAC, so no reason) are allowed; the
+# apiserver's own bootstrap bindings name component users with no Rancher
+# User: system:kube-scheduler may get pods (a definite allowed answer),
+# system:kube-controller-manager may not (unknown, never exit 13)
+exec rancher access who-can get pods --cluster testcluster -n team-a -o json
+cp stdout pods.json
+jsonquery pods.json data.identity subjectAccessReview
+jsonquery pods.json data.resultSource authorizer
+jsonquery pods.json data.candidateSource 'rolebindings and clusterrolebindings on c-test (+ system:masters)'
+jsonquery pods.json 'data.subjects.#(name=="e2e-std").decision' allowed
+jsonquery pods.json 'data.subjects.#(name=="e2e-std").groupsFrom' rancherUserAttribute
+jsonquery pods.json 'data.subjects.#(name=="e2e-std").displayName' 'Std User'
+jsonquery pods.json 'data.subjects.#(name=="e2e-std").via.0' direct
+jsonquery pods.json 'data.subjects.#(name=="e2e-admin").decision' allowed
+jsonquery pods.json 'data.subjects.#(name=="system:masters").decision' allowed
+jsonquery pods.json 'data.subjects.#(name=="system:masters").kind' group
+jsonquery pods.json 'data.subjects.#(name=="system:masters").reason' ''
+jsonquery pods.json 'data.subjects.#(name=="system:authenticated").decision' denied
+jsonquery pods.json 'data.subjects.#(name=="system:kube-scheduler").decision' allowed
+jsonquery pods.json 'data.subjects.#(name=="system:kube-scheduler").groupsFrom' authenticatedOnly
+jsonquery pods.json 'data.subjects.#(name=="system:kube-scheduler").reason' 'RBAC: allowed by ClusterRoleBinding "system:kube-scheduler" of ClusterRole "system:kube-scheduler" to User "system:kube-scheduler"'
+jsonquery pods.json 'data.subjects.#(name=="system:kube-controller-manager").decision' unknown
+jsonquery pods.json 'data.subjects.#(name=="system:kube-controller-manager").groupsFrom' authenticatedOnly
+jsonquery pods.json 'data.subjects.#(name=="system:kube-controller-manager").note' 'groups unknown'
+jsonquery pods.json data.rollup.issues 0
+jsonquery pods.json data.rollup.outsideCandidateSet.0 'system:masters members'
+
+# text: allowed rows, one folded line for unknown groups, denied hidden
+exec rancher access who-can get pods --cluster testcluster -n team-a
+stdout '^who can get pods in team-a on c-test'
+stdout 'e2e-std'
+stdout 'with unknown groups could not be ruled out: .*system:kube-controller-manager'
+stdout 'denied not shown; pass --show-denied to list them'
+! stdout 'system:authenticated '
+stdout 'source: authorizer \| identity: subjectAccessReview'
+exec rancher access who-can get pods --cluster testcluster -n team-a --show-denied
+stdout 'system:authenticated '
+! stdout 'denied not shown'
+
+# a group bound in team-b lists Rancher's cached members under it
+exec rancher access who-can get configmaps --cluster testcluster -n team-b -o json
+cp stdout cm.json
+jsonquery cm.json 'data.subjects.#(name=="okta_group://eng").decision' allowed
+jsonquery cm.json 'data.subjects.#(name=="okta_group://eng").groupsFrom' groupOnly
+jsonquery cm.json 'data.subjects.#(name=="okta_group://eng").knownMembers.0' u-bob
+exec rancher access who-can get configmaps --cluster testcluster -n team-b
+stdout 'known members: u-bob'
+
+# a binding username with no Rancher User: allowed is definite, denied is
+# unknown with the groups-unknown note, and the exit stays 0
+exec rancher access who-can get secrets --cluster testcluster -n team-b -o json
+cp stdout secrets.json
+jsonquery secrets.json 'data.subjects.#(name=="oidc-external@corp").decision' allowed
+jsonquery secrets.json 'data.subjects.#(name=="oidc-external@corp").groupsFrom' authenticatedOnly
+jsonquery secrets.json 'data.subjects.#(name=="e2e-compl-u1").decision' allowed
+jsonquery secrets.json 'data.subjects.#(name=="e2e-compl-u1").groupsFrom' rancherUserAttribute
+exec rancher access who-can get pods --cluster testcluster -n team-b -o json
+cp stdout podsb.json
+jsonquery podsb.json 'data.subjects.#(name=="oidc-external@corp").decision' unknown
+jsonquery podsb.json 'data.subjects.#(name=="oidc-external@corp").note' 'groups unknown'
+jsonquery podsb.json 'data.subjects.#(name=="e2e-compl-u1").decision' denied
+
+# --project: one row per subject per namespace in namespace order; a grant
+# the server attributes to the same ClusterRoleBinding in every namespace
+# collapses to namespace "*"; system:masters has no reason and keeps its rows
+exec rancher access who-can get pods --cluster testcluster --project p-e2e -o json
+cp stdout project.json
+jsonquery project.json data.scope.project p-e2e
+jsonquery project.json data.scope.namespaces.1 team-b
+jsonquery project.json 'data.subjects.#(name=="e2e-admin").namespace' '*'
+jsonquery project.json 'data.subjects.#(name=="system:kube-scheduler").namespace' '*'
+jsonquery project.json 'data.subjects.#(name=="system:masters")#.namespace' '["team-a","team-b"]'
+jsonquery project.json 'data.subjects.#(name=="e2e-std")#.namespace' '["team-a","team-b"]'
+jsonquery project.json 'data.subjects.#(name=="e2e-std")#.decision' '["allowed","denied"]'
+exec rancher access who-can get pods --cluster testcluster --project p-e2e
+stdout '^who can get pods in project p-e2e on c-test'
+stdout 'NAMESPACE'
+
+# an empty project evaluates nothing and is complete
+exec rancher access who-can get pods --cluster testcluster --project p-empty -o json
+cp stdout empty.json
+jsonquery empty.json data.resultSource scopeDiscovery
+jsonquery empty.json data.rollup.rows 0
+stdout 'has no namespaces'
+
+# the management cluster answers the same way
+exec rancher access who-can get pods --cluster local -n team-a -o json
+cp stdout local.json
+jsonquery local.json data.scope.cluster local
+jsonquery local.json 'data.subjects.#(name=="system:masters").decision' allowed
+
+# a non-resource question: the bootstrap public-info-viewer binding lets
+# every authenticated and unauthenticated identity read /healthz
+exec rancher access who-can get --non-resource-url /healthz --cluster testcluster -o json
+cp stdout healthz.json
+jsonquery healthz.json data.question.nonResourceURL /healthz
+jsonquery healthz.json 'data.subjects.#(name=="system:authenticated").decision' allowed
+jsonquery healthz.json 'data.subjects.#(name=="system:unauthenticated").decision' allowed
+
+# validation
+! exec rancher access who-can get pods --cluster testcluster
+stderr 'add -n, --project, or --all-namespaces'
+! exec rancher access who-can get nodes --cluster testcluster -n team-a
+stderr 'cluster-scoped'
+
+# a caller who cannot list bindings is refused with the rights named
+env RANCHER_CLI_TOKEN=e2e-std:secret
+! exec rancher access who-can get pods --cluster testcluster -n team-a
+stderr 'who-can needs list on rolebindings and clusterrolebindings on cluster c-test'
+
+# a caller without cluster access is refused before any binding is read
+env RANCHER_CLI_TOKEN=e2e-nocluster:secret
+! exec rancher access who-can get pods --cluster testcluster -n team-a
+stderr 'you have no access to cluster c-test'
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN

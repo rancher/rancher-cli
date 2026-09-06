@@ -1059,6 +1059,29 @@ func seedAccessRBAC() {
 		"subjects": subject("User", "e2e-compl-u1"),
 	})
 
+	// who-can's two remaining candidate shapes, both in team-b: a group
+	// principal (Rancher's UserAttribute cache names u-bob as a member of
+	// okta_group://eng, so the group row lists a known member) and a
+	// username with no Rancher User (asked with system:authenticated only:
+	// an allowed answer is definite, a denied one is unknown).
+	create(rbacGVR("roles"), "team-b", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "Role",
+		"metadata": map[string]any{"name": "e2e-eng-configmaps", "namespace": "team-b"},
+		"rules":    rules("", []string{"configmaps"}, []string{"get"}),
+	})
+	create(rbacGVR("rolebindings"), "team-b", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+		"metadata": map[string]any{"name": "e2e-eng-configmaps", "namespace": "team-b"},
+		"roleRef":  roleRef("Role", "e2e-eng-configmaps"),
+		"subjects": subject("Group", "okta_group://eng"),
+	})
+	create(rbacGVR("rolebindings"), "team-b", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+		"metadata": map[string]any{"name": "e2e-external-secrets", "namespace": "team-b"},
+		"roleRef":  roleRef("Role", "e2e-team-b-secrets"),
+		"subjects": subject("User", "oidc-external@corp"),
+	})
+
 	nsGVR := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
 	for _, ns := range []string{"team-a", "team-b"} {
 		patch := []byte(`{"metadata":{"labels":{"field.cattle.io/projectId":"p-e2e"}}}`)
