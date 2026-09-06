@@ -23,12 +23,13 @@ var plainSpellingAllowlist = map[string]string{}
 // output) with two deliberate differences: testdata IS scanned, because
 // goldens and fixtures are authored text and must read plainly too, and
 // .github IS scanned, because workflow files and CODEOWNERS are authored
-// text as well. docs is gitignored and per-checkout, so it is skipped.
+// text as well. docs and graphify-out are gitignored and per-checkout
+// (working notes, a generated knowledge graph), so they are skipped.
 func plainSpellingSkipsDir(name string) bool {
 	switch name {
 	case "testdata", ".github":
 		return false
-	case "docs":
+	case "docs", "graphify-out":
 		return true
 	}
 	return skipDirNames[name]
@@ -38,7 +39,7 @@ func plainSpellingSkipsDir(name string) bool {
 // and build output are skipped, authored-text directories are not.
 func TestPlainSpellingSkipsDir(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{".git", ".githooks", ".claude", "bin", "node_modules", "vendor", "docs"} {
+	for _, name := range []string{".git", ".githooks", ".claude", "bin", "node_modules", "vendor", "docs", "graphify-out"} {
 		assert.True(t, plainSpellingSkipsDir(name), name)
 	}
 	for _, name := range []string{"testdata", ".github", "internal", "scripts", "e2e"} {
