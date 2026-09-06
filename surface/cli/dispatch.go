@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -222,6 +223,9 @@ func dispatchSite(
 		if cands, owned := positionalEnumCandidates(site, d); owned {
 			return cands
 		}
+		if cands, owned := accessVerbCandidates(site, d, tail); owned {
+			return cands
+		}
 	}
 
 	// Layer 2: config-local (ShellCompleter delegation) for positionals.
@@ -305,8 +309,35 @@ func positionalEnumCandidates(site CompletionSite, d runtime.Descriptor) ([]stri
 	return out, true
 }
 
+// accessVerbCandidates owns `access can`'s verb positional: the HTTP verbs
+// when --non-resource-url is on the line, the Kubernetes resource verbs
+// otherwise. Compiled-in vocabularies, served like an enum, before the
+// network gate. Ownership, not first-match: an unmatched partial ends the
+// dispatch with no candidates.
+func accessVerbCandidates(site CompletionSite, d runtime.Descriptor, tail []string) ([]string, bool) {
+	if d.Name != "access can" || site.Index != 0 {
+		return nil, false
+	}
+	vocab := access.ResourceVerbs
+	if extractFlagValue(tail, "non-resource-url") != "" {
+		vocab = access.HTTPVerbs
+	}
+	var out []string
+	for _, v := range vocab {
+		if strings.HasPrefix(v, site.Partial) {
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out, true
+}
+
 // liveCandidates issues at most two HTTP requests to fetch resource names
-// (AC-17 steps 4-6, AC-24). Returns nil on any error (AC-18).
+// (AC-17 steps 4-6, AC-24), with one exception: `access can`'s resource
+// positional and its --group/--subresource values read the cluster's two
+// discovery roots, plus, for a display-name --cluster, the one resolution
+// request the layer makes for every cluster-dependent site - three in all.
+// Returns nil on any error (AC-18).
 // tail is the pre-computed leaf arg tail from the caller (avoids re-stripping).
 func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, c *ucli.Command, tail []string) []string {
 	// Role flag-value sites derive scope from the typed tail only
@@ -337,6 +368,13 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	nodeDriverFlagSite := site.Kind == SiteFlagValue && d.Name == "create cluster" &&
 		(site.FlagName == "machine-config" || site.FlagName == "cloud-credential")
 
+	// access can/list --as fetches management users and never needs a
+	// cluster: same preflight bypass as subjectSite, so an unrelated
+	// --cluster value on the line neither fails segment validation nor
+	// selects a cluster-scoped credential.
+	accessSubjectSite := site.Kind == SiteFlagValue && site.FlagName == "as" &&
+		(d.Name == "access can" || d.Name == "access list")
+
 	// logs' --pod site is entirely self-contained: its cluster comes from the
 	// curated target's LocalOnly/DownstreamOnly shape (observe.Targets), not a
 	// typed --cluster, so it resolves its own capability and returns directly
@@ -357,7 +395,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// announcement; absent flags leave the values empty.
 	clusterValue := ""
 	effectiveProject := ""
-	if !roleSite && !subjectSite && !nodeDriverFlagSite {
+	if !roleSite && !subjectSite && !nodeDriverFlagSite && !accessSubjectSite {
 		clusterValue = extractFlagValue(tail, "cluster")
 		effectiveProject = extractFlagValue(tail, "project")
 	}
@@ -416,7 +454,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	case SiteFlagValue:
 		// Round-2 finding 4: pass effectiveProject so --namespace is suppressed
 		// when a project scope is active (AC-9/AC-15).
-		return liveFlagValueCandidates(ctx, hc, site, cap, resolvedClusterID, effectiveProject, tail)
+		return liveFlagValueCandidates(ctx, hc, site, d, cap, resolvedClusterID, effectiveProject, tail)
 	case SitePositional:
 		return livePositionalCandidates(ctx, hc, site, d, cap, resolvedClusterID, effectiveProject, tail)
 	}
@@ -434,6 +472,18 @@ func isClusterIDShaped(s string) bool {
 // (finding 5), with an explicit carve-out for project: it is Management scope
 // but lists projects in a cluster's namespace, so it also needs a cluster ID.
 func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
+	// access can's resource positional and its --group/--subresource values
+	// come from the target cluster's discovery: a display name must resolve
+	// first. --as is deliberately absent: it reads management users and
+	// needs no cluster.
+	if d.Name == "access can" {
+		switch site.Kind {
+		case SitePositional:
+			return site.Index == 1
+		case SiteFlagValue:
+			return site.FlagName == "group" || site.FlagName == "subresource"
+		}
+	}
 	if site.Kind == SiteFlagValue {
 		switch site.FlagName {
 		case "project", "namespace", "node":
@@ -547,7 +597,7 @@ func roleVocabulary(tail []string) roleVocab {
 // For role sites, clusterID and effectiveProject are intentionally empty and
 // ignored - role scope is derived exclusively from tail via roleVocabulary,
 // never from inherited env/config values.
-func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, cap TokenCapability, clusterID, effectiveProject string, tail []string) []string {
+func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, d runtime.Descriptor, cap TokenCapability, clusterID, effectiveProject string, tail []string) []string {
 	var raw []string
 	switch site.FlagName {
 	case "cluster":
@@ -585,6 +635,21 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 			raw = fetchRoleTemplates(ctx, hc, cap, "cluster")
 		default:
 			return nil // no scope or conflicting scope: empty, zero requests
+		}
+	case "as":
+		if d.Name == "access can" || d.Name == "access list" {
+			// Users only: every shell splits a candidate line at its first
+			// ':' (token:description), so a group principal such as
+			// github_org://eng cannot be offered by this protocol.
+			raw = fetchUsers(ctx, hc, cap)
+		}
+	case "subresource":
+		if d.Name == "access can" {
+			raw = fetchSubresources(ctx, hc, cap, clusterID, positionalAt(tail, d.Flags, 1), extractFlagValue(tail, "group"))
+		}
+	case "group":
+		if d.Name == "access can" {
+			raw = fetchAPIGroups(ctx, hc, cap, clusterID)
 		}
 	default:
 		return nil
@@ -688,6 +753,15 @@ func livePositionalCandidates(
 			return nil
 		}
 		return provisioningClusterPositionalCandidates(ctx, hc, cap, tail)
+	}
+
+	if d.Name == "access can" {
+		if site.Index != 1 || extractFlagValue(tail, "non-resource-url") != "" {
+			return nil
+		}
+		// clusterID is the RESOLVED id liveCandidates hands down (a display
+		// name already mapped); the raw --cluster token is never a path.
+		return fetchBaseResources(ctx, hc, cap, clusterID)
 	}
 
 	if site.Index != 0 {
@@ -1039,10 +1113,12 @@ func bespokeSingleKindPositional(ctx context.Context, hc *http.Client, site Comp
 	}
 }
 
-// firstPositionalToken returns the first non-flag token in the leaf tail,
-// consuming flag values by arity (leaf flags + globals), or "" when none.
-func firstPositionalToken(tail []string, leafFlags []runtime.ArgSpec) string {
+// positionalAt returns the want-th non-flag token of the leaf tail,
+// consuming value-taking flags by arity (leaf flags plus globals) and
+// skipping --flag=value tokens, or "" when the tail has fewer positionals.
+func positionalAt(tail []string, leafFlags []runtime.ArgSpec, want int) string {
 	all := append(append([]runtime.ArgSpec{}, leafFlags...), globalArgSpecs...)
+	pos := 0
 	for i := 0; i < len(tail); i++ {
 		arg := tail[i]
 		if strings.HasPrefix(arg, "-") {
@@ -1055,9 +1131,18 @@ func firstPositionalToken(tail []string, leafFlags []runtime.ArgSpec) string {
 			}
 			continue
 		}
-		return arg
+		if pos == want {
+			return arg
+		}
+		pos++
 	}
 	return ""
+}
+
+// firstPositionalToken returns the first non-flag token in the leaf tail,
+// consuming flag values by arity (leaf flags + globals), or "" when none.
+func firstPositionalToken(tail []string, leafFlags []runtime.ArgSpec) string {
+	return positionalAt(tail, leafFlags, 0)
 }
 
 // gvrPath returns the cluster-scoped K8s API path for a kind's GVR.

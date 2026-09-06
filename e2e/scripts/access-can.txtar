@@ -1,0 +1,137 @@
+# access can: the caller path, exit codes, --as via impersonation and via
+# SubjectAccessReview, the proxy's no-cluster-access denial, and --project.
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# caller (admin) may delete pods in team-a: exit 0, decision allowed
+exec rancher access can delete pods --cluster testcluster -n team-a -o json
+cp stdout allowed.json
+jsonquery allowed.json data.decision allowed
+jsonquery allowed.json data.identity caller
+jsonquery allowed.json data.resultSource authorizer
+jsonquery allowed.json data.question.version v1
+jsonquery allowed.json data.subject.name e2e-admin
+
+# text render leads with the decision and ends with the source line
+exec rancher access can delete pods --cluster testcluster -n team-a
+stdout '^allowed  you can delete pods in team-a on c-test'
+stdout 'source: authorizer \| identity: caller'
+
+# --as a user with a RoleBinding: impersonated, allowed
+exec rancher access can get pods --cluster testcluster -n team-a --as e2e-std -o json
+cp stdout std.json
+jsonquery std.json data.decision allowed
+jsonquery std.json data.identity impersonated
+jsonquery std.json data.subject.name e2e-std
+
+# the same user denied elsewhere: exit 12, no reason on deny
+! exec rancher access can get pods --cluster testcluster -n team-b --as e2e-std -o json
+cp stdout denied.json
+jsonquery denied.json data.decision denied
+jsonquery denied.json data.reason ''
+
+# a group subject goes through SubjectAccessReview with groupsFrom groupOnly;
+# the authenticated group may get deployments in team-a and nothing else
+exec rancher access can get deployments --cluster testcluster -n team-a --as system:authenticated --type group -o json
+cp stdout group.json
+jsonquery group.json data.decision allowed
+jsonquery group.json data.identity subjectAccessReview
+jsonquery group.json data.groupsFrom groupOnly
+! exec rancher access can delete deployments --cluster testcluster -n team-a --as system:authenticated --type group -o json
+cp stdout groupdenied.json
+jsonquery groupdenied.json data.decision denied
+
+# --as naming the caller takes the caller path, no impersonation
+exec rancher access can get pods --cluster testcluster -n team-a --as e2e-admin -o json
+cp stdout self.json
+jsonquery self.json data.identity caller
+
+# a subject without cluster access: one denial from the proxy, no review
+! exec rancher access can get pods --cluster testcluster --project p-e2e --as e2e-nocluster -o json
+cp stdout nocluster.json
+jsonquery nocluster.json data.decision denied
+jsonquery nocluster.json data.resultSource rancherProxy
+jsonquery nocluster.json data.identity impersonated
+jsonquery nocluster.json data.namespaces.0.source rancherProxy
+
+# a service account the cluster does not have: NOT_FOUND, never a decision
+! exec rancher access can get pods --cluster testcluster -n team-a --as system:serviceaccount:team-a:ghost
+stderr 'system:serviceaccount:team-a:ghost not found on cluster c-test'
+stderr 'serviceaccounts "ghost" not found'
+
+# a caller without cluster access is refused, not answered
+env RANCHER_CLI_TOKEN=e2e-nocluster:secret
+! exec rancher access can get pods --cluster testcluster -n team-a
+stderr 'you have no access to cluster c-test'
+
+# a caller who may not impersonate falls back to SubjectAccessReview, and
+# is refused there too (std cannot create reviews): RBAC exit, globalroles
+# hint. The subject is a service account so the refusal under test is the
+# impersonation one, not a management-plane read the standard user also lacks.
+env RANCHER_CLI_TOKEN=e2e-std:secret
+! exec rancher access can get pods --cluster testcluster -n team-a --as system:serviceaccount:team-a:ci
+stderr 'rancher get globalroles'
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# a named subject on the management cluster uses SubjectAccessReview
+# (e2e-std holds nothing in management.cattle.io: denied, exit 12)
+! exec rancher access can get users.management.cattle.io --cluster local --as e2e-std -o json
+cp stdout localsar.json
+jsonquery localsar.json data.identity subjectAccessReview
+jsonquery localsar.json data.decision denied
+
+# an empty project never answers allowed
+! exec rancher access can get pods --cluster testcluster --project p-empty -o json
+cp stdout empty.json
+jsonquery empty.json data.decision unknown
+jsonquery empty.json data.resultSource scopeDiscovery
+stdout 'has no namespaces'
+
+# an empty project with a subject the proxy refuses is still unknown:
+# nothing was evaluated for anyone
+! exec rancher access can get pods --cluster testcluster --project p-empty --as e2e-nocluster -o json
+cp stdout emptydenied.json
+jsonquery emptydenied.json data.decision unknown
+jsonquery emptydenied.json data.resultSource scopeDiscovery
+jsonquery emptydenied.json data.subject.name e2e-nocluster
+
+# list on an empty project is complete and exits 0
+exec rancher access list --cluster testcluster --project p-empty -o json
+cp stdout emptylist.json
+jsonquery emptylist.json data.rollup.complete true
+jsonquery emptylist.json data.resultSource scopeDiscovery
+
+# anonymous is evaluated with system:unauthenticated only: denied, never
+# credited with the system:authenticated grant
+! exec rancher access can get deployments --cluster testcluster -n team-a --as system:anonymous -o json
+cp stdout anon.json
+jsonquery anon.json data.decision denied
+jsonquery anon.json data.groupsFrom anonymousIdentity
+
+# a service account allowed through its namespace group
+exec rancher access can get configmaps --cluster testcluster -n team-a --as system:serviceaccount:team-a:ci -o json
+cp stdout sa.json
+jsonquery sa.json data.decision allowed
+
+# --project rolls up per namespace; std is allowed in team-a only
+! exec rancher access can get pods --cluster testcluster --project p-e2e --as e2e-std -o json
+cp stdout project.json
+jsonquery project.json data.decision denied
+jsonquery project.json data.namespaces.0.namespace team-a
+jsonquery project.json data.namespaces.0.decision allowed
+jsonquery project.json data.namespaces.1.decision denied
+jsonquery project.json data.rollup.evaluated 2
+jsonquery project.json data.resultSource authorizer
+
+# validation fires before any request
+! exec rancher access can get pods --cluster testcluster
+stderr 'needs a namespace'
+! exec rancher access can create --non-resource-url /healthz --cluster testcluster
+stderr 'HTTP verb'
+! exec rancher access can get nodes --cluster testcluster -n team-a
+stderr 'cluster-scoped'
+
+# a non-resource question as the caller
+exec rancher access can get --non-resource-url /healthz --cluster testcluster -o json
+cp stdout nonres.json
+jsonquery nonres.json data.question.nonResourceURL /healthz

@@ -4,6 +4,148 @@
     {
       "args": [
         {
+          "desc": "Kubernetes verb (get, list, create, ...) or, with --non-resource-url, an HTTP verb",
+          "name": "verb",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "resource plural, singular, short name, or resource.group; optionally /<name>; omitted with --non-resource-url",
+          "name": "resource",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "public",
+      "desc": "Posts a SelfSubjectAccessReview (or a SubjectAccessReview about --as) through the Rancher proxy and reports the server's decision: allowed, denied, or unknown. Nothing is evaluated client-side. Exit 0 allowed, 12 denied, 13 unknown.",
+      "examples": [
+        "rancher access can delete pods --cluster prod -n team-a",
+        "rancher access can delete pods --cluster prod -n team-a --as alice",
+        "rancher access can get --non-resource-url /healthz --cluster prod --as github_org://eng",
+        "rancher access can list pods --cluster prod --project p-cvrp4 -o json"
+      ],
+      "flags": [
+        {
+          "desc": "cluster name or id the question is about",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "namespace the question is about",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "subject to ask about: user name, id, or principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you",
+          "name": "as",
+          "type": "string"
+        },
+        {
+          "desc": "kind of a bare --as value when ambiguous",
+          "enum": [
+            "user",
+            "group"
+          ],
+          "name": "type",
+          "type": "string"
+        },
+        {
+          "desc": "API group when the resource name exists in several groups",
+          "name": "group",
+          "type": "string"
+        },
+        {
+          "desc": "subresource such as status or log",
+          "name": "subresource",
+          "type": "string"
+        },
+        {
+          "desc": "ask about a non-resource path such as /healthz instead of a resource",
+          "name": "non-resource-url",
+          "type": "string"
+        }
+      ],
+      "group": "access",
+      "name": "access can",
+      "network": true,
+      "shape": "text",
+      "stability": "beta",
+      "successExitCodes": [
+        0,
+        12,
+        13
+      ],
+      "toolset": "core",
+      "usage": "Ask the cluster's authorizer whether a subject can perform a verb on a resource"
+    },
+    {
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "public",
+      "desc": "Posts a SelfSubjectRulesReview per namespace, as you or as an impersonated --as subject, and renders the server's rules. Groups cannot be listed (no server operation exists). Exit 0 when every namespace answered completely, 13 otherwise.",
+      "examples": [
+        "rancher access list --cluster prod -n team-a",
+        "rancher access list --cluster prod --project p-cvrp4 --as alice",
+        "rancher access list --cluster prod -A -o json"
+      ],
+      "flags": [
+        {
+          "desc": "cluster name or id",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "namespace to list rules in (default: default)",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "A"
+          ],
+          "desc": "list rules in every namespace you can list",
+          "name": "all-namespaces",
+          "type": "bool"
+        },
+        {
+          "desc": "user name, id, or principal, or system:serviceaccount:<ns>:<name>; omitted = you",
+          "name": "as",
+          "type": "string"
+        },
+        {
+          "desc": "kind of a bare --as value when ambiguous (group is rejected here)",
+          "enum": [
+            "user",
+            "group"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "group": "access",
+      "name": "access list",
+      "network": true,
+      "shape": "text",
+      "stability": "beta",
+      "successExitCodes": [
+        0,
+        13
+      ],
+      "toolset": "core",
+      "usage": "List the rules a subject holds in a namespace, as the cluster's authorizer reports them"
+    },
+    {
+      "args": [
+        {
           "name": "name",
           "type": "string"
         }
@@ -9300,6 +9442,7 @@
         {
           "desc": "show only commands with this verb (the first word of the command name)",
           "enum": [
+            "access",
             "auth",
             "cluster",
             "completion",
@@ -9992,6 +10135,14 @@
       ],
       "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
       "name": "inspect"
+    },
+    {
+      "commands": [
+        "access can",
+        "access list"
+      ],
+      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, and the rules a subject holds in a namespace. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
+      "name": "access"
     },
     {
       "commands": [

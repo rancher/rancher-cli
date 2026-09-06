@@ -18,7 +18,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/testrancher"
@@ -164,34 +166,216 @@ func checkExecTokenReuse(t testscript.T, f *testrancher.Facade) {
 	}
 }
 
-// newRouter builds the shim's cluster-proxy handler: a bearer check via
-// validBearer, then the /k8s/clusters/<id> prefix rewrite into the shared
-// envtest reverse proxy. It is a constructor, not a single shared instance,
-// because auth scenarios need their own facade's ValidBearer composed in
-// without a union of issued-token sets across scripts (FA-2/FA-3):
-// deterministic per-instance token names/secrets mean two scripts can hold
-// the literal same bearer, and a shared validity set would keep one
-// script's revoked bearer alive via another script's set.
-func newRouter(validBearer func(string) bool) http.Handler {
+// shimIdentity is what a bearer maps to and the groups envtest must see for
+// it. Groups are server-owned: the shim injects exactly these, never what
+// the CLI sent.
+type shimIdentity struct {
+	user           string
+	groups         []string
+	canImpersonate bool     // holds impersonate on users/serviceaccounts, a Rancher GlobalRole right
+	clusters       []string // cluster ids the identity may reach; nil = all
+}
+
+// shimIdentities are the fixed bearers every router knows: the harness admin
+// and the two named callers the access scenarios log in as.
+var shimIdentities = map[string]shimIdentity{
+	testToken:              {user: "e2e-admin", groups: []string{"system:authenticated", "system:cattle:authenticated"}, canImpersonate: true},
+	"e2e-std:secret":       {user: "e2e-std", groups: []string{"system:authenticated", "system:cattle:authenticated"}},
+	"e2e-nocluster:secret": {user: "e2e-nocluster", groups: []string{"system:authenticated", "system:cattle:authenticated"}, clusters: []string{"local"}},
+}
+
+// shimSubjectGroups are the subjects an identity holding impersonate may act
+// as, with the groups Rancher owns for each. A subject absent here is one the
+// cluster does not know.
+var shimSubjectGroups = map[string][]string{
+	"e2e-std":                         {"system:authenticated", "system:cattle:authenticated"},
+	"e2e-nocluster":                   {"system:authenticated", "system:cattle:authenticated"},
+	"e2e-compl-u1":                    {"system:authenticated", "system:cattle:authenticated"},
+	"system:serviceaccount:team-a:ci": {"system:serviceaccounts", "system:serviceaccounts:team-a", "system:authenticated"},
+	"system:anonymous":                {"system:unauthenticated"},
+}
+
+// shimClusterAccess restricts a subject to the listed clusters; a subject
+// absent here reaches every cluster the shim serves.
+var shimClusterAccess = map[string][]string{"e2e-nocluster": {"local"}}
+
+// shimIdentityResolver maps a bearer to the identity the shim acts as. It
+// runs per request, so a bearer the facade created moments ago is valid and
+// a revoked one is refused without rebuilding the router.
+type shimIdentityResolver func(bearer string) (shimIdentity, bool)
+
+// staticIdentityResolver serves tests that need fixed identities only.
+func staticIdentityResolver(identities map[string]shimIdentity) shimIdentityResolver {
+	return func(bearer string) (shimIdentity, bool) {
+		id, ok := identities[bearer]
+		return id, ok
+	}
+}
+
+// facadeIdentityResolver composes the fixed identities with a facade's
+// bearer check: a bearer the facade accepts acts as the admin identity
+// (every facade bearer was authorized as the testToken principal before),
+// and stops being accepted the moment the facade revokes it. validBearer is
+// a callback rather than the facade itself because every call site builds
+// its router before the facade that wraps it exists.
+func facadeIdentityResolver(identities map[string]shimIdentity, validBearer func(string) bool) shimIdentityResolver {
+	return func(bearer string) (shimIdentity, bool) {
+		if id, ok := identities[bearer]; ok {
+			return id, true
+		}
+		if validBearer(bearer) {
+			return identities[testToken], true
+		}
+		return shimIdentity{}, false
+	}
+}
+
+// shimInjection is one proxied request as the downstream apiserver saw it:
+// the identity the shim injected and the path it was injected on.
+type shimInjection struct {
+	identity shimIdentity
+	path     string
+}
+
+// shimRecorder collects the identities the shim injected, for the assertions
+// the CLI's own output cannot make (which user and which server-owned groups
+// reached the downstream authorizer).
+type shimRecorder struct {
+	mu       sync.Mutex
+	injected []shimInjection
+}
+
+func (r *shimRecorder) record(id shimIdentity, path string) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.injected = append(r.injected, shimInjection{identity: id, path: path})
+}
+
+// Injected returns a copy of what the shim has injected so far.
+func (r *shimRecorder) Injected() []shimInjection {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.injected)
+}
+
+// Reset drops the recording so one server can serve several runs.
+func (r *shimRecorder) Reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.injected = nil
+}
+
+// shimClusterAccessRefusal writes Rancher's answer for an identity without
+// access to a cluster: 403 carrying its error object, served as text/plain -
+// it is not a Kubernetes Status.
+func shimClusterAccessRefusal(w http.ResponseWriter, cluster, user string) {
+	// Marshalled rather than formatted: the message quotes the cluster id
+	// and the user, and a hand-written JSON literal would emit those quotes
+	// unescaped and make the body unparseable.
+	body, err := json.Marshal(map[string]any{
+		"Code":      map[string]any{"Code": "Forbidden", "Status": 403},
+		"Message":   fmt.Sprintf(`clusters.management.cattle.io %q is forbidden: User %q cannot get resource "clusters" in API group "management.cattle.io" at the cluster scope`, cluster, user),
+		"Cause":     nil,
+		"FieldName": "",
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write(body)
+}
+
+// newRouter builds the shim's cluster-proxy handler: a bearer resolved to an
+// identity, then the /k8s/clusters/<id> prefix rewrite into the shared
+// envtest reverse proxy, with the resolved identity injected as impersonation
+// headers. It is a constructor, not a single shared instance, because auth
+// scenarios need their own facade's ValidBearer composed in without a union
+// of issued-token sets across scripts (FA-2/FA-3): deterministic
+// per-instance token names/secrets mean two scripts can hold the literal
+// same bearer, and a shared validity set would keep one script's revoked
+// bearer alive via another script's set.
+func newRouter(resolve shimIdentityResolver) http.Handler {
+	return newRecordingRouter(resolve, nil)
+}
+
+// newRecordingRouter is newRouter with a recorder of the identities it
+// injected. Every impersonation decision lives here so the recording cannot
+// drift from what the downstream apiserver actually saw.
+func newRecordingRouter(resolve shimIdentityResolver, rec *shimRecorder) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		const prefix = "Bearer "
 		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, prefix) || !validBearer(strings.TrimPrefix(auth, prefix)) {
+		if !strings.HasPrefix(auth, prefix) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		var trimmed string
+		id, ok := resolve(strings.TrimPrefix(auth, prefix))
+		if !ok {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var cluster, trimmed string
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/k8s/clusters/local/"):
-			trimmed = strings.TrimPrefix(r.URL.Path, "/k8s/clusters/local")
+			cluster, trimmed = "local", strings.TrimPrefix(r.URL.Path, "/k8s/clusters/local")
 		case strings.HasPrefix(r.URL.Path, "/k8s/clusters/c-test/"):
-			trimmed = strings.TrimPrefix(r.URL.Path, "/k8s/clusters/c-test")
+			cluster, trimmed = "c-test", strings.TrimPrefix(r.URL.Path, "/k8s/clusters/c-test")
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
+		// Capture the requested subject, then strip every impersonation
+		// header the CLI sent: only the shim injects identity.
+		requested := r.Header.Get("Impersonate-User")
+		for k := range r.Header {
+			if strings.HasPrefix(http.CanonicalHeaderKey(k), "Impersonate-") {
+				r.Header.Del(k)
+			}
+		}
+		acting := id
+		// Rancher's local route drops the header silently: no impersonation
+		// on local, whatever was requested.
+		if requested != "" && requested != id.user && cluster != "local" {
+			if !id.canImpersonate {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, `{"message":"not allowed to impersonate user"}`)
+				return
+			}
+			groups, known := shimSubjectGroups[requested]
+			if !known && strings.HasPrefix(requested, "system:serviceaccount:") {
+				// Rancher cannot create the impersonated service account's
+				// token: plain-text 500, the shape observed live.
+				name := requested[strings.LastIndexByte(requested, ':')+1:]
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = fmt.Fprintf(w, "unable to create token for impersonated ServiceAccount: can't create token: serviceaccounts %q not found", name)
+				return
+			}
+			if !known {
+				// A nonexistent user has no cluster access: the same refusal
+				// an existing user without access gets.
+				shimClusterAccessRefusal(w, cluster, requested)
+				return
+			}
+			acting = shimIdentity{user: requested, groups: groups, clusters: shimClusterAccess[requested]}
+		}
+		if acting.clusters != nil && !slices.Contains(acting.clusters, cluster) {
+			shimClusterAccessRefusal(w, cluster, acting.user)
+			return
+		}
 		r.URL.Path = trimmed
 		r.Header.Del("Authorization") // transport injects envtest creds
+		r.Header.Set("Impersonate-User", acting.user)
+		for _, g := range acting.groups {
+			r.Header.Add("Impersonate-Group", g)
+		}
+		rec.record(acting, trimmed)
 		proxy.ServeHTTP(w, r)
 	})
 }
@@ -280,7 +464,7 @@ func TestMain(m *testing.M) {
 	// script's TEST_RANCHER_URL points at it anymore; TestScenarios' Setup
 	// gives every script its own facade-wrapped router instead.
 	mux := http.NewServeMux()
-	mux.Handle("/", newRouter(func(t string) bool { return t == testToken }))
+	mux.Handle("/", newRouter(staticIdentityResolver(shimIdentities)))
 	mux.HandleFunc("PUT /_test/status/", handleStatusLever)
 	srv := httptest.NewTLSServer(mux)
 	shimURL = srv.URL
@@ -292,6 +476,7 @@ func TestMain(m *testing.M) {
 	}
 	seedManagementCluster()
 	seedNamespaces()
+	seedAccessRBAC()
 	seedCloudCredential()
 	seedRoleObjects()
 	seedUserObjects()
@@ -395,9 +580,9 @@ func TestBuildAndStartEnvNoErrorDoesNotStop(t *testing.T) {
 // authorizing the created bearer the moment it is revoked.
 func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
 	var facade *testrancher.Facade
-	router := newRouter(func(tok string) bool {
-		return tok == testToken || (facade != nil && facade.ValidBearer(tok))
-	})
+	router := newRouter(facadeIdentityResolver(shimIdentities, func(tok string) bool {
+		return facade != nil && facade.ValidBearer(tok)
+	}))
 	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken})
 	srv := httptest.NewTLSServer(facade)
 	defer srv.Close()
@@ -466,9 +651,9 @@ func TestScenarios(t *testing.T) {
 			// only runs once real requests arrive, well after Setup returns,
 			// so the forward reference is safe.
 			var facade *testrancher.Facade
-			router := newRouter(func(t string) bool {
-				return t == testToken || (facade != nil && facade.ValidBearer(t))
-			})
+			router := newRouter(facadeIdentityResolver(shimIdentities, func(t string) bool {
+				return facade != nil && facade.ValidBearer(t)
+			}))
 			// The identity-provider stub lives on its own TLS origin so the
 			// binary must reach it with the operating system trust store, not
 			// the Rancher CA it was given: the same split a self-signed
@@ -582,6 +767,8 @@ func seedManagementCluster() {
 // auto-created "default". "c-test" is required too: management.cattle.io
 // kinds namespaced by cluster id (project, clusterroletemplatebinding) need
 // the namespace object to exist before a namespaced create succeeds.
+// "team-b" is the access suite's second project member, where a different
+// subject holds a different rule, so a --project rollup mixes decisions.
 // "cattle-system" is seeded here (not per-script) because the logs and
 // support-bundle target tables both hardcode it, and per-script creation
 // races across scripts sharing this one apiserver. "cattle-global-data" is
@@ -590,7 +777,7 @@ func seedManagementCluster() {
 // where `create user` writes the backing password Secret.
 func seedNamespaces() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
-	for _, name := range []string{"fleet-default", "team-a", "c-test", "cattle-system", "cattle-global-data", "cattle-local-user-passwords"} {
+	for _, name := range []string{"fleet-default", "team-a", "team-b", "c-test", "cattle-system", "cattle-global-data", "cattle-local-user-passwords"} {
 		obj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
@@ -754,6 +941,170 @@ func seedManagementToken() {
 	if _, err := dynCli.Resource(gvr).Create(context.Background(), obj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 		panic("seeding management token e2e: " + err.Error())
 	}
+}
+
+// seedAccessRBAC creates what the access scenarios ask the real authorizer
+// about. The shim impersonates every caller now, so the harness admin is a
+// named user rather than envtest's certificate identity and needs its
+// cluster-admin binding here; the rest are the narrow grants the scenarios
+// turn into allowed and denied answers, deliberately scoped so no identity
+// is credited with more than the one rule under test. It also labels team-a
+// and team-b into project p-e2e and creates the management-plane User and
+// Project objects `--as` and `--project` resolve against.
+func seedAccessRBAC() {
+	rbacGVR := func(resource string) schema.GroupVersionResource {
+		return schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: resource}
+	}
+	create := func(gvr schema.GroupVersionResource, namespace string, obj map[string]any) {
+		u := &unstructured.Unstructured{Object: obj}
+		if _, err := dynCli.Resource(gvr).Namespace(namespace).Create(context.Background(), u, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
+			panic("seeding access rbac " + gvr.Resource + " " + u.GetName() + ": " + err.Error())
+		}
+	}
+	rule := func(apiGroup string, resources []string, verbs []string) map[string]any {
+		return map[string]any{
+			"apiGroups": []any{apiGroup},
+			"resources": toAny(resources),
+			"verbs":     toAny(verbs),
+		}
+	}
+	rules := func(apiGroup string, resources []string, verbs []string) []any {
+		return []any{rule(apiGroup, resources, verbs)}
+	}
+	roleRef := func(kind, name string) map[string]any {
+		return map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": kind, "name": name}
+	}
+	subject := func(kind, name string) []any {
+		return []any{map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": kind, "name": name}}
+	}
+
+	// The impersonated harness admin: every existing scenario runs as this
+	// identity, so it must hold what envtest's certificate identity did.
+	create(rbacGVR("clusterrolebindings"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding",
+		"metadata": map[string]any{"name": "e2e-admin"},
+		"roleRef":  roleRef("ClusterRole", "cluster-admin"),
+		"subjects": subject("User", "e2e-admin"),
+	})
+	// Every Rancher user may list clusters on the management plane - the
+	// proxy, not RBAC, decides which of them it will route to. `--cluster
+	// testcluster` resolves a display name through that list before any
+	// access question is asked, so a non-admin caller reaching the proxy's
+	// refusal at all depends on this grant.
+	create(rbacGVR("clusterroles"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
+		"metadata": map[string]any{"name": "e2e-cluster-lister"},
+		"rules":    rules("management.cattle.io", []string{"clusters"}, []string{"get", "list"}),
+	})
+	create(rbacGVR("clusterrolebindings"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding",
+		"metadata": map[string]any{"name": "e2e-cluster-lister"},
+		"roleRef":  roleRef("ClusterRole", "e2e-cluster-lister"),
+		"subjects": []any{
+			map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": "User", "name": "e2e-std"},
+			map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": "User", "name": "e2e-nocluster"},
+		},
+	})
+	// The namespaces rule is bound only through the team-a RoleBinding
+	// below, so it authorizes a read of team-a and no other namespace: the
+	// scope resolver reads the namespace before it asks anything about it.
+	create(rbacGVR("clusterroles"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
+		"metadata": map[string]any{"name": "e2e-pod-reader"},
+		"rules": []any{
+			rule("", []string{"pods"}, []string{"get", "list"}),
+			rule("", []string{"namespaces"}, []string{"get"}),
+		},
+	})
+	create(rbacGVR("rolebindings"), "team-a", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+		"metadata": map[string]any{"name": "e2e-std-pods", "namespace": "team-a"},
+		"roleRef":  roleRef("ClusterRole", "e2e-pod-reader"),
+		"subjects": subject("User", "e2e-std"),
+	})
+	// One resource in one namespace for system:authenticated: a cluster-wide
+	// view grant would credit every authenticated identity with pods
+	// everywhere and erase both the team-b denial and the mixed rollup.
+	create(rbacGVR("roles"), "team-a", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "Role",
+		"metadata": map[string]any{"name": "e2e-authenticated-deployments", "namespace": "team-a"},
+		"rules":    rules("apps", []string{"deployments"}, []string{"get"}),
+	})
+	create(rbacGVR("rolebindings"), "team-a", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+		"metadata": map[string]any{"name": "e2e-authenticated-deployments", "namespace": "team-a"},
+		"roleRef":  roleRef("Role", "e2e-authenticated-deployments"),
+		"subjects": subject("Group", "system:authenticated"),
+	})
+	create(rbacGVR("roles"), "team-a", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "Role",
+		"metadata": map[string]any{"name": "e2e-ci-configmaps", "namespace": "team-a"},
+		"rules":    rules("", []string{"configmaps"}, []string{"get"}),
+	})
+	create(rbacGVR("rolebindings"), "team-a", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+		"metadata": map[string]any{"name": "e2e-ci-configmaps", "namespace": "team-a"},
+		"roleRef":  roleRef("Role", "e2e-ci-configmaps"),
+		"subjects": subject("Group", "system:serviceaccounts:team-a"),
+	})
+	create(rbacGVR("roles"), "team-b", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "Role",
+		"metadata": map[string]any{"name": "e2e-team-b-secrets", "namespace": "team-b"},
+		"rules":    rules("", []string{"secrets"}, []string{"get"}),
+	})
+	create(rbacGVR("rolebindings"), "team-b", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+		"metadata": map[string]any{"name": "e2e-team-b-secrets", "namespace": "team-b"},
+		"roleRef":  roleRef("Role", "e2e-team-b-secrets"),
+		"subjects": subject("User", "e2e-compl-u1"),
+	})
+
+	nsGVR := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
+	for _, ns := range []string{"team-a", "team-b"} {
+		patch := []byte(`{"metadata":{"labels":{"field.cattle.io/projectId":"p-e2e"}}}`)
+		if _, err := dynCli.Resource(nsGVR).Patch(context.Background(), ns, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
+			panic("labelling namespace " + ns + " into project p-e2e: " + err.Error())
+		}
+	}
+
+	// The caller identities as Rancher users: `--as` resolves a name
+	// against these, and the caller's own row enriches its subject.
+	userGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"}
+	for _, u := range []struct {
+		id, username, display string
+	}{
+		{"e2e-admin", "admin", "E2E Admin"},
+		{"e2e-std", "std", "Std User"},
+		{"e2e-nocluster", "nocluster", "No Cluster"},
+	} {
+		create(userGVR, "", map[string]any{
+			"apiVersion":   "management.cattle.io/v3",
+			"kind":         "User",
+			"metadata":     map[string]any{"name": u.id},
+			"username":     u.username,
+			"displayName":  u.display,
+			"principalIds": []any{"local://" + u.id},
+		})
+	}
+
+	projectGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
+	for _, p := range []struct{ id, display string }{{"p-e2e", "E2E"}, {"p-empty", "Empty"}} {
+		create(projectGVR, "c-test", map[string]any{
+			"apiVersion": "management.cattle.io/v3",
+			"kind":       "Project",
+			"metadata":   map[string]any{"name": p.id, "namespace": "c-test"},
+			"spec":       map[string]any{"displayName": p.display, "clusterName": "c-test"},
+		})
+	}
+}
+
+// toAny converts a string slice to the []any an unstructured object needs.
+func toAny(in []string) []any {
+	out := make([]any, 0, len(in))
+	for _, s := range in {
+		out = append(out, s)
+	}
+	return out
 }
 
 // handleStatusLever is the --wait lever: PUT /_test/status/<cluster>/<group>/<version>/<resource>/<ns>/<name>

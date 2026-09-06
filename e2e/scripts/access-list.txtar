@@ -1,0 +1,41 @@
+# access list: implicit default namespace, canonical rules, --as, -A, and
+# the group refusal.
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+exec rancher access list --cluster testcluster -o json
+cp stdout default.json
+jsonquery default.json data.namespaces.0.namespace default
+jsonquery default.json data.rollup.complete true
+jsonquery default.json data.identity caller
+
+exec rancher access list --cluster testcluster
+stdout 'rules for you in namespace default on c-test, including every cluster-wide rule'
+stdout 'RESOURCES'
+stdout 'source: authorizer \| identity: caller'
+
+# --as std in team-a shows the pod reader rule, sorted verbs
+exec rancher access list --cluster testcluster -n team-a --as e2e-std -o json
+cp stdout std.json
+jsonquery std.json data.identity impersonated
+jsonquery std.json 'data.namespaces.0.resourceRules.#(resources.0=="pods").verbs.0' get
+jsonquery std.json 'data.namespaces.0.resourceRules.#(resources.0=="pods").verbs.1' list
+
+# -A lists every namespace, sorted
+exec rancher access list --cluster testcluster -A -o json
+cp stdout all.json
+jsonquery all.json data.rollup.complete true
+
+# a group cannot be listed
+! exec rancher access list --cluster testcluster --as system:authenticated --type group
+stderr 'no server operation lists a group'
+
+# a subject the proxy refuses: nothing evaluated, exit 13
+! exec rancher access list --cluster testcluster -n team-a --as e2e-nocluster -o json
+cp stdout nocluster.json
+jsonquery nocluster.json data.resultSource rancherProxy
+jsonquery nocluster.json data.rollup.evaluated 0
+
+# a named subject on the management cluster is refused for list
+! exec rancher access list --cluster local --as e2e-std
+stderr 'cannot impersonate'

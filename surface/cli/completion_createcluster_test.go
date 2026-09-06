@@ -144,6 +144,7 @@ func TestMachineConfigPrefixesServedWithoutNetwork(t *testing.T) {
 // composed on afterwards.
 func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 	t.Parallel()
+	d := runtime.Descriptor{Name: "create cluster"}
 
 	t.Run("space-form kind/ → composed kind/name tokens, hostile name dropped", func(t *testing.T) {
 		t.Parallel()
@@ -152,7 +153,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", FlagSpelling: "--machine-config", Partial: "amazonec2config/"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil)
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		assert.Equal(t, []string{"amazonec2config/cfg-a", "amazonec2config/cfg-b"}, got)
 		assert.Equal(t, int32(1), hits.Load())
 	})
@@ -164,7 +165,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", FlagSpelling: "--machine-config", EqualsForm: true, Partial: "amazonec2config/cf"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil)
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		assert.Equal(t, []string{"--machine-config=amazonec2config/cfg-a", "--machine-config=amazonec2config/cfg-b"}, got)
 	})
 
@@ -175,7 +176,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "nonesuch/cf"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil))
+		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil))
 		assert.Zero(t, hits.Load())
 	})
 
@@ -186,7 +187,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "pod/x"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil))
+		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil))
 		assert.Zero(t, hits.Load())
 	})
 
@@ -197,7 +198,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "amazonec2config/"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil))
+		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil))
 		assert.Zero(t, hits.Load())
 	})
 }
@@ -209,6 +210,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 // excluded; hostile display names dropped by the charset.
 func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 	t.Parallel()
+	d := runtime.Descriptor{Name: "create cluster"}
 
 	t.Run("ids always, unique display names only, non-credentials excluded", func(t *testing.T) {
 		t.Parallel()
@@ -217,7 +219,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "cloud-credential", FlagSpelling: "--cloud-credential"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil)
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		assert.Equal(t, []string{"aws-prod", "cc-abc12", "cc-collide", "cc-dup1", "cc-dup2", "cc-hostile", "marker-only"}, got)
 		assert.NotContains(t, got, "dup", "ambiguous display name must be suppressed")
 		assert.NotContains(t, got, "other-secret", "non-credential secret must be excluded")
@@ -231,7 +233,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "cloud-credential", FlagSpelling: "--cloud-credential", EqualsForm: true}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil)
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
 		assert.Contains(t, got, "--cloud-credential=cc-abc12")
 		assert.Contains(t, got, "--cloud-credential=aws-prod")
 	})
@@ -245,7 +247,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 			{Token: "downstream", IDOnly: true, ServerURL: srv.URL},
 		} {
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-			assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", nil))
+			assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil))
 			cancel()
 		}
 		assert.Zero(t, hits.Load())

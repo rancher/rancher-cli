@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 186,
+  "commandCount": 188,
   "effectSchema": {
     "actions": [
       "create",
@@ -319,6 +319,20 @@
       ],
       "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
       "name": "inspect"
+    },
+    {
+      "commands": [
+        {
+          "name": "access can",
+          "usage": "Ask the cluster's authorizer whether a subject can perform a verb on a resource"
+        },
+        {
+          "name": "access list",
+          "usage": "List the rules a subject holds in a namespace, as the cluster's authorizer reports them"
+        }
+      ],
+      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, and the rules a subject holds in a namespace. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
+      "name": "access"
     },
     {
       "commands": [

@@ -19,6 +19,8 @@ import (
 // unreviewed shape (or a shape that silently drifted) fails the build, the
 // same posture as oidcOnceOnlyInventory.
 var outputShapeInventory = map[string]runtime.OutputShape{
+	"access can":                        runtime.ShapeText,
+	"access list":                       runtime.ShapeText,
 	"auth delete-token":                 runtime.ShapeText,
 	"auth get-token":                    runtime.ShapeExecJSON,
 	"auth list-tokens":                  runtime.ShapeTabular,

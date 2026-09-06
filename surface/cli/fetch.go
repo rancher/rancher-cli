@@ -7,13 +7,18 @@ import (
 	"net/http"
 	neturl "net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
+	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 )
 
@@ -121,6 +126,13 @@ type k8sItemsList struct {
 // Returns a non-nil error on non-2xx status or any I/O failure (AC-18:
 // caller degrades to empty on any error).
 func getJSON(ctx context.Context, hc *http.Client, token, url string, dst any) error {
+	return getJSONWithAccept(ctx, hc, token, url, "application/json", dst)
+}
+
+// getJSONWithAccept is getJSON with a caller-chosen Accept header, for an
+// endpoint that serves more than one document shape (the aggregated
+// discovery roots). Same token boundary, timeout, and error contract.
+func getJSONWithAccept(ctx context.Context, hc *http.Client, token, url, accept string, dst any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -128,7 +140,7 @@ func getJSON(ctx context.Context, hc *http.Client, token, url string, dst any) e
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", accept)
 	start := time.Now()
 	resp, body, err := httpx.Do(hc, req)
 	if err != nil {
@@ -665,4 +677,103 @@ func dedupe(s []string) []string {
 		}
 	}
 	return out
+}
+
+// fetchBaseResources lists the cluster's served base resources (no
+// "<resource>/<sub>" entries) by plural name, core and grouped alike.
+func fetchBaseResources(ctx context.Context, hc *http.Client, cap TokenCapability, cluster string) []string {
+	var out []string
+	for _, r := range fetchDiscovery(ctx, hc, cap, cluster) {
+		if !strings.Contains(r.Name, "/") {
+			out = append(out, r.Name)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// fetchSubresources resolves the typed resource token with the command's
+// own rules (plural, singular, short name, resource.group, --group; core
+// wins a bare-name tie; a non-core tie offers nothing) and returns that
+// exact resource's subresources, so every suggestion is valid verbatim.
+func fetchSubresources(ctx context.Context, hc *http.Client, cap TokenCapability, cluster, resource, group string) []string {
+	if resource == "" {
+		return nil
+	}
+	ref, err := access.ResolveResourceIn(fetchDiscovery(ctx, hc, cap, cluster), resource, group)
+	if err != nil {
+		return nil
+	}
+	return slices.Clone(ref.Subresources)
+}
+
+// fetchAPIGroups lists API group names for --group (the core group has
+// no name and is not offered).
+func fetchAPIGroups(ctx context.Context, hc *http.Client, cap TokenCapability, cluster string) []string {
+	var out []string
+	for _, r := range fetchDiscovery(ctx, hc, cap, cluster) {
+		if r.Group != "" {
+			out = append(out, r.Group)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// aggregatedDiscoveryAccept asks for the aggregated discovery document
+// (one round trip per root, every group and its preferred version's
+// resources inside); v2 is GA since Kubernetes 1.30 and v2beta1 shares
+// its wire shape, so both are accepted and decoded with the v2 types.
+const aggregatedDiscoveryAccept = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList," +
+	"application/json;g=apidiscovery.k8s.io;v=v2beta1;as=APIGroupDiscoveryList"
+
+// fetchDiscovery returns the cluster's served resources in the port's
+// shape from exactly two requests: GET /api (core) and GET /apis (every
+// group), both with the aggregated discovery Accept header, through
+// /k8s/clusters/<cluster>. Each answer is the preferred version's
+// resources per group, with "<resource>/<sub>" entries for
+// subresources, exactly what the provider's ServerResources yields for
+// the command. A server that answers either root with anything but an
+// APIGroupDiscoveryList contributes nothing (completion fails closed;
+// the command itself still works through client-go discovery). No
+// per-group fallback: the discovery itself is two requests, and a
+// display-name --cluster adds the one resolution request the layer
+// already makes for every cluster-dependent site (three in all; see the
+// liveCandidates doc comment).
+func fetchDiscovery(ctx context.Context, hc *http.Client, cap TokenCapability, cluster string) []engine.APIResource {
+	if cap.Token == "" || cap.IDOnly || !isValidSegment(cluster) {
+		return nil
+	}
+	var out []engine.APIResource
+	for _, root := range []string{"/api", "/apis"} {
+		var doc apidiscoveryv2.APIGroupDiscoveryList
+		url := cap.ServerURL + "/k8s/clusters/" + cluster + root
+		if err := getJSONWithAccept(ctx, hc, cap.Token, url, aggregatedDiscoveryAccept, &doc); err != nil || doc.Kind != "APIGroupDiscoveryList" {
+			continue
+		}
+		for _, g := range doc.Items {
+			if len(g.Versions) == 0 {
+				continue
+			}
+			v := g.Versions[0] // the server lists the preferred version first
+			for _, r := range v.Resources {
+				base := engine.APIResource{Group: g.Name, Version: v.Version, Name: r.Resource, SingularName: r.SingularResource,
+					Kind: kindOf(r.ResponseKind), ShortNames: r.ShortNames, Namespaced: r.Scope == apidiscoveryv2.ScopeNamespace, Verbs: r.Verbs}
+				out = append(out, base)
+				for _, sub := range r.Subresources {
+					out = append(out, engine.APIResource{Group: g.Name, Version: v.Version, Name: r.Resource + "/" + sub.Subresource,
+						Kind: kindOf(sub.ResponseKind), Namespaced: base.Namespaced, Verbs: sub.Verbs})
+				}
+			}
+		}
+	}
+	return out
+}
+
+// kindOf reads the optional responseKind of a discovery entry.
+func kindOf(gvk *metav1.GroupVersionKind) string {
+	if gvk == nil {
+		return ""
+	}
+	return gvk.Kind
 }

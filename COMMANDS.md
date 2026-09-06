@@ -14,6 +14,7 @@ in detail.
 [OIDC client](#oidc-client) ·
 [Cluster scaling & autoscaling](#cluster-scaling--autoscaling) ·
 [Read & inspect](#read--inspect) ·
+[Access](#access) ·
 [Logs & support](#logs--support) ·
 [kubectl integration](#kubectl-integration) ·
 [Discovery & tooling](#discovery--tooling)
@@ -111,6 +112,13 @@ for lifecycle; `get provisioning-cluster` for reads.
 | `images` | Active-pod container images, grouped by image or owning workload, fleet-wide |
 | `usage` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
 
+## Access
+
+| Command | Purpose |
+|---|---|
+| `access can <verb> [<resource>[/<name>]]` | Ask the cluster's authorizer whether you (or `--as` a subject) can perform a verb on a resource; exit 0 allowed, 12 denied, 13 unknown |
+| `access list` | List the rules you (or `--as` a subject) hold in a namespace as the authorizer reports them; exit 13 when any namespace is incomplete |
+
 ## Logs & support
 
 | Command | Purpose |
@@ -151,6 +159,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 49-kind table: `get <kind>` (49), `patch <kind>`
 (49), `delete <kind>` (31 - 30 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-129 generated commands, 186 total together with the fixed commands above. The authoritative, always-current list is
+129 generated commands, 188 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

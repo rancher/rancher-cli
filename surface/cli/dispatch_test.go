@@ -266,7 +266,7 @@ func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	hc := &http.Client{}
-	got := liveFlagValueCandidates(ctx, hc, site, cap, "", "", nil)
+	got := liveFlagValueCandidates(ctx, hc, site, runtime.Descriptor{Name: "get namespace"}, cap, "", "", nil)
 	// All candidates returned - shell does the "c-" prefix filter.
 	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
 }
@@ -279,7 +279,7 @@ func TestLiveFlagValueNamespaceSuppressedWithProject(t *testing.T) {
 	defer cancel()
 	cap := TokenCapability{Token: "tok", ServerURL: "https://example.invalid"}
 	hc := &http.Client{}
-	got := liveFlagValueCandidates(ctx, hc, site, cap, "c-abc", "my-project", nil)
+	got := liveFlagValueCandidates(ctx, hc, site, runtime.Descriptor{Name: "get pod"}, cap, "c-abc", "my-project", nil)
 	assert.Nil(t, got, "round-2 finding 4: --namespace must be nil when effectiveProject is set")
 }
 
@@ -513,7 +513,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--role"})
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, runtime.Descriptor{Name: "grant"}, cap, "", "", []string{"grant", "jane", "--global", "--role"})
 		assert.Equal(t, []string{"admin", "user"}, got)
 	})
 
@@ -524,7 +524,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--project", "Default", "--role"})
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, runtime.Descriptor{Name: "grant"}, cap, "", "", []string{"grant", "jane", "--project", "Default", "--role"})
 		assert.Equal(t, []string{"project-member", "project-owner"}, got)
 	})
 
@@ -535,7 +535,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--cluster", "c-x", "--role"})
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, runtime.Descriptor{Name: "grant"}, cap, "", "", []string{"grant", "jane", "--cluster", "c-x", "--role"})
 		assert.Equal(t, []string{"cluster-owner"}, got)
 	})
 
@@ -546,7 +546,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--role"})
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, runtime.Descriptor{Name: "grant"}, cap, "", "", []string{"grant", "jane", "--role"})
 		assert.Nil(t, got)
 		assert.Zero(t, hits.Load(), "no scope: must issue zero requests")
 	})
@@ -558,7 +558,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--project", "Default", "--role"})
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, runtime.Descriptor{Name: "grant"}, cap, "", "", []string{"grant", "jane", "--global", "--project", "Default", "--role"})
 		assert.Nil(t, got)
 		assert.Zero(t, hits.Load(), "global+project conflict: must issue zero requests")
 	})
@@ -570,7 +570,7 @@ func TestLiveFlagValueRoleDirectWiring(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role", EqualsForm: true}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, cap, "", "", []string{"grant", "jane", "--global", "--role"})
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, runtime.Descriptor{Name: "grant"}, cap, "", "", []string{"grant", "jane", "--global", "--role"})
 		assert.Equal(t, []string{"--role=admin", "--role=user"}, got)
 	})
 }

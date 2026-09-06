@@ -45,9 +45,9 @@ func newCompositeTarget(t *testing.T) *compositeTarget {
 	t.Helper()
 	ct := &compositeTarget{}
 	var facade *testrancher.Facade
-	router := newRouter(func(tok string) bool {
-		return tok == testToken || (facade != nil && facade.ValidBearer(tok))
-	})
+	router := newRouter(facadeIdentityResolver(shimIdentities, func(tok string) bool {
+		return facade != nil && facade.ValidBearer(tok)
+	}))
 	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken})
 	ct.facade = facade
 	ct.srv = httptest.NewTLSServer(facade)
