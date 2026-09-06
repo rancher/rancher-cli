@@ -104,6 +104,9 @@ func TestListWideOutputHasNamespaceColumn(t *testing.T) {
 	require.NotEmpty(t, res.WideText)
 	assert.Contains(t, res.WideText, "NAMESPACE")
 	assert.NotContains(t, res.WideText, "also in")
+	assert.Regexp(t, `(?m)^NAMESPACE\s+API GROUP\s+RESOURCE\s+VERBS$`, res.WideText)
+	assert.Regexp(t, `(?m)^team-a\s+core\s+pods\s+get$`, res.WideText)
+	assert.True(t, strings.HasSuffix(res.WideText, "\n"))
 	resourceBlock, nonResourceBlock, ok := strings.Cut(res.WideText, "\nNAMESPACE ")
 	require.True(t, ok, "the wide view carries a non-resource block of its own")
 	assert.Equal(t, 1, strings.Count(resourceBlock, "\nteam-a "), "one resource row per namespace")
@@ -261,4 +264,61 @@ func TestListGroupIsValidationAndLocalNamedSubjectRefuses(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	require.ErrorContains(t, err, "cannot impersonate")
+}
+
+// TestListTextIsOneRowPerGroupAndResource asserts the text expands rules
+// to one row per API group and resource, sorted by group then resource,
+// merging the verbs of rules about the same resource, keeping a rule with
+// resource names on its own row (and showing NAMES only then), printing
+// the core group as "core", fitting the columns to their content, and
+// listing non-resource URLs one per row.
+func TestListTextIsOneRowPerGroupAndResource(t *testing.T) {
+	t.Parallel()
+	named := map[string]any{"verbs": []any{"get"}, "apiGroups": []any{""}, "resources": []any{"configmaps"}, "resourceNames": []any{"my-config"}}
+	f := listFactory("user-vwq4j", scripted{resp: rules(false,
+		rule([]any{"get", "list", "watch"}, []any{"apps"}, []any{"deployments", "daemonsets"}),
+		rule([]any{"create", "delete"}, []any{"apps"}, []any{"deployments"}),
+		rule([]any{"get"}, []any{""}, []any{"pods"}),
+		named,
+	)})
+	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil), nil)
+	require.NoError(t, err)
+	text := res.Text
+	for _, want := range []string{
+		`(?m)^  API GROUP\s+RESOURCE\s+VERBS\s+NAMES$`,
+		`(?m)^  apps\s+daemonsets\s+get,list,watch$`,
+		`(?m)^  apps\s+deployments\s+create,delete,get,list,watch$`,
+		`(?m)^  core\s+configmaps\s+get\s+my-config$`,
+		`(?m)^  core\s+pods\s+get$`,
+		`(?m)^  NON-RESOURCE URL\s+VERBS$`,
+		`(?m)^  /healthz\s+get$`,
+	} {
+		assert.Regexp(t, want, text)
+	}
+	assert.NotContains(t, text, "RESOURCES", "no per-rule column")
+	assert.Less(t, strings.Index(text, "\n  apps "), strings.Index(text, "\n  core "), "sorted by the printed group, then resource")
+	// Columns are fitted: every row's VERBS cell starts at the same column as the header's.
+	headerCol := strings.Index(lineWith(t, text, "API GROUP"), "VERBS")
+	assert.Equal(t, headerCol, strings.Index(lineWith(t, text, "  apps"), "get,list,watch"))
+	assert.Equal(t, headerCol, strings.Index(lineWith(t, text, "  core"), "get"))
+	assert.True(t, strings.HasSuffix(text, "\n"))
+
+	// Without a named rule the NAMES column is absent.
+	f = listFactory("user-vwq4j", scripted{resp: rules(false, rule([]any{"get"}, []any{""}, []any{"pods"}))})
+	res, err = NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(nil), nil)
+	require.NoError(t, err)
+	assert.Regexp(t, `(?m)^  API GROUP\s+RESOURCE\s+VERBS$`, res.Text)
+	assert.NotContains(t, res.Text, "NAMES")
+}
+
+// lineWith returns the first line of text containing needle.
+func lineWith(t *testing.T, text, needle string) string {
+	t.Helper()
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.Contains(line, needle) {
+			return line
+		}
+	}
+	t.Fatalf("no line contains %q in:\n%s", needle, text)
+	return ""
 }

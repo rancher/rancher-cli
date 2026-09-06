@@ -11,7 +11,7 @@ jsonquery default.json data.identity caller
 
 exec rancher access list --cluster testcluster
 stdout 'rules for you in namespace default on c-test, including every cluster-wide rule'
-stdout 'RESOURCES'
+stdout 'API GROUP +RESOURCE +VERBS'
 stdout 'source: authorizer \| identity: caller'
 
 # --as std in team-a shows the pod reader rule, sorted verbs
