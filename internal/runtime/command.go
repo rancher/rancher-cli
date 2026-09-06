@@ -277,6 +277,13 @@ type Result struct {
 	// independent of the real envelope encoding, which only ever encodes
 	// Data) never errors on it.
 	StyledText func(style.Style) string `json:"-"`
+	// WideText is the unstyled -o wide presentation of Text for a
+	// ShapeText command that has one: a per-row layout where Text groups.
+	// Empty means Text renders under wide too, as before. Never a second
+	// payload: it is invalid without Text, on any other shape, and beside
+	// StyledText (which styles Text only; a command wanting a styled wide
+	// view needs a StyledWideText builder that does not exist yet).
+	WideText string
 	// Summary, when non-empty, lands in the -o json/-o yaml envelope's summary
 	// field and, under format ""/table, prints as its own stdout line ahead of
 	// the rendered Data. One line, no trailing newline needed.

@@ -531,6 +531,14 @@ func checkResultShape(d Descriptor, res Result, format string) *clierr.Error {
 		return clierr.New(clierr.CodeGeneric,
 			fmt.Sprintf("command bug: %s returned StyledText but no Text", d.Name))
 	}
+	if res.WideText != "" && (d.Shape != ShapeText || res.Text == "") {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("command bug: %s returned WideText without a ShapeText Text", d.Name))
+	}
+	if res.WideText != "" && res.StyledText != nil {
+		return clierr.New(clierr.CodeGeneric,
+			fmt.Sprintf("command bug: %s returned both WideText and StyledText", d.Name))
+	}
 	switch d.Shape {
 	case ShapeTabular:
 		if _, ok := res.Data.(output.Tabular); !ok {
@@ -634,7 +642,9 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	}
 	if res.Text != "" && textRenderFormat(streams.Format) {
 		text := res.Text
-		if res.StyledText != nil {
+		if streams.Format == "wide" && res.WideText != "" {
+			text = res.WideText
+		} else if res.StyledText != nil {
 			text = res.StyledText(outStyle)
 		}
 		// Composed, not either-or: a once-only command that also styles

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -921,6 +922,72 @@ func TestRenderResultShapeTextRendersUnderWide(t *testing.T) {
 	_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "wide"}, safety.Binding{})
 	require.Nil(t, ce)
 	assert.Equal(t, "token/x created\n  bearer token: abc\n", out.String())
+}
+
+// TestRenderResultUsesWideTextOverride asserts WideText replaces Text
+// under -o wide alone: the default and table formats keep Text, and a
+// result without a WideText renders Text under wide as every command did
+// before.
+func TestRenderResultUsesWideTextOverride(t *testing.T) {
+	t.Parallel()
+	const text = "grouped\n"
+	const wide = "NAMESPACE  ROW\nteam-a     x\n"
+	cases := []struct {
+		name   string
+		result Result
+		format string
+		want   string
+	}{
+		{"wide picks WideText", Result{Kind: "Thing", Text: text, WideText: wide}, "wide", wide},
+		{"table keeps Text", Result{Kind: "Thing", Text: text, WideText: wide}, "table", text},
+		{"default keeps Text", Result{Kind: "Thing", Text: text, WideText: wide}, "", text},
+		{"no WideText falls back", Result{Kind: "Thing", Text: text}, "wide", text},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := fakeRead{d: Descriptor{Name: "access list", CommandType: ReadOnly, Shape: ShapeText}, res: c.result}
+			var out, errBuf bytes.Buffer
+			_, ce := Run(t.Context(), cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: c.format}, safety.Binding{})
+			require.Nil(t, ce)
+			assert.Equal(t, c.want, out.String())
+		})
+	}
+}
+
+// TestCheckResultShapeRejectsWideTextWithoutShapeText asserts WideText is
+// a projection of a ShapeText Text, never a payload of its own: any other
+// shape, or an empty Text, is a command bug.
+func TestCheckResultShapeRejectsWideTextWithoutShapeText(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		d    Descriptor
+		res  Result
+	}{
+		{"tabular shape", Descriptor{Name: "get thing", Shape: ShapeTabular}, Result{Text: "x\n", WideText: "y\n"}},
+		{"no text", Descriptor{Name: "access list", Shape: ShapeText}, Result{WideText: "y\n"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			ce := checkResultShape(c.d, c.res, "wide")
+			require.NotNil(t, ce)
+			assert.Contains(t, ce.Error(), "returned WideText without a ShapeText Text")
+		})
+	}
+}
+
+// TestCheckResultShapeRejectsWideAndStyledText asserts the two text
+// projections never combine: StyledText styles Text, and no builder styles
+// a wide view, so a result carrying both is a command bug.
+func TestCheckResultShapeRejectsWideAndStyledText(t *testing.T) {
+	t.Parallel()
+	d := Descriptor{Name: "access list", Shape: ShapeText}
+	res := Result{Text: "x\n", WideText: "y\n", StyledText: func(style.Style) string { return "x\n" }}
+	ce := checkResultShape(d, res, "wide")
+	require.NotNil(t, ce)
+	assert.Contains(t, ce.Error(), "returned both WideText and StyledText")
 }
 
 // TestRenderResultEnvelopeWarningsTableStderr covers Finding 4 of the
