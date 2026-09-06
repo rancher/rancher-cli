@@ -443,6 +443,13 @@ service account>]` lists the rules it reports (never a group: ask a point
 question instead). Read `data.decision`,
 `data.reason` (the server's own words), `data.resultSource`, and
 `data.identity`; `unknown` means the server could not say, never "no".
+`rancher access who-can <verb> <resource> --cluster <c> [-n <ns> | --project <p> | -A] [--show-denied]`
+lists the binding subjects the authorizer allows (one SubjectAccessReview
+each; `--project` and `-A` give one row per subject per namespace). Read
+`data.subjects[].decision`; a row `unknown` with note `groups unknown` is a
+subject Rancher knows no groups for - "could not be ruled out", never
+"no" - and does not change the exit code; `data.rollup.outsideCandidateSet`
+names what the answer cannot see.
 Never present a role list as permissions.
 
 - `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` -

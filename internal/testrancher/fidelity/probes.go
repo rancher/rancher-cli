@@ -82,6 +82,17 @@ func whoamiPrivacyRules() []NormalizeRule {
 	}
 }
 
+// bindingMetadataRules scrubs the fields of a recorded RBAC binding that
+// the instance, not Kubernetes, chose. Returns a fresh slice per call.
+func bindingMetadataRules() []NormalizeRule {
+	return []NormalizeRule{
+		{Path: "metadata.uid", Replace: "<uid>"},
+		{Path: "metadata.resourceVersion", Replace: "<rv>"},
+		{Path: "metadata.creationTimestamp", Replace: "<time>"},
+		{Path: "metadata.managedFields", Replace: ""},
+	}
+}
+
 func accessDownstreamProbes() []Probe {
 	const (
 		downstreamReview = "/k8s/clusters/{downstream}/apis/authorization.k8s.io/v1/"
@@ -92,6 +103,11 @@ func accessDownstreamProbes() []Probe {
 		nonexistentUser  = "u-nonexistent99"
 		nonexistentSA    = "system:serviceaccount:default:nonexistent-sa"
 		defaultSA        = "system:serviceaccount:default:default"
+
+		sarSchedulerDefault    = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:kube-scheduler","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		sarSchedulerKubeSystem = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:kube-scheduler","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"kube-system"}}}`
+		sarMasters             = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"groups":["system:masters"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		clusterAdminBinding    = "/k8s/clusters/{downstream}/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/cluster-admin"
 	)
 
 	callerWithoutAccess := Probe{
@@ -245,10 +261,26 @@ func accessDownstreamProbes() []Probe {
 		Normalize: []NormalizeRule{{Path: "status.reason", Replace: "<reason>"}},
 	}
 
+	whoCanReasonAndBinding := Probe{
+		// The same facts on a downstream cluster through the proxy: the
+		// authorizer's reason grammar for a ClusterRoleBinding grant,
+		// identical across namespaces, the privileged group allowed with no
+		// reason, and the binding shape the candidates are read from.
+		Name:       "access-downstream/who-can-reason-and-binding-shape",
+		Downstream: true,
+		Observations: []Observation{
+			{Name: "scheduler-default", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "subjectaccessreviews", Body: sarSchedulerDefault, Identity: IdentityAdmin}},
+			{Name: "scheduler-kube-system", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "subjectaccessreviews", Body: sarSchedulerKubeSystem, Identity: IdentityAdmin}},
+			{Name: "masters-no-reason", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "subjectaccessreviews", Body: sarMasters, Identity: IdentityAdmin}},
+			{Name: "cluster-admin-binding", Request: RequestSpec{Method: http.MethodGet, Path: clusterAdminBinding, Identity: IdentityAdmin}},
+		},
+		Normalize: bindingMetadataRules(),
+	}
+
 	return []Probe{
 		callerWithoutAccess, impersonationRefused, subjectWithoutAccess, nonexistentUserProbe,
 		nonexistentServiceAccount, serviceAccountIdentity, impersonateGroupDropped, rulesReviewComplete,
-		sarWithoutRight, versionFieldAccepted,
+		sarWithoutRight, versionFieldAccepted, whoCanReasonAndBinding,
 	}
 }
 
@@ -267,6 +299,13 @@ func accessProbes() []Probe {
 		ssarBody = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"list","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
 		sarAnon  = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:anonymous","groups":["system:unauthenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
 		whoBody  = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
+
+		sarSchedulerDefault    = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:kube-scheduler","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		sarSchedulerKubeSystem = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:kube-scheduler","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"kube-system"}}}`
+		sarControllerManager   = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:kube-controller-manager","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		sarMasters             = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"groups":["system:masters"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		sarUnauthHealthz       = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"groups":["system:unauthenticated"],"nonResourceAttributes":{"verb":"get","path":"/healthz"}}}`
+		clusterAdminBinding    = "/k8s/clusters/local/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/cluster-admin"
 	)
 	// The username, the principal, and the token id are all created per
 	// run (the standard identity is a fresh user each time): the facts
@@ -335,6 +374,33 @@ func accessProbes() []Probe {
 				{Name: "admin-anonymous", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "subjectaccessreviews", Body: sarAnon, Identity: IdentityAdmin}},
 			},
 			Normalize: []NormalizeRule{{Path: "message", Replace: "<message>"}, {Path: "details.*", Replace: "<scrubbed>"}},
+		},
+		{
+			// The SubjectAccessReview answers who-can classifies, about
+			// subjects Kubernetes' bootstrap policy fixes: the reason
+			// grammar for a ClusterRoleBinding grant (system:kube-scheduler,
+			// identical in two namespaces - the collapse evidence), a denial
+			// without a reason (system:kube-controller-manager on pods), the
+			// privileged group allowed with NO reason (system:masters, so
+			// the fixed row never collapses), and a non-resource grant to
+			// system:unauthenticated.
+			Name: "access/subject-access-review-reason-grammar", OracleOnly: true,
+			Observations: []Observation{
+				{Name: "scheduler-default", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "subjectaccessreviews", Body: sarSchedulerDefault, Identity: IdentityAdmin}},
+				{Name: "scheduler-kube-system", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "subjectaccessreviews", Body: sarSchedulerKubeSystem, Identity: IdentityAdmin}},
+				{Name: "controller-manager-denied", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "subjectaccessreviews", Body: sarControllerManager, Identity: IdentityAdmin}},
+				{Name: "masters-no-reason", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "subjectaccessreviews", Body: sarMasters, Identity: IdentityAdmin}},
+				{Name: "unauthenticated-healthz", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "subjectaccessreviews", Body: sarUnauthHealthz, Identity: IdentityAdmin}},
+			},
+		},
+		{
+			// The binding object shape who-can reads its candidates from:
+			// subjects[] carrying kind, apiGroup, and name. The bootstrap
+			// cluster-admin binding is the one whose subject Kubernetes
+			// fixes; the instance-chosen metadata is scrubbed.
+			Name: "access/bootstrap-clusterrolebinding-shape", OracleOnly: true,
+			Observations: []Observation{{Name: "cluster-admin", Request: RequestSpec{Method: http.MethodGet, Path: clusterAdminBinding, Identity: IdentityAdmin}}},
+			Normalize:    bindingMetadataRules(),
 		}}
 }
 

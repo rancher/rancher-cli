@@ -500,6 +500,29 @@ source (`authorizer`, `rancherProxy`, `scopeDiscovery`, `request`,
 `mixed`) and identity (`caller`, `impersonated`,
 `subjectAccessReview`).
 
+`access who-can` answers the reverse question. It reads the subjects the
+cluster's RoleBindings and ClusterRoleBindings name (plus
+`system:masters`), posts one SubjectAccessReview per subject as you (per
+namespace with `--project` or `--all-namespaces`), and lists who is
+allowed; denied subjects are listed with `--show-denied`. A binding user
+that is a Rancher user is asked with the group principals Rancher has
+cached for it; a group is asked as itself and lists, under
+`knownMembers`, the users Rancher has cached in it (users who have logged
+in - groups are not expanded further); a username with no Rancher User is
+asked with `system:authenticated` only, so an allowed answer is definite
+and a denied one is reported as `unknown` ("groups unknown"), folded into
+one text line and counted in `rollup.groupsUnknown`. Every Kubernetes
+cluster binds such users (`system:kube-scheduler`, ...), which is why
+they never affect the exit code. With several namespaces there is one row
+per subject per namespace; rows the server attributes to the same
+ClusterRoleBinding in every namespace collapse to `namespace: "*"`. Exit
+13 when a row has a request issue or is unknown because the authorizer
+returned an evaluation error; an allowed answer that also carries an
+evaluation error stays allowed and raises a warning. Needs
+`list` on rolebindings and clusterrolebindings on the cluster and `create
+subjectaccessreviews` there; `rollup.outsideCandidateSet` names what no
+row can show (`system:masters` members, non-RBAC authorizers).
+
 ## Diagnostics & support
 
 `logs`/`support-bundle` cover only what Rancher's own Kubernetes API can reach.
