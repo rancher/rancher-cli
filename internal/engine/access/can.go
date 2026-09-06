@@ -443,5 +443,6 @@ func canText(out canResult, allNamespaces bool) string {
 	if out.GroupsFrom != "" {
 		fmt.Fprintf(&b, " | groups from %s", out.GroupsFrom)
 	}
+	b.WriteString("\n")
 	return b.String()
 }

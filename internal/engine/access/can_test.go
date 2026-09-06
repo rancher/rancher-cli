@@ -79,7 +79,7 @@ func TestCanCallerAllowed(t *testing.T) {
 	assert.Equal(t, "team-a", spec["namespace"])
 	assert.Equal(t, "v1", spec["version"])
 	assert.True(t, strings.HasPrefix(res.Text, "allowed  you can delete pods in team-a on c-phmj7"), res.Text)
-	assert.Contains(t, res.Text, "source: authorizer | identity: caller")
+	assert.True(t, strings.HasSuffix(res.Text, "source: authorizer | identity: caller\n"), "text ends with the source line and a newline: %q", res.Text)
 	assert.Equal(t, 1, f.ResolveCalls, "the cluster is resolved once per command")
 	m := scopeJSON(t, out.Scope)
 	assert.Equal(t, map[string]any{"cluster": "c-phmj7", "namespace": "team-a"}, m)
