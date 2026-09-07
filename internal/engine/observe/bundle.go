@@ -3,6 +3,7 @@ package observe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -181,9 +182,11 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	_ = bw.Add(ArchiveEntry{Path: "rancher/version.json", Data: versionData})
 	items = append(items, manifestItem{Name: "rancher/version.json", Status: statusCollected})
 
+	var warnings []string
 	for _, clusterID := range clusters {
-		clusterItems, namespaces := collectCluster(ctx, c.clients, local, clusterID, targets, tail, since, bw)
+		clusterItems, namespaces, clusterWarnings := collectCluster(ctx, c.clients, local, clusterID, targets, tail, since, bw)
 		items = append(items, clusterItems...)
+		warnings = append(warnings, clusterWarnings...)
 
 		for _, ns := range namespaces {
 			data, total, included, eerr := collectEvents(ctx, c.clients, clusterID, ns)
@@ -231,6 +234,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 	res := renderBundleText(path, len(items), bytesWritten, skipped, errored)
 	res.Kind = "SupportBundle"
 	res.Data = bundleResult{Path: path, Items: len(items), Skipped: skipped, Errors: errored, Bytes: bytesWritten}
+	res.Warnings = warnings
 	return res, nil
 }
 
@@ -402,8 +406,9 @@ func collectFeatures(ctx context.Context, local engine.ClusterClient) ([]byte, e
 // returns the manifest items and the set of namespaces any attempted
 // target resolved to (for the caller's per-namespace events collection) -
 // cattle-system is always included, per the design spec.
-func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string) {
+func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string, []string) {
 	var items []manifestItem
+	var warnings []string
 	namespaces := map[string]bool{"cattle-system": true}
 
 	if obj, err := local.Get(ctx, clusterKind.GVR, "", clusterID); err != nil {
@@ -454,8 +459,9 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 			continue
 		}
 		namespaces[resolved.Namespace] = true
-		items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: statusCollected})
-		collectTargetLogs(ctx, t, resolved, tail, since, bw)
+		outcome := collectTargetLogs(ctx, t, resolved, tail, since, bw)
+		items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: outcome.status()})
+		warnings = append(warnings, outcome.warnings(clusterID, t.Name)...)
 	}
 
 	nsList := make([]string, 0, len(namespaces))
@@ -463,28 +469,85 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 		nsList = append(nsList, ns)
 	}
 	sort.Strings(nsList)
-	return items, nsList
+	return items, nsList, warnings
+}
+
+// logOutcome is what collectTargetLogs established for one target: how
+// many pod/container pairs it resolved to, which current logs did not
+// reach the archive, and which previous-container logs the server refused
+// (as opposed to not having). The manifest status and the result's
+// warnings are both derived from it, so they cannot disagree.
+type logOutcome struct {
+	containers     int
+	failed         []string
+	previousDenied []string
+}
+
+// status is the manifest status the outcome earns: collected only when
+// every current log reached the archive; otherwise an error status, which
+// the Errors counter sees, naming the count and the first failure.
+func (o logOutcome) status() string {
+	if len(o.failed) == 0 {
+		return statusCollected
+	}
+	return fmt.Sprintf("error: %d of %d container logs not collected; %s", len(o.failed), o.containers, o.failed[0])
+}
+
+// warnings names every missing log once, so a caller reading the result
+// rather than the archive still sees what is absent.
+func (o logOutcome) warnings(clusterID, target string) []string {
+	var w []string
+	for _, f := range o.failed {
+		w = append(w, fmt.Sprintf("support-bundle: %s/%s: log not collected: %s", clusterID, target, f))
+	}
+	for _, p := range o.previousDenied {
+		w = append(w, fmt.Sprintf("support-bundle: %s/%s: previous container log refused: %s", clusterID, target, p))
+	}
+	return w
 }
 
 // collectTargetLogs streams every matched pod/container's current log into
-// bw, plus a best-effort previous-container log (silently omitted when
-// there is none - a fresh container has never restarted, which is the
-// common case, not a failure).
-func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *int64, since *int64, bw *ArchiveWriter) {
+// bw and reports what it could not collect. The previous-container log is
+// best effort: a container that never restarted has none, which is the
+// common case and stays silent, but a refusal (RBAC, authentication) is
+// missing evidence and is reported. A container whose current log failed
+// is not asked for its previous log - the answer would be the same.
+func collectTargetLogs(ctx context.Context, t Target, resolved Resolved, tail *int64, since *int64, bw *ArchiveWriter) logOutcome {
+	var o logOutcome
 	for i := range resolved.Pods {
 		podName := resolved.Pods[i].GetName()
 		for _, cname := range engine.ContainerNames(resolved.Pods[i].Object) {
+			o.containers++
+			where := podName + "/" + cname
 			base := fmt.Sprintf("logs/%s/%s/%s-%s", resolved.ClusterID, t.Name, podName, cname)
-			if out, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
-				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since}); err == nil {
-				_ = bw.Add(ArchiveEntry{Path: base + ".log", Data: []byte(out)})
+			out, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
+				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since})
+			if err != nil {
+				o.failed = append(o.failed, where+": "+err.Error())
+				continue
 			}
-			if out, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
-				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since, Previous: true}); err == nil {
-				_ = bw.Add(ArchiveEntry{Path: base + "-previous.log", Data: []byte(out)})
+			if err := bw.Add(ArchiveEntry{Path: base + ".log", Data: []byte(out)}); err != nil {
+				o.failed = append(o.failed, where+": archive write failed: "+err.Error())
+				continue
+			}
+			prev, err := resolved.Client.Logs(ctx, resolved.Namespace, podName,
+				engine.LogOptions{Container: cname, TailLines: tail, SinceSeconds: since, Previous: true})
+			switch {
+			case err == nil:
+				_ = bw.Add(ArchiveEntry{Path: base + "-previous.log", Data: []byte(prev)})
+			case isRefusal(err):
+				o.previousDenied = append(o.previousDenied, where+": "+err.Error())
 			}
 		}
 	}
+	return o
+}
+
+// isRefusal reports whether err is the server refusing the read (RBAC or
+// authentication) rather than reporting there is nothing to read.
+func isRefusal(err error) bool {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	return ok && (ce.Code == clierr.CodeRBAC || ce.Code == clierr.CodeAuth)
 }
 
 // defaultEventCap bounds the per-namespace event payload the same way logs
@@ -543,6 +606,8 @@ const readmeText = `This is a Rancher CLI support bundle.
 
 Contents:
   manifest.json            what was collected, skipped, or failed, and why
+                            (a target whose container logs could not all be
+                            read is an error item naming the first failure)
   logs/<cluster>/<target>/ curated component logs (see "rancher logs")
   clusters/<cluster>/      cluster/node state and per-namespace events
   rancher/                 CLI version, an allowlisted settings snapshot,

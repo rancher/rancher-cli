@@ -53,6 +53,7 @@ type fakeClient struct {
 
 	logs         map[string]string
 	logErrs      map[string]error
+	prevLogErrs  map[string]error
 	logOptsCalls []engine.LogOptions
 }
 
@@ -65,6 +66,7 @@ func newFakeClient() *fakeClient {
 		listErrs:        map[objKey]error{},
 		logs:            map[string]string{},
 		logErrs:         map[string]error{},
+		prevLogErrs:     map[string]error{},
 	}
 }
 
@@ -99,6 +101,11 @@ func (f *fakeClient) withListErr(gvr schema.GroupVersionResource, ns string, err
 
 func (f *fakeClient) withLog(container, out string) *fakeClient {
 	f.logs[container] = out
+	return f
+}
+
+func (f *fakeClient) withPreviousLogErr(container string, err error) *fakeClient {
+	f.prevLogErrs[container] = err
 	return f
 }
 
@@ -148,6 +155,11 @@ func (f *fakeClient) Delete(context.Context, schema.GroupVersionResource, string
 
 func (f *fakeClient) Logs(_ context.Context, _ string, _ string, opts engine.LogOptions) (string, error) {
 	f.logOptsCalls = append(f.logOptsCalls, opts)
+	if opts.Previous {
+		if err, ok := f.prevLogErrs[opts.Container]; ok {
+			return "", err
+		}
+	}
 	if err, ok := f.logErrs[opts.Container]; ok {
 		return "", err
 	}

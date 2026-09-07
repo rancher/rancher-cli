@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
@@ -341,4 +342,81 @@ func TestSupportBundleDefaultFilenameUsesClock(t *testing.T) {
 	require.NoError(t, err)
 	data := res.Data.(bundleResult)
 	assert.Equal(t, fmt.Sprintf("rancher-support-%d.tar.gz", fixed.Unix()), data.Path)
+}
+
+// bundleWithAgentPod runs support-bundle for the agent target on one
+// downstream whose single pod agent-1 has one container, main, and returns
+// the result plus the archive path.
+func bundleWithAgentPod(t *testing.T, downstream *fakeClient) (runtime.Result, string) {
+	t.Helper()
+	local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "c-1"},
+	}})
+	downstream.withListNS(podKind.GVR, "cattle-system", podList("agent-1"))
+	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	res, err := execBundle(t, factory, input{s: map[string]string{
+		flagFilename: path,
+		flagTargets:  "agent",
+		flagClusters: "c-1",
+	}})
+	require.NoError(t, err)
+	return res, path
+}
+
+// TestSupportBundleDeniedCurrentLogIsAnError asserts that a current
+// container log the server refuses is counted: the target's manifest item
+// is an error naming the container, the result's errors count includes it,
+// a warning names it, and the archive carries no log file for it. The
+// previous log is not requested for a container whose current log failed.
+func TestSupportBundleDeniedCurrentLogIsAnError(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().withLogErr("main", clierr.New(clierr.CodeRBAC, "pods/log is forbidden"))
+	res, path := bundleWithAgentPod(t, downstream)
+
+	item := findItem(t, manifestFrom(t, path), "agent", "c-1")
+	assert.True(t, strings.HasPrefix(item.Status, "error: 1 of 1 container logs not collected; agent-1/main: "), item.Status)
+	assert.Contains(t, item.Status, "pods/log is forbidden")
+	assert.Equal(t, 1, res.Data.(bundleResult).Errors)
+	require.Len(t, res.Warnings, 1)
+	assert.Equal(t, "support-bundle: c-1/agent: log not collected: agent-1/main: pods/log is forbidden", res.Warnings[0])
+
+	contents := readArchive(t, path)
+	_, hasLog := contents["logs/c-1/agent/agent-1-main.log"]
+	assert.False(t, hasLog, "a refused log must not appear in the archive")
+	require.Len(t, downstream.logOptsCalls, 1, "the previous log is not requested after the current one failed")
+	assert.False(t, downstream.logOptsCalls[0].Previous)
+}
+
+// TestSupportBundlePreviousLogAbsenceStaysSilent asserts that a previous
+// container log the server does not have (any non-refusal error) is the
+// common no-restart case: collected status, no error, no warning.
+func TestSupportBundlePreviousLogAbsenceStaysSilent(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().withLog("main", "hello\n").
+		withPreviousLogErr("main", clierr.New(clierr.CodeValidation, "previous terminated container \"main\" in pod \"agent-1\" not found"))
+	res, path := bundleWithAgentPod(t, downstream)
+
+	assert.Equal(t, statusCollected, findItem(t, manifestFrom(t, path), "agent", "c-1").Status)
+	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+	assert.Empty(t, res.Warnings)
+	contents := readArchive(t, path)
+	assert.Equal(t, "hello\n", contents["logs/c-1/agent/agent-1-main.log"])
+	_, hasPrevious := contents["logs/c-1/agent/agent-1-main-previous.log"]
+	assert.False(t, hasPrevious)
+}
+
+// TestSupportBundlePreviousLogRefusedIsAWarning asserts that a previous
+// container log the server refuses (RBAC) is reported as a warning while
+// the target, whose current log was collected, stays collected.
+func TestSupportBundlePreviousLogRefusedIsAWarning(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().withLog("main", "hello\n").
+		withPreviousLogErr("main", clierr.New(clierr.CodeRBAC, "pods/log is forbidden"))
+	res, path := bundleWithAgentPod(t, downstream)
+
+	assert.Equal(t, statusCollected, findItem(t, manifestFrom(t, path), "agent", "c-1").Status)
+	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
+	require.Len(t, res.Warnings, 1)
+	assert.Equal(t, "support-bundle: c-1/agent: previous container log refused: agent-1/main: pods/log is forbidden", res.Warnings[0])
 }
