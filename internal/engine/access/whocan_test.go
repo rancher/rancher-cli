@@ -575,6 +575,31 @@ func TestWhoCanValidation(t *testing.T) {
 	}
 }
 
+// TestWhoCanIncompleteDiscoveryWarns asserts the resolver's caveat reaches
+// who-can: ahead of the candidate warnings on an evaluated answer, and on
+// the verified-empty project answer, which asks no authorizer at all.
+func TestWhoCanIncompleteDiscoveryWarns(t *testing.T) {
+	serialFanOut(t)
+	f := whoCanFactory(sarAnswer(true, ""), mastersAnswer(), sarAnswer(false, ""), sarAnswer(true, aliceReason), sarAnswer(true, adminReason))
+	f.caller.ResourcesErr = incompleteFor("dead.example")
+	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(),
+		canInput(map[string]string{"namespace": "team-a"}, "get", "deployments"), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "apps", decodeSubjects(t, res).Question.Group)
+	require.NotEmpty(t, res.Warnings)
+	assert.Contains(t, res.Warnings[0], "discovery for API group(s) dead.example failed",
+		"the caveat about the question itself comes before the candidate warnings")
+
+	f = whoCanFactory()
+	f.caller.ResourcesErr = incompleteFor("dead.example")
+	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(),
+		canInput(map[string]string{"project": "p-empty"}, "get", "deployments"), nil)
+	require.NoError(t, err)
+	assert.Equal(t, SourceScopeDiscovery, decodeSubjects(t, res).ResultSource)
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "discovery for API group(s) dead.example failed")
+}
+
 // TestWhoCanDescriptor asserts the descriptor contract: read-only,
 // network, auth, exit set {0, 13}, text shape, no --as or --type, and a
 // boolean --show-denied.

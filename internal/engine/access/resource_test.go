@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -31,15 +32,15 @@ func TestResolveResourceAcceptsEveryAliasAndKeepsVersion(t *testing.T) {
 	t.Parallel()
 	c := &fakeClient{Resources: discovery()}
 	for _, in := range []string{"deployments", "deployment", "deploy", "deployments.apps"} {
-		got, err := ResolveResource(t.Context(), c, in, "")
+		got, _, err := ResolveResource(t.Context(), c, in, "")
 		require.NoError(t, err, in)
 		assert.Equal(t, ResourceRef{Group: "apps", Version: "v1", Resource: "deployments", Kind: "Deployment", Namespaced: true, Subresources: []string{"scale"}}, got)
 	}
-	got, err := ResolveResource(t.Context(), c, "nodes", "")
+	got, _, err := ResolveResource(t.Context(), c, "nodes", "")
 	require.NoError(t, err)
 	assert.False(t, got.Namespaced)
 	assert.Equal(t, "v1", got.Version)
-	_, err = ResolveResource(t.Context(), c, "pods/log", "")
+	_, _, err = ResolveResource(t.Context(), c, "pods/log", "")
 	require.ErrorContains(t, err, "unknown resource")
 }
 
@@ -50,10 +51,10 @@ func TestResolveResourceKindNameIsUnknown(t *testing.T) {
 	t.Parallel()
 	c := &fakeClient{Resources: discovery()}
 	for _, in := range []string{"deployments", "deployment", "deploy", "deployments.apps"} {
-		_, err := ResolveResource(t.Context(), c, in, "")
+		_, _, err := ResolveResource(t.Context(), c, in, "")
 		require.NoError(t, err, in)
 	}
-	_, err := ResolveResource(t.Context(), c, "Deployment", "")
+	_, _, err := ResolveResource(t.Context(), c, "Deployment", "")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -67,15 +68,15 @@ func TestResolveResourceKindNameIsUnknown(t *testing.T) {
 func TestResolveResourceCoreGroupWinsBareName(t *testing.T) {
 	t.Parallel()
 	c := &fakeClient{Resources: discovery()}
-	got, err := ResolveResource(t.Context(), c, "pods", "")
+	got, _, err := ResolveResource(t.Context(), c, "pods", "")
 	require.NoError(t, err)
 	assert.Equal(t, "", got.Group)
 	assert.Equal(t, "v1", got.Version)
 	assert.Equal(t, []string{"log", "status"}, got.Subresources)
-	got, err = ResolveResource(t.Context(), c, "pods", "metrics.k8s.io")
+	got, _, err = ResolveResource(t.Context(), c, "pods", "metrics.k8s.io")
 	require.NoError(t, err)
 	assert.Equal(t, "v1beta1", got.Version)
-	got, err = ResolveResource(t.Context(), c, "pods.metrics.k8s.io", "")
+	got, _, err = ResolveResource(t.Context(), c, "pods.metrics.k8s.io", "")
 	require.NoError(t, err)
 	assert.Equal(t, "metrics.k8s.io", got.Group)
 }
@@ -86,13 +87,13 @@ func TestResolveResourceNonCoreTieNeedsGroup(t *testing.T) {
 	t.Parallel()
 	res := append(discovery(), engine.APIResource{Group: "extensions", Version: "v1beta1", Name: "deployments", SingularName: "deployment", Kind: "Deployment", Namespaced: true})
 	c := &fakeClient{Resources: res}
-	_, err := ResolveResource(t.Context(), c, "deployments", "")
+	_, _, err := ResolveResource(t.Context(), c, "deployments", "")
 	require.ErrorContains(t, err, "--group")
 	require.ErrorContains(t, err, "exists in groups apps, extensions;")
 	slices.Reverse(res)
-	_, errRev := ResolveResource(t.Context(), &fakeClient{Resources: res}, "deployments", "")
+	_, _, errRev := ResolveResource(t.Context(), &fakeClient{Resources: res}, "deployments", "")
 	assert.Equal(t, err.Error(), errRev.Error(), "the message does not depend on discovery order")
-	got, err := ResolveResource(t.Context(), c, "deployments", "apps")
+	got, _, err := ResolveResource(t.Context(), c, "deployments", "apps")
 	require.NoError(t, err)
 	assert.Equal(t, "apps", got.Group)
 }
@@ -102,7 +103,7 @@ func TestResolveResourceNonCoreTieNeedsGroup(t *testing.T) {
 func TestResolveResourceUnknownNamesClosest(t *testing.T) {
 	t.Parallel()
 	c := &fakeClient{Resources: discovery()}
-	_, err := ResolveResource(t.Context(), c, "deploymnts", "")
+	_, _, err := ResolveResource(t.Context(), c, "deploymnts", "")
 	require.ErrorContains(t, err, "unknown resource")
 	require.ErrorContains(t, err, "deployments")
 }
@@ -124,4 +125,88 @@ func TestNormalizeVerbGrammars(t *testing.T) {
 	assert.Equal(t, "updatepsa", v)
 	_, err = NormalizeVerb("get pods", false)
 	require.ErrorContains(t, err, "verb")
+}
+
+func incompleteFor(groups ...string) *engine.DiscoveryIncomplete {
+	failed := map[schema.GroupVersion]error{}
+	for _, g := range groups {
+		failed[schema.GroupVersion{Group: g, Version: "v1"}] = errors.New("service unavailable")
+	}
+	return &engine.DiscoveryIncomplete{Failed: failed}
+}
+
+// TestResolveResourceIncompleteBareNameResolvesWithWarning asserts a bare
+// name with one healthy match resolves under incomplete discovery and the
+// warning names the failed groups and the assumption made.
+func TestResolveResourceIncompleteBareNameResolvesWithWarning(t *testing.T) {
+	t.Parallel()
+	c := &fakeClient{Resources: discovery(), ResourcesErr: incompleteFor("dead.example")}
+	ref, warn, err := ResolveResource(t.Context(), c, "deployments", "")
+	require.NoError(t, err)
+	assert.Equal(t, "apps", ref.Group)
+	assert.Equal(t, "discovery for API group(s) dead.example failed; deployments resolved to deployments.apps assuming the failed group(s) serve no such resource", warn)
+}
+
+// TestResolveResourceIncompleteCoreAndQualifiedCarryNoWarning asserts the
+// two exact cases: a core-group match wins by rule, and a qualified name
+// is exact, so neither carries the caveat.
+func TestResolveResourceIncompleteCoreAndQualifiedCarryNoWarning(t *testing.T) {
+	t.Parallel()
+	c := &fakeClient{Resources: discovery(), ResourcesErr: incompleteFor("dead.example")}
+	ref, warn, err := ResolveResource(t.Context(), c, "pods", "")
+	require.NoError(t, err)
+	assert.Equal(t, "", ref.Group)
+	assert.Empty(t, warn)
+	ref, warn, err = ResolveResource(t.Context(), c, "deployments.apps", "")
+	require.NoError(t, err)
+	assert.Equal(t, "apps", ref.Group)
+	assert.Empty(t, warn)
+}
+
+// TestResolveResourceIncompleteUnknownNameIsRetryable asserts that a name
+// no healthy group serves is undetermined, not unknown: a retryable error
+// naming the failed groups, for a bare name and for a name qualified with
+// the failed group alike.
+func TestResolveResourceIncompleteUnknownNameIsRetryable(t *testing.T) {
+	t.Parallel()
+	c := &fakeClient{Resources: discovery(), ResourcesErr: incompleteFor("dead.example")}
+	for _, arg := range []string{"widgets", "widgets.dead.example"} {
+		_, _, err := ResolveResource(t.Context(), c, arg, "")
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, arg)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code, arg)
+		assert.True(t, ce.Retryable, arg)
+		require.ErrorContains(t, err, "discovery for dead.example failed")
+		assert.NotContains(t, err.Error(), "unknown resource")
+	}
+	// A name qualified with a HEALTHY group that does not serve it is
+	// unknown as before: the failed groups cannot be where it lives.
+	_, _, err := ResolveResource(t.Context(), c, "widgets.apps", "")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "unknown resource")
+}
+
+// TestResolveResourceIncompleteEmptyListIsRetryable asserts that when the
+// server described nothing at all, every name is undetermined: a retryable
+// error naming the failed groups.
+func TestResolveResourceIncompleteEmptyListIsRetryable(t *testing.T) {
+	t.Parallel()
+	c := &fakeClient{Resources: nil, ResourcesErr: incompleteFor("", "apps")}
+	_, _, err := ResolveResource(t.Context(), c, "pods", "")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.True(t, ce.Retryable)
+	require.ErrorContains(t, err, "discovery for apps, core failed")
+}
+
+// TestResolveResourceOtherErrorsPassThrough asserts a total discovery
+// failure is returned as is.
+func TestResolveResourceOtherErrorsPassThrough(t *testing.T) {
+	t.Parallel()
+	boom := clierr.Retryable(clierr.CodeGeneric, "discovery unavailable")
+	c := &fakeClient{ResourcesErr: boom}
+	_, _, err := ResolveResource(t.Context(), c, "pods", "")
+	assert.Equal(t, boom, err)
 }

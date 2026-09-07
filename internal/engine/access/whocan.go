@@ -158,12 +158,13 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		return runtime.Result{}, err
 	}
 	var ref *ResourceRef
+	var discoveryWarning string
 	if p.question.NonResourceURL == "" {
-		r, err := ResolveResource(ctx, callerClient, p.resource, in.String(flagGroup))
+		r, warn, err := ResolveResource(ctx, callerClient, p.resource, in.String(flagGroup))
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		ref = &r
+		ref, discoveryWarning = &r, warn
 		p.question.Resource, p.question.Group, p.question.Version = r.Resource, r.Group, r.Version
 		if p.question.Subresource != "" && !slices.Contains(r.Subresources, p.question.Subresource) {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -201,11 +202,15 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		// is evaluated for anyone.
 		out.Note = fmt.Sprintf("project %s has no namespaces on cluster %s", scope.Project, clusterID)
 		out.ResultSource = SourceScopeDiscovery
-		return runtime.Result{Kind: "AccessSubjects", Data: out, ExitStatus: 0, Text: whoCanText(out, showDenied, allNamespaces)}, nil
+		res := runtime.Result{Kind: "AccessSubjects", Data: out, ExitStatus: 0, Text: whoCanText(out, showDenied, allNamespaces)}
+		return withDiscoveryWarning(res, discoveryWarning), nil
 	}
 	cands, warnings, err := listCandidates(ctx, callerClient, scope)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "candidate discovery")
+	}
+	if discoveryWarning != "" {
+		warnings = append([]string{discoveryWarning}, warnings...)
 	}
 	local, err := localClient(ctx, c.clients, c.local)
 	if err != nil {

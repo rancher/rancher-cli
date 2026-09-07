@@ -528,3 +528,30 @@ func TestCanSubjectWithoutClusterAccessIsOneDenial(t *testing.T) {
 	assert.Len(t, noAccess.Reviews, 1, "exactly one impersonated SelfSubjectReview")
 	assert.Len(t, f.caller.Reviews, 1, "no authorization review as the caller")
 }
+
+// TestCanIncompleteDiscoveryWarns asserts the resolver's caveat reaches the
+// result: under incomplete discovery a bare non-core name still answers,
+// and the warning names the groups that were not consulted. It rides on
+// the verified-empty project answer too, which asks no authorizer.
+func TestCanIncompleteDiscoveryWarns(t *testing.T) {
+	t.Parallel()
+	f := canFactory("user-vwq4j", scripted{resp: sar(true, "RBAC: allowed by ClusterRoleBinding \"crb-1\" of ClusterRole \"admin\" to User \"user-vwq4j\"")})
+	f.caller.ResourcesErr = incompleteFor("dead.example")
+	cmd := NewCan(f, f.caller).(runtime.ReadCommand)
+	res, err := cmd.Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "deployments"), nil)
+	require.NoError(t, err)
+	out := decodeCan(t, res)
+	assert.Equal(t, DecisionAllowed, out.Decision)
+	assert.Equal(t, "apps", out.Question.Group)
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "discovery for API group(s) dead.example failed")
+
+	f = canFactory("user-vwq4j")
+	f.caller.ResourcesErr = incompleteFor("dead.example")
+	f.caller.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
+	res, err = NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-empty"}, "get", "deployments"), nil)
+	require.NoError(t, err)
+	assert.Equal(t, DecisionUnknown, decodeCan(t, res).Decision)
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "discovery for API group(s) dead.example failed")
+}

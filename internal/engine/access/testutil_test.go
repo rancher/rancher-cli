@@ -29,10 +29,13 @@ type fakeClient struct {
 	Before    func(ctx context.Context) error // optional; runs first in every call (tests block here to spend a budget)
 	Reviews   []engine.ReviewRequest
 	Resources []engine.APIResource
-	Objects   map[string]*unstructured.Unstructured // "ns/name" or "name" for cluster scope
-	Lists     map[string]*unstructured.UnstructuredList
-	GetErr    error
-	ListErr   error
+	// ResourcesErr is returned with Resources: an *engine.DiscoveryIncomplete
+	// models a partial answer, anything else a failed discovery.
+	ResourcesErr error
+	Objects      map[string]*unstructured.Unstructured // "ns/name" or "name" for cluster scope
+	Lists        map[string]*unstructured.UnstructuredList
+	GetErr       error
+	ListErr      error
 }
 
 func (f *fakeClient) PostReview(ctx context.Context, req engine.ReviewRequest) (engine.ReviewResponse, error) {
@@ -59,7 +62,7 @@ func (f *fakeClient) PostReview(ctx context.Context, req engine.ReviewRequest) (
 }
 
 func (f *fakeClient) ServerResources(context.Context) ([]engine.APIResource, error) {
-	return f.Resources, nil
+	return f.Resources, f.ResourcesErr
 }
 
 func (f *fakeClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {

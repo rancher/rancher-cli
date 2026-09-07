@@ -2,6 +2,7 @@ package access
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
 // ResourceRef is one discovered resource in its preferred version, the
@@ -53,23 +55,65 @@ func NormalizeVerb(verb string, nonResource bool) (string, error) {
 // or resource.group) to one discovered resource. group, when set, breaks
 // a tie between API groups. Subresource entries (pods/log) are folded into
 // their base and are never candidates themselves.
-func ResolveResource(ctx context.Context, c engine.ClusterClient, arg, group string) (ResourceRef, error) {
+//
+// Discovery may be incomplete (the client returns the partial list with an
+// *engine.DiscoveryIncomplete). Then: a name the healthy groups do not
+// serve is a retryable error naming the failed groups, never "unknown
+// resource"; a qualified name whose group failed is the same error; a
+// bare name with exactly one healthy match resolves, and the returned
+// warning says which groups were not consulted, so the caller shows it
+// beside the answer. Core-group precedence is unchanged.
+func ResolveResource(ctx context.Context, c engine.ClusterClient, arg, group string) (ResourceRef, string, error) {
 	if arg == "" {
-		return ResourceRef{}, clierr.New(clierr.CodeValidation, "a resource is required")
+		return ResourceRef{}, "", clierr.New(clierr.CodeValidation, "a resource is required")
 	}
 	all, err := c.ServerResources(ctx)
+	var incomplete *engine.DiscoveryIncomplete
 	if err != nil {
-		return ResourceRef{}, err
+		inc, partial := errors.AsType[*engine.DiscoveryIncomplete](err)
+		if !partial {
+			return ResourceRef{}, "", err
+		}
+		incomplete = inc
 	}
-	return ResolveResourceIn(all, arg, group)
+	return resolveResource(all, incomplete, arg, group)
 }
 
-// ResolveResourceIn applies the resolution rules to an already fetched
-// discovery list. Completion uses it so a suggestion follows exactly the
-// rules the command applies.
+// ResolveResourceIn applies the resolution rules to an already fetched,
+// complete discovery list. Completion uses it so a suggestion follows
+// exactly the rules the command applies.
 func ResolveResourceIn(all []engine.APIResource, arg, group string) (ResourceRef, error) {
+	ref, _, err := resolveResource(all, nil, arg, group)
+	return ref, err
+}
+
+// incompleteWarning is the caveat a resolved bare name carries when some
+// groups were not described: the answer assumed they serve nothing by
+// that name. A qualified name is exact, and a core-group match wins by
+// rule whatever another group serves, so neither carries it.
+func incompleteWarning(incomplete *engine.DiscoveryIncomplete, arg string, ref ResourceRef, groupSet bool) string {
+	if incomplete == nil || groupSet || ref.Group == "" {
+		return ""
+	}
+	return fmt.Sprintf("discovery for API group(s) %s failed; %s resolved to %s.%s assuming the failed group(s) serve no such resource",
+		strings.Join(incomplete.Groups(), ", "), arg, ref.Resource, ref.Group)
+}
+
+// withDiscoveryWarning attaches the resolver's caveat to an answer, so
+// every rendered answer built on a name resolved under incomplete
+// discovery carries it. An empty warning leaves the result alone.
+func withDiscoveryWarning(res runtime.Result, warning string) runtime.Result {
+	if warning != "" {
+		res.Warnings = append(res.Warnings, warning)
+	}
+	return res
+}
+
+// resolveResource applies the resolution rules to a discovery list that
+// may be incomplete.
+func resolveResource(all []engine.APIResource, incomplete *engine.DiscoveryIncomplete, arg, group string) (ResourceRef, string, error) {
 	if arg == "" {
-		return ResourceRef{}, clierr.New(clierr.CodeValidation, "a resource is required")
+		return ResourceRef{}, "", clierr.New(clierr.CodeValidation, "a resource is required")
 	}
 	name, dotGroup := arg, ""
 	if i := strings.IndexByte(arg, '.'); i > 0 && !strings.Contains(arg, "/") {
@@ -78,7 +122,7 @@ func ResolveResourceIn(all []engine.APIResource, arg, group string) (ResourceRef
 	wantGroup, groupSet := group, group != ""
 	if dotGroup != "" {
 		if groupSet && dotGroup != group {
-			return ResourceRef{}, clierr.New(clierr.CodeValidation, fmt.Sprintf("%s names group %s but --group says %s", arg, dotGroup, group))
+			return ResourceRef{}, "", clierr.New(clierr.CodeValidation, fmt.Sprintf("%s names group %s but --group says %s", arg, dotGroup, group))
 		}
 		wantGroup, groupSet = dotGroup, true
 	}
@@ -131,9 +175,16 @@ func ResolveResourceIn(all []engine.APIResource, arg, group string) (ResourceRef
 	switch len(matches) {
 	case 1:
 		slices.Sort(matches[0].Subresources)
-		return *matches[0], nil
+		return *matches[0], incompleteWarning(incomplete, arg, *matches[0], groupSet), nil
 	case 0:
-		return ResourceRef{}, clierr.New(clierr.CodeValidation,
+		if incomplete != nil && (!groupSet || incomplete.GroupFailed(wantGroup)) {
+			// The healthy groups do not serve the name and a group the
+			// server could not describe might: not unknown, undetermined.
+			return ResourceRef{}, "", clierr.Retryable(clierr.CodeGeneric,
+				fmt.Sprintf("%s was not found in the API groups the server could describe, and discovery for %s failed; it may live there - retry, or check those groups' APIServices",
+					arg, strings.Join(incomplete.Groups(), ", ")))
+		}
+		return ResourceRef{}, "", clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("unknown resource %q on this cluster; closest names: %s", arg, strings.Join(closest(order, bases, name), ", ")))
 	default:
 		groups := make([]string, 0, len(matches))
@@ -147,7 +198,7 @@ func ResolveResourceIn(all []engine.APIResource, arg, group string) (ResourceRef
 		// Discovery order is not stable across servers; the message is.
 		slices.Sort(groups)
 		groups = slices.Compact(groups)
-		return ResourceRef{}, clierr.New(clierr.CodeValidation,
+		return ResourceRef{}, "", clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("%s exists in groups %s; add --group <group> or write %s.<group>", name, strings.Join(groups, ", "), name))
 	}
 }
