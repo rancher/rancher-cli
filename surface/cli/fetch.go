@@ -13,7 +13,6 @@ import (
 	"time"
 
 	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -720,13 +719,6 @@ func fetchAPIGroups(ctx context.Context, hc *http.Client, cap TokenCapability, c
 	return slices.Compact(out)
 }
 
-// aggregatedDiscoveryAccept asks for the aggregated discovery document
-// (one round trip per root, every group and its preferred version's
-// resources inside); v2 is GA since Kubernetes 1.30 and v2beta1 shares
-// its wire shape, so both are accepted and decoded with the v2 types.
-const aggregatedDiscoveryAccept = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList," +
-	"application/json;g=apidiscovery.k8s.io;v=v2beta1;as=APIGroupDiscoveryList"
-
 // fetchDiscovery returns the cluster's served resources in the port's
 // shape from exactly two requests: GET /api (core) and GET /apis (every
 // group), both with the aggregated discovery Accept header, through
@@ -748,32 +740,14 @@ func fetchDiscovery(ctx context.Context, hc *http.Client, cap TokenCapability, c
 	for _, root := range []string{"/api", "/apis"} {
 		var doc apidiscoveryv2.APIGroupDiscoveryList
 		url := cap.ServerURL + "/k8s/clusters/" + cluster + root
-		if err := getJSONWithAccept(ctx, hc, cap.Token, url, aggregatedDiscoveryAccept, &doc); err != nil || doc.Kind != "APIGroupDiscoveryList" {
+		if err := getJSONWithAccept(ctx, hc, cap.Token, url, engine.AggregatedDiscoveryAccept, &doc); err != nil || doc.Kind != "APIGroupDiscoveryList" {
 			continue
 		}
-		for _, g := range doc.Items {
-			if len(g.Versions) == 0 {
-				continue
-			}
-			v := g.Versions[0] // the server lists the preferred version first
-			for _, r := range v.Resources {
-				base := engine.APIResource{Group: g.Name, Version: v.Version, Name: r.Resource, SingularName: r.SingularResource,
-					Kind: kindOf(r.ResponseKind), ShortNames: r.ShortNames, Namespaced: r.Scope == apidiscoveryv2.ScopeNamespace, Verbs: r.Verbs}
-				out = append(out, base)
-				for _, sub := range r.Subresources {
-					out = append(out, engine.APIResource{Group: g.Name, Version: v.Version, Name: r.Resource + "/" + sub.Subresource,
-						Kind: kindOf(sub.ResponseKind), Namespaced: base.Namespaced, Verbs: sub.Verbs})
-				}
-			}
-		}
+		// Completion offers only what the server could describe: a stale
+		// group's resources are dropped with the failure, since a suggestion
+		// must be valid verbatim.
+		res, _ := engine.ResourcesFromAggregated(&doc)
+		out = append(out, res...)
 	}
 	return out
-}
-
-// kindOf reads the optional responseKind of a discovery entry.
-func kindOf(gvk *metav1.GroupVersionKind) string {
-	if gvk == nil {
-		return ""
-	}
-	return gvk.Kind
 }
