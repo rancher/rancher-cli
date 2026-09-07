@@ -35,7 +35,58 @@ func All() []Probe {
 	probes = append(probes, userPasswordWorkflowProbes()...)
 	probes = append(probes, accessDownstreamProbes()...)
 	probes = append(probes, accessProbes()...)
+	probes = append(probes, discoveryProbes()...)
 	return probes
+}
+
+// discoveryProbes records the discovery shapes the provider's
+// ServerResources depends on: the aggregated document the downstream
+// serves (both roots), the local cluster's refusal to serve it through
+// the proxy (a legacy list whatever the Accept header says), and a dead
+// aggregated API group's legacy discovery document (503, text/plain),
+// which is what makes client-go report a partial answer. The dead group
+// is an APIService pointing at a service that does not exist, created
+// and removed around the observation; the aggregated Stale mark for it
+// appears only after the API server's availability controller runs, so
+// that shape is a recorded spike fact asserted by unit tests, not a probe.
+func discoveryProbes() []Probe {
+	const (
+		aggregatedAccept = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList," +
+			"application/json;g=apidiscovery.k8s.io;v=v2beta1;as=APIGroupDiscoveryList"
+		deadAPIService = "/k8s/clusters/{downstream}/apis/apiregistration.k8s.io/v1/apiservices"
+		deadGroupDoc   = "/k8s/clusters/{downstream}/apis/dead.example/v1beta1"
+	)
+	deadBody := `{"apiVersion":"apiregistration.k8s.io/v1","kind":"APIService","metadata":{"name":"v1beta1.dead.example"},` +
+		`"spec":{"group":"dead.example","version":"v1beta1","groupPriorityMinimum":1000,"versionPriority":15,"insecureSkipTLSVerify":true,` +
+		`"service":{"name":"e2e-fid-nonexistent","namespace":"default"}}}`
+	return []Probe{
+		{
+			Name: "discovery/aggregated-downstream", Downstream: true,
+			Observations: []Observation{
+				{Name: "apis", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/{downstream}/apis", Headers: map[string]string{"Accept": aggregatedAccept}, Identity: IdentityAdmin}},
+				{Name: "api", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/{downstream}/api", Headers: map[string]string{"Accept": aggregatedAccept}, Identity: IdentityAdmin}},
+			},
+			Normalize: []NormalizeRule{{Path: "items", Replace: "<scrubbed>"}, {Path: "metadata", Replace: "<scrubbed>"}},
+		},
+		{
+			Name: "discovery/aggregated-not-served-on-local", OracleOnly: true,
+			Observations: []Observation{
+				{Name: "apis", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/local/apis", Headers: map[string]string{"Accept": aggregatedAccept}, Identity: IdentityAdmin}},
+			},
+			Normalize: []NormalizeRule{{Path: "groups", Replace: "<scrubbed>"}},
+		},
+		{
+			Name: "discovery/dead-group-legacy-document", Downstream: true,
+			Setup: []Step{
+				deleteFixture("stale dead APIService", deadAPIService+"/v1beta1.dead.example"),
+				createFixture("dead APIService", deadAPIService, deadBody),
+			},
+			Observations: []Observation{
+				{Name: "group-version-document", Request: RequestSpec{Method: http.MethodGet, Path: deadGroupDoc, Identity: IdentityAdmin}},
+			},
+			Teardown: []Step{deleteFixture("dead APIService", deadAPIService+"/v1beta1.dead.example")},
+		},
+	}
 }
 
 // accessDownstreamProbes asserts the proxy behaviors the access suite relies
@@ -778,6 +829,30 @@ func adminDo(ctx context.Context, tgt Target, method, path, body string) (int, e
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode, nil
+}
+
+// createFixture POSTs body to pathTemplate (captures resolved) as admin.
+// A 2xx or a 409 (the fixture already exists) counts as done; anything
+// else is surfaced, since an observation that depends on the fixture
+// would otherwise record the wrong shape.
+func createFixture(name, pathTemplate, body string) Step {
+	return Step{
+		Name: name,
+		Do: func(ctx context.Context, tgt Target, captured map[string]string) error {
+			path := substitute(pathTemplate, captured)
+			if strings.Contains(path, "{") {
+				return fmt.Errorf("setup %s: capture in %q unresolved", name, pathTemplate)
+			}
+			status, err := adminDo(ctx, tgt, http.MethodPost, path, body)
+			if err != nil {
+				return fmt.Errorf("setup %s: %w", name, err)
+			}
+			if status == http.StatusConflict || (status >= 200 && status < 300) {
+				return nil
+			}
+			return fmt.Errorf("setup %s: POST %s answered %d", name, path, status)
+		},
+	}
 }
 
 // deleteFixture DELETEs pathTemplate (captures resolved) as admin. Only an

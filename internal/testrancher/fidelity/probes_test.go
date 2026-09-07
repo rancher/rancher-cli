@@ -46,6 +46,8 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access/subject-access-review-right-and-anonymous",
 		"access/subject-access-review-reason-grammar",
 		"access/bootstrap-clusterrolebinding-shape",
+		"discovery/aggregated-downstream", "discovery/aggregated-not-served-on-local",
+		"discovery/dead-group-legacy-document",
 	}
 	var got []string
 	for _, p := range All() {

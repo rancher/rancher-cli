@@ -1,0 +1,27 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "apis",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "apidiscovery.k8s.io/v2",
+        "items": "\u003cscrubbed\u003e",
+        "kind": "APIGroupDiscoveryList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    },
+    {
+      "name": "api",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "apidiscovery.k8s.io/v2",
+        "items": "\u003cscrubbed\u003e",
+        "kind": "APIGroupDiscoveryList",
+        "metadata": "\u003cscrubbed\u003e"
+      }
+    }
+  ]
+}
