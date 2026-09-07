@@ -42,6 +42,13 @@ type ClusterClient interface {
 	// nil error and a populated ReviewResponse. The kind set is closed.
 	PostReview(ctx context.Context, req ReviewRequest) (ReviewResponse, error)
 	// ServerResources lists the server's preferred-version resources.
+	// Three outcomes: a complete list with a nil error; a PARTIAL list
+	// together with a non-nil *DiscoveryIncomplete naming the group
+	// versions the server could not describe (the list is still what the
+	// server did describe, possibly empty); or nil and another error when
+	// discovery failed outright. A caller that treats every error as
+	// fatal loses only the partial list; a caller that needs to tell a
+	// complete inventory from a survivor unwraps *DiscoveryIncomplete.
 	ServerResources(ctx context.Context) ([]APIResource, error)
 }
 
