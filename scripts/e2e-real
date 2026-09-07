@@ -7,7 +7,8 @@ set -euo pipefail
 # ORACLE_IMAGE is the single bump point for the community golden oracle: one
 # literal tag+digest, changed only through a reviewed golden-regeneration
 # change. PRIME_ORACLE_IMAGE is the opt-in Prime oracle (E2E_REAL_PRIME=1) -
-# it has no goldens; the suite only boots and smoke-checks it.
+# it has no goldens; the suite boots it with the same downstream, smoke-checks
+# it, and leaves a kept pair for hand runs and fact probes against Prime.
 ORACLE_IMAGE="rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
 # K3S_IMAGE is the downstream cluster the oracle imports on every boot, so
@@ -61,9 +62,6 @@ K3S_IP="${SUBNET%.0/24}.3"
 K3S_CONTAINER="${CONTAINER}-k3s"
 DOWNSTREAM_NAME="downstream"
 DOWNSTREAM_ID=""
-# The Prime oracle is boot-and-smoke only (no goldens), so it imports no
-# downstream: the extra boot time and failure mode would guard nothing.
-downstream_wanted() { [ "${E2E_REAL_PRIME:-}" != "1" ]; }
 # Dial where the port is actually published: a LAN bind publishes ONLY on
 # that address (loopback /ping may still answer through Docker Desktop's
 # userspace proxy, which makes a loopback BASE_URL pass the waits and then
@@ -393,10 +391,7 @@ rebuild_downstream() {
 # write_state records what a kept run needs to reuse both containers.
 write_state() {
   cid="$(docker inspect --format '{{.Id}}' "${CONTAINER}")"
-  k3s_cid=""
-  if downstream_wanted; then
-    k3s_cid="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}")"
-  fi
+  k3s_cid="$(docker inspect --format '{{.Id}}' "${K3S_CONTAINER}")"
   (
     umask 177
     python3 -c 'import json,sys; json.dump({"containerId":sys.argv[1],"adminToken":sys.argv[2],"oracleImage":sys.argv[3],"k3sContainerId":sys.argv[4],"k3sImage":sys.argv[5],"downstream":sys.argv[6]},open(sys.argv[7],"w"))' \
@@ -407,9 +402,7 @@ write_state() {
 if [ "${E2E_REAL_KEEP:-}" = "1" ] && reuse_state; then
   require_disk
   echo "==> reusing healthy kept container"
-  if downstream_wanted && ! reuse_downstream; then
-    rebuild_downstream
-  fi
+  reuse_downstream || rebuild_downstream
   # A kept container was not necessarily primed for THIS run's SAN list -
   # the knob may appear (or change) between runs against the same
   # container. Priming is idempotent (dynamiclistener adds a SAN once),
@@ -471,11 +464,9 @@ JSON
 {"description":"e2e-fid oracle"}
 JSON
 )"
-  if downstream_wanted; then
-    prime_ip_san
-    boot_k3s
-    import_downstream
-  fi
+  prime_ip_san
+  boot_k3s
+  import_downstream
   [ "${E2E_REAL_KEEP:-}" != "1" ] || write_state
 fi
 
@@ -488,7 +479,9 @@ export E2E_REAL_DOWNSTREAM="${DOWNSTREAM_ID}"
 
 if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
   # No goldens for the Prime oracle: golden verification runs only against
-  # the community pin. This is boot+bootstrap verification only.
+  # the community pin. This is boot, bootstrap, and downstream-proxy
+  # verification; the kept pair then serves hand runs and fact probes
+  # against Prime with the same downstream shape as the community pair.
   echo "==> prime oracle boot smoke"
   # -f: a 4xx/5xx on the unauthenticated version endpoint must fail the
   # smoke, not print an error body and fall through to the token check.
@@ -498,6 +491,9 @@ if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
   code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
     -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/v3/users?me=true")"
   [ "${code}" = "200" ] || { echo "error: admin token smoke check failed (http ${code})" >&2; exit 1; }
+  code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/k8s/clusters/${DOWNSTREAM_ID}/version")"
+  [ "${code}" = "200" ] || { echo "error: downstream proxy smoke check failed (http ${code})" >&2; exit 1; }
   echo "==> prime oracle bootstrap smoke passed"
 else
   echo "==> running e2e_real suite${UPDATE_FLAG:+ (record mode)}"
