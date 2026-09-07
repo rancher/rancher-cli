@@ -101,7 +101,8 @@ func TestRunFanOutTerminalAbandonsQueuedMembers(t *testing.T) {
 
 // TestRunFanOutNoMemberStartsAfterCancellation asserts, with two workers,
 // that a member still queued when the first member turned terminal is
-// never started: the second worker is held inside fn until the
+// never started. A rendezvous holds a inside fn until b has started, so b
+// is provably in flight when a turns terminal; b then observes the
 // cancellation, and the third key never reaches fn.
 func TestRunFanOutNoMemberStartsAfterCancellation(t *testing.T) {
 	old := fanOutLimit
@@ -109,14 +110,19 @@ func TestRunFanOutNoMemberStartsAfterCancellation(t *testing.T) {
 	t.Cleanup(func() { fanOutLimit = old })
 	var mu sync.Mutex
 	started := map[string]bool{}
+	bStarted := make(chan struct{})
 	_, terminal := runFanOut(t.Context(), []string{"a", "b", "c"}, func(ctx context.Context, k string) (string, reviewResult) {
 		mu.Lock()
 		started[k] = true
 		mu.Unlock()
-		if k == "a" {
+		switch k {
+		case "a":
+			<-bStarted
 			return k, reviewResult{kind: outcomeTerminal, err: clierr.New(clierr.CodeGeneric, "endpoint gone")}
+		case "b":
+			close(bStarted)
 		}
-		<-ctx.Done() // b is in flight when a turns terminal; it observes the cancellation
+		<-ctx.Done()
 		return k, reviewResult{kind: outcomeTerminal, err: clierr.New(clierr.CodeGeneric, ctx.Err().Error())}
 	})
 	require.NotNil(t, terminal)
@@ -124,6 +130,7 @@ func TestRunFanOutNoMemberStartsAfterCancellation(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.True(t, started["a"])
+	assert.True(t, started["b"], "the second worker is in flight when the first turns terminal")
 	assert.False(t, started["c"], "a queued member never starts after the cancellation")
 }
 
