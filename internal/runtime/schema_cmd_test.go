@@ -577,6 +577,17 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 
+	t.Run("get before a command name explains the two forms and hints the command view", func(t *testing.T) {
+		t.Parallel()
+		_, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "get", "pod"}}, nil)
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		assert.Contains(t, ce.Message, `"get get pod" is not a command`)
+		assert.Contains(t, ce.Message, "rancher schema <kind> the kind view")
+		assert.Equal(t, "rancher schema get pod", ce.Hint)
+		assert.Empty(t, ce.Candidates, "the hint is the answer; no nearest-match list")
+	})
 	t.Run("multi-token miss is command-shaped: single -o name hint, no kinds noise", func(t *testing.T) {
 		t.Parallel()
 		// Exercise-11 finding 6.1: `schema get pdo` is structurally a

@@ -40,5 +40,12 @@ jsonquery one.json 'data.commands.#' ''
 exec rancher schema 'get pod' -o json
 jsonquery stdout data.name 'get pod'
 
+# "schema get <command>" is the kind-view spelling in front of a command name:
+# the error explains the two forms and hints the command view
+! exec rancher schema get auth login -o json
+jsonquery stderr data.error.code VALIDATION
+stderr 'is not a command: rancher schema <command> shows a command'
+jsonquery stderr data.error.hint 'rancher schema auth login'
+
 ! exec rancher schema get nonsense -o json
 jsonquery stderr data.error.code VALIDATION

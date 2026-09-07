@@ -425,6 +425,17 @@ const kindsArrayCmd = "rancher schema -o json"
 // (kindOnly) the selector could only ever be a kind, so the message and the
 // candidate set are restricted to kinds.
 func unknownSelection(m Manifest, want string, kindOnly bool) error {
+	// "schema get <command>" reads as a request for a command's schema
+	// through the kind-view spelling: `schema get <kind>` is the kind view,
+	// `schema <command>` the command view. When the words after "get" name a
+	// command, say so and hint the command form; the generic "unknown
+	// command" tiers below never explain the two forms.
+	if fields := strings.Fields(want); !kindOnly && len(fields) > 1 && fields[0] == "get" {
+		if rest := strings.Join(fields[1:], " "); commandNamed(m, rest) {
+			return clierr.New(clierr.CodeValidation, fmt.Sprintf("%q is not a command: rancher schema <command> shows a command (rancher schema %s), rancher schema <kind> the kind view", want, rest)).
+				WithHint("rancher schema " + rest)
+		}
+	}
 	// Three ambiguity tiers: --kind fixes the kind interpretation; a
 	// multi-token selector is command-shaped (kinds are single tokens,
 	// always) so the kind half of the dual guidance is noise; only a bare
@@ -459,6 +470,16 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 		cands[i] = clierr.Candidate{ID: name, Name: name}
 	}
 	return ce.WithCandidates(cands)
+}
+
+// commandNamed reports whether name is exactly a command's name.
+func commandNamed(m Manifest, name string) bool {
+	for _, c := range m.Commands {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // nearestSelectors finds SE-4's nearest matches: a case-insensitive substring
