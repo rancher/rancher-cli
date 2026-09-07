@@ -1011,7 +1011,7 @@ namespace RancherCliInstall
         Write-Note "next steps:"
         Write-Note "  rancher completion pwsh | Out-String | Invoke-Expression   # shell completion"
         Write-Note "  rancher skill install                                     # agent harnesses"
-        Write-Note "  rancher login <server-url>                                # authenticate"
+        Write-Note "  rancher auth login <name> --url <url>                     # authenticate"
     }
 
     try {

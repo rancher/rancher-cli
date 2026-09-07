@@ -777,7 +777,7 @@ epilogue() {
   note "next steps:"
   note "  rancher completion <bash|zsh|fish|pwsh>   # shell completion"
   note "  rancher skill install                     # agent harnesses"
-  note "  rancher login <server-url>                # authenticate"
+  note "  rancher auth login <name> --url <url>     # authenticate"
 }
 
 main() {
