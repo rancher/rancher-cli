@@ -483,18 +483,21 @@ func nonResourceTable(b *strings.Builder, indent string, groups []namespaceRows,
 // identical set are listed once under "also in". Each block is one row
 // per API group and resource, then the non-resource URLs when any.
 func listText(out listResult, implicitDefault bool) string {
-	who := out.Subject.Name
+	// The subject name, the note, namespace names, and issue messages are
+	// the server's text: each passes the terminal-safety boundary at
+	// insertion, as the cells do inside tableLines.
+	who := output.Printable(out.Subject.Name)
 	if out.Identity == IdentityCaller {
 		who = "you"
 	}
 	var b strings.Builder
 	if out.Note != "" {
-		fmt.Fprintf(&b, "note: %s\n\n", out.Note)
+		fmt.Fprintf(&b, "note: %s\n\n", output.Printable(out.Note))
 	}
 	printed := map[string]bool{}
 	for i, ns := range out.Namespaces {
 		if !ns.Evaluated {
-			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n\n", ns.Namespace, ns.Issue.Code, ns.Issue.Message)
+			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n\n", output.Printable(ns.Namespace), ns.Issue.Code, output.Printable(ns.Issue.Message))
 			continue
 		}
 		key := listGroupKey(ns)
@@ -508,16 +511,16 @@ func listText(out listResult, implicitDefault bool) string {
 				also = append(also, other.Namespace)
 			}
 		}
-		fmt.Fprintf(&b, "rules for %s in namespace %s on %s", who, ns.Namespace, out.Scope.Cluster)
+		fmt.Fprintf(&b, "rules for %s in namespace %s on %s", who, output.Printable(ns.Namespace), output.Printable(out.Scope.Cluster))
 		if implicitDefault {
 			b.WriteString(", including every cluster-wide rule")
 		}
 		if len(also) > 0 {
-			fmt.Fprintf(&b, " (also in: %s)", strings.Join(also, ", "))
+			fmt.Fprintf(&b, " (also in: %s)", output.Printable(strings.Join(also, ", ")))
 		}
 		b.WriteString("\n")
 		if ns.Incomplete {
-			fmt.Fprintf(&b, "  incomplete: the server could not enumerate every rule (%s)\n", ns.EvaluationError)
+			fmt.Fprintf(&b, "  incomplete: the server could not enumerate every rule (%s)\n", output.Printable(ns.EvaluationError))
 		}
 		resourceTable(&b, "  ", []namespaceRows{{namespace: ns.Namespace, rows: resourceRows(ns.ResourceRules)}}, false)
 		if len(ns.NonResourceRules) > 0 {
@@ -554,16 +557,16 @@ func listGroupKey(ns listNamespace) string {
 func listWideText(out listResult) string {
 	var b strings.Builder
 	if out.Note != "" {
-		fmt.Fprintf(&b, "note: %s\n\n", out.Note)
+		fmt.Fprintf(&b, "note: %s\n\n", output.Printable(out.Note))
 	}
 	var resources, nonResources []namespaceRows
 	for _, ns := range out.Namespaces {
 		switch {
 		case !ns.Evaluated:
-			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n", ns.Namespace, ns.Issue.Code, ns.Issue.Message)
+			fmt.Fprintf(&b, "namespace %s: not evaluated (%s: %s)\n", output.Printable(ns.Namespace), ns.Issue.Code, output.Printable(ns.Issue.Message))
 			continue
 		case ns.Incomplete:
-			fmt.Fprintf(&b, "namespace %s: incomplete, the server could not enumerate every rule (%s)\n", ns.Namespace, ns.EvaluationError)
+			fmt.Fprintf(&b, "namespace %s: incomplete, the server could not enumerate every rule (%s)\n", output.Printable(ns.Namespace), output.Printable(ns.EvaluationError))
 		}
 		resources = append(resources, namespaceRows{namespace: ns.Namespace, rows: resourceRows(ns.ResourceRules)})
 		if len(ns.NonResourceRules) > 0 {

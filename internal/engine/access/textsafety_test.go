@@ -31,6 +31,33 @@ func TestCanTextStripsControlCharacters(t *testing.T) {
 	assert.Contains(t, out, "  evaluation error: ex\n")
 }
 
+// TestListTextStripsControlCharacters asserts the note, the subject name,
+// the namespace, and an unevaluated namespace's issue message render
+// without control characters in both the default and the wide text view.
+func TestListTextStripsControlCharacters(t *testing.T) {
+	t.Parallel()
+	out := listResult{
+		Subject: AccessSubject{Name: "u-1\x1b[2J"}, Scope: Scope{Cluster: "local"},
+		Note: "n\nforged",
+		Namespaces: []listNamespace{
+			{Namespace: "ns-1\nFAKE", Evaluated: false, Issue: &Issue{Code: "Forbidden", Message: "denied: a\x1b[2Jb"}},
+			{Namespace: "ns-2", Evaluated: true, Incomplete: true, EvaluationError: "e\rx"},
+		},
+		ResultSource: SourceAuthorizer, Identity: IdentitySAR,
+	}
+	for name, text := range map[string]string{"default": listText(out, false), "wide": listWideText(out)} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.NotContains(t, text, "\x1b")
+			assert.NotContains(t, text, "\r")
+			assert.Contains(t, text, "note: nforged\n")
+			assert.Contains(t, text, "namespace ns-1FAKE: not evaluated (Forbidden: denied: a[2Jb)")
+			assert.Contains(t, text, "every rule (ex)")
+		})
+	}
+	assert.Contains(t, listText(out, false), "rules for u-1[2J in namespace ns-2 on local")
+}
+
 // TestWhoCanTextStripsControlCharacters asserts the note and the known
 // members line render without control characters; the table cells go
 // through tableLines.
