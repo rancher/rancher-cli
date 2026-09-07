@@ -556,7 +556,15 @@ rendering error instead of silently dumping JSON, so use `-o json` for the
 versioned envelope. Some commands (e.g. `logs`) render a plain-text default
 under `table`/default format instead, with warnings on stderr as
 `# warning: <w>` lines; `-o json`/`yaml`/`template=`/`name` still see the
-normal envelope over `data`. Structured output (json, yaml, and template)
+normal envelope over `data`. Every text format - `table`, `wide`, `name`,
+the text of composites and `access`, the `# warning:` and `error (...)`
+lines on stderr, and the dry-run preview - strips control characters
+(including ANSI escape introducers) and Unicode format characters from
+server-sourced text before it reaches the terminal, so a description or
+condition message cannot forge a row or drive the terminal. Three outputs
+are verbatim by design and are untrusted content when echoed: `json`,
+`yaml`, and `template=` (the bytes are the data), and `logs` (container
+output whose newlines are its structure). Structured output (json, yaml, and template)
 omits `metadata.managedFields` (kubectl-parity; no opt-out flag - read the
 raw API for
 [server-side-apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/)
