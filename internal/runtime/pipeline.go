@@ -590,7 +590,7 @@ func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s sty
 			silent[warn]--
 			continue
 		}
-		_, _ = fmt.Fprintf(w, "%s %s\n", s.Yellow("# warning:"), warn)
+		_, _ = fmt.Fprintf(w, "%s %s\n", s.Yellow("# warning:"), output.Printable(warn))
 	}
 }
 
@@ -784,7 +784,9 @@ func dryRunText(eff safety.Effect) string {
 	for _, d := range eff.Diff {
 		// d.Path is an RFC 6901 JSON Pointer ("~1" for "/", "~0" for "~"),
 		// printed verbatim: it is valid as-is for a JSON Patch op's "path".
-		lines = append(lines, fmt.Sprintf("%s: %v -> %v", d.Path, d.From, d.To))
+		// The values are the server's dry-run answer: one line each, with
+		// control characters stripped so a value cannot forge a line.
+		lines = append(lines, output.Printable(fmt.Sprintf("%s: %v -> %v", d.Path, d.From, d.To)))
 	}
 	gate := "dry run - re-run with --apply"
 	if eff.Destructive {
@@ -874,20 +876,25 @@ func errorText(ce *clierr.Error, s style.Style) string {
 		retry = ", retryable"
 	}
 	prefix := fmt.Sprintf("error (%s%s):", ce.Code, retry)
-	header := s.Red(prefix) + " " + ce.Message
+	// Message, hint, candidates, and details may all carry server text
+	// (an admission message, a display name), so each line passes the
+	// terminal-safety boundary before it reaches stderr.
+	header := s.Red(prefix) + " " + output.Printable(ce.Message)
 
 	var lines []string
 	if ce.Hint != "" {
-		lines = append(lines, s.Cyan("hint:")+" "+ce.Hint)
+		lines = append(lines, s.Cyan("hint:")+" "+output.Printable(ce.Hint))
 	}
 	if len(ce.Candidates) > 0 {
 		names := make([]string, len(ce.Candidates))
 		for i, c := range ce.Candidates {
-			names[i] = fmt.Sprintf("%s (%s)", c.Name, c.ID)
+			names[i] = fmt.Sprintf("%s (%s)", output.Printable(c.Name), output.Printable(c.ID))
 		}
 		lines = append(lines, "candidates: "+strings.Join(names, ", "))
 	}
-	lines = append(lines, detailsTextLines(ce.Details)...)
+	for _, l := range detailsTextLines(ce.Details) {
+		lines = append(lines, output.Printable(l))
+	}
 	return TextLines(header, lines...).Text
 }
 
