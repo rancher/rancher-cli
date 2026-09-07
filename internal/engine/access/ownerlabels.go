@@ -83,6 +83,21 @@ func classicOwners(labels map[string]string, clusterID string) []ownerRef {
 	return slices.Compact(refs)
 }
 
+// classicReferenced reports whether the labels carry any classic-grammar
+// back-reference at all, parsable or not: the rtbOwnerLabel key, or a key
+// whose value is ownerUserValue or membershipOwnerValue.
+func classicReferenced(labels map[string]string) bool {
+	if _, ok := labels[rtbOwnerLabel]; ok {
+		return true
+	}
+	for _, v := range labels {
+		if v == ownerUserValue || v == membershipOwnerValue {
+			return true
+		}
+	}
+	return false
+}
+
 // aggregationKeys reads every aggregation-grammar back-reference on a
 // binding's labels. Without the aggregation marker the same-shaped keys
 // are not this grammar and nothing is returned. Sorted by kind then key.
