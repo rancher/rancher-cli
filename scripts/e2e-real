@@ -137,6 +137,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# require_disk refuses to boot when the filesystem holding Docker's data
+# has less than 15 GiB free. k3s (the oracle's embedded one and the
+# downstream) hard-evicts pods once that filesystem has under 10% free,
+# and a boot uses about 6 GiB; a run that starts too close to the line
+# fails minutes later with webhook endpoints gone and pods evicted, which
+# reads like a server bug. Docker Desktop keeps its data in a VM, so on
+# a host where the reported root does not exist the check uses /.
+require_disk() {
+  root="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)"
+  [ -n "${root}" ] && [ -d "${root}" ] || root=/
+  avail_kb="$(df -Pk "${root}" | awk 'NR==2 {print $4}')"
+  if [ "${avail_kb}" -lt $((15 * 1024 * 1024)) ]; then
+    echo "error: $((avail_kb / 1024 / 1024)) GiB free on ${root}; the oracle needs 15 GiB or k3s evicts pods under disk pressure mid-run" >&2
+    exit 1
+  fi
+}
+
 fetch_ca() {
   # /cacerts serves the signing CA, which is stable for the container's
   # life. Scraping the served chain is not equivalent: the oracle serves
@@ -388,6 +405,7 @@ write_state() {
 }
 
 if [ "${E2E_REAL_KEEP:-}" = "1" ] && reuse_state; then
+  require_disk
   echo "==> reusing healthy kept container"
   if downstream_wanted && ! reuse_downstream; then
     rebuild_downstream
@@ -408,6 +426,7 @@ else
   # pass it with --env-file, and remove it as soon as docker run returns.
   ENV_FILE="${STATE_ROOT}/bootstrap.env"
   ( umask 177; printf 'CATTLE_BOOTSTRAP_PASSWORD=%s\n' "${BOOTSTRAP_PW}" >"${ENV_FILE}" )
+  require_disk
   echo "==> booting ${ORACLE_IMAGE}"
   # --privileged is required: the image runs an embedded k3s (containerd, CNI,
   # kernel mounts) that will not start unprivileged. It is an accepted tradeoff
