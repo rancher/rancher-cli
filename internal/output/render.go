@@ -234,13 +234,18 @@ func (h *headerBoldWriter) flush() error {
 	return err
 }
 
+// writePlainTable is the one place table cells reach the writer, so it is
+// where every header and cell passes the terminal-safety boundary
+// (Printable): a server-sourced value with an embedded newline or escape
+// sequence cannot forge a row or drive the terminal, whatever Tabular
+// produced it.
 func writePlainTable(w io.Writer, cols []string, rows [][]string) error {
 	tw := tabwriter.NewWriter(w, 0, 8, 3, ' ', 0)
 	for i, c := range cols {
 		if i > 0 {
 			_, _ = fmt.Fprint(tw, "\t")
 		}
-		_, _ = fmt.Fprint(tw, c)
+		_, _ = fmt.Fprint(tw, Printable(c))
 	}
 	_, _ = fmt.Fprintln(tw)
 	for _, row := range rows {
@@ -248,7 +253,7 @@ func writePlainTable(w io.Writer, cols []string, rows [][]string) error {
 			if i > 0 {
 				_, _ = fmt.Fprint(tw, "\t")
 			}
-			_, _ = fmt.Fprint(tw, cell)
+			_, _ = fmt.Fprint(tw, Printable(cell))
 		}
 		_, _ = fmt.Fprintln(tw)
 	}
@@ -273,7 +278,7 @@ func renderName(w io.Writer, env *Envelope) error {
 	}
 	for _, row := range t.Rows() {
 		if nameIdx < len(row) {
-			_, _ = fmt.Fprintln(w, row[nameIdx])
+			_, _ = fmt.Fprintln(w, Printable(row[nameIdx]))
 		}
 	}
 	return nil
