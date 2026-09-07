@@ -72,8 +72,12 @@ Two gotchas:
 
 - `docs/` is gitignored - never stage anything under it.
 - **Commits:** sentence-style subject, no Conventional-Commits prefix; a body that
-  states the prior behavior, then the change. No Co-Authored-By attribution.
-  History is linear - no merge commits.
+  states the prior behavior, then the change. History is linear - no merge
+  commits.
+- **No attribution.** Nothing names an assistant, model, or automated tool as
+  an author or contributor: not in source, docs, reviews, generated artifacts,
+  or commit messages (no Co-Authored-By or similar trailers). Dependency
+  bots (Renovate, Dependabot) are the exception: their trailers stay.
 - **Tests:** testify; a real server (`httptest`) or dependency injection over
   mocks; any test touching keyring code calls `keyring.MockInit()` first. Never
   string-match rendered JSON - decode the envelope and assert on fields.
