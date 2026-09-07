@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"golang.org/x/sync/errgroup"
@@ -103,13 +104,13 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	case agentDisconnected:
 		w := "cluster agent is not connected"
 		if res.Agent.Message != "" {
-			w += ": " + engine.Printable(res.Agent.Message)
+			w += ": " + output.Printable(res.Agent.Message)
 		}
 		warnings = append(warnings, w)
 	case agentConnectedNotReady, agentNotReady:
 		w := "cluster is not ready"
 		if res.Agent.Message != "" {
-			w += ": " + engine.Printable(res.Agent.Message)
+			w += ": " + output.Printable(res.Agent.Message)
 		}
 		warnings = append(warnings, w)
 	}
@@ -763,7 +764,7 @@ func renderAgentLine(b *strings.Builder, ag *agentStatus) {
 	}
 	msg := ""
 	if ag.Message != "" {
-		msg = " - " + truncateRunes(engine.Printable(ag.Message), conditionMessageLimit)
+		msg = " - " + truncateRunes(output.Printable(ag.Message), conditionMessageLimit)
 	}
 	switch ag.verdict() {
 	case agentDisconnected:
@@ -835,9 +836,9 @@ func renderMembersSection(b *strings.Builder, r clusterResult) {
 				suffix = " [system]"
 			}
 			if m.DisplayName != "" {
-				fmt.Fprintf(b, "  %s (%s)  %s%s\n", engine.Printable(m.DisplayName), engine.Printable(m.Principal), engine.Printable(m.Role), suffix)
+				fmt.Fprintf(b, "  %s (%s)  %s%s\n", output.Printable(m.DisplayName), output.Printable(m.Principal), output.Printable(m.Role), suffix)
 			} else {
-				fmt.Fprintf(b, "  %s  %s%s\n", engine.Printable(m.Principal), engine.Printable(m.Role), suffix)
+				fmt.Fprintf(b, "  %s  %s%s\n", output.Printable(m.Principal), output.Printable(m.Role), suffix)
 			}
 		}
 	}
@@ -861,9 +862,9 @@ func renderMachinesSection(b *strings.Builder, r clusterResult) {
 		for _, m := range *r.Machines {
 			// Name and phase are server-sourced strings too - same
 			// sanitizer as the error message and the members section.
-			fmt.Fprintf(b, "  %s  %s\n", engine.Printable(m.Name), engine.Printable(m.Phase))
+			fmt.Fprintf(b, "  %s  %s\n", output.Printable(m.Name), output.Printable(m.Phase))
 			if m.Error != "" {
-				fmt.Fprintf(b, "    %s\n", engine.Printable(m.Error))
+				fmt.Fprintf(b, "    %s\n", output.Printable(m.Error))
 			}
 		}
 	}

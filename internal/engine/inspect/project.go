@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -316,9 +317,9 @@ func renderProjectText(r projectResult) string {
 				suffix = " [system]"
 			}
 			if m.DisplayName != "" {
-				fmt.Fprintf(&b, "  %s (%s)  %s%s\n", engine.Printable(m.DisplayName), engine.Printable(m.Principal), engine.Printable(m.Role), suffix)
+				fmt.Fprintf(&b, "  %s (%s)  %s%s\n", output.Printable(m.DisplayName), output.Printable(m.Principal), output.Printable(m.Role), suffix)
 			} else {
-				fmt.Fprintf(&b, "  %s  %s%s\n", engine.Printable(m.Principal), engine.Printable(m.Role), suffix)
+				fmt.Fprintf(&b, "  %s  %s%s\n", output.Printable(m.Principal), output.Printable(m.Role), suffix)
 			}
 		}
 	}

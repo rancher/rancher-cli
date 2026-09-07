@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -547,13 +548,13 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 		header += " [disabled]"
 	}
 	fmt.Fprintf(b, "%s\n  id: %s\n  username: %s\n  displayName: %s\n",
-		header, u.ID, engine.Printable(u.Username), engine.Printable(u.DisplayName))
+		header, u.ID, output.Printable(u.Username), output.Printable(u.DisplayName))
 	// Text always states the effective value: an absent wire field means
 	// enabled in Rancher, and the card should say so rather than stay
 	// silent. The wire keeps the raw presence/absence tri-state.
 	fmt.Fprintf(b, "  enabled: %t\n", u.Enabled == nil || *u.Enabled)
 	fmt.Fprintf(b, "  principals: %s\n  created: %s\n",
-		engine.Printable(strings.Join(u.Principals, ", ")), u.Created)
+		output.Printable(strings.Join(u.Principals, ", ")), u.Created)
 	switch {
 	case u.Groups == nil:
 		// The UserAttribute read degraded: lastLogin is unknown, never
@@ -565,10 +566,10 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 		fmt.Fprintf(b, "  lastLogin: %s\n", u.LastLogin)
 	}
 	if u.DisableAfter != "" {
-		fmt.Fprintf(b, "  disableAfter: %s\n", engine.Printable(u.DisableAfter))
+		fmt.Fprintf(b, "  disableAfter: %s\n", output.Printable(u.DisableAfter))
 	}
 	if u.DeleteAfter != "" {
-		fmt.Fprintf(b, "  deleteAfter: %s\n", engine.Printable(u.DeleteAfter))
+		fmt.Fprintf(b, "  deleteAfter: %s\n", output.Printable(u.DeleteAfter))
 	}
 	for _, provider := range slices.Sorted(maps.Keys(u.Extra)) {
 		inner := u.Extra[provider]
@@ -576,7 +577,7 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 		for _, key := range slices.Sorted(maps.Keys(inner)) {
 			pairs = append(pairs, fmt.Sprintf("%s=%s", key, strings.Join(inner[key], ",")))
 		}
-		fmt.Fprintf(b, "  extra[%s]: %s\n", engine.Printable(provider), engine.Printable(strings.Join(pairs, "  ")))
+		fmt.Fprintf(b, "  extra[%s]: %s\n", output.Printable(provider), output.Printable(strings.Join(pairs, "  ")))
 	}
 }
 
@@ -591,14 +592,14 @@ func renderUserGroups(b *strings.Builder, u userIdentity) {
 	default:
 		for _, g := range *u.Groups {
 			if g.DisplayName != "" {
-				fmt.Fprintf(b, "  %s (%s)  [%s]\n", engine.Printable(g.DisplayName), engine.Printable(g.Principal), engine.Printable(g.Provider))
+				fmt.Fprintf(b, "  %s (%s)  [%s]\n", output.Printable(g.DisplayName), output.Printable(g.Principal), output.Printable(g.Provider))
 			} else {
-				fmt.Fprintf(b, "  %s  [%s]\n", engine.Printable(g.Principal), engine.Printable(g.Provider))
+				fmt.Fprintf(b, "  %s  [%s]\n", output.Printable(g.Principal), output.Printable(g.Provider))
 			}
 		}
 	}
 	if u.LastRefresh != "" {
-		fmt.Fprintf(b, "  lastRefresh: %s\n", engine.Printable(u.LastRefresh))
+		fmt.Fprintf(b, "  lastRefresh: %s\n", output.Printable(u.LastRefresh))
 	}
 	if u.NeedsRefresh != nil {
 		fmt.Fprintf(b, "  needsRefresh: %t\n", *u.NeedsRefresh)
@@ -653,9 +654,9 @@ func renderRoles(b *strings.Builder, r userResult, own map[string]bool) {
 // id is never replaced by a display name, only accompanied by it.
 func scopeLabel(id, displayName string) string {
 	if displayName == "" {
-		return engine.Printable(id)
+		return output.Printable(id)
 	}
-	return fmt.Sprintf("%s (%s)", engine.Printable(displayName), engine.Printable(id))
+	return fmt.Sprintf("%s (%s)", output.Printable(displayName), output.Printable(id))
 }
 
 // renderRoleRow prints one memberRow. The parenthetical names the holding
@@ -669,8 +670,8 @@ func renderRoleRow(b *strings.Builder, row rbac.MemberRow, own map[string]bool) 
 		suffix = " [system]"
 	}
 	if !own[row.Principal] {
-		fmt.Fprintf(b, "    %s  (via %s)  [%s]%s\n", engine.Printable(row.Role), engine.Printable(row.Principal), engine.Printable(row.Binding), suffix)
+		fmt.Fprintf(b, "    %s  (via %s)  [%s]%s\n", output.Printable(row.Role), output.Printable(row.Principal), output.Printable(row.Binding), suffix)
 		return
 	}
-	fmt.Fprintf(b, "    %s  [%s]%s\n", engine.Printable(row.Role), engine.Printable(row.Binding), suffix)
+	fmt.Fprintf(b, "    %s  [%s]%s\n", output.Printable(row.Role), output.Printable(row.Binding), suffix)
 }

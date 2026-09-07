@@ -8,6 +8,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/output"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -119,7 +120,7 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 						if msg == "" {
 							msg = "condition Stalled=True"
 						}
-						return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, engine.Printable(msg)))
+						return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("%s stalled: %s", name, output.Printable(msg)))
 					}
 				}
 				if waitSatisfied(obj, cond) {
@@ -219,7 +220,7 @@ func summarizeState(obj *unstructured.Unstructured, cond waitCond) string {
 	case "condition":
 		if status, message, ok := conditionStatus(obj.Object, cond.name); ok {
 			if message != "" {
-				return fmt.Sprintf("%s=%s (%s)", cond.name, status, engine.Printable(message))
+				return fmt.Sprintf("%s=%s (%s)", cond.name, status, output.Printable(message))
 			}
 			return fmt.Sprintf("%s=%s", cond.name, status)
 		}
