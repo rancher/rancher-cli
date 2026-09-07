@@ -43,6 +43,16 @@ func seedRootConfig(t *testing.T, srv *httptest.Server) *clientFactory {
 	return newClientFactory(dir, store)
 }
 
+// abortAfterDone models a server that never answers: it waits for the
+// client to give up on the request, then aborts the connection instead of
+// returning. A handler that returns sends an empty 200, and a client whose
+// deadline or cancellation lands in the same instant can decode that body
+// instead of seeing its own error.
+func abortAfterDone(r *http.Request) {
+	<-r.Context().Done()
+	panic(http.ErrAbortHandler)
+}
+
 func TestRootClientSendsBearerAndCA(t *testing.T) {
 	var gotAuth, gotPath string
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +181,7 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 				// Abort the caller mid-LIST; the client tears the request
 				// down, which unblocks the handler via its request context.
 				cancel()
-				<-r.Context().Done()
+				abortAfterDone(r)
 			case regPath:
 				regRequests.Add(1)
 				http.NotFound(w, r)
@@ -207,7 +217,7 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 				_, _ = w.Write([]byte(provListBody))
 			case regPath:
 				cancel()
-				<-r.Context().Done()
+				abortAfterDone(r)
 			default:
 				http.NotFound(w, r)
 			}
@@ -256,7 +266,7 @@ func TestInspectClusterRootTimeoutDegradesRegistration(t *testing.T) {
 			// Outlast the root client's (shrunk) timeout; the client aborts
 			// the request at the deadline, which unblocks the handler via
 			// the server-side request context.
-			<-r.Context().Done()
+			abortAfterDone(r)
 		case crtbListPath:
 			// Return an empty crtb list so members lookup succeeds silently
 			// and does not add a second warning to the registration-timeout case.

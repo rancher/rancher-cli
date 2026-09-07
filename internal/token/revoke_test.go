@@ -129,9 +129,11 @@ func TestRevokeCreatedUsesTheCredentialAsBearerAndBoundsItself(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "slow-") {
 			// Records nothing: this handler never answers, so a later
-			// request's write to gotPath would race it.
+			// request's write to gotPath would race it. It aborts the
+			// connection rather than returning, so the caller can never
+			// decode an empty 200 that raced its own deadline.
 			<-r.Context().Done()
-			return
+			panic(http.ErrAbortHandler)
 		}
 		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
 		w.WriteHeader(http.StatusOK)

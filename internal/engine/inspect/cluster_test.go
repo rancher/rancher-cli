@@ -480,6 +480,11 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 			// which unblocks the handler via the server-side request context.
 			cancel()
 			<-r.Context().Done()
+			// Abort the connection instead of returning: a handler that
+			// returns sends an empty 200, and a client whose cancellation
+			// lands in the same instant can decode that body instead of
+			// seeing its own error.
+			panic(http.ErrAbortHandler)
 		default:
 			http.NotFound(w, r)
 		}
