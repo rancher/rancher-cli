@@ -1,6 +1,14 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
+# without --password-stdin the error names the requirement and carries no
+# hint: the password is a value the CLI does not have, so nothing is safe to
+# paste.
+! exec rancher create user e2e-new-user -o json
+stderr '"code": "VALIDATION"'
+stderr 'password-stdin is required'
+! stderr '"hint"'
+
 # user is a Sensitive kind: bare --apply is refused before anything commits.
 stdin password.txt
 ! exec rancher create user e2e-new-user --password-stdin --apply

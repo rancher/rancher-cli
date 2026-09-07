@@ -27,10 +27,6 @@ import (
 const unresolved = "￼"
 
 var (
-	// placeholderRE does not flag internal/engine/password.go's hint, which
-	// carries a literal "rancher ..." ellipsis as a deliberate stand-in for a
-	// subcommand this shared validator cannot know (it backs several create
-	// commands): an ellipsis is not a <bracket>, so it never matches here.
 	placeholderRE     = regexp.MustCompile(`<[^<>\s]+>`)
 	optionalBracketRE = regexp.MustCompile(`\[[^\[\]]+\]`)
 )

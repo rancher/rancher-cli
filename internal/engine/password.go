@@ -12,13 +12,15 @@ import (
 // shared input path for every command in the user-password workflow: there
 // is no --password flag, ever, on any of them - a flag value lands in shell
 // history and process listings. The flag itself must be set (a VALIDATION
-// error otherwise); its value is always the invocation's whole stdin with at
-// most one trailing newline (or CRLF) trimmed - never other whitespace,
-// which a password may legitimately contain.
+// error otherwise, with no hint: the password is a value the CLI does not
+// have, so no command is safe to paste); its value is always the
+// invocation's whole stdin with at most one trailing newline (or CRLF)
+// trimmed - never other whitespace, which a password may legitimately
+// contain.
 func ReadPasswordStdin(src FileSource, in runtime.Input) (string, error) {
 	if !in.Bool("password-stdin") {
-		return "", clierr.New(clierr.CodeValidation, "--password-stdin is required").
-			WithHint(`pass --password-stdin and pipe the password on stdin, e.g. echo -n "$PASSWORD" | rancher ... --password-stdin`)
+		return "", clierr.New(clierr.CodeValidation,
+			"--password-stdin is required: pipe the password on stdin and pass --password-stdin (there is no --password flag)")
 	}
 	raw, err := src.Read("-")
 	if err != nil {

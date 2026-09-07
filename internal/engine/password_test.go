@@ -45,6 +45,21 @@ func TestReadPasswordStdinTrimsExactlyOneLineEnding(t *testing.T) {
 	}
 }
 
+// TestReadPasswordStdinMissingFlagHasNoHint asserts that omitting
+// --password-stdin is a VALIDATION error whose message names the
+// requirement and that carries no hint: the password is a value the CLI
+// does not have, so no paste-valid command exists.
+func TestReadPasswordStdinMissingFlagHasNoHint(t *testing.T) {
+	t.Parallel()
+	_, err := ReadPasswordStdin(stdinSrc{body: []byte("secretValue1\n")}, stdinInput{set: false})
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "--password-stdin is required")
+	assert.Empty(t, ce.Hint)
+}
+
 // TestReadPasswordStdinEmptyIsValidation asserts an empty (or
 // newline-only) stdin refuses with VALIDATION before any network call.
 func TestReadPasswordStdinEmptyIsValidation(t *testing.T) {
