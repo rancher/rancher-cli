@@ -1,0 +1,15 @@
+name: Feature request
+description: Ask for something the CLI, the agent skill, the install script, the credential helper, or the documentation should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: feature
+    attributes:
+      label: What would you like to be added?
+    validations:
+      required: true
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why is this needed?
+      description: The task you are trying to do, and how you do it today (kubectl, API, UI), if at all.
