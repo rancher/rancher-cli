@@ -7,13 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 
+	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -231,16 +234,47 @@ func nonEmpty(s, fallback string) string {
 	return s
 }
 
+// maxDiscoveryBytes bounds one aggregated discovery document; the
+// largest real clusters answer well under a megabyte. A variable so a
+// test can lower it.
+var maxDiscoveryBytes int64 = 16 << 20
+
 // ServerResources lists the preferred version of every served resource.
-// A partial discovery answer (one aggregated API down) is returned as the
-// partial list without error, as kubectl does; the missing group's
-// resources are then unknown to resolution.
+// It asks for aggregated discovery first: two requests (/api, /apis)
+// bound to ctx. A server whose answer to either root is not a 200
+// APIGroupDiscoveryList is read through client-go's per-group discovery
+// instead (Rancher's local cluster does not serve aggregated discovery
+// for /apis through the proxy: it answers 406 to this header, and a
+// legacy APIGroupList to a header that also lists plain JSON), which the
+// pinned client-go cannot cancel; ctx is checked before it starts.
+// Either way a partial answer is returned as the partial list TOGETHER
+// with an *engine.DiscoveryIncomplete naming
+// the group versions the server could not describe (a stale aggregated
+// entry, a 503 discovery document), so a caller can tell a complete
+// inventory from a survivor.
 func (r *dynamicClient) ServerResources(ctx context.Context) ([]engine.APIResource, error) {
-	lists, err := r.disc.ServerPreferredResources()
-	if err != nil && len(lists) == 0 {
+	if err := ctx.Err(); err != nil {
 		return nil, mapErr(err)
 	}
-	var out []engine.APIResource
+	if out, failed, ok := r.aggregatedResources(ctx); ok {
+		return out, engine.ErrDiscoveryIncompleteFor(failed)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, mapErr(err)
+	}
+	lists, err := r.disc.ServerPreferredResources()
+	failed := map[schema.GroupVersion]error{}
+	if err != nil {
+		// A group-discovery failure is a partial answer even when every
+		// group document failed: the failed set is the fact the resolver
+		// needs, and an empty list with it is still not "unknown resource".
+		gdf, partial := errors.AsType[*discovery.ErrGroupDiscoveryFailed](err)
+		if !partial {
+			return nil, mapErr(err)
+		}
+		maps.Copy(failed, gdf.Groups)
+	}
+	out := []engine.APIResource{}
 	for _, l := range lists {
 		gv, perr := schema.ParseGroupVersion(l.GroupVersion)
 		if perr != nil {
@@ -253,5 +287,47 @@ func (r *dynamicClient) ServerResources(ctx context.Context) ([]engine.APIResour
 			})
 		}
 	}
-	return out, nil
+	return out, engine.ErrDiscoveryIncompleteFor(failed)
+}
+
+// aggregatedResources fetches /api and /apis with the aggregated discovery
+// Accept header over the client's own HTTP client (the one carrying the
+// bearer and the redirect policy), each request bound to ctx. ok is false
+// when either root does not answer 200 with an APIGroupDiscoveryList, or a
+// request fails; the caller then decides between the legacy path and
+// giving up on a cancelled context.
+func (r *dynamicClient) aggregatedResources(ctx context.Context) ([]engine.APIResource, map[schema.GroupVersion]error, bool) {
+	if r.hc == nil || r.host == "" {
+		return nil, nil, false
+	}
+	var out []engine.APIResource
+	failed := map[schema.GroupVersion]error{}
+	for _, root := range []string{"/api", "/apis"} {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.host+root, nil)
+		if err != nil {
+			return nil, nil, false
+		}
+		req.Header.Set("Accept", engine.AggregatedDiscoveryAccept)
+		resp, err := r.hc.Do(req)
+		if err != nil {
+			return nil, nil, false
+		}
+		// One byte past the cap tells a truncated body from one that fit:
+		// a document cut at the cap could still decode and pass as a
+		// complete inventory, so an oversized answer is not aggregated
+		// discovery for our purposes.
+		body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxDiscoveryBytes+1))
+		_ = resp.Body.Close()
+		if rerr != nil || int64(len(body)) > maxDiscoveryBytes || resp.StatusCode != http.StatusOK || !engine.IsAggregatedDiscovery(resp.Header.Get("Content-Type")) {
+			return nil, nil, false
+		}
+		var doc apidiscoveryv2.APIGroupDiscoveryList
+		if json.Unmarshal(body, &doc) != nil || doc.Kind != "APIGroupDiscoveryList" {
+			return nil, nil, false
+		}
+		res, f := engine.ResourcesFromAggregated(&doc)
+		out = append(out, res...)
+		maps.Copy(failed, f)
+	}
+	return out, failed, true
 }
