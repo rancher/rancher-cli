@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -361,6 +362,15 @@ func groupLabel(g string) string {
 // is one row in order, so a caller that writes its own text between rows
 // still measures the columns over the whole table.
 func tableLines(indent string, header []string, rows [][]string) []string {
+	// Cells carry server text (resource names, subject names, display
+	// names); each passes the terminal-safety boundary before it is
+	// measured or written, so widths are computed on what is printed.
+	header = printableAll(header)
+	safe := make([][]string, len(rows))
+	for i, r := range rows {
+		safe[i] = printableAll(r)
+	}
+	rows = safe
 	widths := make([]int, len(header))
 	for i, h := range header {
 		widths[i] = utf8.RuneCountInString(h)
@@ -386,6 +396,16 @@ func tableLines(indent string, header []string, rows [][]string) []string {
 	out = append(out, line(header))
 	for _, r := range rows {
 		out = append(out, line(r))
+	}
+	return out
+}
+
+// printableAll returns cells with every entry passed through
+// output.Printable, leaving the input untouched.
+func printableAll(cells []string) []string {
+	out := make([]string, len(cells))
+	for i, c := range cells {
+		out[i] = output.Printable(c)
 	}
 	return out
 }

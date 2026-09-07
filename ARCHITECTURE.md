@@ -267,6 +267,7 @@ graph TD
     access --> projects
     access --> runtime
     access --> clierr
+    access --> output
 
     provisioning --> selfuser
 

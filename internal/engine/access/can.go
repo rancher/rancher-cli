@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -434,19 +435,22 @@ func canText(out canResult, allNamespaces bool) string {
 	verbPhrase := map[Decision]string{DecisionAllowed: "can", DecisionDenied: "cannot", DecisionUnknown: "may or may not"}[out.Decision]
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s  %s %s %s %s%s\n", out.Decision, who, verbPhrase, out.Question.Verb, target, where)
+	// The reason, note, evaluation error, namespace names, and issue
+	// messages are the server's text: each passes the terminal-safety
+	// boundary at insertion.
 	if out.Reason != "" {
-		fmt.Fprintf(&b, "  reason: %s\n", out.Reason)
+		fmt.Fprintf(&b, "  reason: %s\n", output.Printable(out.Reason))
 	}
 	if out.Note != "" {
-		fmt.Fprintf(&b, "  note: %s\n", out.Note)
+		fmt.Fprintf(&b, "  note: %s\n", output.Printable(out.Note))
 	}
 	if out.EvaluationError != "" {
-		fmt.Fprintf(&b, "  evaluation error: %s\n", out.EvaluationError)
+		fmt.Fprintf(&b, "  evaluation error: %s\n", output.Printable(out.EvaluationError))
 	}
 	for _, ns := range out.Namespaces {
-		fmt.Fprintf(&b, "  %-24s %s", ns.Namespace, ns.Decision)
+		fmt.Fprintf(&b, "  %-24s %s", output.Printable(ns.Namespace), ns.Decision)
 		if ns.Issue != nil {
-			fmt.Fprintf(&b, "  (%s: %s)", ns.Issue.Code, ns.Issue.Message)
+			fmt.Fprintf(&b, "  (%s: %s)", ns.Issue.Code, output.Printable(ns.Issue.Message))
 		}
 		b.WriteString("\n")
 	}

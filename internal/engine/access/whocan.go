@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -472,7 +473,7 @@ func whoCanText(out subjectsResult, showDenied, allNamespaces bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "who can %s %s%s\n", out.Question.Verb, target, where)
 	if out.Note != "" {
-		fmt.Fprintf(&b, "  note: %s\n", out.Note)
+		fmt.Fprintf(&b, "  note: %s\n", output.Printable(out.Note))
 	}
 	multi := out.Scope.Project != "" || out.Scope.AllNamespaces
 	var shown []subjectRow
@@ -534,7 +535,7 @@ func whoCanText(out subjectsResult, showDenied, allNamespaces bool) string {
 		for i, r := range shown {
 			b.WriteString(lines[i+1] + "\n")
 			if len(r.KnownMembers) > 0 {
-				fmt.Fprintf(&b, "  known members: %s\n", strings.Join(r.KnownMembers, ", "))
+				fmt.Fprintf(&b, "  known members: %s\n", output.Printable(strings.Join(r.KnownMembers, ", ")))
 			}
 		}
 		if fixedShown {
@@ -542,7 +543,7 @@ func whoCanText(out subjectsResult, showDenied, allNamespaces bool) string {
 		}
 	}
 	if len(groupsUnknown) > 0 {
-		fmt.Fprintf(&b, "  %d subject(s) with unknown groups could not be ruled out: %s\n", len(groupsUnknown), strings.Join(groupsUnknown, ", "))
+		fmt.Fprintf(&b, "  %d subject(s) with unknown groups could not be ruled out: %s\n", len(groupsUnknown), output.Printable(strings.Join(groupsUnknown, ", ")))
 	}
 	if hiddenDenied > 0 {
 		fmt.Fprintf(&b, "  %d denied not shown; pass --show-denied to list them\n", hiddenDenied)
