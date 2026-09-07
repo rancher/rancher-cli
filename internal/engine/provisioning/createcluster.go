@@ -352,19 +352,30 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 func stampCreatorID(ctx context.Context, client engine.ClusterClient, obj *unstructured.Unstructured) string {
 	probeResult, err := client.Create(ctx, selfuser.GVR, "", selfuser.New(), false)
 	if err != nil {
-		return stampWarningPrefix + " (" + err.Error() + "): rancher-webhook may deny the server-side dry-run; a real create may still succeed (the webhook stamps identity server-side)"
+		return stampContext(err.Error())
 	}
 	userID := selfuser.UserID(probeResult)
 	if userID == "" {
-		return stampWarningPrefix + " (identity probe returned no user id): rancher-webhook may deny the server-side dry-run; a real create may still succeed (the webhook stamps identity server-side)"
+		return stampContext("identity probe returned no user id")
 	}
 	if !validUserIDRe.MatchString(userID) {
-		return stampWarningPrefix + " (identity probe returned a malformed user id): rancher-webhook may deny the server-side dry-run; a real create may still succeed (the webhook stamps identity server-side)"
+		return stampContext("identity probe returned a malformed user id")
 	}
 	if err := unstructured.SetNestedField(obj.Object, userID, "metadata", "annotations", creatorIDAnnotation); err != nil {
-		return stampWarningPrefix + " (annotation write failed: " + err.Error() + "): rancher-webhook may deny the server-side dry-run; a real create may still succeed (the webhook stamps identity server-side)"
+		return stampContext("annotation write failed: " + err.Error())
 	}
 	return ""
+}
+
+// stampContext is the warning a failed identity probe earns. It states the
+// consequence exactly: rancher-webhook may deny the dry-run for the
+// missing annotation, and --apply runs the same dry-run first, so the
+// create cannot proceed until the probe succeeds - there is no path on
+// which a real create reaches the server past a denied dry-run.
+func stampContext(cause string) string {
+	return stampWarningPrefix + " (" + cause + "): rancher-webhook may deny the dry-run for the missing " +
+		creatorIDAnnotation + " annotation, and --apply repeats the dry-run first, so fix the identity probe " +
+		"(log in again, or check that you may create selfusers.ext.cattle.io) before retrying"
 }
 
 func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
@@ -402,16 +413,13 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 			// The pipeline's error normalization unwraps to the innermost
 			// *clierr.Error and renders ONLY its own fields - a fmt.Errorf
 			// wrapper's text never reaches the envelope. Real client errors
-			// are always clierr-mapped, so the stamping context must ride
-			// the clierr Hint to survive; the string wrapper remains only
-			// for plain errors (test fakes, unexpected paths).
+			// are always clierr-mapped, so the stamping context rides the
+			// error's warnings (the envelope's top-level warnings), never
+			// the hint, which is reserved for a paste-valid command; the
+			// string wrapper remains only for plain errors (test fakes,
+			// unexpected paths).
 			if ce, ok := errors.AsType[*clierr.Error](err); ok {
-				if ce.Hint != "" {
-					ce.Hint += "; " + stampWarning
-				} else {
-					ce.Hint = stampWarning
-				}
-				return safety.Effect{}, nil, err
+				return safety.Effect{}, nil, ce.WithWarnings(stampWarning)
 			}
 			return safety.Effect{}, nil, fmt.Errorf("%w (%s)", err, stampWarning)
 		}

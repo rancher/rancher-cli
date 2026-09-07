@@ -71,6 +71,7 @@ type ccRecClient struct {
 	probeEmpty          bool
 	probeUserID         string
 	createErr           error
+	dryRunErr           error
 	returnCreatorID     string
 	returnNoAnnotations bool
 }
@@ -117,6 +118,9 @@ func (r *ccRecClient) Create(_ context.Context, gvr schema.GroupVersionResource,
 		result := obj.DeepCopy()
 		_ = unstructured.SetNestedField(result.Object, uid, "status", "userID")
 		return result, nil
+	}
+	if dryRun && r.dryRunErr != nil {
+		return nil, r.dryRunErr
 	}
 	if r.createErr != nil {
 		return nil, r.createErr
@@ -751,7 +755,7 @@ func TestCreateClusterCreatorID(t *testing.T) {
 func TestCreateClusterStampWarningFoldedIntoPlanCreateError(t *testing.T) {
 	t.Parallel()
 
-	t.Run("clierr-shaped error carries the context in Hint", func(t *testing.T) {
+	t.Run("clierr-shaped error carries the context as a warning, never a hint", func(t *testing.T) {
 		t.Parallel()
 		client := &ccRecClient{
 			probeErr:  errors.New("probe failed"),
@@ -765,8 +769,10 @@ func TestCreateClusterStampWarningFoldedIntoPlanCreateError(t *testing.T) {
 		require.ErrorAs(t, err, &ce,
 			"the clierr must remain extractable - toClierr depends on it")
 		assert.Equal(t, "dry-run denied by webhook", ce.Message)
-		assert.Contains(t, ce.Hint, stampWarningPrefix,
-			"the stamp context must live where the envelope renders it")
+		assert.Empty(t, ce.Hint, "a hint is a paste-valid command; diagnostic prose never rides it")
+		require.Len(t, ce.Warnings(), 1)
+		assert.Contains(t, ce.Warnings()[0], stampWarningPrefix)
+		assert.Contains(t, ce.Warnings()[0], "--apply repeats the dry-run first")
 	})
 
 	t.Run("plain error keeps the string wrapper", func(t *testing.T) {
@@ -868,4 +874,30 @@ func (*ccRecClient) PostReview(context.Context, engine.ReviewRequest) (engine.Re
 
 func (*ccRecClient) ServerResources(context.Context) ([]engine.APIResource, error) {
 	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+// TestCreateClusterDeniedDryRunBlocksApplyToo asserts the recovery the
+// documentation states: after a denied dry-run, --apply is not a way past
+// it. Every invocation plans first, the plan repeats the identity probe and
+// the dry-run, and the same denial returns before any real create is
+// attempted. The fake denies dry-run creates only, so a real create would
+// have succeeded had one been attempted.
+func TestCreateClusterDeniedDryRunBlocksApplyToo(t *testing.T) {
+	t.Parallel()
+	client := &ccRecClient{probeErr: errors.New("probe failed")}
+	cmd := NewCreateCluster(fakeFactory{c: client}, errRootFactory{})
+	in := ccInput{a: []string{"imported-1"}, b: map[string]bool{"import": true}}
+
+	for range 2 {
+		// A fresh error per invocation, as a real client returns one: Plan
+		// attaches its warning to the error it is handed, so a shared
+		// instance would carry the first invocation's warning into the
+		// second.
+		client.dryRunErr = clierr.New(clierr.CodeValidation, "dry-run denied by webhook")
+		_, exec, err := planCluster(t, cmd, in)
+		require.ErrorContains(t, err, "dry-run denied by webhook")
+		assert.Nil(t, exec, "a denied plan hands back no execute step")
+	}
+	assert.Nil(t, client.created, "no real create reached the client")
+	assert.Empty(t, client.dryRuns, "the fake records only creates it accepted; none was")
 }

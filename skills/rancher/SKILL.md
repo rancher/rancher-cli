@@ -247,12 +247,14 @@ which may be stale (a retired image slug will loop provisioning forever). The
 
 A `creatorId not stamped` warning on `create cluster` means the identity
 probe (an ext.cattle.io SelfUser create) failed before the server-side
-dry-run. rancher-webhook's validator requires the `creatorId` annotation on
-dry-run even though its mutator only stamps it on real creates, so the
-dry-run may be denied with an admission error. This is a diagnostic warning,
-not a definitive block - surface it to the user, but do not treat the
-dry-run denial as final: a real `--apply` create is still expected to
-succeed because the mutator stamps identity server-side on real creates.
+dry-run, so the `field.cattle.io/creatorId` annotation was not set.
+rancher-webhook may then deny the dry-run with an admission error. That
+denial is final for this invocation and for `--apply` alike: every
+invocation plans first, and the plan repeats the probe and the dry-run, so
+`--apply` returns the same denial before any real create is attempted.
+Recover by fixing the probe - log in again, or check that the account may
+create `selfusers.ext.cattle.io` - then re-run. When the dry-run passes
+despite the warning, the create proceeds and the warning rides along.
 
 Follow through to readiness and access - and read the registration
 (join) commands from `inspect cluster --registration`, never from the UI:
