@@ -500,6 +500,16 @@ source (`authorizer`, `rancherProxy`, `scopeDiscovery`, `request`,
 `mixed`) and identity (`caller`, `impersonated`,
 `subjectAccessReview`).
 
+Resource names resolve against the cluster's discovery, asked for in
+aggregated form (two requests) and read group by group where a server
+does not serve it. When the server could not describe every API group (an
+aggregated API whose backend is down), the answer says so instead of
+pretending: a bare name that one healthy group serves resolves and a
+warning names the groups that were not consulted; a name no healthy
+group serves, or one qualified with a failed group, is a retryable error
+naming those groups, never "unknown resource"; a qualified name a healthy
+group serves is exact and carries no warning.
+
 `access who-can` answers the reverse question. It reads the subjects the
 cluster's RoleBindings and ClusterRoleBindings name (plus
 `system:masters`), posts one SubjectAccessReview per subject as you (per

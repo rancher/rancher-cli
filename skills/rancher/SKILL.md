@@ -440,7 +440,10 @@ Roles are facts about bindings that exist - what `grant`/`revoke` create and
 delete, what the `inspect project`/`inspect cluster` MEMBERS sections list,
 and what `inspect user`'s ROLES section enumerates across every scope for one
 subject. Permissions are what a subject can actually do, and only the server
-can answer that: `rancher access can <verb> <resource> --cluster <c> [-n <ns>]
+can answer that (a warning starting "discovery for API group(s)" means the
+resource name was resolved while some API groups could not be read; qualify
+it as `<resource>.<group>` to make the question exact):
+`rancher access can <verb> <resource> --cluster <c> [-n <ns>]
 [--as <subject>]` asks the authorizer for one decision (exit 0 allowed, 12
 denied, 13 unknown; `--as` takes a user, a group principal, or a service
 account) and `rancher access list --cluster <c> [-n <ns>] [--as <user or
