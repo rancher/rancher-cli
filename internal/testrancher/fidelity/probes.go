@@ -347,7 +347,10 @@ func accessProbes() []Probe {
 			// resource rules itself before rendering them.
 			Name: "access/rules-review-standard-user-default", OracleOnly: true,
 			Observations: []Observation{{Name: "ssrr", Request: RequestSpec{Method: http.MethodPost, Path: reviews + "selfsubjectrulesreviews", Body: ssrrBody, Identity: IdentityStandard}}},
-			Normalize:    []NormalizeRule{{Path: "status.resourceRules", Replace: "<unordered>"}},
+			// Both rule lists are aggregated from the subject's ClusterRoles in
+			// an order the server does not fix: two runs of the same oracle
+			// image returned the same non-resource rules swapped.
+			Normalize: []NormalizeRule{{Path: "status.resourceRules", Replace: "<unordered>"}, {Path: "status.nonResourceRules", Replace: "<unordered>"}},
 		},
 		{
 			// spec.resourceAttributes.version is accepted; a negative

@@ -12,38 +12,7 @@
         "spec": {},
         "status": {
           "incomplete": false,
-          "nonResourceRules": [
-            {
-              "nonResourceURLs": [
-                "/api",
-                "/api/*",
-                "/apis",
-                "/apis/*",
-                "/healthz",
-                "/livez",
-                "/openapi",
-                "/openapi/*",
-                "/readyz",
-                "/version",
-                "/version/"
-              ],
-              "verbs": [
-                "get"
-              ]
-            },
-            {
-              "nonResourceURLs": [
-                "/healthz",
-                "/livez",
-                "/readyz",
-                "/version",
-                "/version/"
-              ],
-              "verbs": [
-                "get"
-              ]
-            }
-          ],
+          "nonResourceRules": "\u003cunordered\u003e",
           "resourceRules": "\u003cunordered\u003e"
         }
       }
