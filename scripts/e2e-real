@@ -105,6 +105,23 @@ cleanup() {
   # Diagnostics fire on EVERY failure - kept runs (recording, reconciling)
   # are exactly the ones that need them. Only removal is gated on keep mode.
   if [ ${status} -ne 0 ]; then
+    # Host and node state first: a suite that fails with webhook endpoints
+    # gone or pods rescheduled mid-run is a starved node until the
+    # conditions, the pod list, and the host's disk and memory say
+    # otherwise, and none of that is in the rancher log.
+    echo "==> host resources:"
+    df -h / 2>&1 | sed 's/^/[host] /' || true
+    free -m 2>&1 | sed 's/^/[host] /' || true
+    docker stats --no-stream 2>&1 | sed 's/^/[host] /' || true
+    echo "==> oracle node conditions, pods, and last events:"
+    docker exec "${CONTAINER}" kubectl get nodes -o wide 2>&1 | sed 's/^/[rancher] /' || true
+    docker exec "${CONTAINER}" kubectl describe nodes 2>&1 | sed -n '/^Conditions:/,/^Addresses:/p' | sed 's/^/[rancher] /' || true
+    docker exec "${CONTAINER}" kubectl get pods -A -o wide 2>&1 | sed 's/^/[rancher] /' || true
+    docker exec "${CONTAINER}" kubectl get events -A --sort-by=.lastTimestamp 2>&1 | tail -40 | sed 's/^/[rancher] /' || true
+    echo "==> downstream node conditions and pods:"
+    docker exec "${K3S_CONTAINER}" kubectl get nodes -o wide 2>&1 | sed 's/^/[k3s] /' || true
+    docker exec "${K3S_CONTAINER}" kubectl describe nodes 2>&1 | sed -n '/^Conditions:/,/^Addresses:/p' | sed 's/^/[k3s] /' || true
+    docker exec "${K3S_CONTAINER}" kubectl get pods -A -o wide 2>&1 | sed 's/^/[k3s] /' || true
     echo "==> last 200 container log lines:"
     docker logs --tail 200 "${CONTAINER}" 2>&1 | sed 's/^/[rancher] /' || true
     echo "==> downstream agent log lines:"

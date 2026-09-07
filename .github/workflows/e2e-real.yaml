@@ -29,4 +29,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The oracle and its downstream share one 4-vCPU runner: record what
+      # the host had before boot so a starved run can be told from a bug.
+      - name: Host resources before boot
+        run: df -h / && free -m && nproc
       - run: make e2e-real
