@@ -529,6 +529,12 @@ row can show (`system:masters` members, non-RBAC authorizers).
 `rancher-system-agent` is a node systemd unit, not a pod - its logs are
 `journalctl -u rancher-system-agent` on the node itself, and generic pod
 logs outside the curated targets stay with `inspect pod` and kubectl.
+A log the server refuses is missing evidence, not an absent artifact: the
+target's `manifest.json` item becomes an `error:` status naming the pod and
+container, the result's `errors` count includes it, and a warning names
+it, so `errors: 0` means every requested log is in the archive. A
+previous-container log that does not exist stays silent (the container
+never restarted); a refused one is a warning.
 `support-bundle` is deliberately the API-reachable half of a two-bundle
 story: pair it with
 [rancherlabs/support-tools](https://github.com/rancherlabs/support-tools)'

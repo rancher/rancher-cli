@@ -422,7 +422,10 @@ authenticate. Cached credentials: `rancher auth list-tokens` /
   packs every curated target's logs plus cluster/node state, events, and an
   allowlisted settings/features/schema snapshot into one tar.gz;
   `manifest.json` inside records each item as collected, skipped (not
-  applicable), or errored, and partial bundles are normal. Complements
+  applicable), or errored, and partial bundles are normal - read `errors`
+  and `warnings` before treating the archive as complete: a log the server
+  refused is an error item and a warning naming the pod and container, and
+  `errors: 0` means every requested log is inside. Complements
   rancherlabs/support-tools' node-level collector, not a replacement for it.
 - `rancher patch feature <name> --patch '[{"op":"replace","path":"/spec/value","value":true}]' --apply --yes` -
   flip a Rancher feature flag (RFC 6902 patch, like every `patch <kind>`).
