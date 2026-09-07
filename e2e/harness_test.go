@@ -63,7 +63,8 @@ var legacyScripts = map[string]bool{
 // scriptOptions adjusts a script's own facade options before the facade is
 // built, keyed the way legacyScripts is.
 var scriptOptions = map[string]func(*testrancher.Options){
-	"login-recovery": func(o *testrancher.Options) { o.DropDerivedCreateResponseOnce = true },
+	"login-recovery":       func(o *testrancher.Options) { o.DropDerivedCreateResponseOnce = true },
+	"auth-login-providers": func(o *testrancher.Options) { o.ExtraProviders = []string{"githubProvider"} },
 }
 
 // scriptChecks run after their script, with the facade it ran against, for

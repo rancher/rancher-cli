@@ -472,7 +472,9 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	return ce.WithCandidates(cands)
 }
 
-// commandNamed reports whether name is exactly a command's name.
+// commandNamed reports whether name is exactly a command's name. Alias
+// forms are not resolved here on purpose: the explanation is for a
+// command spelled out in full behind a stray "get".
 func commandNamed(m Manifest, name string) bool {
 	for _, c := range m.Commands {
 		if c.Name == name {

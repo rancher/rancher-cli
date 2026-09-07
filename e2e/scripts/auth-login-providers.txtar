@@ -1,0 +1,18 @@
+# auth login against a server that advertises a provider this CLI cannot log
+# in with (githubProvider, a code-exchange provider whose secret the server
+# holds): the miss names it and the server change requested instead of
+# listing localProvider alone, the candidates stay the supported types, and
+# --auth-provider accepts the server's short id beside the type.
+
+! exec rancher auth login gh --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider github --no-input -o json
+jsonquery stderr data.error.code NOT_FOUND
+stderr 'auth provider not found: github; advertised by the server but not supported by this CLI: githubProvider \(server change requested: rancher/rancher#57034\)'
+# candidates are the supported providers only (the harness advertises local
+# and the facade's azureAD); the unsupported one is named in the message, never offered
+jsonquery stderr 'data.error.candidates.#(id=="localProvider").id' localProvider
+! jsonquery stderr 'data.error.candidates.#(id=="githubProvider").id' githubProvider
+
+# the id "local" reaches the local flow, which then needs a terminal
+! exec rancher auth login loc --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider local --no-input -o json
+jsonquery stderr data.error.code AUTH
+stderr 'interactive login required for localProvider'

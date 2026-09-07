@@ -25,16 +25,21 @@ or `token` field plus a `warnings` entry is a normal degradation (e.g.
 token), not an error condition; don't treat it as one. If it fails with
 `AUTH` or `NOT_LOGGED_IN`, establish a session:
 
-- Interactive: `rancher auth login <name> --url <url>` - adds the server entry
-  and logs in, no UI trip needed (or add and log in as two steps:
-  `rancher config add-server <name> --url <url>` then
-  `rancher auth login <name>`). With no piped/pasted token, it offers a
-  choice: paste an existing API token, or sign in via an identity provider
-  (`--auth-provider`, `--auth-flow devicecode|authcode` skip the prompt). The
-  provider path creates its own purpose-made, individually revocable token
-  behind the scenes (see the token taxonomy below). Dropping `<name>` works
-  too - `rancher auth login --url <url>` derives the entry name from the
-  URL's host.
+- Interactive: `rancher auth login <name> --url <url>` - adds the server
+  entry and logs in, no UI trip needed (or add and log in as two steps:
+  `rancher config add-server <name> --url <url>` then `rancher auth login
+  <name>`). With no piped/pasted token, it offers a choice: paste an
+  existing API token, or sign in via an identity provider
+  (`--auth-provider`, `--auth-flow devicecode|authcode` skip the prompt;
+  `--auth-provider` takes the type or the server's short id, `localProvider`
+  or `local`). A provider the server advertises but this CLI cannot log in
+  with (GitHub and the other OAuth providers whose client secret the server
+  holds) is named as such in the prompt and in the `NOT_FOUND` error rather
+  than dropped: the fix is server-side (rancher/rancher#57034); paste a
+  token created in the UI meanwhile. The provider path creates its own
+  purpose-made, individually revocable token behind the scenes (see the
+  token taxonomy below). Dropping `<name>` works too - `rancher auth login
+  --url <url>` derives the entry name from the URL's host.
 - Scripted/CI: pipe the token - `rancher auth login <name> --url <url> --token-stdin < token.txt`,
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
   A piped token is VERIFIED against the server before it is stored: a bad

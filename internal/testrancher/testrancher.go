@@ -551,13 +551,14 @@ func (f *Facade) fallthroughTo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *Facade) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
-	data := []map[string]any{{"type": "localProvider"}}
+	data := []map[string]any{{"id": "local", "type": "localProvider"}}
 	if f.opts.EnableIdP {
 		base := f.opts.IdPURL
 		if base == "" {
 			base = "https://" + r.Host
 		}
 		data = append(data, map[string]any{
+			"id":            "azuread",
 			"type":          "azureADProvider",
 			"redirectUrl":   "",
 			"clientId":      "facade-client",
@@ -568,7 +569,7 @@ func (f *Facade) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	for _, p := range f.opts.ExtraProviders {
-		data = append(data, map[string]any{"type": p})
+		data = append(data, map[string]any{"id": strings.ToLower(strings.TrimSuffix(p, "Provider")), "type": p})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }

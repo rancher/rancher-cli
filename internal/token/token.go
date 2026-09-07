@@ -133,7 +133,13 @@ type runParams struct {
 
 type typedProvider interface {
 	GetType() string
+	GetID() string
 }
+
+// unsupportedProvidersRFE is the server change that would let the CLI log
+// in with the code-exchange providers (GitHub and the like): the server
+// holds their client secrets, so the CLI cannot complete the exchange.
+const unsupportedProvidersRFE = "rancher/rancher#57034"
 
 type tokenCmd struct {
 	dir   string
@@ -599,11 +605,11 @@ func loginResponseType(input *loginInput) string {
 // authoritative even when the error is non-nil: the outcome says whether S
 // may exist, and the SAML handoff says where to look for it.
 func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (SessionAcquireResult, error) {
-	authProviders, err := getAuthProviders(ctx, client, input.server)
+	authProviders, unsupported, err := getAuthProviders(ctx, client, input.server)
 	if err != nil {
 		return SessionAcquireResult{}, err
 	}
-	selectedProvider, err := selectAuthProvider(ctx, authProviders, input.authProvider, p)
+	selectedProvider, err := selectAuthProvider(ctx, authProviders, unsupported, input.authProvider, p)
 	if err != nil {
 		return SessionAcquireResult{}, err
 	}
@@ -857,12 +863,15 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	}
 }
 
-func getAuthProviders(ctx context.Context, client *http.Client, server string) ([]typedProvider, error) {
+// getAuthProviders lists the server's auth providers: the ones this CLI can
+// log in with (local first), and the types the server advertises that it
+// cannot, so a caller can name them instead of silently dropping them.
+func getAuthProviders(ctx context.Context, client *http.Client, server string) ([]typedProvider, []string, error) {
 	authProvidersURL := fmt.Sprintf(authProviderURL, server)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authProvidersURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
+		return nil, nil, fmt.Errorf("error creating request: %w", err)
 	}
 
 	resp, respBody, err := httpx.Do(client, req)
@@ -870,17 +879,21 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 	if err != nil {
-		return nil, fmt.Errorf("error listing auth providers: %w", err)
+		return nil, nil, fmt.Errorf("error listing auth providers: %w", err)
 	}
 
 	if !gjson.ValidBytes(respBody) {
-		return nil, errors.New("invalid JSON response")
+		return nil, nil, errors.New("invalid JSON response")
 	}
 	data := gjson.GetBytes(respBody, "data").Array()
 
 	var supportedProviders []typedProvider
+	var unsupported []string
 	for _, provider := range data {
 		providerType := provider.Get("type").String()
+		if providerType != "" && !supportedAuthProviders[providerType] {
+			unsupported = append(unsupported, providerType)
+		}
 
 		if providerType != "" && supportedAuthProviders[providerType] {
 			var tp typedProvider
@@ -896,7 +909,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 
 			err = json.Unmarshal([]byte(provider.Raw), tp)
 			if err != nil {
-				return nil, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
+				return nil, nil, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
 			}
 
 			if tp.GetType() == "localProvider" {
@@ -907,12 +920,35 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 		}
 	}
 
-	return supportedProviders, nil
+	slices.Sort(unsupported)
+	return supportedProviders, slices.Compact(unsupported), nil
 }
 
-func selectAuthProvider(ctx context.Context, providers []typedProvider, want string, p runtime.Prompter) (typedProvider, error) {
+// unsupportedNote names the providers the server advertises that this CLI
+// cannot log in with; "" when there are none.
+func unsupportedNote(unsupported []string) string {
+	if len(unsupported) == 0 {
+		return ""
+	}
+	return "advertised by the server but not supported by this CLI: " + strings.Join(unsupported, ", ") +
+		" (server change requested: " + unsupportedProvidersRFE + ")"
+}
+
+// selectAuthProvider picks the provider to log in with. want matches a
+// provider's type (localProvider) or its id (local). A miss names the
+// supported providers as candidates and, in the message, the advertised
+// ones this CLI cannot use, so an operator can tell "not configured on the
+// server" from "not supported here". The same note precedes the prompt,
+// also when only one provider is left to prompt for: a user who came for
+// GitHub must not type those credentials into the local password prompt.
+func selectAuthProvider(ctx context.Context, providers []typedProvider, unsupported []string, want string, p runtime.Prompter) (typedProvider, error) {
+	note := unsupportedNote(unsupported)
 	if len(providers) == 0 {
-		return nil, clierr.New(clierr.CodeGeneric, "no auth provider configured")
+		msg := "no auth provider configured"
+		if note != "" {
+			msg += "; " + note
+		}
+		return nil, clierr.New(clierr.CodeGeneric, msg)
 	}
 
 	cands := func() []clierr.Candidate {
@@ -925,15 +961,21 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, want str
 
 	if want != "" {
 		for _, prov := range providers {
-			if prov.GetType() == want {
+			if prov.GetType() == want || (prov.GetID() != "" && prov.GetID() == want) {
 				return prov, nil
 			}
 		}
-		return nil, clierr.New(clierr.CodeNotFound, "auth provider not found: "+want).
-			WithCandidates(cands())
+		msg := "auth provider not found: " + want
+		if note != "" {
+			msg += "; " + note
+		}
+		return nil, clierr.New(clierr.CodeNotFound, msg).WithCandidates(cands())
 	}
 
 	if len(providers) == 1 {
+		if note != "" && p.CanPrompt() {
+			p.Notice("Auth provider: " + providers[0].GetType() + "\n" + note)
+		}
 		return providers[0], nil
 	}
 
@@ -941,6 +983,9 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, want str
 		var b strings.Builder
 		for i, prov := range providers {
 			fmt.Fprintf(&b, "%d - %s\n", i, prov.GetType())
+		}
+		if note != "" {
+			b.WriteString(note + "\n")
 		}
 		p.Notice("Auth providers:\n" + b.String())
 		sel, err := p.Prompt(ctx, "Select auth provider: ")
@@ -953,7 +998,11 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, want str
 		// invalid (non-numeric / out-of-range) pick → fall through to AMBIGUOUS_SELECTION
 	}
 
-	return nil, clierr.New(clierr.CodeAmbiguousSelection, "multiple auth providers; select one").
+	msg := "multiple auth providers; select one"
+	if note != "" {
+		msg += "; " + note
+	}
+	return nil, clierr.New(clierr.CodeAmbiguousSelection, msg).
 		WithCandidates(cands())
 }
 

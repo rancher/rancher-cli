@@ -588,6 +588,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.Equal(t, "rancher schema get pod", ce.Hint)
 		assert.Empty(t, ce.Candidates, "the hint is the answer; no nearest-match list")
 	})
+
 	t.Run("multi-token miss is command-shaped: single -o name hint, no kinds noise", func(t *testing.T) {
 		t.Parallel()
 		// Exercise-11 finding 6.1: `schema get pdo` is structurally a

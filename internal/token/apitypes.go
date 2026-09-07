@@ -25,10 +25,17 @@ type Token struct {
 // AuthProvider is the base provider type; GetType satisfies the typedProvider interface.
 type AuthProvider struct {
 	Type string `json:"type"`
+	// ID is the provider's short name in the server's list ("local",
+	// "github"); accepted for --auth-provider beside the type.
+	ID string `json:"id,omitempty"`
 }
 
 func (a *AuthProvider) GetType() string {
 	return a.Type
+}
+
+func (a *AuthProvider) GetID() string {
+	return a.ID
 }
 
 // OAuthEndpoint contains the endpoints needed for an OAuth exchange.
