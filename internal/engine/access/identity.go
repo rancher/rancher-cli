@@ -31,10 +31,13 @@ type identityPlan struct {
 	Identity   Identity
 	GroupsFrom GroupsFrom
 	Groups     []string
-	Client     engine.ClusterClient
-	AsCaller   bool
-	Denied     *proxyDenial
-	Warnings   []string
+	// PrincipalIDs are a Rancher user's principalIds, for matching the
+	// management bindings that name the subject by principal.
+	PrincipalIDs []string
+	Client       engine.ClusterClient
+	AsCaller     bool
+	Denied       *proxyDenial
+	Warnings     []string
 }
 
 const noClusterAccessDetail = "a cluster owner grants it with a ClusterRoleTemplateBinding or ProjectRoleTemplateBinding"
@@ -75,18 +78,18 @@ func callerPreflight(ctx context.Context, callerClient engine.ClusterClient, clu
 // cluster.
 func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, callerClient, local engine.ClusterClient,
 	clusterID string, caller callerIdentity, as ParsedSubject, forList bool) (identityPlan, error) {
-	callerSubject := enrichCaller(ctx, local, caller.Username)
+	callerSubject, callerPrincipals := enrichCaller(ctx, local, caller.Username)
 	if as.Raw == "" {
-		return identityPlan{Subject: callerSubject, Identity: IdentityCaller, Client: callerClient, AsCaller: true}, nil
+		return identityPlan{Subject: callerSubject, Identity: IdentityCaller, Client: callerClient, AsCaller: true, PrincipalIDs: callerPrincipals}, nil
 	}
 	resolved, err := ResolveSubject(ctx, local, as)
 	if err != nil {
 		return identityPlan{}, err
 	}
 	if isCallerSubject(resolved.Subject, caller) {
-		return identityPlan{Subject: resolved.Subject, Identity: IdentityCaller, Client: callerClient, AsCaller: true}, nil
+		return identityPlan{Subject: resolved.Subject, Identity: IdentityCaller, Client: callerClient, AsCaller: true, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs}, nil
 	}
-	sarPlan := identityPlan{Subject: resolved.Subject, Identity: IdentitySAR, GroupsFrom: resolved.GroupsFrom, Groups: resolved.Groups, Client: callerClient}
+	sarPlan := identityPlan{Subject: resolved.Subject, Identity: IdentitySAR, GroupsFrom: resolved.GroupsFrom, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs, Client: callerClient}
 	if resolved.Subject.Kind == KindGroup || resolved.GroupsFrom == GroupsAnonymousIdentity {
 		// Nothing to impersonate: a group is not an identity and the
 		// anonymous identity's group set is known. list rejected both at
@@ -111,7 +114,7 @@ func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, call
 			// The route dropped the header and answered for the caller.
 			return sarFallback(sarPlan, forList, resolved, clusterID)
 		}
-		return identityPlan{Subject: resolved.Subject, Identity: IdentityImpersonated, Client: impersonated}, nil
+		return identityPlan{Subject: resolved.Subject, Identity: IdentityImpersonated, Client: impersonated, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs}, nil
 	case outcomeImpersonationRefused:
 		return sarFallback(sarPlan, forList, resolved, clusterID)
 	case outcomeNoClusterAccess:
@@ -119,7 +122,7 @@ func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, call
 		if resolved.IsRancherUser && noRancherBindingsFor(ctx, local, clusterID, resolved) {
 			note += " (no ClusterRoleTemplateBinding or ProjectRoleTemplateBinding grants it)"
 		}
-		return identityPlan{Subject: resolved.Subject, Identity: IdentityImpersonated, Client: impersonated, Denied: &proxyDenial{Note: note}}, nil
+		return identityPlan{Subject: resolved.Subject, Identity: IdentityImpersonated, Client: impersonated, Groups: resolved.Groups, PrincipalIDs: resolved.PrincipalIDs, Denied: &proxyDenial{Note: note}}, nil
 	case outcomeSubjectNotFound:
 		// The proxy could not impersonate the service account because it
 		// (or its namespace) does not exist on the cluster: a refusal
@@ -148,16 +151,17 @@ func isCallerSubject(subject AccessSubject, caller callerIdentity) bool {
 // enrichCaller adds the caller's Rancher user id and display name when the
 // management cluster knows the username as a User; any failure leaves the
 // bare name (best-effort, never an error).
-func enrichCaller(ctx context.Context, local engine.ClusterClient, username string) AccessSubject {
+func enrichCaller(ctx context.Context, local engine.ClusterClient, username string) (AccessSubject, []string) {
 	subject := AccessSubject{Kind: KindUser, Name: username}
 	userKind, _ := kinds.Lookup("user")
 	u, err := local.Get(ctx, userKind.GVR, "", username)
 	if err != nil {
-		return subject
+		return subject, nil
 	}
 	subject.ID = u.GetName()
 	subject.DisplayName, _, _ = unstructured.NestedString(u.Object, "displayName")
-	return subject
+	principals, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
+	return subject, principals
 }
 
 // anonymousListMessage is the one wording for the anonymous refusal in

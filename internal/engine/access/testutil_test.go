@@ -36,6 +36,9 @@ type fakeClient struct {
 	Lists        map[string]*unstructured.UnstructuredList
 	GetErr       error
 	ListErr      error
+	// GetErrFor fails the GET of one key ("ns/name" or "name") while every
+	// other GET answers; GetErr fails them all.
+	GetErrFor map[string]error
 }
 
 func (f *fakeClient) PostReview(ctx context.Context, req engine.ReviewRequest) (engine.ReviewResponse, error) {
@@ -82,6 +85,9 @@ func (f *fakeClient) Get(ctx context.Context, gvr schema.GroupVersionResource, n
 	// space to sit beside the User of the same name.
 	if gvr.Resource == "userattributes" {
 		key = name + "-attr"
+	}
+	if err, ok := f.GetErrFor[key]; ok {
+		return nil, err
 	}
 	if o, ok := f.Objects[key]; ok {
 		return o, nil
