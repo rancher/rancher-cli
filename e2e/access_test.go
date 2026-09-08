@@ -82,6 +82,16 @@ func TestAccessFixtureThroughTheRealAuthorizer(t *testing.T) {
 		"the external username is bound directly in team-b")
 	assert.False(t, sarAllowed(t, "oidc-external@corp", authenticated, "team-b", "", "pods", "get"),
 		"and holds nothing else there")
+	assert.True(t, sarAllowed(t, "e2e-std", authenticated, "team-c", "", "pods", "delete"),
+		"e2e-std may delete pods in team-c through the classic-grammar RoleBinding")
+	assert.False(t, sarAllowed(t, "e2e-std", authenticated, "team-a", "", "pods", "delete"),
+		"and team-a's rules are untouched by the explain fixtures")
+	assert.True(t, sarAllowed(t, "e2e-std", authenticated, "", "", "nodes", "get"),
+		"e2e-std may get nodes through the aggregation-grammar ClusterRoleBinding")
+	assert.True(t, sarAllowed(t, "e2e-std", authenticated, "", "", "namespaces", "get"),
+		"e2e-std may get namespaces through the shared-key ClusterRoleBinding")
+	assert.False(t, sarAllowed(t, "e2e-std", authenticated, "team-c", "", "secrets", "delete"),
+		"and may not delete secrets there")
 }
 
 // accessRunner runs the built binary against a facade whose router records

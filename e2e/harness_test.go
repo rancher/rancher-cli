@@ -778,7 +778,7 @@ func seedManagementCluster() {
 // where `create user` writes the backing password Secret.
 func seedNamespaces() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
-	for _, name := range []string{"fleet-default", "team-a", "team-b", "c-test", "cattle-system", "cattle-global-data", "cattle-local-user-passwords"} {
+	for _, name := range []string{"fleet-default", "team-a", "team-b", "team-c", "c-test", "c-test-p-explain", "c-test-p-explain2", "cattle-system", "cattle-global-data", "cattle-local-user-passwords"} {
 		obj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
@@ -862,9 +862,23 @@ func seedRoleObjects() {
 		"apiVersion": "management.cattle.io/v3",
 		"kind":       "GlobalRole",
 		"metadata":   map[string]any{"name": "e2e-global-role"},
+		// explain follows a GlobalRole's inheritedClusterRoles to the
+		// RoleTemplates behind a GlobalRoleBinding's downstream access.
+		"inheritedClusterRoles": []any{"cluster-member"},
 	}}
 	if _, err := dynCli.Resource(grGVR).Create(context.Background(), grObj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
 		panic("seeding globalrole e2e-global-role: " + err.Error())
+	}
+	grbGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalrolebindings"}
+	grbObj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion":     "management.cattle.io/v3",
+		"kind":           "GlobalRoleBinding",
+		"metadata":       map[string]any{"name": "e2e-grb-admin"},
+		"userName":       "e2e-admin",
+		"globalRoleName": "e2e-global-role",
+	}}
+	if _, err := dynCli.Resource(grbGVR).Create(context.Background(), grbObj, metav1.CreateOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
+		panic("seeding globalrolebinding e2e-grb-admin: " + err.Error())
 	}
 }
 
@@ -983,7 +997,10 @@ func seedAccessRBAC() {
 	// identity, so it must hold what envtest's certificate identity did.
 	create(rbacGVR("clusterrolebindings"), "", map[string]any{
 		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding",
-		"metadata": map[string]any{"name": "e2e-admin"},
+		"metadata": map[string]any{"name": "e2e-admin", "annotations": map[string]any{
+			"authz.cluster.cattle.io/globalrolebinding": "e2e-grb-admin",
+			"authz.cluster.cattle.io/globalrole":        "e2e-global-role",
+		}},
 		"roleRef":  roleRef("ClusterRole", "cluster-admin"),
 		"subjects": subject("User", "e2e-admin"),
 	})
@@ -1081,6 +1098,117 @@ func seedAccessRBAC() {
 		"metadata": map[string]any{"name": "e2e-external-secrets", "namespace": "team-b"},
 		"roleRef":  roleRef("Role", "e2e-team-b-secrets"),
 		"subjects": subject("User", "oidc-external@corp"),
+	})
+	// explain's fixtures live in team-c and two PRTB namespaces of their
+	// own so no other scenario's rules or member lists change: e2e-std
+	// holds delete on pods in team-c through a
+	// RoleBinding Rancher would have written for a ProjectRoleTemplateBinding
+	// (classic label grammar), get on nodes through a ClusterRoleBinding of
+	// the aggregation grammar owned by a ClusterRoleTemplateBinding, and get
+	// on namespaces through a ClusterRoleBinding whose aggregation key is the
+	// one every project's creator binding shares; the role names the
+	// project, which is how the shared key is narrowed.
+	mgmt := func(resource string) schema.GroupVersionResource {
+		return schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: resource}
+	}
+	create(rbacGVR("clusterroles"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
+		"metadata": map[string]any{"name": "e2e-explain-promoted"},
+		"rules":    rules("", []string{"pods"}, []string{"get", "list", "delete"}),
+	})
+	create(rbacGVR("rolebindings"), "team-c", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+		"metadata": map[string]any{"name": "e2e-explain-rb", "namespace": "team-c",
+			"labels": map[string]any{"authz.cluster.cattle.io/rtb-owner-updated": "c-test-p-explain_e2e-explain-prtb"}},
+		"roleRef":  roleRef("ClusterRole", "e2e-explain-promoted"),
+		"subjects": subject("User", "e2e-std"),
+	})
+	create(mgmt("projectroletemplatebindings"), "c-test-p-explain", map[string]any{
+		"apiVersion": "management.cattle.io/v3", "kind": "ProjectRoleTemplateBinding",
+		"metadata":         map[string]any{"name": "e2e-explain-prtb", "namespace": "c-test-p-explain"},
+		"userName":         "e2e-std",
+		"roleTemplateName": "project-member",
+		"projectName":      "c-test:p-explain",
+	})
+	// The aggregator carries the recorded structure: the clusterrole-owner
+	// and aggregation labels, and an aggregationRule selecting the roles
+	// labelled aggregates: cluster-member. envtest runs no aggregation
+	// controller, so the aggregator also carries the rule it would
+	// aggregate (as Rancher's own aggregator does on a real server).
+	create(rbacGVR("clusterroles"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
+		"metadata": map[string]any{"name": "e2e-explain-cluster-member", "labels": map[string]any{
+			"authz.cluster.cattle.io/clusterrole-owner":     "cluster-member",
+			"management.cattle.io/aggregates":               "cluster-member",
+			"management.cattle.io/roletemplate-aggregation": "true",
+		}},
+		"rules": rules("", []string{"nodes"}, []string{"get"}),
+	})
+	create(rbacGVR("clusterroles"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
+		"metadata": map[string]any{"name": "e2e-explain-nodes-aggregator", "labels": map[string]any{
+			"authz.cluster.cattle.io/clusterrole-owner":     "cluster-member",
+			"management.cattle.io/aggregates":               "e2e-explain-nodes-aggregator",
+			"management.cattle.io/roletemplate-aggregation": "true",
+		}},
+		"aggregationRule": map[string]any{"clusterRoleSelectors": []any{
+			map[string]any{"matchLabels": map[string]any{"management.cattle.io/aggregates": "cluster-member"}},
+		}},
+		"rules": rules("", []string{"nodes"}, []string{"get"}),
+	})
+	create(rbacGVR("clusterrolebindings"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding",
+		"metadata": map[string]any{"name": "e2e-explain-agg-crb", "labels": map[string]any{
+			"management.cattle.io/roletemplate-aggregation":       "true",
+			"authz.cluster.cattle.io/crtb-owner-e2e-explain-crtb": "true",
+		}},
+		"roleRef":  roleRef("ClusterRole", "e2e-explain-nodes-aggregator"),
+		"subjects": subject("User", "e2e-std"),
+	})
+	create(mgmt("clusterroletemplatebindings"), "c-test", map[string]any{
+		"apiVersion": "management.cattle.io/v3", "kind": "ClusterRoleTemplateBinding",
+		"metadata":         map[string]any{"name": "e2e-explain-crtb", "namespace": "c-test"},
+		"userName":         "e2e-std",
+		"roleTemplateName": "cluster-member",
+		"clusterName":      "c-test",
+	})
+	create(rbacGVR("clusterroles"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
+		"metadata": map[string]any{"name": "p-explain-namespaces-edit"},
+		"rules":    rules("", []string{"namespaces"}, []string{"get"}),
+	})
+	create(rbacGVR("clusterrolebindings"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding",
+		"metadata": map[string]any{"name": "e2e-explain-shared-crb", "labels": map[string]any{
+			"management.cattle.io/roletemplate-aggregation":            "true",
+			"authz.cluster.cattle.io/prtb-owner-creator-project-owner": "true",
+		}},
+		"roleRef":  roleRef("ClusterRole", "p-explain-namespaces-edit"),
+		"subjects": subject("User", "e2e-std"),
+	})
+	for _, project := range []string{"p-explain", "p-explain2"} {
+		create(mgmt("projectroletemplatebindings"), "c-test-"+project, map[string]any{
+			"apiVersion": "management.cattle.io/v3", "kind": "ProjectRoleTemplateBinding",
+			"metadata":         map[string]any{"name": "creator-project-owner", "namespace": "c-test-" + project},
+			"userName":         "e2e-std",
+			"roleTemplateName": "project-member",
+			"projectName":      "c-test:" + project,
+		})
+	}
+	// A Rancher user may read the management bindings that name it; the
+	// shim grants e2e-std what Rancher grants every user, so the
+	// held-bindings fallback has something to show when the downstream
+	// refuses its RBAC objects.
+	create(rbacGVR("clusterroles"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
+		"metadata": map[string]any{"name": "e2e-explain-mgmt-reader"},
+		"rules":    rules("management.cattle.io", []string{"clusterroletemplatebindings", "projectroletemplatebindings", "roletemplates"}, []string{"get", "list"}),
+	})
+	create(rbacGVR("clusterrolebindings"), "", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding",
+		"metadata": map[string]any{"name": "e2e-explain-mgmt-reader"},
+		"roleRef":  roleRef("ClusterRole", "e2e-explain-mgmt-reader"),
+		"subjects": subject("User", "e2e-std"),
 	})
 
 	nsGVR := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}

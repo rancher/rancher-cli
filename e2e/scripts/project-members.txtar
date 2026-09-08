@@ -114,10 +114,10 @@ stdout 'MEMBERS'
 stdout 'alice \(local://u-alice\)  cluster-member'
 
 exec rancher inspect cluster testcluster -o json
-jsonquery stdout data.members.0.principal local://u-alice
-jsonquery stdout data.members.0.displayName alice
-jsonquery stdout data.members.0.role cluster-member
-! jsonquery stdout data.members.0.binding ''
+jsonquery stdout 'data.members.#(principal=="local://u-alice").principal' local://u-alice
+jsonquery stdout 'data.members.#(principal=="local://u-alice").displayName' alice
+jsonquery stdout 'data.members.#(principal=="local://u-alice").role' cluster-member
+! jsonquery stdout 'data.members.#(principal=="local://u-alice").binding' ''
 
 -- user.yaml --
 apiVersion: management.cattle.io/v3

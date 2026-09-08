@@ -1,0 +1,119 @@
+# access explain: the one binding the authorizer's reason names, its role
+# and covering rules, the Rancher chain behind it by both label grammars
+# and by the GlobalRole annotations, the denied tree, a non-admin's
+# partial chain with the held-bindings fallback, and the refusals.
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# classic grammar: a RoleBinding labelled rtb-owner-updated leads to the
+# PRTB in the project's backing namespace and its RoleTemplate
+exec rancher access explain delete pods --cluster testcluster -n team-c --as e2e-std -o json
+cp stdout classic.json
+jsonquery classic.json data.decision allowed
+jsonquery classic.json data.identity impersonated
+jsonquery classic.json data.resultSource authorizer
+jsonquery classic.json data.chain complete
+jsonquery classic.json 'data.chainIssues.#' 0
+jsonquery classic.json data.tree.kind RoleBinding
+jsonquery classic.json data.tree.name e2e-explain-rb
+jsonquery classic.json data.tree.namespace team-c
+jsonquery classic.json 'data.tree.children.#' 2
+jsonquery classic.json 'data.tree.children.0.kind' ClusterRole
+jsonquery classic.json 'data.tree.children.0.note' 'rules covering the request: core/pods [get list delete]'
+jsonquery classic.json 'data.tree.children.1.kind' ProjectRoleTemplateBinding
+jsonquery classic.json 'data.tree.children.1.namespace' c-test-p-explain
+jsonquery classic.json 'data.tree.children.1.name' e2e-explain-prtb
+jsonquery classic.json 'data.tree.children.1.children.0.kind' RoleTemplate
+jsonquery classic.json 'data.tree.children.1.children.0.name' project-member
+
+exec rancher access explain delete pods --cluster testcluster -n team-c --as e2e-std
+stdout 'allowed  e2e-std can delete pods in team-c on c-test'
+stdout '\[allowed\] RoleBinding team-c/e2e-explain-rb - one binding the server accepted'
+stdout '\+-- ProjectRoleTemplateBinding c-test-p-explain/e2e-explain-prtb - project c-test:p-explain, user e2e-std, RoleTemplate project-member'
+stdout '    \+-- RoleTemplate project-member'
+! stdout 'chain:'
+stdout 'source: authorizer \| identity: impersonated'
+
+# aggregation grammar: a crtb-owner-<name> key matched against the
+# cluster's CRTBs, one LIST, chain complete
+exec rancher access explain get nodes --cluster testcluster --as e2e-std -o json
+cp stdout agg.json
+jsonquery agg.json data.chain complete
+jsonquery agg.json data.tree.name e2e-explain-agg-crb
+jsonquery agg.json 'data.tree.children.0.kind' ClusterRole
+jsonquery agg.json 'data.tree.children.0.children.0.name' e2e-explain-cluster-member
+jsonquery agg.json 'data.tree.children.0.children.0.note' 'aggregated by e2e-explain-nodes-aggregator (management.cattle.io/aggregates=cluster-member)'
+jsonquery agg.json 'data.tree.children.1.kind' ClusterRoleTemplateBinding
+jsonquery agg.json 'data.tree.children.1.name' e2e-explain-crtb
+jsonquery agg.json 'data.tree.children.1.children.0.name' cluster-member
+
+# the shared creator key is narrowed to the project the role names
+exec rancher access explain get namespaces --cluster testcluster --as e2e-std -o json
+cp stdout shared.json
+jsonquery shared.json data.chain complete
+jsonquery shared.json data.tree.name e2e-explain-shared-crb
+jsonquery shared.json 'data.tree.children.1.kind' ProjectRoleTemplateBinding
+jsonquery shared.json 'data.tree.children.1.namespace' c-test-p-explain
+jsonquery shared.json 'data.tree.children.1.name' creator-project-owner
+
+# the GlobalRole path: the admin's binding annotations lead to the
+# GlobalRoleBinding, the GlobalRole and its inherited RoleTemplate
+exec rancher access explain get nodes --cluster testcluster -o json
+cp stdout admin.json
+jsonquery admin.json data.identity caller
+jsonquery admin.json data.tree.name e2e-admin
+jsonquery admin.json 'data.tree.children.1.kind' GlobalRoleBinding
+jsonquery admin.json 'data.tree.children.1.name' e2e-grb-admin
+jsonquery admin.json 'data.tree.children.1.note' 'user e2e-admin, GlobalRole e2e-global-role'
+jsonquery admin.json 'data.tree.children.1.children.0.kind' GlobalRole
+jsonquery admin.json 'data.tree.children.1.children.0.children.0.name' cluster-member
+
+# denied: the bindings naming the subject or its groups, exit 12
+! exec rancher access explain delete secrets --cluster testcluster -n team-c --as e2e-std -o json
+stdout '"decision": "denied"'
+cp stdout denied.json
+jsonquery denied.json data.chain complete
+jsonquery denied.json data.note 'the CLI found no binding above that the server accepted for this request'
+jsonquery denied.json data.tree.kind Bindings
+jsonquery denied.json 'data.tree.children.#(name=="e2e-explain-rb").kind' RoleBinding
+jsonquery denied.json 'data.tree.children.#(name=="e2e-explain-agg-crb").kind' ClusterRoleBinding
+jsonquery denied.json 'data.tree.children.#(name=="e2e-cluster-lister").note' 'no Rancher owner label or annotation'
+
+# a non-admin explaining its own access: the decision and the binding and
+# role nodes come from the reason, every downstream RBAC read is refused,
+# the chain is partial, the management plane still lists what it holds,
+# and the exit stays 0
+env RANCHER_CLI_TOKEN=e2e-std:secret
+exec rancher access explain delete pods --cluster testcluster -n team-c -o json
+cp stdout partial.json
+jsonquery partial.json data.decision allowed
+jsonquery partial.json data.identity caller
+jsonquery partial.json data.chain partial
+jsonquery partial.json 'data.chainIssues.#' 3
+jsonquery partial.json 'data.chainIssues.0.stage' bindingRead
+jsonquery partial.json 'data.chainIssues.0.code' RBAC
+jsonquery partial.json 'data.chainIssues.1.stage' roleRead
+jsonquery partial.json 'data.chainIssues.2.stage' labelTraversal
+jsonquery partial.json data.tree.name e2e-explain-rb
+jsonquery partial.json 'data.tree.children.0.note' 'rules not readable by the caller'
+jsonquery partial.json 'data.tree.children.1.kind' HeldBindings
+jsonquery partial.json 'data.tree.children.1.children.#(name=="e2e-explain-crtb").kind' ClusterRoleTemplateBinding
+jsonquery partial.json 'data.tree.children.1.children.#(name=="e2e-explain-prtb").kind' ProjectRoleTemplateBinding
+exec rancher access explain delete pods --cluster testcluster -n team-c
+stdout 'chain: partial \(3 issues\)'
+stdout '  bindingRead RoleBinding team-c/e2e-explain-rb: RBAC - '
+stdout '\+-- HeldBindings - Bindings held by the subject'
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# explain answers one place: --project (a global flag) is refused before any
+# request, and -A is not a flag of explain at all
+! exec rancher access explain delete pods --cluster testcluster --project p-e2e
+stderr 'explain answers one namespace'
+! exec rancher access explain delete pods --cluster testcluster -A
+stderr 'flag provided but not defined'
+! exec rancher access explain delete pods --cluster testcluster
+stderr 'needs a namespace: add -n'
+
+# the proxy's refusal of a subject without cluster access is one denial
+! exec rancher access explain get pods --cluster testcluster -n team-a --as e2e-nocluster -o json
+stdout '"resultSource": "rancherProxy"'
