@@ -1,0 +1,374 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "reason-prtb-grant",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SubjectAccessReview",
+        "metadata": {},
+        "spec": {
+          "groups": [
+            "system:authenticated"
+          ],
+          "resourceAttributes": {
+            "namespace": "e2e-fid-explain",
+            "resource": "pods",
+            "verb": "get",
+            "version": "v1"
+          },
+          "user": "e2e-fid-explain-user"
+        },
+        "status": {
+          "allowed": true,
+          "reason": "\u003creason\u003e"
+        }
+      }
+    },
+    {
+      "name": "reason-crtb-grant",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SubjectAccessReview",
+        "metadata": {},
+        "spec": {
+          "groups": [
+            "system:authenticated"
+          ],
+          "resourceAttributes": {
+            "resource": "nodes",
+            "verb": "get",
+            "version": "v1"
+          },
+          "user": "e2e-fid-explain-user"
+        },
+        "status": {
+          "allowed": true,
+          "reason": "\u003creason\u003e"
+        }
+      }
+    },
+    {
+      "name": "prtb-rolebindings",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "items": [
+          {
+            "metadata": {
+              "creationTimestamp": "\u003ctime\u003e",
+              "labels": {
+                "authz.cluster.cattle.io/rtb-owner-updated": "{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb"
+              },
+              "name": "\u003cname\u003e",
+              "namespace": "e2e-fid-explain",
+              "resourceVersion": "\u003crv\u003e",
+              "uid": "\u003cuid\u003e"
+            },
+            "roleRef": {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "ClusterRole",
+              "name": "edit"
+            },
+            "subjects": [
+              {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "User",
+                "name": "e2e-fid-explain-user"
+              }
+            ]
+          },
+          {
+            "metadata": {
+              "creationTimestamp": "\u003ctime\u003e",
+              "labels": {
+                "authz.cluster.cattle.io/rtb-owner-updated": "{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb"
+              },
+              "name": "\u003cname\u003e",
+              "namespace": "e2e-fid-explain",
+              "resourceVersion": "\u003crv\u003e",
+              "uid": "\u003cuid\u003e"
+            },
+            "roleRef": {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "ClusterRole",
+              "name": "project-member"
+            },
+            "subjects": [
+              {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "User",
+                "name": "e2e-fid-explain-user"
+              }
+            ]
+          }
+        ],
+        "kind": "RoleBindingList",
+        "metadata": {
+          "resourceVersion": "\u003crv\u003e"
+        }
+      }
+    },
+    {
+      "name": "prtb-clusterrolebindings",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "items": [
+          {
+            "metadata": {
+              "creationTimestamp": "\u003ctime\u003e",
+              "labels": {
+                "{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb": "owner-user"
+              },
+              "name": "\u003cname\u003e",
+              "resourceVersion": "\u003crv\u003e",
+              "uid": "\u003cuid\u003e"
+            },
+            "roleRef": {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "ClusterRole",
+              "name": "create-ns"
+            },
+            "subjects": [
+              {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "User",
+                "name": "e2e-fid-explain-user"
+              }
+            ]
+          },
+          {
+            "metadata": {
+              "creationTimestamp": "\u003ctime\u003e",
+              "labels": {
+                "{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb": "owner-user"
+              },
+              "name": "\u003cname\u003e",
+              "resourceVersion": "\u003crv\u003e",
+              "uid": "\u003cuid\u003e"
+            },
+            "roleRef": {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "ClusterRole",
+              "name": "p-e2e-fid-explain-namespaces-edit"
+            },
+            "subjects": [
+              {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "User",
+                "name": "e2e-fid-explain-user"
+              }
+            ]
+          },
+          {
+            "metadata": {
+              "creationTimestamp": "\u003ctime\u003e",
+              "labels": {
+                "{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb": "owner-user"
+              },
+              "name": "\u003cname\u003e",
+              "resourceVersion": "\u003crv\u003e",
+              "uid": "\u003cuid\u003e"
+            },
+            "roleRef": {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "ClusterRole",
+              "name": "project-member-promoted"
+            },
+            "subjects": [
+              {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "User",
+                "name": "e2e-fid-explain-user"
+              }
+            ]
+          }
+        ],
+        "kind": "ClusterRoleBindingList",
+        "metadata": {
+          "resourceVersion": "\u003crv\u003e"
+        }
+      }
+    },
+    {
+      "name": "crtb-clusterrolebindings",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "items": [
+          {
+            "metadata": {
+              "creationTimestamp": "\u003ctime\u003e",
+              "labels": {
+                "authz.cluster.cattle.io/rtb-owner-updated": "{downstream}_e2e-fid-explain-crtb"
+              },
+              "name": "\u003cname\u003e",
+              "resourceVersion": "\u003crv\u003e",
+              "uid": "\u003cuid\u003e"
+            },
+            "roleRef": {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "ClusterRole",
+              "name": "cluster-member"
+            },
+            "subjects": [
+              {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "User",
+                "name": "e2e-fid-explain-user"
+              }
+            ]
+          }
+        ],
+        "kind": "ClusterRoleBindingList",
+        "metadata": {
+          "resourceVersion": "\u003crv\u003e"
+        }
+      }
+    },
+    {
+      "name": "clusterrole-project-member",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRole",
+        "metadata": {
+          "annotations": {
+            "authz.cluster.cattle.io/clusterrole-owner": "project-member"
+          },
+          "creationTimestamp": "\u003ctime\u003e",
+          "name": "project-member",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "rules": "\u003crules\u003e"
+      }
+    },
+    {
+      "name": "prtb-object",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "id": "\u003cid\u003e",
+        "kind": "ProjectRoleTemplateBinding",
+        "metadata": {
+          "annotations": {
+            "lifecycle.cattle.io/create.cluster-prtb-sync_{downstream}": "true",
+            "lifecycle.cattle.io/create.mgmt-auth-prtb-controller": "true"
+          },
+          "creationTimestamp": "\u003ctime\u003e",
+          "labels": {
+            "auth.management.cattle.io/crb-rb-labels-updated": "true",
+            "authz.cluster.cattle.io/crb-rb-labels-updated": "true"
+          },
+          "name": "e2e-fid-explain-prtb",
+          "namespace": "{downstream}-p-e2e-fid-explain",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "projectName": "{downstream}:p-e2e-fid-explain",
+        "roleTemplateName": "project-member",
+        "type": "management.cattle.io.projectroletemplatebinding",
+        "userName": "e2e-fid-explain-user",
+        "userPrincipalName": "local://e2e-fid-explain-user"
+      }
+    },
+    {
+      "name": "crtb-object",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "clusterName": "{downstream}",
+        "id": "\u003cid\u003e",
+        "kind": "ClusterRoleTemplateBinding",
+        "metadata": {
+          "annotations": {
+            "lifecycle.cattle.io/create.cluster-crtb-sync_{downstream}": "true",
+            "lifecycle.cattle.io/create.mgmt-auth-crtb-controller": "true"
+          },
+          "creationTimestamp": "\u003ctime\u003e",
+          "labels": {
+            "auth.management.cattle.io/crb-rb-labels-updated": "true",
+            "authz.cluster.cattle.io/crb-rb-labels-updated": "true"
+          },
+          "name": "e2e-fid-explain-crtb",
+          "namespace": "{downstream}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "roleTemplateName": "cluster-member",
+        "status": {
+          "lastUpdateTime": "\u003cts\u003e"
+        },
+        "type": "management.cattle.io.clusterroletemplatebinding",
+        "userName": "e2e-fid-explain-user",
+        "userPrincipalName": "local://e2e-fid-explain-user"
+      }
+    },
+    {
+      "name": "admin-whoami",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "metadata": {
+          "creationTimestamp": "\u003ctime\u003e"
+        },
+        "status": {
+          "userInfo": {
+            "extra": "\u003cextra\u003e",
+            "groups": [
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "{adminuid}"
+          }
+        }
+      }
+    },
+    {
+      "name": "globaladmin-binding",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRoleBinding",
+        "metadata": {
+          "annotations": {
+            "authz.cluster.cattle.io/admin-globalrole-checked": "true",
+            "authz.cluster.cattle.io/globalrole": "admin",
+            "authz.cluster.cattle.io/globalrolebinding": "{grb}"
+          },
+          "creationTimestamp": "\u003ctime\u003e",
+          "name": "globaladmin-{adminuid}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "roleRef": {
+          "apiGroup": "rbac.authorization.k8s.io",
+          "kind": "ClusterRole",
+          "name": "cluster-admin"
+        },
+        "subjects": [
+          {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "User",
+            "name": "{adminuid}"
+          }
+        ]
+      }
+    }
+  ]
+}

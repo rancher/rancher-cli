@@ -1,0 +1,153 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "roletemplate-project-member",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "builtin": true,
+        "context": "project",
+        "description": "",
+        "displayName": "Project Member",
+        "external": false,
+        "hidden": false,
+        "id": "\u003cid\u003e",
+        "kind": "RoleTemplate",
+        "metadata": {
+          "annotations": "\u003cannotations\u003e",
+          "creationTimestamp": "\u003ctime\u003e",
+          "labels": {
+            "authz.management.cattle.io/bootstrapping": "default-roletemplate"
+          },
+          "name": "project-member",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "roleTemplateNames": [
+          "edit"
+        ],
+        "rules": "\u003crules\u003e",
+        "type": "management.cattle.io.roletemplate"
+      }
+    },
+    {
+      "name": "roletemplate-edit",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "builtin": true,
+        "context": "project",
+        "description": "",
+        "displayName": "Kubernetes edit",
+        "external": true,
+        "hidden": true,
+        "id": "\u003cid\u003e",
+        "kind": "RoleTemplate",
+        "metadata": {
+          "annotations": "\u003cannotations\u003e",
+          "creationTimestamp": "\u003ctime\u003e",
+          "labels": {
+            "authz.management.cattle.io/bootstrapping": "default-roletemplate"
+          },
+          "name": "edit",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "type": "management.cattle.io.roletemplate"
+      }
+    },
+    {
+      "name": "globalrole-admin",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "builtin": true,
+        "displayName": "Admin",
+        "id": "\u003cid\u003e",
+        "kind": "GlobalRole",
+        "metadata": {
+          "annotations": "\u003cannotations\u003e",
+          "creationTimestamp": "\u003ctime\u003e",
+          "labels": {
+            "authz.management.cattle.io/bootstrapping": "default-globalrole"
+          },
+          "name": "admin",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "rules": "\u003crules\u003e",
+        "status": "\u003cstatus\u003e",
+        "type": "management.cattle.io.globalrole"
+      }
+    },
+    {
+      "name": "globalrole-user",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "builtin": true,
+        "displayName": "User",
+        "id": "\u003cid\u003e",
+        "kind": "GlobalRole",
+        "metadata": {
+          "annotations": "\u003cannotations\u003e",
+          "creationTimestamp": "\u003ctime\u003e",
+          "labels": {
+            "authz.management.cattle.io/bootstrapping": "default-globalrole"
+          },
+          "name": "user",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "namespacedRules": {
+          "cattle-global-data": [
+            {
+              "apiGroups": [
+                ""
+              ],
+              "resources": [
+                "secrets"
+              ],
+              "verbs": [
+                "create"
+              ]
+            }
+          ],
+          "fleet-default": [
+            {
+              "apiGroups": [
+                ""
+              ],
+              "resources": [
+                "secrets"
+              ],
+              "verbs": [
+                "create"
+              ]
+            },
+            {
+              "apiGroups": [
+                "infrastructure.cluster.x-k8s.io"
+              ],
+              "resources": [
+                "*"
+              ],
+              "verbs": [
+                "create"
+              ]
+            }
+          ]
+        },
+        "newUserDefault": true,
+        "rules": "\u003crules\u003e",
+        "status": "\u003cstatus\u003e",
+        "type": "management.cattle.io.globalrole"
+      }
+    }
+  ]
+}

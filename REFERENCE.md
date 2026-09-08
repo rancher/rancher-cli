@@ -533,6 +533,31 @@ evaluation error stays allowed and raises a warning. Needs
 subjectaccessreviews` there; `rollup.outsideCandidateSet` names what no
 row can show (`system:masters` members, non-RBAC authorizers).
 
+`access explain` answers why. For one subject (you, or `--as`), one verb
+and resource, and one namespace (or the cluster scope), it asks the same
+review `access can` asks and renders the answer as a tree. On allow, the
+root is the one binding the server's reason names, its role with the
+rules covering the request (a display filter; the server chose the
+binding), and the Rancher chain behind the binding read from Rancher's
+own labels and annotations: the ClusterRoleTemplateBinding or
+ProjectRoleTemplateBinding, its RoleTemplate and what it inherits, or the
+GlobalRoleBinding and GlobalRole with its inherited RoleTemplates. Both of
+Rancher's label grammars are followed (the default `rtb-owner-updated`
+form and the `crtb-owner-<name>`/`prtb-owner-<name>` form of the
+`aggregated-roletemplates` feature). On deny, the root lists the bindings
+on the cluster naming the subject or its groups. The decision is the
+server's and alone decides the exit (0, 12, 13); what the chain could not
+establish is typed in `chainIssues` (`bindingRead`, `roleRead`,
+`labelTraversal`, `managementRead`, `reasonParse`) with `chain:
+partial|unknown`, printed after the tree, never as a warning. A caller
+the downstream refuses its RBAC objects still sees the binding and role
+from the reason and, under `Bindings held by the subject`, the
+ClusterRoleTemplateBindings and ProjectRoleTemplateBindings it may read on
+the management plane. A binding with no Rancher owner label or annotation
+says so and nothing more; Rancher itself creates such bindings. A binding
+whose label names a parent the caller could not match says that no
+Rancher parent could be verified, and `chainIssues` names the label.
+
 ## Diagnostics & support
 
 `logs`/`support-bundle` cover only what Rancher's own Kubernetes API can reach.

@@ -87,6 +87,11 @@ type NormalizeRule struct {
 	Path       string
 	Replace    string
 	KeepPrefix string
+	// SortBy, when set, sorts the array at Path by the string at this
+	// dot-separated sub-path of each element (stable, ascending). Server
+	// list order follows generated names, so a recorded list with names
+	// normalized away needs an order of its own.
+	SortBy string
 }
 
 // Step is a fixture action run before or after a probe's observations.
@@ -122,6 +127,12 @@ type Probe struct {
 	// testdata/downstream, never under oracle or facade; skipped by
 	// conformance and by TestOracle.
 	Downstream bool
+	// SubstituteCaptures replaces every captured value (the downstream
+	// cluster id, anything an observation captured) with "{name}" in the
+	// keys and string values of every recorded body, after Normalize. A
+	// label key built from the cluster id then records as the template
+	// the next boot reproduces.
+	SubstituteCaptures bool
 }
 
 // Validate enforces the probe-definition invariants from the spec.
@@ -157,6 +168,9 @@ func (p Probe) Validate() error {
 	for _, r := range p.Normalize {
 		if r.Replace != "" && r.KeepPrefix != "" {
 			return fmt.Errorf("probe %s: normalize rule %s: Replace and KeepPrefix are mutually exclusive", p.Name, r.Path)
+		}
+		if r.SortBy != "" && (r.Replace != "" || r.KeepPrefix != "") {
+			return fmt.Errorf("probe %s: normalize rule %s: SortBy is exclusive with Replace and KeepPrefix", p.Name, r.Path)
 		}
 	}
 	return nil

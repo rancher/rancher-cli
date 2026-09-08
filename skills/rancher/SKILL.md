@@ -463,6 +463,15 @@ each; `--project` and `-A` give one row per subject per namespace). Read
 subject Rancher knows no groups for - "could not be ruled out", never
 "no" - and does not change the exit code; `data.rollup.outsideCandidateSet`
 names what the answer cannot see.
+`rancher access explain <verb> <resource> --cluster <c> [-n <ns>] [--as <subject>]`
+says why: read `data.decision` and `data.reason` first, then `data.tree`
+(the binding the server accepted, its role's covering rules, and the
+ClusterRoleTemplateBinding, ProjectRoleTemplateBinding, GlobalRoleBinding,
+GlobalRole and RoleTemplates behind it) and `data.chain` with
+`data.chainIssues` - `partial` means a read was refused or an object was
+missing, never that the decision is in doubt. Quote nodes as facts about
+bindings; the rules shown are a display filter, the server chose the
+binding.
 Never present a role list as permissions.
 
 - `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` -

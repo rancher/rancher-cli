@@ -1,0 +1,148 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "admin-whoami",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "metadata": {
+          "creationTimestamp": "\u003ctime\u003e"
+        },
+        "status": {
+          "userInfo": {
+            "extra": "\u003cextra\u003e",
+            "groups": [
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "{adminuid}"
+          }
+        }
+      }
+    },
+    {
+      "name": "globaladmin-binding",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRoleBinding",
+        "metadata": {
+          "annotations": {
+            "authz.cluster.cattle.io/admin-globalrole-checked": "true",
+            "authz.cluster.cattle.io/globalrole": "admin",
+            "authz.cluster.cattle.io/globalrolebinding": "{grb}"
+          },
+          "creationTimestamp": "\u003ctime\u003e",
+          "name": "globaladmin-{adminuid}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "roleRef": {
+          "apiGroup": "rbac.authorization.k8s.io",
+          "kind": "ClusterRole",
+          "name": "cluster-admin"
+        },
+        "subjects": [
+          {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "User",
+            "name": "{adminuid}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "admin-ssar-settings",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SelfSubjectAccessReview",
+        "metadata": {},
+        "spec": {
+          "resourceAttributes": {
+            "group": "management.cattle.io",
+            "resource": "settings",
+            "verb": "list",
+            "version": "v3"
+          }
+        },
+        "status": {
+          "allowed": true,
+          "reason": "\u003creason\u003e"
+        }
+      }
+    },
+    {
+      "name": "grb-binding",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRoleBinding",
+        "metadata": {
+          "creationTimestamp": "\u003ctime\u003e",
+          "labels": {
+            "authz.management.cattle.io/globalrolebinding": "true",
+            "authz.management.cattle.io/grb-owner": "{grb}"
+          },
+          "name": "cattle-globalrolebinding-{grb}",
+          "ownerReferences": [
+            {
+              "apiVersion": "management.cattle.io/v3",
+              "kind": "GlobalRoleBinding",
+              "name": "{grb}",
+              "uid": "7a62dc1c-32ba-4b86-bd44-e9d18dc5447a"
+            }
+          ],
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "roleRef": {
+          "apiGroup": "rbac.authorization.k8s.io",
+          "kind": "ClusterRole",
+          "name": "cattle-globalrole-admin"
+        },
+        "subjects": [
+          {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "User",
+            "name": "{adminuid}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "grb-clusterrole",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "ClusterRole",
+        "metadata": {
+          "creationTimestamp": "\u003ctime\u003e",
+          "labels": {
+            "authz.management.cattle.io/globalrole": "true",
+            "authz.management.cattle.io/gr-owner": "admin"
+          },
+          "name": "cattle-globalrole-admin",
+          "ownerReferences": [
+            {
+              "apiVersion": "management.cattle.io/v3",
+              "kind": "GlobalRole",
+              "name": "admin",
+              "uid": "832f60c9-c946-4a8e-85a2-b251ebd6194f"
+            }
+          ],
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "rules": "\u003crules\u003e"
+      }
+    }
+  ]
+}

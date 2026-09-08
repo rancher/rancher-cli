@@ -41,11 +41,13 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access-downstream/impersonate-group-dropped", "access-downstream/rules-review-complete",
 		"access-downstream/sar-without-right", "access-downstream/version-field-accepted",
 		"access-downstream/who-can-reason-and-binding-shape",
+		"access-downstream/explain-fixture-chain", "access-downstream/explain-fixture-reason-grammar",
 		"access/whoami-through-proxy", "access/impersonate-user-dropped-on-local",
 		"access/rules-review-standard-user-default", "access/self-access-review-with-version",
 		"access/subject-access-review-right-and-anonymous",
 		"access/subject-access-review-reason-grammar",
 		"access/bootstrap-clusterrolebinding-shape",
+		"access/explain-local-globalrole-labels", "access/explain-management-shapes",
 		"discovery/aggregated-downstream", "discovery/aggregated-not-served-on-local",
 		"discovery/dead-group-legacy-document",
 	}
@@ -325,6 +327,7 @@ func TestAccessProbesAreRegistered(t *testing.T) {
 		"access/subject-access-review-right-and-anonymous",
 		"access/subject-access-review-reason-grammar",
 		"access/bootstrap-clusterrolebinding-shape",
+		"access/explain-local-globalrole-labels", "access/explain-management-shapes",
 	} {
 		assert.True(t, names[want], want)
 	}

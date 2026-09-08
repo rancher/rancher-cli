@@ -1,14 +1,18 @@
 package fidelity
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -96,6 +100,10 @@ func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (
 		// Normalize and retain the completed observation either way - on a
 		// capture failure it is returned for diagnostics.
 		Normalize(res.Body, rules)
+		if p.SubstituteCaptures {
+			substituteCaptured(res.Body, captured)
+			res.Text = substituteCapturedString(res.Text, captured)
+		}
 		results = append(results, res)
 		if capErr != nil {
 			return results, capErr
@@ -244,9 +252,22 @@ func substitute(s string, captured map[string]string) string {
 	return s
 }
 
+// captureValue reads a capture path from a decoded body. Segments are
+// split at dots; a segment written as [key] is one literal key that may
+// itself contain dots (an annotation such as
+// [authz.cluster.cattle.io/globalrolebinding]); a non-negative integer
+// segment indexes an array (data.0.id).
 func captureValue(body map[string]any, path string) (string, error) {
 	var node any = body
-	for seg := range strings.SplitSeq(path, ".") {
+	for _, seg := range captureSegments(path) {
+		if arr, ok := node.([]any); ok {
+			i, err := strconv.Atoi(seg)
+			if err != nil || i < 0 || i >= len(arr) {
+				return "", fmt.Errorf("capture %s: no element %q", path, seg)
+			}
+			node = arr[i]
+			continue
+		}
 		m, ok := node.(map[string]any)
 		if !ok {
 			return "", fmt.Errorf("capture %s: not an object at %q", path, seg)
@@ -263,6 +284,28 @@ func captureValue(body map[string]any, path string) (string, error) {
 	return s, nil
 }
 
+// captureSegments splits a capture path at dots, keeping a [bracketed]
+// segment whole without its brackets.
+func captureSegments(path string) []string {
+	var segs []string
+	for len(path) > 0 {
+		if path[0] == '[' {
+			end := strings.IndexByte(path, ']')
+			if end < 0 {
+				segs = append(segs, path[1:])
+				break
+			}
+			segs = append(segs, path[1:end])
+			path = strings.TrimPrefix(path[end+1:], ".")
+			continue
+		}
+		seg, rest, _ := strings.Cut(path, ".")
+		segs = append(segs, seg)
+		path = rest
+	}
+	return segs
+}
+
 // NameFromExtBearer extracts the token name from an ext-style bearer
 // ("ext/<name>:<secret>"). Both testrancher and real Rancher create this shape,
 // which lets targets revoke a token without depending on the create response
@@ -277,4 +320,50 @@ func NameFromExtBearer(bearer string) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+// substituteCaptured replaces every captured value with its "{name}"
+// placeholder in the keys and string values of body, longest values first
+// so a value that contains another is replaced whole.
+func substituteCaptured(body map[string]any, captured map[string]string) {
+	names := slices.SortedFunc(maps.Keys(captured), func(a, b string) int {
+		return cmp.Or(len(captured[b])-len(captured[a]), strings.Compare(a, b))
+	})
+	var walk func(v any) any
+	walk = func(v any) any {
+		switch t := v.(type) {
+		case map[string]any:
+			out := make(map[string]any, len(t))
+			for k, child := range t {
+				out[substituteCapturedString(k, captured, names...)] = walk(child)
+			}
+			return out
+		case []any:
+			for i := range t {
+				t[i] = walk(t[i])
+			}
+			return t
+		case string:
+			return substituteCapturedString(t, captured, names...)
+		default:
+			return v
+		}
+	}
+	out := walk(body).(map[string]any)
+	clear(body)
+	maps.Copy(body, out)
+}
+
+func substituteCapturedString(s string, captured map[string]string, order ...string) string {
+	if len(order) == 0 {
+		order = slices.SortedFunc(maps.Keys(captured), func(a, b string) int {
+			return cmp.Or(len(captured[b])-len(captured[a]), strings.Compare(a, b))
+		})
+	}
+	for _, name := range order {
+		if v := captured[name]; v != "" {
+			s = strings.ReplaceAll(s, v, "{"+name+"}")
+		}
+	}
+	return s
 }

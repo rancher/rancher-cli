@@ -1,0 +1,57 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "reason-rolebinding-of-role",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SubjectAccessReview",
+        "metadata": {},
+        "spec": {
+          "groups": [
+            "system:authenticated"
+          ],
+          "resourceAttributes": {
+            "group": "e2e-fid.example",
+            "namespace": "e2e-fid-explain",
+            "resource": "widgets",
+            "verb": "get",
+            "version": "v1"
+          },
+          "user": "e2e-fid-explain-user"
+        },
+        "status": {
+          "allowed": true,
+          "reason": "RBAC: allowed by RoleBinding \"e2e-fid-explain-rb/e2e-fid-explain\" of Role \"e2e-fid-explain-role\" to User \"e2e-fid-explain-user\""
+        }
+      }
+    },
+    {
+      "name": "denied-elsewhere",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SubjectAccessReview",
+        "metadata": {},
+        "spec": {
+          "groups": [
+            "system:authenticated"
+          ],
+          "resourceAttributes": {
+            "namespace": "default",
+            "resource": "pods",
+            "verb": "get",
+            "version": "v1"
+          },
+          "user": "e2e-fid-explain-user"
+        },
+        "status": {
+          "allowed": false
+        }
+      }
+    }
+  ]
+}

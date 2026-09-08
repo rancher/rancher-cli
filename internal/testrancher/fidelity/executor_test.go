@@ -561,3 +561,41 @@ func TestRunProbeRefusesDownstreamProbeWithoutTarget(t *testing.T) {
 	require.ErrorContains(t, err, "no downstream cluster")
 	assert.False(t, hit, "a downstream probe without a target must never record against a synthetic URL")
 }
+
+// TestSubstituteCapturedRewritesKeysAndValues asserts captured values are
+// replaced by their placeholder in map keys, string values and nested
+// arrays, longest value first.
+func TestSubstituteCapturedRewritesKeysAndValues(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{
+		"metadata": map[string]any{"labels": map[string]any{
+			"c-m-746z46nj-p-e2e-fid-explain_e2e-fid-explain-prtb": "owner-user",
+			"authz.cluster.cattle.io/rtb-owner-updated":           "c-m-746z46nj_e2e-fid-explain-crtb",
+		}},
+		"items": []any{"c-m-746z46nj:p-e2e-fid-explain"},
+	}
+	substituteCaptured(body, map[string]string{"downstream": "c-m-746z46nj", "short": "c-m"})
+	labels := body["metadata"].(map[string]any)["labels"].(map[string]any)
+	assert.Equal(t, "owner-user", labels["{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb"])
+	assert.Equal(t, "{downstream}_e2e-fid-explain-crtb", labels["authz.cluster.cattle.io/rtb-owner-updated"])
+	assert.Equal(t, []any{"{downstream}:p-e2e-fid-explain"}, body["items"])
+}
+
+// TestCaptureValueIndexesArraysAndBracketedKeys asserts a capture path may
+// index an array with an integer segment and name a dotted key in
+// brackets.
+func TestCaptureValueIndexesArraysAndBracketedKeys(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{
+		"data":     []any{map[string]any{"id": "grb-1"}, map[string]any{"id": "grb-2"}},
+		"metadata": map[string]any{"annotations": map[string]any{"authz.cluster.cattle.io/globalrolebinding": "grb-9"}},
+	}
+	v, err := captureValue(body, "data.1.id")
+	require.NoError(t, err)
+	assert.Equal(t, "grb-2", v)
+	v, err = captureValue(body, "metadata.annotations.[authz.cluster.cattle.io/globalrolebinding]")
+	require.NoError(t, err)
+	assert.Equal(t, "grb-9", v)
+	_, err = captureValue(body, "data.7.id")
+	require.ErrorContains(t, err, `no element "7"`)
+}

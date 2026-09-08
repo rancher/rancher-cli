@@ -132,3 +132,18 @@ func TestNormalizeTerminalWildcardScrubsEveryKey(t *testing.T) {
 		assert.Equal(t, "<label>", v, "every label value is scrubbed, including the dotted key %q", k)
 	}
 }
+
+// TestNormalizeSortByOrdersAnArrayByAField asserts SortBy orders the
+// addressed array by the named string field, stably, before any Replace
+// rule scrubs the names the server ordered by.
+func TestNormalizeSortByOrdersAnArrayByAField(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{"items": []any{
+		map[string]any{"metadata": map[string]any{"name": "rb-zzz"}, "roleRef": map[string]any{"name": "project-member"}},
+		map[string]any{"metadata": map[string]any{"name": "rb-aaa"}, "roleRef": map[string]any{"name": "edit"}},
+	}}
+	Normalize(body, []NormalizeRule{{Path: "items", SortBy: "roleRef.name"}, {Path: "items.metadata.name", Replace: "<name>"}})
+	items := body["items"].([]any)
+	assert.Equal(t, "edit", items[0].(map[string]any)["roleRef"].(map[string]any)["name"])
+	assert.Equal(t, "<name>", items[0].(map[string]any)["metadata"].(map[string]any)["name"])
+}

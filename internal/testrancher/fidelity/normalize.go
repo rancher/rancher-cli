@@ -2,6 +2,7 @@ package fidelity
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -74,6 +75,16 @@ func setOrDelete(m map[string]any, key string, r NormalizeRule) {
 	if !present {
 		return
 	}
+	if r.SortBy != "" {
+		// SortBy orders the addressed array in place; a value that is not
+		// an array is left as it is (the golden's shape shows the misuse).
+		if items, ok := v.([]any); ok {
+			sort.SliceStable(items, func(i, j int) bool {
+				return nestedString(items[i], r.SortBy) < nestedString(items[j], r.SortBy)
+			})
+		}
+		return
+	}
 	if r.KeepPrefix != "" {
 		kept, err := keepPrefix(v, r.KeepPrefix)
 		if err != nil {
@@ -115,4 +126,18 @@ func keepPrefix(arr any, prefix string) ([]any, error) {
 		}
 	}
 	return out, nil
+}
+
+// nestedString reads a dot-separated path of string keys from a decoded
+// JSON value; "" when any step is missing or not a string.
+func nestedString(v any, path string) string {
+	for k := range strings.SplitSeq(path, ".") {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return ""
+		}
+		v = m[k]
+	}
+	s, _ := v.(string)
+	return s
 }
