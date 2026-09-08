@@ -143,6 +143,9 @@ func bindingMetadataRules() []NormalizeRule {
 		{Path: "metadata.resourceVersion", Replace: "<rv>"},
 		{Path: "metadata.creationTimestamp", Replace: "<time>"},
 		{Path: "metadata.managedFields", Replace: ""},
+		// An owner's uid is as instance-bound as the object's own; the
+		// owner's kind and name are the fact worth keeping.
+		{Path: "metadata.ownerReferences.uid", Replace: "<uid>"},
 	}
 }
 

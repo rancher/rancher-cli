@@ -96,7 +96,7 @@
               "apiVersion": "management.cattle.io/v3",
               "kind": "GlobalRoleBinding",
               "name": "{grb}",
-              "uid": "7a62dc1c-32ba-4b86-bd44-e9d18dc5447a"
+              "uid": "\u003cuid\u003e"
             }
           ],
           "resourceVersion": "\u003crv\u003e",
@@ -135,7 +135,7 @@
               "apiVersion": "management.cattle.io/v3",
               "kind": "GlobalRole",
               "name": "admin",
-              "uid": "832f60c9-c946-4a8e-85a2-b251ebd6194f"
+              "uid": "\u003cuid\u003e"
             }
           ],
           "resourceVersion": "\u003crv\u003e",
