@@ -124,9 +124,9 @@ func (c LoginCredential) Revoke() RevokeOutcome {
 // retirement pass hands in what remains of its budget); a deadline that
 // has already passed is the very cancellation that triggered cleanup and
 // must not cancel the cleanup too, so it is ignored and the full cleanup
-// bound applies. The retirement pass checks its budget before each call;
-// a budget that expires between that check and this read costs one
-// cleanup bound, an accepted microsecond window.
+// bound applies. The retirement pass checks its deadline against the
+// clock before each call; a deadline that passes between that check and
+// this read costs one cleanup bound, a window of microseconds.
 func (c LoginCredential) RevokeCreated(ctx context.Context, ref TokenRef) RevokeOutcome {
 	if c.Provenance == ProvenanceUserSupplied {
 		return RevokeOutcome{Ref: &ref, Result: ResultNotApplicable}

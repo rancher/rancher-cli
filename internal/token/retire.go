@@ -47,6 +47,7 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 	slices.SortStableFunc(recs, func(a, b config.SupersededToken) int { return strings.Compare(a.SupersededAt, b.SupersededAt) })
 	budget, cancel := context.WithTimeout(context.WithoutCancel(ctx), retirementBudget)
 	defer cancel()
+	deadline, _ := budget.Deadline()
 
 	stamps := map[TokenRef]clierr.RevokeOutcome{}
 	for _, rec := range recs {
@@ -60,7 +61,11 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 			rep.Warnings = append(rep.Warnings, keptWarning(rec, serverURL, "its owner is not known"))
 			continue
 		}
-		if budget.Err() != nil {
+		// The clock decides, not the budget's Done channel: a delete bound to
+		// the same deadline can return before the budget's own timer fires,
+		// and a passed deadline handed to RevokeCreated would be ignored
+		// there and cost a full cleanup bound.
+		if budget.Err() != nil || !time.Now().Before(deadline) {
 			rep.Kept = append(rep.Kept, rec)
 			rep.Warnings = append(rep.Warnings, keptWarning(rec, serverURL, "not attempted: the retirement budget was exhausted"))
 			continue
