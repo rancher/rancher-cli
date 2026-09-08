@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -477,6 +478,7 @@ func TestMain(m *testing.M) {
 	}
 	seedManagementCluster()
 	seedNamespaces()
+	seedDirectEndpointFixtures()
 	seedAccessRBAC()
 	seedCloudCredential()
 	seedRoleObjects()
@@ -764,6 +766,79 @@ func seedManagementCluster() {
 	}
 }
 
+// seedDirectEndpointFixtures creates the management objects the kubeconfig
+// scenario reads for the Authorized Cluster Endpoint: three clusters with
+// the endpoint enabled (one with an fqdn, one with control-plane nodes in
+// its namespace, one with neither), the management Nodes of the second, and
+// the multi-cluster-management Feature switched on. c-test stays without
+// the endpoint: logs-target.txtar asserts that. Global and one-time, like
+// every fixture shared across the parallel scripts.
+func seedDirectEndpointFixtures() {
+	clusters := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
+	nodes := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "nodes"}
+	features := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"}
+	create := func(gvr schema.GroupVersionResource, ns string, obj map[string]any, status map[string]any) {
+		u := &unstructured.Unstructured{Object: obj}
+		created, err := dynCli.Resource(gvr).Namespace(ns).Create(context.Background(), u, metav1.CreateOptions{})
+		if err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
+			panic(fmt.Sprintf("seeding %s %s: %v", gvr.Resource, u.GetName(), err))
+		}
+		if status == nil {
+			return
+		}
+		created.Object["status"] = status
+		if _, err := dynCli.Resource(gvr).Namespace(ns).UpdateStatus(context.Background(), created, metav1.UpdateOptions{}); err != nil {
+			panic(fmt.Sprintf("seeding %s %s status: %v", gvr.Resource, u.GetName(), err))
+		}
+	}
+	cluster := func(id, display string, endpoint map[string]any) map[string]any {
+		return map[string]any{
+			"apiVersion": "management.cattle.io/v3", "kind": "Cluster",
+			"metadata": map[string]any{"name": id},
+			"spec":     map[string]any{"displayName": display, "localClusterAuthEndpoint": endpoint},
+		}
+	}
+	create(clusters, "", cluster("c-ace-fqdn", "acefqdn", map[string]any{"enabled": true, "fqdn": "ace.example.test", "caCerts": directEndpointCAPEM}), nil)
+	create(clusters, "", cluster("c-ace-nodes", "acenodes", map[string]any{"enabled": true}), map[string]any{"caCert": base64.StdEncoding.EncodeToString([]byte(directEndpointCAPEM))})
+	create(clusters, "", cluster("c-ace-empty", "aceempty", map[string]any{"enabled": true}), nil)
+	node := func(name, hostname string, controlPlane, ready bool, ip string) {
+		readyStatus := "False"
+		if ready {
+			readyStatus = "True"
+		}
+		create(nodes, "c-ace-nodes", map[string]any{
+			"apiVersion": "management.cattle.io/v3", "kind": "Node",
+			"metadata": map[string]any{"name": name, "namespace": "c-ace-nodes"},
+			"spec":     map[string]any{"controlPlane": controlPlane, "worker": !controlPlane, "requestedHostname": hostname},
+		}, map[string]any{"internalNodeStatus": map[string]any{
+			"addresses":  []any{map[string]any{"type": "InternalIP", "address": ip}},
+			"conditions": []any{map[string]any{"type": "Ready", "status": readyStatus}},
+		}})
+	}
+	node("m-cp1", "c-ace-nodes-cp1", true, false, "10.0.0.1")
+	node("m-cp2", "c-ace-nodes-cp2", true, true, "10.0.0.2")
+	node("m-w1", "c-ace-nodes-w1", false, true, "10.0.0.9")
+	create(features, "", map[string]any{
+		"apiVersion": "management.cattle.io/v3", "kind": "Feature",
+		"metadata": map[string]any{"name": "multi-cluster-management"},
+		"spec":     map[string]any{"value": true},
+	}, nil)
+}
+
+// directEndpointCAPEM is the certificate the fixture endpoints trust; the
+// scenario asserts it is carried, never that it verifies anything.
+const directEndpointCAPEM = `-----BEGIN CERTIFICATE-----
+MIIBdzCCAR2gAwIBAgIUKr65J82c+1SqibViZ5cGxxIfrcgwCgYIKoZIzj0EAwIw
+ETEPMA0GA1UEAwwGYWNlLWNhMB4XDTI2MDkwODA0NTYzNVoXDTM2MDkwNTA0NTYz
+NVowETEPMA0GA1UEAwwGYWNlLWNhMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
+jn3wmG0sXQW1AkCIn0qaQK0seOW4x/7wEt3bf1SFXzII6bhfwbX5oHLSVww/SR/D
+93zvzJfwMwhlixB6Tyc8y6NTMFEwHQYDVR0OBBYEFM5WVeOdyCfPT3tUqdpHB2RS
+rcWMMB8GA1UdIwQYMBaAFM5WVeOdyCfPT3tUqdpHB2RSrcWMMA8GA1UdEwEB/wQF
+MAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIgRxKTqdpB9fbVb/NudK7izP+EeBcR/Ala
+xTcaSBkjD+QCIQCer+Qsv1FU0Wm7T/W+ZaAIOos95Ps3Kt62v9A1srSvgQ==
+-----END CERTIFICATE-----
+`
+
 // seedNamespaces creates the namespaces scripts rely on beyond envtest's
 // auto-created "default". "c-test" is required too: management.cattle.io
 // kinds namespaced by cluster id (project, clusterroletemplatebinding) need
@@ -778,7 +853,7 @@ func seedManagementCluster() {
 // where `create user` writes the backing password Secret.
 func seedNamespaces() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
-	for _, name := range []string{"fleet-default", "team-a", "team-b", "team-c", "c-test", "c-test-p-explain", "c-test-p-explain2", "cattle-system", "cattle-global-data", "cattle-local-user-passwords"} {
+	for _, name := range []string{"fleet-default", "team-a", "team-b", "team-c", "c-test", "c-test-p-explain", "c-test-p-explain2", "c-ace-fqdn", "c-ace-nodes", "c-ace-empty", "cattle-system", "cattle-global-data", "cattle-local-user-passwords"} {
 		obj := &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
