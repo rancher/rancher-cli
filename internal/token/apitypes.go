@@ -20,6 +20,10 @@ type Token struct {
 	// guarantees only in memory (a credential-helper short-lived token served
 	// through the legacy pre-ext.cattle.io fallback). It is never serialized.
 	noDiskCache bool
+	// fresh is set when this invocation created the token: the direct
+	// endpoint wait runs for it and cancellation revokes it. Never
+	// serialized.
+	fresh *freshToken
 }
 
 // AuthProvider is the base provider type; GetType satisfies the typedProvider interface.

@@ -208,9 +208,21 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	}
 
 	flagServer := in.String("server")
-	flagKey, noticed, r, hit := t.probeFlagCache(name, flagServer, in.String("cluster"), p)
-	if hit {
-		return r, nil
+	var flagKey string
+	var noticed bool
+	// The flag-only fast path serves a cached credential without reading
+	// its readiness record; with a cluster entry in KUBERNETES_EXEC_INFO
+	// the resolved path must decide whether that endpoint still needs a
+	// probe, so the fast path is skipped.
+	// A malformed value takes the resolved path too, where its warning
+	// is attached to whatever that path returns.
+	if ec, err := loadExecCluster(); err == nil && ec == nil {
+		var r runtime.Result
+		var hit bool
+		flagKey, noticed, r, hit = t.probeFlagCache(name, flagServer, in.String("cluster"), p)
+		if hit {
+			return r, nil
+		}
 	}
 
 	return t.runWithParams(ctx, runParams{
@@ -257,6 +269,19 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	}
 	cacheKey := config.CacheKey(params.Name, serverID, clusterID)
 
+	// The endpoint kubectl is about to use, when the kubeconfig asked
+	// kubectl to say: a direct endpoint gets the readiness wait, the
+	// Rancher proxy needs none.
+	ec, ecErr := loadExecCluster()
+	var directTarget *execCluster
+	if ec != nil && !isRancherProxy(ec.server, server, clusterID) {
+		directTarget = ec
+	}
+	var loginWarnings []string
+	if ecErr != nil {
+		loginWarnings = append(loginWarnings, execInfoEnv+" could not be read ("+ecErr.Error()+"); not waiting for the direct endpoint")
+	}
+
 	switch params.Name {
 	case "":
 		p.Notice("caching disabled: no --name; each call re-authenticates")
@@ -271,7 +296,12 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// which would degrade the invariant from "exactly once" to "zero notices".
 		if cacheKey != params.ProbedKey {
 			quiet := params.ProbedNoticed
-			if r, hit := t.cachedResultQ(cacheKey, quiet, p); hit {
+			r, hit, err := t.cachedResultQ(ctx, cacheKey, quiet, p, directTarget, params.Name)
+			if err != nil {
+				return runtime.Result{}, err
+			}
+			if hit {
+				r.Warnings = append(r.Warnings, loginWarnings...)
 				return r, nil
 			}
 		}
@@ -292,7 +322,6 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	}
 
 	rancherToken, reuseOn, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
-	var loginWarnings []string
 	// The plugin-created login exists to serve cluster-scoped tokens, so it
 	// runs only for an invocation that names a cluster. The legacy shim
 	// without --cluster keeps creating the unscoped kubeconfig token.
@@ -302,14 +331,18 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// returns errNoStoredCredential itself when the setting was turned
 		// off while it waited for the flock, which the switch below then
 		// handles as today's scoped interactive login.
-		rancherToken, loginWarnings, err = t.pluginLogin(ctx, t.pluginInput(server, serverID, caPEM, clusterID, client, params), p)
+		var pluginWarnings []string
+		rancherToken, pluginWarnings, err = t.pluginLogin(ctx, t.pluginInput(server, serverID, caPEM, clusterID, client, params), p)
+		loginWarnings = append(loginWarnings, pluginWarnings...)
 	}
 	if rej, ok := errors.AsType[*pluginCredentialRejected](err); ok {
 		if pluginLane {
 			// A rejected plugin-created login: one refresh under the flock.
 			in := t.pluginInput(server, serverID, caPEM, clusterID, client, params)
 			in.refreshEntry = rej.name
-			rancherToken, loginWarnings, err = t.pluginLogin(ctx, in, p)
+			var pluginWarnings []string
+			rancherToken, pluginWarnings, err = t.pluginLogin(ctx, in, p)
+			loginWarnings = append(loginWarnings, pluginWarnings...)
 		} else {
 			// No cluster to scope a refreshed login to: this invocation
 			// takes the interactive login the rejection always falls back to.
@@ -327,7 +360,9 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt}
+		// The interactive login's cluster-scoped token has no parent
+		// bearer: it revokes itself if the wait below is cancelled.
+		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer)}
 	case err != nil:
 		return runtime.Result{}, err
 	}
@@ -340,6 +375,33 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		tokenExpiry, err = time.Parse(time.RFC3339, rancherToken.ExpiresAt)
 		if err != nil {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric, "parsing token expiry: "+err.Error())
+		}
+	}
+
+	// A token this invocation created is accepted by a direct endpoint
+	// only after Rancher has synced it there; wait for that endpoint to
+	// authenticate it before kubectl uses it. One wait, whichever producer
+	// made the token; a cached token skips it.
+	markReady := false
+	if directTarget != nil && rancherToken.fresh != nil {
+		ready, werr := waitDirectReady(ctx, directTarget, rancherToken.Token, directWaitBound)
+		switch {
+		case werr == nil && ready:
+			markReady = true
+		case werr == nil:
+			loginWarnings = append(loginWarnings, directNotReadyWarning(directTarget.server, params.Name))
+		default:
+			if unavailable, ok := errors.AsType[*directProbeUnavailable](werr); ok {
+				loginWarnings = append(loginWarnings, fmt.Sprintf("the direct endpoint %s cannot be probed (%v); the credential is returned without waiting for it", directTarget.server, unavailable.err))
+				break
+			}
+			// The caller cancelled: the token that would now be orphaned
+			// is revoked with the bearer that created it, detached from the
+			// cancellation and bounded, and reported.
+			cctx, ccancel := cleanupContext(ctx)
+			out := rancherToken.fresh.cleanup(cctx)
+			ccancel()
+			return runtime.Result{}, directWaitCancelled(werr, rancherToken.fresh, out)
 		}
 	}
 
@@ -360,6 +422,10 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		default:
 			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, params.Name, serverID, clusterID); cacheErr != nil {
 				p.Notice("cache write failed: " + cacheErr.Error())
+			} else if markReady {
+				if _, merr := t.store.MarkCachedCredReady(cacheKey, rancherToken.Token, directTarget.fingerprint); merr != nil {
+					p.Notice("cache readiness write failed: " + merr.Error())
+				}
 			}
 		}
 	}
@@ -371,16 +437,57 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 // whether it hit. When quiet is true a real
 // store error is silently treated as a miss rather than noticed. Used when the
 // caller's fast-path probe already noticed the error for this invocation so the
-// resolved-key re-check does not fire the notice a second time.
-func (t tokenCmd) cachedResultQ(key string, quiet bool, p runtime.Prompter) (runtime.Result, bool) {
-	tok, expiry, err := t.store.GetCachedCred(key)
-	if err == nil {
-		return runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(tok, expiry)}, true
+// resolved-key re-check does not fire the notice a second time. With a
+// direct target whose fingerprint the record does not carry, the cached
+// token is re-probed there first (a shorter bound than a fresh token's) and
+// the record marked on success; a mark refused because the record changed
+// underneath is a miss, and a cancelled re-probe is the error.
+func (t tokenCmd) cachedResultQ(ctx context.Context, key string, quiet bool, p runtime.Prompter, direct *execCluster, entry string) (runtime.Result, bool, error) {
+	d, err := t.store.GetCachedCredDetail(key)
+	if err != nil {
+		if !errors.Is(err, config.ErrNoToken) && !quiet {
+			p.Notice("cache read failed: " + err.Error())
+		}
+		return runtime.Result{}, false, nil
 	}
-	if !errors.Is(err, config.ErrNoToken) && !quiet {
-		p.Notice("cache read failed: " + err.Error())
+	r := runtime.Result{Raw: true, Kind: "ExecCredential", Data: newExecCredential(d.Token, d.Expiry)}
+	if direct == nil || slices.Contains(d.ReadyEndpoints, direct.fingerprint) {
+		return r, true, nil
 	}
-	return runtime.Result{}, false
+	ready, werr := waitDirectReady(ctx, direct, d.Token, directRecheckBound)
+	switch {
+	case werr == nil && ready:
+		marked, merr := t.store.MarkCachedCredReady(key, d.Token, direct.fingerprint)
+		if merr != nil {
+			p.Notice("cache readiness write failed: " + merr.Error())
+		}
+		if merr == nil && !marked {
+			// Another process replaced or deleted the record while the
+			// endpoint was probed: the token just read is stale and is
+			// never handed to kubectl; this is a miss.
+			return runtime.Result{}, false, nil
+		}
+	case werr == nil:
+		r.Warnings = append(r.Warnings, directNotReadyWarning(direct.server, entry))
+	default:
+		if unavailable, ok := errors.AsType[*directProbeUnavailable](werr); ok {
+			r.Warnings = append(r.Warnings, fmt.Sprintf("the direct endpoint %s cannot be probed (%v); the credential is returned without waiting for it", direct.server, unavailable.err))
+			break
+		}
+		return runtime.Result{}, false, werr
+	}
+	return r, true, nil
+}
+
+// directNotReadyWarning names the endpoint that has not accepted the
+// credential within the bound and the proxy context to fall back to: the
+// kubeconfig's exec user entry name, which is also its proxy context.
+func directNotReadyWarning(server, entry string) string {
+	fallback := "the proxy context of this kubeconfig"
+	if entry != "" {
+		fallback = "the proxy context " + entry
+	}
+	return fmt.Sprintf("the new credential may not yet be accepted at %s; %s is the immediate fallback", server, fallback)
 }
 
 // computeCacheProbeKey validates and normalizes name, server, and cluster into
@@ -1574,7 +1681,10 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			return Token{}, cfg.TokenReuse, err
 		}
 	}
-	return Token{Token: bearer, ExpiresAt: expiresAt}, cfg.TokenReuse, nil
+	// The child token is CLI-created even when the stored parent is not:
+	// its cleanup deletes it with the parent bearer whatever the parent's
+	// provenance.
+	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: newFreshToken(created, client, base, stored)}, cfg.TokenReuse, nil
 }
 
 // classifyRejection maps a 401 or 403 from any credential-authenticated

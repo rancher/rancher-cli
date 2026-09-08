@@ -151,7 +151,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			return FailLogin(primary, clierr.StageCommit, st, cred, name)
 		}
 		entry, records = out.Name, out.SupersededTokens
-		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt}
+		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt, fresh: newFreshToken(ct, in.client, base, cred.Token)}
 		warnings = append(warnings, st.Warnings...)
 		return nil
 	})
