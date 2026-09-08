@@ -2,8 +2,11 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -21,6 +24,7 @@ import (
 	"k8s.io/client-go/discovery"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 )
 
@@ -494,4 +498,82 @@ func TestDynamicRepoCreateAndUpdateNameTheFieldManager(t *testing.T) {
 	assert.Equal(t, FieldManager, createManager)
 	assert.Equal(t, FieldManager, updateManager)
 	assert.Equal(t, "cli.rancher.io", FieldManager, "the identity is the CLI's domain, unversioned, so it survives a binary rename and a schema bump")
+}
+
+// TestLogsKeepsTheServersRefusalMessage asserts that a refused log read
+// renders the API server's own Status message, mapped to RBAC for a 403
+// and AUTH for a 401, instead of client-go's "unknown".
+func TestLogsKeepsTheServersRefusalMessage(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		status int
+		reason metav1.StatusReason
+		code   string
+	}{
+		{"forbidden", http.StatusForbidden, metav1.StatusReasonForbidden, clierr.CodeRBAC},
+		{"unauthorized", http.StatusUnauthorized, metav1.StatusReasonUnauthorized, clierr.CodeAuth},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			msg := fmt.Sprintf("pods %q is forbidden: User %q cannot get resource %q in API group %q in the namespace %q", "web", "u-abc12", "pods/log", "", "ns1")
+			var gotPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_ = json.NewEncoder(w).Encode(metav1.Status{
+					TypeMeta: metav1.TypeMeta{Kind: "Status", APIVersion: "v1"},
+					Status:   metav1.StatusFailure, Message: msg, Reason: tc.reason, Code: int32(tc.status),
+				})
+			}))
+			t.Cleanup(srv.Close)
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "c-1")
+			require.NoError(t, err)
+
+			_, err = c.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, tc.code, ce.Code)
+			require.ErrorContains(t, err, msg)
+			assert.Equal(t, "/api/v1/namespaces/ns1/pods/web/log", gotPath)
+		})
+	}
+}
+
+// TestLogsServerErrorRetryabilityFollowsTheBody asserts the boundary a
+// refused-log 5xx crosses: a JSON Status is the API server's own answer and
+// maps non-retryable with its message kept, while a text/plain body is the
+// Rancher proxy's failure shape and stays retryable with the proxy wording.
+func TestLogsServerErrorRetryabilityFollowsTheBody(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		contentType string
+		body        string
+		retryable   bool
+		contains    string
+	}{
+		{"status body", "application/json", `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"kubelet unreachable","reason":"InternalError","code":500}`, false, "kubelet unreachable"},
+		{"text body", "text/plain; charset=utf-8", "error trying to reach service: cluster agent disconnected", true, "retry once the cluster reconnects"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", tc.contentType)
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(srv.Close)
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "c-1")
+			require.NoError(t, err)
+
+			_, err = c.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, clierr.CodeGeneric, ce.Code)
+			assert.Equal(t, tc.retryable, ce.Retryable)
+			require.ErrorContains(t, err, tc.contains)
+		})
+	}
 }

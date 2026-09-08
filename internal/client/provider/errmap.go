@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -130,4 +131,26 @@ func isUnexpectedServerError(err error) bool {
 		}
 	}
 	return false
+}
+
+// restoreStatus returns the Kubernetes Status a raw request's error lost.
+// client-go builds a raw request's error from the response body only when
+// the body is text/plain; the application/json Status an API server answers
+// a refused pods/log read with is dropped, and the error reads "unknown".
+// When body decodes as a Status the error is rebuilt from it, so the
+// server's own message reaches the caller. Any other body - empty, log text,
+// or Rancher's proxy error object for a caller without cluster access -
+// leaves err as it was: an empty body keeps client-go's generic wording,
+// and a text/plain proxy failure keeps its retryable mapping. A 5xx whose
+// body is a Status is the API server's own answer, not a proxy-path
+// failure, and maps like one from every typed request.
+func restoreStatus(err error, body []byte) error {
+	if err == nil || len(body) == 0 {
+		return err
+	}
+	var st metav1.Status
+	if json.Unmarshal(body, &st) != nil || st.Kind != "Status" || st.Code == 0 {
+		return err
+	}
+	return &apierrors.StatusError{ErrStatus: st}
 }

@@ -232,7 +232,7 @@ func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.Lo
 	})
 	b, err := req.DoRaw(ctx)
 	if err != nil {
-		return "", mapErr(err)
+		return "", mapErr(restoreStatus(err, b))
 	}
 	return string(b), nil
 }

@@ -253,3 +253,29 @@ func TestMapErrDeadlineExceeded(t *testing.T) {
 		assert.Empty(t, ce.Hint)
 	})
 }
+
+// TestRestoreStatusRebuildsOnlyAKubernetesStatus asserts that a raw
+// request's error is rebuilt from an application/json Status body and left
+// alone for every other body.
+func TestRestoreStatusRebuildsOnlyAKubernetesStatus(t *testing.T) {
+	t.Parallel()
+	generic := apierrors.NewGenericServerResponse(http.StatusForbidden, "get", schema.GroupResource{Resource: "pods"}, "web", "unknown", 0, true)
+	status := `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"pods \"web\" is forbidden: no pods/log","reason":"Forbidden","code":403}`
+
+	got := restoreStatus(generic, []byte(status))
+	require.True(t, apierrors.IsForbidden(got))
+	require.ErrorContains(t, got, `pods "web" is forbidden: no pods/log`)
+
+	for name, body := range map[string]string{
+		"empty":                "",
+		"log text":             "2026-09-08T10:00:00Z started",
+		"rancher proxy object": `{"type":"error","status":"403","message":"clusters.management.cattle.io \"c-1\" is forbidden"}`,
+		"status without code":  `{"kind":"Status","message":"x"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Same(t, generic, restoreStatus(generic, []byte(body)))
+		})
+	}
+	assert.NoError(t, restoreStatus(nil, []byte(status)))
+}
