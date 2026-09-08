@@ -17,6 +17,13 @@ PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:07334615
 # literal tag+digest, bumped through a reviewed golden-regeneration change
 # like ORACLE_IMAGE.
 K3S_IMAGE="rancher/k3s:v1.34.4-k3s1@sha256:a5f627f1ed014dede348fdc77bc7e452d03712a8daff000e0f2667d28f9a2d11"
+# HEAD_ORACLE_IMAGE is the opt-in head oracle (E2E_REAL_HEAD=1): the next
+# minor's moving image, for readiness checks and component release-candidate
+# validation before that minor ships. It has no goldens and is never a
+# pin: the tag is resolved to its digest at boot, the digest is what runs
+# and what the state file records, so a kept pair is reused only while head
+# has not moved. Boot, bootstrap, and downstream-proxy smoke only.
+HEAD_ORACLE_IMAGE="rancher/rancher:head"
 
 # The harness reaches the oracle through the CLI's own Rancher-scoped HTTP
 # client: it honours HTTPS_PROXY/HTTP_PROXY/NO_PROXY from this shell (a
@@ -39,12 +46,27 @@ EXTRA_SANS="${E2E_REAL_EXTRA_SANS:-}"
 # within a single run.
 BIND_ADDR="${E2E_REAL_BIND_ADDR:-127.0.0.1}"
 
+if [ "${E2E_REAL_PRIME:-}" = "1" ] && [ "${E2E_REAL_HEAD:-}" = "1" ]; then
+  echo "error: E2E_REAL_PRIME and E2E_REAL_HEAD select different oracles; set one" >&2
+  exit 1
+fi
+# SMOKE_PROFILE names the opt-in oracle that gets the boot smoke instead of
+# the golden suite; empty for the community pin.
+SMOKE_PROFILE=""
 if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
   ORACLE_IMAGE="${PRIME_ORACLE_IMAGE}"
+  SMOKE_PROFILE="prime"
   CONTAINER="rancher-cli-e2e-real-prime"
   HOST_PORT="8444"
   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real-prime"
   SUBNET="172.30.2.0/24"
+elif [ "${E2E_REAL_HEAD:-}" = "1" ]; then
+  ORACLE_IMAGE="${HEAD_ORACLE_IMAGE}"
+  SMOKE_PROFILE="head"
+  CONTAINER="rancher-cli-e2e-real-head"
+  HOST_PORT="8445"
+  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real-head"
+  SUBNET="172.30.3.0/24"
 else
   CONTAINER="rancher-cli-e2e-real"
   HOST_PORT="8443"
@@ -83,6 +105,17 @@ for tool in docker curl openssl python3 go; do
   command -v "${tool}" >/dev/null || { echo "error: ${tool} not found" >&2; exit 1; }
 done
 docker info >/dev/null 2>&1 || { echo "error: docker daemon not reachable" >&2; exit 1; }
+
+if [ "${SMOKE_PROFILE}" = "head" ]; then
+  # The moving tag is pulled and replaced by its digest before anything
+  # reads ORACLE_IMAGE: the kept-pair check and the state file then work
+  # on the image that actually runs.
+  echo "==> resolving ${HEAD_ORACLE_IMAGE}"
+  docker pull -q "${HEAD_ORACLE_IMAGE}" >/dev/null
+  ORACLE_IMAGE="$(docker inspect --format '{{index .RepoDigests 0}}' "${HEAD_ORACLE_IMAGE}")"
+  [ -n "${ORACLE_IMAGE}" ] || { echo "error: could not resolve ${HEAD_ORACLE_IMAGE} to a digest" >&2; exit 1; }
+  echo "==> head is ${ORACLE_IMAGE}"
+fi
 
 mkdir -p "${STATE_ROOT}"
 chmod 700 "${STATE_ROOT}"
@@ -175,16 +208,23 @@ wait_for_ping() {
   return 1
 }
 
+# The head oracle installs its system charts noticeably slower than the
+# pinned releases (its chart branch is fetched fresh and its aggregation
+# check restarts the server when the embedded k3s is slow), so it gets
+# twice the webhook window.
+WEBHOOK_WAIT_TRIES=30
+[ "${SMOKE_PROFILE}" != "head" ] || WEBHOOK_WAIT_TRIES=60
+
 wait_for_webhook() {
   echo "==> waiting for rancher-webhook readiness"
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 "${WEBHOOK_WAIT_TRIES}"); do
     if docker exec "${CONTAINER}" kubectl -n cattle-system get deploy rancher-webhook \
       -o jsonpath='{.status.readyReplicas}' 2>/dev/null | grep -q '^1$'; then
       return 0
     fi
     sleep 10
   done
-  echo "error: rancher-webhook not ready within 5 minutes" >&2
+  echo "error: rancher-webhook not ready within $((WEBHOOK_WAIT_TRIES * 10 / 60)) minutes" >&2
   return 1
 }
 
@@ -477,12 +517,12 @@ export E2E_REAL_CACERT
 export E2E_REAL_ORACLE_IMAGE="${ORACLE_IMAGE}"
 export E2E_REAL_DOWNSTREAM="${DOWNSTREAM_ID}"
 
-if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
-  # No goldens for the Prime oracle: golden verification runs only against
-  # the community pin. This is boot, bootstrap, and downstream-proxy
-  # verification; the kept pair then serves hand runs and fact probes
-  # against Prime with the same downstream shape as the community pair.
-  echo "==> prime oracle boot smoke"
+if [ -n "${SMOKE_PROFILE}" ]; then
+  # No goldens for the Prime or head oracle: golden verification runs only
+  # against the community pin. This is boot, bootstrap, and downstream-proxy
+  # verification; the kept pair then serves hand runs and fact probes with
+  # the same downstream shape as the community pair.
+  echo "==> ${SMOKE_PROFILE} oracle boot smoke"
   # -f: a 4xx/5xx on the unauthenticated version endpoint must fail the
   # smoke, not print an error body and fall through to the token check.
   curl -fsS --cacert "${CA_FILE}" "${BASE_URL}/rancherversion" ||
@@ -494,7 +534,7 @@ if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
   code="$(curl -s --cacert "${CA_FILE}" -o /dev/null -w '%{http_code}' \
     -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/k8s/clusters/${DOWNSTREAM_ID}/version")"
   [ "${code}" = "200" ] || { echo "error: downstream proxy smoke check failed (http ${code})" >&2; exit 1; }
-  echo "==> prime oracle bootstrap smoke passed"
+  echo "==> ${SMOKE_PROFILE} oracle bootstrap smoke passed"
 else
   echo "==> running e2e_real suite${UPDATE_FLAG:+ (record mode)}"
   # E2E_REAL_UPDATE_FLAG is a fixed internal value ("" or "-update"), never
