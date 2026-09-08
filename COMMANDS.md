@@ -133,7 +133,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 | Command | Purpose |
 |---|---|
 | `token` | Legacy exec-credential shim for Rancher-generated kubeconfigs (deprecated; new kubeconfigs use `auth get-token`) |
-| `kubeconfig` | Emit a LOCAL exec-credential kubeconfig for a cluster (no server call, no embedded secret) - see `create kubeconfig` for the server-created, embedded alternative |
+| `kubeconfig` | Emit a LOCAL exec-credential kubeconfig for a cluster (no embedded secret), with the direct endpoint contexts when the cluster has the Authorized Cluster Endpoint - see `create kubeconfig` for the server-created, embedded alternative |
 
 ## Discovery & tooling
 

@@ -151,6 +151,8 @@ graph TD
 
     commands --> runtime
     commands --> completions
+    commands --> kubeconfigengine
+    commands --> output
     commands --> config
     commands --> credhelper
     commands --> provider

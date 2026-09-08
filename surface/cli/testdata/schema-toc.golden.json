@@ -384,7 +384,7 @@
         },
         {
           "name": "kubeconfig",
-          "usage": "Print an exec-credential kubeconfig for a cluster"
+          "usage": "Print an exec-credential kubeconfig for a cluster, with its direct endpoint contexts when the cluster has them"
         },
         {
           "name": "logs",

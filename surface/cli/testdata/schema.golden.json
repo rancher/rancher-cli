@@ -6107,6 +6107,7 @@
     {
       "auth": true,
       "commandType": "local",
+      "desc": "Prints a kubeconfig whose user entry runs the rancher exec-credential plugin. One context reaches the cluster through the Rancher proxy. When the cluster has the Authorized Cluster Endpoint enabled and the multi-cluster-management feature is on, the file also carries the direct contexts Rancher's own kubeconfig carries: <entry>-fqdn when the endpoint names an fqdn, else one <entry>-<node> per control-plane node, and the direct context is current. When those contexts cannot be derived (the endpoint's feature is off, the nodes cannot be read, no control-plane node has an address), the proxy-only file is printed and one notice on stderr says why.",
       "examples": [
         "rancher kubeconfig --cluster prod > prod.yaml"
       ],
@@ -6125,7 +6126,7 @@
       ],
       "shape": "bytes",
       "toolset": "core",
-      "usage": "Print an exec-credential kubeconfig for a cluster"
+      "usage": "Print an exec-credential kubeconfig for a cluster, with its direct endpoint contexts when the cluster has them"
     },
     {
       "args": [

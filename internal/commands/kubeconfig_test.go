@@ -3,8 +3,18 @@ package commands
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/pem"
+	"errors"
+	"math/big"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -13,17 +23,27 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 // stubFactory is a minimal engine.ClusterClientFactory for kubeconfig tests:
-// only ResolveCluster is exercised (kubeconfig never opens a ClusterClient).
+// ResolveCluster answers from resolved, and Cluster hands out a stub local
+// client whose management objects are objects (a cluster with the endpoint
+// off is synthesized for any id not present, so the proxy-only tests need
+// no fixtures).
 type stubFactory struct {
 	resolved   map[string]string
 	resolveErr error
+	objects    map[string]*unstructured.Unstructured
+	lists      map[string]*unstructured.UnstructuredList
 }
 
-func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) { return nil, nil }
+func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) {
+	return &stubClusterClient{objects: f.objects, lists: f.lists}, nil
+}
 func (f stubFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
 	if f.resolveErr != nil {
 		return "", f.resolveErr
@@ -35,6 +55,110 @@ func (f stubFactory) ResolveCluster(_ context.Context, nameOrID string) (string,
 }
 
 var _ engine.ClusterClientFactory = stubFactory{}
+
+// stubClusterClient answers GET from objects ("name" or "ns/name") and LIST
+// from lists ("resource|ns"); a management cluster absent from objects is
+// synthesized with the endpoint off.
+type stubClusterClient struct {
+	objects map[string]*unstructured.Unstructured
+	lists   map[string]*unstructured.UnstructuredList
+}
+
+func (c *stubClusterClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	key := name
+	if ns != "" {
+		key = ns + "/" + name
+	}
+	if obj, ok := c.objects[key]; ok {
+		return obj, nil
+	}
+	if gvr.Resource == "clusters" {
+		return &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name}, "spec": map[string]any{}}}, nil
+	}
+	return nil, clierr.New(clierr.CodeNotFound, key+" not found")
+}
+
+func (c *stubClusterClient) List(_ context.Context, gvr schema.GroupVersionResource, ns, _ string) (*unstructured.UnstructuredList, error) {
+	if l, ok := c.lists[gvr.Resource+"|"+ns]; ok {
+		return l, nil
+	}
+	return &unstructured.UnstructuredList{}, nil
+}
+
+func (c *stubClusterClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	return nil, errors.New("unreachable")
+}
+func (c *stubClusterClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
+	return nil, errors.New("unreachable")
+}
+func (c *stubClusterClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
+	return errors.New("unreachable")
+}
+func (c *stubClusterClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
+	return "", errors.New("unreachable")
+}
+func (c *stubClusterClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
+	return engine.ReviewResponse{}, errors.New("unreachable")
+}
+func (c *stubClusterClient) ServerResources(context.Context) ([]engine.APIResource, error) {
+	return nil, errors.New("unreachable")
+}
+
+// aceObjects builds the management objects of a cluster with the endpoint
+// on and the feature on: an fqdn cluster when fqdn is set, else a cluster
+// with status.caCert and the given management nodes in its namespace.
+func aceObjects(id, fqdn string, caPEM []byte, nodes ...unstructured.Unstructured) (map[string]*unstructured.Unstructured, map[string]*unstructured.UnstructuredList) {
+	endpoint := map[string]any{"enabled": true}
+	cluster := map[string]any{"metadata": map[string]any{"name": id}, "spec": map[string]any{"localClusterAuthEndpoint": endpoint}}
+	if fqdn != "" {
+		endpoint["fqdn"] = fqdn
+		endpoint["caCerts"] = string(caPEM)
+	} else {
+		cluster["status"] = map[string]any{"caCert": base64.StdEncoding.EncodeToString(caPEM)}
+	}
+	objects := map[string]*unstructured.Unstructured{
+		id:                         {Object: cluster},
+		"multi-cluster-management": {Object: map[string]any{"metadata": map[string]any{"name": "multi-cluster-management"}, "spec": map[string]any{"value": true}}},
+	}
+	lists := map[string]*unstructured.UnstructuredList{"nodes|" + id: {Items: nodes}}
+	return objects, lists
+}
+
+// controlPlaneNode builds a management control-plane node with one
+// InternalIP and the given Ready condition.
+func controlPlaneNode(name, hostname, ip string, ready bool) unstructured.Unstructured {
+	status := "False"
+	if ready {
+		status = "True"
+	}
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": name},
+		"spec":     map[string]any{"controlPlane": true, "requestedHostname": hostname},
+		"status": map[string]any{"internalNodeStatus": map[string]any{
+			"addresses":  []any{map[string]any{"type": "InternalIP", "address": ip}},
+			"conditions": []any{map[string]any{"type": "Ready", "status": status}},
+		}},
+	}}
+}
+
+// testCAPEM is a self-signed certificate for the direct entries' CA fields.
+func testCAPEM(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "ace-ca"}, NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+}
+
+// loadKubeconfig decodes the command's output the way kubectl would.
+func loadKubeconfig(t *testing.T, res runtime.Result) *clientcmdapi.Config {
+	t.Helper()
+	kc, err := clientcmd.Load(res.RawBytes)
+	require.NoError(t, err)
+	return kc
+}
 
 // writeTestConfig writes a config.yaml with server "prod" -> https://r.example.com
 // (optionally with a CA) and current server set to "prod".
@@ -239,4 +363,110 @@ func TestKubeconfigOmitsCADataWhenUnconfigured(t *testing.T) {
 
 func (f stubFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
 	return f.Cluster(ctx, id)
+}
+
+// TestKubeconfigDirectFQDNContextIsCurrent asserts the fqdn direct context:
+// one extra cluster and context named <entry>-fqdn with the endpoint's CA,
+// current, sharing the one exec user entry, and provideClusterInfo set.
+func TestKubeconfigDirectFQDNContextIsCurrent(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "")
+	ca := testCAPEM(t)
+	objects, lists := aceObjects("c-abc", "ace.example.test", ca)
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"webprod": "c-abc"}, objects: objects, lists: lists})
+	var notices bytes.Buffer
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "webprod"}}, ui.New(&notices, nil, true, false))
+	require.NoError(t, err)
+	kc := loadKubeconfig(t, res)
+	require.Len(t, kc.AuthInfos, 1, "one exec user entry shared by every context")
+	require.Contains(t, kc.Clusters, "prod-c-abc-fqdn")
+	assert.Equal(t, "https://ace.example.test", kc.Clusters["prod-c-abc-fqdn"].Server)
+	assert.Equal(t, ca, kc.Clusters["prod-c-abc-fqdn"].CertificateAuthorityData)
+	assert.Equal(t, "prod-c-abc", kc.Contexts["prod-c-abc-fqdn"].AuthInfo)
+	assert.Equal(t, "prod-c-abc-fqdn", kc.CurrentContext)
+	assert.True(t, kc.AuthInfos["prod-c-abc"].Exec.ProvideClusterInfo)
+	assert.Equal(t, "https://r.example.com/k8s/clusters/c-abc", kc.Clusters["prod-c-abc"].Server, "the proxy context is still present")
+	assert.Empty(t, notices.String())
+}
+
+// TestKubeconfigDirectNodeContexts asserts one context per control-plane
+// node, the first Ready node current, the decoded status CA on each, and
+// the proxy staying current when no node is Ready.
+func TestKubeconfigDirectNodeContexts(t *testing.T) {
+	t.Parallel()
+	ca := testCAPEM(t)
+	t.Run("first ready node is current", func(t *testing.T) {
+		t.Parallel()
+		dir := writeTestConfig(t, "")
+		objects, lists := aceObjects("c-abc", "", ca,
+			controlPlaneNode("m-1", "c-abc-cp1", "10.0.0.1", false),
+			controlPlaneNode("m-2", "c-abc-cp2", "10.0.0.2", true))
+		cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
+		res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-abc"}}, ui.New(&bytes.Buffer{}, nil, true, false))
+		require.NoError(t, err)
+		kc := loadKubeconfig(t, res)
+		require.Len(t, kc.Contexts, 3)
+		assert.Equal(t, "https://10.0.0.1:6443", kc.Clusters["prod-c-abc-cp1"].Server)
+		assert.Equal(t, ca, kc.Clusters["prod-c-abc-cp2"].CertificateAuthorityData)
+		assert.Equal(t, "prod-c-abc-cp2", kc.CurrentContext)
+		for name, c := range kc.Contexts {
+			assert.Equal(t, "prod-c-abc", c.AuthInfo, name)
+		}
+		assert.True(t, kc.AuthInfos["prod-c-abc"].Exec.ProvideClusterInfo)
+	})
+	t.Run("no ready node keeps the proxy current", func(t *testing.T) {
+		t.Parallel()
+		dir := writeTestConfig(t, "")
+		objects, lists := aceObjects("c-abc", "", ca, controlPlaneNode("m-1", "c-abc-cp1", "10.0.0.1", false))
+		cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
+		res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-abc"}}, ui.New(&bytes.Buffer{}, nil, true, false))
+		require.NoError(t, err)
+		kc := loadKubeconfig(t, res)
+		require.Len(t, kc.Contexts, 2)
+		assert.Equal(t, "prod-c-abc", kc.CurrentContext)
+		assert.True(t, kc.AuthInfos["prod-c-abc"].Exec.ProvideClusterInfo, "a direct context exists even though the proxy stays current")
+	})
+}
+
+// TestKubeconfigDirectOmittedIsOneNotice asserts the proxy-only fallback:
+// the endpoint enabled but no control-plane node yields today's file, no
+// provideClusterInfo, and exactly one stderr notice with the reason, with a
+// node name that carries a control character shown in its printable form.
+func TestKubeconfigDirectOmittedIsOneNotice(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "")
+	ca := testCAPEM(t)
+	worker := controlPlaneNode("m-w", "c-abc-w1", "10.0.0.9", true)
+	worker.Object["spec"].(map[string]any)["controlPlane"] = false
+	noAddress := controlPlaneNode("m-\x1b[31mred", "c-abc-cp2", "", true)
+	noAddress.Object["status"].(map[string]any)["internalNodeStatus"].(map[string]any)["addresses"] = []any{}
+	objects, lists := aceObjects("c-abc", "", ca, worker, noAddress)
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
+	var notices bytes.Buffer
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-abc"}}, ui.New(&notices, nil, true, false))
+	require.NoError(t, err)
+	kc := loadKubeconfig(t, res)
+	require.Len(t, kc.Contexts, 1)
+	assert.Equal(t, "prod-c-abc", kc.CurrentContext)
+	assert.False(t, kc.AuthInfos["prod-c-abc"].Exec.ProvideClusterInfo)
+	out := notices.String()
+	assert.Equal(t, 1, strings.Count(out, "direct endpoint contexts omitted"), out)
+	assert.Contains(t, out, "no address")
+	assert.NotContains(t, out, "\x1b", "control characters never reach the terminal")
+}
+
+// TestKubeconfigDirectEndpointOffIsUnchanged asserts a cluster without the
+// endpoint yields today's file: one context, no provideClusterInfo, no
+// notice.
+func TestKubeconfigDirectEndpointOffIsUnchanged(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "")
+	cmd := NewKubeconfig(dir, config.NewFileStore(dir), stubFactory{})
+	var notices bytes.Buffer
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), args{s: map[string]string{"cluster": "c-abc"}}, ui.New(&notices, nil, true, false))
+	require.NoError(t, err)
+	kc := loadKubeconfig(t, res)
+	require.Len(t, kc.Contexts, 1)
+	assert.False(t, kc.AuthInfos["prod-c-abc"].Exec.ProvideClusterInfo)
+	assert.Empty(t, notices.String())
 }

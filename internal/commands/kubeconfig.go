@@ -9,6 +9,8 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	kubeconfigengine "github.com/rancher/rancher-cli/internal/engine/kubeconfig"
+	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -30,7 +32,13 @@ func NewKubeconfig(dir string, store config.CredStore, clients engine.ClusterCli
 func (kubeconfigCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "kubeconfig",
-		Usage: "Print an exec-credential kubeconfig for a cluster",
+		Usage: "Print an exec-credential kubeconfig for a cluster, with its direct endpoint contexts when the cluster has them",
+		Desc: "Prints a kubeconfig whose user entry runs the rancher exec-credential plugin. One context reaches the cluster " +
+			"through the Rancher proxy. When the cluster has the Authorized Cluster Endpoint enabled and the multi-cluster-management " +
+			"feature is on, the file also carries the direct contexts Rancher's own kubeconfig carries: <entry>-fqdn when the endpoint " +
+			"names an fqdn, else one <entry>-<node> per control-plane node, and the direct context is current. When those contexts " +
+			"cannot be derived (the endpoint's feature is off, the nodes cannot be read, no control-plane node has an address), the " +
+			"proxy-only file is printed and one notice on stderr says why.",
 		Flags: []runtime.ArgSpec{
 			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` to generate the kubeconfig for"},
 		},
@@ -117,6 +125,19 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		execArgs = append(execArgs, "--cacert", caPEM)
 	}
 
+	// The direct endpoint contexts Rancher's own kubeconfig carries, read
+	// from the same management objects. An error here is a cancelled
+	// context or a cluster that vanished after resolution; every other
+	// failure is a reason in Omitted and the file stays proxy-only.
+	mgmt, err := c.clients.Cluster(ctx, engine.LocalCluster)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	direct, err := kubeconfigengine.DirectEndpoints(ctx, mgmt, id)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
 	kc := clientcmdapi.Config{
 		Clusters: map[string]*clientcmdapi.Cluster{entryName: cluster},
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{entryName: {
@@ -125,6 +146,11 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 				Command:         "rancher",
 				Args:            execArgs,
 				InteractiveMode: clientcmdapi.IfAvailableExecInteractiveMode,
+				// With a direct context in the file the plugin must learn
+				// which server kubectl is about to use, so it can wait for
+				// a fresh token to be accepted there; kubectl passes the
+				// invoking context's cluster entry in KUBERNETES_EXEC_INFO.
+				ProvideClusterInfo: len(direct.Endpoints) > 0,
 			},
 		}},
 		Contexts: map[string]*clientcmdapi.Context{entryName: {
@@ -132,6 +158,24 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 			AuthInfo: entryName,
 		}},
 		CurrentContext: entryName,
+	}
+	// Every direct context shares the one exec user entry, as Rancher's own
+	// file shares one token across them. The fqdn context, else the first
+	// Ready node, becomes current; with no Ready node the proxy stays.
+	for _, ep := range direct.Endpoints {
+		name := entryName + "-" + ep.Name
+		kc.Clusters[name] = &clientcmdapi.Cluster{Server: ep.Server, CertificateAuthorityData: ep.CAData}
+		kc.Contexts[name] = &clientcmdapi.Context{Cluster: name, AuthInfo: entryName}
+		if ep.Ready && kc.CurrentContext == entryName {
+			kc.CurrentContext = name
+		}
+	}
+	if len(direct.Omitted) > 0 && p != nil {
+		reasons := make([]string, len(direct.Omitted))
+		for i, r := range direct.Omitted {
+			reasons[i] = output.Printable(r)
+		}
+		p.Notice("direct endpoint contexts omitted: " + strings.Join(reasons, "; "))
 	}
 
 	b, err := clientcmd.Write(kc)
