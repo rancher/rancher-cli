@@ -1,0 +1,112 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "management-cluster",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "kind": "Cluster",
+        "metadata": {
+          "creationTimestamp": "\u003ctime\u003e",
+          "name": "{downstream}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "displayName": "\u003cname\u003e",
+          "localClusterAuthEndpoint": {
+            "enabled": false
+          }
+        },
+        "status": {
+          "caCert": "\u003ccert\u003e"
+        }
+      }
+    },
+    {
+      "name": "mcm-feature",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "kind": "Feature",
+        "metadata": {
+          "creationTimestamp": "\u003ctime\u003e",
+          "name": "multi-cluster-management",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "value": null
+        },
+        "status": {
+          "default": true,
+          "prime": false
+        }
+      }
+    },
+    {
+      "name": "management-nodes",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "items": [
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "kind": "Node",
+            "metadata": {
+              "creationTimestamp": "\u003ctime\u003e",
+              "name": "\u003cname\u003e",
+              "namespace": "{downstream}",
+              "resourceVersion": "\u003crv\u003e",
+              "uid": "\u003cuid\u003e"
+            },
+            "spec": {
+              "controlPlane": true,
+              "displayName": "\u003cname\u003e",
+              "etcd": false,
+              "imported": false,
+              "requestedHostname": "\u003chostname\u003e",
+              "worker": false
+            },
+            "status": {
+              "internalNodeStatus": {
+                "addresses": [
+                  {
+                    "address": "\u003caddress\u003e",
+                    "type": "InternalIP"
+                  },
+                  {
+                    "address": "\u003caddress\u003e",
+                    "type": "Hostname"
+                  }
+                ],
+                "conditions": [
+                  {
+                    "lastHeartbeatTime": "\u003ctime\u003e",
+                    "lastTransitionTime": "\u003ctime\u003e",
+                    "message": "\u003cmessage\u003e",
+                    "reason": "\u003creason\u003e",
+                    "status": "True",
+                    "type": "Ready"
+                  }
+                ]
+              },
+              "nodeAnnotations": "\u003cannotations\u003e",
+              "nodeLabels": "\u003clabels\u003e",
+              "nodeName": "\u003cname\u003e"
+            }
+          }
+        ],
+        "kind": "NodeList",
+        "metadata": {
+          "continue": "",
+          "resourceVersion": "\u003crv\u003e"
+        }
+      }
+    }
+  ]
+}

@@ -36,6 +36,7 @@ func All() []Probe {
 	probes = append(probes, capabilityProbes()...)
 	probes = append(probes, userPasswordWorkflowProbes()...)
 	probes = append(probes, accessDownstreamProbes()...)
+	probes = append(probes, directEndpointProbes()...)
 	probes = append(probes, accessProbes()...)
 	probes = append(probes, discoveryProbes()...)
 	return probes
@@ -685,6 +686,74 @@ func accessProbes() []Probe {
 				{Path: "metadata.generation", Replace: ""},
 				{Path: "metadata.annotations", Replace: "<annotations>"},
 			}, bindingMetadataRules()...),
+		},
+	}
+}
+
+// directEndpointProbes records the management shapes `rancher kubeconfig`
+// reads for a cluster's Authorized Cluster Endpoint: the management
+// Cluster's spec.localClusterAuthEndpoint and status.caCert, the
+// multi-cluster-management Feature, and the management Nodes of the
+// downstream (spec.controlPlane, spec.requestedHostname, the address types
+// and the Ready condition). Every instance-chosen value (names, addresses,
+// certificates, timestamps, capacities, versions) is normalized with its
+// presence kept, so a golden diff means the shape the command depends on
+// moved.
+func directEndpointProbes() []Probe {
+	drop := func(paths ...string) []NormalizeRule {
+		rules := make([]NormalizeRule, 0, len(paths))
+		for _, p := range paths {
+			rules = append(rules, NormalizeRule{Path: p, Replace: ""})
+		}
+		return rules
+	}
+	metaRules := append(bindingMetadataRules(), drop("metadata.annotations", "metadata.labels", "metadata.finalizers", "metadata.generation")...)
+	return []Probe{
+		{
+			Name: "access-downstream/direct-endpoint-shapes", Downstream: true, SubstituteCaptures: true,
+			Observations: []Observation{
+				{Name: "management-cluster", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/{downstream}", Identity: IdentityAdmin}},
+				{Name: "mcm-feature", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/local/apis/management.cattle.io/v3/features/multi-cluster-management", Identity: IdentityAdmin}},
+				{Name: "management-nodes", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/{downstream}/nodes", Identity: IdentityAdmin}},
+			},
+			Normalize: append(append(append(metaRules,
+				// The cluster: the endpoint block and the CA's presence stay,
+				// every other spec and status field is instance detail.
+				drop("spec.agentImageOverride", "spec.clusterSecrets", "spec.description", "spec.desiredAgentImage", "spec.desiredAuthImage",
+					"spec.enableNetworkPolicy", "spec.fleetWorkspaceName", "spec.importedConfig", "spec.internal", "spec.k3sConfig", "spec.rke2Config",
+					"spec.windowsPreferedCluster", "spec.defaultPodSecurityAdmissionConfigurationTemplateName",
+					"status.agentFeatures", "status.agentImage", "status.aksStatus", "status.aliStatus", "status.allocatable", "status.apiEndpoint",
+					"status.appliedAgentEnvVars", "status.appliedEnableNetworkPolicy", "status.appliedSpec", "status.authImage", "status.capabilities",
+					"status.capacity", "status.conditions", "status.driver", "status.eksStatus", "status.gkeStatus", "status.info", "status.limits",
+					"status.nodeCount", "status.provider", "status.requested", "status.serviceAccountTokenSecret", "status.version",
+					"status.description", "status.dynamic", "status.lockedValue")...),
+				[]NormalizeRule{
+					{Path: "spec.displayName", Replace: "<name>"},
+					{Path: "status.caCert", Replace: "<cert>"},
+					{Path: "spec.localClusterAuthEndpoint.fqdn", Replace: "<fqdn>"},
+					{Path: "spec.localClusterAuthEndpoint.caCerts", Replace: "<cert>"},
+					// The node list: names and addresses normalized, the
+					// roles, the address types and the Ready condition kept.
+					{Path: "items.metadata.name", Replace: "<name>"},
+					{Path: "items.metadata.uid", Replace: "<uid>"},
+					{Path: "items.metadata.resourceVersion", Replace: "<rv>"},
+					{Path: "items.metadata.creationTimestamp", Replace: "<time>"},
+					{Path: "items.spec.requestedHostname", Replace: "<hostname>"},
+					{Path: "items.spec.displayName", Replace: "<name>"},
+					{Path: "items.status.internalNodeStatus.addresses.address", Replace: "<address>"},
+					{Path: "items.status.nodeAnnotations", Replace: "<annotations>"},
+					{Path: "items.status.nodeLabels", Replace: "<labels>"},
+					{Path: "items.status.nodeName", Replace: "<name>"},
+					{Path: "items.status.internalNodeStatus.conditions.lastHeartbeatTime", Replace: "<time>"},
+					{Path: "items.status.internalNodeStatus.conditions.lastTransitionTime", Replace: "<time>"},
+					{Path: "items.status.internalNodeStatus.conditions.message", Replace: "<message>"},
+					{Path: "items.status.internalNodeStatus.conditions.reason", Replace: "<reason>"},
+				}...),
+				drop("items.metadata.annotations", "items.metadata.labels", "items.metadata.finalizers", "items.metadata.generation", "items.metadata.managedFields",
+					"items.metadata.generateName", "items.spec.customConfig", "items.spec.desiredNodeTaints", "items.spec.internalNodeSpec", "items.spec.metadataUpdate",
+					"items.status.conditions", "items.status.limits", "items.status.requested",
+					"items.status.internalNodeStatus.allocatable", "items.status.internalNodeStatus.capacity", "items.status.internalNodeStatus.daemonEndpoints",
+					"items.status.internalNodeStatus.features", "items.status.internalNodeStatus.nodeInfo", "items.status.internalNodeStatus.runtimeHandlers")...),
 		},
 	}
 }

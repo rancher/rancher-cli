@@ -426,6 +426,32 @@ and the Kubernetes version must be one the server accepts
 `--wait` on `get <kind>` applies the kind's default readiness; for
 clusters that is `condition=Ready`.
 
+`rancher kubeconfig` prints one context through the Rancher proxy and,
+when the cluster has the Authorized Cluster Endpoint enabled and the
+multi-cluster-management feature is on, the direct contexts Rancher's own
+kubeconfig carries: `<entry>-fqdn` when the endpoint names an fqdn (its
+`caCerts` as the CA), else one `<entry>-<node>` per control-plane node at
+`https://<address>:6443` with the cluster's CA; every context shares the
+one exec user entry. The fqdn context, else the first Ready node, is
+current; with no Ready node the proxy stays current. When the direct
+contexts cannot be derived (the feature off or unreadable, the nodes not
+readable, no control-plane node with an address, a malformed CA or
+address) the proxy-only file is printed and one stderr notice says why.
+The exec block then sets `provideClusterInfo`, so the plugin learns which
+endpoint kubectl is about to use: a cluster token it has just created is
+accepted by the direct endpoint only after Rancher has synced it there,
+so the plugin waits, up to ten seconds, until that endpoint authenticates
+the token (a SelfSubjectReview; a Forbidden answer counts, a 401 does
+not) and remembers the endpoint in the cache; on timeout the credential
+is returned with a warning naming the proxy context as the fallback, and
+a cancellation revokes the token it created. Two limits: the plugin needs
+Rancher to create or refresh the token, so a direct context works while
+Rancher is unreachable only as long as the cached credential lasts; and
+the identity the direct endpoint sees carries the user and
+`system:authenticated` only, without the `system:cattle:authenticated`
+group and the principal extras the proxy adds, so a binding on those
+groups decides differently on the two paths.
+
 `create machine-config` curates driver flags for `digitaloceanconfig`
 (`--region`, `--size`, `--image`, `--monitoring`, `--ipv6`,
 `--private-networking`, `--tags`); all other kinds take

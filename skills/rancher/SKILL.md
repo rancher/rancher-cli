@@ -384,7 +384,12 @@ kubectl --kubeconfig kc.yaml get nodes
 
 The kubeconfig uses an exec-credential plugin that calls `rancher auth
 get-token` - the `rancher` binary must stay on PATH for kubectl to
-authenticate. Cached credentials: `rancher auth list-tokens` /
+authenticate. When the cluster has the Authorized Cluster Endpoint
+enabled, the file also carries direct contexts (`<entry>-fqdn`, or one
+`<entry>-<node>` per control-plane node) and makes one current; the proxy
+context `<entry>` is always present, so `--context <entry>` is the
+fallback when the direct endpoint is unreachable from where you run.
+Cached credentials: `rancher auth list-tokens` /
 `rancher auth delete-token` (local cache only; the server-side token
 stays valid until `rancher delete token <name>`, or `delete
 management-token` on a server without ext tokens, or expiry).
