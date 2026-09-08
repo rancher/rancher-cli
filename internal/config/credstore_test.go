@@ -1067,3 +1067,51 @@ func TestWithLockSerializesSetToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "token-beta", tok)
 }
+
+// TestMarkCachedCredReadyIsConditional asserts the readiness write: a
+// fingerprint lands only on a record that still holds the same token, is
+// idempotent, and leaves a replaced or deleted record alone; the detail
+// read returns it with the token.
+func TestMarkCachedCredReadyIsConditional(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s := NewFileStore(dir)
+	exp := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	require.NoError(t, s.SetCachedCred("k", "tok-1", exp, "n", "https://r", "c"))
+
+	marked, err := s.MarkCachedCredReady("k", "tok-1", "fp-a")
+	require.NoError(t, err)
+	assert.True(t, marked)
+	marked, err = s.MarkCachedCredReady("k", "tok-1", "fp-a")
+	require.NoError(t, err)
+	assert.True(t, marked, "idempotent")
+	d, err := s.GetCachedCredDetail("k")
+	require.NoError(t, err)
+	assert.Equal(t, "tok-1", d.Token)
+	assert.Equal(t, []string{"fp-a"}, d.ReadyEndpoints)
+
+	// Another process refreshed the slot: the stale token's mark is refused
+	// and the fresh record keeps its own readiness.
+	require.NoError(t, s.SetCachedCred("k", "tok-2", exp, "n", "https://r", "c"))
+	marked, err = s.MarkCachedCredReady("k", "tok-1", "fp-b")
+	require.NoError(t, err)
+	assert.False(t, marked)
+	d, err = s.GetCachedCredDetail("k")
+	require.NoError(t, err)
+	assert.Equal(t, "tok-2", d.Token)
+	assert.Empty(t, d.ReadyEndpoints, "a replacing write starts with no readiness")
+
+	// Deleted: nothing is resurrected.
+	require.NoError(t, s.DeleteCachedCred("k"))
+	marked, err = s.MarkCachedCredReady("k", "tok-2", "fp-a")
+	require.NoError(t, err)
+	assert.False(t, marked)
+	_, err = s.GetCachedCredDetail("k")
+	require.ErrorIs(t, err, ErrNoToken)
+
+	// Expired: treated as absent.
+	require.NoError(t, s.SetCachedCred("k", "tok-3", time.Now().Add(-time.Minute), "n", "https://r", "c"))
+	marked, err = s.MarkCachedCredReady("k", "tok-3", "fp-a")
+	require.NoError(t, err)
+	assert.False(t, marked)
+}

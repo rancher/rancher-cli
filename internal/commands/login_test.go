@@ -1653,6 +1653,10 @@ func (unsupportedStore) GetCachedCred(string) (string, time.Time, error) {
 	return "", time.Time{}, config.ErrNoToken
 }
 
+func (unsupportedStore) GetCachedCredDetail(string) (config.CachedCredDetail, error) {
+	return config.CachedCredDetail{}, config.ErrNoToken
+}
+func (unsupportedStore) MarkCachedCredReady(string, string, string) (bool, error) { return false, nil }
 func (unsupportedStore) SetCachedCred(string, string, time.Time, string, string, string) error {
 	return nil
 }

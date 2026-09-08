@@ -54,6 +54,10 @@ func (c *countingStore) DeleteToken(config.ServerRef) error { return nil }
 func (c *countingStore) GetCachedCred(string) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
+func (c *countingStore) GetCachedCredDetail(string) (config.CachedCredDetail, error) {
+	return config.CachedCredDetail{}, config.ErrNoToken
+}
+func (c *countingStore) MarkCachedCredReady(string, string, string) (bool, error) { return false, nil }
 func (c *countingStore) SetCachedCred(string, string, time.Time, string, string, string) error {
 	return nil
 }

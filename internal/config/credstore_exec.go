@@ -350,8 +350,14 @@ func (s *execStore) DrainNotices() []string {
 func (s *execStore) GetCachedCred(key string) (string, time.Time, error) {
 	return s.cache.GetCachedCred(key)
 }
+func (s *execStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
+	return s.cache.GetCachedCredDetail(key)
+}
 func (s *execStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
 	return s.cache.SetCachedCred(key, token, expiry, name, serverHost, cluster)
+}
+func (s *execStore) MarkCachedCredReady(key, token, fingerprint string) (bool, error) {
+	return s.cache.MarkCachedCredReady(key, token, fingerprint)
 }
 func (s *execStore) DeleteCachedCred(key string) error          { return s.cache.DeleteCachedCred(key) }
 func (s *execStore) DeleteAllCachedCreds() error                { return s.cache.DeleteAllCachedCreds() }

@@ -136,12 +136,28 @@ func (l *lazyStore) GetCachedCred(key string) (string, time.Time, error) {
 	return s.GetCachedCred(key)
 }
 
+func (l *lazyStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
+	s, err := l.backend()
+	if err != nil {
+		return CachedCredDetail{}, err
+	}
+	return s.GetCachedCredDetail(key)
+}
+
 func (l *lazyStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
 	s, err := l.backend()
 	if err != nil {
 		return err
 	}
 	return s.SetCachedCred(key, token, expiry, name, serverHost, cluster)
+}
+
+func (l *lazyStore) MarkCachedCredReady(key, token, fingerprint string) (bool, error) {
+	s, err := l.backend()
+	if err != nil {
+		return false, err
+	}
+	return s.MarkCachedCredReady(key, token, fingerprint)
 }
 
 func (l *lazyStore) DeleteCachedCred(key string) error {

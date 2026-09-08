@@ -48,6 +48,10 @@ func (s stubStore) DeleteToken(ServerRef) error { return nil }
 func (s stubStore) GetCachedCred(string) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
+func (s stubStore) GetCachedCredDetail(string) (CachedCredDetail, error) {
+	return CachedCredDetail{}, ErrNoToken
+}
+func (s stubStore) MarkCachedCredReady(string, string, string) (bool, error) { return false, nil }
 func (s stubStore) SetCachedCred(string, string, time.Time, string, string, string) error {
 	return nil
 }

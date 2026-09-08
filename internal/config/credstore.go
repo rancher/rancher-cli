@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -68,7 +69,14 @@ type CredStore interface {
 	SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error)
 	DeleteToken(ref ServerRef) error
 	GetCachedCred(key string) (token string, expiry time.Time, err error)
+	// GetCachedCredDetail is GetCachedCred with the record's readiness
+	// fingerprints; the same expiry eviction, the same ErrNoToken.
+	GetCachedCredDetail(key string) (CachedCredDetail, error)
 	SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error
+	// MarkCachedCredReady records fingerprint on key's record only when the
+	// record still holds token, under the cache lock, and reports whether
+	// it did; a record replaced or deleted by another process is left alone.
+	MarkCachedCredReady(key, token, fingerprint string) (bool, error)
 	DeleteCachedCred(key string) error
 	DeleteAllCachedCreds() error
 	ListCachedCreds() ([]CachedCredInfo, error)
@@ -80,6 +88,17 @@ type cachedCred struct {
 	Name    string    `json:"name,omitempty"`
 	Server  string    `json:"server,omitempty"`
 	Cluster string    `json:"cluster,omitempty"`
+	// ReadyEndpoints are the fingerprints of the direct endpoints that
+	// have accepted this token; an endpoint absent here is re-probed by
+	// the exec plugin before the token is handed to kubectl for it.
+	ReadyEndpoints []string `json:"readyEndpoints,omitempty"`
+}
+
+// CachedCredDetail is one cached exec credential with its readiness.
+type CachedCredDetail struct {
+	Token          string
+	Expiry         time.Time
+	ReadyEndpoints []string
 }
 
 // CachedCredInfo describes one cached exec-credential entry for listing. Key is
@@ -344,20 +363,25 @@ func (f *fileStore) writeCache(m map[string]cachedCred) error {
 }
 
 func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
+	d, err := f.GetCachedCredDetail(key)
+	return d.Token, d.Expiry, err
+}
+
+func (f *fileStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	// Lock-free read: no flock needed for a pure read - atomic-rename writes
 	// keep reads consistent.
 	m, err := f.readCache()
 	if err != nil {
-		return "", time.Time{}, err
+		return CachedCredDetail{}, err
 	}
 	cred, ok := m[key]
 	if !ok {
-		return "", time.Time{}, ErrNoToken
+		return CachedCredDetail{}, ErrNoToken
 	}
 	if cred.Expiry.IsZero() || !time.Now().After(cred.Expiry) {
-		return cred.Token, cred.Expiry, nil
+		return CachedCredDetail{Token: cred.Token, Expiry: cred.Expiry, ReadyEndpoints: cred.ReadyEndpoints}, nil
 	}
 	// Expired: prune under the flock. Re-read under the lock so the written
 	// snapshot includes any concurrent SetCachedCred writes that landed since
@@ -387,12 +411,37 @@ func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
 		delete(m2, key)
 		return f.writeCache(m2)
 	}); werr != nil {
-		return "", time.Time{}, werr
+		return CachedCredDetail{}, werr
 	}
 	if refreshed != nil {
-		return refreshed.Token, refreshed.Expiry, nil
+		return CachedCredDetail{Token: refreshed.Token, Expiry: refreshed.Expiry, ReadyEndpoints: refreshed.ReadyEndpoints}, nil
 	}
-	return "", time.Time{}, ErrNoToken
+	return CachedCredDetail{}, ErrNoToken
+}
+
+func (f *fileStore) MarkCachedCredReady(key, token, fingerprint string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	marked := false
+	err := f.withCacheLock(func() error {
+		m, err := f.readCache()
+		if err != nil {
+			return err
+		}
+		c, ok := m[key]
+		if !ok || c.Token != token || (!c.Expiry.IsZero() && time.Now().After(c.Expiry)) {
+			return nil
+		}
+		if slices.Contains(c.ReadyEndpoints, fingerprint) {
+			marked = true
+			return nil
+		}
+		c.ReadyEndpoints = append(c.ReadyEndpoints, fingerprint)
+		m[key] = c
+		marked = true
+		return f.writeCache(m)
+	})
+	return marked, err
 }
 
 func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
@@ -715,8 +764,14 @@ func (k *keyringStore) DeleteToken(ref ServerRef) error {
 func (k *keyringStore) GetCachedCred(key string) (string, time.Time, error) {
 	return k.cache.GetCachedCred(key)
 }
+func (k *keyringStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
+	return k.cache.GetCachedCredDetail(key)
+}
 func (k *keyringStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
 	return k.cache.SetCachedCred(key, token, expiry, name, serverHost, cluster)
+}
+func (k *keyringStore) MarkCachedCredReady(key, token, fingerprint string) (bool, error) {
+	return k.cache.MarkCachedCredReady(key, token, fingerprint)
 }
 func (k *keyringStore) DeleteCachedCred(key string) error          { return k.cache.DeleteCachedCred(key) }
 func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
