@@ -385,7 +385,9 @@ kubectl --kubeconfig kc.yaml get nodes
 The kubeconfig uses an exec-credential plugin that calls `rancher auth
 get-token` - the `rancher` binary must stay on PATH for kubectl to
 authenticate. Cached credentials: `rancher auth list-tokens` /
-`rancher auth delete-token`.
+`rancher auth delete-token` (local cache only; the server-side token
+stays valid until `rancher delete token <name>`, or `delete
+management-token` on a server without ext tokens, or expiry).
 
 ### 9. Observability & support
 

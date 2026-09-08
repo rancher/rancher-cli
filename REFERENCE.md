@@ -763,7 +763,12 @@ caching), `--cacert`,
 omitted, they fall back to the current server in config. It supports SAML,
 OAuth (device-code / auth-code), and basic auth flows; long-poll flows can
 be canceled with Ctrl-C. List cached credentials with `rancher auth list-tokens`.
-Clear them with `rancher auth delete-token [<name>]`. On a cache miss it first
+Clear them with `rancher auth delete-token [<name>]`. That clears the local
+cache only: the cluster token the plugin created stays valid on the server
+until it expires; `rancher get tokens` lists it and `rancher delete token
+<name>` revokes it (on a server without `ext.cattle.io` tokens the plugin
+creates a v3 token instead: `rancher get management-tokens` and `rancher
+delete management-token <name>`). On a cache miss the plugin first
 tries to create a token from the stored `auth login` credential for the matching
 server; when that credential lives in the OS keychain, this can trigger a
 keychain-unlock prompt - CI and other non-interactive runs should use
