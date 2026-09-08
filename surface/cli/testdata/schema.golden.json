@@ -84,6 +84,88 @@
       "usage": "Ask the cluster's authorizer whether a subject can perform a verb on a resource"
     },
     {
+      "args": [
+        {
+          "desc": "Kubernetes verb (get, list, create, ...) or, with --non-resource-url, an HTTP verb",
+          "name": "verb",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "resource plural, singular, short name, or resource.group; optionally /<name>; omitted with --non-resource-url",
+          "name": "resource",
+          "type": "string"
+        }
+      ],
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "public",
+      "desc": "Asks the same review as access can (SelfSubjectAccessReview as you or the impersonated subject, SubjectAccessReview for a group or on the management cluster) and explains the answer: on allow, the one binding and role the server's reason names, the rules in that role covering the request, and the Rancher chain behind the binding (ClusterRoleTemplateBinding or ProjectRoleTemplateBinding, GlobalRoleBinding and GlobalRole, RoleTemplate inheritance) read from its labels and annotations; on deny, the bindings on the cluster naming the subject or its groups. The decision is the server's; the chain is provenance. Exit 0 allowed, 12 denied, 13 unknown; a partial or unknown chain never changes the exit and is reported in chain and chainIssues.",
+      "examples": [
+        "rancher access explain delete pods --cluster prod -n team-a",
+        "rancher access explain delete pods --cluster prod -n team-a --as u-abc12 -o json",
+        "rancher access explain get nodes --cluster prod --as okta_group://eng",
+        "rancher access explain get --non-resource-url /healthz --cluster prod"
+      ],
+      "flags": [
+        {
+          "desc": "cluster name or id the question is about",
+          "name": "cluster",
+          "required": true,
+          "type": "string"
+        },
+        {
+          "aliases": [
+            "n"
+          ],
+          "desc": "namespace the question is about (one namespace; explain takes no --project or -A)",
+          "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "API group when the resource name exists in several groups",
+          "name": "group",
+          "type": "string"
+        },
+        {
+          "desc": "subresource such as status or log",
+          "name": "subresource",
+          "type": "string"
+        },
+        {
+          "desc": "ask about a non-resource path such as /healthz instead of a resource",
+          "name": "non-resource-url",
+          "type": "string"
+        },
+        {
+          "desc": "subject to explain instead of you: a Rancher user (id, username, or principal), a group principal, or a service account",
+          "name": "as",
+          "type": "string"
+        },
+        {
+          "desc": "how to read a bare --as value: user or group",
+          "enum": [
+            "user",
+            "group"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "group": "access",
+      "name": "access explain",
+      "network": true,
+      "shape": "text",
+      "stability": "beta",
+      "successExitCodes": [
+        0,
+        12,
+        13
+      ],
+      "toolset": "core",
+      "usage": "Explain the cluster's authorizer's decision for a subject, a verb, and a resource"
+    },
+    {
       "auth": true,
       "commandType": "readOnly",
       "contract": "public",
@@ -10220,9 +10302,10 @@
       "commands": [
         "access can",
         "access list",
-        "access who-can"
+        "access who-can",
+        "access explain"
       ],
-      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, and which subjects the bindings name that may perform a verb on a resource. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
+      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, and why the authorizer decided as it did for one subject, as the chain of Rancher bindings and templates behind the accepted binding. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
       "name": "access"
     },
     {

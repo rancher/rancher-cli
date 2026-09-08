@@ -313,7 +313,7 @@ func positionalEnumCandidates(site CompletionSite, d runtime.Descriptor) ([]stri
 // question with the shared verb/resource grammar, so its verb, resource,
 // --group, and --subresource sites complete alike.
 func accessQuestionCommand(name string) bool {
-	return name == "access can" || name == "access who-can"
+	return name == "access can" || name == "access who-can" || name == "access explain"
 }
 
 // accessVerbCandidates owns the verb positional of the access question
@@ -380,7 +380,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// --cluster value on the line neither fails segment validation nor
 	// selects a cluster-scoped credential.
 	accessSubjectSite := site.Kind == SiteFlagValue && site.FlagName == "as" &&
-		(d.Name == "access can" || d.Name == "access list")
+		(d.Name == "access can" || d.Name == "access list" || d.Name == "access explain")
 
 	// logs' --pod site is entirely self-contained: its cluster comes from the
 	// curated target's LocalOnly/DownstreamOnly shape (observe.Targets), not a
@@ -644,7 +644,7 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 			return nil // no scope or conflicting scope: empty, zero requests
 		}
 	case "as":
-		if d.Name == "access can" || d.Name == "access list" {
+		if d.Name == "access can" || d.Name == "access list" || d.Name == "access explain" {
 			// Users only: every shell splits a candidate line at its first
 			// ':' (token:description), so a group principal such as
 			// github_org://eng cannot be offered by this protocol.

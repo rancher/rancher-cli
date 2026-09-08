@@ -43,6 +43,7 @@ var capabilityCoverageAllowlist = map[string]string{
 	"access can":                     "posts a SubjectAccessReview through the proxy - a review is created, never listed or deleted, so it carries no kind row",
 	"access list":                    "posts a SelfSubjectRulesReview through the proxy - a review is created, never listed or deleted, so it carries no kind row",
 	"access who-can":                 "posts one SubjectAccessReview per binding subject through the proxy - reviews are created, never listed or deleted, so it carries no kind row",
+	"access explain":                 "posts one review and reads bindings, roles, and management objects the caller may already read - nothing is created, so it carries no kind row",
 	"auth login":                     "local auth, no kind row",
 	"auth logout":                    "local auth, no kind row",
 	"auth status":                    "local auth, no kind row",

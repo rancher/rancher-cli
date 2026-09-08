@@ -153,7 +153,7 @@ or point any other agent's instructions file at it.
 | [Projects & access](COMMANDS.md#projects--access) | project namespace membership, grant, revoke |
 | [Cluster scaling & autoscaling](COMMANDS.md#cluster-scaling--autoscaling) | machine-pool scale, cluster-autoscaler set/clear/pause/resume |
 | [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project/user reads, images, usage |
-| [Access](COMMANDS.md#access) | who can do what, as the cluster's authorizer answers it: `access can`, `access list`, `access who-can` |
+| [Access](COMMANDS.md#access) | who can do what, as the cluster's authorizer answers it: `access can`, `access list`, `access who-can`, `access explain` |
 | [Logs & support](COMMANDS.md#logs--support) | curated logs, support bundle |
 | [kubectl integration](COMMANDS.md#kubectl-integration) | exec-credential kubeconfig, legacy token shim |
 | [Discovery & tooling](COMMANDS.md#discovery--tooling) | schema, shell completion, agent-skill install |

@@ -398,3 +398,33 @@ func TestAccessWhoCanSharesTheQuestionSites(t *testing.T) {
 	assert.Nil(t, liveCandidates(accessCtx(t), as, d, nil, nil))
 	assert.Empty(t, f.served(), "who-can has no --as; nothing is fetched for it")
 }
+
+func explainDescriptor() runtime.Descriptor { return access.NewExplain(nil, nil).Describe() }
+
+// TestAccessExplainSharesTheQuestionAndSubjectSites asserts explain
+// completes its verb, resource, --group and --subresource exactly as
+// access can does, and its --as exactly as access can does (users by id
+// and username, the caller's cache, no group principals).
+func TestAccessExplainSharesTheQuestionAndSubjectSites(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := explainDescriptor()
+
+	verb := CompletionSite{Kind: SitePositional, Index: 0}
+	assert.Equal(t, sorted(access.ResourceVerbs), dispatchSite(accessCtx(t), verb, d, nil, nil, nil))
+	assert.Empty(t, f.served(), "verbs are compiled in")
+
+	resource := CompletionSite{Kind: SitePositional, Index: 1}
+	assert.Equal(t, []string{"deployments", "ingresses", "nodes", "pods", "services"},
+		liveCandidates(accessCtx(t), resource, d, nil, []string{"get", "--cluster", "c-abc12"}))
+	assert.Len(t, f.served(), 2, "an id-shaped cluster costs the two discovery roots only")
+
+	f.reset()
+	as := CompletionSite{Kind: SiteFlagValue, FlagName: "as", FlagSpelling: "--as"}
+	canAs := liveCandidates(accessCtx(t), as, canDescriptor(), nil, []string{"get", "pods", "--cluster", "c-abc12"})
+	f.reset()
+	assert.Equal(t, canAs, liveCandidates(accessCtx(t), as, d, nil, []string{"get", "pods", "--cluster", "c-abc12"}),
+		"explain offers exactly what access can offers for --as")
+	assert.NotEmpty(t, canAs, "the fixture's users are offered")
+}
