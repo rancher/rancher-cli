@@ -428,3 +428,31 @@ func TestAccessExplainSharesTheQuestionAndSubjectSites(t *testing.T) {
 		"explain offers exactly what access can offers for --as")
 	assert.NotEmpty(t, canAs, "the fixture's users are offered")
 }
+
+func clustersDescriptor() runtime.Descriptor { return access.NewClusters(nil, nil, nil).Describe() }
+
+// TestAccessClustersSubjectOffersUsersOnly asserts access clusters
+// completes --as exactly as access can does (management users by id and
+// username, never a group principal or a service account) and that its
+// --type offers user alone.
+func TestAccessClustersSubjectOffersUsersOnly(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := clustersDescriptor()
+
+	f.reset()
+	as := CompletionSite{Kind: SiteFlagValue, FlagName: "as", FlagSpelling: "--as"}
+	got := liveCandidates(accessCtx(t), as, d, nil, []string{"--as"})
+	assert.Equal(t, []string{"alice", "bob", "u-abc12", "u-def34"}, sorted(got))
+	for _, c := range got {
+		assert.NotContains(t, c, "://")
+		assert.NotContains(t, c, "system:serviceaccount:")
+	}
+	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/users"}, f.served())
+
+	f.reset()
+	typ := CompletionSite{Kind: SiteFlagValue, FlagName: "type", FlagSpelling: "--type"}
+	assert.Equal(t, []string{"user"}, dispatchSite(accessCtx(t), typ, d, nil, nil, []string{"--type"}))
+	assert.Empty(t, f.served(), "the type enum is static")
+}

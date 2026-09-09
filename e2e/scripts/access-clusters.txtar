@@ -1,0 +1,60 @@
+# access clusters: the caller's rows, a named user, a refused user, the
+# group refusal, and a restricted caller's own view. The facade pages the
+# steve collection one cluster at a time for this script.
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+exec rancher access clusters -o json
+cp stdout admin.json
+jsonquery admin.json data.identity caller
+jsonquery admin.json data.discovery.complete true
+jsonquery admin.json data.rollup.clusters 2
+jsonquery admin.json data.rollup.complete true
+jsonquery admin.json data.clusters.0.cluster c-test
+jsonquery admin.json data.clusters.0.displayName testcluster
+jsonquery admin.json data.clusters.0.access reachable
+jsonquery admin.json data.clusters.0.source rancherProxy
+jsonquery admin.json data.clusters.1.cluster local
+jsonquery admin.json data.clusters.1.access reachable
+jsonquery admin.json data.clusters.1.returned true
+jsonquery admin.json data.reachable.0.cluster c-test
+jsonquery admin.json data.resultSource rancherProxy
+
+exec rancher access clusters
+stdout 'clusters you can list, reachability for you'
+stdout 'CLUSTER +NAME +REACHABILITY +GRANTED BY +NOTE'
+stdout 'reachable = Rancher''s proxy admits the identity to this cluster'
+stdout 'source: rancherProxy \| identity: caller'
+
+# a named user the proxy admits: impersonated on c-test, local is not
+# applicable and never makes the run incomplete
+exec rancher access clusters --as e2e-std -o json
+cp stdout std.json
+jsonquery std.json data.identity impersonated
+jsonquery std.json data.clusters.0.access reachable
+jsonquery std.json data.clusters.0.identity e2e-std
+jsonquery std.json data.clusters.1.access notApplicable
+jsonquery std.json data.clusters.1.source notApplicable
+jsonquery std.json data.rollup.notApplicable 1
+jsonquery std.json data.rollup.complete true
+
+# a named user the proxy refuses on c-test
+exec rancher access clusters --as e2e-nocluster -o json
+cp stdout nocluster.json
+jsonquery nocluster.json data.clusters.0.access refused
+jsonquery nocluster.json data.clusters.0.source rancherProxy
+jsonquery nocluster.json data.rollup.refused 1
+jsonquery nocluster.json data.rollup.complete true
+
+# a group has no clusters to list
+! exec rancher access clusters --as github_org://eng
+stderr 'no server operation lists a group''s clusters'
+
+# a restricted caller sees only the clusters Rancher lists for it
+env RANCHER_CLI_TOKEN=e2e-nocluster:secret
+exec rancher access clusters -o json
+cp stdout member.json
+jsonquery member.json data.identity caller
+jsonquery member.json data.rollup.clusters 1
+jsonquery member.json data.clusters.0.cluster local
+jsonquery member.json data.clusters.0.access reachable

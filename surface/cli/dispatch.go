@@ -339,6 +339,17 @@ func accessVerbCandidates(site CompletionSite, d runtime.Descriptor, tail []stri
 	return out, true
 }
 
+// accessSubjectCommand reports whether d names an access command whose
+// --as takes a management user: the commands that impersonate or review a
+// named subject. who-can has no --as; clusters accepts users only.
+func accessSubjectCommand(name string) bool {
+	switch name {
+	case "access can", "access list", "access explain", "access clusters":
+		return true
+	}
+	return false
+}
+
 // liveCandidates issues at most two HTTP requests to fetch resource names
 // (AC-17 steps 4-6, AC-24), with one exception: `access can`'s resource
 // positional and its --group/--subresource values read the cluster's two
@@ -379,8 +390,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// cluster: same preflight bypass as subjectSite, so an unrelated
 	// --cluster value on the line neither fails segment validation nor
 	// selects a cluster-scoped credential.
-	accessSubjectSite := site.Kind == SiteFlagValue && site.FlagName == "as" &&
-		(d.Name == "access can" || d.Name == "access list" || d.Name == "access explain")
+	accessSubjectSite := site.Kind == SiteFlagValue && site.FlagName == "as" && accessSubjectCommand(d.Name)
 
 	// logs' --pod site is entirely self-contained: its cluster comes from the
 	// curated target's LocalOnly/DownstreamOnly shape (observe.Targets), not a
@@ -644,7 +654,7 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 			return nil // no scope or conflicting scope: empty, zero requests
 		}
 	case "as":
-		if d.Name == "access can" || d.Name == "access list" || d.Name == "access explain" {
+		if accessSubjectCommand(d.Name) {
 			// Users only: every shell splits a candidate line at its first
 			// ':' (token:description), so a group principal such as
 			// github_org://eng cannot be offered by this protocol.

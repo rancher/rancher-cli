@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +62,10 @@ const (
 	// import its parent), so the only remaining intentional duplicate is
 	// production's copy, not a third one on the test side.
 	CRTCollectionPath = "/v1/management.cattle.io.clusterregistrationtokens"
+	// ClustersCollectionPath is the steve collection of management Clusters
+	// the CLI reads for the clusters a caller can see. The facade serves it
+	// only when Options.ClusterVisibility says what each bearer sees.
+	ClustersCollectionPath = "/v1/management.cattle.io.clusters"
 
 	// rke2ReleasePath/k3sReleasePath are the channel-server release routes
 	// (Task 6, spec D-7). Must match internal/engine/provisioning's own
@@ -154,6 +160,13 @@ type Options struct {
 	// RequestHook runs on every request the facade handles, before
 	// dispatch.
 	RequestHook func(r *http.Request)
+	// ClusterVisibility says which management Clusters a bearer sees on the
+	// steve clusters collection; a bearer it does not know is answered 401.
+	// nil leaves the collection unserved (404).
+	ClusterVisibility func(bearer string) ([]ClusterFixture, bool)
+	// ClustersPageSize pages the clusters collection with steve's
+	// continue token (an offset); 0 serves one page.
+	ClustersPageSize int
 
 	// DropLoginResponse creates the token and then closes the connection
 	// without writing: the client never learns what the server did.
@@ -511,6 +524,8 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handlePasswordChangeRequestsPOST(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == CRTCollectionPath:
 		f.handleCRTCollection(w, r)
+	case f.opts.ClusterVisibility != nil && r.Method == http.MethodGet && r.URL.Path == ClustersCollectionPath:
+		f.handleClustersCollection(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, CRTCollectionPath+"/"):
 		f.handleCRTSingle(w, r, strings.TrimPrefix(r.URL.Path, CRTCollectionPath+"/"))
 	case r.Method == http.MethodGet && r.URL.Path == rke2ReleasePath:
@@ -1406,6 +1421,61 @@ func (f *Facade) handleCRTCollection(w http.ResponseWriter, r *http.Request) {
 		data = append(data, crtBody(fx))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}
+
+// ClusterFixture is one management Cluster as the steve collection lists
+// it: the id and the display name the CLI shows.
+type ClusterFixture struct {
+	ID          string
+	DisplayName string
+}
+
+// handleClustersCollection serves the steve clusters collection filtered
+// by the caller's bearer through Options.ClusterVisibility, with steve's
+// envelope: data, count (the collection total), revision, and continue (an
+// offset) when ClustersPageSize cuts a page.
+func (f *Facade) handleClustersCollection(w http.ResponseWriter, r *http.Request) {
+	visible, ok := f.opts.ClusterVisibility(bearerFromHeader(r))
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	// Sort a copy: the callback's slice may alias storage the harness owns.
+	visible = slices.Clone(visible)
+	sort.Slice(visible, func(i, j int) bool { return visible[i].ID < visible[j].ID })
+	offset := 0
+	if c := r.URL.Query().Get("continue"); c != "" {
+		n, err := strconv.Atoi(c)
+		if err != nil || n < 0 || n > len(visible) {
+			http.Error(w, "invalid continue token", http.StatusBadRequest)
+			return
+		}
+		offset = n
+	}
+	end := len(visible)
+	if f.opts.ClustersPageSize > 0 && offset+f.opts.ClustersPageSize < end {
+		end = offset + f.opts.ClustersPageSize
+	}
+	data := make([]map[string]any, 0, end-offset)
+	for _, c := range visible[offset:end] {
+		data = append(data, map[string]any{
+			"id":       c.ID,
+			"type":     "management.cattle.io.cluster",
+			"metadata": map[string]any{"name": c.ID},
+			"spec":     map[string]any{"displayName": c.DisplayName},
+		})
+	}
+	body := map[string]any{
+		"type":         "collection",
+		"resourceType": "management.cattle.io.cluster",
+		"count":        len(visible),
+		"revision":     "1",
+		"data":         data,
+	}
+	if end < len(visible) {
+		body["continue"] = strconv.Itoa(end)
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 // handleCRTSingle serves one fixture at its namespaced single-object path

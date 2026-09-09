@@ -84,6 +84,43 @@
       "usage": "Ask the cluster's authorizer whether a subject can perform a verb on a resource"
     },
     {
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "public",
+      "desc": "Lists the management clusters you can see and, for each, whether Rancher's proxy admits you (or an impersonated --as user) to the cluster's API: reachable, refused, or unknown when the probe failed. Beside it, the ClusterRoleTemplateBindings, ProjectRoleTemplateBindings and GlobalRoleBindings on the management cluster that name the subject, its principals, or a group Rancher has cached for it. Reachability is the proxy's answer before any Kubernetes rule is consulted; what the identity may do inside a cluster is access list's question. Exit 0 when every cluster answered, 13 when any is unknown.",
+      "examples": [
+        "rancher access clusters",
+        "rancher access clusters --as alice",
+        "rancher access clusters --as alice -o json"
+      ],
+      "flags": [
+        {
+          "desc": "user name, id, or principal; omitted = you",
+          "name": "as",
+          "type": "string"
+        },
+        {
+          "desc": "kind of the --as value (only user is accepted here)",
+          "enum": [
+            "user"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "group": "access",
+      "name": "access clusters",
+      "network": true,
+      "shape": "text",
+      "stability": "beta",
+      "successExitCodes": [
+        0,
+        13
+      ],
+      "toolset": "core",
+      "usage": "List the clusters Rancher lets a subject into, and the bindings that grant it"
+    },
+    {
       "args": [
         {
           "desc": "Kubernetes verb (get, list, create, ...) or, with --non-resource-url, an HTTP verb",
@@ -10304,9 +10341,10 @@
         "access can",
         "access list",
         "access who-can",
-        "access explain"
+        "access explain",
+        "access clusters"
       ],
-      "desc": "Server-computed authorization answers: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, and why the authorizer decided as it did for one subject, as the chain of Rancher bindings and templates behind the accepted binding. Every answer comes from SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; nothing is evaluated client-side.",
+      "desc": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the accepted binding), and which clusters Rancher's proxy lets a subject into beside the management bindings that grant it. The authorizer questions are answered by SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
       "name": "access"
     },
     {

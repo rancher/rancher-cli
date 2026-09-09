@@ -66,6 +66,38 @@ var legacyScripts = map[string]bool{
 var scriptOptions = map[string]func(*testrancher.Options){
 	"login-recovery":       func(o *testrancher.Options) { o.DropDerivedCreateResponseOnce = true },
 	"auth-login-providers": func(o *testrancher.Options) { o.ExtraProviders = []string{"githubProvider"} },
+	// One cluster per page, so the collection reader follows steve's
+	// continue token and validates the count across pages.
+	"access-clusters": func(o *testrancher.Options) { o.ClustersPageSize = 1 },
+}
+
+// shimClusters are the management Clusters the facade's steve collection
+// lists: the envtest fixture cluster and the management cluster itself.
+var shimClusters = []testrancher.ClusterFixture{
+	{ID: "c-test", DisplayName: "testcluster"},
+	{ID: "local", DisplayName: "local"},
+}
+
+// clusterVisibility answers the facade's steve clusters collection from
+// the shim identities: an identity restricted to some clusters sees only
+// those, every other identity sees them all, an unknown bearer is refused.
+func clusterVisibility(resolve shimIdentityResolver) func(string) ([]testrancher.ClusterFixture, bool) {
+	return func(bearer string) ([]testrancher.ClusterFixture, bool) {
+		id, ok := resolve(bearer)
+		if !ok {
+			return nil, false
+		}
+		if id.clusters == nil {
+			return slices.Clone(shimClusters), true
+		}
+		var out []testrancher.ClusterFixture
+		for _, c := range shimClusters {
+			if slices.Contains(id.clusters, c.ID) {
+				out = append(out, c)
+			}
+		}
+		return out, true
+	}
 }
 
 // scriptChecks run after their script, with the facade it ran against, for
@@ -654,9 +686,10 @@ func TestScenarios(t *testing.T) {
 			// only runs once real requests arrive, well after Setup returns,
 			// so the forward reference is safe.
 			var facade *testrancher.Facade
-			router := newRouter(facadeIdentityResolver(shimIdentities, func(t string) bool {
+			resolve := facadeIdentityResolver(shimIdentities, func(t string) bool {
 				return facade != nil && facade.ValidBearer(t)
-			}))
+			})
+			router := newRouter(resolve)
 			// The identity-provider stub lives on its own TLS origin so the
 			// binary must reach it with the operating system trust store, not
 			// the Rancher CA it was given: the same split a self-signed
@@ -675,11 +708,12 @@ func TestScenarios(t *testing.T) {
 			idpSrv.StartTLS()
 			e.Defer(idpSrv.Close)
 			opts := testrancher.Options{
-				Fallthrough: router,
-				Legacy:      legacyScripts[scriptName],
-				SeedToken:   testToken,
-				EnableIdP:   true,
-				IdPURL:      idpSrv.URL,
+				Fallthrough:       router,
+				Legacy:            legacyScripts[scriptName],
+				SeedToken:         testToken,
+				EnableIdP:         true,
+				IdPURL:            idpSrv.URL,
+				ClusterVisibility: clusterVisibility(resolve),
 			}
 			if adjust := scriptOptions[scriptName]; adjust != nil {
 				adjust(&opts)
