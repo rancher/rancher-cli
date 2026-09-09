@@ -47,6 +47,11 @@ func provenanceFixture() *fakeClient {
 					map[string]any{"metadata": map[string]any{"name": "github_org://eng"}, "displayName": "eng"}}}}}),
 		},
 		Lists: map[string]*unstructured.UnstructuredList{
+			"users||": listOf(
+				mgmtObj("User", "", "u-alice", map[string]any{"username": "alice", "displayName": "Alice",
+					"principalIds": []any{"local://u-alice", "github_user://1"}}),
+				mgmtObj("User", "", "u-bob", map[string]any{"username": "bob", "principalIds": []any{"local://u-bob"}}),
+			),
 			"clusterroletemplatebindings||": listOf(
 				mgmtObj("ClusterRoleTemplateBinding", "c-1", "crtb-alice", map[string]any{"userName": "u-alice", "roleTemplateName": "cluster-member", "clusterName": "c-1"}),
 				mgmtObj("ClusterRoleTemplateBinding", "c-2", "crtb-eng", map[string]any{"groupPrincipalName": "github_org://eng", "roleTemplateName": "cluster-owner", "clusterName": "c-2"}),

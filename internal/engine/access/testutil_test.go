@@ -135,23 +135,50 @@ func (f *fakeClient) Logs(context.Context, string, string, engine.LogOptions) (s
 // fakeFactory hands out one client for the caller and one per impersonated
 // user, recording who was impersonated.
 type fakeFactory struct {
+	mu           sync.Mutex
 	caller       *fakeClient
 	impersonated map[string]*fakeClient
 	Impersonated []string
 	resolve      map[string]string
 	ResolveCalls int
 	ClusterErr   error
+	// clusters hands out a client per cluster id for commands that fan out
+	// over clusters; a cluster not listed here gets caller.
+	clusters map[string]*fakeClient
+	// impersonatedPer hands out a client per (cluster, user), keyed
+	// cluster + "\x00" + user; a pair not listed here falls back to
+	// impersonated[user], then caller.
+	impersonatedPer map[string]*fakeClient
+	// clusterClients and impersonatedClients are the interface-typed
+	// twins of clusters and impersonatedPer, for clients that wrap a fake
+	// (a blocking one); they are consulted first.
+	clusterClients      map[string]engine.ClusterClient
+	impersonatedClients map[string]engine.ClusterClient
 }
 
-func (f *fakeFactory) Cluster(context.Context, string) (engine.ClusterClient, error) {
+func (f *fakeFactory) Cluster(_ context.Context, clusterID string) (engine.ClusterClient, error) {
 	if f.ClusterErr != nil {
 		return nil, f.ClusterErr
+	}
+	if c, ok := f.clusterClients[clusterID]; ok {
+		return c, nil
+	}
+	if c, ok := f.clusters[clusterID]; ok {
+		return c, nil
 	}
 	return f.caller, nil
 }
 
-func (f *fakeFactory) ImpersonatedCluster(_ context.Context, _ string, as engine.Impersonation) (engine.ClusterClient, error) {
+func (f *fakeFactory) ImpersonatedCluster(_ context.Context, clusterID string, as engine.Impersonation) (engine.ClusterClient, error) {
+	f.mu.Lock()
 	f.Impersonated = append(f.Impersonated, as.User)
+	f.mu.Unlock()
+	if c, ok := f.impersonatedClients[clusterID+"\x00"+as.User]; ok {
+		return c, nil
+	}
+	if c, ok := f.impersonatedPer[clusterID+"\x00"+as.User]; ok {
+		return c, nil
+	}
 	if c, ok := f.impersonated[as.User]; ok {
 		return c, nil
 	}
