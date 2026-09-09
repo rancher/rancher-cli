@@ -39,6 +39,9 @@ type fakeClient struct {
 	// GetErrFor fails the GET of one key ("ns/name" or "name") while every
 	// other GET answers; GetErr fails them all.
 	GetErrFor map[string]error
+	// ListErrFor fails the LIST of one key ("resource|ns|selector") while
+	// every other LIST answers; ListErr fails them all.
+	ListErrFor map[string]error
 }
 
 func (f *fakeClient) PostReview(ctx context.Context, req engine.ReviewRequest) (engine.ReviewResponse, error) {
@@ -103,6 +106,9 @@ func (f *fakeClient) List(ctx context.Context, gvr schema.GroupVersionResource, 
 	}
 	if f.ListErr != nil {
 		return nil, f.ListErr
+	}
+	if err, ok := f.ListErrFor[gvr.Resource+"|"+ns+"|"+selector]; ok {
+		return nil, err
 	}
 	if l, ok := f.Lists[gvr.Resource+"|"+ns+"|"+selector]; ok {
 		return l, nil
