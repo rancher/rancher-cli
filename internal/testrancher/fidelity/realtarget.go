@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -63,6 +64,7 @@ type RealTarget struct {
 	downstream string
 
 	standard LazyBearer
+	member   LazyBearer
 	revoked  LazyBearer
 }
 
@@ -124,6 +126,8 @@ func (t *RealTarget) Bearer(ctx context.Context, id Identity) (string, error) {
 		return t.admin, nil
 	case IdentityStandard:
 		return t.standardBearer(ctx)
+	case IdentityMember:
+		return t.memberBearer(ctx)
 	case IdentityRevoked:
 		return t.revokedBearer(ctx)
 	default:
@@ -132,6 +136,8 @@ func (t *RealTarget) Bearer(ctx context.Context, id Identity) (string, error) {
 }
 
 const standardUsername = "e2e-fid-standard"
+
+const memberUsername = "e2e-fid-member"
 
 // newStandardPassword generates a fresh random password for the throwaway standard
 // user. It is generated per RealTarget instance rather than hardcoded so no
@@ -188,6 +194,146 @@ func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
 	})
 }
 
+// memberBearer provisions the e2e-fid-member local user (idempotently, as
+// standardBearer does) with the baseline user GlobalRole and one
+// project-member ProjectRoleTemplateBinding on the downstream cluster's
+// Default project, and logs in as it. The downstream is required: a member
+// identity without a project to be a member of does not exist. Cleanup
+// relies on Rancher cascading a deleted user's bindings.
+func (t *RealTarget) memberBearer(ctx context.Context) (string, error) {
+	return t.member.Get(func() (string, error) {
+		if t.downstream == "" {
+			return "", fmt.Errorf("the member identity needs a downstream cluster (E2E_REAL_DOWNSTREAM)")
+		}
+		password, err := newStandardPassword()
+		if err != nil {
+			return "", err
+		}
+		if _, err := t.deleteUsersNamed(ctx, memberUsername); err != nil {
+			return "", err
+		}
+		create := map[string]any{
+			"type":               "user",
+			"enabled":            true,
+			"mustChangePassword": false,
+			"username":           memberUsername,
+			"password":           password,
+		}
+		created, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/users", create, http.StatusCreated)
+		if err != nil {
+			return "", fmt.Errorf("creating member user: %w", err)
+		}
+		userID, _ := created["id"].(string)
+		if userID == "" {
+			return "", fmt.Errorf("creating member user: create response has no id")
+		}
+		grb := map[string]any{"type": "globalRoleBinding", "globalRoleId": "user", "userId": userID}
+		if _, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/globalrolebindings", grb, http.StatusCreated); err != nil {
+			return "", fmt.Errorf("binding baseline user role to member user: %w", err)
+		}
+		projects, status, err := t.adminJSON(ctx, http.MethodGet, "/v3/projects?clusterId="+t.downstream+"&name=Default", nil, 0)
+		if err != nil {
+			return "", fmt.Errorf("looking up the downstream Default project: %w", err)
+		}
+		if status != http.StatusOK {
+			return "", fmt.Errorf("looking up the downstream Default project: status %d", status)
+		}
+		data, _ := projects["data"].([]any)
+		if len(data) != 1 {
+			return "", fmt.Errorf("looking up the downstream Default project: %d matches", len(data))
+		}
+		project, _ := data[0].(map[string]any)
+		projectID, _ := project["id"].(string)
+		if projectID == "" {
+			return "", fmt.Errorf("looking up the downstream Default project: entry without id")
+		}
+		prtb := map[string]any{
+			"type":           "projectRoleTemplateBinding",
+			"projectId":      projectID,
+			"roleTemplateId": "project-member",
+			"userId":         userID,
+		}
+		if _, _, err := t.adminJSON(ctx, http.MethodPost, "/v3/projectroletemplatebindings", prtb, http.StatusCreated); err != nil {
+			return "", fmt.Errorf("binding project-member to member user: %w", err)
+		}
+		return t.login(ctx, memberUsername, password)
+	})
+}
+
+// Cleanup removes the users the target provisioned (the standard and the
+// member identities) and waits until Rancher has cascaded their
+// GlobalRoleBindings and ProjectRoleTemplateBindings, so a kept oracle or an
+// operator's own Rancher is left as it was found. Idempotent: a user that
+// was never provisioned, or is already gone, is not an error. Every
+// identity and every phase (delete, binding wait per deleted user) is
+// attempted regardless of the others' outcome, so a failure on one user
+// never leaves the other behind; the errors are joined, each naming its
+// user and phase.
+func (t *RealTarget) Cleanup(ctx context.Context) error {
+	var errs []error
+	for _, username := range []string{standardUsername, memberUsername} {
+		if err := t.cleanupUser(ctx, username); err != nil {
+			errs = append(errs, fmt.Errorf("cleaning up %s: %w", username, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// cleanupUser deletes every user carrying username and waits for the
+// bindings of each deleted user to disappear. The ids come from the delete
+// itself (exactly the users whose DELETE the server accepted), so a wait
+// is never skipped for a removed user nor spent on one that is still
+// there; every wait runs even when the delete or an earlier wait failed.
+func (t *RealTarget) cleanupUser(ctx context.Context, username string) error {
+	var errs []error
+	ids, err := t.deleteUsersNamed(ctx, username)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("delete: %w", err))
+	}
+	for _, id := range ids {
+		if err := t.waitBindingsGone(ctx, id); err != nil {
+			errs = append(errs, fmt.Errorf("bindings of %s: %w", id, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// waitBindingsGone waits for the GlobalRoleBindings and
+// ProjectRoleTemplateBindings of a deleted user to disappear (Rancher
+// cascades them asynchronously) and reports what remains after the wait.
+func (t *RealTarget) waitBindingsGone(ctx context.Context, userID string) error {
+	deadline := time.Now().Add(bindingsGoneTimeout)
+	for {
+		remaining := 0
+		for _, path := range []string{"/v3/globalrolebindings?userId=" + userID, "/v3/projectroletemplatebindings?userId=" + userID} {
+			body, status, err := t.adminJSON(ctx, http.MethodGet, path, nil, 0)
+			if err != nil {
+				return fmt.Errorf("listing bindings of deleted user %s: %w", userID, err)
+			}
+			if status != http.StatusOK {
+				return fmt.Errorf("listing bindings of deleted user %s: status %d", userID, status)
+			}
+			data, _ := body["data"].([]any)
+			remaining += len(data)
+		}
+		if remaining == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%d binding(s) of deleted user %s still present after %s", remaining, userID, bindingsGoneTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
+// bindingsGoneTimeout bounds the wait for Rancher to cascade a deleted
+// user's bindings.
+var bindingsGoneTimeout = 30 * time.Second
+
 // revokedBearer creates a derived token as admin, then revokes it by the name
 // embedded in the ext bearer.
 func (t *RealTarget) revokedBearer(ctx context.Context) (string, error) {
@@ -221,64 +367,82 @@ var standardUserGoneTimeout = 10 * time.Second
 // rejected delete is surfaced - a silently-kept stale user would break
 // kept-run recovery at the subsequent create.
 func (t *RealTarget) deleteStandardUser(ctx context.Context) error {
-	data, err := t.lookupStandardUsers(ctx)
+	_, err := t.deleteUsersNamed(ctx, standardUsername)
+	return err
+}
+
+// deleteUsersNamed removes every prior user with the given username and
+// waits for the deletion to finish, so the create that follows never races
+// the finalizer. Every listed entry gets its own DELETE attempt whatever
+// happened to the ones before it; the failures are joined, and the
+// disappearance wait runs only when every entry was accepted (a refused
+// entry would keep the name listed). It returns the ids whose DELETE the
+// server accepted, also on error, so a caller can still verify the cascade
+// of what was removed.
+func (t *RealTarget) deleteUsersNamed(ctx context.Context, username string) (deleted []string, err error) {
+	data, err := t.lookupUsersNamed(ctx, username)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(data) == 0 {
-		return nil
+		return nil, nil
 	}
+	var errs []error
 	for _, el := range data {
 		m, _ := el.(map[string]any)
 		id, _ := m["id"].(string)
 		if id == "" {
-			return fmt.Errorf("looking up standard user: collection entry without id")
+			errs = append(errs, fmt.Errorf("looking up user %s: collection entry without id", username))
+			continue
 		}
 		_, dstatus, derr := t.adminJSON(ctx, http.MethodDelete, "/v3/users/"+id, nil, 0)
 		if derr != nil {
-			return fmt.Errorf("deleting stale standard user %s: %w", id, derr)
+			errs = append(errs, fmt.Errorf("deleting stale user %s: %w", id, derr))
+			continue
 		}
 		switch dstatus {
 		case http.StatusOK, http.StatusNoContent, http.StatusNotFound:
+			deleted = append(deleted, id)
 		default:
-			return fmt.Errorf("deleting stale standard user %s: status %d", id, dstatus)
+			errs = append(errs, fmt.Errorf("deleting stale user %s: status %d", id, dstatus))
 		}
 	}
-	// The deletion is asynchronous on the server: wait for the lookup to
-	// empty so the create that follows never races the finalizer.
+	if len(errs) > 0 {
+		return deleted, errors.Join(errs...)
+	}
 	deadline := time.Now().Add(standardUserGoneTimeout)
 	for {
-		remaining, err := t.lookupStandardUsers(ctx)
+		remaining, err := t.lookupUsersNamed(ctx, username)
 		if err != nil {
-			return err
+			return deleted, err
 		}
 		if len(remaining) == 0 {
-			return nil
+			return deleted, nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("stale standard user still listed %s after delete", standardUserGoneTimeout)
+			return deleted, fmt.Errorf("stale user %s still listed %s after delete", username, standardUserGoneTimeout)
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return deleted, ctx.Err()
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
 }
 
-// lookupStandardUsers returns the collection entries the username lookup
-// reports for the standard user; a malformed answer is an error.
-func (t *RealTarget) lookupStandardUsers(ctx context.Context) ([]any, error) {
-	body, status, err := t.adminJSON(ctx, http.MethodGet, "/v3/users?username="+standardUsername, nil, 0)
+// lookupUsersNamed returns the collection entries the username lookup
+// reports; a malformed answer is an error.
+func (t *RealTarget) lookupUsersNamed(ctx context.Context, username string) ([]any, error) {
+	body, status, err := t.adminJSON(ctx, http.MethodGet, "/v3/users?username="+username, nil, 0)
 	if err != nil {
-		return nil, fmt.Errorf("looking up standard user: %w", err)
+		return nil, fmt.Errorf("looking up user %s: %w", username, err)
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("looking up standard user: status %d", status)
+		return nil, fmt.Errorf("looking up user %s: status %d", username, status)
 	}
 	data, ok := body["data"].([]any)
 	if !ok {
-		return nil, fmt.Errorf("looking up standard user: 200 response has no data array")
+		return nil, fmt.Errorf("looking up user %s: 200 response has no data array", username)
 	}
 	return data, nil
 }

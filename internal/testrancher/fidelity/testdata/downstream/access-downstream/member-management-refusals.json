@@ -1,0 +1,142 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "whoami-local",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "status": {
+          "userInfo": {
+            "extra": "\u003cextra\u003e",
+            "groups": [
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "{member}"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-own-user",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "description": "",
+        "displayName": "e2e-fid-member",
+        "enabled": true,
+        "kind": "User",
+        "principalIds": [
+          "local://{member}"
+        ],
+        "status": {
+          "conditions": [
+            {
+              "lastUpdateTime": "\u003ctime\u003e",
+              "status": "True",
+              "type": "InitialRolesPopulated"
+            }
+          ]
+        },
+        "username": "e2e-fid-member"
+      }
+    },
+    {
+      "name": "get-own-userattribute",
+      "status": 403,
+      "contentType": ""
+    },
+    {
+      "name": "list-clusters",
+      "status": 403,
+      "contentType": ""
+    },
+    {
+      "name": "get-own-cluster",
+      "status": 403,
+      "contentType": ""
+    },
+    {
+      "name": "list-crtbs",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    },
+    {
+      "name": "list-all-crtbs",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    },
+    {
+      "name": "list-all-prtbs",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    },
+    {
+      "name": "list-grbs",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    },
+    {
+      "name": "list-globalroles",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    },
+    {
+      "name": "list-downstream-namespaces",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    }
+  ]
+}

@@ -36,6 +36,7 @@ func All() []Probe {
 	probes = append(probes, capabilityProbes()...)
 	probes = append(probes, userPasswordWorkflowProbes()...)
 	probes = append(probes, accessDownstreamProbes()...)
+	probes = append(probes, memberProbes()...)
 	probes = append(probes, directEndpointProbes()...)
 	probes = append(probes, accessProbes()...)
 	probes = append(probes, discoveryProbes()...)
@@ -1302,6 +1303,101 @@ func createSecretFixture(name, body string) Step {
 				return fmt.Errorf("creating fixture %s: status %d, want %d", name, status, http.StatusCreated)
 			}
 			return nil
+		},
+	}
+}
+
+// memberProbes record what a project member sees, for access clusters: the
+// steve cluster collection answers with exactly the member's cluster, the
+// proxy admits the member to the downstream, and the management-plane reads
+// the command's GRANTED BY side needs are refused (a bodyless 403 for the
+// Kubernetes-style cluster LIST and GET; a Status for the cluster-namespace
+// and all-namespace ClusterRoleTemplateBinding LISTs, the all-namespace
+// ProjectRoleTemplateBinding LIST, the GlobalRoleBinding and GlobalRole
+// LISTs, and the downstream namespace LIST), which is what makes the
+// command's bindingsDiscovery unavailable for a member. The member identity is a local user with
+// one project-member ProjectRoleTemplateBinding on the downstream's Default
+// project.
+func memberProbes() []Probe {
+	const (
+		steveClusters        = "/v1/management.cattle.io.clusters"
+		mgmtClusters         = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
+		mgmtCRTBs            = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/{downstream}/clusterroletemplatebindings"
+		mgmtAllCRTBs         = "/k8s/clusters/local/apis/management.cattle.io/v3/clusterroletemplatebindings"
+		mgmtAllPRTBs         = "/k8s/clusters/local/apis/management.cattle.io/v3/projectroletemplatebindings"
+		mgmtGRBs             = "/k8s/clusters/local/apis/management.cattle.io/v3/globalrolebindings"
+		mgmtGlobalRoles      = "/k8s/clusters/local/apis/management.cattle.io/v3/globalroles"
+		mgmtUsers            = "/k8s/clusters/local/apis/management.cattle.io/v3/users"
+		mgmtUserAttributes   = "/k8s/clusters/local/apis/management.cattle.io/v3/userattributes"
+		downstreamNamespaces = "/k8s/clusters/{downstream}/api/v1/namespaces"
+		whoBody              = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
+	)
+	// Steve stashes the pre-transform id under _id only when an item goes
+	// through its transform a second time, which depends on whether the
+	// SQL cache served it; the field is dropped rather than recorded.
+	steveEnvelopeRules := []NormalizeRule{
+		{Path: "data._id", Replace: ""},
+		{Path: "links", Replace: ""},
+		{Path: "actions", Replace: ""},
+		{Path: "pagination", Replace: ""},
+		{Path: "sort", Replace: ""},
+		{Path: "filters", Replace: ""},
+		{Path: "createTypes", Replace: ""},
+		{Path: "resourceType", Replace: ""},
+		{Path: "revision", Replace: "<revision>"},
+		{Path: "data.links", Replace: ""},
+		{Path: "data.actions", Replace: ""},
+		{Path: "data.metadata", Replace: ""},
+		{Path: "data.spec", Replace: "<spec>"},
+		{Path: "data.status", Replace: ""},
+	}
+	statusRules := []NormalizeRule{
+		{Path: "message", Replace: "<message>"},
+		{Path: "metadata", Replace: ""},
+		{Path: "details", Replace: ""},
+	}
+	return []Probe{
+		{
+			Name:               "access-downstream/member-steve-clusters",
+			Downstream:         true,
+			SubstituteCaptures: true,
+			Observations: []Observation{
+				{Name: "clusters", Request: RequestSpec{Method: http.MethodGet, Path: steveClusters, Identity: IdentityMember}},
+			},
+			Normalize: steveEnvelopeRules,
+		},
+		{
+			Name:       "access-downstream/member-proxy-whoami",
+			Downstream: true,
+			Observations: []Observation{
+				{Name: "whoami", Request: RequestSpec{Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityMember}},
+			},
+			Normalize: append(whoamiPrivacyRules(), NormalizeRule{Path: "status.userInfo.username", Replace: "<user-id>"}),
+		},
+		{
+			Name:               "access-downstream/member-management-refusals",
+			Downstream:         true,
+			SubstituteCaptures: true,
+			Observations: []Observation{
+				// The member's own id, for the two self reads below: a user
+				// may read its own User but not its own UserAttribute, and
+				// that refusal is the one that turns groupAliases unavailable.
+				{Name: "whoami-local", Request: RequestSpec{Method: http.MethodPost, Path: localWhoami, Body: whoBody, Identity: IdentityMember},
+					Captures: map[string]Capture{"member": {Path: "status.userInfo.username"}}},
+				{Name: "get-own-user", Request: RequestSpec{Method: http.MethodGet, Path: mgmtUsers + "/{member}", Identity: IdentityMember}},
+				{Name: "get-own-userattribute", Request: RequestSpec{Method: http.MethodGet, Path: mgmtUserAttributes + "/{member}", Identity: IdentityMember}},
+				{Name: "list-clusters", Request: RequestSpec{Method: http.MethodGet, Path: mgmtClusters, Identity: IdentityMember}},
+				{Name: "get-own-cluster", Request: RequestSpec{Method: http.MethodGet, Path: mgmtClusters + "/{downstream}", Identity: IdentityMember}},
+				{Name: "list-crtbs", Request: RequestSpec{Method: http.MethodGet, Path: mgmtCRTBs, Identity: IdentityMember}},
+				{Name: "list-all-crtbs", Request: RequestSpec{Method: http.MethodGet, Path: mgmtAllCRTBs, Identity: IdentityMember}},
+				{Name: "list-all-prtbs", Request: RequestSpec{Method: http.MethodGet, Path: mgmtAllPRTBs, Identity: IdentityMember}},
+				{Name: "list-grbs", Request: RequestSpec{Method: http.MethodGet, Path: mgmtGRBs, Identity: IdentityMember}},
+				{Name: "list-globalroles", Request: RequestSpec{Method: http.MethodGet, Path: mgmtGlobalRoles, Identity: IdentityMember}},
+				{Name: "list-downstream-namespaces", Request: RequestSpec{Method: http.MethodGet, Path: downstreamNamespaces, Identity: IdentityMember}},
+			},
+			Normalize: append(whoamiPrivacyRules(), append(statusRules,
+				// The own-User read carries a condition timestamp.
+				NormalizeRule{Path: "status.conditions.lastUpdateTime", Replace: "<time>"})...),
 		},
 	}
 }

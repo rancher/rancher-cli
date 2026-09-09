@@ -65,7 +65,10 @@ func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (str
 	switch id {
 	case fidelity.IdentityAdmin:
 		return testToken, nil
-	case fidelity.IdentityStandard:
+	case fidelity.IdentityStandard, fidelity.IdentityMember:
+		// The facade has no downstream and no projects: every non-admin
+		// identity is its one derived user, and the member probes are
+		// downstream-only and never run here.
 		return c.standard.Get(func() (string, error) { return c.derivedBearer(ctx) })
 	case fidelity.IdentityRevoked:
 		return c.revoked.Get(func() (string, error) {

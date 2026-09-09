@@ -32,6 +32,13 @@ func TestDownstream(t *testing.T) {
 	}
 	tgt, err := fidelity.NewRealTargetFromEnv()
 	require.NoError(t, err)
+	// The member identity provisions a user and bindings on the oracle;
+	// leave the server as it was found, on every exit path.
+	t.Cleanup(func() {
+		if err := tgt.Cleanup(context.Background()); err != nil {
+			t.Errorf("cleaning up the fidelity identities: %v", err)
+		}
+	})
 
 	image, err := recordedImage(t.Context(), tgt)
 	require.NoError(t, err)

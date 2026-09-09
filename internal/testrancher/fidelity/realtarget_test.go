@@ -368,3 +368,234 @@ func TestDeleteStandardUserGivesUpWhenTheUserNeverLeaves(t *testing.T) {
 	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
 	require.ErrorContains(t, err, "still listed 300ms after delete")
 }
+
+// TestCleanupAttemptsEveryIdentityAndReportsEachFailure asserts the
+// teardown is exhaustive: the standard user's delete fails, the member is
+// still looked up and deleted, and the member's binding wait runs to its
+// bound; the returned error names both users and their failing phases, and
+// no binding wait is spent on the user whose delete failed.
+func TestCleanupAttemptsEveryIdentityAndReportsEachFailure(t *testing.T) {
+	oldBindings := bindingsGoneTimeout
+	bindingsGoneTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { bindingsGoneTimeout = oldBindings })
+	var memberDeleted atomic.Bool
+	var memberDeletes, standardBindingLookups atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("username") {
+		case standardUsername:
+			_, _ = w.Write([]byte(`{"data":[{"id":"u-std","username":"e2e-fid-standard"}]}`))
+		case memberUsername:
+			if memberDeleted.Load() {
+				_, _ = w.Write([]byte(`{"data":[]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"id":"u-mem","username":"e2e-fid-member"}]}`))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	})
+	mux.HandleFunc("DELETE /v3/users/u-std", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	mux.HandleFunc("DELETE /v3/users/u-mem", func(w http.ResponseWriter, _ *http.Request) {
+		memberDeletes.Add(1)
+		memberDeleted.Store(true)
+		w.WriteHeader(http.StatusOK)
+	})
+	bindings := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("userId") == "u-std" {
+			standardBindingLookups.Add(1)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"lingering"}]}`))
+	}
+	mux.HandleFunc("GET /v3/globalrolebindings", bindings)
+	mux.HandleFunc("GET /v3/projectroletemplatebindings", bindings)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	err := newTestRealTarget(srv).Cleanup(t.Context())
+	require.Error(t, err)
+	assert.Equal(t, int32(1), memberDeletes.Load(), "the member must be deleted although the standard user's delete failed")
+	require.ErrorContains(t, err, "cleaning up e2e-fid-standard: delete: deleting stale user u-std: status 500")
+	require.ErrorContains(t, err, "cleaning up e2e-fid-member: bindings of u-mem: 2 binding(s) of deleted user u-mem still present after 200ms")
+	assert.Equal(t, int32(0), standardBindingLookups.Load(), "no binding wait for a user the server refused to delete")
+}
+
+// TestCleanupWaitsForTheBindingsOfWhatWasDeletedWhenALaterDeleteFails
+// asserts the binding waits follow the ids the delete removed: two users
+// carry the reserved name, the first DELETE is accepted and the second
+// refused; both binding collections are polled for the removed id, none
+// for the refused one, and the delete error is joined with the wait's.
+func TestCleanupWaitsForTheBindingsOfWhatWasDeletedWhenALaterDeleteFails(t *testing.T) {
+	oldBindings := bindingsGoneTimeout
+	bindingsGoneTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { bindingsGoneTimeout = oldBindings })
+	var grbPolls, prtbPolls, refusedPolls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("username") == memberUsername {
+			_, _ = w.Write([]byte(`{"data":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"u-gone","username":"e2e-fid-standard"},{"id":"u-kept","username":"e2e-fid-standard"}]}`))
+	})
+	mux.HandleFunc("DELETE /v3/users/u-gone", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("DELETE /v3/users/u-kept", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusConflict) })
+	bindings := func(counter *atomic.Int32) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Query().Get("userId") {
+			case "u-gone":
+				counter.Add(1)
+			case "u-kept":
+				refusedPolls.Add(1)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"lingering"}]}`))
+		}
+	}
+	mux.HandleFunc("GET /v3/globalrolebindings", bindings(&grbPolls))
+	mux.HandleFunc("GET /v3/projectroletemplatebindings", bindings(&prtbPolls))
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	err := newTestRealTarget(srv).Cleanup(t.Context())
+	require.ErrorContains(t, err, "cleaning up e2e-fid-standard: delete: deleting stale user u-kept: status 409")
+	require.ErrorContains(t, err, "bindings of u-gone: 2 binding(s) of deleted user u-gone still present after 200ms")
+	assert.Positive(t, grbPolls.Load(), "the removed user's GlobalRoleBindings must be polled")
+	assert.Positive(t, prtbPolls.Load(), "the removed user's ProjectRoleTemplateBindings must be polled")
+	assert.Equal(t, int32(0), refusedPolls.Load(), "no binding wait for the user the server refused to delete")
+}
+
+// TestCleanupReportsATransientLookupWithoutDeletingOrPolling asserts a
+// failed username lookup is reported as the delete phase's error and
+// nothing else is attempted for that identity, while the other identity
+// is still cleaned.
+func TestCleanupReportsATransientLookupWithoutDeletingOrPolling(t *testing.T) {
+	t.Parallel()
+	var deletes, polls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("username") == standardUsername {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	})
+	mux.HandleFunc("DELETE /v3/users/", func(w http.ResponseWriter, _ *http.Request) { deletes.Add(1); w.WriteHeader(http.StatusOK) })
+	poll := func(w http.ResponseWriter, _ *http.Request) {
+		polls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}
+	mux.HandleFunc("GET /v3/globalrolebindings", poll)
+	mux.HandleFunc("GET /v3/projectroletemplatebindings", poll)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	err := newTestRealTarget(srv).Cleanup(t.Context())
+	require.ErrorContains(t, err, "cleaning up e2e-fid-standard: delete: looking up user e2e-fid-standard: status 503")
+	assert.NotContains(t, err.Error(), "e2e-fid-member", "the member's clean pass adds no error")
+	assert.Equal(t, int32(0), deletes.Load())
+	assert.Equal(t, int32(0), polls.Load())
+}
+
+// TestCleanupIsCleanWhenNoFixtureUserExists asserts the teardown is
+// idempotent: neither reserved username is listed, nothing is deleted, no
+// error.
+func TestCleanupIsCleanWhenNoFixtureUserExists(t *testing.T) {
+	t.Parallel()
+	var deletes atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	})
+	mux.HandleFunc("DELETE /v3/users/", func(w http.ResponseWriter, _ *http.Request) {
+		deletes.Add(1)
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	require.NoError(t, newTestRealTarget(srv).Cleanup(t.Context()))
+	assert.Equal(t, int32(0), deletes.Load())
+}
+
+// TestCleanupDeletesEveryStaleCopyWhenAnEarlierDeleteIsRefused asserts
+// the delete loop is exhaustive in the other order: two users carry the
+// reserved name, the first DELETE is refused and the second accepted;
+// both DELETEs are attempted, only the accepted id's bindings are polled,
+// and the refused id is named in the joined error.
+func TestCleanupDeletesEveryStaleCopyWhenAnEarlierDeleteIsRefused(t *testing.T) {
+	oldBindings := bindingsGoneTimeout
+	bindingsGoneTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { bindingsGoneTimeout = oldBindings })
+	var refusedDeletes, acceptedDeletes, acceptedPolls, refusedPolls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("username") == memberUsername {
+			_, _ = w.Write([]byte(`{"data":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"u-kept","username":"e2e-fid-standard"},{"id":"u-gone","username":"e2e-fid-standard"}]}`))
+	})
+	mux.HandleFunc("DELETE /v3/users/u-kept", func(w http.ResponseWriter, _ *http.Request) {
+		refusedDeletes.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	mux.HandleFunc("DELETE /v3/users/u-gone", func(w http.ResponseWriter, _ *http.Request) {
+		acceptedDeletes.Add(1)
+		w.WriteHeader(http.StatusOK)
+	})
+	poll := func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("userId") {
+		case "u-gone":
+			acceptedPolls.Add(1)
+		case "u-kept":
+			refusedPolls.Add(1)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}
+	mux.HandleFunc("GET /v3/globalrolebindings", poll)
+	mux.HandleFunc("GET /v3/projectroletemplatebindings", poll)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	err := newTestRealTarget(srv).Cleanup(t.Context())
+	require.ErrorContains(t, err, "cleaning up e2e-fid-standard: delete: deleting stale user u-kept: status 500")
+	assert.Equal(t, int32(1), refusedDeletes.Load())
+	assert.Equal(t, int32(1), acceptedDeletes.Load(), "the later copy must be deleted although the earlier DELETE was refused")
+	assert.Equal(t, int32(2), acceptedPolls.Load(), "both binding collections polled once for the removed id (bindings already gone)")
+	assert.Equal(t, int32(0), refusedPolls.Load(), "no binding wait for the copy the server refused to delete")
+}
+
+// TestDeleteStandardUserJoinsEveryRefusedCopy asserts the standard-user
+// reset attempts every stale copy and reports each refusal.
+func TestDeleteStandardUserJoinsEveryRefusedCopy(t *testing.T) {
+	t.Parallel()
+	var deletes atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v3/users", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"u-a"},{"id":"u-b"},{"noid":true}]}`))
+	})
+	mux.HandleFunc("DELETE /v3/users/", func(w http.ResponseWriter, _ *http.Request) {
+		deletes.Add(1)
+		w.WriteHeader(http.StatusForbidden)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
+	require.ErrorContains(t, err, "deleting stale user u-a: status 403")
+	require.ErrorContains(t, err, "deleting stale user u-b: status 403")
+	require.ErrorContains(t, err, "collection entry without id")
+	assert.Equal(t, int32(2), deletes.Load(), "every id gets its DELETE attempt")
+}

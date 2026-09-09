@@ -21,6 +21,10 @@ const (
 	IdentityRevoked  Identity = "revoked"
 	IdentityAdmin    Identity = "admin"
 	IdentityStandard Identity = "standard"
+	// IdentityMember is a local user holding one ProjectRoleTemplateBinding
+	// (project-member) on the downstream cluster's Default project and no
+	// other role: what the access commands call a member.
+	IdentityMember Identity = "member"
 )
 
 // Target is one server a probe executes against: the real Rancher oracle or
@@ -30,8 +34,8 @@ type Target interface {
 	BaseURL() string
 	// Client returns an HTTP client that trusts the target's CA.
 	Client() *http.Client
-	// Bearer resolves admin, standard, or revoked to a bearer token. The
-	// executor never calls it for none or garbage.
+	// Bearer resolves admin, standard, member, or revoked to a bearer
+	// token. The executor never calls it for none or garbage.
 	Bearer(ctx context.Context, id Identity) (string, error)
 	// Downstream is the id of a downstream cluster the target can reach
 	// through the proxy, or empty when it has none. The facade always

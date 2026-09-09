@@ -43,6 +43,8 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access-downstream/who-can-reason-and-binding-shape",
 		"access-downstream/explain-fixture-chain", "access-downstream/explain-fixture-reason-grammar",
 		"access-downstream/direct-endpoint-shapes",
+		"access-downstream/member-steve-clusters", "access-downstream/member-proxy-whoami",
+		"access-downstream/member-management-refusals",
 		"access/whoami-through-proxy", "access/impersonate-user-dropped-on-local",
 		"access/rules-review-standard-user-default", "access/self-access-review-with-version",
 		"access/subject-access-review-right-and-anonymous",
