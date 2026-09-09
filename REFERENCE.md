@@ -584,6 +584,35 @@ says so and nothing more; Rancher itself creates such bindings. A binding
 whose label names a parent the caller could not match says that no
 Rancher parent could be verified, and `chainIssues` names the label.
 
+`access clusters` answers where Rancher lets a subject in. It lists the
+management clusters you can see (read from Rancher's steve API, which
+answers every caller with exactly the clusters their access grants; the
+Kubernetes-style LIST through the proxy is refused to anyone who is not an
+administrator) and, for each, whether Rancher's proxy admits you, or an
+impersonated `--as` user, to the cluster's API: `reachable`, `refused`, or
+`unknown` when the probe itself failed. Reachability is the proxy's answer
+before any Kubernetes rule is consulted; what the identity may do inside a
+cluster is `access list`'s question. The management cluster is always a
+row: in caller mode your own identity review answers for it; for another
+user it is `notApplicable`, because the management cluster does not
+impersonate, and that row never makes the run incomplete. Beside each
+row, GRANTED BY shows the management bindings that name the subject, its
+principals, or a group Rancher has cached for it: ClusterRoleTemplateBindings
+in the cluster's namespace, ProjectRoleTemplateBindings on its projects,
+and GlobalRoleBindings whose GlobalRole reaches clusters (`admin`,
+`restricted-admin`, or one with `inheritedClusterRoles`). Those reads have
+their own completeness (`bindingsDiscovery`: `complete`, `partial`,
+`unavailable`, with one issue per failed read) and never change the exit
+code; a caller who cannot read the management plane, such as a member
+asking about themselves, gets the reachability rows and `unavailable`
+bindings. `groupAliases` says whether Rancher's cached groups could be
+read; a match through a group is limited to what Rancher has cached.
+`reachable[]` is the compact answer for a program: every reachable
+cluster with its grants (RoleTemplates and GlobalRoles, `null` unless the
+binding reads were complete). Exit 0 when every cluster answered, 13 when
+any is `unknown`. `--as` takes a user (name, id, or principal); a group or a
+service account is refused.
+
 ## Diagnostics & support
 
 `logs`/`support-bundle` cover only what Rancher's own Kubernetes API can reach.

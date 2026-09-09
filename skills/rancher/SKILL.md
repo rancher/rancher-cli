@@ -479,6 +479,15 @@ GlobalRole and RoleTemplates behind it) and `data.chain` with
 missing, never that the decision is in doubt. Quote nodes as facts about
 bindings; the rules shown are a display filter, the server chose the
 binding.
+`rancher access clusters [--as <user>]` says where Rancher lets a subject
+in: one row per cluster the caller can see, `data.clusters[].access` is
+`reachable`, `refused`, `unknown`, or `notApplicable` (the management
+cluster for another user; never counts against completeness). Read
+`data.reachable[]` for the answer, `data.clusters[].bindings` for what
+grants it, and `data.bindingsDiscovery.status` before treating an empty
+GRANTED BY as "no binding". Reachable means the proxy admits the identity,
+not that it may do anything inside; ask `access list --cluster <c>` for
+that. A group or service account is refused here.
 Never present a role list as permissions.
 
 - `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` -
