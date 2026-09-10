@@ -1,6 +1,5 @@
 # The identity-provider stub runs on its own TLS origin, trusted through
-# SSL_CERT_FILE; Go honours that variable on Linux only.
-[!linux] skip 'Go reads SSL_CERT_FILE for the system trust store only on Linux'
+# SSL_CERT_FILE, which Go reads into the system pool on every platform.
 
 # Device-code login against the facade's IdP stub (spec FA-4.2): non-TTY is
 # allowed here (asserted by TestOAuthDeviceCodeFlowNonTTYAllowed) - no ttyin

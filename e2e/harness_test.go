@@ -850,9 +850,9 @@ func TestScenarios(t *testing.T) {
 			// line (`env RANCHER_CLI_CREDENTIAL_STORE=`) - testscript.Env carries
 			// no script name, so the exemption lives in the script.
 			e.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-			// Go reads SSL_CERT_FILE into the system pool on Linux only; the
-			// device-code script skips itself elsewhere. Written per script
-			// so concurrent scripts never share a file.
+			// Go reads SSL_CERT_FILE into the system pool on every platform
+			// (darwin and windows since Go 1.27). Written per script so
+			// concurrent scripts never share a file.
 			idpCAFile := filepath.Join(e.WorkDir, "idp-ca.pem")
 			if err := os.WriteFile(idpCAFile, []byte(idpCertPEM), 0o600); err != nil {
 				return err
