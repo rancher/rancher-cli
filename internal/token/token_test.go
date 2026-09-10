@@ -292,15 +292,15 @@ func TestGetTokenSchemelessFlagHitsCurrentHTTPSKey(t *testing.T) {
 // the interactive provider flow. authProviderHits stays at 0 to prove the
 // interactive path was provably not invoked.
 func TestGetTokenCreatesFromStoredLoginCredential(t *testing.T) {
-	var authProviderHits, derivedCreateHits int32
+	var authProviderHits, derivedCreateHits atomic.Int32
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
-			atomic.AddInt32(&authProviderHits, 1)
+			authProviderHits.Add(1)
 			w.WriteHeader(http.StatusNotFound)
 		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
-			atomic.AddInt32(&derivedCreateHits, 1)
+			derivedCreateHits.Add(1)
 			gotAuth = r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -325,9 +325,9 @@ func TestGetTokenCreatesFromStoredLoginCredential(t *testing.T) {
 	require.NoError(t, err)
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ext/created:secret", cred.Status.Token)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&derivedCreateHits))
+	assert.Equal(t, int32(1), derivedCreateHits.Load())
 	assert.Equal(t, "Bearer stored-login-token", gotAuth, "the derived token create request must bear the stored login token, not a fresh session token")
-	assert.Equal(t, int32(0), atomic.LoadInt32(&authProviderHits), "the interactive provider flow must not run when the stored credential creates successfully")
+	assert.Equal(t, int32(0), authProviderHits.Load(), "the interactive provider flow must not run when the stored credential creates successfully")
 }
 
 // TestGetTokenFallsBackToInteractiveWhenCreateRejected covers the "create is
@@ -725,11 +725,11 @@ func TestGetTokenClusterMissErrorsWithoutCreating(t *testing.T) {
 // for the wrong cluster whenever an admin names a cluster's display name
 // after another cluster's raw id.
 func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
-	var listHits, derivedCreateHits int32
+	var listHits, derivedCreateHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case clustersPath:
-			atomic.AddInt32(&listHits, 1)
+			listHits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			// "c-1" is both a real cluster's id AND a different cluster's
 			// display name. "c-xyz" is a non-collider (distinct id AND
@@ -740,7 +740,7 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 				{"metadata":{"name":"c-xyz"},"spec":{"displayName":"staging"}}
 			]}`))
 		case ExtTokensPath:
-			atomic.AddInt32(&derivedCreateHits, 1)
+			derivedCreateHits.Add(1)
 			w.WriteHeader(http.StatusCreated)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -765,8 +765,8 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	assert.ElementsMatch(t, []string{"c-1", "c-2"}, candidateIDsToken(ce.Candidates))
 	assert.NotContains(t, candidateIDsToken(ce.Candidates), "c-xyz",
 		"non-collider must be excluded from narrowed candidates")
-	assert.Equal(t, int32(1), atomic.LoadInt32(&listHits), "no list scan beyond the collision check")
-	assert.Equal(t, int32(0), atomic.LoadInt32(&derivedCreateHits), "an ambiguous cluster must never reach the derived token create call")
+	assert.Equal(t, int32(1), listHits.Load(), "no list scan beyond the collision check")
+	assert.Equal(t, int32(0), derivedCreateHits.Load(), "an ambiguous cluster must never reach the derived token create call")
 }
 
 // TestGetTokenRejectsLegacyPrefixName is the fix-3 failing test: the native
