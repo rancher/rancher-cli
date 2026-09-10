@@ -176,9 +176,9 @@ func (w *chainWalker) issue(stage, object, code, message string) {
 // requestIssue records a failed request with the mapped error's code,
 // retryability and message. A budget deadline is reported as such.
 func (w *chainWalker) requestIssue(stage, object string, err error) {
-	if errors.Is(context.Cause(w.ctx), errFanOutBudget) {
+	if budget, exhausted := exhaustedBudget(w.ctx); exhausted {
 		w.issues = append(w.issues, chainIssue{Stage: stage, Object: object, Code: clierr.CodeGeneric, Retryable: true,
-			Message: fmt.Sprintf("fan-out budget of %s exhausted", fanOutBudget)})
+			Message: fmt.Sprintf("fan-out budget of %s exhausted", budget)})
 		return
 	}
 	if ce, ok := errors.AsType[*clierr.Error](err); ok {

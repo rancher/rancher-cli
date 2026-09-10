@@ -70,6 +70,7 @@ func (c *clustersCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: flagAs, Type: "string", Desc: "user name, id, or principal; omitted = you"},
 			{Name: flagType, Type: "string", Enum: []string{typeUser}, Desc: "kind of the --as value (only user is accepted here)"},
+			timeoutFlag(),
 		},
 		Examples: []string{
 			"rancher access clusters",
@@ -179,12 +180,16 @@ func (c *clustersCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 	if as.Raw == anonymousUser {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; ask a point question with access can --as system:anonymous")
 	}
-	ctx, cancel := fanOutContext(ctx)
+	budget, err := parseTimeout(in)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	ctx, cancel := fanOutContext(ctx, budget)
 	defer cancel()
 
 	local, err := localClient(ctx, c.clients, c.local)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
 	// Step 0: the caller's own identity on the management cluster. It is
 	// also the local row's answer in caller mode.

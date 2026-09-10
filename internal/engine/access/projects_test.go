@@ -386,7 +386,7 @@ func TestProjectsDescriptor(t *testing.T) {
 			assert.False(t, f.Required, "--cluster is optional: omitted means every cluster")
 		}
 	}
-	assert.Equal(t, []string{"cluster", flagAs, flagType}, flags)
+	assert.Equal(t, []string{"cluster", flagAs, flagType, flagTimeout}, flags)
 	assert.Equal(t, []int{0, exitUnknown}, d.SuccessExitCodes)
 	assert.Equal(t, runtime.ReadOnly, d.CommandType)
 }

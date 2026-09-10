@@ -498,6 +498,10 @@ Rancher member of (a ProjectRoleTemplateBinding names it) and
 without membership. Visibility is not membership and membership is not
 permission; a `null` `data.memberOf` means the binding read failed, not
 "no memberships". A member asking about themselves gets visibility only.
+Every `access` command runs under one 60 s budget for the whole call; on
+"fan-out budget ... exhausted" (a terminal error, nothing partial is
+reported) rerun with `--timeout <duration>` (for example `--timeout 5m`)
+or narrow the question with `--cluster` or `--project`.
 Never present a role list as permissions.
 
 - `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` -

@@ -8,33 +8,63 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
-// fanOutLimit bounds concurrent reviews in every fan-out; fanOutBudget
-// bounds the whole fan-out operation (target discovery, subject and
-// group reads, reviews), not one request. Both are variables so tests
-// can shrink them.
+// flagTimeout is the flag every access command takes to set its budget.
+const flagTimeout = "timeout"
+
+// fanOutLimit bounds concurrent reviews in every fan-out; fanOutBudget is
+// the default budget for a whole call (target discovery, subject and
+// group reads, reviews), not one request; --timeout replaces it per call.
+// Both are variables so tests can shrink them.
 var (
 	fanOutLimit  = 5
 	fanOutBudget = 60 * time.Second
 )
 
-// errFanOutBudget is the cause carried by the budget context.
-var errFanOutBudget = errors.New("fan-out budget exhausted")
+// budgetExhausted is the cause the budget context carries once its
+// deadline passes, naming the budget that ran out.
+type budgetExhausted struct{ budget time.Duration }
 
-// fanOutContext opens the one budget context for a fan-out command. It is
-// created before target discovery and subject resolution, so a slow LIST
-// or UserAttribute read spends the same budget the reviews do.
-func fanOutContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeoutCause(ctx, fanOutBudget, errFanOutBudget)
+func (e *budgetExhausted) Error() string {
+	return "fan-out budget of " + e.budget.String() + " exhausted"
+}
+
+// exhaustedBudget reports the budget when it is what cancelled ctx.
+func exhaustedBudget(ctx context.Context) (time.Duration, bool) {
+	e, ok := errors.AsType[*budgetExhausted](context.Cause(ctx))
+	if !ok {
+		return 0, false
+	}
+	return e.budget, true
+}
+
+// timeoutFlag is the --timeout ArgSpec every access command carries.
+func timeoutFlag() runtime.ArgSpec {
+	return runtime.ArgSpec{Name: flagTimeout, Type: "string", Desc: "time budget for the whole call, e.g. 2m (default 60s)"}
+}
+
+// parseTimeout reads --timeout: empty is the default budget; anything
+// else must be a positive duration, else a VALIDATION error.
+func parseTimeout(in runtime.Input) (time.Duration, error) {
+	return runtime.DurationFlag(in, flagTimeout, fanOutBudget, "2m")
+}
+
+// fanOutContext opens the one budget context for a call. It is created
+// before target discovery and subject resolution, so a slow LIST or
+// UserAttribute read spends the same budget the reviews do.
+func fanOutContext(ctx context.Context, budget time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeoutCause(ctx, budget, &budgetExhausted{budget})
 }
 
 // budgetError names the budget as the cause when it cancelled the stage.
 func budgetError(ctx context.Context, err error, stage string) error {
-	if err == nil || !errors.Is(context.Cause(ctx), errFanOutBudget) {
+	budget, exhausted := exhaustedBudget(ctx)
+	if err == nil || !exhausted {
 		return err
 	}
-	return clierr.New(clierr.CodeGeneric, fmt.Sprintf("fan-out budget of %s exhausted during %s; no review was posted", fanOutBudget, stage))
+	return clierr.New(clierr.CodeGeneric, fmt.Sprintf("fan-out budget of %s exhausted during %s; no review was posted", budget, stage))
 }
 
 // member is one fan-out row: a namespace for can --project and list, a
@@ -136,8 +166,8 @@ feed:
 	// while the context was already dead.
 	if parent.Err() != nil {
 		msg := fmt.Sprintf("cancelled; evaluated %d of %d", evaluated, len(keys))
-		if errors.Is(context.Cause(parent), errFanOutBudget) {
-			msg = fmt.Sprintf("fan-out budget of %s exhausted; evaluated %d of %d", fanOutBudget, evaluated, len(keys))
+		if budget, exhausted := exhaustedBudget(parent); exhausted {
+			msg = fmt.Sprintf("fan-out budget of %s exhausted; evaluated %d of %d", budget, evaluated, len(keys))
 		}
 		return nil, &fanOutFailure{Kind: outcomeTerminal, Err: clierr.New(clierr.CodeGeneric, msg)}
 	}

@@ -434,3 +434,28 @@ func TestClustersBudgetExpiryDuringDiscoveryIsTerminal(t *testing.T) {
 	require.ErrorContains(t, err, "fan-out budget")
 	require.ErrorContains(t, err, "cluster discovery")
 }
+
+// TestClustersTimeoutFlagIsTheBudget asserts --timeout replaces the default
+// budget for the call and the terminal error names the value given.
+func TestClustersTimeoutFlagIsTheBudget(t *testing.T) {
+	t.Parallel()
+	cmd, _ := callerFixture(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	t.Cleanup(srv.Close)
+	cmd.roots = fakeRootFactory{fakeRootClient{srv}}
+	_, err := cmd.Execute(t.Context(), fakeInput{strs: map[string]string{flagTimeout: "50ms"}}, nil)
+	require.ErrorContains(t, err, "fan-out budget of 50ms exhausted during cluster discovery")
+}
+
+// TestClustersTimeoutFlagInvalidIsValidation asserts a malformed --timeout
+// is refused before any request.
+func TestClustersTimeoutFlagInvalidIsValidation(t *testing.T) {
+	t.Parallel()
+	cmd, f := callerFixture(t)
+	_, err := cmd.Execute(t.Context(), fakeInput{strs: map[string]string{flagTimeout: "soon"}}, nil)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, `--timeout "soon" is not a valid duration`)
+	assert.Empty(t, f.caller.Reviews, "nothing was asked")
+}

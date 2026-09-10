@@ -63,6 +63,7 @@ func (c *canCmd) Describe() runtime.Descriptor {
 			{Name: "group", Type: "string", Desc: "API group when the resource name exists in several groups"},
 			{Name: "subresource", Type: "string", Desc: "subresource such as status or log"},
 			{Name: "non-resource-url", Type: "string", Desc: "ask about a non-resource path such as /healthz instead of a resource"},
+			timeoutFlag(),
 		},
 		Examples: []string{
 			"rancher access can delete pods --cluster prod -n team-a",
@@ -196,33 +197,34 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	if p.scope.project != "" {
-		// One budget for the whole fan-out operation: target discovery,
-		// subject resolution, reviews.
-		var cancel context.CancelFunc
-		ctx, cancel = fanOutContext(ctx)
-		defer cancel()
+	// One budget for the whole call: target discovery, subject
+	// resolution, reviews.
+	budget, err := parseTimeout(in)
+	if err != nil {
+		return runtime.Result{}, err
 	}
+	ctx, cancel := fanOutContext(ctx, budget)
+	defer cancel()
 	// Order: cluster client, caller preflight (step 0), discovery, scope,
 	// then the rest of the identity protocol.
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")
 	}
 	callerClient, err := c.clients.Cluster(ctx, clusterID)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the cluster client")
 	}
 	caller, err := callerPreflight(ctx, callerClient, clusterID)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the caller's identity review")
 	}
 	var ref *ResourceRef
 	var discoveryWarning string
 	if p.question.NonResourceURL == "" {
 		r, warn, err := ResolveResource(ctx, callerClient, p.resource, in.String(flagGroup))
 		if err != nil {
-			return runtime.Result{}, err
+			return runtime.Result{}, budgetError(ctx, err, "resource discovery")
 		}
 		ref, discoveryWarning = &r, warn
 		p.question.Resource, p.question.Group, p.question.Version = r.Resource, r.Group, r.Version
@@ -256,7 +258,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	}
 	local, err := localClient(ctx, c.clients, c.local)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
 	plan, err := planIdentity(ctx, c.clients, callerClient, local, clusterID, caller, p.as, false)
 	if err != nil {
@@ -306,11 +308,12 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 			if r.resp.Status == 403 && plan.Identity == IdentitySAR {
 				return runtime.Result{}, sarRefusal(ResolvedSubject{Subject: plan.Subject}, clusterID)
 			}
-			return runtime.Result{}, r.err
+			return runtime.Result{}, budgetError(ctx, r.err, "the review")
 		default:
 			// Degradation is fan-out only; a single review's request
-			// failure is the mapped error.
-			return runtime.Result{}, r.err
+			// failure is the mapped error, except an exhausted budget,
+			// which is named as such like every other stage.
+			return runtime.Result{}, budgetError(ctx, r.err, "the review")
 		}
 		out.Decision, out.Reason, out.EvaluationError, out.Note = outcome.Decision, outcome.Reason, outcome.EvaluationError, outcome.Note
 		out.ResultSource = SourceAuthorizer

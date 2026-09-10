@@ -54,6 +54,7 @@ func (c *whoCanCmd) Describe() runtime.Descriptor {
 			{Name: "subresource", Type: "string", Desc: "subresource such as status or log"},
 			{Name: "non-resource-url", Type: "string", Desc: "ask about a non-resource path such as /healthz instead of a resource"},
 			{Name: "show-denied", Type: "bool", Desc: "list the denied subjects in the text output too"},
+			timeoutFlag(),
 		},
 		Examples: []string{
 			"rancher access who-can delete pods --cluster prod -n team-a",
@@ -140,29 +141,33 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	showDenied := in.Bool(flagShowDenied)
 	// One budget for the whole operation: candidate discovery, identity
 	// reads, group members, reviews.
-	ctx, cancel := fanOutContext(ctx)
-	defer cancel()
-	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	budget, err := parseTimeout(in)
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	ctx, cancel := fanOutContext(ctx, budget)
+	defer cancel()
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	if err != nil {
+		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")
+	}
 	callerClient, err := c.clients.Cluster(ctx, clusterID)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the cluster client")
 	}
 	// Step 0 of the identity protocol, as in every access command: no
 	// subject is named, but a caller without cluster access is refused here
 	// for the one reason every command gives, so a refused binding LIST
 	// below always means the list right is missing.
 	if _, err := callerPreflight(ctx, callerClient, clusterID); err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the caller's identity review")
 	}
 	var ref *ResourceRef
 	var discoveryWarning string
 	if p.question.NonResourceURL == "" {
 		r, warn, err := ResolveResource(ctx, callerClient, p.resource, in.String(flagGroup))
 		if err != nil {
-			return runtime.Result{}, err
+			return runtime.Result{}, budgetError(ctx, err, "resource discovery")
 		}
 		ref, discoveryWarning = &r, warn
 		p.question.Resource, p.question.Group, p.question.Version = r.Resource, r.Group, r.Version
@@ -214,7 +219,7 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	}
 	local, err := localClient(ctx, c.clients, c.local)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
 	// One identity per distinct candidate, under the same limit and budget
 	// as the reviews. A read failure private to one candidate is that

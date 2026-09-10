@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -201,6 +202,11 @@ func dispatchSite(
 		if cands := enumCandidates(site, d); len(cands) > 0 {
 			return cands
 		}
+		// The access commands' --timeout: a static ladder of durations,
+		// owned here like an enum (no network, no delegation).
+		if accessTimeoutSite(site, d) {
+			return resolveStaticEnum(accessTimeoutSuggestions, site)
+		}
 		// Machine-config `<kind>/` prefixes for create cluster: compiled-in
 		// kind-table literals (kinds.MachineConfigGroup rows), not server
 		// data - served statically like an enum, before (and regardless of)
@@ -348,6 +354,21 @@ func accessSubjectCommand(name string) bool {
 		return true
 	}
 	return false
+}
+
+// accessTimeoutSuggestions are the static --timeout candidates for the
+// access commands: any positive duration is valid, so the suggestions are
+// a ladder to pick from, each one a value the command accepts verbatim.
+var accessTimeoutSuggestions = []string{"30s", "1m", "2m", "5m", "10m"}
+
+// accessTimeoutSite reports a --timeout flag-value site on an access
+// command whose descriptor carries the flag: the one value-taking flag of
+// the group with no enum and no server-side source. Ownership follows the
+// descriptor, so a command without the flag gets no ladder.
+func accessTimeoutSite(site CompletionSite, d runtime.Descriptor) bool {
+	return site.Kind == SiteFlagValue && site.FlagName == "timeout" &&
+		strings.HasPrefix(d.Name, "access ") &&
+		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "timeout" })
 }
 
 // liveCandidates issues at most two HTTP requests to fetch resource names

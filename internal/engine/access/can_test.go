@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -554,4 +555,38 @@ func TestCanIncompleteDiscoveryWarns(t *testing.T) {
 	assert.Equal(t, DecisionUnknown, decodeCan(t, res).Decision)
 	require.Len(t, res.Warnings, 1)
 	assert.Contains(t, res.Warnings[0], "discovery for API group(s) dead.example failed")
+}
+
+// blockAfterFirstCall is a fakeClient.Before hook that lets the first call
+// (the caller's whoami) through and holds every later one until the
+// context ends; a context that never ends is reported as an error, so a
+// call outside any budget fails the test instead of hanging it.
+func blockAfterFirstCall() func(ctx context.Context) error {
+	var calls atomic.Int32
+	return func(ctx context.Context) error {
+		if calls.Add(1) == 1 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+			return errors.New("no budget bounded the request")
+		}
+	}
+}
+
+// TestCanTimeoutBoundsTheSingleReview asserts --timeout is the budget of a
+// plain can as well (no --project, no fan-out): the one review runs under
+// it and its exhaustion is the staged, non-retryable budget error.
+func TestCanTimeoutBoundsTheSingleReview(t *testing.T) {
+	t.Parallel()
+	f := canFactory("user-vwq4j")
+	f.caller.Before = blockAfterFirstCall()
+	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"non-resource-url": "/healthz", flagTimeout: "20ms"}, "get"), nil)
+	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during the review")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.False(t, ce.Retryable, "an exhausted budget is not retried with the same budget")
+	assert.Len(t, f.caller.Reviews, 1, "the whoami ran; the review never reached the server")
 }

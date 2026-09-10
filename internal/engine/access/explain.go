@@ -51,6 +51,7 @@ func (c *explainCmd) Describe() runtime.Descriptor {
 			{Name: "non-resource-url", Type: "string", Desc: "ask about a non-resource path such as /healthz instead of a resource"},
 			{Name: "as", Type: "string", Desc: "subject to explain instead of you: a Rancher user (id, username, or principal), a group principal, or a service account"},
 			{Name: "type", Type: "string", Enum: []string{typeUser, typeGroup}, Desc: "how to read a bare --as value: user or group"},
+			timeoutFlag(),
 		},
 		Examples: []string{
 			"rancher access explain delete pods --cluster prod -n team-a",
@@ -101,26 +102,30 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	}
 	// One budget for the whole explanation: discovery, identity, the
 	// review, and every read of the chain.
-	ctx, cancel := fanOutContext(ctx)
+	budget, err := parseTimeout(in)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	ctx, cancel := fanOutContext(ctx, budget)
 	defer cancel()
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")
 	}
 	callerClient, err := c.clients.Cluster(ctx, clusterID)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the cluster client")
 	}
 	caller, err := callerPreflight(ctx, callerClient, clusterID)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the caller's identity review")
 	}
 	var ref *ResourceRef
 	var discoveryWarning string
 	if p.question.NonResourceURL == "" {
 		r, warn, err := ResolveResource(ctx, callerClient, p.resource, in.String(flagGroup))
 		if err != nil {
-			return runtime.Result{}, err
+			return runtime.Result{}, budgetError(ctx, err, "resource discovery")
 		}
 		ref, discoveryWarning = &r, warn
 		p.question.Resource, p.question.Group, p.question.Version = r.Resource, r.Group, r.Version
@@ -142,7 +147,7 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	}
 	local, err := localClient(ctx, c.clients, c.local)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
 	plan, err := planIdentity(ctx, c.clients, callerClient, local, clusterID, caller, p.as, false)
 	if err != nil {
@@ -167,7 +172,7 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		if r.kind == outcomeTerminal && r.resp.Status == 403 && plan.Identity == IdentitySAR {
 			return runtime.Result{}, sarRefusal(ResolvedSubject{Subject: plan.Subject}, clusterID)
 		}
-		return runtime.Result{}, r.err
+		return runtime.Result{}, budgetError(ctx, r.err, "the review")
 	}
 	outcome := classifyAccess(r.resp.Object)
 	if plan.GroupsFrom == GroupsAuthenticatedOnly && outcome.Decision == DecisionDenied {

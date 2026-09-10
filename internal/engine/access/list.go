@@ -43,6 +43,7 @@ func (c *listCmd) Describe() runtime.Descriptor {
 			{Name: "all-namespaces", Type: "bool", Aliases: []string{"A"}, Desc: "list rules in every namespace you can list"},
 			{Name: "as", Type: "string", Desc: "user name, id, or principal, or system:serviceaccount:<ns>:<name>; omitted = you"},
 			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "kind of a bare --as value when ambiguous (group is rejected here)"},
+			timeoutFlag(),
 		},
 		Examples: []string{
 			"rancher access list --cluster prod -n team-a",
@@ -117,23 +118,24 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	if implicitDefault {
 		flags.namespace = defaultNamespace
 	}
-	if flags.project != "" || flags.allNamespaces {
-		var cancel context.CancelFunc
-		ctx, cancel = fanOutContext(ctx)
-		defer cancel()
+	budget, err := parseTimeout(in)
+	if err != nil {
+		return runtime.Result{}, err
 	}
+	ctx, cancel := fanOutContext(ctx, budget)
+	defer cancel()
 	// Step 0 before scope: the caller's own access to the cluster.
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")
 	}
 	callerClient, err := c.clients.Cluster(ctx, clusterID)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the cluster client")
 	}
 	caller, err := callerPreflight(ctx, callerClient, clusterID)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the caller's identity review")
 	}
 	if flags.project != "" {
 		id, err := projects.ResolveProject(ctx, c.clients, clusterID, flags.project)
@@ -153,7 +155,7 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	}
 	local, err := localClient(ctx, c.clients, c.local)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
 	plan, err := planIdentity(ctx, c.clients, callerClient, local, clusterID, caller, as, true)
 	if err != nil {

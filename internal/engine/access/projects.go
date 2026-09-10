@@ -51,6 +51,7 @@ func (c *projectsCmd) Describe() runtime.Descriptor {
 			{Name: "cluster", Type: "string", Desc: "restrict to one cluster, by id or unique display name; omitted = every cluster you can list"},
 			{Name: flagAs, Type: "string", Desc: "user name, id, or principal; omitted = you"},
 			{Name: flagType, Type: "string", Enum: []string{typeUser}, Desc: "kind of the --as value (only user is accepted here)"},
+			timeoutFlag(),
 		},
 		Examples: []string{
 			"rancher access projects",
@@ -221,12 +222,16 @@ func (c *projectsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 	if as.Raw == anonymousUser {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "the anonymous identity cannot be impersonated; ask a point question with access can --as system:anonymous")
 	}
-	ctx, cancel := fanOutContext(ctx)
+	budget, err := parseTimeout(in)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	ctx, cancel := fanOutContext(ctx, budget)
 	defer cancel()
 
 	local, err := localClient(ctx, c.clients, c.local)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
 	caller, r := whoami(ctx, local)
 	if r.kind != outcomeAnswer {

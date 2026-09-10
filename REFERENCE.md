@@ -526,6 +526,16 @@ source (`authorizer`, `rancherProxy`, `scopeDiscovery`, `request`,
 `mixed`) and identity (`caller`, `impersonated`,
 `subjectAccessReview`).
 
+Every `access` command runs under one time budget for the whole call:
+discovery, identity reads and every review share it, at most five
+reviews in flight at once. The default is 60 s; `--timeout <duration>`
+(for example `--timeout 5m`) sets it for that call. Running out of budget
+is a terminal error naming the budget and the stage it ended in, and the
+clusters or namespaces that had already answered are not reported; a
+fleet-wide `access clusters` or `access projects` on a large installation
+either gets a longer `--timeout` or a narrower question (`--cluster`,
+`--project`).
+
 Resource names resolve against the cluster's discovery, asked for in
 aggregated form (two requests) and read group by group where a server
 does not serve it. When the server could not describe every API group (an

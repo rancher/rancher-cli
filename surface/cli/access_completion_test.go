@@ -624,3 +624,21 @@ func TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader(t *testi
 		assert.Empty(t, liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"}), name)
 	}
 }
+
+// TestAccessTimeoutOffersTheDurationLadder asserts every access command
+// completes --timeout from the same static ladder, each value one the
+// command accepts, with no request made.
+func TestAccessTimeoutOffersTheDurationLadder(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "timeout", FlagSpelling: "--timeout"}
+	for _, d := range []runtime.Descriptor{canDescriptor(), listDescriptor(), whoCanDescriptor(), explainDescriptor(), clustersDescriptor(), projectsDescriptor()} {
+		require.True(t, slices.ContainsFunc(d.Flags, func(a runtime.ArgSpec) bool { return a.Name == "timeout" }), d.Name+" carries --timeout")
+		f.reset()
+		assert.Equal(t, []string{"10m", "1m", "2m", "30s", "5m"}, dispatchSite(accessCtx(t), site, d, nil, nil, []string{"--timeout"}), d.Name)
+		assert.Empty(t, f.served(), d.Name+": the ladder is static")
+	}
+	equals := CompletionSite{Kind: SiteFlagValue, FlagName: "timeout", FlagSpelling: "--timeout", EqualsForm: true}
+	assert.Equal(t, []string{"--timeout=10m", "--timeout=1m", "--timeout=2m", "--timeout=30s", "--timeout=5m"}, dispatchSite(accessCtx(t), equals, projectsDescriptor(), nil, nil, []string{"--timeout="}))
+}

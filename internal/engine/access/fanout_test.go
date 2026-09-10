@@ -2,6 +2,7 @@ package access
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -68,7 +69,7 @@ func TestRunFanOutBudgetIsTerminal(t *testing.T) {
 	old := fanOutBudget
 	fanOutBudget = 50 * time.Millisecond
 	t.Cleanup(func() { fanOutBudget = old })
-	ctx, cancel := fanOutContext(t.Context())
+	ctx, cancel := fanOutContext(t.Context(), fanOutBudget)
 	defer cancel()
 	_, terminal := runFanOut(ctx, []string{"a", "b", "c"}, func(ctx context.Context, k string) (string, reviewResult) {
 		select {
@@ -139,11 +140,53 @@ func TestBudgetErrorNamesTheBudgetOnlyWhenItCancelled(t *testing.T) {
 	old := fanOutBudget
 	fanOutBudget = time.Millisecond
 	t.Cleanup(func() { fanOutBudget = old })
-	ctx, cancel := fanOutContext(t.Context())
+	ctx, cancel := fanOutContext(t.Context(), fanOutBudget)
 	defer cancel()
 	<-ctx.Done()
 	err := budgetError(ctx, ctx.Err(), "namespace discovery")
 	require.ErrorContains(t, err, "fan-out budget of 1ms exhausted during namespace discovery")
 	plain := clierr.New(clierr.CodeRBAC, "forbidden")
 	assert.Same(t, plain, budgetError(t.Context(), plain, "namespace discovery"))
+}
+
+// TestParseTimeout asserts --timeout is the call's budget: empty is the
+// default, a positive duration is taken as written, anything else is a
+// VALIDATION error naming the flag.
+func TestParseTimeout(t *testing.T) {
+	t.Parallel()
+	d, err := parseTimeout(fakeInput{})
+	require.NoError(t, err)
+	assert.Equal(t, fanOutBudget, d)
+	d, err = parseTimeout(fakeInput{strs: map[string]string{flagTimeout: "2m"}})
+	require.NoError(t, err)
+	assert.Equal(t, 2*time.Minute, d)
+	for raw, want := range map[string]string{
+		"soon": `--timeout "soon" is not a valid duration, e.g. 2m`,
+		"0":    `--timeout "0" must be a positive duration, e.g. 2m`,
+		"-5s":  `--timeout "-5s" must be a positive duration, e.g. 2m`,
+	} {
+		_, err := parseTimeout(fakeInput{strs: map[string]string{flagTimeout: raw}})
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, raw)
+		assert.Equal(t, clierr.CodeValidation, ce.Code, raw)
+		require.ErrorContains(t, err, want)
+	}
+}
+
+// TestFanOutContextNamesTheBudgetThatRanOut asserts the cause carried by
+// an expired budget context reports the budget the call was given, not
+// the default.
+func TestFanOutContextNamesTheBudgetThatRanOut(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := fanOutContext(t.Context(), 10*time.Millisecond)
+	defer cancel()
+	<-ctx.Done()
+	budget, exhausted := exhaustedBudget(ctx)
+	assert.True(t, exhausted)
+	assert.Equal(t, 10*time.Millisecond, budget)
+	require.ErrorContains(t, budgetError(ctx, ctx.Err(), "a stage"), "fan-out budget of 10ms exhausted during a stage")
+	plain, cancelPlain := context.WithCancel(t.Context())
+	cancelPlain()
+	_, exhausted = exhaustedBudget(plain)
+	assert.False(t, exhausted, "a plain cancellation is not a budget")
 }

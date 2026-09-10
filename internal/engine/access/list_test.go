@@ -322,3 +322,19 @@ func lineWith(t *testing.T, text, needle string) string {
 	t.Fatalf("no line contains %q in:\n%s", needle, text)
 	return ""
 }
+
+// TestListTimeoutBoundsTheSingleNamespace asserts --timeout is the budget
+// of a plain list of one namespace as well (no --project, no -A): the
+// first read after the preflight, the namespace GET, runs under it and
+// its exhaustion is the staged, non-retryable budget error.
+func TestListTimeoutBoundsTheSingleNamespace(t *testing.T) {
+	t.Parallel()
+	f := listFactory("user-vwq4j")
+	f.caller.Before = blockAfterFirstCall()
+	_, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{flagTimeout: "20ms"}), nil)
+	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during namespace discovery")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.False(t, ce.Retryable)
+	assert.Len(t, f.caller.Reviews, 1)
+}
