@@ -18,13 +18,17 @@ import (
 
 // RowSource is where an access clusters row's answer came from: the
 // Rancher proxy (admitted or refused), a failed request, or nowhere,
-// because the operation does not apply to that row.
+// because the operation does not apply to that row. Namespace and project
+// rows add the cluster's authorizer and, for a row no request answered
+// because discovery did not reach it, scope discovery.
 type RowSource string
 
 const (
-	RowRancherProxy  RowSource = "rancherProxy"
-	RowRequest       RowSource = "request"
-	RowNotApplicable RowSource = "notApplicable"
+	RowRancherProxy   RowSource = "rancherProxy"
+	RowRequest        RowSource = "request"
+	RowNotApplicable  RowSource = "notApplicable"
+	RowAuthorizer     RowSource = "authorizer"
+	RowScopeDiscovery RowSource = "scopeDiscovery"
 )
 
 // Reachability values.
