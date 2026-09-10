@@ -1,0 +1,162 @@
+# access projects: the caller's projects with their visibility and
+# memberships, a named user, --cluster by name and by id, an unknown
+# cluster, the group refusal, and a restricted caller's own view. The
+# facade pages every steve collection one item at a time for this script.
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# the admin sees every namespace of both projects
+exec rancher access projects -o json
+cp stdout admin.json
+jsonquery admin.json data.identity caller
+jsonquery admin.json data.discovery.complete true
+jsonquery admin.json data.rollup.clusters 2
+jsonquery admin.json data.rollup.projects 3
+jsonquery admin.json data.rollup.all 3
+jsonquery admin.json data.rollup.namespacesAsked 4
+jsonquery admin.json data.rollup.complete true
+jsonquery admin.json data.clusters.0.cluster c-test
+jsonquery admin.json data.clusters.0.access reachable
+jsonquery admin.json data.clusters.0.namespaceDiscovery.source scopeDiscovery
+jsonquery admin.json data.clusters.0.projects.0.project p-e2e
+jsonquery admin.json data.clusters.0.projects.0.displayName E2E
+jsonquery admin.json data.clusters.0.projects.0.visibility all
+jsonquery admin.json data.clusters.0.projects.0.source authorizer
+jsonquery admin.json data.clusters.0.projects.0.complete true
+jsonquery admin.json data.clusters.0.projects.0.namespaces.0.namespace team-a
+jsonquery admin.json data.clusters.0.projects.0.namespaces.0.access allowed
+jsonquery admin.json data.clusters.0.projects.0.namespaces.1.namespace team-b
+jsonquery admin.json data.clusters.0.projects.1.project p-explain
+jsonquery admin.json data.clusters.0.projects.1.namespaces.0.namespace team-c
+jsonquery admin.json data.clusters.1.cluster local
+jsonquery admin.json data.clusters.1.access reachable
+jsonquery admin.json data.clusters.1.projects.0.project p-local
+jsonquery admin.json data.clusters.1.projects.0.visibility all
+jsonquery admin.json data.visibleProjects.0.project p-e2e
+jsonquery admin.json data.visibleProjects.1.project p-explain
+jsonquery admin.json data.visibleProjects.2.project p-local
+jsonquery admin.json data.resultSource mixed
+
+exec rancher access projects
+stdout 'projects you can list, visibility for you'
+stdout 'CLUSTER +PROJECT +NAME +VISIBILITY +GRANTED BY +NOTE'
+stdout 'visibility = may get the project''s namespaces'
+stdout 'you are a member of: '
+stdout 'source: mixed \| identity: caller'
+
+# a named user: may get every namespace through a cluster-member binding on
+# c-test (inherited access on p-e2e, where no ProjectRoleTemplateBinding
+# names it) and holds project-member bindings on p-explain (a membership);
+# local is not applicable, so its project is not applicable too and never
+# counts against completeness
+exec rancher access projects --as e2e-std -o json
+cp stdout std.json
+jsonquery std.json data.identity impersonated
+jsonquery std.json data.subject.name e2e-std
+jsonquery std.json data.clusters.0.projects.0.project p-e2e
+jsonquery std.json data.clusters.0.projects.0.visibility all
+jsonquery std.json data.clusters.0.projects.0.allowedIn 2
+jsonquery std.json data.clusters.0.projects.0.namespaces.0.access allowed
+jsonquery std.json data.clusters.0.projects.1.project p-explain
+jsonquery std.json data.clusters.0.projects.1.visibility all
+jsonquery std.json data.clusters.1.access notApplicable
+jsonquery std.json data.clusters.1.projects.0.visibility notApplicable
+jsonquery std.json data.clusters.1.projects.0.source notApplicable
+jsonquery std.json data.rollup.clustersNotApplicable 1
+jsonquery std.json data.rollup.projectsNotApplicable 1
+jsonquery std.json data.rollup.projectsUnknown 0
+jsonquery std.json data.rollup.all 2
+jsonquery std.json data.rollup.members 1
+jsonquery std.json data.memberOf.complete true
+jsonquery std.json data.memberOf.projects.0.project p-explain
+jsonquery std.json data.memberOf.projects.0.grants.0.name project-member
+jsonquery std.json data.inheritedAccess.0.project p-e2e
+jsonquery std.json data.inheritedAccess.0.grants.0.name cluster-member
+jsonquery std.json data.rollup.complete true
+
+exec rancher access projects --as e2e-std
+stdout '\(e2e-std\) is a member of: c-test/p-explain \(project-member\)'
+stdout 'inherited access \(cluster or global grants, not membership\): c-test/p-e2e \(cluster-member\)'
+stdout 'crtb/e2e-explain-crtb \(cluster-member, inherited\)'
+stdout '1 not applicable; 3 namespaces asked'
+
+# --cluster by display name and by id resolves against the steve set
+exec rancher access projects --cluster testcluster -o json
+cp stdout named.json
+jsonquery named.json data.cluster c-test
+jsonquery named.json data.rollup.clusters 1
+jsonquery named.json data.rollup.projects 2
+jsonquery named.json data.rollup.projectsNotApplicable 0
+
+exec rancher access projects --cluster c-test --as e2e-std -o json
+cp stdout byid.json
+jsonquery byid.json data.cluster c-test
+jsonquery byid.json data.rollup.clustersNotApplicable 0
+
+# an unknown cluster names the clusters the caller can list
+! exec rancher access projects --cluster nowhere -o json
+stderr 'not among the clusters you can list'
+stderr 'c-test'
+
+# a group has no projects to list
+! exec rancher access projects --as github_org://eng
+stderr 'no server operation lists a group''s projects'
+
+# a project member asking about themselves: steve shows exactly its project
+# and that project's namespace, plus the unowned namespaces its grants let
+# it see (ignored: no project row, no review), visibility is answered, and
+# the management bindings are refused to it, so membership is not determined
+env RANCHER_CLI_TOKEN=e2e-member:secret
+exec rancher access projects -o json
+cp stdout self.json
+jsonquery self.json data.identity caller
+jsonquery self.json data.subject.name e2e-member
+jsonquery self.json data.rollup.clusters 2
+jsonquery self.json data.rollup.projects 1
+jsonquery self.json data.clusters.0.cluster c-test
+jsonquery self.json data.clusters.0.projects.0.project p-explain
+jsonquery self.json data.clusters.0.projects.0.visibility all
+jsonquery self.json data.clusters.0.projects.0.namespaces.0.namespace team-c
+jsonquery self.json data.clusters.0.projects.0.namespaces.0.access allowed
+jsonquery self.json data.clusters.1.cluster local
+jsonquery self.json data.clusters.1.access reachable
+jsonquery self.json 'data.clusters.1.projects.#' 0
+jsonquery self.json 'data.clusters.1.unlistedProjectNamespaces.#' 0
+jsonquery self.json data.clusters.1.namespaceDiscovery.source scopeDiscovery
+jsonquery self.json data.rollup.projectsUnknown 0
+jsonquery self.json data.bindingsDiscovery.status unavailable
+jsonquery self.json data.groupAliases.status unavailable
+jsonquery self.json data.memberOf ''
+jsonquery self.json data.inheritedAccess ''
+jsonquery self.json data.rollup.complete true
+
+exec rancher access projects
+stdout 'membership not determined: '
+! stdout 'is a member of'
+stdout 'inherited access not determined'
+
+# an administrator whose steve view carries two clusters named testcluster:
+# the name is ambiguous, either id resolves
+env RANCHER_CLI_TOKEN=e2e-twin:secret
+! exec rancher access projects --cluster testcluster -o json
+stderr 'AMBIGUOUS_SELECTION'
+stderr 'c-test'
+stderr 'c-twin'
+exec rancher access projects --cluster c-test -o json
+cp stdout twin.json
+jsonquery twin.json data.cluster c-test
+jsonquery twin.json data.rollup.clusters 1
+
+# a restricted caller sees only its own clusters and their projects; it
+# may get none of the management project's namespaces, and that is the
+# answer, not an unknown
+env RANCHER_CLI_TOKEN=e2e-nocluster:secret
+exec rancher access projects -o json
+cp stdout member.json
+jsonquery member.json data.identity caller
+jsonquery member.json data.rollup.clusters 1
+jsonquery member.json data.clusters.0.cluster local
+jsonquery member.json data.rollup.projects 1
+jsonquery member.json data.clusters.0.projects.0.visibility none
+jsonquery member.json data.clusters.0.projects.0.source authorizer
+jsonquery member.json data.rollup.complete true

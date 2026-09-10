@@ -24,6 +24,7 @@ var outputShapeInventory = map[string]runtime.OutputShape{
 	"access who-can":                    runtime.ShapeText,
 	"access explain":                    runtime.ShapeText,
 	"access clusters":                   runtime.ShapeText,
+	"access projects":                   runtime.ShapeText,
 	"auth delete-token":                 runtime.ShapeText,
 	"auth get-token":                    runtime.ShapeExecJSON,
 	"auth list-tokens":                  runtime.ShapeTabular,

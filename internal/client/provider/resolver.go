@@ -70,6 +70,7 @@ func NewResolver() map[string]safety.Binding {
 		"access who-can":  {Contract: safety.ContractPublic, Stability: safety.Beta},
 		"access explain":  {Contract: safety.ContractPublic, Stability: safety.Beta},
 		"access clusters": {Contract: safety.ContractPublic, Stability: safety.Beta},
+		"access projects": {Contract: safety.ContractPublic, Stability: safety.Beta},
 
 		"logs":           {Contract: safety.ContractInternal, Stability: safety.Beta},
 		"support-bundle": {Contract: safety.ContractInternal, Stability: safety.Beta},

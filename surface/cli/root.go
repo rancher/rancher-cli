@@ -104,6 +104,7 @@ func buildEntries() []entry {
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewWhoCan(d.clients, nil) }},
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewExplain(d.clients, nil) }},
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewClusters(d.clients, d.roots, nil) }},
+		{group: "access", make: func(d runDeps) runtime.Command { return access.NewProjects(d.clients, d.roots, nil) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetCloudCredential(d.clients) }},
 		{group: "get", make: func(d runDeps) runtime.Command { return provisioning.NewGetKubernetesVersions(d.roots, d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return rbac.NewGrant(d.clients) }},
@@ -412,7 +413,7 @@ var groupUsages = map[string]string{
 	"skill":       "Agents-skill installation for coding-agent harnesses",
 	"oidc-client": "OIDC client secret lifecycle (create oidc-client creates the client itself)",
 	"cluster":     "Cluster scaling and autoscaling (lifecycle is 'create cluster' and 'delete provisioning-cluster')",
-	"access":      "Where a subject can go and what it can do, as the server answers (never inferred from bindings)",
+	"access":      "Where a subject can go, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 
 // aliasAwareGroupComplete reproduces urfave's DefaultCompleteWithFlags for a
@@ -651,6 +652,9 @@ var bespokePublicOps = map[string]bool{
 	// access clusters reads the steve cluster collection and posts one
 	// SelfSubjectReview per cluster: reads and reviews, no kind row.
 	"access clusters": true,
+	// access projects adds the steve project and namespace collections and
+	// one SelfSubjectAccessReview per project namespace: reads and reviews.
+	"access projects": true,
 }
 
 // lookupRow resolves a kind-table key to its row, shared by the derived-op
@@ -814,8 +818,10 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		"inspect": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
 		"access": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, " +
 			"which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject " +
-			"(the chain of Rancher bindings and templates behind the accepted binding), and which clusters Rancher's proxy lets a subject into " +
-			"beside the management bindings that grant it. The authorizer questions are answered by SubjectAccessReview or SelfSubjectRulesReview " +
+			"(the chain of Rancher bindings and templates behind the accepted binding), which clusters Rancher's proxy lets a subject into " +
+			"beside the management bindings that grant it, and which projects a subject can see into (the authorizer's answer to getting each " +
+			"project namespace, rolled up per project) kept apart from the Rancher memberships (ProjectRoleTemplateBindings) behind them. " +
+			"The authorizer questions are answered by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview " +
 			"through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
 		"get":    "Fetch one resource by name, or list all. Generated for every kind the kind table knows; `get cloud-credential` and `get kubernetes-versions` are curated commands.",
 		"patch":  "Apply a partial update to a resource using a diff file or stdin. Generated for every kind the kind table knows.",

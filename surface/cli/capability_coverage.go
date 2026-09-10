@@ -45,6 +45,7 @@ var capabilityCoverageAllowlist = map[string]string{
 	"access who-can":                 "posts one SubjectAccessReview per binding subject through the proxy - reviews are created, never listed or deleted, so it carries no kind row",
 	"access explain":                 "posts one review and reads bindings, roles, and management objects the caller may already read - nothing is created, so it carries no kind row",
 	"access clusters":                "reads the steve cluster collection and posts one SelfSubjectReview per cluster - reads and reviews only, so it carries no kind row",
+	"access projects":                "reads the steve cluster, project and namespace collections and posts one SelfSubjectAccessReview per project namespace - reads and reviews only, so it carries no kind row",
 	"auth login":                     "local auth, no kind row",
 	"auth logout":                    "local auth, no kind row",
 	"auth status":                    "local auth, no kind row",

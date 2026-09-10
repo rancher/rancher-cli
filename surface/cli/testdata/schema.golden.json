@@ -263,6 +263,48 @@
       "usage": "List the rules a subject holds in a namespace, as the cluster's authorizer reports them"
     },
     {
+      "auth": true,
+      "commandType": "readOnly",
+      "contract": "public",
+      "desc": "Lists the projects you can see, grouped by cluster, and asks each cluster's authorizer whether you (or an impersonated --as user) may get every namespace a project owns: the grant Rancher gives a project's members. Visibility is that answer rolled up per project (all, partial, none, unknown). Beside it, the ProjectRoleTemplateBindings that make the subject a member of the project, and the cluster and global bindings that reach it without membership. Projects and namespaces are what steve lists for you, so a member asking about themselves sees their own projects only. Exit 0 when every cluster, project and namespace answered, 13 when any is unknown.",
+      "examples": [
+        "rancher access projects",
+        "rancher access projects --cluster prod --as alice",
+        "rancher access projects --as alice -o json"
+      ],
+      "flags": [
+        {
+          "desc": "restrict to one cluster, by id or unique display name; omitted = every cluster you can list",
+          "name": "cluster",
+          "type": "string"
+        },
+        {
+          "desc": "user name, id, or principal; omitted = you",
+          "name": "as",
+          "type": "string"
+        },
+        {
+          "desc": "kind of the --as value (only user is accepted here)",
+          "enum": [
+            "user"
+          ],
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "group": "access",
+      "name": "access projects",
+      "network": true,
+      "shape": "text",
+      "stability": "beta",
+      "successExitCodes": [
+        0,
+        13
+      ],
+      "toolset": "core",
+      "usage": "List the projects a subject can see into, and the Rancher memberships behind them"
+    },
+    {
       "args": [
         {
           "desc": "Kubernetes verb (get, list, create, ...) or, with --non-resource-url, an HTTP verb",
@@ -10342,9 +10384,10 @@
         "access list",
         "access who-can",
         "access explain",
-        "access clusters"
+        "access clusters",
+        "access projects"
       ],
-      "desc": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the accepted binding), and which clusters Rancher's proxy lets a subject into beside the management bindings that grant it. The authorizer questions are answered by SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
+      "desc": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the accepted binding), which clusters Rancher's proxy lets a subject into beside the management bindings that grant it, and which projects a subject can see into (the authorizer's answer to getting each project namespace, rolled up per project) kept apart from the Rancher memberships (ProjectRoleTemplateBindings) behind them. The authorizer questions are answered by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
       "name": "access"
     },
     {

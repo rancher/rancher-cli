@@ -69,6 +69,7 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	// One cluster per page, so the collection reader follows steve's
 	// continue token and validates the count across pages.
 	"access-clusters": func(o *testrancher.Options) { o.ClustersPageSize = 1 },
+	"access-projects": func(o *testrancher.Options) { o.ClustersPageSize = 1 },
 }
 
 // shimClusters are the management Clusters the facade's steve collection
@@ -76,6 +77,82 @@ var scriptOptions = map[string]func(*testrancher.Options){
 var shimClusters = []testrancher.ClusterFixture{
 	{ID: "c-test", DisplayName: "testcluster"},
 	{ID: "local", DisplayName: "local"},
+}
+
+// shimProjects are the management Projects the facade's steve collection
+// lists: two on the envtest fixture cluster and one on the management
+// cluster, whose projects a named user's run leaves not applicable.
+var shimProjects = []testrancher.ProjectFixture{
+	{Cluster: "c-test", ID: "p-e2e", DisplayName: "E2E"},
+	{Cluster: "c-test", ID: "p-explain", DisplayName: "Explain"},
+	{Cluster: "local", ID: "p-local", DisplayName: "Local"},
+}
+
+// shimNamespaces are the namespaces the facade's steve collection lists per
+// cluster, with the project each carries: team-a and team-b belong to p-e2e,
+// team-c to p-explain (the envtest RoleBindings decide who may get each),
+// and the rest to no project.
+var shimNamespaces = map[string][]testrancher.NamespaceFixture{
+	"c-test": {{Name: "team-a", Project: "p-e2e"}, {Name: "team-b", Project: "p-e2e"}, {Name: "team-c", Project: "p-explain"}, {Name: "fleet-default"}},
+	"local":  {{Name: "fleet-default"}, {Name: "cattle-system", Project: "p-local"}},
+}
+
+// seesProject reports whether the identity's steve view carries a project:
+// every project of a reachable cluster for an identity with no project set,
+// exactly the listed ones otherwise.
+func (id shimIdentity) seesProject(cluster, project string) bool {
+	if id.clusters != nil && !slices.Contains(id.clusters, cluster) {
+		return false
+	}
+	return id.projects == nil || slices.Contains(id.projects, cluster+"/"+project)
+}
+
+// projectVisibility answers the facade's steve projects collection with the
+// projects the identity sees.
+func projectVisibility(resolve shimIdentityResolver) func(string) ([]testrancher.ProjectFixture, bool) {
+	return func(bearer string) ([]testrancher.ProjectFixture, bool) {
+		id, ok := resolve(bearer)
+		if !ok {
+			return nil, false
+		}
+		out := []testrancher.ProjectFixture{}
+		for _, p := range shimProjects {
+			if id.seesProject(p.Cluster, p.ID) {
+				out = append(out, p)
+			}
+		}
+		return out, true
+	}
+}
+
+// namespaceVisibility answers a cluster's steve namespace collection: an
+// administrator's view sees every namespace of a reachable cluster; a member
+// sees the namespaces of its projects and nothing else, as steve partitions
+// them; a cluster the identity may not reach answers 401.
+func namespaceVisibility(resolve shimIdentityResolver) func(string, string) ([]testrancher.NamespaceFixture, bool) {
+	return func(bearer, cluster string) ([]testrancher.NamespaceFixture, bool) {
+		id, ok := resolve(bearer)
+		if !ok {
+			return nil, false
+		}
+		if id.clusters != nil && !slices.Contains(id.clusters, cluster) {
+			return nil, false
+		}
+		if id.projects == nil {
+			return slices.Clone(shimNamespaces[cluster]), true
+		}
+		// A member's view: the namespaces of its projects, and the
+		// unowned namespaces its grants let it see (a real member sees
+		// the management namespaces Rancher grants members on local); a
+		// namespace of another project never.
+		out := []testrancher.NamespaceFixture{}
+		for _, ns := range shimNamespaces[cluster] {
+			if ns.Project == "" || id.seesProject(cluster, ns.Project) {
+				out = append(out, ns)
+			}
+		}
+		return out, true
+	}
 }
 
 // clusterVisibility answers the facade's steve clusters collection from
@@ -87,14 +164,14 @@ func clusterVisibility(resolve shimIdentityResolver) func(string) ([]testrancher
 		if !ok {
 			return nil, false
 		}
-		if id.clusters == nil {
-			return slices.Clone(shimClusters), true
-		}
 		var out []testrancher.ClusterFixture
 		for _, c := range shimClusters {
-			if slices.Contains(id.clusters, c.ID) {
+			if id.clusters == nil || slices.Contains(id.clusters, c.ID) {
 				out = append(out, c)
 			}
+		}
+		if id.twinCluster {
+			out = append(out, testrancher.ClusterFixture{ID: "c-twin", DisplayName: "testcluster"})
 		}
 		return out, true
 	}
@@ -208,6 +285,15 @@ type shimIdentity struct {
 	groups         []string
 	canImpersonate bool     // holds impersonate on users/serviceaccounts, a Rancher GlobalRole right
 	clusters       []string // cluster ids the identity may reach; nil = all
+	// projects are the <cluster>/<project> ids the identity sees on the
+	// steve project collection, and whose namespaces it sees on a cluster's
+	// steve namespace collection; nil = every project of a reachable
+	// cluster (an administrator's view).
+	projects []string
+	// twinCluster adds a second steve cluster row that shares testcluster's
+	// display name, so a --cluster value by name is ambiguous for this
+	// identity alone.
+	twinCluster bool
 }
 
 // shimIdentities are the fixed bearers every router knows: the harness admin
@@ -216,6 +302,12 @@ var shimIdentities = map[string]shimIdentity{
 	testToken:              {user: "e2e-admin", groups: []string{"system:authenticated", "system:cattle:authenticated"}, canImpersonate: true},
 	"e2e-std:secret":       {user: "e2e-std", groups: []string{"system:authenticated", "system:cattle:authenticated"}},
 	"e2e-nocluster:secret": {user: "e2e-nocluster", groups: []string{"system:authenticated", "system:cattle:authenticated"}, clusters: []string{"local"}},
+	// A project member: steve shows it its one project and that project's
+	// namespaces, and the management bindings are refused to it.
+	"e2e-member:secret": {user: "e2e-member", groups: []string{"system:authenticated", "system:cattle:authenticated"}, projects: []string{"c-test/p-explain"}},
+	// An administrator whose steve view carries a second cluster named
+	// testcluster, for the ambiguous --cluster scenario.
+	"e2e-twin:secret": {user: "e2e-admin", groups: []string{"system:authenticated", "system:cattle:authenticated"}, canImpersonate: true, twinCluster: true},
 }
 
 // shimSubjectGroups are the subjects an identity holding impersonate may act
@@ -224,6 +316,7 @@ var shimIdentities = map[string]shimIdentity{
 var shimSubjectGroups = map[string][]string{
 	"e2e-std":                         {"system:authenticated", "system:cattle:authenticated"},
 	"e2e-nocluster":                   {"system:authenticated", "system:cattle:authenticated"},
+	"e2e-member":                      {"system:authenticated", "system:cattle:authenticated"},
 	"e2e-compl-u1":                    {"system:authenticated", "system:cattle:authenticated"},
 	"system:serviceaccount:team-a:ci": {"system:serviceaccounts", "system:serviceaccounts:team-a", "system:authenticated"},
 	"system:anonymous":                {"system:unauthenticated"},
@@ -708,12 +801,14 @@ func TestScenarios(t *testing.T) {
 			idpSrv.StartTLS()
 			e.Defer(idpSrv.Close)
 			opts := testrancher.Options{
-				Fallthrough:       router,
-				Legacy:            legacyScripts[scriptName],
-				SeedToken:         testToken,
-				EnableIdP:         true,
-				IdPURL:            idpSrv.URL,
-				ClusterVisibility: clusterVisibility(resolve),
+				Fallthrough:         router,
+				Legacy:              legacyScripts[scriptName],
+				SeedToken:           testToken,
+				EnableIdP:           true,
+				IdPURL:              idpSrv.URL,
+				ClusterVisibility:   clusterVisibility(resolve),
+				ProjectVisibility:   projectVisibility(resolve),
+				NamespaceVisibility: namespaceVisibility(resolve),
 			}
 			if adjust := scriptOptions[scriptName]; adjust != nil {
 				adjust(&opts)
@@ -1239,6 +1334,22 @@ func seedAccessRBAC() {
 		"roleTemplateName": "project-member",
 		"projectName":      "c-test:p-explain",
 	})
+	// The project member the access projects scenario logs in as: it may
+	// get its project's one namespace (what Rancher grants members) and
+	// nothing else, so its own run answers visibility and no membership.
+	create(rbacGVR("rolebindings"), "team-c", map[string]any{
+		"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "RoleBinding",
+		"metadata": map[string]any{"name": "e2e-member-namespace", "namespace": "team-c"},
+		"roleRef":  roleRef("ClusterRole", "e2e-pod-reader"),
+		"subjects": subject("User", "e2e-member"),
+	})
+	create(mgmt("projectroletemplatebindings"), "c-test-p-explain", map[string]any{
+		"apiVersion": "management.cattle.io/v3", "kind": "ProjectRoleTemplateBinding",
+		"metadata":         map[string]any{"name": "e2e-member-prtb", "namespace": "c-test-p-explain"},
+		"userName":         "e2e-member",
+		"roleTemplateName": "project-member",
+		"projectName":      "c-test:p-explain",
+	})
 	// The aggregator carries the recorded structure: the clusterrole-owner
 	// and aggregation labels, and an aggregationRule selecting the roles
 	// labelled aggregates: cluster-member. envtest runs no aggregation
@@ -1337,6 +1448,7 @@ func seedAccessRBAC() {
 		{"e2e-admin", "admin", "E2E Admin"},
 		{"e2e-std", "std", "Std User"},
 		{"e2e-nocluster", "nocluster", "No Cluster"},
+		{"e2e-member", "member", "Project Member"},
 	} {
 		create(userGVR, "", map[string]any{
 			"apiVersion":   "management.cattle.io/v3",

@@ -66,6 +66,9 @@ const (
 	// the CLI reads for the clusters a caller can see. The facade serves it
 	// only when Options.ClusterVisibility says what each bearer sees.
 	ClustersCollectionPath = "/v1/management.cattle.io.clusters"
+	// ProjectsCollectionPath is the steve collection of management Projects,
+	// served only when Options.ProjectVisibility says what each bearer sees.
+	ProjectsCollectionPath = "/v1/management.cattle.io.projects"
 
 	// rke2ReleasePath/k3sReleasePath are the channel-server release routes
 	// (Task 6, spec D-7). Must match internal/engine/provisioning's own
@@ -164,9 +167,19 @@ type Options struct {
 	// steve clusters collection; a bearer it does not know is answered 401.
 	// nil leaves the collection unserved (404).
 	ClusterVisibility func(bearer string) ([]ClusterFixture, bool)
-	// ClustersPageSize pages the clusters collection with steve's
-	// continue token (an offset); 0 serves one page.
+	// ClustersPageSize pages every steve collection the facade serves
+	// (clusters, projects, a cluster's namespaces) with steve's continue
+	// token (an offset); 0 serves one page.
 	ClustersPageSize int
+	// ProjectVisibility says which management Projects a bearer sees on the
+	// steve projects collection; a bearer it does not know is answered 401.
+	// nil leaves the collection unserved (404).
+	ProjectVisibility func(bearer string) ([]ProjectFixture, bool)
+	// NamespaceVisibility says which namespaces a bearer sees on one
+	// cluster's steve namespace collection (/k8s/clusters/<id>/v1/namespaces);
+	// a bearer it does not know is answered 401. nil leaves the collection
+	// unserved (404).
+	NamespaceVisibility func(bearer, cluster string) ([]NamespaceFixture, bool)
 
 	// DropLoginResponse creates the token and then closes the connection
 	// without writing: the client never learns what the server did.
@@ -526,6 +539,10 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleCRTCollection(w, r)
 	case f.opts.ClusterVisibility != nil && r.Method == http.MethodGet && r.URL.Path == ClustersCollectionPath:
 		f.handleClustersCollection(w, r)
+	case f.opts.ProjectVisibility != nil && r.Method == http.MethodGet && r.URL.Path == ProjectsCollectionPath:
+		f.handleProjectsCollection(w, r)
+	case f.opts.NamespaceVisibility != nil && r.Method == http.MethodGet && steveNamespacesCluster(r.URL.Path) != "":
+		f.handleNamespacesCollection(w, r, steveNamespacesCluster(r.URL.Path))
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, CRTCollectionPath+"/"):
 		f.handleCRTSingle(w, r, strings.TrimPrefix(r.URL.Path, CRTCollectionPath+"/"))
 	case r.Method == http.MethodGet && r.URL.Path == rke2ReleasePath:
@@ -1443,36 +1460,122 @@ func (f *Facade) handleClustersCollection(w http.ResponseWriter, r *http.Request
 	// Sort a copy: the callback's slice may alias storage the harness owns.
 	visible = slices.Clone(visible)
 	sort.Slice(visible, func(i, j int) bool { return visible[i].ID < visible[j].ID })
-	offset := 0
-	if c := r.URL.Query().Get("continue"); c != "" {
-		n, err := strconv.Atoi(c)
-		if err != nil || n < 0 || n > len(visible) {
-			http.Error(w, "invalid continue token", http.StatusBadRequest)
-			return
-		}
-		offset = n
-	}
-	end := len(visible)
-	if f.opts.ClustersPageSize > 0 && offset+f.opts.ClustersPageSize < end {
-		end = offset + f.opts.ClustersPageSize
-	}
-	data := make([]map[string]any, 0, end-offset)
-	for _, c := range visible[offset:end] {
-		data = append(data, map[string]any{
+	items := make([]map[string]any, 0, len(visible))
+	for _, c := range visible {
+		items = append(items, map[string]any{
 			"id":       c.ID,
 			"type":     "management.cattle.io.cluster",
 			"metadata": map[string]any{"name": c.ID},
 			"spec":     map[string]any{"displayName": c.DisplayName},
 		})
 	}
+	f.serveSteveCollection(w, r, "management.cattle.io.cluster", items)
+}
+
+// ProjectFixture is one management Project the facade's steve collection
+// lists, as <Cluster>/<ID> with its display name.
+type ProjectFixture struct {
+	Cluster     string
+	ID          string
+	DisplayName string
+}
+
+// NamespaceFixture is one namespace of a cluster's steve collection; Project
+// is the bare project id its field.cattle.io/projectId label carries, empty
+// for a namespace outside every project.
+type NamespaceFixture struct {
+	Name    string
+	Project string
+}
+
+func (f *Facade) handleProjectsCollection(w http.ResponseWriter, r *http.Request) {
+	visible, ok := f.opts.ProjectVisibility(bearerFromHeader(r))
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	visible = slices.Clone(visible)
+	sort.Slice(visible, func(i, j int) bool {
+		if visible[i].Cluster != visible[j].Cluster {
+			return visible[i].Cluster < visible[j].Cluster
+		}
+		return visible[i].ID < visible[j].ID
+	})
+	items := make([]map[string]any, 0, len(visible))
+	for _, p := range visible {
+		items = append(items, map[string]any{
+			"id":       p.Cluster + "/" + p.ID,
+			"type":     "management.cattle.io.project",
+			"metadata": map[string]any{"name": p.ID, "namespace": p.Cluster},
+			"spec":     map[string]any{"clusterName": p.Cluster, "displayName": p.DisplayName},
+		})
+	}
+	f.serveSteveCollection(w, r, "management.cattle.io.project", items)
+}
+
+// steveNamespacesCluster returns the cluster id of a steve namespace
+// collection path (/k8s/clusters/<id>/v1/namespaces), or "" for any other
+// path.
+func steveNamespacesCluster(path string) string {
+	rest, ok := strings.CutPrefix(path, "/k8s/clusters/")
+	if !ok {
+		return ""
+	}
+	cluster, tail, ok := strings.Cut(rest, "/")
+	if !ok || cluster == "" || tail != "v1/namespaces" {
+		return ""
+	}
+	return cluster
+}
+
+func (f *Facade) handleNamespacesCollection(w http.ResponseWriter, r *http.Request, cluster string) {
+	visible, ok := f.opts.NamespaceVisibility(bearerFromHeader(r), cluster)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	visible = slices.Clone(visible)
+	sort.Slice(visible, func(i, j int) bool { return visible[i].Name < visible[j].Name })
+	items := make([]map[string]any, 0, len(visible))
+	for _, ns := range visible {
+		labels := map[string]any{"kubernetes.io/metadata.name": ns.Name}
+		if ns.Project != "" {
+			labels["field.cattle.io/projectId"] = ns.Project
+		}
+		items = append(items, map[string]any{
+			"id":       ns.Name,
+			"type":     "namespace",
+			"metadata": map[string]any{"name": ns.Name, "labels": labels},
+		})
+	}
+	f.serveSteveCollection(w, r, "namespace", items)
+}
+
+// serveSteveCollection writes one page of a steve collection: count is the
+// whole collection, continue an offset token when ClustersPageSize cuts the
+// page, revision fixed.
+func (f *Facade) serveSteveCollection(w http.ResponseWriter, r *http.Request, resourceType string, items []map[string]any) {
+	offset := 0
+	if c := r.URL.Query().Get("continue"); c != "" {
+		n, err := strconv.Atoi(c)
+		if err != nil || n < 0 || n > len(items) {
+			http.Error(w, "invalid continue token", http.StatusBadRequest)
+			return
+		}
+		offset = n
+	}
+	end := len(items)
+	if f.opts.ClustersPageSize > 0 && offset+f.opts.ClustersPageSize < end {
+		end = offset + f.opts.ClustersPageSize
+	}
 	body := map[string]any{
 		"type":         "collection",
-		"resourceType": "management.cattle.io.cluster",
-		"count":        len(visible),
+		"resourceType": resourceType,
+		"count":        len(items),
 		"revision":     "1",
-		"data":         data,
+		"data":         items[offset:end],
 	}
-	if end < len(visible) {
+	if end < len(items) {
 		body["continue"] = strconv.Itoa(end)
 	}
 	writeJSON(w, http.StatusOK, body)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +29,10 @@ type accessFixture struct {
 	srv   *httptest.Server
 	mu    sync.Mutex
 	paths []string
+	// pages, keyed by request URI (path and query), take precedence over
+	// the path-keyed bodies: the steve collection is paged by a continue
+	// query the path alone cannot tell apart.
+	pages map[string]any
 }
 
 func (f *accessFixture) record(path string) {
@@ -117,10 +122,19 @@ func newAccessFixture(t *testing.T) *accessFixture {
 		"/k8s/clusters/c-abc12/apis":                                grouped,
 		"/k8s/clusters/local/apis/management.cattle.io/v3/clusters": clusters,
 		"/k8s/clusters/local/apis/management.cattle.io/v3/users":    users,
+		"/v1/management.cattle.io.clusters": map[string]any{"type": "collection", "count": 2, "revision": "1", "data": []any{
+			map[string]any{"id": "c-abc12", "metadata": map[string]any{"name": "c-abc12"}, "spec": map[string]any{"displayName": "testcluster"}},
+			map[string]any{"id": "c-zzz99", "metadata": map[string]any{"name": "c-zzz99"}, "spec": map[string]any{"displayName": "membercluster"}},
+		}},
 	}
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.record(r.URL.Path)
-		body, ok := bodies[r.URL.Path]
+		f.mu.Lock()
+		body, ok := f.pages[r.URL.RequestURI()]
+		f.mu.Unlock()
+		if !ok {
+			body, ok = bodies[r.URL.Path]
+		}
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -455,4 +469,158 @@ func TestAccessClustersSubjectOffersUsersOnly(t *testing.T) {
 	typ := CompletionSite{Kind: SiteFlagValue, FlagName: "type", FlagSpelling: "--type"}
 	assert.Equal(t, []string{"user"}, dispatchSite(accessCtx(t), typ, d, nil, nil, []string{"--type"}))
 	assert.Empty(t, f.served(), "the type enum is static")
+}
+
+func projectsDescriptor() runtime.Descriptor { return access.NewProjects(nil, nil, nil).Describe() }
+
+// TestAccessProjectsClusterOffersTheSteveSet asserts access projects
+// completes --cluster from the steve collection the command resolves it
+// against (ids and unique display names), not from the management LIST
+// every other cluster flag reads.
+func TestAccessProjectsClusterOffersTheSteveSet(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := projectsDescriptor()
+
+	f.reset()
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
+	got := liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"})
+	assert.Equal(t, []string{"c-abc12", "c-zzz99", "local", "membercluster", "testcluster"}, sorted(got),
+		"the collection omits local, so the completer inserts it as the command does")
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters"}, f.served())
+}
+
+// TestAccessProjectsSubjectOffersUsersOnly asserts access projects shares
+// the users-only --as completion and the user-only --type enum.
+func TestAccessProjectsSubjectOffersUsersOnly(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := projectsDescriptor()
+
+	f.reset()
+	as := CompletionSite{Kind: SiteFlagValue, FlagName: "as", FlagSpelling: "--as"}
+	got := liveCandidates(accessCtx(t), as, d, nil, []string{"--as"})
+	assert.Equal(t, []string{"alice", "bob", "u-abc12", "u-def34"}, sorted(got))
+	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/users"}, f.served())
+
+	f.reset()
+	typ := CompletionSite{Kind: SiteFlagValue, FlagName: "type", FlagSpelling: "--type"}
+	assert.Equal(t, []string{"user"}, dispatchSite(accessCtx(t), typ, d, nil, nil, []string{"--type"}))
+	assert.Empty(t, f.served(), "the type enum is static")
+}
+
+func stevePage(count int, cont string, items ...map[string]any) map[string]any {
+	page := map[string]any{"type": "collection", "count": count, "revision": "7", "data": items}
+	if cont != "" {
+		page["continue"] = cont
+	}
+	return page
+}
+
+func steveCluster(id, display string) map[string]any {
+	return map[string]any{"id": id, "metadata": map[string]any{"name": id}, "spec": map[string]any{"displayName": display}}
+}
+
+// TestAccessProjectsClusterCompletionFollowsEveryPage asserts the --cluster
+// completer follows steve's continue token, inserts exactly one local row
+// when the collection omits it, and decides unique display names over the
+// whole set (a name repeated on a later page is offered by id only).
+func TestAccessProjectsClusterCompletionFollowsEveryPage(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := projectsDescriptor()
+	f.mu.Lock()
+	f.pages = map[string]any{
+		"/v1/management.cattle.io.clusters":             stevePage(3, "p2", steveCluster("c-aaa11", "shared")),
+		"/v1/management.cattle.io.clusters?continue=p2": stevePage(3, "p3", steveCluster("c-bbb22", "shared")),
+		"/v1/management.cattle.io.clusters?continue=p3": stevePage(3, "", steveCluster("c-ccc33", "alone")),
+	}
+	f.mu.Unlock()
+
+	f.reset()
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
+	got := liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"})
+	assert.Equal(t, []string{"alone", "c-aaa11", "c-bbb22", "c-ccc33", "local"}, sorted(got),
+		"three pages read, the repeated name offered by id only, local inserted once")
+	assert.Len(t, f.served(), 3)
+}
+
+// TestAccessProjectsClusterCompletionOffersNothingOnAnInconsistentRead
+// asserts a paged read whose count does not add up offers no candidate.
+func TestAccessProjectsClusterCompletionOffersNothingOnAnInconsistentRead(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := projectsDescriptor()
+	f.mu.Lock()
+	f.pages = map[string]any{
+		"/v1/management.cattle.io.clusters":             stevePage(5, "p2", steveCluster("c-aaa11", "a")),
+		"/v1/management.cattle.io.clusters?continue=p2": stevePage(5, "", steveCluster("c-bbb22", "b")),
+	}
+	f.mu.Unlock()
+	f.reset()
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
+	assert.Empty(t, liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"}))
+}
+
+// TestAccessProjectsClusterCompletionKeepsAReturnedLocal asserts a
+// collection that lists local yields one local candidate, not two.
+func TestAccessProjectsClusterCompletionKeepsAReturnedLocal(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := projectsDescriptor()
+	f.mu.Lock()
+	f.pages = map[string]any{"/v1/management.cattle.io.clusters": stevePage(2, "", steveCluster("local", "local"), steveCluster("c-aaa11", "prod"))}
+	f.mu.Unlock()
+	f.reset()
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
+	assert.Equal(t, []string{"c-aaa11", "local", "prod"}, sorted(liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"})))
+}
+
+// TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader
+// asserts the completer offers nothing wherever the command's steve reader
+// would refuse the collection: a missing count, a missing revision, an item
+// naming itself differently, a repeated id that disagrees with itself, a
+// repeated continue token, and a walk that reaches the page bound with a
+// page still pending.
+func TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader(t *testing.T) {
+	// NOT parallel: mutates storedConfig and the token environment.
+	f := newAccessFixture(t)
+	storeAccessConfig(t, f, true)
+	d := projectsDescriptor()
+	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
+	base := "/v1/management.cattle.io.clusters"
+	noCount := stevePage(1, "", steveCluster("c-aaa11", "a"))
+	delete(noCount, "count")
+	noRevision := stevePage(1, "", steveCluster("c-aaa11", "a"))
+	delete(noRevision, "revision")
+	renamed := steveCluster("c-aaa11", "a")
+	renamed["metadata"] = map[string]any{"name": "c-other"}
+	looping := map[string]any{}
+	for i := range steveClusterPages + 5 {
+		key := base
+		if i > 0 {
+			key = base + "?continue=t" + strconv.Itoa(i)
+		}
+		looping[key] = stevePage(1000, "t"+strconv.Itoa(i+1), steveCluster("c-"+strconv.Itoa(i), "n"))
+	}
+	cases := map[string]map[string]any{
+		"missing count":         {base: noCount},
+		"missing revision":      {base: noRevision},
+		"metadata.name differs": {base: stevePage(1, "", renamed)},
+		"disagreeing duplicate": {base: stevePage(2, "", steveCluster("c-aaa11", "a"), steveCluster("c-aaa11", "b"))},
+		"repeated token":        {base: stevePage(3, "p2", steveCluster("c-aaa11", "a")), base + "?continue=p2": stevePage(3, "p2", steveCluster("c-bbb22", "b"))},
+		"page bound reached":    looping,
+	}
+	for name, pages := range cases {
+		f.mu.Lock()
+		f.pages = pages
+		f.mu.Unlock()
+		f.reset()
+		assert.Empty(t, liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"}), name)
+	}
 }

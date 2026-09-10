@@ -344,7 +344,7 @@ func accessVerbCandidates(site CompletionSite, d runtime.Descriptor, tail []stri
 // named subject. who-can has no --as; clusters accepts users only.
 func accessSubjectCommand(name string) bool {
 	switch name {
-	case "access can", "access list", "access explain", "access clusters":
+	case "access can", "access list", "access explain", "access clusters", "access projects":
 		return true
 	}
 	return false
@@ -618,7 +618,13 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 	var raw []string
 	switch site.FlagName {
 	case "cluster":
-		raw = fetchClusters(ctx, hc, cap)
+		if d.Name == "access projects" {
+			// The command resolves --cluster against the steve set the
+			// caller can list, so the candidates come from the same place.
+			raw = fetchSteveClusters(ctx, hc, cap)
+		} else {
+			raw = fetchClusters(ctx, hc, cap)
+		}
 	case "project":
 		raw = fetchProjects(ctx, hc, cap, clusterID)
 	case "namespace":

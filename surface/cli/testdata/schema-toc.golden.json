@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 191,
+  "commandCount": 192,
   "effectSchema": {
     "actions": [
       "create",
@@ -341,9 +341,13 @@
         {
           "name": "access clusters",
           "usage": "List the clusters Rancher lets a subject into, and the bindings that grant it"
+        },
+        {
+          "name": "access projects",
+          "usage": "List the projects a subject can see into, and the Rancher memberships behind them"
         }
       ],
-      "desc": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the accepted binding), and which clusters Rancher's proxy lets a subject into beside the management bindings that grant it. The authorizer questions are answered by SubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
+      "desc": "Server-answered access questions: whether a subject can perform a verb on a resource, the rules a subject holds in a namespace, which subjects the bindings name that may perform a verb on a resource, why the authorizer decided as it did for one subject (the chain of Rancher bindings and templates behind the accepted binding), which clusters Rancher's proxy lets a subject into beside the management bindings that grant it, and which projects a subject can see into (the authorizer's answer to getting each project namespace, rolled up per project) kept apart from the Rancher memberships (ProjectRoleTemplateBindings) behind them. The authorizer questions are answered by SubjectAccessReview, SelfSubjectAccessReview or SelfSubjectRulesReview through the Rancher proxy; reachability is the proxy's own admission answer; the bindings are read, never evaluated, on the client.",
       "name": "access"
     },
     {
