@@ -171,100 +171,28 @@ func fetchClusters(ctx context.Context, hc *http.Client, cap TokenCapability) []
 	return clusterCandidates(col.Items)
 }
 
-// steveClusterPages bounds the paged read below, as the command's reader
-// bounds its own.
-const steveClusterPages = 100
-
 // fetchSteveClusters lists the clusters the caller can see through the steve
 // collection access projects resolves --cluster against; the management
 // LIST fetchClusters reads is refused for callers who are not administrators.
-// It mirrors the command reader's protocol and fails closed (no candidate)
-// wherever the command would refuse the collection: a page without a count
-// or a revision, a count or revision that moves between pages, an item
-// without an id or naming itself differently, a repeated id that disagrees
-// with itself, a repeated continue token, a walk that ends with a page
-// still pending. It inserts the local row the command inserts when the
-// collection omits it, and decides unique display names over the whole set.
+// The read is the command's own single-pass reader over the production
+// root client, so wherever the command would refuse the collection the
+// completer offers nothing, the local row follows the command's rule, and
+// unique display names are decided over the whole set.
 func fetchSteveClusters(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
 	if cap.Token == "" || cap.IDOnly {
 		return nil
 	}
-	type clusterItem struct {
-		id, display string
-	}
-	var (
-		items      []map[string]any
-		byID       = map[string]clusterItem{}
-		token      string
-		seenTokens = map[string]bool{}
-		total      *int
-		revision   string
-		raw        int
-		finished   bool
-	)
-	for range steveClusterPages {
-		url := cap.ServerURL + "/v1/management.cattle.io.clusters"
-		if token != "" {
-			url += "?continue=" + neturl.QueryEscape(token)
-		}
-		var col struct {
-			Data []struct {
-				ID       string `json:"id"`
-				Metadata struct {
-					Name string `json:"name"`
-				} `json:"metadata"`
-				Spec struct {
-					DisplayName string `json:"displayName"`
-				} `json:"spec"`
-			} `json:"data"`
-			Count    *int   `json:"count"`
-			Continue string `json:"continue"`
-			Revision string `json:"revision"`
-		}
-		if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
-			return nil
-		}
-		if col.Count == nil || *col.Count < 0 || col.Revision == "" {
-			return nil
-		}
-		if total == nil {
-			total, revision = col.Count, col.Revision
-		} else if *col.Count != *total || col.Revision != revision {
-			return nil
-		}
-		for _, c := range col.Data {
-			raw++
-			if c.ID == "" || (c.Metadata.Name != "" && c.Metadata.Name != c.ID) {
-				return nil
-			}
-			item := clusterItem{id: c.ID, display: c.Spec.DisplayName}
-			if prev, dup := byID[c.ID]; dup {
-				if prev != item {
-					return nil
-				}
-				continue
-			}
-			byID[c.ID] = item
-			items = append(items, map[string]any{
-				"metadata": map[string]any{"name": c.ID},
-				"spec":     map[string]any{"displayName": c.Spec.DisplayName},
-			})
-		}
-		if col.Continue == "" {
-			finished = true
-			break
-		}
-		if seenTokens[col.Continue] {
-			return nil
-		}
-		seenTokens[col.Continue] = true
-		token = col.Continue
-	}
-	if !finished || total == nil || raw != *total {
+	rows, err := access.ListClustersOnce(ctx, &rootClient{base: cap.ServerURL, token: cap.Token, hc: hc})
+	if err != nil {
+		completionDebugf("steve clusters: %v", err)
 		return nil
 	}
-	if _, ok := byID["local"]; !ok {
-		items = append(items, map[string]any{"metadata": map[string]any{"name": "local"}, "spec": map[string]any{"displayName": "local"}})
+	items := make([]map[string]any, 0, len(rows))
+	for _, c := range rows {
+		items = append(items, map[string]any{
+			"metadata": map[string]any{"name": c.ID},
+			"spec":     map[string]any{"displayName": c.DisplayName},
+		})
 	}
 	return clusterCandidates(items)
 }

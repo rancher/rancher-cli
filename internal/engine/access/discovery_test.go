@@ -258,5 +258,35 @@ func TestListClustersPageBoundIsTerminal(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, ce.Retryable)
 	require.ErrorContains(t, err, "more than 100 pages")
-	assert.Equal(t, int32(steveMaxPages), n.Load())
+	assert.Equal(t, int32(SteveMaxPages), n.Load())
+}
+
+// TestListClustersOnceReadsOnePassAndNeverRetries asserts the exported
+// single-pass read walks every page under the reader's rules, inserts the
+// local row, and reports a moved collection after one walk, never two.
+func TestListClustersOnceReadsOnePassAndNeverRetries(t *testing.T) {
+	t.Parallel()
+	srv, paths := pagedServer(t, map[string]stevePage{
+		"":  {Data: []map[string]any{steveItem("c-m-b", "staging")}, Count: new(2), Continue: "n", Revision: "700"},
+		"n": {Data: []map[string]any{steveItem("c-m-a", "prod")}, Count: new(2), Revision: "700"},
+	})
+	rows, err := ListClustersOnce(t.Context(), fakeRootClient{srv})
+	require.NoError(t, err)
+	assert.Equal(t, []SteveCluster{{ID: "c-m-a", DisplayName: "prod"}, {ID: "c-m-b", DisplayName: "staging"}, {ID: "local", DisplayName: "local"}}, rows)
+	assert.Len(t, *paths, 2)
+
+	returned, _ := pagedServer(t, map[string]stevePage{
+		"": {Data: []map[string]any{steveItem("local", "local"), steveItem("c-m-a", "prod")}, Count: new(2), Revision: "700"},
+	})
+	rows, err = ListClustersOnce(t.Context(), fakeRootClient{returned})
+	require.NoError(t, err)
+	assert.Equal(t, []SteveCluster{{ID: "c-m-a", DisplayName: "prod"}, {ID: "local", DisplayName: "local"}}, rows, "ordered by id when local was returned too")
+
+	moved, movedPaths := pagedServer(t, map[string]stevePage{
+		"":  {Data: []map[string]any{steveItem("c-m-a", "a")}, Count: new(2), Continue: "n", Revision: "1"},
+		"n": {Data: []map[string]any{steveItem("c-m-b", "b")}, Count: new(2), Revision: "2"},
+	})
+	_, err = ListClustersOnce(t.Context(), fakeRootClient{moved})
+	require.ErrorContains(t, err, "revision moved between pages")
+	assert.Len(t, *movedPaths, 2, "one walk; the retry belongs to the command, not to completion")
 }

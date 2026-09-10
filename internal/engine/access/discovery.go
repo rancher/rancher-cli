@@ -35,10 +35,10 @@ func steveNamespacesPath(clusterID string) string {
 // <cluster>:<project> and is not read.
 const projectIDLabel = "field.cattle.io/projectId"
 
-// steveMaxPages bounds a paged collection read. steve's default page holds
+// SteveMaxPages bounds a paged collection read. steve's default page holds
 // 100000 items, so a real installation fits in one; the bound exists so a
 // server that keeps handing out continue tokens cannot keep the CLI reading.
-const steveMaxPages = 100
+const SteveMaxPages = 100
 
 // discoveredCluster is one row of the caller's cluster set.
 type discoveredCluster struct {
@@ -135,6 +135,33 @@ func listClusters(ctx context.Context, root engine.RootClient) ([]discoveredClus
 	}
 	slices.SortFunc(rows, func(a, b discoveredCluster) int { return strings.Compare(a.ID, b.ID) })
 	return withLocal(rows), nil
+}
+
+// SteveCluster is one cluster of the caller's set as steve lists it, for a
+// caller outside the package (shell completion of --cluster).
+type SteveCluster struct {
+	ID          string
+	DisplayName string
+}
+
+// ListClustersOnce is listClusters in one pass: the same steve protocol
+// (count and revision required and stable, agreeing ids and duplicates, no
+// repeated continue token, the page bound), the same local row and the
+// same order by id, but a collection that moves under the read is an error
+// at once, never retried.
+// Shell completion reads through it so a value it offers is one the command
+// resolves, and a TAB costs at most one walk of the collection.
+func ListClustersOnce(ctx context.Context, root engine.RootClient) ([]SteveCluster, error) {
+	rows, err := readSteveOnce(ctx, root, steveClustersPath, decodeClusterItem)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(rows, func(a, b discoveredCluster) int { return strings.Compare(a.ID, b.ID) })
+	out := make([]SteveCluster, 0, len(rows)+1)
+	for _, c := range withLocal(rows) {
+		out = append(out, SteveCluster{ID: c.ID, DisplayName: c.DisplayName})
+	}
+	return out, nil
 }
 
 // listProjects reads the caller's projects from steve, ordered by cluster
@@ -253,8 +280,8 @@ func readSteveOnce[T comparable](ctx context.Context, root engine.RootClient, pa
 		token    string
 	)
 	for page := 0; ; page++ {
-		if page == steveMaxPages {
-			return nil, protocolError(path, fmt.Sprintf("more than %d pages", steveMaxPages))
+		if page == SteveMaxPages {
+			return nil, protocolError(path, fmt.Sprintf("more than %d pages", SteveMaxPages))
 		}
 		pagePath := path
 		if token != "" {

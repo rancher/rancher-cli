@@ -601,7 +601,7 @@ func TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader(t *testi
 	renamed := steveCluster("c-aaa11", "a")
 	renamed["metadata"] = map[string]any{"name": "c-other"}
 	looping := map[string]any{}
-	for i := range steveClusterPages + 5 {
+	for i := range access.SteveMaxPages + 5 {
 		key := base
 		if i > 0 {
 			key = base + "?continue=t" + strconv.Itoa(i)
