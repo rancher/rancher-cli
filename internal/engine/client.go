@@ -5,6 +5,7 @@ package engine
 
 import (
 	"context"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -85,6 +86,14 @@ type ClusterClientFactory interface {
 	// short-circuit to LocalCluster. Memoized per invocation.
 	ResolveCluster(ctx context.Context, nameOrID string) (string, error)
 }
+
+// RootStatusError is the cause a RootClient attaches to the error of a
+// non-2xx answer, so a caller can tell a 401 (the credential is refused)
+// from a 403 (the caller may not read this path) when both map to the same
+// error code.
+type RootStatusError struct{ Status int }
+
+func (e *RootStatusError) Error() string { return "http status " + strconv.Itoa(e.Status) }
 
 // RootClient is the GET-only port for reads against the Rancher server
 // ROOT (Steve /v1 collections, the channel-server release routes) - the

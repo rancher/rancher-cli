@@ -202,15 +202,16 @@ func (r *rootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
 	if err != nil {
 		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %v", path, err))
 	}
+	status := &engine.RootStatusError{Status: resp.StatusCode}
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return body, nil
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status))
+		return nil, clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status)).WithCause(status)
 	case resp.StatusCode == http.StatusNotFound:
-		return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("rancher root GET %s: not found", path))
+		return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("rancher root GET %s: not found", path)).WithCause(status)
 	default:
-		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %s: %s", path, resp.Status, excerpt(body, 200)))
+		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %s: %s", path, resp.Status, excerpt(body, 200))).WithCause(status)
 	}
 }
 
