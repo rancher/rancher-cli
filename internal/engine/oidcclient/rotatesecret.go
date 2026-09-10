@@ -59,7 +59,7 @@ func (c *rotateSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 	if len(args) > 1 {
 		requested = args[1]
 	}
-	timeout, err := parseWaitTimeout(in.String("timeout"))
+	timeout, err := parseWaitTimeout(in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

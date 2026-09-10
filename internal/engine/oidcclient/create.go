@@ -82,18 +82,8 @@ func toAnySlice(ss []string) []any {
 	return out
 }
 
-func parseWaitTimeout(s string) (time.Duration, error) {
-	if s == "" {
-		return defaultWaitTimeout, nil
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q is not a valid duration; e.g. 90s", s))
-	}
-	if d <= 0 {
-		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q must be a positive duration; e.g. 90s", s))
-	}
-	return d, nil
+func parseWaitTimeout(in runtime.Input) (time.Duration, error) {
+	return runtime.DurationFlag(in, "timeout", defaultWaitTimeout, "90s")
 }
 
 func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
@@ -113,7 +103,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	if refreshTTL == 0 {
 		refreshTTL = defaultRefreshTTLSeconds
 	}
-	timeout, err := parseWaitTimeout(in.String("timeout"))
+	timeout, err := parseWaitTimeout(in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

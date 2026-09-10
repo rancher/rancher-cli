@@ -50,7 +50,7 @@ func (addSecretCmd) Describe() runtime.Descriptor {
 
 func (c *addSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	clientName := in.Args()[0]
-	timeout, err := parseWaitTimeout(in.String("timeout"))
+	timeout, err := parseWaitTimeout(in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

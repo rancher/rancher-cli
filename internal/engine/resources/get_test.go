@@ -1285,3 +1285,28 @@ func (*memClient) ServerResources(context.Context) ([]engine.APIResource, error)
 func (f *recFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
 	return f.Cluster(ctx, id)
 }
+
+// TestParseWaitTimeoutIsTheSharedDurationContract asserts get --wait's
+// --timeout follows the one duration-flag contract: omitted is the 120s
+// default, a positive duration is taken as written, and a zero, negative
+// or unparsable value is a VALIDATION error showing this flag's example.
+func TestParseWaitTimeoutIsTheSharedDurationContract(t *testing.T) {
+	t.Parallel()
+	d, err := parseWaitTimeout(input{})
+	require.NoError(t, err)
+	assert.Equal(t, defaultWaitTimeout, d)
+	d, err = parseWaitTimeout(input{s: map[string]string{flagTimeout: "5m"}})
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Minute, d)
+	for raw, want := range map[string]string{
+		"soon": `--timeout "soon" is not a valid duration, e.g. 5m`,
+		"0":    `--timeout "0" must be a positive duration, e.g. 5m`,
+		"-1s":  `--timeout "-1s" must be a positive duration, e.g. 5m`,
+	} {
+		_, err := parseWaitTimeout(input{s: map[string]string{flagTimeout: raw}})
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, raw)
+		assert.Equal(t, clierr.CodeValidation, ce.Code, raw)
+		require.ErrorContains(t, err, want)
+	}
+}

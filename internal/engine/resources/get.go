@@ -209,7 +209,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			if cerr != nil {
 				return runtime.Result{}, cerr
 			}
-			timeout, terr := parseWaitTimeout(timeoutStr)
+			timeout, terr := parseWaitTimeout(in)
 			if terr != nil {
 				return runtime.Result{}, terr
 			}
@@ -338,17 +338,11 @@ func waitElapsed(elapsed time.Duration) string {
 	return elapsed.Round(time.Second).String()
 }
 
-// parseWaitTimeout parses --timeout, defaulting to 120s; an unparseable
-// duration is a VALIDATION error rather than falling back to the default.
-func parseWaitTimeout(s string) (time.Duration, error) {
-	if s == "" {
-		return defaultWaitTimeout, nil
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0, clierr.New(clierr.CodeValidation, fmt.Sprintf("--timeout %q is not a valid duration, e.g. 5m", s))
-	}
-	return d, nil
+// parseWaitTimeout reads --timeout, defaulting to 120s; a value that is
+// not a positive duration is a VALIDATION error rather than a fallback to
+// the default or an already-expired wait.
+func parseWaitTimeout(in runtime.Input) (time.Duration, error) {
+	return runtime.DurationFlag(in, flagTimeout, defaultWaitTimeout, "5m")
 }
 
 func hasName(in runtime.Input) bool {

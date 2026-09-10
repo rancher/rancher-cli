@@ -224,7 +224,7 @@ func TestParseWaitTimeoutRejectsNonPositiveDurations(t *testing.T) {
 	for _, raw := range []string{"0", "0s", "-5s"} {
 		t.Run(raw, func(t *testing.T) {
 			t.Parallel()
-			_, err := parseWaitTimeout(raw)
+			_, err := parseWaitTimeout(oidcInput{flags: map[string]string{"timeout": raw}})
 			require.Error(t, err)
 			ce, ok := err.(*clierr.Error)
 			require.True(t, ok)
@@ -235,11 +235,11 @@ func TestParseWaitTimeoutRejectsNonPositiveDurations(t *testing.T) {
 
 func TestParseWaitTimeoutAcceptsOmittedAndPositive(t *testing.T) {
 	t.Parallel()
-	d, err := parseWaitTimeout("")
+	d, err := parseWaitTimeout(oidcInput{})
 	require.NoError(t, err)
 	assert.Equal(t, defaultWaitTimeout, d)
 
-	d, err = parseWaitTimeout("90s")
+	d, err = parseWaitTimeout(oidcInput{flags: map[string]string{"timeout": "90s"}})
 	require.NoError(t, err)
 	assert.Equal(t, 90*time.Second, d)
 }
