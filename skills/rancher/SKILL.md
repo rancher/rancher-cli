@@ -488,6 +488,16 @@ grants it, and `data.bindingsDiscovery.status` before treating an empty
 GRANTED BY as "no binding". Reachable means the proxy admits the identity,
 not that it may do anything inside; ask `access list --cluster <c>` for
 that. A group or service account is refused here.
+`rancher access projects [--cluster <c>] [--as <user>]` says which
+projects a subject can see into: `data.clusters[].projects[].visibility`
+is `all`, `partial`, `none`, or `unknown` (the authorizer's answer to
+getting each project namespace, rolled up), `data.visibleProjects[]` the
+compact list, `data.memberOf.projects[]` the subset the subject is a
+Rancher member of (a ProjectRoleTemplateBinding names it) and
+`data.inheritedAccess[]` what it reaches through cluster or global grants
+without membership. Visibility is not membership and membership is not
+permission; a `null` `data.memberOf` means the binding read failed, not
+"no memberships". A member asking about themselves gets visibility only.
 Never present a role list as permissions.
 
 - `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` -

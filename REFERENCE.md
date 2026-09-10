@@ -613,6 +613,48 @@ binding reads were complete). Exit 0 when every cluster answered, 13 when
 any is `unknown`. `--as` takes a user (name, id, or principal); a group or a
 service account is refused.
 
+`access projects [--cluster <c>] [--as <user>]` answers which projects a
+subject can see into and which of them it is a Rancher member of, and keeps
+the two apart. The projects are what steve lists for you, grouped by
+cluster, each cluster carrying its `access clusters` row; `--cluster`
+restricts the run to one cluster of that set, by id or unique display name.
+For every reachable cluster the command reads the namespaces you see
+through steve (a project member cannot LIST namespaces through the
+Kubernetes API, and steve answers every caller with exactly the namespaces
+their access grants), groups them by the `field.cattle.io/projectId` label,
+and asks the cluster's authorizer, as you or as the impersonated user,
+whether it may get each namespace a project owns: that is the grant Rancher
+gives every member of the project, and false for other projects'
+namespaces. A project's `visibility` is the rollup of those answers:
+`all`, `partial`, `none`, or `unknown` when a review failed, the project
+owns no namespace, or the cluster's namespace read failed
+(`namespaceDiscovery`); each namespace row keeps the server's reason
+verbatim. Membership is a Rancher fact read from the management plane: a
+visible project with a ProjectRoleTemplateBinding naming the subject is in
+`memberOf.projects[]` with the RoleTemplates its bindings name. The set's
+own `complete` is true only when every read the match depends on
+succeeded: the ProjectRoleTemplateBinding LIST, the UserAttribute (the
+cached group principals) and, when you ask about yourself, your own User
+(its principal ids; a `--as` user arrives resolved with them). When one of
+those failed, proven memberships stay, `complete` is false and their
+`grants` are `null`. `memberOf` itself is `null` only when the
+ProjectRoleTemplateBinding read failed ("membership not determined"). A
+visible project reached only through ClusterRoleTemplateBindings or
+GlobalRoleBindings is `inheritedAccess[]`, never a membership; that list is
+`null` ("inherited access not determined") whenever the evidence for an
+exclusive classification is incomplete: the membership reads above, or the
+ClusterRoleTemplateBinding or GlobalRoleBinding LIST, failed. Its entries'
+grants are `null` when a GlobalRoleBinding is among the bindings and the
+GlobalRole read failed. A visible project with no Rancher binding at all
+is noted as such, with the Kubernetes bindings the authorizer's reasons
+credit when every reason parses, and a project whose binding the
+authorizer denies everywhere is a disagreement row, not hidden. Namespaces
+whose label names a project outside your set are listed per cluster and
+never asked about.
+A member asking about themselves gets visibility and no membership: the
+binding reads are refused to them. Exit 0 when every cluster, project and
+namespace answered, 13 when any is `unknown`.
+
 ## Diagnostics & support
 
 `logs`/`support-bundle` cover only what Rancher's own Kubernetes API can reach.
