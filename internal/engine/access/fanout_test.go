@@ -82,7 +82,7 @@ func TestRunFanOutBudgetIsTerminal(t *testing.T) {
 	require.NotNil(t, terminal)
 	assert.Equal(t, outcomeTerminal, terminal.Kind)
 	assert.Equal(t, 0, terminal.Status)
-	require.ErrorContains(t, terminal, "fan-out budget of 50ms exhausted; evaluated 0 of 3")
+	require.ErrorContains(t, terminal, "fan-out budget of 50ms exhausted during the reviews; evaluated 0 of 3")
 }
 
 // TestRunFanOutTerminalAbandonsQueuedMembers asserts that after a terminal
@@ -189,4 +189,22 @@ func TestFanOutContextNamesTheBudgetThatRanOut(t *testing.T) {
 	cancelPlain()
 	_, exhausted = exhaustedBudget(plain)
 	assert.False(t, exhausted, "a plain cancellation is not a budget")
+}
+
+// TestChainIssueFromAnExhaustedBudgetHasTheOneShape asserts the explain
+// chain walker's budget issue reads like every other exhaustion in the
+// package: the budget and the stage, the object read named when there is
+// one.
+func TestChainIssueFromAnExhaustedBudgetHasTheOneShape(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := fanOutContext(t.Context(), 10*time.Millisecond)
+	defer cancel()
+	<-ctx.Done()
+	w := &chainWalker{ctx: ctx}
+	w.requestIssue(stageBindingRead, "ClusterRoleBindings", ctx.Err())
+	require.Len(t, w.issues, 1)
+	assert.Equal(t, "fan-out budget of 10ms exhausted during the chain read of ClusterRoleBindings", w.issues[0].Message)
+	assert.Equal(t, stageBindingRead, w.issues[0].Stage)
+	assert.True(t, w.issues[0].Retryable)
+	assert.Equal(t, "fan-out budget of 10ms exhausted during the chain walk", w.issueOf(ctx.Err()).Message)
 }

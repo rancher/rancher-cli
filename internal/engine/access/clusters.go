@@ -354,6 +354,11 @@ func (c *clustersCmd) probe(parent context.Context, clusters []discoveredCluster
 			out := classifyProbe(id, subject.Name, who, r, evaluated, total)
 			if out.terminal != nil {
 				terminal = out.terminal
+				if r.kind != outcomeAnswer {
+					// A probe the budget cut short is the budget's
+					// message, not the transport's.
+					terminal = budgetErrorWithProgress(parent, out.terminal, "the cluster probes", fmt.Sprintf("evaluated %d of %d clusters", evaluated, total))
+				}
 				cancelProbes()
 				return
 			}
@@ -369,7 +374,8 @@ func (c *clustersCmd) probe(parent context.Context, clusters []discoveredCluster
 		return nil, terminal
 	}
 	if err := parent.Err(); err != nil {
-		return nil, budgetError(parent, clierr.New(clierr.CodeGeneric, fmt.Sprintf("cancelled after %d of %d clusters", evaluated, total)), "the cluster probes")
+		progress := fmt.Sprintf("evaluated %d of %d clusters", evaluated, total)
+		return nil, budgetErrorWithProgress(parent, clierr.New(clierr.CodeGeneric, "cancelled; "+progress), "the cluster probes", progress)
 	}
 	return rows, nil
 }

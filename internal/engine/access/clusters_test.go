@@ -459,3 +459,20 @@ func TestClustersTimeoutFlagInvalidIsValidation(t *testing.T) {
 	require.ErrorContains(t, err, `--timeout "soon" is not a valid duration`)
 	assert.Empty(t, f.caller.Reviews, "nothing was asked")
 }
+
+// TestClustersBudgetExpiryDuringProbesNamesTheStageAndProgress asserts the
+// cluster probe runner's exhaustion message has the package's one shape:
+// the budget, the stage, and how far the probes got (the management
+// cluster's identity review counts as the one evaluated of three).
+func TestClustersBudgetExpiryDuringProbesNamesTheStageAndProgress(t *testing.T) {
+	t.Parallel()
+	cmd, f := callerFixture(t)
+	for _, c := range f.clusters {
+		c.Before = blockUntilDone
+	}
+	_, err := cmd.Execute(t.Context(), fakeInput{strs: map[string]string{flagTimeout: "50ms"}}, nil)
+	require.ErrorContains(t, err, "fan-out budget of 50ms exhausted during the cluster probes; evaluated 1 of 3 clusters")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.False(t, ce.Retryable)
+}

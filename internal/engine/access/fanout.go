@@ -58,13 +58,32 @@ func fanOutContext(ctx context.Context, budget time.Duration) (context.Context, 
 	return context.WithTimeoutCause(ctx, budget, &budgetExhausted{budget})
 }
 
-// budgetError names the budget as the cause when it cancelled the stage.
+// budgetError names the budget and the stage as the cause when the budget
+// cancelled the stage; any other error passes through unchanged. Every
+// exhaustion message in the package has this one shape: "fan-out budget of
+// <budget> exhausted during <stage>", with the stage's progress appended
+// when it has any.
 func budgetError(ctx context.Context, err error, stage string) error {
+	return budgetErrorWithProgress(ctx, err, stage, "")
+}
+
+// budgetErrorWithProgress is budgetError for a stage that had done part of
+// its work when the budget ran out; progress reads like "evaluated 2 of 5".
+func budgetErrorWithProgress(ctx context.Context, err error, stage, progress string) error {
 	budget, exhausted := exhaustedBudget(ctx)
 	if err == nil || !exhausted {
 		return err
 	}
-	return clierr.New(clierr.CodeGeneric, fmt.Sprintf("fan-out budget of %s exhausted during %s; no review was posted", budget, stage))
+	return clierr.New(clierr.CodeGeneric, budgetMessage(budget, stage, progress))
+}
+
+// budgetMessage is the one text of an exhausted budget.
+func budgetMessage(budget time.Duration, stage, progress string) string {
+	msg := fmt.Sprintf("fan-out budget of %s exhausted during %s", budget, stage)
+	if progress != "" {
+		msg += "; " + progress
+	}
+	return msg
 }
 
 // member is one fan-out row: a namespace for can --project and list, a
@@ -165,9 +184,10 @@ feed:
 	// Budget or parent cancellation wins over whatever a member reported
 	// while the context was already dead.
 	if parent.Err() != nil {
-		msg := fmt.Sprintf("cancelled; evaluated %d of %d", evaluated, len(keys))
+		progress := fmt.Sprintf("evaluated %d of %d", evaluated, len(keys))
+		msg := "cancelled; " + progress
 		if budget, exhausted := exhaustedBudget(parent); exhausted {
-			msg = fmt.Sprintf("fan-out budget of %s exhausted; evaluated %d of %d", budget, evaluated, len(keys))
+			msg = budgetMessage(budget, "the reviews", progress)
 		}
 		return nil, &fanOutFailure{Kind: outcomeTerminal, Err: clierr.New(clierr.CodeGeneric, msg)}
 	}

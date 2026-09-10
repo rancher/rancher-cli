@@ -177,8 +177,12 @@ func (w *chainWalker) issue(stage, object, code, message string) {
 // retryability and message. A budget deadline is reported as such.
 func (w *chainWalker) requestIssue(stage, object string, err error) {
 	if budget, exhausted := exhaustedBudget(w.ctx); exhausted {
+		during := "the chain walk"
+		if object != "" {
+			during = "the chain read of " + object
+		}
 		w.issues = append(w.issues, chainIssue{Stage: stage, Object: object, Code: clierr.CodeGeneric, Retryable: true,
-			Message: fmt.Sprintf("fan-out budget of %s exhausted", budget)})
+			Message: budgetMessage(budget, during, "")})
 		return
 	}
 	if ce, ok := errors.AsType[*clierr.Error](err); ok {
