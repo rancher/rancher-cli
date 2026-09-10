@@ -1330,6 +1330,10 @@ func memberProbes() []Probe {
 		mgmtUsers            = "/k8s/clusters/local/apis/management.cattle.io/v3/users"
 		mgmtUserAttributes   = "/k8s/clusters/local/apis/management.cattle.io/v3/userattributes"
 		downstreamNamespaces = "/k8s/clusters/{downstream}/api/v1/namespaces"
+		steveProjects        = "/v1/management.cattle.io.projects"
+		steveNamespaces      = "/k8s/clusters/{downstream}/v1/namespaces"
+		downstreamSSAR       = "/k8s/clusters/{downstream}/apis/authorization.k8s.io/v1/selfsubjectaccessreviews"
+		getNamespaceBody     = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"get","resource":"namespaces","version":"v1","name":"%[1]s","namespace":"%[1]s"}}}`
 		whoBody              = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
 	)
 	// Steve stashes the pre-transform id under _id only when an item goes
@@ -1398,6 +1402,60 @@ func memberProbes() []Probe {
 			Normalize: append(whoamiPrivacyRules(), append(statusRules,
 				// The own-User read carries a condition timestamp.
 				NormalizeRule{Path: "status.conditions.lastUpdateTime", Replace: "<time>"})...),
+		},
+		{
+			// What access projects reads for a member: the steve project
+			// collection (exactly the member's project), the downstream's
+			// steve namespace collection (exactly that project's namespaces,
+			// labeled with the project id) where the Kubernetes LIST is
+			// refused, and the per-namespace review the command asks: get
+			// the namespace, allowed for the project's own namespace and
+			// denied for another project's.
+			Name:               "access-downstream/member-steve-projects-and-namespaces",
+			Downstream:         true,
+			SubstituteCaptures: true,
+			Observations: []Observation{
+				{Name: "projects", Request: RequestSpec{Method: http.MethodGet, Path: steveProjects, Identity: IdentityMember},
+					Captures: map[string]Capture{"project": {Path: "data.0.metadata.name"}}},
+				{Name: "namespaces", Request: RequestSpec{Method: http.MethodGet, Path: steveNamespaces, Identity: IdentityMember}},
+				{Name: "kube-namespaces", Request: RequestSpec{Method: http.MethodGet, Path: downstreamNamespaces, Identity: IdentityMember}},
+				{Name: "get-own-namespace", Request: RequestSpec{Method: http.MethodPost, Path: downstreamSSAR, Body: fmt.Sprintf(getNamespaceBody, "default"), Identity: IdentityMember}},
+				{Name: "get-other-namespace", Request: RequestSpec{Method: http.MethodPost, Path: downstreamSSAR, Body: fmt.Sprintf(getNamespaceBody, "kube-system"), Identity: IdentityMember}},
+			},
+			Normalize: append(statusRules,
+				NormalizeRule{Path: "links", Replace: ""},
+				NormalizeRule{Path: "actions", Replace: ""},
+				NormalizeRule{Path: "pagination", Replace: ""},
+				NormalizeRule{Path: "sort", Replace: ""},
+				NormalizeRule{Path: "filters", Replace: ""},
+				NormalizeRule{Path: "createTypes", Replace: ""},
+				NormalizeRule{Path: "resourceType", Replace: ""},
+				NormalizeRule{Path: "revision", Replace: "<revision>"},
+				NormalizeRule{Path: "data._id", Replace: ""},
+				NormalizeRule{Path: "data.links", Replace: ""},
+				NormalizeRule{Path: "data.actions", Replace: ""},
+				NormalizeRule{Path: "data.status", Replace: ""},
+				// The namespace item keeps its name and labels (the
+				// project mapping); the rest of its metadata is
+				// instance data.
+				NormalizeRule{Path: "data.metadata.annotations", Replace: ""},
+				NormalizeRule{Path: "data.metadata.managedFields", Replace: ""},
+				NormalizeRule{Path: "data.metadata.fields", Replace: ""},
+				NormalizeRule{Path: "data.metadata.creationTimestamp", Replace: ""},
+				NormalizeRule{Path: "data.metadata.resourceVersion", Replace: ""},
+				NormalizeRule{Path: "data.metadata.uid", Replace: ""},
+				NormalizeRule{Path: "data.metadata.relationships", Replace: ""},
+				NormalizeRule{Path: "data.metadata.state", Replace: ""},
+				NormalizeRule{Path: "data.metadata.generation", Replace: ""},
+				// The project item: display name kept, the rest of spec is
+				// instance data; the allowed review's reason names a
+				// generated ClusterRoleBinding.
+				NormalizeRule{Path: "data.spec.resourceQuota", Replace: ""},
+				NormalizeRule{Path: "data.spec.namespaceDefaultResourceQuota", Replace: ""},
+				NormalizeRule{Path: "data.spec.containerDefaultResourceLimit", Replace: ""},
+				NormalizeRule{Path: "data.spec.description", Replace: ""},
+				NormalizeRule{Path: "status.reason", Replace: "<reason>"},
+			),
 		},
 	}
 }

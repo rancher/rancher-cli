@@ -1,0 +1,125 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "projects",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 1,
+        "data": [
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "id": "{downstream}/{project}",
+            "kind": "Project",
+            "metadata": {
+              "finalizers": [
+                "controller.cattle.io/mgmt-project-rbac-remove",
+                "clusterscoped.controller.cattle.io/project-namespace-auth_{downstream}"
+              ],
+              "generateName": "p-",
+              "labels": {
+                "authz.management.cattle.io/default-project": "true"
+              },
+              "name": "{project}",
+              "namespace": "{downstream}"
+            },
+            "spec": {
+              "clusterName": "{downstream}",
+              "displayName": "Default"
+            },
+            "type": "management.cattle.io.project"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "namespaces",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 1,
+        "data": [
+          {
+            "apiVersion": "v1",
+            "id": "default",
+            "kind": "Namespace",
+            "metadata": {
+              "labels": {
+                "field.cattle.io/projectId": "{project}",
+                "kubernetes.io/metadata.name": "default"
+              },
+              "name": "default"
+            },
+            "spec": {
+              "finalizers": [
+                "kubernetes"
+              ]
+            },
+            "type": "namespace"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "kube-namespaces",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "reason": "Forbidden",
+        "status": "Failure"
+      }
+    },
+    {
+      "name": "get-own-namespace",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SelfSubjectAccessReview",
+        "spec": {
+          "resourceAttributes": {
+            "name": "default",
+            "namespace": "default",
+            "resource": "namespaces",
+            "verb": "get",
+            "version": "v1"
+          }
+        },
+        "status": {
+          "allowed": true,
+          "reason": "\u003creason\u003e"
+        }
+      }
+    },
+    {
+      "name": "get-other-namespace",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authorization.k8s.io/v1",
+        "kind": "SelfSubjectAccessReview",
+        "spec": {
+          "resourceAttributes": {
+            "name": "kube-system",
+            "namespace": "kube-system",
+            "resource": "namespaces",
+            "verb": "get",
+            "version": "v1"
+          }
+        },
+        "status": {
+          "allowed": false
+        }
+      }
+    }
+  ]
+}

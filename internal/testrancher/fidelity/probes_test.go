@@ -45,6 +45,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access-downstream/direct-endpoint-shapes",
 		"access-downstream/member-steve-clusters", "access-downstream/member-proxy-whoami",
 		"access-downstream/member-management-refusals",
+		"access-downstream/member-steve-projects-and-namespaces",
 		"access/whoami-through-proxy", "access/impersonate-user-dropped-on-local",
 		"access/rules-review-standard-user-default", "access/self-access-review-with-version",
 		"access/subject-access-review-right-and-anonymous",
@@ -255,11 +256,15 @@ func TestTokenProbesUseTheProductionPathConstant(t *testing.T) {
 	}
 }
 
+// TestFixtureNamesCarryTheFidelityPrefix asserts every fixture a probe
+// creates (a body with object metadata) is named with the fidelity prefix.
+// A review body names the object it asks about under resourceAttributes,
+// creates nothing, and is out of scope.
 func TestFixtureNamesCarryTheFidelityPrefix(t *testing.T) {
 	t.Parallel()
 	for _, p := range All() {
 		for _, o := range p.Observations {
-			if strings.Contains(o.Request.Body, `"name"`) {
+			if strings.Contains(o.Request.Body, `"metadata"`) && strings.Contains(o.Request.Body, `"name"`) {
 				assert.Contains(t, o.Request.Body, "e2e-fid-",
 					"%s %s creates a named fixture without the e2e-fid- prefix", p.Name, o.Name)
 			}
