@@ -14,7 +14,7 @@ runs:
       # The GITHUB_PATH write below is the static $(go env GOPATH)/bin,
       # derived from no untrusted input.
       run: | # zizmor: ignore[github-env]
-        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
         # Later steps must find the binary: GOPATH/bin being on PATH is an
         # image detail we refuse to rely on. The version call also fails the
         # job here, loudly, if the install produced nothing.

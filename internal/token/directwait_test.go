@@ -86,7 +86,7 @@ func (d *directEndpoint) cluster(t *testing.T) *execCluster {
 	t.Helper()
 	ca := d.srv.Certificate().Raw
 	pemCA := pemEncode(ca)
-	return &execCluster{server: d.srv.URL, cfg: &rest.Config{Host: d.srv.URL, TLSClientConfig: rest.TLSClientConfig{CAData: pemCA}}, fingerprint: endpointFingerprint(d.srv.URL, pemCA, "", false, "")}
+	return &execCluster{server: d.srv.URL, cfg: &rest.Config{Host: d.srv.URL, CAData: pemCA}, fingerprint: endpointFingerprint(d.srv.URL, pemCA, "", false, "")}
 }
 
 // execInfo is the KUBERNETES_EXEC_INFO kubectl sets for this endpoint.
@@ -274,13 +274,13 @@ func TestWaitDirectReadySettles(t *testing.T) {
 		assert.False(t, ready)
 	})
 	t.Run("unparsable ca is unavailable", func(t *testing.T) {
-		ec := &execCluster{server: "https://ace.example.test", cfg: &rest.Config{Host: "https://ace.example.test", TLSClientConfig: rest.TLSClientConfig{CAData: []byte("not a pem")}}}
+		ec := &execCluster{server: "https://ace.example.test", cfg: &rest.Config{Host: "https://ace.example.test", CAData: []byte("not a pem")}}
 		_, err := waitDirectReady(t.Context(), ec, "tok", directWaitBound)
 		var unavailable *directProbeUnavailable
 		require.ErrorAs(t, err, &unavailable)
 	})
 	t.Run("cancellation wins over an unparsable ca", func(t *testing.T) {
-		ec := &execCluster{server: "https://ace.example.test", cfg: &rest.Config{Host: "https://ace.example.test", TLSClientConfig: rest.TLSClientConfig{CAData: []byte("not a pem")}}}
+		ec := &execCluster{server: "https://ace.example.test", cfg: &rest.Config{Host: "https://ace.example.test", CAData: []byte("not a pem")}}
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		_, err := waitDirectReady(ctx, ec, "tok", directWaitBound)

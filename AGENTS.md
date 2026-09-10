@@ -10,7 +10,7 @@ operate the CLI itself as an agent, see
 
 ## Build & test
 
-Go 1.26+. Automation is `make`, dispatching to `scripts/`:
+Go 1.27.1+. Automation is `make`, dispatching to `scripts/`:
 
 | Command | Does |
 |---|---|

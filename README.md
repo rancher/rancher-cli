@@ -313,7 +313,7 @@ version floors, offline guarantees, and live-completion detail:
 
 ## Development
 
-Requires Go 1.26+ to build from source:
+Requires Go 1.27.1+ to build from source:
 
     make build        # bin/rancher
     make test         # go test -race -cover ./...

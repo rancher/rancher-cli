@@ -295,7 +295,7 @@ func TestLogsFetchesTail(t *testing.T) {
 
 	t.Run("maps container, tail, previous, timestamps", func(t *testing.T) {
 		t.Parallel()
-		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+		pod := &corev1.Pod{Name: "web", Namespace: "ns1"}
 		cs := k8sfake.NewClientset(pod)
 		r := &dynamicClient{cs: cs}
 
@@ -317,7 +317,7 @@ func TestLogsFetchesTail(t *testing.T) {
 
 	t.Run("SinceSeconds nil means no limit", func(t *testing.T) {
 		t.Parallel()
-		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+		pod := &corev1.Pod{Name: "web", Namespace: "ns1"}
 		cs := k8sfake.NewClientset(pod)
 		r := &dynamicClient{cs: cs}
 
@@ -328,7 +328,7 @@ func TestLogsFetchesTail(t *testing.T) {
 
 	t.Run("TailLines nil means no limit, not a request for zero lines", func(t *testing.T) {
 		t.Parallel()
-		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+		pod := &corev1.Pod{Name: "web", Namespace: "ns1"}
 		cs := k8sfake.NewClientset(pod)
 		r := &dynamicClient{cs: cs}
 
@@ -339,7 +339,7 @@ func TestLogsFetchesTail(t *testing.T) {
 
 	t.Run("SinceSeconds set is passed through verbatim, including zero", func(t *testing.T) {
 		t.Parallel()
-		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "ns1"}}
+		pod := &corev1.Pod{Name: "web", Namespace: "ns1"}
 		cs := k8sfake.NewClientset(pod)
 		r := &dynamicClient{cs: cs}
 		zero := int64(0)
@@ -523,8 +523,8 @@ func TestLogsKeepsTheServersRefusalMessage(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tc.status)
 				_ = json.NewEncoder(w).Encode(metav1.Status{
-					TypeMeta: metav1.TypeMeta{Kind: "Status", APIVersion: "v1"},
-					Status:   metav1.StatusFailure, Message: msg, Reason: tc.reason, Code: int32(tc.status),
+					Kind: "Status", APIVersion: "v1",
+					Status: metav1.StatusFailure, Message: msg, Reason: tc.reason, Code: int32(tc.status),
 				})
 			}))
 			t.Cleanup(srv.Close)

@@ -1538,15 +1538,11 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 	}
 
 	provider := &AzureADProvider{
-		OAuthProvider: OAuthProvider{
-			ClientID: "test-client",
-			Scopes:   []string{"openid"},
-			OAuthEndpoint: OAuthEndpoint{
-				AuthURL:       "https://idp.example/authorize",
-				DeviceAuthURL: "https://idp.example/devicecode",
-				TokenURL:      "https://idp.example/token",
-			},
-		},
+		ClientID:      "test-client",
+		Scopes:        []string{"openid"},
+		AuthURL:       "https://idp.example/authorize",
+		DeviceAuthURL: "https://idp.example/devicecode",
+		TokenURL:      "https://idp.example/token",
 	}
 	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: http.DefaultClient}
 
@@ -1584,15 +1580,11 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 	}
 
 	provider := &AzureADProvider{
-		OAuthProvider: OAuthProvider{
-			ClientID: "test-client",
-			Scopes:   []string{"openid"},
-			OAuthEndpoint: OAuthEndpoint{
-				AuthURL:       "https://idp.example/authorize",  // never reached
-				DeviceAuthURL: "https://idp.example/devicecode", // never reached
-				TokenURL:      "https://idp.example/token",
-			},
-		},
+		ClientID:      "test-client",
+		Scopes:        []string{"openid"},
+		AuthURL:       "https://idp.example/authorize",  // never reached
+		DeviceAuthURL: "https://idp.example/devicecode", // never reached
+		TokenURL:      "https://idp.example/token",
 	}
 	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: http.DefaultClient}
 
@@ -1628,15 +1620,11 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 	}
 
 	provider := &AzureADProvider{
-		OAuthProvider: OAuthProvider{
-			ClientID: "test-client",
-			Scopes:   []string{"openid"},
-			OAuthEndpoint: OAuthEndpoint{
-				AuthURL:       "https://idp.example/authorize",  // never reached
-				DeviceAuthURL: "https://idp.example/devicecode", // never reached
-				TokenURL:      "https://idp.example/token",
-			},
-		},
+		ClientID:      "test-client",
+		Scopes:        []string{"openid"},
+		AuthURL:       "https://idp.example/authorize",  // never reached
+		DeviceAuthURL: "https://idp.example/devicecode", // never reached
+		TokenURL:      "https://idp.example/token",
 	}
 	input := &loginInput{server: "http://ignored", authProvider: "azureADProvider", idpClient: http.DefaultClient}
 
@@ -1693,15 +1681,11 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 	}
 
 	provider := &AzureADProvider{
-		OAuthProvider: OAuthProvider{
-			ClientID: "test-client",
-			Scopes:   []string{"openid"},
-			OAuthEndpoint: OAuthEndpoint{
-				AuthURL:       idp.URL + "/authorize",
-				DeviceAuthURL: idp.URL + "/devicecode",
-				TokenURL:      idp.URL + "/token",
-			},
-		},
+		ClientID:      "test-client",
+		Scopes:        []string{"openid"},
+		AuthURL:       idp.URL + "/authorize",
+		DeviceAuthURL: idp.URL + "/devicecode",
+		TokenURL:      idp.URL + "/token",
 	}
 	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: idp.Client()}
 

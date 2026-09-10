@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -21,7 +20,7 @@ func widgetCRD() *apiextv1.CustomResourceDefinition {
 	scope := apiextv1.NamespaceScoped
 	preserve := true
 	return &apiextv1.CustomResourceDefinition{
-		ObjectMeta: metav1.ObjectMeta{Name: "widgets.test.rancher.io"},
+		Name: "widgets.test.rancher.io",
 		Spec: apiextv1.CustomResourceDefinitionSpec{
 			Group: "test.rancher.io", Scope: scope,
 			Names: apiextv1.CustomResourceDefinitionNames{Plural: "widgets", Kind: "Widget", ListKind: "WidgetList", Singular: "widget"},

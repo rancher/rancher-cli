@@ -31,7 +31,7 @@ func aggregatedGroup(name, version string, fresh apidiscoveryv2.DiscoveryFreshne
 	for _, r := range resources {
 		v.Resources = append(v.Resources, apidiscoveryv2.APIResourceDiscovery{Resource: r, Scope: apidiscoveryv2.ScopeNamespace, Verbs: []string{"get", "list"}})
 	}
-	return apidiscoveryv2.APIGroupDiscovery{ObjectMeta: metav1.ObjectMeta{Name: name}, Versions: []apidiscoveryv2.APIVersionDiscovery{v}}
+	return apidiscoveryv2.APIGroupDiscovery{Name: name, Versions: []apidiscoveryv2.APIVersionDiscovery{v}}
 }
 
 // legacyDiscovery serves the pre-aggregation discovery documents client-go
@@ -40,17 +40,17 @@ func aggregatedGroup(name, version string, fresh apidiscoveryv2.DiscoveryFreshne
 func legacyDiscovery(w http.ResponseWriter, r *http.Request) bool {
 	switch r.URL.Path {
 	case "/api":
-		writeJSON(w, "application/json", metav1.APIVersions{TypeMeta: metav1.TypeMeta{Kind: "APIVersions"}, Versions: []string{"v1"}})
+		writeJSON(w, "application/json", metav1.APIVersions{Kind: "APIVersions", Versions: []string{"v1"}})
 	case "/api/v1":
-		writeJSON(w, "application/json", metav1.APIResourceList{TypeMeta: metav1.TypeMeta{Kind: "APIResourceList"}, GroupVersion: "v1",
+		writeJSON(w, "application/json", metav1.APIResourceList{Kind: "APIResourceList", GroupVersion: "v1",
 			APIResources: []metav1.APIResource{{Name: "pods", SingularName: "pod", Kind: "Pod", Namespaced: true, Verbs: []string{"get", "list"}}}})
 	case "/apis":
-		writeJSON(w, "application/json", metav1.APIGroupList{TypeMeta: metav1.TypeMeta{Kind: "APIGroupList"}, Groups: []metav1.APIGroup{
+		writeJSON(w, "application/json", metav1.APIGroupList{Kind: "APIGroupList", Groups: []metav1.APIGroup{
 			{Name: "a.example", Versions: []metav1.GroupVersionForDiscovery{{GroupVersion: "a.example/v1", Version: "v1"}}, PreferredVersion: metav1.GroupVersionForDiscovery{GroupVersion: "a.example/v1", Version: "v1"}},
 			{Name: "b.example", Versions: []metav1.GroupVersionForDiscovery{{GroupVersion: "b.example/v1", Version: "v1"}}, PreferredVersion: metav1.GroupVersionForDiscovery{GroupVersion: "b.example/v1", Version: "v1"}},
 		}})
 	case "/apis/a.example/v1":
-		writeJSON(w, "application/json", metav1.APIResourceList{TypeMeta: metav1.TypeMeta{Kind: "APIResourceList"}, GroupVersion: "a.example/v1",
+		writeJSON(w, "application/json", metav1.APIResourceList{Kind: "APIResourceList", GroupVersion: "a.example/v1",
 			APIResources: []metav1.APIResource{{Name: "widgets", Kind: "Widget", Namespaced: true, Verbs: []string{"get"}}}})
 	case "/apis/b.example/v1":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -81,10 +81,10 @@ func TestServerResourcesAggregatedMarksStaleGroup(t *testing.T) {
 		accepts.Store(r.Header.Get("Accept"))
 		switch r.URL.Path {
 		case "/api":
-			writeJSON(w, aggregatedContentType, apidiscoveryv2.APIGroupDiscoveryList{TypeMeta: metav1.TypeMeta{Kind: "APIGroupDiscoveryList"},
+			writeJSON(w, aggregatedContentType, apidiscoveryv2.APIGroupDiscoveryList{Kind: "APIGroupDiscoveryList",
 				Items: []apidiscoveryv2.APIGroupDiscovery{aggregatedGroup("", "v1", apidiscoveryv2.DiscoveryFreshnessCurrent, "pods")}})
 		case "/apis":
-			writeJSON(w, aggregatedContentType, apidiscoveryv2.APIGroupDiscoveryList{TypeMeta: metav1.TypeMeta{Kind: "APIGroupDiscoveryList"},
+			writeJSON(w, aggregatedContentType, apidiscoveryv2.APIGroupDiscoveryList{Kind: "APIGroupDiscoveryList",
 				Items: []apidiscoveryv2.APIGroupDiscovery{
 					aggregatedGroup("a.example", "v1", apidiscoveryv2.DiscoveryFreshnessCurrent, "widgets"),
 					aggregatedGroup("dead.example", "v1beta1", apidiscoveryv2.DiscoveryFreshnessStale),
@@ -164,7 +164,7 @@ func TestServerResourcesCompleteAnswerHasNoError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/apis/b.example/v1" {
-			writeJSON(w, "application/json", metav1.APIResourceList{TypeMeta: metav1.TypeMeta{Kind: "APIResourceList"}, GroupVersion: "b.example/v1",
+			writeJSON(w, "application/json", metav1.APIResourceList{Kind: "APIResourceList", GroupVersion: "b.example/v1",
 				APIResources: []metav1.APIResource{{Name: "widgets", Kind: "Widget", Namespaced: true, Verbs: []string{"get"}}}})
 			return
 		}
@@ -229,7 +229,7 @@ func TestAggregatedResourcesRejectsOversizedDocument(t *testing.T) {
 		for i := range 8 {
 			groups = append(groups, aggregatedGroup("group"+string(rune('a'+i))+".example", "v1", apidiscoveryv2.DiscoveryFreshnessCurrent, "widgets"))
 		}
-		writeJSON(w, aggregatedContentType, apidiscoveryv2.APIGroupDiscoveryList{TypeMeta: metav1.TypeMeta{Kind: "APIGroupDiscoveryList"}, Items: groups})
+		writeJSON(w, aggregatedContentType, apidiscoveryv2.APIGroupDiscoveryList{Kind: "APIGroupDiscoveryList", Items: groups})
 	}))
 	defer srv.Close()
 	c := discoveryClient(t, srv).(*dynamicClient)

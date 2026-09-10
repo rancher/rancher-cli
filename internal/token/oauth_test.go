@@ -368,7 +368,7 @@ func TestEndpointGateStopsBothFlowsBeforeSideEffects(t *testing.T) {
 				case "tokenUrl":
 					ep.TokenURL = value
 				}
-				provider := &AzureADProvider{OAuthProvider: OAuthProvider{ClientID: "c", Scopes: []string{"openid"}, OAuthEndpoint: ep}}
+				provider := &AzureADProvider{ClientID: "c", Scopes: []string{"openid"}, OAuthEndpoint: ep}
 				rt := &countingTransport{}
 				input := &loginInput{server: "https://rancher.example", authProvider: "azureADProvider", idpClient: &http.Client{Transport: rt}}
 				var opened atomic.Int32
@@ -387,10 +387,9 @@ func TestEndpointGateStopsBothFlowsBeforeSideEffects(t *testing.T) {
 // endpoints are not required to share an origin.
 func TestNewOauthConfigAcceptsEndpointsOnDifferentOrigins(t *testing.T) {
 	t.Parallel()
-	provider := &AzureADProvider{OAuthProvider: OAuthProvider{
-		ClientID:      "c",
-		OAuthEndpoint: OAuthEndpoint{AuthURL: "https://a.example/authorize", DeviceAuthURL: "https://b.example/devicecode", TokenURL: "https://c.example/token"},
-	}}
+	provider := &AzureADProvider{
+		ClientID: "c",
+		AuthURL:  "https://a.example/authorize", DeviceAuthURL: "https://b.example/devicecode", TokenURL: "https://c.example/token"}
 	cfg, err := newOauthConfig(provider)
 	require.NoError(t, err)
 	assert.Equal(t, "https://c.example/token", cfg.Endpoint.TokenURL)

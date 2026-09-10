@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // TestFetchDiscoveryDropsStaleGroups asserts completion's discovery goes
@@ -25,16 +24,16 @@ func TestFetchDiscoveryDropsStaleGroups(t *testing.T) {
 		doc.Kind = "APIGroupDiscoveryList"
 		switch r.URL.Path {
 		case "/k8s/clusters/c-1/api":
-			doc.Items = []apidiscoveryv2.APIGroupDiscovery{{ObjectMeta: metav1.ObjectMeta{Name: ""}, Versions: []apidiscoveryv2.APIVersionDiscovery{{
+			doc.Items = []apidiscoveryv2.APIGroupDiscovery{{Name: "", Versions: []apidiscoveryv2.APIVersionDiscovery{{
 				Version: "v1", Freshness: apidiscoveryv2.DiscoveryFreshnessCurrent,
 				Resources: []apidiscoveryv2.APIResourceDiscovery{{Resource: "pods", Scope: apidiscoveryv2.ScopeNamespace, Verbs: []string{"get"},
 					Subresources: []apidiscoveryv2.APISubresourceDiscovery{{Subresource: "log", Verbs: []string{"get"}}}}},
 			}}}}
 		case "/k8s/clusters/c-1/apis":
 			doc.Items = []apidiscoveryv2.APIGroupDiscovery{
-				{ObjectMeta: metav1.ObjectMeta{Name: "apps"}, Versions: []apidiscoveryv2.APIVersionDiscovery{{Version: "v1", Freshness: apidiscoveryv2.DiscoveryFreshnessCurrent,
+				{Name: "apps", Versions: []apidiscoveryv2.APIVersionDiscovery{{Version: "v1", Freshness: apidiscoveryv2.DiscoveryFreshnessCurrent,
 					Resources: []apidiscoveryv2.APIResourceDiscovery{{Resource: "deployments", Scope: apidiscoveryv2.ScopeNamespace, Verbs: []string{"get"}}}}}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "dead.example"}, Versions: []apidiscoveryv2.APIVersionDiscovery{{Version: "v1beta1", Freshness: apidiscoveryv2.DiscoveryFreshnessStale,
+				{Name: "dead.example", Versions: []apidiscoveryv2.APIVersionDiscovery{{Version: "v1beta1", Freshness: apidiscoveryv2.DiscoveryFreshnessStale,
 					Resources: []apidiscoveryv2.APIResourceDiscovery{{Resource: "widgets", Scope: apidiscoveryv2.ScopeNamespace, Verbs: []string{"get"}}}}}},
 			}
 		default:

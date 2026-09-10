@@ -18,7 +18,7 @@ import (
 func TestResourcesFromAggregatedPicksPreferredAndMarksStale(t *testing.T) {
 	t.Parallel()
 	doc := &apidiscoveryv2.APIGroupDiscoveryList{Items: []apidiscoveryv2.APIGroupDiscovery{
-		{ObjectMeta: metav1.ObjectMeta{Name: "apps"}, Versions: []apidiscoveryv2.APIVersionDiscovery{{
+		{Name: "apps", Versions: []apidiscoveryv2.APIVersionDiscovery{{
 			Version: "v1", Freshness: apidiscoveryv2.DiscoveryFreshnessCurrent,
 			Resources: []apidiscoveryv2.APIResourceDiscovery{{
 				Resource: "deployments", SingularResource: "deployment", Scope: apidiscoveryv2.ScopeNamespace,
@@ -26,7 +26,7 @@ func TestResourcesFromAggregatedPicksPreferredAndMarksStale(t *testing.T) {
 				Subresources: []apidiscoveryv2.APISubresourceDiscovery{{Subresource: "scale", ResponseKind: &metav1.GroupVersionKind{Kind: "Scale"}, Verbs: []string{"get", "update"}}},
 			}},
 		}}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "dead.example"}, Versions: []apidiscoveryv2.APIVersionDiscovery{
+		{Name: "dead.example", Versions: []apidiscoveryv2.APIVersionDiscovery{
 			{Version: "v1beta1", Freshness: apidiscoveryv2.DiscoveryFreshnessStale},
 			{Version: "v1alpha1", Freshness: apidiscoveryv2.DiscoveryFreshnessCurrent, Resources: []apidiscoveryv2.APIResourceDiscovery{{Resource: "widgets", Scope: apidiscoveryv2.ScopeCluster}}},
 		}},

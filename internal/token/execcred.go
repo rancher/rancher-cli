@@ -19,8 +19,8 @@ type execCredential struct {
 
 func newExecCredential(token string, expiry time.Time) *execCredential {
 	c := &execCredential{
-		typeMeta: typeMeta{Kind: "ExecCredential", APIVersion: "client.authentication.k8s.io/v1beta1"},
-		Status:   &execCredentialStatus{Token: token},
+		Kind: "ExecCredential", APIVersion: "client.authentication.k8s.io/v1beta1",
+		Status: &execCredentialStatus{Token: token},
 	}
 	if !expiry.IsZero() {
 		c.Status.ExpirationTimestamp = &expiry
