@@ -361,7 +361,7 @@ func cmdFlipStatus(ts *testscript.TestScript, neg bool, args []string) {
 	if err != nil {
 		ts.Fatalf("flipstatus: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		ts.Fatalf("flipstatus: shim returned %s", resp.Status)
 	}

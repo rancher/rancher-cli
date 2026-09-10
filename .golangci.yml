@@ -1,5 +1,12 @@
 version: "2"
 
+# The envtest and e2e suites live behind build tags; without them here the
+# analyzers never see those test files.
+run:
+  build-tags:
+    - envtest
+    - e2e
+
 # Pinned lint policy for the Go modernization sweep (see AGENTS.md's
 # "Modern Go for the pinned toolchain" convention). `default: standard`
 # keeps golangci-lint's built-in default set (errcheck, gosimple, govet,
