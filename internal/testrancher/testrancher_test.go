@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1069,4 +1070,39 @@ func TestFacadeSetDeleteModeHangsUntilTheRequestEnds(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	_, alive := f.TokenOwner(name)
 	assert.True(t, alive)
+}
+
+// TestDerivedCreateAuthenticatesBeforeTheHook asserts a bearer revoked while
+// the create hook holds the request still creates the token: authentication
+// happened on arrival, as Rancher's filter does, so a caller that gives up
+// and revokes its credential cannot turn the create it abandoned into a 401.
+func TestDerivedCreateAuthenticatesBeforeTheHook(t *testing.T) {
+	t.Parallel()
+	var f *testrancher.Facade
+	var srv *httptest.Server
+	var creates atomic.Int32
+	f, srv = newFacade(t, testrancher.Options{SeedToken: "e2e:secret", DerivedCreateHook: func(r *http.Request) {
+		if creates.Add(1) != 2 {
+			return
+		}
+		// Revoke the credential the second create arrived with, with the
+		// seed bearer, and wait for the revocation to land.
+		resp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/fac-token-1", nil, "e2e:secret")
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	}}, &recordingHandler{})
+
+	_, createBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath, map[string]any{"spec": map[string]any{}}, "e2e:secret")
+	var tok struct {
+		Status struct {
+			BearerToken string `json:"bearerToken"`
+		}
+	}
+	require.NoError(t, json.Unmarshal(createBody, &tok))
+	require.NotEmpty(t, tok.Status.BearerToken)
+
+	resp, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
+		map[string]any{"spec": map[string]any{"clusterName": "c-test", "description": "[op:abc]"}}, tok.Status.BearerToken)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	assert.Equal(t, []string{"fac-token-2"}, f.TokensWithDescriptionContaining("ext", "[op:abc]"), "the create the hook held still produced its token")
+	assert.False(t, f.ValidBearer(tok.Status.BearerToken), "the revocation landed")
 }

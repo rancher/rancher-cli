@@ -783,17 +783,22 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.derivedCreates++
 	f.mu.Unlock()
-	if f.opts.DerivedCreateHook != nil {
-		f.opts.DerivedCreateHook(r)
-	}
 
 	if f.opts.Legacy {
 		http.NotFound(w, r)
 		return
 	}
+	// The bearer is authenticated, and its owner read, before the hook
+	// runs, as Rancher's authentication filter precedes the handler: a
+	// credential revoked while the hook holds the request (a caller that
+	// gave up and is cleaning up) does not turn this create into a 401.
 	if !f.authorizedBearer(r) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
+	}
+	owner, _ := f.BearerOwner(bearerFromHeader(r))
+	if f.opts.DerivedCreateHook != nil {
+		f.opts.DerivedCreateHook(r)
 	}
 
 	var createReq struct {
@@ -805,7 +810,6 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.Unmarshal(body, &createReq)
 
-	owner, _ := f.BearerOwner(bearerFromHeader(r))
 	role := "derived"
 	if createReq.Spec.ClusterName != "" {
 		role = "cluster"
