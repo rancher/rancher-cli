@@ -48,8 +48,8 @@ func (i cmdInput) Args() []string               { return i.c.Args().Slice() }
 // leafName returns the last space-separated token of a command name
 // ("auth status" -> "status") for use as the urfave leaf/subcommand name.
 func leafName(fullName string) string {
-	if idx := strings.LastIndex(fullName, " "); idx >= 0 {
-		return fullName[idx+1:]
+	if _, leaf, found := strings.CutLast(fullName, " "); found {
+		return leaf
 	}
 	return fullName
 }
@@ -58,8 +58,8 @@ func leafName(fullName string) string {
 // "auth", "get pod" -> "get", "schema" -> ""). The registration loop checks it
 // against the entry's declared group.
 func groupName(fullName string) string {
-	if idx := strings.LastIndex(fullName, " "); idx >= 0 {
-		return fullName[:idx]
+	if group, _, found := strings.CutLast(fullName, " "); found {
+		return group
 	}
 	return ""
 }
