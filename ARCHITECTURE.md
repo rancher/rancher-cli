@@ -78,7 +78,7 @@ what drifted the previous revision of this doc).
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
 | `internal/skillinstall` | Installs the embedded rancher agents skill into coding-agent harness skill directories (claude, codex, copilot, agents) with env-override support, user/project scope resolution, presence detection, and provenance/digest stamping. |
 | `internal/testrancher` | Test-only fake of Rancher's public auth surface (`/v1-public/*`) and the ext.cattle.io/v1 Token store's imperative create/revoke behavior, for the e2e harness and unit tests. No production package may import it. |
-| `internal/testrancher/fidelity` | The fidelity oracle for that fake: data-defined probes recorded against a real, digest-pinned Rancher (`make e2e-real`) and replayed against the composite facade by `make e2e`, so drift from real-server behavior fails the build or is pinned as an explicit, machine-checked divergence. Probes marked `Downstream: true` run against the k3s cluster the oracle imports on every boot (`make e2e-real` exports its id as `E2E_REAL_DOWNSTREAM`), or against a Rancher you run yourself with its own downstream cluster (`make e2e-real-downstream`); they are skipped when no downstream id is exported. Test-only. |
+| `internal/testrancher/fidelity` | The fidelity oracle for that fake: data-defined probes recorded against a real, digest-pinned Rancher (`make e2e-fidelity`) and replayed against the composite facade by `make e2e`, so drift from real-server behavior fails the build or is pinned as an explicit, machine-checked divergence. Probes marked `Downstream: true` run against the k3s cluster the oracle imports on every boot (`make e2e-fidelity` exports its id as `E2E_FIDELITY_DOWNSTREAM`), or against a Rancher you run yourself with its own downstream cluster (`make e2e-fidelity-downstream`); they are skipped when no downstream id is exported. Test-only. |
 
 ## Package dependency diagram
 
@@ -646,7 +646,7 @@ now and added when the first consumer needs it: migrating `internal/token` off i
 hand-rolled Norman HTTP, the `auth status` preflight, and a future `rancher kubeconfig`
 command. The factory struct is the seam that will later hand out both.
 
-**Two-layer e2e test shim.** `e2e/harness_test.go`'s router - a bearer check plus the
+**Two-layer e2e test shim.** `test/e2e/harness_test.go`'s router - a bearer check plus the
 `/k8s/clusters/<id>` proxy into envtest - stays exactly what it always was: a router, not
 a Rancher emulator. `internal/testrancher` is a separate facade layered in front of it:
 the public auth endpoints (`/v1-public/authproviders`, `/v1-public/login`) and the

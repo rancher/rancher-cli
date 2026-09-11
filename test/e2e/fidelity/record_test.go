@@ -1,9 +1,10 @@
-//go:build e2e_real
+//go:build e2e_fidelity
 
-// Package real records and verifies the fidelity oracle goldens against a
-// live Rancher booted by scripts/e2e-real. It never runs in make test or
-// make e2e.
-package real
+// Package fidelity_test records and verifies the fidelity oracle goldens
+// against a live Rancher booted by scripts/e2e-fidelity: the recordings the
+// e2e suite and the unit tests replay. It never runs in make test or make
+// e2e.
+package fidelity_test
 
 import (
 	"flag"
@@ -20,12 +21,12 @@ import (
 var update = flag.Bool("update", false, "record oracle goldens from the real server")
 
 func TestOracle(t *testing.T) {
-	tgt, err := fidelity.NewRealTargetFromEnv()
+	tgt, err := fidelity.NewOracleTargetFromEnv()
 	require.NoError(t, err)
-	oracleImage := os.Getenv("E2E_REAL_ORACLE_IMAGE")
-	require.NotEmpty(t, oracleImage, "E2E_REAL_ORACLE_IMAGE must be set (run via scripts/e2e-real)")
+	oracleImage := os.Getenv("E2E_FIDELITY_ORACLE_IMAGE")
+	require.NotEmpty(t, oracleImage, "E2E_FIDELITY_ORACLE_IMAGE must be set (run via scripts/e2e-fidelity)")
 
-	dir := filepath.Join("..", "..", "internal", "testrancher", "fidelity", "testdata", "oracle")
+	dir := filepath.Join("..", "..", "..", "internal", "testrancher", "fidelity", "testdata", "oracle")
 	for _, p := range fidelity.All() {
 		t.Run(p.Name, func(t *testing.T) {
 			if p.Downstream {
@@ -41,7 +42,7 @@ func TestOracle(t *testing.T) {
 				return
 			}
 			want, err := fidelity.LoadGolden(path)
-			require.NoError(t, err, "no oracle golden for %s: run make e2e-real-update", p.Name)
+			require.NoError(t, err, "no oracle golden for %s: run make e2e-fidelity-update", p.Name)
 			require.Equal(t, oracleImage, want.OracleImage,
 				"golden was recorded against a different oracle image; bump and re-record deliberately")
 			assert.Empty(t, fidelity.Diff(want, got), "the real server drifted from its recorded golden")

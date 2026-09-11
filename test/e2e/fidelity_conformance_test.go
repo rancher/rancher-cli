@@ -27,8 +27,8 @@ var updateFacade = flag.Bool("update-facade", false,
 	"record facade goldens for divergence-pinned probes (wave-4 reconciliation)")
 
 // fidelityDir is the fidelity library's testdata root, relative to this
-// package directory (e2e/).
-var fidelityDir = filepath.Join("..", "internal", "testrancher", "fidelity", "testdata")
+// package directory (test/e2e/).
+var fidelityDir = filepath.Join("..", "..", "internal", "testrancher", "fidelity", "testdata")
 
 // compositeTarget is the fidelity Target for the same facade-plus-envtest
 // composite TestScenarios wires per script: testrancher.Facade in front, the
@@ -150,7 +150,7 @@ func TestFidelityConformance(t *testing.T) {
 			}
 			oracle, err := fidelity.LoadGolden(fidelity.GoldenPath(filepath.Join(fidelityDir, "oracle"), p.Name))
 			if errors.Is(err, os.ErrNotExist) {
-				t.Skipf("no oracle golden yet: record with make e2e-real-update")
+				t.Skipf("no oracle golden yet: record with make e2e-fidelity-update")
 			}
 			require.NoError(t, err)
 

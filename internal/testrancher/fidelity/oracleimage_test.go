@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// parseScriptImagePin extracts a NAME="..." assignment from scripts/e2e-real.
+// parseScriptImagePin extracts a NAME="..." assignment from scripts/e2e-fidelity.
 // Anchoring on line start and tolerating surrounding whitespace around "="
 // keeps the match from drifting onto the prose comments above the two image
 // pins, while still catching a reformatted literal.
@@ -21,17 +21,17 @@ func parseScriptImagePin(t *testing.T, script, name string) string {
 	t.Helper()
 	re := regexp.MustCompile(fmt.Sprintf(`(?m)^\s*%s\s*=\s*"([^"]*)"\s*$`, regexp.QuoteMeta(name)))
 	m := re.FindStringSubmatch(script)
-	require.NotEmptyf(t, m, "scripts/e2e-real: no %s=\"...\" assignment found - the pin literal moved or was removed", name)
+	require.NotEmptyf(t, m, "scripts/e2e-fidelity: no %s=\"...\" assignment found - the pin literal moved or was removed", name)
 	return m[1]
 }
 
-// TestOracleImagePinsMatchGoldens asserts scripts/e2e-real's community
+// TestOracleImagePinsMatchGoldens asserts scripts/e2e-fidelity's community
 // ORACLE_IMAGE pin equals the oracleImage recorded in every golden that
 // carries one, and that PRIME_ORACLE_IMAGE stays distinct from it and
 // pointed at the Prime registry. A community pin bump with no matching
 // golden re-record fails this test instead of shipping silently on a PR.
 func TestOracleImagePinsMatchGoldens(t *testing.T) {
-	scriptPath := filepath.Join("..", "..", "..", "scripts", "e2e-real")
+	scriptPath := filepath.Join("..", "..", "..", "scripts", "e2e-fidelity")
 	raw, err := os.ReadFile(scriptPath)
 	require.NoError(t, err)
 	script := string(raw)
@@ -65,7 +65,7 @@ func TestOracleImagePinsMatchGoldens(t *testing.T) {
 			return nil
 		}
 		checked++
-		assert.Equal(t, oracleImage, g.OracleImage, "%s: oracleImage does not match scripts/e2e-real's ORACLE_IMAGE pin", path)
+		assert.Equal(t, oracleImage, g.OracleImage, "%s: oracleImage does not match scripts/e2e-fidelity's ORACLE_IMAGE pin", path)
 		return nil
 	})
 	require.NoError(t, err)

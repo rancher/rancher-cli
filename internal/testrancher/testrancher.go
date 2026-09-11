@@ -87,7 +87,7 @@ const (
 
 	// PasswordChangeRequestsCollectionPath is the ext PasswordChangeRequest
 	// collection behind the local-cluster proxy: create-only, no CRD
-	// registered for it in e2e/testdata/crds (a plain CRD would reject the
+	// registered for it in test/e2e/testdata/crds (a plain CRD would reject the
 	// unnamed create the real command sends, or persist an object no
 	// controller ever confirms), so the facade owns the route outright.
 	PasswordChangeRequestsCollectionPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/passwordchangerequests"
@@ -1391,7 +1391,7 @@ type crtFixture struct {
 
 // crtFixtures spans multiple namespaces (Task 5, spec D-4 review R3-3's
 // namespace-filter test fixture set): "c-fixture" is the namespace
-// e2e/scripts/registration-token.txtar addresses; "c-other" exists purely
+// test/e2e/scripts/registration-token.txtar addresses; "c-other" exists purely
 // so a bare `get clusterregistrationtoken` (no --namespace) proves more
 // than one namespace is present, and so a --namespace c-fixture read never
 // leaks c-other's token.

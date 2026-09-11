@@ -6,6 +6,7 @@ run:
   build-tags:
     - envtest
     - e2e
+    - e2e_fidelity
 
 # Pinned lint policy for the Go modernization sweep (see AGENTS.md's
 # "Modern Go for the pinned toolchain" convention). `default: standard`

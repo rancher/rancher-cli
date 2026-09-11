@@ -22,7 +22,7 @@ import (
 )
 
 // pemFromServer encodes srv's TLS certificate as a CERTIFICATE PEM block -
-// the same encoding e2e/harness_test.go uses for its TLS shim's CA material.
+// the same encoding test/e2e/harness_test.go uses for its TLS shim's CA material.
 func pemFromServer(t *testing.T, srv *httptest.Server) []byte {
 	t.Helper()
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})

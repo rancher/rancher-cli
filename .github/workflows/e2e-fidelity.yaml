@@ -1,4 +1,4 @@
-name: e2e-real
+name: e2e-fidelity
 
 # Fidelity oracle: boots the digest-pinned rancher/rancher image in Docker
 # and verifies the recorded goldens against it (~15 min). Too heavy for PRs:
@@ -12,10 +12,10 @@ on:
 permissions:
   contents: read
 
-# The oracle is a singleton (scripts/e2e-real holds a host lock); never run
+# The oracle is a singleton (scripts/e2e-fidelity holds a host lock); never run
 # two at once, and never cancel a run that is mid-boot.
 concurrency:
-  group: e2e-real
+  group: e2e-fidelity
   cancel-in-progress: false
 
 jobs:
@@ -41,4 +41,4 @@ jobs:
       # from a bug.
       - name: Host resources before boot
         run: df -h / && free -m && nproc
-      - run: make e2e-real
+      - run: make e2e-fidelity

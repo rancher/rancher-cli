@@ -54,10 +54,10 @@ func (l *LazyBearer) Get(provision func() (string, error)) (string, error) {
 	return v, nil
 }
 
-// RealTarget is the recorded oracle: a real Rancher reached through the
-// E2E_REAL_* environment scripts/e2e-real exports. Standard and revoked
+// OracleTarget is the recorded oracle: a real Rancher reached through the
+// E2E_FIDELITY_* environment scripts/e2e-fidelity exports. Standard and revoked
 // bearers are provisioned lazily against the live server and memoized.
-type RealTarget struct {
+type OracleTarget struct {
 	baseURL    string
 	client     *http.Client
 	admin      string
@@ -68,23 +68,23 @@ type RealTarget struct {
 	revoked  LazyBearer
 }
 
-// systemCACert is the literal E2E_REAL_CACERT value that means "trust the
+// systemCACert is the literal E2E_FIDELITY_CACERT value that means "trust the
 // operating system's root store" instead of an inline PEM - the shape an
 // external target with a publicly trusted certificate needs, since it has
 // no CA of its own to pin.
 const systemCACert = "system"
 
-// NewRealTargetFromEnv builds the oracle client from E2E_REAL_URL,
-// E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT (inline PEM, or the literal
+// NewOracleTargetFromEnv builds the oracle client from E2E_FIDELITY_URL,
+// E2E_FIDELITY_ADMIN_TOKEN, and E2E_FIDELITY_CACERT (inline PEM, or the literal
 // "system" to trust the OS root store). The CA is mandatory: this harness
-// never skips TLS verification. E2E_REAL_DOWNSTREAM, if set, names a
+// never skips TLS verification. E2E_FIDELITY_DOWNSTREAM, if set, names a
 // downstream cluster the target can reach through the proxy.
-func NewRealTargetFromEnv() (*RealTarget, error) {
-	base := os.Getenv("E2E_REAL_URL")
-	admin := os.Getenv("E2E_REAL_ADMIN_TOKEN")
-	ca := os.Getenv("E2E_REAL_CACERT")
+func NewOracleTargetFromEnv() (*OracleTarget, error) {
+	base := os.Getenv("E2E_FIDELITY_URL")
+	admin := os.Getenv("E2E_FIDELITY_ADMIN_TOKEN")
+	ca := os.Getenv("E2E_FIDELITY_CACERT")
 	if base == "" || admin == "" || ca == "" {
-		return nil, fmt.Errorf("E2E_REAL_URL, E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT must all be set (run via scripts/e2e-real)")
+		return nil, fmt.Errorf("E2E_FIDELITY_URL, E2E_FIDELITY_ADMIN_TOKEN, and E2E_FIDELITY_CACERT must all be set (run via scripts/e2e-fidelity)")
 	}
 	opts := httpx.Options{CACert: ca}
 	if ca == systemCACert {
@@ -92,35 +92,35 @@ func NewRealTargetFromEnv() (*RealTarget, error) {
 	}
 	client, err := httpx.New(opts)
 	if err != nil {
-		return nil, fmt.Errorf("E2E_REAL_CACERT: %w", err)
+		return nil, fmt.Errorf("E2E_FIDELITY_CACERT: %w", err)
 	}
-	return &RealTarget{
+	return &OracleTarget{
 		baseURL:    strings.TrimSuffix(base, "/"),
 		admin:      admin,
 		client:     client,
-		downstream: os.Getenv("E2E_REAL_DOWNSTREAM"),
+		downstream: os.Getenv("E2E_FIDELITY_DOWNSTREAM"),
 	}, nil
 }
 
 // BaseURL is the oracle server root without a trailing slash.
-func (t *RealTarget) BaseURL() string { return t.baseURL }
+func (t *OracleTarget) BaseURL() string { return t.baseURL }
 
 // Downstream is the id of the downstream cluster named by
-// E2E_REAL_DOWNSTREAM, or empty when it is unset.
-func (t *RealTarget) Downstream() string { return t.downstream }
+// E2E_FIDELITY_DOWNSTREAM, or empty when it is unset.
+func (t *OracleTarget) Downstream() string { return t.downstream }
 
 // Client is an HTTP client that trusts the oracle's CA (TLS verification is
 // never skipped), refuses cross-origin redirects, and honours the proxy
 // environment variables, exactly like every Rancher-scoped client the CLI
 // builds; a LAN-bound oracle behind HTTPS_PROXY is reached the way the CLI
 // would reach it.
-func (t *RealTarget) Client() *http.Client { return t.client }
+func (t *OracleTarget) Client() *http.Client { return t.client }
 
 // Bearer resolves the admin, standard, or revoked identity to a live bearer
 // against the real server. The admin token is supplied by the harness; the
 // standard and revoked bearers are provisioned lazily and memoized. none and
 // garbage are resolved by the executor, not here.
-func (t *RealTarget) Bearer(ctx context.Context, id Identity) (string, error) {
+func (t *OracleTarget) Bearer(ctx context.Context, id Identity) (string, error) {
 	switch id {
 	case IdentityAdmin:
 		return t.admin, nil
@@ -140,7 +140,7 @@ const standardUsername = "e2e-fid-standard"
 const memberUsername = "e2e-fid-member"
 
 // newStandardPassword generates a fresh random password for the throwaway standard
-// user. It is generated per RealTarget instance rather than hardcoded so no
+// user. It is generated per OracleTarget instance rather than hardcoded so no
 // usable credential for a provisioned user lives in this (public) source.
 func newStandardPassword() (string, error) {
 	var b [16]byte
@@ -158,7 +158,7 @@ func newStandardPassword() (string, error) {
 // rather than a baseline user's, so the role realizes that identity - and
 // logs in as it. Cleanup relies on Rancher cascading a deleted user's global
 // role bindings.
-func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
+func (t *OracleTarget) standardBearer(ctx context.Context) (string, error) {
 	return t.standard.Get(func() (string, error) {
 		password, err := newStandardPassword()
 		if err != nil {
@@ -200,10 +200,10 @@ func (t *RealTarget) standardBearer(ctx context.Context) (string, error) {
 // Default project, and logs in as it. The downstream is required: a member
 // identity without a project to be a member of does not exist. Cleanup
 // relies on Rancher cascading a deleted user's bindings.
-func (t *RealTarget) memberBearer(ctx context.Context) (string, error) {
+func (t *OracleTarget) memberBearer(ctx context.Context) (string, error) {
 	return t.member.Get(func() (string, error) {
 		if t.downstream == "" {
-			return "", fmt.Errorf("the member identity needs a downstream cluster (E2E_REAL_DOWNSTREAM)")
+			return "", fmt.Errorf("the member identity needs a downstream cluster (E2E_FIDELITY_DOWNSTREAM)")
 		}
 		password, err := newStandardPassword()
 		if err != nil {
@@ -269,7 +269,7 @@ func (t *RealTarget) memberBearer(ctx context.Context) (string, error) {
 // attempted regardless of the others' outcome, so a failure on one user
 // never leaves the other behind; the errors are joined, each naming its
 // user and phase.
-func (t *RealTarget) Cleanup(ctx context.Context) error {
+func (t *OracleTarget) Cleanup(ctx context.Context) error {
 	var errs []error
 	for _, username := range []string{standardUsername, memberUsername} {
 		if err := t.cleanupUser(ctx, username); err != nil {
@@ -284,7 +284,7 @@ func (t *RealTarget) Cleanup(ctx context.Context) error {
 // itself (exactly the users whose DELETE the server accepted), so a wait
 // is never skipped for a removed user nor spent on one that is still
 // there; every wait runs even when the delete or an earlier wait failed.
-func (t *RealTarget) cleanupUser(ctx context.Context, username string) error {
+func (t *OracleTarget) cleanupUser(ctx context.Context, username string) error {
 	var errs []error
 	ids, err := t.deleteUsersNamed(ctx, username)
 	if err != nil {
@@ -301,7 +301,7 @@ func (t *RealTarget) cleanupUser(ctx context.Context, username string) error {
 // waitBindingsGone waits for the GlobalRoleBindings and
 // ProjectRoleTemplateBindings of a deleted user to disappear (Rancher
 // cascades them asynchronously) and reports what remains after the wait.
-func (t *RealTarget) waitBindingsGone(ctx context.Context, userID string) error {
+func (t *OracleTarget) waitBindingsGone(ctx context.Context, userID string) error {
 	deadline := time.Now().Add(bindingsGoneTimeout)
 	for {
 		remaining := 0
@@ -336,7 +336,7 @@ var bindingsGoneTimeout = 30 * time.Second
 
 // revokedBearer creates a derived token as admin, then revokes it by the name
 // embedded in the ext bearer.
-func (t *RealTarget) revokedBearer(ctx context.Context) (string, error) {
+func (t *OracleTarget) revokedBearer(ctx context.Context) (string, error) {
 	return t.revoked.Get(func() (string, error) {
 		body, _, err := t.adminJSON(ctx, http.MethodPost, token.ExtTokensPath, map[string]any{"spec": map[string]any{}}, http.StatusCreated)
 		if err != nil {
@@ -366,7 +366,7 @@ var standardUserGoneTimeout = 10 * time.Second
 // (empty data array) is clean; every HTTP failure, malformed 200 shape, or
 // rejected delete is surfaced - a silently-kept stale user would break
 // kept-run recovery at the subsequent create.
-func (t *RealTarget) deleteStandardUser(ctx context.Context) error {
+func (t *OracleTarget) deleteStandardUser(ctx context.Context) error {
 	_, err := t.deleteUsersNamed(ctx, standardUsername)
 	return err
 }
@@ -379,7 +379,7 @@ func (t *RealTarget) deleteStandardUser(ctx context.Context) error {
 // entry would keep the name listed). It returns the ids whose DELETE the
 // server accepted, also on error, so a caller can still verify the cascade
 // of what was removed.
-func (t *RealTarget) deleteUsersNamed(ctx context.Context, username string) (deleted []string, err error) {
+func (t *OracleTarget) deleteUsersNamed(ctx context.Context, username string) (deleted []string, err error) {
 	data, err := t.lookupUsersNamed(ctx, username)
 	if err != nil {
 		return nil, err
@@ -432,7 +432,7 @@ func (t *RealTarget) deleteUsersNamed(ctx context.Context, username string) (del
 
 // lookupUsersNamed returns the collection entries the username lookup
 // reports; a malformed answer is an error.
-func (t *RealTarget) lookupUsersNamed(ctx context.Context, username string) ([]any, error) {
+func (t *OracleTarget) lookupUsersNamed(ctx context.Context, username string) ([]any, error) {
 	body, status, err := t.adminJSON(ctx, http.MethodGet, "/v3/users?username="+username, nil, 0)
 	if err != nil {
 		return nil, fmt.Errorf("looking up user %s: %w", username, err)
@@ -450,7 +450,7 @@ func (t *RealTarget) lookupUsersNamed(ctx context.Context, username string) ([]a
 // login posts local-provider credentials and returns the bearer, accepting
 // both the Norman ({token}) and ext ({status.bearerToken}) response shapes -
 // the same tolerance internal/token's parseLoginResponse implements.
-func (t *RealTarget) login(ctx context.Context, user, pass string) (string, error) {
+func (t *OracleTarget) login(ctx context.Context, user, pass string) (string, error) {
 	payload := map[string]any{"type": "localProvider", "username": user, "password": pass}
 	body, status, err := t.plainJSON(ctx, http.MethodPost, "/v1-public/login", payload)
 	if err != nil {
@@ -476,15 +476,15 @@ func extBearerFrom(body map[string]any) string {
 
 // adminJSON sends an admin-authenticated JSON request. wantStatus 0 skips
 // the status check.
-func (t *RealTarget) adminJSON(ctx context.Context, method, path string, payload map[string]any, wantStatus int) (map[string]any, int, error) {
+func (t *OracleTarget) adminJSON(ctx context.Context, method, path string, payload map[string]any, wantStatus int) (map[string]any, int, error) {
 	return t.doJSON(ctx, method, path, payload, t.admin, wantStatus)
 }
 
-func (t *RealTarget) plainJSON(ctx context.Context, method, path string, payload map[string]any) (map[string]any, int, error) {
+func (t *OracleTarget) plainJSON(ctx context.Context, method, path string, payload map[string]any) (map[string]any, int, error) {
 	return t.doJSON(ctx, method, path, payload, "", 0)
 }
 
-func (t *RealTarget) doJSON(ctx context.Context, method, path string, payload map[string]any, bearer string, wantStatus int) (map[string]any, int, error) {
+func (t *OracleTarget) doJSON(ctx context.Context, method, path string, payload map[string]any, bearer string, wantStatus int) (map[string]any, int, error) {
 	var marshaled []byte
 	if payload != nil {
 		var err error

@@ -1,6 +1,6 @@
-//go:build e2e_real
+//go:build e2e_fidelity
 
-package real
+package fidelity_test
 
 import (
 	"bytes"
@@ -21,15 +21,15 @@ import (
 )
 
 func TestCLIImagesWorkload(t *testing.T) {
-	base := os.Getenv("E2E_REAL_URL")
-	adminToken := os.Getenv("E2E_REAL_ADMIN_TOKEN")
-	caPEM := os.Getenv("E2E_REAL_CACERT")
-	require.NotEmpty(t, base, "E2E_REAL_URL, E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT must all be set (run via scripts/e2e-real)")
-	require.NotEmpty(t, adminToken, "E2E_REAL_URL, E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT must all be set (run via scripts/e2e-real)")
-	require.NotEmpty(t, caPEM, "E2E_REAL_URL, E2E_REAL_ADMIN_TOKEN, and E2E_REAL_CACERT must all be set (run via scripts/e2e-real)")
+	base := os.Getenv("E2E_FIDELITY_URL")
+	adminToken := os.Getenv("E2E_FIDELITY_ADMIN_TOKEN")
+	caPEM := os.Getenv("E2E_FIDELITY_CACERT")
+	require.NotEmpty(t, base, "E2E_FIDELITY_URL, E2E_FIDELITY_ADMIN_TOKEN, and E2E_FIDELITY_CACERT must all be set (run via scripts/e2e-fidelity)")
+	require.NotEmpty(t, adminToken, "E2E_FIDELITY_URL, E2E_FIDELITY_ADMIN_TOKEN, and E2E_FIDELITY_CACERT must all be set (run via scripts/e2e-fidelity)")
+	require.NotEmpty(t, caPEM, "E2E_FIDELITY_URL, E2E_FIDELITY_ADMIN_TOKEN, and E2E_FIDELITY_CACERT must all be set (run via scripts/e2e-fidelity)")
 
 	pool := x509.NewCertPool()
-	require.True(t, pool.AppendCertsFromPEM([]byte(caPEM)), "E2E_REAL_CACERT: no certificates parsed")
+	require.True(t, pool.AppendCertsFromPEM([]byte(caPEM)), "E2E_FIDELITY_CACERT: no certificates parsed")
 	apiClient := &http.Client{
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}},
 		Timeout:   30 * time.Second,
@@ -192,8 +192,8 @@ func deleteDeployment(ctx context.Context, t *testing.T, client *http.Client, to
 		t.Logf("deleteDeployment: %v", err)
 		return
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusOK &&
 		resp.StatusCode != http.StatusNoContent &&
 		resp.StatusCode != http.StatusNotFound {

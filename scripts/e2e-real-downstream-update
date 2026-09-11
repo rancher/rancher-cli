@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Record mode: re-runs scripts/e2e-real-downstream with the golden -update
-# flag. Review the resulting downstream-golden diff like the schema golden.
-E2E_REAL_DOWNSTREAM_UPDATE_FLAG="-update" exec "$(dirname "$0")/e2e-real-downstream"

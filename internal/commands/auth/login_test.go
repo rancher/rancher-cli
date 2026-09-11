@@ -2202,7 +2202,7 @@ func (s *compensationFailingStore) SetTokenWithOutcome(ref config.ServerRef, tok
 // procedure starts from: after a lost create response exactly one facade
 // token carries the marker, and the recovery names re-login, the
 // kind-correct list command, and the marker. The procedure itself is
-// executed with the real binary by e2e/scripts/login-recovery.txtar.
+// executed with the real binary by test/e2e/scripts/login-recovery.txtar.
 func TestLoginUnknownDerivedLeavesOneMarkedToken(t *testing.T) {
 	t.Parallel()
 	f := testrancher.New(testrancher.Options{DropDerivedCreateResponse: true})

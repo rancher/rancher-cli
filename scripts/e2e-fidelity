@@ -2,11 +2,11 @@
 set -euo pipefail
 
 # Fidelity oracle harness: boots the pinned real Rancher in Docker, bootstraps
-# an admin token, and runs the e2e_real record/verify suite against it.
+# an admin token, and runs the e2e_fidelity record/verify suite against it.
 #
 # ORACLE_IMAGE is the single bump point for the community golden oracle: one
 # literal tag+digest, changed only through a reviewed golden-regeneration
-# change. PRIME_ORACLE_IMAGE is the opt-in Prime oracle (E2E_REAL_PRIME=1) -
+# change. PRIME_ORACLE_IMAGE is the opt-in Prime oracle (E2E_FIDELITY_PRIME=1) -
 # it has no goldens; the suite boots it with the same downstream, smoke-checks
 # it, and leaves a kept pair for hand runs and fact probes against Prime.
 ORACLE_IMAGE="rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5"
@@ -17,7 +17,7 @@ PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:07334615
 # literal tag+digest, bumped through a reviewed golden-regeneration change
 # like ORACLE_IMAGE.
 K3S_IMAGE="rancher/k3s:v1.34.4-k3s1@sha256:a5f627f1ed014dede348fdc77bc7e452d03712a8daff000e0f2667d28f9a2d11"
-# HEAD_ORACLE_IMAGE is the opt-in head oracle (E2E_REAL_HEAD=1): the next
+# HEAD_ORACLE_IMAGE is the opt-in head oracle (E2E_FIDELITY_HEAD=1): the next
 # minor's moving image, for readiness checks and component release-candidate
 # validation before that minor ships. It has no goldens and is never a
 # pin: the tag is resolved to its digest at boot, the digest is what runs
@@ -28,49 +28,49 @@ HEAD_ORACLE_IMAGE="rancher/rancher:head"
 # The harness reaches the oracle through the CLI's own Rancher-scoped HTTP
 # client: it honours HTTPS_PROXY/HTTP_PROXY/NO_PROXY from this shell (a
 # loopback oracle is never proxied; a LAN-bound one can be) and refuses any
-# redirect that leaves the oracle's origin. Point E2E_REAL_URL at the exact
+# redirect that leaves the oracle's origin. Point E2E_FIDELITY_URL at the exact
 # scheme, host, and port the oracle answers on.
 #
-# E2E_REAL_EXTRA_SANS=<ip-or-dns>[,...] primes the oracle's self-signed cert
+# E2E_FIDELITY_EXTRA_SANS=<ip-or-dns>[,...] primes the oracle's self-signed cert
 # with extra SANs, for a remote box (e.g. a Windows VM on the LAN) that will
 # reach the oracle by a hostname/IP other than 127.0.0.1. Rancher's listener
 # (rancher/dynamiclistener) adds a SAN for any hostname/SNI it is queried
 # with, signed by the same CA already captured in ca.pem - no separate CA
 # per SAN, so priming before the remote box connects only avoids its first
 # request racing the cert regeneration.
-EXTRA_SANS="${E2E_REAL_EXTRA_SANS:-}"
+EXTRA_SANS="${E2E_FIDELITY_EXTRA_SANS:-}"
 
-# E2E_REAL_BIND_ADDR publishes 443 beyond loopback (e.g. 0.0.0.0) for that
+# E2E_FIDELITY_BIND_ADDR publishes 443 beyond loopback (e.g. 0.0.0.0) for that
 # same LAN scenario. Default stays loopback-only; LAN exposure is opt-in
 # because the oracle's bootstrap password and admin token are well-known
 # within a single run.
-BIND_ADDR="${E2E_REAL_BIND_ADDR:-127.0.0.1}"
+BIND_ADDR="${E2E_FIDELITY_BIND_ADDR:-127.0.0.1}"
 
-if [ "${E2E_REAL_PRIME:-}" = "1" ] && [ "${E2E_REAL_HEAD:-}" = "1" ]; then
-  echo "error: E2E_REAL_PRIME and E2E_REAL_HEAD select different oracles; set one" >&2
+if [ "${E2E_FIDELITY_PRIME:-}" = "1" ] && [ "${E2E_FIDELITY_HEAD:-}" = "1" ]; then
+  echo "error: E2E_FIDELITY_PRIME and E2E_FIDELITY_HEAD select different oracles; set one" >&2
   exit 1
 fi
 # SMOKE_PROFILE names the opt-in oracle that gets the boot smoke instead of
 # the golden suite; empty for the community pin.
 SMOKE_PROFILE=""
-if [ "${E2E_REAL_PRIME:-}" = "1" ]; then
+if [ "${E2E_FIDELITY_PRIME:-}" = "1" ]; then
   ORACLE_IMAGE="${PRIME_ORACLE_IMAGE}"
   SMOKE_PROFILE="prime"
-  CONTAINER="rancher-cli-e2e-real-prime"
+  CONTAINER="rancher-cli-e2e-fidelity-prime"
   HOST_PORT="8444"
-  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real-prime"
+  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity-prime"
   SUBNET="172.30.2.0/24"
-elif [ "${E2E_REAL_HEAD:-}" = "1" ]; then
+elif [ "${E2E_FIDELITY_HEAD:-}" = "1" ]; then
   ORACLE_IMAGE="${HEAD_ORACLE_IMAGE}"
   SMOKE_PROFILE="head"
-  CONTAINER="rancher-cli-e2e-real-head"
+  CONTAINER="rancher-cli-e2e-fidelity-head"
   HOST_PORT="8445"
-  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real-head"
+  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity-head"
   SUBNET="172.30.3.0/24"
 else
-  CONTAINER="rancher-cli-e2e-real"
+  CONTAINER="rancher-cli-e2e-fidelity"
   HOST_PORT="8443"
-  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-real"
+  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity"
   SUBNET="172.30.1.0/24"
 fi
 # The oracle and its downstream share a user-defined network with fixed
@@ -94,10 +94,10 @@ BASE_URL="https://${DIAL_ADDR}:${HOST_PORT}"
 LOCK_DIR="${STATE_ROOT}/lock"
 STATE_FILE="${STATE_ROOT}/state.json"
 CA_FILE="${STATE_ROOT}/ca.pem"
-UPDATE_FLAG="${E2E_REAL_UPDATE_FLAG:-}"
+UPDATE_FLAG="${E2E_FIDELITY_UPDATE_FLAG:-}"
 
 if [ -z "${ORACLE_IMAGE}" ]; then
-  echo "error: ORACLE_IMAGE is not pinned yet; set the literal tag+digest in scripts/e2e-real (wave 4)" >&2
+  echo "error: ORACLE_IMAGE is not pinned yet; set the literal tag+digest in scripts/e2e-fidelity (wave 4)" >&2
   exit 1
 fi
 
@@ -122,7 +122,7 @@ chmod 700 "${STATE_ROOT}"
 if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
   holder="$(cat "${LOCK_DIR}/pid" 2>/dev/null || true)"
   if [ -n "${holder}" ] && kill -0 "${holder}" 2>/dev/null; then
-    echo "error: another e2e-real invocation (pid ${holder}) holds the lock; the oracle is a singleton" >&2
+    echo "error: another e2e-fidelity invocation (pid ${holder}) holds the lock; the oracle is a singleton" >&2
     exit 1
   fi
   echo "==> reclaiming stale lock (holder pid ${holder:-unknown} is gone)"
@@ -142,7 +142,7 @@ cleanup() {
     # otherwise, and none of that is in the rancher log.
     echo "==> host resources:"
     df -h / 2>&1 | sed 's/^/[host] /' || true
-    free -m 2>&1 | sed 's/^/[host] /' || true
+    if command -v free >/dev/null 2>&1; then free -m 2>&1 | sed 's/^/[host] /' || true; fi
     docker stats --no-stream 2>&1 | sed 's/^/[host] /' || true
     echo "==> oracle node conditions, pods, and last events:"
     docker exec "${CONTAINER}" kubectl get nodes -o wide 2>&1 | sed 's/^/[rancher] /' || true
@@ -158,7 +158,7 @@ cleanup() {
     echo "==> downstream agent log lines:"
     docker exec "${K3S_CONTAINER}" kubectl -n cattle-system logs deploy/cattle-cluster-agent --tail 50 2>&1 | sed 's/^/[agent] /' || true
   fi
-  if [ "${E2E_REAL_KEEP:-}" != "1" ]; then
+  if [ "${E2E_FIDELITY_KEEP:-}" != "1" ]; then
     docker rm -f "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
     docker network rm "${NETWORK}" >/dev/null 2>&1 || true
     rm -f "${STATE_FILE}"
@@ -248,6 +248,24 @@ ensure_network() {
   docker network create --subnet "${SUBNET}" "${NETWORK}" >/dev/null
 }
 
+# refuse_pre_rename_leftovers stops before touching Docker when this
+# profile's pair from before the suite's rename (e2e-real) is still there:
+# it holds the same fixed subnet and host port, and the bare Docker errors
+# ("Pool overlaps", "port is already allocated") would not say why.
+refuse_pre_rename_leftovers() {
+  local old="${CONTAINER/e2e-fidelity/e2e-real}" found=""
+  for c in "${old}" "${old}-k3s"; do
+    docker container inspect "${c}" >/dev/null 2>&1 && found="${found} container ${c}"
+  done
+  if [ "$(docker network inspect "${old}-net" -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)" = "${SUBNET}" ]; then
+    found="${found} network ${old}-net"
+  fi
+  [ -n "${found}" ] || return 0
+  echo "error: a pre-rename oracle pair is still present:${found}" >&2
+  echo "error: the suite was renamed from e2e-real to e2e-fidelity; remove them (docker rm -f, docker network rm) together with the old state root ${STATE_ROOT/e2e-fidelity/e2e-real}, or rename them, then rerun" >&2
+  return 1
+}
+
 prime_ip_san() {
   # dynamiclistener adds the Host of a request as a SAN of the leaf it
   # serves next, signed by the same CA already in CA_FILE. The agent
@@ -274,7 +292,7 @@ boot_k3s() {
   # A kept downstream gets the oracle's restart policy so both survive a
   # Docker restart together; suite mode stays policy-free like the oracle.
   restart_args=""
-  [ "${E2E_REAL_KEEP:-}" != "1" ] || restart_args="--restart unless-stopped"
+  [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || restart_args="--restart unless-stopped"
   # shellcheck disable=SC2086
   docker run -d --name "${K3S_CONTAINER}" --privileged ${restart_args} \
     --network "${NETWORK}" --ip "${K3S_IP}" --tmpfs /run --tmpfs /var/run \
@@ -439,7 +457,7 @@ write_state() {
   )
 }
 
-if [ "${E2E_REAL_KEEP:-}" = "1" ] && reuse_state; then
+if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && reuse_state; then
   require_disk
   echo "==> reusing healthy kept container"
   reuse_downstream || rebuild_downstream
@@ -449,6 +467,7 @@ if [ "${E2E_REAL_KEEP:-}" = "1" ] && reuse_state; then
   # and the CA is unchanged by it, so re-prime unconditionally.
   [ -z "${EXTRA_SANS}" ] || prime_extra_sans
 else
+  refuse_pre_rename_leftovers
   docker rm -f "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
   docker network rm "${NETWORK}" >/dev/null 2>&1 || true
   rm -f "${STATE_FILE}"
@@ -465,13 +484,13 @@ else
   # kernel mounts) that will not start unprivileged. It is an accepted tradeoff
   # here - the image is digest-pinned, the port is loopback-bound by default
   # (BIND_ADDR), and the container is ephemeral (removed unless
-  # E2E_REAL_KEEP=1).
+  # E2E_FIDELITY_KEEP=1).
   # A kept container self-heals: patching a non-dynamic Feature makes the
   # single-node server exit to apply it, and without a restart policy the
   # kept oracle stays down until someone notices. Suite mode stays
   # policy-free so a crash fails loudly instead of masking itself.
   RESTART_ARGS=""
-  [ "${E2E_REAL_KEEP:-}" != "1" ] || RESTART_ARGS="--restart unless-stopped"
+  [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || RESTART_ARGS="--restart unless-stopped"
   # shellcheck disable=SC2086
   docker run -d --name "${CONTAINER}" --privileged ${RESTART_ARGS} \
     --network "${NETWORK}" --ip "${ORACLE_IP}" \
@@ -507,15 +526,15 @@ JSON
   prime_ip_san
   boot_k3s
   import_downstream
-  [ "${E2E_REAL_KEEP:-}" != "1" ] || write_state
+  [ "${E2E_FIDELITY_KEEP:-}" != "1" ] || write_state
 fi
 
-export E2E_REAL_URL="${BASE_URL}"
-export E2E_REAL_ADMIN_TOKEN="${ADMIN_TOKEN}"
-E2E_REAL_CACERT="$(cat "${CA_FILE}")"
-export E2E_REAL_CACERT
-export E2E_REAL_ORACLE_IMAGE="${ORACLE_IMAGE}"
-export E2E_REAL_DOWNSTREAM="${DOWNSTREAM_ID}"
+export E2E_FIDELITY_URL="${BASE_URL}"
+export E2E_FIDELITY_ADMIN_TOKEN="${ADMIN_TOKEN}"
+E2E_FIDELITY_CACERT="$(cat "${CA_FILE}")"
+export E2E_FIDELITY_CACERT
+export E2E_FIDELITY_ORACLE_IMAGE="${ORACLE_IMAGE}"
+export E2E_FIDELITY_DOWNSTREAM="${DOWNSTREAM_ID}"
 
 if [ -n "${SMOKE_PROFILE}" ]; then
   # No goldens for the Prime or head oracle: golden verification runs only
@@ -536,9 +555,9 @@ if [ -n "${SMOKE_PROFILE}" ]; then
   [ "${code}" = "200" ] || { echo "error: downstream proxy smoke check failed (http ${code})" >&2; exit 1; }
   echo "==> ${SMOKE_PROFILE} oracle bootstrap smoke passed"
 else
-  echo "==> running e2e_real suite${UPDATE_FLAG:+ (record mode)}"
-  # E2E_REAL_UPDATE_FLAG is a fixed internal value ("" or "-update"), never
+  echo "==> running e2e_fidelity suite${UPDATE_FLAG:+ (record mode)}"
+  # E2E_FIDELITY_UPDATE_FLAG is a fixed internal value ("" or "-update"), never
   # user-supplied, so the intentional word-splitting here is safe.
   # shellcheck disable=SC2086
-  go test -tags e2e_real -count=1 ./e2e/real/ ${UPDATE_FLAG}
+  go test -tags e2e_fidelity -count=1 ./test/e2e/fidelity/ ${UPDATE_FLAG}
 fi

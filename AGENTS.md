@@ -18,36 +18,36 @@ Go 1.27.1+. Automation is `make`, dispatching to `scripts/`:
 | `make test` | `go test -race -cover ./...` |
 | `make validate` | gofmt, vet, lint, race - the commit gate |
 | `make e2e` | envtest provider suite + testscript scenarios |
-| `make e2e-real` | verify recorded fidelity goldens against a real Rancher in Docker with an imported k3s downstream (~7-9 min boot; never on PRs - CI runs it on demand or weekly) |
-| `make e2e-real-update` | re-record the fidelity oracle goldens, downstream family included (review the diff like the schema golden) |
-| `make e2e-real-downstream` | compare a Rancher you run yourself, with its own downstream cluster, against the downstream goldens (never on PRs) |
-| `make e2e-real-downstream-update` | re-record the downstream fidelity goldens from that server instead of the pinned oracle |
+| `make e2e-fidelity` | verify recorded fidelity goldens against a real Rancher in Docker with an imported k3s downstream (~7-9 min boot; never on PRs - CI runs it on demand or weekly) |
+| `make e2e-fidelity-update` | re-record the fidelity oracle goldens, downstream family included (review the diff like the schema golden) |
+| `make e2e-fidelity-downstream` | compare a Rancher you run yourself, with its own downstream cluster, against the downstream goldens (never on PRs) |
+| `make e2e-fidelity-downstream-update` | re-record the downstream fidelity goldens from that server instead of the pinned oracle |
 | `make dev` | run the binary hermetically (temp config dir, file credential store) |
 
 `make` with no target runs `ci` (the full pipeline).
 
 Two gotchas:
 
-- **The e2e suite is behind a build tag** - a bare `go test ./e2e/` silently runs
+- **The e2e suite is behind a build tag** - a bare `go test ./test/e2e/` silently runs
   nothing. Use `make e2e`.
 - **Never run `bin/rancher` bare.** Use `make dev`, or prefix
   `RANCHER_CLI_CONFIG_DIR=$(mktemp -d) RANCHER_CLI_CREDENTIAL_STORE=file`. A bare
   run writes to the real OS keychain and config directory.
-- **The fidelity oracle never runs on PRs.** `make e2e-real` needs Docker and
+- **The fidelity oracle never runs on PRs.** `make e2e-fidelity` needs Docker and
   boots the pinned `rancher/rancher` image; CI runs it only on demand
-  (`workflow_dispatch` on e2e-real.yaml) or on its weekly schedule. The image
+  (`workflow_dispatch` on e2e-fidelity.yaml) or on its weekly schedule. The image
   pins (the oracle and the k3s downstream it imports) live in
-  `scripts/e2e-real`; bumping either is a reviewed golden-regeneration
+  `scripts/e2e-fidelity`; bumping either is a reviewed golden-regeneration
   change.
-- **The downstream fidelity axis rides on `make e2e-real`.** The oracle
+- **The downstream fidelity axis rides on `make e2e-fidelity`.** The oracle
   imports a pinned `rancher/k3s` container on every boot and exports
-  `E2E_REAL_DOWNSTREAM`, so probes marked `Downstream: true` (family
+  `E2E_FIDELITY_DOWNSTREAM`, so probes marked `Downstream: true` (family
   `access-downstream`) record and verify against the pinned image like
-  every other family. `scripts/e2e-real-downstream` (and its `-update`
+  every other family. `scripts/e2e-fidelity-downstream` (and its `-update`
   twin) compares a Rancher you run yourself, with its own downstream
-  cluster, against the same goldens: `E2E_REAL_URL`,
-  `E2E_REAL_ADMIN_TOKEN`, `E2E_REAL_CACERT` (a PEM, or the literal
-  `system` to trust your OS root store), `E2E_REAL_DOWNSTREAM` (the
+  cluster, against the same goldens: `E2E_FIDELITY_URL`,
+  `E2E_FIDELITY_ADMIN_TOKEN`, `E2E_FIDELITY_CACERT` (a PEM, or the literal
+  `system` to trust your OS root store), `E2E_FIDELITY_DOWNSTREAM` (the
   cluster id). Never on PRs.
 
 ## Invariants - do not break these

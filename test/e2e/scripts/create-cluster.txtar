@@ -18,7 +18,7 @@ jsonquery stdout data.spec.rkeConfig '{}'
 # node-driver: full --apply (no rancher webhook in this harness, so the
 # create succeeds even though the referenced machine config object does not
 # exist), resolving --cloud-credential by display name against the fixture
-# seeded once globally in cattle-global-data (e2e/harness_test.go).
+# seeded once globally in cattle-global-data (test/e2e/harness_test.go).
 exec rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
 stderr 'creatorId not stamped'
 exec rancher get provisioning-cluster node-1 -o json

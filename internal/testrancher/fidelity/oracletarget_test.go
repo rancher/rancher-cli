@@ -15,8 +15,8 @@ import (
 	"github.com/rancher/rancher-cli/internal/token"
 )
 
-func newTestRealTarget(srv *httptest.Server) *RealTarget {
-	return &RealTarget{baseURL: srv.URL, admin: "admin-token", client: srv.Client()}
+func newTestOracleTarget(srv *httptest.Server) *OracleTarget {
+	return &OracleTarget{baseURL: srv.URL, admin: "admin-token", client: srv.Client()}
 }
 
 func TestDeleteStandardUserSurfacesLookupFailure(t *testing.T) {
@@ -26,7 +26,7 @@ func TestDeleteStandardUserSurfacesLookupFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
+	err := newTestOracleTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "status 403", "an HTTP lookup failure must never read as already-clean")
 }
@@ -39,7 +39,7 @@ func TestDeleteStandardUserSurfacesMalformed200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
+	err := newTestOracleTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "no data array")
 }
@@ -57,7 +57,7 @@ func TestDeleteStandardUserSurfacesDeleteFailure(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
+	err := newTestOracleTarget(srv).deleteStandardUser(t.Context())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "u-stale")
 	assert.ErrorContains(t, err, "status 403")
@@ -73,7 +73,7 @@ func TestDoJSONRedactsCredentialBodiesInErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tgt := newTestRealTarget(srv)
+	tgt := newTestOracleTarget(srv)
 	_, _, err := tgt.adminJSON(t.Context(), http.MethodPost, "/v3/tokens", map[string]any{}, http.StatusCreated)
 	require.Error(t, err, "status 200 != want 201 must error")
 	assert.NotContains(t, err.Error(), "sentinel-sekrit",
@@ -132,7 +132,7 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tgt := newTestRealTarget(srv)
+	tgt := newTestOracleTarget(srv)
 	bearer, err := tgt.Bearer(t.Context(), IdentityStandard)
 	require.NoError(t, err)
 	assert.Equal(t, "ext/std-1:sec-1", bearer)
@@ -145,60 +145,60 @@ func TestStandardBearerDeletesBeforeCreateThenLogsIn(t *testing.T) {
 	assert.Len(t, order, 6, "memoization must not re-provision")
 }
 
-func TestNewRealTargetFromEnv(t *testing.T) {
+func TestNewOracleTargetFromEnv(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 	caPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
 
 	t.Run("missing env vars error", func(t *testing.T) {
-		for _, missing := range []string{"E2E_REAL_URL", "E2E_REAL_ADMIN_TOKEN", "E2E_REAL_CACERT"} {
-			t.Setenv("E2E_REAL_URL", "https://rancher.test/")
-			t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
-			t.Setenv("E2E_REAL_CACERT", caPEM)
+		for _, missing := range []string{"E2E_FIDELITY_URL", "E2E_FIDELITY_ADMIN_TOKEN", "E2E_FIDELITY_CACERT"} {
+			t.Setenv("E2E_FIDELITY_URL", "https://rancher.test/")
+			t.Setenv("E2E_FIDELITY_ADMIN_TOKEN", "admin-tok")
+			t.Setenv("E2E_FIDELITY_CACERT", caPEM)
 			t.Setenv(missing, "")
-			_, err := NewRealTargetFromEnv()
+			_, err := NewOracleTargetFromEnv()
 			require.Error(t, err, "missing %s must fail", missing)
 		}
 	})
 
 	t.Run("unparseable CA errors", func(t *testing.T) {
-		t.Setenv("E2E_REAL_URL", "https://rancher.test/")
-		t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
-		t.Setenv("E2E_REAL_CACERT", "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----")
-		_, err := NewRealTargetFromEnv()
+		t.Setenv("E2E_FIDELITY_URL", "https://rancher.test/")
+		t.Setenv("E2E_FIDELITY_ADMIN_TOKEN", "admin-tok")
+		t.Setenv("E2E_FIDELITY_CACERT", "-----BEGIN CERTIFICATE-----\nnot base64\n-----END CERTIFICATE-----")
+		_, err := NewOracleTargetFromEnv()
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "failed to append CA certs from PEM")
 	})
 
 	t.Run("success wires the target", func(t *testing.T) {
-		t.Setenv("E2E_REAL_URL", "https://rancher.test/")
-		t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
-		t.Setenv("E2E_REAL_CACERT", caPEM)
-		tgt, err := NewRealTargetFromEnv()
+		t.Setenv("E2E_FIDELITY_URL", "https://rancher.test/")
+		t.Setenv("E2E_FIDELITY_ADMIN_TOKEN", "admin-tok")
+		t.Setenv("E2E_FIDELITY_CACERT", caPEM)
+		tgt, err := NewOracleTargetFromEnv()
 		require.NoError(t, err)
 		assert.Equal(t, "https://rancher.test", tgt.BaseURL(), "the trailing slash is trimmed")
 		require.NotNil(t, tgt.Client())
 		bearer, err := tgt.Bearer(t.Context(), IdentityAdmin)
 		require.NoError(t, err)
 		assert.Equal(t, "admin-tok", bearer)
-		assert.Empty(t, tgt.Downstream(), "E2E_REAL_DOWNSTREAM is unset")
+		assert.Empty(t, tgt.Downstream(), "E2E_FIDELITY_DOWNSTREAM is unset")
 	})
 
-	t.Run("E2E_REAL_DOWNSTREAM names the downstream cluster", func(t *testing.T) {
-		t.Setenv("E2E_REAL_URL", "https://rancher.test/")
-		t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
-		t.Setenv("E2E_REAL_CACERT", caPEM)
-		t.Setenv("E2E_REAL_DOWNSTREAM", "c-abc123")
-		tgt, err := NewRealTargetFromEnv()
+	t.Run("E2E_FIDELITY_DOWNSTREAM names the downstream cluster", func(t *testing.T) {
+		t.Setenv("E2E_FIDELITY_URL", "https://rancher.test/")
+		t.Setenv("E2E_FIDELITY_ADMIN_TOKEN", "admin-tok")
+		t.Setenv("E2E_FIDELITY_CACERT", caPEM)
+		t.Setenv("E2E_FIDELITY_DOWNSTREAM", "c-abc123")
+		tgt, err := NewOracleTargetFromEnv()
 		require.NoError(t, err)
 		assert.Equal(t, "c-abc123", tgt.Downstream())
 	})
 
-	t.Run("E2E_REAL_CACERT=system trusts the OS root store, not a self-signed test cert", func(t *testing.T) {
-		t.Setenv("E2E_REAL_URL", srv.URL)
-		t.Setenv("E2E_REAL_ADMIN_TOKEN", "admin-tok")
-		t.Setenv("E2E_REAL_CACERT", "system")
-		tgt, err := NewRealTargetFromEnv()
+	t.Run("E2E_FIDELITY_CACERT=system trusts the OS root store, not a self-signed test cert", func(t *testing.T) {
+		t.Setenv("E2E_FIDELITY_URL", srv.URL)
+		t.Setenv("E2E_FIDELITY_ADMIN_TOKEN", "admin-tok")
+		t.Setenv("E2E_FIDELITY_CACERT", "system")
+		tgt, err := NewOracleTargetFromEnv()
 		require.NoError(t, err, "the literal \"system\" must never be parsed as PEM")
 		assert.Equal(t, srv.URL, tgt.BaseURL())
 
@@ -245,7 +245,7 @@ func TestRevokedBearerCreatesThenRevokesByDerivedName(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	tgt := newTestRealTarget(srv)
+	tgt := newTestOracleTarget(srv)
 	bearer, err := tgt.Bearer(t.Context(), IdentityRevoked)
 	require.NoError(t, err)
 	assert.Equal(t, "ext/tok-rev:sec-rev", bearer, "the revoked bearer is the created (now-deleted) credential")
@@ -268,7 +268,7 @@ func TestRevokedBearerNonExtCreateErrorsWithoutLeaking(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tgt := newTestRealTarget(srv)
+	tgt := newTestOracleTarget(srv)
 	_, err := tgt.Bearer(t.Context(), IdentityRevoked)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "not ext-shaped")
@@ -284,7 +284,7 @@ func TestLoginAcceptsNormanShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bearer, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
+	bearer, err := newTestOracleTarget(srv).login(t.Context(), "u", "p")
 	require.NoError(t, err)
 	assert.Equal(t, "norman-tok", bearer, "the Norman {token} shape is accepted as a fallback")
 }
@@ -298,7 +298,7 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 		}))
 		defer srv.Close()
-		_, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
+		_, err := newTestOracleTarget(srv).login(t.Context(), "u", "p")
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "status 401")
 	})
@@ -307,7 +307,7 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 		t.Parallel()
 		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		srv.Close()
-		_, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
+		_, err := newTestOracleTarget(srv).login(t.Context(), "u", "p")
 		require.Error(t, err)
 	})
 
@@ -318,7 +318,7 @@ func TestLoginSurfacesNon2xxAndTransportAndMissingToken(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"foo": "bar"})
 		}))
 		defer srv.Close()
-		_, err := newTestRealTarget(srv).login(t.Context(), "u", "p")
+		_, err := newTestOracleTarget(srv).login(t.Context(), "u", "p")
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "no token in response")
 	})
@@ -346,7 +346,7 @@ func TestDeleteStandardUserWaitsForAsynchronousDeletion(t *testing.T) {
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	require.NoError(t, newTestRealTarget(srv).deleteStandardUser(t.Context()))
+	require.NoError(t, newTestOracleTarget(srv).deleteStandardUser(t.Context()))
 	assert.Equal(t, int32(1), deletes.Load())
 	assert.Equal(t, int32(3), lookups.Load(), "one lookup before the delete, two until the user is gone")
 }
@@ -365,7 +365,7 @@ func TestDeleteStandardUserGivesUpWhenTheUserNeverLeaves(t *testing.T) {
 	mux.HandleFunc("DELETE /v3/users/u-stale", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
+	err := newTestOracleTarget(srv).deleteStandardUser(t.Context())
 	require.ErrorContains(t, err, "still listed 300ms after delete")
 }
 
@@ -416,7 +416,7 @@ func TestCleanupAttemptsEveryIdentityAndReportsEachFailure(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	err := newTestRealTarget(srv).Cleanup(t.Context())
+	err := newTestOracleTarget(srv).Cleanup(t.Context())
 	require.Error(t, err)
 	assert.Equal(t, int32(1), memberDeletes.Load(), "the member must be deleted although the standard user's delete failed")
 	require.ErrorContains(t, err, "cleaning up e2e-fid-standard: delete: deleting stale user u-std: status 500")
@@ -462,7 +462,7 @@ func TestCleanupWaitsForTheBindingsOfWhatWasDeletedWhenALaterDeleteFails(t *test
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	err := newTestRealTarget(srv).Cleanup(t.Context())
+	err := newTestOracleTarget(srv).Cleanup(t.Context())
 	require.ErrorContains(t, err, "cleaning up e2e-fid-standard: delete: deleting stale user u-kept: status 409")
 	require.ErrorContains(t, err, "bindings of u-gone: 2 binding(s) of deleted user u-gone still present after 200ms")
 	assert.Positive(t, grbPolls.Load(), "the removed user's GlobalRoleBindings must be polled")
@@ -497,7 +497,7 @@ func TestCleanupReportsATransientLookupWithoutDeletingOrPolling(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	err := newTestRealTarget(srv).Cleanup(t.Context())
+	err := newTestOracleTarget(srv).Cleanup(t.Context())
 	require.ErrorContains(t, err, "cleaning up e2e-fid-standard: delete: looking up user e2e-fid-standard: status 503")
 	assert.NotContains(t, err.Error(), "e2e-fid-member", "the member's clean pass adds no error")
 	assert.Equal(t, int32(0), deletes.Load())
@@ -522,7 +522,7 @@ func TestCleanupIsCleanWhenNoFixtureUserExists(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	require.NoError(t, newTestRealTarget(srv).Cleanup(t.Context()))
+	require.NoError(t, newTestOracleTarget(srv).Cleanup(t.Context()))
 	assert.Equal(t, int32(0), deletes.Load())
 }
 
@@ -568,7 +568,7 @@ func TestCleanupDeletesEveryStaleCopyWhenAnEarlierDeleteIsRefused(t *testing.T) 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	err := newTestRealTarget(srv).Cleanup(t.Context())
+	err := newTestOracleTarget(srv).Cleanup(t.Context())
 	require.ErrorContains(t, err, "cleaning up e2e-fid-standard: delete: deleting stale user u-kept: status 500")
 	assert.Equal(t, int32(1), refusedDeletes.Load())
 	assert.Equal(t, int32(1), acceptedDeletes.Load(), "the later copy must be deleted although the earlier DELETE was refused")
@@ -593,7 +593,7 @@ func TestDeleteStandardUserJoinsEveryRefusedCopy(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	err := newTestRealTarget(srv).deleteStandardUser(t.Context())
+	err := newTestOracleTarget(srv).deleteStandardUser(t.Context())
 	require.ErrorContains(t, err, "deleting stale user u-a: status 403")
 	require.ErrorContains(t, err, "deleting stale user u-b: status 403")
 	require.ErrorContains(t, err, "collection entry without id")

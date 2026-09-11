@@ -98,7 +98,7 @@ func discoveryProbes() []Probe {
 // Impersonate-User and Impersonate-Group, so cluster-access refusal,
 // impersonation refusal, and a service account's own identity are
 // unrecordable against the local-only pinned oracle. Recorded against
-// whatever Rancher E2E_REAL_URL names, with E2E_REAL_DOWNSTREAM set to a
+// whatever Rancher E2E_FIDELITY_URL names, with E2E_FIDELITY_DOWNSTREAM set to a
 // downstream cluster it has.
 //
 // Unlike the pinned Docker oracle, this target is a real, named instance:
@@ -897,7 +897,7 @@ func authProbes() []Probe {
 
 func tokProbes() []Probe {
 	// The created name is derived from the ext-shaped bearer under
-	// status.bearerToken - the same mechanism RealTarget.revokedBearer
+	// status.bearerToken - the same mechanism OracleTarget.revokedBearer
 	// uses, and one that holds whatever metadata the response carries.
 	create := Observation{
 		Name:     "create",

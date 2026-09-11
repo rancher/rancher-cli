@@ -5,12 +5,12 @@ set -euo pipefail
 # family access-downstream) against a Rancher the caller already runs and
 # that already has a downstream cluster - a hand-run comparison of an
 # external server (a dev instance, a release candidate) with the goldens
-# scripts/e2e-real records against the pinned oracle and its imported
-# downstream. Unlike scripts/e2e-real, this never boots Docker or
+# scripts/e2e-fidelity records against the pinned oracle and its imported
+# downstream. Unlike scripts/e2e-fidelity, this never boots Docker or
 # bootstraps a server. Never on PRs.
 
 missing=()
-for var in E2E_REAL_URL E2E_REAL_ADMIN_TOKEN E2E_REAL_CACERT E2E_REAL_DOWNSTREAM; do
+for var in E2E_FIDELITY_URL E2E_FIDELITY_ADMIN_TOKEN E2E_FIDELITY_CACERT E2E_FIDELITY_DOWNSTREAM; do
   [ -n "${!var:-}" ] || missing+=("${var}")
 done
 if [ "${#missing[@]}" -ne 0 ]; then
@@ -18,8 +18,8 @@ if [ "${#missing[@]}" -ne 0 ]; then
   exit 1
 fi
 
-# E2E_REAL_DOWNSTREAM_UPDATE_FLAG is a fixed internal value ("" or
-# "-update"), set only by scripts/e2e-real-downstream-update, never
+# E2E_FIDELITY_DOWNSTREAM_UPDATE_FLAG is a fixed internal value ("" or
+# "-update"), set only by scripts/e2e-fidelity-downstream-update, never
 # user-supplied, so the intentional word-splitting here is safe.
 # shellcheck disable=SC2086
-go test -tags e2e_real -count=1 -run TestDownstream ./e2e/real/ ${E2E_REAL_DOWNSTREAM_UPDATE_FLAG:-}
+go test -tags e2e_fidelity -count=1 -run TestDownstream ./test/e2e/fidelity/ ${E2E_FIDELITY_DOWNSTREAM_UPDATE_FLAG:-}

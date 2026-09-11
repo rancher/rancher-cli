@@ -319,20 +319,20 @@ Requires Go 1.27.1+ to build from source:
     make test         # go test -race -cover ./...
     make validate     # gofmt + vet + lint + race tests (the commit gate)
     make e2e          # end-to-end suite against an envtest-backed fake Rancher
-    make e2e-real     # verify recorded fidelity goldens against a real Rancher in Docker
-    make e2e-real-downstream  # verify downstream-cluster fidelity goldens against your own Rancher
+    make e2e-fidelity     # verify recorded fidelity goldens against a real Rancher in Docker
+    make e2e-fidelity-downstream  # verify downstream-cluster fidelity goldens against your own Rancher
     make              # the full ci pipeline (build + validate)
 
-`make e2e-real` boots the pinned `rancher/rancher` image, imports a pinned
+`make e2e-fidelity` boots the pinned `rancher/rancher` image, imports a pinned
 `rancher/k3s` container as a downstream cluster (~7-9 min in all), and
 checks that the fake Rancher the e2e suite runs against still behaves
 like the real one, downstream proxy behavior included; `make
-e2e-real-update` re-records those goldens. `make e2e-real-downstream`
+e2e-fidelity-update` re-records those goldens. `make e2e-fidelity-downstream`
 compares a Rancher you already run, with a downstream cluster already
 registered, against the same downstream goldens: point it at the server
-via `E2E_REAL_URL`, `E2E_REAL_ADMIN_TOKEN`, `E2E_REAL_CACERT` (a PEM, or
+via `E2E_FIDELITY_URL`, `E2E_FIDELITY_ADMIN_TOKEN`, `E2E_FIDELITY_CACERT` (a PEM, or
 the literal `system` to trust your OS root store), and
-`E2E_REAL_DOWNSTREAM` (the cluster id); `make e2e-real-downstream-update`
+`E2E_FIDELITY_DOWNSTREAM` (the cluster id); `make e2e-fidelity-downstream-update`
 re-records the downstream goldens from that server instead.
 
 One-time setup: `git config core.hooksPath .githooks` enables the

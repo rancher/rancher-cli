@@ -2,7 +2,7 @@ name: fuzz
 
 # Wire-input fuzzing: real fuzz budgets (FUZZTIME=5m/target) are too slow and
 # too corpus-flaky for PRs - a weekly scheduled run plus workflow_dispatch
-# surfaces regressions without gating merges (e2e-real precedent).
+# surfaces regressions without gating merges (e2e-fidelity precedent).
 on:
   workflow_dispatch:
   schedule:

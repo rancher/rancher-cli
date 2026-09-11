@@ -23,7 +23,7 @@ import (
 var execLineRE = regexp.MustCompile(`^\s*(\[[^\]]*\]\s*)?(!)?\s*exec\s+rancher\s+(.+)$`)
 
 // minParsedInvocations is a lower bound on how many exec rancher lines
-// e2e/scripts/*.txtar carries. A coverage-parser regression that starts
+// test/e2e/scripts/*.txtar carries. A coverage-parser regression that starts
 // matching far too little must fail loudly here rather than look clean
 // because both failure lists it drives happen to be empty. Set to ~90% of
 // the corpus size when introduced (378 lines at the time); raise it when
@@ -162,7 +162,7 @@ func TestExecLineRE(t *testing.T) {
 
 // TestEveryFixedCommandHasAnE2EScenario asserts that every fixed command in
 // the schema manifest is invoked by at least one `exec rancher` line
-// somewhere under e2e/scripts/*.txtar, and that the parser used to find
+// somewhere under test/e2e/scripts/*.txtar, and that the parser used to find
 // those invocations can attribute every such line to a real command - a
 // parser gap can otherwise hide a missing scenario just as effectively as
 // the scenario itself being absent.
@@ -171,7 +171,7 @@ func TestEveryFixedCommandHasAnE2EScenario(t *testing.T) {
 	_, _, fixed, _ := deriveSurface(t)
 	a := buildManifestAttribution(t)
 
-	dir := docPath(t, filepath.Join("e2e", "scripts"))
+	dir := docPath(t, filepath.Join("test", "e2e", "scripts"))
 	files, err := filepath.Glob(filepath.Join(dir, "*.txtar"))
 	require.NoError(t, err)
 	require.NotEmpty(t, files, "no txtar scenarios found under %s", dir)
@@ -210,7 +210,7 @@ func TestEveryFixedCommandHasAnE2EScenario(t *testing.T) {
 	}
 
 	assert.GreaterOrEqual(t, total, minParsedInvocations,
-		"parsed only %d exec rancher invocations across e2e/scripts/*.txtar, want >= %d - the line regex may be matching too little",
+		"parsed only %d exec rancher invocations across test/e2e/scripts/*.txtar, want >= %d - the line regex may be matching too little",
 		total, minParsedInvocations)
 
 	slices.Sort(unattributed)
@@ -225,5 +225,5 @@ func TestEveryFixedCommandHasAnE2EScenario(t *testing.T) {
 	}
 	slices.Sort(missing)
 	assert.Empty(t, missing,
-		"fixed commands with no `exec rancher <command>` line in any e2e/scripts/*.txtar scenario: %v", missing)
+		"fixed commands with no `exec rancher <command>` line in any test/e2e/scripts/*.txtar scenario: %v", missing)
 }
