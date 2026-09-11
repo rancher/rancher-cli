@@ -148,6 +148,30 @@ type tokenCmd struct {
 	// through, from the policy read under the config lock; nil means
 	// config.OpenStoreWithNotice. Tests inject a failing store.
 	openStore func(policy, dir string) (config.CredStore, string, error)
+	// newClient builds the client every Rancher request goes through; nil
+	// means httpx.New. Tests inject a client bound to an in-memory server
+	// so the whole invocation can run on a fake clock.
+	newClient func(httpx.Options) (*http.Client, error)
+	// newDirectClient builds the client the direct-endpoint probe uses
+	// from the exec cluster's rest.Config; nil means kube.HTTPClient. The
+	// probe builds its own client, so the Rancher seam cannot reach it.
+	newDirectClient directClientFactory
+}
+
+// clientFor is newClient or its production default.
+func (t tokenCmd) clientFor(opts httpx.Options) (*http.Client, error) {
+	if t.newClient != nil {
+		return t.newClient(opts)
+	}
+	return httpx.New(opts)
+}
+
+// directClientFor is newDirectClient or its production default.
+func (t tokenCmd) directClientFor() directClientFactory {
+	if t.newDirectClient != nil {
+		return t.newDirectClient
+	}
+	return kube.HTTPClient
 }
 
 func NewTokenCommand(dir string, store config.CredStore) runtime.Command {
@@ -316,7 +340,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		usernameDefault: params.UsernameDefault,
 	}
 
-	client, err := httpx.New(httpx.Options{CACert: caPEM, Insecure: input.skipVerify, Timeout: httpx.DefaultTimeout})
+	client, err := t.clientFor(httpx.Options{CACert: caPEM, Insecure: input.skipVerify, Timeout: httpx.DefaultTimeout})
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -384,7 +408,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	// made the token; a cached token skips it.
 	markReady := false
 	if directTarget != nil && rancherToken.fresh != nil {
-		ready, werr := waitDirectReady(ctx, directTarget, rancherToken.Token, directWaitBound)
+		ready, werr := waitDirectReady(ctx, directTarget, rancherToken.Token, directWaitBound, t.directClientFor())
 		switch {
 		case werr == nil && ready:
 			markReady = true
@@ -454,7 +478,7 @@ func (t tokenCmd) cachedResultQ(ctx context.Context, key string, quiet bool, p r
 	if direct == nil || slices.Contains(d.ReadyEndpoints, direct.fingerprint) {
 		return r, true, nil
 	}
-	ready, werr := waitDirectReady(ctx, direct, d.Token, directRecheckBound)
+	ready, werr := waitDirectReady(ctx, direct, d.Token, directRecheckBound, t.directClientFor())
 	switch {
 	case werr == nil && ready:
 		marked, merr := t.store.MarkCachedCredReady(key, d.Token, direct.fingerprint)

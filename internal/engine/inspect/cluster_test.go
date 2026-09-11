@@ -12,7 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/provider"
@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/rest"
 )
 
 // fakeRoot is a canned engine.RootClient: one body or one error, and the
@@ -517,83 +518,81 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 // CALLER's context is still active is an ordinary availability failure, not a
 // cancellation - the command succeeds, the provisioning sections degrade to a
 // warning that carries the deadline wording (so agents can tell timeout from
-// RBAC), and the registration lookup still proceeds. Not run with
-// t.Parallel(): it shrinks the provider's shared request timeout via
-// SetRequestTimeoutForTest, and this package's parallel tests must not
-// observe a shrunk timeout mid-run.
+// RBAC), and the registration lookup still proceeds. It runs in a synctest
+// bubble against an in-memory server, so the provider's production request
+// timeout expires on the fake clock.
 func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing.T) {
-	const (
-		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/c-abc"
-		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
-		crtbListPath = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-abc/clusterroletemplatebindings"
-	)
-	neverAnswer := make(chan struct{})
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case mgmtGetPath:
-			_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"},"status":{"state":"active"}}`))
-		case provListPath:
-			// Never answer: the provider's (shrunk) child deadline must be
-			// the only way this request ends. Returning on the request
-			// context alone let a slow runner see an empty 200 when the
-			// handler unblocked before the client had processed its own
-			// cancellation; the channel is released only when the test is
-			// over.
-			<-neverAnswer
-		case crtbListPath:
-			// Return an empty crtb list so members lookup succeeds silently
-			// and does not add a second warning to the timeout-degrade case.
-			_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"ClusterRoleTemplateBindingList","items":[]}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	// Deferred calls run last-in first-out: the channel closes first, which
-	// releases the blocked handler, and only then does srv.Close run; in
-	// the other order Close would wait forever on the handler it still
-	// counts as in flight. By then the assertions have run and the client
-	// gave up at its deadline long ago.
-	defer srv.Close()
-	defer close(neverAnswer)
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/c-abc"
+			provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
+			crtbListPath = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-abc/clusterroletemplatebindings"
+		)
+		neverAnswer := make(chan struct{})
+		srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch r.URL.Path {
+			case mgmtGetPath:
+				_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"},"status":{"state":"active"}}`))
+			case provListPath:
+				// Never answer: the provider's (shrunk) child deadline must be
+				// the only way this request ends. Returning on the request
+				// context alone let a slow runner see an empty 200 when the
+				// handler unblocked before the client had processed its own
+				// cancellation; the channel is released only when the test is
+				// over.
+				<-neverAnswer
+			case crtbListPath:
+				// Return an empty crtb list so members lookup succeeds silently
+				// and does not add a second warning to the timeout-degrade case.
+				_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"ClusterRoleTemplateBindingList","items":[]}`))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		// The handler is released when the test is over; the in-memory server
+		// closes with the bubble.
+		defer close(neverAnswer)
 
-	restore := provider.SetRequestTimeoutForTest(200 * time.Millisecond)
-	defer restore()
+		// The rest config names a logical origin; every request goes through
+		// the in-memory server's transport instead of the TLS settings the
+		// config would otherwise build.
+		rc, err := kube.RESTConfig(config.Effective{URL: "https://rancher.example", Token: "id:secret"}, engine.LocalCluster)
+		require.NoError(t, err)
+		rc.TLSClientConfig = rest.TLSClientConfig{}
+		rc.Transport = srv.Client().Transport
+		realClient, err := provider.NewClusterClient(rc, engine.LocalCluster)
+		require.NoError(t, err)
 
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
-	rc, err := kube.RESTConfig(config.Effective{URL: srv.URL, CA: string(certPEM), Token: "id:secret"}, engine.LocalCluster)
-	require.NoError(t, err)
-	realClient, err := provider.NewClusterClient(rc, engine.LocalCluster)
-	require.NoError(t, err)
+		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+		cmd := NewInspectCluster(&fakeFactory{client: realClient}, fakeRoots{rc: root})
+		res, err := execRead(t, cmd, registrationInput("c-abc"))
+		require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
 
-	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
-	cmd := NewInspectCluster(&fakeFactory{client: realClient}, fakeRoots{rc: root})
-	res, err := execRead(t, cmd, registrationInput("c-abc"))
-	require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
+		// Two warnings: the node-join applicability advisory (the correlation
+		// that decides imported-vs-not is the thing that just degraded) and the
+		// provisioning degrade itself.
+		require.Len(t, res.Warnings, 2)
+		assert.Contains(t, res.Warnings[0], "cannot determine whether the node-join commands apply")
+		assert.Contains(t, res.Warnings[1], "provisioning unavailable")
+		assert.Contains(t, strings.ToLower(res.Warnings[1]), "deadline",
+			"the warning carries the adapter's timeout wording so an agent can tell timeout from RBAC")
 
-	// Two warnings: the node-join applicability advisory (the correlation
-	// that decides imported-vs-not is the thing that just degraded) and the
-	// provisioning degrade itself.
-	require.Len(t, res.Warnings, 2)
-	assert.Contains(t, res.Warnings[0], "cannot determine whether the node-join commands apply")
-	assert.Contains(t, res.Warnings[1], "provisioning unavailable")
-	assert.Contains(t, strings.ToLower(res.Warnings[1]), "deadline",
-		"the warning carries the adapter's timeout wording so an agent can tell timeout from RBAC")
-
-	doc, _ := marshaledDoc(t, res.Data)
-	_, hasStatus := doc["status"]
-	assert.False(t, hasStatus, "status stays omitted on the degraded lookup")
-	_, hasPools := doc["machinePools"]
-	assert.False(t, hasPools, "machinePools stays omitted on the degraded lookup")
-	reg, hasReg := doc["registration"]
-	assert.True(t, hasReg, "the registration lookup still proceeds after the degraded provisioning lookup")
-	assert.NotEmpty(t, reg)
-	regMap, _ := reg.(map[string]any)
-	_, hasNA := regMap["notApplicable"]
-	assert.False(t, hasNA,
-		"imported is UNKNOWN under a degraded correlation - the node-join fields are neither annotated nor claimed applicable; the advisory warning carries the uncertainty")
-	assert.Equal(t, "/v1/management.cattle.io.clusterregistrationtokens/c-abc/default-token", root.path,
-		"the registration fetch was issued despite the provisioning timeout")
+		doc, _ := marshaledDoc(t, res.Data)
+		_, hasStatus := doc["status"]
+		assert.False(t, hasStatus, "status stays omitted on the degraded lookup")
+		_, hasPools := doc["machinePools"]
+		assert.False(t, hasPools, "machinePools stays omitted on the degraded lookup")
+		reg, hasReg := doc["registration"]
+		assert.True(t, hasReg, "the registration lookup still proceeds after the degraded provisioning lookup")
+		assert.NotEmpty(t, reg)
+		regMap, _ := reg.(map[string]any)
+		_, hasNA := regMap["notApplicable"]
+		assert.False(t, hasNA,
+			"imported is UNKNOWN under a degraded correlation - the node-join fields are neither annotated nor claimed applicable; the advisory warning carries the uncertainty")
+		assert.Equal(t, "/v1/management.cattle.io.clusterregistrationtokens/c-abc/default-token", root.path,
+			"the registration fetch was issued despite the provisioning timeout")
+	})
 }
 
 // TestInspectClusterRegistrationPlaceholderFieldDropped is the IC-8

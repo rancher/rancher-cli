@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -19,9 +20,9 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/rancher/rancher-cli/credhelper"
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
@@ -30,17 +31,66 @@ import (
 // SelfSubjectReview 401 for the first unauthorized probes, then per mode.
 type directEndpoint struct {
 	srv          *httptest.Server
+	inMemory     bool         // served on the in-memory network for synctest bubbles
+	ca           []byte       // the stand-in CA of the in-memory variant, generated once
 	unauthorized int32        // answers 401 while > 0, decrementing
 	mode         atomic.Value // "review", "forbidden-status", "forbidden-plain", "empty-review", "notfound", "throttled", "unavailable", "hang"
 	probes       atomic.Int32
 	release      chan struct{}
 }
 
+// newDirectEndpoint serves the endpoint on a loopback TLS listener, for
+// tests that run outside a synctest bubble.
 func newDirectEndpoint(t *testing.T, unauthorized int, mode string) *directEndpoint {
 	t.Helper()
 	d := &directEndpoint{unauthorized: int32(unauthorized), release: make(chan struct{})}
 	d.mode.Store(mode)
-	d.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	d.srv = httptest.NewTLSServer(http.HandlerFunc(d.handle))
+	t.Cleanup(func() { close(d.release); d.srv.Close() })
+	return d
+}
+
+// newInMemoryDirectEndpoint serves the same endpoint on the in-memory
+// network for tests inside a synctest bubble; it answers for directOrigin
+// through the transport returned by transport().
+func newInMemoryDirectEndpoint(t *testing.T, unauthorized int, mode string) *directEndpoint {
+	t.Helper()
+	d := &directEndpoint{unauthorized: int32(unauthorized), release: make(chan struct{}), inMemory: true}
+	d.mode.Store(mode)
+	d.ca = pemEncode(distinctLoopbackCert(t).Certificate[0])
+	d.srv = httptest.NewTestServer(t, http.HandlerFunc(d.handle))
+	t.Cleanup(func() { close(d.release) })
+	return d
+}
+
+// transport dispatches directOrigin to this in-memory endpoint.
+func (d *directEndpoint) transport() hostTransport {
+	return hostTransport{hostOf(directOrigin): d.srv.Client().Transport}
+}
+
+// url is the origin the endpoint answers for: the loopback URL, or
+// directOrigin for the in-memory variant.
+func (d *directEndpoint) url() string {
+	if d.inMemory {
+		return directOrigin
+	}
+	return d.srv.URL
+}
+
+// caPEM is the CA the exec cluster entry carries for this endpoint. The
+// in-memory variant has no TLS listener of its own, so a self-signed
+// certificate generated once at construction stands in: the injected
+// client never consults it, and the fingerprint only needs stable bytes.
+func (d *directEndpoint) caPEM(t *testing.T) []byte {
+	t.Helper()
+	if d.inMemory {
+		return d.ca
+	}
+	return pemEncode(d.srv.Certificate().Raw)
+}
+
+func (d *directEndpoint) handle(w http.ResponseWriter, r *http.Request) {
+	{
 		if r.URL.Path != "/apis/authentication.k8s.io/v1/selfsubjectreviews" || r.Method != http.MethodPost {
 			http.NotFound(w, r)
 			return
@@ -76,23 +126,20 @@ func newDirectEndpoint(t *testing.T, unauthorized int, mode string) *directEndpo
 			case <-r.Context().Done():
 			}
 		}
-	}))
-	t.Cleanup(func() { close(d.release); d.srv.Close() })
-	return d
+	}
 }
 
 // cluster builds the execCluster the plugin would load for this endpoint.
 func (d *directEndpoint) cluster(t *testing.T) *execCluster {
 	t.Helper()
-	ca := d.srv.Certificate().Raw
-	pemCA := pemEncode(ca)
-	return &execCluster{server: d.srv.URL, cfg: &rest.Config{Host: d.srv.URL, CAData: pemCA}, fingerprint: endpointFingerprint(d.srv.URL, pemCA, "", false, "")}
+	pemCA := d.caPEM(t)
+	return &execCluster{server: d.url(), cfg: &rest.Config{Host: d.url(), CAData: pemCA}, fingerprint: endpointFingerprint(d.url(), pemCA, "", false, "")}
 }
 
 // execInfo is the KUBERNETES_EXEC_INFO kubectl sets for this endpoint.
 func (d *directEndpoint) execInfo(t *testing.T) string {
 	t.Helper()
-	return execInfoFor(t, d.srv.URL, pemEncode(d.srv.Certificate().Raw))
+	return execInfoFor(t, d.url(), d.caPEM(t))
 }
 
 func execInfoFor(t *testing.T, server string, caPEM []byte) string {
@@ -107,15 +154,6 @@ func execInfoFor(t *testing.T, server string, caPEM []byte) string {
 	})
 	require.NoError(t, err)
 	return string(b)
-}
-
-func shortDirectTimings(t *testing.T) {
-	t.Helper()
-	oldInterval, oldSettle, oldBound, oldRecheck := directProbeInterval, directSettle, directWaitBound, directRecheckBound
-	directProbeInterval, directSettle, directWaitBound, directRecheckBound = 10*time.Millisecond, 30*time.Millisecond, 400*time.Millisecond, 150*time.Millisecond
-	t.Cleanup(func() {
-		directProbeInterval, directSettle, directWaitBound, directRecheckBound = oldInterval, oldSettle, oldBound, oldRecheck
-	})
 }
 
 // TestIsRancherProxyIsExact asserts the proxy is identified by exact
@@ -223,59 +261,72 @@ func TestProbeDirectClassifies(t *testing.T) {
 	})
 }
 
-// TestWaitDirectReadySettles asserts the wait: 401s then a ready answer
-// followed by the settling interval without a 401 is ready; a 401 inside
-// the interval restarts it; a bound expiry is (false, nil); a caller
-// cancellation is the caller's error; an endpoint that accepts and never
-// answers ends at the bound; a CA that does not parse is unavailable.
+// TestWaitDirectReadySettles asserts the wait on the fake clock: 401s then
+// a ready answer followed by the settling interval without a 401 is
+// ready; a bound expiry is (false, nil); a caller cancellation is the
+// caller's error; an endpoint that accepts and never answers ends at the
+// bound; a CA that does not parse is unavailable. Every subtest is its own
+// bubble with an in-memory endpoint, so the production intervals run
+// unshortened and the elapsed times are exact.
 func TestWaitDirectReadySettles(t *testing.T) {
-	shortDirectTimings(t)
 	t.Run("ready after 401s", func(t *testing.T) {
-		d := newDirectEndpoint(t, 3, "review")
-		start := time.Now()
-		ready, err := waitDirectReady(t.Context(), d.cluster(t), "tok", directWaitBound)
-		require.NoError(t, err)
-		assert.True(t, ready)
-		assert.GreaterOrEqual(t, time.Since(start), directSettle, "the settling interval elapsed after the first ready answer")
-		assert.GreaterOrEqual(t, d.probes.Load(), int32(5), "three 401s, one ready, then at least one more inside the interval")
+		synctest.Test(t, func(t *testing.T) {
+			d := newInMemoryDirectEndpoint(t, 3, "review")
+			start := time.Now()
+			ready, err := waitDirectReady(t.Context(), d.cluster(t), "tok", directWaitBound, d.transport().directClient())
+			require.NoError(t, err)
+			assert.True(t, ready)
+			assert.Equal(t, 3*directProbeInterval+directSettle, time.Since(start), "three 401s one interval apart, then the settling interval from the first ready answer")
+			assert.Equal(t, int32(3+1+int(directSettle/directProbeInterval)), d.probes.Load(), "three 401s, one ready, then one probe per interval until the interval elapsed")
+		})
 	})
 	t.Run("forbidden status is ready", func(t *testing.T) {
-		d := newDirectEndpoint(t, 1, "forbidden-status")
-		ready, err := waitDirectReady(t.Context(), d.cluster(t), "tok", directWaitBound)
-		require.NoError(t, err)
-		assert.True(t, ready)
+		synctest.Test(t, func(t *testing.T) {
+			d := newInMemoryDirectEndpoint(t, 1, "forbidden-status")
+			ready, err := waitDirectReady(t.Context(), d.cluster(t), "tok", directWaitBound, d.transport().directClient())
+			require.NoError(t, err)
+			assert.True(t, ready)
+		})
 	})
 	t.Run("never ready expires the bound", func(t *testing.T) {
 		for _, mode := range []string{"notfound", "throttled", "unavailable", "forbidden-plain", "empty-review"} {
-			d := newDirectEndpoint(t, 0, mode)
-			start := time.Now()
-			ready, err := waitDirectReady(t.Context(), d.cluster(t), "tok", directWaitBound)
-			require.NoError(t, err, mode)
-			assert.False(t, ready, mode)
-			assert.GreaterOrEqual(t, time.Since(start), directWaitBound, mode)
+			synctest.Test(t, func(t *testing.T) {
+				d := newInMemoryDirectEndpoint(t, 0, mode)
+				start := time.Now()
+				ready, err := waitDirectReady(t.Context(), d.cluster(t), "tok", directWaitBound, d.transport().directClient())
+				require.NoError(t, err, mode)
+				assert.False(t, ready, mode)
+				assert.Equal(t, directWaitBound, time.Since(start), mode)
+			})
 		}
 	})
 	t.Run("hang ends at the bound", func(t *testing.T) {
-		d := newDirectEndpoint(t, 0, "hang")
-		start := time.Now()
-		ready, err := waitDirectReady(t.Context(), d.cluster(t), "tok", directWaitBound)
-		require.NoError(t, err)
-		assert.False(t, ready)
-		elapsed := time.Since(start)
-		assert.GreaterOrEqual(t, elapsed, directWaitBound)
-		assert.Less(t, elapsed, directWaitBound+time.Second, "a stalled request cannot outlive the bound")
+		synctest.Test(t, func(t *testing.T) {
+			d := newInMemoryDirectEndpoint(t, 0, "hang")
+			start := time.Now()
+			ready, err := waitDirectReady(t.Context(), d.cluster(t), "tok", directWaitBound, d.transport().directClient())
+			require.NoError(t, err)
+			assert.False(t, ready)
+			assert.Equal(t, directWaitBound, time.Since(start), "a stalled request cannot outlive the bound")
+		})
 	})
 	t.Run("cancellation is the caller's error", func(t *testing.T) {
-		d := newDirectEndpoint(t, 1000, "review")
-		ctx, cancel := context.WithCancel(t.Context())
-		go func() { time.Sleep(3 * directProbeInterval); cancel() }()
-		ready, err := waitDirectReady(ctx, d.cluster(t), "tok", directWaitBound)
-		require.ErrorIs(t, err, context.Canceled)
-		assert.False(t, ready)
+		synctest.Test(t, func(t *testing.T) {
+			d := newInMemoryDirectEndpoint(t, 1000, "review")
+			ctx, cancel := context.WithCancel(t.Context())
+			// Cancel between two ticks, never on one, so the probe count
+			// does not depend on which of two timers due at the same instant
+			// fires first.
+			go func() { time.Sleep(5 * directProbeInterval / 2); cancel() }()
+			ready, err := waitDirectReady(ctx, d.cluster(t), "tok", directWaitBound, d.transport().directClient())
+			require.ErrorIs(t, err, context.Canceled)
+			assert.False(t, ready)
+			assert.Equal(t, int32(3), d.probes.Load(), "the probe at the start and one per interval until the cancellation")
+		})
 	})
 	t.Run("unparsable ca is unavailable", func(t *testing.T) {
 		ec := &execCluster{server: "https://ace.example.test", cfg: &rest.Config{Host: "https://ace.example.test", CAData: []byte("not a pem")}}
-		_, err := waitDirectReady(t.Context(), ec, "tok", directWaitBound)
+		_, err := waitDirectReady(t.Context(), ec, "tok", directWaitBound, kube.HTTPClient)
 		var unavailable *directProbeUnavailable
 		require.ErrorAs(t, err, &unavailable)
 	})
@@ -283,7 +334,7 @@ func TestWaitDirectReadySettles(t *testing.T) {
 		ec := &execCluster{server: "https://ace.example.test", cfg: &rest.Config{Host: "https://ace.example.test", CAData: []byte("not a pem")}}
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		_, err := waitDirectReady(ctx, ec, "tok", directWaitBound)
+		_, err := waitDirectReady(ctx, ec, "tok", directWaitBound, kube.HTTPClient)
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }
@@ -300,28 +351,30 @@ func pemEncode(der []byte) []byte {
 // endpoint authenticates it and settles, and the cache record carries the
 // endpoint's fingerprint; a second call is a cache hit with no probe.
 func TestGetTokenWaitsForTheDirectEndpoint(t *testing.T) {
-	shortDirectTimings(t)
-	d := newDirectEndpoint(t, 2, "review")
-	t.Setenv(execInfoEnv, d.execInfo(t))
-	x := newPluginFixture(t, false, testrancher.Options{})
-	res, err := x.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	cred := res.Data.(*execCredential)
-	require.NotEmpty(t, cred.Status.Token)
-	assert.GreaterOrEqual(t, d.probes.Load(), int32(4), "two 401s, a ready answer, and the settling interval")
-	assert.Empty(t, res.Warnings)
+	synctest.Test(t, func(t *testing.T) {
+		d := newInMemoryDirectEndpoint(t, 2, "review")
+		t.Setenv(execInfoEnv, d.execInfo(t))
+		x := newInMemoryPluginFixture(t, false, testrancher.Options{})
+		x.route(d)
+		res, err := x.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		cred := res.Data.(*execCredential)
+		require.NotEmpty(t, cred.Status.Token)
+		assert.Equal(t, int32(2+1+int(directSettle/directProbeInterval)), d.probes.Load(), "two 401s, a ready answer, and one probe per interval through the settling interval")
+		assert.Empty(t, res.Warnings)
 
-	key := config.CacheKey("kc", credhelperCanonical(t, x.srv.URL), "local")
-	detail, err := x.store.GetCachedCredDetail(key)
-	require.NoError(t, err)
-	assert.Equal(t, cred.Status.Token, detail.Token)
-	assert.Equal(t, []string{d.cluster(t).fingerprint}, detail.ReadyEndpoints)
+		key := config.CacheKey("kc", credhelperCanonical(t, x.url), "local")
+		detail, err := x.store.GetCachedCredDetail(key)
+		require.NoError(t, err)
+		assert.Equal(t, cred.Status.Token, detail.Token)
+		assert.Equal(t, []string{d.cluster(t).fingerprint}, detail.ReadyEndpoints)
 
-	before := d.probes.Load()
-	res2, err := x.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	assert.Equal(t, cred.Status.Token, res2.Data.(*execCredential).Status.Token, "a cache hit")
-	assert.Equal(t, before, d.probes.Load(), "a ready endpoint is not probed again")
+		before := d.probes.Load()
+		res2, err := x.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		assert.Equal(t, cred.Status.Token, res2.Data.(*execCredential).Status.Token, "a cache hit")
+		assert.Equal(t, before, d.probes.Load(), "a ready endpoint is not probed again")
+	})
 }
 
 // TestGetTokenTimeoutWarnsAndReprobesOnHit asserts a bound expiry: the
@@ -330,49 +383,56 @@ func TestGetTokenWaitsForTheDirectEndpoint(t *testing.T) {
 // cached token (a shorter bound) and marks it once the endpoint answers,
 // creating no token.
 func TestGetTokenTimeoutWarnsAndReprobesOnHit(t *testing.T) {
-	shortDirectTimings(t)
-	d := newDirectEndpoint(t, 1000, "review")
-	t.Setenv(execInfoEnv, d.execInfo(t))
-	x := newPluginFixture(t, false, testrancher.Options{})
-	res, err := x.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "may not yet be accepted at "+d.srv.URL)
-	assert.Contains(t, res.Warnings[0], "the proxy context kc is the immediate fallback")
-	key := config.CacheKey("kc", credhelperCanonical(t, x.srv.URL), "local")
-	detail, err := x.store.GetCachedCredDetail(key)
-	require.NoError(t, err)
-	assert.Empty(t, detail.ReadyEndpoints)
-	creates := x.f.TokenCount()
+	synctest.Test(t, func(t *testing.T) {
+		d := newInMemoryDirectEndpoint(t, 1000, "review")
+		t.Setenv(execInfoEnv, d.execInfo(t))
+		x := newInMemoryPluginFixture(t, false, testrancher.Options{})
+		x.route(d)
+		start := time.Now()
+		res, err := x.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		assert.Equal(t, directWaitBound, time.Since(start), "the whole bound elapsed on the fake clock before the warning")
+		require.Len(t, res.Warnings, 1)
+		assert.Contains(t, res.Warnings[0], "may not yet be accepted at "+d.url())
+		assert.Contains(t, res.Warnings[0], "the proxy context kc is the immediate fallback")
+		key := config.CacheKey("kc", credhelperCanonical(t, x.url), "local")
+		detail, err := x.store.GetCachedCredDetail(key)
+		require.NoError(t, err)
+		assert.Empty(t, detail.ReadyEndpoints)
+		creates := x.f.TokenCount()
 
-	atomic.StoreInt32(&d.unauthorized, 0)
-	res2, err := x.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	assert.Equal(t, detail.Token, res2.Data.(*execCredential).Status.Token, "the cached token, re-probed")
-	assert.Empty(t, res2.Warnings)
-	assert.Equal(t, creates, x.f.TokenCount(), "no replacement token")
-	detail, err = x.store.GetCachedCredDetail(key)
-	require.NoError(t, err)
-	assert.Equal(t, []string{d.cluster(t).fingerprint}, detail.ReadyEndpoints)
+		atomic.StoreInt32(&d.unauthorized, 0)
+		res2, err := x.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		assert.Equal(t, detail.Token, res2.Data.(*execCredential).Status.Token, "the cached token, re-probed")
+		assert.Empty(t, res2.Warnings)
+		assert.Equal(t, creates, x.f.TokenCount(), "no replacement token")
+		detail, err = x.store.GetCachedCredDetail(key)
+		require.NoError(t, err)
+		assert.Equal(t, []string{d.cluster(t).fingerprint}, detail.ReadyEndpoints)
+	})
 }
 
 // TestGetTokenProxyContextNeverWaits asserts an exec info naming the
 // Rancher proxy exactly makes no probe, while a near-prefix URL does.
 func TestGetTokenProxyContextNeverWaits(t *testing.T) {
-	shortDirectTimings(t)
-	x := newPluginFixture(t, false, testrancher.Options{})
-	d := newDirectEndpoint(t, 0, "review")
-	t.Setenv(execInfoEnv, execInfoFor(t, x.srv.URL+"/k8s/clusters/local", nil))
-	_, err := x.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	assert.Equal(t, int32(0), d.probes.Load())
+	synctest.Test(t, func(t *testing.T) {
+		x := newInMemoryPluginFixture(t, false, testrancher.Options{})
+		d := newInMemoryDirectEndpoint(t, 0, "review")
+		x.route(d)
+		t.Setenv(execInfoEnv, execInfoFor(t, x.url+"/k8s/clusters/local", nil))
+		_, err := x.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		assert.Equal(t, int32(0), d.probes.Load())
 
-	t.Setenv(execInfoEnv, "")
-	x2 := newPluginFixture(t, false, testrancher.Options{})
-	t.Setenv(execInfoEnv, d.execInfo(t))
-	_, err = x2.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	assert.Greater(t, d.probes.Load(), int32(0), "a direct endpoint is probed")
+		t.Setenv(execInfoEnv, "")
+		x2 := newInMemoryPluginFixture(t, false, testrancher.Options{})
+		x2.route(d)
+		t.Setenv(execInfoEnv, d.execInfo(t))
+		_, err = x2.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		assert.Greater(t, d.probes.Load(), int32(0), "a direct endpoint is probed")
+	})
 }
 
 // TestGetTokenCancelledDuringWaitRevokesTheToken asserts the cleanup: a
@@ -380,31 +440,32 @@ func TestGetTokenProxyContextNeverWaits(t *testing.T) {
 // created, with the token itself as bearer for the interactive login, and
 // returns the cancellation with the token's fate as details, no credential.
 func TestGetTokenCancelledDuringWaitRevokesTheToken(t *testing.T) {
-	shortDirectTimings(t)
-	d := newDirectEndpoint(t, 1000, "review")
-	t.Setenv(execInfoEnv, d.execInfo(t))
-	x := newPluginFixture(t, false, testrancher.Options{})
-	ctx, cancel := context.WithCancel(t.Context())
-	go func() {
-		for d.probes.Load() < 2 {
-			time.Sleep(time.Millisecond)
-		}
-		cancel()
-	}()
-	cmd := NewTokenCommand(x.dir, x.store).(runtime.ReadCommand)
-	_, err := cmd.Execute(ctx, tin{s: map[string]string{"server": x.srv.URL, "cluster": "local", "name": "kc", "auth-provider": "localProvider"}}, localPrompter())
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
-	require.ErrorContains(t, err, "cancelled while waiting for the direct endpoint")
-	require.ErrorContains(t, err, "was revoked")
-	deletes := x.f.DeleteRequests()
-	require.Len(t, deletes, 1)
-	creates := x.f.CreateRequests()
-	require.NotEmpty(t, creates)
-	assert.Equal(t, deletes[0].Name, creates[len(creates)-1].Name, "the token this invocation created")
-	assert.Contains(t, deletes[0].Bearer, deletes[0].Name, "the interactive login's token revokes itself")
-	_, cached, cerr := x.store.GetCachedCred(config.CacheKey("kc", credhelperCanonical(t, x.srv.URL), "local"))
-	assert.ErrorIs(t, cerr, config.ErrNoToken, "nothing cached", cached)
+	synctest.Test(t, func(t *testing.T) {
+		d := newInMemoryDirectEndpoint(t, 1000, "review")
+		t.Setenv(execInfoEnv, d.execInfo(t))
+		x := newInMemoryPluginFixture(t, false, testrancher.Options{})
+		x.route(d)
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() {
+			for d.probes.Load() < 2 {
+				time.Sleep(time.Millisecond)
+			}
+			cancel()
+		}()
+		_, err := x.command(x.store).Execute(ctx, x.input("local", "kc"), localPrompter())
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+		require.ErrorContains(t, err, "cancelled while waiting for the direct endpoint")
+		require.ErrorContains(t, err, "was revoked")
+		deletes := x.f.DeleteRequests()
+		require.Len(t, deletes, 1)
+		creates := x.f.CreateRequests()
+		require.NotEmpty(t, creates)
+		assert.Equal(t, deletes[0].Name, creates[len(creates)-1].Name, "the token this invocation created")
+		assert.Contains(t, deletes[0].Bearer, deletes[0].Name, "the interactive login's token revokes itself")
+		_, cached, cerr := x.store.GetCachedCred(config.CacheKey("kc", credhelperCanonical(t, x.url), "local"))
+		assert.ErrorIs(t, cerr, config.ErrNoToken, "nothing cached", cached)
+	})
 }
 
 func credhelperCanonical(t *testing.T, server string) string {
@@ -422,7 +483,6 @@ func credhelperCanonical(t *testing.T, server string) string {
 // the exec-login entry appears). In every case the child token this
 // invocation created is deleted with the parent bearer, never the parent.
 func TestGetTokenCancelledDuringWaitRevokesEveryProducersChild(t *testing.T) {
-	shortDirectTimings(t)
 	for _, tc := range []struct {
 		name       string
 		provenance clierr.Provenance
@@ -435,57 +495,59 @@ func TestGetTokenCancelledDuringWaitRevokesEveryProducersChild(t *testing.T) {
 		{"plugin-created login", clierr.ProvenanceExecLogin, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			d := newDirectEndpoint(t, 1000, "review")
-			t.Setenv(execInfoEnv, "")
-			x := newPluginFixture(t, tc.reuse, testrancher.Options{})
-			var parentBearer string
-			if tc.stored {
-				parent, err := AcquireLoginCredential(t.Context(), x.srv.Client(), LoginRequest{Server: x.srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
-					ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
-				require.NoError(t, err)
-				seedEntry(t, x.dir, x.store, "stored", config.Server{URL: x.srv.URL, Provenance: tc.provenance, TokenRef: parent.Ref, TokenUserID: parent.UserID}, parent.Token, tc.reuse)
-				parentBearer = parent.Token
-			}
-			loginsBefore := x.f.LoginCount()
-
-			t.Setenv(execInfoEnv, d.execInfo(t))
-			ctx, cancel := context.WithCancel(t.Context())
-			go func() {
-				for d.probes.Load() < 2 {
-					time.Sleep(time.Millisecond)
+			synctest.Test(t, func(t *testing.T) {
+				d := newInMemoryDirectEndpoint(t, 1000, "review")
+				t.Setenv(execInfoEnv, "")
+				x := newInMemoryPluginFixture(t, tc.reuse, testrancher.Options{})
+				x.route(d)
+				var parentBearer string
+				if tc.stored {
+					parent, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+						ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
+					require.NoError(t, err)
+					seedEntry(t, x.dir, x.store, "stored", config.Server{URL: x.url, Provenance: tc.provenance, TokenRef: parent.Ref, TokenUserID: parent.UserID}, parent.Token, tc.reuse)
+					parentBearer = parent.Token
 				}
-				cancel()
-			}()
-			before := len(x.f.DeleteRequests())
-			cmd := NewTokenCommand(x.dir, x.store).(runtime.ReadCommand)
-			_, err := cmd.Execute(ctx, tin{s: map[string]string{"server": x.srv.URL, "cluster": "local", "name": "kc", "auth-provider": "localProvider"}}, localPrompter())
-			require.ErrorIs(t, err, context.Canceled)
-			require.ErrorContains(t, err, "was revoked")
+				loginsBefore := x.f.LoginCount()
 
-			if tc.stored {
-				assert.Equal(t, loginsBefore, x.f.LoginCount(), "the stored credential produced the child; no login ran")
-			} else {
-				assert.Equal(t, loginsBefore+1, x.f.LoginCount(), "the plugin-created login ran")
-				entry, present := x.entry(t)
-				require.True(t, present, "the exec-login entry was persisted before the wait")
-				assert.Equal(t, clierr.ProvenanceExecLogin, entry.Provenance)
-				parentBearer, err = x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.srv.URL})
-				require.NoError(t, err)
-			}
-			creates := x.f.CreateRequests()
-			require.NotEmpty(t, creates)
-			child := creates[len(creates)-1].Name
-			// The acquisition of a plugin-created login revokes its own
-			// interim session token; only the child's delete is this wait's.
-			var childDeletes []testrancher.DeleteRecord
-			for _, del := range x.f.DeleteRequests()[before:] {
-				assert.NotEqual(t, extBearerName(parentBearer), del.Name, "the parent is never revoked")
-				if del.Name == child {
-					childDeletes = append(childDeletes, del)
+				t.Setenv(execInfoEnv, d.execInfo(t))
+				ctx, cancel := context.WithCancel(t.Context())
+				go func() {
+					for d.probes.Load() < 2 {
+						time.Sleep(time.Millisecond)
+					}
+					cancel()
+				}()
+				before := len(x.f.DeleteRequests())
+				_, err := x.command(x.store).Execute(ctx, x.input("local", "kc"), localPrompter())
+				require.ErrorIs(t, err, context.Canceled)
+				require.ErrorContains(t, err, "was revoked")
+
+				if tc.stored {
+					assert.Equal(t, loginsBefore, x.f.LoginCount(), "the stored credential produced the child; no login ran")
+				} else {
+					assert.Equal(t, loginsBefore+1, x.f.LoginCount(), "the plugin-created login ran")
+					entry, present := x.entry(t)
+					require.True(t, present, "the exec-login entry was persisted before the wait")
+					assert.Equal(t, clierr.ProvenanceExecLogin, entry.Provenance)
+					parentBearer, err = x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.url})
+					require.NoError(t, err)
 				}
-			}
-			require.Len(t, childDeletes, 1, "the child this invocation created is deleted once")
-			assert.Equal(t, parentBearer, childDeletes[0].Bearer, "deleted with the parent bearer whatever its provenance")
+				creates := x.f.CreateRequests()
+				require.NotEmpty(t, creates)
+				child := creates[len(creates)-1].Name
+				// The acquisition of a plugin-created login revokes its own
+				// interim session token; only the child's delete is this wait's.
+				var childDeletes []testrancher.DeleteRecord
+				for _, del := range x.f.DeleteRequests()[before:] {
+					assert.NotEqual(t, extBearerName(parentBearer), del.Name, "the parent is never revoked")
+					if del.Name == child {
+						childDeletes = append(childDeletes, del)
+					}
+				}
+				require.Len(t, childDeletes, 1, "the child this invocation created is deleted once")
+				assert.Equal(t, parentBearer, childDeletes[0].Bearer, "deleted with the parent bearer whatever its provenance")
+			})
 		})
 	}
 }
@@ -503,40 +565,43 @@ func extBearerName(bearer string) string {
 // does not parse, the fresh token is revoked and no credential returned;
 // on a cache hit the cancellation is returned and nothing is revoked.
 func TestGetTokenCancelledBeforeAnUnprobeableEndpointStillRevokes(t *testing.T) {
-	shortDirectTimings(t)
 	badCA := execInfoFor(t, "https://ace.example.test:6443", []byte("not a pem"))
 	t.Run("fresh token", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		x := newPluginFixture(t, false, testrancher.Options{})
-		directWaitStarted = cancel // the token exists; the caller is gone as the wait begins
-		t.Cleanup(func() { directWaitStarted = nil })
-		t.Setenv(execInfoEnv, badCA)
-		before := len(x.f.DeleteRequests())
-		cmd := NewTokenCommand(x.dir, x.store).(runtime.ReadCommand)
-		_, err := cmd.Execute(ctx, tin{s: map[string]string{"server": x.srv.URL, "cluster": "local", "name": "kc", "auth-provider": "localProvider"}}, localPrompter())
-		require.ErrorIs(t, err, context.Canceled)
-		require.ErrorContains(t, err, "was revoked")
-		require.Len(t, x.f.DeleteRequests()[before:], 1)
-		_, _, cerr := x.store.GetCachedCred(config.CacheKey("kc", credhelperCanonical(t, x.srv.URL), "local"))
-		assert.ErrorIs(t, cerr, config.ErrNoToken)
+		synctest.Test(t, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			// No direct endpoint is routed: the probe keeps the production
+			// client constructor, which fails on the CA before any request.
+			x := newInMemoryPluginFixture(t, false, testrancher.Options{})
+			directWaitStarted = cancel // the token exists; the caller is gone as the wait begins
+			t.Cleanup(func() { directWaitStarted = nil })
+			t.Setenv(execInfoEnv, badCA)
+			before := len(x.f.DeleteRequests())
+			_, err := x.command(x.store).Execute(ctx, x.input("local", "kc"), localPrompter())
+			require.ErrorIs(t, err, context.Canceled)
+			require.ErrorContains(t, err, "was revoked")
+			require.Len(t, x.f.DeleteRequests()[before:], 1)
+			_, _, cerr := x.store.GetCachedCred(config.CacheKey("kc", credhelperCanonical(t, x.url), "local"))
+			assert.ErrorIs(t, cerr, config.ErrNoToken)
+		})
 	})
 	t.Run("cache hit", func(t *testing.T) {
-		t.Setenv(execInfoEnv, "")
-		x := newPluginFixture(t, false, testrancher.Options{})
-		res, err := x.getToken(t, "local", "kc", localPrompter())
-		require.NoError(t, err)
-		cached := res.Data.(*execCredential).Status.Token
-		t.Setenv(execInfoEnv, badCA)
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-		before := len(x.f.DeleteRequests())
-		cmd := NewTokenCommand(x.dir, x.store).(runtime.ReadCommand)
-		_, err = cmd.Execute(ctx, tin{s: map[string]string{"server": x.srv.URL, "cluster": "local", "name": "kc", "auth-provider": "localProvider"}}, localPrompter())
-		require.ErrorIs(t, err, context.Canceled)
-		assert.Empty(t, x.f.DeleteRequests()[before:], "a cached token is not this invocation's to revoke")
-		tok, _, cerr := x.store.GetCachedCred(config.CacheKey("kc", credhelperCanonical(t, x.srv.URL), "local"))
-		require.NoError(t, cerr)
-		assert.Equal(t, cached, tok, "the cache is untouched")
+		synctest.Test(t, func(t *testing.T) {
+			t.Setenv(execInfoEnv, "")
+			x := newInMemoryPluginFixture(t, false, testrancher.Options{})
+			res, err := x.getToken(t, "local", "kc", localPrompter())
+			require.NoError(t, err)
+			cached := res.Data.(*execCredential).Status.Token
+			t.Setenv(execInfoEnv, badCA)
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			before := len(x.f.DeleteRequests())
+			_, err = x.command(x.store).Execute(ctx, x.input("local", "kc"), localPrompter())
+			require.ErrorIs(t, err, context.Canceled)
+			assert.Empty(t, x.f.DeleteRequests()[before:], "a cached token is not this invocation's to revoke")
+			tok, _, cerr := x.store.GetCachedCred(config.CacheKey("kc", credhelperCanonical(t, x.url), "local"))
+			require.NoError(t, cerr)
+			assert.Equal(t, cached, tok, "the cache is untouched")
+		})
 	})
 }
 
@@ -558,24 +623,25 @@ func (s *markRefusingStore) MarkCachedCredReady(key, _, _ string) (bool, error) 
 // path: the token read from the cache is never returned; a new token is
 // created and returned instead.
 func TestGetTokenRefusedReadinessMarkIsAMiss(t *testing.T) {
-	shortDirectTimings(t)
-	t.Setenv(execInfoEnv, "")
-	x := newPluginFixture(t, false, testrancher.Options{})
-	res, err := x.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	cached := res.Data.(*execCredential).Status.Token
+	synctest.Test(t, func(t *testing.T) {
+		t.Setenv(execInfoEnv, "")
+		x := newInMemoryPluginFixture(t, false, testrancher.Options{})
+		res, err := x.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		cached := res.Data.(*execCredential).Status.Token
 
-	d := newDirectEndpoint(t, 0, "review")
-	t.Setenv(execInfoEnv, d.execInfo(t))
-	store := &markRefusingStore{CredStore: x.store}
-	creates := x.f.TokenCount()
-	cmd := NewTokenCommand(x.dir, store).(runtime.ReadCommand)
-	res2, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.srv.URL, "cluster": "local", "name": "kc", "auth-provider": "localProvider"}}, localPrompter())
-	require.NoError(t, err)
-	assert.Equal(t, int32(2), store.refused.Load(), "the hit's mark and the fresh token's mark were both refused")
-	fresh := res2.Data.(*execCredential).Status.Token
-	assert.NotEqual(t, cached, fresh, "the stale token was never returned")
-	assert.Equal(t, creates+1, x.f.TokenCount(), "the miss path created a token")
+		d := newInMemoryDirectEndpoint(t, 0, "review")
+		x.route(d)
+		t.Setenv(execInfoEnv, d.execInfo(t))
+		store := &markRefusingStore{CredStore: x.store}
+		creates := x.f.TokenCount()
+		res2, err := x.command(store).Execute(t.Context(), x.input("local", "kc"), localPrompter())
+		require.NoError(t, err)
+		assert.Equal(t, int32(2), store.refused.Load(), "the hit's mark and the fresh token's mark were both refused")
+		fresh := res2.Data.(*execCredential).Status.Token
+		assert.NotEqual(t, cached, fresh, "the stale token was never returned")
+		assert.Equal(t, creates+1, x.f.TokenCount(), "the miss path created a token")
+	})
 }
 
 // TestGetTokenMalformedExecInfoWarnsOnAWarmCache asserts a value in
@@ -583,21 +649,22 @@ func TestGetTokenRefusedReadinessMarkIsAMiss(t *testing.T) {
 // path: the cached credential is returned through the resolved path with
 // exactly one warning naming the variable.
 func TestGetTokenMalformedExecInfoWarnsOnAWarmCache(t *testing.T) {
-	shortDirectTimings(t)
-	t.Setenv(execInfoEnv, "")
-	x := newPluginFixture(t, false, testrancher.Options{})
-	res, err := x.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	cached := res.Data.(*execCredential).Status.Token
-	creates := x.f.TokenCount()
+	synctest.Test(t, func(t *testing.T) {
+		t.Setenv(execInfoEnv, "")
+		x := newInMemoryPluginFixture(t, false, testrancher.Options{})
+		res, err := x.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		cached := res.Data.(*execCredential).Status.Token
+		creates := x.f.TokenCount()
 
-	t.Setenv(execInfoEnv, "{not json")
-	res2, err := x.getToken(t, "local", "kc", localPrompter())
-	require.NoError(t, err)
-	assert.Equal(t, cached, res2.Data.(*execCredential).Status.Token)
-	assert.Equal(t, creates, x.f.TokenCount(), "a cache hit")
-	require.Len(t, res2.Warnings, 1)
-	assert.Contains(t, res2.Warnings[0], execInfoEnv+" could not be read")
+		t.Setenv(execInfoEnv, "{not json")
+		res2, err := x.getToken(t, "local", "kc", localPrompter())
+		require.NoError(t, err)
+		assert.Equal(t, cached, res2.Data.(*execCredential).Status.Token)
+		assert.Equal(t, creates, x.f.TokenCount(), "a cache hit")
+		require.Len(t, res2.Warnings, 1)
+		assert.Contains(t, res2.Warnings[0], execInfoEnv+" could not be read")
+	})
 }
 
 // TestDirectWaitCancelledReportsTheFate asserts the cancellation error's

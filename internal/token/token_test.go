@@ -2383,14 +2383,31 @@ func clustersFallthrough(valid func(string) bool) http.Handler {
 // own ValidBearer.
 func newTokenFacade(t *testing.T, opts testrancher.Options) (*testrancher.Facade, *httptest.Server) {
 	t.Helper()
+	f := newFacadeWithClusters(&opts)
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	return f, srv
+}
+
+// newInMemoryTokenFacade is newTokenFacade on the in-memory network, for a
+// test inside a synctest bubble: the server answers for rancherOrigin
+// through the returned transport, never through a listener.
+func newInMemoryTokenFacade(t *testing.T, opts testrancher.Options) (*testrancher.Facade, hostTransport) {
+	t.Helper()
+	f := newFacadeWithClusters(&opts)
+	srv := httptest.NewTestServer(t, f)
+	return f, hostTransport{hostOf(rancherOrigin): srv.Client().Transport}
+}
+
+// newFacadeWithClusters builds the facade with the cluster fallthrough
+// that validates bearers against the facade itself.
+func newFacadeWithClusters(opts *testrancher.Options) *testrancher.Facade {
 	var f *testrancher.Facade
 	if opts.Fallthrough == nil {
 		opts.Fallthrough = clustersFallthrough(func(b string) bool { return f != nil && f.ValidBearer(b) })
 	}
-	f = testrancher.New(opts)
-	srv := httptest.NewServer(f)
-	t.Cleanup(srv.Close)
-	return f, srv
+	f = testrancher.New(*opts)
+	return f
 }
 
 // seedEntry writes one server entry and its stored token.

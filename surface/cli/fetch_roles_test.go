@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -105,14 +106,17 @@ func TestFetchRolesTimeout(t *testing.T) {
 	t.Parallel()
 	// The deadline case: a server slower than the context deadline
 	// yields nil, silently.
-	block := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-block
-	}))
-	t.Cleanup(func() { close(block); srv.Close() })
-	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
-	defer cancel()
-	assert.Nil(t, fetchRoleTemplates(ctx, srv.Client(), cap, "project"))
-	assert.Nil(t, fetchGlobalRoles(ctx, srv.Client(), cap))
+	synctest.Test(t, func(t *testing.T) {
+		block := make(chan struct{})
+		srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			<-block
+		}))
+		t.Cleanup(func() { close(block) })
+		client := srv.Client() // sets srv.URL: an in-memory server's URL is set by its first Client call
+		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+		defer cancel()
+		assert.Nil(t, fetchRoleTemplates(ctx, client, cap, "project"))
+		assert.Nil(t, fetchGlobalRoles(ctx, client, cap))
+	})
 }

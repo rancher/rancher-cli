@@ -18,5 +18,9 @@ func TestMain(m *testing.M) {
 	} {
 		_ = os.Unsetenv(v)
 	}
-	os.Exit(m.Run())
+	code := m.Run()
+	if fakeHelperDir != "" {
+		_ = os.RemoveAll(fakeHelperDir)
+	}
+	os.Exit(code)
 }

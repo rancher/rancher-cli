@@ -76,12 +76,15 @@ func TestWithLockSerializesGoroutines(t *testing.T) {
 	// Remove the hook so B doesn't also block on it once it acquires.
 	restore()
 
-	// Launch B - it closes bStarted immediately before calling WithLock,
-	// then blocks on the process mutex (A still holds it via the hook).
-	bStarted := make(chan struct{})
+	// Launch B - it blocks on the process mutex (A still holds it via the
+	// hook). The semaphore wait hook fires as B reaches the mutex, so the
+	// test waits for that fact instead of a window of real time.
+	bAtSem := make(chan struct{})
+	var atSemOnce sync.Once
+	restoreSem := SetSemWaitHookForTest(func() { atSemOnce.Do(func() { close(bAtSem) }) })
+	defer restoreSem()
 	bDone := make(chan struct{})
 	go func() {
-		close(bStarted)
 		_ = WithLock(t.Context(), dir, func() error {
 			bCounter++
 			close(bDone)
@@ -89,20 +92,20 @@ func TestWithLockSerializesGoroutines(t *testing.T) {
 		})
 	}()
 
-	// Wait (bounded) for B to reach its WithLock call.
+	// Wait (bounded) for B to reach the mutex.
 	select {
-	case <-bStarted:
+	case <-bAtSem:
 	case <-time.After(10 * time.Second):
-		t.Fatal("timed out waiting for B to start")
+		t.Fatal("timed out waiting for B to reach the process mutex")
 	}
+	restoreSem()
 
-	// A still holds the lock. bDone must NOT fire - prove B is blocked, not
-	// just unscheduled. If it fires here the serialization is broken.
+	// A still holds the lock and B is at the mutex: bDone cannot have
+	// fired. If it has, the serialization is broken.
 	select {
 	case <-bDone:
 		t.Fatal("B completed before A released the lock")
-	case <-time.After(100 * time.Millisecond):
-		// expected: B is blocked on the mutex
+	default:
 	}
 	assert.Equal(t, 0, aCounter, "A's fn ran before hook returned")
 	assert.Equal(t, 0, bCounter, "B ran before A released")

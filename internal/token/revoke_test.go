@@ -125,50 +125,51 @@ func TestNoExportedRevokeFunctionBesidesTheMethod(t *testing.T) {
 // notApplicable.
 func TestRevokeCreatedUsesTheCredentialAsBearerAndBoundsItself(t *testing.T) {
 	t.Parallel()
-	var gotPath, gotAuth string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "slow-") {
-			// Records nothing: this handler never answers, so a later
-			// request's write to gotPath would race it. It aborts the
-			// connection rather than returning, so the caller can never
-			// decode an empty 200 that raced its own deadline.
-			<-r.Context().Done()
-			panic(http.ErrAbortHandler)
-		}
-		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(srv.Close)
-	cred := LoginCredential{Token: "ext/d:s", Provenance: ProvenanceDerived, client: srv.Client(), base: srv.URL, parent: t.Context()}
+	synctest.Test(t, func(t *testing.T) {
+		var gotPath, gotAuth string
+		srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "slow-") {
+				// Records nothing: this handler never answers, so a later
+				// request's write to gotPath would race it. It aborts the
+				// connection rather than returning, so the caller can never
+				// decode an empty 200 that raced its own deadline.
+				<-r.Context().Done()
+				panic(http.ErrAbortHandler)
+			}
+			gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+			w.WriteHeader(http.StatusOK)
+		}))
+		cred := LoginCredential{Token: "ext/d:s", Provenance: ProvenanceDerived, client: srv.Client(), base: srv.URL, parent: t.Context()}
 
-	out := cred.RevokeCreated(t.Context(), TokenRef{Kind: TokenKindV3, Name: "kubeconfig-u-x"})
-	assert.Equal(t, ResultRevoked, out.Result)
-	assert.Equal(t, V3TokensPath+"/kubeconfig-u-x", gotPath)
-	assert.Equal(t, "Bearer ext/d:s", gotAuth)
+		out := cred.RevokeCreated(t.Context(), TokenRef{Kind: TokenKindV3, Name: "kubeconfig-u-x"})
+		assert.Equal(t, ResultRevoked, out.Result)
+		assert.Equal(t, V3TokensPath+"/kubeconfig-u-x", gotPath)
+		assert.Equal(t, "Bearer ext/d:s", gotAuth)
 
-	// A cancelled caller context does not cancel the revoke: it completes.
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	out = cred.RevokeCreated(ctx, TokenRef{Kind: TokenKindExt, Name: "token-c"})
-	assert.Equal(t, ResultRevoked, out.Result)
-	assert.Equal(t, ExtTokensPath+"/token-c", gotPath)
+		// A cancelled caller context does not cancel the revoke: it completes.
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		out = cred.RevokeCreated(ctx, TokenRef{Kind: TokenKindExt, Name: "token-c"})
+		assert.Equal(t, ResultRevoked, out.Result)
+		assert.Equal(t, ExtTokensPath+"/token-c", gotPath)
 
-	// A deadline that already passed (kubectl gave up) is the reason for
-	// the cleanup, never a reason to skip it: the DELETE still runs.
-	ectx, ecancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
-	defer ecancel()
-	out = cred.RevokeCreated(ectx, TokenRef{Kind: TokenKindExt, Name: "token-e"})
-	assert.Equal(t, ResultRevoked, out.Result)
-	assert.Equal(t, ExtTokensPath+"/token-e", gotPath)
+		// A deadline that already passed (kubectl gave up) is the reason for
+		// the cleanup, never a reason to skip it: the DELETE still runs.
+		ectx, ecancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+		defer ecancel()
+		out = cred.RevokeCreated(ectx, TokenRef{Kind: TokenKindExt, Name: "token-e"})
+		assert.Equal(t, ResultRevoked, out.Result)
+		assert.Equal(t, ExtTokensPath+"/token-e", gotPath)
 
-	// A caller deadline shorter than the cleanup bound wins while it is
-	// still running. Last, because its handler never answers.
-	dctx, dcancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
-	defer dcancel()
-	start := time.Now()
-	out = cred.RevokeCreated(dctx, TokenRef{Kind: TokenKindExt, Name: "slow-1"})
-	assert.Equal(t, ResultFailed, out.Result)
-	assert.Less(t, time.Since(start), 2*time.Second)
+		// A caller deadline shorter than the cleanup bound wins while it is
+		// still running. Last, because its handler never answers.
+		dctx, dcancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+		defer dcancel()
+		start := time.Now()
+		out = cred.RevokeCreated(dctx, TokenRef{Kind: TokenKindExt, Name: "slow-1"})
+		assert.Equal(t, ResultFailed, out.Result)
+		assert.Equal(t, 150*time.Millisecond, time.Since(start), "the caller's deadline, not the cleanup bound, ended the wait on the fake clock")
 
-	assert.Equal(t, ResultNotApplicable, UserSupplied("x").RevokeCreated(t.Context(), TokenRef{Kind: TokenKindExt, Name: "n"}).Result)
+		assert.Equal(t, ResultNotApplicable, UserSupplied("x").RevokeCreated(t.Context(), TokenRef{Kind: TokenKindExt, Name: "n"}).Result)
+	})
 }

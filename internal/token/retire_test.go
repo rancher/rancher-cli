@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -24,11 +25,15 @@ var retireUsers = []testrancher.User{
 	{Name: "c", Password: "pw", UserID: "user-c"},
 }
 
-// retireFixture holds one facade and a config dir with the entry "e" whose
-// records the test seeds.
+// retireFixture is a facade with a config dir holding one exec-login
+// entry, "e", whose records the test seeds. On the loopback network srv
+// is set and url is its URL; in memory (inside a synctest bubble) srv is
+// nil, url is rancherOrigin and rt dispatches to the facade.
 type retireFixture struct {
 	f   *testrancher.Facade
 	srv *httptest.Server
+	url string
+	rt  hostTransport
 	dir string
 }
 
@@ -36,17 +41,42 @@ func newRetireFixture(t *testing.T, opts testrancher.Options) *retireFixture {
 	t.Helper()
 	opts.Users = retireUsers
 	f, srv := newTokenFacade(t, opts)
-	dir := t.TempDir()
-	cfg := &config.Config{Servers: map[string]config.Server{"e": {URL: srv.URL, Provenance: clierr.ProvenanceExecLogin}}}
-	cfg.SetPath(config.FilePath(dir))
+	x := &retireFixture{f: f, srv: srv, url: srv.URL}
+	x.init(t)
+	return x
+}
+
+// newInMemoryRetireFixture is newRetireFixture for a synctest bubble.
+func newInMemoryRetireFixture(t *testing.T, opts testrancher.Options) *retireFixture {
+	t.Helper()
+	opts.Users = retireUsers
+	f, rt := newInMemoryTokenFacade(t, opts)
+	x := &retireFixture{f: f, url: rancherOrigin, rt: rt}
+	x.init(t)
+	return x
+}
+
+func (x *retireFixture) init(t *testing.T) {
+	t.Helper()
+	x.dir = t.TempDir()
+	cfg := &config.Config{Servers: map[string]config.Server{"e": {URL: x.url, Provenance: clierr.ProvenanceExecLogin}}}
+	cfg.SetPath(config.FilePath(x.dir))
 	require.NoError(t, cfg.Write())
-	return &retireFixture{f: f, srv: srv, dir: dir}
+}
+
+// client reaches the fixture's facade; the credentials credAs acquires
+// carry it, so the retirement pass's deletes go the same way.
+func (x *retireFixture) client() *http.Client {
+	if x.rt != nil {
+		return x.rt.client()
+	}
+	return x.srv.Client()
 }
 
 // credAs acquires a derived credential for the named user.
 func (x *retireFixture) credAs(t *testing.T, user string) LoginCredential {
 	t.Helper()
-	cred, err := AcquireLoginCredential(t.Context(), x.srv.Client(), LoginRequest{Server: x.srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0,
+	cred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader(user, "pw"), false, true))
 	require.NoError(t, err)
 	return cred
@@ -81,7 +111,7 @@ func TestRetireSameOwnerRevokesWithTheNewCredentialAndDropsTheRecord(t *testing.
 	x.seedRecords(t, []config.SupersededToken{gone, record(old, "2026-09-02T00:00:00Z")})
 	before := len(x.f.DeleteRequests())
 
-	rep := RetireSuperseded(t.Context(), x.dir, "e", x.srv.URL, fresh, x.records(t))
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
 	assert.ElementsMatch(t, []TokenRef{gone.Ref, *old.Ref}, rep.Retired)
 	assert.Empty(t, rep.Failed)
 	assert.Empty(t, rep.Kept)
@@ -106,7 +136,7 @@ func TestRetireKeepsRecordsOfOtherOrUnknownOwnersWithoutAttempting(t *testing.T)
 	x.seedRecords(t, []config.SupersededToken{record(bs, "2026-09-02T00:00:00Z"), unknown})
 	before := len(x.f.DeleteRequests())
 
-	rep := RetireSuperseded(t.Context(), x.dir, "e", x.srv.URL, fresh, x.records(t))
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
 	assert.Empty(t, rep.Retired)
 	assert.Len(t, rep.Kept, 2)
 	assert.Len(t, x.f.DeleteRequests(), before, "no delete is attempted on a guess")
@@ -114,7 +144,7 @@ func TestRetireKeepsRecordsOfOtherOrUnknownOwnersWithoutAttempting(t *testing.T)
 	require.Len(t, rep.Warnings, 2)
 	assert.Contains(t, rep.Warnings[0], "user-b")
 	assert.Contains(t, rep.Warnings[0], "different user")
-	assert.Contains(t, rep.Warnings[0], "rancher auth login "+clierr.ShellQuote(clierr.RecoveryEntryName(x.srv.URL)))
+	assert.Contains(t, rep.Warnings[0], "rancher auth login "+clierr.ShellQuote(clierr.RecoveryEntryName(x.url)))
 	assert.Contains(t, rep.Warnings[0], clierr.RecoverySequenceAssumption)
 	assert.Contains(t, rep.Warnings[1], "owner is not known")
 }
@@ -127,7 +157,7 @@ func TestRetireFailedDeleteKeepsTheRecordStamped(t *testing.T) {
 	old, fresh := x.credAs(t, "a"), x.credAs(t, "a")
 	x.f.SetDeleteMode(old.Ref.Name, "fail")
 	x.seedRecords(t, []config.SupersededToken{record(old, "2026-09-02T00:00:00Z")})
-	rep := RetireSuperseded(t.Context(), x.dir, "e", x.srv.URL, fresh, x.records(t))
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
 	assert.Equal(t, []TokenRef{*old.Ref}, rep.Failed)
 	recs := x.records(t)
 	require.Len(t, recs, 1)
@@ -148,7 +178,7 @@ func TestRetireV3ForbiddenKeepsTheRecord(t *testing.T) {
 	old, fresh := x.credAs(t, "a"), x.credAs(t, "a") // legacy: both are v3 session tokens with owner user-a
 	require.Equal(t, TokenKindV3, old.Ref.Kind)
 	x.seedRecords(t, []config.SupersededToken{record(old, "2026-09-02T00:00:00Z")})
-	rep := RetireSuperseded(t.Context(), x.dir, "e", x.srv.URL, fresh, x.records(t))
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
 	assert.Equal(t, []TokenRef{*old.Ref}, rep.Failed)
 	recs := x.records(t)
 	require.Len(t, recs, 1)
@@ -167,7 +197,7 @@ func TestRetireOwnersABCThenA(t *testing.T) {
 	x := newRetireFixture(t, testrancher.Options{})
 	a1, b, c, a2 := x.credAs(t, "a"), x.credAs(t, "b"), x.credAs(t, "c"), x.credAs(t, "a")
 	x.seedRecords(t, []config.SupersededToken{record(a1, "2026-09-01T00:00:00Z"), record(b, "2026-09-02T00:00:00Z"), record(c, "2026-09-03T00:00:00Z")})
-	rep := RetireSuperseded(t.Context(), x.dir, "e", x.srv.URL, a2, x.records(t))
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, a2, x.records(t))
 	assert.Equal(t, []TokenRef{*a1.Ref}, rep.Retired)
 	recs := x.records(t)
 	require.Len(t, recs, 2)
@@ -180,30 +210,33 @@ func TestRetireOwnersABCThenA(t *testing.T) {
 // the lock wait, the first record carries a failed attempt, and the
 // unreached records stay unattempted and unstamped.
 func TestRetireBudgetBoundsHangingDeletes(t *testing.T) {
-	restore := setRetirementBudgetForTest(400 * time.Millisecond)
-	t.Cleanup(restore)
-	x := newRetireFixture(t, testrancher.Options{})
-	r1, r2, r3, fresh := x.credAs(t, "a"), x.credAs(t, "a"), x.credAs(t, "a"), x.credAs(t, "a")
-	for _, c := range []LoginCredential{r1, r2, r3} {
-		x.f.SetDeleteMode(c.Ref.Name, "hang")
-	}
-	x.seedRecords(t, []config.SupersededToken{record(r1, "2026-09-01T00:00:00Z"), record(r2, "2026-09-02T00:00:00Z"), record(r3, "2026-09-03T00:00:00Z")})
-	start := time.Now()
-	rep := RetireSuperseded(t.Context(), x.dir, "e", x.srv.URL, fresh, x.records(t)) // t.Context carries no deadline: the deadline-less caller
-	assert.Less(t, time.Since(start), 3*time.Second)
-	assert.Len(t, rep.Failed, 1)
-	assert.Len(t, rep.Kept, 2, "unreached records are kept")
-	recs := x.records(t)
-	require.Len(t, recs, 3)
-	assert.NotNil(t, recs[0].LastAttempt)
-	assert.Nil(t, recs[1].LastAttempt, "unreached records are unstamped")
-	assert.Nil(t, recs[2].LastAttempt)
-	assert.Contains(t, rep.Warnings[len(rep.Warnings)-1], "not attempted")
+	synctest.Test(t, func(t *testing.T) {
+		x := newInMemoryRetireFixture(t, testrancher.Options{})
+		r1, r2, r3, fresh := x.credAs(t, "a"), x.credAs(t, "a"), x.credAs(t, "a"), x.credAs(t, "a")
+		for _, c := range []LoginCredential{r1, r2, r3} {
+			x.f.SetDeleteMode(c.Ref.Name, "hang")
+		}
+		x.seedRecords(t, []config.SupersededToken{record(r1, "2026-09-01T00:00:00Z"), record(r2, "2026-09-02T00:00:00Z"), record(r3, "2026-09-03T00:00:00Z")})
+		start := time.Now()
+		rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t)) // t.Context carries no deadline: the deadline-less caller
+		assert.Equal(t, retirementBudget, time.Since(start), "the first hanging delete spends the whole budget on the fake clock; nothing else waits")
+		assert.Len(t, rep.Failed, 1)
+		assert.Len(t, rep.Kept, 2, "unreached records are kept")
+		recs := x.records(t)
+		require.Len(t, recs, 3)
+		assert.NotNil(t, recs[0].LastAttempt)
+		assert.Nil(t, recs[1].LastAttempt, "unreached records are unstamped")
+		assert.Nil(t, recs[2].LastAttempt)
+		assert.Contains(t, rep.Warnings[len(rep.Warnings)-1], "not attempted")
+	})
 }
 
 // TestRetireRecordWriteLockTimeoutLeavesRecordsAndSucceeds asserts a
 // contended config lock at the record write is a warning: the deletes
-// happened, the records stay, the pass returns normally.
+// happened, the records stay, the pass returns normally. It runs on real
+// time with a shortened lock wait: the contention is on the process-wide
+// config lock semaphore, a channel created outside any bubble, so a wait
+// on it is not durably blocked and a bubble's clock would never advance.
 func TestRetireRecordWriteLockTimeoutLeavesRecordsAndSucceeds(t *testing.T) {
 	restore := config.SetLockWaitTimeoutForTest(200 * time.Millisecond)
 	t.Cleanup(restore)
@@ -216,7 +249,7 @@ func TestRetireRecordWriteLockTimeoutLeavesRecordsAndSucceeds(t *testing.T) {
 		_ = config.WithLock(t.Context(), x.dir, func() error { close(held); <-release; return nil })
 	})
 	<-held
-	rep := RetireSuperseded(t.Context(), x.dir, "e", x.srv.URL, fresh, x.records(t))
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
 	close(release)
 	wg.Wait()
 	assert.Equal(t, []TokenRef{*old.Ref}, rep.Retired)
@@ -250,7 +283,7 @@ func TestRetireNoRequestUnderTheConfigLockAndReloadsBeforeWriting(t *testing.T) 
 		_ = cfg.Write()
 	})
 	t.Cleanup(restore)
-	rep := RetireSuperseded(t.Context(), x.dir, "e", x.srv.URL, fresh, x.records(t))
+	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
 	assert.Equal(t, int32(0), violations.Load())
 	assert.Len(t, rep.Retired, 1)
 	cfg, _ := config.Load(config.FilePath(x.dir))

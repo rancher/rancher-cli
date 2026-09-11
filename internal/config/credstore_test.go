@@ -1035,20 +1035,30 @@ func TestWithLockSerializesSetToken(t *testing.T) {
 	}
 
 	// G2 attempts WithLock; it must block on the process mutex since G1
-	// still holds it via the hook.
+	// still holds it via the hook. The semaphore wait hook fires as G2
+	// reaches the mutex, so the test waits for that fact instead of a
+	// window of real time.
+	g2AtSem := make(chan struct{})
+	var atSemOnce sync.Once
+	restoreSem := SetSemWaitHookForTest(func() { atSemOnce.Do(func() { close(g2AtSem) }) })
+	t.Cleanup(restoreSem)
 	err2 := make(chan error, 1)
 	go func() {
 		err2 <- WithLock(t.Context(), dir, func() error {
 			return store2.SetToken(ServerRef{Name: "beta"}, "token-beta")
 		})
 	}()
-
-	// 300ms contention window: G2 must not complete before G1 releases.
+	select {
+	case <-g2AtSem:
+	case <-time.After(10 * time.Second):
+		t.Fatal("G2 never reached the process mutex")
+	}
+	restoreSem()
+	// G2 is at the mutex and G1 still holds it: G2 cannot have completed.
 	select {
 	case e := <-err2:
 		t.Fatalf("G2 completed before G1 released WithLock: %v", e)
-	case <-time.After(300 * time.Millisecond):
-		// expected: G2 is blocked on the process mutex
+	default:
 	}
 
 	// Release G1. It writes token-alpha and exits WithLock. G2 then

@@ -19,7 +19,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/auth/exec"
 
-	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
@@ -204,13 +203,18 @@ type directProbeUnavailable struct{ err error }
 func (e *directProbeUnavailable) Error() string { return e.err.Error() }
 func (e *directProbeUnavailable) Unwrap() error { return e.err }
 
+// directClientFactory builds the HTTP client the direct-endpoint probe
+// uses from the exec cluster's rest.Config. Production passes
+// kube.HTTPClient; tests pass a client bound to an in-memory server.
+type directClientFactory func(*rest.Config) (*http.Client, error)
+
 // waitDirectReady probes ec until it authenticates bearer, for up to
 // bound: every request derives from one deadline so a stalled dial cannot
 // outlive it. It returns (true, nil) once a ready answer is followed by a
 // settling interval without a 401, (false, nil) when the bound expires, and
 // (false, ctx.Err()) when the caller cancels; the caller tells the last two
-// apart by the error.
-func waitDirectReady(ctx context.Context, ec *execCluster, bearer string, bound time.Duration) (bool, error) {
+// apart by the error. newClient builds the probe's client from ec.cfg.
+func waitDirectReady(ctx context.Context, ec *execCluster, bearer string, bound time.Duration, newClient directClientFactory) (bool, error) {
 	if directWaitStarted != nil {
 		directWaitStarted()
 	}
@@ -220,7 +224,7 @@ func waitDirectReady(ctx context.Context, ec *execCluster, bearer string, bound 
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	client, err := kube.HTTPClient(ec.cfg)
+	client, err := newClient(ec.cfg)
 	if err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			return false, cerr

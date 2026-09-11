@@ -17,14 +17,6 @@ import (
 // tests shorten it.
 var retirementBudget = 10 * time.Second
 
-// setRetirementBudgetForTest shortens the budget; call the returned
-// restore in cleanup. Tests using it must not run in parallel.
-func setRetirementBudgetForTest(d time.Duration) (restore func()) {
-	old := retirementBudget
-	retirementBudget = d
-	return func() { retirementBudget = old }
-}
-
 // RetirementReport is what one retirement pass did.
 type RetirementReport struct {
 	Retired  []TokenRef

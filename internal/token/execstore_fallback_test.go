@@ -1,12 +1,14 @@
 package token
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,19 +23,35 @@ import (
 
 // buildTokenFakeHelper compiles the config package's fake credential helper by
 // module path (testdata is not reachable by relative path from this package)
-// into a temp dir as rancher-credential-fake, and returns the directory for
-// PATH injection.
+// into a shared temp dir as rancher-credential-fake, once per test binary,
+// and returns the directory for PATH injection. TestMain removes the dir.
+var (
+	fakeHelperOnce sync.Once
+	fakeHelperDir  string
+	fakeHelperErr  error
+)
+
 func buildTokenFakeHelper(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	bin := filepath.Join(dir, "rancher-credential-fake")
-	if runtime.GOOS == "windows" {
-		bin += ".exe"
-	}
-	out, err := exec.Command("go", "build", "-o", bin,
-		"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper").CombinedOutput()
-	require.NoError(t, err, "building fake helper: %s", out)
-	return dir
+	fakeHelperOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "token-fakehelper") //nolint:usetesting // shared by every test of the binary; TestMain removes it
+		if err != nil {
+			fakeHelperErr = err
+			return
+		}
+		bin := filepath.Join(dir, "rancher-credential-fake")
+		if runtime.GOOS == "windows" {
+			bin += ".exe"
+		}
+		if out, err := exec.Command("go", "build", "-o", bin,
+			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper").CombinedOutput(); err != nil {
+			fakeHelperErr = fmt.Errorf("building fake helper: %w: %s", err, out)
+			return
+		}
+		fakeHelperDir = dir
+	})
+	require.NoError(t, fakeHelperErr)
+	return fakeHelperDir
 }
 
 // useTokenFakeHelper puts the fake helper on PATH in the given mode with a

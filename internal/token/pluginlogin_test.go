@@ -13,9 +13,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -26,35 +28,95 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// pluginFixture is one facade, one config dir with the setting on, and a
-// file store; reuse is a flag so the invariant test can turn it off.
+// pluginFixture is a facade with a config dir (the setting on unless the
+// invariant test turns reuse off) and a file store for the plugin login.
+// On the loopback network srv is set and url is its URL; on the in-memory
+// network (inside a synctest bubble) srv is nil, url is rancherOrigin, rt
+// dispatches by host and the command built by command() carries the
+// client seams that route every request through rt.
 type pluginFixture struct {
-	f     *testrancher.Facade
-	srv   *httptest.Server
-	dir   string
-	store config.CredStore
+	f      *testrancher.Facade
+	srv    *httptest.Server
+	url    string
+	rt     hostTransport
+	direct *directEndpoint
+	dir    string
+	store  config.CredStore
 }
 
 func newPluginFixture(t *testing.T, reuse bool, opts testrancher.Options) *pluginFixture {
 	t.Helper()
 	f, srv := newTokenFacade(t, opts)
-	dir := t.TempDir()
+	x := &pluginFixture{f: f, srv: srv, url: srv.URL}
+	x.init(t, reuse)
+	return x
+}
+
+// newInMemoryPluginFixture is newPluginFixture for a test inside a synctest
+// bubble: the facade lives on the in-memory network and the command's
+// clients go through the fixture's transport.
+func newInMemoryPluginFixture(t *testing.T, reuse bool, opts testrancher.Options) *pluginFixture {
+	t.Helper()
+	f, rt := newInMemoryTokenFacade(t, opts)
+	x := &pluginFixture{f: f, url: rancherOrigin, rt: rt}
+	x.init(t, reuse)
+	return x
+}
+
+func (x *pluginFixture) init(t *testing.T, reuse bool) {
+	t.Helper()
+	x.dir = t.TempDir()
 	// The policy lives in the config, not the environment, so a test can
 	// change it mid-flight and the revalidation sees the change.
 	t.Setenv(config.EnvCredentialStore, "")
 	cfg := &config.Config{Servers: map[string]config.Server{}, TokenReuse: reuse, CredentialStore: "file"}
-	cfg.SetPath(config.FilePath(dir))
+	cfg.SetPath(config.FilePath(x.dir))
 	require.NoError(t, cfg.Write())
-	return &pluginFixture{f: f, srv: srv, dir: dir, store: config.NewFileStore(dir)}
+	x.store = config.NewFileStore(x.dir)
+}
+
+// route makes the in-memory direct endpoint reachable through the
+// fixture's transport and gives the command's probe that same transport.
+func (x *pluginFixture) route(d *directEndpoint) {
+	x.rt[hostOf(directOrigin)] = d.srv.Client().Transport
+	x.direct = d
+}
+
+// client is an http.Client that reaches the fixture's facade.
+func (x *pluginFixture) client() *http.Client {
+	if x.rt != nil {
+		return x.rt.client()
+	}
+	return x.srv.Client()
+}
+
+// command builds the token command over the fixture's dir and the given
+// store, with the client seams set when the fixture is in-memory. The
+// direct-probe seam is set only once a direct endpoint was routed, so a
+// test of the production probe client (a CA that does not parse) keeps it.
+func (x *pluginFixture) command(store config.CredStore) tokenCmd {
+	cmd := tokenCmd{dir: x.dir, store: store}
+	if x.rt != nil {
+		cmd.newClient = func(httpx.Options) (*http.Client, error) { return x.rt.client(), nil }
+		if x.direct != nil {
+			cmd.newDirectClient = x.rt.directClient()
+		}
+	}
+	return cmd
+}
+
+// input is the plugin's input for one cluster and cache slot against the
+// fixture's server.
+func (x *pluginFixture) input(cluster, name string) tin {
+	return tin{s: map[string]string{"server": x.url, "cluster": cluster, "name": name, "auth-provider": "localProvider"}}
 }
 
 func (x *pluginFixture) getToken(t *testing.T, cluster, name string, p runtime.Prompter) (runtime.Result, error) {
 	t.Helper()
-	cmd := NewTokenCommand(x.dir, x.store).(runtime.ReadCommand)
-	return cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.srv.URL, "cluster": cluster, "name": name, "auth-provider": "localProvider"}}, p)
+	return x.command(x.store).Execute(t.Context(), x.input(cluster, name), p)
 }
 
-func (x *pluginFixture) entryName() string { return config.ExecLoginEntryName(x.srv.URL) }
+func (x *pluginFixture) entryName() string { return config.ExecLoginEntryName(x.url) }
 
 func (x *pluginFixture) entry(t *testing.T) (config.Server, bool) {
 	t.Helper()
@@ -121,7 +183,7 @@ func TestPluginLoginFirstUseCreatesEntryAndClusterToken(t *testing.T) {
 	assert.Equal(t, "user-e2e", s.TokenUserID)
 	assert.NotEmpty(t, s.CredentialExpiresAt)
 	assert.Empty(t, s.SupersededTokens)
-	stored, err := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.srv.URL})
+	stored, err := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.url})
 	require.NoError(t, err)
 	assert.Contains(t, stored, "ext/"+s.TokenRef.Name+":")
 	assert.NotEqual(t, stored, cred.Status.Token, "the ExecCredential is the cluster token, never the login credential")
@@ -136,7 +198,7 @@ func TestPluginLoginFirstUseCreatesEntryAndClusterToken(t *testing.T) {
 	assert.Contains(t, creates[2].Description, marker, "the cluster token carries the acquisition's marker")
 	assert.Len(t, x.f.DeleteRequests(), 1, "S was revoked; nothing else")
 
-	_, expiry, cerr := x.store.GetCachedCred(config.CacheKey("n", config.CanonicalServerIdentity(x.srv.URL), "c-test"))
+	_, expiry, cerr := x.store.GetCachedCred(config.CacheKey("n", config.CanonicalServerIdentity(x.url), "c-test"))
 	require.NoError(t, cerr)
 	assert.False(t, expiry.IsZero())
 }
@@ -188,7 +250,7 @@ func TestPluginLoginPostAcquisitionFailuresRevokeInOrderAndPersistNothing(t *tes
 					return failingStore{CredStore: x.store, err: tc.storeErr}, "", nil
 				}
 			}
-			_, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": "n", "auth-provider": "localProvider"}}, localPrompter())
+			_, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.url, "cluster": "c-test", "name": "n", "auth-provider": "localProvider"}}, localPrompter())
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok, "%v", err)
 			d, ok := ce.Details.(clierr.LoginFailureDetails)
@@ -237,7 +299,7 @@ func TestPluginLoginPostAcquisitionFailuresRevokeInOrderAndPersistNothing(t *tes
 			}
 			_, present := x.entry(t)
 			assert.False(t, present)
-			_, gerr := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.srv.URL})
+			_, gerr := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.url})
 			require.ErrorIs(t, gerr, config.ErrNoToken)
 			creds, _ := x.store.ListCachedCreds()
 			assert.Empty(t, creds)
@@ -417,7 +479,7 @@ func TestPluginLogin401RefreshesExactlyOnceAsAnUpdate(t *testing.T) {
 	require.NoError(t, err)
 	before, _ := x.entry(t)
 	// Expire the stored credential server-side: delete D on the facade.
-	require.NoError(t, x.store.SetToken(config.ServerRef{Name: x.entryName(), URL: x.srv.URL}, "ext/"+before.TokenRef.Name+":wrong"))
+	require.NoError(t, x.store.SetToken(config.ServerRef{Name: x.entryName(), URL: x.url}, "ext/"+before.TokenRef.Name+":wrong"))
 
 	// "testcluster" resolves through the cluster list, so the 401 that
 	// triggers the refresh comes from the list request, not the create.
@@ -428,7 +490,7 @@ func TestPluginLogin401RefreshesExactlyOnceAsAnUpdate(t *testing.T) {
 	assert.NotEqual(t, before.TokenRef.Name, after.TokenRef.Name)
 	assert.Equal(t, clierr.ProvenanceExecLogin, after.Provenance)
 	assert.Empty(t, after.SupersededTokens, "the prior token was retired")
-	fresh, err := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.srv.URL})
+	fresh, err := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.url})
 	require.NoError(t, err)
 	var retired bool
 	for _, d := range x.f.DeleteRequests() {
@@ -472,7 +534,7 @@ func TestPluginLoginExecHelperSuccessHasNoFailureEnvelope(t *testing.T) {
 	cmd.openStore = func(string, string) (config.CredStore, string, error) {
 		return outcomeStore{CredStore: x.store, out: config.CommitOutcome{Backend: clierr.BackendExec, State: config.CommitHelperNonAtomic, PriorSource: clierr.PriorUnknown, HelperRecordRetained: true}}, "", nil
 	}
-	res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": "n", "auth-provider": "localProvider"}}, localPrompter())
+	res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.url, "cluster": "c-test", "name": "n", "auth-provider": "localProvider"}}, localPrompter())
 	require.NoError(t, err)
 	assert.Equal(t, "ExecCredential", res.Kind)
 	s, ok := x.entry(t)
@@ -498,10 +560,10 @@ func (s outcomeStore) SetTokenWithOutcome(ref config.ServerRef, tok string) (con
 // authenticates but cannot create tokens surfaces RBAC with no login.
 func TestPluginLogin403NeverPrompts(t *testing.T) {
 	x := newPluginFixture(t, true, testrancher.Options{ScopedCreateStatus: http.StatusForbidden})
-	cred, err := AcquireLoginCredential(t.Context(), x.srv.Client(), LoginRequest{Server: x.srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
+	cred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
 	require.NoError(t, err)
 	base := x.f.LoginCount()
-	seedEntry(t, x.dir, x.store, x.entryName(), config.Server{URL: x.srv.URL, Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: cred.UserID}, cred.Token, true)
+	seedEntry(t, x.dir, x.store, x.entryName(), config.Server{URL: x.url, Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: cred.UserID}, cred.Token, true)
 	_, err = x.getToken(t, "c-test", "n", localPrompter())
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "%v", err)
@@ -524,14 +586,14 @@ func TestPluginLoginSettingOffSkipsTheDormantEntry(t *testing.T) {
 	_, err = x.getToken(t, "local", "n", localPrompter())
 	require.NoError(t, err)
 	assert.Equal(t, 2, x.f.LoginCount(), "per-cluster interactive resumes")
-	stored, err := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.srv.URL})
+	stored, err := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.url})
 	require.NoError(t, err)
 	assert.NotEmpty(t, stored, "turning the setting off never deletes the credential")
 
 	// A user entry at the same URL is used with the setting off.
-	userCred, err := AcquireLoginCredential(t.Context(), x.srv.Client(), LoginRequest{Server: x.srv.URL, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
+	userCred, err := AcquireLoginCredential(t.Context(), x.client(), LoginRequest{Server: x.url, AuthProvider: "localProvider", ResponseType: "json"}, 0, localPrompter())
 	require.NoError(t, err)
-	seedEntry(t, x.dir, x.store, "prod", config.Server{URL: x.srv.URL, Provenance: clierr.ProvenanceDerived, TokenRef: userCred.Ref}, userCred.Token, false)
+	seedEntry(t, x.dir, x.store, "prod", config.Server{URL: x.url, Provenance: clierr.ProvenanceDerived, TokenRef: userCred.Ref}, userCred.Token, false)
 	logins := x.f.LoginCount()
 	_, err = x.getToken(t, "c-test", "n3", ui.New(&bytes.Buffer{}, newLineReader(), true, false))
 	require.NoError(t, err)
@@ -554,7 +616,7 @@ func TestPluginLoginConcurrentFirstUseAndExpiry(t *testing.T) {
 				_, err := x.getToken(t, "c-test", "seed", localPrompter())
 				require.NoError(t, err)
 				s, _ := x.entry(t)
-				require.NoError(t, x.store.SetToken(config.ServerRef{Name: x.entryName(), URL: x.srv.URL}, "ext/"+s.TokenRef.Name+":wrong"))
+				require.NoError(t, x.store.SetToken(config.ServerRef{Name: x.entryName(), URL: x.url}, "ext/"+s.TokenRef.Name+":wrong"))
 			}
 			base := x.f.LoginCount()
 			var prompts atomic.Int32
@@ -606,24 +668,26 @@ func (c countingPrompter) PromptSecret(ctx context.Context, msg string) (string,
 // behind a holder stuck in its prompt fails LOCK_TIMEOUT, retryable,
 // without the no-lock hint, and never starts a second login.
 func TestPluginLoginWaiterTimesOutBehindAnAbandonedLogin(t *testing.T) {
-	restore := config.SetLockWaitTimeoutForTest(300 * time.Millisecond)
-	t.Cleanup(restore)
-	x := newPluginFixture(t, true, testrancher.Options{})
-	inPrompt, release := make(chan struct{}, 1), make(chan struct{})
-	holder := blockingPrompter{Prompter: localPrompter(), entered: inPrompt, release: release}
-	var wg sync.WaitGroup
-	wg.Go(func() { _, _ = x.getToken(t, "c-test", "a", holder) })
-	<-inPrompt
-	_, err := x.getToken(t, "local", "b", localPrompter())
-	ce, ok := errors.AsType[*clierr.Error](err)
-	require.True(t, ok, "%v", err)
-	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
-	assert.True(t, ce.Retryable)
-	assert.Empty(t, ce.Hint)
-	assert.Equal(t, 0, x.f.LoginCount(), "the waiter never logged in; the holder has not finished")
-	close(release)
-	wg.Wait()
-	assert.Equal(t, 1, x.f.LoginCount())
+	synctest.Test(t, func(t *testing.T) {
+		x := newInMemoryPluginFixture(t, true, testrancher.Options{})
+		inPrompt, release := make(chan struct{}, 1), make(chan struct{})
+		holder := blockingPrompter{Prompter: localPrompter(), entered: inPrompt, release: release}
+		var wg sync.WaitGroup
+		wg.Go(func() { _, _ = x.getToken(t, "c-test", "a", holder) })
+		<-inPrompt
+		start := time.Now()
+		_, err := x.getToken(t, "local", "b", localPrompter())
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "%v", err)
+		assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
+		assert.True(t, ce.Retryable)
+		assert.Empty(t, ce.Hint)
+		assert.Equal(t, 0, x.f.LoginCount(), "the waiter never logged in; the holder has not finished")
+		close(release)
+		wg.Wait()
+		assert.Equal(t, 1, x.f.LoginCount())
+		_ = start
+	})
 }
 
 type blockingPrompter struct {
@@ -644,36 +708,37 @@ func (b blockingPrompter) Prompt(ctx context.Context, msg string) (string, error
 // cancelled during the cluster-token create revokes the tokens it created
 // on the cleanup context and persists nothing.
 func TestPluginLoginCancelledWinnerRevokesWhatItCreated(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	// The facade has already consumed the body by the time the hook runs,
-	// so the cluster-token create is identified by its position: the
-	// credential's create is first, the cluster token's second.
-	var creates atomic.Int32
-	x := newPluginFixture(t, true, testrancher.Options{DerivedCreateHook: func(r *http.Request) {
-		if creates.Add(1) == 2 {
-			cancel()
-			<-r.Context().Done()
-		}
-	}})
-	cmd := NewTokenCommand(x.dir, x.store).(runtime.ReadCommand)
-	_, err := cmd.Execute(ctx, tin{s: map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": "n", "auth-provider": "localProvider"}}, localPrompter())
-	require.ErrorIs(t, err, context.Canceled)
-	ce, _ := errors.AsType[*clierr.Error](err)
-	d := ce.Details.(clierr.LoginFailureDetails)
-	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result, "the credential is revoked on the cleanup context despite the cancellation")
-	// The facade created the cluster token after the client gave up: the
-	// CLI never learned its name, so its fate is unknown with the marker
-	// and the recovery text carries the marker search.
-	require.NotNil(t, d.ClusterToken)
-	assert.Equal(t, clierr.CreateUnknown, d.ClusterToken.Outcome)
-	assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
-	// The facade creates the record after the client gave up, on its own
-	// goroutine: wait for it rather than race it.
-	require.Eventually(t, func() bool {
-		return len(x.f.TokensWithDescriptionContaining("ext", "[op:"+d.OperationMarker+"]")) == 1
-	}, 2*time.Second, 10*time.Millisecond, "only the cluster token the CLI could not name remains")
-	_, present := x.entry(t)
-	assert.False(t, present)
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		// The facade has already consumed the body by the time the hook runs,
+		// so the cluster-token create is identified by its position: the
+		// credential's create is first, the cluster token's second.
+		var creates atomic.Int32
+		x := newInMemoryPluginFixture(t, true, testrancher.Options{DerivedCreateHook: func(r *http.Request) {
+			if creates.Add(1) == 2 {
+				cancel()
+				<-r.Context().Done()
+			}
+		}})
+		_, err := x.command(x.store).Execute(ctx, x.input("c-test", "n"), localPrompter())
+		require.ErrorIs(t, err, context.Canceled)
+		ce, _ := errors.AsType[*clierr.Error](err)
+		d := ce.Details.(clierr.LoginFailureDetails)
+		assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result, "the credential is revoked on the cleanup context despite the cancellation")
+		// The facade created the cluster token after the client gave up: the
+		// CLI never learned its name, so its fate is unknown with the marker
+		// and the recovery text carries the marker search.
+		require.NotNil(t, d.ClusterToken)
+		assert.Equal(t, clierr.CreateUnknown, d.ClusterToken.Outcome)
+		assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
+		// The facade finishes the create on its own goroutine after the
+		// client gave up; wait for every goroutine in the bubble to settle
+		// instead of polling.
+		synctest.Wait()
+		assert.Len(t, x.f.TokensWithDescriptionContaining("ext", "[op:"+d.OperationMarker+"]"), 1, "only the cluster token the CLI could not name remains")
+		_, present := x.entry(t)
+		assert.False(t, present)
+	})
 }
 
 // TestPluginLoginNoRequestWhileTheConfigLockIsHeld asserts across the whole

@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -188,21 +189,23 @@ func TestAcquireLegacyFallbackTransfersSession(t *testing.T) {
 // explicitly notAttempted, and no operation marker (no marked create was
 // attempted). Not parallel: it shrinks the SAML timing.
 func TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups(t *testing.T) {
-	restore := SetSAMLTimingForTest(50*time.Millisecond, 10*time.Millisecond)
-	defer restore()
-	f, srv := samlProviderFacade(t, testrancher.Options{})
-	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, AuthProvider: "oktaProvider", ResponseType: "json"}, 0, newHandoffPrompter(nil))
-	ae, ok := errors.AsType[*AcquireError](err)
-	require.True(t, ok, "got %v", err)
-	assert.Equal(t, CreateUnknown, ae.SessionTokenOutcome)
-	assert.True(t, ae.SessionTokenUnmarked)
-	require.NotNil(t, ae.SessionTokenSearch)
-	assert.Equal(t, ResultNotAttempted, ae.SessionTokenCleanup.Result)
-	assert.Equal(t, CreateNotAttempted, ae.DerivedCreateOutcome)
-	assert.Equal(t, ResultNotAttempted, ae.DerivedTokenCleanup.Result)
-	assert.Empty(t, ae.Marker)
-	assert.Empty(t, f.DeleteRequests())
-	assertAuthTokensOnly(t, f)
+	synctest.Test(t, func(t *testing.T) {
+		f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
+		start := time.Now()
+		_, err := AcquireLoginCredential(t.Context(), client, LoginRequest{Server: rancherOrigin, AuthProvider: "oktaProvider", ResponseType: "json"}, 0, newHandoffPrompter(nil))
+		ae, ok := errors.AsType[*AcquireError](err)
+		require.True(t, ok, "got %v", err)
+		assert.Equal(t, samlAuthTimeout, time.Since(start), "the whole SAML timeout elapsed on the fake clock")
+		assert.Equal(t, CreateUnknown, ae.SessionTokenOutcome)
+		assert.True(t, ae.SessionTokenUnmarked)
+		require.NotNil(t, ae.SessionTokenSearch)
+		assert.Equal(t, ResultNotAttempted, ae.SessionTokenCleanup.Result)
+		assert.Equal(t, CreateNotAttempted, ae.DerivedCreateOutcome)
+		assert.Equal(t, ResultNotAttempted, ae.DerivedTokenCleanup.Result)
+		assert.Empty(t, ae.Marker)
+		assert.Empty(t, f.DeleteRequests())
+		assertAuthTokensOnly(t, f)
+	})
 }
 
 // TestAcquireErrorWithPrimaryKeepsEvidence asserts the composition rule: the
@@ -294,16 +297,18 @@ func TestAcquireExtShapedSessionThroughLogin(t *testing.T) {
 	})
 }
 
-// samlProviderFacade lists a SAML provider and enables the authtokens
-// collection the browser sign-in deposits into.
-func samlProviderFacade(t *testing.T, opts testrancher.Options) (*testrancher.Facade, *httptest.Server) {
+// samlProviderFacadeInMemory is the facade with the SAML auth-token relay
+// and an oktaProvider enabled, on the in-memory network for a synctest
+// bubble: reached through the returned client at rancherOrigin, so the
+// relay's poll interval and timeout run on the fake clock at their
+// production values.
+func samlProviderFacadeInMemory(t *testing.T, opts testrancher.Options) (*testrancher.Facade, *http.Client) {
 	t.Helper()
 	opts.EnableSAMLAuthTokens = true
 	opts.ExtraProviders = []string{"oktaProvider"}
 	f := testrancher.New(opts)
-	srv := httptest.NewServer(f)
-	t.Cleanup(srv.Close)
-	return f, srv
+	srv := httptest.NewTestServer(t, f)
+	return f, hostTransport{hostOf(rancherOrigin): srv.Client().Transport}.client()
 }
 
 // handoffPrompter is the test's stand-in for the browser: it reads the
@@ -357,74 +362,83 @@ func assertAuthTokensOnly(t *testing.T, f *testrancher.Facade) {
 // token with a valid bearer is known; a payload that cannot be decoded is
 // unknown; a decrypted bearer failing validation is unidentified.
 func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
-	restore := SetSAMLTimingForTest(50*time.Millisecond, 10*time.Millisecond)
-	defer restore()
-
 	t.Run("cancelled while polling", func(t *testing.T) {
-		f, srv := samlProviderFacade(t, testrancher.Options{})
-		ctx, cancel := context.WithCancel(t.Context())
-		// Synchronous: after the handoff is recorded, before the first poll,
-		// so no timer race decides the outcome.
-		p := newHandoffPrompter(func(string, string) { cancel() })
-		res, err := loginAndGenerateCred(ctx, srv.Client(), samlInput(srv.URL), p)
-		require.ErrorIs(t, err, context.Canceled)
-		require.NotNil(t, res.Handoff)
-		assert.Equal(t, "oktaProvider", res.Handoff.Provider)
-		assert.Equal(t, p.requestID, res.Handoff.RequestID)
-		assert.NotEmpty(t, res.Handoff.HandoffAt)
-		assert.NotEmpty(t, res.Handoff.PollEndedAt)
-		assert.Equal(t, CreateUnknown, res.Create.Outcome)
-		assert.False(t, res.Create.Marked)
-		assertAuthTokensOnly(t, f)
+		synctest.Test(t, func(t *testing.T) {
+			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
+			ctx, cancel := context.WithCancel(t.Context())
+			// Synchronous: after the handoff is recorded, before the first poll,
+			// so no timer race decides the outcome.
+			p := newHandoffPrompter(func(string, string) { cancel() })
+			res, err := loginAndGenerateCred(ctx, client, samlInput(rancherOrigin), p)
+			require.ErrorIs(t, err, context.Canceled)
+			require.NotNil(t, res.Handoff)
+			assert.Equal(t, "oktaProvider", res.Handoff.Provider)
+			assert.Equal(t, p.requestID, res.Handoff.RequestID)
+			assert.NotEmpty(t, res.Handoff.HandoffAt)
+			assert.NotEmpty(t, res.Handoff.PollEndedAt)
+			assert.Equal(t, CreateUnknown, res.Create.Outcome)
+			assert.False(t, res.Create.Marked)
+			assertAuthTokensOnly(t, f)
+		})
 	})
 	t.Run("timeout while callback in flight", func(t *testing.T) {
-		f, srv := samlProviderFacade(t, testrancher.Options{})
-		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), newHandoffPrompter(nil))
-		require.Error(t, err)
-		assert.Equal(t, CreateUnknown, res.Create.Outcome)
-		require.NotNil(t, res.Handoff)
-		assertAuthTokensOnly(t, f)
+		synctest.Test(t, func(t *testing.T) {
+			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
+			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), newHandoffPrompter(nil))
+			require.Error(t, err)
+			assert.Equal(t, CreateUnknown, res.Create.Outcome)
+			require.NotNil(t, res.Handoff)
+			assertAuthTokensOnly(t, f)
+		})
 	})
 	t.Run("deposit after timeout is still findable", func(t *testing.T) {
-		f, srv := samlProviderFacade(t, testrancher.Options{})
-		p := newHandoffPrompter(nil)
-		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), p)
-		require.Error(t, err)
-		f.DepositAuthToken(p.requestID, p.publicKey) // the browser completes after the CLI stopped waiting
-		// The recovery criteria search forward from HandoffAt; PollEndedAt is not a bound.
-		assert.LessOrEqual(t, res.Handoff.HandoffAt, res.Handoff.PollEndedAt)
-		assert.Equal(t, 1, f.TokenCount(), "the server created S after the CLI stopped waiting")
+		synctest.Test(t, func(t *testing.T) {
+			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
+			p := newHandoffPrompter(nil)
+			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), p)
+			require.Error(t, err)
+			f.DepositAuthToken(p.requestID, p.publicKey) // the browser completes after the CLI stopped waiting
+			// The recovery criteria search forward from HandoffAt; PollEndedAt is not a bound.
+			assert.LessOrEqual(t, res.Handoff.HandoffAt, res.Handoff.PollEndedAt)
+			assert.Equal(t, 1, f.TokenCount(), "the server created S after the CLI stopped waiting")
+		})
 	})
 	t.Run("valid deposit is known", func(t *testing.T) {
-		f, srv := samlProviderFacade(t, testrancher.Options{})
-		p := newHandoffPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
-		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), p)
-		require.NoError(t, err)
-		assert.Equal(t, CreateKnown, res.Create.Outcome)
-		require.NotNil(t, res.Create.Ref)
-		assert.Equal(t, TokenKindV3, res.Create.Ref.Kind)
-		assert.NotEmpty(t, res.Create.Bearer)
-		assert.Equal(t, 1, f.TokenCount())
-		assertAuthTokensOnly(t, f)
-		recs := f.AuthTokensRequests()
-		assert.Equal(t, "DELETE", recs[len(recs)-1].Method, "the deposited copy is deleted after decryption")
+		synctest.Test(t, func(t *testing.T) {
+			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
+			p := newHandoffPrompter(func(id, pub string) { f.DepositAuthToken(id, pub) })
+			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), p)
+			require.NoError(t, err)
+			assert.Equal(t, CreateKnown, res.Create.Outcome)
+			require.NotNil(t, res.Create.Ref)
+			assert.Equal(t, TokenKindV3, res.Create.Ref.Kind)
+			assert.NotEmpty(t, res.Create.Bearer)
+			assert.Equal(t, 1, f.TokenCount())
+			assertAuthTokensOnly(t, f)
+			recs := f.AuthTokensRequests()
+			assert.Equal(t, "DELETE", recs[len(recs)-1].Method, "the deposited copy is deleted after decryption")
+		})
 	})
 	t.Run("undecodable payload is unknown", func(t *testing.T) {
-		f, srv := samlProviderFacade(t, testrancher.Options{})
-		p := newHandoffPrompter(func(id, _ string) { f.DepositAuthTokenRaw(id, "!!not-base64") })
-		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), p)
-		require.Error(t, err)
-		assert.Equal(t, CreateUnknown, res.Create.Outcome)
-		require.NotNil(t, res.Handoff)
+		synctest.Test(t, func(t *testing.T) {
+			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
+			p := newHandoffPrompter(func(id, _ string) { f.DepositAuthTokenRaw(id, "!!not-base64") })
+			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), p)
+			require.Error(t, err)
+			assert.Equal(t, CreateUnknown, res.Create.Outcome)
+			require.NotNil(t, res.Handoff)
+		})
 	})
 	t.Run("decrypted bearer failing validation is unidentified", func(t *testing.T) {
-		f, srv := samlProviderFacade(t, testrancher.Options{})
-		p := newHandoffPrompter(func(id, pub string) { f.DepositAuthTokenPlaintext(id, pub, "no-colon-here") })
-		res, err := loginAndGenerateCred(t.Context(), srv.Client(), samlInput(srv.URL), p)
-		require.Error(t, err)
-		assert.Equal(t, CreateUnidentified, res.Create.Outcome)
-		assert.Nil(t, res.Create.Ref)
-		assert.Empty(t, res.Create.Bearer)
+		synctest.Test(t, func(t *testing.T) {
+			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
+			p := newHandoffPrompter(func(id, pub string) { f.DepositAuthTokenPlaintext(id, pub, "no-colon-here") })
+			res, err := loginAndGenerateCred(t.Context(), client, samlInput(rancherOrigin), p)
+			require.Error(t, err)
+			assert.Equal(t, CreateUnidentified, res.Create.Outcome)
+			assert.Nil(t, res.Create.Ref)
+			assert.Empty(t, res.Create.Bearer)
+		})
 	})
 }
 

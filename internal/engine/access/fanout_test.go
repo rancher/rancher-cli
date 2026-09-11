@@ -3,9 +3,11 @@ package access
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -66,23 +68,24 @@ func TestRunFanOutMidRunClusterAccessLossIsTerminal(t *testing.T) {
 // TestRunFanOutBudgetIsTerminal asserts an exhausted overall budget is an
 // error carrying the evaluated count, never a rollup.
 func TestRunFanOutBudgetIsTerminal(t *testing.T) {
-	old := fanOutBudget
-	fanOutBudget = 50 * time.Millisecond
-	t.Cleanup(func() { fanOutBudget = old })
-	ctx, cancel := fanOutContext(t.Context(), fanOutBudget)
-	defer cancel()
-	_, terminal := runFanOut(ctx, []string{"a", "b", "c"}, func(ctx context.Context, k string) (string, reviewResult) {
-		select {
-		case <-ctx.Done():
-			return k, reviewResult{kind: outcomeTerminal, err: clierr.New(clierr.CodeGeneric, ctx.Err().Error())}
-		case <-time.After(time.Second):
-			return k, reviewResult{kind: outcomeAnswer}
-		}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := fanOutContext(t.Context(), fanOutBudget)
+		defer cancel()
+		start := time.Now()
+		_, terminal := runFanOut(ctx, []string{"a", "b", "c"}, func(ctx context.Context, k string) (string, reviewResult) {
+			select {
+			case <-ctx.Done():
+				return k, reviewResult{kind: outcomeTerminal, err: clierr.New(clierr.CodeGeneric, ctx.Err().Error())}
+			case <-time.After(fanOutBudget + time.Second):
+				return k, reviewResult{kind: outcomeAnswer}
+			}
+		})
+		require.NotNil(t, terminal)
+		assert.Equal(t, outcomeTerminal, terminal.Kind)
+		assert.Equal(t, 0, terminal.Status)
+		assert.Equal(t, fanOutBudget, time.Since(start), "the production budget elapsed on the fake clock")
+		require.ErrorContains(t, terminal, fmt.Sprintf("fan-out budget of %s exhausted during the reviews; evaluated 0 of 3", fanOutBudget))
 	})
-	require.NotNil(t, terminal)
-	assert.Equal(t, outcomeTerminal, terminal.Kind)
-	assert.Equal(t, 0, terminal.Status)
-	require.ErrorContains(t, terminal, "fan-out budget of 50ms exhausted during the reviews; evaluated 0 of 3")
 }
 
 // TestRunFanOutTerminalAbandonsQueuedMembers asserts that after a terminal

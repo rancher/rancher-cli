@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/testrancher"
@@ -1053,23 +1054,27 @@ func TestFacadeNormanV3TokenCreate(t *testing.T) {
 // until the client gives up, and the record survives.
 func TestFacadeSetDeleteModeHangsUntilTheRequestEnds(t *testing.T) {
 	t.Parallel()
-	f := testrancher.New(testrancher.Options{})
-	srv := httptest.NewServer(f)
-	t.Cleanup(srv.Close)
-	login := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
-		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
-	bearer := login["token"].(string)
-	created := postJSON(t, srv.Client(), srv.URL+extTokensPath, bearer, map[string]any{"spec": map[string]any{}})
-	name := created["metadata"].(map[string]any)["name"].(string)
-	f.SetDeleteMode(name, "hang")
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, srv.URL+extTokensPath+"/"+name, nil)
-	req.Header.Set("Authorization", "Bearer "+bearer)
-	_, err := srv.Client().Do(req)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	_, alive := f.TokenOwner(name)
-	assert.True(t, alive)
+	synctest.Test(t, func(t *testing.T) {
+		f := testrancher.New(testrancher.Options{})
+		srv := httptest.NewTestServer(t, f)
+		client := srv.Client() // sets srv.URL: an in-memory server's URL is set by its first Client call
+		login := postJSON(t, client, srv.URL+"/v1-public/login", "",
+			map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+		bearer := login["token"].(string)
+		created := postJSON(t, client, srv.URL+extTokensPath, bearer, map[string]any{"spec": map[string]any{}})
+		name := created["metadata"].(map[string]any)["name"].(string)
+		f.SetDeleteMode(name, "hang")
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, srv.URL+extTokensPath+"/"+name, nil)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		start := time.Now()
+		_, err := client.Do(req)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Equal(t, 200*time.Millisecond, time.Since(start), "the client's deadline ended the hung delete on the fake clock")
+		_, alive := f.TokenOwner(name)
+		assert.True(t, alive)
+	})
 }
 
 // TestDerivedCreateAuthenticatesBeforeTheHook asserts a bearer revoked while

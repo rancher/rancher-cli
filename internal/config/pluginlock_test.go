@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -69,25 +70,25 @@ func TestWithPluginLoginLockSerializesAndTimesOutWithoutTheNoLockHint(t *testing
 // TestWithPluginLoginLockHonorsCancellation asserts a waiter's own
 // cancellation passes through as context.Canceled, not as a lock error.
 func TestWithPluginLoginLockHonorsCancellation(t *testing.T) {
-	restore := SetLockWaitTimeoutForTest(10 * time.Second)
-	t.Cleanup(restore)
-	dir := t.TempDir()
-	held, release := make(chan struct{}), make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		_ = WithPluginLoginLock(t.Context(), dir, "https://r.ex", func() error {
-			close(held)
-			<-release
-			return nil
+	synctest.Test(t, func(t *testing.T) {
+		dir := t.TempDir()
+		held, release := make(chan struct{}), make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			_ = WithPluginLoginLock(t.Context(), dir, "https://r.ex", func() error {
+				close(held)
+				<-release
+				return nil
+			})
 		})
+		<-held
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() { time.Sleep(50 * time.Millisecond); cancel() }()
+		err := WithPluginLoginLock(ctx, dir, "https://r.ex", func() error { return nil })
+		require.ErrorIs(t, err, context.Canceled)
+		close(release)
+		wg.Wait()
 	})
-	<-held
-	ctx, cancel := context.WithCancel(t.Context())
-	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
-	err := WithPluginLoginLock(ctx, dir, "https://r.ex", func() error { return nil })
-	require.ErrorIs(t, err, context.Canceled)
-	close(release)
-	wg.Wait()
 }
 
 // TestWithPluginLoginLockDifferentServersDoNotContend asserts two servers'

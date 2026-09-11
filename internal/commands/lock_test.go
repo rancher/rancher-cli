@@ -45,12 +45,25 @@ func assertSerializedWithLoadUnderLock(t *testing.T, dir string, first func(), m
 	// fires before fn): a mutation committed now must be visible to it.
 	mutateWhileHeld()
 
+	// The second command blocks on the config lock's process mutex; the
+	// semaphore wait hook fires as it gets there, so the test waits for
+	// that fact instead of a window of real time.
+	secondAtSem := make(chan struct{})
+	var atSemOnce sync.Once
+	restoreSem := config.SetSemWaitHookForTest(func() { atSemOnce.Do(func() { close(secondAtSem) }) })
+	t.Cleanup(restoreSem)
 	secondDone := make(chan struct{})
 	go func() { defer close(secondDone); second() }()
 	select {
+	case <-secondAtSem:
+	case <-time.After(10 * time.Second):
+		t.Fatal("second command never reached the config lock's process mutex")
+	}
+	restoreSem()
+	select {
 	case <-secondDone:
 		t.Fatal("second command completed while the first held the lock")
-	case <-time.After(200 * time.Millisecond):
+	default:
 	}
 	closeRelease()
 	<-firstDone

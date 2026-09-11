@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -79,16 +80,19 @@ func TestFetchClustersDropsSpacedDisplayNames(t *testing.T) {
 func TestFetchClustersTimeoutYieldsEmpty(t *testing.T) {
 	// No keyring.MockInit: fetchClusters does HTTP only (round-2 finding 9).
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(200 * time.Millisecond)
-	}))
-	t.Cleanup(srv.Close)
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-	got := fetchClusters(ctx, hc, cap)
-	assert.Empty(t, got)
+	synctest.Test(t, func(t *testing.T) {
+		srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(200 * time.Millisecond)
+		}))
+		client := srv.Client() // sets srv.URL: an in-memory server's URL is set by its first Client call
+		cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+		start := time.Now()
+		got := fetchClusters(ctx, client, cap)
+		assert.Empty(t, got)
+		assert.Equal(t, 50*time.Millisecond, time.Since(start), "the deadline, not the slow server, ended the fetch on the fake clock")
+	})
 }
 
 func TestFetchClusters401YieldsEmpty(t *testing.T) {

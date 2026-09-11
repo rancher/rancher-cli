@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -23,15 +24,30 @@ import (
 // clustersServer serves one steve page of clusters.
 func clustersServer(t *testing.T, items ...map[string]any) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(clustersHandler(items))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// clustersTestServer is clustersServer on the in-memory network, for a
+// test inside a synctest bubble.
+func clustersTestServer(t *testing.T, items ...map[string]any) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewTestServer(t, clustersHandler(items))
+	// An in-memory server's URL is set by its first Client call; the root
+	// client reads the URL before it asks for the client.
+	_ = srv.Client()
+	return srv
+}
+
+func clustersHandler(items []map[string]any) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != steveClustersPath {
 			http.NotFound(w, r)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(stevePage{Data: items, Count: new(len(items)), Revision: "1"})
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	})
 }
 
 type fakeRootFactory struct{ rc engine.RootClient }
@@ -368,36 +384,40 @@ func (b *blockingClient) PostReview(ctx context.Context, req engine.ReviewReques
 }
 
 func TestClustersProbesRespectTheFanOutLimit(t *testing.T) {
-	// NOT parallel: shrinks the package-level fan-out limit.
-	old := fanOutLimit
-	fanOutLimit = 2
-	t.Cleanup(func() { fanOutLimit = old })
-	release := make(chan struct{})
-	var inFlight, peak atomic.Int32
-	local := provenanceFixture()
-	local.script = []scripted{{resp: whoamiResp("u-alice")}}
-	f := &fakeFactory{caller: local, clusterClients: map[string]engine.ClusterClient{}}
-	var items []map[string]any
-	for i := range 5 {
-		id := fmt.Sprintf("c-%d", i)
-		items = append(items, steveItem(id, id))
-		f.clusterClients[id] = &blockingClient{fakeClient: scriptedClient(whoamiResp("u-alice")), release: release, inFlight: &inFlight, peak: &peak}
-	}
-	srv := clustersServer(t, items...)
-	cmd := &clustersCmd{clients: f, roots: fakeRootFactory{fakeRootClient{srv}}, local: local}
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		res, err := cmd.Execute(t.Context(), clustersInput("", ""), nil)
-		assert.NoError(t, err)
-		assert.Equal(t, 0, res.ExitStatus)
-	}()
-	require.Eventually(t, func() bool { return inFlight.Load() == 2 }, 2*time.Second, 5*time.Millisecond)
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, int32(2), peak.Load(), "never more reviews in flight than the fan-out limit")
-	close(release)
-	<-done
-	assert.Equal(t, int32(2), peak.Load())
+	synctest.Test(t, func(t *testing.T) {
+		// NOT parallel: shrinks the package-level fan-out limit.
+		old := fanOutLimit
+		fanOutLimit = 2
+		t.Cleanup(func() { fanOutLimit = old })
+		release := make(chan struct{})
+		var inFlight, peak atomic.Int32
+		local := provenanceFixture()
+		local.script = []scripted{{resp: whoamiResp("u-alice")}}
+		f := &fakeFactory{caller: local, clusterClients: map[string]engine.ClusterClient{}}
+		var items []map[string]any
+		for i := range 5 {
+			id := fmt.Sprintf("c-%d", i)
+			items = append(items, steveItem(id, id))
+			f.clusterClients[id] = &blockingClient{fakeClient: scriptedClient(whoamiResp("u-alice")), release: release, inFlight: &inFlight, peak: &peak}
+		}
+		srv := clustersTestServer(t, items...)
+		cmd := &clustersCmd{clients: f, roots: fakeRootFactory{fakeRootClient{srv}}, local: local}
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			res, err := cmd.Execute(t.Context(), clustersInput("", ""), nil)
+			assert.NoError(t, err)
+			assert.Equal(t, 0, res.ExitStatus)
+		}()
+		// Every goroutine in the bubble is durably blocked once two probes wait
+		// on the release channel and the others wait on the semaphore.
+		synctest.Wait()
+		assert.Equal(t, int32(2), inFlight.Load(), "two probes in flight, no more")
+		assert.Equal(t, int32(2), peak.Load(), "never more reviews in flight than the fan-out limit")
+		close(release)
+		<-done
+		assert.Equal(t, int32(2), peak.Load())
+	})
 }
 
 func TestClustersTerminalAnswerWinsOverABlockedSibling(t *testing.T) {

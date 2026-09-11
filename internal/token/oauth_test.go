@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
@@ -142,11 +143,14 @@ func writeTestJSON(w http.ResponseWriter, status int, v any) {
 // client is pinned to A's CA, the IdP client to B's own certificate
 // (standing in for OS roots in a unit test), and idpRequests counts only
 // this fixture's IdP traffic so parallel tests never share a counter.
+// rancherURL and idpURL are the origins the flow is pointed at: the
+// servers' URLs on the loopback network, the logical origins in memory.
 type splitOrigin struct {
 	rancher, idp             *httptest.Server
+	rancherURL, idpURL       string
 	rancherClient, idpClient *http.Client
 	// rejectLogin makes the Rancher login answer 401, as Rancher does when
-	// the identity provider's token is not accepted.
+	// the identity provider's token is not one it accepts.
 	rejectLogin bool
 	idpRequests atomic.Int32
 }
@@ -156,9 +160,24 @@ type splitOrigin struct {
 // device-code identity-provider stub with a distinct certificate.
 func splitOriginFacade(t *testing.T) *splitOrigin {
 	t.Helper()
+	return newSplitOrigin(t, false)
+}
+
+// splitOriginFacadeInMemory is splitOriginFacade for a synctest bubble:
+// both origins on the in-memory network behind one host-dispatching
+// transport, so the flow's polling runs on the fake clock. The two
+// clients share that transport and its trust, so the tests of TLS
+// distinctness between the origins keep the loopback fixture.
+func splitOriginFacadeInMemory(t *testing.T) *splitOrigin {
+	t.Helper()
+	return newSplitOrigin(t, true)
+}
+
+func newSplitOrigin(t *testing.T, inMemory bool) *splitOrigin {
+	t.Helper()
 	so := &splitOrigin{}
 	idpStub := &idpDeviceStub{pendingTotal: 1}
-	so.idp = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	idpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		so.idpRequests.Add(1)
 		switch r.URL.Path {
 		case "/idp/devicecode":
@@ -168,13 +187,8 @@ func splitOriginFacade(t *testing.T) *splitOrigin {
 		default:
 			http.NotFound(w, r)
 		}
-	}))
-	idp := so.idp
-	idp.TLS = &tls.Config{Certificates: []tls.Certificate{distinctLoopbackCert(t)}}
-	idp.StartTLS()
-	t.Cleanup(idp.Close)
-
-	so.rancher = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	})
+	rancherHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1-public/authproviders":
 			writeTestJSON(w, http.StatusOK, map[string]any{"data": []map[string]any{
@@ -183,9 +197,9 @@ func splitOriginFacade(t *testing.T) *splitOrigin {
 					"type":          "azureADProvider",
 					"clientId":      "facade-client",
 					"scopes":        []string{"openid"},
-					"authUrl":       idp.URL + "/idp/authorize",
-					"deviceAuthUrl": idp.URL + "/idp/devicecode",
-					"tokenUrl":      idp.URL + "/idp/token",
+					"authUrl":       so.idpURL + "/idp/authorize",
+					"deviceAuthUrl": so.idpURL + "/idp/devicecode",
+					"tokenUrl":      so.idpURL + "/idp/token",
 				},
 			}})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1-public/login":
@@ -207,13 +221,32 @@ func splitOriginFacade(t *testing.T) *splitOrigin {
 		default:
 			http.NotFound(w, r)
 		}
-	}))
+	})
+
+	if inMemory {
+		so.idp = httptest.NewTestServer(t, idpHandler)
+		so.idpURL = idpOrigin
+		so.rancher = httptest.NewTestServer(t, rancherHandler)
+		so.rancherURL = rancherOrigin
+		m := hostTransport{hostOf(rancherOrigin): so.rancher.Client().Transport, hostOf(idpOrigin): so.idp.Client().Transport}
+		so.rancherClient, so.idpClient = m.client(), m.client()
+		return so
+	}
+
+	so.idp = httptest.NewUnstartedServer(idpHandler)
+	so.idp.TLS = &tls.Config{Certificates: []tls.Certificate{distinctLoopbackCert(t)}}
+	so.idp.StartTLS()
+	t.Cleanup(so.idp.Close)
+	so.idpURL = so.idp.URL
+
+	so.rancher = httptest.NewTLSServer(rancherHandler)
 	t.Cleanup(so.rancher.Close)
+	so.rancherURL = so.rancher.URL
 
 	var err error
 	so.rancherClient, err = httpx.New(httpx.Options{CACert: certPEM(t, so.rancher), Timeout: httpx.DefaultTimeout})
 	require.NoError(t, err)
-	so.idpClient, err = httpx.New(httpx.Options{CACert: certPEM(t, idp), Timeout: httpx.DefaultTimeout})
+	so.idpClient, err = httpx.New(httpx.Options{CACert: certPEM(t, so.idp), Timeout: httpx.DefaultTimeout})
 	require.NoError(t, err)
 	return so
 }
@@ -230,14 +263,18 @@ func interactivePrompter() *ui.Prompter {
 // another, each verified by its own client, and the flow completes.
 func TestDeviceCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 	t.Parallel()
-	so := splitOriginFacade(t)
-	cred, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
-		Server: so.rancher.URL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient,
-	}, 0, interactivePrompter())
-	require.NoError(t, err)
-	assert.NotEmpty(t, cred.Token)
-	// One device-authorization request, one pending poll, one token issue.
-	assert.Equal(t, int32(3), so.idpRequests.Load())
+	synctest.Test(t, func(t *testing.T) {
+		so := splitOriginFacadeInMemory(t)
+		start := time.Now()
+		cred, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+			Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient,
+		}, 0, interactivePrompter())
+		require.NoError(t, err)
+		assert.NotEmpty(t, cred.Token)
+		// One device-authorization request, one pending poll, one token issue.
+		assert.Equal(t, int32(3), so.idpRequests.Load())
+		assert.Equal(t, time.Second, time.Since(start), "the first poll is immediate and answered pending; the issuing poll came one stub interval later on the fake clock")
+	})
 }
 
 // TestAuthCodeFlowSucceedsAcrossSplitOrigins asserts the same topology for
@@ -261,11 +298,11 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 		_ = resp.Body.Close()
 		return nil
 	}
-	providers, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancher.URL)
+	providers, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
 	require.NoError(t, err)
 	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", ui.Discard())
 	require.NoError(t, err)
-	input := &loginInput{server: so.rancher.URL, authProvider: "azureADProvider", idpClient: so.idpClient}
+	input := &loginInput{server: so.rancherURL, authProvider: "azureADProvider", idpClient: so.idpClient}
 	tok, err := oauthAuthCodeAuth(t.Context(), so.rancherClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.NoError(t, err)
 	assert.NotEmpty(t, tok.Bearer)
@@ -279,7 +316,7 @@ func TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority(t *test
 	t.Parallel()
 	so := splitOriginFacade(t)
 	_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
-		Server: so.rancher.URL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.rancherClient,
+		Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.rancherClient,
 	}, 0, interactivePrompter())
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
@@ -294,7 +331,7 @@ func TestDeviceCodeFlowNilIdPClientIsError(t *testing.T) {
 	t.Parallel()
 	so := splitOriginFacade(t)
 	_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
-		Server: so.rancher.URL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow,
+		Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow,
 	}, 0, interactivePrompter())
 	require.ErrorContains(t, err, "identity provider client is not configured")
 }
@@ -492,16 +529,18 @@ func TestIdPCertificateErrorPassesThroughOtherErrors(t *testing.T) {
 // same fact, whichever flow produced it.
 func TestDeviceCodeFlowRancherRejectionIsAnAuthError(t *testing.T) {
 	t.Parallel()
-	so := splitOriginFacade(t)
-	so.rejectLogin = true
-	_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
-		Server: so.rancher.URL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient,
-	}, 0, interactivePrompter())
-	require.Error(t, err)
-	ce, ok := errors.AsType[*clierr.Error](err)
-	require.True(t, ok, "got %v", err)
-	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	require.ErrorContains(t, err, "login rejected: 401")
-	_, isAcquire := errors.AsType[*AcquireError](err)
-	assert.False(t, isAcquire, "a deterministic rejection created nothing; there is no cleanup to report")
+	synctest.Test(t, func(t *testing.T) {
+		so := splitOriginFacadeInMemory(t)
+		so.rejectLogin = true
+		_, err := AcquireLoginCredential(t.Context(), so.rancherClient, LoginRequest{
+			Server: so.rancherURL, AuthProvider: "azureADProvider", AuthFlow: deviceAuthFlow, IdPClient: so.idpClient,
+		}, 0, interactivePrompter())
+		require.Error(t, err)
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "got %v", err)
+		assert.Equal(t, clierr.CodeAuth, ce.Code)
+		require.ErrorContains(t, err, "login rejected: 401")
+		_, isAcquire := errors.AsType[*AcquireError](err)
+		assert.False(t, isAcquire, "a deterministic rejection created nothing; there is no cleanup to report")
+	})
 }
