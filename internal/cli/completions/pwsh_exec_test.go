@@ -54,8 +54,9 @@ func TestPwshCompletionScriptExecutesSafely(t *testing.T) {
 	}
 	binPath := filepath.Join(binDir, binName)
 
-	// internal/cli/completions -> internal/cli -> internal -> module root.
-	build := exec.Command("go", "build", "-o", binPath, "../../..")
+	// The entry point by import path, so the build does not depend on how
+	// deep this package sits.
+	build := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building rancher: %s", out)
@@ -344,7 +345,7 @@ func TestPwshCompletionRespectsCursorAndLiteralWildcards(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		binName += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", filepath.Join(binDir, binName), "../../..")
+	build := exec.Command("go", "build", "-o", filepath.Join(binDir, binName), "github.com/rancher/rancher-cli/cmd/rancher")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building rancher: %s", out)

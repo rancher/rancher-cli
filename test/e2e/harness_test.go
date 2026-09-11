@@ -547,9 +547,7 @@ func TestMain(m *testing.M) {
 	env := &envtest.Environment{CRDDirectoryPaths: []string{filepath.Join("testdata", "crds")}}
 	var cfg *rest.Config
 	build := func() error {
-		// cwd during `go test` is this package directory (test/e2e/); the
-		// module root with the main package is two levels up.
-		if out, err := exec.Command("go", "build", "-o", binPath, filepath.Join("..", "..")).CombinedOutput(); err != nil {
+		if out, err := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher").CombinedOutput(); err != nil {
 			return fmt.Errorf("building rancher: %s", out)
 		}
 		fakeBin := filepath.Join(tmp, "rancher-credential-fake"+ext)

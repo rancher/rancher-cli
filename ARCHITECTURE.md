@@ -34,14 +34,16 @@ envelope and no encoding.
 ## Layer map
 
 Responsibilities only - **dependencies live in exactly one place, the mermaid diagram
-below.** The `architecture_test.go` conformance test parses that diagram and fails the
+below.** The `test/conformance/architecture_test.go` conformance test parses that diagram and fails the
 build if it drifts from the real package import graph, so there is no "depends on"
 column here to fall out of sync (keeping two hand-written views of the same facts is
 what drifted the previous revision of this doc).
 
 | Package | Responsibility |
 |---|---|
-| `main` | Process entrypoint: build the root command, run it, honor the adapter's exit code. |
+| `cmd/rancher` | Process entrypoint: install the embedded skill source, build the root command, run it, honor the adapter's exit code. |
+| `cmd/rancher-credential-vault` | The Vault credential helper binary over `credhelper`. |
+| `skills` | The agent skills this repository maintains, embedded as a tree (`go:embed` cannot climb out of its package directory) and read by `cmd/rancher`. |
 | `internal/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline; owns the `completion` command and its embedded shell scripts (`internal/cli/completions`). |
 | `internal/commands/auth` | `auth login/logout/check`: the login flows (supplied token, SAML relay, guided TLS trust), logout, and the credential check, as local commands. |
 | `internal/commands/configcmd` | The `config` group: server entries (`add-server`, `update-server`, `delete-server`, `use-server`, `ls`), `path`, `info`, `edit`, `set-completion`, `set-token-reuse`. |
@@ -82,13 +84,15 @@ what drifted the previous revision of this doc).
 
 ## Package dependency diagram
 
-Machine-checked against the real import graph by `architecture_test.go`
+Machine-checked against the real import graph by `test/conformance/architecture_test.go`
 (`TestArchitectureDocMatchesImports`). Edit an import, and the test tells you exactly
 which edge to add or remove here.
 
 ```mermaid
 graph TD
-    main["main"]
+    main["cmd/rancher"]
+    vault["cmd/rancher-credential-vault"]
+    skills["skills"]
     cli["internal/cli"]
     completions["internal/cli/completions"]
     auth["internal/commands/auth"]
@@ -114,8 +118,8 @@ graph TD
     access["internal/engine/access"]
     kubeconfigengine["internal/engine/kubeconfig"]
     config["internal/config"]
-    fakehelper["internal/config/testdata/fakehelper"]
     credhelper["credhelper"]
+    install["install"]
     selfuser["internal/client/selfuser"]
     provider["internal/client/provider"]
     kube["internal/client/kube"]
@@ -131,6 +135,8 @@ graph TD
 
     main --> cli
     main --> skillinstall
+    main --> skills
+    vault --> credhelper
 
     cli --> auth
     cli --> configcmd
@@ -326,9 +332,6 @@ graph TD
 
     config --> clierr
     config --> credhelper
-
-    fakehelper --> credhelper
-    fakehelper --> config
 
     output --> clierr
     output --> outputstyle
@@ -655,7 +658,7 @@ served by the facade; everything else falls through to the router untouched. Eve
 script gets its own facade + TLS server instance, composed over the one shared envtest
 reverse-proxy transport, so deterministic per-instance token names and secrets stay
 collision-free across parallel scripts. `internal/testrancher` is test-only by
-convention - `architecture_test.go` asserts no production package imports it.
+convention - `test/conformance/architecture_test.go` asserts no production package imports it.
 
 **Dynamic client, not typed Rancher structs.** Every resource flows through
 the Kubernetes dynamic client and unstructured objects; the CLI imports no

@@ -1,4 +1,4 @@
-package main_test
+package conformance
 
 import (
 	"os"
@@ -26,7 +26,7 @@ func TestNoErrorsAsWithTarget(t *testing.T) {
 	require.NoError(t, err)
 	var offenders []string
 	for _, path := range files {
-		if !strings.HasSuffix(path, ".go") || path == "errorsas_test.go" {
+		if !strings.HasSuffix(path, ".go") || path == "test/conformance/errorsas_test.go" {
 			continue
 		}
 		data, err := os.ReadFile(path)

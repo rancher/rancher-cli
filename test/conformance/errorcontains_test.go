@@ -1,4 +1,4 @@
-package main_test
+package conformance
 
 import (
 	"os"
@@ -28,7 +28,7 @@ func TestNoContainsOverErrorString(t *testing.T) {
 	require.NoError(t, err)
 	var offenders []string
 	for _, path := range files {
-		if !strings.HasSuffix(path, "_test.go") || path == "errorcontains_test.go" {
+		if !strings.HasSuffix(path, "_test.go") || path == "test/conformance/errorcontains_test.go" {
 			continue
 		}
 		data, err := os.ReadFile(path)

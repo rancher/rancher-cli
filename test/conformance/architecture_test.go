@@ -1,4 +1,4 @@
-package main_test
+package conformance
 
 import (
 	"go/parser"
@@ -103,14 +103,20 @@ func graphBlock(t *testing.T, doc string) string {
 	return ""
 }
 
-// packagesOnDisk returns every package dir under internal/ + main.
+// packagesOnDisk returns every package dir under the module's production
+// trees (cmd/, credhelper/, install/, internal/, skills/), testdata
+// excluded.
 func packagesOnDisk(t *testing.T) map[string]bool {
 	t.Helper()
-	out := map[string]bool{"main": true}
-	for _, root := range []string{"internal"} {
+	out := map[string]bool{}
+	for _, root := range []string{"cmd", "credhelper", "install", "internal", "skills"} {
 		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil || !d.IsDir() {
 				return err
+			}
+			if d.Name() == "testdata" {
+				// Helper programs under testdata are fixtures, not layers.
+				return filepath.SkipDir
 			}
 			if hasGoFiles(t, path) {
 				// filepath.WalkDir yields OS-native separators (backslash on
@@ -139,24 +145,20 @@ func hasGoFiles(t *testing.T, dir string) bool {
 }
 
 // realImportEdges parses non-test sources and returns package-level edges
-// between module-internal packages, using doc node naming ("main" for the
-// root package).
+// between module-internal packages, keyed by the doc's node names (the
+// slash paths of the package directories).
 func realImportEdges(t *testing.T) map[string]bool {
 	t.Helper()
 	edges := map[string]bool{}
 	fset := token.NewFileSet()
 	for pkg := range packagesOnDisk(t) {
-		dir := pkg
-		if pkg == "main" {
-			dir = "."
-		}
-		entries, err := os.ReadDir(dir)
+		entries, err := os.ReadDir(pkg)
 		require.NoError(t, err)
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
 				continue
 			}
-			f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, parser.ImportsOnly)
+			f, err := parser.ParseFile(fset, filepath.Join(pkg, e.Name()), nil, parser.ImportsOnly)
 			require.NoError(t, err)
 			for _, imp := range f.Imports {
 				p := strings.Trim(imp.Path.Value, `"`)

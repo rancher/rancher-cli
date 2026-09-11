@@ -1,4 +1,4 @@
-package main_test
+package conformance
 
 import (
 	"bytes"
@@ -66,7 +66,7 @@ func TestRepositoryFilesFollowGit(t *testing.T) {
 	files, err := repositoryFiles()
 	require.NoError(t, err)
 	assert.Contains(t, files, "go.mod")
-	assert.Contains(t, files, "sourcewalk_test.go")
+	assert.Contains(t, files, "test/conformance/sourcewalk_test.go")
 	for _, path := range files {
 		assert.False(t, strings.HasPrefix(path, "docs/"), "%s is under the ignored docs/", path)
 		assert.False(t, strings.HasPrefix(path, "graphify-out/"), "%s is under the ignored graphify-out/", path)
@@ -76,8 +76,8 @@ func TestRepositoryFilesFollowGit(t *testing.T) {
 	}
 }
 
-// parsedSourceTree is the shared parse result every root-level AST-walk
-// tripwire needs: every non-test .go file in the repository outside
+// parsedSourceTree is the shared parse result every repository-wide
+// AST-walk check needs: every non-test .go file in the repository outside
 // testdata, parsed once against one *token.FileSet. files and paths are
 // parallel slices.
 type parsedSourceTree struct {

@@ -1,4 +1,4 @@
-package main_test
+package conformance
 
 import (
 	"go/ast"
@@ -18,8 +18,8 @@ import (
 //
 // The four entries here are the reviewed exceptions, each for a reason
 // that holds regardless of the pipeline's own state:
-//   - main.go: a startup failure (before any pipeline, or the embedded
-//     skill tree, exists to route through).
+//   - cmd/rancher/main.go: a startup failure, before any pipeline exists
+//     to route through.
 //   - internal/commands/configcmd/config_edit.go: the external editor subprocess is
 //     deliberately attached to the process's own stderr - it is not a
 //     rendered diagnostic.
@@ -33,7 +33,7 @@ import (
 //     the trace is inert unless RANCHER_CLI_COMPLETION_DEBUG is set during
 //     an active completion request.
 var stderrAllowlist = map[string]bool{
-	"main.go": true,
+	"cmd/rancher/main.go":                        true,
 	"internal/commands/configcmd/config_edit.go": true,
 	"credhelper/serve.go":                        true,
 	"cmd/rancher-credential-vault/main.go":       true,

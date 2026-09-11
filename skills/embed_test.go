@@ -1,4 +1,4 @@
-package main
+package skills
 
 import (
 	"io/fs"
@@ -25,12 +25,11 @@ func treeMap(t *testing.T, fsys fs.FS) map[string]string {
 	return m
 }
 
-// TestEmbeddedSkillMatchesDisk asserts embed == skills/rancher/: complete
-// relative-path and byte equality, both directions.
+// TestEmbeddedSkillMatchesDisk asserts the embedded tree equals the
+// rancher/ directory on disk: complete relative-path and byte equality,
+// both directions.
 func TestEmbeddedSkillMatchesDisk(t *testing.T) {
-	sub, err := fs.Sub(skillFS, "skills/rancher")
-	require.NoError(t, err)
-	embedded := treeMap(t, sub)
-	disk := treeMap(t, os.DirFS("skills/rancher"))
+	embedded := treeMap(t, Rancher())
+	disk := treeMap(t, os.DirFS("rancher"))
 	assert.Equal(t, disk, embedded)
 }
