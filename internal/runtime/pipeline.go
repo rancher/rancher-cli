@@ -825,7 +825,7 @@ func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notice
 // for every other format, including an unrecognized one (an untrusted format
 // value renders as text rather than being guessed at as an envelope). This
 // is the always-plain convenience form of RenderErrorStyled: every
-// production render site - the pipeline and surface/cli's own pre-dispatch
+// production render site - the pipeline and internal/cli's own pre-dispatch
 // failures alike - resolves a style and calls RenderErrorStyled directly.
 //
 // notices and ce's own warning ride (WithWarnings) are merged in one fixed

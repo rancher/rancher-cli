@@ -2,7 +2,7 @@
 // computation over a provisioningcluster patch's original and patched
 // objects. It is deliberately side-effect-free and imports nothing beyond
 // unstructured - the caller (resources.NewPatch's EffectEnricher hook,
-// wired in surface/cli/root.go) decides what to do with the result.
+// wired in internal/cli/root.go) decides what to do with the result.
 package provisioning
 
 import (

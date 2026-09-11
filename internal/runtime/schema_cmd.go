@@ -21,7 +21,7 @@ type schemaCmd struct {
 	// readOnly resolves this invocation's read-only state (config + env +
 	// flag OR'd) at Execute time. schema is wired via Adapt, which never
 	// calls resolveDeps, so it has no other way to see --config/--read-only
-	// or the loaded config - surface/cli hands over the SAME resolution
+	// or the loaded config - internal/cli hands over the SAME resolution
 	// buildIO uses for every other command (one resolver, two consumers).
 	// nil is treated as "inactive" (registry_test's stub registrations).
 	readOnly func() (bool, []string)
@@ -572,7 +572,7 @@ func matchesSubstring(c SchemaCommand, q string) bool {
 // pods`), so a full alias name is "<verb> <alias>" with the verb taken from
 // c.Name. nil for an unverbed c.Name (a bare fixed command carries no
 // resolvable alias form) or a command with no aliases. Exported so a second
-// consumer of this exact resolution rule (surface/cli's e2e coverage
+// consumer of this exact resolution rule (internal/cli's e2e coverage
 // conformance test) never re-derives it inline, where the two could drift
 // apart silently.
 func CommandAliasNames(c SchemaCommand) []string {

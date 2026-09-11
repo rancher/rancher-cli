@@ -148,7 +148,7 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 // TestConfigDeleteServerWritesNoCredstorePin is SUPPLEMENTARY coverage of
 // the delete's own store-independence (spec R2-1): it bypasses resolveDeps
 // by construction, so it passes before AND after the adapter swap - the
-// real resolveDeps regression lives in surface/cli's through-the-root
+// real resolveDeps regression lives in internal/cli's through-the-root
 // tests (Task 3 Step 0). This one asserts that the command itself never
 // resolves the injected store.
 func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
@@ -190,7 +190,7 @@ func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
 
 // TestConfigDeleteServerCompleteArgsDelegatesToServerNames proves only the
 // wiring: sort order is a ConfigView-level fact, asserted once at
-// newConfigView in surface/cli.
+// newConfigView in internal/cli.
 func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()
 	view := testView{srvNames: []string{"acme"}}

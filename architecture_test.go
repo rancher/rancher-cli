@@ -103,11 +103,11 @@ func graphBlock(t *testing.T, doc string) string {
 	return ""
 }
 
-// packagesOnDisk returns every package dir under internal/ + surface/ + main.
+// packagesOnDisk returns every package dir under internal/ + main.
 func packagesOnDisk(t *testing.T) map[string]bool {
 	t.Helper()
 	out := map[string]bool{"main": true}
-	for _, root := range []string{"internal", "surface"} {
+	for _, root := range []string{"internal"} {
 		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil || !d.IsDir() {
 				return err

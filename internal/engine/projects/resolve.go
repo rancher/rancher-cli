@@ -20,7 +20,7 @@ const projectLabel = "field.cattle.io/projectId"
 
 // MatchByIDOrDisplay implements the shared id-or-display-name collision
 // algorithm ResolveProject and resolveUser both need, mirroring
-// ResolveCluster's collision semantics exactly (surface/cli's
+// ResolveCluster's collision semantics exactly (internal/cli's
 // clientFactory.ResolveCluster): an id match and any display-name matches
 // are collected as a union of candidate ids, not an id-wins short-circuit -
 // a value matching one item's id AND a different item's displayName is

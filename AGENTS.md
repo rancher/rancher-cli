@@ -54,9 +54,9 @@ Two gotchas:
 
 - **The surface describes itself.** `rancher schema` emits a versioned manifest of
   every command and flag, golden-tested at
-  `surface/cli/testdata/schema.golden.json`. A surface change fails the build
+  `internal/cli/testdata/schema.golden.json`. A surface change fails the build
   until you regenerate the golden on purpose:
-  `go test ./surface/cli/ -run TestSchemaManifestGolden -update`. Unexpected drift
+  `go test ./internal/cli/ -run TestSchemaManifestGolden -update`. Unexpected drift
   is a signal, not noise. COMMANDS.md's surface facts (the counts paragraph, the
   Commands table) are conformance-tested against the schema manifest - a failure
   there means update COMMANDS.md, not the test.

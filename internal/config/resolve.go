@@ -94,7 +94,7 @@ type Effective struct {
 // https identity. The credential store is read ONLY when this returns true;
 // for an exec store that means the helper binary is never invoked for an
 // unsupported or malformed server URL, so it acts as a pre-read guard.
-// Exported so internal/token and surface/cli can share the same predicate
+// Exported so internal/token and internal/cli can share the same predicate
 // without duplicating the canonicalization + scheme-check logic.
 func IsSupportedSchemeURL(rawURL string) bool {
 	cu, err := credhelper.CanonicalServerURL(rawURL)
@@ -174,7 +174,7 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 // flag, OR'd together), set once by the CLI adapter's root Before hook
 // before any command dispatches - a process-wide stash so the resolved state
 // crosses layers. internal/runtime must not import internal/config, so the runtime
-// pipeline and the schema command never call this directly: surface/cli
+// pipeline and the schema command never call this directly: internal/cli
 // reads it into runtime.IO.ReadOnly, and passes ReadOnlyOverride itself as
 // the schema command's resolver function.
 var (

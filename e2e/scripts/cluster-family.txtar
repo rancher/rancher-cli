@@ -7,7 +7,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # has no /rancherversion route, so the capability checker's ServerInfo probe
 # fails and the outcome degrades to Unknown, which never blocks (the live
 # four-outcome coverage lives in
-# surface/cli/clusterfamily_capability_acceptance_test.go, which this
+# internal/cli/clusterfamily_capability_acceptance_test.go, which this
 # harness cannot reach). provisioningcluster is Sensitive, so the generic
 # `create resource` path refuses --apply alone (scale-pool.txtar's own
 # precedent), and every family mutation below needs --yes for the same

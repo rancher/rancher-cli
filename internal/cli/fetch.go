@@ -162,7 +162,7 @@ func fetchClusters(ctx context.Context, hc *http.Client, cap TokenCapability) []
 	if cap.Token == "" || cap.IDOnly {
 		return nil // exec-cred-only: cluster list requires management token
 	}
-	// Management K8s API: same convention as surface/cli/engine.go clusters().
+	// Management K8s API: same convention as internal/cli/engine.go clusters().
 	url := cap.ServerURL + "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
 	var col k8sItemsList
 	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {

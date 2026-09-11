@@ -117,7 +117,7 @@ run_with_watchdog() {
 TARGETS=(
   "FuzzOwnerTargetRoundTrip|./internal/engine/inspect"
   "FuzzCanonicalServerURL|./credhelper"
-  "FuzzParseArgTail|./surface/cli"
+  "FuzzParseArgTail|./internal/cli"
   "FuzzConfigLoad|./internal/config"
   "FuzzScrubPaths|./internal/engine"
 )

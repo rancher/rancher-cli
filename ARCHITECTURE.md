@@ -42,7 +42,7 @@ what drifted the previous revision of this doc).
 | Package | Responsibility |
 |---|---|
 | `main` | Process entrypoint: build the root command, run it, honor the adapter's exit code. |
-| `surface/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline. |
+| `internal/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline. |
 | `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `kubeconfig`, `completion`. |
 | `internal/commands/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
@@ -66,7 +66,7 @@ what drifted the previous revision of this doc).
 | `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe - used by the auth status identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→contract `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. Discovery: `ServerResources` asks for aggregated discovery (two context-bound requests) and falls back to client-go's per-group discovery where a server does not serve it (Rancher's local cluster through the proxy); a partial answer is returned as the partial list together with `engine.DiscoveryIncomplete` naming the groups the server could not describe, never as a silently smaller inventory. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery + typed clients) aimed at the Rancher k8s proxy endpoint, every one over `HTTPClient`, the single client-go `http.Client` carrying the same-origin redirect policy. |
-| `internal/client/httpx` | Constructs the hardened `*http.Client`s: `New` (TLS floor / CA / insecure, proxy, timeouts) for Rancher-origin callers (`internal/token`'s auth flows, `internal/client/provider`'s `/rancherversion` probe, `surface/cli`'s GET-only `engine.RootClient`), `NewExternal` (operating-system roots only) for identity-provider endpoints, the shared `RejectCrossOriginRedirect` policy every client carries, and the closed `Origin` tuple those decisions compare. |
+| `internal/client/httpx` | Constructs the hardened `*http.Client`s: `New` (TLS floor / CA / insecure, proxy, timeouts) for Rancher-origin callers (`internal/token`'s auth flows, `internal/client/provider`'s `/rancherversion` probe, `internal/cli`'s GET-only `engine.RootClient`), `NewExternal` (operating-system roots only) for identity-provider endpoints, the shared `RejectCrossOriginRedirect` policy every client carries, and the closed `Origin` tuple those decisions compare. |
 | `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, attributes it to a request by normalized origin (`ClassifyForOrigin`, `KindOf`), and picks the candidate trust anchor from the chain the failed handshake itself already observed - no separate probe dial. |
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl-parity, MF-2). It is also the terminal-safety boundary: `Printable` strips control and Unicode format characters from server-sourced text in every text format (table cells and headers, names; the runtime applies it to warning, error, and dry-run preview lines; text builders at each insertion), while json, yaml, and template stay verbatim. |
 | `internal/output/style` | Presentation-only ANSI wrap functions (bold/red/yellow/cyan) gated by an enable flag, plus a strip function that restores the exact unstyled bytes. |
@@ -85,7 +85,7 @@ which edge to add or remove here.
 ```mermaid
 graph TD
     main["main"]
-    cli["surface/cli"]
+    cli["internal/cli"]
     commands["internal/commands"]
     completions["internal/commands/completions"]
     token["internal/token"]
@@ -418,7 +418,7 @@ project`). `runtime.ComposeResolvers` merges the two and **rejects any op resolv
 both** at `BuildRoot`. Every engine command - read or mutating - must resolve to a
 binding, or `BuildRoot` fails.
 
-**Declarative registration (`surface/cli/root.go`).** Commands live in one `entry` table
+**Declarative registration (`internal/cli/root.go`).** Commands live in one `entry` table
 (`group`, and exactly one of an `engine` or `local` constructor). `BuildRoot` loops the
 table: probes `Describe()` for nil-safety, validates (unique name; command name is 1 or 2
 space-separated tokens and its group matches the leading token; `commandType` matches the
@@ -558,7 +558,7 @@ Defaults may never filter or place - a missing scope flag either widens the oper
 or is a `VALIDATION` error, never a silent fallback to stored state.
 
 **Deferred `ClusterClientFactory` (once-only identity).** `engine.ClusterClientFactory`
-is a port; the concrete `clientFactory` (in `surface/cli`) loads config and computes the
+is a port; the concrete `clientFactory` (in `internal/cli`) loads config and computes the
 effective connection **once per invocation** under a `sync.Once`. `Cluster(id)` builds
 and memoizes a `ClusterClient` per cluster ID under a mutex (safe under future concurrent
 fan-out); `""` is rejected. `ResolveCluster(nameOrID)` maps a display name or ID to a

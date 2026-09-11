@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/skillinstall"
-	surfacecli "github.com/rancher/rancher-cli/surface/cli"
 	ucli "github.com/urfave/cli/v3"
 )
 
@@ -29,15 +29,15 @@ func main() {
 	}
 	skillinstall.SetSource(skillSub)
 
-	surfacecli.CaptureArgv(os.Args[1:])
-	root, err := surfacecli.BuildRoot(VERSION)
+	cli.CaptureArgv(os.Args[1:])
+	root, err := cli.BuildRoot(VERSION)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "rancher:", err)
 		os.Exit(1)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := root.Run(ctx, surfacecli.SanitizedArgs(os.Args)); err != nil {
+	if err := root.Run(ctx, cli.SanitizedArgs(os.Args)); err != nil {
 		if ec, ok := errors.AsType[ucli.ExitCoder](err); ok {
 			os.Exit(ec.ExitCode())
 		}

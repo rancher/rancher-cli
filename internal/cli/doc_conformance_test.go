@@ -121,7 +121,7 @@ func deriveSurface(t *testing.T) (counts surfaceCounts, generated, fixed []strin
 // per-kind override added or removed (a new refused verb, another
 // delete-on-non-deletable wiring) reshapes the surface without moving any
 // count, and REFERENCE.md's verb prose would go stale silently. The
-// override list mirrors surface/cli/root.go's kindOverrideTable and
+// override list mirrors internal/cli/root.go's kindOverrideTable and
 // COMMANDS.md's counts-paragraph prose - change them together.
 func TestGeneratedCommandMembership(t *testing.T) {
 	overrides := []string{"delete provisioning-cluster"}

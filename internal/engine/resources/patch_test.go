@@ -426,7 +426,7 @@ func TestPatchClusterResolvesDisplayName(t *testing.T) {
 // an enricher passed to NewPatch is invoked with the exact orig/patched
 // objects Plan computed, and a warning it appends survives into the
 // returned Effect. This is the seam the provisioningcluster quorum-preview
-// override (surface/cli/root.go) is built on.
+// override (internal/cli/root.go) is built on.
 func TestPatchEffectEnricherObservesObjectsAndWarns(t *testing.T) {
 	t.Parallel()
 	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)

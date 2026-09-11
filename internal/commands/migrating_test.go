@@ -139,7 +139,7 @@ func TestMigratingReplacementCommandsResolve(t *testing.T) {
 	migrating, err := os.ReadFile(filepath.Join(repoRoot, "MIGRATING.md"))
 	require.NoError(t, err)
 
-	manifestBytes, err := os.ReadFile(filepath.Join(repoRoot, "surface", "cli", "testdata", "schema.golden.json"))
+	manifestBytes, err := os.ReadFile(filepath.Join(repoRoot, "internal", "cli", "testdata", "schema.golden.json"))
 	require.NoError(t, err)
 	var manifest migratingSchemaManifest
 	require.NoError(t, json.Unmarshal(manifestBytes, &manifest))

@@ -25,7 +25,7 @@ var ErrNoToken = errors.New("no stored token")
 // LegacyCachePrefix is the reserved exec-credential cache-slot prefix written
 // by the legacy token shim (`rancher token`). The prefix is defined here so
 // every site that needs it - internal/token/token.go (native rejection guard),
-// internal/token/shim.go (slot construction), surface/cli/completion_token.go
+// internal/token/shim.go (slot construction), internal/cli/completion_token.go
 // (AC-6 ambiguity filter) - shares one constant; a future rename or second
 // reserved namespace compiles instead of silently diverging.
 const LegacyCachePrefix = "legacy:"
@@ -42,7 +42,7 @@ const keyringService = "rancher-cli"
 // keyringObserverFn is an optional test hook called on every keyring operation
 // performed through keyringStore (Get, Set, Delete). Nil by default - no-op in
 // production. Set via SetKeyringObserverForTest to count keyring calls from any
-// test, including tests in other packages (e.g. surface/cli_test).
+// test, including tests in other packages (e.g. internal/cli_test).
 var keyringObserverFn func(op string)
 
 // SetKeyringObserverForTest sets the keyring-operation observer for the current

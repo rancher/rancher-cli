@@ -279,7 +279,7 @@ func (s *sections) Finalize() ([]sectionOutcome, []string) {
 // that DO preserve the cause. An adapter-owned per-request deadline firing
 // while the caller's context is still active - the provider's opCtx child
 // timeout (internal/client/provider requestTimeout) or the root
-// http.Client's timeout (surface/cli rootTimeout) - is deliberately NOT
+// http.Client's timeout (internal/cli rootTimeout) - is deliberately NOT
 // cancellation: neither check trips (the caller ctx is fine and the
 // rebuilt error carries no sentinel), so it degrades to a warning like any
 // other availability failure.

@@ -23,7 +23,7 @@ import (
 
 // provisioningClusterGVR is the provisioning.cattle.io/v1 Cluster GVR
 // `create cluster` writes, read from the kind table's provisioningcluster
-// row - the same live anchor derivedOpKinds relies on (surface/cli), so a
+// row - the same live anchor derivedOpKinds relies on (internal/cli), so a
 // row rename breaks both by the same key instead of leaving a hand-copied
 // GVR silently compiling. The init-time panic guards a static-table miss
 // that any test run or binary startup surfaces immediately; there is no

@@ -3,7 +3,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # oidc-provider enabled: the capability check must proceed (envtest cannot
 # serve /rancherversion, so PRIME_REQUIRED/Disabled are covered by
-# surface/cli's own httptest-backed unit tests, not here - see
+# internal/cli's own httptest-backed unit tests, not here - see
 # oidcclient_capability_acceptance_test.go). Seeded ONCE, in this one
 # scenario file: "oidc-provider" is a fixed, production-real Feature name
 # that cannot be scenario-namespaced, and testscript scenarios share one

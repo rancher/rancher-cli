@@ -503,7 +503,7 @@ func TestNoLowercasePrimeMarkerLiteral(t *testing.T) {
 		default:
 			return nil
 		}
-		if strings.HasSuffix(path, filepath.Join("surface", "cli", "root_test.go")) {
+		if strings.HasSuffix(path, filepath.Join("internal", "cli", "root_test.go")) {
 			return nil
 		}
 		check(t, path)

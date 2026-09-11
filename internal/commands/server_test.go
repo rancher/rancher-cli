@@ -78,7 +78,7 @@ func TestServerSwitchSetsCurrentAndRendersText(t *testing.T) {
 
 // TestServerSwitchCompleteArgsDelegatesToServerNames proves only the
 // wiring: sort order is a ConfigView-level fact, asserted once at
-// newConfigView in surface/cli.
+// newConfigView in internal/cli.
 func TestServerSwitchCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()
 	view := testView{srvNames: []string{"acme", "beta"}}

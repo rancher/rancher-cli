@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	surfacecli "github.com/rancher/rancher-cli/surface/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -87,12 +87,12 @@ func TestAC22NoKeyringOnCompletionPath(t *testing.T) {
 	require.NoError(t, config.WritePin(dir, "keychain"))
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
 	t.Setenv(config.EnvConfigDir, dir)
-	surfacecli.SetStoredConfigForTest(cfg, dir)
+	cli.SetStoredConfigForTest(cfg, dir)
 	// Drive a cluster-dependent site with a cluster value present so dispatch
 	// reaches token resolution. No env token → resolveCompletionToken returns empty.
-	surfacecli.SetRawArgvForTest([]string{"usage", "--cluster", "my-cluster"})
+	cli.SetRawArgvForTest([]string{"usage", "--cluster", "my-cluster"})
 
-	root, err := surfacecli.BuildRoot("test")
+	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
@@ -133,24 +133,24 @@ func TestAC23CompletionNoStderr(t *testing.T) {
 
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
 	t.Setenv(config.EnvConfigDir, dir)
-	surfacecli.SetStoredConfigForTest(cfg, dir)
+	cli.SetStoredConfigForTest(cfg, dir)
 
 	// v2 protocol (round-5): proto sentinel + words + self-prefixed empty cur field.
 	// --rancher-completion-cur= (no value after =) → cursor after space, no partial typed.
-	origV1 := surfacecli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1) })
-	surfacecli.CaptureArgvForTest([]string{
+	origV1 := cli.GetRawV1CompletionForTest()
+	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
+	cli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc",
 		"--rancher-completion-cur=",
 		"--generate-shell-completion",
 	})
 
-	root, err := surfacecli.BuildRoot("test")
+	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	root.Writer = io.Discard
-	runErr := root.Run(t.Context(), surfacecli.SanitizedArgsForTest([]string{
+	runErr := root.Run(t.Context(), cli.SanitizedArgsForTest([]string{
 		"rancher", "--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc",
 		"--rancher-completion-cur=",
 		"--generate-shell-completion",
@@ -195,28 +195,28 @@ func TestAC24AtMostTwoRequestsPerTAB(t *testing.T) {
 	require.NoError(t, cfg.Write())
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
 	t.Setenv(config.EnvConfigDir, dir)
-	surfacecli.SetStoredConfigForTest(cfg, dir)
+	cli.SetStoredConfigForTest(cfg, dir)
 	t.Setenv(config.EnvToken, "test-token")
 	// Display-name cluster "prod" at --namespace site → two requests.
 	// v2 protocol (round-5): proto sentinel + words (--namespace flag last in argv,
 	// no value in args) + self-prefixed cur field for partial "kube-".
 	// ParseArgTail: currentWord="kube-" non-flag, --namespace is last in args → SiteFlagValue(namespace).
-	origV1b := surfacecli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1b) })
-	surfacecli.CaptureArgvForTest([]string{
+	origV1b := cli.GetRawV1CompletionForTest()
+	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1b) })
+	cli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "pod", "--cluster", "prod", "--namespace",
 		"--rancher-completion-cur=kube-",
 		"--generate-shell-completion",
 	})
 
-	root, buildErr := surfacecli.BuildRoot("test")
+	root, buildErr := cli.BuildRoot("test")
 	require.NoError(t, buildErr)
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = io.Discard
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	_ = root.Run(ctx, surfacecli.SanitizedArgsForTest([]string{
+	_ = root.Run(ctx, cli.SanitizedArgsForTest([]string{
 		"rancher", "--rancher-completion-proto=2", "get", "pod", "--cluster", "prod", "--namespace",
 		"--rancher-completion-cur=kube-",
 		"--generate-shell-completion",
@@ -296,7 +296,7 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 		require.NoError(t, cfg.Write())
 		t.Setenv(config.EnvConfigDir, dir)
 		t.Setenv(config.EnvToken, "tok")
-		surfacecli.SetStoredConfigForTest(cfg, dir)
+		cli.SetStoredConfigForTest(cfg, dir)
 		return dir, srv
 	}
 
@@ -306,19 +306,19 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 	// strips both protocol fields for urfave.
 	run := func(t *testing.T, words []string, currentWord string) string {
 		t.Helper()
-		origV1 := surfacecli.GetRawV1CompletionForTest()
-		t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1) })
+		origV1 := cli.GetRawV1CompletionForTest()
+		t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
 		// Script-shaped request: proto sentinel + words + cur field + completion trigger.
 		scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 		scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
-		surfacecli.CaptureArgvForTest(scriptArgs)
-		root, err := surfacecli.BuildRoot("test")
+		cli.CaptureArgvForTest(scriptArgs)
+		root, err := cli.BuildRoot("test")
 		require.NoError(t, err)
 		var out bytes.Buffer
 		root.Writer = &out
 		root.ErrWriter = io.Discard
 		// root.Run receives sanitized args (proto sentinel stripped for urfave).
-		runArgv := surfacecli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
+		runArgv := cli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
 		_ = root.Run(t.Context(), runArgv)
 		return out.String()
 	}
@@ -366,13 +366,13 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 // AC-26: Candidate sanitization (charset enforcement + sort).
 func TestAC26SanitizationDropsLeadingHyphen(t *testing.T) {
 	t.Parallel()
-	got := surfacecli.SanitizeCandidatesForTest([]string{"-bad", "good", "also-good"})
+	got := cli.SanitizeCandidatesForTest([]string{"-bad", "good", "also-good"})
 	assert.Equal(t, []string{"also-good", "good"}, got)
 }
 
 func TestAC26SanitizationDropsShellMetachars(t *testing.T) {
 	t.Parallel()
-	got := surfacecli.SanitizeCandidatesForTest([]string{"$(inject)", "good.name", "has space", "valid_1"})
+	got := cli.SanitizeCandidatesForTest([]string{"$(inject)", "good.name", "has space", "valid_1"})
 	assert.Equal(t, []string{"good.name", "valid_1"}, got)
 }
 
@@ -414,24 +414,24 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	require.NoError(t, cfg.Write())
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
 	t.Setenv(config.EnvConfigDir, dir)
-	surfacecli.SetStoredConfigForTest(cfg, dir)
+	cli.SetStoredConfigForTest(cfg, dir)
 	// Snapshot AFTER seeding but BEFORE dispatch.
 	before := hashDir(t, dir)
 
 	// v2 protocol: proto sentinel + words + empty currentWord (completing namespace positional).
-	origV1c := surfacecli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1c) })
-	surfacecli.CaptureArgvForTest([]string{
+	origV1c := cli.GetRawV1CompletionForTest()
+	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1c) })
+	cli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc", "--rancher-completion-cur=",
 		"--generate-shell-completion",
 	})
-	root, err := surfacecli.BuildRoot("test")
+	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
 	root.Writer = io.Discard
 	root.ErrWriter = io.Discard
 	// Capture runErr: a failed invocation must not masquerade as a no-write success
 	// (round-3 finding 5).
-	runErr := root.Run(t.Context(), surfacecli.SanitizedArgsForTest([]string{
+	runErr := root.Run(t.Context(), cli.SanitizedArgsForTest([]string{
 		"rancher", "--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc", "--rancher-completion-cur=",
 		"--generate-shell-completion",
 	}))
@@ -442,7 +442,7 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 // TestGlobalFlagSetsAgree asserts the 4-way lockstep agreement between the
 // three sources that must enumerate the same global flags:
 //   - registry.go GlobalFlags (schema metadata, canonical source)
-//   - surface/cli adapter.go + root.go root.Flags (live ucli flags, 11 total)
+//   - internal/cli adapter.go + root.go root.Flags (live ucli flags, 11 total)
 //   - argtail.go globalArgSpecs (value-classification)
 //
 // If any source drifts - a flag added to adapter.go but not to globalArgSpecs,
@@ -465,14 +465,14 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 
 	// Extract canonical names from globalArgSpecs (argtail.go).
 	specNames := make([]string, 0)
-	for _, s := range surfacecli.GlobalArgSpecsForTest() {
+	for _, s := range cli.GlobalArgSpecsForTest() {
 		specNames = append(specNames, s.Name)
 	}
 	sort.Strings(specNames)
 
 	// Extract canonical names from root.Flags (live ucli flags built by BuildRoot).
 	// root.Flags = [debug, config] ++ GlobalFlags() - 12 total.
-	root, err := surfacecli.BuildRoot("test")
+	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
 	rootFlagNames := make([]string, 0)
 	for _, f := range root.Flags {
@@ -537,7 +537,7 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		require.NoError(t, cfg.Write())
 		t.Setenv(config.EnvConfigDir, dir)
 		t.Setenv(config.EnvToken, "tok")
-		surfacecli.SetStoredConfigForTest(cfg, dir)
+		cli.SetStoredConfigForTest(cfg, dir)
 		return dir
 	}
 

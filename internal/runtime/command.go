@@ -330,7 +330,7 @@ type MutatingCommand interface {
 
 // ConfigView is a minimal read-only snapshot of the loaded config, passed
 // into CompleteArgs so completers never re-read the config file (AC-19).
-// surface/cli implements this over the single Before-loaded *config.Config.
+// internal/cli implements this over the single Before-loaded *config.Config.
 type ConfigView interface {
 	ServerNames() []string
 	ConfigDir() string

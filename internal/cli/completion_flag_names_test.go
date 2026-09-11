@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/config"
-	surfacecli "github.com/rancher/rancher-cli/surface/cli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,17 +18,17 @@ import (
 // NOT parallel: mutates package-level rawArgv / rawCurrentWord globals.
 func runNameLikeCompletion(t *testing.T, words []string, currentWord string) string {
 	t.Helper()
-	origV1 := surfacecli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1) })
+	origV1 := cli.GetRawV1CompletionForTest()
+	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
 	scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 	scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
-	surfacecli.CaptureArgvForTest(scriptArgs)
-	root, err := surfacecli.BuildRoot("test")
+	cli.CaptureArgvForTest(scriptArgs)
+	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = io.Discard
-	runArgv := surfacecli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
+	runArgv := cli.SanitizedArgsForTest(append([]string{"rancher"}, scriptArgs...))
 	_ = root.Run(t.Context(), runArgv)
 	return out.String()
 }
@@ -225,10 +225,10 @@ func TestFlagNameCompletionV1ProtocolLeaf(t *testing.T) {
 
 	// v1 shape: no proto sentinel; "--" is a trailing argv token urfave sees.
 	// CaptureArgvForTest without proto sentinel → rawProtoV2=false, rawCurrentWord="".
-	origV1 := surfacecli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { surfacecli.SetRawV1CompletionForTest(origV1) })
-	surfacecli.CaptureArgvForTest([]string{"usage", "--", "--generate-shell-completion"})
-	root, err := surfacecli.BuildRoot("test")
+	origV1 := cli.GetRawV1CompletionForTest()
+	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
+	cli.CaptureArgvForTest([]string{"usage", "--", "--generate-shell-completion"})
+	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
 	var out bytes.Buffer
 	root.Writer = &out

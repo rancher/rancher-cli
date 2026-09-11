@@ -299,7 +299,7 @@ func Load(path string) (*Config, error) {
 
 // LoadAndStore parses config.yaml at dir and returns the loaded Config and
 // a lazy credential store for it. It encapsulates the Load + NewLazyStore
-// pairing used by both the CLI adapter (surface/cli resolveDeps) and the
+// pairing used by both the CLI adapter (internal/cli resolveDeps) and the
 // legacy token shim's cache-miss branch, so a future change to either step
 // (a migration check, an extra Config field driving store selection) applies
 // in one place rather than two.

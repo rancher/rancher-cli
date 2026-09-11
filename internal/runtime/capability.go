@@ -78,7 +78,7 @@ type CapabilityDecision struct {
 // CapabilityChecker probes whether the resolved server permits a capability
 // requirement. It lives in internal/runtime (beside the pipeline contract it
 // serves) so Run can invoke it without runtime importing engine or provider -
-// the composed implementation lives in surface/cli, built from the
+// the composed implementation lives in internal/cli, built from the
 // provider's server-info probe and the engine feature client, and is handed
 // to Run as an invocation dependency via IO.Capability.
 type CapabilityChecker interface {

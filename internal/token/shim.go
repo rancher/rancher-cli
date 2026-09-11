@@ -116,7 +116,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	// Cache miss: resolve the store lazily (config.yaml is needed for the
 	// credential-store policy; only runs on the slow path).
 	// config.LoadAndStore encapsulates the Load + NewLazyStore pairing used
-	// here and in resolveDeps (surface/cli/adapter.go), so a future change to
+	// here and in resolveDeps (internal/cli/adapter.go), so a future change to
 	// that pairing (e.g. a migration check) stays in one place.
 	store := c.store
 	if store == nil {
