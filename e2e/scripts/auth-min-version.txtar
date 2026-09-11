@@ -5,7 +5,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # ldflags-stamped). Envtest is a raw k8s apiserver - it does not serve
 # /rancherversion - so the probe always degrades to null + UnknownServerVersionWarning
 # here. The below-floor and at-floor code paths are covered by the injected-stub
-# unit tests in internal/commands/authcheck_test.go.
+# unit tests in internal/commands/auth/authcheck_test.go.
 
 exec rancher auth status -o json
 jsonquery stdout data.ok true

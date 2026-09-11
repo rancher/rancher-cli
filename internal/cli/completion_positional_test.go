@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rancher/rancher-cli/internal/commands"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/rancher/rancher-cli/internal/commands/configcmd"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
-	"github.com/stretchr/testify/assert"
 )
 
 // TestPositionalEnumCandidatesStatic asserts MC-14/MC-15: a positional site
@@ -158,7 +159,7 @@ func TestCompletionShellPositionalParity(t *testing.T) {
 // offers exactly on and off through the static positional layer.
 func TestSetTokenReusePositionalCompletes(t *testing.T) {
 	t.Parallel()
-	d := commands.NewSetTokenReuse("").Describe()
+	d := configcmd.NewSetTokenReuse("").Describe()
 	got, owned := positionalEnumCandidates(CompletionSite{Kind: SitePositional, Index: 0}, d)
 	assert.True(t, owned)
 	assert.Equal(t, []string{"off", "on"}, got)

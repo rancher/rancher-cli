@@ -154,7 +154,7 @@ func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 // openStoreResolved). This exercises RepinForLogin's else branch in isolation.
 // The production loginCmd.Execute path (OpenStoreWithNotice runs first, pins
 // the dir, then RepinForLogin sees pin="keychain" and returns early) is covered
-// by TestLoginFirstPinNoticeReachesWarnings in internal/commands/login_test.go.
+// by TestLoginFirstPinNoticeReachesWarnings in internal/commands/auth/login_test.go.
 func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInit()

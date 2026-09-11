@@ -7,11 +7,11 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 )
 
-// TestMain scrubs the RANCHER_* env vars inherited from the environment this package's tests
-// exercise as overrides, so a normal interactive shell with these set cannot
-// silently change what a test observes - DR-008. A RANCHER_CLI_URL inherited from the environment
-// particular made a unit test dial out to whatever it pointed at instead of
-// the test's local httptest server.
+// TestMain clears the RANCHER_CLI_* variables this package's tests exercise
+// as overrides, so a normal interactive shell with them set cannot silently
+// change what a test observes. A RANCHER_CLI_URL inherited from the
+// environment once made a unit test dial out to whatever it pointed at
+// instead of the test's local httptest server.
 func TestMain(m *testing.M) {
 	for _, v := range []string{
 		config.EnvURL, config.EnvToken, config.EnvCACert, config.EnvCredentialStore,

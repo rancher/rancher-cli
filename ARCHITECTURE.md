@@ -42,9 +42,13 @@ what drifted the previous revision of this doc).
 | Package | Responsibility |
 |---|---|
 | `main` | Process entrypoint: build the root command, run it, honor the adapter's exit code. |
-| `internal/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline. |
-| `internal/commands` | Bespoke local commands: `auth login/logout/check`, context and server management, `kubeconfig`, `completion`. |
-| `internal/commands/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
+| `internal/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline; owns the `completion` command and its embedded shell scripts (`internal/cli/completions`). |
+| `internal/commands/auth` | `auth login/logout/check`: the login flows (supplied token, SAML relay, guided TLS trust), logout, and the credential check, as local commands. |
+| `internal/commands/configcmd` | The `config` group: server entries (`add-server`, `update-server`, `delete-server`, `use-server`, `ls`), `path`, `info`, `edit`, `set-completion`, `set-token-reuse`. |
+| `internal/commands/register` | Server registration shared by `auth login` and `config add-server/update-server`: URL canonicalization, TLS preflight, CA selection, create and update under the config lock. |
+| `internal/commands/skill` | `skill install/uninstall/status` over `internal/skillinstall`. |
+| `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness. No production importer. |
+| `internal/cli/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Contract`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
@@ -60,7 +64,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (writes must go through Rancher's auth lifecycle) and `delete` is guarded - deleting the token backing the active CLI session is rejected with a hint to use `auth logout` instead. |
 | `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands, plus a delete-user override that guards against self-deletion: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
-| `internal/engine/kubeconfig` | The direct endpoint entries of a cluster's Authorized Cluster Endpoint for `rancher kubeconfig`: reads the management Cluster (`spec.localClusterAuthEndpoint`, `status.caCert`), the multi-cluster-management Feature and the management Nodes through the local cluster client, validates every entry (an https URL without a path, a parsable CA) and returns the entries to emit with the reasons for anything omitted; the command folds them into the kubeconfig and the exec plugin (`internal/token`) waits for a fresh token to be accepted at the endpoint kubectl is about to use. |
+| `internal/engine/kubeconfig` | The direct endpoint entries of a cluster's Authorized Cluster Endpoint for `rancher kubeconfig`: reads the management Cluster (`spec.localClusterAuthEndpoint`, `status.caCert`), the multi-cluster-management Feature and the management Nodes through the local cluster client, validates every entry (an https URL without a path, a parsable CA) and returns the entries to emit with the reasons for anything omitted; the command folds them into the kubeconfig and the exec plugin (`internal/token`) waits for a fresh token to be accepted at the endpoint kubectl is about to use. Provides the `rancher kubeconfig` command (`NewCommand`). |
 | `internal/engine/access` | Authorization questions answered by the server's reviews (`access can`, `access list`, `access who-can`): posts SubjectAccessReview, SelfSubjectAccessReview, SelfSubjectRulesReview, and SelfSubjectReview through the Rancher proxy, classifies each answer per the review outcome matrix, and resolves the subject, resource, and scope a question needs. Nothing here evaluates a Role's rules client-side. `who-can` reads the cluster's RBAC binding subjects as candidates and asks one SubjectAccessReview each. `explain` parses the authorizer's reason into the one binding it names and walks the Rancher chain behind that binding (owner labels, GlobalRole annotations, RoleTemplate inheritance) with a bounded, request-counted traversal; `internal/engine/rbac` carries the copy of wrangler's `SafeConcatName` the aggregation-grammar labels need. `clusters` reads the caller's clusters from the steve collection through the root client (the one steve read in the suite), probes each with a SelfSubjectReview under one fan-out semaphore, and reads the management bindings that grant them with their own completeness. `projects` adds the steve project collection and, per reachable cluster, the caller's steve namespace collection, asks one SelfSubjectAccessReview per project namespace (get the namespace: the grant Rancher gives a project's members), rolls the answers up into a visibility per project, and keeps Rancher membership (a ProjectRoleTemplateBinding naming the subject) apart from it. |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
 | `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe - used by the auth status identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
@@ -86,8 +90,12 @@ which edge to add or remove here.
 graph TD
     main["main"]
     cli["internal/cli"]
-    commands["internal/commands"]
-    completions["internal/commands/completions"]
+    completions["internal/cli/completions"]
+    auth["internal/commands/auth"]
+    configcmd["internal/commands/configcmd"]
+    register["internal/commands/register"]
+    skill["internal/commands/skill"]
+    cmdtest["internal/commands/cmdtest"]
     token["internal/token"]
     runtime["internal/runtime"]
     safety["internal/runtime/safety"]
@@ -124,7 +132,11 @@ graph TD
     main --> cli
     main --> skillinstall
 
-    cli --> commands
+    cli --> auth
+    cli --> configcmd
+    cli --> skill
+    cli --> kubeconfigengine
+    cli --> completions
     cli --> token
     cli --> runtime
     cli --> engine
@@ -148,23 +160,6 @@ graph TD
     cli --> httpx
     cli --> safety
     cli --> outputstyle
-
-    commands --> runtime
-    commands --> completions
-    commands --> kubeconfigengine
-    commands --> output
-    commands --> config
-    commands --> credhelper
-    commands --> provider
-    commands --> engine
-    commands --> extres
-    commands --> token
-    commands --> kube
-    commands --> httpx
-    commands --> tlstrust
-    commands --> clierr
-    commands --> skillinstall
-    commands --> outputstyle
 
     token --> runtime
     token --> config
@@ -273,9 +268,42 @@ graph TD
     access --> clierr
     access --> output
 
+    auth --> httpx
+    auth --> provider
+    auth --> tlstrust
+    auth --> clierr
+    auth --> register
+    auth --> config
+    auth --> extres
+    auth --> outputstyle
+    auth --> runtime
+    auth --> token
+    configcmd --> clierr
+    configcmd --> register
+    configcmd --> config
+    configcmd --> outputstyle
+    configcmd --> runtime
+    register --> credhelper
+    register --> httpx
+    register --> provider
+    register --> tlstrust
+    register --> clierr
+    register --> config
+    skill --> clierr
+    skill --> runtime
+    skill --> skillinstall
+    cmdtest --> clierr
+    cmdtest --> config
+    cmdtest --> runtime
+    cmdtest --> ui
+
     kubeconfigengine --> engine
     kubeconfigengine --> kinds
     kubeconfigengine --> clierr
+    kubeconfigengine --> kube
+    kubeconfigengine --> config
+    kubeconfigengine --> output
+    kubeconfigengine --> runtime
 
     provisioning --> selfuser
 

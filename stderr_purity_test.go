@@ -20,7 +20,7 @@ import (
 // that holds regardless of the pipeline's own state:
 //   - main.go: a startup failure (before any pipeline, or the embedded
 //     skill tree, exists to route through).
-//   - internal/commands/config_edit.go: the external editor subprocess is
+//   - internal/commands/configcmd/config_edit.go: the external editor subprocess is
 //     deliberately attached to the process's own stderr - it is not a
 //     rendered diagnostic.
 //   - credhelper/serve.go and cmd/rancher-credential-vault/main.go: each is
@@ -33,11 +33,11 @@ import (
 //     the trace is inert unless RANCHER_CLI_COMPLETION_DEBUG is set during
 //     an active completion request.
 var stderrAllowlist = map[string]bool{
-	"main.go":                              true,
-	"internal/commands/config_edit.go":     true,
-	"credhelper/serve.go":                  true,
-	"cmd/rancher-credential-vault/main.go": true,
-	"internal/cli/completion_debug.go":     true,
+	"main.go": true,
+	"internal/commands/configcmd/config_edit.go": true,
+	"credhelper/serve.go":                        true,
+	"cmd/rancher-credential-vault/main.go":       true,
+	"internal/cli/completion_debug.go":           true,
 }
 
 // TestNoStrayStderrWriterOutsideAllowlist is the grep-level (here, an AST

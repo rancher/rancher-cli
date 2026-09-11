@@ -16,8 +16,8 @@ contract, and stability, without reading docs.
 Every legacy command and subcommand below maps to exactly one of: a new
 spelling, a replacement recipe, or a documented drop. This table is kept
 exhaustive against the full legacy command inventory by a tracked
-conformance test (`internal/commands/migrating_test.go` +
-`internal/commands/testdata/legacy-commands.txt`).
+conformance test (`internal/cli/migrating_test.go` +
+`internal/cli/testdata/legacy-commands.txt`).
 
 | Legacy | Disposition |
 |---|---|

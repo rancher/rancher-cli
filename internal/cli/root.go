@@ -6,14 +6,20 @@ import (
 	"io"
 	"strings"
 
+	ucli "github.com/urfave/cli/v3"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/rancher/rancher-cli/internal/client/provider"
-	"github.com/rancher/rancher-cli/internal/commands"
+	"github.com/rancher/rancher-cli/internal/commands/auth"
+	"github.com/rancher/rancher-cli/internal/commands/configcmd"
+	"github.com/rancher/rancher-cli/internal/commands/skill"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/extres"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/kubeconfig"
 	"github.com/rancher/rancher-cli/internal/engine/managementtoken"
 	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/engine/oidcclient"
@@ -25,8 +31,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/token"
-	ucli "github.com/urfave/cli/v3"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // entry is one command's declarative registration: its verb group and a single
@@ -54,25 +58,25 @@ type entry struct {
 // kind).
 func buildEntries() []entry {
 	entries := []entry{
-		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewLogin(d.dir) }},
-		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewLogout(d.dir) }},
-		{group: "auth", make: func(d runDeps) runtime.Command { return commands.NewAuthCheck(d.dir, d.store) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return auth.NewLogin(d.dir) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return auth.NewLogout(d.dir) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return auth.NewCheck(d.dir, d.store) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewTokenCommand(d.dir, d.store) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewListTokensCommand(d.dir, d.store) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewDeleteTokenCommand(d.dir, d.store) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerLs(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewServerSwitch(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigAddServer(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigUpdateServer(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigDeleteServer(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigPath(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigInfo(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewConfigEdit(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewSetCompletion(d.dir) }},
-		{group: "config", make: func(d runDeps) runtime.Command { return commands.NewSetTokenReuse(d.dir) }},
-		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillInstall(d.version) }},
-		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillUninstall(d.version) }},
-		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return commands.NewSkillStatus(d.version) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewServerLs(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewServerSwitch(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewConfigAddServer(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewConfigUpdateServer(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewConfigDeleteServer(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewConfigPath(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewConfigInfo(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewConfigEdit(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewSetCompletion(d.dir) }},
+		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewSetTokenReuse(d.dir) }},
+		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewInstall(d.version) }},
+		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewUninstall(d.version) }},
+		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewStatus(d.version) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateSecret(d.clients) }},
@@ -115,7 +119,7 @@ func buildEntries() []entry {
 		{group: "", bare: true, make: func(runDeps) runtime.Command { return token.NewLegacyTokenCommand("", nil) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewUsage(d.clients) }},
-		{group: "", make: func(d runDeps) runtime.Command { return commands.NewKubeconfig(d.dir, d.store, d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return kubeconfig.NewCommand(d.dir, d.store, d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return observe.NewLogs(d.clients) }},
 	}
 	ov := kindOverrides()
@@ -788,8 +792,8 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	// no binding): reg.Register puts it in the manifest - Adapt alone
 	// registers nothing, and the command would silently vanish from
 	// `rancher schema` with no test failure.
-	completionCmd := commands.NewCompletion()
-	reg.Register(completionCmd)
+	completion := newCompletion()
+	reg.Register(completion)
 
 	// groupDescs carries the operator-facing desc for each named group.
 	// Unnamed ("") sections are positional bookmarks - no desc.
@@ -834,7 +838,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	// commands in registration order. Empty groups are skipped, as in
 	// assembleCommands.
 	sections := []runtime.SchemaGroup{{Name: "", Commands: []string{
-		schemaCmd.Describe().Name, completionCmd.Describe().Name,
+		schemaCmd.Describe().Name, completion.Describe().Name,
 	}}}
 	for _, g := range order {
 		if len(sectionCmds[g]) == 0 {
@@ -849,7 +853,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	}
 	return wiredRegistry{
 		reg:    reg,
-		fixed:  []*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completionCmd)},
+		fixed:  []*ucli.Command{Adapt(reg, schemaCmd), Adapt(reg, completion)},
 		groups: groups,
 		order:  order,
 	}, nil

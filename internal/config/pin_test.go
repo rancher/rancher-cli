@@ -98,7 +98,7 @@ func TestRepinForLoginKeychainPinNeverDowngrades(t *testing.T) {
 // RepinForLogin on a never-pinned dir (no prior openStoreResolved) returns a
 // first-pin notice. This covers RepinForLogin's else branch in isolation.
 // The production loginCmd.Execute path is covered by
-// TestLoginFirstPinNoticeReachesWarnings in internal/commands/login_test.go,
+// TestLoginFirstPinNoticeReachesWarnings in internal/commands/auth/login_test.go,
 // where OpenStoreWithNotice always runs before RepinForLogin and pins the dir
 // first - so the else branch is dead on that path.
 func TestRepinForLoginFreshPinNotices(t *testing.T) {

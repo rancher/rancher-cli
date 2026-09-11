@@ -53,8 +53,9 @@ var waitForFlockHook func()
 
 // SetLockWaitTimeoutForTest shortens the lock wait for the current test
 // run; call the returned restore in cleanup. Exported for the same reason
-// as SetLockHookForTest: other packages' tests (internal/commands) pin
-// lock-timeout behavior they cannot otherwise reach. Not for production.
+// as SetLockHookForTest: the local command packages' tests
+// (internal/commands/auth, internal/commands/configcmd) pin lock-timeout
+// behavior they cannot otherwise reach. Not for production.
 func SetLockWaitTimeoutForTest(d time.Duration) (restore func()) {
 	old := lockWaitTimeout
 	lockWaitTimeout = d
@@ -62,8 +63,9 @@ func SetLockWaitTimeoutForTest(d time.Duration) (restore func()) {
 }
 
 // SetLockHookForTest sets the config-lock hook for the current test run;
-// call the returned restore in cleanup. Exported from non-test code so
-// other packages' tests (internal/commands) can force lock/load orderings.
+// call the returned restore in cleanup. Exported from non-test code so the
+// local command packages' tests (internal/commands/auth,
+// internal/commands/configcmd) can force lock/load orderings.
 //
 // The calling test must not use t.Parallel(): the hook is a package-level
 // seam shared by every WithLock call.

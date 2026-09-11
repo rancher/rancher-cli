@@ -1298,7 +1298,7 @@ var (
 // permission), distinct from any other error (network/TLS/5xx), which
 // callers must treat as a real failure, not a "try something else" signal. ttlMs <= 0 omits
 // spec.ttl entirely (server default). This is the SAME derived-token path
-// `auth login` uses (via resolveProviderLoginToken in package commands), so
+// `auth login` uses (via resolveProviderLoginToken in package auth), so
 // get-token's stored-credential path creates exactly the same shape of token.
 func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerToken, clusterID string, ttlMs int64, description string) (CreateResult, error) {
 	spec := map[string]any{

@@ -4,17 +4,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 )
 
-// TestMain scrubs the RANCHER_* env vars inherited from the environment this package's tests
-// exercise as overrides, so a normal interactive shell with these set cannot
-// silently change what a test observes - DR-008.
+// TestMain clears the RANCHER_CLI_* variables this package's tests exercise
+// as overrides, so a normal interactive shell with them set cannot silently
+// change what a test observes.
 func TestMain(m *testing.M) {
-	for _, v := range []string{
-		config.EnvURL, config.EnvToken, config.EnvCACert, config.EnvCredentialStore,
-	} {
-		_ = os.Unsetenv(v)
-	}
+	cmdtest.UnsetResolutionEnv()
 	os.Exit(m.Run())
 }

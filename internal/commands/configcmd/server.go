@@ -1,0 +1,118 @@
+package configcmd
+
+import (
+	"context"
+	"fmt"
+	"maps"
+	"slices"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/runtime"
+)
+
+// serverEntry is one server in the ServerList payload. Fields are exported so the
+// -o json / -o yaml envelope carries real data; the slice also implements
+// output.Tabular for -o table / -o name.
+type serverEntry struct {
+	Current bool   `json:"current"`
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+}
+
+type serverList []serverEntry
+
+func (serverList) Columns() []string { return []string{"CURRENT", "NAME", "URL"} }
+func (s serverList) Rows() [][]string {
+	rows := make([][]string, 0, len(s))
+	for _, e := range s {
+		mark := ""
+		if e.Current {
+			mark = "*"
+		}
+		rows = append(rows, []string{mark, e.Name, e.URL})
+	}
+	return rows
+}
+
+type serverLsCmd struct{ dir string }
+
+// NewServerLs builds `config list-servers` (local).
+func NewServerLs(dir string) runtime.Command { return &serverLsCmd{dir: dir} }
+
+func (serverLsCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{Name: "config list-servers", Usage: "List configured servers", CommandType: runtime.Local, Shape: runtime.ShapeTabular}
+}
+func (s serverLsCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	cfg, err := config.Load(config.FilePath(s.dir))
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	names := slices.Sorted(maps.Keys(cfg.Servers))
+	list := make(serverList, 0, len(names))
+	for _, n := range names {
+		list = append(list, serverEntry{Current: n == cfg.CurrentServer, Name: n, URL: cfg.Servers[n].URL})
+	}
+	return runtime.Result{Kind: "ServerList", Data: list}, nil
+}
+
+type serverSwitchCmd struct{ dir string }
+
+// NewServerSwitch builds `config use-server <name>` (local).
+func NewServerSwitch(dir string) runtime.Command { return &serverSwitchCmd{dir: dir} }
+
+func (serverSwitchCmd) Describe() runtime.Descriptor {
+	return runtime.Descriptor{
+		Name:        "config use-server",
+		Usage:       "Switch the current server",
+		CommandType: runtime.Local,
+		// Required:false - a missing name is handled here with an AMBIGUOUS_SELECTION
+		// candidate list (server names), richer than the generic validateInput error.
+		Args:     []runtime.ArgSpec{{Name: "name", Type: "string"}},
+		Examples: []string{"rancher config use-server prod"},
+		Shape:    runtime.ShapeText,
+	}
+}
+func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
+	var name string
+	if err := config.WithLock(cmdCtx, s.dir, func() error {
+		cfg, err := config.Load(config.FilePath(s.dir))
+		if err != nil {
+			return err
+		}
+		if len(in.Args()) == 0 {
+			cands := make([]clierr.Candidate, 0, len(cfg.Servers))
+			for n := range cfg.Servers {
+				cands = append(cands, clierr.Candidate{ID: n, Name: n})
+			}
+			return clierr.New(clierr.CodeAmbiguousSelection, "server name required").
+				WithCandidates(cands)
+		}
+		name = in.Args()[0]
+		if _, ok := cfg.Servers[name]; !ok {
+			return clierr.New(clierr.CodeNotFound, "server not found: "+name)
+		}
+		cfg.CurrentServer = name
+		return cfg.Write()
+	}); err != nil {
+		return runtime.Result{}, err
+	}
+	return runtime.Result{Kind: "ServerSwitch",
+		Data: map[string]string{"current": name},
+		Text: "current server set to " + name + "\n",
+	}, nil
+}
+
+// CompleteArgs implements runtime.ShellCompleter: `config use-server <TAB>`
+// completes server names from the already-loaded config snapshot (AC-19).
+func (serverSwitchCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+	return view.ServerNames()
+}
+
+// cachedCredsRemovedLine renders the "<n> cached kubectl credentials
+// removed" summary line delete-server and update-server both print - the
+// two commands report the same DeleteTokenEverywhere output and must read
+// alike.
+func cachedCredsRemovedLine(n int) string {
+	return fmt.Sprintf("%d cached kubectl credentials removed", n)
+}

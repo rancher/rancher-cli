@@ -1275,7 +1275,7 @@ func stringsFromAny(v any) []string {
 // kubeconfigValueFixture builds a deterministic, valid kubeconfig document
 // naming each requested cluster (or "local" for an empty list) via the
 // repo's own clientcmdapi.Config + clientcmd.Write path - the same one
-// internal/commands/kubeconfig.go uses - rather than hand-built YAML, so a
+// internal/engine/kubeconfig/command.go uses - rather than hand-built YAML, so a
 // cluster name carrying a YAML-significant character still encodes
 // correctly. One shared "rancher" AuthInfo carries every context, mirroring
 // the real store's single reused credential. See handleKubeconfigsPOST's
