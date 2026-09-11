@@ -2,8 +2,10 @@
 set -e
 cd "$(dirname "$0")/.."
 
-# gofmt: fail on any unformatted file.
-unformatted=$(gofmt -l .)
+# gofmt: fail on any unformatted file the repository carries. The files
+# come from git (tracked plus untracked-not-ignored), never from a walk of
+# the checkout: local, ignored trees must not fail the gate.
+unformatted=$(git ls-files -z --cached --others --exclude-standard -- '*.go' | xargs -0 gofmt -l)
 if [ -n "$unformatted" ]; then
   echo "gofmt required for:" >&2
   echo "$unformatted" >&2

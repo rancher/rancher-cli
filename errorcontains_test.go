@@ -2,11 +2,12 @@ package main_test
 
 import (
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // errorContainsRE matches the banned spelling: a positive Contains
@@ -23,34 +24,20 @@ var errorContainsRE = regexp.MustCompile(`(assert|require)\.Contains\(\s*t,\s*[A
 // line itself.
 func TestNoContainsOverErrorString(t *testing.T) {
 	t.Parallel()
+	files, err := repositoryFiles()
+	require.NoError(t, err)
 	var offenders []string
-	err := filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			name := d.Name()
-			if name == "docs" || name == "bin" || strings.HasPrefix(name, ".") && name != "." {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+	for _, path := range files {
 		if !strings.HasSuffix(path, "_test.go") || path == "errorcontains_test.go" {
-			return nil
+			continue
 		}
-		data, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return rerr
-		}
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
 		for i, line := range strings.Split(string(data), "\n") {
 			if errorContainsRE.MatchString(line) {
 				offenders = append(offenders, path+":"+strconv.Itoa(i+1)+": "+strings.TrimSpace(line))
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	for _, o := range offenders {
 		t.Errorf("use ErrorContains(t, err, ...) instead of Contains over err.Error(): %s", o)

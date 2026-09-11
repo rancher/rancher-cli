@@ -40,16 +40,6 @@ var stderrAllowlist = map[string]bool{
 	"surface/cli/completion_debug.go":      true,
 }
 
-// skipDirNames are walked over but never descended into: VCS/build
-// metadata, tooling config, and test fixtures (testdata trees ship
-// deliberately contrived helper binaries, not pipeline-owned production
-// code).
-var skipDirNames = map[string]bool{
-	".git": true, ".github": true, ".githooks": true, ".claude": true,
-	".superpowers": true, "bin": true, "testdata": true, "node_modules": true,
-	"vendor": true,
-}
-
 // TestNoStrayStderrWriterOutsideAllowlist is the grep-level (here, an AST
 // walk, so a comment or string literal mentioning "os.Stderr" cannot
 // false-positive) check enforcing the stderr-purity invariant: every
