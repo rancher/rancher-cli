@@ -9,7 +9,11 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/engine/access"
+	accesscomplete "github.com/rancher/rancher-cli/internal/engine/access/complete"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
+	projectscomplete "github.com/rancher/rancher-cli/internal/engine/projects/complete"
+	usercomplete "github.com/rancher/rancher-cli/internal/engine/user/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 )
@@ -45,18 +49,47 @@ var liveSourcePackages = map[string]bool{
 var sharedCompletionFlags = map[string]bool{"cluster": true, "project": true, "namespace": true, "node": true}
 
 // flagSources maps a shared flag name to its live source. A command's own
-// source takes precedence for the same flag.
-var flagSources = map[string]completion.Source{}
+// source takes precedence for the same flag: `access projects` keeps its
+// steve cluster walk while every other command lists the management
+// clusters.
+var flagSources = map[string]completion.Source{
+	"cluster":   accesscomplete.ClusterSource(),
+	"project":   projectscomplete.ProjectSource(),
+	"namespace": kindscomplete.NamespaceSource(),
+	"node":      kindscomplete.NodeSource(),
+}
 
 // kindSources maps a kind's Key to the live source for its name
 // positional on the generated verbs, for kinds whose names need a
-// bespoke projection; a Completable kind with no entry completes through
-// the generic kinds source.
-var kindSources = map[string]completion.Source{}
+// bespoke projection (ids plus unique display names, system accounts
+// left out); a Completable kind with no entry - the provisioning cluster
+// among them - completes through the generic kinds source.
+var kindSources = map[string]completion.Source{
+	"managementcluster": accesscomplete.ClusterSource(),
+	"project":           projectscomplete.ProjectSource(),
+	"user":              usercomplete.UserIDSource(),
+}
 
 // positionalKinds maps a bespoke command's name to the Key of the kind its
-// first positional completes as.
-var positionalKinds = map[string]string{}
+// first positional completes as: the three inspect leaves whose positional
+// is a management object, the cluster-family verbs' provisioning cluster,
+// the oidc-client secret verbs' client, and the existing user
+// create password-change-request addresses. create user is absent: its
+// positional is a new username, never an existing one.
+var positionalKinds = map[string]string{
+	"inspect cluster":                "managementcluster",
+	"inspect project":                "project",
+	"inspect user":                   "user",
+	"cluster scale":                  "provisioningcluster",
+	"cluster set-autoscaling":        "provisioningcluster",
+	"cluster clear-autoscaling":      "provisioningcluster",
+	"cluster pause-autoscaling":      "provisioningcluster",
+	"cluster resume-autoscaling":     "provisioningcluster",
+	"oidc-client add-secret":         "oidcclient",
+	"oidc-client rotate-secret":      "oidcclient",
+	"oidc-client remove-secret":      "oidcclient",
+	"create password-change-request": "user",
+}
 
 // allowanceLimit maps a granted allowance class to its request count:
 // one plain listing, the two discovery roots, or the Steve cluster page
@@ -116,21 +149,17 @@ func checkSourceDeclared(where string, src completion.Source) error {
 	return nil
 }
 
-// kindByKey returns the kind row whose Key is key.
-func kindByKey(key string) (kinds.Kind, bool) {
-	for _, k := range kinds.All() {
-		if k.Key == key {
-			return k, true
-		}
-	}
-	return kinds.Kind{}, false
-}
-
 // validateLiveWiring checks the three tables and every command's own
 // source against the adapted leaves: leaves maps each command name to
 // its descriptor, completers each command that implements
 // completion.Completer to the source it returned.
 func validateLiveWiring(leaves map[string]runtime.Descriptor, completers map[string]completion.Source, flags map[string]completion.Source, kindTable map[string]completion.Source, positional map[string]string) error {
+	// The generic kinds source is reachable for every Completable kind
+	// without a table entry, so it is checked whether or not a table
+	// happens to carry it.
+	if err := checkSourceDeclared("the generic kinds source", kindscomplete.KindSource("")); err != nil {
+		return err
+	}
 	for _, name := range slices.Sorted(maps.Keys(completers)) {
 		if err := checkSourceDeclared("command "+name, completers[name]); err != nil {
 			return err
@@ -155,7 +184,7 @@ func validateLiveWiring(leaves map[string]runtime.Descriptor, completers map[str
 		}
 	}
 	for _, key := range slices.Sorted(maps.Keys(kindTable)) {
-		k, ok := kindByKey(key)
+		k, ok := kinds.ByKey(key)
 		if !ok {
 			return fmt.Errorf("kindSources: %q is not a kind key", key)
 		}
@@ -170,7 +199,7 @@ func validateLiveWiring(leaves map[string]runtime.Descriptor, completers map[str
 		if _, ok := leaves[cmd]; !ok {
 			return fmt.Errorf("positionalKinds: %q is not an adapted command", cmd)
 		}
-		k, ok := kindByKey(positional[cmd])
+		k, ok := kinds.ByKey(positional[cmd])
 		if !ok {
 			return fmt.Errorf("positionalKinds: %q names %q, which is not a kind key", cmd, positional[cmd])
 		}

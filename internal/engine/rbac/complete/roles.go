@@ -68,11 +68,7 @@ func claimRole(req completion.Request) (completion.Requirements, bool) {
 	if req.Flag != "role" {
 		return completion.Requirements{}, false
 	}
-	return completion.Requirements{
-		Cluster:    completion.ClusterNone,
-		Credential: completion.CredentialManagement,
-		Allowance:  completion.AllowanceOne,
-	}, true
+	return completion.ManagementListing(), true
 }
 
 // completeRole lists the scope's role collection once and keeps the names

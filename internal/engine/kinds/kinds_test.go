@@ -622,3 +622,16 @@ func TestValidateRejectsSystemFilterMisuse(t *testing.T) {
 		t.Fatalf("shipped table must validate: %v", err)
 	}
 }
+
+// TestByKeyMatchesTheKeyAlone asserts ByKey resolves a canonical key and
+// declines the CLI name and aliases Lookup accepts.
+func TestByKeyMatchesTheKeyAlone(t *testing.T) {
+	t.Parallel()
+	k, ok := ByKey("managementcluster")
+	require.True(t, ok)
+	assert.Equal(t, "cluster", k.Name)
+	for _, q := range []string{"cluster", "clusters", "provisioning-cluster", "no-such-kind", ""} {
+		_, ok := ByKey(q)
+		assert.False(t, ok, q)
+	}
+}

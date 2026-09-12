@@ -153,165 +153,11 @@ func getJSONWithAccept(ctx context.Context, hc *http.Client, token, url, accept 
 	return json.Unmarshal(body, dst)
 }
 
-// fetchClusters lists management clusters via the management K8s API and
-// returns id+display-name candidates (AC-7, finding 10). Uses the standard
-// Rancher management API path; decodes the k8s items envelope.
-// Returns nil on any fetch error (AC-18).
-// hc must be the single per-dispatch client (finding 9).
-func fetchClusters(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
-	if cap.Token == "" || cap.IDOnly {
-		return nil // exec-cred-only: cluster list requires management token
-	}
-	// Management K8s API: same convention as internal/cli/engine.go clusters().
-	url := cap.ServerURL + "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
-	var col k8sItemsList
-	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
-		return nil
-	}
-	return clusterCandidates(col.Items)
-}
-
-// fetchSteveClusters lists the clusters the caller can see through the steve
-// collection access projects resolves --cluster against; the management
-// LIST fetchClusters reads is refused for callers who are not administrators.
-// The read is the command's own single-pass reader over the production
-// root client, so wherever the command would refuse the collection the
-// completer offers nothing, the local row follows the command's rule, and
-// unique display names are decided over the whole set.
-func fetchSteveClusters(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
-	if cap.Token == "" || cap.IDOnly {
-		return nil
-	}
-	rows, err := access.ListClustersOnce(ctx, &rootClient{base: cap.ServerURL, token: cap.Token, hc: hc})
-	if err != nil {
-		completionDebugf("steve clusters: %v", err)
-		return nil
-	}
-	items := make([]map[string]any, 0, len(rows))
-	for _, c := range rows {
-		items = append(items, map[string]any{
-			"metadata": map[string]any{"name": c.ID},
-			"spec":     map[string]any{"displayName": c.DisplayName},
-		})
-	}
-	return clusterCandidates(items)
-}
-
-// clusterCandidates extracts cluster ids and uniquely-resolving display names
-// from a list response (AC-7: same MatchByIDOrDisplay semantics).
-func clusterCandidates(items []map[string]any) []string {
-	type clusterEntry struct {
-		id      string
-		display string
-	}
-	entries := make([]clusterEntry, 0, len(items))
-	for _, item := range items {
-		meta, _ := item["metadata"].(map[string]any)
-		if meta == nil {
-			continue
-		}
-		id, _ := meta["name"].(string)
-		spec, _ := item["spec"].(map[string]any)
-		display := ""
-		if spec != nil {
-			display, _ = spec["displayName"].(string)
-		}
-		entries = append(entries, clusterEntry{id: id, display: display})
-	}
-	// Build a set of ids and a display-name frequency map for uniqueness.
-	idSet := map[string]bool{}
-	displayFreq := map[string]int{}
-	for _, e := range entries {
-		idSet[e.id] = true
-		if e.display != "" {
-			displayFreq[e.display]++
-		}
-	}
-	seen := map[string]bool{}
-	var out []string
-	for _, e := range entries {
-		if e.id != "" && !seen[e.id] {
-			seen[e.id] = true
-			out = append(out, e.id)
-		}
-		// Include display name only when it uniquely resolves and does not
-		// collide with any cluster id (MatchByIDOrDisplay semantics, AC-7).
-		if e.display != "" && displayFreq[e.display] == 1 && !idSet[e.display] && !seen[e.display] {
-			seen[e.display] = true
-			out = append(out, e.display)
-		}
-	}
-	return sanitizeCandidates(out)
-}
-
-// fetchProjects lists projects for the resolved cluster via the management K8s
-// API and returns name/id candidates (AC-8, finding 10). Projects are listed in
-// the cluster's namespace, exactly as internal/engine/projects/resolve.go does.
-// Returns nil on any fetch error.
-// hc must be the single per-dispatch client (finding 9).
-func fetchProjects(ctx context.Context, hc *http.Client, cap TokenCapability, clusterID string) []string {
-	if cap.Token == "" || cap.IDOnly {
-		return nil
-	}
-	if clusterID == "" {
-		return nil
-	}
-	// Management K8s API: project GVR in the cluster's namespace
-	// (mirrors internal/engine/projects/resolve.go:81-104).
-	url := fmt.Sprintf("%s/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/%s/projects",
-		cap.ServerURL, clusterID)
-	var col k8sItemsList
-	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
-		return nil
-	}
-	return projectCandidates(col.Items)
-}
-
-// projectCandidates extracts project ids and uniquely-resolving display names.
-func projectCandidates(items []map[string]any) []string {
-	seen := map[string]bool{}
-	displayFreq := map[string]int{}
-	type pEntry struct{ id, display string }
-	entries := make([]pEntry, 0, len(items))
-	for _, item := range items {
-		meta, _ := item["metadata"].(map[string]any)
-		if meta == nil {
-			continue
-		}
-		id, _ := meta["name"].(string)
-		spec, _ := item["spec"].(map[string]any)
-		display := ""
-		if spec != nil {
-			display, _ = spec["displayName"].(string)
-		}
-		entries = append(entries, pEntry{id: id, display: display})
-		if display != "" {
-			displayFreq[display]++
-		}
-	}
-	idSet := map[string]bool{}
-	for _, e := range entries {
-		idSet[e.id] = true
-	}
-	var out []string
-	for _, e := range entries {
-		if e.id != "" && !seen[e.id] {
-			seen[e.id] = true
-			out = append(out, e.id)
-		}
-		if e.display != "" && displayFreq[e.display] == 1 && !idSet[e.display] && !seen[e.display] {
-			seen[e.display] = true
-			out = append(out, e.display)
-		}
-	}
-	return dedupe(sanitizeCandidates(out))
-}
-
-// fetchK8sResources lists a Kubernetes resource in a cluster via the
-// management proxy (/k8s/clusters/<id>/...) and returns object names (AC-9,
-// AC-10, AC-11). ns may be "" for cluster-scoped resources. Returns nil on
-// any error.
-// hc must be the single per-dispatch client (finding 9).
+// fetchK8sResources lists a Kubernetes collection through a cluster's proxy
+// (/k8s/clusters/<id>/...) and answers the objects' metadata.name, for the
+// command-shaped sites the surface still serves. ns may be "" for a
+// cluster-scoped collection. Returns nil on any error. hc is the one HTTP
+// client built per dispatch.
 func fetchK8sResources(ctx context.Context, hc *http.Client, cap TokenCapability, clusterID, apiPath, ns string) []string {
 	if cap.Token == "" {
 		return nil
@@ -460,9 +306,9 @@ type userEntry struct {
 }
 
 // fetchUserEntries fetches the management user list and returns all non-system
-// users deduped by metadata.name id. Both fetchUsers and fetchUserIDs ride
-// this first pass. Returns nil on any error or when the capability boundary
-// prevents the request.
+// users deduped by metadata.name id; fetchUsers rides this first pass.
+// Returns nil on any error or when the capability boundary prevents the
+// request.
 func fetchUserEntries(ctx context.Context, hc *http.Client, cap TokenCapability) []userEntry {
 	if cap.Token == "" || cap.IDOnly {
 		return nil
@@ -542,23 +388,6 @@ func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []str
 		}
 	}
 	return dedupe(sanitizeCandidates(names))
-}
-
-// fetchUserIDs lists management Users and returns only their metadata.name ids.
-// Used for kind-positional completion (get/delete/patch user) where the command
-// addresses users by metadata.name only - bare usernames are rejected verbatim.
-// System-account filtering matches fetchUsers. Management-token boundary: same
-// as fetchUsers (IDOnly or no token → nil, zero requests).
-func fetchUserIDs(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
-	entries := fetchUserEntries(ctx, hc, cap)
-	if entries == nil {
-		return nil
-	}
-	ids := make([]string, 0, len(entries))
-	for _, e := range entries {
-		ids = append(ids, e.id)
-	}
-	return sanitizeCandidates(ids)
 }
 
 // isSystemUserItem reports whether the user item represents a system account:

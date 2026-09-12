@@ -51,6 +51,15 @@ func ManagementPath(group, version, resource string) (Path, error) {
 	return ClusterPath("local", group, version, resource)
 }
 
+// ManagementNamespacedPath is a namespaced collection of the management
+// cluster through its proxy: the group's resource at version under
+// namespace, for the management kinds that live in a namespace (a
+// cluster's projects, a workspace's provisioning clusters). Every segment
+// goes through ValidSegment.
+func ManagementNamespacedPath(group, version, namespace, resource string) (Path, error) {
+	return NamespacedPath("local", group, version, namespace, resource)
+}
+
 // ClusterPath is a cluster-scoped collection under a cluster's proxy:
 // /k8s/clusters/<clusterID>/apis/<group>/<version>/<resource>, or the
 // core-group form /k8s/clusters/<clusterID>/api/<version>/<resource> when
@@ -75,6 +84,14 @@ func NamedResourcePath(clusterID, group, version, namespace, resource, name stri
 		segs = append(segs, "namespaces", namespace)
 	}
 	return build(append(segs, resource, name))
+}
+
+// SteveCollectionPath is a collection of Rancher's steve API at the server
+// root: /v1/<resource>, the resource named as steve spells it
+// ("management.cattle.io.clusters"). A continuation token goes through
+// WithQuery. The segment goes through ValidSegment.
+func SteveCollectionPath(resource string) (Path, error) {
+	return build([]string{"v1", resource})
 }
 
 // WithQuery returns p with key=value appended to its query, both

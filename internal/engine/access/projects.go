@@ -13,8 +13,10 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/access/complete"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 )
 
 const (
@@ -65,6 +67,12 @@ func (c *projectsCmd) Describe() runtime.Descriptor {
 		Shape:            runtime.ShapeText,
 	}
 }
+
+// LiveSource hands the surface the command's own --cluster source: the
+// steve cluster collection the command resolves the flag against, so the
+// values offered are the ones it accepts. Every other site of the command
+// is declined.
+func (*projectsCmd) LiveSource() completion.Source { return complete.ProjectsClusterSource() }
 
 // projectRow is one project of the caller's set with the subject's answers.
 type projectRow struct {

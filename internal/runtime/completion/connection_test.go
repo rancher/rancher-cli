@@ -226,3 +226,10 @@ func TestGetJSONHonorsTheDeadline(t *testing.T) {
 		assert.Equal(t, 1, conn.Used())
 	})
 }
+
+// TestListingPresets asserts the two declarations sources share.
+func TestListingPresets(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, Requirements{Cluster: ClusterNone, Credential: CredentialManagement, Allowance: AllowanceOne}, ManagementListing())
+	assert.Equal(t, Requirements{Cluster: ClusterResolved, Credential: CredentialManagement, Allowance: AllowanceOne}, ClusterListing())
+}

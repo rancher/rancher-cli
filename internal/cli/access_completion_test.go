@@ -18,6 +18,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 )
 
 // accessFixture is a Rancher stand-in for the access completion sites: the
@@ -485,7 +486,7 @@ func TestAccessProjectsClusterOffersTheSteveSet(t *testing.T) {
 
 	f.reset()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
-	got := liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"})
+	got := liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"})
 	assert.Equal(t, []string{"c-abc12", "c-zzz99", "local", "membercluster", "testcluster"}, sorted(got),
 		"the collection omits local, so the completer inserts it as the command does")
 	assert.Equal(t, []string{"/v1/management.cattle.io.clusters"}, f.served())
@@ -542,7 +543,7 @@ func TestAccessProjectsClusterCompletionFollowsEveryPage(t *testing.T) {
 
 	f.reset()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
-	got := liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"})
+	got := liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"})
 	assert.Equal(t, []string{"alone", "c-aaa11", "c-bbb22", "c-ccc33", "local"}, sorted(got),
 		"three pages read, the repeated name offered by id only, local inserted once")
 	assert.Len(t, f.served(), 3)
@@ -563,7 +564,7 @@ func TestAccessProjectsClusterCompletionOffersNothingOnAnInconsistentRead(t *tes
 	f.mu.Unlock()
 	f.reset()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
-	assert.Empty(t, liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"}))
+	assert.Empty(t, liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"}))
 }
 
 // TestAccessProjectsClusterCompletionKeepsAReturnedLocal asserts a
@@ -578,7 +579,7 @@ func TestAccessProjectsClusterCompletionKeepsAReturnedLocal(t *testing.T) {
 	f.mu.Unlock()
 	f.reset()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
-	assert.Equal(t, []string{"c-aaa11", "local", "prod"}, sorted(liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"})))
+	assert.Equal(t, []string{"c-aaa11", "local", "prod"}, sorted(liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"})))
 }
 
 // TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader
@@ -621,7 +622,7 @@ func TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader(t *testi
 		f.pages = pages
 		f.mu.Unlock()
 		f.reset()
-		assert.Empty(t, liveCandidates(accessCtx(t), site, d, nil, []string{"--cluster"}), name)
+		assert.Empty(t, liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"}), name)
 	}
 }
 
@@ -641,4 +642,11 @@ func TestAccessTimeoutOffersTheDurationLadder(t *testing.T) {
 	}
 	equals := CompletionSite{Kind: SiteFlagValue, FlagName: "timeout", FlagSpelling: "--timeout", EqualsForm: true}
 	assert.Equal(t, []string{"--timeout=10m", "--timeout=1m", "--timeout=2m", "--timeout=30s", "--timeout=5m"}, dispatchSite(accessCtx(t), equals, projectsDescriptor(), nil, nil, []string{"--timeout="}))
+}
+
+// projectsCompleter is the zero-dependency probe of `access projects`, the
+// owner the dispatcher consults first for the command's own --cluster
+// source; a nil owner would fall through to the shared management list.
+func projectsCompleter() completion.Completer {
+	return access.NewProjects(nil, nil, nil).(completion.Completer)
 }

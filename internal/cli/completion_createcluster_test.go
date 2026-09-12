@@ -153,7 +153,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", FlagSpelling: "--machine-config", Partial: "amazonec2config/"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", nil)
 		assert.Equal(t, []string{"amazonec2config/cfg-a", "amazonec2config/cfg-b"}, got)
 		assert.Equal(t, int32(1), hits.Load())
 	})
@@ -165,7 +165,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", FlagSpelling: "--machine-config", EqualsForm: true, Partial: "amazonec2config/cf"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", nil)
 		assert.Equal(t, []string{"--machine-config=amazonec2config/cfg-a", "--machine-config=amazonec2config/cfg-b"}, got)
 	})
 
@@ -176,7 +176,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "nonesuch/cf"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil))
+		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", nil))
 		assert.Zero(t, hits.Load())
 	})
 
@@ -187,7 +187,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "pod/x"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil))
+		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", nil))
 		assert.Zero(t, hits.Load())
 	})
 
@@ -198,7 +198,7 @@ func TestLiveFlagValueMachineConfigNameComposition(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "machine-config", Partial: "amazonec2config/"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil))
+		assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", nil))
 		assert.Zero(t, hits.Load())
 	})
 }
@@ -219,7 +219,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "cloud-credential", FlagSpelling: "--cloud-credential"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", nil)
 		assert.Equal(t, []string{"aws-prod", "cc-abc12", "cc-collide", "cc-dup1", "cc-dup2", "cc-hostile", "marker-only"}, got)
 		assert.NotContains(t, got, "dup", "ambiguous display name must be suppressed")
 		assert.NotContains(t, got, "other-secret", "non-credential secret must be excluded")
@@ -233,7 +233,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 		site := CompletionSite{Kind: SiteFlagValue, FlagName: "cloud-credential", FlagSpelling: "--cloud-credential", EqualsForm: true}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
+		got := liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", nil)
 		assert.Contains(t, got, "--cloud-credential=cc-abc12")
 		assert.Contains(t, got, "--cloud-credential=aws-prod")
 	})
@@ -247,7 +247,7 @@ func TestLiveFlagValueCloudCredentialCandidates(t *testing.T) {
 			{Token: "downstream", IDOnly: true, ServerURL: srv.URL},
 		} {
 			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-			assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", "", nil))
+			assert.Nil(t, liveFlagValueCandidates(ctx, srv.Client(), site, d, cap, "", nil))
 			cancel()
 		}
 		assert.Zero(t, hits.Load())

@@ -85,8 +85,9 @@ func TestEmitResult(t *testing.T) {
 // TestClaimLiveSourceOrder asserts the dispatch order: the command's own
 // source wins; a declining command falls through to the shared flag table
 // for a flag site; a first positional consults positionalKinds for a
-// bespoke command or the kind of a generated verb, then kindSources; no
-// claim anywhere reports none; a later positional is never claimed.
+// bespoke command or the kind of a generated verb, then kindSources, then
+// the generic kinds source, which declines a kind that does not complete;
+// no claim anywhere reports none; a later positional is never claimed.
 func TestClaimLiveSourceOrder(t *testing.T) {
 	t.Parallel()
 	own := completion.Requirements{Allowance: completion.AllowanceOne}
@@ -112,7 +113,8 @@ func TestClaimLiveSourceOrder(t *testing.T) {
 		{name: "flag outside the table", site: CompletionSite{Kind: SiteFlagValue, FlagName: "node"}, d: runtime.Descriptor{Name: "get pod"}},
 		{name: "bespoke positional through positionalKinds", site: first, d: runtime.Descriptor{Name: "inspect cluster"}, want: kind, owned: true},
 		{name: "generated verb positional through the kind key", site: first, d: runtime.Descriptor{Name: "delete user"}, want: kind, owned: true},
-		{name: "generated verb kind without a table entry", site: first, d: runtime.Descriptor{Name: "get pod"}},
+		{name: "generated verb kind without a table entry uses the generic source", site: first, d: runtime.Descriptor{Name: "get pod"}, want: completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialAny, Allowance: completion.AllowanceOne}, owned: true},
+		{name: "generated verb kind that does not complete", site: first, d: runtime.Descriptor{Name: "get secret"}},
 		{name: "unknown bespoke positional", site: first, d: runtime.Descriptor{Name: "inspect project"}},
 		{name: "second positional never claimed", site: second, d: runtime.Descriptor{Name: "delete user"}},
 		{name: "command source owns a positional", site: second, d: runtime.Descriptor{Name: "oidc-client rotate-secret"}, lc: fakeCompleter{claiming(own, nil, nil)}, want: own, owned: true},
@@ -128,9 +130,11 @@ func TestClaimLiveSourceOrder(t *testing.T) {
 	}
 }
 
-// TestClusterAndCredentialNeeds asserts the two pure checks: a resolved
-// cluster need wants a typed, segment-safe --cluster; a management
-// credential need refuses an exec-credential-only token.
+// TestClusterAndCredentialNeeds asserts the pure checks: a resolved
+// cluster need wants --cluster typed, in any spelling (a display name may
+// carry a space; the segment rule lives in the path builders); a
+// management credential need refuses an exec-credential-only token; an
+// exec-credential-only token cannot resolve a display name.
 func TestClusterAndCredentialNeeds(t *testing.T) {
 	t.Parallel()
 	resolved := completion.Requirements{Cluster: completion.ClusterResolved}
@@ -138,8 +142,8 @@ func TestClusterAndCredentialNeeds(t *testing.T) {
 	assert.True(t, clusterNeedTyped(resolved, completion.Request{Cluster: "c-x"}))
 	assert.True(t, clusterNeedTyped(resolved, completion.Request{Cluster: "prod"}))
 	assert.False(t, clusterNeedTyped(resolved, completion.Request{}))
-	assert.False(t, clusterNeedTyped(resolved, completion.Request{Cluster: "prod cluster"}))
-	assert.False(t, clusterNeedTyped(resolved, completion.Request{Cluster: "a/b"}))
+	assert.True(t, clusterNeedTyped(resolved, completion.Request{Cluster: "prod cluster"}))
+	assert.True(t, clusterNeedTyped(resolved, completion.Request{Cluster: "a/b"}), "a slash is refused where the resolved id enters a path, not here")
 	assert.True(t, clusterNeedTyped(none, completion.Request{}))
 	assert.True(t, clusterNeedTyped(none, completion.Request{Cluster: "prod cluster"}))
 
@@ -260,8 +264,25 @@ func TestLiveSourceCandidatesPolicy(t *testing.T) {
 		assert.Nil(t, got)
 		assert.Zero(t, hits.Load())
 		got, _ = liveSourceCandidates(t.Context(), site, d, lc, []string{"--cluster", "prod cluster"}, none, none, noPositional)
-		assert.Nil(t, got)
-		assert.Zero(t, hits.Load())
+		assert.Nil(t, got, "a display name the collection does not carry resolves to nothing")
+		assert.Equal(t, int32(1), hits.Load(), "one resolution request, counted apart")
+	})
+
+	t.Run("a spaced display name resolves and the id reaches the source", func(t *testing.T) {
+		srv, hits := countingServer(t, `{"items":[{"metadata":{"name":"c-ddd44"},"spec":{"displayName":"prod cluster"}}]}`)
+		liveFixture(t, srv)
+		var saw completion.Request
+		lc := fakeCompleter{claiming(completion.Requirements{Cluster: completion.ClusterResolved, Allowance: completion.AllowanceOne}, []string{"a"}, &saw)}
+		got, _ := liveSourceCandidates(t.Context(), site, d, lc, []string{"--cluster", "prod cluster"}, none, none, noPositional)
+		assert.Equal(t, []string{"a"}, got)
+		assert.Equal(t, "prod cluster", saw.Cluster)
+		assert.Equal(t, "c-ddd44", saw.ClusterID)
+		assert.Equal(t, int32(1), hits.Load())
+
+		got, _ = liveSourceCandidates(t.Context(), site, d, lc, []string{"--cluster", "c-x/evil"}, none, none, noPositional)
+		assert.Equal(t, "c-x/evil", saw.ClusterID, "an id-shaped value is not resolved and reaches the source verbatim; the seam's builders refuse it as a segment (asserted in the kind source's tests)")
+		assert.Equal(t, int32(1), hits.Load(), "no resolution request for an id-shaped value")
+		assert.Equal(t, []string{"a"}, got, "this fake source builds no path")
 	})
 
 	t.Run("cluster id passes through, display name resolves first", func(t *testing.T) {
@@ -385,5 +406,5 @@ func TestRoleSiteThroughTheGrantProbe(t *testing.T) {
 	subject := CompletionSite{Kind: SitePositional, Index: 0}
 	got = liveCandidates(t.Context(), subject, d, probe, []string{"grant"})
 	assert.Contains(t, got, "u-alice")
-	assert.Equal(t, map[string]int{usersPath: 1}, s.reset())
+	assert.Equal(t, map[string]int{mgmtUsersPath: 1}, s.reset())
 }

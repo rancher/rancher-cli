@@ -31,3 +31,43 @@ func TestDedupe(t *testing.T) {
 	assert.Equal(t, []string{"b", "a", "b", "c", "a"}, in)
 	assert.Empty(t, Dedupe(nil))
 }
+
+// TestIDsWithUniqueDisplayNames asserts every id is offered, a display name
+// only when it appears on one row and is not itself an id, each value
+// once, in list order; an item without metadata is skipped whole and a
+// repeated row offers its id once while its display name counts twice.
+func TestIDsWithUniqueDisplayNames(t *testing.T) {
+	t.Parallel()
+	cluster := func(id, display string) map[string]any {
+		return map[string]any{"metadata": map[string]any{"name": id}, "spec": map[string]any{"displayName": display}}
+	}
+	items := []map[string]any{
+		cluster("c-aaa11", "prod"),
+		cluster("local", "local"),
+		cluster("c-bbb22", "dup"),
+		cluster("c-ccc33", "dup"),
+		cluster("c-ddd44", "c-aaa11"),
+		{"metadata": map[string]any{}},
+		{"spec": map[string]any{"displayName": "orphan"}},
+		cluster("c-eee55", ""),
+	}
+	assert.Equal(t, []string{"c-aaa11", "prod", "local", "c-bbb22", "c-ccc33", "c-ddd44", "c-eee55"}, IDsWithUniqueDisplayNames(items))
+	repeated := []map[string]any{cluster("c-aaa11", "prod"), cluster("c-aaa11", "prod")}
+	assert.Equal(t, []string{"c-aaa11"}, IDsWithUniqueDisplayNames(repeated))
+	assert.Empty(t, IDsWithUniqueDisplayNames(nil))
+}
+
+// TestTailFlag asserts the space form, the equals form (empty value
+// included), an absent flag, a flag that is the last token, and that a
+// prefix of the name is not the flag.
+func TestTailFlag(t *testing.T) {
+	t.Parallel()
+	tail := []string{"get", "pod", "--cluster", "c-x", "--namespace=default", "--project=", "--type"}
+	assert.Equal(t, "c-x", TailFlag(tail, "cluster"))
+	assert.Equal(t, "default", TailFlag(tail, "namespace"))
+	assert.Empty(t, TailFlag(tail, "project"))
+	assert.Empty(t, TailFlag(tail, "type"))
+	assert.Empty(t, TailFlag(tail, "node"))
+	assert.Empty(t, TailFlag([]string{"--clusters", "x"}, "cluster"))
+	assert.Equal(t, "--namespace", TailFlag([]string{"--cluster", "--namespace"}, "cluster"))
+}

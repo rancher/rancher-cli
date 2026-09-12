@@ -41,6 +41,8 @@ func TestPathBuilders(t *testing.T) {
 			p: must(ClusterPath("c-x", "", "v1", "nodes"))},
 		{name: "namespaced grouped", want: "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters",
 			p: must(NamespacedPath("local", "provisioning.cattle.io", "v1", "fleet-default", "clusters"))},
+		{name: "management namespaced", want: "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-x/projects",
+			p: must(ManagementNamespacedPath("management.cattle.io", "v3", "c-x", "projects"))},
 		{name: "namespaced core", want: "/k8s/clusters/c-x/api/v1/namespaces/default/pods",
 			p: must(NamespacedPath("c-x", "", "v1", "default", "pods"))},
 		{name: "named namespaced", want: "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters/prod",
@@ -51,6 +53,10 @@ func TestPathBuilders(t *testing.T) {
 			p: must(NamespacedPath("c-x", "", "v1", "default", "pods")).WithQuery("labelSelector", "app=x,tier=web")},
 		{name: "two queries", want: "/k8s/clusters/c-x/api/v1/nodes?a=1&b=2%2F3",
 			p: must(ClusterPath("c-x", "", "v1", "nodes")).WithQuery("a", "1").WithQuery("b", "2/3")},
+		{name: "steve collection", want: "/v1/management.cattle.io.clusters",
+			p: must(SteveCollectionPath("management.cattle.io.clusters"))},
+		{name: "steve collection with a continue token", want: "/v1/management.cattle.io.clusters?continue=x%26y",
+			p: must(SteveCollectionPath("management.cattle.io.clusters")).WithQuery("continue", "x&y")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -81,6 +87,7 @@ func TestPathBuildersRejectInvalidSegments(t *testing.T) {
 				}{p, err})
 			}
 			add(ManagementPath("management.cattle.io", "v3", s))
+			add(SteveCollectionPath(s))
 			if s != "" { // an empty group is the core-group form, not a segment
 				add(ManagementPath(s, "v3", "users"))
 			}
@@ -90,6 +97,7 @@ func TestPathBuildersRejectInvalidSegments(t *testing.T) {
 			add(NamespacedPath("c-x", "", "v1", s, "pods"))
 			add(NamespacedPath(s, "", "v1", "default", "pods"))
 			add(NamespacedPath("c-x", "", "v1", "default", s))
+			add(ManagementNamespacedPath("management.cattle.io", "v3", s, "projects"))
 			add(NamedResourcePath("local", "management.cattle.io", "v3", "", "oidcclients", s))
 			add(NamedResourcePath("local", "management.cattle.io", "v3", "", s, "c"))
 			if s != "" { // an empty namespace is the cluster-scoped form, not a segment

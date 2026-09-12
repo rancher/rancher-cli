@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -237,52 +236,6 @@ func TestNetworkGateZeroHits(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load(), "network gate must prevent all HTTP requests to reachable server")
 }
 
-// Round-2 finding 1 (AC-28): full-callback dispatch with non-empty partial for
-// --cluster. Returns all cluster candidates (shell does prefix-filtering).
-func TestLiveFlagValueClusterSpaceFormPartial(t *testing.T) {
-	// No keyring: dispatch functions do HTTP only.
-	t.Parallel()
-	items := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "prod"}},
-		{"metadata": map[string]any{"name": "c-def"}, "spec": map[string]any{"displayName": "staging"}},
-	}
-	var listResp struct {
-		Items []map[string]any `json:"items"`
-	}
-	listResp.Items = items
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(listResp)
-	}))
-	t.Cleanup(srv.Close)
-
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	// Space-form: Partial="c-" means the shell typed "c-" before TAB, but the
-	// binary returns ALL candidates; the shell prefix-filters them.
-	site := CompletionSite{
-		Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster",
-		EqualsForm: false, Partial: "c-",
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	hc := &http.Client{}
-	got := liveFlagValueCandidates(ctx, hc, site, runtime.Descriptor{Name: "get namespace"}, cap, "", "", nil)
-	// All candidates returned - shell does the "c-" prefix filter.
-	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
-}
-
-// Round-2 finding 4: --namespace suppressed when effectiveProject non-empty.
-func TestLiveFlagValueNamespaceSuppressedWithProject(t *testing.T) {
-	t.Parallel()
-	site := CompletionSite{Kind: SiteFlagValue, FlagName: "namespace", FlagSpelling: "--namespace"}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	cap := TokenCapability{Token: "tok", ServerURL: "https://example.invalid"}
-	hc := &http.Client{}
-	got := liveFlagValueCandidates(ctx, hc, site, runtime.Descriptor{Name: "get pod"}, cap, "c-abc", "my-project", nil)
-	assert.Nil(t, got, "round-2 finding 4: --namespace must be nil when effectiveProject is set")
-}
-
 // Finding 1 (SECURITY): path injection via --cluster must yield zero HTTP requests.
 // A cluster segment containing "/" fails isValidSegment and the whole dispatch
 // returns nil (fail closed) before any HTTP call is issued.
@@ -376,15 +329,19 @@ func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
 	}
 }
 
-// Round-4 finding 1 (belt-and-suspenders): a bare-dot cluster value ".." must
-// also be rejected by isValidSegment even though display-name resolution would
-// ordinarily nil it; the charset guard fires first.
+// TestPathInjectionClusterDotsReturnsNil asserts a bare-dot cluster value
+// ".." never reaches a path: it is not id-shaped, so it is looked up as a
+// display name with the one resolution request the surface makes against
+// the fixed management cluster list, matches nothing, and the dispatch
+// answers nil; no request carries the value in its path.
 func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	var hits atomic.Int32
+	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		w.WriteHeader(http.StatusOK)
+		paths = append(paths, r.URL.Path)
+		_, _ = w.Write([]byte(`{"items":[]}`))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -403,8 +360,9 @@ func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
-	assert.Nil(t, got, "round-4 finding 1: bare-dot cluster segment must yield nil")
-	assert.Equal(t, int32(0), hits.Load(), "round-4 finding 1: zero HTTP requests for bare-dot cluster segment")
+	assert.Nil(t, got, "a bare-dot cluster value must yield nil")
+	assert.Equal(t, int32(1), hits.Load(), "one resolution request against the fixed cluster list, nothing else")
+	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/clusters"}, paths, "the value never enters a path")
 }
 
 // Round-4 finding 3: a non-completable downstream kind (e.g. "get service")
@@ -477,7 +435,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		d := runtime.Descriptor{Name: "grant"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
+		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", nil)
 		assert.Contains(t, got, "u-alice")
 		assert.Contains(t, got, "alice")
 		assert.NotContains(t, got, "u-sys", "system users must be excluded")
@@ -491,7 +449,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		d := runtime.Descriptor{Name: "revoke"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
+		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", nil)
 		assert.Contains(t, got, "u-alice")
 		assert.Contains(t, got, "alice")
 		assert.NotContains(t, got, "u-sys", "system users must be excluded")
@@ -515,7 +473,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		defer cancel()
 		// With no --namespace in tail, livePositionalCandidates returns nil for
 		// namespace-scoped resources - the important thing is the user endpoint is not hit.
-		livePositionalCandidates(ctx, srv.Client(), site, d, cap, "c-abc", "", nil)
+		livePositionalCandidates(ctx, srv.Client(), site, d, cap, "c-abc", nil)
 		// The user list endpoint is at /k8s/clusters/local/apis/management.cattle.io/v3/users;
 		// "get pod" would hit /k8s/clusters/c-abc/... or nothing (no ns). Either way, no
 		// request hits the management user path.
@@ -531,7 +489,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		tail := []string{"--type", "group"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
+		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", tail)
 		assert.Nil(t, got, "--type group: no group source, must return nil")
 		assert.Zero(t, hits.Load(), "--type group: must issue zero requests")
 	})
@@ -545,7 +503,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		tail := []string{"--type=group"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
+		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", tail)
 		assert.Nil(t, got, "--type=group: no group source, must return nil")
 		assert.Zero(t, hits.Load(), "--type=group: must issue zero requests")
 	})
@@ -560,7 +518,7 @@ func TestLivePositionalSubjectCandidates(t *testing.T) {
 		tail := []string{"--type"}
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
+		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", tail)
 		assert.Contains(t, got, "u-alice")
 	})
 }

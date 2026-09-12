@@ -2,9 +2,12 @@ package cli
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/access"
+	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	"github.com/rancher/rancher-cli/internal/engine/rbac/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -69,6 +72,7 @@ func TestCheckSourceDeclared(t *testing.T) {
 	t.Parallel()
 	good := complete.RoleSource()
 	require.NoError(t, checkSourceDeclared("command grant", good))
+	require.NoError(t, checkSourceDeclared("the generic kinds source", kindscomplete.KindSource("")))
 
 	err := checkSourceDeclared("command x", completion.Source{Claim: localClaim, Complete: good.Complete})
 	require.ErrorContains(t, err, "Claim is declared in "+modulePath+"/internal/cli, not in a complete package")
@@ -85,8 +89,9 @@ func TestCheckSourceDeclared(t *testing.T) {
 
 // TestValidateLiveWiring asserts each table's rule: shared-flag keys only,
 // declared by some leaf; kind keys that name a Completable kind; bespoke
-// commands that exist and name a Completable kind; and every function in
-// a complete package.
+// commands that exist and name a Completable kind; every function in a
+// complete package; and the generic kinds source checked on its own,
+// whatever the tables carry.
 func TestValidateLiveWiring(t *testing.T) {
 	t.Parallel()
 	good := complete.RoleSource()
@@ -138,8 +143,8 @@ func TestValidateLiveWiring(t *testing.T) {
 
 // TestWiredCompletersAreDeclaredInCompletePackages asserts the real entry
 // table: grant and revoke own live completion through the rbac complete
-// package, every other entry's probe implements nothing, and BuildRoot
-// accepts the wiring.
+// package and access projects through the access one, every other
+// entry's probe implements nothing, and BuildRoot accepts the wiring.
 func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	t.Parallel()
 	var owners []string
@@ -153,7 +158,35 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		owners = append(owners, name)
 		require.NoError(t, checkSourceDeclared("command "+name, lc.LiveSource()))
 	}
-	assert.ElementsMatch(t, []string{"grant", "revoke"}, owners)
+	assert.ElementsMatch(t, []string{"access projects", "grant", "revoke"}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)
+}
+
+// TestPositionalKindsMatchTheLedger is a golden of the wiring on purpose:
+// the bespoke first-positional table names exactly the twelve commands
+// the design's site ledger gives a kind (the three inspect leaves, the
+// five cluster-family verbs, the three oidc-client secret verbs and
+// create password-change-request), and the two other tables carry
+// exactly the keys the ledger assigns them. An intended change to the
+// wiring edits this test in the same commit.
+func TestPositionalKindsMatchTheLedger(t *testing.T) {
+	t.Parallel()
+	want := map[string]string{
+		"inspect cluster":                "managementcluster",
+		"inspect project":                "project",
+		"inspect user":                   "user",
+		"cluster scale":                  "provisioningcluster",
+		"cluster set-autoscaling":        "provisioningcluster",
+		"cluster clear-autoscaling":      "provisioningcluster",
+		"cluster pause-autoscaling":      "provisioningcluster",
+		"cluster resume-autoscaling":     "provisioningcluster",
+		"oidc-client add-secret":         "oidcclient",
+		"oidc-client rotate-secret":      "oidcclient",
+		"oidc-client remove-secret":      "oidcclient",
+		"create password-change-request": "user",
+	}
+	assert.Equal(t, want, positionalKinds)
+	assert.ElementsMatch(t, []string{"cluster", "project", "namespace", "node"}, slices.Collect(maps.Keys(flagSources)))
+	assert.ElementsMatch(t, []string{"managementcluster", "project", "user"}, slices.Collect(maps.Keys(kindSources)))
 }

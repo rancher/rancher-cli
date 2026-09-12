@@ -88,7 +88,9 @@ func TestCompletionDebugTrace(t *testing.T) {
 			"budget: 500ms",
 			"connection: url=" + srv.URL,
 			"token: RANCHER_CLI_TOKEN (full capability)",
-			"GET " + srv.URL + "/k8s/clusters/local/apis/management.cattle.io/v3/clusters: HTTP 200",
+			"source: claimed by the managementcluster kind source",
+			"GET /k8s/clusters/local/apis/management.cattle.io/v3/clusters: HTTP 200",
+			"source: 1 requests, 2 names",
 			"done: 2 candidates",
 		}
 		for _, p := range phases {

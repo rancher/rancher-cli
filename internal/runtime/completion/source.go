@@ -71,6 +71,20 @@ type Requirements struct {
 	Allowance  Allowance
 }
 
+// ManagementListing is the declaration of a source that lists one
+// management collection: no cluster need, a management token, one
+// request.
+func ManagementListing() Requirements {
+	return Requirements{Cluster: ClusterNone, Credential: CredentialManagement, Allowance: AllowanceOne}
+}
+
+// ClusterListing is the declaration of a source that lists one management
+// collection scoped by the typed cluster: the cluster resolved, a
+// management token, one request.
+func ClusterListing() Requirements {
+	return Requirements{Cluster: ClusterResolved, Credential: CredentialManagement, Allowance: AllowanceOne}
+}
+
 // Result is what a source answers. Names are bare candidates the surface
 // sanitizes, dedupes and sorts. Prefix, when set, is a compiled-in literal
 // the source chose ("<kind>/" for a composite value) that the surface

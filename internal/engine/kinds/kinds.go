@@ -948,6 +948,18 @@ func LookupGVK(apiVersion, kind string) (Kind, bool) {
 	return Kind{}, false
 }
 
+// ByKey resolves a canonical key alone to a Kind: a Name or alias does
+// not match, so a table keyed by Key cannot be satisfied by a spelling
+// the surface accepts from an operator.
+func ByKey(key string) (Kind, bool) {
+	for _, k := range table {
+		if k.Key == key {
+			return k, true
+		}
+	}
+	return Kind{}, false
+}
+
 // Lookup resolves a CLI-facing name, alias, or canonical key to a Kind.
 func Lookup(q string) (Kind, bool) {
 	for _, k := range table {

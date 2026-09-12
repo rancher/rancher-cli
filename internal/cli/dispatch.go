@@ -335,7 +335,7 @@ func accessVerbCandidates(site CompletionSite, d runtime.Descriptor, tail []stri
 		return nil, false
 	}
 	vocab := access.ResourceVerbs
-	if extractFlagValue(tail, "non-resource-url") != "" {
+	if completion.TailFlag(tail, "non-resource-url") != "" {
 		vocab = access.HTTPVerbs
 	}
 	var out []string
@@ -404,9 +404,8 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// machine configs, cattle-global-data credential secrets) and never
 	// need a cluster. Same preflight bypass as subjectSite: an
 	// inherited invalid cluster value (e.g. "prod cluster" with a space)
-	// must not suppress completion that never needed a cluster at all.
-	// Twin requirement: siteNeedsCluster carries explicit false cases for
-	// both flags so the clusterValue=="" early-return below cannot fire.
+	// must not suppress completion that never needed a cluster at all;
+	// siteNeedsCluster is false for these sites.
 	nodeDriverFlagSite := site.Kind == SiteFlagValue && d.Name == "create cluster" &&
 		(site.FlagName == "machine-config" || site.FlagName == "cloud-credential")
 
@@ -427,18 +426,16 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// A cluster-family verb's --pool is dependent on its own <cluster>
 	// positional, not a typed --cluster flag - self-contained like
 	// logsPodCandidates above.
-	if site.Kind == SiteFlagValue && site.FlagName == "pool" && clusterFamilyPositionalKind[d.Name] {
+	if site.Kind == SiteFlagValue && site.FlagName == "pool" && positionalKinds[d.Name] == "provisioningcluster" {
 		return clusterFamilyPoolCandidates(ctx, site, d, tail)
 	}
 
 	// Scope comes from the typed tail only - nothing inherited (no config, no
-	// env) may place or filter completion. A typed --project is its own
-	// announcement; absent flags leave the values empty.
+	// env) may place or filter completion; an absent flag leaves the value
+	// empty.
 	clusterValue := ""
-	effectiveProject := ""
 	if !subjectSite && !nodeDriverFlagSite && !accessSubjectSite {
-		clusterValue = extractFlagValue(tail, "cluster")
-		effectiveProject = extractFlagValue(tail, "project")
+		clusterValue = completion.TailFlag(tail, "cluster")
 	}
 
 	// Finding 1 (SECURITY): validate the cluster segment before it enters any
@@ -477,9 +474,9 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// token is available, issue the optional cluster-resolution request to map
 	// display name → ID. Exec-cred-only (IDOnly) skips this (can't authorize
 	// the management cluster list).
-	// Finding 6: gate resolution on siteNeedsCluster - cluster/context VALUE
-	// sites don't need a resolved ID (they fetch the list anyway) and must not
-	// issue two cluster-list requests.
+	// Resolution is spent only for the sites that need an id: the access
+	// questions' discovery-backed sites, the only legacy sites left with a
+	// cluster need.
 	resolvedClusterID := clusterValue
 	if clusterValue != "" && !isClusterIDShaped(clusterValue) && !cap.IDOnly && siteNeedsCluster(site, d) {
 		if id := resolveDisplayNameToClusterID(ctx, hc, cap, clusterValue); id != "" {
@@ -493,11 +490,9 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 
 	switch site.Kind {
 	case SiteFlagValue:
-		// Round-2 finding 4: pass effectiveProject so --namespace is suppressed
-		// when a project scope is active (AC-9/AC-15).
-		return liveFlagValueCandidates(ctx, hc, site, d, cap, resolvedClusterID, effectiveProject, tail)
+		return liveFlagValueCandidates(ctx, hc, site, d, cap, resolvedClusterID, tail)
 	case SitePositional:
-		return livePositionalCandidates(ctx, hc, site, d, cap, resolvedClusterID, effectiveProject, tail)
+		return livePositionalCandidates(ctx, hc, site, d, cap, resolvedClusterID, tail)
 	}
 	return nil
 }
@@ -508,10 +503,10 @@ func isClusterIDShaped(s string) bool {
 	return s == "local" || strings.HasPrefix(s, "c-")
 }
 
-// siteNeedsCluster reports whether a site requires a resolved cluster ID to
-// produce meaningful candidates. Derived from the kind row's Scope field
-// (finding 5), with an explicit carve-out for project: it is Management scope
-// but lists projects in a cluster's namespace, so it also needs a cluster ID.
+// siteNeedsCluster reports whether a legacy-path site requires a resolved
+// cluster ID to produce meaningful candidates: the access questions'
+// discovery-backed sites alone, now that every kind site is served by a
+// source that declares its own cluster need.
 func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 	// The access question commands' resource positional and their
 	// --group/--subresource values come from the target cluster's
@@ -525,30 +520,8 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 			return site.FlagName == "group" || site.FlagName == "subresource"
 		}
 	}
-	if site.Kind == SiteFlagValue {
-		switch site.FlagName {
-		case "project", "namespace", "node":
-			return true
-		case "machine-config", "cloud-credential":
-			// create cluster's node-driver sites are management-server-only
-			// fetches; the nodeDriverFlagSite bypass in liveCandidates leaves
-			// clusterValue="". This explicit false keeps liveCandidates'
-			// cluster early-return from firing on that empty value; both
-			// guards must hold together.
-			return false
-		}
-		return false
-	}
-	k, ok := kindForDescriptor(d)
-	if !ok {
-		return false
-	}
-	// Downstream kinds served by a downstream K8s proxy need a cluster ID, but
-	// only when the kind is Completable - resolution is pointless for a kind
-	// livePositionalCandidates will reject (round-4 finding 3).
-	// Management NSCluster (project) lists resources in the cluster's namespace
-	// via the management API - also needs a cluster ID (explicit carve-out).
-	return (k.Scope == kinds.Downstream && k.Completable) || (k.Scope == kinds.Management && k.Policy == kinds.NSCluster)
+	// Every other legacy site lists without a cluster.
+	return false
 }
 
 // resolveDisplayNameToClusterID issues one management cluster list request to
@@ -585,34 +558,13 @@ func resolveDisplayNameToClusterID(ctx context.Context, hc *http.Client, cap Tok
 	return "" // not found or ambiguous
 }
 
-// liveFlagValueCandidates handles the live flag-value sites the legacy path
-// still serves (--cluster, --project, --namespace, --node
-// AC-7/AC-8/AC-9/AC-11/AC-14, and the command-shaped flags below).
-// effectiveProject suppresses --namespace when a typed --project scope is
-// active (AC-9/AC-15). tail is threaded from liveCandidates for the
+// liveFlagValueCandidates handles the command-shaped flag-value sites the
+// legacy path still serves (--machine-config, --cloud-credential, --as,
+// --subresource, --group). tail is threaded from liveCandidates for the
 // dependent sites. hc is the one HTTP client built per dispatch.
-func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, d runtime.Descriptor, cap TokenCapability, clusterID, effectiveProject string, tail []string) []string {
+func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, d runtime.Descriptor, cap TokenCapability, clusterID string, tail []string) []string {
 	var raw []string
 	switch site.FlagName {
-	case "cluster":
-		if d.Name == "access projects" {
-			// The command resolves --cluster against the steve set the
-			// caller can list, so the candidates come from the same place.
-			raw = fetchSteveClusters(ctx, hc, cap)
-		} else {
-			raw = fetchClusters(ctx, hc, cap)
-		}
-	case "project":
-		raw = fetchProjects(ctx, hc, cap, clusterID)
-	case "namespace":
-		// AC-9/AC-15: suppress namespace completion when a project scope is active
-		// (finding 5: routed through kinds.ProjectScopable for the namespace kind).
-		if nsKind, ok := kinds.Lookup("namespace"); ok && kinds.ProjectScopable(nsKind) && effectiveProject != "" {
-			return nil
-		}
-		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/namespaces", "")
-	case "node":
-		raw = fetchK8sResources(ctx, hc, cap, clusterID, "/api/v1/nodes", "")
 	case "machine-config":
 		// Live `<kind>/partial` form only - the bare `<kind>/` prefixes are
 		// compiled-in and served statically by machineConfigPrefixCandidates
@@ -631,7 +583,7 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 		}
 	case "subresource":
 		if accessQuestionCommand(d.Name) {
-			raw = fetchSubresources(ctx, hc, cap, clusterID, positionalAt(tail, d.Flags, 1), extractFlagValue(tail, "group"))
+			raw = fetchSubresources(ctx, hc, cap, clusterID, positionalAt(tail, d.Flags, 1), completion.TailFlag(tail, "group"))
 		}
 	case "group":
 		if accessQuestionCommand(d.Name) {
@@ -665,7 +617,7 @@ func logsPodCandidates(ctx context.Context, site CompletionSite, d runtime.Descr
 
 	clusterID := engine.LocalCluster
 	if target.DownstreamOnly {
-		clusterID = extractFlagValue(tail, "cluster")
+		clusterID = completion.TailFlag(tail, "cluster")
 		if clusterID == "" || !isValidSegment(clusterID) {
 			return nil
 		}
@@ -700,49 +652,31 @@ func logsPodCandidates(ctx context.Context, site CompletionSite, d runtime.Descr
 	return raw
 }
 
-// livePositionalCandidates handles live positional sites (resource names,
-// AC-10). Effective-project suppression uses kinds.ProjectScopable (finding 5).
-// Paths are derived generically from k.GVR (finding 4): flipping Completable:true
-// on a new downstream kind row needs NO dispatch edit.
-// tail is the already-computed leaf arg tail from the callback (round-2
-// finding 6: do not re-derive from rawArgv using the old canonical-prefix
-// helper - that breaks alias invocations and leading global flags).
-// Round-2 finding 7: only get/patch/delete leaves get live positional completion
-// (AC-10); inspect leaves do NOT (AC-15a is aliases only, not live completion).
-// hc is the single per-dispatch client (finding 9).
+// livePositionalCandidates handles the positional sites the legacy path
+// still serves: the oidc-client secret verbs' dependent secret name, the
+// access questions' resource, and grant's and revoke's subject. Every
+// kind's name positional is served by its source before this runs. tail
+// is the already-computed leaf arg tail from the callback. hc is the one
+// HTTP client built per dispatch.
 func livePositionalCandidates(
 	ctx context.Context,
 	hc *http.Client,
 	site CompletionSite,
 	d runtime.Descriptor,
 	cap TokenCapability,
-	clusterID, effectiveProject string,
+	clusterID string,
 	tail []string,
 ) []string {
-	// Bespoke single-kind ops (the oidc-client lifecycle verb group):
-	// derivedOpKinds supplies safety Binding only, never completion - this
-	// is the data-driven completion seam commit 3 adds. Index 0 (the
-	// client name) reuses the SAME generic management-kind listing path
-	// get/patch/delete use; index 1 (secret-name, rotate/remove only) is a
-	// DEPENDENT positional needing a client-scoped GET, so it cannot share
-	// the index-0-only gate below.
-	if kindKey, ok := bespokeSingleKindOps[d.Name]; ok {
-		return bespokeSingleKindPositional(ctx, hc, site, d, cap, kindKey, tail)
-	}
-
-	// Cluster-family verbs' <cluster> positional names a provisioning
-	// cluster, not the generic "cluster" kind AC-10/inspect exceptions
-	// below resolve - handled before that gate, which these command names
-	// would otherwise fail.
-	if clusterFamilyPositionalKind[d.Name] {
-		if site.Index != 0 {
-			return nil
-		}
-		return provisioningClusterPositionalCandidates(ctx, hc, cap, tail)
+	// The oidc-client secret verbs' second positional is a DEPENDENT site:
+	// the secret names of the client already typed as the first, read with
+	// a client-scoped GET; a missing or unusable first positional completes
+	// to nothing, never an error into the TAB stream.
+	if positionalKinds[d.Name] == "oidcclient" && site.Index == 1 {
+		return oidcClientSecretNameCandidates(ctx, hc, d, cap, tail)
 	}
 
 	if accessQuestionCommand(d.Name) {
-		if site.Index != 1 || extractFlagValue(tail, "non-resource-url") != "" {
+		if site.Index != 1 || completion.TailFlag(tail, "non-resource-url") != "" {
 			return nil
 		}
 		// clusterID is the RESOLVED id liveCandidates hands down (a display
@@ -751,141 +685,30 @@ func livePositionalCandidates(
 	}
 
 	if site.Index != 0 {
-		return nil // only first positional completes for resource names
+		return nil
 	}
 
 	// Subject positional completion for grant/revoke (AC-subject):
 	// fetch management users and return the union of name + username.
-	// --type group → no listable group source; return nil, zero requests.
-	// Bare --type with no value yields "" from extractFlagValue → treat as user.
+	// --type group has no listable group source: nil, zero requests.
+	// Bare --type with no value yields "" from completion.TailFlag, so user.
 	if d.Name == "grant" || d.Name == "revoke" {
-		if extractFlagValue(tail, "type") == "group" {
+		if completion.TailFlag(tail, "type") == "group" {
 			return nil
 		}
 		return fetchUsers(ctx, hc, cap)
 	}
-
-	// Gate on AC-10 verbs (get/patch/delete only), with three named
-	// exceptions - inspect cluster, inspect project, and inspect user.
-	// Every other inspect leaf retains the deny.
-	if !isAC10Verb(d.Name) && d.Name != inspectClusterCompletionException &&
-		d.Name != inspectProjectCompletionException && d.Name != inspectUserCompletionException {
-		return nil
-	}
-	k, ok := kindForDescriptor(d)
-	if !ok || !k.Completable {
-		return nil
-	}
-
-	// Management-plane kinds (cluster, project) use the Rancher management API
-	// paths, which differ from the downstream K8s proxy pattern. Keep an
-	// explicit management branch; new management Completable kinds need a case.
-	if k.Scope == kinds.Management {
-		switch k.Name {
-		case "cluster":
-			return fetchClusters(ctx, hc, cap)
-		case "project":
-			return fetchProjects(ctx, hc, cap, clusterID)
-		case "nodedriver":
-			// Management-plane list served by the local cluster; requires a
-			// management token - exec-cred-only capabilities (IDOnly) cannot
-			// authorize it, same boundary as fetchClusters (zero requests).
-			if cap.IDOnly {
-				return nil
-			}
-			return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
-		case "user":
-			// Kind-positional user completion (get/delete/patch): address by
-			// metadata.name only - bare usernames are rejected verbatim by these
-			// commands. Grant/revoke subject completion (above) keeps the full
-			// id+username union. System accounts filtered.
-			return fetchUserIDs(ctx, hc, cap)
-		case "provisioning-cluster":
-			return provisioningClusterPositionalCandidates(ctx, hc, cap, tail)
-		default:
-			// Any other Completable NSNone management kind (e.g. oidcclient):
-			// list via the local cluster, the same shape as nodedriver - a
-			// full management token is required, since exec-cred-only
-			// (IDOnly) capabilities cannot authorize a management-plane list.
-			if k.Policy != kinds.NSNone {
-				return nil
-			}
-			if cap.IDOnly {
-				return nil
-			}
-			return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
-		}
-	}
-
-	// Downstream kinds: derive path generically from k.GVR (finding 4).
-	// kinds.ProjectScopable covers namespace (NSNone carve-out), pod, deployment,
-	// and any future NSPlain Downstream kind (finding 5).
-	if kinds.ProjectScopable(k) && effectiveProject != "" {
-		return nil // AC-15: suppress when project scope is active
-	}
-
-	if k.Policy == kinds.NSNone {
-		// Cluster-scoped resource.
-		return fetchK8sResources(ctx, hc, cap, clusterID, gvrPath(k), "")
-	}
-
-	// Namespace-scoped resource: requires --namespace flag.
-	// Finding 1: validate the namespace segment before it enters the REST path.
-	ns := extractFlagValue(tail, "namespace")
-	if ns == "" || !isValidSegment(ns) {
-		return nil
-	}
-	return fetchK8sResources(ctx, hc, cap, clusterID, gvrNamespacedPath(k), ns)
-}
-
-// provisioningClusterPositionalCandidates lists provisioning.cattle.io/v1
-// Cluster names on the local management cluster, honoring --namespace or
-// falling back to the kind's DefaultNamespace (fleet-default) - shared by
-// get/delete provisioning-cluster's generic positional (via the
-// "provisioning-cluster" case above) and every cluster-family bespoke
-// verb's <cluster> positional (via clusterFamilyPositionalKind below).
-// Requires a full management token - IDOnly exec-cred tokens cannot
-// authorize management-plane lists (same boundary as nodedriver).
-func provisioningClusterPositionalCandidates(ctx context.Context, hc *http.Client, cap TokenCapability, tail []string) []string {
-	if cap.IDOnly {
-		return nil
-	}
-	k, ok := kinds.Lookup("provisioningcluster")
-	if !ok {
-		return nil
-	}
-	ns := extractFlagValue(tail, "namespace")
-	if ns == "" {
-		ns = k.DefaultNamespace
-	}
-	if !isValidSegment(ns) {
-		return nil
-	}
-	return fetchK8sResources(ctx, hc, cap, "local", gvrNamespacedPath(k), ns)
-}
-
-// clusterFamilyPositionalKind is the closed set of cluster-family bespoke
-// verbs whose index-0 positional is a provisioning-cluster name (not the
-// generic get/patch/delete "cluster" kind, which names a MANAGEMENT
-// cluster) - the completion-only sibling of root.go's derivedOpKinds,
-// consulted by livePositionalCandidates before the generic AC-10 gate,
-// which these bespoke command names would otherwise fail.
-var clusterFamilyPositionalKind = map[string]bool{
-	"cluster scale":              true,
-	"cluster set-autoscaling":    true,
-	"cluster clear-autoscaling":  true,
-	"cluster pause-autoscaling":  true,
-	"cluster resume-autoscaling": true,
+	return nil
 }
 
 // clusterFamilyPoolCandidates completes a cluster-family verb's --pool
 // flag: resolves the typed <cluster> positional to its provisioning Cluster
 // object (namespace from --namespace or fleet-default) and lists its
-// machine pool names - a DEPENDENT flag site, the same shape
-// bespokeSingleKindPositional's index-1 secret-name completion uses for
-// oidc-client, but keyed off a positional rather than another flag. Fully
-// self-contained like logsPodCandidates: there is no --cluster flag on
-// these commands, so it never enters the generic clusterValue pipeline.
+// machine pool names - a DEPENDENT flag site, the same shape the
+// oidc-client secret-name completion uses, but keyed off a positional
+// rather than another flag. Fully self-contained like logsPodCandidates:
+// there is no --cluster flag on these commands, so it never enters the
+// generic clusterValue pipeline.
 func clusterFamilyPoolCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, tail []string) []string {
 	clusterName := firstPositionalToken(tail, d.Flags)
 	if clusterName == "" || !isValidSegment(clusterName) {
@@ -895,7 +718,7 @@ func clusterFamilyPoolCandidates(ctx context.Context, site CompletionSite, d run
 	if !ok {
 		return nil
 	}
-	ns := extractFlagValue(tail, "namespace")
+	ns := completion.TailFlag(tail, "namespace")
 	if ns == "" {
 		ns = k.DefaultNamespace
 	}
@@ -1049,54 +872,23 @@ func machineConfigSetKeyCandidates(site CompletionSite, d runtime.Descriptor, ta
 	return out, true
 }
 
-// bespokeSingleKindOps maps a bespoke op whose surface is a single kind
-// row's resource to that row's key, for completion - a data-driven
-// mapping, never per-name exceptions.
-// derivedOpKinds (root.go) is the sibling mapping for safety Binding
-// derivation - kept separate on purpose, since a future bespoke op could
-// need one without the other.
-var bespokeSingleKindOps = map[string]string{
-	"oidc-client add-secret":    "oidcclient",
-	"oidc-client rotate-secret": "oidcclient",
-	"oidc-client remove-secret": "oidcclient",
-	// create password-change-request's <user> positional names an EXISTING
-	// user by id - completes against the user kind exactly like get/patch/
-	// delete user's own positional. create user's <username> positional is
-	// deliberately absent here: it is a NEW username the operator is
-	// choosing, never an existing one to complete against.
-	"create password-change-request": "user",
-}
-
-// bespokeSingleKindPositional completes a bespoke op's positionals for a
-// kind named in bespokeSingleKindOps: index 0 (the resource name) lists via
-// the same generic management-kind path get/patch/delete use; index 1
-// (present only on rotate-secret/remove-secret's secret-name) is a
-// DEPENDENT positional resolved via a client-scoped GET of index 0's
-// already-typed value - a missing or unresolvable first positional
-// completes to nothing, never an error into the TAB stream.
-func bespokeSingleKindPositional(ctx context.Context, hc *http.Client, site CompletionSite, d runtime.Descriptor, cap TokenCapability, kindKey string, tail []string) []string {
-	k, ok := kinds.Lookup(kindKey)
-	if !ok || !k.Completable {
+// oidcClientSecretNameCandidates completes the secret name of the client
+// typed as the first positional of oidc-client rotate-secret or
+// remove-secret: a GET of that one client, its status.clientSecrets keys.
+// Requires a management token.
+func oidcClientSecretNameCandidates(ctx context.Context, hc *http.Client, d runtime.Descriptor, cap TokenCapability, tail []string) []string {
+	k, ok := kinds.Lookup("oidcclient")
+	if !ok {
 		return nil
 	}
-	switch site.Index {
-	case 0:
-		if cap.IDOnly {
-			return nil
-		}
-		return fetchK8sResources(ctx, hc, cap, "local", gvrPath(k), "")
-	case 1:
-		clientName := firstPositionalToken(tail, d.Flags)
-		if clientName == "" || !isValidSegment(clientName) {
-			return nil
-		}
-		if cap.IDOnly {
-			return nil
-		}
-		return fetchOIDCClientSecretNames(ctx, hc, cap, k, clientName)
-	default:
+	clientName := firstPositionalToken(tail, d.Flags)
+	if clientName == "" || !isValidSegment(clientName) {
 		return nil
 	}
+	if cap.IDOnly {
+		return nil
+	}
+	return fetchOIDCClientSecretNames(ctx, hc, cap, k, clientName)
 }
 
 // positionalAt returns the want-th non-flag token of the leaf tail,
@@ -1152,30 +944,10 @@ func gvrNamespacedPath(k kinds.Kind) string {
 	return fmt.Sprintf("/apis/%s/%s/namespaces/{namespace}/%s", k.GVR.Group, k.GVR.Version, k.GVR.Resource)
 }
 
-// inspectClusterCompletionException is IC-3's narrow carve-out from the
-// AC-10 verb gate: exactly this leaf, never the inspect group. inspect
-// cluster's positional IS a management cluster name-or-id, so it completes
-// via the same fetchClusters path get cluster's positional uses; inspect
-// pod/deployment remain excluded (AC-15a is aliases only).
-// inspectProjectCompletionException is the second exception (members-ergonomics
-// slice 4): inspect project's positional completes project names via the
-// resolved cluster.
-// inspectUserCompletionException is the third exception: inspect user's
-// positional is a user id, completed by the same "user" kind branch below
-// get/patch/delete already use (case "user"), which excludes system
-// accounts and returns ids only, never ambiguous.
-const (
-	inspectClusterCompletionException = "inspect cluster"
-	inspectProjectCompletionException = "inspect project"
-	inspectUserCompletionException    = "inspect user"
-)
-
-// isAC10Verb reports whether the descriptor name starts with an AC-10 verb
-// (get, patch, delete). inspect leaves do NOT get live positional
-// completion through this predicate - the three narrow exceptions are
-// inspectClusterCompletionException (IC-3), inspectProjectCompletionException,
-// and inspectUserCompletionException, each checked by name at the gate;
-// AC-15a adds inspect aliases, not live-name completion.
+// isAC10Verb reports whether the descriptor name starts with a generated
+// verb (get, patch, delete), whose first positional completes as the kind
+// its last word names. A bespoke command completes only through the
+// positionalKinds table.
 func isAC10Verb(descriptorName string) bool {
 	parts := strings.Fields(descriptorName)
 	if len(parts) == 0 {

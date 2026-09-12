@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
@@ -42,72 +41,6 @@ func makeListServer(t *testing.T, path string, items []map[string]any) (*httptes
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &hits
-}
-
-func TestFetchClustersReturnsSanitizedSorted(t *testing.T) {
-	// No keyring.MockInit: fetchClusters does HTTP only, never touches keyring (round-2 finding 9).
-	t.Parallel()
-	items := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "prod"}},
-		{"metadata": map[string]any{"name": "c-def"}, "spec": map[string]any{"displayName": "staging"}},
-	}
-	// Finding 10: management K8s API path, not Norman /v3/clusters.
-	srv, hits := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := fetchClusters(ctx, hc, cap)
-	assert.ElementsMatch(t, []string{"c-abc", "c-def", "prod", "staging"}, got)
-	assert.Equal(t, int32(1), hits.Load())
-}
-
-func TestFetchClustersDropsSpacedDisplayNames(t *testing.T) {
-	// No keyring.MockInit: fetchClusters does HTTP only (round-2 finding 9).
-	t.Parallel()
-	items := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "my cluster"}},
-	}
-	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := fetchClusters(ctx, hc, cap)
-	assert.Equal(t, []string{"c-abc"}, got)
-}
-
-func TestFetchClustersTimeoutYieldsEmpty(t *testing.T) {
-	// No keyring.MockInit: fetchClusters does HTTP only (round-2 finding 9).
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(200 * time.Millisecond)
-		}))
-		client := srv.Client() // sets srv.URL: an in-memory server's URL is set by its first Client call
-		cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-		defer cancel()
-		start := time.Now()
-		got := fetchClusters(ctx, client, cap)
-		assert.Empty(t, got)
-		assert.Equal(t, 50*time.Millisecond, time.Since(start), "the deadline, not the slow server, ended the fetch on the fake clock")
-	})
-}
-
-func TestFetchClusters401YieldsEmpty(t *testing.T) {
-	// No keyring.MockInit: fetchClusters does HTTP only (round-2 finding 9).
-	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	t.Cleanup(srv.Close)
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := fetchClusters(ctx, hc, cap)
-	assert.Empty(t, got)
 }
 
 // AC-24 / finding 11: two-request path - cluster display-name resolution +
@@ -220,27 +153,6 @@ func TestEqualsFormEmit(t *testing.T) {
 		"--by=pod",
 		"--by=project",
 	}, got)
-}
-
-// AC-8: projectCandidates must deduplicate its final output.
-// Two items with the same display name each appear once after sanitize+dedupe.
-func TestProjectCandidatesDeduplicates(t *testing.T) {
-	t.Parallel()
-	items := []map[string]any{
-		{"metadata": map[string]any{"name": "p-aaa"}, "spec": map[string]any{"displayName": "staging"}},
-		// Second item with the same display name: displayFreq["staging"]==2 → display dropped,
-		// but the two distinct IDs must each appear exactly once (IDs are unique here).
-		{"metadata": map[string]any{"name": "p-bbb"}, "spec": map[string]any{"displayName": "staging"}},
-		// Third item: unique display name - should appear once alongside its ID.
-		{"metadata": map[string]any{"name": "p-ccc"}, "spec": map[string]any{"displayName": "prod"}},
-	}
-	got := projectCandidates(items)
-	// IDs p-aaa, p-bbb, p-ccc + unique display "prod"; "staging" is dropped (not unique).
-	assert.Equal(t, []string{"p-aaa", "p-bbb", "p-ccc", "prod"}, got)
-	// Verify no duplicates even when raw output would contain them.
-	for i := 1; i < len(got); i++ {
-		assert.NotEqual(t, got[i-1], got[i], "dedupe: consecutive equal elements at index %d", i)
-	}
 }
 
 func TestNoNetworkOnStaticSite(t *testing.T) {

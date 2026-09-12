@@ -36,68 +36,6 @@ func clusterFamilyPoolServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// TestLivePositionalClusterFamilyClusterName asserts clusterFamilyPositionalKind:
-// every cluster-family bespoke verb's <cluster> positional lists
-// provisioning-cluster names via the SAME fleet-default path
-// get/delete provisioning-cluster use, keyed off the op name rather than
-// kindForDescriptor's last-token derivation (which would otherwise resolve
-// the unrelated management "cluster" kind for "cluster scale").
-func TestLivePositionalClusterFamilyClusterName(t *testing.T) {
-	t.Parallel()
-	for _, opName := range []string{
-		"cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
-		"cluster pause-autoscaling", "cluster resume-autoscaling",
-	} {
-		t.Run(opName, func(t *testing.T) {
-			t.Parallel()
-			srv, hits := provisioningClusterServer(t)
-			cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-			site := CompletionSite{Kind: SitePositional, Index: 0}
-			d := runtime.Descriptor{Name: opName}
-			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-			defer cancel()
-			got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
-			assert.Contains(t, got, "my-rke2")
-			assert.Contains(t, got, "my-k3s")
-			assert.Equal(t, int32(1), hits.Load())
-		})
-	}
-}
-
-// TestLivePositionalClusterFamilyClusterNameNamespaceOverride confirms a
-// --namespace flag in the arg tail overrides the fleet-default fallback for
-// the family's <cluster> positional, same as the generic case.
-func TestLivePositionalClusterFamilyClusterNameNamespaceOverride(t *testing.T) {
-	t.Parallel()
-	srv, hits := provisioningClusterServer(t)
-	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	site := CompletionSite{Kind: SitePositional, Index: 0}
-	d := runtime.Descriptor{Name: "cluster scale"}
-	tail := []string{"--namespace", "fleet-west"}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
-	assert.Contains(t, got, "ns-cluster")
-	assert.Equal(t, int32(1), hits.Load())
-}
-
-// TestLivePositionalClusterFamilyClusterNameIDOnlyBoundary asserts the
-// management-token boundary for the family's <cluster> positional: an
-// exec-cred-only capability cannot authorize the management-plane list.
-func TestLivePositionalClusterFamilyClusterNameIDOnlyBoundary(t *testing.T) {
-	t.Parallel()
-	srv, hits := provisioningClusterServer(t)
-	site := CompletionSite{Kind: SitePositional, Index: 0}
-	d := runtime.Descriptor{Name: "cluster scale"}
-	cap := TokenCapability{Token: "downstream", IDOnly: true, ServerURL: srv.URL}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
-	cancel()
-	assert.Nil(t, got)
-	assert.Zero(t, hits.Load())
-}
-
 // clusterFamilyPoolDescriptor is the minimal descriptor shape
 // clusterFamilyPoolCandidates needs: an <cluster> positional at index 0 (so
 // firstPositionalToken finds it) and no other leaf flags to consume.

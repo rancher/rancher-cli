@@ -2,7 +2,6 @@ package cli
 
 import (
 	"os"
-	"strings"
 
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -239,20 +238,4 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 	}
 	// Silent read: bypass NewFileStore.GetToken (which calls warnLoosePerm).
 	return config.ReadFileTokenSilent(dir, matchName)
-}
-
-// extractFlagValue scans argTail for --flagName value or --flagName=value and
-// returns the value, or "" when not found.
-func extractFlagValue(argTail []string, flagName string) string {
-	long := "--" + flagName
-	prefix := long + "="
-	for i, a := range argTail {
-		if strings.HasPrefix(a, prefix) {
-			return a[len(prefix):]
-		}
-		if a == long && i+1 < len(argTail) {
-			return argTail[i+1]
-		}
-	}
-	return ""
 }

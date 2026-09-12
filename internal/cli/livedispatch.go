@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/engine"
+	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 )
@@ -26,8 +27,8 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 		Flag:    site.FlagName,
 		Index:   site.Index,
 		Partial: site.Partial,
-		Cluster: extractFlagValue(tail, "cluster"),
-		Project: extractFlagValue(tail, "project"),
+		Cluster: completion.TailFlag(tail, "cluster"),
+		Project: completion.TailFlag(tail, "project"),
 		Tail:    tail,
 	}
 	src, reqs, ok := claimLiveSource(req, d, lc, flags, kindTable, positional)
@@ -40,7 +41,7 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 		return nil, true
 	}
 	if !clusterNeedTyped(reqs, req) {
-		completionDebugf("stop: source needs a cluster and --cluster is absent or not a path segment")
+		completionDebugf("stop: source needs a cluster and --cluster is absent")
 		return nil, true
 	}
 
@@ -97,8 +98,9 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 // source first, then the shared flag table for a flag-value site (a
 // Request with a Flag), then - for a first positional - the kind named by
 // positionalKinds for a bespoke command or by the last word of a generated
-// get, patch or delete, looked up in kindSources. A source owns the site
-// only when its Claim says so.
+// get, patch or delete, served by its kindSources entry or else by the
+// generic kinds source. A source owns the site only when its Claim says
+// so; the generic source declines a kind that does not complete.
 func claimLiveSource(req completion.Request, d runtime.Descriptor, lc completion.Completer,
 	flags map[string]completion.Source, kindTable map[string]completion.Source, positional map[string]string) (completion.Source, completion.Requirements, bool) {
 	if lc != nil {
@@ -127,11 +129,13 @@ func claimLiveSource(req completion.Request, d runtime.Descriptor, lc completion
 		if !ok {
 			return completion.Source{}, completion.Requirements{}, false
 		}
-		if src, ok := kindTable[key]; ok {
-			if reqs, ok := src.Claim(req); ok {
-				completionDebugf("source: claimed by the %s kind source", key)
-				return src, reqs, true
-			}
+		src, bespoke := kindTable[key]
+		if !bespoke {
+			src = kindscomplete.KindSource(key)
+		}
+		if reqs, ok := src.Claim(req); ok {
+			completionDebugf("source: claimed by the %s kind source", key)
+			return src, reqs, true
 		}
 	}
 	return completion.Source{}, completion.Requirements{}, false
@@ -169,13 +173,12 @@ func clusterResolvable(reqs completion.Requirements, req completion.Request, cap
 
 // clusterNeedTyped reports whether the site's cluster need can be met from
 // the line: a source that needs a resolved cluster must have --cluster
-// typed with a value that can be a path segment; a source with no cluster
-// need is never held back by the flag.
+// typed, whatever its spelling - a display name may carry a space, and
+// the shell-safe segment rule applies where the resolved id enters a path,
+// in the seam's builders; a source with no cluster need is never held
+// back by the flag.
 func clusterNeedTyped(reqs completion.Requirements, req completion.Request) bool {
-	if reqs.Cluster != completion.ClusterResolved {
-		return true
-	}
-	return completion.ValidSegment(req.Cluster)
+	return reqs.Cluster != completion.ClusterResolved || req.Cluster != ""
 }
 
 // credentialNeedMet reports whether the resolved token satisfies the

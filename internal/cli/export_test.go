@@ -1,10 +1,7 @@
 package cli
 
 import (
-	"context"
-
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -18,27 +15,11 @@ func LoadedConfigViewForTest() runtime.ConfigView {
 	return v
 }
 
-func ResolveCompletionTokenForTest(clusterID string) TokenCapability {
-	return resolveCompletionToken(clusterID)
-}
-func TokenCapabilityForTest(url, token string, idOnly bool) TokenCapability {
-	return TokenCapability{ServerURL: url, Token: token, IDOnly: idOnly}
-}
-func FetchClustersForTest(ctx context.Context, cap TokenCapability) []string {
-	hc, err := newCompletionClient(cap.CACert)
-	if err != nil {
-		return nil
-	}
-	return fetchClusters(ctx, hc, cap)
-}
 func SanitizeCandidatesForTest(s []string) []string { return sanitizeCandidates(s) }
-func KindForDescriptorForTest(name string) (kinds.Kind, bool) {
-	return kindForDescriptor(runtime.Descriptor{Name: name})
-}
-func SetRawArgvForTest(argv []string)             { SetRawArgv(argv) }
-func SanitizedArgsForTest(args []string) []string { return SanitizedArgs(args) }
-func CaptureArgvForTest(args []string)            { CaptureArgv(args) }
-func GetRawProtoV2ForTest() bool                  { return rawProtoV2 }
-func GetRawV1CompletionForTest() bool             { return rawV1Completion }
-func SetRawV1CompletionForTest(v bool)            { rawV1Completion = v }
-func GlobalArgSpecsForTest() []runtime.ArgSpec    { return globalArgSpecs }
+func SetRawArgvForTest(argv []string)               { SetRawArgv(argv) }
+func SanitizedArgsForTest(args []string) []string   { return SanitizedArgs(args) }
+func CaptureArgvForTest(args []string)              { CaptureArgv(args) }
+func GetRawProtoV2ForTest() bool                    { return rawProtoV2 }
+func GetRawV1CompletionForTest() bool               { return rawV1Completion }
+func SetRawV1CompletionForTest(v bool)              { rawV1Completion = v }
+func GlobalArgSpecsForTest() []runtime.ArgSpec      { return globalArgSpecs }

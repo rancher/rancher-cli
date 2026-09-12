@@ -2,16 +2,13 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,115 +41,6 @@ func provisioningClusterServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv, &hits
-}
-
-// TestLivePositionalDeleteProvisioningClusterCandidates asserts the management
-// branch case for provisioning-cluster: `delete provisioning-cluster <TAB>`
-// lists provisioning.cattle.io/v1 Clusters from the fleet-default namespace
-// on the local management cluster.
-func TestLivePositionalDeleteProvisioningClusterCandidates(t *testing.T) {
-	t.Parallel()
-	srv, hits := provisioningClusterServer(t)
-	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	site := CompletionSite{Kind: SitePositional, Index: 0}
-	d := runtime.Descriptor{Name: "delete provisioning-cluster"}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
-
-	assert.Contains(t, got, "my-rke2", "provisioning-cluster name must be a candidate")
-	assert.Contains(t, got, "my-k3s", "provisioning-cluster name must be a candidate")
-	assert.Equal(t, int32(1), hits.Load(), "exactly one management list request")
-}
-
-// TestLivePositionalGetProvisioningClusterCandidates confirms that
-// `get provisioning-cluster <TAB>` uses the same fetch path as delete.
-func TestLivePositionalGetProvisioningClusterCandidates(t *testing.T) {
-	t.Parallel()
-	srv, hits := provisioningClusterServer(t)
-	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	site := CompletionSite{Kind: SitePositional, Index: 0}
-	d := runtime.Descriptor{Name: "get provisioning-cluster"}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
-
-	assert.Contains(t, got, "my-rke2")
-	assert.Contains(t, got, "my-k3s")
-	assert.Equal(t, int32(1), hits.Load())
-}
-
-// TestLivePositionalProvisioningClusterNamespaceFlagOverride confirms that a
-// --namespace flag in the arg tail overrides the fleet-default fallback.
-func TestLivePositionalProvisioningClusterNamespaceFlagOverride(t *testing.T) {
-	t.Parallel()
-	srv, hits := provisioningClusterServer(t)
-	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	site := CompletionSite{Kind: SitePositional, Index: 0}
-	d := runtime.Descriptor{Name: "get provisioning-cluster"}
-	tail := []string{"--namespace", "fleet-west"}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
-
-	assert.Contains(t, got, "ns-cluster", "explicit --namespace must override fleet-default")
-	assert.Equal(t, int32(1), hits.Load())
-}
-
-// TestLivePositionalProvisioningClusterNamespacePathInjection confirms that a
-// --namespace value containing a "/" is rejected before reaching fetchK8sResources,
-// returning nil with zero requests (isValidSegment guard).
-func TestLivePositionalProvisioningClusterNamespacePathInjection(t *testing.T) {
-	t.Parallel()
-	srv, hits := provisioningClusterServer(t)
-	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	site := CompletionSite{Kind: SitePositional, Index: 0}
-	d := runtime.Descriptor{Name: "get provisioning-cluster"}
-	tail := []string{"--namespace", "a/b"}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", tail)
-
-	assert.Nil(t, got, "slash in --namespace must be rejected")
-	assert.Zero(t, hits.Load(), "path injection attempt must issue zero requests")
-}
-
-// TestLivePositionalProvisioningClusterIDOnlyBoundary asserts the token boundary:
-// a missing token is caught by fetchK8sResources' cap.Token=="" guard (zero
-// requests); an exec-cred-only (IDOnly) capability is caught earlier by the
-// IDOnly branch before any fetch is attempted.  Both must return nil with ZERO
-// requests.
-func TestLivePositionalProvisioningClusterIDOnlyBoundary(t *testing.T) {
-	t.Parallel()
-	srv, hits := provisioningClusterServer(t)
-	site := CompletionSite{Kind: SitePositional, Index: 0}
-	d := runtime.Descriptor{Name: "delete provisioning-cluster"}
-	for _, cap := range []TokenCapability{
-		{ServerURL: srv.URL}, // empty token: caught by cap.Token=="" in fetchK8sResources
-		{Token: "downstream", IDOnly: true, ServerURL: srv.URL}, // exec-cred-only: caught by IDOnly branch
-	} {
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
-		cancel()
-		assert.Nil(t, got)
-	}
-	assert.Zero(t, hits.Load(), "token boundary must return nil WITHOUT a request")
-}
-
-// TestLivePositionalCapiClusterNotCompletable confirms that the non-completable
-// sibling capi-cluster yields zero candidates and zero requests.
-func TestLivePositionalCapiClusterNotCompletable(t *testing.T) {
-	t.Parallel()
-	srv, hits := provisioningClusterServer(t)
-	cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-	site := CompletionSite{Kind: SitePositional, Index: 0}
-	d := runtime.Descriptor{Name: "get capi-cluster"}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", "", nil)
-
-	assert.Nil(t, got, "capi-cluster is not Completable: must return nil")
-	assert.Zero(t, hits.Load(), "non-completable kind must issue zero requests")
 }
 
 // TestProvisioningClusterPositionalSiteFullCallback drives the real adaptEntry
