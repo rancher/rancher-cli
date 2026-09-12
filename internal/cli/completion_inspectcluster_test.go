@@ -12,8 +12,8 @@ import (
 )
 
 // managementClusterServer serves the management cluster list at the exact
-// path fetchClusters reads, counting hits so zero-request contracts are
-// provable.
+// path the cluster source reads, counting hits so zero-request contracts
+// are provable.
 func managementClusterServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32

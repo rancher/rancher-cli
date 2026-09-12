@@ -561,11 +561,10 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		assert.Equal(t, int32(0), hits.Load(), "get --config <TAB>: no live site, zero HTTP requests")
 	})
 
-	// Round-4 finding 1 (HIGH/SECURITY): per-leaf flags in equals-form must not fire
-	// live HTTP requests at the group level. The equals-form branch previously built a
-	// SiteFlagValue unconditionally - resolveFlagCanonical fell back to the bare name
-	// for any --foo= token, so --cluster= resolved to FlagName:"cluster" and triggered
-	// the liveFlagValueCandidates cluster-list fetch before any kind was chosen.
+	// Per-leaf flags in equals-form must not fire live HTTP requests at the
+	// group level: a --cluster= token typed before any kind is chosen has no
+	// leaf to resolve against, so the equals-form branch must not build a
+	// SiteFlagValue for it and no cluster list may be fetched.
 	t.Run("get --cluster= equals-form zero-requests", func(t *testing.T) {
 		var hits atomic.Int32
 		srv := newCountingSrv(t, &hits)

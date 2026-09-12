@@ -1034,7 +1034,7 @@ func seedCloudCredential() {
 // for role completion e2e rows. RoleTemplates carry a top-level "context"
 // field (cluster-scoped CRD with x-kubernetes-preserve-unknown-fields: true
 // at root, so the field is retained). GlobalRole is cluster-scoped with no
-// context field - fetchGlobalRoles lists by name only.
+// context field - the role source lists them by name alone.
 func seedRoleObjects() {
 	rtGVR := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "roletemplates"}
 	for _, rt := range []struct {

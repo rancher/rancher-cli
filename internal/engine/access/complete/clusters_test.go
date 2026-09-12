@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
+	"github.com/rancher/rancher-cli/internal/runtime/completion/completiontest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,25 +28,18 @@ func TestClusterSourceClaimsEverySite(t *testing.T) {
 // projected to ids plus unique display names.
 func TestClusterSourceCompletes(t *testing.T) {
 	t.Parallel()
-	var paths []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.RequestURI())
-		_, _ = w.Write([]byte(`{"items":[
-			{"metadata":{"name":"c-aaa11"},"spec":{"displayName":"prod"}},
-			{"metadata":{"name":"local"},"spec":{"displayName":"local"}},
-			{"metadata":{"name":"c-bbb22"},"spec":{"displayName":"dup"}},
-			{"metadata":{"name":"c-ccc33"},"spec":{"displayName":"dup"}}
-		]}`))
-	}))
-	t.Cleanup(srv.Close)
-	conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1)
-	got := ClusterSource().Complete(t.Context(), conn, completion.Request{Flag: "cluster"})
+	s := completiontest.NewFixed(t, `{"items":[
+		{"metadata":{"name":"c-aaa11"},"spec":{"displayName":"prod"}},
+		{"metadata":{"name":"local"},"spec":{"displayName":"local"}},
+		{"metadata":{"name":"c-bbb22"},"spec":{"displayName":"dup"}},
+		{"metadata":{"name":"c-ccc33"},"spec":{"displayName":"dup"}}
+	]}`)
+	got := ClusterSource().Complete(t.Context(), s.Conn(1), completion.Request{Flag: "cluster"})
 	assert.Equal(t, []string{"c-aaa11", "prod", "local", "c-bbb22", "c-ccc33"}, got.Names)
-	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/clusters"}, paths)
+	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/clusters"}, s.Requested())
 
-	refused := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) }))
-	t.Cleanup(refused.Close)
-	assert.Empty(t, ClusterSource().Complete(t.Context(), completion.NewConnection(refused.Client(), "tok", refused.URL, false, 1), completion.Request{}).Names)
+	refused := completiontest.NewStatus(t, 403)
+	assert.Empty(t, ClusterSource().Complete(t.Context(), refused.Conn(1), completion.Request{}).Names)
 }
 
 // TestProjectsClusterSourceClaimsTheClusterFlagOnly asserts the command's

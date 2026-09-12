@@ -96,8 +96,8 @@ func featureObj(prime, defaultVal bool) string {
 }
 
 // featureFake stands in for a management-scope Rancher server serving both
-// /rancherversion and a named Feature GET at the same path pattern
-// livePositionalCandidates' fixtures use (managementClusterServer).
+// /rancherversion and a named Feature GET under the management proxy
+// path the completion fixtures use (managementClusterServer).
 func featureFake(t *testing.T, rancherVersionBody, featureBody string, featureStatus int) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

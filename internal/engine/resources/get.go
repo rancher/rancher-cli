@@ -269,7 +269,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 }
 
 // hideSystemManaged drops objects matching f, returning the kept objects and
-// the count hidden. Matching is per element (isSystemManaged): a non-string
+// the count hidden. Matching is the filter's own, per element: a non-string
 // element is skipped, never fatal, matching Rancher's own transformer.
 func hideSystemManaged(items []unstructured.Unstructured, f *kinds.PrefixFilter) ([]unstructured.Unstructured, int) {
 	kept := make([]unstructured.Unstructured, 0, len(items))

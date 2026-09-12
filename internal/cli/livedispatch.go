@@ -3,9 +3,12 @@ package cli
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -224,7 +227,7 @@ func emitResult(site CompletionSite, res completion.Result) []string {
 		completionDebugf("stop: source prefix %q is not a composite prefix; result dropped", res.Prefix)
 		return nil
 	}
-	names := dedupe(sanitizeCandidates(res.Names))
+	names := slices.Compact(sanitizeCandidates(res.Names))
 	if len(names) == 0 {
 		return nil
 	}
@@ -245,4 +248,20 @@ func emitResult(site CompletionSite, res completion.Result) []string {
 func validCompositePrefix(p string) bool {
 	body, ok := strings.CutSuffix(p, "/")
 	return ok && body != "" && !strings.Contains(body, "/") && completionCharset.MatchString(body)
+}
+
+// completionTimeout returns the TAB budget from the stored config through
+// config.EffectiveCompletionTimeout, which applies the default, the floor
+// and the cap; a hand-edited value outside [1ms, 2s] is clamped here, at
+// use, rather than at write time.
+func completionTimeout() time.Duration {
+	return config.EffectiveCompletionTimeout(storedConfigSnapshot())
+}
+
+// newCompletionClient builds the one http.Client of a live dispatch,
+// straight from httpx and never through resolveDeps (AC-20, AC-22), bound
+// by the TAB budget on its own so a request cannot outlive it whatever
+// context it is given.
+func newCompletionClient(caPEM string) (*http.Client, error) {
+	return httpx.New(httpx.Options{CACert: caPEM, Timeout: completionTimeout()})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -254,6 +255,13 @@ func dispatchSite(
 	return cands
 }
 
+// completionNetworkEnabled reports whether live completion is configured
+// (AC-1); dispatchSite's live layer runs only when it is.
+func completionNetworkEnabled() bool {
+	cfg := storedConfigSnapshot()
+	return cfg != nil && cfg.Completion.Network
+}
+
 // enumCandidates returns static enum candidates for a flag-value site.
 // The output flag's enum is global (every command shares one ArgSpec), so
 // it is filtered against the resolved leaf's OutputPolicy here - the one
@@ -286,6 +294,42 @@ func allowedOutputEnum(enum []string, policy runtime.OutputPolicy) []string {
 		}
 	}
 	return out
+}
+
+// completionCharset is the allowlist for candidate values (AC-21). The
+// first character must not be a hyphen, which would parse as a flag.
+var completionCharset = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]*$`)
+
+// sanitizeCandidates drops values that do not conform to the shell-safe
+// charset and returns the survivors sorted (AC-21, AC-26).
+func sanitizeCandidates(candidates []string) []string {
+	out := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		if completionCharset.MatchString(c) {
+			out = append(out, c)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// resolveStaticEnum returns enum candidates for a flag-value site, sorted,
+// as bare values in the space form and as full --flag=value tokens in the
+// equals form. Static enums are compiled-in literals, not server data, so
+// the shell-safe charset does not gate them: "template={{.}}" must
+// survive. Server-derived values pass sanitizeCandidates instead: the
+// config-local layer's in dispatchSite, a source's in emitResult.
+func resolveStaticEnum(enum []string, site CompletionSite) []string {
+	sorted := slices.Clone(enum)
+	slices.Sort(sorted)
+	if site.EqualsForm {
+		out := make([]string, 0, len(sorted))
+		for _, v := range sorted {
+			out = append(out, site.FlagSpelling+"="+v)
+		}
+		return out
+	}
+	return sorted
 }
 
 // positionalEnumCandidates returns static enum candidates for a positional

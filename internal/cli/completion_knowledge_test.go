@@ -16,14 +16,14 @@ import (
 // live completion files name the machine-config kinds only in the two
 // compiled-in static projections (the `<kind>/` prefixes and the --set
 // keys) and the dispatch step that calls them: every other declaration
-// in dispatch.go, livedispatch.go, livesource.go and fetch.go is free of
-// the word. The live half of --machine-config belongs to create
+// in dispatch.go, livedispatch.go and livesource.go is free of the
+// word. The live half of --machine-config belongs to create
 // cluster's completion source, and no live path here may grow one back.
 func TestLiveDispatcherCarriesNoMachineConfigKnowledge(t *testing.T) {
 	t.Parallel()
 	staticProjections := []string{"machineConfigPrefixCandidates", "machineConfigSetKeyCandidates", "dispatchSite"}
 	fset := token.NewFileSet()
-	for _, file := range []string{"dispatch.go", "livedispatch.go", "livesource.go", "fetch.go"} {
+	for _, file := range []string{"dispatch.go", "livedispatch.go", "livesource.go"} {
 		src, err := os.ReadFile(file)
 		require.NoError(t, err)
 		parsed, err := parser.ParseFile(fset, file, src, parser.ParseComments)

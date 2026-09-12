@@ -1,11 +1,10 @@
 package complete
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
+	"github.com/rancher/rancher-cli/internal/runtime/completion/completiontest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,27 +26,19 @@ func TestProjectSourceClaim(t *testing.T) {
 // answers nothing.
 func TestProjectSourceCompletes(t *testing.T) {
 	t.Parallel()
-	var paths []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.RequestURI())
-		_, _ = w.Write([]byte(`{"items":[
-			{"metadata":{"name":"p-1"},"spec":{"displayName":"Default"}},
-			{"metadata":{"name":"p-2"},"spec":{"displayName":"System"}},
-			{"metadata":{"name":"p-3"},"spec":{"displayName":"System"}}
-		]}`))
-	}))
-	t.Cleanup(srv.Close)
-	conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1)
-	got := ProjectSource().Complete(t.Context(), conn, completion.Request{Flag: "project", Cluster: "prod", ClusterID: "c-aaa11"})
+	s := completiontest.NewFixed(t, `{"items":[
+		{"metadata":{"name":"p-1"},"spec":{"displayName":"Default"}},
+		{"metadata":{"name":"p-2"},"spec":{"displayName":"System"}},
+		{"metadata":{"name":"p-3"},"spec":{"displayName":"System"}}
+	]}`)
+	got := ProjectSource().Complete(t.Context(), s.Conn(1), completion.Request{Flag: "project", Cluster: "prod", ClusterID: "c-aaa11"})
 	assert.Equal(t, []string{"p-1", "Default", "p-2", "p-3"}, got.Names)
-	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-aaa11/projects"}, paths)
+	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-aaa11/projects"}, s.Requested())
 
-	paths = nil
-	got = ProjectSource().Complete(t.Context(), completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1), completion.Request{ClusterID: "prod cluster"})
+	got = ProjectSource().Complete(t.Context(), s.Conn(1), completion.Request{ClusterID: "prod cluster"})
 	assert.Empty(t, got.Names)
-	assert.Empty(t, paths)
+	assert.Len(t, s.Requested(), 1, "an unusable cluster id costs no request")
 
-	refused := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) }))
-	t.Cleanup(refused.Close)
-	assert.Empty(t, ProjectSource().Complete(t.Context(), completion.NewConnection(refused.Client(), "tok", refused.URL, false, 1), completion.Request{ClusterID: "c-aaa11"}).Names)
+	refused := completiontest.NewStatus(t, 403)
+	assert.Empty(t, ProjectSource().Complete(t.Context(), refused.Conn(1), completion.Request{ClusterID: "c-aaa11"}).Names)
 }

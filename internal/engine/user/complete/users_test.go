@@ -1,13 +1,12 @@
 package complete
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
+	"github.com/rancher/rancher-cli/internal/runtime/completion/completiontest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,27 +26,21 @@ func TestUserIDSourceClaim(t *testing.T) {
 // listing answering nothing.
 func TestUserIDSourceCompletes(t *testing.T) {
 	t.Parallel()
-	var paths []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.RequestURI())
-		_, _ = w.Write([]byte(`{"items":[
-			{"metadata":{"name":"u-alice"},"username":"alice","principalIds":["local://u-alice"]},
-			{"metadata":{"name":"u-bob"},"username":"bob","principalIds":["local://u-bob"]},
-			{"metadata":{"name":"u-bob"},"username":"bob","principalIds":["local://u-bob"]},
-			{"metadata":{"name":"u-sys"},"username":"system-svc","principalIds":["system://u-sys"]},
-			{"metadata":{"name":"u-badname"},"username":"bad name!","principalIds":["local://u-badname"]},
-			{"metadata":{"name":"u-nopids"},"username":"nopids"},
-			{"metadata":{"name":"sameid"},"username":"sameid","principalIds":["local://sameid"]}
-		]}`))
-	}))
-	t.Cleanup(srv.Close)
-	got := UserIDSource().Complete(t.Context(), completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1), completion.Request{})
+	s := completiontest.NewFixed(t, `{"items":[
+		{"metadata":{"name":"u-alice"},"username":"alice","principalIds":["local://u-alice"]},
+		{"metadata":{"name":"u-bob"},"username":"bob","principalIds":["local://u-bob"]},
+		{"metadata":{"name":"u-bob"},"username":"bob","principalIds":["local://u-bob"]},
+		{"metadata":{"name":"u-sys"},"username":"system-svc","principalIds":["system://u-sys"]},
+		{"metadata":{"name":"u-badname"},"username":"bad name!","principalIds":["local://u-badname"]},
+		{"metadata":{"name":"u-nopids"},"username":"nopids"},
+		{"metadata":{"name":"sameid"},"username":"sameid","principalIds":["local://sameid"]}
+	]}`)
+	got := UserIDSource().Complete(t.Context(), s.Conn(1), completion.Request{})
 	assert.Equal(t, []string{"u-alice", "u-bob", "u-bob", "u-badname", "u-nopids", "sameid"}, got.Names)
-	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/users"}, paths)
+	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/users"}, s.Requested())
 
-	refused := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusUnauthorized) }))
-	t.Cleanup(refused.Close)
-	assert.Empty(t, UserIDSource().Complete(t.Context(), completion.NewConnection(refused.Client(), "tok", refused.URL, false, 1), completion.Request{}).Names)
+	refused := completiontest.NewStatus(t, 401)
+	assert.Empty(t, UserIDSource().Complete(t.Context(), refused.Conn(1), completion.Request{}).Names)
 }
 
 // TestSystemRuleAgreesWithTheEnginePredicateOnRancherPrincipals asserts

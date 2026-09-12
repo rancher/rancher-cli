@@ -75,7 +75,7 @@ env RANCHER_CLI_CACERT=$TEST_RANCHER_CACERT
 # seedexeccache provides exec-cred capability only (no management token in store).
 # v2 protocol: proto sentinel + words (--cluster flag last, no value in argv) +
 # --rancher-completion-cur=testcluster → ParseArgTail sees --cluster as last flag
-# → SiteFlagValue(cluster). fetchClusters returns nil (IDOnly=true).
+# → SiteFlagValue(cluster). The management cluster list is refused under an exec-credential-only token.
 seedexeccache default-ctx c-test
 exec rancher --rancher-completion-proto=2 get namespace --cluster --rancher-completion-cur=testcluster --generate-shell-completion
 ! stdout .
@@ -90,7 +90,7 @@ exec rancher --rancher-completion-proto=2 get namespace --cluster c-test --ranch
 stdout '(?m)^default$'
 
 # AC-30 both-sides confirmation: completing the cluster value vs next positional.
-# (a) cluster partial "c-" with exec-cred only → empty (IDOnly, fetchClusters nil).
+# (a) cluster partial "c-" with exec-cred only → empty (a management listing is refused).
 exec rancher --rancher-completion-proto=2 get namespace --cluster --rancher-completion-cur=c- --generate-shell-completion
 ! stdout .
 # (b) same cluster c-test already complete, empty currentWord → namespace list appears.
@@ -103,15 +103,15 @@ stdout '(?m)^default$'
 # e2e-cluster-role (RoleTemplate context=cluster) are seeded once in TestMain.
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# Global scope: --global --role <TAB> → fetchGlobalRoles → contains e2e-global-role.
+# Global scope: --global --role <TAB> lists the global roles → contains e2e-global-role.
 exec rancher --rancher-completion-proto=2 grant x --global --role --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^e2e-global-role$'
 
-# Project scope: --project --cluster --role <TAB> → fetchRoleTemplates(project) → contains e2e-project-role.
+# Project scope: --project --cluster --role <TAB> lists the project-context role templates → contains e2e-project-role.
 exec rancher --rancher-completion-proto=2 grant x --project p-x --cluster c-x --role --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^e2e-project-role$'
 
-# Cluster scope: --cluster --role <TAB> → fetchRoleTemplates(cluster) → contains e2e-cluster-role, not e2e-project-role.
+# Cluster scope: --cluster --role <TAB> lists the cluster-context role templates → contains e2e-cluster-role, not e2e-project-role.
 exec rancher --rancher-completion-proto=2 grant x --cluster c-test --role --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^e2e-cluster-role$'
 ! stdout e2e-project-role

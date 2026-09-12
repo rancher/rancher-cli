@@ -155,7 +155,7 @@ func TestKindForDescriptorSecretNotCompletable(t *testing.T) {
 func TestInspectLeafGetsNoLivePositionalCompletion(t *testing.T) {
 	t.Parallel()
 	d := runtime.Descriptor{Name: "inspect pod"}
-	// isAC10Verb("inspect pod") → false → livePositionalCandidates returns nil immediately.
+	// isAC10Verb("inspect pod") is false, so no kind source is looked up for it.
 	assert.False(t, isAC10Verb(d.Name), "inspect is not an AC-10 verb")
 }
 

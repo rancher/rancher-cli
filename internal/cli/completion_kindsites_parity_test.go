@@ -47,13 +47,14 @@ func newKindSitesServer(t *testing.T) *pathCountingServer {
 // namespace); the bespoke first positionals (three inspect leaves, the
 // five cluster-family verbs, the three oidc-client secret verbs, create
 // password-change-request); a kind that does not complete, a second
-// positional, and a new-name positional. The two sites still on the
-// surface's own path, with no source of their own (the oidc-client secret
-// name, the cluster-family --pool), are asserted alongside so the
-// fall-through holds. Each row asserts the exact candidates and the
-// exact requests
-// per path. NOT parallel: t.Setenv mutates env globals, setStoredConfig
-// mutates storedConfig.
+// positional, and a new-name positional. Two later sites fed by the typed
+// first positional (the oidc-client secret name, the cluster-family
+// --pool) stay in this table beside the positional that feeds them, so a
+// change to that positional's answer shows here in the same run; the
+// command-sites table holds them in full. Each row asserts the exact
+// candidates and the exact requests per path. NOT
+// parallel: t.Setenv mutates env globals, setStoredConfig mutates
+// storedConfig.
 func TestKindSitesFullCallback(t *testing.T) {
 	s := newKindSitesServer(t)
 	clusters := []string{"c-aaa11", "c-bbb22", "c-ccc33", "c-ddd44", "local", "prod"}
@@ -130,7 +131,7 @@ func TestKindSitesFullCallback(t *testing.T) {
 		// once - the same answer get, patch, delete and inspect user give.
 		{name: "create password-change-request", words: []string{"create", "password-change-request"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "create user names a new user", words: []string{"create", "user"}, hits: map[string]int{}},
-		// sites still on the surface's own path, with no source of their own
+		// later sites fed by the typed first positional, each with its own source
 		{name: "oidc-client rotate-secret secret name", words: []string{"oidc-client", "rotate-secret", "my-client"}, want: []string{"secret-1", "secret-2"}, hits: map[string]int{oidcClientPath: 1}},
 		{name: "cluster scale --pool", words: []string{"cluster", "scale", "prod", "--pool"}, want: []string{"pool-a", "pool-b"}, hits: map[string]int{provProdPath: 1}},
 		// network off

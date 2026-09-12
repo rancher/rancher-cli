@@ -184,22 +184,12 @@ func TestRoleSourceCompleteFailsEmpty(t *testing.T) {
 
 	t.Run("401", func(t *testing.T) {
 		t.Parallel()
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized)
-		}))
-		t.Cleanup(srv.Close)
-		conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1)
-		assert.Empty(t, RoleSource().Complete(t.Context(), conn, req).Names)
+		assert.Empty(t, RoleSource().Complete(t.Context(), completiontest.NewStatus(t, 401).Conn(1), req).Names)
 	})
 
 	t.Run("malformed body", func(t *testing.T) {
 		t.Parallel()
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, _ = w.Write([]byte(`{not json`))
-		}))
-		t.Cleanup(srv.Close)
-		conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1)
-		assert.Empty(t, RoleSource().Complete(t.Context(), conn, req).Names)
+		assert.Empty(t, RoleSource().Complete(t.Context(), completiontest.NewFixed(t, `{not json`).Conn(1), req).Names)
 	})
 
 	t.Run("allowance exhausted", func(t *testing.T) {
