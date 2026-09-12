@@ -1,0 +1,220 @@
+package cli
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
+)
+
+// liveSourceCandidates serves a live site through the completion source
+// that claims it, in dispatch order: the command's own source, then the
+// shared flag table for a flag site, then the positional tables for a
+// first positional. It reports owned=false when no source claims the site,
+// and the caller's legacy path serves it. For a claimed site the policy is
+// all here: the allowance class is validated and mapped to a request count,
+// the credential and cluster needs are satisfied (a typed display name is
+// resolved with one request counted apart), the Connection is built under
+// the TAB deadline, and the Result is dropped whole when the source asked
+// for more than its allowance. Every failure answers nothing.
+func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, lc completion.Completer, tail []string,
+	flags map[string]completion.Source, kindTable map[string]completion.Source, positional map[string]string) ([]string, bool) {
+	req := completion.Request{
+		Flag:    site.FlagName,
+		Index:   site.Index,
+		Partial: site.Partial,
+		Cluster: extractFlagValue(tail, "cluster"),
+		Project: extractFlagValue(tail, "project"),
+		Tail:    tail,
+	}
+	src, reqs, ok := claimLiveSource(req, d, lc, flags, kindTable, positional)
+	if !ok {
+		return nil, false
+	}
+	limit, ok := allowanceLimit(reqs.Allowance)
+	if !ok {
+		completionDebugf("stop: source claimed allowance %d, outside the class", reqs.Allowance)
+		return nil, true
+	}
+	if !clusterNeedTyped(reqs, req) {
+		completionDebugf("stop: source needs a cluster and --cluster is absent or not a path segment")
+		return nil, true
+	}
+
+	ctx, cancel := completionDeadline(ctx)
+	defer cancel()
+
+	cap := resolveCompletionToken(tokenCluster(reqs, req))
+	if cap.Token == "" {
+		return nil, true
+	}
+	if !credentialNeedMet(reqs, cap) {
+		completionDebugf("stop: source needs a management token and the token is exec-credential-only")
+		return nil, true
+	}
+	if !clusterResolvable(reqs, req, cap) {
+		completionDebugf("stop: --cluster %q is not an id and an exec-credential-only token cannot resolve a display name", req.Cluster)
+		return nil, true
+	}
+	hc, err := newCompletionClient(cap.CACert)
+	if err != nil {
+		completionDebugf("stop: HTTP client: %v", err)
+		return nil, true
+	}
+	if reqs.Cluster == completion.ClusterResolved {
+		req.ClusterID = req.Cluster
+		if !isClusterIDShaped(req.Cluster) {
+			id := resolveDisplayNameToClusterID(ctx, hc, cap, req.Cluster)
+			if id == "" {
+				completionDebugf("stop: cluster display name %q did not resolve to one id", req.Cluster)
+				return nil, true
+			}
+			req.ClusterID = id
+		}
+	}
+
+	conn := completion.NewConnection(hc, cap.Token, cap.ServerURL, cap.IDOnly, limit)
+	conn.SetTrace(func(path string, status, size int, elapsed time.Duration, err error) {
+		if err != nil {
+			completionDebugf("GET %s: %v (%s)", path, err, elapsed.Round(time.Millisecond))
+			return
+		}
+		completionDebugf("GET %s: HTTP %d, %d bytes (%s)", path, status, size, elapsed.Round(time.Millisecond))
+	})
+	res := src.Complete(ctx, conn, req)
+	if conn.Exceeded() {
+		completionDebugf("stop: source exceeded its allowance of %d requests; result dropped", limit)
+		return nil, true
+	}
+	completionDebugf("source: %d requests, %d names", conn.Used(), len(res.Names))
+	return emitResult(site, res), true
+}
+
+// claimLiveSource finds the source that owns a site: the command's own
+// source first, then the shared flag table for a flag-value site (a
+// Request with a Flag), then - for a first positional - the kind named by
+// positionalKinds for a bespoke command or by the last word of a generated
+// get, patch or delete, looked up in kindSources. A source owns the site
+// only when its Claim says so.
+func claimLiveSource(req completion.Request, d runtime.Descriptor, lc completion.Completer,
+	flags map[string]completion.Source, kindTable map[string]completion.Source, positional map[string]string) (completion.Source, completion.Requirements, bool) {
+	if lc != nil {
+		if src := lc.LiveSource(); src.Claim != nil {
+			if reqs, ok := src.Claim(req); ok {
+				completionDebugf("source: claimed by command %s", d.Name)
+				return src, reqs, true
+			}
+		}
+	}
+	switch {
+	case req.Flag != "":
+		if src, ok := flags[req.Flag]; ok {
+			if reqs, ok := src.Claim(req); ok {
+				completionDebugf("source: claimed by the shared --%s source", req.Flag)
+				return src, reqs, true
+			}
+		}
+	case req.Index == 0:
+		key, ok := positional[d.Name]
+		if !ok && isAC10Verb(d.Name) {
+			if k, found := kindForDescriptor(d); found {
+				key, ok = k.Key, true
+			}
+		}
+		if !ok {
+			return completion.Source{}, completion.Requirements{}, false
+		}
+		if src, ok := kindTable[key]; ok {
+			if reqs, ok := src.Claim(req); ok {
+				completionDebugf("source: claimed by the %s kind source", key)
+				return src, reqs, true
+			}
+		}
+	}
+	return completion.Source{}, completion.Requirements{}, false
+}
+
+// tokenCluster names the cluster the TAB's token is resolved for. A
+// source that needs a resolved cluster gets the typed one, so the
+// exec-credential cache entry for that cluster can serve it. A source
+// with no cluster need must not be suppressed or rescoped by an
+// unrelated --cluster on the line: when it can work with any credential
+// its listings go to the management cluster's own proxy, so the cache
+// entry for that cluster is the one that can serve it; when it needs a
+// management token no cache entry can, and no cluster is named.
+func tokenCluster(reqs completion.Requirements, req completion.Request) string {
+	switch {
+	case reqs.Cluster == completion.ClusterResolved:
+		return req.Cluster
+	case reqs.Credential == completion.CredentialAny:
+		return engine.LocalCluster
+	}
+	return ""
+}
+
+// clusterResolvable reports whether a resolved cluster need can be met
+// with the resolved token: an exec-credential-only token cannot list the
+// management clusters, so under it the typed --cluster must already be
+// an id; a display name answers nothing rather than reaching a source as
+// ClusterID.
+func clusterResolvable(reqs completion.Requirements, req completion.Request, cap TokenCapability) bool {
+	if reqs.Cluster != completion.ClusterResolved || !cap.IDOnly {
+		return true
+	}
+	return isClusterIDShaped(req.Cluster)
+}
+
+// clusterNeedTyped reports whether the site's cluster need can be met from
+// the line: a source that needs a resolved cluster must have --cluster
+// typed with a value that can be a path segment; a source with no cluster
+// need is never held back by the flag.
+func clusterNeedTyped(reqs completion.Requirements, req completion.Request) bool {
+	if reqs.Cluster != completion.ClusterResolved {
+		return true
+	}
+	return completion.ValidSegment(req.Cluster)
+}
+
+// credentialNeedMet reports whether the resolved token satisfies the
+// source's credential need: a management listing is refused under an
+// exec-credential-only token.
+func credentialNeedMet(reqs completion.Requirements, cap TokenCapability) bool {
+	return reqs.Credential != completion.CredentialManagement || !cap.IDOnly
+}
+
+// emitResult applies the surface's answer policy to a source's Result:
+// the composite Prefix, when set, must be a compiled-in literal of
+// shell-safe characters ending in exactly one "/" or the whole result is
+// dropped; the names pass the shell-safe charset, are deduped and
+// sorted; the prefix is put in front of every survivor, and an equals-form
+// site gets full --flag=value tokens.
+func emitResult(site CompletionSite, res completion.Result) []string {
+	if res.Prefix != "" && !validCompositePrefix(res.Prefix) {
+		completionDebugf("stop: source prefix %q is not a composite prefix; result dropped", res.Prefix)
+		return nil
+	}
+	names := dedupe(sanitizeCandidates(res.Names))
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		tok := res.Prefix + n
+		if site.EqualsForm {
+			tok = site.FlagSpelling + "=" + tok
+		}
+		out = append(out, tok)
+	}
+	return out
+}
+
+// validCompositePrefix reports whether p is a composite value prefix the
+// surface recomposes: shell-safe characters followed by exactly one
+// trailing "/".
+func validCompositePrefix(p string) bool {
+	body, ok := strings.CutSuffix(p, "/")
+	return ok && body != "" && !strings.Contains(body, "/") && completionCharset.MatchString(body)
+}

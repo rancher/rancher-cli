@@ -10,7 +10,9 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/rbac/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -58,6 +60,11 @@ func (grantCmd) Describe() runtime.Descriptor {
 		Shape:       runtime.ShapeText,
 	}
 }
+
+// LiveSource hands the surface the role source: --role completes the
+// roles of the scope typed on the line; every other site of grant is
+// declined and completes as before.
+func (grantCmd) LiveSource() completion.Source { return complete.RoleSource() }
 
 // Plan verifies the role, resolves the subject, checks for a duplicate binding,
 // and plans a create. Preflight error policy: role verification (checkRole)
@@ -258,10 +265,7 @@ func roleCandidates(pool []clierr.Candidate, needle string) []clierr.Candidate {
 // must not be blocked by an unreadable role object. Caller-context
 // cancellation always propagates.
 func checkRole(ctx context.Context, client engine.ClusterClient, role string, scope ScopeKind) error {
-	roleKindKey := "roletemplate"
-	if scope == ScopeGlobal {
-		roleKindKey = "globalrole"
-	}
+	roleKindKey, _ := complete.RoleKind(complete.Scope(scope))
 	roleKind, _ := kinds.Lookup(roleKindKey)
 
 	obj, err := client.Get(ctx, roleKind.GVR, "", role)

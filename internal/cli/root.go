@@ -29,6 +29,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/engine/user"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/token"
 )
@@ -522,7 +523,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 					Partial:      rawCurrentWord[eq+1:],
 				}
 				tail := stripRoutingPrefixByCmd(rawArgv, cmd)
-				for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
+				for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, nil, tail) {
 					_, _ = fmt.Fprintln(w, cand)
 				}
 			}
@@ -544,7 +545,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 	// to globalArgSpecs for global flags.
 	tail := stripRoutingPrefixByCmd(rawArgv, cmd)
 	if site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, runtime.Descriptor{}, globalArgSpecs); site.Kind == SiteFlagValue {
-		for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, cmd, tail) {
+		for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, nil, tail) {
 			_, _ = fmt.Fprintln(w, cand)
 		}
 		return
@@ -769,10 +770,21 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	groups := map[string][]*ucli.Command{}
 	sectionCmds := map[string][]string{}
 	var order []string
+	// leaves and completers feed the live completion wiring check below:
+	// every adapted command's descriptor, and the source of every command
+	// that owns live completion, taken from the same zero-dependency
+	// probe adaptEntry installs the TAB callback on.
+	leaves := map[string]runtime.Descriptor{}
+	completers := map[string]completion.Source{}
 	for _, e := range entries {
 		leaf, name, err := wireEntry(reg, resolver, version, e)
 		if err != nil {
 			return wiredRegistry{}, err
+		}
+		probe := e.make(runDeps{})
+		leaves[name] = probe.Describe()
+		if lc, ok := probe.(completion.Completer); ok {
+			completers[name] = lc.LiveSource()
 		}
 		if _, seen := groups[e.group]; !seen {
 			order = append(order, e.group)
@@ -850,6 +862,9 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 
 	if err := reg.Validate(); err != nil {
 		return wiredRegistry{}, fmt.Errorf("command registry: %w", err)
+	}
+	if err := validateLiveWiring(leaves, completers, flagSources, kindSources, positionalKinds); err != nil {
+		return wiredRegistry{}, fmt.Errorf("live completion wiring: %w", err)
 	}
 	return wiredRegistry{
 		reg:    reg,

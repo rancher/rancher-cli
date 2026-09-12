@@ -14,14 +14,16 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/observe"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	ucli "github.com/urfave/cli/v3"
 )
 
 // universalShellCompleteFunc returns a urfave ShellCompleteFunc that
 // dispatches TAB completions in order: (1) arg-tail site parse, (2) enum
 // static, (3) config-local (ShellCompleter delegation), (4) live (gated on
-// completion.network). Installed on EVERY adapted leaf (AC-17a).
-func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter) ucli.ShellCompleteFunc {
+// completion.network). Installed on EVERY adapted leaf (AC-17a). lc is the
+// command's own live source owner, nil for a command without one.
+func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter, lc completion.Completer) ucli.ShellCompleteFunc {
 	return func(ctx context.Context, c *ucli.Command) {
 		// Strip command routing tokens from rawArgv using the invoked urfave
 		// command's lineage depth - NOT the canonical descriptor name string.
@@ -51,7 +53,7 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter)
 			return
 		}
 
-		candidates := dispatchSite(ctx, site, d, sc, c, tail)
+		candidates := dispatchSite(ctx, site, d, sc, lc, tail)
 		w := c.Root().Writer
 		for _, cand := range candidates {
 			_, _ = fmt.Fprintln(w, cand)
@@ -188,13 +190,14 @@ func allFlagsDeduped(c *ucli.Command) []ucli.Flag {
 }
 
 // dispatchSite resolves candidates for the given site through all layers.
-// tail is the pre-stripped leaf arg tail computed by the caller.
+// tail is the pre-stripped leaf arg tail computed by the caller; lc is the
+// command's live source owner, nil for none.
 func dispatchSite(
 	ctx context.Context,
 	site CompletionSite,
 	d runtime.Descriptor,
 	sc runtime.ShellCompleter,
-	c *ucli.Command,
+	lc completion.Completer,
 	tail []string,
 ) []string {
 	// Layer 1: enum static (AC-13), for flag values AND positionals (MC-14).
@@ -248,7 +251,7 @@ func dispatchSite(
 		completionDebugf("live completion off: enable with: rancher config set-completion --network=true")
 		return nil
 	}
-	cands := liveCandidates(ctx, site, d, c, tail)
+	cands := liveCandidates(ctx, site, d, lc, tail)
 	completionDebugf("done: %d candidates", len(cands))
 	return cands
 }
@@ -371,26 +374,26 @@ func accessTimeoutSite(site CompletionSite, d runtime.Descriptor) bool {
 		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "timeout" })
 }
 
-// liveCandidates issues at most two HTTP requests to fetch resource names
-// (AC-17 steps 4-6, AC-24), with one exception: `access can`'s resource
-// positional and its --group/--subresource values read the cluster's two
-// discovery roots, plus, for a display-name --cluster, the one resolution
-// request the layer makes for every cluster-dependent site - three in all.
-// Returns nil on any error (AC-18).
-// tail is the pre-computed leaf arg tail from the caller (avoids re-stripping).
-func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, c *ucli.Command, tail []string) []string {
-	// Role flag-value sites derive scope from the typed tail only
-	// (roleVocabulary); the cluster fallback chain, segment validation,
-	// and display-name resolution below must not run for them - an
-	// inherited invalid or display-name cluster would otherwise suppress
-	// role completion that never needed a cluster at all.
-	// Twin requirement: siteNeedsCluster also carries an explicit
-	// "case role: return false" so the clusterValue=="" early-return at
-	// line 258 does not fire. Both guards must hold simultaneously.
-	roleSite := site.Kind == SiteFlagValue && site.FlagName == "role"
+// liveCandidates answers a live site. A site a live completion source
+// claims - the command's own, a shared flag's, or a kind's - is served
+// through liveSourceCandidates under the source's declared needs and
+// allowance. Every other site takes the legacy path below, which issues at
+// most two HTTP requests to fetch resource names (AC-17 steps 4-6, AC-24),
+// with one exception: `access can`'s resource positional and its
+// --group/--subresource values read the cluster's two discovery roots,
+// plus, for a display-name --cluster, the one resolution request the layer
+// makes for every cluster-dependent site - three in all. Returns nil on
+// any error (AC-18). tail is the pre-computed leaf arg tail from the
+// caller (avoids re-stripping); lc is the command's live source owner,
+// nil for none.
+func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, lc completion.Completer, tail []string) []string {
+	if cands, owned := liveSourceCandidates(ctx, site, d, lc, tail, flagSources, kindSources, positionalKinds); owned {
+		return cands
+	}
 
 	// Subject positional sites (index 0 of grant/revoke) fetch management
-	// users and need no cluster. Apply the same preflight bypass as roleSite:
+	// users and need no cluster. The cluster fallback chain, segment
+	// validation, and display-name resolution below must not run for them:
 	// an inherited invalid cluster value (e.g. "prod cluster" with a space)
 	// must not suppress subject completion that never needed a cluster.
 	subjectSite := site.Kind == SitePositional && site.Index == 0 &&
@@ -399,7 +402,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// create cluster's node-driver flag sites (--machine-config,
 	// --cloud-credential) fetch management-server-only data (fleet-default
 	// machine configs, cattle-global-data credential secrets) and never
-	// need a cluster. Same preflight bypass as roleSite/subjectSite: an
+	// need a cluster. Same preflight bypass as subjectSite: an
 	// inherited invalid cluster value (e.g. "prod cluster" with a space)
 	// must not suppress completion that never needed a cluster at all.
 	// Twin requirement: siteNeedsCluster carries explicit false cases for
@@ -433,7 +436,7 @@ func liveCandidates(ctx context.Context, site CompletionSite, d runtime.Descript
 	// announcement; absent flags leave the values empty.
 	clusterValue := ""
 	effectiveProject := ""
-	if !roleSite && !subjectSite && !nodeDriverFlagSite && !accessSubjectSite {
+	if !subjectSite && !nodeDriverFlagSite && !accessSubjectSite {
 		clusterValue = extractFlagValue(tail, "cluster")
 		effectiveProject = extractFlagValue(tail, "project")
 	}
@@ -526,19 +529,12 @@ func siteNeedsCluster(site CompletionSite, d runtime.Descriptor) bool {
 		switch site.FlagName {
 		case "project", "namespace", "node":
 			return true
-		case "role":
-			// Role completion derives scope from the typed tail only (roleVocabulary).
-			// The roleSite bypass in liveCandidates skips the tail cluster
-			// extraction, leaving
-			// clusterValue="". This explicit false prevents liveCandidates' cluster
-			// early-return from silently killing role completion when clusterValue is
-			// empty. Both guards must hold together - changing either one without the
-			// other breaks role TAB.
-			return false
 		case "machine-config", "cloud-credential":
 			// create cluster's node-driver sites are management-server-only
 			// fetches; the nodeDriverFlagSite bypass in liveCandidates leaves
-			// clusterValue="". Same twin-guard contract as role above.
+			// clusterValue="". This explicit false keeps liveCandidates'
+			// cluster early-return from firing on that empty value; both
+			// guards must hold together.
 			return false
 		}
 		return false
@@ -589,52 +585,12 @@ func resolveDisplayNameToClusterID(ctx context.Context, hc *http.Client, cap Tok
 	return "" // not found or ambiguous
 }
 
-// roleVocab identifies which role vocabulary a --role completion should
-// offer, derived from the scope flags on the typed line.
-type roleVocab int
-
-const (
-	roleVocabNone roleVocab = iota
-	roleVocabGlobal
-	roleVocabProject
-	roleVocabCluster
-)
-
-// roleVocabulary maps the typed tail's scope flags to a role vocabulary,
-// reproducing rbac.ResolveScope's scope→vocabulary mapping and conflict
-// REJECTION - but by flag PRESENCE (flagPresent), a deliberate mid-edit
-// heuristic, not ResolveScope's value parsing: a completion line is
-// unfinished by nature ("--project= <TAB>" is about to receive a value),
-// and completion only suggests - a heuristic mismatch costs an unhelpful
-// list, never a wrong mutation. The context/env/config cluster fallbacks
-// are deliberately NOT consulted: grant/revoke refuse implicit scope, so
-// completion must not suggest a vocabulary the command would reject.
-func roleVocabulary(tail []string) roleVocab {
-	global := boolFlagSet(tail, "global") // boolean: "--global=false" is a negation, not mid-edit
-	project := flagPresent(tail, "project")
-	cluster := flagPresent(tail, "cluster")
-	switch {
-	case global && (project || cluster):
-		return roleVocabNone // ResolveScope rejects the combination
-	case global:
-		return roleVocabGlobal
-	case project:
-		return roleVocabProject
-	case cluster:
-		return roleVocabCluster
-	}
-	return roleVocabNone
-}
-
-// liveFlagValueCandidates handles live flag-value sites (--cluster, --project,
-// --namespace, --node AC-7/AC-8/AC-9/AC-11/AC-14, --role AC-role).
-// effectiveProject is passed to suppress --namespace when a typed --project
-// scope is active (AC-9/AC-15; round-2 finding 4).
-// tail is threaded from liveCandidates for role scope detection (roleVocabulary).
-// hc is the single per-dispatch client (finding 9).
-// For role sites, clusterID and effectiveProject are intentionally empty and
-// ignored - role scope is derived exclusively from tail via roleVocabulary,
-// never from inherited env/config values.
+// liveFlagValueCandidates handles the live flag-value sites the legacy path
+// still serves (--cluster, --project, --namespace, --node
+// AC-7/AC-8/AC-9/AC-11/AC-14, and the command-shaped flags below).
+// effectiveProject suppresses --namespace when a typed --project scope is
+// active (AC-9/AC-15). tail is threaded from liveCandidates for the
+// dependent sites. hc is the one HTTP client built per dispatch.
 func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site CompletionSite, d runtime.Descriptor, cap TokenCapability, clusterID, effectiveProject string, tail []string) []string {
 	var raw []string
 	switch site.FlagName {
@@ -666,20 +622,6 @@ func liveFlagValueCandidates(ctx context.Context, hc *http.Client, site Completi
 		return machineConfigNameCandidates(ctx, hc, site, cap)
 	case "cloud-credential":
 		raw = fetchCloudCredentials(ctx, hc, cap)
-	case "role":
-		// Scope comes from the typed tail ONLY (roleVocabulary): the
-		// clusterID/effectiveProject parameters carry context/env/config
-		// fallbacks that grant/revoke's explicit-scope rule forbids here.
-		switch roleVocabulary(tail) {
-		case roleVocabGlobal:
-			raw = fetchGlobalRoles(ctx, hc, cap)
-		case roleVocabProject:
-			raw = fetchRoleTemplates(ctx, hc, cap, "project")
-		case roleVocabCluster:
-			raw = fetchRoleTemplates(ctx, hc, cap, "cluster")
-		default:
-			return nil // no scope or conflicting scope: empty, zero requests
-		}
 	case "as":
 		if accessSubjectCommand(d.Name) {
 			// Users only: every shell splits a candidate line at its first

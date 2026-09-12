@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	ucli "github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
@@ -268,14 +269,20 @@ func commandIsPrime(cmd *ucli.Command) bool {
 
 // installShellComplete installs the universal completion callback on cmd for
 // every adapted leaf (AC-17a). When the command also implements
-// runtime.ShellCompleter, the config-local delegation layer is wired in.
+// runtime.ShellCompleter, the config-local delegation layer is wired in;
+// when it implements completion.Completer, its live source is consulted
+// first for every live site.
 func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 	d := rc.Describe()
 	var sc runtime.ShellCompleter
 	if s, ok := rc.(runtime.ShellCompleter); ok {
 		sc = s
 	}
-	cmd.ShellComplete = universalShellCompleteFunc(d, sc)
+	var lc completion.Completer
+	if l, ok := rc.(completion.Completer); ok {
+		lc = l
+	}
+	cmd.ShellComplete = universalShellCompleteFunc(d, sc, lc)
 }
 
 // resolveDeps resolves the config dir from --config (flag > env > XDG) and

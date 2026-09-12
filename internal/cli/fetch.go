@@ -307,64 +307,6 @@ func projectCandidates(items []map[string]any) []string {
 	return dedupe(sanitizeCandidates(out))
 }
 
-// fetchRoleTemplates lists management RoleTemplates and returns the names
-// of those whose top-level context field equals roleContext ("project" or
-// "cluster"). Management list: requires a management token - exec-cred-only
-// capabilities (IDOnly) return nil without a request, same boundary as
-// fetchClusters/fetchProjects. The filter is client-side: the RoleTemplate
-// CRD (management.cattle.io_roletemplates) declares no spec.selectableFields
-// entry for the context field, so the Kubernetes fieldSelector mechanism only
-// covers metadata.name and metadata.namespace - any context= filter must be
-// applied after the full list is fetched.
-func fetchRoleTemplates(ctx context.Context, hc *http.Client, cap TokenCapability, roleContext string) []string {
-	if cap.Token == "" || cap.IDOnly {
-		return nil
-	}
-	url := cap.ServerURL + "/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates"
-	var col k8sItemsList
-	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
-		return nil
-	}
-	var names []string
-	for _, item := range col.Items {
-		if rc, _ := item["context"].(string); rc != roleContext {
-			continue
-		}
-		meta, _ := item["metadata"].(map[string]any)
-		if meta == nil {
-			continue
-		}
-		if name, _ := meta["name"].(string); name != "" {
-			names = append(names, name)
-		}
-	}
-	return dedupe(sanitizeCandidates(names))
-}
-
-// fetchGlobalRoles lists management GlobalRoles and returns their names.
-// Same management-token boundary as fetchRoleTemplates.
-func fetchGlobalRoles(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
-	if cap.Token == "" || cap.IDOnly {
-		return nil
-	}
-	url := cap.ServerURL + "/k8s/clusters/local/apis/management.cattle.io/v3/globalroles"
-	var col k8sItemsList
-	if err := getJSON(ctx, hc, cap.Token, url, &col); err != nil {
-		return nil
-	}
-	var names []string
-	for _, item := range col.Items {
-		meta, _ := item["metadata"].(map[string]any)
-		if meta == nil {
-			continue
-		}
-		if name, _ := meta["name"].(string); name != "" {
-			names = append(names, name)
-		}
-	}
-	return dedupe(sanitizeCandidates(names))
-}
-
 // fetchK8sResources lists a Kubernetes resource in a cluster via the
 // management proxy (/k8s/clusters/<id>/...) and returns object names (AC-9,
 // AC-10, AC-11). ns may be "" for cluster-scoped resources. Returns nil on
@@ -566,7 +508,7 @@ func fetchUserEntries(ctx context.Context, hc *http.Client, cap TokenCapability)
 //     at execution time.
 //
 // Management list: requires a management token - exec-cred-only capabilities
-// (IDOnly) return nil without a request, same boundary as fetchRoleTemplates.
+// (IDOnly) return nil without a request, same boundary as fetchClusters.
 func fetchUsers(ctx context.Context, hc *http.Client, cap TokenCapability) []string {
 	entries := fetchUserEntries(ctx, hc, cap)
 	if entries == nil {

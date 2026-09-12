@@ -10,7 +10,9 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/rbac/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -91,6 +93,11 @@ func (revokeCmd) Describe() runtime.Descriptor {
 		Shape:       runtime.ShapeText,
 	}
 }
+
+// LiveSource hands the surface the role source: --role completes the
+// roles of the scope typed on the line; every other site of revoke is
+// declined and completes as before.
+func (revokeCmd) LiveSource() completion.Source { return complete.RoleSource() }
 
 func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()

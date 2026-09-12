@@ -2,7 +2,6 @@ package cli
 
 import (
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/rancher/rancher-cli/credhelper"
@@ -240,45 +239,6 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 	}
 	// Silent read: bypass NewFileStore.GetToken (which calls warnLoosePerm).
 	return config.ReadFileTokenSilent(dir, matchName)
-}
-
-// flagPresent reports whether --flagName or --flagName=... appears in argTail,
-// regardless of whether a value follows. Used for string flags where an
-// equals-form token with an empty or partial value is a mid-edit heuristic
-// ("--project= <TAB>" is about to receive a value; presence is sufficient).
-func flagPresent(argTail []string, flagName string) bool {
-	long := "--" + flagName
-	prefix := long + "="
-	for _, a := range argTail {
-		if a == long || strings.HasPrefix(a, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
-// boolFlagSet reports whether a boolean flag is semantically set on the tail:
-// bare "--name" counts as true; "--name=<value>" is parsed via strconv.ParseBool
-// (covering "true"/"false"/"1"/"0"/"t"/"f"/"T"/"F"/"TRUE"/"FALSE" etc.); an
-// unparseable value is treated as present (mid-edit token). Used by
-// roleVocabulary so that "--global=false", "--global=0", "--global=False" do
-// not select the global vocabulary - unlike string flags, any boolean-false
-// spelling is unambiguous and should not trigger the mid-edit heuristic.
-func boolFlagSet(argTail []string, flagName string) bool {
-	long := "--" + flagName
-	prefix := long + "="
-	for _, a := range argTail {
-		if a == long {
-			return true
-		}
-		if after, ok := strings.CutPrefix(a, prefix); ok {
-			if v, err := strconv.ParseBool(after); err == nil {
-				return v
-			}
-			return true // unparseable: mid-edit token, treat as present
-		}
-	}
-	return false
 }
 
 // extractFlagValue scans argTail for --flagName value or --flagName=value and
