@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -188,13 +190,18 @@ func grHandler(opts *serverOpts) http.Handler {
 
 	mux := http.NewServeMux()
 
-	// RoleTemplate GET by name - any name is accepted; checkRole only needs
-	// a non-error response to confirm the role exists.
+	// RoleTemplate GET by name - any name is accepted, with the context
+	// Rancher stores on it (the scope its name starts with: "project-member"
+	// is a project role), since grant refuses a template whose context is
+	// not the binding's.
 	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates/", func(w http.ResponseWriter, r *http.Request) {
+		name := path.Base(r.URL.Path)
+		rtContext, _, _ := strings.Cut(name, "-")
 		grWriteJSON(w, map[string]any{
 			"apiVersion": "management.cattle.io/v3",
 			"kind":       "RoleTemplate",
-			"metadata":   map[string]any{"name": "rt", "resourceVersion": "1"},
+			"metadata":   map[string]any{"name": name, "resourceVersion": "1"},
+			"context":    rtContext,
 		})
 	})
 

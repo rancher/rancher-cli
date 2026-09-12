@@ -58,7 +58,7 @@ const (
 type Allowance int
 
 const (
-	// AllowanceOne is one listing.
+	// AllowanceOne is one request: a collection listed, or one object read.
 	AllowanceOne Allowance = iota + 1
 	// AllowanceDiscovery is the two discovery roots of a cluster.
 	AllowanceDiscovery
@@ -76,15 +76,16 @@ type Requirements struct {
 	Allowance  Allowance
 }
 
-// ManagementListing is the declaration of a source that lists one
-// management collection: no cluster need, a management token, one
-// request.
+// ManagementListing is the declaration of a source that makes one request
+// to the management cluster - a collection listed, or one object read:
+// no cluster need, a management token, one request.
 func ManagementListing() Requirements {
 	return Requirements{Cluster: ClusterNone, Credential: CredentialManagement, Allowance: AllowanceOne}
 }
 
-// ClusterListing is the declaration of a source that lists one management
-// collection scoped by the typed cluster: the cluster resolved, a
+// ClusterListing is the declaration of a source that makes one request to
+// the management cluster scoped by the typed cluster - a collection in
+// the cluster's namespace, or one object there: the cluster resolved, a
 // management token, one request.
 func ClusterListing() Requirements {
 	return Requirements{Cluster: ClusterResolved, Credential: CredentialManagement, Allowance: AllowanceOne}

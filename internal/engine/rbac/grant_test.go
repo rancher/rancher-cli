@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -14,12 +15,18 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// roleGet returns a minimal role object for seeding fakeClient.gets at key
-// "/<name>" (empty namespace - roletemplates and globalroles are cluster-scoped).
+// roleGet returns a role object as Rancher stores one, for seeding
+// fakeClient.gets at key "/<name>" (empty namespace: roletemplates and
+// globalroles are cluster-scoped). A roletemplate carries the context of
+// the scope its name starts with ("project-member" is a project role),
+// the field a binding is refused without; a globalrole ("admin") carries
+// none.
 func roleGet(name string) *unstructured.Unstructured {
-	return &unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": name},
-	}}
+	obj := map[string]any{"metadata": map[string]any{"name": name}}
+	if rtContext, _, _ := strings.Cut(name, "-"); rtContext == string(ScopeProject) || rtContext == string(ScopeCluster) {
+		obj["context"] = rtContext
+	}
+	return &unstructured.Unstructured{Object: obj}
 }
 
 func prtbObj(name, userName, userPrincipal, groupPrincipal, role string) map[string]any {
@@ -521,8 +528,9 @@ func TestGrantProjectRoleAtClusterScopeRejected(t *testing.T) {
 	t.Parallel()
 	// A project-context roletemplate IS found by Get but must be refused when
 	// the requested scope is cluster. The error names both contexts and carries
-	// the valid at-scope pool (cluster-context + empty-context roles) so the
-	// caller is guided to the right options.
+	// the valid at-scope pool (the cluster-context roles alone: Rancher binds
+	// no template whose context is another scope's or empty) so the caller
+	// is guided to the right options.
 	client := &fakeClient{
 		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
 		gets: map[string]*unstructured.Unstructured{
@@ -536,7 +544,7 @@ func TestGrantProjectRoleAtClusterScopeRejected(t *testing.T) {
 				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-owner"}, "context": "cluster"}},
 				{Object: map[string]any{"metadata": map[string]any{"name": "cluster-member"}, "context": "cluster"}},
 				{Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},
-				// Empty-context role is valid at every scope and must appear in candidates.
+				// An empty-context template is bound by no scope and is no candidate.
 				{Object: map[string]any{"metadata": map[string]any{"name": "base-viewer"}, "context": ""}},
 			}},
 		},
@@ -563,10 +571,63 @@ func TestGrantProjectRoleAtClusterScopeRejected(t *testing.T) {
 	// Cluster-context roles appear.
 	assert.Contains(t, ids, "cluster-owner")
 	assert.Contains(t, ids, "cluster-member")
-	// Empty-context role appears (valid everywhere, including cluster scope).
-	assert.Contains(t, ids, "base-viewer")
+	// A template with no context is refused by Rancher at every scope.
+	assert.NotContains(t, ids, "base-viewer")
 	// Wrong-context (project) role must not appear.
 	assert.NotContains(t, ids, "project-member")
+}
+
+// TestGrantEmptyContextRoleRejected asserts a roletemplate without a
+// context is refused before the dry-run at both project and cluster
+// scope, with a message naming the missing context and the scope, the
+// usable at-scope pool as candidates, and the discovery hint - the
+// refusal Rancher's webhook would give ("Unsupported value: \"\""),
+// stated the CLI's way.
+func TestGrantEmptyContextRoleRejected(t *testing.T) {
+	t.Parallel()
+	// One fake client per subtest: the fake is not safe for concurrent use.
+	newClient := func() *fakeClient {
+		return &fakeClient{
+			users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+			gets: map[string]*unstructured.Unstructured{
+				"c-x/p-x":      projectGetObj("p-x"),
+				"/base-viewer": {Object: map[string]any{"metadata": map[string]any{"name": "base-viewer"}}},
+			},
+			listsByGVR: map[string]*unstructured.UnstructuredList{
+				"projects": projectList("p-x"),
+				"roletemplates": {Items: []unstructured.Unstructured{
+					{Object: map[string]any{"metadata": map[string]any{"name": "cluster-owner"}, "context": "cluster"}},
+					{Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},
+					{Object: map[string]any{"metadata": map[string]any{"name": "base-viewer"}}},
+				}},
+			},
+		}
+	}
+	for _, tc := range []struct {
+		scope string
+		flags map[string]string
+		want  string
+	}{
+		{"cluster", map[string]string{"cluster": "c-x", "role": "base-viewer"}, "cluster-owner"},
+		{"project", map[string]string{"cluster": "c-x", "project": "p-x", "role": "base-viewer"}, "project-member"},
+	} {
+		t.Run(tc.scope, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewGrant(fakeFactory{c: newClient()})
+			_, _, err := planGrant(t, cmd, stubInput{strings: tc.flags, args: []string{"u-abc"}})
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeNotFound, ce.Code)
+			assert.Contains(t, ce.Message, "base-viewer has no context")
+			assert.Contains(t, ce.Message, "whose context is "+tc.scope)
+			assert.Contains(t, ce.Hint, "get roletemplates")
+			var ids []string
+			for _, c := range ce.Candidates {
+				ids = append(ids, c.ID)
+			}
+			assert.Equal(t, []string{tc.want}, ids, "the pool holds the scope's context alone")
+		})
+	}
 }
 
 // TestGrantCheckRolePreflightOrder verifies that checkRole runs before the

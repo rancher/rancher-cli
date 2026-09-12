@@ -257,10 +257,11 @@ func roleCandidates(pool []clierr.Candidate, needle string) []clierr.Candidate {
 
 // checkRole verifies that role exists at the given scope before the mutation
 // is planned. On NOT_FOUND it returns a structured error with nearby
-// candidates (roletemplates whose context is empty or matches scope, or
-// globalroles for global scope) and a discovery hint. On scope mismatch the
-// full at-scope pool is returned directly - the name is right, the scope is
-// wrong, so nearness filtering would be misleading. A non-cancellation,
+// candidates (roletemplates whose context is the scope's, or globalroles
+// for global scope) and a discovery hint. On a context mismatch, or a
+// missing context, the full at-scope pool is returned directly - the
+// name exists but the template cannot bind at this scope, so nearness
+// filtering would be misleading. A non-cancellation,
 // non-NotFound Get failure degrades gracefully - an RBAC-restricted granter
 // must not be blocked by an unreadable role object. Caller-context
 // cancellation always propagates.
@@ -270,19 +271,24 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 
 	obj, err := client.Get(ctx, roleKind.GVR, "", role)
 	if err == nil {
-		// Scope check for non-global scopes: a roletemplate whose top-level
-		// context field is non-empty and differs from the requested scope is
-		// not usable there - catch it here so the raw webhook error does not
-		// surface. Empty-context objects always pass (legacy/inherited roles).
+		// Context check for non-global scopes: Rancher's webhook binds a
+		// RoleTemplate only when its context is exactly the binding's
+		// ("project" for a ProjectRoleTemplateBinding, "cluster" for a
+		// ClusterRoleTemplateBinding); a template with another context, or
+		// with none, is refused at the dry-run. Catch it here with the
+		// usable pool so the raw webhook error does not surface.
 		if scope != ScopeGlobal {
-			if rtCtx, _, _ := unstructured.NestedString(obj.Object, "context"); rtCtx != "" && rtCtx != string(scope) {
+			if rtCtx, _, _ := unstructured.NestedString(obj.Object, "context"); rtCtx != string(scope) {
 				hint := "rancher get roletemplates"
 				pool, perr := rolePoolAtScope(ctx, client, roleKind, scope)
 				if perr != nil {
 					return perr
 				}
-				return clierr.New(clierr.CodeNotFound,
-					fmt.Sprintf("role %s is a %s role, not usable at %s scope", role, rtCtx, scope)).
+				msg := fmt.Sprintf("role %s is a %s role, not usable at %s scope", role, rtCtx, scope)
+				if rtCtx == "" {
+					msg = fmt.Sprintf("role %s has no context; Rancher binds only roletemplates whose context is %s", role, scope)
+				}
+				return clierr.New(clierr.CodeNotFound, msg).
 					WithCandidates(roleCandidates(pool, "")).
 					WithHint(hint)
 			}
@@ -312,10 +318,12 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		WithHint(hint)
 }
 
-// rolePoolAtScope lists the role kind and returns all roles whose context is
-// empty (valid at every scope) or equals scope as Candidates. Cancellation
-// propagates; any other list failure degrades to (nil, nil) so an
-// RBAC-restricted granter is not blocked.
+// rolePoolAtScope lists the role kind and returns as Candidates the roles
+// Rancher binds at scope: every globalrole at global scope, else the
+// roletemplates whose context equals the scope (a template with another
+// context, or none, is refused by the webhook). Cancellation propagates;
+// any other list failure degrades to (nil, nil) so an RBAC-restricted
+// granter is not blocked.
 func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind kinds.Kind, scope ScopeKind) ([]clierr.Candidate, error) {
 	list, err := client.List(ctx, roleKind.GVR, "", "")
 	if err != nil {
@@ -329,7 +337,7 @@ func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind 
 		rt := &list.Items[i]
 		if scope != ScopeGlobal {
 			rtCtx, _, _ := unstructured.NestedString(rt.Object, "context")
-			if rtCtx != "" && rtCtx != string(scope) {
+			if rtCtx != string(scope) {
 				continue
 			}
 		}
