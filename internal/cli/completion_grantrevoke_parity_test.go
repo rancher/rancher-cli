@@ -87,7 +87,7 @@ func runCompletion(t *testing.T, words []string, currentWord string) []string {
 // storedConfig.
 func TestGrantRevokeSitesFullCallback(t *testing.T) {
 	s := newGrantRevokeServer(t)
-	users := []string{"alice", "bob", "nopids", "sameid", "u-alice", "u-badname", "u-bob", "u-nopids"}
+	users := []string{"alice", "bob", "sameid", "u-alice", "u-badname", "u-bob"}
 	clusters := []string{"c-aaa11", "c-bbb22", "c-ccc33", "c-ddd44", "local", "prod"}
 	projects := []string{"Default", "System", "p-1", "p-2"}
 	tests := []struct {
@@ -108,10 +108,15 @@ func TestGrantRevokeSitesFullCallback(t *testing.T) {
 		{name: "--role no scope", tail: []string{"jane", "--role"}, hits: map[string]int{}},
 		{name: "--role conflicting scope", tail: []string{"jane", "--global", "--project", "Default", "--role"}, hits: map[string]int{}},
 		{name: "--role network off", tail: []string{"jane", "--global", "--role"}, noNet: true, hits: map[string]int{}},
+		// A flag typed twice takes its last spelling, as the command reads it.
+		{name: "--role global then global=false with a cluster selects cluster", tail: []string{"jane", "--global", "--global=false", "--cluster", "c-aaa11", "--role"}, want: []string{"cluster-owner"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "--role global=false then global with a cluster conflicts", tail: []string{"jane", "--global=false", "--global", "--cluster", "c-aaa11", "--role"}, hits: map[string]int{}},
 		{name: "subject positional", tail: nil, want: users, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "subject positional with an unusable cluster value still answers", tail: []string{"--cluster", "prod cluster"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "subject positional --type group", tail: []string{"--type", "group"}, hits: map[string]int{}},
 		{name: "subject positional --type=group", tail: []string{"--type=group"}, hits: map[string]int{}},
+		{name: "subject positional --type group then --type user", tail: []string{"--type", "group", "--type", "user"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
+		{name: "subject positional --type user then --type group", tail: []string{"--type", "user", "--type", "group"}, hits: map[string]int{}},
 		{name: "subject positional network off", tail: nil, noNet: true, hits: map[string]int{}},
 		{name: "second positional completes nothing", tail: []string{"jane"}, hits: map[string]int{}},
 		{name: "--type static enum", tail: []string{"jane", "--type"}, want: []string{"group", "user"}, hits: map[string]int{}},

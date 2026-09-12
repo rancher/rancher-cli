@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	projectscomplete "github.com/rancher/rancher-cli/internal/engine/projects/complete"
+	rbaccomplete "github.com/rancher/rancher-cli/internal/engine/rbac/complete"
 	usercomplete "github.com/rancher/rancher-cli/internal/engine/user/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -45,18 +46,21 @@ var liveSourcePackages = map[string]bool{
 }
 
 // sharedCompletionFlags are the flag names whose live source is shared
-// across every command declaring the flag, so flagSources may key them.
-var sharedCompletionFlags = map[string]bool{"cluster": true, "project": true, "namespace": true, "node": true}
+// across every command declaring the flag, so flagSources may key them:
+// the scope flags, and the access commands' --as.
+var sharedCompletionFlags = map[string]bool{"cluster": true, "project": true, "namespace": true, "node": true, "as": true}
 
 // flagSources maps a shared flag name to its live source. A command's own
 // source takes precedence for the same flag: `access projects` keeps its
 // steve cluster walk while every other command lists the management
-// clusters.
+// clusters. --as is the subject projection grant and revoke use for
+// their subject positional, declared once in the rbac complete package.
 var flagSources = map[string]completion.Source{
 	"cluster":   accesscomplete.ClusterSource(),
 	"project":   projectscomplete.ProjectSource(),
 	"namespace": kindscomplete.NamespaceSource(),
 	"node":      kindscomplete.NodeSource(),
+	"as":        rbaccomplete.SubjectSource(),
 }
 
 // kindSources maps a kind's Key to the live source for its name

@@ -1,47 +1,17 @@
 package complete
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"sync"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
+	"github.com/rancher/rancher-cli/internal/runtime/completion/completiontest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// listServer answers every path with a two-item list and records the paths
-// requested.
-type listServer struct {
-	srv   *httptest.Server
-	mu    sync.Mutex
-	paths []string
-}
-
-func newListServer(t *testing.T) *listServer {
-	t.Helper()
-	ls := &listServer{}
-	ls.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ls.mu.Lock()
-		ls.paths = append(ls.paths, r.URL.RequestURI())
-		ls.mu.Unlock()
-		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"b"}},{"metadata":{"name":"a"}}]}`))
-	}))
-	t.Cleanup(ls.srv.Close)
-	return ls
-}
-
-func (ls *listServer) requested() []string {
-	ls.mu.Lock()
-	defer ls.mu.Unlock()
-	return append([]string(nil), ls.paths...)
-}
-
-func (ls *listServer) conn(limit int) *completion.Connection {
-	return completion.NewConnection(ls.srv.Client(), "tok", ls.srv.URL, false, limit)
-}
+// listBody is the two-item list every path of the fixture answers.
+const listBody = `{"items":[{"metadata":{"name":"b"}},{"metadata":{"name":"a"}}]}`
 
 func mustKind(t *testing.T, key string) kinds.Kind {
 	t.Helper()
@@ -132,11 +102,11 @@ func TestKindSourceCompletePaths(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ls := newListServer(t)
-			got := KindSource(tt.key).Complete(t.Context(), ls.conn(1), tt.req)
+			ls := completiontest.NewFixed(t, listBody)
+			got := KindSource(tt.key).Complete(t.Context(), ls.Conn(1), tt.req)
 			assert.Equal(t, []string{"b", "a"}, got.Names, "names in list order; the surface sorts")
 			assert.Empty(t, got.Prefix)
-			assert.Equal(t, []string{tt.path}, ls.requested())
+			assert.Equal(t, []string{tt.path}, ls.Requested())
 		})
 	}
 }
@@ -165,10 +135,10 @@ func TestKindSourceCompleteAnswersNothing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ls := newListServer(t)
-			got := KindSource(tt.key).Complete(t.Context(), ls.conn(1), tt.req)
+			ls := completiontest.NewFixed(t, listBody)
+			got := KindSource(tt.key).Complete(t.Context(), ls.Conn(1), tt.req)
 			assert.Empty(t, got.Names)
-			assert.Empty(t, ls.requested())
+			assert.Empty(t, ls.Requested())
 		})
 	}
 }
@@ -177,16 +147,12 @@ func TestKindSourceCompleteAnswersNothing(t *testing.T) {
 // exhausted allowance answer nothing.
 func TestKindSourceCompleteFailsEmpty(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-	}))
-	t.Cleanup(srv.Close)
-	conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1)
-	assert.Empty(t, KindSource("nodedriver").Complete(t.Context(), conn, completion.Request{}).Names)
+	refused := completiontest.NewStatus(t, 403)
+	assert.Empty(t, KindSource("nodedriver").Complete(t.Context(), refused.Conn(1), completion.Request{}).Names)
 
-	ls := newListServer(t)
-	exhausted := ls.conn(0)
+	ls := completiontest.NewFixed(t, listBody)
+	exhausted := ls.Conn(0)
 	assert.Empty(t, KindSource("nodedriver").Complete(t.Context(), exhausted, completion.Request{}).Names)
 	assert.True(t, exhausted.Exceeded())
-	assert.Empty(t, ls.requested())
+	assert.Empty(t, ls.Requested())
 }

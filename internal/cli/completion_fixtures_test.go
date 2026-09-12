@@ -30,6 +30,13 @@ const (
 	downNodesPath      = "/k8s/clusters/c-aaa11/api/v1/nodes"
 	downPodsPath       = "/k8s/clusters/c-aaa11/api/v1/namespaces/default/pods"
 	downDeploysPath    = "/k8s/clusters/c-aaa11/apis/apps/v1/namespaces/default/deployments"
+	machineConfigsPath = "/k8s/clusters/local/apis/rke-machine-config.cattle.io/v1/namespaces/fleet-default/amazonec2configs"
+	cloudCredsPath     = "/k8s/clusters/local/api/v1/namespaces/cattle-global-data/secrets"
+	discoveryCorePath  = "/k8s/clusters/c-aaa11/api"
+	discoveryGroupPath = "/k8s/clusters/c-aaa11/apis"
+	localCattlePods    = "/k8s/clusters/local/api/v1/namespaces/cattle-system/pods"
+	downCattlePods     = "/k8s/clusters/c-aaa11/api/v1/namespaces/cattle-system/pods"
+	provTeamProdPath   = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters/prod"
 )
 
 // usersBody carries one of every user shape the projections must handle:

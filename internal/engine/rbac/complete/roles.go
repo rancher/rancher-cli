@@ -122,19 +122,23 @@ func flagPresent(tail []string, name string) bool {
 // boolFlagSet reports whether a boolean flag is set on the tail: a bare
 // --name is true; --name=<value> is parsed as a boolean, and a value that
 // does not parse counts as present, since it is a token still being
-// typed.
+// typed. A flag typed more than once takes its last spelling, as the
+// command's parser reads it.
 func boolFlagSet(tail []string, name string) bool {
 	long := "--" + name
+	set := false
 	for _, a := range tail {
 		if a == long {
-			return true
+			set = true
+			continue
 		}
 		if v, ok := strings.CutPrefix(a, long+"="); ok {
 			if b, err := strconv.ParseBool(v); err == nil {
-				return b
+				set = b
+			} else {
+				set = true
 			}
-			return true
 		}
 	}
-	return false
+	return set
 }

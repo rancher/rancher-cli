@@ -11,15 +11,20 @@ import "context"
 // did not type. ClusterID is Cluster's resolution, filled only when the
 // claim said ClusterResolved. Tail is the raw arg tail; every component a
 // source takes from it into a URL goes through ValidSegment via the Path
-// builders.
+// builders. Positionals are the tail's positional tokens in order, the
+// value-taking flags consumed by their arity, which only the surface
+// knows; a site that depends on an earlier positional (a cluster's pool,
+// a client's secret, a log target's pods) reads it here and never
+// re-parses the tail. The word being completed is not among them.
 type Request struct {
-	Flag      string
-	Index     int
-	Partial   string
-	Cluster   string
-	ClusterID string
-	Project   string
-	Tail      []string
+	Flag        string
+	Index       int
+	Partial     string
+	Cluster     string
+	ClusterID   string
+	Project     string
+	Tail        []string
+	Positionals []string
 }
 
 // ClusterNeed says whether a source needs a resolved cluster id.

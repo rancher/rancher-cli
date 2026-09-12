@@ -13,12 +13,10 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // k8sList is a minimal Kubernetes-style list response for testing (finding 10).
@@ -43,45 +41,8 @@ func makeListServer(t *testing.T, path string, items []map[string]any) (*httptes
 	return srv, &hits
 }
 
-// AC-24 / finding 11: two-request path - cluster display-name resolution +
-// downstream listing. Finding 3: retargeted at resolveDisplayNameToClusterID
-// (the real production path in dispatch.go); resolveClusterDisplayName was dead
-// code and has been deleted.
-func TestTwoRequestFlowClusterResolution(t *testing.T) {
-	// No keyring.MockInit: fetch functions do HTTP only (round-2 finding 9).
-	t.Parallel()
-	var hits atomic.Int32
-	clusterItems := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "prod"}},
-	}
-	nsItems := []map[string]any{
-		{"metadata": map[string]any{"name": "default"}},
-		{"metadata": map[string]any{"name": "kube-system"}},
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		if strings.Contains(r.URL.Path, "/clusters") && !strings.Contains(r.URL.Path, "namespaces") {
-			_ = json.NewEncoder(w).Encode(k8sList{Items: clusterItems})
-		} else {
-			_ = json.NewEncoder(w).Encode(k8sList{Items: nsItems})
-		}
-	}))
-	t.Cleanup(srv.Close)
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	// Finding 3: use resolveDisplayNameToClusterID (real production function).
-	resolvedID := resolveDisplayNameToClusterID(ctx, hc, cap, "prod")
-	assert.Equal(t, "c-abc", resolvedID)
-	got := fetchK8sResources(ctx, hc, cap, resolvedID, "/api/v1/namespaces", "")
-	assert.ElementsMatch(t, []string{"default", "kube-system"}, got)
-	assert.LessOrEqual(t, hits.Load(), int32(2), "AC-24: at most 2 HTTP requests")
-}
-
-// Finding 3: direct tests for resolveDisplayNameToClusterID edge cases
-// (ambiguous and not-found), which the deleted dead twin never covered correctly.
+// The surface's one request of its own: resolving a typed display name
+// to a cluster id before a source lists under it.
 
 func TestResolveDisplayNameToClusterIDNotFound(t *testing.T) {
 	t.Parallel()
@@ -141,18 +102,6 @@ func TestSanitizeCandidatesDropsHostileNames(t *testing.T) {
 	}
 	got := sanitizeCandidates(input)
 	assert.Equal(t, []string{"a", "also.valid", "valid-name", "valid123"}, got)
-}
-
-func TestEqualsFormEmit(t *testing.T) {
-	t.Parallel()
-	candidates := []string{"namespace", "node", "pod", "project"}
-	got := equalsFormCandidates("--by", candidates)
-	assert.Equal(t, []string{
-		"--by=namespace",
-		"--by=node",
-		"--by=pod",
-		"--by=project",
-	}, got)
 }
 
 func TestNoNetworkOnStaticSite(t *testing.T) {
@@ -312,27 +261,6 @@ func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
 
 	got := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 	assert.Equal(t, want, got, "token --auth-flow <TAB> must surface exactly the enum candidates")
-}
-
-// Finding 4: unit-test the generic GVR path builders directly. A synthetic
-// downstream kind added to the kinds table gets the correct API path without
-// any dispatch edit.
-func TestGVRPathCoreGroup(t *testing.T) {
-	t.Parallel()
-	k := kinds.Kind{
-		GVR: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"},
-	}
-	assert.Equal(t, "/api/v1/pods", gvrPath(k))
-	assert.Equal(t, "/api/v1/namespaces/{namespace}/pods", gvrNamespacedPath(k))
-}
-
-func TestGVRPathNamedGroup(t *testing.T) {
-	t.Parallel()
-	k := kinds.Kind{
-		GVR: schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
-	}
-	assert.Equal(t, "/apis/apps/v1/deployments", gvrPath(k))
-	assert.Equal(t, "/apis/apps/v1/namespaces/{namespace}/deployments", gvrNamespacedPath(k))
 }
 
 // TestSchemaPositionalCompletionSurfaces drives schema's SE-12 selector

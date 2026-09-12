@@ -236,9 +236,9 @@ func TestNetworkGateZeroHits(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load(), "network gate must prevent all HTTP requests to reachable server")
 }
 
-// Finding 1 (SECURITY): path injection via --cluster must yield zero HTTP requests.
-// A cluster segment containing "/" fails isValidSegment and the whole dispatch
-// returns nil (fail closed) before any HTTP call is issued.
+// Path injection via --cluster must yield zero HTTP requests: a cluster
+// segment containing "/" is refused by the seam's Path builders and the
+// whole dispatch returns nil (fail closed) before any HTTP call is issued.
 func TestPathInjectionClusterSlashReturnsNil(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	var hits atomic.Int32
@@ -297,8 +297,8 @@ func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
 	assert.Equal(t, int32(0), hits.Load(), "finding 1: zero HTTP requests for invalid namespace segment")
 }
 
-// Round-4 finding 1: bare-dot namespace segments ("..", "...") must be rejected
-// by isValidSegment - they path-normalize on proxies, silently dropping scope.
+// Bare-dot namespace segments ("..", "...") must be rejected by the seam's
+// Path builders - they path-normalize on proxies, silently dropping scope.
 func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	for _, ns := range []string{"..", "..."} {
@@ -365,9 +365,9 @@ func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/clusters"}, paths, "the value never enters a path")
 }
 
-// Round-4 finding 3: a non-completable downstream kind (e.g. "get service")
-// must not trigger a cluster-list resolution request - siteNeedsCluster must
-// return false for non-completable kinds.
+// A non-completable downstream kind (e.g. "get service") must not trigger
+// a cluster-list resolution request: the generic kind source declines the
+// site before the surface resolves anything.
 func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	var hits atomic.Int32
@@ -385,9 +385,9 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 	setStoredConfig(cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
-	// "service" is Downstream but Completable:false - siteNeedsCluster must
-	// return false, so no cluster-resolution request fires and liveCandidates
-	// short-circuits to nil before any HTTP call.
+	// "service" is Downstream but Completable:false: no source claims the
+	// site, so no cluster-resolution request fires and liveCandidates
+	// answers nil before any HTTP call.
 	tail := []string{"--cluster", "somedisplay"}
 	site := CompletionSite{Kind: SitePositional, Index: 0}
 	d := runtime.Descriptor{Name: "get service"}
@@ -420,134 +420,4 @@ func TestFlagNameCandidatesDedupeSharedAlias(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, count, "shared short alias -x must be emitted exactly once, got %v", got)
-}
-
-// TestLivePositionalSubjectCandidates is layer (a): direct wiring of the
-// grant/revoke subject positional in livePositionalCandidates via userServer.
-func TestLivePositionalSubjectCandidates(t *testing.T) {
-	t.Parallel()
-
-	t.Run("grant positional 0 → user candidates", func(t *testing.T) {
-		t.Parallel()
-		srv, _ := userServer(t)
-		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-		site := CompletionSite{Kind: SitePositional, Index: 0}
-		d := runtime.Descriptor{Name: "grant"}
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", nil)
-		assert.Contains(t, got, "u-alice")
-		assert.Contains(t, got, "alice")
-		assert.NotContains(t, got, "u-sys", "system users must be excluded")
-	})
-
-	t.Run("revoke positional 0 → user candidates", func(t *testing.T) {
-		t.Parallel()
-		srv, _ := userServer(t)
-		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-		site := CompletionSite{Kind: SitePositional, Index: 0}
-		d := runtime.Descriptor{Name: "revoke"}
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", nil)
-		assert.Contains(t, got, "u-alice")
-		assert.Contains(t, got, "alice")
-		assert.NotContains(t, got, "u-sys", "system users must be excluded")
-	})
-
-	t.Run("other command positional unaffected (get pod still goes through isAC10Verb)", func(t *testing.T) {
-		t.Parallel()
-		// "get pod" goes through kindForDescriptor/isAC10Verb, not the subject branch.
-		// With no cluster in cap and no clusterID, the namespace-scoped pod path
-		// returns nil - what matters is that it does NOT call the user endpoint.
-		var hits atomic.Int32
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			hits.Add(1)
-			_, _ = w.Write([]byte(`{"items":[]}`))
-		}))
-		t.Cleanup(srv.Close)
-		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-		site := CompletionSite{Kind: SitePositional, Index: 0}
-		d := runtime.Descriptor{Name: "get pod"}
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		defer cancel()
-		// With no --namespace in tail, livePositionalCandidates returns nil for
-		// namespace-scoped resources - the important thing is the user endpoint is not hit.
-		livePositionalCandidates(ctx, srv.Client(), site, d, cap, "c-abc", nil)
-		// The user list endpoint is at /k8s/clusters/local/apis/management.cattle.io/v3/users;
-		// "get pod" would hit /k8s/clusters/c-abc/... or nothing (no ns). Either way, no
-		// request hits the management user path.
-		assert.Zero(t, hits.Load(), "get pod must not hit the user list endpoint")
-	})
-
-	t.Run("--type group space-form → nil zero requests", func(t *testing.T) {
-		t.Parallel()
-		srv, hits := userServer(t)
-		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-		site := CompletionSite{Kind: SitePositional, Index: 0}
-		d := runtime.Descriptor{Name: "grant"}
-		tail := []string{"--type", "group"}
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", tail)
-		assert.Nil(t, got, "--type group: no group source, must return nil")
-		assert.Zero(t, hits.Load(), "--type group: must issue zero requests")
-	})
-
-	t.Run("--type=group equals-form → nil zero requests", func(t *testing.T) {
-		t.Parallel()
-		srv, hits := userServer(t)
-		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-		site := CompletionSite{Kind: SitePositional, Index: 0}
-		d := runtime.Descriptor{Name: "grant"}
-		tail := []string{"--type=group"}
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", tail)
-		assert.Nil(t, got, "--type=group: no group source, must return nil")
-		assert.Zero(t, hits.Load(), "--type=group: must issue zero requests")
-	})
-
-	t.Run("bare --type mid-edit → user candidates (user is default)", func(t *testing.T) {
-		t.Parallel()
-		srv, _ := userServer(t)
-		cap := TokenCapability{Token: "token-abc:secret", ServerURL: srv.URL}
-		site := CompletionSite{Kind: SitePositional, Index: 0}
-		d := runtime.Descriptor{Name: "grant"}
-		// Bare --type with no following value: extractFlagValue returns "" → treat as user.
-		tail := []string{"--type"}
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		defer cancel()
-		got := livePositionalCandidates(ctx, srv.Client(), site, d, cap, "", tail)
-		assert.Contains(t, got, "u-alice")
-	})
-}
-
-// TestLiveCandidatesSubjectBypassesClusterPreflight is the preflight-bypass
-// regression for subject sites: an inherited cluster value that fails
-// isValidSegment ("prod cluster" has a space) must NOT suppress subject
-// completion - subjectSite bypasses the cluster pipeline entirely.
-func TestLiveCandidatesSubjectBypassesClusterPreflight(t *testing.T) {
-	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
-	srv, hits := userServer(t)
-	cfg := &config.Config{
-		CurrentServer: "srv",
-		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:    config.CompletionConfig{Network: true},
-	}
-	setStoredConfig(cfg, t.TempDir())
-	t.Setenv(config.EnvToken, "mgmt-token")
-
-	for _, name := range []string{"grant", "revoke"} {
-		hits.Store(0)
-		tail := []string{name, "--global"}
-		site := CompletionSite{Kind: SitePositional, Index: 0}
-		d := runtime.Descriptor{Name: name}
-
-		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-		defer cancel()
-		got := liveCandidates(ctx, site, d, nil, tail)
-		assert.Contains(t, got, "u-alice", "%s: subject completion must work despite invalid inherited cluster", name)
-		assert.Equal(t, int32(1), hits.Load(), "%s: preflight bypass: user endpoint fires exactly once", name)
-	}
 }

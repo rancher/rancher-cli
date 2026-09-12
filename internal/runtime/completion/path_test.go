@@ -53,6 +53,12 @@ func TestPathBuilders(t *testing.T) {
 			p: must(NamespacedPath("c-x", "", "v1", "default", "pods")).WithQuery("labelSelector", "app=x,tier=web")},
 		{name: "two queries", want: "/k8s/clusters/c-x/api/v1/nodes?a=1&b=2%2F3",
 			p: must(ClusterPath("c-x", "", "v1", "nodes")).WithQuery("a", "1").WithQuery("b", "2/3")},
+		{name: "management named namespaced", want: "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters/prod",
+			p: must(ManagementNamedResourcePath("provisioning.cattle.io", "v1", "fleet-default", "clusters", "prod"))},
+		{name: "management named cluster-scoped", want: "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients/my-client",
+			p: must(ManagementNamedResourcePath("management.cattle.io", "v3", "", "oidcclients", "my-client"))},
+		{name: "discovery core root", want: "/k8s/clusters/c-x/api", p: first(DiscoveryPaths("c-x"))},
+		{name: "discovery groups root", want: "/k8s/clusters/c-x/apis", p: second(DiscoveryPaths("c-x"))},
 		{name: "steve collection", want: "/v1/management.cattle.io.clusters",
 			p: must(SteveCollectionPath("management.cattle.io.clusters"))},
 		{name: "steve collection with a continue token", want: "/v1/management.cattle.io.clusters?continue=x%26y",
@@ -102,7 +108,12 @@ func TestPathBuildersRejectInvalidSegments(t *testing.T) {
 			add(NamedResourcePath("local", "management.cattle.io", "v3", "", s, "c"))
 			if s != "" { // an empty namespace is the cluster-scoped form, not a segment
 				add(NamedResourcePath("local", "management.cattle.io", "v3", s, "oidcclients", "c"))
+				add(ManagementNamedResourcePath("provisioning.cattle.io", "v1", s, "clusters", "prod"))
 			}
+			add(ManagementNamedResourcePath("provisioning.cattle.io", "v1", "fleet-default", "clusters", s))
+			core, groups, err := DiscoveryPaths(s)
+			add(core, err)
+			add(groups, err)
 			for i, r := range results {
 				require.ErrorIs(t, r.err, ErrInvalidSegment, "builder %d", i)
 				assert.Empty(t, r.p.String(), "builder %d", i)
@@ -124,3 +135,6 @@ func must(p Path, err error) Path {
 	}
 	return p
 }
+
+func first(core, _ Path, err error) Path    { return must(core, err) }
+func second(_, groups Path, err error) Path { return must(groups, err) }

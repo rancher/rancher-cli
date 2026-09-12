@@ -268,6 +268,40 @@ func TestLiveSourceCandidatesPolicy(t *testing.T) {
 		assert.Equal(t, int32(1), hits.Load(), "one resolution request, counted apart")
 	})
 
+	t.Run("the positionals reach the source with flag values consumed", func(t *testing.T) {
+		srv, hits := countingServer(t, `{"items":[]}`)
+		liveFixture(t, srv)
+		var saw completion.Request
+		lc := fakeCompleter{claiming(oneListing, []string{"a"}, &saw)}
+		pooled := runtime.Descriptor{Name: "x", Flags: []runtime.ArgSpec{{Name: "pool", Type: "string"}, {Name: "namespace", Type: "string"}, {Name: "yes", Type: "bool"}}}
+		tail := []string{"--output", "json", "prod", "--namespace", "team-a", "--yes", "second", "--pool=p", "--pool"}
+		got, owned := liveSourceCandidates(t.Context(), site, pooled, lc, tail, none, none, noPositional)
+		assert.True(t, owned)
+		assert.Equal(t, []string{"a"}, got)
+		assert.Equal(t, []string{"prod", "second"}, saw.Positionals, "a global flag's value, a leaf flag's value and an equals-form token are not positionals; a boolean flag consumes none")
+		assert.Equal(t, tail, saw.Tail)
+		assert.Zero(t, hits.Load())
+	})
+
+	t.Run("under the v1 protocol a positional site's last positional is the word being completed", func(t *testing.T) {
+		srv, _ := countingServer(t, `{"items":[]}`)
+		liveFixture(t, srv)
+		orig := rawProtoV2
+		t.Cleanup(func() { rawProtoV2 = orig })
+		var saw completion.Request
+		lc := fakeCompleter{claiming(oneListing, []string{"a"}, &saw)}
+		positional := CompletionSite{Kind: SitePositional, Index: 1, Partial: "sec"}
+		rawProtoV2 = true
+		liveSourceCandidates(t.Context(), positional, d, lc, []string{"my-client"}, none, none, noPositional)
+		assert.Equal(t, []string{"my-client"}, saw.Positionals, "v2: the current word is not in the tail")
+		rawProtoV2 = false
+		liveSourceCandidates(t.Context(), positional, d, lc, []string{"my-client", "sec"}, none, none, noPositional)
+		assert.Equal(t, []string{"my-client"}, saw.Positionals, "v1: the tail's last token is the current word and is dropped")
+		flagged := runtime.Descriptor{Name: "x", Flags: []runtime.ArgSpec{{Name: "x", Type: "string"}}}
+		liveSourceCandidates(t.Context(), site, flagged, lc, []string{"my-client", "--x", "sec"}, none, none, noPositional)
+		assert.Equal(t, []string{"my-client"}, saw.Positionals, "v1 flag-value site: the current word is the flag's value, consumed by arity")
+	})
+
 	t.Run("a spaced display name resolves and the id reaches the source", func(t *testing.T) {
 		srv, hits := countingServer(t, `{"items":[{"metadata":{"name":"c-ddd44"},"spec":{"displayName":"prod cluster"}}]}`)
 		liveFixture(t, srv)
@@ -370,7 +404,7 @@ func TestLiveSourceCandidatesPolicy(t *testing.T) {
 		assert.Empty(t, saw.ClusterID)
 	})
 
-	t.Run("no claim leaves the site to the legacy path", func(t *testing.T) {
+	t.Run("no claim answers nothing", func(t *testing.T) {
 		srv, hits := countingServer(t, `{"items":[]}`)
 		liveFixture(t, srv)
 		_, owned := liveSourceCandidates(t.Context(), site, d, fakeCompleter{declining()}, nil, none, none, noPositional)
@@ -385,7 +419,7 @@ func TestLiveSourceCandidatesPolicy(t *testing.T) {
 // --role through the command's own source: the zero-dependency probe
 // adaptEntry installs the callback on answers the scope's roles, an
 // unusable --cluster value on the line does not suppress it, and the
-// subject positional is declined and falls through to the legacy path.
+// subject positional is served through the same source.
 // NOT parallel: mutates storedConfig and the token environment variable.
 func TestRoleSiteThroughTheGrantProbe(t *testing.T) {
 	s := newGrantRevokeServer(t)

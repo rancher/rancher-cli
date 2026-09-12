@@ -55,6 +55,7 @@ what drifted the previous revision of this doc).
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Contract`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
 | `internal/runtime/completion` | The live shell-completion seam: a source's `Claim`/`Complete` contract (`Source`, `Request`, `Requirements`, `Result`, the optional `Completer` interface), the request capability the surface builds (`Connection`: private client and bearer, counted allowance, sticky refusal), and the opaque `Path` builders that admit user-derived segments only through `ValidSegment`. A leaf of the standard library. |
+| `internal/runtime/completion/completiontest` | Test doubles the live completion sources' tests share: a server answering fixed bodies by path that records every request URI and Accept header, and the fixture documents more than one package asserts against (cloud credentials, the two discovery roots, the subject users). Imported by test code only. |
 | `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, downstream-cluster resolution, and reusable plan/execute helpers; depends only on runtime + safety + clierr contracts. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, contract bindings, table columns. |
 | `internal/engine/kinds/complete` | The generic live completion source of the kind table: for any Completable kind, its objects' names derived from the row's group, version, resource, namespace policy and scope alone (`KindSource`), plus the shared `--namespace` and `--node` sources, which are that derivation for the namespace and node kinds. A restricted `complete` package under the import and declaration fences. |
@@ -63,17 +64,20 @@ what drifted the previous revision of this doc).
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and project-namespace lookup. |
 | `internal/engine/projects/complete` | The projects' live completion source: `ProjectSource`, the shared `--project` value and the project kind's name (management Projects in the resolved cluster's namespace, every id plus each unique display name). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing - reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
+| `internal/engine/provisioning/complete` | The provisioning commands' live completion sources: `CreateClusterSource` (create cluster's `--machine-config` live half, the typed kind's configs answered behind its `<kind>/` prefix, and `--cloud-credential`, the cattle-global-data credential Secrets by id and unique display name) and `PoolSource` (the cluster-family verbs' `--pool`, the machine pools of the cluster typed as the first positional). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
 | `internal/engine/oidcclient` | Curated commands for Rancher's embedded OIDC provider (`management.cattle.io/v3` OIDCClient, feature `oidc-provider`, the first Prime-capability kind): `create oidc-client` (create the client, wait for provisioning, deliver the initial secret once, read live discovery), plus the shared capability/secret-read/TTL helpers the lifecycle verb group also uses. |
+| `internal/engine/oidcclient/complete` | The oidc-client secret verbs' live completion source: `SecretNameSource`, the secret name rotate-secret and remove-secret take as their second positional, read from the status of the client typed as the first. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/user` | The `create user` composite: a `management.cattle.io/v3` User plus a same-named `v1 Secret` in `cattle-local-user-passwords` (the server hashes it on write), gated by the ext.cattle.io-discovery capability tier (the first non-Prime one) - the sanctioned two-resource public-API user-password workflow, never Norman. |
 | `internal/engine/user/complete` | The users' live completion source: `UserIDSource`, the user kind's name (the ids of the management Users the kind table does not mark as system accounts). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/managementtoken` | Per-kind overrides for `management-token` (management.cattle.io/v3 Token): `patch` is refused outright (writes must go through Rancher's auth lifecycle) and `delete` is guarded - deleting the token backing the active CLI session is rejected with a hint to use `auth logout` instead. |
-| `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: one target table (server/agent/fleet-agent/kube-api-auth/webhook), one per-pod log fetcher, and the archive writer. |
+| `internal/engine/observe` | Curated Rancher-component log reads (`logs <target>`) and the API-reachable support-bundle export: the target table imported from `observe/complete`, one per-pod log fetcher, and the archive writer. |
+| `internal/engine/observe/complete` | The logs command's live completion source, `PodSource` (`--pod`: the pods of the typed target in its namespace under its selector, on the local cluster or the resolved downstream cluster as the target's row says), and the curated target table itself, which `observe` imports back. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands, plus a delete-user override that guards against self-deletion: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
-| `internal/engine/rbac/complete` | The rbac commands' live completion sources: `RoleSource` (grant's and revoke's `--role` values, listed from the collection the typed scope selects) and the role vocabulary rule `RoleKind` the commands import back. A restricted `complete` package: its imports are an exact allowlist enforced by a conformance test. |
+| `internal/engine/rbac/complete` | The rbac commands' live completion sources: `RoleSource` (grant's and revoke's `--role` values, listed from the collection the typed scope selects), `SubjectSource` (the shared `--as` value of the access commands: the non-system management Users by id and unambiguous username), `GrantRevokeSource` (grant's and revoke's own: `--role` and the subject positional together) and the role vocabulary rule `RoleKind` the commands import back. A restricted `complete` package: its imports are an exact allowlist enforced by a conformance test. |
 | `internal/engine/kubeconfig` | The direct endpoint entries of a cluster's Authorized Cluster Endpoint for `rancher kubeconfig`: reads the management Cluster (`spec.localClusterAuthEndpoint`, `status.caCert`), the multi-cluster-management Feature and the management Nodes through the local cluster client, validates every entry (an https URL without a path, a parsable CA) and returns the entries to emit with the reasons for anything omitted; the command folds them into the kubeconfig and the exec plugin (`internal/token`) waits for a fresh token to be accepted at the endpoint kubectl is about to use. Provides the `rancher kubeconfig` command (`NewCommand`). |
 | `internal/engine/access` | Authorization questions answered by the server's reviews (`access can`, `access list`, `access who-can`): posts SubjectAccessReview, SelfSubjectAccessReview, SelfSubjectRulesReview, and SelfSubjectReview through the Rancher proxy, classifies each answer per the review outcome matrix, and resolves the subject, resource, and scope a question needs. Nothing here evaluates a Role's rules client-side. `who-can` reads the cluster's RBAC binding subjects as candidates and asks one SubjectAccessReview each. `explain` parses the authorizer's reason into the one binding it names and walks the Rancher chain behind that binding (owner labels, GlobalRole annotations, RoleTemplate inheritance) with a bounded, request-counted traversal; `internal/engine/rbac` carries the copy of wrangler's `SafeConcatName` the aggregation-grammar labels need. `clusters` reads the caller's clusters from the steve collection through the root client (the one steve read in the suite), probes each with a SelfSubjectReview under one fan-out semaphore, and reads the management bindings that grant them with their own completeness. `projects` adds the steve project collection and, per reachable cluster, the caller's steve namespace collection, asks one SelfSubjectAccessReview per project namespace (get the namespace: the grant Rancher gives a project's members), rolls the answers up into a visibility per project, and keeps Rancher membership (a ProjectRoleTemplateBinding naming the subject) apart from it. |
-| `internal/engine/access/complete` | The access commands' live completion sources: `ClusterSource` (the shared `--cluster` value and the management cluster kind: every id plus each unique display name) and `ProjectsClusterSource` (`access projects`' own `--cluster`: the steve cluster collection walked under the command's page protocol). A restricted `complete` package under the import and declaration fences. |
+| `internal/engine/access/complete` | The access commands' live completion sources: `ClusterSource` (the shared `--cluster` value and the management cluster kind: every id plus each unique display name) and `ProjectsClusterSource` (`access projects`' own `--cluster`: the steve cluster collection walked under the command's page protocol), and `QuestionSource` (`access can`, `who-can` and `explain`'s resource positional, `--group` and `--subresource`, read from the typed cluster's two aggregated discovery roots and resolved by the commands' own rules). A restricted `complete` package under the import and declaration fences. |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
 | `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe - used by the auth status identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→contract `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. Discovery: `ServerResources` asks for aggregated discovery (two context-bound requests) and falls back to client-go's per-group discovery where a server does not serve it (Rancher's local cluster through the proxy); a partial answer is returned as the partial list together with `engine.DiscoveryIncomplete` naming the groups the server could not describe, never as a silently smaller inventory. |
@@ -110,6 +114,7 @@ graph TD
     runtime["internal/runtime"]
     safety["internal/runtime/safety"]
     completion["internal/runtime/completion"]
+    completiontest["internal/runtime/completion/completiontest"]
     engine["internal/engine"]
     kinds["internal/engine/kinds"]
     kindscomplete["internal/engine/kinds/complete"]
@@ -118,12 +123,15 @@ graph TD
     projects["internal/engine/projects"]
     projectscomplete["internal/engine/projects/complete"]
     provisioning["internal/engine/provisioning"]
+    provisioningcomplete["internal/engine/provisioning/complete"]
     extres["internal/engine/extres"]
     oidcclient["internal/engine/oidcclient"]
+    oidcclientcomplete["internal/engine/oidcclient/complete"]
     user["internal/engine/user"]
     usercomplete["internal/engine/user/complete"]
     managementtoken["internal/engine/managementtoken"]
     observe["internal/engine/observe"]
+    observecomplete["internal/engine/observe/complete"]
     rbac["internal/engine/rbac"]
     rbaccomplete["internal/engine/rbac/complete"]
     access["internal/engine/access"]
@@ -162,6 +170,7 @@ graph TD
     cli --> accesscomplete
     cli --> projectscomplete
     cli --> usercomplete
+    cli --> rbaccomplete
     cli --> engine
     cli --> kinds
     cli --> projects
@@ -208,6 +217,8 @@ graph TD
     kinds --> safety
     kinds --> runtime
 
+    completiontest --> completion
+
     kindscomplete --> kinds
     kindscomplete --> completion
 
@@ -247,6 +258,11 @@ graph TD
     provisioning --> runtime
     provisioning --> safety
     provisioning --> clierr
+    provisioning --> provisioningcomplete
+    provisioning --> completion
+
+    provisioningcomplete --> kinds
+    provisioningcomplete --> completion
 
     extres --> engine
     extres --> kinds
@@ -260,6 +276,11 @@ graph TD
     oidcclient --> runtime
     oidcclient --> safety
     oidcclient --> clierr
+    oidcclient --> oidcclientcomplete
+    oidcclient --> completion
+
+    oidcclientcomplete --> kinds
+    oidcclientcomplete --> completion
 
     user --> engine
     user --> kinds
@@ -282,6 +303,11 @@ graph TD
     observe --> extres
     observe --> runtime
     observe --> clierr
+    observe --> observecomplete
+    observe --> completion
+
+    observecomplete --> kinds
+    observecomplete --> completion
 
     rbac --> engine
     rbac --> kinds

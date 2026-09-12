@@ -84,18 +84,25 @@ func IDsWithUniqueDisplayNames(items []map[string]any) []string {
 
 // TailFlag returns the value of --name on an arg tail: the token after a
 // bare --name, or the text after --name=, or "" when the flag is absent
-// or is the last token. A source uses it for a sibling flag the surface
-// does not carry in Request (--namespace, --type); the value is data
-// until a Path builder validates it.
+// or its last spelling is the last token, still without a value. A flag
+// typed more than once takes its last spelling, as the command's parser
+// reads it. A source uses it for a sibling flag the surface does not
+// carry in Request (--namespace, --type); the value is data until a Path
+// builder validates it.
 func TailFlag(tail []string, name string) string {
 	long := "--" + name
+	value := ""
 	for i, a := range tail {
 		if v, ok := strings.CutPrefix(a, long+"="); ok {
-			return v
+			value = v
+			continue
 		}
-		if a == long && i+1 < len(tail) {
-			return tail[i+1]
+		if a == long {
+			value = ""
+			if i+1 < len(tail) {
+				value = tail[i+1]
+			}
 		}
 	}
-	return ""
+	return value
 }

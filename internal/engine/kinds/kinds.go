@@ -184,6 +184,36 @@ type PrefixFilter struct {
 	Label  string   // singular noun for warnings/desc, e.g. "system account"
 }
 
+// Matches reports whether obj, an object as decoded from JSON, carries
+// an element with the prefix in the string array at Path. A missing or
+// non-array field never matches; each element is string-asserted on its
+// own and a non-string element is skipped, never fatal - the rule
+// Rancher's user-store transformer applies to principalIds. A nil filter
+// matches nothing: the kind has no system accounts.
+func (f *PrefixFilter) Matches(obj map[string]any) bool {
+	if f == nil {
+		return false
+	}
+	var cur any = obj
+	for _, key := range f.Path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return false
+		}
+		cur = m[key]
+	}
+	values, ok := cur.([]any)
+	if !ok {
+		return false
+	}
+	for _, v := range values {
+		if s, ok := v.(string); ok && strings.HasPrefix(s, f.Prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // Plural returns the English plural of a lowercase kind name. Sibilant endings
 // take -es, a consonant followed by -y takes -ies, everything else -s. Used
 // for the alias-invariant check in validateKinds, by hintToken's fallback, and

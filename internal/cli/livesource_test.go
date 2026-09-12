@@ -143,8 +143,12 @@ func TestValidateLiveWiring(t *testing.T) {
 
 // TestWiredCompletersAreDeclaredInCompletePackages asserts the real entry
 // table: grant and revoke own live completion through the rbac complete
-// package and access projects through the access one, every other
-// entry's probe implements nothing, and BuildRoot accepts the wiring.
+// package, access projects and the three access questions through the
+// access one, create cluster and the three cluster-family verbs that
+// take a pool through the provisioning one, the two oidc-client secret
+// verbs through the oidcclient one, logs through the observe one, every
+// other entry's probe implements nothing, and BuildRoot accepts the
+// wiring.
 func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	t.Parallel()
 	var owners []string
@@ -158,7 +162,13 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		owners = append(owners, name)
 		require.NoError(t, checkSourceDeclared("command "+name, lc.LiveSource()))
 	}
-	assert.ElementsMatch(t, []string{"access projects", "grant", "revoke"}, owners)
+	assert.ElementsMatch(t, []string{
+		"access projects", "grant", "revoke",
+		"create cluster", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
+		"access can", "access who-can", "access explain",
+		"oidc-client rotate-secret", "oidc-client remove-secret",
+		"logs",
+	}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)
 }
@@ -187,6 +197,6 @@ func TestPositionalKindsMatchTheLedger(t *testing.T) {
 		"create password-change-request": "user",
 	}
 	assert.Equal(t, want, positionalKinds)
-	assert.ElementsMatch(t, []string{"cluster", "project", "namespace", "node"}, slices.Collect(maps.Keys(flagSources)))
+	assert.ElementsMatch(t, []string{"cluster", "project", "namespace", "node", "as"}, slices.Collect(maps.Keys(flagSources)))
 	assert.ElementsMatch(t, []string{"managementcluster", "project", "user"}, slices.Collect(maps.Keys(kindSources)))
 }

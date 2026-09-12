@@ -58,8 +58,9 @@ func TestIDsWithUniqueDisplayNames(t *testing.T) {
 }
 
 // TestTailFlag asserts the space form, the equals form (empty value
-// included), an absent flag, a flag that is the last token, and that a
-// prefix of the name is not the flag.
+// included), an absent flag, a flag that is the last token, that a
+// prefix of the name is not the flag, and that a flag typed more than
+// once takes its last spelling, a trailing bare one included.
 func TestTailFlag(t *testing.T) {
 	t.Parallel()
 	tail := []string{"get", "pod", "--cluster", "c-x", "--namespace=default", "--project=", "--type"}
@@ -70,4 +71,9 @@ func TestTailFlag(t *testing.T) {
 	assert.Empty(t, TailFlag(tail, "node"))
 	assert.Empty(t, TailFlag([]string{"--clusters", "x"}, "cluster"))
 	assert.Equal(t, "--namespace", TailFlag([]string{"--cluster", "--namespace"}, "cluster"))
+	assert.Equal(t, "group", TailFlag([]string{"--type", "user", "--type", "group"}, "type"))
+	assert.Equal(t, "user", TailFlag([]string{"--type", "group", "--type", "user"}, "type"))
+	assert.Equal(t, "user", TailFlag([]string{"--type=group", "--type", "user"}, "type"))
+	assert.Equal(t, "group", TailFlag([]string{"--type", "user", "--type=group"}, "type"))
+	assert.Empty(t, TailFlag([]string{"--type", "group", "--type"}, "type"), "the last spelling has no value yet")
 }

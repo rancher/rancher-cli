@@ -4,43 +4,34 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
+	"github.com/rancher/rancher-cli/internal/runtime/completion/completiontest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // roleServer serves a management API with mixed-context roletemplates and
-// globalroles, counting hits.
-func roleServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
+// globalroles.
+func roleServer(t *testing.T) *completiontest.Server {
 	t.Helper()
-	var hits atomic.Int32
-	mux := http.NewServeMux()
-	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates", func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		_, _ = w.Write([]byte(`{"items":[
+	return completiontest.New(t, map[string]string{
+		"/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates": `{"items":[
 			{"metadata":{"name":"project-owner"},"context":"project"},
 			{"metadata":{"name":"project-member"},"context":"project"},
 			{"metadata":{"name":"project-member"},"context":"project"},
 			{"metadata":{"name":"cluster-owner"},"context":"cluster"},
 			{"metadata":{"name":"bad name!"},"context":"project"},
 			{"metadata":{"name":"no-context-role"}}
-		]}`))
-	})
-	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/globalroles", func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		_, _ = w.Write([]byte(`{"items":[
+		]}`,
+		"/k8s/clusters/local/apis/management.cattle.io/v3/globalroles": `{"items":[
 			{"metadata":{"name":"admin"}},
 			{"metadata":{"name":"user"}}
-		]}`))
+		]}`,
 	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv, &hits
 }
 
 func roleRequest(tail ...string) completion.Request {
@@ -64,8 +55,8 @@ func TestRoleKind(t *testing.T) {
 }
 
 // TestScopeOfTail asserts the presence heuristic: which scope each flag
-// combination selects, the rejected combination, and the boolean
-// spellings of --global.
+// combination selects, the rejected combination, the boolean spellings
+// of --global, and that a --global typed twice takes its last spelling.
 func TestScopeOfTail(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -95,6 +86,8 @@ func TestScopeOfTail(t *testing.T) {
 		{name: "empty cluster value", tail: []string{"grant", "jane", "--cluster=", "--role"}, want: ScopeCluster, found: true},
 		{name: "equals-form project", tail: []string{"grant", "jane", "--project=Default", "--role"}, want: ScopeProject, found: true},
 		{name: "prefix is not presence", tail: []string{"grant", "jane", "--projected", "--role"}},
+		{name: "global then global=false with a cluster selects cluster", tail: []string{"grant", "jane", "--global", "--global=false", "--cluster", "c-x", "--role"}, want: ScopeCluster, found: true},
+		{name: "global=false then global with a cluster conflicts", tail: []string{"grant", "jane", "--global=false", "--global", "--cluster", "c-x", "--role"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -155,12 +148,12 @@ func TestRoleSourceCompleteByScope(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			srv, hits := roleServer(t)
-			conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1)
+			s := roleServer(t)
+			conn := s.Conn(1)
 			got := RoleSource().Complete(t.Context(), conn, roleRequest(tt.tail...))
 			assert.Equal(t, tt.want, got.Names)
 			assert.Empty(t, got.Prefix)
-			assert.Equal(t, int32(1), hits.Load())
+			assert.Len(t, s.Requested(), 1)
 			assert.False(t, conn.Exceeded())
 		})
 	}
@@ -174,11 +167,11 @@ func TestRoleSourceCompleteNoScopeIsEmptyWithoutARequest(t *testing.T) {
 		{"grant", "jane", "--role"},
 		{"grant", "jane", "--global", "--project", "Default", "--role"},
 	} {
-		srv, hits := roleServer(t)
-		conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, 1)
+		s := roleServer(t)
+		conn := s.Conn(1)
 		got := RoleSource().Complete(t.Context(), conn, roleRequest(tail...))
 		assert.Empty(t, got.Names, "%v", tail)
-		assert.Zero(t, hits.Load(), "%v", tail)
+		assert.Empty(t, s.Requested(), "%v", tail)
 	}
 }
 
@@ -211,11 +204,11 @@ func TestRoleSourceCompleteFailsEmpty(t *testing.T) {
 
 	t.Run("allowance exhausted", func(t *testing.T) {
 		t.Parallel()
-		srv, hits := roleServer(t)
-		conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, 0)
+		s := roleServer(t)
+		conn := s.Conn(0)
 		assert.Empty(t, RoleSource().Complete(t.Context(), conn, req).Names)
 		assert.True(t, conn.Exceeded())
-		assert.Zero(t, hits.Load())
+		assert.Empty(t, s.Requested())
 	})
 
 	t.Run("deadline", func(t *testing.T) {

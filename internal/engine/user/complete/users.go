@@ -2,7 +2,6 @@ package complete
 
 import (
 	"context"
-	"strings"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -36,7 +35,7 @@ func completeUserIDs(ctx context.Context, conn *completion.Connection, _ complet
 	}
 	var ids []string
 	for _, item := range list.Items {
-		if isSystem(item, k.SystemFilter) {
+		if k.SystemFilter.Matches(item) {
 			continue
 		}
 		if id := completion.ItemName(item); id != "" {
@@ -44,31 +43,4 @@ func completeUserIDs(ctx context.Context, conn *completion.Connection, _ complet
 		}
 	}
 	return completion.Result{Names: ids}
-}
-
-// isSystem applies the kind table's system-account rule to one object:
-// any element of the string array at the filter's path carries the
-// prefix. A kind without a filter has no system accounts.
-func isSystem(item map[string]any, f *kinds.PrefixFilter) bool {
-	if f == nil {
-		return false
-	}
-	var cur any = item
-	for _, key := range f.Path {
-		m, ok := cur.(map[string]any)
-		if !ok {
-			return false
-		}
-		cur = m[key]
-	}
-	values, ok := cur.([]any)
-	if !ok {
-		return false
-	}
-	for _, v := range values {
-		if s, ok := v.(string); ok && strings.HasPrefix(s, f.Prefix) {
-			return true
-		}
-	}
-	return false
 }

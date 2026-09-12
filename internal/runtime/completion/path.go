@@ -86,6 +86,26 @@ func NamedResourcePath(clusterID, group, version, namespace, resource, name stri
 	return build(append(segs, resource, name))
 }
 
+// ManagementNamedResourcePath is one object of the management cluster
+// through its proxy: the namespaced form when namespace is set, the
+// cluster-scoped form when it is "". Every segment goes through
+// ValidSegment.
+func ManagementNamedResourcePath(group, version, namespace, resource, name string) (Path, error) {
+	return NamedResourcePath("local", group, version, namespace, resource, name)
+}
+
+// DiscoveryPaths are the two aggregated discovery roots of a cluster
+// through its proxy: /k8s/clusters/<clusterID>/api for the core group and
+// /k8s/clusters/<clusterID>/apis for every other group. The cluster id
+// goes through ValidSegment.
+func DiscoveryPaths(clusterID string) (core, groups Path, err error) {
+	if core, err = build([]string{"k8s", "clusters", clusterID, "api"}); err != nil {
+		return Path{}, Path{}, err
+	}
+	groups, err = build([]string{"k8s", "clusters", clusterID, "apis"})
+	return core, groups, err
+}
+
 // SteveCollectionPath is a collection of Rancher's steve API at the server
 // root: /v1/<resource>, the resource named as steve spells it
 // ("management.cattle.io.clusters"). A continuation token goes through

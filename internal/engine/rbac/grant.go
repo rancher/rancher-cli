@@ -61,10 +61,10 @@ func (grantCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// LiveSource hands the surface the role source: --role completes the
-// roles of the scope typed on the line; every other site of grant is
-// declined and completes as before.
-func (grantCmd) LiveSource() completion.Source { return complete.RoleSource() }
+// LiveSource hands the surface grant's source: --role completes the
+// roles of the scope typed on the line, the subject positional the user
+// subjects unless --type group is typed; every other site is declined.
+func (grantCmd) LiveSource() completion.Source { return complete.GrantRevokeSource() }
 
 // Plan verifies the role, resolves the subject, checks for a duplicate binding,
 // and plans a create. Preflight error policy: role verification (checkRole)

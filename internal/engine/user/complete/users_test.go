@@ -50,21 +50,6 @@ func TestUserIDSourceCompletes(t *testing.T) {
 	assert.Empty(t, UserIDSource().Complete(t.Context(), completion.NewConnection(refused.Client(), "tok", refused.URL, false, 1), completion.Request{}).Names)
 }
 
-// TestIsSystem asserts the kind table's rule as applied: any principal
-// with the prefix marks the user; a missing or malformed field, or a kind
-// without a filter, does not.
-func TestIsSystem(t *testing.T) {
-	t.Parallel()
-	k, ok := kinds.Lookup("user")
-	require.True(t, ok)
-	require.NotNil(t, k.SystemFilter)
-	assert.True(t, isSystem(map[string]any{"principalIds": []any{"local://x", "system://x"}}, k.SystemFilter))
-	assert.False(t, isSystem(map[string]any{"principalIds": []any{"local://x"}}, k.SystemFilter))
-	assert.False(t, isSystem(map[string]any{"principalIds": "system://x"}, k.SystemFilter))
-	assert.False(t, isSystem(map[string]any{}, k.SystemFilter))
-	assert.False(t, isSystem(map[string]any{"principalIds": []any{"system://x"}}, nil))
-}
-
 // TestSystemRuleAgreesWithTheEnginePredicateOnRancherPrincipals asserts
 // the kind table's system-account prefix ("system://", the form Rancher
 // stamps on system users' principal ids) and the engine's broader
@@ -79,10 +64,10 @@ func TestSystemRuleAgreesWithTheEnginePredicateOnRancherPrincipals(t *testing.T)
 	assert.Equal(t, "system://", k.SystemFilter.Prefix)
 	for _, pid := range []string{"system://u-sys", "system://cattle-agent", "local://u-alice", "github_user://12345", "okta_user://jane"} {
 		item := map[string]any{"principalIds": []any{pid}}
-		assert.Equal(t, engine.IsSystemPrincipal(pid), isSystem(item, k.SystemFilter), pid)
+		assert.Equal(t, engine.IsSystemPrincipal(pid), k.SystemFilter.Matches(item), pid)
 	}
 	bare := "system:legacy"
 	assert.True(t, engine.IsSystemPrincipal(bare))
-	assert.False(t, isSystem(map[string]any{"principalIds": []any{bare}}, k.SystemFilter),
+	assert.False(t, k.SystemFilter.Matches(map[string]any{"principalIds": []any{bare}}),
 		"a bare system: principal is a shape no User object carries; the engine's typed-subject rule treats it as system, the kind table's filter does not")
 }

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 // that claims it, in dispatch order: the command's own source, then the
 // shared flag table for a flag site, then the positional tables for a
 // first positional. It reports owned=false when no source claims the site,
-// and the caller's legacy path serves it. For a claimed site the policy is
+// and the caller answers nothing. For a claimed site the policy is
 // all here: the allowance class is validated and mapped to a request count,
 // the credential and cluster needs are satisfied (a typed display name is
 // resolved with one request counted apart), the Connection is built under
@@ -24,12 +25,13 @@ import (
 func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.Descriptor, lc completion.Completer, tail []string,
 	flags map[string]completion.Source, kindTable map[string]completion.Source, positional map[string]string) ([]string, bool) {
 	req := completion.Request{
-		Flag:    site.FlagName,
-		Index:   site.Index,
-		Partial: site.Partial,
-		Cluster: completion.TailFlag(tail, "cluster"),
-		Project: completion.TailFlag(tail, "project"),
-		Tail:    tail,
+		Flag:        site.FlagName,
+		Index:       site.Index,
+		Partial:     site.Partial,
+		Cluster:     completion.TailFlag(tail, "cluster"),
+		Project:     completion.TailFlag(tail, "project"),
+		Tail:        tail,
+		Positionals: typedPositionals(site, tail, d.Flags),
 	}
 	src, reqs, ok := claimLiveSource(req, d, lc, flags, kindTable, positional)
 	if !ok {
@@ -77,6 +79,35 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 		}
 	}
 
+	conn := tracedConnection(hc, cap, limit)
+	res := src.Complete(ctx, conn, req)
+	if conn.Exceeded() {
+		completionDebugf("stop: source exceeded its allowance of %d requests; result dropped", limit)
+		return nil, true
+	}
+	completionDebugf("source: %d requests, %d names", conn.Used(), len(res.Names))
+	return emitResult(site, res), true
+}
+
+// typedPositionals fills Request.Positionals: the tail's positionals with
+// flag arity applied, the word being completed excluded. Under the v2
+// protocol the current word never reaches the tail; under v1 an old
+// installed script leaves it as the tail's last token, which on a
+// positional site is the last positional and is dropped here.
+func typedPositionals(site CompletionSite, tail []string, leafFlags []runtime.ArgSpec) []string {
+	pos := positionals(tail, leafFlags)
+	if !rawProtoV2 && site.Kind == SitePositional && len(pos) > 0 {
+		pos = pos[:len(pos)-1]
+	}
+	return pos
+}
+
+// tracedConnection builds the Connection a source (or the surface's own
+// cluster resolution) reads through: the per-dispatch client, the
+// resolved token, and limit requests, each one written to the
+// completion trace with its server-relative path, status, size and
+// latency.
+func tracedConnection(hc *http.Client, cap TokenCapability, limit int) *completion.Connection {
 	conn := completion.NewConnection(hc, cap.Token, cap.ServerURL, cap.IDOnly, limit)
 	conn.SetTrace(func(path string, status, size int, elapsed time.Duration, err error) {
 		if err != nil {
@@ -85,13 +116,7 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 		}
 		completionDebugf("GET %s: HTTP %d, %d bytes (%s)", path, status, size, elapsed.Round(time.Millisecond))
 	})
-	res := src.Complete(ctx, conn, req)
-	if conn.Exceeded() {
-		completionDebugf("stop: source exceeded its allowance of %d requests; result dropped", limit)
-		return nil, true
-	}
-	completionDebugf("source: %d requests, %d names", conn.Used(), len(res.Names))
-	return emitResult(site, res), true
+	return conn
 }
 
 // claimLiveSource finds the source that owns a site: the command's own

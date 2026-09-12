@@ -102,30 +102,3 @@ func TestInspectAliasDeployDispatchesToDeployment(t *testing.T) {
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "inspect", "deploy", "--help"}))
 	assert.Contains(t, out.String(), "Inspect a deployment")
 }
-
-// TestSubjectPositionalSiteFullCallback is the real-BuildRoot v2-protocol layer
-// for subject completion: exercises grant positional (space-form) and
-// network-gate-off paths through the actual root.Run callback.
-// NOT parallel: t.Setenv mutates env globals, setStoredConfig mutates storedConfig.
-func TestSubjectPositionalSiteFullCallback(t *testing.T) {
-	srv, _ := userServer(t)
-	setup := func(t *testing.T, networkOn bool) {
-		t.Helper()
-		completionFixture(t, srv.URL, networkOn)
-	}
-	run := runCompletion
-
-	t.Run("grant positional → user candidates", func(t *testing.T) {
-		setup(t, true)
-		got := run(t, []string{"grant"}, "")
-		assert.Contains(t, got, "u-alice")
-		assert.Contains(t, got, "alice")
-		assert.NotContains(t, got, "u-sys")
-	})
-
-	t.Run("network gate off → empty", func(t *testing.T) {
-		setup(t, false)
-		got := run(t, []string{"grant"}, "")
-		assert.Empty(t, got)
-	})
-}

@@ -635,3 +635,21 @@ func TestByKeyMatchesTheKeyAlone(t *testing.T) {
 		assert.False(t, ok, q)
 	}
 }
+
+// TestPrefixFilterMatches asserts the system-account rule as applied to
+// one object: any element with the prefix matches; a missing field, a
+// field that is not an array, a non-string element, and a nil filter
+// never match.
+func TestPrefixFilterMatches(t *testing.T) {
+	t.Parallel()
+	f := &PrefixFilter{Path: []string{"principalIds"}, Prefix: "system://"}
+	assert.True(t, f.Matches(map[string]any{"principalIds": []any{"local://x", "system://x"}}))
+	assert.False(t, f.Matches(map[string]any{"principalIds": []any{"local://x"}}))
+	assert.False(t, f.Matches(map[string]any{"principalIds": "system://x"}))
+	assert.False(t, f.Matches(map[string]any{"principalIds": []any{7, "local://x"}}))
+	assert.False(t, f.Matches(map[string]any{}))
+	nested := &PrefixFilter{Path: []string{"spec", "ids"}, Prefix: "system:"}
+	assert.True(t, nested.Matches(map[string]any{"spec": map[string]any{"ids": []any{"system://x"}}}))
+	var none *PrefixFilter
+	assert.False(t, none.Matches(map[string]any{"principalIds": []any{"system://x"}}))
+}

@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -276,36 +275,13 @@ func hideSystemManaged(items []unstructured.Unstructured, f *kinds.PrefixFilter)
 	kept := make([]unstructured.Unstructured, 0, len(items))
 	hidden := 0
 	for _, item := range items {
-		if isSystemManaged(item, f) {
+		if f.Matches(item.Object) {
 			hidden++
 			continue
 		}
 		kept = append(kept, item)
 	}
 	return kept, hidden
-}
-
-// isSystemManaged reports whether any element of the string array at f.Path
-// has f.Prefix. A non-array or absent field is never hidden; each element is
-// string-asserted independently, and a non-string element is skipped rather
-// than disqualifying the whole array - Rancher's user-store transformer casts
-// each principalIds element the same way and continues past failed casts.
-func isSystemManaged(obj unstructured.Unstructured, f *kinds.PrefixFilter) bool {
-	val, found, err := unstructured.NestedFieldNoCopy(obj.Object, f.Path...)
-	if err != nil || !found {
-		return false
-	}
-	arr, ok := val.([]any)
-	if !ok {
-		return false
-	}
-	for _, elem := range arr {
-		s, ok := elem.(string)
-		if ok && strings.HasPrefix(s, f.Prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // systemHiddenWarning renders the announced-filtering warning, pluralized
