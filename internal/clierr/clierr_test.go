@@ -57,10 +57,11 @@ func TestAllCodesNonEmpty(t *testing.T) {
 // TestAllCodesDropsNotImplemented asserts DR-013: NOT_IMPLEMENTED is a
 // permanently-dead branch (no construction site ever advertises it) and has
 // been removed. The count asserts the full enum: 10 originals plus
-// LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, and CAPABILITY_UNSUPPORTED.
+// LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, CAPABILITY_UNSUPPORTED, and
+// INTERRUPTED.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
-	assert.Len(t, codes, 14)
+	assert.Len(t, codes, 15)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
 	assert.Contains(t, codes, CodeLockTimeout)
 	assert.Contains(t, codes, CodePrimeRequired)
@@ -96,6 +97,7 @@ func TestExitCodeTableUnaffectedByTextRendering(t *testing.T) {
 		CodePrimeRequired:         9,
 		CodeTLSTrust:              10,
 		CodeCapabilityUnsupported: 11,
+		CodeInterrupted:           130,
 		CodeGeneric:               1,
 	}
 	assert.Equal(t, want, CodeExits())
@@ -241,4 +243,16 @@ func TestShellQuoteRoundTripsThroughSh(t *testing.T) {
 			assert.Equal(t, c, got[1])
 		})
 	}
+}
+
+// TestInterruptedShape asserts the interrupt error's contract: its own
+// code, exit 130, not retryable, no hint.
+func TestInterruptedShape(t *testing.T) {
+	t.Parallel()
+	ce := Interrupted()
+	assert.Equal(t, CodeInterrupted, ce.Code)
+	assert.Equal(t, 130, ce.ExitCode())
+	assert.False(t, ce.Retryable)
+	assert.Empty(t, ce.Hint)
+	assert.Contains(t, AllCodes(), CodeInterrupted)
 }

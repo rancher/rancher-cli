@@ -10198,6 +10198,7 @@
     "PRIME_REQUIRED",
     "TLS_TRUST",
     "CAPABILITY_UNSUPPORTED",
+    "INTERRUPTED",
     "GENERIC"
   ],
   "exitCodes": {
@@ -10208,6 +10209,7 @@
     "CONFLICT": 5,
     "DRY_RUN_NOT_APPLICABLE": 2,
     "GENERIC": 1,
+    "INTERRUPTED": 130,
     "LOCK_TIMEOUT": 8,
     "NOT_FOUND": 4,
     "NOT_LOGGED_IN": 2,

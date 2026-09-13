@@ -23,6 +23,7 @@ const (
 	CodePrimeRequired         = "PRIME_REQUIRED"
 	CodeTLSTrust              = "TLS_TRUST"
 	CodeCapabilityUnsupported = "CAPABILITY_UNSUPPORTED"
+	CodeInterrupted           = "INTERRUPTED"
 )
 
 // LearnMorePrimeURL is the one stable, product-owned destination a
@@ -119,7 +120,12 @@ var exitCodes = map[string]int{
 	CodePrimeRequired:         9,
 	CodeTLSTrust:              10,
 	CodeCapabilityUnsupported: 11,
-	CodeGeneric:               1,
+	// 128 plus SIGINT's number, the shell convention for a process ended
+	// by an interrupt. INTERRUPTED exits 130 for either signal the command
+	// listens for; only the forced exit on a second signal carries that
+	// signal's own number.
+	CodeInterrupted: 130,
+	CodeGeneric:     1,
 }
 
 // ShellQuote quotes s for a POSIX sh command line: wrapped in single quotes,
@@ -229,9 +235,13 @@ func AllCodes() []string {
 		CodeNotLoggedIn, CodeConfirmationRequired, CodeDryRunNotApplicable,
 		CodeAmbiguousSelection, CodeConflict, CodeLockTimeout,
 		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeTLSTrust,
-		CodeCapabilityUnsupported, CodeGeneric,
+		CodeCapabilityUnsupported, CodeInterrupted, CodeGeneric,
 	}
 }
+
+// Interrupted is the error for a command the operator ended (Ctrl-C or a
+// termination signal): not retryable as such, no hint, exit 130.
+func Interrupted() *Error { return New(CodeInterrupted, "interrupted") }
 
 // Wrap re-messages err for a caller adding command context: when err carries
 // a structured *Error its classification (code, retryability, hint,

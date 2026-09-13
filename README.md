@@ -255,7 +255,11 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
 - **Exit codes** (branch without parsing): `0` ok · `2` usage/validation ·
   `3` auth · `4` not-found · `5` conflict/precondition · `6` RBAC ·
   `8` lock-timeout · `9` Prime required · `10` TLS trust ·
-  `11` capability unsupported · `1` generic.
+  `11` capability unsupported · `130` interrupted · `1` generic. Ctrl-C or a
+  termination signal ends the command with `INTERRUPTED`, exit `130` for
+  either; a second signal forces a command that did not stop on the first
+  to exit with 128 plus that signal's own number (`130` Ctrl-C, `143`
+  SIGTERM).
   Rancher's proxy paths reject an invalid or insufficient token as a 403
   (`RBAC`, exit `6`), not a 401 (`AUTH`, exit `3`).
 - **Discovery:** `rancher schema -o json` is the orientation payload -

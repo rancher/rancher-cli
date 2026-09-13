@@ -21,23 +21,20 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/discovery"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	k8stesting "k8s.io/client-go/testing"
 )
 
-// stubDiscovery serves only ServerGroups (the sole method resolveVersion needs)
-// and counts how many times it is consulted, so the memoization can be
-// asserted. The embedded interface panics on any other call.
+// stubDiscovery serves the API group list resolveVersion consults and counts
+// how many times it is consulted, so the memoization can be asserted.
 type stubDiscovery struct {
-	discovery.DiscoveryInterface
 	groups map[string]string // group name → preferred version
 	calls  int
 }
 
-func (s *stubDiscovery) ServerGroups() (*metav1.APIGroupList, error) {
+func (s *stubDiscovery) ServerGroups(context.Context) (*metav1.APIGroupList, error) {
 	s.calls++
 	gl := &metav1.APIGroupList{}
 	for name, ver := range s.groups {
@@ -63,7 +60,7 @@ func TestEmptyVersionResolvedViaDiscovery(t *testing.T) {
 		return false, nil, nil // fall through to the tracker
 	})
 	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": "v1beta1"}}
-	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+	c := &dynamicClient{dyn: fc, groups: disc.ServerGroups, versions: map[string]string{}}
 
 	_, err := c.List(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "fleet-default", "")
 	require.NoError(t, err)
@@ -85,7 +82,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	scheme := runtime.NewScheme()
 	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{})
 	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": ""}}
-	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+	c := &dynamicClient{dyn: fc, groups: disc.ServerGroups, versions: map[string]string{}}
 
 	machines := schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}
 	_, err := c.List(t.Context(), machines, "fleet-default", "")
@@ -111,7 +108,7 @@ func TestAbsentExtGroupYieldsFriendlyHint(t *testing.T) {
 	scheme := runtime.NewScheme()
 	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{})
 	disc := &stubDiscovery{groups: map[string]string{}}
-	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+	c := &dynamicClient{dyn: fc, groups: disc.ServerGroups, versions: map[string]string{}}
 
 	tokens := schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "tokens"}
 	_, err := c.List(t.Context(), tokens, "", "")
@@ -143,7 +140,7 @@ func TestResolveVersionErrorReturnsEarlyFromGet(t *testing.T) {
 	t.Run("no-preferred-version error returns early from Get with hint intact", func(t *testing.T) {
 		t.Parallel()
 		disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": ""}}
-		c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+		c := &dynamicClient{dyn: fc, groups: disc.ServerGroups, versions: map[string]string{}}
 		_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"}, "", "m-1")
 		require.Error(t, err)
 		var ce *clierr.Error
@@ -157,7 +154,7 @@ func TestResolveVersionErrorReturnsEarlyFromGet(t *testing.T) {
 	t.Run("not-served error returns early from Get with hint intact", func(t *testing.T) {
 		t.Parallel()
 		disc := &stubDiscovery{groups: map[string]string{}}
-		c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+		c := &dynamicClient{dyn: fc, groups: disc.ServerGroups, versions: map[string]string{}}
 		_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "other.example.io", Version: "", Resource: "widgets"}, "", "w-1")
 		require.Error(t, err)
 		var ce *clierr.Error
@@ -198,7 +195,7 @@ func newFakeClient(objs ...runtime.Object) (*dynamicClient, *dynamicfake.FakeDyn
 	// Register the GVR->ListKind so the fake tracker can serve List.
 	gvrToListKind := map[schema.GroupVersionResource]string{projectGVR: "ProjectList"}
 	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, gvrToListKind, objs...)
-	return &dynamicClient{dyn: fc, disc: &stubDiscovery{groups: map[string]string{}}, versions: map[string]string{}}, fc
+	return &dynamicClient{dyn: fc, groups: (&stubDiscovery{groups: map[string]string{}}).ServerGroups, versions: map[string]string{}}, fc
 }
 
 func project(ns, name string) *unstructured.Unstructured {
@@ -394,7 +391,7 @@ func TestClientGetHintedNotFoundPassesThrough(t *testing.T) {
 	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{})
 	// empty preferred version → resolveVersion returns its own diagnostic
 	disc := &stubDiscovery{groups: map[string]string{"cluster.x-k8s.io": ""}}
-	c := &dynamicClient{dyn: fc, disc: disc, versions: map[string]string{}}
+	c := &dynamicClient{dyn: fc, groups: disc.ServerGroups, versions: map[string]string{}}
 
 	_, err := c.Get(t.Context(), schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"}, "ns", "x")
 	require.Error(t, err)
@@ -415,7 +412,7 @@ func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 	fc := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, gvrToListKind)
 	c := &dynamicClient{
 		dyn:      fc,
-		disc:     &stubDiscovery{groups: map[string]string{"custom.example.io": "v1"}},
+		groups:   (&stubDiscovery{groups: map[string]string{"custom.example.io": "v1"}}).ServerGroups,
 		versions: map[string]string{},
 	}
 

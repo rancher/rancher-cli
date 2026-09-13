@@ -724,3 +724,19 @@ func (*seqClient) PostReview(context.Context, engine.ReviewRequest) (engine.Revi
 func (*seqClient) ServerResources(context.Context) ([]engine.APIResource, error) {
 	return nil, errors.New("ServerResources not scripted in this fake")
 }
+
+// TestWaitCancelledReturnsTheContextError asserts that a cancelled context
+// ends the wait with the context's own error, never the retryable timeout
+// message with its --timeout hint.
+func TestWaitCancelledReturnsTheContextError(t *testing.T) {
+	withFastPoll(t)
+	client := &seqClient{objs: []*unstructured.Unstructured{phaseObj("Pending")}}
+	cond := waitCond{kind: "state", name: "running"}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := waitFor(ctx, client, schema.GroupVersionResource{}, "", "x", cond, time.Minute, false)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotContains(t, err.Error(), "timed out")
+	_, structured := errors.AsType[*clierr.Error](err)
+	assert.False(t, structured, "the runtime classifies the cancellation, not the wait")
+}

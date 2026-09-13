@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -72,7 +73,7 @@ func invalidForErr(forExpr string) *clierr.Error {
 // with the last-observed object carried into the eventual timeout message.
 // Fail-fast returns immediately with a non-retryable error; a timeout always
 // returns a retryable error carrying the last-observed state, never a raw Get
-// error.
+// error; a cancelled context returns its own error.
 func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource, ns, name string, cond waitCond, timeout time.Duration, failOnStalled bool) (*unstructured.Unstructured, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -131,6 +132,13 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 
 		select {
 		case <-ctx.Done():
+			// The caller's cancellation is not a timeout: the operator ended
+			// the wait, and a "retry with a longer --timeout" message would
+			// be wrong. The context's own error passes through for the
+			// runtime to classify.
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return nil, ctx.Err()
+			}
 			return nil, waitTimeoutErr(name, last, cond, failOnStalled)
 		case <-time.After(pollInterval):
 		}

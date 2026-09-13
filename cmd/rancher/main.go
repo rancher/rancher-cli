@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/skillinstall"
@@ -26,7 +24,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "rancher:", err)
 		os.Exit(1)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := cli.InterruptContext(context.Background(), os.Exit)
 	defer stop()
 	if err := root.Run(ctx, cli.SanitizedArgs(os.Args)); err != nil {
 		if ec, ok := errors.AsType[ucli.ExitCoder](err); ok {

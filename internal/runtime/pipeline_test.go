@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/output/style"
@@ -1670,4 +1672,78 @@ func TestResultSummaryPrintsBeforeTableInDefaultMode(t *testing.T) {
 	summaryPos := strings.Index(outStr, summary)
 	namePos := strings.Index(outStr, "NAME")
 	assert.Less(t, summaryPos, namePos, "summary must appear before the table")
+}
+
+// TestCancelledContextRendersInterrupted asserts that a command ending with
+// an error after its context was cancelled is reported as INTERRUPTED (exit
+// 130) with the command's error as the cause: a bare cancellation says
+// "interrupted" alone, any other surfaced error keeps its message and
+// details after it. A live context and an expired deadline both leave the
+// error's own classification alone.
+func TestCancelledContextRendersInterrupted(t *testing.T) {
+	t.Parallel()
+	binding := safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}
+	run := func(t *testing.T, ctx context.Context, err error) (*clierr.Error, map[string]any) {
+		t.Helper()
+		cmd := fakeRead{d: Descriptor{Name: "get widgets", CommandType: ReadOnly}, err: err}
+		var out, errBuf bytes.Buffer
+		_, ce := Run(ctx, cmd, mapInput{}, IO{Out: &out, Err: &errBuf, Format: "json"}, binding)
+		require.NotNil(t, ce)
+		env := decodeEnvelope(t, errBuf.Bytes())
+		data, ok := env["data"].(map[string]any)
+		require.True(t, ok, "envelope data: %v", env)
+		errObj, ok := data["error"].(map[string]any)
+		require.True(t, ok, "envelope error: %v", data)
+		if w, ok := env["warnings"]; ok {
+			errObj["envelopeWarnings"] = w
+		}
+		return ce, errObj
+	}
+	cancelled := func(t *testing.T) context.Context {
+		t.Helper()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		return ctx
+	}
+	cause := clierr.Retryable(clierr.CodeGeneric, "cannot reach server: connection refused").
+		WithDetails(clierr.PrimeRequiredDetails{Feature: "f", Server: "s"}).
+		WithWarnings("the stamp was written before the failure")
+
+	t.Run("cancelled context with a surfaced error keeps its message, details and warnings", func(t *testing.T) {
+		t.Parallel()
+		ce, errObj := run(t, cancelled(t), cause)
+		assert.Equal(t, clierr.CodeInterrupted, ce.Code)
+		assert.Equal(t, 130, ce.ExitCode())
+		assert.False(t, ce.Retryable)
+		require.ErrorIs(t, ce, cause)
+		assert.Equal(t, "INTERRUPTED", errObj["code"])
+		assert.Equal(t, "interrupted: cannot reach server: connection refused", errObj["message"])
+		assert.Equal(t, false, errObj["retryable"])
+		assert.Equal(t, map[string]any{"feature": "f", "server": "s"}, errObj["details"])
+		assert.Equal(t, []string{"the stamp was written before the failure"}, ce.Warnings())
+		assert.Equal(t, []any{"the stamp was written before the failure"}, errObj["envelopeWarnings"])
+	})
+	t.Run("bare cancellation says interrupted alone", func(t *testing.T) {
+		t.Parallel()
+		ce, errObj := run(t, cancelled(t), fmt.Errorf("waiting: %w", context.Canceled))
+		assert.Equal(t, clierr.CodeInterrupted, ce.Code)
+		assert.Equal(t, "interrupted", errObj["message"])
+		_, hasDetails := errObj["details"]
+		assert.False(t, hasDetails)
+	})
+	t.Run("live context leaves the classification alone", func(t *testing.T) {
+		t.Parallel()
+		ce, _ := run(t, t.Context(), cause)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.True(t, ce.Retryable)
+	})
+	t.Run("expired deadline is not an interrupt", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+		defer cancel()
+		require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+		ce, _ := run(t, ctx, cause)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.True(t, ce.Retryable)
+	})
 }

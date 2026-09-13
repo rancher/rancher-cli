@@ -153,7 +153,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 			var err error
 			req, err = r.ResolveCapability(ctx, in)
 			if err != nil {
-				return 0, renderErr(streams, toClierr(err))
+				return 0, renderErr(streams, toClierr(ctx, err))
 			}
 			// Then the resolver's return - an arbitrary runtime value
 			// startup validation never saw. A malformed value is a command
@@ -185,7 +185,7 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	eff, exec, err := c.Plan(ctx, in)
 	if err != nil {
-		return 0, renderErr(streams, toClierr(err))
+		return 0, renderErr(streams, toClierr(ctx, err))
 	}
 	if ce := checkPlan(eff, exec); ce != nil {
 		return 0, renderErr(streams, ce)
@@ -193,7 +193,7 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 	if streams.ServerIdentity != nil {
 		server, err := streams.ServerIdentity()
 		if err != nil {
-			return 0, renderErr(streams, toClierr(err))
+			return 0, renderErr(streams, toClierr(ctx, err))
 		}
 		eff.Server = server
 	}
@@ -206,7 +206,7 @@ func runMutating(ctx context.Context, c MutatingCommand, in Input, streams IO, b
 	}
 	res, err := exec(ctx)
 	if err != nil {
-		return 0, renderErr(streams, toClierr(err))
+		return 0, renderErr(streams, toClierr(ctx, err))
 	}
 	res = prependOnceOnlyNotice(res)
 	res.Warnings = append(append([]string{}, eff.Warnings...), res.Warnings...)
@@ -251,7 +251,7 @@ func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.
 	p := ui.New(streams.Err, streams.In, streams.NoInput, streams.IsTTY)
 	res, err := c.Execute(ctx, in, p)
 	if err != nil {
-		return 0, renderErr(streams, toClierr(err))
+		return 0, renderErr(streams, toClierr(ctx, err))
 	}
 	res = prependOnceOnlyNotice(res)
 	return finishResult(streams, c.Describe(), res)
@@ -1026,11 +1026,37 @@ func allowedExitStatus(declared []int, status int) bool {
 	return slices.Contains(declared, status)
 }
 
-// toClierr normalizes any error into a structured *clierr.Error, unwrapping
-// %w-wrapped clierr errors so hint/candidates survive.
-func toClierr(err error) *clierr.Error {
+// toClierr gives a command's error its envelope shape: a structured
+// *clierr.Error passes through (a %w-wrapped one is unwrapped, so hint and
+// candidates survive) and anything else is GENERIC. When ctx, the command's
+// own context, has been cancelled, the operator's interrupt is what ended
+// the command whatever error the cancelled path surfaced, so the error is
+// INTERRUPTED with that error as its cause. A deadline on ctx is not an
+// interrupt.
+func toClierr(ctx context.Context, err error) *clierr.Error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return interrupted(err)
+	}
 	if ce, ok := errors.AsType[*clierr.Error](err); ok {
 		return ce
 	}
 	return clierr.New(clierr.CodeGeneric, err.Error())
+}
+
+// interrupted builds the INTERRUPTED error for a command that ended with
+// err after its context was cancelled. A bare cancellation (err is the
+// context's own error, or wraps it) says "interrupted" alone; any other
+// surfaced error keeps its message, details and warnings, so a partial
+// outcome the command reported is not lost to the classification.
+func interrupted(err error) *clierr.Error {
+	out := clierr.Interrupted().WithCause(err)
+	if errors.Is(err, context.Canceled) {
+		return out
+	}
+	out.Message += ": " + err.Error()
+	if ce, ok := errors.AsType[*clierr.Error](err); ok {
+		out.Details = ce.Details
+		out = out.WithWarnings(ce.Warnings()...)
+	}
+	return out
 }

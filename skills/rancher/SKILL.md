@@ -315,6 +315,7 @@ a separate line to skip past.
 
 Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 `4` not-found · `5` conflict/precondition · `6` RBAC · `9` Prime required ·
+`130` interrupted (the operator ended the command; not a failure to retry) ·
 `1` generic.
 
 - Read the `hint` - when present, it is exactly one paste-valid command

@@ -16,9 +16,10 @@ import (
 // to AUTH, everything else stays GENERIC/retryable instead of being
 // mislabeled as an auth problem.
 //
-// ctx is accepted for cancellation and forward-compatibility. The discovery
-// ServerVersion() call does not yet consume a context, so a slow server is
-// bounded by discoveryConfig's transport timeout rather than ctx today.
+// The version request carries ctx, so an interrupt ends it at once; a slow
+// server is otherwise bounded by discoveryConfig's request timeout. The
+// caller's own cancellation passes through unmapped, never as a retryable
+// connectivity failure.
 func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 	rc, err := kube.RESTConfig(eff, "local")
 	if err != nil {
@@ -40,9 +41,9 @@ func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric, err.Error())
 	}
-	ver, err := disc.ServerVersion()
+	ver, err := serverVersion(ctx, disc)
 	if err != nil {
-		return "", mapPreflightErr(err)
+		return "", clierr.WrapUnlessCanceled(err, mapPreflightErr)
 	}
 	if ver == nil {
 		return "", clierr.New(clierr.CodeGeneric, "server returned no version info")
@@ -50,10 +51,10 @@ func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 	return ver.GitVersion, nil
 }
 
-// discoveryConfig returns a copy of rc bounded by requestTimeout. The discovery
-// client's ServerVersion() takes no context.Context, so a transport-level
-// timeout is the only deadline it can honor; without it an unreachable server
-// hangs the preflight indefinitely. The input config is not mutated.
+// discoveryConfig returns a copy of rc bounded by requestTimeout, the same
+// bound every other request has: without it a discovery request against an
+// unreachable server whose caller never cancels hangs indefinitely. The
+// input config is not mutated.
 func discoveryConfig(rc *rest.Config) *rest.Config {
 	c := *rc
 	c.Timeout = requestTimeout

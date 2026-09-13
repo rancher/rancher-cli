@@ -77,6 +77,11 @@ type dynamicClient struct {
 	disc discovery.DiscoveryInterface
 	cs   kubernetes.Interface
 
+	// groups reads the server's API group list with the caller's context on
+	// the request; resolveVersion consults it for an empty GVR version. disc
+	// stays for the per-group resource discovery, which has no such path.
+	groups func(ctx context.Context) (*metav1.APIGroupList, error)
+
 	// hc and host serve the raw review POSTs: an authorization review has no
 	// dynamic-client shape that keeps the answer's HTTP status and raw body.
 	hc   *http.Client // authenticated transport
@@ -94,8 +99,8 @@ type dynamicClient struct {
 // NewClusterClient builds the dynamic-client ClusterClient for a rest.Config
 // (one cluster proxy) and the --cluster value the caller resolved that proxy
 // from. The discovery client is built from the bounded config copy
-// (discoveryConfig) so an empty-version resolution cannot re-open the
-// unbounded-call hang class Preflight closed: ServerGroups() takes no context.
+// (discoveryConfig) so an empty-version resolution has the same request
+// timeout as every other call, on top of the caller's context.
 func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, error) {
 	dyn, err := kube.Dynamic(rc)
 	if err != nil {
@@ -115,6 +120,9 @@ func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, 
 	}
 	return &dynamicClient{
 		dyn: dyn, disc: disc, cs: cs, hc: hc, host: strings.TrimRight(rc.Host, "/"),
+		groups: func(ctx context.Context) (*metav1.APIGroupList, error) {
+			return serverGroups(ctx, disc)
+		},
 		clusterID: clusterID, versions: map[string]string{},
 	}, nil
 }
@@ -131,7 +139,7 @@ func (r *dynamicClient) ri(gvr schema.GroupVersionResource, ns string) dynamic.R
 // preferred version), memoized per group. MCP leaves cluster.x-k8s.io versions
 // empty for the same reason: the served version varies by Rancher release, so
 // pinning one breaks across installs.
-func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.GroupVersionResource, error) {
+func (r *dynamicClient) resolveVersion(ctx context.Context, gvr schema.GroupVersionResource) (schema.GroupVersionResource, error) {
 	if gvr.Version != "" {
 		return gvr, nil
 	}
@@ -142,15 +150,17 @@ func (r *dynamicClient) resolveVersion(gvr schema.GroupVersionResource) (schema.
 		gvr.Version = v
 		return gvr, nil
 	}
-	// Discovery runs OUTSIDE the lock: ServerGroups() is a network round-trip
-	// bounded by the discovery config's transport timeout, and holding r.mu
+	// Discovery runs OUTSIDE the lock: the group list is a network round-trip
+	// bounded by ctx and the discovery config's request timeout, and holding r.mu
 	// across it would serialize every concurrent version-resolving call behind
 	// one slow endpoint. Benign race by design - concurrent missers each
 	// resolve and converge on the same value (mirrors the factory's
 	// ResolveCluster memo). Do NOT reintroduce a lock around the call below.
-	groups, err := r.disc.ServerGroups()
+	groups, err := r.groups(ctx)
 	if err != nil {
-		return gvr, fmt.Errorf("discovering version for group %q: %w", gvr.Group, err)
+		return gvr, clierr.WrapUnlessCanceled(err, func(err error) error {
+			return fmt.Errorf("discovering version for group %q: %w", gvr.Group, err)
+		})
 	}
 	for _, g := range groups.Groups {
 		if g.Name != gvr.Group {
@@ -197,7 +207,7 @@ func (r *dynamicClient) curateNotFound(gvr schema.GroupVersionResource, name str
 }
 
 func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
-	gvr, err := r.resolveVersion(gvr)
+	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +218,7 @@ func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource
 }
 
 func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
-	gvr, err := r.resolveVersion(gvr)
+	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +248,7 @@ func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.Lo
 }
 
 func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
-	gvr, err := r.resolveVersion(gvr)
+	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +263,7 @@ func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResou
 }
 
 func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
-	gvr, err := r.resolveVersion(gvr)
+	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +278,7 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 }
 
 func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
-	gvr, err := r.resolveVersion(gvr)
+	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
 		return err
 	}
