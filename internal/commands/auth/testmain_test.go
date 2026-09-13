@@ -9,5 +9,8 @@ import (
 
 func TestMain(m *testing.M) {
 	cmdtest.UnsetResolutionEnv()
-	os.Exit(m.Run())
+	cleanup := cmdtest.IsolateConfigDir()
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }

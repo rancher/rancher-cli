@@ -11,7 +11,8 @@ import (
 // config resolution reads ahead of the stored file, and RANCHER_CLI_READONLY,
 // which the surface reads as a read-only source, so an operator's shell
 // cannot leak into a test's assertions. The TestMains of the packages under
-// internal/commands, internal/cli and internal/engine/kubeconfig call it;
+// internal/commands, internal/cli and internal/engine/kubeconfig call it,
+// then IsolateConfigDir;
 // internal/config and internal/token clear the same variables with their
 // own loops (config cannot import this package).
 func UnsetResolutionEnv() {
