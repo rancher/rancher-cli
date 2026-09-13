@@ -94,6 +94,14 @@ func ManagementNamedResourcePath(group, version, namespace, resource, name strin
 	return NamedResourcePath("local", group, version, namespace, resource, name)
 }
 
+// DiscoveryVersionPath is one group version's legacy discovery document
+// under a cluster's proxy: /k8s/clusters/<clusterID>/apis/<group>/<version>,
+// or /k8s/clusters/<clusterID>/api/<version> for the core group (group
+// ""). Every segment goes through ValidSegment.
+func DiscoveryVersionPath(clusterID, group, version string) (Path, error) {
+	return build(apiRoot(clusterID, group, version))
+}
+
 // DiscoveryPaths are the two aggregated discovery roots of a cluster
 // through its proxy: /k8s/clusters/<clusterID>/api for the core group and
 // /k8s/clusters/<clusterID>/apis for every other group. The cluster id

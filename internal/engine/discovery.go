@@ -115,6 +115,32 @@ func ResourcesFromAggregated(doc *apidiscoveryv2.APIGroupDiscoveryList) ([]APIRe
 	return out, failed
 }
 
+// ResourcesFromLegacy projects the legacy discovery documents (one
+// APIResourceList per group version - the provider reads the server's
+// preferred version of each group, the one version the aggregated path
+// also picks) onto the port's shape. A subresource arrives as its own
+// entry named "<resource>/<sub>" and stays that way; a list whose
+// groupVersion does not parse contributes nothing.
+func ResourcesFromLegacy(lists []*metav1.APIResourceList) []APIResource {
+	out := []APIResource{}
+	for _, l := range lists {
+		if l == nil {
+			continue
+		}
+		gv, err := schema.ParseGroupVersion(l.GroupVersion)
+		if err != nil {
+			continue
+		}
+		for _, res := range l.APIResources {
+			out = append(out, APIResource{
+				Group: gv.Group, Version: gv.Version, Name: res.Name, SingularName: res.SingularName,
+				Kind: res.Kind, ShortNames: res.ShortNames, Namespaced: res.Namespaced, Verbs: res.Verbs,
+			})
+		}
+	}
+	return out
+}
+
 // kindOf reads the optional responseKind of a discovery entry.
 func kindOf(gvk *metav1.GroupVersionKind) string {
 	if gvk == nil {

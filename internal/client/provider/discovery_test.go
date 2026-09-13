@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -235,4 +236,70 @@ func TestAggregatedResourcesRejectsOversizedDocument(t *testing.T) {
 	c := discoveryClient(t, srv).(*dynamicClient)
 	_, _, ok := c.aggregatedResources(t.Context())
 	assert.False(t, ok, "a document past the cap must not pass as aggregated discovery")
+}
+
+// TestServerResourcesLegacyKeepsSubresourcesAndPreferredVersion asserts the
+// legacy walk keeps every "<resource>/<sub>" entry (the commands resolve
+// --subresource from them) and reads one document per group, the
+// preferred version's, even when the group lists another version.
+func TestServerResourcesLegacyKeepsSubresourcesAndPreferredVersion(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/api":
+			writeJSON(w, "application/json", metav1.APIVersions{Kind: "APIVersions", Versions: []string{"v1"}})
+		case "/api/v1":
+			writeJSON(w, "application/json", metav1.APIResourceList{Kind: "APIResourceList", GroupVersion: "v1",
+				APIResources: []metav1.APIResource{{Name: "pods", SingularName: "pod", Kind: "Pod", Namespaced: true}, {Name: "pods/log", Kind: "Pod", Namespaced: true}}})
+		case "/apis":
+			writeJSON(w, "application/json", metav1.APIGroupList{Kind: "APIGroupList", Groups: []metav1.APIGroup{
+				{Name: "m.example", Versions: []metav1.GroupVersionForDiscovery{{GroupVersion: "m.example/v2", Version: "v2"}, {GroupVersion: "m.example/v1", Version: "v1"}},
+					PreferredVersion: metav1.GroupVersionForDiscovery{GroupVersion: "m.example/v1", Version: "v1"}},
+			}})
+		case "/apis/m.example/v1":
+			writeJSON(w, "application/json", metav1.APIResourceList{Kind: "APIResourceList", GroupVersion: "m.example/v1",
+				APIResources: []metav1.APIResource{{Name: "gauges", Kind: "Gauge", Namespaced: true}, {Name: "gauges/status", Kind: "Gauge", Namespaced: true}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	res, err := discoveryClient(t, srv).ServerResources(t.Context())
+	require.NoError(t, err)
+	names := make([]string, 0, len(res))
+	for _, r := range res {
+		names = append(names, r.Group+"/"+r.Name)
+	}
+	assert.Equal(t, []string{"/pods", "/pods/log", "m.example/gauges", "m.example/gauges/status"}, names)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.ElementsMatch(t, []string{"/api", "/api", "/apis", "/api/v1", "/apis/m.example/v1"}, paths,
+		"the aggregated attempt (stopped at the first plain root), the two plain roots, one document per group in its preferred version - never v2")
+}
+
+// TestServerResourcesLegacyWalkEndsWithItsContext asserts a context
+// cancelled while the group documents are being read ends the walk with
+// the cancellation, not with a partial inventory.
+func TestServerResourcesLegacyWalkEndsWithItsContext(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/apis/a.example/v1" {
+			cancel()
+			<-r.Context().Done()
+			return
+		}
+		if !legacyDiscovery(w, r) {
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	res, err := discoveryClient(t, srv).ServerResources(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Nil(t, res)
 }

@@ -24,7 +24,7 @@ func TestAllowanceLimit(t *testing.T) {
 	assert.Equal(t, 1, n)
 	n, ok = allowanceLimit(completion.AllowanceDiscovery)
 	require.True(t, ok)
-	assert.Equal(t, 2, n)
+	assert.Equal(t, 2+2*(1+completion.DiscoveryGroupLimit), n, "two roots, and per root a plain document plus one per group")
 	n, ok = allowanceLimit(completion.AllowanceSteveClusterPages)
 	require.True(t, ok)
 	assert.Equal(t, access.SteveMaxPages, n)

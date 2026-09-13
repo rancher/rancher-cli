@@ -42,7 +42,10 @@ type Connection struct {
 // TraceFunc receives one line of the surface's completion trace per
 // request sent: the server-relative path, the HTTP status and body size
 // (zero when the request failed before a response), the elapsed time,
-// and the transport error if any. It never sees the token.
+// and the transport error if any. It never sees the token. The
+// Connection serializes its calls: a source fanning requests out over
+// several goroutines (Parallel) still reaches the hook one call at a
+// time.
 type TraceFunc func(path string, status, size int, elapsed time.Duration, err error)
 
 // SetTrace installs the surface's trace hook; nil turns tracing off.
@@ -116,8 +119,12 @@ func (c *Connection) GetJSON(ctx context.Context, p Path, accept string, dst any
 	return json.Unmarshal(body, dst)
 }
 
-// traceRequest reports one request to the trace hook when one is set.
+// traceRequest reports one request to the trace hook when one is set,
+// under the connection's mutex so concurrent senders reach the hook one
+// at a time.
 func (c *Connection) traceRequest(path string, status, size int, elapsed time.Duration, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.trace != nil {
 		c.trace(path, status, size, elapsed, err)
 	}

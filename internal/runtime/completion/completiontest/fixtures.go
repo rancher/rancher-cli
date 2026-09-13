@@ -80,3 +80,57 @@ const SubjectsBody = `{"items":[
 	{"metadata":{"name":"u-dave"},"username":"u-alice","displayName":"Dave","principalIds":["local://u-dave"]},
 	{"metadata":{"name":"u-erin"},"username":"u-sys","displayName":"Erin","principalIds":["local://u-erin"]}
 ]}`
+
+// DiscoveryLegacyCoreBody is the legacy /api document (APIVersions) of the
+// same cluster DiscoveryCoreBody describes.
+const DiscoveryLegacyCoreBody = `{"kind":"APIVersions","versions":["v1"]}`
+
+// DiscoveryLegacyGroupsBody is the legacy /apis document (APIGroupList)
+// of the same cluster DiscoveryGroupsBody describes: the four served
+// groups with their preferred versions (metrics.example.io prefers v1,
+// the version the aggregated document marks current) and the dead group,
+// whose document is not served.
+const DiscoveryLegacyGroupsBody = `{"kind":"APIGroupList","apiVersion":"v1","groups":[
+	{"name":"apps","versions":[{"groupVersion":"apps/v1","version":"v1"}],"preferredVersion":{"groupVersion":"apps/v1","version":"v1"}},
+	{"name":"networking.k8s.io","versions":[{"groupVersion":"networking.k8s.io/v1","version":"v1"}],"preferredVersion":{"groupVersion":"networking.k8s.io/v1","version":"v1"}},
+	{"name":"gateway.example.io","versions":[{"groupVersion":"gateway.example.io/v1","version":"v1"}],"preferredVersion":{"groupVersion":"gateway.example.io/v1","version":"v1"}},
+	{"name":"metrics.example.io","versions":[{"groupVersion":"metrics.example.io/v2","version":"v2"},{"groupVersion":"metrics.example.io/v1","version":"v1"}],"preferredVersion":{"groupVersion":"metrics.example.io/v1","version":"v1"}},
+	{"name":"dead.example","versions":[{"groupVersion":"dead.example/v1beta1","version":"v1beta1"}],"preferredVersion":{"groupVersion":"dead.example/v1beta1","version":"v1beta1"}}
+]}`
+
+// DiscoveryLegacyVersionBodies are the legacy group version documents
+// (APIResourceList) of the same cluster, keyed by the path under the
+// cluster's proxy root: the same resources, singular and short names and
+// subresources the aggregated documents carry, a subresource as its own
+// "<resource>/<sub>" entry. The dead group's document is absent (the
+// server answers it 503).
+var DiscoveryLegacyVersionBodies = map[string]string{
+	"/api/v1": `{"kind":"APIResourceList","groupVersion":"v1","resources":[
+		{"name":"pods","singularName":"pod","namespaced":true,"kind":"Pod","verbs":["get","list"],"shortNames":["po"]},
+		{"name":"pods/log","singularName":"","namespaced":true,"kind":"Pod","verbs":["get"]},
+		{"name":"pods/status","singularName":"","namespaced":true,"kind":"Pod","verbs":["get"]},
+		{"name":"pods/exec","singularName":"","namespaced":true,"kind":"PodExecOptions","verbs":["get"]},
+		{"name":"nodes","singularName":"node","namespaced":false,"kind":"Node","verbs":["get","list"],"shortNames":["no"]},
+		{"name":"nodes/status","singularName":"","namespaced":false,"kind":"Node","verbs":["get"]},
+		{"name":"nodes/proxy","singularName":"","namespaced":false,"kind":"NodeProxyOptions","verbs":["get"]},
+		{"name":"services","singularName":"service","namespaced":true,"kind":"Service","verbs":["get","list"],"shortNames":["svc"]},
+		{"name":"services/status","singularName":"","namespaced":true,"kind":"Service","verbs":["get"]}
+	]}`,
+	"/apis/apps/v1": `{"kind":"APIResourceList","groupVersion":"apps/v1","resources":[
+		{"name":"deployments","singularName":"deployment","namespaced":true,"kind":"Deployment","verbs":["get","list"],"shortNames":["deploy"]},
+		{"name":"deployments/scale","singularName":"","namespaced":true,"group":"autoscaling","version":"v1","kind":"Scale","verbs":["get"]},
+		{"name":"deployments/status","singularName":"","namespaced":true,"kind":"Deployment","verbs":["get"]}
+	]}`,
+	"/apis/networking.k8s.io/v1": `{"kind":"APIResourceList","groupVersion":"networking.k8s.io/v1","resources":[
+		{"name":"ingresses","singularName":"ingress","namespaced":true,"kind":"Ingress","verbs":["get","list"],"shortNames":["ing"]},
+		{"name":"ingresses/status","singularName":"","namespaced":true,"kind":"Ingress","verbs":["get"]}
+	]}`,
+	"/apis/gateway.example.io/v1": `{"kind":"APIResourceList","groupVersion":"gateway.example.io/v1","resources":[
+		{"name":"ingresses","singularName":"ingress","namespaced":true,"kind":"Ingress","verbs":["get","list"]},
+		{"name":"ingresses/conditions","singularName":"","namespaced":true,"kind":"Ingress","verbs":["get"]}
+	]}`,
+	"/apis/metrics.example.io/v1": `{"kind":"APIResourceList","groupVersion":"metrics.example.io/v1","resources":[
+		{"name":"gauges","singularName":"gauge","namespaced":true,"kind":"Gauge","verbs":["get"]},
+		{"name":"gauges/status","singularName":"","namespaced":true,"kind":"Gauge","verbs":["get"]}
+	]}`,
+}

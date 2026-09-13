@@ -17,7 +17,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -73,13 +72,11 @@ func bootstrapLocalDynamic(ctx context.Context, eff config.Effective) (dynamic.I
 }
 
 type dynamicClient struct {
-	dyn  dynamic.Interface
-	disc discovery.DiscoveryInterface
-	cs   kubernetes.Interface
+	dyn dynamic.Interface
+	cs  kubernetes.Interface
 
 	// groups reads the server's API group list with the caller's context on
-	// the request; resolveVersion consults it for an empty GVR version. disc
-	// stays for the per-group resource discovery, which has no such path.
+	// the request; resolveVersion consults it for an empty GVR version.
 	groups func(ctx context.Context) (*metav1.APIGroupList, error)
 
 	// hc and host serve the raw review POSTs: an authorization review has no
@@ -119,7 +116,7 @@ func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, 
 		return nil, err
 	}
 	return &dynamicClient{
-		dyn: dyn, disc: disc, cs: cs, hc: hc, host: strings.TrimRight(rc.Host, "/"),
+		dyn: dyn, cs: cs, hc: hc, host: strings.TrimRight(rc.Host, "/"),
 		groups: func(ctx context.Context) (*metav1.APIGroupList, error) {
 			return serverGroups(ctx, disc)
 		},

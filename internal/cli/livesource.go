@@ -96,15 +96,17 @@ var positionalKinds = map[string]string{
 }
 
 // allowanceLimit maps a granted allowance class to its request count:
-// one plain listing, the two discovery roots, or the Steve cluster page
-// walk bounded like the access commands' own. A value outside the class
-// is not granted.
+// one plain listing; the two discovery roots plus, for each root that
+// does not serve the aggregated document, its plain document and one
+// document per group up to the seam's group limit; or the Steve cluster
+// page walk bounded like the access commands' own. A value outside the
+// class is not granted.
 func allowanceLimit(a completion.Allowance) (int, bool) {
 	switch a {
 	case completion.AllowanceOne:
 		return 1, true
 	case completion.AllowanceDiscovery:
-		return 2, true
+		return 2 + 2*(1+completion.DiscoveryGroupLimit), true
 	case completion.AllowanceSteveClusterPages:
 		return access.SteveMaxPages, true
 	}

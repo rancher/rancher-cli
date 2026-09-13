@@ -62,3 +62,23 @@ func TestDiscoveryIncompleteGroups(t *testing.T) {
 	assert.True(t, IsAggregatedDiscovery("application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList"))
 	assert.False(t, IsAggregatedDiscovery("application/json"))
 }
+
+// TestResourcesFromLegacyProjectsEveryList asserts one entry per resource
+// of every list, subresource entries kept under their slash name, and a
+// list with an unparsable groupVersion or a nil list skipped.
+func TestResourcesFromLegacyProjectsEveryList(t *testing.T) {
+	t.Parallel()
+	lists := []*metav1.APIResourceList{
+		{GroupVersion: "v1", APIResources: []metav1.APIResource{{Name: "pods", SingularName: "pod", ShortNames: []string{"po"}, Namespaced: true, Kind: "Pod"}, {Name: "pods/log", Kind: "Pod"}}},
+		nil,
+		{GroupVersion: "a/b/c"},
+		{GroupVersion: "apps/v1", APIResources: []metav1.APIResource{{Name: "deployments", SingularName: "deployment", Kind: "Deployment"}}},
+	}
+	got := ResourcesFromLegacy(lists)
+	assert.Equal(t, []APIResource{
+		{Group: "", Version: "v1", Name: "pods", SingularName: "pod", Kind: "Pod", ShortNames: []string{"po"}, Namespaced: true},
+		{Group: "", Version: "v1", Name: "pods/log", Kind: "Pod"},
+		{Group: "apps", Version: "v1", Name: "deployments", SingularName: "deployment", Kind: "Deployment"},
+	}, got)
+	assert.Empty(t, ResourcesFromLegacy(nil))
+}

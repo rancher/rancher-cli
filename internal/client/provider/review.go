@@ -10,13 +10,13 @@ import (
 	"maps"
 	"net/http"
 	"strings"
+	"sync"
 
 	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/discovery"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -239,55 +239,144 @@ func nonEmpty(s, fallback string) string {
 // test can lower it.
 var maxDiscoveryBytes int64 = 16 << 20
 
-// ServerResources lists the preferred version of every served resource.
-// It asks for aggregated discovery first: two requests (/api, /apis)
-// bound to ctx. A server whose answer to either root is not a 200
-// APIGroupDiscoveryList is read through client-go's per-group discovery
-// instead (Rancher's local cluster does not serve aggregated discovery
-// for /apis through the proxy: it answers 406 to this header, and a
-// legacy APIGroupList to a header that also lists plain JSON), which the
-// pinned client-go cannot cancel; ctx is checked before it starts.
-// Either way a partial answer is returned as the partial list TOGETHER
-// with an *engine.DiscoveryIncomplete naming
-// the group versions the server could not describe (a stale aggregated
+// ServerResources lists every served resource in its group's preferred
+// version, subresources included as "<resource>/<sub>" entries. It asks
+// for aggregated discovery first: two requests (/api, /apis) bound to
+// ctx. A server whose answer to either root is not a 200
+// APIGroupDiscoveryList is walked the legacy way instead (Rancher's local
+// cluster does not serve aggregated discovery for /apis through the
+// proxy: it answers 406 to this header, and a legacy APIGroupList to
+// plain JSON): the plain root documents name the groups and their
+// preferred versions, then one document per group version is read, each
+// request bound to ctx. Either way a partial answer is returned as the
+// partial list TOGETHER with an *engine.DiscoveryIncomplete naming the
+// group versions the server could not describe (a stale aggregated
 // entry, a 503 discovery document), so a caller can tell a complete
-// inventory from a survivor.
+// inventory from a survivor. The caller's own cancellation passes through
+// unmapped.
 func (r *dynamicClient) ServerResources(ctx context.Context) ([]engine.APIResource, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, mapErr(err)
+		return nil, clierr.WrapUnlessCanceled(err, mapErr)
 	}
 	if out, failed, ok := r.aggregatedResources(ctx); ok {
 		return out, engine.ErrDiscoveryIncompleteFor(failed)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, mapErr(err)
+		return nil, clierr.WrapUnlessCanceled(err, mapErr)
 	}
-	lists, err := r.disc.ServerPreferredResources()
-	failed := map[schema.GroupVersion]error{}
+	lists, failed, err := r.legacyResources(ctx)
 	if err != nil {
-		// A group-discovery failure is a partial answer even when every
-		// group document failed: the failed set is the fact the resolver
-		// needs, and an empty list with it is still not "unknown resource".
-		gdf, partial := errors.AsType[*discovery.ErrGroupDiscoveryFailed](err)
-		if !partial {
-			return nil, mapErr(err)
-		}
-		maps.Copy(failed, gdf.Groups)
+		return nil, clierr.WrapUnlessCanceled(err, mapErr)
 	}
-	out := []engine.APIResource{}
-	for _, l := range lists {
-		gv, perr := schema.ParseGroupVersion(l.GroupVersion)
-		if perr != nil {
+	return engine.ResourcesFromLegacy(lists), engine.ErrDiscoveryIncompleteFor(failed)
+}
+
+// legacyWorkers bounds the group version documents read at once on the
+// legacy walk.
+const legacyWorkers = 8
+
+// legacyResources walks the pre-aggregation discovery documents: /api
+// (APIVersions, the preferred version first) and /apis (APIGroupList
+// with each group's preferred version), then /api/<v> and
+// /apis/<group>/<version> for the preferred version of every group, in
+// parallel on a bounded set of goroutines, every request bound to ctx.
+// A root that fails is an error; a group version document that fails is
+// recorded in failed and the walk goes on, so the answer is partial, not
+// absent. Lists come back in the root documents' order.
+func (r *dynamicClient) legacyResources(ctx context.Context) ([]*metav1.APIResourceList, map[schema.GroupVersion]error, error) {
+	var versions metav1.APIVersions
+	if _, err := r.getDiscoveryJSON(ctx, "/api", &versions); err != nil {
+		return nil, nil, err
+	}
+	var groups metav1.APIGroupList
+	if _, err := r.getDiscoveryJSON(ctx, "/apis", &groups); err != nil {
+		return nil, nil, err
+	}
+	var gvs []schema.GroupVersion
+	if len(versions.Versions) > 0 {
+		gvs = append(gvs, schema.GroupVersion{Group: "", Version: versions.Versions[0]})
+	}
+	for _, g := range groups.Groups {
+		version := g.PreferredVersion.Version
+		if version == "" && len(g.Versions) > 0 {
+			version = g.Versions[0].Version
+		}
+		if g.Name == "" || version == "" {
 			continue
 		}
-		for _, res := range l.APIResources {
-			out = append(out, engine.APIResource{
-				Group: gv.Group, Version: gv.Version, Name: res.Name, SingularName: res.SingularName,
-				Kind: res.Kind, ShortNames: res.ShortNames, Namespaced: res.Namespaced, Verbs: res.Verbs,
-			})
-		}
+		gvs = append(gvs, schema.GroupVersion{Group: g.Name, Version: version})
 	}
-	return out, engine.ErrDiscoveryIncompleteFor(failed)
+
+	lists := make([]*metav1.APIResourceList, len(gvs))
+	errs := make([]error, len(gvs))
+	slots := make(chan struct{}, legacyWorkers)
+	var wg sync.WaitGroup
+	for i, gv := range gvs {
+		slots <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			path := "/apis/" + gv.Group + "/" + gv.Version
+			if gv.Group == "" {
+				path = "/api/" + gv.Version
+			}
+			var list metav1.APIResourceList
+			if _, err := r.getDiscoveryJSON(ctx, path, &list); err != nil {
+				errs[i] = err
+				return
+			}
+			if list.GroupVersion == "" {
+				list.GroupVersion = gv.String()
+			}
+			lists[i] = &list
+		})
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	failed := map[schema.GroupVersion]error{}
+	out := make([]*metav1.APIResourceList, 0, len(gvs))
+	for i, gv := range gvs {
+		if errs[i] != nil {
+			failed[gv] = errs[i]
+			continue
+		}
+		out = append(out, lists[i])
+	}
+	return out, failed, nil
+}
+
+// getDiscoveryJSON reads one discovery document as plain JSON over the
+// client's own HTTP client with ctx on the request, bounded by
+// maxDiscoveryBytes, and decodes it into dst. A non-2xx answer is an error
+// naming the status and the body's first line (a dead aggregated group
+// answers 503 "service unavailable").
+func (r *dynamicClient) getDiscoveryJSON(ctx context.Context, path string, dst any) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.host+path, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := r.hc.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	body, rerr := io.ReadAll(io.LimitReader(resp.Body, maxDiscoveryBytes+1))
+	_ = resp.Body.Close()
+	if rerr != nil {
+		return resp.StatusCode, rerr
+	}
+	if int64(len(body)) > maxDiscoveryBytes {
+		return resp.StatusCode, fmt.Errorf("discovery document %s exceeds %d bytes", path, maxDiscoveryBytes)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		line, _, _ := strings.Cut(strings.TrimSpace(string(body)), "\n")
+		return resp.StatusCode, fmt.Errorf("the server answered %d for %s: %s", resp.StatusCode, path, line)
+	}
+	if err := json.Unmarshal(body, dst); err != nil {
+		return resp.StatusCode, fmt.Errorf("decoding discovery document %s: %w", path, err)
+	}
+	return resp.StatusCode, nil
 }
 
 // aggregatedResources fetches /api and /apis with the aggregated discovery

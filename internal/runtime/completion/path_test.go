@@ -59,6 +59,8 @@ func TestPathBuilders(t *testing.T) {
 			p: must(ManagementNamedResourcePath("management.cattle.io", "v3", "", "oidcclients", "my-client"))},
 		{name: "discovery core root", want: "/k8s/clusters/c-x/api", p: first(DiscoveryPaths("c-x"))},
 		{name: "discovery groups root", want: "/k8s/clusters/c-x/apis", p: second(DiscoveryPaths("c-x"))},
+		{name: "discovery group version document", want: "/k8s/clusters/c-x/apis/apps/v1", p: must(DiscoveryVersionPath("c-x", "apps", "v1"))},
+		{name: "discovery core version document", want: "/k8s/clusters/c-x/api/v1", p: must(DiscoveryVersionPath("c-x", "", "v1"))},
 		{name: "steve collection", want: "/v1/management.cattle.io.clusters",
 			p: must(SteveCollectionPath("management.cattle.io.clusters"))},
 		{name: "steve collection with a continue token", want: "/v1/management.cattle.io.clusters?continue=x%26y",

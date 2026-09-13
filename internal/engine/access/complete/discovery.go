@@ -108,37 +108,164 @@ type discoveryList struct {
 	} `json:"items"`
 }
 
-// readDiscovery reads the cluster's two aggregated discovery roots and
-// returns every group's resources from its preferred version: the first
-// version the server did not mark stale, as the commands' own discovery
-// picks it. A root that fails or answers another document contributes
-// nothing; a stale version contributes nothing, since a suggestion must
-// be valid verbatim.
+// groupList is the legacy /apis document's shape (APIGroupList), the
+// fields the source reads: each group's name and preferred version.
+type groupList struct {
+	Groups []struct {
+		Name             string `json:"name"`
+		PreferredVersion struct {
+			Version string `json:"version"`
+		} `json:"preferredVersion"`
+		Versions []struct {
+			Version string `json:"version"`
+		} `json:"versions"`
+	} `json:"groups"`
+}
+
+// coreVersions is the legacy /api document's shape (APIVersions): the
+// core group's versions, the preferred one first.
+type coreVersions struct {
+	Versions []string `json:"versions"`
+}
+
+// resourceList is one group version's legacy discovery document
+// (APIResourceList), the fields the source reads. A subresource is its
+// own entry named "<resource>/<sub>".
+type resourceList struct {
+	Resources []struct {
+		Name         string   `json:"name"`
+		SingularName string   `json:"singularName"`
+		ShortNames   []string `json:"shortNames"`
+	} `json:"resources"`
+}
+
+// legacyWorkers bounds the goroutines reading group documents at once.
+const legacyWorkers = 8
+
+// readDiscovery reads the cluster's two discovery roots and returns every
+// group's resources from its preferred version. A root that serves the
+// aggregated document contributes the first version the server did not
+// mark stale, as the commands' own discovery picks it; a stale version
+// contributes nothing, since a suggestion must be valid verbatim. A root
+// that does not serve it (Rancher's local cluster answers its /apis
+// with the legacy list whatever the Accept header says) is walked the
+// way the commands' own discovery walks it: the plain root document,
+// then one document per group in the server's preferred version, at
+// most completion.DiscoveryGroupLimit of them. A root or a group
+// document that fails contributes nothing.
 func readDiscovery(ctx context.Context, conn *completion.Connection, clusterID string) []resource {
 	core, groups, err := completion.DiscoveryPaths(clusterID)
 	if err != nil {
 		return nil
 	}
 	var all []resource
-	for _, root := range []completion.Path{core, groups} {
+	for _, root := range []struct {
+		path completion.Path
+		core bool
+	}{{core, true}, {groups, false}} {
 		var doc discoveryList
-		if err := conn.GetJSON(ctx, root, aggregatedDiscoveryAccept, &doc); err != nil || doc.Kind != discoveryListKind {
+		if err := conn.GetJSON(ctx, root.path, aggregatedDiscoveryAccept, &doc); err == nil && doc.Kind == discoveryListKind {
+			all = append(all, fromAggregated(doc)...)
 			continue
 		}
-		for _, g := range doc.Items {
-			for _, v := range g.Versions {
-				if v.Freshness == "Stale" {
-					continue
-				}
-				for _, r := range v.Resources {
-					res := resource{group: g.Metadata.Name, name: r.Resource, singular: r.SingularResource, shortNames: r.ShortNames}
-					for _, sub := range r.Subresources {
-						res.subresources = append(res.subresources, sub.Subresource)
-					}
-					all = append(all, res)
-				}
-				break
+		all = append(all, fromLegacy(ctx, conn, clusterID, root.path, root.core)...)
+	}
+	return all
+}
+
+// fromAggregated projects one aggregated document onto the source's
+// resources.
+func fromAggregated(doc discoveryList) []resource {
+	var all []resource
+	for _, g := range doc.Items {
+		for _, v := range g.Versions {
+			if v.Freshness == "Stale" {
+				continue
 			}
+			for _, r := range v.Resources {
+				res := resource{group: g.Metadata.Name, name: r.Resource, singular: r.SingularResource, shortNames: r.ShortNames}
+				for _, sub := range r.Subresources {
+					res.subresources = append(res.subresources, sub.Subresource)
+				}
+				all = append(all, res)
+			}
+			break
+		}
+	}
+	return all
+}
+
+// fromLegacy walks one root the legacy way: the plain root document
+// names the groups (the core root names its versions), then each group's
+// preferred version document is read, in parallel and bounded, and the
+// results are kept in the root document's group order.
+func fromLegacy(ctx context.Context, conn *completion.Connection, clusterID string, root completion.Path, core bool) []resource {
+	type groupVersion struct{ group, version string }
+	var gvs []groupVersion
+	if core {
+		var doc coreVersions
+		if err := conn.GetJSON(ctx, root, "", &doc); err != nil || len(doc.Versions) == 0 {
+			return nil
+		}
+		gvs = []groupVersion{{"", doc.Versions[0]}}
+	} else {
+		var doc groupList
+		if err := conn.GetJSON(ctx, root, "", &doc); err != nil {
+			return nil
+		}
+		for _, g := range doc.Groups {
+			version := g.PreferredVersion.Version
+			if version == "" && len(g.Versions) > 0 {
+				version = g.Versions[0].Version
+			}
+			if g.Name == "" || version == "" {
+				continue
+			}
+			gvs = append(gvs, groupVersion{g.Name, version})
+		}
+	}
+	if len(gvs) > completion.DiscoveryGroupLimit {
+		gvs = gvs[:completion.DiscoveryGroupLimit]
+	}
+	perGroup := make([][]resource, len(gvs))
+	completion.Parallel(len(gvs), legacyWorkers, func(i int) {
+		path, err := completion.DiscoveryVersionPath(clusterID, gvs[i].group, gvs[i].version)
+		if err != nil {
+			return
+		}
+		var doc resourceList
+		if err := conn.GetJSON(ctx, path, "", &doc); err != nil {
+			return
+		}
+		perGroup[i] = fromResourceList(gvs[i].group, doc)
+	})
+	var all []resource
+	for _, rs := range perGroup {
+		all = append(all, rs...)
+	}
+	return all
+}
+
+// fromResourceList projects one legacy group version document onto the
+// source's resources: a plain entry is a resource, a "<resource>/<sub>"
+// entry a subresource of the resource named before the slash, attached
+// to that resource whichever order the server lists them in.
+func fromResourceList(group string, doc resourceList) []resource {
+	var all []resource
+	index := map[string]int{}
+	for _, r := range doc.Resources {
+		if !strings.Contains(r.Name, "/") {
+			index[r.Name] = len(all)
+			all = append(all, resource{group: group, name: r.Name, singular: r.SingularName, shortNames: r.ShortNames})
+		}
+	}
+	for _, r := range doc.Resources {
+		base, sub, ok := strings.Cut(r.Name, "/")
+		if !ok {
+			continue
+		}
+		if i, known := index[base]; known {
+			all[i].subresources = append(all[i].subresources, sub)
 		}
 	}
 	return all

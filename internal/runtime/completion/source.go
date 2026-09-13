@@ -60,13 +60,22 @@ type Allowance int
 const (
 	// AllowanceOne is one request: a collection listed, or one object read.
 	AllowanceOne Allowance = iota + 1
-	// AllowanceDiscovery is the two discovery roots of a cluster.
+	// AllowanceDiscovery is the two discovery roots of a cluster and, for
+	// a root that does not serve the aggregated document, its plain
+	// document and one document per group, at most DiscoveryGroupLimit.
 	AllowanceDiscovery
 	// AllowanceSteveClusterPages is the Steve cluster collection followed
 	// through its continuation tokens, bounded like the access commands'
 	// own page walk.
 	AllowanceSteveClusterPages
 )
+
+// DiscoveryGroupLimit bounds the group documents a source reads on a
+// discovery root that does not serve the aggregated document: the
+// legacy walk is one request per group, and a cluster with more groups
+// than this offers its first DiscoveryGroupLimit groups. The surface's
+// count for AllowanceDiscovery is derived from it.
+const DiscoveryGroupLimit = 100
 
 // Requirements is a source's declaration for one request, made without
 // I/O.

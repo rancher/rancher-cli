@@ -31,6 +31,23 @@ func New(tb testing.TB, bodies map[string]string) *Server {
 	})
 }
 
+// NewByAccept serves bodies chosen by path and Accept header: answer
+// returns the body and status for a request, so a test can stand in for a
+// server that refuses one media type (Rancher's local cluster answers
+// 406 to the aggregated discovery header) and serves another.
+func NewByAccept(tb testing.TB, answer func(path, accept string) (body string, status int)) *Server {
+	tb.Helper()
+	s := &Server{}
+	s.HTTP = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.record(r)
+		body, status := answer(r.URL.Path, r.Header.Get("Accept"))
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	tb.Cleanup(s.HTTP.Close)
+	return s
+}
+
 // NewFixed serves body for every path.
 func NewFixed(tb testing.TB, body string) *Server {
 	tb.Helper()
