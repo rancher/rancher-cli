@@ -48,7 +48,7 @@ func All() []Probe {
 // serves (both roots), the local cluster's refusal to serve it through
 // the proxy (a legacy list whatever the Accept header says), and a dead
 // aggregated API group's legacy discovery document (503, text/plain),
-// which is what makes client-go report a partial answer. The dead group
+// which is what makes the provider report a partial answer. The dead group
 // is an APIService pointing at a service that does not exist, created
 // and removed around the observation; the aggregated Stale mark for it
 // appears only after the API server's availability controller runs, so
@@ -84,6 +84,11 @@ func discoveryProbes() []Probe {
 			Setup: []Step{
 				deleteFixture("stale dead APIService", deadAPIService+"/v1beta1.dead.example"),
 				createFixture("dead APIService", deadAPIService, deadBody),
+				// The aggregator registers the group's route after the
+				// APIService is accepted; until then the document is a 404,
+				// not the 503 the dead backend answers with.
+				waitFixture("dead group routed", http.MethodGet, deadGroupDoc, "",
+					func(_ map[string]any, status int) bool { return status == http.StatusServiceUnavailable }),
 			},
 			Observations: []Observation{
 				{Name: "group-version-document", Request: RequestSpec{Method: http.MethodGet, Path: deadGroupDoc, Identity: IdentityAdmin}},
@@ -391,6 +396,14 @@ func accessDownstreamProbes() []Probe {
 			createFixture("namespace", downstreamCore+"namespaces", namespaceBody),
 			createFixture("prtb", mgmtAPI+"/namespaces/"+explainBackingNS+"/projectroletemplatebindings", prtbBody),
 			createFixture("crtb", mgmtAPI+"/namespaces/{downstream}/clusterroletemplatebindings", crtbBody),
+			// The probes read the two bindings back as objects; the recorded
+			// bodies carry what Rancher's controllers write after the API
+			// answered (the lifecycle annotations, the labels-updated labels,
+			// userPrincipalName), so the setup waits for that decoration.
+			waitFixture("prtb reconciled", http.MethodGet, mgmtAPI+"/namespaces/"+explainBackingNS+"/projectroletemplatebindings/e2e-fid-explain-prtb", "",
+				bindingReconciled("prtb")),
+			waitFixture("crtb reconciled", http.MethodGet, mgmtAPI+"/namespaces/{downstream}/clusterroletemplatebindings/e2e-fid-explain-crtb", "",
+				bindingReconciled("crtb")),
 			createFixture("plain role", downstreamRBAC+"namespaces/"+explainNamespace+"/roles", roleBody),
 			createFixture("plain rolebinding", downstreamRBAC+"namespaces/"+explainNamespace+"/rolebindings", rbBody),
 			waitFixture("prtb grant live", http.MethodPost, downstreamReview+"subjectaccessreviews", sarPodsNS, sarAllowed),
@@ -1224,6 +1237,51 @@ func deleteUserNamed(id string) Step {
 				time.Sleep(time.Second)
 			}
 		},
+	}
+}
+
+// bindingReconciled reports whether a ProjectRoleTemplateBinding or
+// ClusterRoleTemplateBinding read back from the management API carries
+// what Rancher's controllers write to it after creation, every field
+// the recorded golden holds: the mgmt-auth controller's lifecycle
+// annotation, the cluster sync controller's lifecycle annotation (its
+// key ends in the cluster id), both labels-updated labels, the resolved
+// userPrincipalName and, on a ClusterRoleTemplateBinding, the status
+// the mgmt-auth controller stamps (status.lastUpdateTime). kind is
+// "prtb" or "crtb", the token both controller names carry.
+func bindingReconciled(kind string) func(decoded map[string]any, status int) bool {
+	return func(decoded map[string]any, status int) bool {
+		if status != http.StatusOK {
+			return false
+		}
+		if kind == "crtb" {
+			st, _ := decoded["status"].(map[string]any)
+			if updated, _ := st["lastUpdateTime"].(string); updated == "" {
+				return false
+			}
+		}
+		md, _ := decoded["metadata"].(map[string]any)
+		annotations, _ := md["annotations"].(map[string]any)
+		labels, _ := md["labels"].(map[string]any)
+		if _, ok := annotations["lifecycle.cattle.io/create.mgmt-auth-"+kind+"-controller"]; !ok {
+			return false
+		}
+		synced := false
+		for key := range annotations {
+			if strings.HasPrefix(key, "lifecycle.cattle.io/create.cluster-"+kind+"-sync_") {
+				synced = true
+			}
+		}
+		if !synced {
+			return false
+		}
+		for _, key := range []string{"auth.management.cattle.io/crb-rb-labels-updated", "authz.cluster.cattle.io/crb-rb-labels-updated"} {
+			if _, ok := labels[key]; !ok {
+				return false
+			}
+		}
+		principal, _ := decoded["userPrincipalName"].(string)
+		return principal != ""
 	}
 }
 
