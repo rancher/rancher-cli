@@ -65,8 +65,10 @@ type CredStore interface {
 	GetToken(ref ServerRef) (string, error)
 	SetToken(ref ServerRef, token string) error
 	// SetTokenWithOutcome persists token and reports exactly what the
-	// backend did, including when it failed.
-	SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error)
+	// backend did, including when it failed. prior is the state a
+	// compensation restores, classified by the caller; a backend that does
+	// not address credentials by account ignores it.
+	SetTokenWithOutcome(ref ServerRef, token string, prior PriorCredential) (CommitOutcome, error)
 	DeleteToken(ref ServerRef) error
 	GetCachedCred(key string) (token string, expiry time.Time, err error)
 	// GetCachedCredDetail is GetCachedCred with the record's readiness
@@ -287,15 +289,17 @@ func (f *fileStore) GetToken(ref ServerRef) (string, error) {
 // from a new command reintroduces the concurrent lost-update this file's
 // tests pin.
 func (f *fileStore) SetToken(ref ServerRef, token string) error {
-	_, err := f.SetTokenWithOutcome(ref, token)
+	_, err := f.SetTokenWithOutcome(ref, token, PriorCredential{})
 	return err
 }
 
 // SetTokenWithOutcome is SetToken reporting what the write did. A read or
 // decode failure refuses the write outright: without the parsed map the
 // write would drop every other server's entry, so the file is left as it
-// was and the prior token is unknown.
-func (f *fileStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error) {
+// was and the prior token is unknown. The caller's prior classification is
+// ignored: this store's prior is the entry in the file it just read, and
+// the file is the only place it can restore.
+func (f *fileStore) SetTokenWithOutcome(ref ServerRef, token string, _ PriorCredential) (CommitOutcome, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := CommitOutcome{Backend: clierr.BackendFile, State: CommitNotWritten}
@@ -559,8 +563,13 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 // the ephemeral exec-cred cache to a file store - the keychain has no list API,
 // and a single file is an enumerable single source of truth.
 type keyringStore struct {
-	cache   CredStore
-	pinHint string // non-empty when selected via the auto pin (Task 2 uses it)
+	cache CredStore
+	// dir is the config directory whose identity records name the keychain
+	// accounts this store may read and write. Without it a store could only
+	// address an entry by its name, which every directory on the machine
+	// spells the same way.
+	dir     string
+	pinHint string // non-empty when the pin, not a declaration, chose the keychain
 	// notices is the SAME buffer as cache's (both constructed from one
 	// newNoticeBuffer() call below) - one buffer, not two merged on drain,
 	// so DrainNotices sees a loose-permission notice from the wrapped file
@@ -569,16 +578,34 @@ type keyringStore struct {
 	notices *noticeBuffer
 }
 
+// keychainPinHint is the remediation appended to every keyring error of a
+// directory whose keychain was chosen by the pin rather than declared: a
+// pinned-but-unusable keychain has to fail with a way out, and a policy
+// that names the keychain outright has nothing to undo. One spelling, so
+// the store's errors and the package-level delete path cannot drift.
+func keychainPinHint(dir string) string {
+	return fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set %s=file)", PinPath(dir), EnvCredentialStore)
+}
+
+// pinHintFor is keychainPinHint for a caller that has only the resolved
+// policy and pin: empty unless the pin is what chose the keychain.
+func pinHintFor(dir, policy, pin string) string {
+	if policy == "auto" && pin == "keychain" {
+		return keychainPinHint(dir)
+	}
+	return ""
+}
+
 // newPinnedKeyringStore builds a keyring-backed store. When pinned is true the
 // store carries a remediation hint appended to every keyring error, so a
 // pinned-but-unusable keychain fails loudly with a way out instead of silently.
 func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 	hint := ""
 	if pinned {
-		hint = fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set %s=file)", PinPath(dir), EnvCredentialStore)
+		hint = keychainPinHint(dir)
 	}
 	nb := &noticeBuffer{}
-	return &keyringStore{cache: newFileStore(dir, nb), pinHint: hint, notices: nb}
+	return &keyringStore{cache: newFileStore(dir, nb), dir: dir, pinHint: hint, notices: nb}
 }
 
 // DrainNotices implements runtime.NoticeSource.
@@ -598,75 +625,137 @@ func keyringUnreachable(err error) bool {
 	return err != nil && !errors.Is(err, keyring.ErrNotFound) && !errors.Is(err, keyring.ErrSetDataTooBig)
 }
 
-func (k *keyringStore) GetToken(ref ServerRef) (string, error) {
+// keyringGet reads one account, counting the operation.
+func keyringGet(account string) (string, error) {
 	if keyringObserverFn != nil {
 		keyringObserverFn("get")
 	}
-	tok, err := keyringBackend.Get(keyringService, ref.Name)
-	if err == nil {
-		return tok, nil
-	}
-	if errors.Is(err, keyring.ErrNotFound) {
-		// Read-through: tokens stored under an earlier "file" pin keep
-		// working after an upgrade re-pin; they age out via logout/re-login.
-		return k.cache.GetToken(ref)
-	}
-	// Backend unreachable (XP-6): degrade the READ to the file store - a
-	// valid token in credentials.yaml must keep working on a machine whose
-	// pinned keychain is temporarily unusable (headless SSH, locked
-	// keychain). Reads create no new plaintext, so this is pure resilience;
-	// the WRITE path (SetToken) deliberately does not degrade.
-	ftok, ferr := k.cache.GetToken(ref)
-	switch {
-	case ferr == nil:
-		return ftok, nil
-	case errors.Is(ferr, ErrNoToken):
-		// Double miss: surface the keyring error, not ErrNoToken - the
-		// token may exist in the unreachable keychain, and "no stored
-		// token" would misread as logged-out.
-		return "", fmt.Errorf("keyring get %q: %w%s", ref.Name, err, k.pinHint)
-	default:
-		// The file store FAILED (malformed/unreadable credentials.yaml) -
-		// a distinct problem the user must see; don't mask it as a
-		// keychain-only issue.
-		return "", fmt.Errorf("keyring get %q: %w%s; file credential store: %w", ref.Name, err, k.pinHint, ferr)
-	}
+	return keyringBackend.Get(keyringService, account)
 }
 
+// keyringSet writes one account, counting the operation.
+func keyringSet(account, token string) error {
+	if keyringObserverFn != nil {
+		keyringObserverFn("set")
+	}
+	return keyringBackend.Set(keyringService, account, token)
+}
+
+// keyringDelete removes one account, counting the operation.
+func keyringDelete(account string) error {
+	if keyringObserverFn != nil {
+		keyringObserverFn("delete")
+	}
+	return keyringBackend.Delete(keyringService, account)
+}
+
+// credentialReplacedError says the keychain slot holds a credential this
+// directory never stored: another config directory that shares this one's
+// identity wrote it, or a login is finishing right now.
+func credentialReplacedError(entry string) error {
+	return clierr.New(clierr.CodeCredentialReplaced, fmt.Sprintf(
+		"the stored credential for %s was replaced by another config directory that shares this one's identity, or by a login in progress; retry, then log in again",
+		clierr.ShellQuote(entry))).
+		WithHint("rancher auth login " + clierr.ShellQuote(entry)).
+		WithCause(ErrCredentialIdentity)
+}
+
+// loginIncompleteError says a login for the entry wrote its identity ahead
+// of the credential and has not settled it: either it is still running, or
+// it ended before it could.
+func loginIncompleteError(entry string) error {
+	return clierr.Retryable(clierr.CodeLoginIncomplete, fmt.Sprintf(
+		"a login for %s is in progress or did not complete; retry, then log in again",
+		clierr.ShellQuote(entry))).
+		WithHint("rancher auth login " + clierr.ShellQuote(entry)).
+		WithCause(ErrCredentialIdentity)
+}
+
+// getError renders a failed keychain read. A declared keychain that cannot
+// be reached is an error with the way out, never a quiet read of some other
+// store: a second source is exactly how a directory ends up serving a
+// credential it did not store.
+func (k *keyringStore) getError(entry string, err error) error {
+	return fmt.Errorf("keyring get %q: %w%s", entry, err, k.pinHint)
+}
+
+// GetToken reads the entry's identity record first: with no record nothing
+// was ever stored for the entry under this directory's identity, so there
+// is no account to read and no keychain call to make. With a record, the
+// account it names is read once and the credential's keyed fingerprint
+// decides whether this directory may use it.
+func (k *keyringStore) GetToken(ref ServerRef) (string, error) {
+	rec, err := readIdentityRecord(k.dir, ref.Name)
+	if err != nil {
+		return "", err
+	}
+	if rec == nil {
+		return "", ErrNoToken
+	}
+	if rec.State == identityPending {
+		return "", loginIncompleteError(ref.Name)
+	}
+	tok, err := keyringGet(rec.Account())
+	switch {
+	case errors.Is(err, keyring.ErrNotFound):
+		return "", ErrNoToken
+	case err != nil:
+		return "", k.getError(ref.Name, err)
+	case credentialFingerprint(rec.ID, tok) != rec.Fingerprint:
+		return "", credentialReplacedError(ref.Name)
+	}
+	return tok, nil
+}
+
+// SetToken writes a credential with the full identity transaction around
+// it. Production logins reach the keychain through CommitToken, which runs
+// that transaction itself with the command's context and its own
+// classification of the prior; this path exists for a caller that has only
+// the store interface, and takes the identity lock with a background
+// context, still bounded by the lock's own deadline.
 func (k *keyringStore) SetToken(ref ServerRef, token string) error {
-	out, err := k.SetTokenWithOutcome(ref, token)
+	write, err := beginKeychainWrite(context.Background(), k, ref, token)
+	if err != nil {
+		return err
+	}
+	out, err := k.SetTokenWithOutcome(ref, token, write.Prior)
 	// A write that committed and then reported an error carries its
 	// advisory here instead of in a return value this signature has no
-	// room for; the invocation's drain surfaces it.
+	// room for; the invocation's drain surfaces it. Recorded before the
+	// record is settled, so a failure to settle cannot swallow the one
+	// line saying the credential did land.
 	k.notices.record(out.Notice)
+	if ferr := write.finish(context.Background(), out.State); ferr != nil {
+		return errors.Join(err, ferr)
+	}
 	return err
 }
 
-// SetTokenWithOutcome writes the token and normalizes what the keychain
-// did. A keyring Set can commit and still report an error, so a failed Set
-// is followed by exactly one read-back: the value that came back is what
-// decides between not written, written, and unknown.
-func (k *keyringStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error) {
-	priorRaw, hasKeyringPrior, src := k.priorState(ref)
-	out := CommitOutcome{Backend: clierr.BackendKeyring, State: CommitNotWritten, PriorSource: src}
+// SetTokenWithOutcome writes the token to the account the caller's prior
+// names and normalizes what the keychain did. It reads no prior itself: the
+// caller classified one, and a second read here could disagree with the
+// identity record the login already wrote. A keyring Set can commit and
+// still report an error, so a failed Set is followed by exactly one
+// read-back: the value that came back is what decides between not written,
+// written, and unknown.
+func (k *keyringStore) SetTokenWithOutcome(ref ServerRef, token string, prior PriorCredential) (CommitOutcome, error) {
+	out := CommitOutcome{Backend: clierr.BackendKeyring, State: CommitNotWritten, PriorSource: prior.Source}
+	if prior.Account == "" {
+		return out, fmt.Errorf("keyring set %q: no credential identity for the entry", ref.Name)
+	}
+	hasKeyringPrior := prior.Source == clierr.PriorKeyring
 	// Compensation restores THIS backend's prior physical state: the
-	// keychain's own prior value, or the removal of an item that was not
+	// account's own prior value, or the removal of an item that was not
 	// there before. A file entry belongs to the file store and is never
 	// touched here, so a keychain undo can never erase it.
 	compensate := func() error {
 		if hasKeyringPrior {
-			if keyringObserverFn != nil {
-				keyringObserverFn("set")
-			}
-			return keyringBackend.Set(keyringService, ref.Name, priorRaw)
+			return keyringSet(prior.Account, prior.Raw)
 		}
-		if keyringObserverFn != nil {
-			keyringObserverFn("delete")
-		}
-		return keyringBackend.Delete(keyringService, ref.Name)
+		return keyringDelete(prior.Account)
 	}
 	commit := func() CommitOutcome {
-		if src == clierr.PriorUnknown {
+		if prior.Source == clierr.PriorUnknown {
 			// No prior snapshot: the write landed and cannot be undone.
 			out.State = CommitCommittedUncompensatable
 			return out
@@ -676,54 +765,23 @@ func (k *keyringStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitO
 		return out
 	}
 
-	if keyringObserverFn != nil {
-		keyringObserverFn("set")
-	}
-	err := keyringBackend.Set(keyringService, ref.Name, token)
+	err := keyringSet(prior.Account, token)
 	if err == nil {
 		return commit(), nil
 	}
-	if keyringObserverFn != nil {
-		keyringObserverFn("get")
-	}
-	back, berr := keyringBackend.Get(keyringService, ref.Name)
+	back, berr := keyringGet(prior.Account)
 	switch {
 	case berr == nil && back == token:
 		out = commit()
 		out.Notice = "keyring reported an error after storing the token: " + err.Error()
 		return out, nil
-	case berr == nil && hasKeyringPrior && back == priorRaw,
-		errors.Is(berr, keyring.ErrNotFound) && !hasKeyringPrior && src != clierr.PriorUnknown:
+	case berr == nil && hasKeyringPrior && back == prior.Raw,
+		errors.Is(berr, keyring.ErrNotFound) && !hasKeyringPrior && prior.Source != clierr.PriorUnknown:
 		// The keychain holds exactly what it held before the write.
 		return out, k.setError(ref, err)
 	default:
 		out.State = CommitPossiblyCommitted
 		return out, k.setError(ref, err)
-	}
-}
-
-// priorState classifies where the effective prior token for ref lives and
-// returns the keychain's own raw prior when it holds one - the only value a
-// compensation may restore. The classification is fixed before the write
-// and never revised by the read-back.
-func (k *keyringStore) priorState(ref ServerRef) (raw string, hasKeyringPrior bool, src PriorSource) {
-	if keyringObserverFn != nil {
-		keyringObserverFn("get")
-	}
-	v, err := keyringBackend.Get(keyringService, ref.Name)
-	switch {
-	case err == nil:
-		return v, true, clierr.PriorKeyring
-	case !errors.Is(err, keyring.ErrNotFound):
-		return "", false, clierr.PriorUnknown
-	}
-	switch _, ferr := k.cache.GetToken(ref); {
-	case ferr == nil:
-		return "", false, clierr.PriorFile
-	case errors.Is(ferr, ErrNoToken):
-		return "", false, clierr.PriorNone
-	default:
-		return "", false, clierr.PriorUnknown
 	}
 }
 
@@ -740,25 +798,18 @@ func (k *keyringStore) setError(ref ServerRef, err error) error {
 	return fmt.Errorf("keyring set %q: %w%s", ref.Name, err, k.pinHint)
 }
 
+// DeleteToken removes the entry's credential from the keychain and then its
+// identity record. It touches the file store never: the two stores hold
+// separate credentials, and on a directory whose store is moving, deleting
+// the file entry here would remove the credential a login just committed.
+// The identity lock is taken with a background context for the reason
+// SetToken documents.
 func (k *keyringStore) DeleteToken(ref ServerRef) error {
-	if keyringObserverFn != nil {
-		keyringObserverFn("delete")
+	_, notices, err := deleteKeychainCredential(context.Background(), k.dir, ref, true, k.pinHint)
+	for _, n := range notices {
+		k.notices.record(n)
 	}
-	err := keyringBackend.Delete(keyringService, ref.Name)
-	if keyringUnreachable(err) {
-		// XP-6: treat unreachable like a miss - delete the file store below
-		// (removing plaintext is strictly safe) - but say so: the keychain
-		// copy, if any, could not be checked. auth logout's DeleteLoginToken
-		// independently surfaces keyring errors, so nothing is silently
-		// left behind on that path.
-		k.notices.record(fmt.Sprintf("keyring delete %q: %v - keychain unreachable, deleted the file store only%s", ref.Name, err, k.pinHint))
-	}
-	// Read-through symmetry with GetToken: a token may live in the file store
-	// under an earlier "file" pin, so clear it here too (absent is not an error).
-	if ferr := k.cache.DeleteToken(ref); ferr != nil && !errors.Is(ferr, ErrNoToken) {
-		return ferr
-	}
-	return nil
+	return err
 }
 
 func (k *keyringStore) GetCachedCred(key string) (string, time.Time, error) {
@@ -779,9 +830,9 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 
 // DeleteTokenEverywhere is single-server logout's delete point (ARCHITECTURE.md): it
 // deletes a server's login token from BOTH backends, unconditionally and
-// independently of policy - read-through made the file store part of the
-// effective read path under every policy, so every logout must delete it, and
-// the keychain may still hold a token from before a backend flip - AND
+// independently of policy - the two stores hold separate credentials and a
+// directory's store may have changed between the login and the logout, so
+// either may still hold one - AND
 // deletes every exec-credential cache entry cached against serverURL's host
 // (the cache is file-backed regardless of policy, CS-5). No backend's
 // failure short-circuits another; per-backend errors are joined so a live
@@ -829,22 +880,21 @@ func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, polic
 // cache once via DeleteAllExecCache instead of per server).
 func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy string) (from, notices []string, err error) {
 	var errs []error
-	if kerr := keyringBackend.Delete(keyringService, ref.Name); kerr == nil {
+	// The keychain step runs when this directory has an identity record for
+	// the entry: the record is the only thing that names the account, so
+	// without one nothing was ever stored there under this directory's
+	// identity and there is nothing to reach. Whether the directory
+	// declares the keychain decides only how a keychain it cannot reach is
+	// reported: loudly for the store the directory declares, as a warning
+	// that keeps the record for one it merely has a leftover record in.
+	policyName, pin, backend := ResolvedBackend(dir, policy)
+	deletedFromKeychain, keychainNotices, kerr := deleteKeychainCredential(ctx, dir, ref, backend == "keychain", pinHintFor(dir, policyName, pin))
+	notices = append(notices, keychainNotices...)
+	if kerr != nil {
+		errs = append(errs, kerr)
+	}
+	if deletedFromKeychain {
 		from = append(from, "keychain")
-	} else if errors.Is(kerr, keyring.ErrNotFound) {
-		// nothing stored in the keychain backend - fine
-	} else if keyringUnreachable(kerr) {
-		// Mirror keyringStore.DeleteToken's XP-6 degrade: an unreachable
-		// keychain must not turn `auth logout` into a hard failure when
-		// the file store still deletes cleanly. No store receiver exists
-		// here (DeleteLoginToken is a package-level function) to buffer
-		// this on, so it rides the return value straight to the caller
-		// instead - the command body appends it to Result.Warnings, or it
-		// rides the resulting error via WithWarnings if a later step
-		// fails.
-		notices = append(notices, fmt.Sprintf("keyring delete %q: %v - keychain unreachable, deleted the file store only", ref.Name, kerr))
-	} else {
-		errs = append(errs, fmt.Errorf("keyring delete %q: %w", ref.Name, kerr))
 	}
 	fs := newFileStore(dir, &noticeBuffer{})
 	switch _, terr := fs.GetToken(ref); {

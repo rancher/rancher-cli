@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -273,37 +274,257 @@ func TestKeyringStoreCachesToFileAndLists(t *testing.T) {
 	assert.Empty(t, list)
 }
 
-func TestKeyringGetTokenReadsThroughToFile(t *testing.T) {
-	keyring.MockInit() // in-memory keyring, empty
-	dir := t.TempDir()
-	if err := NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "id:secret"); err != nil {
-		t.Fatal(err)
-	}
-	s := newPinnedKeyringStore(dir, false)
-	tok, err := s.GetToken(ServerRef{Name: "prod"})
-	if err != nil || tok != "id:secret" {
-		t.Fatalf("read-through: got %q, %v", tok, err)
-	}
+// storeIdentity writes an active identity record for the entry and returns
+// the keychain account it names, for a test that has to set up a scoped
+// credential without a working keychain.
+func storeIdentity(t *testing.T, dir, entry, token string) string {
+	t.Helper()
+	id, err := newKeychainAccountID()
+	require.NoError(t, err)
+	require.NoError(t, writeIdentityRecord(dir, identityRecord{
+		Version:     identityVersion,
+		Entry:       entry,
+		State:       identityActive,
+		ID:          id,
+		Fingerprint: credentialFingerprint(id, token),
+	}))
+	return keychainAccount(id, entry)
 }
 
+// TestKeyringGetTokenNeverReadsTheFileStore asserts that a keychain
+// directory reads nothing from credentials.yaml. A token left there by an
+// earlier file pin, by a copy, or by a re-login is not this directory's
+// keychain credential, and serving it would be exactly the second source
+// that lets a directory use a credential it never stored.
+func TestKeyringGetTokenNeverReadsTheFileStore(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "id:secret"))
+
+	s := newPinnedKeyringStore(dir, false)
+	_, err := s.GetToken(ServerRef{Name: "prod"})
+	require.ErrorIs(t, err, ErrNoToken, "no identity record means nothing was stored here")
+}
+
+// TestKeyringGetTokenAbsentSlotIsNotLoggedIn asserts the verdict for a
+// record whose account the keychain no longer holds: logged out, not an
+// error.
+func TestKeyringGetTokenAbsentSlotIsNotLoggedIn(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	storeIdentity(t, dir, "prod", "gone")
+
+	s := newPinnedKeyringStore(dir, false)
+	_, err := s.GetToken(ServerRef{Name: "prod"})
+	require.ErrorIs(t, err, ErrNoToken)
+}
+
+// TestKeyringGetTokenReplacedCredential asserts the verdict for a slot
+// another config directory sharing this identity has written since: a
+// typed error naming the remedy, never the other directory's credential.
+func TestKeyringGetTokenReplacedCredential(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	account := storeIdentity(t, dir, "prod", "ours")
+	require.NoError(t, keyring.Set(keyringService, account, "theirs"))
+
+	s := newPinnedKeyringStore(dir, false)
+	_, err := s.GetToken(ServerRef{Name: "prod"})
+	require.ErrorContains(t, err, "was replaced by another config directory")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeCredentialReplaced, ce.Code)
+	assert.False(t, ce.Retryable)
+	assert.Equal(t, 3, ce.ExitCode())
+}
+
+// TestKeyringGetTokenPendingLogin asserts the verdict for a login that
+// wrote its identity ahead of the credential and has not settled it.
+func TestKeyringGetTokenPendingLogin(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	id, err := newKeychainAccountID()
+	require.NoError(t, err)
+	require.NoError(t, writeIdentityRecord(dir, identityRecord{
+		Version:     identityVersion,
+		Entry:       "prod",
+		State:       identityPending,
+		ID:          id,
+		Fingerprint: credentialFingerprint(id, "in-flight"),
+	}))
+
+	s := newPinnedKeyringStore(dir, false)
+	_, err = s.GetToken(ServerRef{Name: "prod"})
+	require.ErrorContains(t, err, "did not complete")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeLoginIncomplete, ce.Code)
+	assert.True(t, ce.Retryable)
+	assert.Equal(t, 3, ce.ExitCode())
+}
+
+// TestKeyringGetTokenMatchingCredential asserts the one verdict that
+// returns a credential: an active record whose fingerprint the slot still
+// matches.
+func TestKeyringGetTokenMatchingCredential(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	account := storeIdentity(t, dir, "prod", "ours")
+	require.NoError(t, keyring.Set(keyringService, account, "ours"))
+
+	s := newPinnedKeyringStore(dir, false)
+	tok, err := s.GetToken(ServerRef{Name: "prod"})
+	require.NoError(t, err)
+	assert.Equal(t, "ours", tok)
+}
+
+// TestDeleteTokenEverywhereRemovesFromBothBackends asserts that a
+// directory holding a credential in each store loses both, and that a
+// lingering identity record is reached even though the directory's own
+// policy names the file store.
 func TestDeleteTokenEverywhereRemovesFromBothBackends(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
-	_ = keyring.Set(keyringService, "prod", "in-keychain")
-	_ = NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file")
+	account := storeIdentity(t, dir, "prod", "in-keychain")
+	require.NoError(t, keyring.Set(keyringService, account, "in-keychain"))
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
+
 	from, _, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(from) != 2 {
-		t.Errorf("deletedFrom = %v, want both backends", from)
-	}
-	if _, err := keyring.Get(keyringService, "prod"); err == nil {
-		t.Error("token still in keychain")
-	}
-	if _, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"}); err == nil {
-		t.Error("token still in file store")
-	}
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"keychain", "file"}, from)
+
+	_, gerr := keyring.Get(keyringService, account)
+	require.Error(t, gerr, "the keychain account is gone")
+	_, gerr = NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
+	require.ErrorIs(t, gerr, ErrNoToken)
+
+	rec, rerr := readIdentityRecord(dir, "prod")
+	require.NoError(t, rerr)
+	assert.Nil(t, rec, "the identity record goes with the credential it named")
+}
+
+// TestDeleteLoginTokenSkipsTheKeychainWithoutARecord asserts a directory
+// with no identity for the entry never reaches the keychain: nothing was
+// stored there under this directory's identity, so a headless machine logs
+// out of its file store cleanly.
+func TestDeleteLoginTokenSkipsTheKeychainWithoutARecord(t *testing.T) {
+	keyring.MockInitWithError(errors.New("keychain boom"))
+	t.Cleanup(keyring.MockInit)
+	dir := t.TempDir()
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
+
+	from, notices, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"file"}, from)
+	assert.Empty(t, notices)
+	assert.NoDirExists(t, identityDirPath(dir), "a delete creates no identity directory")
+}
+
+// TestDeleteLoginTokenWarnsOnUnreachableKeychainWithALingeringRecord
+// asserts the file-policy directory that still has a record: the keychain
+// it cannot reach is a warning, not a failed logout, and the record is kept
+// so the next attempt still reaches the credential.
+func TestDeleteLoginTokenWarnsOnUnreachableKeychainWithALingeringRecord(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
+	storeIdentity(t, dir, "prod", "in-keychain")
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	from, notices, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"file"}, from)
+	require.Len(t, notices, 1)
+	assert.Contains(t, notices[0], "keychain unreachable")
+
+	rec, rerr := readIdentityRecord(dir, "prod")
+	require.NoError(t, rerr)
+	assert.NotNil(t, rec, "the record is kept for the next attempt")
+}
+
+// TestDeleteLoginTokenFailsOnUnreachableKeychainForAKeychainDirectory
+// asserts the other half: a directory that declares the keychain fails its
+// logout loudly rather than reporting a partial delete.
+func TestDeleteLoginTokenFailsOnUnreachableKeychainForAKeychainDirectory(t *testing.T) {
+	dir := t.TempDir()
+	storeIdentity(t, dir, "prod", "in-keychain")
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	_, _, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "keychain")
+	require.ErrorContains(t, err, "no session bus")
+
+	rec, rerr := readIdentityRecord(dir, "prod")
+	require.NoError(t, rerr)
+	assert.NotNil(t, rec)
+}
+
+// TestDeleteLoginTokenUnreachableKeychainCarriesThePinHint asserts that
+// the logout path fails with the same remedy the read path gives: a
+// directory whose keychain was chosen by the pin is told how to undo that
+// pin, which is the whole point of the hint.
+func TestDeleteLoginTokenUnreachableKeychainCarriesThePinHint(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(EnvCredentialStore, "")
+	require.NoError(t, WritePin(dir, "keychain"))
+	storeIdentity(t, dir, "prod", "in-keychain")
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	_, _, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "auto")
+	require.ErrorContains(t, err, "no session bus")
+	require.ErrorContains(t, err, "credential store pinned to keychain")
+	require.ErrorContains(t, err, "delete the pin to re-probe")
+}
+
+// TestFilePolicyNeverTouchesTheKeychain asserts what a directory that
+// declares the file store costs: no keychain call on any of the three
+// credential operations, and no identity directory to show for them.
+func TestFilePolicyNeverTouchesTheKeychain(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	t.Setenv(EnvCredentialStore, "")
+	ref := ServerRef{Name: "prod", URL: "https://prod.ex"}
+	store, err := OpenStore("file", dir)
+	require.NoError(t, err)
+
+	var ops []string
+	SetKeyringObserverForTest(func(op string) { ops = append(ops, op) })
+	t.Cleanup(func() { SetKeyringObserverForTest(nil) })
+
+	require.NoError(t, store.SetToken(ref, "in-file"))
+	tok, err := store.GetToken(ref)
+	require.NoError(t, err)
+	assert.Equal(t, "in-file", tok)
+	_, _, _, err = DeleteTokenEverywhere(t.Context(), dir, ref, "file")
+	require.NoError(t, err)
+
+	assert.Empty(t, ops, "a file-policy directory makes no keychain call")
+	assert.NoDirExists(t, identityDirPath(dir))
+}
+
+// TestDeleteLoginTokenSkipsAReplacedCredential asserts the delete verdict
+// for a slot another config directory sharing this identity now owns: the
+// keychain is left alone, the local record goes, and the caller is told.
+func TestDeleteLoginTokenSkipsAReplacedCredential(t *testing.T) {
+	keyring.MockInit()
+	dir := t.TempDir()
+	account := storeIdentity(t, dir, "prod", "ours")
+	require.NoError(t, keyring.Set(keyringService, account, "theirs"))
+
+	from, notices, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "keychain")
+	require.NoError(t, err)
+	assert.NotContains(t, from, "keychain")
+	require.Len(t, notices, 1)
+	assert.Contains(t, notices[0], "another config directory sharing this identity")
+
+	tok, gerr := keyring.Get(keyringService, account)
+	require.NoError(t, gerr)
+	assert.Equal(t, "theirs", tok, "the other directory keeps its credential")
+
+	rec, rerr := readIdentityRecord(dir, "prod")
+	require.NoError(t, rerr)
+	assert.Nil(t, rec, "this directory's record goes either way")
 }
 
 func TestDeleteTokenEverywhereAlsoDeletesExecCache(t *testing.T) {
@@ -434,37 +655,21 @@ func TestDeleteExecCacheForServerEmptyHostIsNoop(t *testing.T) {
 	assert.NoError(t, err, "empty host must not touch the cache")
 }
 
-func TestKeyringDeleteTokenDeletesFileStore(t *testing.T) {
+// TestKeyringDeleteTokenLeavesTheFileStore asserts the keychain store
+// deletes from the keychain only. The two stores hold separate
+// credentials, and on a directory whose store is changing, deleting the
+// file entry here would remove the credential a login just committed.
+func TestKeyringDeleteTokenLeavesTheFileStore(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
-	// Token lives only in the file store (e.g. written under an earlier file pin).
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
 	s := newPinnedKeyringStore(dir, false)
+
 	require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
-	_, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
-	assert.ErrorIs(t, err, ErrNoToken, "keychain DeleteToken must also delete the file store")
-}
 
-// TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile: DeleteLoginToken
-// now shares keyringStore.DeleteToken's XP-6 degrade - an unreachable
-// keychain warns rather than turning `auth logout` into a hard failure, as
-// long as the file store deletes cleanly. DeleteLoginToken has no store
-// receiver to buffer this notice on, so it rides the return value instead
-// of stderr directly - the caller (config_delete_server.go, logout.go)
-// appends it to Result.Warnings or a failing error's WithWarnings ride.
-func TestDeleteTokenEverywhereWarnsOnUnreachableKeychainButStillDeletesFile(t *testing.T) {
-	keyring.MockInitWithError(errors.New("keychain boom"))
-	t.Cleanup(keyring.MockInit) // reset the global provider for later tests
-	dir := t.TempDir()
-	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
-
-	from, _, notices, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
-	require.NoError(t, err, "an unreachable-keychain delete error must not fail logout when the file store deletes")
-	assert.Contains(t, from, "file", "file backend must still be deleted")
-	_, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
-	require.ErrorIs(t, gerr, ErrNoToken, "file token must be gone even when the keychain was unreachable")
-	require.Len(t, notices, 1)
-	assert.Contains(t, notices[0], "keychain unreachable", "the unreachable keychain must still be visibly warned about")
+	tok, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
+	require.NoError(t, err)
+	assert.Equal(t, "in-file", tok)
 }
 
 func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
@@ -483,75 +688,48 @@ func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
 	assert.Equal(t, "live", list[0].Name, "live entry must be returned")
 }
 
-// TestKeyringUnreachableGetReadsThroughToFile: a backend-unreachable error
-// (NOT ErrNotFound) with a valid token in the file store must return the
-// file token - the headless-with-keychain-pin case (XP-6).
-func TestKeyringUnreachableGetReadsThroughToFile(t *testing.T) {
+// TestKeyringUnreachableGetFailsWithThePinHint asserts that a directory
+// pinned to the keychain fails its read when the keychain cannot be
+// reached, with the way out in the message. It does not fall back to the
+// file store: a token there is not this directory's keychain credential,
+// and a headless machine uses a directory that declares the file store.
+func TestKeyringUnreachableGetFailsWithThePinHint(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "file-token"))
-	keyring.MockInitWithError(errors.New("dbus: no session bus"))
-	t.Cleanup(keyring.MockInit)
-
-	s := newPinnedKeyringStore(dir, true)
-	tok, err := s.GetToken(ServerRef{Name: "prod"})
-	require.NoError(t, err)
-	assert.Equal(t, "file-token", tok)
-}
-
-// TestKeyringUnreachableGetDoubleMissKeepsKeyringError: when the file
-// store ALSO misses, the surfaced error must be the keyring transport
-// error (the token may exist in the unreachable keychain) - not
-// ErrNoToken, which would misread as "logged out".
-func TestKeyringUnreachableGetDoubleMissKeepsKeyringError(t *testing.T) {
-	dir := t.TempDir()
+	storeIdentity(t, dir, "prod", "in-keychain")
 	keyring.MockInitWithError(errors.New("dbus: no session bus"))
 	t.Cleanup(keyring.MockInit)
 
 	s := newPinnedKeyringStore(dir, true)
 	_, err := s.GetToken(ServerRef{Name: "prod"})
-	require.Error(t, err)
-	require.NotErrorIs(t, err, ErrNoToken)
-	assert.ErrorContains(t, err, "no session bus")
-}
-
-// TestKeyringUnreachableGetSurfacesFileStoreFailure: an unreachable
-// keychain PLUS a broken credentials.yaml must surface both problems -
-// the file-store failure must not be masked as a keychain-only issue.
-func TestKeyringUnreachableGetSurfacesFileStoreFailure(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("{not yaml: ["), 0o600))
-	keyring.MockInitWithError(errors.New("dbus: no session bus"))
-	t.Cleanup(keyring.MockInit)
-
-	s := newPinnedKeyringStore(dir, true)
-	_, err := s.GetToken(ServerRef{Name: "prod"})
-	require.Error(t, err)
 	require.ErrorContains(t, err, "no session bus")
-	assert.ErrorContains(t, err, "file credential store")
+	require.ErrorContains(t, err, "credential store pinned to keychain")
+	assert.NotErrorIs(t, err, ErrNoToken, "the credential may be in the keychain this read could not reach")
 }
 
-// TestKeyringUnreachableDeleteDeletesFile: delete under an unreachable
-// keychain still deletes the file store and reports success (spec XP-6:
-// same as a miss; logout's DeleteLoginToken independently surfaces
-// keyring errors) - and records a notice naming the unreachable keychain
-// and the file-only delete, so the undeletable keychain copy (if any) is
-// never silent. The notice rides the store's own NoticeSource buffer, not
-// stderr directly.
-func TestKeyringUnreachableDeleteDeletesFile(t *testing.T) {
+// TestKeyringUnreachableDeleteFailsWithThePinHint asserts the same for a
+// delete: the record is kept, and the file store is not touched as a
+// consolation.
+func TestKeyringUnreachableDeleteFailsWithThePinHint(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
 	require.NoError(t, fs.SetToken(ServerRef{Name: "prod"}, "file-token"))
+	storeIdentity(t, dir, "prod", "in-keychain")
 	keyring.MockInitWithError(errors.New("dbus: no session bus"))
 	t.Cleanup(keyring.MockInit)
 
 	s := newPinnedKeyringStore(dir, true)
-	require.NoError(t, s.DeleteToken(ServerRef{Name: "prod"}))
-	_, err := fs.GetToken(ServerRef{Name: "prod"})
-	require.ErrorIs(t, err, ErrNoToken)
-	notices := s.(NoticeSource).DrainNotices()
-	require.Len(t, notices, 1)
-	assert.Contains(t, notices[0], "keychain unreachable")
-	assert.Contains(t, notices[0], "file store only")
+	err := s.DeleteToken(ServerRef{Name: "prod"})
+	require.ErrorContains(t, err, "no session bus")
+	require.ErrorContains(t, err, "credential store pinned to keychain")
+
+	rec, rerr := readIdentityRecord(dir, "prod")
+	require.NoError(t, rerr)
+	assert.NotNil(t, rec, "the record is kept while the credential may still be there")
+
+	tok, gerr := fs.GetToken(ServerRef{Name: "prod"})
+	require.NoError(t, gerr)
+	assert.Equal(t, "file-token", tok)
 }
 
 // TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable: an oversized

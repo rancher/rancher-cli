@@ -15,35 +15,113 @@ import (
 // Windows-only default branch is unit-testable from any host.
 var goos = runtime.GOOS
 
-// ResolveDir returns the config directory using precedence:
-// flag > RANCHER_CLI_CONFIG_DIR > $XDG_CONFIG_HOME/rancher > default.
-// The default is ~/.config/rancher, except on Windows where it is
-// os.UserConfigDir()/rancher (%APPDATA%\rancher) - the platform
-// convention. The Unix/macOS default is deliberately NOT moved to
-// UserConfigDir (that would relocate existing macOS users' config to
-// ~/Library/Application Support with no migration).
-func ResolveDir(flagDir string) (string, error) {
+// DirSource names where a resolved config directory came from.
+type DirSource string
+
+const (
+	DirSourceFlag    DirSource = "flag"
+	DirSourceEnv     DirSource = "env"
+	DirSourceXDG     DirSource = "xdg"
+	DirSourceDefault DirSource = "default"
+)
+
+// resolveDirFrom resolves the config directory from the three inputs the
+// CLI owns, passed explicitly rather than read here: clearing all three
+// yields the platform default without mutating the process environment,
+// which a parallel test could not do safely.
+func resolveDirFrom(flagDir, envDir, xdgHome string) (string, DirSource, error) {
 	if flagDir != "" {
-		return flagDir, nil
+		return flagDir, DirSourceFlag, nil
 	}
-	if env := os.Getenv(EnvConfigDir); env != "" {
-		return env, nil
+	if envDir != "" {
+		return envDir, DirSourceEnv, nil
 	}
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "rancher"), nil
+	if xdgHome != "" {
+		return filepath.Join(xdgHome, "rancher"), DirSourceXDG, nil
 	}
 	if goos == "windows" {
 		if dir, err := os.UserConfigDir(); err == nil {
-			return filepath.Join(dir, "rancher"), nil
+			return filepath.Join(dir, "rancher"), DirSourceDefault, nil
 		}
 		// %AppData% unset (rare): fall through to the home-relative path
 		// rather than failing - same shape the CLI has always produced.
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
+		return "", "", err
+	}
+	return filepath.Join(home, ".config", "rancher"), DirSourceDefault, nil
+}
+
+// ResolveDir returns the config directory using precedence:
+// flag > RANCHER_CLI_CONFIG_DIR > $XDG_CONFIG_HOME/rancher > default.
+// The default is ~/.config/rancher, except on Windows where it is
+// os.UserConfigDir()/rancher (%APPDATA%\rancher) - the platform
+// convention. The Unix/macOS default is deliberately NOT moved to
+// UserConfigDir (that would relocate existing macOS users' config to
+// ~/Library/Application Support with no migration). A flag or variable
+// value is returned as the caller spelled it, so a relative value stays
+// relative; ResolveDirWithSource returns the canonical form instead.
+func ResolveDir(flagDir string) (string, error) {
+	dir, _, err := resolveDirFrom(flagDir, os.Getenv(EnvConfigDir), os.Getenv("XDG_CONFIG_HOME"))
+	return dir, err
+}
+
+// ResolveDirWithSource returns the resolved config directory as an
+// absolute, cleaned path together with where it came from - one value any
+// caller that has to name the directory can record or compare. Symlinks
+// are preserved rather than resolved: two spellings that reach one
+// directory through different links stay two values, and IsDefaultDir
+// decides through the filesystem whether they are one place.
+func ResolveDirWithSource(flagDir string) (string, DirSource, error) {
+	dir, source, err := resolveDirFrom(flagDir, os.Getenv(EnvConfigDir), os.Getenv("XDG_CONFIG_HOME"))
+	if err != nil {
+		return "", "", err
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", "", err
+	}
+	return abs, source, nil
+}
+
+// PlatformDefaultDir returns the directory the CLI would use with none of
+// its own three inputs set, in ResolveDirWithSource's canonical form.
+// Every platform variable still counts (%APPDATA% on Windows, HOME
+// elsewhere): the question it answers is "where would this machine put
+// the config", not "where would an empty environment put it".
+func PlatformDefaultDir() (string, error) {
+	dir, _, err := resolveDirFrom("", "", "")
+	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "rancher"), nil
+	return filepath.Abs(dir)
+}
+
+// IsDefaultDir reports whether dir names the platform default directory.
+// When both exist, os.SameFile decides, so a differently cased spelling
+// of one directory on a case-insensitive filesystem answers true. When
+// either is absent there is nothing to compare through the filesystem and
+// the canonical forms are compared exactly, which is case-sensitive even
+// where the filesystem is not.
+func IsDefaultDir(dir string) (bool, error) {
+	def, err := PlatformDefaultDir()
+	if err != nil {
+		return false, err
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return false, err
+	}
+	if abs == def {
+		return true, nil
+	}
+	a, errA := os.Stat(abs)
+	b, errB := os.Stat(def)
+	if errA != nil || errB != nil {
+		return false, nil
+	}
+	return os.SameFile(a, b), nil
 }
 
 // ResolveCA turns a --cacert value or config CA (pem-or-path) into a PEM

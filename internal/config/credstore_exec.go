@@ -229,7 +229,7 @@ func (s *execStore) expired(exp time.Time) bool {
 }
 
 func (s *execStore) SetToken(ref ServerRef, token string) error {
-	_, err := s.SetTokenWithOutcome(ref, token)
+	_, err := s.SetTokenWithOutcome(ref, token, PriorCredential{})
 	return err
 }
 
@@ -240,8 +240,9 @@ func (s *execStore) SetToken(ref ServerRef, token string) error {
 // failed to answer may still have stored the credential, which is why an
 // invocation error reports possiblyCommitted rather than a clean refusal;
 // a helper that answered cleanly is still not atomic with the config write
-// that follows it.
-func (s *execStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error) {
+// that follows it. The caller's prior classification is ignored for the
+// same reason: a helper's namespace is the helper's own contract.
+func (s *execStore) SetTokenWithOutcome(ref ServerRef, token string, _ PriorCredential) (CommitOutcome, error) {
 	out := CommitOutcome{Backend: clierr.BackendExec, State: CommitNotWritten, PriorSource: clierr.PriorUnknown}
 	req, err := wireRequest(ref)
 	if err != nil {

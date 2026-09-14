@@ -191,7 +191,63 @@ func PersistLoginCredential(ctx context.Context, dir string, in PersistLoginInpu
 			out.Warnings = append(out.Warnings, pinNotice)
 		}
 
-		commit, cerr := CommitToken(store, ServerRef{Name: name, URL: in.CanonicalURL}, in.Bearer)
+		ref := ServerRef{Name: name, URL: in.CanonicalURL}
+		// A keychain write is addressed by the entry's identity, so the
+		// identity is decided and recorded before the credential is
+		// written and settled after it. The store the login actually
+		// opened - after RepinForLogin, which can move an auto directory
+		// from the file store to the keychain inside this very login -
+		// is what decides whether that applies.
+		var write *keychainWrite
+		if ks, ok := keychainStoreFor(store); ok {
+			w, werr := beginKeychainWrite(ctx, ks, ref, in.Bearer)
+			if werr != nil {
+				return rollback(&out, cfg, name, snap, werr)
+			}
+			write = w
+		}
+		var prior PriorCredential
+		if write != nil {
+			prior = write.Prior
+		}
+
+		commit, cerr := CommitToken(store, ref, in.Bearer, prior)
+		if write != nil {
+			if ferr := write.finish(ctx, commit.State); ferr != nil {
+				out.Commit = &commit
+				out.CredentialState = commit.State
+				idErr := errors.Join(cerr, fmt.Errorf("recording the credential identity for %s: %w", name, ferr))
+				if commit.State == CommitNotWritten {
+					// Nothing was stored, so the entry goes back the way
+					// every other empty-handed credential failure sends
+					// it; leaving the rewritten entry would replace a
+					// working login's URL, CA and provenance with this
+					// failed one's.
+					return rollback(&out, cfg, name, snap, idErr)
+				}
+				// The credential did land: the entry stays as the handle
+				// for reaching it, and the record says a login for this
+				// entry has not settled until the next one settles it.
+				return idErr
+			}
+			if commit.Compensate != nil {
+				// A compensation has to undo both halves: the credential
+				// and the identity that names it. Either half failing is
+				// one failed compensation, and the message names both
+				// accounts because neither is addressable from the other
+				// once the record is gone.
+				undo := commit.Compensate
+				commit.Compensate = func() error {
+					if err := undo(); err != nil {
+						return fmt.Errorf("%w (%s)", err, write.accounts())
+					}
+					if err := write.revert(ctx); err != nil {
+						return fmt.Errorf("%w (%s)", err, write.accounts())
+					}
+					return nil
+				}
+			}
+		}
 		out.Commit = &commit
 		out.CredentialState = commit.State
 		if cerr != nil {

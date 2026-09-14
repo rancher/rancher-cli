@@ -35,11 +35,26 @@ type CommitOutcome struct {
 	Compensate func() error
 }
 
+// PriorCredential is what a credential write compensates back to. The
+// caller classifies it and the store writes against it, so the account a
+// login recorded as the entry's identity is the account the write targets,
+// with no second read of anything in between. Raw carries a value only
+// when Source is PriorKeyring; a new account's prior is none by
+// construction, so a value read from a slot that turned out to belong to
+// another config directory is never a prior and is never written anywhere.
+type PriorCredential struct {
+	// Account is the keychain account this write targets. Empty for a
+	// backend that does not address credentials by account.
+	Account string
+	Source  PriorSource
+	Raw     string
+}
+
 // CommitToken persists token through store and returns the backend's own
-// account of what happened. It never reads a prior value itself: only the
-// backend knows where its prior state physically lived. The backends'
-// sentinel errors (ErrTokenStoreUnsupported) are returned unwrapped so
-// callers keep using errors.Is.
-func CommitToken(store CredStore, ref ServerRef, token string) (CommitOutcome, error) {
-	return store.SetTokenWithOutcome(ref, token)
+// account of what happened. prior is the state a compensation restores,
+// classified by the caller. The backends' sentinel errors
+// (ErrTokenStoreUnsupported) are returned unwrapped so callers keep using
+// errors.Is.
+func CommitToken(store CredStore, ref ServerRef, token string, prior PriorCredential) (CommitOutcome, error) {
+	return store.SetTokenWithOutcome(ref, token, prior)
 }

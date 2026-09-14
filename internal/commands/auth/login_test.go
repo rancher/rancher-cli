@@ -1589,11 +1589,11 @@ type unsupportedStore struct{}
 func (unsupportedStore) GetToken(config.ServerRef) (string, error) { return "", config.ErrNoToken }
 
 func (s unsupportedStore) SetToken(ref config.ServerRef, tok string) error {
-	_, err := s.SetTokenWithOutcome(ref, tok)
+	_, err := s.SetTokenWithOutcome(ref, tok, config.PriorCredential{})
 	return err
 }
 
-func (unsupportedStore) SetTokenWithOutcome(config.ServerRef, string) (config.CommitOutcome, error) {
+func (unsupportedStore) SetTokenWithOutcome(config.ServerRef, string, config.PriorCredential) (config.CommitOutcome, error) {
 	return config.CommitOutcome{Backend: clierr.BackendExec, State: config.CommitNotWritten, PriorSource: clierr.PriorUnknown},
 		fmt.Errorf("helper: %w", config.ErrTokenStoreUnsupported)
 }
@@ -2190,8 +2190,8 @@ type compensationFailingStore struct {
 	compErr error
 }
 
-func (s *compensationFailingStore) SetTokenWithOutcome(ref config.ServerRef, token string) (config.CommitOutcome, error) {
-	out, err := s.CredStore.SetTokenWithOutcome(ref, token)
+func (s *compensationFailingStore) SetTokenWithOutcome(ref config.ServerRef, token string, prior config.PriorCredential) (config.CommitOutcome, error) {
+	out, err := s.CredStore.SetTokenWithOutcome(ref, token, prior)
 	if err == nil && out.Compensate != nil {
 		out.Compensate = func() error { return s.compErr }
 	}
@@ -2223,10 +2223,10 @@ func TestLoginUnknownDerivedLeavesOneMarkedToken(t *testing.T) {
 	assert.Len(t, f.TokensWithDescriptionContaining("ext", "[op:"+d.OperationMarker+"]"), 1, "exactly one ext token carries the marker")
 }
 
-// unreadablePriorKeyring is a keyring seam whose Get fails with a
-// non-not-found error while no item is stored: the prior state cannot be
-// classified, so a write that lands cannot be undone. Set stores the value
-// and then reports an error, and the read-back that follows sees it.
+// unreadablePriorKeyring is a keyring seam whose Set stores the value and
+// then reports an error, so the read-back that follows sees it; a Get for
+// an item it does not hold fails with a non-not-found error rather than a
+// clean miss.
 type unreadablePriorKeyring struct {
 	mu    sync.Mutex
 	items map[string]string
@@ -2266,34 +2266,28 @@ func (k refusingKeyring) Set(string, string, string) error   { return k.err }
 func (k refusingKeyring) Get(string, string) (string, error) { return "", keyring.ErrNotFound }
 func (k refusingKeyring) Delete(string, string) error        { return nil }
 
-// unknownReadbackKeyring is a keyring seam that answers the prior-state
-// read with a miss, fails the write, and then fails the read-back: what the
-// keychain now holds is unknown.
-type unknownReadbackKeyring struct {
-	mu   sync.Mutex
-	gets int
-	err  error
-}
+// unknownReadbackKeyring is a keyring seam that fails the write and then
+// fails the read-back that follows it: what the keychain now holds is
+// unknown.
+type unknownReadbackKeyring struct{ err error }
 
 func (k *unknownReadbackKeyring) Set(string, string, string) error { return k.err }
 
 func (k *unknownReadbackKeyring) Get(string, string) (string, error) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.gets++
-	if k.gets == 1 {
-		return "", keyring.ErrNotFound
-	}
 	return "", errors.New("dbus: no reply")
 }
 
 func (k *unknownReadbackKeyring) Delete(string, string) error { return nil }
 
-// TestLoginUncompensatableKeyringCommitSucceedsWithNotice asserts the
-// committedUncompensatable branch on the success path: the prior item could
-// not be read, the write landed anyway, and the advisory reaches warnings.
+// TestLoginKeyringCommitThenErrorSucceedsWithNotice asserts the success
+// path through a keychain that stores the token and then reports an
+// error: the read-back proves the write landed, the login succeeds, and
+// the advisory reaches warnings. The prior is classified before the write
+// now, so this login is compensatable; the uncompensatable branch is
+// reachable only by a caller that hands the store a prior it could not
+// classify, which the store's own tests cover.
 // Not parallel: it swaps the package-global keyring seam.
-func TestLoginUncompensatableKeyringCommitSucceedsWithNotice(t *testing.T) {
+func TestLoginKeyringCommitThenErrorSucceedsWithNotice(t *testing.T) {
 	keyring.MockInit()
 	f := testrancher.New(testrancher.Options{})
 	srv := httptest.NewServer(f)
@@ -2315,20 +2309,21 @@ func TestLoginUncompensatableKeyringCommitSucceedsWithNotice(t *testing.T) {
 	assert.NotEmpty(t, tok)
 }
 
-// TestLoginUncompensatableKeyringConfigWriteFailureReportsRecovery asserts
-// the same branch when the guided-trust config write then fails: nothing can
-// undo the keychain write, so the failure names what the keychain holds,
-// carries the unknown prior source, and the derived token is revoked.
+// TestLoginKeyringTrustWriteFailureCompensatesCredentialAndIdentity
+// asserts the compensation of both halves on a fresh entry: the config
+// write after the commit fails, the credential the login stored is
+// deleted, and the identity record that named its account goes with it, so
+// nothing is left addressable that the login did not finish.
 // Not parallel: it swaps the package-global keyring seam and mutates
 // trustCommitConfigWriteHookForTest.
-func TestLoginUncompensatableKeyringConfigWriteFailureReportsRecovery(t *testing.T) {
+func TestLoginKeyringTrustWriteFailureCompensatesCredentialAndIdentity(t *testing.T) {
 	keyring.MockInit()
 	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	f := testrancher.New(testrancher.Options{})
 	srv := newTLSFacade(t, fix, f)
 	dir, _ := cmdtest.FilePolicyDir(t)
 	seedServer(t, dir, "prod", srv.URL, "", false)
-	fk := &unreadablePriorKeyring{items: map[string]string{}, err: errors.New("dbus: reply lost")}
+	fk := &recordingKeyring{items: map[string]string{}}
 	restoreKeyring := config.SetKeyringBackendForTest(fk)
 	defer restoreKeyring()
 	store, err := config.OpenStore("keychain", dir)
@@ -2347,14 +2342,46 @@ func TestLoginUncompensatableKeyringConfigWriteFailureReportsRecovery(t *testing
 	_, d := decodeLoginFailure(t, err)
 	assert.Equal(t, clierr.StageCommit, d.Stage)
 	assert.Equal(t, clierr.ConfigNotWritten, d.ConfigState)
-	assert.Equal(t, clierr.CredentialCommittedUncompensatable, d.CredentialState)
-	require.NotNil(t, d.CredentialRecovery)
-	assert.Equal(t, clierr.BackendKeyring, d.CredentialRecovery.Backend)
-	assert.Equal(t, clierr.PriorUnknown, d.CredentialRecovery.PriorSource)
-	assert.Empty(t, d.CredentialRecovery.CompensationError)
-	assert.Contains(t, d.Recovery, "the earlier item could not be read")
+	assert.Equal(t, clierr.CredentialCompensated, d.CredentialState)
+	assert.Empty(t, fk.items, "the credential the login stored is gone")
 	require.NotNil(t, d.DerivedToken)
 	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result)
+
+	_, gerr := store.GetToken(config.ServerRef{Name: "prod"})
+	assert.ErrorIs(t, gerr, config.ErrNoToken, "the identity the login recorded is gone too")
+}
+
+// recordingKeyring is a keyring seam backed by a map, for a test that has
+// to see exactly which accounts are left behind. It keys the map the way
+// unreadablePriorKeyring does, so the two fakes in this file cannot
+// disagree about what a key is.
+type recordingKeyring struct {
+	mu    sync.Mutex
+	items map[string]string
+}
+
+func (k *recordingKeyring) Set(service, user, password string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.items[service+"\x00"+user] = password
+	return nil
+}
+
+func (k *recordingKeyring) Get(service, user string) (string, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	v, ok := k.items[service+"\x00"+user]
+	if !ok {
+		return "", keyring.ErrNotFound
+	}
+	return v, nil
+}
+
+func (k *recordingKeyring) Delete(service, user string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	delete(k.items, service+"\x00"+user)
+	return nil
 }
 
 // TestLoginKeyringNotWrittenFailsWithoutCredentialRecovery asserts the

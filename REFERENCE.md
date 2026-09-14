@@ -34,10 +34,23 @@ any distro including musl/distroless).
 Precedence above the default everywhere: `--config` flag (`-c`) >
 `RANCHER_CLI_CONFIG_DIR` > `$XDG_CONFIG_HOME/rancher`. The credential
 backend is `auto` (probe once, pin) unless `RANCHER_CLI_CREDENTIAL_STORE`
-or the config `credentialStore` field says otherwise; headless machines
-(no D-Bus, locked keychain) keep working read-only against an existing
-file-stored token, while new logins there ask for an explicit
-`RANCHER_CLI_CREDENTIAL_STORE=file` opt-in.
+or the config `credentialStore` field says otherwise. A directory whose
+backend is the keychain reads only the keychain: on a headless machine (no
+D-Bus, locked keychain) every command fails with the way out rather than
+falling back to a file-stored token, so a headless machine wants
+`RANCHER_CLI_CREDENTIAL_STORE=file` from the start.
+
+A keychain credential belongs to the config directory that stored it. Each
+directory keeps a per-entry identity in `credstore-id/`, and the keychain
+account carries it, so two directories never share a stored credential for
+a server name they both use. A copied directory inherits its original's
+identity and reads the same credential until one side stores a new one:
+the other side's next read then fails with `CREDENTIAL_REPLACED`, and its
+next `rancher auth login` for that entry separates it - one entry, not the
+whole directory. A login that did not finish leaves `LOGIN_INCOMPLETE`,
+which means run the command again. Deleting a file under `credstore-id/`
+is indistinguishable from never having logged in: the entry reads as not
+logged in and needs a fresh login.
 
 Credential-store precedence: `RANCHER_CLI_CREDENTIAL_STORE` >
 `credentialStore: keychain|file|auto|exec:<name>` in config > a
@@ -61,7 +74,7 @@ precedence is flag > environment > file.
 | `RANCHER_CLI_URL` | server URL |
 | `RANCHER_CLI_TOKEN` | token, used directly and never persisted |
 | `RANCHER_CLI_CACERT` | CA bundle (PEM) |
-| `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>` |
+| `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>`; a keychain directory reads the keychain only, so set `file` where no keychain is reachable |
 | `RANCHER_CLI_CONFIG_DIR` | config directory |
 | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
 | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |

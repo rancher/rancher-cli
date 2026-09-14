@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ type stubStore struct {
 
 func (s stubStore) GetToken(ServerRef) (string, error) { return s.token, s.tokenErr }
 func (s stubStore) SetToken(ServerRef, string) error   { return nil }
-func (s stubStore) SetTokenWithOutcome(ServerRef, string) (CommitOutcome, error) {
+func (s stubStore) SetTokenWithOutcome(ServerRef, string, PriorCredential) (CommitOutcome, error) {
 	return CommitOutcome{Backend: clierr.BackendFile, State: CommitCommitted, PriorSource: clierr.PriorNone}, nil
 }
 func (s stubStore) DeleteToken(ServerRef) error { return nil }
@@ -248,6 +249,174 @@ func TestResolveDirWindowsPrecedenceUnchanged(t *testing.T) {
 	got, err := ResolveDir("")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "rancher"), got)
+}
+
+// TestResolveDirWithSourceCanonical asserts that every source yields an
+// absolute, cleaned path and names itself, whatever the caller's working
+// directory and however the value is spelled.
+func TestResolveDirWithSourceCanonical(t *testing.T) {
+	work := t.TempDir()
+
+	cases := []struct {
+		name       string
+		flag       string
+		env        string
+		xdg        string
+		wantSource DirSource
+		wantDir    func() string
+	}{
+		{
+			name:       "relative flag from another working directory",
+			flag:       "./x",
+			wantSource: DirSourceFlag,
+			wantDir:    func() string { return filepath.Join(work, "x") },
+		},
+		{
+			name:       "flag with a redundant element",
+			flag:       filepath.Join("x", "..", "x"),
+			wantSource: DirSourceFlag,
+			wantDir:    func() string { return filepath.Join(work, "x") },
+		},
+		{
+			name:       "flag with a trailing separator",
+			flag:       "x" + string(filepath.Separator),
+			wantSource: DirSourceFlag,
+			wantDir:    func() string { return filepath.Join(work, "x") },
+		},
+		{
+			name:       "relative variable",
+			env:        "y",
+			wantSource: DirSourceEnv,
+			wantDir:    func() string { return filepath.Join(work, "y") },
+		},
+		{
+			name:       "xdg joins rancher",
+			xdg:        filepath.Join(work, "xdg"),
+			wantSource: DirSourceXDG,
+			wantDir:    func() string { return filepath.Join(work, "xdg", "rancher") },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(work)
+			t.Setenv(EnvConfigDir, tc.env)
+			t.Setenv("XDG_CONFIG_HOME", tc.xdg)
+
+			dir, source, err := ResolveDirWithSource(tc.flag)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantSource, source)
+			assert.Equal(t, tc.wantDir(), dir)
+			assert.True(t, filepath.IsAbs(dir))
+		})
+	}
+}
+
+// TestResolveDirWithSourceDefault asserts the fourth source: with none of
+// the CLI's three inputs set, the platform default answers and names
+// itself.
+func TestResolveDirWithSourceDefault(t *testing.T) {
+	t.Setenv(EnvConfigDir, "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	dir, source, err := ResolveDirWithSource("")
+	require.NoError(t, err)
+	assert.Equal(t, DirSourceDefault, source)
+
+	def, err := PlatformDefaultDir()
+	require.NoError(t, err)
+	assert.Equal(t, def, dir)
+}
+
+// skipWithoutSymlinks skips a test that needs symlinks or real permission
+// bits, neither of which an unprivileged Windows run provides.
+func skipWithoutSymlinks(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks and permission bits need a privileged Windows run")
+	}
+}
+
+// TestResolveDirWithSourceKeepsSymlink asserts that a directory reached
+// through a symlink keeps the spelling the caller used: the canonical
+// value is absolute and cleaned, never resolved through links.
+func TestResolveDirWithSourceKeepsSymlink(t *testing.T) {
+	skipWithoutSymlinks(t)
+	t.Setenv(EnvConfigDir, "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	base := t.TempDir()
+	target := filepath.Join(base, "target")
+	require.NoError(t, os.Mkdir(target, 0700))
+	link := filepath.Join(base, "link")
+	require.NoError(t, os.Symlink(target, link))
+
+	dir, source, err := ResolveDirWithSource(link)
+	require.NoError(t, err)
+	assert.Equal(t, DirSourceFlag, source)
+	assert.Equal(t, link, dir)
+}
+
+// TestPlatformDefaultDirIgnoresCLIInputs asserts that the default is
+// computed with the CLI's own three inputs cleared, so a run under a flag
+// or a variable can still ask where the default would be.
+func TestPlatformDefaultDirIgnoresCLIInputs(t *testing.T) {
+	t.Setenv(EnvConfigDir, "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	want, err := PlatformDefaultDir()
+	require.NoError(t, err)
+
+	t.Setenv(EnvConfigDir, t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	got, err := PlatformDefaultDir()
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+}
+
+// pointDefaultDirAtTempDir sends the platform default directory into a
+// temporary tree, so a test that has to create the default cannot touch
+// the real one. Each platform reads a different variable for it: HOME
+// everywhere else, %APPDATA% on Windows, which is what os.UserConfigDir
+// answers from. USERPROFILE and LOCALAPPDATA ride along because the same
+// Windows process derives them from the same profile.
+func pointDefaultDirAtTempDir(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
+}
+
+// TestIsDefaultDir asserts the comparison that decides whether a
+// directory has to be recorded: the default itself and any spelling that
+// reaches it answer true, another directory answers false.
+func TestIsDefaultDir(t *testing.T) {
+	t.Setenv(EnvConfigDir, "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	pointDefaultDirAtTempDir(t)
+
+	def, err := PlatformDefaultDir()
+	require.NoError(t, err)
+
+	isDefault, err := IsDefaultDir(def)
+	require.NoError(t, err)
+	assert.True(t, isDefault)
+
+	other := t.TempDir()
+	isDefault, err = IsDefaultDir(other)
+	require.NoError(t, err)
+	assert.False(t, isDefault)
+
+	t.Run("a symlink to the default directory is the default directory", func(t *testing.T) {
+		skipWithoutSymlinks(t)
+		require.NoError(t, os.MkdirAll(def, 0700))
+		link := filepath.Join(t.TempDir(), "link")
+		require.NoError(t, os.Symlink(def, link))
+		isDefault, err := IsDefaultDir(link)
+		require.NoError(t, err)
+		assert.True(t, isDefault)
+	})
 }
 
 func TestReadOnlyOverrideStash(t *testing.T) {

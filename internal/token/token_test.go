@@ -1014,6 +1014,94 @@ func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
 	assert.Equal(t, "tok-b", got.token)
 }
 
+// TestStoredTokenForServerStopsOnACredentialIdentityError asserts that
+// anything the identity layer says about an entry ends the candidate
+// search: a sibling sharing the URL belongs to another user, and using it
+// would authenticate as that user and swallow the message. The three
+// cases are the three shapes that layer produces - a credential another
+// directory replaced, a login that did not settle, and a record this
+// directory can no longer read.
+func TestStoredTokenForServerStopsOnACredentialIdentityError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"replaced by another directory", clierr.New(clierr.CodeCredentialReplaced, "the stored credential for 'prod-a' was replaced").WithCause(config.ErrCredentialIdentity)},
+		{"a login that did not settle", clierr.Retryable(clierr.CodeLoginIncomplete, "a login for 'prod-a' is in progress").WithCause(config.ErrCredentialIdentity)},
+		{"a record that cannot be read", clierr.New(clierr.CodeValidation, "the credential identity record for 'prod-a' is unreadable").WithCause(config.ErrCredentialIdentity)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			base := config.NewFileStore(t.TempDir())
+			require.NoError(t, base.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
+			store := entryErrStore{CredStore: base, entry: "prod-a", err: tc.err}
+			cfg := &config.Config{Servers: map[string]config.Server{
+				"prod-a": {URL: "https://r.ex"},
+				"prod-b": {URL: "https://r.ex"},
+			}}
+
+			_, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+			require.ErrorIs(t, serr, tc.err)
+			assert.False(t, ok, "the matching sibling is never used instead")
+		})
+	}
+}
+
+// entryErrStore answers one entry with a fixed error and forwards every
+// other read to a real store.
+type entryErrStore struct {
+	config.CredStore
+	entry string
+	err   error
+}
+
+func (s entryErrStore) GetToken(ref config.ServerRef) (string, error) {
+	if ref.Name == s.entry {
+		return "", s.err
+	}
+	return s.CredStore.GetToken(ref)
+}
+
+// TestIsLoginIncomplete asserts what the lane decision branches on: the
+// unsettled login alone, and nothing else mistaken for it - a credential
+// another directory replaced least of all, since treating that as a miss
+// would start a login on top of it.
+func TestIsLoginIncomplete(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isLoginIncomplete(clierr.Retryable(clierr.CodeLoginIncomplete, "x")))
+	assert.False(t, isLoginIncomplete(clierr.New(clierr.CodeCredentialReplaced, "x")))
+	assert.False(t, isLoginIncomplete(clierr.New(clierr.CodeAuth, "x")))
+	assert.False(t, isLoginIncomplete(config.ErrNoToken))
+	assert.False(t, isLoginIncomplete(nil))
+}
+
+// TestStoredTokenForServerContinuesPastAnUnreachableStore asserts the
+// other half of the rule: a store that could not be reached says nothing
+// about who any entry is, so the search goes on and a sibling that
+// answers is still this caller's own credential. Only when no candidate
+// answers does that failure surface.
+func TestStoredTokenForServerContinuesPastAnUnreachableStore(t *testing.T) {
+	unreachable := errors.New(`keyring get "prod-a": dbus: no session bus`)
+	base := config.NewFileStore(t.TempDir())
+	require.NoError(t, base.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
+	store := entryErrStore{CredStore: base, entry: "prod-a", err: unreachable}
+	cfg := &config.Config{Servers: map[string]config.Server{
+		"prod-a": {URL: "https://r.ex"},
+		"prod-b": {URL: "https://r.ex"},
+	}}
+
+	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+	require.NoError(t, serr)
+	require.True(t, ok)
+	assert.Equal(t, "tok-b", got.token)
+
+	// With no sibling to answer, the same failure is what surfaces.
+	delete(cfg.Servers, "prod-b")
+	_, ok, serr = storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+	assert.False(t, ok)
+	require.ErrorIs(t, serr, unreachable)
+}
+
 // TestStoredTokenForServerNamePicksNamedServer is the round-3 repro for
 // finding 2: an explicit --name must win over the lexicographic default,
 // even when neither is the current context's server.

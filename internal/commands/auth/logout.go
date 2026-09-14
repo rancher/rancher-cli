@@ -66,7 +66,7 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		if err != nil {
 			return err
 		}
-		targets, err = logoutTargets(cfg, all, name)
+		targets, err = logoutTargets(l.dir, cfg, all, name)
 		if err != nil {
 			return err
 		}
@@ -163,13 +163,26 @@ func (logoutCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []stri
 	return view.ServerNames()
 }
 
-// logoutTargets resolves which servers a logout request applies to.
-func logoutTargets(cfg *config.Config, all bool, name string) ([]string, error) {
+// logoutTargets resolves which servers a logout request applies to. --all
+// adds every entry the directory holds a credential identity for on top of
+// the configured ones: an entry removed from config.yaml by hand leaves its
+// keychain credential behind, and the identity record is the only thing
+// that still names it.
+func logoutTargets(dir string, cfg *config.Config, all bool, name string) ([]string, error) {
 	switch {
 	case all:
 		targets := make([]string, 0, len(cfg.Servers))
 		for s := range cfg.Servers {
 			targets = append(targets, s)
+		}
+		stored, err := config.IdentityEntries(dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range stored {
+			if _, configured := cfg.Servers[s]; !configured {
+				targets = append(targets, s)
+			}
 		}
 		return targets, nil
 	case name != "":

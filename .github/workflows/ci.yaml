@@ -87,6 +87,16 @@ jobs:
       # assume sh/symlink semantics and fail on a Windows runner. -race
       # per the repo's testing mandate (the runner ships gcc).
       - run: go test -race -count=1 -run TestWindows ./install/
+      # Two things this leg is for. The path-identity tests for Windows
+      # spellings - volume and separator forms of one directory,
+      # %APPDATA% compared in another casing - are build-tagged for
+      # windows and run nowhere else. The credential store's identity
+      # tests do run everywhere, but have only ever run on Unix, and
+      # their subject is a directory opened without following symlinks:
+      # the cases that need symlinks or real permission bits skip here
+      # (an unprivileged runner cannot create either), so what this leg
+      # adds for them is the rest of the file behavior on NTFS.
+      - run: go test -race -count=1 -run 'TestResolveDir|TestPlatformDefaultDir|TestIsDefaultDir|TestIdentity|TestKeychain|TestReadIdentityRecord|TestListIdentityRecords|TestRemoveIdentityRecord|TestWriteIdentityRecord|TestWithIdentityLock|TestCredentialFingerprint|TestNewKeychainAccountID' ./internal/config/
 
   e2e-windows:
     # The same suite as the e2e job, on the platform whose exec, path,

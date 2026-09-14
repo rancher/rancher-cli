@@ -350,7 +350,13 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	// runs only for an invocation that names a cluster. The legacy shim
 	// without --cluster keeps creating the unscoped kubeconfig token.
 	pluginLane := clusterID != "" && reuseOn
-	if errors.Is(err, errNoStoredCredential) && pluginLane {
+	// An unsettled login counts as a clean miss for this one decision, and
+	// only here: parallel kubectl calls made while an operator's login is
+	// running must queue on the plugin login's own lock rather than each
+	// fail, and the lane re-reads the credential after that lock, where the
+	// error is terminal again. A credential another config directory
+	// replaced is never a miss anywhere.
+	if (errors.Is(err, errNoStoredCredential) || isLoginIncomplete(err)) && pluginLane {
 		// A clean miss with the setting on: the plugin-created login. It
 		// returns errNoStoredCredential itself when the setting was turned
 		// off while it waited for the flock, which the switch below then
@@ -1461,6 +1467,15 @@ func serverCandidateRank(name, wantName, curServer string) int {
 	}
 }
 
+// isLoginIncomplete reports whether err says a login for the entry wrote
+// its identity and has not settled it. It is the one identity verdict the
+// plugin's lane decision treats as a clean miss; every other one, that
+// code included, is terminal wherever it is met.
+func isLoginIncomplete(err error) bool {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	return ok && ce.Code == clierr.CodeLoginIncomplete
+}
+
 // storedTokenForServer finds the configured server entry whose URL matches
 // server (compared by scheme+host via kube.BaseURL) and has a stored login
 // token, and returns that name and token. Selects from the same
@@ -1528,6 +1543,20 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 		r := config.ServerRef{Name: n, URL: cfg.Servers[n].URL}
 		t, gerr := store.GetToken(r)
 		if gerr != nil {
+			// Anything the identity layer says about this entry ends the
+			// search instead of moving on: a credential another directory
+			// replaced, a login that did not settle, and a record this
+			// directory can no longer read are all "who this entry is
+			// cannot be established". The remaining candidates are other
+			// entries that merely share the URL, so using one of them
+			// would authenticate as that entry's user and hide the
+			// message. A store that could not be reached is the other
+			// case, and keeps the behaviour below: it says nothing about
+			// identity, so a sibling that answers is still this caller's
+			// own credential.
+			if config.IsCredentialIdentityError(gerr) {
+				return storedCredential{}, false, gerr
+			}
 			if !errors.Is(gerr, config.ErrNoToken) && firstHardErr == nil {
 				firstHardErr = gerr
 			}

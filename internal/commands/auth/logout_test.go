@@ -106,6 +106,24 @@ func TestLogoutAll(t *testing.T) {
 	assert.Equal(t, "acme", cfg.CurrentServer, "logout --all no longer resets the pointer - a credential-less entry is a valid state")
 }
 
+// TestLogoutAllReachesAnEntryRemovedFromTheConfig asserts that `--all`
+// enumerates the directory's credential identities on top of its configured
+// servers: an entry deleted from config.yaml by hand still has a keychain
+// credential, and its identity record is the only thing that still names
+// it.
+func TestLogoutAllReachesAnEntryRemovedFromTheConfig(t *testing.T) {
+	dir, _ := seedLogout(t, "acme", "acme")
+	keychain, err := config.OpenStore("keychain", dir)
+	require.NoError(t, err)
+	require.NoError(t, keychain.SetToken(config.ServerRef{Name: "gone", URL: "https://gone.ex"}, "id:sec"))
+
+	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
+	require.NoError(t, err)
+
+	_, err = keychain.GetToken(config.ServerRef{Name: "gone"})
+	assert.ErrorIs(t, err, config.ErrNoToken, "a credential whose config entry is gone is still logged out")
+}
+
 // TestLogoutAllOnEmptyConfigReturnsText asserts that logging out of every
 // server when none are configured is still a reportable success: ShapeText
 // requires non-empty Text on every default-format success, and a config

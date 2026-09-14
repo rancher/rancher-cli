@@ -512,12 +512,12 @@ type controllableStore struct {
 	calls      int
 }
 
-func (s *controllableStore) SetTokenWithOutcome(ref config.ServerRef, token string) (config.CommitOutcome, error) {
+func (s *controllableStore) SetTokenWithOutcome(ref config.ServerRef, token string, prior config.PriorCredential) (config.CommitOutcome, error) {
 	s.calls++
 	if err, ok := s.failOnCall[s.calls]; ok {
 		return config.CommitOutcome{Backend: clierr.BackendFile, State: config.CommitNotWritten, PriorSource: clierr.PriorUnknown}, err
 	}
-	out, err := s.CredStore.SetTokenWithOutcome(ref, token)
+	out, err := s.CredStore.SetTokenWithOutcome(ref, token, prior)
 	if inner := out.Compensate; inner != nil {
 		out.Compensate = func() error {
 			s.calls++

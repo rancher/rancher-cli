@@ -16,6 +16,8 @@ const (
 	CodeConflict              = "CONFLICT"
 	CodeLockTimeout           = "LOCK_TIMEOUT"
 	CodeAuth                  = "AUTH"
+	CodeCredentialReplaced    = "CREDENTIAL_REPLACED"
+	CodeLoginIncomplete       = "LOGIN_INCOMPLETE"
 	CodeNotFound              = "NOT_FOUND"
 	CodeRBAC                  = "RBAC"
 	CodeValidation            = "VALIDATION"
@@ -111,9 +113,13 @@ var exitCodes = map[string]int{
 	CodeAmbiguousSelection:   2,
 	CodeNotLoggedIn:          2,
 	CodeAuth:                 3,
-	CodeNotFound:             4,
-	CodeConflict:             5,
-	CodeRBAC:                 6,
+	// The stored credential is unusable for the same reason an AUTH failure
+	// is: the command cannot authenticate as who it was asked to be.
+	CodeCredentialReplaced: 3,
+	CodeLoginIncomplete:    3,
+	CodeNotFound:           4,
+	CodeConflict:           5,
+	CodeRBAC:               6,
 	// 7 is not an error exit: `skill status` claims it as a success status
 	// (drift detected), and SuccessExitCodes must stay disjoint from this map.
 	CodeLockTimeout:           8,
@@ -234,7 +240,8 @@ func AllCodes() []string {
 	return []string{
 		CodeNotLoggedIn, CodeConfirmationRequired, CodeDryRunNotApplicable,
 		CodeAmbiguousSelection, CodeConflict, CodeLockTimeout,
-		CodeAuth, CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeTLSTrust,
+		CodeAuth, CodeCredentialReplaced, CodeLoginIncomplete,
+		CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeTLSTrust,
 		CodeCapabilityUnsupported, CodeInterrupted, CodeGeneric,
 	}
 }

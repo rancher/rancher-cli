@@ -47,7 +47,7 @@ type countingStore struct {
 
 func (c *countingStore) GetToken(config.ServerRef) (string, error) { c.getCalls++; return c.token, nil }
 func (c *countingStore) SetToken(config.ServerRef, string) error   { return nil }
-func (c *countingStore) SetTokenWithOutcome(config.ServerRef, string) (config.CommitOutcome, error) {
+func (c *countingStore) SetTokenWithOutcome(config.ServerRef, string, config.PriorCredential) (config.CommitOutcome, error) {
 	return config.CommitOutcome{Backend: clierr.BackendFile, State: config.CommitCommitted, PriorSource: clierr.PriorNone}, nil
 }
 func (c *countingStore) DeleteToken(config.ServerRef) error { return nil }

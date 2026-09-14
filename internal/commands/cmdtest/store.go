@@ -16,7 +16,7 @@ type SetErrStore struct {
 	SetErr error
 }
 
-func (s SetErrStore) SetTokenWithOutcome(config.ServerRef, string) (config.CommitOutcome, error) {
+func (s SetErrStore) SetTokenWithOutcome(config.ServerRef, string, config.PriorCredential) (config.CommitOutcome, error) {
 	backend := clierr.BackendFile
 	if errors.Is(s.SetErr, config.ErrTokenStoreUnsupported) {
 		backend = clierr.BackendExec
@@ -25,6 +25,6 @@ func (s SetErrStore) SetTokenWithOutcome(config.ServerRef, string) (config.Commi
 }
 
 func (s SetErrStore) SetToken(ref config.ServerRef, tok string) error {
-	_, err := s.SetTokenWithOutcome(ref, tok)
+	_, err := s.SetTokenWithOutcome(ref, tok, config.PriorCredential{})
 	return err
 }

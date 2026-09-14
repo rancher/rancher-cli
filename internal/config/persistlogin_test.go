@@ -234,9 +234,11 @@ type failStore struct {
 	err error
 }
 
-func (f failStore) SetTokenWithOutcome(ServerRef, string) (CommitOutcome, error) { return f.out, f.err }
+func (f failStore) SetTokenWithOutcome(ServerRef, string, PriorCredential) (CommitOutcome, error) {
+	return f.out, f.err
+}
 func (f failStore) SetToken(ref ServerRef, tok string) error {
-	_, err := f.SetTokenWithOutcome(ref, tok)
+	_, err := f.SetTokenWithOutcome(ref, tok, PriorCredential{})
 	return err
 }
 
@@ -548,10 +550,9 @@ func TestPersistPendingTrustWriteFailureCompensatesAndRestores(t *testing.T) {
 	assert.Equal(t, persistRestoreBase, cfg.Servers["prod"].CA)
 }
 
-// TestPersistSuccessStatesAreSuccessForEveryBackend asserts the three
-// nil-error commit states are success for both callers: a file store
-// (committed), the exec fake helper (helperNonAtomic), and a keyring whose
-// prior was unreadable (committedUncompensatable). None produces a
+// TestPersistSuccessStatesAreSuccessForEveryBackend asserts the nil-error
+// commit states are success for both callers: the exec fake helper
+// (helperNonAtomic) and a keychain login (committed). None produces a
 // rollback or a recovery component.
 func TestPersistSuccessStatesAreSuccessForEveryBackend(t *testing.T) {
 	t.Run("exec helperNonAtomic", func(t *testing.T) {
@@ -566,20 +567,237 @@ func TestPersistSuccessStatesAreSuccessForEveryBackend(t *testing.T) {
 		assert.Equal(t, clierr.ConfigWritten, out.ConfigState)
 		assert.Nil(t, out.ConfigRecovery)
 	})
-	t.Run("keyring committedUncompensatable", func(t *testing.T) {
+	t.Run("keyring committed", func(t *testing.T) {
 		keyring.MockInit()
 		dir, path := persistFixture(t, derivedEntry())
 		cfg, _ := Load(path)
 		cfg.CredentialStore = "keychain" // explicit: no auto probe, no repin
 		require.NoError(t, cfg.Write())
-		withFakeKeyring(t, &fakeKeyring{items: map[string]string{}, reads: []keyringRead{{err: errors.New("locked")}}})
+		withFakeKeyring(t, &fakeKeyring{items: map[string]string{}})
 		in := loginInput(dir, nil)
 		in.OpenStore = func(string, string) (CredStore, string, error) { return newPinnedKeyringStore(dir, false), "", nil }
 		out, err := PersistLoginCredential(t.Context(), dir, in)
 		require.NoError(t, err)
-		assert.Equal(t, clierr.CredentialCommittedUncompensatable, out.CredentialState)
+		assert.Equal(t, clierr.CredentialCommitted, out.CredentialState)
 		assert.Nil(t, out.ConfigRecovery)
 	})
+}
+
+// TestPersistRotatedLoginTrustFailureRestoresTheOldIdentity asserts the
+// compensation the design spells out for a rotated entry, driven through
+// the login rather than by calling the two halves by hand: the trust write
+// fails after the commit, the account the rotation created is deleted, the
+// record goes back to the identity and fingerprint the entry had, and the
+// account the other config directory now owns is left exactly as it was.
+func TestPersistRotatedLoginTrustFailureRestoresTheOldIdentity(t *testing.T) {
+	keyring.MockInit()
+	dir, path := persistFixture(t, derivedEntry())
+	cfg, _ := Load(path)
+	cfg.CredentialStore = "keychain"
+	require.NoError(t, cfg.Write())
+
+	// This directory's record, and a slot another copy has written since:
+	// the login diverges and has to rotate.
+	id, err := newKeychainAccountID()
+	require.NoError(t, err)
+	before := identityRecord{
+		Version:     identityVersion,
+		Entry:       "prod",
+		State:       identityActive,
+		ID:          id,
+		Fingerprint: credentialFingerprint(id, "ours"),
+	}
+	require.NoError(t, writeIdentityRecord(dir, before))
+	shared := keychainAccount(id, "prod")
+	fk := &fakeKeyring{items: map[string]string{shared: "the-other-copys-token"}}
+	withFakeKeyring(t, fk)
+
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "trust" {
+			return errors.New("disk full")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
+
+	in := loginInput(dir, nil)
+	in.PendingTrust = &PendingTrust{CA: persistRestoreBase, Fingerprint: "f1"}
+	in.OpenStore = func(string, string) (CredStore, string, error) { return newPinnedKeyringStore(dir, false), "", nil }
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.Error(t, err)
+	assert.Equal(t, clierr.CredentialCompensated, out.CredentialState)
+	assert.Empty(t, out.CompensationError)
+
+	assert.Equal(t, map[string]string{shared: "the-other-copys-token"}, fk.items,
+		"the rotated account is gone and the other copy's is untouched")
+	assert.Equal(t, before, recordFor(t, dir, "prod"), "the entry is back on its old identity")
+}
+
+// TestPersistRotatedLoginCompensationFailureNamesBothAccounts asserts
+// what a compensation that cannot finish has to say: the state is a
+// failed compensation, and the message names the account the rotation
+// created and the one the entry had, because once the record is gone
+// neither is reachable from the other.
+func TestPersistRotatedLoginCompensationFailureNamesBothAccounts(t *testing.T) {
+	keyring.MockInit()
+	dir, path := persistFixture(t, derivedEntry())
+	cfg, _ := Load(path)
+	cfg.CredentialStore = "keychain"
+	require.NoError(t, cfg.Write())
+
+	id, err := newKeychainAccountID()
+	require.NoError(t, err)
+	require.NoError(t, writeIdentityRecord(dir, identityRecord{
+		Version:     identityVersion,
+		Entry:       "prod",
+		State:       identityActive,
+		ID:          id,
+		Fingerprint: credentialFingerprint(id, "ours"),
+	}))
+	shared := keychainAccount(id, "prod")
+	fk := &fakeKeyring{
+		items:     map[string]string{shared: "the-other-copys-token"},
+		deleteErr: errors.New("keychain refused the delete"),
+	}
+	withFakeKeyring(t, fk)
+
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "trust" {
+			return errors.New("disk full")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
+
+	in := loginInput(dir, nil)
+	in.PendingTrust = &PendingTrust{CA: persistRestoreBase, Fingerprint: "f1"}
+	in.OpenStore = func(string, string) (CredStore, string, error) { return newPinnedKeyringStore(dir, false), "", nil }
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.Error(t, err)
+	assert.Equal(t, clierr.CredentialCompensationFailed, out.CredentialState)
+
+	rotated := recordFor(t, dir, "prod")
+	require.NotEqual(t, id, rotated.ID, "the login rotated before the trust write failed")
+	assert.Contains(t, out.CompensationError, rotated.Account(), "the account the rotation created")
+	assert.Contains(t, out.CompensationError, shared, "and the one the entry had")
+}
+
+// TestPersistThroughALazyStoreWritesTheIdentityRecord asserts that a
+// login handed a store that resolves its backend on first use still
+// writes the entry's identity: the login resolves it to decide, which is
+// the resolution the first credential call would have done a moment
+// later, rather than refusing for want of a concrete store.
+func TestPersistThroughALazyStoreWritesTheIdentityRecord(t *testing.T) {
+	keyring.MockInit()
+	dir, path := persistFixture(t, derivedEntry())
+	cfg, _ := Load(path)
+	cfg.CredentialStore = "keychain"
+	require.NoError(t, cfg.Write())
+	withFakeKeyring(t, &fakeKeyring{items: map[string]string{}})
+
+	in := loginInput(dir, nil)
+	in.OpenStore = func(policy, d string) (CredStore, string, error) {
+		lazy, lerr := NewLazyStore(policy, d)
+		return lazy, "", lerr
+	}
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.NoError(t, err)
+	assert.Equal(t, clierr.CredentialCommitted, out.CredentialState)
+
+	rec := recordFor(t, dir, "prod")
+	assert.Equal(t, identityActive, rec.State)
+	tok, gerr := newPinnedKeyringStore(dir, false).GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
+	require.NoError(t, gerr)
+	assert.Equal(t, in.Bearer, tok)
+}
+
+// TestPersistIdentityRevertFailureRollsTheEntryBack asserts the entry
+// contract holds when the identity record cannot be put back either: the
+// credential did not land, so the server entry returns to the snapshot it
+// had rather than keeping the URL and certificate this failed login wrote.
+func TestPersistIdentityRevertFailureRollsTheEntryBack(t *testing.T) {
+	keyring.MockInit()
+	snapshot := derivedEntry()
+	dir, path := persistFixture(t, snapshot)
+	cfg, _ := Load(path)
+	cfg.CredentialStore = "keychain"
+	require.NoError(t, cfg.Write())
+
+	// An entry this directory already has a credential for, so the failed
+	// login has a record to revert to.
+	id, err := newKeychainAccountID()
+	require.NoError(t, err)
+	require.NoError(t, writeIdentityRecord(dir, identityRecord{
+		Version:     identityVersion,
+		Entry:       "prod",
+		State:       identityActive,
+		ID:          id,
+		Fingerprint: credentialFingerprint(id, "old"),
+	}))
+	account := keychainAccount(id, "prod")
+	withFakeKeyring(t, &fakeKeyring{items: map[string]string{account: "old"}, setErr: errors.New("dbus: reply lost")})
+
+	// The pending record is written; putting it back afterwards is not.
+	writes := 0
+	restore := SetIdentityWriteHookForTest(func() error {
+		writes++
+		if writes >= 2 {
+			return errors.New("read-only file system")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
+
+	in := loginInput(dir, nil)
+	in.OpenStore = func(string, string) (CredStore, string, error) { return newPinnedKeyringStore(dir, false), "", nil }
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.ErrorContains(t, err, "recording the credential identity")
+	assert.Equal(t, CommitNotWritten, out.CredentialState)
+
+	after, lerr := Load(path)
+	require.NoError(t, lerr)
+	assert.Equal(t, *snapshot, after.Servers["prod"], "a login that stored nothing leaves the entry as it found it")
+	assert.Equal(t, "token-old", after.Servers["prod"].TokenRef.Name)
+}
+
+// TestPersistKeychainUnreadablePriorRefusesTheLogin asserts that a
+// keychain the login cannot read is a refusal before anything is written,
+// not a write whose prior is unknown: the account a login stores under and
+// the state it would compensate back to are decided together, so one that
+// cannot be read has to stop the login.
+func TestPersistKeychainUnreadablePriorRefusesTheLogin(t *testing.T) {
+	keyring.MockInit()
+	dir, path := persistFixture(t, derivedEntry())
+	cfg, _ := Load(path)
+	cfg.CredentialStore = "keychain"
+	require.NoError(t, cfg.Write())
+
+	// An active record, so the login has an account to read, and a keychain
+	// that answers neither a value nor a clean miss for it.
+	id, err := newKeychainAccountID()
+	require.NoError(t, err)
+	require.NoError(t, writeIdentityRecord(dir, identityRecord{
+		Version:     identityVersion,
+		Entry:       "prod",
+		State:       identityActive,
+		ID:          id,
+		Fingerprint: credentialFingerprint(id, "old"),
+	}))
+	fk := &fakeKeyring{items: map[string]string{}, reads: []keyringRead{{err: errors.New("locked")}}}
+	withFakeKeyring(t, fk)
+
+	in := loginInput(dir, nil)
+	in.OpenStore = func(string, string) (CredStore, string, error) { return newPinnedKeyringStore(dir, false), "", nil }
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.ErrorContains(t, err, "locked")
+	assert.Equal(t, clierr.CredentialNotWritten, out.CredentialState)
+	assert.Empty(t, fk.items, "nothing is written to a keychain whose state could not be read")
+
+	rec, rerr := readIdentityRecord(dir, "prod")
+	require.NoError(t, rerr)
+	require.NotNil(t, rec)
+	assert.Equal(t, identityActive, rec.State, "the refused login leaves the record as it was")
+	assert.Equal(t, id, rec.ID)
 }
 
 // TestPersistNoNetworkAndLockHeld asserts the primitive runs entirely

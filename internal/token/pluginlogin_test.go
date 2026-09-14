@@ -130,6 +130,134 @@ func localPrompter() runtime.Prompter {
 	return ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
 }
 
+// identityErrCredStore answers every login-credential read with one typed
+// credential-identity error, forwarding everything else - the
+// exec-credential cache included - to a real store.
+type identityErrCredStore struct {
+	config.CredStore
+	err error
+}
+
+func (s identityErrCredStore) GetToken(config.ServerRef) (string, error) { return "", s.err }
+
+// seedPluginEntry writes the server entry a plugin-created login would have
+// left behind, so the credential read has a candidate to answer for.
+func seedPluginEntry(t *testing.T, x *pluginFixture) {
+	t.Helper()
+	cfg, err := config.Load(config.FilePath(x.dir))
+	require.NoError(t, err)
+	cfg.Servers[x.entryName()] = config.Server{URL: x.url, Provenance: clierr.ProvenanceExecLogin}
+	require.NoError(t, cfg.Write())
+}
+
+// TestPluginLoginUnsettledLoginEntersTheLane asserts the one exception the
+// lane decision makes: a login that has not settled counts as a clean miss
+// there, so parallel kubectl calls made while an operator is logging in
+// queue on the plugin login's lock instead of each failing.
+func TestPluginLoginUnsettledLoginEntersTheLane(t *testing.T) {
+	x := newPluginFixture(t, true, testrancher.Options{})
+	seedPluginEntry(t, x)
+	store := identityErrCredStore{
+		CredStore: x.store,
+		err:       clierr.Retryable(clierr.CodeLoginIncomplete, "a login for 'prod' is in progress or did not complete"),
+	}
+
+	_, err := x.command(store).Execute(t.Context(), x.input("c-test", "n"), localPrompter())
+	require.NoError(t, err)
+	assert.Equal(t, 1, x.f.LoginCount(), "the lane ran its own login behind the lock")
+}
+
+// TestPluginLoginConcurrentCallsDuringAReLogin asserts the reason the
+// lane makes its one exception: kubectl calls that arrive while an
+// operator's login is unsettled queue on the plugin login's own lock, one
+// of them does the login and the rest take its result, rather than each
+// failing with the unsettled-login error.
+func TestPluginLoginConcurrentCallsDuringAReLogin(t *testing.T) {
+	x := newPluginFixture(t, true, testrancher.Options{})
+	seedPluginEntry(t, x)
+	store := identityErrCredStore{
+		CredStore: x.store,
+		err:       clierr.Retryable(clierr.CodeLoginIncomplete, "a login for 'prod' is in progress or did not complete"),
+	}
+	base := x.f.LoginCount()
+	var prompts atomic.Int32
+	mk := func() runtime.Prompter {
+		return countingPrompter{Prompter: localPrompter(), n: &prompts}
+	}
+
+	var wg sync.WaitGroup
+	results := make([]error, 2)
+	clusters := []string{"c-test", "local"}
+	for i := range 2 {
+		wg.Go(func() {
+			_, results[i] = x.command(store).Execute(t.Context(), x.input(clusters[i], "n"), mk())
+		})
+	}
+	wg.Wait()
+
+	require.NoError(t, results[0])
+	require.NoError(t, results[1])
+	assert.Equal(t, base+1, x.f.LoginCount(), "one provider login behind the lock, not one per call")
+	assert.Equal(t, int32(2), prompts.Load(), "one username and one password prompt in total")
+}
+
+// TestPluginLoginReprobeStaysTerminalOnABrokenRecord asserts the widened
+// rule at the second of the two sites: behind the login lock the
+// credential is read again, and a record this directory can no longer
+// read ends the call rather than starting a login that would store a
+// credential under an identity nothing can describe.
+func TestPluginLoginReprobeStaysTerminalOnABrokenRecord(t *testing.T) {
+	x := newPluginFixture(t, true, testrancher.Options{})
+	seedPluginEntry(t, x)
+	store := identityErrCredStore{
+		CredStore: x.store,
+		err: clierr.New(clierr.CodeValidation, "the credential identity record for 'prod' is unreadable").
+			WithCause(config.ErrCredentialIdentity),
+	}
+	cmd := x.command(store)
+	cmd.openStore = func(string, string) (config.CredStore, string, error) { return store, "", nil }
+
+	_, err := cmd.Execute(t.Context(), x.input("c-test", "n"), localPrompter())
+	require.ErrorContains(t, err, "is unreadable")
+	assert.Zero(t, x.f.LoginCount(), "no login is created under an identity that cannot be read")
+}
+
+// TestPluginLoginReplacedCredentialNeverEntersTheLane asserts the other
+// half: a credential another config directory replaced is never a miss, so
+// it surfaces instead of starting a login on top of it.
+func TestPluginLoginReplacedCredentialNeverEntersTheLane(t *testing.T) {
+	x := newPluginFixture(t, true, testrancher.Options{})
+	seedPluginEntry(t, x)
+	store := identityErrCredStore{
+		CredStore: x.store,
+		err:       clierr.New(clierr.CodeCredentialReplaced, "the stored credential for 'prod' was replaced by another config directory"),
+	}
+
+	_, err := x.command(store).Execute(t.Context(), x.input("c-test", "n"), localPrompter())
+	require.ErrorContains(t, err, "was replaced by another config directory")
+	assert.Zero(t, x.f.LoginCount())
+}
+
+// TestPluginLoginReprobeStaysTerminalOnAnUnsettledLogin asserts that the
+// exception ends at the lock: the re-read behind it treats an unsettled
+// login as the typed error again, because this process cannot tell an
+// operator's login in flight from one that ended, and a second login on
+// top of either is the wrong answer.
+func TestPluginLoginReprobeStaysTerminalOnAnUnsettledLogin(t *testing.T) {
+	x := newPluginFixture(t, true, testrancher.Options{})
+	seedPluginEntry(t, x)
+	store := identityErrCredStore{
+		CredStore: x.store,
+		err:       clierr.Retryable(clierr.CodeLoginIncomplete, "a login for 'prod' is in progress or did not complete"),
+	}
+	cmd := x.command(store)
+	cmd.openStore = func(string, string) (config.CredStore, string, error) { return store, "", nil }
+
+	_, err := cmd.Execute(t.Context(), x.input("c-test", "n"), localPrompter())
+	require.ErrorContains(t, err, "in progress or did not complete")
+	assert.Zero(t, x.f.LoginCount(), "no login is created on top of one that may still be running")
+}
+
 // TestPluginLoginInvariantSettingOffStoresNothing asserts the default
 // posture: with the setting off, the plugin-only lane runs the scoped
 // interactive login (responseType kubeconfig_<cluster>), creates no
@@ -313,11 +441,11 @@ type failingStore struct {
 	err error
 }
 
-func (s failingStore) SetTokenWithOutcome(config.ServerRef, string) (config.CommitOutcome, error) {
+func (s failingStore) SetTokenWithOutcome(config.ServerRef, string, config.PriorCredential) (config.CommitOutcome, error) {
 	return config.CommitOutcome{Backend: clierr.BackendFile, State: config.CommitNotWritten}, s.err
 }
 func (s failingStore) SetToken(ref config.ServerRef, tok string) error {
-	_, err := s.SetTokenWithOutcome(ref, tok)
+	_, err := s.SetTokenWithOutcome(ref, tok, config.PriorCredential{})
 	return err
 }
 
@@ -549,7 +677,7 @@ type outcomeStore struct {
 	out config.CommitOutcome
 }
 
-func (s outcomeStore) SetTokenWithOutcome(ref config.ServerRef, tok string) (config.CommitOutcome, error) {
+func (s outcomeStore) SetTokenWithOutcome(ref config.ServerRef, tok string, _ config.PriorCredential) (config.CommitOutcome, error) {
 	if err := s.SetToken(ref, tok); err != nil {
 		return config.CommitOutcome{Backend: s.out.Backend, State: config.CommitNotWritten}, err
 	}

@@ -57,16 +57,32 @@ func TestAllCodesNonEmpty(t *testing.T) {
 // TestAllCodesDropsNotImplemented asserts DR-013: NOT_IMPLEMENTED is a
 // permanently-dead branch (no construction site ever advertises it) and has
 // been removed. The count asserts the full enum: 10 originals plus
-// LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, CAPABILITY_UNSUPPORTED, and
-// INTERRUPTED.
+// LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, CAPABILITY_UNSUPPORTED,
+// INTERRUPTED, CREDENTIAL_REPLACED and LOGIN_INCOMPLETE.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
-	assert.Len(t, codes, 15)
+	assert.Len(t, codes, 17)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
 	assert.Contains(t, codes, CodeLockTimeout)
 	assert.Contains(t, codes, CodePrimeRequired)
 	assert.Contains(t, codes, CodeTLSTrust)
 	assert.Contains(t, codes, CodeCapabilityUnsupported)
+	assert.Contains(t, codes, CodeCredentialReplaced)
+	assert.Contains(t, codes, CodeLoginIncomplete)
+}
+
+// TestCredentialCodesRetryability asserts the pair a caller branches on: a
+// login that did not finish is worth retrying, a credential another
+// directory replaced is not, and both end the process the way a failed
+// authentication does.
+func TestCredentialCodesRetryability(t *testing.T) {
+	replaced := New(CodeCredentialReplaced, "replaced")
+	assert.Equal(t, 3, replaced.ExitCode())
+	assert.False(t, replaced.Retryable)
+
+	incomplete := Retryable(CodeLoginIncomplete, "in progress")
+	assert.Equal(t, 3, incomplete.ExitCode())
+	assert.True(t, incomplete.Retryable)
 }
 
 // TestPrimeRequiredDisjointFromSuccessExits asserts exit 9's explicit
@@ -90,6 +106,8 @@ func TestExitCodeTableUnaffectedByTextRendering(t *testing.T) {
 		CodeAmbiguousSelection:    2,
 		CodeNotLoggedIn:           2,
 		CodeAuth:                  3,
+		CodeCredentialReplaced:    3,
+		CodeLoginIncomplete:       3,
 		CodeNotFound:              4,
 		CodeConflict:              5,
 		CodeRBAC:                  6,

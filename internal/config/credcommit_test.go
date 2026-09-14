@@ -25,7 +25,7 @@ func (s *fakeCredStore) GetToken(ServerRef) (string, error) {
 	return "", nil
 }
 
-func (s *fakeCredStore) SetTokenWithOutcome(ServerRef, string) (CommitOutcome, error) {
+func (s *fakeCredStore) SetTokenWithOutcome(ServerRef, string, PriorCredential) (CommitOutcome, error) {
 	return s.out, s.err
 }
 
@@ -34,7 +34,7 @@ func TestCommitTokenFileStoreNoPriorTokenCompensateDeletes(t *testing.T) {
 	store := NewFileStore(dir)
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 
-	out, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token", PriorCredential{})
 	require.NoError(t, err)
 	require.NotNil(t, out.Compensate)
 	assert.Equal(t, clierr.PriorNone, out.PriorSource)
@@ -54,7 +54,7 @@ func TestCommitTokenFileStoreReplacesExistingTokenCompensateRestores(t *testing.
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 	require.NoError(t, store.SetToken(ref, "old-token"))
 
-	out, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token", PriorCredential{})
 	require.NoError(t, err)
 	require.NotNil(t, out.Compensate)
 
@@ -73,22 +73,35 @@ func TestCommitTokenExecStoreNeverCompensates(t *testing.T) {
 	var store CredStore = newExecStore("does-not-exist", dir)
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 
-	out, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token", PriorCredential{})
 	require.Error(t, err, "the helper binary is not on PATH")
 	assert.Equal(t, clierr.BackendExec, out.Backend)
 	assert.Equal(t, CommitPossiblyCommitted, out.State)
 	assert.Nil(t, out.Compensate)
 }
 
+// TestCommitTokenKeyringStoreReplacesExistingTokenCompensateRestores
+// asserts the ordinary re-login: the same account, the previous credential
+// as the prior, and a compensation that puts both the credential and the
+// identity back.
 func TestCommitTokenKeyringStoreReplacesExistingTokenCompensateRestores(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
-	store := newPinnedKeyringStore(dir, false)
+	store := newPinnedKeyringStore(dir, false).(*keyringStore)
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 	require.NoError(t, store.SetToken(ref, "old-token"))
 
-	out, err := CommitToken(store, ref, "new-token")
+	before, err := readIdentityRecord(dir, ref.Name)
 	require.NoError(t, err)
+	require.NotNil(t, before)
+
+	write, err := beginKeychainWrite(t.Context(), store, ref, "new-token")
+	require.NoError(t, err)
+	assert.Equal(t, before.Account(), write.Prior.Account, "a re-login keeps the account")
+
+	out, err := CommitToken(store, ref, "new-token", write.Prior)
+	require.NoError(t, err)
+	require.NoError(t, write.finish(t.Context(), out.State))
 	require.NotNil(t, out.Compensate)
 	assert.Equal(t, clierr.PriorKeyring, out.PriorSource)
 
@@ -97,9 +110,15 @@ func TestCommitTokenKeyringStoreReplacesExistingTokenCompensateRestores(t *testi
 	assert.Equal(t, "new-token", tok)
 
 	require.NoError(t, out.Compensate())
+	require.NoError(t, write.revert(t.Context()))
 	tok, gerr = store.GetToken(ref)
 	require.NoError(t, gerr)
 	assert.Equal(t, "old-token", tok)
+
+	after, err := readIdentityRecord(dir, ref.Name)
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	assert.Equal(t, *before, *after, "the compensation restores the identity too")
 }
 
 func TestCommitTokenNeverReadsPrior(t *testing.T) {
@@ -111,7 +130,7 @@ func TestCommitTokenNeverReadsPrior(t *testing.T) {
 	}}
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 
-	out, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token", PriorCredential{})
 	require.NoError(t, err)
 	assert.Equal(t, store.out, out, "the backend's own account is returned unchanged")
 	assert.False(t, store.getCalled, "CommitToken must never read a prior value itself")
@@ -121,7 +140,7 @@ func TestCommitTokenFileStoreSetTokenFailurePropagatesNoCompensate(t *testing.T)
 	store := &fileStore{path: string([]byte{0}), notices: &noticeBuffer{}}
 	ref := ServerRef{Name: "prod", URL: "https://r.ex"}
 
-	out, err := CommitToken(store, ref, "new-token")
+	out, err := CommitToken(store, ref, "new-token", PriorCredential{})
 	require.Error(t, err)
 	assert.Equal(t, CommitNotWritten, out.State)
 	assert.Nil(t, out.Compensate)

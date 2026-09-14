@@ -553,12 +553,63 @@ plaintext. A pinned-but-unusable backend is a **hard error** with a remediation 
 (`delete the pin to re-probe, or set RANCHER_CLI_CREDENTIAL_STORE=file`), never a silent
 fallback. `auth status` surfaces `credentialStore: {policy, pinned}`.
 
-**Keyring read-through and logout delete.** With the keychain backend, `GetToken` falls
-through to the file store on a keychain miss, so tokens written before an upgrade re-pin
-keep working. `config.DeleteLoginToken` deletes a server's login token from **both**
-backends unconditionally - because read-through makes the file store part of the
-effective read path under every policy - aggregating per-backend errors with
-`errors.Join` and reporting which backends were deleted.
+**Per-entry keychain identity.** A keychain account is
+`<keychainAccountId>:<server entry>`, and the id lives in
+`<dir>/credstore-id/<sha256 of the entry name>` - one write-ahead record per entry,
+machine-local for the same reason `credstore-pin` is. A record carries the account id,
+the keyed fingerprint of the credential stored under it
+(`HMAC-SHA256(key = id, message = token)`), and, while a write is in flight, the identity
+to revert to. Two config directories that never shared a file therefore address different
+accounts for the same server name; two copies of one directory share an account per entry
+until they diverge.
+
+The directory is opened without following symlinks (`os.Lstat`, then `os.Root`, which
+also refuses a symlinked record inside it) and must be owner-only; anything else is an
+error before any keychain access. Records are written by rename through that root rather
+than through `atomicWriteFile`, which refuses a symlink at the final path only and whose
+directory creation follows a symlinked parent. Writes take `<dir>/credstore-id.lock`;
+reads take no lock.
+
+A read reads the record first - no record means nothing was stored here, so no account
+and no keychain call - then the account it names, and returns the credential only when
+the fingerprint still matches. A fingerprint that does not match is `CREDENTIAL_REPLACED`
+(exit 3), a record an earlier login left unsettled is `LOGIN_INCOMPLETE` (exit 3,
+retryable), an absent slot is "not logged in", and a keychain that cannot be reached is an
+error carrying the pin hint. There is no read-through to `credentials.yaml` under any of
+them: a token there is not this directory's keychain credential, and a headless machine
+uses a directory that declares `file`. Anything the identity layer says about an entry -
+those two codes, and equally a record or a `credstore-id/` directory this directory can no
+longer read - ends the candidate search in `storedTokenForServer` rather than falling
+through to a sibling entry that shares the URL, which would authenticate as that entry's
+user; callers test `config.IsCredentialIdentityError`, which reads the sentinel every such
+error carries as its cause, because the code they carry is shared with unrelated failures.
+A store that could not be reached is the opposite case and still falls through: it says
+nothing about who any entry is. The plugin's lane decision makes one exception, for
+`LOGIN_INCOMPLETE` alone, so parallel kubectl calls queue on the plugin login's lock; behind
+that lock every identity error is terminal again.
+
+A login writes its identity ahead of the credential:
+`config.PersistLoginCredential` settles any unsettled record, reads the account once and
+from that one read decides both the divergence verdict and the prior state, writes the
+record as pending with the identity to revert to, writes the credential, and settles the
+record from the outcome the keychain reported. A fresh entry and a diverged one both take
+a new account, so the credential another directory owns is never a prior and its account
+is never written. `CredStore.SetTokenWithOutcome` takes that classification as an argument
+(`config.PriorCredential`: the account, the prior source, and the value to restore) rather
+than reading a prior itself, so the account the login recorded is the account the write
+targets. A compensation undoes both halves, credential and record.
+
+**Logout delete.** `config.DeleteLoginToken` runs its keychain step when the directory
+has an identity record for the entry - without one nothing was ever stored there under
+this directory's identity - and compares before it deletes: an account another directory
+now owns is left alone with a notice, a failed delete leaves the record, and the record
+goes only after the credential does. A keychain that cannot be reached fails the logout
+for a directory that declares the keychain and warns while keeping the record for one that
+does not. It never touches `credentials.yaml` on behalf of the keychain; it still deletes
+from every backend it does reach, aggregating per-backend errors with `errors.Join` and
+reporting which backends were deleted. `logout --all` enumerates the directory's identity
+records as well as its configured servers, so an entry removed from `config.yaml` by hand
+is still logged out.
 
 Logout has two paths, not one, because they need different completeness/cost tradeoffs:
 - **Single-server** (`auth logout <name>`) calls `config.DeleteTokenEverywhere`, which wraps
@@ -594,7 +645,7 @@ success, never `NOT_FOUND`) so teardown scripts stay green.
 OS keychain has no list API, and `auth list-tokens` needs enumeration, so the cache is
 file-backed regardless of policy. Accepted trade-off.
 
-**Config-directory lock inventory.** Three advisory cross-process locks guard their
+**Config-directory lock inventory.** Four advisory cross-process locks guard their
 respective files via `flock` (released by the OS on process exit):
 
 - `<dir>/config.lock` - guards `config.yaml` and `credentials.yaml` writes; taken at
@@ -606,9 +657,13 @@ respective files via `flock` (released by the OS on process exit):
   deliberately lock-free - last-writer-wins by design (see `pin.go`).
 - `<dir>/credhelper-provenance.lock` - guards the helper-records file; taken by
   `withHelperRecordsLock`.
+- `<dir>/credstore-id.lock` - guards the per-entry keychain identity records; taken by
+  `withIdentityLock` for a record write only (login, compensation, the delete paths), never
+  for a read. It is innermost: it is taken while the config lock is held, because logins
+  and logouts run under that one, and code holding it acquires no other lock.
 
-One ordering rule holds across all three: the config lock is always outermost. Code
-holding either of the other two locks must never acquire it. `RANCHER_CLI_CONFIG_NO_LOCK`
+One ordering rule holds across all four: the config lock is always outermost. Code
+holding any of the other three locks must never acquire it. `RANCHER_CLI_CONFIG_NO_LOCK`
 (any non-empty value) skips the `flock` - escape hatch for filesystems with broken
 advisory locking - while the process-level semaphore still serializes in-process callers.
 

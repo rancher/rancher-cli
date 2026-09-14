@@ -95,14 +95,15 @@ func (l *lazyStore) SetToken(ref ServerRef, token string) error {
 	return s.SetToken(ref, token)
 }
 
-// SetTokenWithOutcome resolves the backend and delegates. A backend that
-// fails to resolve wrote nothing, and names no store to attribute that to.
-func (l *lazyStore) SetTokenWithOutcome(ref ServerRef, token string) (CommitOutcome, error) {
+// SetTokenWithOutcome resolves the backend and delegates, prior included:
+// only the resolved backend knows what to do with it. A backend that fails
+// to resolve wrote nothing, and names no store to attribute that to.
+func (l *lazyStore) SetTokenWithOutcome(ref ServerRef, token string, prior PriorCredential) (CommitOutcome, error) {
 	s, err := l.backend()
 	if err != nil {
 		return CommitOutcome{State: CommitNotWritten}, err
 	}
-	return s.SetTokenWithOutcome(ref, token)
+	return s.SetTokenWithOutcome(ref, token, prior)
 }
 
 func (l *lazyStore) DeleteToken(ref ServerRef) error {

@@ -112,25 +112,49 @@ func SetWaitForFlockHookForTest(fn func()) (restore func()) {
 // Lock ordering: the config lock is outermost with ONE exception, the
 // plugin-login flock (WithPluginLoginLock), which the exec plugin holds
 // across an interactive login and takes BEFORE this lock; code holding
-// this lock never acquires that one. Code holding the token-cache lock or
-// the helper-records lock must never acquire this lock.
+// this lock never acquires that one. Code holding the token-cache lock,
+// the helper-records lock or the credential-identity lock must never
+// acquire this lock.
 //
 // RANCHER_CLI_CONFIG_NO_LOCK (any non-empty value) skips the flock -
 // escape hatch for filesystems with broken advisory locking - while the
 // process semaphore still serializes in-process callers.
 func WithLock(ctx context.Context, dir string, fn func() error) error {
+	return withDirLock(ctx, dir, configLockName, configLockSem,
+		func() {
+			if semWaitHook != nil {
+				semWaitHook()
+			}
+		},
+		func() {
+			if lockHeldHook != nil {
+				lockHeldHook()
+			}
+		},
+		fn)
+}
+
+// withDirLock runs fn while holding one config-directory lock: sem, the
+// in-process semaphore that serializes this process's callers of that one
+// lock, and - unless RANCHER_CLI_CONFIG_NO_LOCK is set - an exclusive
+// flock on <dir>/<name>. Each lock in the directory passes its own file
+// name and its own semaphore, so the wait deadline, the cancellation
+// points and the escape hatch are written once and cannot drift apart.
+// semWait runs before the semaphore is contended for and held runs with
+// both locks held; either may be nil.
+func withDirLock(ctx context.Context, dir, name string, sem chan struct{}, semWait, held func(), fn func() error) error {
 	waitCtx, cancel := context.WithTimeout(ctx, lockWaitTimeout)
 	defer cancel()
 
-	if semWaitHook != nil {
-		semWaitHook()
+	if semWait != nil {
+		semWait()
 	}
 	select {
-	case configLockSem <- struct{}{}:
+	case sem <- struct{}{}:
 	case <-waitCtx.Done():
 		return lockWaitError(waitCtx.Err(), lockWaitInProcess)
 	}
-	defer func() { <-configLockSem }()
+	defer func() { <-sem }()
 	// Both select arms can be ready when the caller's context is already
 	// canceled, and Go may pick the semaphore send. Re-check before ANY
 	// filesystem work or the callback: a canceled command must never
@@ -144,14 +168,14 @@ func WithLock(ctx context.Context, dir string, fn func() error) error {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
-		release, lockErr := waitForFlock(waitCtx, filepath.Join(dir, configLockName), 100*time.Millisecond)
+		release, lockErr := waitForFlock(waitCtx, filepath.Join(dir, name), 100*time.Millisecond)
 		if lockErr != nil {
 			return lockWaitError(lockErr, lockWaitCrossProcess)
 		}
 		defer release()
 	}
-	if lockHeldHook != nil {
-		lockHeldHook()
+	if held != nil {
+		held()
 	}
 	return fn()
 }
@@ -188,7 +212,8 @@ func lockWaitError(err error, stage lockWaitStage) error {
 // waitForFlock acquires the flock at path, polling every poll interval until
 // ctx's deadline, and returns the release. One implementation behind every
 // config-directory lock (the config lock, the token-cache lock, the
-// helper-records lock) so the wait mechanics cannot drift; each caller keeps
+// helper-records lock, the credential-identity lock) so the wait mechanics
+// cannot drift; each caller keeps
 // its own timeout policy and error wording. A (false, nil) result from the
 // flock library must never let a caller proceed unlocked, so it is mapped to
 // a wrappable timeout identity here.

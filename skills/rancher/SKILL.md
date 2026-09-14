@@ -23,7 +23,13 @@ Reports server, server version, `rancherVersion`/`supported`
 or `token` field plus a `warnings` entry is a normal degradation (e.g.
 `identity` is a create-verb probe - expect it null under a read-only-RBAC
 token), not an error condition; don't treat it as one. If it fails with
-`AUTH` or `NOT_LOGGED_IN`, establish a session:
+`AUTH` or `NOT_LOGGED_IN`, establish a session. Two more codes mean the
+stored credential itself cannot be used: `LOGIN_INCOMPLETE` (exit `3`,
+retryable) means a login for that entry is running or ended early - run
+the command again, and log in again if it persists; `CREDENTIAL_REPLACED`
+(exit `3`, not retryable) means another config directory sharing this
+one's identity stored a different credential for the entry - log in again
+for that entry. Neither is a reason to try a different server entry.
 
 - Interactive: `rancher auth login <name> --url <url>` - adds the server
   entry and logs in, no UI trip needed (or add and log in as two steps:

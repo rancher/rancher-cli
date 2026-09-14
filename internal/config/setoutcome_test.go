@@ -28,6 +28,7 @@ type fakeKeyring struct {
 	items         map[string]string
 	reads         []keyringRead
 	setErr        error
+	deleteErr     error
 	commitThenErr bool
 }
 
@@ -52,7 +53,13 @@ func (f *fakeKeyring) Get(service, user string) (string, error) {
 	return v, nil
 }
 
-func (f *fakeKeyring) Delete(service, user string) error { delete(f.items, user); return nil }
+func (f *fakeKeyring) Delete(service, user string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	delete(f.items, user)
+	return nil
+}
 
 // withFakeKeyring swaps the package-global seam; the caller must not run in
 // parallel with any other test in this package.
@@ -65,39 +72,39 @@ func withFakeKeyring(t *testing.T, fk *fakeKeyring) {
 }
 
 // TestKeyringSetTokenWithOutcomeClassifies asserts the four normalized
-// keyring outcomes and the prior-source table.
+// keyring outcomes against the prior the caller classified. The store reads
+// no prior of its own: the account and the value to restore arrive with the
+// write, so a slot another config directory changed in between can never be
+// mistaken for this directory's previous credential.
 func TestKeyringSetTokenWithOutcomeClassifies(t *testing.T) {
 	ref := ServerRef{Name: "prod", URL: "https://r.example"}
+	const account = "0123456789abcdef0123456789abcdef:prod"
 	boom := errors.New("dbus: reply lost")
 	locked := errors.New("keyring locked")
 	cases := []struct {
 		name       string
 		fk         *fakeKeyring
-		fileToken  string
+		prior      PriorCredential
 		wantState  clierr.CredentialState
 		wantPrior  clierr.PriorSource
 		wantErr    bool
 		wantNotice bool
 		wantComp   bool
 	}{
-		{"error before write, no prior", &fakeKeyring{items: map[string]string{}, setErr: boom}, "", clierr.CredentialNotWritten, clierr.PriorNone, true, false, false},
-		{"commit then error, prior in keyring", &fakeKeyring{items: map[string]string{"prod": "old"}, setErr: boom, commitThenErr: true}, "", clierr.CredentialCommitted, clierr.PriorKeyring, false, true, true},
-		{"commit then error, prior unreadable", &fakeKeyring{items: map[string]string{}, setErr: boom, commitThenErr: true, reads: []keyringRead{{err: locked}, {value: "new"}}}, "", clierr.CredentialCommittedUncompensatable, clierr.PriorUnknown, false, true, false},
-		{"error before write, read-back unreachable", &fakeKeyring{items: map[string]string{}, setErr: boom, reads: []keyringRead{{err: keyring.ErrNotFound}, {err: locked}}}, "", clierr.CredentialPossiblyCommitted, clierr.PriorNone, true, false, false},
-		{"commit then error, read-back shows a third value", &fakeKeyring{items: map[string]string{"prod": "old"}, setErr: boom, commitThenErr: true, reads: []keyringRead{{value: "old"}, {value: "other"}}}, "", clierr.CredentialPossiblyCommitted, clierr.PriorKeyring, true, false, false},
-		{"success, prior in file only", &fakeKeyring{items: map[string]string{}}, "filetok", clierr.CredentialCommitted, clierr.PriorFile, false, false, true},
-		{"success, prior unreadable", &fakeKeyring{items: map[string]string{}, reads: []keyringRead{{err: locked}}}, "", clierr.CredentialCommittedUncompensatable, clierr.PriorUnknown, false, false, false},
+		{"error before write, no prior", &fakeKeyring{items: map[string]string{}, setErr: boom}, PriorCredential{Account: account, Source: clierr.PriorNone}, clierr.CredentialNotWritten, clierr.PriorNone, true, false, false},
+		{"commit then error, prior in keyring", &fakeKeyring{items: map[string]string{account: "old"}, setErr: boom, commitThenErr: true}, PriorCredential{Account: account, Source: clierr.PriorKeyring, Raw: "old"}, clierr.CredentialCommitted, clierr.PriorKeyring, false, true, true},
+		{"commit then error, prior unknown", &fakeKeyring{items: map[string]string{}, setErr: boom, commitThenErr: true}, PriorCredential{Account: account, Source: clierr.PriorUnknown}, clierr.CredentialCommittedUncompensatable, clierr.PriorUnknown, false, true, false},
+		{"error before write, read-back unreachable", &fakeKeyring{items: map[string]string{}, setErr: boom, reads: []keyringRead{{err: locked}}}, PriorCredential{Account: account, Source: clierr.PriorNone}, clierr.CredentialPossiblyCommitted, clierr.PriorNone, true, false, false},
+		{"commit then error, read-back shows a third value", &fakeKeyring{items: map[string]string{account: "old"}, setErr: boom, commitThenErr: true, reads: []keyringRead{{value: "other"}}}, PriorCredential{Account: account, Source: clierr.PriorKeyring, Raw: "old"}, clierr.CredentialPossiblyCommitted, clierr.PriorKeyring, true, false, false},
+		{"success, no prior", &fakeKeyring{items: map[string]string{}}, PriorCredential{Account: account, Source: clierr.PriorNone}, clierr.CredentialCommitted, clierr.PriorNone, false, false, true},
+		{"success, prior unknown", &fakeKeyring{items: map[string]string{}}, PriorCredential{Account: account, Source: clierr.PriorUnknown}, clierr.CredentialCommittedUncompensatable, clierr.PriorUnknown, false, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			fs := newFileStore(dir, &noticeBuffer{})
-			if tc.fileToken != "" {
-				require.NoError(t, fs.SetToken(ref, tc.fileToken))
-			}
 			withFakeKeyring(t, tc.fk)
 			ks := newPinnedKeyringStore(dir, false)
-			out, err := ks.SetTokenWithOutcome(ref, "new")
+			out, err := ks.SetTokenWithOutcome(ref, "new", tc.prior)
 			assert.Equal(t, clierr.BackendKeyring, out.Backend)
 			assert.Equal(t, tc.wantState, out.State)
 			assert.Equal(t, tc.wantPrior, out.PriorSource)
@@ -108,23 +115,38 @@ func TestKeyringSetTokenWithOutcomeClassifies(t *testing.T) {
 	}
 }
 
-// TestKeyringCompensationTouchesOnlyTheKeyring asserts the keyring-miss/
-// file-hit case: compensation deletes the new keyring item and leaves the
-// file entry untouched.
+// TestKeyringSetTokenWithoutIdentityRefuses asserts that a keychain write
+// with no account to write to is refused rather than guessing one: the
+// entry name alone is what every config directory on the machine shares.
+func TestKeyringSetTokenWithoutIdentityRefuses(t *testing.T) {
+	dir := t.TempDir()
+	withFakeKeyring(t, &fakeKeyring{items: map[string]string{}})
+	ks := newPinnedKeyringStore(dir, false)
+
+	out, err := ks.SetTokenWithOutcome(ServerRef{Name: "prod"}, "new", PriorCredential{})
+	require.ErrorContains(t, err, "no credential identity for the entry")
+	assert.Equal(t, CommitNotWritten, out.State)
+}
+
+// TestKeyringCompensationTouchesOnlyTheKeyring asserts that compensating a
+// write with no prior deletes the account it created and leaves the file
+// store, which holds its own separate credential, exactly as it was.
 func TestKeyringCompensationTouchesOnlyTheKeyring(t *testing.T) {
 	ref := ServerRef{Name: "prod", URL: "https://r.example"}
+	const account = "0123456789abcdef0123456789abcdef:prod"
 	dir := t.TempDir()
 	fs := newFileStore(dir, &noticeBuffer{})
 	require.NoError(t, fs.SetToken(ref, "old-file"))
 	fk := &fakeKeyring{items: map[string]string{}}
 	withFakeKeyring(t, fk)
 	ks := newPinnedKeyringStore(dir, false)
-	out, err := ks.SetTokenWithOutcome(ref, "new")
+
+	out, err := ks.SetTokenWithOutcome(ref, "new", PriorCredential{Account: account, Source: clierr.PriorNone})
 	require.NoError(t, err)
-	require.Equal(t, clierr.PriorFile, out.PriorSource)
 	require.NotNil(t, out.Compensate)
 	require.NoError(t, out.Compensate())
-	_, has := fk.items["prod"]
+
+	_, has := fk.items[account]
 	assert.False(t, has, "the new keyring item is deleted")
 	tok, err := fs.GetToken(ref)
 	require.NoError(t, err)
@@ -145,7 +167,7 @@ func TestFileSetTokenWithOutcomeUnreadablePriorIsNotWritten(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("{not json"), 0o600))
 	before, err := os.ReadFile(path)
 	require.NoError(t, err)
-	out, err := fs.SetTokenWithOutcome(ref, "new")
+	out, err := fs.SetTokenWithOutcome(ref, "new", PriorCredential{})
 	require.Error(t, err)
 	assert.Equal(t, clierr.BackendFile, out.Backend)
 	assert.Equal(t, clierr.CredentialNotWritten, out.State)
@@ -187,7 +209,7 @@ func TestExecSetTokenWithOutcomeBoundaries(t *testing.T) {
 			dir := t.TempDir()
 			st, err := OpenStore("exec:fake", dir)
 			require.NoError(t, err)
-			out, err := st.SetTokenWithOutcome(ref, "id:s")
+			out, err := st.SetTokenWithOutcome(ref, "id:s", PriorCredential{})
 			assert.Equal(t, tc.wantErr, err != nil, "err=%v", err)
 			assert.Equal(t, tc.wantUnsupport, errors.Is(err, ErrTokenStoreUnsupported))
 			assert.Equal(t, clierr.BackendExec, out.Backend)
@@ -256,7 +278,7 @@ func TestExecSetTokenWithOutcomeRecordFailures(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, helperRecordsFileName), []byte(":\n  - not yaml"), 0o600))
 		st, err := OpenStore("exec:fake", dir)
 		require.NoError(t, err)
-		out, err := st.SetTokenWithOutcome(ref, "id:s")
+		out, err := st.SetTokenWithOutcome(ref, "id:s", PriorCredential{})
 		require.ErrorContains(t, err, "corrupt")
 		assert.Equal(t, clierr.CredentialNotWritten, out.State)
 		assert.False(t, out.HelperRecordRetained)
@@ -268,7 +290,7 @@ func TestExecSetTokenWithOutcomeRecordFailures(t *testing.T) {
 		defer restore()
 		st, err := OpenStore("exec:fake", dir)
 		require.NoError(t, err)
-		out, err := st.SetTokenWithOutcome(ref, "id:s")
+		out, err := st.SetTokenWithOutcome(ref, "id:s", PriorCredential{})
 		require.ErrorContains(t, err, "disk full")
 		assert.Equal(t, clierr.CredentialNotWritten, out.State)
 		assert.False(t, out.HelperRecordRetained)
@@ -287,7 +309,7 @@ func TestExecSetTokenWithOutcomeRecordFailures(t *testing.T) {
 		defer restore()
 		st, err := OpenStore("exec:fake", dir)
 		require.NoError(t, err)
-		out, err := st.SetTokenWithOutcome(ref, "id:s")
+		out, err := st.SetTokenWithOutcome(ref, "id:s", PriorCredential{})
 		require.Error(t, err)
 		require.NotErrorIs(t, err, ErrTokenStoreUnsupported)
 		assert.Equal(t, clierr.CredentialNotWritten, out.State)
@@ -304,7 +326,7 @@ func TestCommitTokenPassesBackendOutcomeThrough(t *testing.T) {
 	fs := newFileStore(dir, &noticeBuffer{})
 	ref := ServerRef{Name: "prod", URL: "https://r.example"}
 	require.NoError(t, fs.SetToken(ref, "old"))
-	out, err := CommitToken(fs, ref, "new")
+	out, err := CommitToken(fs, ref, "new", PriorCredential{})
 	require.NoError(t, err)
 	assert.Equal(t, clierr.BackendFile, out.Backend)
 	assert.Equal(t, clierr.CredentialCommitted, out.State)
