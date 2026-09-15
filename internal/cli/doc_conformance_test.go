@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
@@ -405,4 +406,32 @@ func TestCommandsTableMatchesManifest(t *testing.T) {
 	sort.Strings(unknown)
 	assert.Empty(t, unknown,
 		"COMMANDS.md Commands table rows that name no command in the schema manifest - update COMMANDS.md, not this test")
+}
+
+// TestReferenceErrorCodesTableMatchesManifest asserts that REFERENCE.md's
+// error-code table is the manifest's errorCodes rendered as rows: same
+// codes, same order, same exit status, same meaning. A failure here means
+// REFERENCE.md went stale - update REFERENCE.md, not this test.
+func TestReferenceErrorCodesTableMatchesManifest(t *testing.T) {
+	t.Parallel()
+	block := anchoredBlock(t, "REFERENCE.md", "error-codes")
+	var rows []clierr.CodeInfo
+	for line := range strings.SplitSeq(block, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "| `") {
+			continue
+		}
+		cells := strings.Split(strings.Trim(line, "|"), "|")
+		require.Len(t, cells, 3, "row %q", line)
+		exit, err := strconv.Atoi(strings.TrimSpace(cells[1]))
+		require.NoError(t, err, "row %q", line)
+		rows = append(rows, clierr.CodeInfo{
+			Code: strings.Trim(strings.TrimSpace(cells[0]), "`"),
+			Exit: exit,
+			Desc: strings.TrimSpace(cells[2]),
+		})
+	}
+	m, err := buildManifest("v-test")
+	require.NoError(t, err)
+	assert.Equal(t, m.ErrorCodes, rows)
 }

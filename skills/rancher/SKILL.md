@@ -101,6 +101,10 @@ rancher schema --all -o json        # the complete manifest in one document (bul
 ```
 
 The orientation payload is compact; the full manifest is for bulk extraction.
+Error-code meanings live only in the full manifest (`errorCodes`: code,
+exit status, meaning); the orientation payload and command cards carry
+exit statuses alone, so one `--all` read to learn the error vocabulary is
+the deliberate exception to the rule below.
 The schema is the source of truth for the installed version. When unsure of a
 flag, a kind name, or whether a command is destructive, read the schema before
 constructing a call. Command and kind names are dashed (`cloud-credential`,
@@ -312,7 +316,8 @@ Errors land on stderr as an envelope with the error object under `data`:
 Check the exit code before reading `data`: on success a list's `data` is
 a bare array, on failure `data` is an object holding `error` - a pipe that
 assumes the array shape counts an error as one item and reads it as data.
-Read `data.error.code` / `data.error.hint` - want the envelope, pass
+Read `data.error.code` / `data.error.hint` (the full manifest's
+`errorCodes` says what each code means) - want the envelope, pass
 `-o json` (or `-o yaml`), including for errors; every other format renders
 a short text block instead (`error (CODE): message`, an optional `hint:`
 line). A warning or notice (e.g. a credential-store pin) rides inside that

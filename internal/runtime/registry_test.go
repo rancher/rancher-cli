@@ -46,21 +46,23 @@ func TestSchemaMergesResolverContract(t *testing.T) {
 	assert.True(t, byName["widgets set"].Flags[0].Required)
 }
 
-// TestSchemaManifestExitCodes asserts SE-16: the manifest's NEW exitCodes map
-// carries an exit status for every code in ErrorCodes, matching what clierr
-// itself reports - ErrorCodes stays untouched (additive rule).
+// TestSchemaManifestExitCodes asserts that the manifest's two views of the
+// exit mapping agree: every errorCodes entry carries the exit status the
+// exitCodes map gives its code, the map covers every listed code, every
+// exit is non-zero, and every entry carries a description.
 func TestSchemaManifestExitCodes(t *testing.T) {
 	t.Parallel()
 	m := NewRegistry(stubResolver{}).Schema("v-test", "2.14")
 
-	assert.Equal(t, clierr.AllCodes(), m.ErrorCodes, "ErrorCodes is untouched by SE-16")
+	assert.Equal(t, clierr.Codes(), m.ErrorCodes)
 	require.NotEmpty(t, m.ExitCodes)
 	assert.Equal(t, clierr.CodeExits(), m.ExitCodes)
-	for _, code := range m.ErrorCodes {
-		exit, ok := m.ExitCodes[code]
-		require.True(t, ok, "error code %q has no exit mapping", code)
-		assert.Equal(t, clierr.ExitCode(code), exit)
+	for _, info := range m.ErrorCodes {
+		exit, ok := m.ExitCodes[info.Code]
+		require.True(t, ok, "error code %q has no exit mapping", info.Code)
+		assert.Equal(t, info.Exit, exit, "%s: the entry and the map agree", info.Code)
 		assert.Positive(t, exit, "every error code exits non-zero")
+		assert.NotEmpty(t, info.Desc, "%s has no description", info.Code)
 	}
 }
 

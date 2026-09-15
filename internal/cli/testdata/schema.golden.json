@@ -10185,23 +10185,91 @@
     }
   ],
   "errorCodes": [
-    "NOT_LOGGED_IN",
-    "CONFIRMATION_REQUIRED",
-    "DRY_RUN_NOT_APPLICABLE",
-    "AMBIGUOUS_SELECTION",
-    "CONFLICT",
-    "LOCK_TIMEOUT",
-    "AUTH",
-    "CREDENTIAL_REPLACED",
-    "LOGIN_INCOMPLETE",
-    "NOT_FOUND",
-    "RBAC",
-    "VALIDATION",
-    "PRIME_REQUIRED",
-    "TLS_TRUST",
-    "CAPABILITY_UNSUPPORTED",
-    "INTERRUPTED",
-    "GENERIC"
+    {
+      "code": "NOT_LOGGED_IN",
+      "desc": "no server is selected, the selected server entry does not exist, or it has no stored credential and RANCHER_CLI_TOKEN is not set",
+      "exit": 2
+    },
+    {
+      "code": "CONFIRMATION_REQUIRED",
+      "desc": "the mutation was not applied because a required gate flag (--apply, --yes, --allow-deprecated) was missing; the message names the flags",
+      "exit": 2
+    },
+    {
+      "code": "DRY_RUN_NOT_APPLICABLE",
+      "desc": "--dry-run was given to a command that does not mutate",
+      "exit": 2
+    },
+    {
+      "code": "AMBIGUOUS_SELECTION",
+      "desc": "more than one value matched and none was selected; the error lists the candidates when it can",
+      "exit": 2
+    },
+    {
+      "code": "CONFLICT",
+      "desc": "a write collided with existing state: a resource changed on the server since it was read, a name already exists, a server entry is registered with a different URL or CA, or the config directory changed while the command ran",
+      "exit": 5
+    },
+    {
+      "code": "LOCK_TIMEOUT",
+      "desc": "a config-directory lock was not released within the wait, usually because another rancher process is writing",
+      "exit": 8
+    },
+    {
+      "code": "AUTH",
+      "desc": "authentication failed: the server rejected the credential (HTTP 401), the exchange with the identity provider failed or timed out, or an environment URL was set without RANCHER_CLI_TOKEN",
+      "exit": 3
+    },
+    {
+      "code": "CREDENTIAL_REPLACED",
+      "desc": "the stored credential for the server entry was replaced by another config directory that shares this one's identity, or by a login in progress",
+      "exit": 3
+    },
+    {
+      "code": "LOGIN_INCOMPLETE",
+      "desc": "a login for the server entry is in progress, or ended before it recorded its credential identity",
+      "exit": 3
+    },
+    {
+      "code": "NOT_FOUND",
+      "desc": "no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data",
+      "exit": 4
+    },
+    {
+      "code": "RBAC",
+      "desc": "the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token",
+      "exit": 6
+    },
+    {
+      "code": "VALIDATION",
+      "desc": "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422)",
+      "exit": 2
+    },
+    {
+      "code": "PRIME_REQUIRED",
+      "desc": "the command requires Rancher Prime and the connected server does not have it",
+      "exit": 9
+    },
+    {
+      "code": "TLS_TRUST",
+      "desc": "the server's TLS certificate is not trusted and was not accepted",
+      "exit": 10
+    },
+    {
+      "code": "CAPABILITY_UNSUPPORTED",
+      "desc": "the connected server does not support the workflow the command needs",
+      "exit": 11
+    },
+    {
+      "code": "INTERRUPTED",
+      "desc": "the command was ended by Ctrl-C or a termination signal",
+      "exit": 130
+    },
+    {
+      "code": "GENERIC",
+      "desc": "an error with no more specific code, including a server or transport failure",
+      "exit": 1
+    }
   ],
   "exitCodes": {
     "AMBIGUOUS_SELECTION": 2,

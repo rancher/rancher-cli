@@ -288,14 +288,16 @@ type Manifest struct {
 	// source(s); empty when ReadOnly is false.
 	ReadOnly        bool     `json:"readOnly"`
 	ReadOnlySources []string `json:"readOnlySources,omitempty"`
-	ErrorCodes      []string `json:"errorCodes"`
-	// ExitCodes maps every error code to its process exit status (SE-16).
-	// Additive: ErrorCodes keeps its shape and meaning.
-	ExitCodes    map[string]int  `json:"exitCodes"`
-	GlobalFlags  []GlobalFlag    `json:"globalFlags"`
-	EnvVars      []EnvVar        `json:"envVars"`
-	EffectSchema EffectSchema    `json:"effectSchema"`
-	Commands     []SchemaCommand `json:"commands"`
+	// ErrorCodes lists every stable error code with its exit status and its
+	// meaning, so an agent learns the error vocabulary from the manifest
+	// before it meets an error. ExitCodes is the same exit mapping as a
+	// map; the table-of-contents view carries it as globalExitCodes.
+	ErrorCodes   []clierr.CodeInfo `json:"errorCodes"`
+	ExitCodes    map[string]int    `json:"exitCodes"`
+	GlobalFlags  []GlobalFlag      `json:"globalFlags"`
+	EnvVars      []EnvVar          `json:"envVars"`
+	EffectSchema EffectSchema      `json:"effectSchema"`
+	Commands     []SchemaCommand   `json:"commands"`
 	// Kinds is the kind vocabulary with its effective verb surface (SE-8,
 	// SE-17); Groups are the root's ordered sections (SE-18). Both are set
 	// by BuildRoot via SetKinds/SetGroups; registries built without them
@@ -449,7 +451,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 		CLIVersion:        cliVersion,
 		MinRancherVersion: minRancherVersion,
 		OutputAPIVersion:  output.APIVersion,
-		ErrorCodes:        clierr.AllCodes(),
+		ErrorCodes:        clierr.Codes(),
 		ExitCodes:         clierr.CodeExits(),
 		GlobalFlags:       GlobalFlags(),
 		EnvVars:           EnvVars(),

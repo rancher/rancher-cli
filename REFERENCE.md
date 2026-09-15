@@ -15,6 +15,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Access management](#access-management)
 - [Diagnostics & support](#diagnostics--support)
 - [Output formats](#output-formats)
+- [Error codes](#error-codes)
 - [Read-only mode](#read-only-mode)
 - [Supported server version](#supported-server-version)
 - [kubectl integration](#kubectl-integration)
@@ -749,6 +750,38 @@ regardless of this flag. Precedence, checked in order: `--color=never` or
 turns it on. If none of those apply, styling follows whether the stream
 being written to (stdout or stderr, resolved independently) is a real
 terminal.
+
+## Error codes
+
+Every error the CLI reports carries one of these codes in
+`data.error.code` (and in the `error (CODE):` text prefix) and exits with
+the status shown. The set is stable: `rancher schema --all -o json` lists
+it under `errorCodes` with the same exit and meaning, and this table is
+tested against that manifest. Whether a particular error is worth
+retrying is a property of the error, not of its code, and travels in the
+envelope's `retryable` field; the `hint`, when present, is the remedy.
+
+<!-- conformance:error-codes -->
+| Code | Exit | Meaning |
+|---|---|---|
+| `NOT_LOGGED_IN` | 2 | no server is selected, the selected server entry does not exist, or it has no stored credential and RANCHER_CLI_TOKEN is not set |
+| `CONFIRMATION_REQUIRED` | 2 | the mutation was not applied because a required gate flag (--apply, --yes, --allow-deprecated) was missing; the message names the flags |
+| `DRY_RUN_NOT_APPLICABLE` | 2 | --dry-run was given to a command that does not mutate |
+| `AMBIGUOUS_SELECTION` | 2 | more than one value matched and none was selected; the error lists the candidates when it can |
+| `CONFLICT` | 5 | a write collided with existing state: a resource changed on the server since it was read, a name already exists, a server entry is registered with a different URL or CA, or the config directory changed while the command ran |
+| `LOCK_TIMEOUT` | 8 | a config-directory lock was not released within the wait, usually because another rancher process is writing |
+| `AUTH` | 3 | authentication failed: the server rejected the credential (HTTP 401), the exchange with the identity provider failed or timed out, or an environment URL was set without RANCHER_CLI_TOKEN |
+| `CREDENTIAL_REPLACED` | 3 | the stored credential for the server entry was replaced by another config directory that shares this one's identity, or by a login in progress |
+| `LOGIN_INCOMPLETE` | 3 | a login for the server entry is in progress, or ended before it recorded its credential identity |
+| `NOT_FOUND` | 4 | no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data |
+| `RBAC` | 6 | the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token |
+| `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422) |
+| `PRIME_REQUIRED` | 9 | the command requires Rancher Prime and the connected server does not have it |
+| `TLS_TRUST` | 10 | the server's TLS certificate is not trusted and was not accepted |
+| `CAPABILITY_UNSUPPORTED` | 11 | the connected server does not support the workflow the command needs |
+| `INTERRUPTED` | 130 | the command was ended by Ctrl-C or a termination signal |
+| `GENERIC` | 1 | an error with no more specific code, including a server or transport failure |
+<!-- /conformance:error-codes -->
 
 ## Machine hints
 

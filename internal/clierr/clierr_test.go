@@ -54,6 +54,31 @@ func TestAllCodesNonEmpty(t *testing.T) {
 	assert.Contains(t, AllCodes(), CodeDryRunNotApplicable)
 }
 
+// TestCodesDescribeEveryCode asserts that Codes lists exactly the codes
+// AllCodes lists, in order, that every one has a meaning, that no meaning
+// exists for a code AllCodes does not list, and that each meaning is one
+// plain line that reads as a table cell. The exit status of each entry is
+// asserted against the manifest's exit map in the runtime package.
+func TestCodesDescribeEveryCode(t *testing.T) {
+	t.Parallel()
+	all := AllCodes()
+	infos := Codes()
+	codes := make([]string, 0, len(infos))
+	for _, info := range infos {
+		codes = append(codes, info.Code)
+	}
+	assert.Equal(t, all, codes, "Codes lists exactly AllCodes, in order")
+	for _, info := range infos {
+		assert.NotEmpty(t, info.Desc, "%s has no description", info.Code)
+		assert.NotContains(t, info.Desc, "\n", "%s: one line", info.Code)
+		assert.NotContains(t, info.Desc, "|", "%s: no table separator", info.Code)
+		assert.False(t, strings.HasSuffix(info.Desc, "."), "%s: a fragment, no trailing period", info.Code)
+	}
+	for code := range codeDescs {
+		assert.Contains(t, all, code, "description for a code AllCodes does not list")
+	}
+}
+
 // TestAllCodesDropsNotImplemented asserts DR-013: NOT_IMPLEMENTED is a
 // permanently-dead branch (no construction site ever advertises it) and has
 // been removed. The count asserts the full enum: 10 originals plus

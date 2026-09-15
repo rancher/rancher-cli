@@ -246,6 +246,50 @@ func AllCodes() []string {
 	}
 }
 
+// CodeInfo describes one stable error code: the code, the process exit
+// status it maps to, and what a caller may read into it. Retryability is a
+// property of each error, not of its code, and travels in the envelope.
+type CodeInfo struct {
+	Code string `json:"code"`
+	Exit int    `json:"exit"`
+	Desc string `json:"desc"`
+}
+
+// codeDescs is the one place a code's meaning is written down. It covers
+// exactly the codes AllCodes lists, which a test asserts, so the schema
+// manifest and the reference can never carry a code without a meaning.
+var codeDescs = map[string]string{
+	CodeNotLoggedIn:           "no server is selected, the selected server entry does not exist, or it has no stored credential and RANCHER_CLI_TOKEN is not set",
+	CodeConfirmationRequired:  "the mutation was not applied because a required gate flag (--apply, --yes, --allow-deprecated) was missing; the message names the flags",
+	CodeDryRunNotApplicable:   "--dry-run was given to a command that does not mutate",
+	CodeAmbiguousSelection:    "more than one value matched and none was selected; the error lists the candidates when it can",
+	CodeConflict:              "a write collided with existing state: a resource changed on the server since it was read, a name already exists, a server entry is registered with a different URL or CA, or the config directory changed while the command ran",
+	CodeLockTimeout:           "a config-directory lock was not released within the wait, usually because another rancher process is writing",
+	CodeAuth:                  "authentication failed: the server rejected the credential (HTTP 401), the exchange with the identity provider failed or timed out, or an environment URL was set without RANCHER_CLI_TOKEN",
+	CodeCredentialReplaced:    "the stored credential for the server entry was replaced by another config directory that shares this one's identity, or by a login in progress",
+	CodeLoginIncomplete:       "a login for the server entry is in progress, or ended before it recorded its credential identity",
+	CodeNotFound:              "no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data",
+	CodeRBAC:                  "the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token",
+	CodeValidation:            "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422)",
+	CodeGeneric:               "an error with no more specific code, including a server or transport failure",
+	CodePrimeRequired:         "the command requires Rancher Prime and the connected server does not have it",
+	CodeTLSTrust:              "the server's TLS certificate is not trusted and was not accepted",
+	CodeCapabilityUnsupported: "the connected server does not support the workflow the command needs",
+	CodeInterrupted:           "the command was ended by Ctrl-C or a termination signal",
+}
+
+// Codes lists every stable error code with its exit status and meaning, in
+// AllCodes order; the schema manifest and the reference table both render
+// this list.
+func Codes() []CodeInfo {
+	codes := AllCodes()
+	out := make([]CodeInfo, 0, len(codes))
+	for _, c := range codes {
+		out = append(out, CodeInfo{Code: c, Exit: ExitCode(c), Desc: codeDescs[c]})
+	}
+	return out
+}
+
 // Interrupted is the error for a command the operator ended (Ctrl-C or a
 // termination signal): not retryable as such, no hint, exit 130.
 func Interrupted() *Error { return New(CodeInterrupted, "interrupted") }
