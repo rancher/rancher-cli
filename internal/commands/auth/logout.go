@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -258,6 +259,12 @@ func writeLogoutStamps(cfg *config.Config, stamped bool, notices []string) []str
 // orphaned/bare cache entries that match no configured server (which no
 // per-server delete, keyed to a currently-configured server's host, could
 // ever reach). See DeleteAllExecCache's doc for why.
+//
+// The two cleanups after the per-target loop - the cache wipe and the
+// orphaned-helper sweep - are best effort and independent: both run, and
+// a failure in one never stops the other, because each is the only path
+// to credentials the other cannot see. A run where both fail reports both
+// causes; whatever any step did delete stays in the payload.
 func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
 	var notices []string
@@ -274,23 +281,34 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 		stamped = stampLoggedOut(cfg, s) || stamped
 	}
 	notices = writeLogoutStamps(cfg, stamped, notices)
-	deletedCache, cacheNotices, err := config.DeleteAllExecCache(l.dir)
+	deletedCache, cacheNotices, cacheErr := config.DeleteAllExecCache(l.dir)
 	notices = append(notices, cacheNotices...)
-	if err != nil {
-		return nil, nil, nil, deleteFailure("failed to delete exec-credential cache", err, done, deletedFrom, nil, notices)
-	}
 
-	// Reach helper credentials whose server name never made it into
-	// config.yaml (a crash or failed config write between a successful helper
-	// store and cfg.Write): no per-server delete above could see them. Merge
-	// each deleted record into deletedFrom under its server name so the
-	// envelope stays stable.
-	orphans, rerr := config.DeleteOrphanedHelperCredentials(ctx, l.dir)
+	// The sweep runs whatever the cache wipe did. The two reach different
+	// credentials - the cache holds short-lived kubectl tokens, the sweep
+	// reaches helper credentials whose server name never made it into
+	// config.yaml (a crash or failed config write between a successful
+	// helper store and cfg.Write), which no per-server delete above can
+	// see - and the command's promise is to erase every credential it can
+	// still reach. Skipping the sweep because an unrelated
+	// token-cache.yaml could not be read leaves a live credential behind
+	// for a reason that has nothing to do with it. Each deleted record is
+	// merged into deletedFrom under its server name so the envelope stays
+	// stable.
+	orphans, sweepErr := config.DeleteOrphanedHelperCredentials(ctx, l.dir)
 	for _, e := range orphans {
 		deletedFrom[e.Name] = append(deletedFrom[e.Name], "helper:"+e.Helper)
 	}
-	if rerr != nil {
-		return nil, nil, nil, deleteFailure("failed to delete orphaned helper credentials", rerr, done, deletedFrom, deletedCache, notices)
+
+	// DeleteAllExecCache reports no keys when it fails, so deletedCache
+	// carries a wipe that succeeded and nothing otherwise.
+	switch {
+	case cacheErr != nil && sweepErr != nil:
+		return nil, nil, nil, deleteBothFailure(cacheErr, sweepErr, done, deletedFrom, deletedCache, notices)
+	case cacheErr != nil:
+		return nil, nil, nil, deleteFailure("failed to delete exec-credential cache", cacheErr, done, deletedFrom, deletedCache, notices)
+	case sweepErr != nil:
+		return nil, nil, nil, deleteFailure("failed to delete orphaned helper credentials", sweepErr, done, deletedFrom, deletedCache, notices)
 	}
 	return deletedFrom, deletedCache, notices, nil
 }
@@ -347,4 +365,28 @@ func deleteFailure(step string, err error, done []string, deletedFrom map[string
 			WithDetails(LogoutAllPartialFailure{LoggedOut: done, DeletedFrom: deletedFrom, DeletedCache: deletedCache}).
 			WithWarnings(notices...)
 	})
+}
+
+// deleteBothFailure reports a run where both final cleanups failed. The
+// two causes ride one error so a caller can still match either, but the
+// error is built here rather than wrapped: clierr.Wrap adopts whichever
+// cause is already classified, which would take that cause's code and
+// retry flag and drop the other from the chain, and a joined error
+// spells itself with a newline between its causes, which the text
+// renderer strips and which would run the two messages together. A
+// cancelled step is reported as the cancellation it is, by the same
+// passthrough every other step here uses, rather than as a cleanup
+// failure that happens to contain one.
+func deleteBothFailure(cacheErr, sweepErr error, done []string, deletedFrom map[string][]string, deletedCache, notices []string) error {
+	if errors.Is(cacheErr, context.Canceled) {
+		return deleteFailure("failed to delete exec-credential cache", cacheErr, done, deletedFrom, deletedCache, notices)
+	}
+	if errors.Is(sweepErr, context.Canceled) {
+		return deleteFailure("failed to delete orphaned helper credentials", sweepErr, done, deletedFrom, deletedCache, notices)
+	}
+	return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
+		"failed to delete exec-credential cache (%v) and orphaned helper credentials (%v)", cacheErr, sweepErr)).
+		WithCause(errors.Join(cacheErr, sweepErr)).
+		WithDetails(LogoutAllPartialFailure{LoggedOut: done, DeletedFrom: deletedFrom, DeletedCache: deletedCache}).
+		WithWarnings(notices...)
 }

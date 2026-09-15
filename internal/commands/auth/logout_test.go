@@ -329,6 +329,183 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	assert.Empty(t, leftovers, "helper records must be fully deleted")
 }
 
+// TestLogoutAllSweepsOrphansWhenTheCacheWipeFails asserts the best-effort
+// contract between the two cleanups: an unreadable token-cache.yaml fails
+// the cache wipe, and the orphaned-helper sweep - the only path to a
+// credential whose server name never reached config.yaml - still runs and
+// still erases it. The failure names the step that failed and carries
+// what the other one deleted.
+func TestLogoutAllSweepsOrphansWhenTheCacheWipeFails(t *testing.T) {
+	t.Setenv("PATH", cmdtest.BuildFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKEHELPER_MODE", "ok")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("FAKEHELPER_STATE", statePath)
+	keyring.MockInit()
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CredentialStore: "exec:fake",
+		Servers:         map[string]config.Server{},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	store, err := config.OpenStore("exec:fake", dir)
+	require.NoError(t, err)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "ghost", URL: "https://ghost.ex"}, "id:sec"))
+	require.NotEmpty(t, cmdtest.HelperCreds(t, statePath), "precondition: the helper holds the orphaned credential")
+
+	// A cache file the wipe cannot read, for a reason that has nothing to
+	// do with the helper credential.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "token-cache.yaml"), []byte("\t: not yaml ["), 0o600))
+
+	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
+		cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to delete exec-credential cache")
+	require.NotContains(t, err.Error(), "and orphaned helper credentials",
+		"one failing step still reports in its own shape")
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	details, ok := ce.Details.(LogoutAllPartialFailure)
+	require.True(t, ok, "the error must carry what already succeeded")
+	assert.Contains(t, details.DeletedFrom["ghost"], "helper:fake",
+		"the sweep ran despite the cache failure and reported its deletion")
+	assert.Empty(t, details.DeletedCache, "the wipe deleted nothing")
+
+	assert.Empty(t, cmdtest.HelperCreds(t, statePath),
+		"the orphaned helper credential must not survive an unrelated cache failure")
+}
+
+// TestLogoutAllReportsBothCleanupFailures asserts what a run where both
+// cleanups fail says: one failure naming both steps, with each cause still
+// reachable through the error, and everything the per-target loop deleted
+// still in the payload.
+func TestLogoutAllReportsBothCleanupFailures(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("symlink-based write failure needs POSIX symlink semantics")
+	}
+	t.Setenv("PATH", cmdtest.BuildFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKEHELPER_MODE", "ok")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("FAKEHELPER_STATE", statePath)
+	keyring.MockInit()
+
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CredentialStore: "file",
+		Servers:         map[string]config.Server{"acme": {URL: "https://acme.ex"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	fileStore := config.NewFileStore(dir)
+	require.NoError(t, fileStore.SetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"}, "id:sec"))
+
+	execStore, err := config.OpenStore("exec:fake", dir)
+	require.NoError(t, err)
+	require.NoError(t, execStore.SetToken(config.ServerRef{Name: "ghost", URL: "https://ghost.ex"}, "id:sec"))
+
+	// The sweep's persist write is refused behind a symlink, the same way
+	// its own test arranges it.
+	recordsPath := filepath.Join(dir, "credhelper-provenance.yaml")
+	data, rerr := os.ReadFile(recordsPath)
+	require.NoError(t, rerr)
+	backing := filepath.Join(dir, "credhelper-provenance.real.yaml")
+	require.NoError(t, os.WriteFile(backing, data, 0o600))
+	require.NoError(t, os.Remove(recordsPath))
+	require.NoError(t, os.Symlink(backing, recordsPath))
+
+	// And the cache wipe cannot read its file.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "token-cache.yaml"), []byte("\t: not yaml ["), 0o600))
+
+	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
+		cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to delete exec-credential cache (")
+	require.ErrorContains(t, err, "and orphaned helper credentials (")
+	require.NotContains(t, err.Error(), "\n", "the two causes read as one line")
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	joined, ok := ce.Unwrap().(interface{ Unwrap() []error })
+	require.True(t, ok, "both causes ride the error rather than one replacing the other")
+	causes := joined.Unwrap()
+	require.Len(t, causes, 2)
+	for _, cause := range causes {
+		require.ErrorIs(t, err, cause, "errors.Is still reaches each cause")
+	}
+
+	details, ok := ce.Details.(LogoutAllPartialFailure)
+	require.True(t, ok)
+	assert.Equal(t, []string{"acme"}, details.LoggedOut)
+	assert.Contains(t, details.DeletedFrom["acme"], "file",
+		"what the per-target loop deleted is still reported")
+
+	_, gerr := fileStore.GetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"})
+	assert.ErrorIs(t, gerr, config.ErrNoToken)
+}
+
+// TestDeleteBothFailureKeepsBothCauses asserts what a run where both
+// cleanups failed reports, in the shape no end-to-end fixture reaches: a
+// classified cause beside a plain one. Neither cause's code or retry flag
+// is adopted - inheriting the cache lock's retryable LOCK_TIMEOUT would
+// tell a caller to retry a corruption that will never clear - and both
+// stay matchable through the error.
+func TestDeleteBothFailureKeepsBothCauses(t *testing.T) {
+	t.Parallel()
+	cacheErr := clierr.Retryable(clierr.CodeLockTimeout, "token-cache.lock is held by another process")
+	sweepErr := errors.New("credential-helper records file is corrupt")
+
+	err := deleteBothFailure(cacheErr, sweepErr, []string{"acme"},
+		map[string][]string{"acme": {"file"}}, nil, []string{"a notice"})
+
+	require.ErrorIs(t, err, cacheErr)
+	require.ErrorIs(t, err, sweepErr)
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code, "neither cause's classification is adopted")
+	assert.False(t, ce.Retryable)
+	assert.Contains(t, ce.Message, "token-cache.lock is held by another process")
+	assert.Contains(t, ce.Message, "credential-helper records file is corrupt")
+	assert.NotContains(t, ce.Message, "\n", "the message stays one line for the text renderer")
+
+	details, ok := ce.Details.(LogoutAllPartialFailure)
+	require.True(t, ok)
+	assert.Equal(t, []string{"acme"}, details.LoggedOut)
+	assert.Equal(t, []string{"a notice"}, ce.Warnings())
+}
+
+// TestDeleteBothFailureReportsACancellationAsOne asserts that a cancelled
+// step is reported as the cancellation it is, whichever of the two
+// cleanups was cancelled, rather than as a cleanup failure that happens
+// to contain one: the command was interrupted, and that is what the
+// caller has to see.
+func TestDeleteBothFailureReportsACancellationAsOne(t *testing.T) {
+	t.Parallel()
+	other := errors.New("token-cache.yaml is corrupt")
+
+	for _, tc := range []struct {
+		name               string
+		cacheErr, sweepErr error
+	}{
+		{"the cache wipe was cancelled", context.Canceled, other},
+		{"the sweep was cancelled", other, context.Canceled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := deleteBothFailure(tc.cacheErr, tc.sweepErr, nil, nil, nil, nil)
+			require.ErrorIs(t, err, context.Canceled)
+
+			_, dressed := errors.AsType[*clierr.Error](err)
+			assert.False(t, dressed,
+				"a cancellation passes through undressed, as it does from every other step here")
+		})
+	}
+}
+
 // TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded asserts that a
 // failure in the LAST of deleteAll's three steps must not discard the
 // first two: the per-server loop and exec-cache wipe both succeed before
