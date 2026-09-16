@@ -800,6 +800,7 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 | `AUTH` | 3 | authentication failed: the server rejected the credential (HTTP 401), the exchange with the identity provider failed or timed out, or an environment URL was set without RANCHER_CLI_TOKEN |
 | `CREDENTIAL_REPLACED` | 3 | the stored credential for the server entry was replaced by another config directory that shares this one's identity, or by a login in progress |
 | `LOGIN_INCOMPLETE` | 3 | a login for the server entry is in progress, or ended before it recorded its credential identity |
+| `CREDENTIAL_TRANSITION_INCOMPLETE` | 3 | a change of this directory's credential store has work left: some credentials are still in the backend it moved away from, so a second store change is refused and so is a login for an entry whose credential the change is still carrying; a logout or a delete proceeds and converts the unfinished work to cleanup |
 | `NOT_FOUND` | 4 | no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data |
 | `RBAC` | 6 | the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token |
 | `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422) |

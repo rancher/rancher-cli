@@ -83,10 +83,11 @@ func TestCodesDescribeEveryCode(t *testing.T) {
 // permanently-dead branch (no construction site ever advertises it) and has
 // been removed. The count asserts the full enum: 10 originals plus
 // LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, CAPABILITY_UNSUPPORTED,
-// INTERRUPTED, CREDENTIAL_REPLACED and LOGIN_INCOMPLETE.
+// INTERRUPTED, CREDENTIAL_REPLACED, LOGIN_INCOMPLETE and
+// CREDENTIAL_TRANSITION_INCOMPLETE.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
-	assert.Len(t, codes, 17)
+	assert.Len(t, codes, 18)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
 	assert.Contains(t, codes, CodeLockTimeout)
 	assert.Contains(t, codes, CodePrimeRequired)
@@ -94,6 +95,7 @@ func TestAllCodesDropsNotImplemented(t *testing.T) {
 	assert.Contains(t, codes, CodeCapabilityUnsupported)
 	assert.Contains(t, codes, CodeCredentialReplaced)
 	assert.Contains(t, codes, CodeLoginIncomplete)
+	assert.Contains(t, codes, CodeCredentialTransitionIncomplete)
 }
 
 // TestCredentialCodesRetryability asserts the pair a caller branches on: a
@@ -125,23 +127,24 @@ func TestPrimeRequiredDisjointFromSuccessExits(t *testing.T) {
 // process exit status.
 func TestExitCodeTableUnaffectedByTextRendering(t *testing.T) {
 	want := map[string]int{
-		CodeValidation:            2,
-		CodeConfirmationRequired:  2,
-		CodeDryRunNotApplicable:   2,
-		CodeAmbiguousSelection:    2,
-		CodeNotLoggedIn:           2,
-		CodeAuth:                  3,
-		CodeCredentialReplaced:    3,
-		CodeLoginIncomplete:       3,
-		CodeNotFound:              4,
-		CodeConflict:              5,
-		CodeRBAC:                  6,
-		CodeLockTimeout:           8,
-		CodePrimeRequired:         9,
-		CodeTLSTrust:              10,
-		CodeCapabilityUnsupported: 11,
-		CodeInterrupted:           130,
-		CodeGeneric:               1,
+		CodeValidation:                     2,
+		CodeConfirmationRequired:           2,
+		CodeDryRunNotApplicable:            2,
+		CodeAmbiguousSelection:             2,
+		CodeNotLoggedIn:                    2,
+		CodeAuth:                           3,
+		CodeCredentialReplaced:             3,
+		CodeLoginIncomplete:                3,
+		CodeCredentialTransitionIncomplete: 3,
+		CodeNotFound:                       4,
+		CodeConflict:                       5,
+		CodeRBAC:                           6,
+		CodeLockTimeout:                    8,
+		CodePrimeRequired:                  9,
+		CodeTLSTrust:                       10,
+		CodeCapabilityUnsupported:          11,
+		CodeInterrupted:                    130,
+		CodeGeneric:                        1,
 	}
 	assert.Equal(t, want, CodeExits())
 }

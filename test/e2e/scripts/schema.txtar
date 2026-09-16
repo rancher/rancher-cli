@@ -21,7 +21,7 @@ jsonquery schema.json 'data.commands.#' 192
 jsonquery schema.json data.effectSchema.actions.0 create
 jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods
-jsonquery schema.json 'data.errorCodes.#' 17
+jsonquery schema.json 'data.errorCodes.#' 18
 jsonquery schema.json 'data.errorCodes.#(code="AUTH").exit' 3
 
 # --all conflicts with narrowing

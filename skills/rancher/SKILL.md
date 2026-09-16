@@ -29,7 +29,13 @@ retryable) means a login for that entry is running or ended early - run
 the command again, and log in again if it persists; `CREDENTIAL_REPLACED`
 (exit `3`, not retryable) means another config directory sharing this
 one's identity stored a different credential for the entry - log in again
-for that entry. Neither is a reason to try a different server entry.
+for that entry. `CREDENTIAL_TRANSITION_INCOMPLETE` (exit `3`, retryable)
+means a change of the directory's credential store has work left; the
+message names the step, the entry and the backend error that stopped it -
+fix that, then run the command again. A step no retry can finish is
+reported as `VALIDATION` instead, with the `auth logout` that clears it as
+the hint. None of the three is a reason to try a different
+server entry.
 
 - Interactive: `rancher auth login <name> --url <url>` - adds the server
   entry and logs in, no UI trip needed (or add and log in as two steps:
