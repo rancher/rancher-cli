@@ -9,11 +9,12 @@ import (
 	"syscall"
 )
 
-// checkIdentityDirOwnership refuses an identity directory this user does
-// not own or that anyone else can reach. The records inside name the
-// keychain accounts this directory's credentials live under, so a
-// directory another user can write is a directory another user can point
-// at accounts of their own.
+// checkIdentityDirOwnership refuses credential-identity state this user
+// does not own or that anyone else can reach: the identity directory, and
+// the transition manifest, which is held to the same bar. Both name the
+// keychain accounts this directory's credentials live under, so a file
+// another user can write is a file another user can point at accounts of
+// their own.
 func checkIdentityDirOwnership(fi fs.FileInfo) error {
 	if fi.Mode().Perm()&0o077 != 0 {
 		return errors.New("readable or writable by users other than its owner")

@@ -320,6 +320,12 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 	if before.BindingStamp != edited.BindingStamp {
 		offenses = append(offenses, "bindingStamp changed (it advances on its own with any login or logout)")
 	}
+	// The transition id is what makes a recorded store change active.
+	// Clearing it by hand abandons work that has already moved
+	// credentials; setting it names a change that was never prepared.
+	if before.CredentialTransitionID != edited.CredentialTransitionID {
+		offenses = append(offenses, "credentialTransitionId changed (a credential store change clears it when it finishes)")
+	}
 	if len(offenses) == 0 {
 		return nil
 	}

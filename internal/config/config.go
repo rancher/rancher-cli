@@ -267,6 +267,13 @@ type Config struct {
 	// record against entries that have since moved. Written by the config
 	// write itself, never by hand.
 	BindingStamp string `json:"bindingStamp,omitempty"`
+	// CredentialTransitionID names the credential store change this
+	// directory has in flight. It is what activates the manifest file:
+	// the file is written before the new credential commits and is inert
+	// until a config write names its id, so a login that fails before
+	// that write leaves nothing to finish. Written by the login, cleared
+	// by the first config write after the last step completes.
+	CredentialTransitionID string `json:"credentialTransitionId,omitempty"`
 
 	path string
 	// loadedLookup is the entry lookup this config was read with, or nil

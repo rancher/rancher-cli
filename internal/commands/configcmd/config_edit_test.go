@@ -554,3 +554,28 @@ func TestConfigEditRejectsChangingTheBindingStamp(t *testing.T) {
 	require.NoError(t, readErr)
 	assert.YAMLEq(t, stamped, string(got), "the real config file must be untouched")
 }
+
+// TestConfigEditRejectsChangingTheTransitionID asserts the field that
+// makes a recorded credential store change active cannot be edited by
+// hand. Clearing it abandons work that has already moved credentials out
+// of one backend and not yet into the other; setting it names a change
+// that was never prepared, which the next command reads as a manifest it
+// cannot account for. It clears itself when the change finishes.
+func TestConfigEditRejectsChangingTheTransitionID(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	named := "currentServer: prod\ncredentialTransitionId: 0123456789abcdef0123456789abcdef\nservers:\n  prod:\n    url: https://rancher.example.com\n"
+	seedConfigFile(t, dir, named)
+
+	changed := "currentServer: prod\nservers:\n  prod:\n    url: https://rancher.example.com\n"
+	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(changed)}
+	_, err := cmd.Execute(t.Context(), cmdtest.Input{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "credentialTransitionId changed")
+
+	got, readErr := os.ReadFile(config.FilePath(dir))
+	require.NoError(t, readErr)
+	assert.YAMLEq(t, named, string(got), "the real config file must be untouched")
+}
