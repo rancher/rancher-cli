@@ -129,17 +129,41 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 		return TokenCapability{Token: tok, IDOnly: false, ServerURL: conn.ServerURL, CACert: conn.CACert}
 	}
 
+	// Neither remaining branch may touch a file without a directory to
+	// read it from. A nil snapshot or an empty directory would send the
+	// cache read at a path relative to the working directory, where a
+	// token-cache.yaml belonging to nothing in particular would be read
+	// and its token used to answer a live completion request.
+	if dir == "" || storedConfigSnapshot() == nil {
+		completionDebugf("stop: no config directory resolved for this invocation")
+		return TokenCapability{}
+	}
+
 	// AC-6: exec-cred cache - downstream-scoped, ID-only.
 	if clusterID == "" {
 		completionDebugf("stop: no token: no %s, no file-store login for this URL, and no --cluster for the exec-credential cache", config.EnvToken)
 		return TokenCapability{}
 	}
 	serverID := canonServerURL
-	// Finding 8: use WithTokens variant to propagate the token through the
-	// first file read; avoids a second parse of token-cache.yaml.
-	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, serverID, clusterID)
+	// Completion is the fourth reader of the exec-credential cache and
+	// takes the same judgement as the other three: a record made in
+	// another directory, or under a login this entry no longer has, is a
+	// miss, and the binding stamp is read again before the token is used
+	// so a login that completed in between is not answered around.
+	anchor := config.ProcessCacheAnchor()
+	if !anchor.SameDirectory(dir) {
+		anchor = nil
+	}
+	entries, hit, err := config.CachedHit(anchor, func(a *config.CacheAnchor) ([]config.CachedCredEntry, bool, error) {
+		found, rerr := config.ReadOnlyCachedCredsForClusterWithTokens(dir, serverID, clusterID, a)
+		return found, len(found) > 0, rerr
+	})
 	if err != nil {
 		completionDebugf("stop: exec-credential cache: %v", err)
+		return TokenCapability{}
+	}
+	if !hit {
+		completionDebugf("stop: no usable exec-credential cache record for cluster %s", clusterID)
 		return TokenCapability{}
 	}
 	// Exclude legacy:-prefixed cache entries before the single-entry ambiguity
@@ -193,7 +217,15 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 	if cfg == nil || dir == "" || effectiveURL == "" {
 		return ""
 	}
-	policy := config.EffectivePolicy(cfg.CredentialStore)
+	// Completion offers nothing at all through a store the directory did
+	// not declare: a token read against a policy the directory disagrees
+	// with is the same wrong-identity read anywhere else, and completion
+	// has no way to report it.
+	policy, conflict := config.EffectivePolicy(cfg.CredentialStore)
+	if conflict != nil {
+		completionDebugf("file store skipped: %v", conflict)
+		return ""
+	}
 	pin := config.ReadPin(dir)
 	// AC-5: explicit file policy OR pin resolved to file - not unpinned auto.
 	isFile := policy == "file" || (policy == "auto" && pin == "file")

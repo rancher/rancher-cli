@@ -116,6 +116,18 @@ const (
 	// ConfigRollbackFailed means an entry this operation wrote could not be
 	// restored to its prior state after the credential commit failed.
 	ConfigRollbackFailed ConfigState = "rollbackFailed"
+	// ConfigCacheBindingNotAdvanced means the credential is committed and
+	// recorded, but the entry's cache binding id did not advance, so
+	// exec-credential cache records made under the previous login are
+	// still valid until they expire. Clearing the cache and running the
+	// login again is the way out.
+	ConfigCacheBindingNotAdvanced ConfigState = "cacheBindingNotAdvanced"
+	// ConfigDeclarationNotWritten means the credential is committed in the
+	// store the login opened, but the record of which store this directory
+	// keeps credentials in could not be written. Nothing is lost and
+	// nothing is wrong with the credential; the directory still names the
+	// store it named before, and the next login writes the new one.
+	ConfigDeclarationNotWritten ConfigState = "declarationNotWritten"
 )
 
 // LoginStage is where a login failed: while acquiring the credential or

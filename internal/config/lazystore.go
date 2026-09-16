@@ -35,10 +35,23 @@ type lazyStore struct {
 // on every resolveDeps-backed command, CS-6) and captures it, so the
 // deferred resolution provably opens the policy that was validated even if
 // the environment changes mid-process (spec R1-4).
+//
+// A declaration the variable disagrees with is the one resolution failure
+// that is NOT eager: it is carried into the deferred resolution and
+// surfaces at the first credential call, so a command that never reads a
+// credential - help, schema, completion of a non-credential argument,
+// `config path`, a RANCHER_CLI_TOKEN run - is not failed by a conflict it
+// would never have acted on. An unknown policy value stays eager: it is
+// broken for every command, whether or not one opens the store.
 func NewLazyStore(policy, dir string) (CredStore, error) {
-	p := EffectivePolicy(policy)
+	p, conflict := EffectivePolicy(policy)
 	if err := checkPolicy(p); err != nil {
 		return nil, err
+	}
+	if conflict != nil {
+		return &lazyStore{notices: &noticeBuffer{}, resolve: func() (CredStore, error) {
+			return nil, conflict
+		}}, nil
 	}
 	nb := &noticeBuffer{}
 	return &lazyStore{notices: nb, resolve: func() (CredStore, error) {
@@ -129,28 +142,28 @@ func (l *lazyStore) ShortLivedTokenExpiry(ref ServerRef) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func (l *lazyStore) GetCachedCred(key string) (string, time.Time, error) {
+func (l *lazyStore) GetCachedCred(key string, anchor *CacheAnchor) (string, time.Time, error) {
 	s, err := l.backend()
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	return s.GetCachedCred(key)
+	return s.GetCachedCred(key, anchor)
 }
 
-func (l *lazyStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
+func (l *lazyStore) GetCachedCredDetail(key string, anchor *CacheAnchor) (CachedCredDetail, error) {
 	s, err := l.backend()
 	if err != nil {
 		return CachedCredDetail{}, err
 	}
-	return s.GetCachedCredDetail(key)
+	return s.GetCachedCredDetail(key, anchor)
 }
 
-func (l *lazyStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
+func (l *lazyStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error {
 	s, err := l.backend()
 	if err != nil {
 		return err
 	}
-	return s.SetCachedCred(key, token, expiry, name, serverHost, cluster)
+	return s.SetCachedCred(key, token, expiry, name, serverHost, cluster, binding)
 }
 
 func (l *lazyStore) MarkCachedCredReady(key, token, fingerprint string) (bool, error) {

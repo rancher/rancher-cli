@@ -103,7 +103,11 @@ func TestPersistSuccessWritesEntryOnceAndRecordsThePriorToken(t *testing.T) {
 			}
 			out, err := PersistLoginCredential(t.Context(), dir, in)
 			require.NoError(t, err)
-			assert.Equal(t, 1, writes, "one config write on the success path")
+			// Two: the entry before the commit, and the entry's cache
+			// binding id after it. They cannot be one write - the id
+			// must not become visible until the credential it belongs
+			// to is in the store.
+			assert.Equal(t, 2, writes, "the entry write and the cache binding write")
 			assert.Equal(t, clierr.ConfigWritten, out.ConfigState)
 			assert.Equal(t, clierr.CredentialCommitted, out.CredentialState)
 			assert.Nil(t, out.ConfigRecovery)
@@ -118,6 +122,7 @@ func TestPersistSuccessWritesEntryOnceAndRecordsThePriorToken(t *testing.T) {
 			assert.Equal(t, "2026-10-01T00:00:00Z", got.CredentialExpiresAt)
 			assert.Equal(t, persistRestoreBase, got.CA, "an update never changes trust")
 			assert.Equal(t, "f0", got.CAFingerprint)
+			assert.Len(t, got.CacheBindingID, randomIDLen, "the login leaves the entry a cache binding id")
 			require.Len(t, got.SupersededTokens, 1)
 			assert.Equal(t, clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old"}, got.SupersededTokens[0].Ref)
 			assert.Equal(t, "user-a", got.SupersededTokens[0].UserID)
@@ -504,6 +509,33 @@ func TestPersistRevalidationAbortsBeforeAnyWrite(t *testing.T) {
 	})
 }
 
+// TestPersistRevalidatesAgainstTheLoginsOwnPolicy asserts the re-check
+// resolves the backend from the policy this login carries, not from the
+// declaration it read. A login that carries its own store disclosed the
+// backend THAT policy names before the interactive sign-in, so that is
+// the promise the re-check has to hold the directory to; asking about the
+// declaration instead compares the wrong two things and lets a plaintext
+// commit through with no disclosure.
+func TestPersistRevalidatesAgainstTheLoginsOwnPolicy(t *testing.T) {
+	dir, path := persistFixture(t, nil)
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	// The directory declares the keychain; this login carries "file" and
+	// disclosed nothing.
+	cfg.CredentialStore = "keychain"
+	require.NoError(t, cfg.Write())
+
+	in := pluginInput(dir, "exec-login-r.ex", NewFileStore(dir))
+	in.Policy = "file"
+	in.ObservedDeclaration = "keychain"
+	in.Decision = &StoreDecision{RequireSetting: true, Policy: "file", DisclosedPlaintextPath: ""}
+
+	_, perr := PersistLoginCredential(t.Context(), dir, in)
+	require.ErrorIs(t, perr, ErrPersistAborted)
+	require.ErrorContains(t, perr, "plaintext",
+		"resolved from the login's own policy, the backend is the file and the disclosure is missing")
+}
+
 // TestPersistPreCheckRunsUnderTheLockBeforeAnyWrite asserts the caller's
 // pre-check sees the freshly loaded config and a failure writes nothing.
 func TestPersistPreCheckRunsUnderTheLockBeforeAnyWrite(t *testing.T) {
@@ -831,4 +863,199 @@ func TestUpdateServerEntryWritesOnlyWhenChanged(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+}
+
+// declaredFixture is a directory whose config.yaml declares declared, or
+// nothing when it is empty - the state a first login records a store for.
+func declaredFixture(t *testing.T, declared string) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv(EnvCredentialStore, "")
+	cfg := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}, CurrentServer: "prod", CredentialStore: declared}
+	cfg.SetPath(FilePath(dir))
+	require.NoError(t, cfg.Write())
+	return dir
+}
+
+// declarationInput is a login that resolved the file policy for itself.
+func declarationInput(dir, declared string, store CredStore) PersistLoginInput {
+	return PersistLoginInput{
+		Name: "prod", CanonicalURL: "https://r.ex", Bearer: "id:secret",
+		Provenance:          clierr.ProvenanceDerived,
+		Policy:              "file",
+		ObservedDeclaration: declared,
+		Declaration:         DeclarationFor(declared, "", "file"),
+		OpenStore:           fileOpen(store),
+	}
+}
+
+// TestPersistDeclaresTheStoreOnlyAfterTheCommit asserts that a directory
+// which has declared no credential store records the one its first login
+// used, and that the record lands only after the credential is committed.
+// The entry write that precedes the commit must leave the declaration
+// alone: readers that take no lock read config.yaml in that window, and a
+// declaration written there would send them to a store that does not hold
+// the new credential yet.
+func TestPersistDeclaresTheStoreOnlyAfterTheCommit(t *testing.T) {
+	dir := declaredFixture(t, "")
+	in := declarationInput(dir, "", NewFileStore(dir))
+
+	var atDeclaration *Config
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "declaration" && atDeclaration == nil {
+			onDisk, err := Load(FilePath(dir))
+			require.NoError(t, err)
+			atDeclaration = onDisk
+		}
+		return nil
+	})
+	defer restore()
+
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.NoError(t, err)
+	assert.Equal(t, clierr.CredentialCommitted, out.CredentialState)
+
+	require.NotNil(t, atDeclaration, "with no trust write the declaration is a write of its own")
+	assert.Empty(t, atDeclaration.CredentialStore, "the pre-commit entry write leaves the declaration alone")
+	assert.Equal(t, "id:secret", storedFileToken(t, dir), "the credential is committed before the declaration is written")
+
+	after, err := Load(FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "file", after.CredentialStore)
+}
+
+// TestPersistLeavesAnExistingDeclarationAlone asserts a login that
+// changes no store writes no declaration: the directory already says
+// where its credentials live.
+func TestPersistLeavesAnExistingDeclarationAlone(t *testing.T) {
+	dir := declaredFixture(t, "file")
+	in := declarationInput(dir, "file", NewFileStore(dir))
+	require.Empty(t, in.Declaration)
+
+	var wrote bool
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "declaration" {
+			wrote = true
+		}
+		return nil
+	})
+	defer restore()
+
+	_, err := PersistLoginCredential(t.Context(), dir, in)
+	require.NoError(t, err)
+	assert.False(t, wrote, "no declaration write when the declaration does not change")
+
+	after, err := Load(FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "file", after.CredentialStore)
+}
+
+// TestPersistOpensTheStoreTheLoginResolved asserts the policy reads under
+// the lock take the login's own value, not the loaded declaration: a
+// login that resolved one store before asking anyone to authenticate must
+// commit into that store.
+func TestPersistOpensTheStoreTheLoginResolved(t *testing.T) {
+	dir := declaredFixture(t, "")
+	var opened string
+	in := declarationInput(dir, "", nil)
+	in.OpenStore = func(policy, d string) (CredStore, string, error) {
+		opened = policy
+		return NewFileStore(d), "", nil
+	}
+
+	_, err := PersistLoginCredential(t.Context(), dir, in)
+	require.NoError(t, err)
+	assert.Equal(t, "file", opened, "the login's own policy, not the empty declaration")
+}
+
+// TestPersistDeclarationWriteFailureIsNamed asserts the outcome when the
+// credential committed and the record of where it lives did not: the
+// state says so, nothing is rolled back, and the message names the entry
+// and the store. Rolling back here would delete a credential that is
+// already the directory's own.
+func TestPersistDeclarationWriteFailureIsNamed(t *testing.T) {
+	dir := declaredFixture(t, "")
+	in := declarationInput(dir, "", NewFileStore(dir))
+
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "declaration" {
+			return errors.New("disk full")
+		}
+		return nil
+	})
+	defer restore()
+
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "disk full")
+	require.ErrorContains(t, err, `"file"`)
+	assert.Equal(t, clierr.ConfigDeclarationNotWritten, out.ConfigState)
+	assert.Equal(t, clierr.CredentialCommitted, out.CredentialState)
+	assert.Equal(t, "id:secret", storedFileToken(t, dir), "the credential stays: it is the directory's own")
+
+	after, err := Load(FilePath(dir))
+	require.NoError(t, err)
+	assert.Empty(t, after.CredentialStore, "the directory still declares what it declared")
+}
+
+// TestPersistRollbackRestoresTheDeclaration asserts a rollback undoes the
+// attempt entirely: a login that got as far as setting a new declaration
+// in memory and then failed leaves the directory naming the store it
+// named before.
+func TestPersistRollbackRestoresTheDeclaration(t *testing.T) {
+	pemText, fingerprint := testCertificateAndFingerprint(t)
+	dir := declaredFixture(t, "")
+	in := declarationInput(dir, "", NewFileStore(dir))
+	in.PendingTrust = &PendingTrust{CA: pemText, Fingerprint: fingerprint}
+
+	restore := SetPersistWriteHookForTest(func(step string) error {
+		if step == "trust" {
+			return errors.New("disk full")
+		}
+		return nil
+	})
+	defer restore()
+
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.Error(t, err)
+	assert.Equal(t, clierr.ConfigNotWritten, out.ConfigState)
+
+	after, err := Load(FilePath(dir))
+	require.NoError(t, err)
+	assert.Empty(t, after.CredentialStore, "the rollback write carries the old declaration")
+}
+
+// TestDeclarationFor asserts what a login records: the store it was asked
+// for when it carries one, nothing when the directory already declares a
+// store and the login changes none, and otherwise the policy it used.
+func TestDeclarationFor(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                        string
+		declared, requested, policy string
+		want                        string
+	}{
+		{name: "first login on a fresh directory", policy: "auto", want: "auto"},
+		{name: "first login under a variable", policy: "file", want: "file"},
+		{name: "ordinary re-login", declared: "file", policy: "file"},
+		{name: "a login that asks for a store", declared: "file", requested: "keychain", policy: "keychain", want: "keychain"},
+		{name: "a login that asks for the one already declared", declared: "file", requested: "file", policy: "file", want: "file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, DeclarationFor(tc.declared, tc.requested, tc.policy))
+		})
+	}
+}
+
+// storedFileToken reads the file store directly, so a test can tell a
+// committed credential from a reported one.
+func storedFileToken(t *testing.T, dir string) string {
+	t.Helper()
+	tok, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
+	if errors.Is(err, ErrNoToken) {
+		return ""
+	}
+	require.NoError(t, err)
+	return tok
 }

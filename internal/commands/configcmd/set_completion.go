@@ -130,7 +130,12 @@ func completionCapabilityNote(dir string, cfg *config.Config) string {
 	if os.Getenv(config.EnvToken) != "" {
 		return "live completion enabled; RANCHER_CLI_TOKEN detected - full capability."
 	}
-	policy := config.EffectivePolicy(cfg.CredentialStore)
+	// This command never opens the store, so a declaration the variable
+	// disagrees with is reported here rather than failing the command.
+	policy, conflict := config.EffectivePolicy(cfg.CredentialStore)
+	if conflict != nil {
+		return "live completion enabled, but " + conflict.Error()
+	}
 	pin := config.ReadPin(dir)
 
 	isKeychain := policy == "keychain" ||

@@ -70,11 +70,19 @@ type CredStore interface {
 	// not address credentials by account ignores it.
 	SetTokenWithOutcome(ref ServerRef, token string, prior PriorCredential) (CommitOutcome, error)
 	DeleteToken(ref ServerRef) error
-	GetCachedCred(key string) (token string, expiry time.Time, err error)
+	// GetCachedCred takes the anchor the hit is judged against: a record
+	// whose directory, entry or cache binding id does not match what the
+	// reader loaded is a miss, and one the reader can prove is not its
+	// own is deleted as cleanup. A reader that cannot judge - a broken
+	// config.yaml, or a stamp that disagrees with the config it loaded -
+	// misses without deleting anything.
+	GetCachedCred(key string, anchor *CacheAnchor) (token string, expiry time.Time, err error)
 	// GetCachedCredDetail is GetCachedCred with the record's readiness
 	// fingerprints; the same expiry eviction, the same ErrNoToken.
-	GetCachedCredDetail(key string) (CachedCredDetail, error)
-	SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error
+	GetCachedCredDetail(key string, anchor *CacheAnchor) (CachedCredDetail, error)
+	// SetCachedCred writes the record with the binding it must later be
+	// judged by, taken from the same config load as the credential.
+	SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error
 	// MarkCachedCredReady records fingerprint on key's record only when the
 	// record still holds token, under the cache lock, and reports whether
 	// it did; a record replaced or deleted by another process is left alone.
@@ -90,6 +98,15 @@ type cachedCred struct {
 	Name    string    `json:"name,omitempty"`
 	Server  string    `json:"server,omitempty"`
 	Cluster string    `json:"cluster,omitempty"`
+	// Version, Dir, Entry and BindingID are what make this record
+	// judgeable: which directory created it, which config entry it was
+	// created from, and that entry's cache binding id at the time. A
+	// record without them cannot be judged and is a miss, which is what
+	// every record written before they existed is.
+	Version   int    `json:"version,omitempty"`
+	Dir       string `json:"dir,omitempty"`
+	Entry     string `json:"entry,omitempty"`
+	BindingID string `json:"bindingId,omitempty"`
 	// ReadyEndpoints are the fingerprints of the direct endpoints that
 	// have accepted this token; an endpoint absent here is re-probed by
 	// the exec plugin before the token is handed to kubectl for it.
@@ -366,12 +383,12 @@ func (f *fileStore) writeCache(m map[string]cachedCred) error {
 	return atomicWriteFile(f.cachePath, b, 0600)
 }
 
-func (f *fileStore) GetCachedCred(key string) (string, time.Time, error) {
-	d, err := f.GetCachedCredDetail(key)
+func (f *fileStore) GetCachedCred(key string, anchor *CacheAnchor) (string, time.Time, error) {
+	d, err := f.GetCachedCredDetail(key, anchor)
 	return d.Token, d.Expiry, err
 }
 
-func (f *fileStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
+func (f *fileStore) GetCachedCredDetail(key string, anchor *CacheAnchor) (CachedCredDetail, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	// Lock-free read: no flock needed for a pure read - atomic-rename writes
@@ -384,10 +401,18 @@ func (f *fileStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
 	if !ok {
 		return CachedCredDetail{}, ErrNoToken
 	}
-	if cred.Expiry.IsZero() || !time.Now().After(cred.Expiry) {
+	live := cred.Expiry.IsZero() || !time.Now().After(cred.Expiry)
+	if live && anchor.valid(cred) {
 		return CachedCredDetail{Token: cred.Token, Expiry: cred.Expiry, ReadyEndpoints: cred.ReadyEndpoints}, nil
 	}
-	// Expired: prune under the flock. Re-read under the lock so the written
+	if live && !anchor.staleRecord(cred) {
+		// A reader that cannot judge the record serves nothing and
+		// deletes nothing: the record may be another process's perfectly
+		// good one.
+		return CachedCredDetail{}, ErrNoToken
+	}
+	// Expired, or bound to a login this directory no longer has: prune
+	// under the flock. Re-read under the lock so the written
 	// snapshot includes any concurrent SetCachedCred writes that landed since
 	// the lock-free read above - without the re-read, pruning without the lock
 	// is a read-modify-write that clobbers concurrent writes (lost-update).
@@ -408,7 +433,7 @@ func (f *fileStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
 		if !ok {
 			return nil
 		}
-		if c.Expiry.IsZero() || !time.Now().After(c.Expiry) {
+		if (c.Expiry.IsZero() || !time.Now().After(c.Expiry)) && anchor.valid(c) {
 			refreshed = &c
 			return nil
 		}
@@ -448,7 +473,7 @@ func (f *fileStore) MarkCachedCredReady(key, token, fingerprint string) (bool, e
 	return marked, err
 }
 
-func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
+func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.withCacheLock(func() error {
@@ -459,7 +484,8 @@ func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, ser
 		if setCachedLock != nil {
 			setCachedLock()
 		}
-		m[key] = cachedCred{Token: token, Expiry: expiry, Name: name, Server: serverHost, Cluster: cluster}
+		m[key] = cachedCred{Token: token, Expiry: expiry, Name: name, Server: serverHost, Cluster: cluster,
+			Version: cacheRecordVersion, Dir: binding.Dir, Entry: binding.Entry, BindingID: binding.BindingID}
 		return f.writeCache(m)
 	})
 }
@@ -812,14 +838,14 @@ func (k *keyringStore) DeleteToken(ref ServerRef) error {
 	return err
 }
 
-func (k *keyringStore) GetCachedCred(key string) (string, time.Time, error) {
-	return k.cache.GetCachedCred(key)
+func (k *keyringStore) GetCachedCred(key string, anchor *CacheAnchor) (string, time.Time, error) {
+	return k.cache.GetCachedCred(key, anchor)
 }
-func (k *keyringStore) GetCachedCredDetail(key string) (CachedCredDetail, error) {
-	return k.cache.GetCachedCredDetail(key)
+func (k *keyringStore) GetCachedCredDetail(key string, anchor *CacheAnchor) (CachedCredDetail, error) {
+	return k.cache.GetCachedCredDetail(key, anchor)
 }
-func (k *keyringStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string) error {
-	return k.cache.SetCachedCred(key, token, expiry, name, serverHost, cluster)
+func (k *keyringStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error {
+	return k.cache.SetCachedCred(key, token, expiry, name, serverHost, cluster, binding)
 }
 func (k *keyringStore) MarkCachedCredReady(key, token, fingerprint string) (bool, error) {
 	return k.cache.MarkCachedCredReady(key, token, fingerprint)
@@ -887,7 +913,10 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 	// declares the keychain decides only how a keychain it cannot reach is
 	// reported: loudly for the store the directory declares, as a warning
 	// that keeps the record for one it merely has a leftover record in.
-	policyName, pin, backend := ResolvedBackend(dir, policy)
+	policyName, pin, backend, perr := ResolvedBackend(dir, policy)
+	if perr != nil {
+		return nil, nil, perr
+	}
 	deletedFromKeychain, keychainNotices, kerr := deleteKeychainCredential(ctx, dir, ref, backend == "keychain", pinHintFor(dir, policyName, pin))
 	notices = append(notices, keychainNotices...)
 	if kerr != nil {
@@ -1119,7 +1148,7 @@ func ServerHost(raw string) string {
 // on the login path, or NewLazyStore on the lazy path, to route the notice).
 // Unknown policies are hard errors (CS-6).
 func OpenStore(policy, dir string) (CredStore, error) {
-	store, _, err := openStoreResolved(EffectivePolicy(policy), dir)
+	store, _, err := OpenStoreWithNotice(policy, dir)
 	return store, err
 }
 
@@ -1129,7 +1158,11 @@ func OpenStore(policy, dir string) (CredStore, error) {
 // stderr. An empty string means no notice was produced (already pinned, or an
 // explicit policy that never probes).
 func OpenStoreWithNotice(policy, dir string) (CredStore, string, error) {
-	return openStoreResolved(EffectivePolicy(policy), dir)
+	resolved, err := EffectivePolicy(policy)
+	if err != nil {
+		return nil, "", err
+	}
+	return openStoreResolved(resolved, dir)
 }
 
 // execHelperName extracts the helper name from an "exec:<name>" policy value.

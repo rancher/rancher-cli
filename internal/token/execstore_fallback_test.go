@@ -86,7 +86,7 @@ func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T)
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(rt.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
@@ -100,7 +100,7 @@ func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T)
 	assert.False(t, cred.Status.ExpirationTimestamp.After(time.Now().Add(legacyTokenTTL)),
 		"a short-lived helper token must never be extended to the legacy TTL")
 
-	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))
+	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"), anchorFor(dir))
 	assert.ErrorIs(t, cerr, config.ErrNoToken, "a memory-only short-lived helper token must not reach the disk cache")
 }
 
@@ -129,7 +129,7 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 			cfg.SetPath(config.FilePath(dir))
 			require.NoError(t, cfg.Write())
 
-			cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
+			cmd := newTokenCommandForTest(t, dir, store).(rt.ReadCommand)
 			_, err = cmd.Execute(t.Context(),
 				tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 				ui.Discard())
@@ -164,7 +164,7 @@ func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(rt.ReadCommand)
 	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"name": "prod", "cluster": "c-1"}},
 		ui.Discard())
@@ -203,7 +203,7 @@ func TestGetTokenHelperNotFoundFallsBackToInteractive(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(rt.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(rt.ReadCommand)
 	_, err = cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		ui.Discard())

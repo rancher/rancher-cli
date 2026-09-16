@@ -50,12 +50,12 @@ func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
 		t.Fatalf("http and https cache keys must differ: both are %q", httpKey)
 	}
 
-	require.NoError(t, fs.SetCachedCred(httpKey, "tok-http", time.Now().Add(time.Hour), "prod", httpID, "c-1"))
-	require.NoError(t, fs.SetCachedCred(httpsKey, "tok-https", time.Now().Add(time.Hour), "prod", httpsID, "c-1"))
+	require.NoError(t, fs.SetCachedCred(httpKey, "tok-http", time.Now().Add(time.Hour), "prod", httpID, "c-1", testCacheBinding(dir)))
+	require.NoError(t, fs.SetCachedCred(httpsKey, "tok-https", time.Now().Add(time.Hour), "prod", httpsID, "c-1", testCacheBinding(dir)))
 
 	// (d) Pre-seed a legacy host-only record (no scheme) to verify it deletes.
 	legacyKey := CacheKey("prod", "SAMEHOST:80", "c-1")
-	require.NoError(t, fs.SetCachedCred(legacyKey, "tok-legacy", time.Now().Add(time.Hour), "prod", "SAMEHOST:80", "c-1"))
+	require.NoError(t, fs.SetCachedCred(legacyKey, "tok-legacy", time.Now().Add(time.Hour), "prod", "SAMEHOST:80", "c-1", testCacheBinding(dir)))
 
 	// (c) Deleting http://samehost removes only the HTTP entry (and the legacy).
 	deleted, err := DeleteExecCacheForServer(fs, "http://samehost")
@@ -63,10 +63,10 @@ func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
 	assert.ElementsMatch(t, []string{httpKey, legacyKey}, deleted,
 		"http delete must remove the http entry and the legacy record")
 
-	_, _, err = fs.GetCachedCred(httpKey)
+	_, _, err = fs.GetCachedCred(httpKey, testAnchor(t, dir))
 	require.ErrorIs(t, err, ErrNoToken, "http entry must be gone after http delete")
 
-	tok, _, err := fs.GetCachedCred(httpsKey)
+	tok, _, err := fs.GetCachedCred(httpsKey, testAnchor(t, dir))
 	require.NoError(t, err)
 	assert.Equal(t, "tok-https", tok, "https entry must survive the http delete")
 
@@ -76,7 +76,7 @@ func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
 	assert.Equal(t, []string{httpsKey}, deleted,
 		"https delete must remove only the https entry")
 
-	_, _, err = fs.GetCachedCred(httpsKey)
+	_, _, err = fs.GetCachedCred(httpsKey, testAnchor(t, dir))
 	assert.ErrorIs(t, err, ErrNoToken, "https entry must be gone after https delete")
 }
 
@@ -84,13 +84,13 @@ func TestDeleteExecCacheForServerHTTPLegacyHostDeletes(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
 	legacyKey := CacheKey("kubeuser", "HOST:80", "c-1")
-	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:80", "c-1"))
+	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:80", "c-1", testCacheBinding(dir)))
 
 	deleted, err := DeleteExecCacheForServer(fs, "http://host")
 	require.NoError(t, err)
 	assert.Equal(t, []string{legacyKey}, deleted, "HOST:80 record must delete for http://host target")
 
-	_, _, gerr := fs.GetCachedCred(legacyKey)
+	_, _, gerr := fs.GetCachedCred(legacyKey, testAnchor(t, dir))
 	assert.ErrorIs(t, gerr, ErrNoToken, "the HOST:80 cache entry must be gone")
 }
 
@@ -104,13 +104,13 @@ func TestDeleteExecCacheForServerNormalizesLegacyHostSpelling(t *testing.T) {
 	fs := NewFileStore(dir)
 	// Pre-seed a legacy-cased/ported record: Server field spelled "HOST:443".
 	legacyKey := CacheKey("kubeuser", "HOST:443", "c-1")
-	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:443", "c-1"))
+	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:443", "c-1", testCacheBinding(dir)))
 
 	deleted, err := DeleteExecCacheForServer(fs, "https://host")
 	require.NoError(t, err)
 	assert.Equal(t, []string{legacyKey}, deleted, "an equivalent host spelling must still delete the legacy record")
 
-	_, _, gerr := fs.GetCachedCred(legacyKey)
+	_, _, gerr := fs.GetCachedCred(legacyKey, testAnchor(t, dir))
 	assert.ErrorIs(t, gerr, ErrNoToken, "the legacy-cased cache entry must be gone")
 }
 

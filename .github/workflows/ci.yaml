@@ -87,7 +87,7 @@ jobs:
       # assume sh/symlink semantics and fail on a Windows runner. -race
       # per the repo's testing mandate (the runner ships gcc).
       - run: go test -race -count=1 -run TestWindows ./install/
-      # Two things this leg is for. The path-identity tests for Windows
+      # Three things this leg is for. The path-identity tests for Windows
       # spellings - volume and separator forms of one directory,
       # %APPDATA% compared in another casing - are build-tagged for
       # windows and run nowhere else. The credential store's identity
@@ -95,8 +95,23 @@ jobs:
       # their subject is a directory opened without following symlinks:
       # the cases that need symlinks or real permission bits skip here
       # (an unprivileged runner cannot create either), so what this leg
-      # adds for them is the rest of the file behavior on NTFS.
-      - run: go test -race -count=1 -run 'TestResolveDir|TestPlatformDefaultDir|TestIsDefaultDir|TestIdentity|TestKeychain|TestReadIdentityRecord|TestListIdentityRecords|TestRemoveIdentityRecord|TestWriteIdentityRecord|TestWithIdentityLock|TestCredentialFingerprint|TestNewKeychainAccountID' ./internal/config/
+      # adds for them is the rest of the file behavior on NTFS. The cache
+      # binding stamp is the third: it is written by atomic rename on
+      # every config write that can invalidate a cache record, and the
+      # write replaces a path that is not a regular file rather than
+      # failing on it - rename semantics differ enough on NTFS that the
+      # rename, the replacement and the stamp-before-config ordering all
+      # want running here. Path canonicalization is the fourth, and runs
+      # from internal/token where its tests live: a record is bound to
+      # the absolute, cleaned directory that wrote it, and Windows
+      # resolves that through a different call than Unix does, so the
+      # relative spellings and the separator forms these tests compare
+      # are resolved by code that never runs on the other leg. Case
+      # folding is not covered on either: two spellings of one directory
+      # differing only in case are two directories to a record, which is
+      # a miss and not a wrong hit.
+      - run: go test -race -count=1 -run 'TestResolveDir|TestPlatformDefaultDir|TestIsDefaultDir|TestIdentity|TestKeychain|TestReadIdentityRecord|TestListIdentityRecords|TestRemoveIdentityRecord|TestWriteIdentityRecord|TestWithIdentityLock|TestCredentialFingerprint|TestNewKeychainAccountID|TestBindingStamp|TestConfigWriteStamps|TestAConfigWriteReplaces|TestCanonicalDir' ./internal/config/
+      - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves' ./internal/token/
 
   e2e-windows:
     # The same suite as the e2e job, on the platform whose exec, path,

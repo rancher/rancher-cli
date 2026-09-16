@@ -3,6 +3,8 @@ package token
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/rancher/rancher-cli/internal/config"
 )
 
 // Local type definitions extracted from github.com/rancher/rancher/pkg to avoid
@@ -24,6 +26,13 @@ type Token struct {
 	// endpoint wait runs for it and cancellation revokes it. Never
 	// serialized.
 	fresh *freshToken
+	// binding is what a cache record for this credential is written with:
+	// the config entry it belongs to and that entry's cache binding id,
+	// both read in the same config load that produced the credential. It
+	// travels with the token rather than being looked up at the cache
+	// write, where a second load could pair this credential with the id of
+	// a login that replaced it since. Never serialized.
+	binding config.CacheBinding
 }
 
 // AuthProvider is the base provider type; GetType satisfies the typedProvider interface.

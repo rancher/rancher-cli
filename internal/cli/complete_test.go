@@ -124,7 +124,7 @@ func TestNoNetworkOnStaticSite(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
 	d := runtime.Descriptor{
@@ -212,7 +212,7 @@ func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
 	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
 
 	var want []string
-	for _, f := range token.NewTokenCommand(t.TempDir(), nil).Describe().Flags {
+	for _, f := range token.NewTokenCommand(t.TempDir(), nil, nil).Describe().Flags {
 		if f.Name == "auth-flow" {
 			want = append(want, f.Enum...)
 		}
@@ -251,7 +251,7 @@ func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
 	require.NoError(t, root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, scriptArgs...))))
 
 	var want []string
-	for _, f := range token.NewLegacyTokenCommand(t.TempDir(), nil).Describe().Flags {
+	for _, f := range token.NewLegacyTokenCommand(t.TempDir(), nil, nil).Describe().Flags {
 		if f.Name == "auth-flow" {
 			want = append(want, f.Enum...)
 		}

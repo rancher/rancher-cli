@@ -156,7 +156,7 @@ func TestMachineConfigSetKeysServedWithoutNetwork(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: false},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 
 	d := createMachineConfigDescriptor()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "set", FlagSpelling: "--set"}
@@ -183,7 +183,7 @@ func TestMachineConfigSetSiteOwnershipStopsLiveLayer(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 
 	d := createMachineConfigDescriptor()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "set", FlagSpelling: "--set", Partial: "zzz"}
@@ -214,7 +214,7 @@ func TestCreateMachineConfigSetFullCallback(t *testing.T) {
 		}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
-		setStoredConfig(cfg, dir)
+		setStoredConfigForTest(t, cfg, dir)
 		t.Setenv(config.EnvConfigDir, dir)
 		t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	}

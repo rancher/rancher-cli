@@ -528,3 +528,29 @@ func TestConfigEditAllowsNonServerFieldsUnchanged(t *testing.T) {
 	require.NoError(t, readErr)
 	assert.YAMLEq(t, edited, string(got))
 }
+
+// TestConfigEditRejectsChangingTheBindingStamp asserts the stamp cannot
+// be edited by hand. It is how a cache reader tells a config load that
+// was overtaken by a login from one that was not; an operator who
+// "repairs" a crash-residue mismatch by copying the file's value into
+// config.yaml makes every record from before that login validate again,
+// which is the stale-credential case the stamp exists to close. It
+// advances on its own with the next login or logout.
+func TestConfigEditRejectsChangingTheBindingStamp(t *testing.T) {
+	t.Setenv("EDITOR", "fake-editor")
+	dir := t.TempDir()
+	stamped := "currentServer: prod\nbindingStamp: 0123456789abcdef0123456789abcdef\nservers:\n  prod:\n    url: https://rancher.example.com\n"
+	seedConfigFile(t, dir, stamped)
+
+	changed := "currentServer: prod\nbindingStamp: ffffffffffffffffffffffffffffffff\nservers:\n  prod:\n    url: https://rancher.example.com\n"
+	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(changed)}
+	_, err := cmd.Execute(t.Context(), cmdtest.Input{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "bindingStamp changed")
+
+	got, readErr := os.ReadFile(config.FilePath(dir))
+	require.NoError(t, readErr)
+	assert.YAMLEq(t, stamped, string(got), "the real config file must be untouched")
+}

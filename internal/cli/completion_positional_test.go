@@ -98,7 +98,7 @@ func TestPositionalEnumOwnershipStopsLowerLayers(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 
 	d := runtime.Descriptor{
 		Name: "completion",
@@ -136,7 +136,7 @@ func TestCompletionShellPositionalParity(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: false},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 
 	d := runtime.Descriptor{
 		Name: "completion",

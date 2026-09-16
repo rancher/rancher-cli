@@ -140,9 +140,9 @@ func TestLogoutDeletesMatchingExecCache(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	// acme.ex and other.ex per seedLogout; cache two entries, one per host,
 	// plus a legacy bare entry (no Server) that must never be touched.
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
-	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", "", config.CacheBinding{Dir: dir}))
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
@@ -152,18 +152,18 @@ func TestLogoutDeletesMatchingExecCache(t *testing.T) {
 	require.True(t, ok, "Result carries deletedCache")
 	assert.Equal(t, []string{config.CacheKey("kubeuser", "acme.ex", "c-1")}, deletedCache)
 
-	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"))
+	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), cmdtest.CacheAnchor(t, dir))
 	require.ErrorIs(t, err, config.ErrNoToken, "matching entry deleted")
-	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"))
+	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), cmdtest.CacheAnchor(t, dir))
 	require.NoError(t, err, "non-matching entry kept")
-	_, _, err = store.GetCachedCred("legacy-bare")
+	_, _, err = store.GetCachedCred("legacy-bare", cmdtest.CacheAnchor(t, dir))
 	require.NoError(t, err, "legacy bare entry (no Server) kept")
 }
 
 func TestLogoutAllDeletesWholeExecCache(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1", config.CacheBinding{Dir: dir}))
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
 		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
 	}
 	dir, store := seedLogout(t, "acme", "acme")
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
@@ -206,11 +206,11 @@ func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
 // --all must catch both via the full-cache wipe.
 func TestLogoutAllCatchesOrphanedCacheEntries(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme")
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
 	// Orphaned: no Server field at all (legacy bare entry).
-	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", "", config.CacheBinding{Dir: dir}))
 	// Orphaned: cached against a host with no matching entry in cfg.Servers.
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "removed.ex", "c-1"), "tok-removed", time.Time{}, "kubeuser", "removed.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "removed.ex", "c-1"), "tok-removed", time.Time{}, "kubeuser", "removed.ex", "c-1", config.CacheBinding{Dir: dir}))
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)

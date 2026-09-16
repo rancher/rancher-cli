@@ -61,7 +61,10 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	policy, source := config.EffectivePolicyWithSource(cfg.CredentialStore)
+	// A declaration the variable disagrees with is reported, not resolved:
+	// this command never opens the store, so it is the one place that can
+	// show the operator both answers instead of failing.
+	policy, source, storeConflict := config.EffectivePolicyWithSource(cfg.CredentialStore)
 	// The pin is auto's probed backend choice - meaningless (and, when
 	// stale, actively misleading) under any explicit policy, so it is
 	// reported only when the effective policy is auto.
@@ -83,6 +86,16 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 		{"currentServer", cfg.CurrentServer},
 		{"credentialStore", policy},
 		{"credentialStoreSource", source},
+	}
+	if storeConflict != nil {
+		fields = append(fields, field{"credentialStoreConflict", storeConflict.Error()})
+	}
+	// A binding stamp that is unreadable, or that does not agree with
+	// the one config.yaml carries, costs the directory every warm
+	// exec-credential hit on every command and changes nothing else - so
+	// nothing else would ever say it out loud.
+	if state := cacheBindingStampState(c.dir, cfg); state != "" {
+		fields = append(fields, field{"cacheBindingStamp", state})
 	}
 	if pin != "" {
 		fields = append(fields, field{"pin", pin})
@@ -258,4 +271,25 @@ var configInfoSectionHeaders = map[string]bool{"completion:": true, "servers:": 
 // bold, whole line. Every flat "key: value" line stays plain.
 func styleConfigInfoText(text string, s style.Style) string {
 	return runtime.BoldExactLines(text, configInfoSectionHeaders, s)
+}
+
+// cacheBindingStampState names what is wrong with the directory's binding
+// stamp, or the empty string when nothing is. The two failures look the
+// same from outside - no cached credential is ever served - and have the
+// same remedy, so both are reported here and nowhere else.
+//
+// The disagreement is what a crash between the two halves of a config
+// write leaves behind: the stamp file moved and config.yaml did not, and
+// no reader's two halves line up again until a write that stamps puts
+// them back in step.
+func cacheBindingStampState(dir string, cfg *config.Config) string {
+	const remedy = "cached credentials are not served until the next login or config change"
+	stamp, ok := config.ReadBindingStamp(dir)
+	switch {
+	case !ok:
+		return "unreadable; " + remedy
+	case cfg != nil && stamp != cfg.BindingStamp:
+		return "disagrees with config.yaml; " + remedy
+	}
+	return ""
 }

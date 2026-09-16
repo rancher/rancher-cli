@@ -388,12 +388,16 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 // ignores the rest, so a command is one entry row - no per-shape adapter or
 // wiring switch.
 type runDeps struct {
-	clients      engine.ClusterClientFactory
-	roots        engine.RootClientFactory
-	serverBase   engine.ServerBaseURLProvider
-	src          engine.FileSource
-	dir          string
-	store        config.CredStore
+	clients    engine.ClusterClientFactory
+	roots      engine.RootClientFactory
+	serverBase engine.ServerBaseURLProvider
+	src        engine.FileSource
+	dir        string
+	store      config.CredStore
+	// anchor pairs the binding stamp read before this invocation's config
+	// load with that load's Config, for the commands that read the
+	// exec-credential cache.
+	anchor       *config.CacheAnchor
 	version      string
 	sessionNamer engine.SessionTokenNamer
 }
@@ -448,7 +452,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 			if bare {
 				cmd = make(runDeps{version: version})
 			} else {
-				dir, store, err := resolveDeps(c)
+				dir, store, anchor, err := resolveDeps(c)
 				if err != nil {
 					// Render before exiting, like the Before hook above: a
 					// bare exit here would fail non-zero with an empty
@@ -468,7 +472,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				f := newClientFactory(dir, store)
 				io.ServerIdentity = f.Identity
 				io.Capability = newCapabilityChecker(f)
-				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, version: version, sessionNamer: f})
+				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f})
 			}
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
 			if ce != nil {

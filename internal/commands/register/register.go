@@ -381,11 +381,19 @@ func ValidateUpdate(cfg *config.Config, name string, src UpdateSource, probe Pro
 // ValidateUpdate and ApplyUpdate.
 func ApplyUpdate(cfg *config.Config, plan UpdatePlan) (UpdateOutcome, error) {
 	if len(plan.ChangedFields) > 0 {
-		cfg.Servers[plan.Name] = config.Server{URL: plan.CanonicalURL, CA: plan.CASelector}
+		// A fresh value is what clears the trust fingerprint for free.
+		// The cache binding id is not trust: a URL change clears the
+		// entry's credentials and advances the id first, and dropping it
+		// here would throw that advance away and leave the entry with no
+		// binding at all.
+		cfg.Servers[plan.Name] = config.Server{
+			URL: plan.CanonicalURL, CA: plan.CASelector,
+			CacheBindingID: cfg.Servers[plan.Name].CacheBindingID,
+		}
 	}
 	repaired := bootstrapPointer(cfg, plan.Name)
 	if len(plan.ChangedFields) > 0 || repaired {
-		if err := cfg.Write(); err != nil {
+		if err := config.WriteStep("update", cfg); err != nil {
 			return UpdateOutcome{}, err
 		}
 	}

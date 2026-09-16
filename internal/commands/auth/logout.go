@@ -74,7 +74,13 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		for _, s := range targets {
 			urlByName[s] = cfg.Servers[s].URL
 		}
-		policy := config.EffectivePolicy(cfg.CredentialStore)
+		policy, perr := config.EffectivePolicy(cfg.CredentialStore)
+		if perr != nil {
+			return perr
+		}
+		if rerr := advanceCacheBindings(cfg, targets); rerr != nil {
+			return rerr
+		}
 		if all {
 			deletedFrom, deletedCache, notices, err = l.deleteAll(cmdCtx, cfg, targets, policy)
 		} else {
@@ -162,6 +168,34 @@ func styleLogoutText(text string, openers int, s style.Style) string {
 // completes server names from the already-loaded config snapshot (AC-14).
 func (logoutCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
 	return view.ServerNames()
+}
+
+// advanceCacheBindings gives every target entry a fresh cache binding id
+// and writes the config, BEFORE any credential is deleted. A get-token
+// that read the old id and the old credential a moment earlier writes its
+// record under an id that no longer matches, so the purge cannot race a
+// record into existence behind it; a delete that then fails may leave the
+// login credential usable, but no stale cache record survives either way.
+// A target whose entry is no longer in the config has no id to advance -
+// `logout --all` reaches identity records whose entry was removed by hand
+// - and is skipped.
+func advanceCacheBindings(cfg *config.Config, targets []string) error {
+	var changed bool
+	for _, name := range targets {
+		entry, ok := cfg.Servers[name]
+		if !ok {
+			continue
+		}
+		if err := config.AdvanceCacheBinding(&entry); err != nil {
+			return err
+		}
+		cfg.Servers[name] = entry
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	return config.WriteStep("cachebinding", cfg)
 }
 
 // logoutTargets resolves which servers a logout request applies to. --all

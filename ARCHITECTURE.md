@@ -537,8 +537,20 @@ must already exist, added by `config add-server` or a prior delegated login. The
 backend is resolved by `config.OpenStoreWithNotice` (login's
 eager path) with strict precedence:
 
-`RANCHER_CLI_CREDENTIAL_STORE` env > `credentialStore` in `config.yaml` > `credstore-pin`
-file > one-time probe.
+`credentialStore` in `config.yaml` (the directory's own declaration, written by its first
+login after that login's credential commits) > `credstore-pin` file > one-time probe.
+`RANCHER_CLI_CREDENTIAL_STORE` supplies the declaration for a directory that has none;
+a variable naming a store the directory does not declare is a VALIDATION error out of
+`EffectivePolicyWithSource`, so every consumer of the effective policy gets the same
+answer. Commands that read a credential fail on it; `NewLazyStore` carries it into its
+deferred resolution so a command that never opens the store is not failed by a conflict
+it would not have acted on; `config status`, `config set-completion` and `auth status`
+under `RANCHER_CLI_TOKEN` report it instead; completion offers nothing.
+
+The declaration is written only AFTER the credential commits, and a rollback restores the
+one the login loaded. The pre-credential entry write must leave it alone: `auth get-token`
+and `Effective` read `config.yaml` without the config lock, and a declaration visible
+before the credential exists sends them to a store that does not hold it yet.
 
 Under the default `auto` policy the backend is probed **once per machine** and the result
 (`keychain` or `file`) is written to a machine-local `credstore-pin` file (0600) - never
@@ -551,7 +563,46 @@ stderr in `# warning:` format. Re-probe happens **only at `auth login`** and is 
 is never re-probed, so a transiently locked keychain can never silently downgrade to
 plaintext. A pinned-but-unusable backend is a **hard error** with a remediation hint
 (`delete the pin to re-probe, or set RANCHER_CLI_CREDENTIAL_STORE=file`), never a silent
-fallback. `auth status` surfaces `credentialStore: {policy, pinned}`.
+fallback. `auth status` surfaces `credentialStore: {policy, pinned, conflict}`.
+
+**Exec-credential cache binding.** Every cache record carries a format version, the
+directory that created it, the config entry it came from and that entry's `cacheBindingId`
+(a random per-entry value in `config.yaml`), all read in the same config load as the
+credential and carried to the write. A hit needs the version to be current, the directory
+to match, and the entry to exist with the same id - or the record to name no entry and the
+server to still have none, which is the bare-install state. The id advances after a login
+commits and before any credential removal (`auth logout`, `logout --all`, a
+`config update-server` URL change), so records of the previous login are misses at once;
+`config delete-server` needs no advance because it removes the entry and purges the
+server's records with it. The directory a record names is the absolute, cleaned path, so a
+copied config directory serves none of the records the source wrote.
+
+The check is anchored by the directory's binding stamp, a random value in
+`cachebinding-stamp` and, as `bindingStamp`, in `config.yaml`. A reader takes it once
+before its config load and once as the last operation before returning a credential, and a
+hit needs all three to agree, so a load overtaken by a completed binding change cannot be
+validated against. Disagreement is not a verdict: a reader whose stamp does not line up
+with the config it loaded holds two halves from different moments, so it re-anchors on the
+current stamp, loads once more and judges again. That costs exactly one extra load, and
+only then a miss. A config write advances the stamp when it changes which entries exist,
+an entry's canonical URL or an entry's `cacheBindingId` - evaluated by comparing the
+lookup being written against the one loaded, not by a list of writers - and writes the
+stamp file before `config.yaml`. A crash between the two leaves them permanently
+disagreeing: every reader pays the reload and misses, on every invocation, until the next
+such write puts them back in step. A stamp file that cannot be read at all costs the same
+and no more - failing the command instead would brick the login that would rewrite the
+file. Neither state breaks anything else, so the directory looks healthy; `config status`
+reports both under `cacheBindingStamp`, the one place either is visible. Both fields are in `config edit`'s restriction list.
+
+The four readers are the exec plugin's flag fast path and its resolved path, the legacy
+`token` shim and live completion. All four call one validation function. The first three
+take the anchor the root hook built (the stamp read before its config load, paired with
+that load's snapshot); the native command receives it through its constructor. A reader
+with no `config.yaml` to judge by serves nothing and deletes nothing, and neither does one
+whose second look still does not line up: the records may be another process's perfectly
+good ones. This withdraws the shim fast path's
+old promise that a broken `config.yaml` could not block a warm hit: the record's owner is
+named in that file.
 
 **Per-entry keychain identity.** A keychain account is
 `<keychainAccountId>:<server entry>`, and the id lives in

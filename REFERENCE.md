@@ -33,13 +33,36 @@ any distro including musl/distroless).
 | Windows | `%APPDATA%\rancher` | Credential Manager | owner-only-ACL file |
 
 Precedence above the default everywhere: `--config` flag (`-c`) >
-`RANCHER_CLI_CONFIG_DIR` > `$XDG_CONFIG_HOME/rancher`. The credential
-backend is `auto` (probe once, pin) unless `RANCHER_CLI_CREDENTIAL_STORE`
-or the config `credentialStore` field says otherwise. A directory whose
-backend is the keychain reads only the keychain: on a headless machine (no
-D-Bus, locked keychain) every command fails with the way out rather than
-falling back to a file-stored token, so a headless machine wants
-`RANCHER_CLI_CREDENTIAL_STORE=file` from the start.
+`RANCHER_CLI_CONFIG_DIR` > `$XDG_CONFIG_HOME/rancher`.
+
+The credential backend belongs to the directory, not to the process. The
+first login records the store it used in `config.yaml`'s `credentialStore`
+field, and from then on that is the only store any process on the
+directory reads. `RANCHER_CLI_CREDENTIAL_STORE` still chooses the store
+for a directory that has not declared one - a fresh directory, a CI run -
+and setting it to the same value the directory declares is fine, but
+setting it to a different one is a VALIDATION error naming both, not a
+silent override: two processes on one directory reading different
+backends is how a command ends up serving a credential nobody asked for.
+Unset the variable, or use a different `--config`. An undeclared
+directory defaults to `auto` (probe once, pin).
+
+A directory whose backend is the keychain reads only the keychain: on a
+headless machine (no D-Bus, locked keychain) every command fails with the
+way out rather than falling back to a file-stored token, so a headless
+machine wants `RANCHER_CLI_CREDENTIAL_STORE=file` from the start, before
+the first login records it.
+
+The exec-credential cache follows the same rule. Every record names the
+directory that created it, the server entry it came from and that entry's
+cache binding id, so a copied config directory never serves the
+credentials its source cached, and a login, a logout or a credential
+clearing makes every record of the previous login a miss at once. A
+`config.yaml` the CLI cannot read makes every cached credential a miss as
+well - the record's owner is named in that file - so a broken config
+shows its own error rather than a stale token. A directory with no
+`config.yaml` at all is not that case: it is the state a freshly
+installed exec plugin runs in, and it caches and serves normally.
 
 A keychain credential belongs to the config directory that stored it. Each
 directory keeps a per-entry identity in `credstore-id/`, and the keychain
@@ -53,12 +76,16 @@ which means run the command again. Deleting a file under `credstore-id/`
 is indistinguishable from never having logged in: the entry reads as not
 logged in and needs a fresh login.
 
-Credential-store precedence: `RANCHER_CLI_CREDENTIAL_STORE` >
-`credentialStore: keychain|file|auto|exec:<name>` in config > a
-machine-local `credstore-pin` file > one-time probe. Under `auto` the
-backend is probed once and pinned; the pin is re-probed only at `auth
-login` and only to upgrade file→keychain, and a pinned-but-unusable
-backend is a hard error (never a silent downgrade to plaintext).
+Credential-store resolution: `credentialStore:
+keychain|file|auto|exec:<name>` in config is the directory's own choice,
+recorded by its first login; `RANCHER_CLI_CREDENTIAL_STORE` supplies that
+choice for a directory that has not made one, and disagreeing with one
+that has is an error rather than an override. Under `auto` the value
+resolves through a machine-local `credstore-pin` file, and failing that a
+one-time probe: the backend is probed once and pinned, the pin is
+re-probed only at `auth login` and only to upgrade file to keychain, and a
+pinned-but-unusable backend is a hard error (never a silent downgrade to
+plaintext).
 
 Custom backends plug in as credential helpers: `credentialStore: exec:<name>`
 runs the `rancher-credential-<name>` binary from `PATH` (the shipped
@@ -75,7 +102,7 @@ precedence is flag > environment > file.
 | `RANCHER_CLI_URL` | server URL |
 | `RANCHER_CLI_TOKEN` | token, used directly and never persisted |
 | `RANCHER_CLI_CACERT` | CA bundle (PEM) |
-| `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>`; a keychain directory reads the keychain only, so set `file` where no keychain is reachable |
+| `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>`; chooses the store for a directory that has not declared one, and must not disagree with one that has (a different value is a VALIDATION error, not an override); a keychain directory reads the keychain only, so set `file` where no keychain is reachable |
 | `RANCHER_CLI_CONFIG_DIR` | config directory |
 | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
 | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |

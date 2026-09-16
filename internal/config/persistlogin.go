@@ -57,6 +57,26 @@ type PersistLoginInput struct {
 	// ReadOnlyStoreIsFailure makes ErrTokenStoreUnsupported a failure with
 	// the entry rolled back; false keeps auth login's warn-and-succeed.
 	ReadOnlyStoreIsFailure bool
+	// Policy is the credential-store policy this login resolved before it
+	// authenticated. Every
+	// policy read under the lock uses Policy rather than the loaded
+	// declaration, so a login that carries its own store opens that one
+	// and RepinForLogin is a no-op unless this login's policy is auto.
+	// Empty means the caller observed no policy of its own and the
+	// declaration read under the lock is the login's policy, which is what
+	// it is for a login that changes nothing.
+	Policy string
+	// ObservedDeclaration is config.yaml's credentialStore as this login
+	// read it before authenticating. With Policy set, the value under the
+	// lock must still equal it: a concurrent config edit or a login with a
+	// different store means this login resolved against a directory that
+	// no longer exists as it read it.
+	ObservedDeclaration string
+	// Declaration is written to config.yaml after the credential commits,
+	// never before: readers that take no lock would otherwise select the
+	// destination store while it still holds the previous login's
+	// credential. Empty writes nothing.
+	Declaration string
 	// OpenStore resolves the store from the policy read under the lock;
 	// production passes OpenStoreWithNotice.
 	OpenStore func(policy, dir string) (CredStore, string, error)
@@ -88,7 +108,11 @@ type PersistLoginOutcome struct {
 	// SupersededTokens is the written entry's record list, for the
 	// caller's retirement pass.
 	SupersededTokens []SupersededToken
-	ConfigRecovery   *clierr.ConfigRecovery
+	// CacheBindingID is the entry's cache binding id after this login, so
+	// a caller that goes on to write a cache record binds it to the login
+	// it just made without loading the config a second time.
+	CacheBindingID string
+	ConfigRecovery *clierr.ConfigRecovery
 	// Warnings are the store and pin notices, in order.
 	Warnings           []string
 	CurrentServer      string
@@ -100,9 +124,10 @@ type PersistLoginOutcome struct {
 // flow gave.
 var ErrPersistAborted = errors.New("login persistence aborted")
 
-// persistWriteHook lets a test fail one of the primitive's config writes by
-// step ("entry", "trust", "rollback") without touching disk. Nil in
-// production.
+// persistWriteHook lets a test fail one of the primitive's config writes
+// by step, without touching disk. The step is whatever name the write
+// site passes, so a new write is reachable by naming it rather than by
+// adding a second hook. Nil in production.
 var persistWriteHook func(step string) error
 
 // SetPersistWriteHookForTest sets persistWriteHook; call the returned
@@ -122,9 +147,9 @@ func writeStep(step string, cfg *Config) error {
 	return cfg.Write()
 }
 
-// WriteStep is a config write a test can fail by step name. Commands that
-// write entry metadata after a delete (auth logout's loggedOutAt stamp)
-// use it so the failure is a warning they can exercise.
+// WriteStep is a config write outside the login primitive that a test
+// can fail by step name, so a command can exercise what it does when its
+// own write fails - a warning it reports, or a state it names.
 func WriteStep(step string, cfg *Config) error { return writeStep(step, cfg) }
 
 // PersistLoginCredential persists a login credential and its server entry
@@ -151,11 +176,16 @@ func PersistLoginCredential(ctx context.Context, dir string, in PersistLoginInpu
 				return err
 			}
 		}
-		if in.Decision != nil {
-			if reason := revalidate(dir, cfg, *in.Decision); reason != "" {
-				out.Aborted = reason
-				return fmt.Errorf("%w: %s", ErrPersistAborted, reason)
-			}
+		if reason := revalidate(dir, cfg, in); reason != "" {
+			out.Aborted = reason
+			return fmt.Errorf("%w: %s", ErrPersistAborted, reason)
+		}
+		// The declaration loaded here is what a rollback restores and what
+		// the post-commit write replaces.
+		declared := cfg.CredentialStore
+		policy := in.Policy
+		if policy == "" {
+			policy = declared
 		}
 
 		name, existing, exists, err := resolveEntryName(cfg, in)
@@ -176,16 +206,16 @@ func PersistLoginCredential(ctx context.Context, dir string, in PersistLoginInpu
 		}
 		out.ConfigState = clierr.ConfigWritten
 
-		rawStore, storeNotice, err := in.OpenStore(cfg.CredentialStore, dir)
+		rawStore, storeNotice, err := in.OpenStore(policy, dir)
 		if err != nil {
-			return rollback(&out, cfg, name, snap, err)
+			return rollback(&out, cfg, name, snap, declared, err)
 		}
 		if storeNotice != "" {
 			out.Warnings = append(out.Warnings, storeNotice)
 		}
-		store, pinNotice, err := RepinForLogin(dir, cfg.CredentialStore, rawStore)
+		store, pinNotice, err := RepinForLogin(dir, policy, rawStore)
 		if err != nil {
-			return rollback(&out, cfg, name, snap, err)
+			return rollback(&out, cfg, name, snap, declared, err)
 		}
 		if pinNotice != "" {
 			out.Warnings = append(out.Warnings, pinNotice)
@@ -202,7 +232,7 @@ func PersistLoginCredential(ctx context.Context, dir string, in PersistLoginInpu
 		if ks, ok := keychainStoreFor(store); ok {
 			w, werr := beginKeychainWrite(ctx, ks, ref, in.Bearer)
 			if werr != nil {
-				return rollback(&out, cfg, name, snap, werr)
+				return rollback(&out, cfg, name, snap, declared, werr)
 			}
 			write = w
 		}
@@ -223,7 +253,7 @@ func PersistLoginCredential(ctx context.Context, dir string, in PersistLoginInpu
 					// it; leaving the rewritten entry would replace a
 					// working login's URL, CA and provenance with this
 					// failed one's.
-					return rollback(&out, cfg, name, snap, idErr)
+					return rollback(&out, cfg, name, snap, declared, idErr)
 				}
 				// The credential did land: the entry stays as the handle
 				// for reaching it, and the record says a login for this
@@ -282,11 +312,21 @@ func PersistLoginCredential(ctx context.Context, dir string, in PersistLoginInpu
 				out.ConfigState = clierr.ConfigWritten
 				return cerr
 			default:
-				return rollback(&out, cfg, name, snap, cerr)
+				return rollback(&out, cfg, name, snap, declared, cerr)
 			}
 		}
 		if commit.Notice != "" {
 			out.Warnings = append(out.Warnings, commit.Notice)
+		}
+		// The declaration rides the trust write when there is one and is a
+		// write of its own otherwise, but either way it is the FIRST config
+		// write after the commit: until the credential is in the
+		// destination store, a reader that takes no lock would resolve the
+		// new declaration to a store still holding the previous login's
+		// credential.
+		declares := in.Declaration != "" && in.Declaration != declared
+		if declares {
+			cfg.CredentialStore = in.Declaration
 		}
 		if in.PendingTrust != nil {
 			entry.CA, entry.CAFingerprint = in.PendingTrust.CA, in.PendingTrust.Fingerprint
@@ -299,12 +339,50 @@ func PersistLoginCredential(ctx context.Context, dir string, in PersistLoginInpu
 						out.CredentialState = clierr.CredentialCompensated
 					}
 				}
-				return rollback(&out, cfg, name, snap,
+				return rollback(&out, cfg, name, snap, declared,
 					clierr.New(clierr.CodeGeneric, fmt.Sprintf("storing the accepted certificate for %s: %s", name, werr.Error())).
 						WithHint(LoginHintFor(name)))
 			}
+			entry = cfg.Servers[name]
+		} else if declares {
+			if werr := writeStep("declaration", cfg); werr != nil {
+				// Not a rollback: the credential is committed in the store
+				// this login opened and is the directory's own. What is
+				// missing is the record of where it now lives, which the
+				// next login writes.
+				out.ConfigState = clierr.ConfigDeclarationNotWritten
+				return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
+					"the credential for %s was stored, but recording that this directory keeps credentials in %q failed: %s",
+					name, in.Declaration, werr.Error())).
+					WithHint(LoginHintFor(name))
+			}
 		}
+
+		// The entry's cache binding id advances after the commit and
+		// before any cleanup. `auth get-token` takes no config lock: one
+		// that read the old id also read a store still holding the old
+		// credential and caches under the old id, and one that reads the
+		// new id reads a store that already holds the new credential.
+		// Advancing before the commit would let the second of those cache
+		// the previous user's credential under the new id.
+		if berr := AdvanceCacheBinding(&entry); berr != nil {
+			return berr
+		}
+		cfg.Servers[name] = entry
+		if werr := writeStep("cachebinding", cfg); werr != nil {
+			// Not a rollback either: the credential is committed and
+			// recorded. What did not happen is the invalidation of the
+			// cache records the previous login left, which stay usable
+			// until they expire.
+			out.ConfigState = clierr.ConfigCacheBindingNotAdvanced
+			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
+				"the credential for %s was stored, but the exec-credential cache records of the previous login could not be invalidated: %s",
+				name, werr.Error())).
+				WithHint("rancher auth delete-token --all")
+		}
+
 		out.SupersededTokens = entry.SupersededTokens
+		out.CacheBindingID = entry.CacheBindingID
 		out.CurrentServer = cfg.CurrentServer
 		if out.CurrentServer != "" {
 			_, out.CurrentServerValid = cfg.Servers[out.CurrentServer]
@@ -314,31 +392,81 @@ func PersistLoginCredential(ctx context.Context, dir string, in PersistLoginInpu
 	return out, err
 }
 
-// revalidate re-reads the setting and the effective backend under the
-// lock and returns the abort reason, or "" to proceed. Pure reads only:
-// openStoreResolved and RepinForLogin probe and write the pin and must not
-// run here.
-func revalidate(dir string, cfg *Config, d StoreDecision) string {
+// revalidate re-reads the declaration, the setting and the effective
+// backend under the lock and returns the abort reason, or "" to proceed.
+// Pure reads only: openStoreResolved and RepinForLogin probe and write the
+// pin and must not run here.
+func revalidate(dir string, cfg *Config, in PersistLoginInput) string {
+	if in.Policy != "" && cfg.CredentialStore != in.ObservedDeclaration {
+		return fmt.Sprintf("the credential store this directory declares changed during the login (%s); run the command again",
+			declarationText(cfg.CredentialStore))
+	}
+	if in.Decision == nil {
+		return ""
+	}
+	d := *in.Decision
 	if d.RequireSetting && !cfg.TokenReuse {
 		return "token reuse was turned off during the login (rancher config set-token-reuse off)"
 	}
 	if d.Policy == "" {
 		return ""
 	}
-	if _, _, backend := ResolvedBackend(dir, cfg.CredentialStore); backend == "file" && d.DisclosedPlaintextPath != CredentialsFilePath(dir) {
+	// The login's own policy, never the loaded declaration: a login that
+	// carries one disclosed the backend that policy names before the
+	// sign-in, and this re-check exists to catch the directory becoming
+	// a plaintext store while the sign-in was open. Asking about the
+	// declaration instead would compare the wrong two things and skip
+	// the disclosure the caller owes.
+	policy := in.Policy
+	if policy == "" {
+		policy = cfg.CredentialStore
+	}
+	_, _, backend, berr := ResolvedBackend(dir, policy)
+	if berr != nil {
+		return berr.Error()
+	}
+	if backend == "file" && d.DisclosedPlaintextPath != CredentialsFilePath(dir) {
 		return fmt.Sprintf("the credential store is now the plaintext file %s, which this login did not disclose before the interactive sign-in; run the command again", CredentialsFilePath(dir))
 	}
 	return ""
 }
 
+// DeclarationFor names what a login writes to config.yaml after its
+// credential commits: the store it was asked for when it carries one,
+// nothing when the directory already declares a store and this login does
+// not change it, and otherwise the policy this login used, so a directory
+// records where its credentials live from its first login on.
+func DeclarationFor(declared, requested, policy string) string {
+	switch {
+	case requested != "":
+		return requested
+	case declared != "":
+		return ""
+	default:
+		return policy
+	}
+}
+
+// declarationText names a declaration for a message, including the state
+// of having none.
+func declarationText(declared string) string {
+	if declared == "" {
+		return "it now declares none"
+	}
+	return "it now declares " + declared
+}
+
 // ResolvedBackend resolves the credential-store policy, the pin an auto
 // policy consults, and the backend the two name.
-func ResolvedBackend(dir, cfgPolicy string) (policy, pin, backend string) {
-	policy = EffectivePolicy(cfgPolicy)
+func ResolvedBackend(dir, cfgPolicy string) (policy, pin, backend string, err error) {
+	policy, err = EffectivePolicy(cfgPolicy)
+	if err != nil {
+		return "", "", "", err
+	}
 	if policy == "auto" {
 		pin = ReadPin(dir)
 	}
-	return policy, pin, BackendOf(policy, pin)
+	return policy, pin, BackendOf(policy, pin), nil
 }
 
 // BackendOf names the physical backend a policy and pin resolve to without
@@ -412,8 +540,13 @@ func restoredEntry(snap *Server, trust *PendingTrust) *Server {
 }
 
 // rollback removes a created entry or restores an updated one and returns
-// primary; a failed rollback write is reported instead.
-func rollback(out *PersistLoginOutcome, cfg *Config, name string, snap *Server, primary error) error {
+// primary; a failed rollback write is reported instead. declared is the
+// declaration this login loaded: a rollback undoes the attempt entirely,
+// so the directory goes back to naming the store it named before, whether
+// or not this login got as far as setting a new one on the in-memory
+// config.
+func rollback(out *PersistLoginOutcome, cfg *Config, name string, snap *Server, declared string, primary error) error {
+	cfg.CredentialStore = declared
 	if snap == nil {
 		delete(cfg.Servers, name)
 	} else {

@@ -393,6 +393,20 @@ func (l loginCmd) authenticateAndStore(
 	name, serverURL, caSelector, caBytes, versionWarning, caFingerprint string,
 	delegated, added bool,
 ) (runtime.Result, error) {
+	// The credential store is resolved before the sign-in, not under the
+	// commit lock: the declaration the commit writes has to be the one this
+	// login resolved against, and a variable that disagrees with the
+	// directory must stop the login before it asks anyone to authenticate.
+	declCfg, err := config.Load(config.FilePath(l.dir))
+	if err != nil {
+		return runtime.Result{}, clierr.New(clierr.CodeGeneric, "reading config: "+err.Error())
+	}
+	observedDeclaration := declCfg.CredentialStore
+	policy, _, policyErr := config.EffectivePolicyWithSource(observedDeclaration)
+	if policyErr != nil {
+		return runtime.Result{}, policyErr
+	}
+
 	isHTTPS := strings.HasPrefix(serverURL, "https://")
 	var pendingTrust *trustCandidate
 	if !delegated {
@@ -500,6 +514,8 @@ func (l loginCmd) authenticateAndStore(
 		Name: name, CanonicalURL: serverURL,
 		Provenance: cred.Provenance, TokenRef: cred.Ref, TokenUserID: cred.UserID,
 		Bearer: bearer, ExpiresAt: cred.ExpiresAt,
+		Policy: policy, ObservedDeclaration: observedDeclaration,
+		Declaration:  config.DeclarationFor(observedDeclaration, "", policy),
 		OpenStore:    l.newStore,
 		PendingTrust: pendingCA,
 		PreCheck: func(cfg *config.Config) error {

@@ -16,7 +16,8 @@ import (
 )
 
 func TestFileStoreRoundTrip(t *testing.T) {
-	s := NewFileStore(t.TempDir())
+	dir := t.TempDir()
+	s := NewFileStore(dir)
 	t.Run("missing token", func(t *testing.T) {
 		_, err := s.GetToken(ServerRef{Name: "acme"})
 		assert.ErrorIs(t, err, ErrNoToken)
@@ -131,39 +132,42 @@ func TestOpenStoreExplicitPolicySkipsPin(t *testing.T) {
 }
 
 func TestCachedCredRoundTrip(t *testing.T) {
-	s := NewFileStore(t.TempDir())
+	dir := t.TempDir()
+	s := NewFileStore(dir)
 	exp := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", exp, "", "", ""))
-	tok, gotExp, err := s.GetCachedCred("acme/u/c")
+	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", exp, "", "", "", testCacheBinding(dir)))
+	tok, gotExp, err := s.GetCachedCred("acme/u/c", testAnchor(t, dir))
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)
 	assert.Equal(t, exp, gotExp.UTC().Truncate(time.Second))
 }
 
 func TestCachedCredExpiredIsErrNoToken(t *testing.T) {
-	s := NewFileStore(t.TempDir())
-	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute), "", "", ""))
-	_, _, err := s.GetCachedCred("acme/u/c")
+	dir := t.TempDir()
+	s := NewFileStore(dir)
+	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute), "", "", "", testCacheBinding(dir)))
+	_, _, err := s.GetCachedCred("acme/u/c", testAnchor(t, dir))
 	assert.ErrorIs(t, err, ErrNoToken)
 }
 
 func TestDeleteAllCachedCredsFlushesFileStore(t *testing.T) {
-	s := NewFileStore(t.TempDir())
-	require.NoError(t, s.SetCachedCred("acme/u/c1", "t1", time.Now().Add(time.Hour), "", "", ""))
-	require.NoError(t, s.SetCachedCred("acme/u/c2", "t2", time.Now().Add(time.Hour), "", "", ""))
+	dir := t.TempDir()
+	s := NewFileStore(dir)
+	require.NoError(t, s.SetCachedCred("acme/u/c1", "t1", time.Now().Add(time.Hour), "", "", "", testCacheBinding(dir)))
+	require.NoError(t, s.SetCachedCred("acme/u/c2", "t2", time.Now().Add(time.Hour), "", "", "", testCacheBinding(dir)))
 	require.NoError(t, s.DeleteAllCachedCreds())
-	_, _, err := s.GetCachedCred("acme/u/c1")
+	_, _, err := s.GetCachedCred("acme/u/c1", testAnchor(t, dir))
 	require.ErrorIs(t, err, ErrNoToken)
-	_, _, err = s.GetCachedCred("acme/u/c2")
+	_, _, err = s.GetCachedCred("acme/u/c2", testAnchor(t, dir))
 	assert.ErrorIs(t, err, ErrNoToken)
 }
 
 func TestCachedCredExpiredPurgeErrorIsPropagated(t *testing.T) {
 	dir := t.TempDir()
 	s := NewFileStore(dir).(*fileStore)
-	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute), "", "", ""))
+	require.NoError(t, s.SetCachedCred("acme/u/c", "tok", time.Now().Add(-time.Minute), "", "", "", testCacheBinding(dir)))
 
-	tok, _, err := s.GetCachedCred("acme/u/c")
+	tok, _, err := s.GetCachedCred("acme/u/c", testAnchor(t, dir))
 	require.ErrorIs(t, err, ErrNoToken)
 	assert.Empty(t, tok)
 
@@ -174,10 +178,11 @@ func TestCachedCredExpiredPurgeErrorIsPropagated(t *testing.T) {
 }
 
 func TestFileStoreListCachedCreds(t *testing.T) {
-	s := NewFileStore(t.TempDir())
-	require.NoError(t, s.SetCachedCred("bravo", "t2", time.Now().Add(time.Hour), "", "", ""))
-	require.NoError(t, s.SetCachedCred("alpha", "t1", time.Now().Add(time.Hour), "", "", ""))
-	require.NoError(t, s.SetCachedCred("gone", "t3", time.Now().Add(-time.Minute), "", "", "")) // expired
+	dir := t.TempDir()
+	s := NewFileStore(dir)
+	require.NoError(t, s.SetCachedCred("bravo", "t2", time.Now().Add(time.Hour), "", "", "", testCacheBinding(dir)))
+	require.NoError(t, s.SetCachedCred("alpha", "t1", time.Now().Add(time.Hour), "", "", "", testCacheBinding(dir)))
+	require.NoError(t, s.SetCachedCred("gone", "t3", time.Now().Add(-time.Minute), "", "", "", testCacheBinding(dir))) // expired
 
 	list, err := s.ListCachedCreds()
 	require.NoError(t, err)
@@ -211,7 +216,8 @@ func TestFileStoreWarnsOnLoosePermissions(t *testing.T) {
 	assert.Empty(t, looseNotices.DrainNotices(), "notice must fire once per path per process")
 
 	// Tight (0600), fresh path: silent.
-	tight := NewFileStore(t.TempDir())
+	dir := t.TempDir()
+	tight := NewFileStore(dir)
 	require.NoError(t, tight.SetToken(ServerRef{Name: "acme"}, "id:sec")) // written 0600
 	_, err = tight.GetToken(ServerRef{Name: "acme"})
 	require.NoError(t, err)
@@ -225,9 +231,10 @@ func TestCacheKeyScoping(t *testing.T) {
 }
 
 func TestScopedCacheRoundTripAndList(t *testing.T) {
-	fs := NewFileStore(t.TempDir())
+	dir := t.TempDir()
+	fs := NewFileStore(dir)
 	key := CacheKey("prod", "r.example.com", "c-1")
-	if err := fs.SetCachedCred(key, "tok", time.Now().Add(time.Hour), "prod", "r.example.com", "c-1"); err != nil {
+	if err := fs.SetCachedCred(key, "tok", time.Now().Add(time.Hour), "prod", "r.example.com", "c-1", testCacheBinding(dir)); err != nil {
 		t.Fatal(err)
 	}
 	infos, err := fs.ListCachedCreds()
@@ -251,7 +258,7 @@ func TestLegacyBareEntryListsAndMisses(t *testing.T) {
 	if len(infos) != 1 || infos[0].Name != "prod" || infos[0].Key != "prod" {
 		t.Errorf("legacy entry must list by raw key: %+v", infos)
 	}
-	if _, _, err := fs.GetCachedCred(CacheKey("prod", "r.example.com", "c-1")); !errors.Is(err, ErrNoToken) {
+	if _, _, err := fs.GetCachedCred(CacheKey("prod", "r.example.com", "c-1"), testAnchor(t, dir)); !errors.Is(err, ErrNoToken) {
 		t.Errorf("scoped read of legacy entry must miss, got %v", err)
 	}
 }
@@ -261,7 +268,7 @@ func TestKeyringStoreCachesToFileAndLists(t *testing.T) {
 	// store and never touch the OS keychain backend (only GetToken/SetToken do).
 	dir := t.TempDir()
 	s := newPinnedKeyringStore(dir, false)
-	require.NoError(t, s.SetCachedCred("x", "tok", time.Now().Add(time.Hour), "", "", ""))
+	require.NoError(t, s.SetCachedCred("x", "tok", time.Now().Add(time.Hour), "", "", "", testCacheBinding(dir)))
 
 	list, err := s.ListCachedCreds()
 	require.NoError(t, err)
@@ -532,13 +539,13 @@ func TestDeleteTokenEverywhereAlsoDeletesExecCache(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1", testCacheBinding(dir)))
 
 	_, deletedCache, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	require.NoError(t, err)
 	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, deletedCache)
 
-	_, _, gerr := store.GetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"))
+	_, _, gerr := store.GetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), testAnchor(t, dir))
 	assert.ErrorIs(t, gerr, ErrNoToken, "logout's single delete point must also delete the exec-credential cache")
 }
 
@@ -556,7 +563,7 @@ func TestDeleteTokenEverywhereSurfacesExecCacheLoosePermissionNotice(t *testing.
 	dir := t.TempDir()
 	store := NewFileStore(dir)
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1", testCacheBinding(dir)))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 
 	_, deletedCache, notices, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
@@ -575,7 +582,7 @@ func TestDeleteAllExecCacheSurfacesLoosePermissionNotice(t *testing.T) {
 	}
 	dir := t.TempDir()
 	store := NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1", testCacheBinding(dir)))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 
 	keys, notices, err := DeleteAllExecCache(dir)
@@ -601,19 +608,19 @@ func TestDeleteTokenEverywhereFailsOnUnreadableFileStore(t *testing.T) {
 func TestDeleteExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1"))
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1"))
-	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", ""))
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", testCacheBinding(dir)))
+	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1", testCacheBinding(dir)))
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", "", testCacheBinding(dir)))
 
 	deleted, err := DeleteExecCacheForServer(store, "https://acme.ex")
 	require.NoError(t, err)
 	assert.Equal(t, []string{CacheKey("kubeuser", "acme.ex", "c-1")}, deleted)
 
-	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"))
+	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"), testAnchor(t, dir))
 	require.ErrorIs(t, err, ErrNoToken, "matching entry must be deleted")
-	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"))
+	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"), testAnchor(t, dir))
 	require.NoError(t, err, "non-matching entry must be kept")
-	_, _, err = store.GetCachedCred("legacy-bare")
+	_, _, err = store.GetCachedCred("legacy-bare", testAnchor(t, dir))
 	assert.NoError(t, err, "legacy bare entry (no Server) must be kept")
 }
 
@@ -626,8 +633,8 @@ func TestDeleteExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
 func TestDeleteExecCacheForServerDeletesAllNamesSharingOneHost(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"), "tok-admin", time.Time{}, "acme-admin", "acme.ex", "c-1"))
-	require.NoError(t, store.SetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"), "tok-viewer", time.Time{}, "acme-viewer", "acme.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"), "tok-admin", time.Time{}, "acme-admin", "acme.ex", "c-1", testCacheBinding(dir)))
+	require.NoError(t, store.SetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"), "tok-viewer", time.Time{}, "acme-viewer", "acme.ex", "c-1", testCacheBinding(dir)))
 
 	deleted, err := DeleteExecCacheForServer(store, "https://acme.ex")
 	require.NoError(t, err)
@@ -636,22 +643,22 @@ func TestDeleteExecCacheForServerDeletesAllNamesSharingOneHost(t *testing.T) {
 		CacheKey("acme-viewer", "acme.ex", "c-1"),
 	}, deleted, "both names sharing one host must be deleted together")
 
-	_, _, err = store.GetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"))
+	_, _, err = store.GetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"), testAnchor(t, dir))
 	require.ErrorIs(t, err, ErrNoToken)
-	_, _, err = store.GetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"))
+	_, _, err = store.GetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"), testAnchor(t, dir))
 	assert.ErrorIs(t, err, ErrNoToken)
 }
 
 func TestDeleteExecCacheForServerEmptyHostIsNoop(t *testing.T) {
 	dir := t.TempDir()
 	store := NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred("legacy-bare", "tok", time.Time{}, "", "", ""))
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok", time.Time{}, "", "", "", testCacheBinding(dir)))
 
 	deleted, err := DeleteExecCacheForServer(store, "")
 	require.NoError(t, err)
 	assert.Nil(t, deleted)
 
-	_, _, err = store.GetCachedCred("legacy-bare")
+	_, _, err = store.GetCachedCred("legacy-bare", testAnchor(t, dir))
 	assert.NoError(t, err, "empty host must not touch the cache")
 }
 
@@ -676,8 +683,8 @@ func TestListCachedCredsWriteBackFailureIsBestEffort(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	s := NewFileStore(dir)
-	require.NoError(t, s.SetCachedCred("live", "tok1", time.Now().Add(time.Hour), "", "", ""))
-	require.NoError(t, s.SetCachedCred("expired", "tok2", time.Now().Add(-time.Minute), "", "", ""))
+	require.NoError(t, s.SetCachedCred("live", "tok1", time.Now().Add(time.Hour), "", "", "", testCacheBinding(dir)))
+	require.NoError(t, s.SetCachedCred("expired", "tok2", time.Now().Add(-time.Minute), "", "", "", testCacheBinding(dir)))
 
 	require.NoError(t, os.Chmod(dir, 0o500))
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
@@ -880,7 +887,7 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 
 	err1 := make(chan error, 1)
 	go func() {
-		err1 <- store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", "")
+		err1 <- store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", "", testCacheBinding(dir))
 	}()
 
 	select {
@@ -895,7 +902,7 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 	// on the flock until G1 releases.
 	err2 := make(chan error, 1)
 	go func() {
-		err2 <- store2.SetCachedCred("key-b", "tok-b", time.Now().Add(time.Hour), "b", "r.ex", "")
+		err2 <- store2.SetCachedCred("key-b", "tok-b", time.Now().Add(time.Hour), "b", "r.ex", "", testCacheBinding(dir))
 	}()
 
 	// Unblock G1: it writes key-a and releases the flock.
@@ -906,9 +913,9 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 	require.NoError(t, <-err2, "store2.SetCachedCred must succeed")
 
 	// Both keys must survive - no lost update.
-	_, _, errA := store1.GetCachedCred("key-a")
+	_, _, errA := store1.GetCachedCred("key-a", testAnchor(t, dir))
 	require.NoError(t, errA, "key-a must survive after concurrent write")
-	_, _, errB := store1.GetCachedCred("key-b")
+	_, _, errB := store1.GetCachedCred("key-b", testAnchor(t, dir))
 	assert.NoError(t, errB, "key-b must survive after concurrent write")
 }
 
@@ -925,8 +932,8 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 	store2 := NewFileStore(dir)
 
 	// Pre-seed: key-b already expired, key-c valid.
-	require.NoError(t, store1.SetCachedCred("key-b", "tok-b", time.Now().Add(-time.Hour), "b", "r.ex", ""))
-	require.NoError(t, store1.SetCachedCred("key-c", "tok-c", time.Now().Add(time.Hour), "c", "r.ex", ""))
+	require.NoError(t, store1.SetCachedCred("key-b", "tok-b", time.Now().Add(-time.Hour), "b", "r.ex", "", testCacheBinding(dir)))
+	require.NoError(t, store1.SetCachedCred("key-c", "tok-c", time.Now().Add(time.Hour), "c", "r.ex", "", testCacheBinding(dir)))
 
 	inRead := make(chan struct{})
 	release := make(chan struct{})
@@ -953,7 +960,7 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 
 	errA := make(chan error, 1)
 	go func() {
-		errA <- store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", "")
+		errA <- store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", "", testCacheBinding(dir))
 	}()
 
 	select {
@@ -965,9 +972,12 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 	}
 
 	// A holds the flock. Start B (GetCachedCred on the expired key-b).
+	// The anchor is built here, on the test's own goroutine: it asserts,
+	// and testify's assertions belong to the goroutine running the test.
+	anchorB := testAnchor(t, dir)
 	errB := make(chan error, 1)
 	go func() {
-		_, _, err := store2.GetCachedCred("key-b")
+		_, _, err := store2.GetCachedCred("key-b", anchorB)
 		if errors.Is(err, ErrNoToken) {
 			err = nil // expected: the expired entry is pruned
 		}
@@ -991,15 +1001,15 @@ func TestFileStoreCacheLockPreventsLostUpdateOnExpiry(t *testing.T) {
 	require.NoError(t, <-errB, "store2.GetCachedCred (expired entry) must succeed")
 
 	// A's effect: key-a must be present.
-	_, _, errGet := store1.GetCachedCred("key-a")
+	_, _, errGet := store1.GetCachedCred("key-a", testAnchor(t, dir))
 	require.NoError(t, errGet, "key-a (SetCachedCred effect) must survive concurrent GetCachedCred prune")
 
 	// B's effect: key-b must be pruned.
-	_, _, errGet = store1.GetCachedCred("key-b")
+	_, _, errGet = store1.GetCachedCred("key-b", testAnchor(t, dir))
 	require.ErrorIs(t, errGet, ErrNoToken, "expired key-b must be pruned by GetCachedCred")
 
 	// Unrelated key-c must be unaffected.
-	_, _, errGet = store1.GetCachedCred("key-c")
+	_, _, errGet = store1.GetCachedCred("key-c", testAnchor(t, dir))
 	assert.NoError(t, errGet, "key-c must survive unaffected")
 }
 
@@ -1017,23 +1027,23 @@ func TestFileStoreCacheGetServesConcurrentlyRefreshedKey(t *testing.T) {
 	store2 := NewFileStore(dir)
 
 	expiry := time.Now().Add(time.Hour)
-	require.NoError(t, store1.SetCachedCred("key-a", "tok-stale", time.Now().Add(-time.Hour), "a", "r.ex", ""))
+	require.NoError(t, store1.SetCachedCred("key-a", "tok-stale", time.Now().Add(-time.Hour), "a", "r.ex", "", testCacheBinding(dir)))
 
 	// The hook fires after the lock-free read (which saw key-a expired) and
 	// before the flock is acquired: refresh key-a synchronously from here.
 	getCachedPruneHook = func() {
 		getCachedPruneHook = nil // fire once
-		require.NoError(t, store2.SetCachedCred("key-a", "tok-fresh", expiry, "a", "r.ex", ""))
+		require.NoError(t, store2.SetCachedCred("key-a", "tok-fresh", expiry, "a", "r.ex", "", testCacheBinding(dir)))
 	}
 	t.Cleanup(func() { getCachedPruneHook = nil })
 
-	tok, gotExpiry, err := store1.GetCachedCred("key-a")
+	tok, gotExpiry, err := store1.GetCachedCred("key-a", testAnchor(t, dir))
 	require.NoError(t, err, "a concurrently refreshed key must be served, not pruned")
 	assert.Equal(t, "tok-fresh", tok)
 	assert.WithinDuration(t, expiry, gotExpiry, time.Second)
 
 	// The refreshed entry must survive on disk for the next invocation.
-	tok, _, err = store1.GetCachedCred("key-a")
+	tok, _, err = store1.GetCachedCred("key-a", testAnchor(t, dir))
 	require.NoError(t, err, "the refreshed entry must not have been deleted")
 	assert.Equal(t, "tok-fresh", tok)
 }
@@ -1049,7 +1059,7 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 	store1 := NewFileStore(dir)
 	store2 := NewFileStore(dir)
 
-	require.NoError(t, store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", ""))
+	require.NoError(t, store1.SetCachedCred("key-a", "tok-a", time.Now().Add(time.Hour), "a", "r.ex", "", testCacheBinding(dir)))
 
 	inWrite := make(chan struct{})
 	release := make(chan struct{})
@@ -1069,7 +1079,7 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 
 	errSet := make(chan error, 1)
 	go func() {
-		errSet <- store1.SetCachedCred("key-b", "tok-b", time.Now().Add(time.Hour), "b", "r.ex", "")
+		errSet <- store1.SetCachedCred("key-b", "tok-b", time.Now().Add(time.Hour), "b", "r.ex", "", testCacheBinding(dir))
 	}()
 	select {
 	case <-inWrite:
@@ -1099,9 +1109,9 @@ func TestDeleteAllCachedCredsHonorsCacheLock(t *testing.T) {
 	require.NoError(t, <-errSet, "SetCachedCred must succeed")
 	require.NoError(t, <-errDel, "DeleteAllCachedCreds must succeed")
 
-	_, _, err := store1.GetCachedCred("key-a")
+	_, _, err := store1.GetCachedCred("key-a", testAnchor(t, dir))
 	require.ErrorIs(t, err, ErrNoToken, "key-a must stay wiped, not be resurrected by the concurrent write-back")
-	_, _, err = store1.GetCachedCred("key-b")
+	_, _, err = store1.GetCachedCred("key-b", testAnchor(t, dir))
 	assert.ErrorIs(t, err, ErrNoToken, "key-b (written before the wipe acquired the lock) must be wiped too")
 }
 
@@ -1265,7 +1275,7 @@ func TestMarkCachedCredReadyIsConditional(t *testing.T) {
 	dir := t.TempDir()
 	s := NewFileStore(dir)
 	exp := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-	require.NoError(t, s.SetCachedCred("k", "tok-1", exp, "n", "https://r", "c"))
+	require.NoError(t, s.SetCachedCred("k", "tok-1", exp, "n", "https://r", "c", testCacheBinding(dir)))
 
 	marked, err := s.MarkCachedCredReady("k", "tok-1", "fp-a")
 	require.NoError(t, err)
@@ -1273,18 +1283,18 @@ func TestMarkCachedCredReadyIsConditional(t *testing.T) {
 	marked, err = s.MarkCachedCredReady("k", "tok-1", "fp-a")
 	require.NoError(t, err)
 	assert.True(t, marked, "idempotent")
-	d, err := s.GetCachedCredDetail("k")
+	d, err := s.GetCachedCredDetail("k", testAnchor(t, dir))
 	require.NoError(t, err)
 	assert.Equal(t, "tok-1", d.Token)
 	assert.Equal(t, []string{"fp-a"}, d.ReadyEndpoints)
 
 	// Another process refreshed the slot: the stale token's mark is refused
 	// and the fresh record keeps its own readiness.
-	require.NoError(t, s.SetCachedCred("k", "tok-2", exp, "n", "https://r", "c"))
+	require.NoError(t, s.SetCachedCred("k", "tok-2", exp, "n", "https://r", "c", testCacheBinding(dir)))
 	marked, err = s.MarkCachedCredReady("k", "tok-1", "fp-b")
 	require.NoError(t, err)
 	assert.False(t, marked)
-	d, err = s.GetCachedCredDetail("k")
+	d, err = s.GetCachedCredDetail("k", testAnchor(t, dir))
 	require.NoError(t, err)
 	assert.Equal(t, "tok-2", d.Token)
 	assert.Empty(t, d.ReadyEndpoints, "a replacing write starts with no readiness")
@@ -1294,11 +1304,11 @@ func TestMarkCachedCredReadyIsConditional(t *testing.T) {
 	marked, err = s.MarkCachedCredReady("k", "tok-2", "fp-a")
 	require.NoError(t, err)
 	assert.False(t, marked)
-	_, err = s.GetCachedCredDetail("k")
+	_, err = s.GetCachedCredDetail("k", testAnchor(t, dir))
 	require.ErrorIs(t, err, ErrNoToken)
 
 	// Expired: treated as absent.
-	require.NoError(t, s.SetCachedCred("k", "tok-3", time.Now().Add(-time.Minute), "n", "https://r", "c"))
+	require.NoError(t, s.SetCachedCred("k", "tok-3", time.Now().Add(-time.Minute), "n", "https://r", "c", testCacheBinding(dir)))
 	marked, err = s.MarkCachedCredReady("k", "tok-3", "fp-a")
 	require.NoError(t, err)
 	assert.False(t, marked)

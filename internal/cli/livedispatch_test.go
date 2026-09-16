@@ -196,7 +196,7 @@ func liveFixture(t *testing.T, srv *httptest.Server) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 }
 
@@ -219,6 +219,7 @@ func idOnlyFixture(t *testing.T, srv *httptest.Server, clusters ...string) {
 			config.CacheKey("k8s-ctx", srv.URL, c),
 			"exec-token-"+c, time.Now().Add(time.Hour),
 			"k8s-ctx", srv.URL, c,
+			config.CacheBinding{Dir: dir, Entry: "srv"},
 		))
 	}
 	cfg := &config.Config{
@@ -228,7 +229,7 @@ func idOnlyFixture(t *testing.T, srv *httptest.Server, clusters ...string) {
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	setStoredConfig(cfg, dir)
+	setStoredConfigForTest(t, cfg, dir)
 }
 
 // TestLiveSourceCandidatesPolicy asserts the surface's policy around a

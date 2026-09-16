@@ -51,14 +51,14 @@ func (c *countingStore) SetTokenWithOutcome(config.ServerRef, string, config.Pri
 	return config.CommitOutcome{Backend: clierr.BackendFile, State: config.CommitCommitted, PriorSource: clierr.PriorNone}, nil
 }
 func (c *countingStore) DeleteToken(config.ServerRef) error { return nil }
-func (c *countingStore) GetCachedCred(string) (string, time.Time, error) {
+func (c *countingStore) GetCachedCred(string, *config.CacheAnchor) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
-func (c *countingStore) GetCachedCredDetail(string) (config.CachedCredDetail, error) {
+func (c *countingStore) GetCachedCredDetail(string, *config.CacheAnchor) (config.CachedCredDetail, error) {
 	return config.CachedCredDetail{}, config.ErrNoToken
 }
 func (c *countingStore) MarkCachedCredReady(string, string, string) (bool, error) { return false, nil }
-func (c *countingStore) SetCachedCred(string, string, time.Time, string, string, string) error {
+func (c *countingStore) SetCachedCred(string, string, time.Time, string, string, string, config.CacheBinding) error {
 	return nil
 }
 func (c *countingStore) DeleteCachedCred(string) error                     { return nil }

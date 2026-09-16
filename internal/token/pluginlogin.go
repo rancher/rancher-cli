@@ -81,7 +81,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if notice != "" {
 			warnings = append(warnings, notice)
 		}
-		tok, _, perr := tokenCmd{dir: t.dir, store: fresh}.storedCredToken(ctx, in.client, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
+		tok, _, _, perr := tokenCmd{dir: t.dir, store: fresh, anchor: t.anchor}.storedCredToken(ctx, in.client, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
 		switch {
 		case perr == nil:
 			result = tok
@@ -93,7 +93,10 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			}
 		}
 
-		decision, disclosure := storeDecision(t.dir, cfg)
+		decision, disclosure, derr := storeDecision(t.dir, cfg)
+		if derr != nil {
+			return derr
+		}
 		if disclosure != "" {
 			p.Notice(disclosure)
 		}
@@ -126,7 +129,9 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: cred.UserID,
 			Bearer: cred.Token, ExpiresAt: cred.ExpiresAt,
 			OwnsEntry: true, Decision: &decision, ReadOnlyStoreIsFailure: true,
-			OpenStore: t.storeOpener(),
+			Policy: decision.Policy, ObservedDeclaration: cfg.CredentialStore,
+			Declaration: config.DeclarationFor(cfg.CredentialStore, "", decision.Policy),
+			OpenStore:   t.storeOpener(),
 		})
 		st.Warnings = append(st.Warnings, out.Warnings...)
 		st.Config, st.Commit, st.ConfigRecovery, st.CompensationError = out.ConfigState, out.Commit, out.ConfigRecovery, out.CompensationError
@@ -151,7 +156,11 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			return FailLogin(primary, clierr.StageCommit, st, cred, name)
 		}
 		entry, records = out.Name, out.SupersededTokens
-		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt, fresh: newFreshToken(ct, in.client, base, cred.Token)}
+		// The record this invocation goes on to write belongs to the
+		// entry this login just wrote, under the binding id it just
+		// advanced - both from the write itself, never a re-read.
+		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt, fresh: newFreshToken(ct, in.client, base, cred.Token),
+			binding: config.CacheBinding{Dir: t.cacheDir(), Entry: out.Name, BindingID: out.CacheBindingID}}
 		warnings = append(warnings, st.Warnings...)
 		return nil
 	})
@@ -181,15 +190,18 @@ func freshCredentialError(err error) error {
 // storeDecision records the backend the credential will reach, decided
 // before the interactive login, and the disclosure to give when that
 // backend is the plaintext file. The commit revalidates it.
-func storeDecision(dir string, cfg *config.Config) (config.StoreDecision, string) {
-	policy, pin, backend := config.ResolvedBackend(dir, cfg.CredentialStore)
+func storeDecision(dir string, cfg *config.Config) (config.StoreDecision, string, error) {
+	policy, pin, backend, err := config.ResolvedBackend(dir, cfg.CredentialStore)
+	if err != nil {
+		return config.StoreDecision{}, "", err
+	}
 	d := config.StoreDecision{RequireSetting: true, Policy: policy, Pin: pin}
 	if backend != "file" {
-		return d, ""
+		return d, "", nil
 	}
 	path := config.CredentialsFilePath(dir)
 	d.DisclosedPlaintextPath = path
-	return d, fmt.Sprintf("token reuse is on and the credential store is the plaintext file %s: the login credential this sign-in creates (unscoped, reusable across clusters) will be written there", path)
+	return d, fmt.Sprintf("token reuse is on and the credential store is the plaintext file %s: the login credential this sign-in creates (unscoped, reusable across clusters) will be written there", path), nil
 }
 
 // clusterTokenFate projects the cluster token's create onto its fate and

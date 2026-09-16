@@ -25,19 +25,27 @@ jsonquery stdout kind ExecCredential
 ! jsonquery stdout status.token ''
 ! stderr .
 
-# Poison config.yaml then verify the warm hit still succeeds - this is the
-# end-to-end proof that resolveDeps is bypassed for the `token` entry (the
-# `token` entry is marked bare: true). The unit test
-# TestLegacyTokenCacheHitIgnoresBrokenConfig exercises Execute directly;
-# this step is the dispatch-layer proof at the real binary level.
+# Poison config.yaml and verify the warm hit now FAILS. A cache record
+# names the config entry it belongs to and that entry's cache binding id,
+# both of which live in config.yaml: a file the shim cannot read leaves it
+# unable to tell whether the record is still this directory's, and after a
+# re-login as another user it is the previous user's cluster credential.
+# The shim used to serve the record anyway, on the reasoning that the flags
+# fully specify the connection - they do not specify who the credential
+# belongs to. The unit test
+# TestLegacyTokenBrokenConfigMakesTheWarmHitAMiss exercises the probe
+# directly; this step is the dispatch-layer proof at the real binary level.
 cp $RANCHER_CLI_CONFIG_DIR/config.yaml config.yaml.bak
 cp broken-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
+! exec rancher token --server $TEST_RANCHER_URL --user testcluster
+stderr 'config.yaml'
+# Restore config.yaml: the same record serves again, so the failure above
+# is the unreadable file and nothing else.
+cp config.yaml.bak $RANCHER_CLI_CONFIG_DIR/config.yaml
 exec rancher token --server $TEST_RANCHER_URL --user testcluster
 jsonquery stdout kind ExecCredential
 ! jsonquery stdout status.token ''
 ! stderr .
-# Restore config.yaml for the remaining steps.
-cp config.yaml.bak $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # A different --user is a different cache slot. The stored login credential is
 # shared, so even with --no-input the shim succeeds non-interactively.

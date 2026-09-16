@@ -61,7 +61,7 @@ func TestProvisioningClusterPositionalSiteFullCallback(t *testing.T) {
 		}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
-		setStoredConfig(cfg, dir)
+		setStoredConfigForTest(t, cfg, dir)
 		t.Setenv(config.EnvConfigDir, dir)
 		t.Setenv(config.EnvToken, "mgmt-token")
 		t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")

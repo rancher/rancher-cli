@@ -2,8 +2,8 @@ package configcmd
 
 import (
 	"context"
+	"errors"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,18 +36,17 @@ func TestUpdateServerWriteFailureAfterPurgeNamesClearedCredentials(t *testing.T)
 	addServerForUpdateTests(t, dir, "qa1", "https://old.example.com")
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "qa1", URL: "https://old.example.com"}, "tok"))
 
-	// Turn config.yaml into a symlink to a copy of itself: reads still
-	// resolve normally (Load follows the symlink), but atomicWriteFile
-	// explicitly refuses to write through a symlink - a deterministic,
-	// single-file write failure that never touches credentials.yaml (a
-	// separate file in the same dir), so the purge below succeeds for real.
-	realPath := config.FilePath(dir)
-	data, rerr := os.ReadFile(realPath)
-	require.NoError(t, rerr)
-	backing := filepath.Join(dir, "config.yaml.real")
-	require.NoError(t, os.WriteFile(backing, data, 0o600))
-	require.NoError(t, os.Remove(realPath))
-	require.NoError(t, os.Symlink(backing, realPath))
+	// Fail the entry write that follows the purge, and only that one: the
+	// cache binding id advances in a write of its own before the purge,
+	// and failing that one instead would stop the command before any
+	// credential was touched, which is the other test below.
+	restore := config.SetPersistWriteHookForTest(func(step string) error {
+		if step == "update" {
+			return errors.New("disk full")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
 
 	c := newUpdateServerCmd(dir)
 	_, err := c.Execute(context.Background(), cmdtest.Input{Str: map[string]string{"url": "https://new.example.com"}, Pos: []string{"qa1"}}, nil)
@@ -228,4 +227,64 @@ func TestUpdateServerCompletesServerNames(t *testing.T) {
 	view := cmdtest.View{Dir: dir, Servers: []string{"qa1"}}
 	c := newUpdateServerCmd(dir)
 	assert.Equal(t, []string{"qa1"}, c.CompleteArgs(context.Background(), view))
+}
+
+// TestUpdateServerBindingWriteFailureClearsNothing asserts the order the
+// two writes happen in. The entry's cache binding id advances before the
+// purge, so a get-token that read the old id and the old credential
+// cannot write a record the purge will not see and the entry will still
+// accept. When that write fails, nothing has been deleted yet and the
+// command stops with the credential and the address both untouched.
+func TestUpdateServerBindingWriteFailureClearsNothing(t *testing.T) {
+	dir, store := cmdtest.FilePolicyDir(t)
+	addServerForUpdateTests(t, dir, "qa1", "https://old.example.com")
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "qa1", URL: "https://old.example.com"}, "tok"))
+
+	restore := config.SetPersistWriteHookForTest(func(step string) error {
+		if step == "cachebinding" {
+			return errors.New("disk full")
+		}
+		return nil
+	})
+	t.Cleanup(restore)
+
+	c := newUpdateServerCmd(dir)
+	_, err := c.Execute(context.Background(), cmdtest.Input{Str: map[string]string{"url": "https://new.example.com"}, Pos: []string{"qa1"}}, nil)
+	require.ErrorContains(t, err, "disk full")
+
+	tok, terr := store.GetToken(config.ServerRef{Name: "qa1", URL: "https://old.example.com"})
+	require.NoError(t, terr, "nothing was purged")
+	assert.Equal(t, "tok", tok)
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, "https://old.example.com", cfg.Servers["qa1"].URL, "the address is untouched")
+}
+
+// TestUpdateServerAdvancesTheCacheBindingBeforeThePurge asserts the id the
+// entry keeps after a successful URL change is a new one: the clearing
+// invalidated every exec-credential cache record the old login left, and
+// the entry write that follows must not throw that away by writing a
+// fresh value over it.
+func TestUpdateServerAdvancesTheCacheBindingBeforeThePurge(t *testing.T) {
+	dir, store := cmdtest.FilePolicyDir(t)
+	addServerForUpdateTests(t, dir, "qa1", "https://old.example.com")
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "qa1", URL: "https://old.example.com"}, "tok"))
+
+	before, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	seed := before.Servers["qa1"]
+	require.NoError(t, config.AdvanceCacheBinding(&seed))
+	before.Servers["qa1"] = seed
+	before.SetPath(config.FilePath(dir))
+	require.NoError(t, before.Write())
+
+	c := newUpdateServerCmd(dir)
+	_, uerr := c.Execute(context.Background(), cmdtest.Input{Str: map[string]string{"url": "https://new.example.com"}, Pos: []string{"qa1"}}, nil)
+	require.NoError(t, uerr)
+
+	after, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, "https://new.example.com", after.Servers["qa1"].URL)
+	assert.NotEmpty(t, after.Servers["qa1"].CacheBindingID, "the entry keeps a binding after the write")
+	assert.NotEqual(t, seed.CacheBindingID, after.Servers["qa1"].CacheBindingID, "and it is a new one")
 }

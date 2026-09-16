@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -219,4 +220,41 @@ func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	tok, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)
+}
+
+// TestLazyStoreDefersAStoreConflict asserts that a declaration the
+// variable disagrees with is carried into the deferred resolution rather
+// than failing construction. Every command builds this store through
+// LoadAndStore, so an eager failure would stop help, schema, completion,
+// `config path` and a RANCHER_CLI_TOKEN run on a conflict none of them
+// would ever have acted on. The first credential call is where it lands.
+func TestLazyStoreDefersAStoreConflict(t *testing.T) {
+	t.Setenv(EnvCredentialStore, "file")
+	dir := t.TempDir()
+
+	store, err := NewLazyStore("keychain", dir)
+	require.NoError(t, err, "construction is not where a conflict surfaces")
+	require.NotNil(t, store)
+	assert.Empty(t, store.(NoticeSource).DrainNotices(), "a store nobody resolved produces nothing")
+
+	_, gerr := store.GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
+	require.Error(t, gerr)
+	ce, ok := errors.AsType[*clierr.Error](gerr)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, gerr, EnvCredentialStore)
+
+	_, serr := store.SetTokenWithOutcome(ServerRef{Name: "prod", URL: "https://r.ex"}, "id:secret", PriorCredential{})
+	require.ErrorContains(t, serr, EnvCredentialStore, "every credential call reports it")
+
+	assert.NoFileExists(t, PinPath(dir), "a refused resolution probes nothing and pins nothing")
+}
+
+// TestLazyStoreStillFailsFastOnAnUnknownPolicy asserts the one resolution
+// failure that stays eager: a value no backend answers to is broken for
+// every command, whether or not one opens the store.
+func TestLazyStoreStillFailsFastOnAnUnknownPolicy(t *testing.T) {
+	t.Setenv(EnvCredentialStore, "")
+	_, err := NewLazyStore("nonsense", t.TempDir())
+	require.Error(t, err)
 }

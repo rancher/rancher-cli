@@ -60,7 +60,7 @@ func TestCompletionDebugTrace(t *testing.T) {
 		}
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
-		setStoredConfig(cfg, dir)
+		setStoredConfigForTest(t, cfg, dir)
 		t.Setenv(config.EnvConfigDir, dir)
 		t.Setenv(config.EnvToken, "mgmt-token")
 		t.Setenv(config.EnvCredentialStore, "file")

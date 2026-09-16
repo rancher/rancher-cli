@@ -46,6 +46,13 @@ for that entry. Neither is a reason to try a different server entry.
   purpose-made, individually revocable token behind the scenes (see the
   token taxonomy below). Dropping `<name>` works too - `rancher auth login
   --url <url>` derives the entry name from the URL's host.
+- The directory owns its credential store. The first login records it in
+  `config.yaml`, and from then on `RANCHER_CLI_CREDENTIAL_STORE` may only
+  repeat that value: a different one is a VALIDATION error naming both,
+  not an override. Set the variable before the first login on a directory
+  that needs a particular store (CI and headless machines want `file`),
+  and leave it unset afterwards. `rancher config status` shows the
+  declaration, its source, and the conflict when there is one.
 - Scripted/CI: pipe the token - `rancher auth login <name> --url <url> --token-stdin < token.txt`,
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
   A piped token is VERIFIED against the server before it is stored: a bad

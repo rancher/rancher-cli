@@ -68,9 +68,14 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	// A declaration the variable disagrees with is not raised here: every
+	// path that reads a credential fails on it inside Effective below, and
+	// the one path that does not - a RANCHER_CLI_TOKEN run, which never
+	// opens the store - reaches the report and shows it there.
+	credentialPolicy, storeConflict := config.EffectivePolicy(cfg.CredentialStore)
 	// Only the auto policy consults the pin; explicit policies have no pin.
 	pinned := ""
-	if config.EffectivePolicy(cfg.CredentialStore) == "auto" {
+	if credentialPolicy == "auto" {
 		pinned = config.ReadPin(a.dir)
 	}
 	eff, err := cfg.Effective(a.store)
@@ -141,16 +146,23 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	token := tokenRaw
 	tokenWarn := tokenWarning(tokenErr, supported)
 
-	credentialPolicy := config.EffectivePolicy(cfg.CredentialStore)
-	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned, credentialLine)
+	conflict := ""
+	if storeConflict != nil {
+		conflict = storeConflict.Error()
+	}
+	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned, conflict, credentialLine)
+	store := map[string]any{
+		"policy": credentialPolicy,
+		"pinned": pinned,
+	}
+	if conflict != "" {
+		store["conflict"] = conflict
+	}
 	data := map[string]any{
 		"ok": true, "server": eff.ServerName, "serverVersion": ver,
 		"rancherVersion": rancherVersion, "supported": supported,
 		"identity": identity, "token": token,
-		"credentialStore": map[string]any{
-			"policy": credentialPolicy,
-			"pinned": pinned,
-		},
+		"credentialStore": store,
 	}
 	if credential != nil {
 		data["credential"] = credential
@@ -186,7 +198,7 @@ func renderAuthCheckText(
 	rancherVersion *string,
 	supported *bool,
 	identity, token any,
-	credentialPolicy, pinned string,
+	credentialPolicy, pinned, storeConflict string,
 	credentialLine string,
 ) string {
 	ptrStr := func(p *string) string {
@@ -251,6 +263,13 @@ func renderAuthCheckText(
 	fmt.Fprintf(&b, "\nCREDENTIAL STORE\n")
 	fmt.Fprintf(&b, "  policy: %s\n", credentialPolicy)
 	fmt.Fprintf(&b, "  pinned: %s\n", emptyStr(pinned))
+	// A conflict is the one store state an environment token lets a command
+	// run through instead of failing on, so the text view names it beside
+	// the policy the directory declared; the structured result carries the
+	// same string.
+	if storeConflict != "" {
+		fmt.Fprintf(&b, "  conflict: %s\n", storeConflict)
+	}
 
 	return b.String()
 }

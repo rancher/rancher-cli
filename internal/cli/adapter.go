@@ -159,10 +159,18 @@ func fileIsTTY(w io.Writer) bool {
 // stale.
 func resolveReadOnly(c *ucli.Command) (bool, []string) {
 	setStoredConfig(nil, "") // clear any prior stored config for this invocation
+	config.SetProcessCacheAnchor(nil)
 	var sources []string
 	if dir, err := config.ResolveDir(c.String("config")); err == nil {
+		// The binding stamp is read BEFORE the config load, and the pair
+		// is what every cache reader without an anchor of its own - the
+		// legacy shim, live completion - judges a record against. One
+		// read per invocation: a reader takes a second only when it is
+		// about to hand a cached credential back.
+		anchor := config.NewCacheAnchor(dir)
 		if cfg, err := config.Load(config.FilePath(dir)); err == nil {
 			setStoredConfig(cfg, dir) // single load shared with completion (AC-19)
+			config.SetProcessCacheAnchor(anchor.WithConfig(cfg))
 			completionDebugf("config loaded: dir=%s currentServer=%q servers=%d", dir, cfg.CurrentServer, len(cfg.Servers))
 			if cfg.ReadOnly {
 				sources = append(sources, "config readOnly")
@@ -294,16 +302,26 @@ func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 // config-dir creation defer to the first credential call - an invocation
 // that never touches credentials leaves no store-init side effects
 // (spec LS-1; Windows acceptance FAIL 2).
-func resolveDeps(c *ucli.Command) (string, config.CredStore, error) {
+func resolveDeps(c *ucli.Command) (string, config.CredStore, *config.CacheAnchor, error) {
 	dir, err := config.ResolveDir(c.String("config"))
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	_, store, err := config.LoadAndStore(dir)
+	// The stamp the root hook already read anchors this load too: it
+	// precedes every config load in the process, which is what the check
+	// needs, and reading a second one here would cost the plugin's cache
+	// hit an extra file read for nothing. A caller that reached here
+	// without the root hook - a test, a direct construction - reads its
+	// own, before the load.
+	anchor := config.ProcessCacheAnchor()
+	if !anchor.SameDirectory(dir) {
+		anchor = config.NewCacheAnchor(dir)
+	}
+	cfg, store, err := config.LoadAndStore(dir)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	return dir, store, nil
+	return dir, store, anchor.WithConfig(cfg), nil
 }
 
 // exit converts a structured error into a urfave exit with the right code.

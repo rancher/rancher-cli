@@ -102,45 +102,45 @@ func TestDeleteTokenCommand(t *testing.T) {
 	})
 
 	t.Run("--all flushes the cache", func(t *testing.T) {
-		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
+		require.NoError(t, seedCache(t, dir, store, "acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 		res, err := cmd.Execute(t.Context(), tin{b: map[string]bool{"all": true}}, ui.Discard())
 		require.NoError(t, err)
 		assert.Equal(t, "all cached credentials deleted\n", res.Text)
-		_, _, gerr := store.GetCachedCred("acme/u/c")
+		_, _, gerr := store.GetCachedCred("acme/u/c", anchorFor(dir))
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
 
 	t.Run("named delete removes the entry", func(t *testing.T) {
-		require.NoError(t, store.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
+		require.NoError(t, seedCache(t, dir, store, "acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 		res, err := cmd.Execute(t.Context(), tin{a: []string{"acme/u/c"}}, ui.Discard())
 		require.NoError(t, err)
 		assert.Equal(t, "cached credential acme/u/c deleted\n", res.Text)
-		_, _, gerr := store.GetCachedCred("acme/u/c")
+		_, _, gerr := store.GetCachedCred("acme/u/c", anchorFor(dir))
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
 
 	t.Run("--all with a name is a validation error, not a silent flush", func(t *testing.T) {
-		require.NoError(t, store.SetCachedCred("keep/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
+		require.NoError(t, seedCache(t, dir, store, "keep/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 		_, err := cmd.Execute(t.Context(), tin{b: map[string]bool{"all": true}, a: []string{"keep/u/c"}}, ui.Discard())
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		// the cache must be untouched - nothing deleted
-		_, _, gerr := store.GetCachedCred("keep/u/c")
+		_, _, gerr := store.GetCachedCred("keep/u/c", anchorFor(dir))
 		require.NoError(t, gerr)
 	})
 
 	t.Run("bare name deletes every entry sharing that name", func(t *testing.T) {
 		scoped := config.CacheKey("prod", "r.ex", "c-1")
-		require.NoError(t, store.SetCachedCred("prod", "legacy", time.Now().Add(time.Hour), "", "", ""))
-		require.NoError(t, store.SetCachedCred(scoped, "scoped", time.Now().Add(time.Hour), "prod", "r.ex", "c-1"))
+		require.NoError(t, seedCache(t, dir, store, "prod", "legacy", time.Now().Add(time.Hour), "", "", ""))
+		require.NoError(t, seedCache(t, dir, store, scoped, "scoped", time.Now().Add(time.Hour), "prod", "r.ex", "c-1"))
 		res, err := cmd.Execute(t.Context(), tin{a: []string{"prod"}}, ui.Discard())
 		require.NoError(t, err)
 		deleted := res.Data.(map[string]any)["deleted"].([]string)
 		assert.ElementsMatch(t, []string{"prod", scoped}, deleted)
-		_, _, gerr := store.GetCachedCred("prod")
+		_, _, gerr := store.GetCachedCred("prod", anchorFor(dir))
 		require.ErrorIs(t, gerr, config.ErrNoToken)
-		_, _, gerr = store.GetCachedCred(scoped)
+		_, _, gerr = store.GetCachedCred(scoped, anchorFor(dir))
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
 
@@ -177,7 +177,7 @@ func TestExecCredentialOmitsEmptyStatusToken(t *testing.T) {
 
 func TestGetTokenServerRequired(t *testing.T) {
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(), tin{}, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -191,8 +191,8 @@ func TestGetTokenNoClusterRejectsBeforeCacheProbe(t *testing.T) {
 	// be returned for a cluster the caller didn't name.
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r.ex", ""), "cached-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", ""))
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	require.NoError(t, seedCache(t, dir, store, config.CacheKey("prod", "https://r.ex", ""), "cached-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", ""))
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "name": "prod"}},
@@ -203,31 +203,49 @@ func TestGetTokenNoClusterRejectsBeforeCacheProbe(t *testing.T) {
 	assert.Equal(t, "--cluster is required", ce.Message)
 }
 
-func TestGetTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
+// TestGetTokenBrokenConfigMakesEveryCacheHitAMiss asserts the rule that
+// replaced the fast path's old promise. A warm record used to be served
+// through an unreadable config.yaml, on the reasoning that flags fully
+// specified the connection. They do not specify who the credential
+// belongs to: that is the entry and its cache binding id, both of which
+// live in the file. After a re-login as another user behind a broken
+// config, the record served under the old promise is the previous user's
+// cluster credential. So the hit fails closed, and the operator sees the
+// config error rather than somebody else's token.
+func TestGetTokenBrokenConfigMakesEveryCacheHitAMiss(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	key := config.CacheKey("prod", "https://r.ex", "c-1")
-	require.NoError(t, store.SetCachedCred(key, "cached-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
-	// A broken config.yaml must not block a warm cache hit when the connection
-	// is fully specified by flags (finding 3).
-	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+	require.NoError(t, seedCache(t, dir, store, key, "cached-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(t.Context(),
-		tin{s: map[string]string{"server": "https://r.ex", "cluster": "c-1", "name": "prod"}},
-		ui.Discard())
-	require.NoError(t, err)
-	cred := res.Data.(*execCredential)
-	assert.Equal(t, "cached-tok", cred.Status.Token)
+	// The anchor is built the way the root hook builds it: a config it
+	// cannot parse leaves it with nothing to judge a record against.
+	anchor := config.NewCacheAnchor(dir)
+	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+	_, lerr := config.Load(config.FilePath(dir))
+	require.Error(t, lerr, "the config is unreadable, so the root hook stores no snapshot")
+
+	cmd := tokenCmd{dir: dir, store: store, anchor: anchor}
+	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	assert.False(t, hit, "a record whose binding cannot be checked is never served")
+
+	// And the record is left alone: a reader that cannot judge one must
+	// not delete a cache that may be perfectly good. With the file
+	// readable again the same record serves, so the miss above was the
+	// config error and nothing else.
+	require.NoError(t, os.Remove(config.FilePath(dir)))
+	tok, _, gerr := store.GetCachedCred(key, anchorFor(dir))
+	require.NoError(t, gerr)
+	assert.Equal(t, "cached-tok", tok, "the record survives a reader that could not judge it")
 }
 
 func TestGetTokenCacheKeyScopedByServer(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	// Same --name cached against two servers must not collide.
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r1.example.com", "c-1"), "tok-r1", time.Now().Add(time.Hour), "prod", "https://r1.example.com", "c-1"))
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r2.example.com", "c-1"), "tok-r2", time.Now().Add(time.Hour), "prod", "https://r2.example.com", "c-1"))
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	require.NoError(t, seedCache(t, dir, store, config.CacheKey("prod", "https://r1.example.com", "c-1"), "tok-r1", time.Now().Add(time.Hour), "prod", "https://r1.example.com", "c-1"))
+	require.NoError(t, seedCache(t, dir, store, config.CacheKey("prod", "https://r2.example.com", "c-1"), "tok-r2", time.Now().Add(time.Hour), "prod", "https://r2.example.com", "c-1"))
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r2.example.com", "cluster": "c-1", "name": "prod"}},
@@ -249,18 +267,14 @@ func TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey(t *testing.T) {
 	store := config.NewFileStore(dir)
 	// Seed a legacy host-only key (CanonicalServerIdentity("host") → "host").
 	legacyKey := config.CacheKey("prod", config.CanonicalServerIdentity("host"), "c-1")
-	require.NoError(t, store.SetCachedCred(legacyKey, "legacy-tok", time.Now().Add(time.Hour), "prod", "host", "c-1"))
-	// Break config so the full path cannot proceed - if the fast path
-	// erroneously returns "legacy-tok" we never reach this error.
-	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
-
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(t.Context(),
-		tin{s: map[string]string{"server": "host", "cluster": "c-1", "name": "prod"}},
-		ui.Discard())
-	// The fast path must miss, causing the full path to fail on the broken
-	// config - proving "legacy-tok" was not returned.
-	require.Error(t, err, "schemeless --server must not serve a legacy host-only cache record")
+	require.NoError(t, seedCache(t, dir, store, legacyKey, "legacy-tok", time.Now().Add(time.Hour), "prod", "host", "c-1"))
+	// Ask the fast path directly: a broken config.yaml used to stand in
+	// for "the rest of the command cannot run", and no longer can - it
+	// makes every cache hit a miss, which would pass this assertion for
+	// the wrong reason.
+	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
+	_, _, _, hit := cmd.probeFlagCache("prod", "host", "c-1", ui.Discard())
+	assert.False(t, hit, "schemeless --server must not serve a legacy host-only cache record")
 }
 
 // TestGetTokenSchemelessFlagHitsCurrentHTTPSKey is the positive companion: a
@@ -272,12 +286,12 @@ func TestGetTokenSchemelessFlagHitsCurrentHTTPSKey(t *testing.T) {
 	store := config.NewFileStore(dir)
 	// Seed a current-format key for https://host.
 	httpsKey := config.CacheKey("prod", config.CanonicalServerIdentity("https://host"), "c-1")
-	require.NoError(t, store.SetCachedCred(httpsKey, "https-tok", time.Now().Add(time.Hour), "prod", "https://host", "c-1"))
-	// Break config to prove it is the fast path (not the full resolved path)
-	// that serves the hit.
-	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+	require.NoError(t, seedCache(t, dir, store, httpsKey, "https-tok", time.Now().Add(time.Hour), "prod", "https://host", "c-1"))
+	// A hit short-circuits before any connection, which is what makes
+	// this assertion about normalisation alone: the full path would have
+	// to reach the network to produce a token at all.
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
@@ -318,7 +332,7 @@ func TestGetTokenCreatesFromStoredLoginCredential(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
@@ -354,7 +368,7 @@ func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
@@ -362,7 +376,7 @@ func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "stored-login-token", cred.Status.Token)
 
-	_, expiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))
+	_, expiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"), anchorFor(dir))
 	require.NoError(t, cerr, "the legacy fallback must be cached, not treated as zero-expiry")
 	assert.WithinDuration(t, time.Now().Add(legacyTokenTTL), expiry, time.Minute)
 }
@@ -394,7 +408,7 @@ func TestGetTokenFallsBackToInteractiveWhenCreateRejected(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
@@ -444,7 +458,7 @@ func TestGetTokenCreateTimeoutSurfacesAsGenericTransportError(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	start := time.Now()
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
@@ -479,7 +493,7 @@ func TestGetTokenFallsBackToInteractiveWithNoStoredCredential(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		ui.Discard())
@@ -510,13 +524,13 @@ func TestGetTokenCachesCreatedExpiry(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
 	require.NoError(t, err)
 
-	_, gotExpiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))
+	_, gotExpiry, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"), anchorFor(dir))
 	require.NoError(t, cerr, "a token with a real expiry must be cached")
 	assert.WithinDuration(t, time.Now().Add(time.Hour), gotExpiry, time.Minute)
 }
@@ -544,7 +558,7 @@ func TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	var notices bytes.Buffer
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.New(&notices, strings.NewReader(""), true, false))
@@ -552,7 +566,7 @@ func TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry(t *testing.T) {
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ext/created:secret", cred.Status.Token, "the token is still usable for this call")
 
-	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"))
+	_, _, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), "local"), anchorFor(dir))
 	require.ErrorIs(t, cerr, config.ErrNoToken, "a zero-expiry token must not be cached")
 	assert.Contains(t, notices.String(), "not caching")
 }
@@ -591,7 +605,7 @@ func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
 	assert.Equal(t, "ext/created:secret", cred.Status.Token)
 	assert.Nil(t, cred.Status.ExpirationTimestamp, "zero expiry must not set ExpirationTimestamp")
 
-	tok, exp, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""))
+	tok, exp, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""), anchorFor(dir))
 	require.NoError(t, cerr, "zero-expiry credential must be cached on the legacy shim path")
 	assert.Equal(t, "ext/created:secret", tok)
 	assert.True(t, exp.IsZero(), "cached expiry must be zero")
@@ -625,7 +639,7 @@ func TestGetTokenCreateScopesToCluster(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "c-a"}},
 		ui.Discard())
@@ -671,7 +685,7 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "prod"}},
 		ui.Discard())
@@ -707,7 +721,7 @@ func TestGetTokenClusterMissErrorsWithoutCreating(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "missing"}},
 		ui.Discard())
@@ -755,7 +769,7 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "c-1"}},
 		ui.Discard())
@@ -776,7 +790,7 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 func TestGetTokenRejectsLegacyPrefixName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "name": "legacy:foo"}},
 		ui.Discard())
@@ -798,9 +812,9 @@ func TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup(t *testing.T) {
 	store := config.NewFileStore(dir)
 	serverID := config.CanonicalServerIdentity("https://r.ex")
 	key := config.CacheKey("legacy:foo", serverID, "")
-	require.NoError(t, store.SetCachedCred(key, "warm-tok", time.Now().Add(time.Hour), "legacy:foo", serverID, ""))
+	require.NoError(t, seedCache(t, dir, store, key, "warm-tok", time.Now().Add(time.Hour), "legacy:foo", serverID, ""))
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "name": "legacy:foo"}},
 		ui.Discard())
@@ -810,7 +824,7 @@ func TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup(t *testing.T) {
 	require.ErrorContains(t, ce, "legacy:")
 
 	// The cache entry must be untouched - it was never served.
-	tok, _, cerr := store.GetCachedCred(key)
+	tok, _, cerr := store.GetCachedCred(key, anchorFor(dir))
 	require.NoError(t, cerr, "cache entry must still be present")
 	assert.Equal(t, "warm-tok", tok, "cache entry must be untouched")
 }
@@ -823,7 +837,7 @@ type errCacheStore struct {
 	cacheErr error
 }
 
-func (s *errCacheStore) GetCachedCred(key string) (string, time.Time, error) {
+func (s *errCacheStore) GetCachedCred(key string, _ *config.CacheAnchor) (string, time.Time, error) {
 	return "", time.Time{}, s.cacheErr
 }
 
@@ -923,7 +937,7 @@ func TestGetTokenSurfacesRealCreateFailureNotInteractive(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		ui.Discard())
@@ -942,7 +956,7 @@ func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
 	var notices bytes.Buffer
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	// --cluster and a valid (httpx.New parses it into a cert pool) --cacert
 	// are set explicitly so resolveConn's OWN config.yaml read is skipped
 	// (all three of server/cluster/caIn are non-empty) - the point of this
@@ -1322,7 +1336,7 @@ func TestGetTokenSAMLNonInteractiveIsAuthError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		ui.Discard())
@@ -1405,7 +1419,7 @@ func TestGetTokenNoNameWritesCachingDisabledNotice(t *testing.T) {
 	dir := t.TempDir()
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": srv.URL, "cluster": "c-1"}}, p)
 	require.Error(t, err, "non-interactive local auth should fail")
 	assert.Contains(t, errBuf.String(), "caching disabled", "notice must appear in Err")
@@ -1430,7 +1444,7 @@ func TestBasicAuth401IsAuthError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
 	_, err := cmd.Execute(t.Context(),
@@ -1465,7 +1479,7 @@ func TestBasicAuthExtTokenResponse(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
 	res, err := cmd.Execute(t.Context(),
@@ -1483,8 +1497,8 @@ func TestGetTokenCacheHitExtToken(t *testing.T) {
 	// cache byte-for-byte - the ext/ prefix is opaque data (EXT-3).
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "https://r.ex", "c-1"), "ext/token-abc:secretxyz", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	require.NoError(t, seedCache(t, dir, store, config.CacheKey("prod", "https://r.ex", "c-1"), "ext/token-abc:secretxyz", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "cluster": "c-1", "name": "prod"}},
@@ -1507,7 +1521,7 @@ func TestOAuthDeviceCodeFlowNoInputIsAuthError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1", "auth-flow": "devicecode"}},
 		ui.Discard())
@@ -1531,7 +1545,7 @@ func TestOAuthDeviceCodeFlowNonTTYAllowed(t *testing.T) {
 	dir := t.TempDir()
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "auth-flow": "devicecode"}},
 		p)
@@ -1552,7 +1566,7 @@ func TestOAuthAuthCodeFlowNoInputIsAuthError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1", "auth-flow": "authcode"}},
 		ui.Discard())
@@ -1580,7 +1594,7 @@ func TestOAuthAuthCodeFlowNonTTYAllowed(t *testing.T) {
 	dir := t.TempDir()
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, strings.NewReader(""), false, false)
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1", "auth-flow": "authcode"}},
 		p)
@@ -1865,7 +1879,7 @@ func TestGetAuthProviders404IsError(t *testing.T) {
 	defer srv.Close()
 
 	dir := t.TempDir()
-	cmd := NewTokenCommand(dir, config.NewFileStore(dir)).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, config.NewFileStore(dir)).(runtime.ReadCommand)
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader(), false, true)
 	_, err := cmd.Execute(t.Context(),
@@ -1911,11 +1925,9 @@ func TestGetTokenHostPortWarmCacheHit(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	key := config.CacheKey("prod", config.CanonicalServerIdentity("https://host:8443"), "c-1")
-	require.NoError(t, store.SetCachedCred(key, "tok-8443", time.Now().Add(time.Hour), "prod", "https://host:8443", "c-1"))
-	// Break config - if fast path misses the full path fails, proving no hit.
-	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+	require.NoError(t, seedCache(t, dir, store, key, "tok-8443", time.Now().Add(time.Hour), "prod", "https://host:8443", "c-1"))
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "host:8443", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
@@ -1932,10 +1944,9 @@ func TestGetTokenIPv6WarmCacheHit(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	key := config.CacheKey("prod", config.CanonicalServerIdentity("https://[::1]:8443"), "c-1")
-	require.NoError(t, store.SetCachedCred(key, "tok-ipv6", time.Now().Add(time.Hour), "prod", "https://[::1]:8443", "c-1"))
-	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+	require.NoError(t, seedCache(t, dir, store, key, "tok-ipv6", time.Now().Add(time.Hour), "prod", "https://[::1]:8443", "c-1"))
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "[::1]:8443", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
@@ -1957,15 +1968,10 @@ func TestGetTokenMalformedServerNoFastPathCacheHit(t *testing.T) {
 	malformed := "https://[::1"
 	fallbackID := config.CanonicalServerIdentity(malformed)
 	key := config.CacheKey("prod", fallbackID, "c-1")
-	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
-	// Break config - if fast path incorrectly hits, no error is returned.
-	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
-
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(t.Context(),
-		tin{s: map[string]string{"server": malformed, "cluster": "c-1", "name": "prod"}},
-		ui.Discard())
-	require.Error(t, err, "malformed --server must not produce a fast-path cache hit")
+	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
+	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
+	_, _, _, hit := cmd.probeFlagCache("prod", malformed, "c-1", ui.Discard())
+	assert.False(t, hit, "malformed --server must not produce a fast-path cache hit")
 }
 
 // TestGetTokenUnsupportedSchemeNoFastPathCacheHit verifies that a --server
@@ -1977,14 +1983,11 @@ func TestGetTokenUnsupportedSchemeNoFastPathCacheHit(t *testing.T) {
 	store := config.NewFileStore(dir)
 	ftpID := config.CanonicalServerIdentity("ftp://host")
 	key := config.CacheKey("prod", ftpID, "c-1")
-	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", ftpID, "c-1"))
-	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
+	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", ftpID, "c-1"))
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(t.Context(),
-		tin{s: map[string]string{"server": "ftp://host", "cluster": "c-1", "name": "prod"}},
-		ui.Discard())
-	require.Error(t, err, "unsupported scheme --server must not produce a fast-path cache hit")
+	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
+	_, _, _, hit := cmd.probeFlagCache("prod", "ftp://host", "c-1", ui.Discard())
+	assert.False(t, hit, "unsupported scheme --server must not produce a fast-path cache hit")
 }
 
 // TestGetTokenHostPortColdPathNormalizesToHTTPS verifies the cold path (empty
@@ -2025,7 +2028,7 @@ func TestGetTokenHostPortColdPathNormalizesToHTTPS(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	// Empty cache → cold path. --cacert pins the test server's certificate so
 	// the connection attempt can actually reach the test TLS server.
 	_, err := cmd.Execute(t.Context(),
@@ -2085,7 +2088,7 @@ func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{
 			s: map[string]string{"server": addr, "name": "prod", "cluster": "c-1", "cacert": serverCAPEM(srv)},
@@ -2108,10 +2111,10 @@ func TestGetTokenFTPServerReadableConfigRejectsResolvedProbe(t *testing.T) {
 	store := config.NewFileStore(dir)
 	ftpID := config.CanonicalServerIdentity("ftp://host")
 	key := config.CacheKey("prod", ftpID, "c-1")
-	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", ftpID, "c-1"))
+	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", ftpID, "c-1"))
 	// Readable (empty) config: resolveConn succeeds, proving the resolved probe is reached.
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "ftp://host", "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
@@ -2131,10 +2134,10 @@ func TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe(t *testing.T)
 	malformed := "https://[::1"
 	fallbackID := config.CanonicalServerIdentity(malformed)
 	key := config.CacheKey("prod", fallbackID, "c-1")
-	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
+	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
 	// Readable (empty) config: resolveConn succeeds, proving the resolved probe is reached.
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": malformed, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
@@ -2153,10 +2156,10 @@ func TestGetTokenEmptyHostnameServerIsRejected(t *testing.T) {
 	emptyHost := "https://:443"
 	id := config.CanonicalServerIdentity(emptyHost)
 	key := config.CacheKey("prod", id, "c-1")
-	require.NoError(t, store.SetCachedCred(key, "should-not-be-served", time.Now().Add(time.Hour), "prod", id, "c-1"))
+	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", id, "c-1"))
 	// Readable (empty) config.
 
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": emptyHost, "cluster": "c-1", "name": "prod"}},
 		ui.Discard())
@@ -2396,7 +2399,7 @@ func (s *errDeleteCacheStore) DeleteCachedCred(string) error { return s.delErr }
 func TestDeleteTokenNamedPreservesLockTimeout(t *testing.T) {
 	dir := t.TempDir()
 	base := config.NewFileStore(dir)
-	require.NoError(t, base.SetCachedCred("acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
+	require.NoError(t, seedCache(t, dir, base, "acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 	store := &errDeleteCacheStore{CredStore: base, delErr: clierr.Retryable(clierr.CodeLockTimeout,
 		"locking token-cache.yaml (another rancher process may be writing): context deadline exceeded")}
 	cmd := NewDeleteTokenCommand(dir, store).(runtime.ReadCommand)
@@ -2590,7 +2593,7 @@ func TestStoredCredTokenClassifiesRejections(t *testing.T) {
 			base := f.LoginCount()
 			var notices bytes.Buffer
 			p := ui.New(&notices, newLineReader(), true, false)
-			_, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, tc.cluster, "e", false, p)
+			_, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, tc.cluster, "e", false, p)
 			switch tc.want {
 			case "rejected":
 				require.ErrorIs(t, err, errStoredCredentialRejected)
@@ -2641,7 +2644,7 @@ func TestStoredCredTokenPluginLaneFailsClosed(t *testing.T) {
 			dir := t.TempDir()
 			store := config.NewFileStore(dir)
 			seedEntry(t, dir, store, "e", config.Server{URL: srv.URL, Provenance: tc.provenance}, cred.Token, true)
-			tok, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+			tok, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 				assert.Empty(t, tok.Token)
@@ -2672,14 +2675,14 @@ func TestStoredCredTokenMetadataNeverDrivesServing(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	seedEntry(t, dir, store, "e", config.Server{URL: srv.URL, Provenance: clierr.ProvenanceDerived, TokenRef: cred.Ref, CredentialExpiresAt: "2000-01-01T00:00:00Z"}, cred.Token, true)
-	tok, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+	tok, _, _, err := tokenCmd{dir: dir, store: store}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
 	require.NoError(t, err, "expired-looking metadata never blocks a valid credential")
 	assert.NotEmpty(t, tok.Token)
 
 	dir2 := t.TempDir()
 	store2 := config.NewFileStore(dir2)
 	seedEntry(t, dir2, store2, "e", config.Server{URL: srv.URL, Provenance: clierr.ProvenanceDerived, TokenRef: cred.Ref, CredentialExpiresAt: "2999-01-01T00:00:00Z"}, "ext/stale:s", true)
-	_, _, err = tokenCmd{dir: dir2, store: store2}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
+	_, _, _, err = tokenCmd{dir: dir2, store: store2}.storedCredToken(t.Context(), srv.Client(), srv.URL, "c-test", "e", false, ui.Discard())
 	require.ErrorIs(t, err, errStoredCredentialRejected, "live-looking metadata never rescues a rejected credential")
 }
 
@@ -2692,7 +2695,7 @@ func TestGetTokenUser401FallsBackToScopedInteractiveNeverPluginLogin(t *testing.
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	seedEntry(t, dir, store, "prod", config.Server{URL: srv.URL}, "ext/stale:s", true)
-	cmd := NewTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": srv.URL, "cluster": "c-test", "name": "prod", "auth-provider": "localProvider"}},
 		ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 	require.NoError(t, err)
@@ -2731,7 +2734,7 @@ func TestGetTokenCreateForbiddenIsRBACNotInteractive(t *testing.T) {
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	_, err := NewTokenCommand(dir, store).(runtime.ReadCommand).Execute(t.Context(),
+	_, err := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand).Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}}, ui.Discard())
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)

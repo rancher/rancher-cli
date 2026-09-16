@@ -185,7 +185,7 @@ func TestNoClusterNoRequests(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 	// No --cluster in tail.
 
@@ -218,7 +218,7 @@ func TestNetworkGateZeroHits(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: false}, // gate is OFF
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
 	// Non-enum flag-value site: no enum → layer 1 skipped; no ShellCompleter →
@@ -253,7 +253,7 @@ func TestPathInjectionClusterSlashReturnsNil(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
 	tail := []string{"--cluster", "c-abc/../../v1/secrets"}
@@ -282,7 +282,7 @@ func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
 	// --namespace with a slash (path traversal attempt).
@@ -314,7 +314,7 @@ func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
 			Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 			Completion:    config.CompletionConfig{Network: true},
 		}
-		setStoredConfig(cfg, t.TempDir())
+		setStoredConfigForTest(t, cfg, t.TempDir())
 		t.Setenv(config.EnvToken, "mgmt-token")
 
 		tail := []string{"--cluster", "c-abc", "--namespace", ns}
@@ -350,7 +350,7 @@ func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
 	tail := []string{"--cluster", ".."}
@@ -382,7 +382,7 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: true},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
 	// "service" is Downstream but Completable:false: no source claims the

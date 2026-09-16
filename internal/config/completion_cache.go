@@ -44,9 +44,10 @@ func loadCacheMap(path string) (map[string]cachedCred, error) {
 // result for every unexpired entry, applying the shared per-entry rules
 // (expiry skip, legacy name-from-key fallback) in the single, preallocated
 // iteration both readers share. The bearer token is passed alongside the
-// metadata; a conv that does not want tokens simply ignores the argument,
-// so tokens never propagate past the unmarshal on that path.
-func collectCacheEntries[T any](path string, conv func(info CachedCredInfo, token string) T) ([]T, error) {
+// metadata inside the raw record; a conv that does not want the token
+// simply ignores it, so tokens never propagate past the unmarshal on that
+// path.
+func collectCacheEntries[T any](path string, conv func(info CachedCredInfo, rec cachedCred) T) ([]T, error) {
 	m, err := loadCacheMap(path)
 	if err != nil {
 		return nil, err
@@ -67,7 +68,7 @@ func collectCacheEntries[T any](path string, conv func(info CachedCredInfo, toke
 			Server:  cred.Server,
 			Cluster: cred.Cluster,
 			Expiry:  cred.Expiry,
-		}, cred.Token))
+		}, cred))
 	}
 	return out, nil
 }
@@ -75,7 +76,7 @@ func collectCacheEntries[T any](path string, conv func(info CachedCredInfo, toke
 // readCacheROFromFile reads token-cache.yaml at path and returns unexpired
 // entries. Bearer tokens never propagate past the unmarshal on this path.
 func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
-	return collectCacheEntries(path, func(info CachedCredInfo, _ string) CachedCredInfo {
+	return collectCacheEntries(path, func(info CachedCredInfo, _ cachedCred) CachedCredInfo {
 		return info
 	})
 }
@@ -98,7 +99,12 @@ func readCacheROFromFile(path string) ([]CachedCredInfo, error) {
 // shim's caller appends a non-empty notice to Result.Warnings; it is fired
 // regardless of hit or miss, since the permission check runs before the key
 // lookup.
-func ReadOnlyCachedCred(dir, key string) (token string, expiry time.Time, notice string, err error) {
+// anchor is what the record is judged against; a nil one, or one whose
+// config could not be read, makes every record a miss. This path never
+// deletes: it is read-only by contract, and the resolved path that
+// follows a miss is where a record the reader can prove is not its own is
+// cleaned up.
+func ReadOnlyCachedCred(dir, key string, anchor *CacheAnchor) (token string, expiry time.Time, notice string, err error) {
 	path := filepath.Join(dir, "token-cache.yaml")
 	// Open once and use handle.Stat() for the permission warning so this
 	// fast path - a fresh OS process on every kubectl exec-credential
@@ -135,6 +141,9 @@ func ReadOnlyCachedCred(dir, key string) (token string, expiry time.Time, notice
 	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
 		return "", time.Time{}, notice, ErrNoToken
 	}
+	if !anchor.valid(cred) {
+		return "", time.Time{}, notice, ErrNoToken
+	}
 	return cred.Token, cred.Expiry, notice, nil
 }
 
@@ -160,19 +169,25 @@ func ReadFileTokenSilent(dir, serverName string) string {
 type CachedCredEntry struct {
 	CachedCredInfo
 	Token string
+	// record is the raw record this entry came from, kept so the binding
+	// can be judged without a second parse.
+	record cachedCred
 }
 
 // ReadOnlyCachedCredsForClusterWithTokens returns unexpired entries matching
 // serverHost and cluster, each including its bearer token. This allows a single
 // token-cache.yaml read to supply both entry metadata and the token (finding 8).
-func ReadOnlyCachedCredsForClusterWithTokens(dir, serverHost, cluster string) ([]CachedCredEntry, error) {
+// Every entry is judged against the anchor, so a completion request never
+// authenticates with a record made in another directory or for a login
+// that has been replaced since. A nil anchor yields nothing.
+func ReadOnlyCachedCredsForClusterWithTokens(dir, serverHost, cluster string, anchor *CacheAnchor) ([]CachedCredEntry, error) {
 	all, err := readCacheROWithTokensFromFile(filepath.Join(dir, "token-cache.yaml"))
 	if err != nil {
 		return nil, err
 	}
 	var out []CachedCredEntry
 	for _, e := range all {
-		if e.Server == serverHost && e.Cluster == cluster {
+		if e.Server == serverHost && e.Cluster == cluster && anchor.valid(e.record) {
 			out = append(out, e)
 		}
 	}
@@ -182,7 +197,7 @@ func ReadOnlyCachedCredsForClusterWithTokens(dir, serverHost, cluster string) ([
 // readCacheROWithTokensFromFile reads token-cache.yaml and returns unexpired
 // entries including their bearer tokens. Never writes to disk.
 func readCacheROWithTokensFromFile(path string) ([]CachedCredEntry, error) {
-	return collectCacheEntries(path, func(info CachedCredInfo, token string) CachedCredEntry {
-		return CachedCredEntry{CachedCredInfo: info, Token: token}
+	return collectCacheEntries(path, func(info CachedCredInfo, rec cachedCred) CachedCredEntry {
+		return CachedCredEntry{CachedCredInfo: info, Token: rec.Token, record: rec}
 	})
 }

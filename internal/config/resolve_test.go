@@ -46,14 +46,14 @@ func (s stubStore) SetTokenWithOutcome(ServerRef, string, PriorCredential) (Comm
 	return CommitOutcome{Backend: clierr.BackendFile, State: CommitCommitted, PriorSource: clierr.PriorNone}, nil
 }
 func (s stubStore) DeleteToken(ServerRef) error { return nil }
-func (s stubStore) GetCachedCred(string) (string, time.Time, error) {
+func (s stubStore) GetCachedCred(string, *CacheAnchor) (string, time.Time, error) {
 	return "", time.Time{}, nil
 }
-func (s stubStore) GetCachedCredDetail(string) (CachedCredDetail, error) {
+func (s stubStore) GetCachedCredDetail(string, *CacheAnchor) (CachedCredDetail, error) {
 	return CachedCredDetail{}, ErrNoToken
 }
 func (s stubStore) MarkCachedCredReady(string, string, string) (bool, error) { return false, nil }
-func (s stubStore) SetCachedCred(string, string, time.Time, string, string, string) error {
+func (s stubStore) SetCachedCred(string, string, time.Time, string, string, string, CacheBinding) error {
 	return nil
 }
 func (s stubStore) DeleteCachedCred(string) error              { return nil }

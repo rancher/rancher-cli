@@ -40,3 +40,15 @@ func WriteCAFile(t *testing.T, contents string) string {
 	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
 	return path
 }
+
+// CacheAnchor is the anchor the root hook builds in production: the
+// binding stamp read first, the config loaded after it. The order is the
+// point - a stamp read after the load could not tell a reader that its
+// snapshot was overtaken.
+func CacheAnchor(t *testing.T, dir string) *config.CacheAnchor {
+	t.Helper()
+	anchor := config.NewCacheAnchor(dir)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	return anchor.WithConfig(cfg)
+}

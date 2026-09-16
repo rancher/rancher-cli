@@ -62,7 +62,7 @@ func buildEntries() []entry {
 		{group: "auth", make: func(d runDeps) runtime.Command { return auth.NewLogin(d.dir) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return auth.NewLogout(d.dir) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return auth.NewCheck(d.dir, d.store) }},
-		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewTokenCommand(d.dir, d.store) }},
+		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewTokenCommand(d.dir, d.store, d.anchor) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewListTokensCommand(d.dir, d.store) }},
 		{group: "auth", make: func(d runDeps) runtime.Command { return token.NewDeleteTokenCommand(d.dir, d.store) }},
 		{group: "config", make: func(d runDeps) runtime.Command { return configcmd.NewServerLs(d.dir) }},
@@ -117,7 +117,7 @@ func buildEntries() []entry {
 		// Bare entries are invoked with zero runDeps (adaptEntry never calls
 		// resolveDeps for them), so dir/store are passed explicitly zero here:
 		// the shim resolves both lazily in Execute.
-		{group: "", bare: true, make: func(runDeps) runtime.Command { return token.NewLegacyTokenCommand("", nil) }},
+		{group: "", bare: true, make: func(runDeps) runtime.Command { return token.NewLegacyTokenCommand("", nil, nil) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewUsage(d.clients) }},
 		{group: "", make: func(d runDeps) runtime.Command { return kubeconfig.NewCommand(d.dir, d.store, d.clients) }},

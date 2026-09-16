@@ -185,7 +185,7 @@ func TestConfigInfoCompletionBlock(t *testing.T) {
 // S-05: an env-supplied store is invisible in config.yaml and list-servers).
 // No t.Parallel(): t.Setenv.
 func TestConfigInfoEffectiveStoreSources(t *testing.T) {
-	t.Run("env wins and is named as the source", func(t *testing.T) {
+	t.Run("a variable that disagrees with the declaration is reported, not applied", func(t *testing.T) {
 		dir := t.TempDir()
 		cfg := &config.Config{CredentialStore: "file"}
 		cfg.SetPath(config.FilePath(dir))
@@ -193,9 +193,45 @@ func TestConfigInfoEffectiveStoreSources(t *testing.T) {
 		t.Setenv(config.EnvCredentialStore, "exec:vault")
 
 		data := execConfigInfo(t, dir)
-		assert.Equal(t, "exec:vault", data["credentialStore"])
-		assert.Equal(t, "env", data["credentialStoreSource"])
+		// The directory's own answer is what the report shows: this
+		// command never opens a store, so it can show both sides
+		// rather than failing the way every credential path does.
+		assert.Equal(t, "file", data["credentialStore"])
+		assert.Equal(t, "config", data["credentialStoreSource"])
 		assert.Equal(t, true, data["exists"])
+		conflict, ok := data["credentialStoreConflict"].(string)
+		require.True(t, ok, "the conflict is reported")
+		assert.Contains(t, conflict, `"file"`)
+		assert.Contains(t, conflict, `"exec:vault"`)
+		assert.Contains(t, conflict, config.EnvCredentialStore)
+	})
+
+	t.Run("a variable that agrees with the declaration is no conflict", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := &config.Config{CredentialStore: "file"}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+		t.Setenv(config.EnvCredentialStore, "file")
+
+		data := execConfigInfo(t, dir)
+		assert.Equal(t, "file", data["credentialStore"])
+		assert.Equal(t, "env", data["credentialStoreSource"], "the variable is set and is what applies")
+		_, ok := data["credentialStoreConflict"]
+		assert.False(t, ok)
+	})
+
+	t.Run("a variable over a directory that declares nothing applies", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := &config.Config{}
+		cfg.SetPath(config.FilePath(dir))
+		require.NoError(t, cfg.Write())
+		t.Setenv(config.EnvCredentialStore, "file")
+
+		data := execConfigInfo(t, dir)
+		assert.Equal(t, "file", data["credentialStore"])
+		assert.Equal(t, "env", data["credentialStoreSource"])
+		_, ok := data["credentialStoreConflict"]
+		assert.False(t, ok)
 	})
 
 	t.Run("config file value with no env", func(t *testing.T) {

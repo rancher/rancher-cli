@@ -47,7 +47,8 @@ const (
 // cost, so a test can assert the credential read path's operation count
 // rather than its wall time. Nil in production; set via
 // SetIdentityObserverForTest. Operations: "dirstat", "diropen",
-// "recordstat", "recordread", "recordwrite", "recordremove", "list".
+// "recordstat", "recordread", "recordwrite", "recordremove", "list",
+// "stampread", "manifeststat", "configload".
 var identityObserverFn func(op string)
 
 // SetIdentityObserverForTest installs the identity-operation observer for

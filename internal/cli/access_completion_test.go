@@ -98,7 +98,7 @@ func storeAccessConfig(t *testing.T, f *accessFixture, network bool) string {
 		Servers:       map[string]config.Server{"srv": {URL: f.srv.URL}},
 		Completion:    config.CompletionConfig{Network: network},
 	}
-	setStoredConfig(cfg, dir)
+	setStoredConfigForTest(t, cfg, dir)
 	t.Setenv(config.EnvToken, "mgmt-token")
 	return dir
 }

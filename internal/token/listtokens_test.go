@@ -14,8 +14,8 @@ import (
 func TestListTokens(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(config.CacheKey("prod", "r.ex", "c-1"), "t1", time.Now().Add(time.Hour), "prod", "r.ex", "c-1"))
-	require.NoError(t, store.SetCachedCred(config.CacheKey("dev", "r.ex", "c-2"), "t2", time.Now().Add(time.Hour), "dev", "r.ex", "c-2"))
+	require.NoError(t, seedCache(t, dir, store, config.CacheKey("prod", "r.ex", "c-1"), "t1", time.Now().Add(time.Hour), "prod", "r.ex", "c-1"))
+	require.NoError(t, seedCache(t, dir, store, config.CacheKey("dev", "r.ex", "c-2"), "t2", time.Now().Add(time.Hour), "dev", "r.ex", "c-2"))
 
 	res, err := NewListTokensCommand(dir, store).(runtime.ReadCommand).
 		Execute(t.Context(), tin{}, ui.Discard())

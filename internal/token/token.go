@@ -144,6 +144,11 @@ const unsupportedProvidersRFE = "rancher/rancher#57034"
 type tokenCmd struct {
 	dir   string
 	store config.CredStore
+	// anchor is what every cache hit in this invocation is judged
+	// against: the directory, the binding stamp read before the config
+	// load, and that load's Config. It is built by the caller, not here,
+	// so the stamp provably precedes the load; a nil anchor is a miss.
+	anchor *config.CacheAnchor
 	// openStore resolves the store the plugin-created login persists
 	// through, from the policy read under the config lock; nil means
 	// config.OpenStoreWithNotice. Tests inject a failing store.
@@ -174,8 +179,23 @@ func (t tokenCmd) directClientFor() directClientFactory {
 	return kube.HTTPClient
 }
 
-func NewTokenCommand(dir string, store config.CredStore) runtime.Command {
-	return &tokenCmd{dir: dir, store: store}
+// NewTokenCommand builds `auth get-token`. anchor pairs the binding stamp
+// read before the caller's config load with that load's Config; a nil one
+// makes every cache hit a miss, which is the answer for a config.yaml the
+// caller could not read.
+func NewTokenCommand(dir string, store config.CredStore, anchor *config.CacheAnchor) runtime.Command {
+	return &tokenCmd{dir: dir, store: store, anchor: anchor}
+}
+
+// cacheDir is the directory a record this invocation writes is bound to:
+// the canonical value the anchor already resolved, so the write and every
+// later read compare the same form. A command built without an anchor -
+// a test, a direct construction - resolves it once here instead.
+func (t tokenCmd) cacheDir() string {
+	if t.anchor != nil {
+		return t.anchor.Dir
+	}
+	return config.CanonicalDir(t.dir)
 }
 
 func (tokenCmd) Describe() runtime.Descriptor {
@@ -345,7 +365,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		return runtime.Result{}, err
 	}
 
-	rancherToken, reuseOn, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
+	rancherToken, reuseOn, binding, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
 	// The plugin-created login exists to serve cluster-scoped tokens, so it
 	// runs only for an invocation that names a cluster. The legacy shim
 	// without --cluster keeps creating the unscoped kubeconfig token.
@@ -392,7 +412,9 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		}
 		// The interactive login's cluster-scoped token has no parent
 		// bearer: it revokes itself if the wait below is cancelled.
-		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer)}
+		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt,
+			fresh:   newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer),
+			binding: binding}
 	case err != nil:
 		return runtime.Result{}, err
 	}
@@ -450,7 +472,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			// fallback is memory-only by contract - never write it to disk.
 			p.Notice("not caching: the credential helper serves this token from memory only")
 		default:
-			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, params.Name, serverID, clusterID); cacheErr != nil {
+			if cacheErr := t.store.SetCachedCred(cacheKey, rancherToken.Token, tokenExpiry, params.Name, serverID, clusterID, rancherToken.binding); cacheErr != nil {
 				p.Notice("cache write failed: " + cacheErr.Error())
 			} else if markReady {
 				if _, merr := t.store.MarkCachedCredReady(cacheKey, rancherToken.Token, directTarget.fingerprint); merr != nil {
@@ -473,7 +495,18 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 // the record marked on success; a mark refused because the record changed
 // underneath is a miss, and a cancelled re-probe is the error.
 func (t tokenCmd) cachedResultQ(ctx context.Context, key string, quiet bool, p runtime.Prompter, direct *execCluster, entry string) (runtime.Result, bool, error) {
-	d, err := t.store.GetCachedCredDetail(key)
+	return config.CachedHit(t.anchor, func(a *config.CacheAnchor) (runtime.Result, bool, error) {
+		return t.cachedResultOnce(ctx, key, quiet, p, direct, entry, a)
+	})
+}
+
+// cachedResultOnce is one pass of the warm-hit path: the record read, the
+// readiness re-probe and the mark. The binding-stamp confirmation that
+// follows it is the caller's, so it lands after the re-probe rather than
+// before - a login that completed while this waited on an endpoint must
+// still turn the hit into a miss.
+func (t tokenCmd) cachedResultOnce(ctx context.Context, key string, quiet bool, p runtime.Prompter, direct *execCluster, entry string, anchor *config.CacheAnchor) (runtime.Result, bool, error) {
+	d, err := t.store.GetCachedCredDetail(key, anchor)
 	if err != nil {
 		if !errors.Is(err, config.ErrNoToken) && !quiet {
 			p.Notice("cache read failed: " + err.Error())
@@ -559,8 +592,27 @@ func computeCacheProbeKey(name, server, cluster string) (string, bool) {
 // discarded 5th return value is never meaningful here.
 func (t tokenCmd) probeFlagCache(name, server, cluster string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
 	key, noticed, r, hit, _ = probeCacheWith(name, server, cluster, func(k string) (string, time.Time, string, error) {
-		tok, expiry, err := t.store.GetCachedCred(k)
-		return tok, expiry, "", err
+		type read struct {
+			token  string
+			expiry time.Time
+		}
+		got, ok, err := config.CachedHit(t.anchor, func(a *config.CacheAnchor) (read, bool, error) {
+			tok, expiry, gerr := t.store.GetCachedCred(k, a)
+			if gerr != nil {
+				if errors.Is(gerr, config.ErrNoToken) {
+					return read{}, false, nil
+				}
+				return read{}, false, gerr
+			}
+			return read{token: tok, expiry: expiry}, true, nil
+		})
+		if err != nil {
+			return "", time.Time{}, "", err
+		}
+		if !ok {
+			return "", time.Time{}, "", config.ErrNoToken
+		}
+		return got.token, got.expiry, "", nil
 	}, p)
 	return key, noticed, r, hit
 }
@@ -1392,14 +1444,7 @@ func hostname() string {
 // one candidate set, so a change to the matching policy cannot apply to one
 // and silently diverge in the other.
 func matchingServerNames(cfg *config.Config, server string) []string {
-	var names []string
-	for n, s := range cfg.Servers {
-		if config.SameServerURL(s.URL, server) {
-			names = append(names, n)
-		}
-	}
-	sort.Strings(names)
-	return names
+	return cfg.MatchingServerNames(server)
 }
 
 // errNoStoredCredential is storedCredToken's clean-miss sentinel: no
@@ -1499,8 +1544,59 @@ func isLoginIncomplete(err error) bool {
 // A provenance tier precedes every rank: user entries before plugin login
 // entries; a plugin login entry is a candidate only while the token-reuse
 // setting is on.
+// anchorEntry names the config entry a cache record written on this
+// invocation belongs to when no stored credential produced it - an
+// interactive login, or a session driven by RANCHER_CLI_TOKEN - and that
+// entry's cache binding id. It ranks the same candidates the credential
+// lookup ranks, so the record is anchored to the entry a later lookup
+// would choose, and it does NOT apply the token-reuse filter: a dormant
+// plugin entry should anchor the record rather than leave it anchored to
+// nothing and invalidated the moment the setting is turned on.
+//
+// Both values come from the caller's config load, never a second one: a
+// re-read could pair this invocation's credential with the id of a login
+// that replaced it since.
+//
+// Empty when the directory has no entry for the server at all, which is
+// the bare-install state and is a hit only while it lasts.
+func anchorEntry(cfg *config.Config, server, wantName string, ignoreCurrentContext bool) (entry, bindingID string) {
+	candidates := cfg.MatchingServerNames(server)
+	if len(candidates) == 0 {
+		return "", ""
+	}
+	rankOf := candidateRanker(cfg, wantName, ignoreCurrentContext)
+	best := candidates[0]
+	bestRank := rankOf(best)
+	for _, n := range candidates[1:] {
+		if r := rankOf(n); r < bestRank {
+			best, bestRank = n, r
+		}
+	}
+	return best, cfg.Servers[best].CacheBindingID
+}
+
+// candidateRanker orders entries that answer for one server URL: lower is
+// preferred. One ranker for both callers, for the reason MatchingServerNames
+// gives for the candidate set itself - the entry a cache record is bound to
+// and the entry a credential is read from must be the same entry, and a
+// tie-break changed at one site and not the other would bind a record to an
+// entry the credential lookup never chooses, so every record for that server
+// becomes a miss.
+func candidateRanker(cfg *config.Config, wantName string, ignoreCurrentContext bool) func(string) int {
+	if ignoreCurrentContext {
+		wantName = ""
+	}
+	curServer := ""
+	if !ignoreCurrentContext {
+		curServer = cfg.CurrentServer
+	}
+	return func(n string) int {
+		return provenanceTier(cfg.Servers[n])*serverCandidateRankCount + serverCandidateRank(n, wantName, curServer)
+	}
+}
+
 func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (storedCredential, bool, error) {
-	candidates := matchingServerNames(cfg, server)
+	candidates := cfg.MatchingServerNames(server)
 	if !cfg.TokenReuse {
 		candidates = slices.DeleteFunc(candidates, func(n string) bool {
 			return cfg.Servers[n].Provenance == clierr.ProvenanceExecLogin
@@ -1518,16 +1614,7 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 	// literally "legacy:"-prefixed entry name (auth login rejects the prefix,
 	// but nothing rewrites existing files), so this cannot rely on the
 	// entry-name namespace staying clean.
-	if ignoreCurrentContext {
-		wantName = ""
-	}
-	curServer := ""
-	if !ignoreCurrentContext {
-		curServer = cfg.CurrentServer
-	}
-	rankOf := func(n string) int {
-		return provenanceTier(cfg.Servers[n])*serverCandidateRankCount + serverCandidateRank(n, wantName, curServer)
-	}
+	rankOf := candidateRanker(cfg, wantName, ignoreCurrentContext)
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return rankOf(candidates[i]) < rankOf(candidates[j])
 	})
@@ -1668,27 +1755,38 @@ const legacyTokenTTL = 15 * time.Minute
 // The second result is the token-reuse setting as this call read it, so the
 // caller decides the plugin lane without loading config.yaml again; a config
 // it could not read reads as off.
-func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, bool, error) {
+// storedCredToken also reports the cache binding a record written on this
+// invocation belongs to, from the same config load it made here: the
+// selected entry when a stored credential produced the credential, and
+// the highest-ranked entry answering for the server otherwise, so an
+// interactive or environment-driven session anchors its record to the
+// entry a later lookup would choose.
+func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, bool, config.CacheBinding, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
 		p.Notice(fmt.Sprintf("config unreadable: %v - skipping token creation from the stored credential", err))
-		return Token{}, false, errNoStoredCredential
+		return Token{}, false, config.CacheBinding{}, errNoStoredCredential
 	}
+	anchorName, anchorID := anchorEntry(cfg, server, wantName, ignoreCurrentContext)
+	binding := config.CacheBinding{Dir: t.cacheDir(), Entry: anchorName, BindingID: anchorID}
 	sc, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, ignoreCurrentContext, p)
 	if serr != nil {
 		// A hard store/helper failure (missing binary, timeout, malformed
 		// response, version mismatch, backend outage) must surface, never be
 		// papered over by falling through to interactive auth.
-		return Token{}, cfg.TokenReuse, serr
+		return Token{}, cfg.TokenReuse, binding, serr
 	}
 	if !ok {
-		return Token{}, cfg.TokenReuse, errNoStoredCredential
+		return Token{}, cfg.TokenReuse, binding, errNoStoredCredential
 	}
+	// A stored credential names its own entry, which outranks the guess
+	// above: the record belongs to the login that produced it.
+	binding.Entry, binding.BindingID = sc.name, sc.entry.CacheBindingID
 	stored, ref := sc.token, sc.ref
 	base := kube.BaseURL(server)
 	resolvedCluster, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
 	if rerr != nil {
-		return Token{}, cfg.TokenReuse, t.classifyRejection(rerr, sc, p)
+		return Token{}, cfg.TokenReuse, binding, t.classifyRejection(rerr, sc, p)
 	}
 	isPlugin := sc.entry.Provenance == clierr.ProvenanceExecLogin
 	var created CreateResult
@@ -1727,17 +1825,17 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 			} else {
 				p.Notice(fmt.Sprintf("this Rancher does not serve ext.cattle.io; caching the stored login token for %s", legacyTokenTTL))
 			}
-			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache}, cfg.TokenReuse, nil
+			return Token{Token: stored, ExpiresAt: expiry.UTC().Format(time.RFC3339), noDiskCache: noDiskCache, binding: binding}, cfg.TokenReuse, binding, nil
 		case errors.Is(err, errCredentialUnauthorized), errors.Is(err, errCredentialForbidden):
-			return Token{}, cfg.TokenReuse, t.classifyRejection(err, sc, p)
+			return Token{}, cfg.TokenReuse, binding, t.classifyRejection(err, sc, p)
 		default:
-			return Token{}, cfg.TokenReuse, err
+			return Token{}, cfg.TokenReuse, binding, err
 		}
 	}
 	// The child token is CLI-created even when the stored parent is not:
 	// its cleanup deletes it with the parent bearer whatever the parent's
 	// provenance.
-	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: newFreshToken(created, client, base, stored)}, cfg.TokenReuse, nil
+	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: newFreshToken(created, client, base, stored), binding: binding}, cfg.TokenReuse, binding, nil
 }
 
 // classifyRejection maps a 401 or 403 from any credential-authenticated

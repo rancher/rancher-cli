@@ -32,11 +32,13 @@ func TestDeleteTokenCompleteArgsReturnsEntryNames(t *testing.T) {
 		config.CacheKey("k8s-prod", "rancher.example.com", "c-abc"),
 		"tok", time.Now().Add(time.Hour),
 		"k8s-prod", "rancher.example.com", "c-abc",
+		config.CacheBinding{Dir: cacheDir},
 	))
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("k8s-staging", "rancher.example.com", "c-def"),
 		"tok2", time.Now().Add(time.Hour),
 		"k8s-staging", "rancher.example.com", "c-def",
+		config.CacheBinding{Dir: cacheDir},
 	))
 	// Command constructed with EMPTY dir (finding 2: must not fall back to d.dir).
 	// Candidates must come from the view's dir, not the command's own dir.
@@ -56,6 +58,7 @@ func TestDeleteTokenCompleteArgsExcludesCompositeKeys(t *testing.T) {
 		config.CacheKey("ctx", "host.example.com", "c-abc"),
 		"tok", time.Now().Add(time.Hour),
 		"ctx", "host.example.com", "c-abc",
+		config.CacheBinding{Dir: cacheDir},
 	))
 	// Command constructed with EMPTY dir (finding 2: proving candidates come from view).
 	cmd := token.NewDeleteTokenCommand("", store)
@@ -78,6 +81,7 @@ func TestDeleteTokenCompleteArgsEmptyViewDirYieldsNil(t *testing.T) {
 		config.CacheKey("ctx", "rancher.example.com", "c-abc"),
 		"tok", time.Now().Add(time.Hour),
 		"ctx", "rancher.example.com", "c-abc",
+		config.CacheBinding{Dir: cacheDir},
 	))
 	// Command has a real dir but view has empty dir - without d.dir fallback,
 	// must return nil (not the entries from cacheDir).

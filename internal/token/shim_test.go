@@ -26,7 +26,7 @@ import (
 
 func TestLegacyTokenDescriptor(t *testing.T) {
 	t.Parallel()
-	d := NewLegacyTokenCommand(t.TempDir(), nil).Describe()
+	d := NewLegacyTokenCommand(t.TempDir(), nil, nil).Describe()
 	assert.Equal(t, "token", d.Name)
 	assert.Equal(t, runtime.Local, d.CommandType)
 	assert.True(t, d.Network)
@@ -58,7 +58,7 @@ func TestLegacyTokenSlotSeparation(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "alice"}},
@@ -76,10 +76,10 @@ func TestLegacyTokenSlotSeparation(t *testing.T) {
 
 	assert.NotEqual(t, keyAlice, keyBob, "different --user values must produce distinct cache slots")
 
-	_, _, err = store.GetCachedCred(keyAlice)
+	_, _, err = store.GetCachedCred(keyAlice, anchorFor(dir))
 	require.NoError(t, err, "alice's cache slot must be written")
 
-	_, _, err = store.GetCachedCred(keyBob)
+	_, _, err = store.GetCachedCred(keyBob, anchorFor(dir))
 	assert.NoError(t, err, "bob's cache slot must be written")
 }
 
@@ -107,7 +107,7 @@ func TestLegacyTokenEmitsV1Beta1(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "cluster-name"}},
 		ui.Discard())
@@ -183,7 +183,7 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 	// --cluster is intentionally absent; the shim must NOT pick up "c-ctx".
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "testcluster"}},
@@ -199,37 +199,55 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 	// The cache slot must be unscoped: CacheKey with empty cluster.
 	serverID := config.CanonicalServerIdentity(srv.URL)
 	unscopedKey := config.CacheKey("legacy:testcluster", serverID, "")
-	_, _, cerr := store.GetCachedCred(unscopedKey)
+	_, _, cerr := store.GetCachedCred(unscopedKey, anchorFor(dir))
 	require.NoError(t, cerr, "the cache slot must be the unscoped (no cluster) key")
 
 	// The scoped key (with "c-ctx") must be absent - proving the context cluster
 	// was not used.
 	scopedKey := config.CacheKey("legacy:testcluster", serverID, "c-ctx")
-	_, _, cerr = store.GetCachedCred(scopedKey)
+	_, _, cerr = store.GetCachedCred(scopedKey, anchorFor(dir))
 	assert.ErrorIs(t, cerr, config.ErrNoToken,
 		"the scoped (c-ctx) key must not exist; the context cluster must be ignored by the shim")
 }
 
 // TestLegacyTokenCacheHitIgnoresBrokenConfig is the fix-1 failing test: a
-// shim invocation with a warm cache entry must succeed even when config.yaml
-// is broken, mirroring the guarantee the native get-token fast path provides.
-// Without fix 1 the shim calls runWithParams directly, which calls resolveConn,
-// which calls config.Load and fails on the poisoned file.
-func TestLegacyTokenCacheHitIgnoresBrokenConfig(t *testing.T) {
+// shim invocation with a warm cache entry used to succeed through a broken
+// config.yaml, and no longer does. The shim's fast path exists so the
+// plugin serves a warm credential without a config load, but a record's
+// owner is named in that file: the entry and its cache binding id. Serving
+// one the shim cannot check means serving the previous user's credential
+// after a re-login, which is the whole defect this closes. The shim now
+// validates against the snapshot the root hook loaded, and no snapshot
+// means no hit.
+func TestLegacyTokenBrokenConfigMakesTheWarmHitAMiss(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	serverID := config.CanonicalServerIdentity("https://r.ex")
 	key := config.CacheKey("legacy:alice", serverID, "c-1")
-	require.NoError(t, store.SetCachedCred(key, "cached-tok", time.Now().Add(time.Hour), "legacy:alice", serverID, "c-1"))
-	// Poison config.yaml - the shim must not read it on a warm cache hit.
+	require.NoError(t, seedCache(t, dir, store, key, "cached-tok", time.Now().Add(time.Hour), "legacy:alice", serverID, "c-1"))
+
+	anchor := config.NewCacheAnchor(dir)
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("\t: not yaml ["), 0o600))
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
-	res, err := cmd.Execute(t.Context(),
-		tin{s: map[string]string{"server": "https://r.ex", "user": "alice", "cluster": "c-1"}},
-		ui.Discard())
-	require.NoError(t, err)
-	cred := res.Data.(*execCredential)
+	// Two shapes, because the shim can be reached in either. The root
+	// hook clears the process anchor and only replaces it after a
+	// successful load, so a shim dispatched behind an unparsable config
+	// is handed nothing at all; a shim constructed with an anchor built
+	// before the file broke holds one whose config is nil. Neither can
+	// check a record's owner, so neither serves it.
+	require.Nil(t, config.ProcessCacheAnchor(), "no test in this package leaves one set")
+	_, _, _, hit, _ := shimProbeFlagCache(dir, "legacy:alice", "https://r.ex", "c-1", nil, ui.Discard())
+	assert.False(t, hit, "with no anchor at all there is nothing to judge against")
+
+	_, _, _, hit, _ = shimProbeFlagCache(dir, "legacy:alice", "https://r.ex", "c-1", anchor, ui.Discard())
+	assert.False(t, hit, "a record whose binding cannot be checked is never served")
+
+	// With the file readable again the same record serves, so the miss
+	// above is the config error and nothing else.
+	require.NoError(t, os.Remove(config.FilePath(dir)))
+	_, _, r, hit, _ := shimProbeFlagCache(dir, "legacy:alice", "https://r.ex", "c-1", anchorFor(dir), ui.Discard())
+	require.True(t, hit)
+	cred := r.Data.(*execCredential)
 	assert.Equal(t, "cached-tok", cred.Status.Token)
 }
 
@@ -246,10 +264,10 @@ func TestLegacyTokenCacheHitSurfacesLoosePermissionNotice(t *testing.T) {
 	store := config.NewFileStore(dir)
 	serverID := config.CanonicalServerIdentity("https://r.ex")
 	key := config.CacheKey("legacy:alice", serverID, "c-1")
-	require.NoError(t, store.SetCachedCred(key, "cached-tok", time.Now().Add(time.Hour), "legacy:alice", serverID, "c-1"))
+	require.NoError(t, seedCache(t, dir, store, key, "cached-tok", time.Now().Add(time.Hour), "legacy:alice", serverID, "c-1"))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "user": "alice", "cluster": "c-1"}},
 		ui.Discard())
@@ -312,7 +330,7 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate(t *testing.T) {
 
 	store := &errGetTokenStore{CredStore: base, errName: "server-a"}
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 	// No --cluster, no --cacerts: resolveConn enters the config-fallback branch
 	// but must skip cfg.Effective (ignoreCurrentContext=true, explicitServer=true)
 	// and never call GetToken for server A.
@@ -329,7 +347,7 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate(t *testing.T) {
 // descriptor only catches the absent flag; Execute must validate the value.
 func TestLegacyTokenRejectsEmptyUser(t *testing.T) {
 	t.Parallel()
-	cmd := NewLegacyTokenCommand(t.TempDir(), nil).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(t.TempDir(), nil, nil).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "user": ""}},
 		ui.Discard())
@@ -343,7 +361,7 @@ func TestLegacyTokenRejectsEmptyUser(t *testing.T) {
 // is also rejected - strings.TrimSpace catches what an == "" check would miss.
 func TestLegacyTokenRejectsWhitespaceUser(t *testing.T) {
 	t.Parallel()
-	cmd := NewLegacyTokenCommand(t.TempDir(), nil).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(t.TempDir(), nil, nil).(runtime.ReadCommand)
 	_, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": "https://r.ex", "user": "   "}},
 		ui.Discard())
@@ -361,7 +379,7 @@ func TestLegacyTokenRejectsWhitespaceUser(t *testing.T) {
 func TestLegacyTokenRejectsBlankServer(t *testing.T) {
 	t.Parallel()
 	for _, server := range []string{"", "   "} {
-		cmd := NewLegacyTokenCommand(t.TempDir(), nil).(runtime.ReadCommand)
+		cmd := NewLegacyTokenCommand(t.TempDir(), nil, nil).(runtime.ReadCommand)
 		_, err := cmd.Execute(t.Context(),
 			tin{s: map[string]string{"server": server, "user": "alice"}},
 			ui.Discard())
@@ -390,7 +408,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 
 	// Call with canonical name - writes the cache slot.
 	_, err := cmd.Execute(t.Context(),
@@ -409,7 +427,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 
 	// The padded call should find the canonical key (trimmed first) rather
 	// than writing a new "legacy:  alice" slot.
-	_, _, err = store.GetCachedCred(canonicalKey)
+	_, _, err = store.GetCachedCred(canonicalKey, anchorFor(dir))
 	require.NoError(t, err, "canonical key must be present after any invocation")
 
 	// Execute with padded user - must NOT create the padded slot.
@@ -418,7 +436,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err)
 
-	_, _, paddedErr := store.GetCachedCred(paddedKey)
+	_, _, paddedErr := store.GetCachedCred(paddedKey, anchorFor(dir))
 	assert.ErrorIs(t, paddedErr, config.ErrNoToken,
 		"padded-user invocation must not create a distinct 'legacy:  alice' slot")
 }
@@ -440,7 +458,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 
 	// Call with canonical cluster - writes the cache slot.
 	_, err := cmd.Execute(t.Context(),
@@ -455,7 +473,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 	require.NotEqual(t, canonicalKey, paddedKey,
 		"test precondition: canonical and padded cluster keys must differ")
 
-	_, _, err = store.GetCachedCred(canonicalKey)
+	_, _, err = store.GetCachedCred(canonicalKey, anchorFor(dir))
 	require.NoError(t, err, "canonical key must be present after the first invocation")
 
 	// Execute with padded cluster - must NOT create a distinct padded slot.
@@ -464,7 +482,7 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 		ui.Discard())
 	require.NoError(t, err)
 
-	_, _, paddedErr := store.GetCachedCred(paddedKey)
+	_, _, paddedErr := store.GetCachedCred(paddedKey, anchorFor(dir))
 	assert.ErrorIs(t, paddedErr, config.ErrNoToken,
 		"padded-cluster invocation must not create a distinct 'local  ' slot")
 }
@@ -513,7 +531,7 @@ func TestShimPathIgnoresCurrentContext(t *testing.T) {
 	// or broken credential helper for the stored current-context server.
 	store := &errGetTokenStore{CredStore: base, errName: "wrong-server"}
 
-	cmd := NewLegacyTokenCommand(dir, store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 	// No --cluster, no --cacerts: resolveConn enters the config-fallback branch
 	// for CA resolution. On the shim path (legacyShim), caForServer ignores the
 	// current-context preference and returns right-server's CA (sorted first).
@@ -564,7 +582,7 @@ func TestLegacyTokenStoreNoticeReachesStderr(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	store := &noticeRecordingStore{CredStore: base, notices: []string{keychainUnavailableNotice}}
-	cmd := NewLegacyTokenCommand(dir, store)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir))
 
 	var out, errBuf bytes.Buffer
 	status, ce := runtime.Run(t.Context(), cmd,
@@ -595,7 +613,7 @@ func TestLegacyTokenStoreNoticeRidesFailure(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	store := &noticeRecordingStore{CredStore: config.NewFileStore(dir), notices: []string{keychainUnavailableNotice}}
-	cmd := NewLegacyTokenCommand(dir, store)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir))
 
 	var out, errBuf bytes.Buffer
 	_, ce := runtime.Run(t.Context(), cmd,
@@ -622,11 +640,11 @@ func TestLegacyTokenProbeWarnRidesLoadFailure(t *testing.T) {
 	seed := config.NewFileStore(dir)
 	serverID := config.CanonicalServerIdentity("https://r.ex")
 	otherKey := config.CacheKey("legacy:bob", serverID, "c-1")
-	require.NoError(t, seed.SetCachedCred(otherKey, "cached-tok", time.Now().Add(time.Hour), "legacy:bob", serverID, "c-1"))
+	require.NoError(t, seedCache(t, dir, seed, otherKey, "cached-tok", time.Now().Add(time.Hour), "legacy:bob", serverID, "c-1"))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 	require.NoError(t, os.WriteFile(config.FilePath(dir), []byte("{not yaml"), 0o600))
 
-	cmd := NewLegacyTokenCommand(dir, nil)
+	cmd := NewLegacyTokenCommand(dir, nil, anchorFor(dir))
 	var out, errBuf bytes.Buffer
 	_, ce := runtime.Run(t.Context(), cmd,
 		tin{s: map[string]string{"server": "https://r.ex", "user": "alice", "cluster": "c-1"}},
@@ -656,14 +674,14 @@ func TestLegacyTokenProbeWarnPrecedesStoreNotices(t *testing.T) {
 	seed := config.NewFileStore(dir)
 	serverID := config.CanonicalServerIdentity(srv.URL)
 	otherKey := config.CacheKey("legacy:bob", serverID, "c-1")
-	require.NoError(t, seed.SetCachedCred(otherKey, "cached-tok", time.Now().Add(time.Hour), "legacy:bob", serverID, "c-1"))
+	require.NoError(t, seedCache(t, dir, seed, otherKey, "cached-tok", time.Now().Add(time.Hour), "legacy:bob", serverID, "c-1"))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: srv.URL}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
 	store := &noticeRecordingStore{CredStore: config.NewFileStore(dir), notices: []string{keychainUnavailableNotice}}
-	cmd := NewLegacyTokenCommand(dir, store)
+	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir))
 	var out, errBuf bytes.Buffer
 	_, ce := runtime.Run(t.Context(), cmd,
 		tin{s: map[string]string{"server": srv.URL, "user": "alice", "cluster": "c-1"}},
@@ -682,7 +700,7 @@ func TestLegacyTokenProbeWarnPrecedesStoreNotices(t *testing.T) {
 // the entry is created and CurrentServer stays empty.
 func TestShimWithClusterUsesThePluginLoginUnderTheSetting(t *testing.T) {
 	x := newPluginFixture(t, true, testrancher.Options{})
-	cmd := NewLegacyTokenCommand(x.dir, x.store).(runtime.ReadCommand)
+	cmd := NewLegacyTokenCommand(x.dir, x.store, anchorFor(x.dir)).(runtime.ReadCommand)
 	res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.srv.URL, "user": "alice", "cluster": "c-test", "auth-provider": "localProvider"}}, localPrompter())
 	require.NoError(t, err)
 	assert.Equal(t, "ExecCredential", res.Kind)
@@ -700,7 +718,7 @@ func TestShimWithClusterUsesThePluginLoginUnderTheSetting(t *testing.T) {
 func TestShimNonACEUnscopedCreateUnchangedUnderTheSetting(t *testing.T) {
 	for _, reuse := range []bool{false, true} {
 		x := newPluginFixture(t, reuse, testrancher.Options{})
-		cmd := NewLegacyTokenCommand(x.dir, x.store).(runtime.ReadCommand)
+		cmd := NewLegacyTokenCommand(x.dir, x.store, anchorFor(x.dir)).(runtime.ReadCommand)
 		_, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": x.srv.URL, "user": "alice", "auth-provider": "localProvider"}}, localPrompter())
 		require.NoError(t, err)
 		_, present := x.entry(t)

@@ -133,7 +133,7 @@ func TestConfigDeleteServerUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 
 func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 	dir, store := seedDeleteServer(t, "", []string{"acme"})
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok", time.Time{}, "kubeuser", "acme.ex", "c-1"))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
 
 	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 		"  credentials removed (file)\n"+
 		"  1 cached kubectl credentials removed\n", res.Text)
 
-	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"))
+	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), cmdtest.CacheAnchor(t, dir))
 	assert.ErrorIs(t, err, config.ErrNoToken)
 }
 

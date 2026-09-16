@@ -43,7 +43,7 @@ func TestInspectClusterPositionalGateOff(t *testing.T) {
 		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
 		Completion:    config.CompletionConfig{Network: false},
 	}
-	setStoredConfig(cfg, t.TempDir())
+	setStoredConfigForTest(t, cfg, t.TempDir())
 	t.Setenv(config.EnvToken, "mgmt-token")
 
 	site := CompletionSite{Kind: SitePositional, Index: 0}

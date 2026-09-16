@@ -313,6 +313,13 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 	if before.CurrentServer != edited.CurrentServer {
 		offenses = append(offenses, "currentServer changed (use: rancher config use-server)")
 	}
+	// The binding stamp is how a cache reader tells a load that was
+	// overtaken from one that was not. Editing it by hand makes records
+	// from before a login look current again, which is the stale-credential
+	// case the stamp exists to close. It advances on its own.
+	if before.BindingStamp != edited.BindingStamp {
+		offenses = append(offenses, "bindingStamp changed (it advances on its own with any login or logout)")
+	}
 	if len(offenses) == 0 {
 		return nil
 	}

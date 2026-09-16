@@ -87,7 +87,7 @@ func TestAC22NoKeyringOnCompletionPath(t *testing.T) {
 	require.NoError(t, config.WritePin(dir, "keychain"))
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
 	t.Setenv(config.EnvConfigDir, dir)
-	cli.SetStoredConfigForTest(cfg, dir)
+	cli.SetStoredConfigForTest(t, cfg, dir)
 	// Drive a cluster-dependent site with a cluster value present so dispatch
 	// reaches token resolution. No env token → resolveCompletionToken returns empty.
 	cli.SetRawArgvForTest([]string{"usage", "--cluster", "my-cluster"})
@@ -133,7 +133,7 @@ func TestAC23CompletionNoStderr(t *testing.T) {
 
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
 	t.Setenv(config.EnvConfigDir, dir)
-	cli.SetStoredConfigForTest(cfg, dir)
+	cli.SetStoredConfigForTest(t, cfg, dir)
 
 	// v2 protocol (round-5): proto sentinel + words + self-prefixed empty cur field.
 	// --rancher-completion-cur= (no value after =) → cursor after space, no partial typed.
@@ -195,7 +195,7 @@ func TestAC24AtMostTwoRequestsPerTAB(t *testing.T) {
 	require.NoError(t, cfg.Write())
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
 	t.Setenv(config.EnvConfigDir, dir)
-	cli.SetStoredConfigForTest(cfg, dir)
+	cli.SetStoredConfigForTest(t, cfg, dir)
 	t.Setenv(config.EnvToken, "test-token")
 	// Display-name cluster "prod" at --namespace site → two requests.
 	// v2 protocol (round-5): proto sentinel + words (--namespace flag last in argv,
@@ -296,7 +296,7 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 		require.NoError(t, cfg.Write())
 		t.Setenv(config.EnvConfigDir, dir)
 		t.Setenv(config.EnvToken, "tok")
-		cli.SetStoredConfigForTest(cfg, dir)
+		cli.SetStoredConfigForTest(t, cfg, dir)
 		return dir, srv
 	}
 
@@ -398,11 +398,13 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 		config.CacheKey("k8s-ctx", "example.invalid", "c-abc"),
 		"tok-valid", time.Now().Add(time.Hour),
 		"k8s-ctx", "example.invalid", "c-abc",
+		config.CacheBinding{Dir: dir, Entry: "srv"},
 	))
 	require.NoError(t, fileStore.SetCachedCred(
 		config.CacheKey("k8s-old", "example.invalid", "c-abc"),
 		"tok-expired", time.Now().Add(-time.Hour),
 		"k8s-old", "example.invalid", "c-abc",
+		config.CacheBinding{Dir: dir, Entry: "srv"},
 	))
 
 	cfg := &config.Config{
@@ -414,7 +416,7 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	require.NoError(t, cfg.Write())
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
 	t.Setenv(config.EnvConfigDir, dir)
-	cli.SetStoredConfigForTest(cfg, dir)
+	cli.SetStoredConfigForTest(t, cfg, dir)
 	// Snapshot AFTER seeding but BEFORE dispatch.
 	before := hashDir(t, dir)
 
@@ -537,7 +539,7 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		require.NoError(t, cfg.Write())
 		t.Setenv(config.EnvConfigDir, dir)
 		t.Setenv(config.EnvToken, "tok")
-		cli.SetStoredConfigForTest(cfg, dir)
+		cli.SetStoredConfigForTest(t, cfg, dir)
 		return dir
 	}
 

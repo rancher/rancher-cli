@@ -95,7 +95,7 @@ func (x *pluginFixture) client() *http.Client {
 // direct-probe seam is set only once a direct endpoint was routed, so a
 // test of the production probe client (a CA that does not parse) keeps it.
 func (x *pluginFixture) command(store config.CredStore) tokenCmd {
-	cmd := tokenCmd{dir: x.dir, store: store}
+	cmd := tokenCmd{dir: x.dir, store: store, anchor: anchorFor(x.dir)}
 	if x.rt != nil {
 		cmd.newClient = func(httpx.Options) (*http.Client, error) { return x.rt.client(), nil }
 		if x.direct != nil {
@@ -326,7 +326,7 @@ func TestPluginLoginFirstUseCreatesEntryAndClusterToken(t *testing.T) {
 	assert.Contains(t, creates[2].Description, marker, "the cluster token carries the acquisition's marker")
 	assert.Len(t, x.f.DeleteRequests(), 1, "S was revoked; nothing else")
 
-	_, expiry, cerr := x.store.GetCachedCred(config.CacheKey("n", config.CanonicalServerIdentity(x.url), "c-test"))
+	_, expiry, cerr := x.store.GetCachedCred(config.CacheKey("n", config.CanonicalServerIdentity(x.url), "c-test"), anchorFor(x.dir))
 	require.NoError(t, cerr)
 	assert.False(t, expiry.IsZero())
 }

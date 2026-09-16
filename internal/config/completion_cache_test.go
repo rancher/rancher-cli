@@ -24,15 +24,15 @@ func TestReadOnlyCachedCredNoticesLoosePermissions(t *testing.T) {
 	}
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred("k", "tok", time.Now().Add(time.Hour), "", "", ""))
+	require.NoError(t, store.SetCachedCred("k", "tok", time.Now().Add(time.Hour), "", "", "", config.CacheBinding{Dir: dir}))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 
-	tok, _, notice, err := config.ReadOnlyCachedCred(dir, "k")
+	tok, _, notice, err := config.ReadOnlyCachedCred(dir, "k", testAnchorExternal(t, dir))
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)
 	assert.Contains(t, notice, "group/world-readable")
 
-	_, _, notice2, err := config.ReadOnlyCachedCred(dir, "k")
+	_, _, notice2, err := config.ReadOnlyCachedCred(dir, "k", testAnchorExternal(t, dir))
 	require.NoError(t, err)
 	assert.Empty(t, notice2, "notice must fire once per path per process")
 }
@@ -51,12 +51,12 @@ func TestReadOnlyCachedCredsNeverWrites(t *testing.T) {
 		config.CacheKey("live", "https://rancher.example.com", "c-abc"),
 		"token-live", time.Now().Add(time.Hour),
 		"live", "https://rancher.example.com", "c-abc",
-	))
+		config.CacheBinding{Dir: dir}))
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("expired", "https://rancher.example.com", "c-abc"),
 		"token-expired", time.Now().Add(-time.Hour),
 		"expired", "https://rancher.example.com", "c-abc",
-	))
+		config.CacheBinding{Dir: dir}))
 
 	infos, err := config.ReadOnlyCachedCreds(dir)
 	require.NoError(t, err)
@@ -82,9 +82,9 @@ func TestReadOnlyCachedCredsForClusterWithTokens(t *testing.T) {
 		config.CacheKey("ctx", "https://rancher.example.com", "c-abc"),
 		"my-token", time.Now().Add(time.Hour),
 		"ctx", "https://rancher.example.com", "c-abc",
-	))
+		config.CacheBinding{Dir: dir}))
 
-	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "https://rancher.example.com", "c-abc")
+	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "https://rancher.example.com", "c-abc", testAnchorExternal(t, dir))
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	assert.Equal(t, "ctx", entries[0].Name)
@@ -100,9 +100,21 @@ func TestReadOnlyCachedCredsForClusterWithTokensExpiredExcluded(t *testing.T) {
 		config.CacheKey("ctx", "https://rancher.example.com", "c-abc"),
 		"expired-tok", time.Now().Add(-time.Hour),
 		"ctx", "https://rancher.example.com", "c-abc",
-	))
+		config.CacheBinding{Dir: dir}))
 
-	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "https://rancher.example.com", "c-abc")
+	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "https://rancher.example.com", "c-abc", testAnchorExternal(t, dir))
 	require.NoError(t, err)
 	assert.Empty(t, entries, "expired entries must be excluded")
+}
+
+// testAnchorExternal is the anchor a reader in dir holds: the binding
+// stamp read first, the config loaded after it. A directory with no
+// entries serves a record bound to no entry, which is what these tests
+// write.
+func testAnchorExternal(t *testing.T, dir string) *config.CacheAnchor {
+	t.Helper()
+	anchor := config.NewCacheAnchor(dir)
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	return anchor.WithConfig(cfg)
 }

@@ -2,6 +2,7 @@ package token
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -21,22 +22,28 @@ import (
 // agents and new kubeconfigs use `auth get-token`.
 //
 // The `token` entry in root.go is marked bare: adaptEntry never calls
-// resolveDeps before Execute, so a malformed config.yaml cannot block a warm
-// cache hit. Execute resolves the config dir itself via config.ResolveDir
-// (no config.yaml parse) and probes token-cache.yaml directly. The store is
-// constructed lazily on a cache miss only.
+// resolveDeps before Execute, so the shim adds no config load of its own.
+// Execute resolves the config dir itself via config.ResolveDir (no
+// config.yaml parse) and probes token-cache.yaml directly; what it judges a
+// record against is the snapshot the root hook already made, and a
+// config.yaml the root hook could not read leaves none, so every record is
+// a miss. The store is constructed lazily on a cache miss only.
 type legacyTokenCmd struct {
 	// dir and store are pre-populated in test wiring and non-bare paths;
 	// both are zero in bare dispatch, resolved lazily in Execute.
 	dir   string
 	store config.CredStore
+	// anchor is what a cache hit is judged against. Zero in bare
+	// dispatch, where the invocation's own anchor - the one the root hook
+	// built beside its config snapshot - is used instead.
+	anchor *config.CacheAnchor
 }
 
 // NewLegacyTokenCommand builds the `token` shim command. dir and store are
 // used when provided (test/non-bare wiring); when both are zero Execute
 // resolves them from the input flags.
-func NewLegacyTokenCommand(dir string, store config.CredStore) runtime.Command {
-	return &legacyTokenCmd{dir: dir, store: store}
+func NewLegacyTokenCommand(dir string, store config.CredStore, anchor *config.CacheAnchor) runtime.Command {
+	return &legacyTokenCmd{dir: dir, store: store, anchor: anchor}
 }
 
 func (legacyTokenCmd) Describe() runtime.Descriptor {
@@ -93,8 +100,9 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	}
 	cluster := strings.TrimSpace(in.String("cluster"))
 
-	// Resolve the config directory via ResolveDir only - never config.Load -
-	// so a broken config.yaml cannot block the fast path.
+	// Resolve the config directory via ResolveDir only - never config.Load.
+	// The shim adds no config load of its own; what it judges a cache
+	// record against is the snapshot the root hook already made.
 	dir := c.dir
 	if dir == "" {
 		var err error
@@ -104,11 +112,13 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		}
 	}
 
-	// Fast path: probe token-cache.yaml directly (no config.yaml read needed).
-	// A broken config.yaml therefore cannot block a warm cache hit - this is
-	// the guarantee the shim exists to provide for unattended exec-credential
-	// plugin invocations, and it is proven end-to-end by token-shim.txtar.
-	probedKey, noticed, r, hit, warn := shimProbeFlagCache(dir, name, server, cluster, p)
+	// Fast path: probe token-cache.yaml directly, with no config load of
+	// its own. A config.yaml the root hook could not read leaves no
+	// snapshot, and a record whose owner cannot be checked is a miss:
+	// after a re-login as another user it is the previous user's cluster
+	// credential.
+	anchor := shimAnchor(dir, c.anchor)
+	probedKey, noticed, r, hit, warn := shimProbeFlagCache(dir, name, server, cluster, anchor, p)
 	if hit {
 		return r, nil
 	}
@@ -133,7 +143,10 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		}
 	}
 
-	res, err := tokenCmd{dir: dir, store: store}.runWithParams(ctx, runParams{
+	// The anchor rides into the slow path too: its cache re-check on the
+	// resolved key judges records by the same anchor the fast path used,
+	// and a command built without one serves nothing from the cache.
+	res, err := tokenCmd{dir: dir, store: store, anchor: anchor}.runWithParams(ctx, runParams{
 		Server: server,
 		// The slot namespaces the legacy user under the "legacy:" prefix, which
 		// the native get-token command rejects as a --name value, so shim entries
@@ -178,6 +191,22 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	return res, nil
 }
 
+// shimAnchor is the anchor this invocation judges cache records against:
+// the one it was given, else the one the root hook left for the process.
+// An anchor built for a different directory than the one this command
+// resolved answers for nothing here, so it is discarded rather than
+// consulted: the stamp and the config it holds describe somewhere else.
+func shimAnchor(dir string, given *config.CacheAnchor) *config.CacheAnchor {
+	anchor := given
+	if anchor == nil {
+		anchor = config.ProcessCacheAnchor()
+	}
+	if !anchor.SameDirectory(dir) {
+		return nil
+	}
+	return anchor
+}
+
 // shimProbeFlagCache is the shim's fast-path cache probe: reads token-cache.yaml
 // directly via config.ReadOnlyCachedCred - no config.yaml parse required. The
 // probe itself is probeCacheWith (shared with probeFlagCache), so key
@@ -191,8 +220,55 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 // return notice (a loose-permission finding on token-cache.yaml) - already
 // folded into r.Warnings on a hit; the caller must still carry it forward
 // on a miss, since r is discarded there.
-func shimProbeFlagCache(dir, name, server, cluster string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
+// The anchor is the one the root hook built for this invocation: the
+// binding stamp it read before its config load, paired with that load's
+// snapshot. The shim adds no config load of its own, and a snapshot the
+// root hook could not produce - an unreadable or unparseable config.yaml -
+// makes every record a miss. That is a guarantee this command used to
+// give the other way round: the fast path existed so a broken config
+// could not block a warm hit. It cannot any more, because a record whose
+// binding cannot be checked is the previous user's credential after a
+// re-login, and serving it is the defect this whole change closes.
+// A record this probe judges away is reported as a miss and left where
+// it is. Deleting it belongs to the store-backed readers, and the shim's
+// slow path reaches that prune only when the key it resolves differs
+// from the one probed here, which for the shim it does not: its records
+// outlive their binding and are removed when they expire. They are never
+// served in the meantime - the binding id decides that - so this is
+// hygiene rather than safety.
+//
+// anchor is already resolved by shimAnchor - resolving it a second time
+// here could reach a different answer than the caller's, and then the two
+// halves of one invocation would judge records by two anchors.
+func shimProbeFlagCache(dir, name, server, cluster string, anchor *config.CacheAnchor, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
 	return probeCacheWith(name, server, cluster, func(k string) (string, time.Time, string, error) {
-		return config.ReadOnlyCachedCred(dir, k)
+		type read struct {
+			token  string
+			expiry time.Time
+		}
+		// The loose-permission notice belongs to the file, not to the
+		// record: it is found on the way in and has to reach the caller
+		// whether the record is served, judged away, or absent.
+		var notice string
+		got, ok, err := config.CachedHit(anchor, func(a *config.CacheAnchor) (read, bool, error) {
+			tok, expiry, n, rerr := config.ReadOnlyCachedCred(dir, k, a)
+			if n != "" {
+				notice = n
+			}
+			if rerr != nil {
+				if errors.Is(rerr, config.ErrNoToken) {
+					return read{}, false, nil
+				}
+				return read{}, false, rerr
+			}
+			return read{token: tok, expiry: expiry}, true, nil
+		})
+		if err != nil {
+			return "", time.Time{}, notice, err
+		}
+		if !ok {
+			return "", time.Time{}, notice, config.ErrNoToken
+		}
+		return got.token, got.expiry, notice, nil
 	}, p)
 }

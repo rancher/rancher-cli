@@ -78,7 +78,10 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 			recoveryData, recoveryLines = recoveryReport(srv)
 			hasRecovery = len(recoveryData) > 0
 		}
-		policy := config.EffectivePolicy(cfg.CredentialStore)
+		policy, perr := config.EffectivePolicy(cfg.CredentialStore)
+		if perr != nil {
+			return perr
+		}
 		deletedFrom, deletedCache, notices, err = d.delete(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
 		if err != nil {
 			return clierr.WrapUnlessCanceled(err, func(err error) error {

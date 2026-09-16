@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // The pin file records what `auto` resolved to on THIS machine. It is
@@ -64,9 +66,9 @@ func WritePin(dir, backend string) error {
 }
 
 // EffectivePolicy resolves the declared policy: env > config > auto.
-func EffectivePolicy(cfgPolicy string) string {
-	p, _ := EffectivePolicyWithSource(cfgPolicy)
-	return p
+func EffectivePolicy(cfgPolicy string) (string, error) {
+	p, _, err := EffectivePolicyWithSource(cfgPolicy)
+	return p, err
 }
 
 // EffectivePolicyWithSource returns the effective credential-store policy
@@ -74,14 +76,37 @@ func EffectivePolicy(cfgPolicy string) string {
 // (config.yaml's credentialStore), or "default" (nothing set - auto).
 // `config status` reports this pair; EffectivePolicy is the value-only form
 // every resolution path uses, so the two can never disagree.
-func EffectivePolicyWithSource(cfgPolicy string) (policy, source string) {
-	if env := os.Getenv(EnvCredentialStore); env != "" {
-		return env, "env"
+//
+// A directory that declares a store and a variable that asks for a
+// different one is a conflict, not a precedence question: two processes on
+// one directory would otherwise read different backends, and when both
+// hold a credential each would silently use whichever its environment
+// selected. The declared value is returned beside the error so a caller
+// that only displays the pair can show what the directory says. The same
+// value in both is no conflict, and a variable over a directory that has
+// not declared yet applies and is recorded by the next login, which is
+// what the variable is for on a fresh directory and in CI.
+func EffectivePolicyWithSource(cfgPolicy string) (policy, source string, err error) {
+	env := os.Getenv(EnvCredentialStore)
+	switch {
+	case env != "" && cfgPolicy != "" && env != cfgPolicy:
+		return cfgPolicy, "config", storeConflictError(cfgPolicy, env)
+	case env != "":
+		return env, "env", nil
+	case cfgPolicy != "":
+		return cfgPolicy, "config", nil
 	}
-	if cfgPolicy != "" {
-		return cfgPolicy, "config"
-	}
-	return "auto", "default"
+	return "auto", "default", nil
+}
+
+// storeConflictError reports the declaration and the variable naming
+// different stores. VALIDATION: the command was asked for two stores and
+// choosing either one risks serving a credential the caller did not mean.
+func storeConflictError(declared, asked string) error {
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"this config directory stores credentials in %q (config.yaml credentialStore); %s asks for %q; unset the variable, or use a different --config",
+		declared, EnvCredentialStore, asked)).
+		WithHint("unset " + EnvCredentialStore)
 }
 
 // RepinForLogin re-probes at login time (only under auto): login is rare,
@@ -96,7 +121,11 @@ func EffectivePolicyWithSource(cfgPolicy string) (policy, source string) {
 // Empty string means no action was taken (already keychain-pinned, explicit
 // policy, or unusable keychain).
 func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, string, error) {
-	if EffectivePolicy(cfgPolicy) != "auto" {
+	policy, perr := EffectivePolicy(cfgPolicy)
+	if perr != nil {
+		return nil, "", perr
+	}
+	if policy != "auto" {
 		return current, "", nil
 	}
 	if ReadPin(dir) == "keychain" {

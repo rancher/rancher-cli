@@ -1085,11 +1085,15 @@ func TestLoginCanonicalizesStoredURL(t *testing.T) {
 	assert.Equal(t, "id:secret", tok, "credential must be stored under the canonical ref")
 }
 
-// TestLoginResolvesStoreFromLockedConfig asserts a race: a credentialStore
-// policy change committed while login waits for the config lock must be
-// honored - the token lands in the backend the NEW policy names, not the
-// dependency-resolution snapshot's.
-func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
+// TestLoginRefusesAStoreChangedUnderTheLock asserts a race: a
+// credentialStore change committed while the login waits for the config
+// lock ends the login instead of redirecting it. The login resolved its
+// store, and disclosed it, against the declaration it read before the
+// sign-in; committing into a backend nobody told the user about - and
+// recording a declaration this login never resolved against - is the
+// wrong answer in both directions. Nothing is written and the message
+// says to run the command again.
+func TestLoginRefusesAStoreChangedUnderTheLock(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{
 		CredentialStore: "file",
@@ -1139,9 +1143,19 @@ func TestLoginResolvesStoreFromLockedConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(config.FilePath(dir), b, 0600))
 
 	close(release)
-	require.NoError(t, <-loginDone)
-	assert.Equal(t, "exec:fake", calledWith,
-		"factory must be called with the policy from the config loaded under the lock, not before")
+	lerr := <-loginDone
+	require.Error(t, lerr)
+	require.ErrorIs(t, lerr, config.ErrPersistAborted)
+	require.ErrorContains(t, lerr, "exec:fake")
+	require.ErrorContains(t, lerr, "run the command again")
+	assert.Empty(t, calledWith, "no store is opened once the declaration has moved")
+
+	after, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, "exec:fake", after.CredentialStore, "the concurrent writer's declaration stands")
+	tok, terr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme", URL: "https://r.ex"})
+	require.ErrorIs(t, terr, config.ErrNoToken)
+	assert.Empty(t, tok)
 }
 
 // TestLoginSerializedUnderConfigLock exercises the boundary-test harness for
@@ -1600,15 +1614,15 @@ func (unsupportedStore) SetTokenWithOutcome(config.ServerRef, string, config.Pri
 
 func (unsupportedStore) DeleteToken(config.ServerRef) error { return nil }
 
-func (unsupportedStore) GetCachedCred(string) (string, time.Time, error) {
+func (unsupportedStore) GetCachedCred(string, *config.CacheAnchor) (string, time.Time, error) {
 	return "", time.Time{}, config.ErrNoToken
 }
 
-func (unsupportedStore) GetCachedCredDetail(string) (config.CachedCredDetail, error) {
+func (unsupportedStore) GetCachedCredDetail(string, *config.CacheAnchor) (config.CachedCredDetail, error) {
 	return config.CachedCredDetail{}, config.ErrNoToken
 }
 func (unsupportedStore) MarkCachedCredReady(string, string, string) (bool, error) { return false, nil }
-func (unsupportedStore) SetCachedCred(string, string, time.Time, string, string, string) error {
+func (unsupportedStore) SetCachedCred(string, string, time.Time, string, string, string, config.CacheBinding) error {
 	return nil
 }
 func (unsupportedStore) DeleteCachedCred(string) error                     { return nil }

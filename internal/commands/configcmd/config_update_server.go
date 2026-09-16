@@ -112,13 +112,29 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			// Delete-first ordering, as delete-server: a purge failure must
 			// leave config.yaml untouched, never a half-migrated entry
 			// pointed at the new address with the old token still live.
-			policy := config.EffectivePolicy(cfg.CredentialStore)
+			// One field moves ahead of the purge: the entry's cache
+			// binding id. A get-token that read the old id and the old
+			// credential a moment earlier would otherwise write a record
+			// the purge cannot see and the entry would still accept. The
+			// address and every other field stay behind the contract.
+			policy, perr := config.EffectivePolicy(cfg.CredentialStore)
+			if perr != nil {
+				return perr
+			}
+			entry := cfg.Servers[name]
+			if berr := config.AdvanceCacheBinding(&entry); berr != nil {
+				return berr
+			}
+			cfg.Servers[name] = entry
+			if werr := config.WriteStep("cachebinding", cfg); werr != nil {
+				return werr
+			}
 			ref := config.ServerRef{Name: name, URL: src.CanonicalURL}
 			deletedFrom, deletedCache, notices, err = config.DeleteTokenEverywhere(ctx, c.dir, ref, policy)
 			if err != nil {
 				return clierr.WrapUnlessCanceled(err, func(err error) error {
 					return clierr.Wrap(err,
-						fmt.Sprintf("failed to clear credentials for %q; server config left untouched: %v", name, err)).
+						fmt.Sprintf("failed to clear credentials for %q; the server address is unchanged, though its cache binding id has already been advanced: %v", name, err)).
 						WithWarnings(notices...)
 				})
 			}
