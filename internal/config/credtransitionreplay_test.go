@@ -677,7 +677,8 @@ func TestReplayRetainsWhenTheRecordLockIsHeld(t *testing.T) {
 // TestRetirementOutcomeFollowsTheErrorsOwnVerdict asserts the one
 // classification a retirement failure gets. Terminal is reserved for an
 // error the identity layer marks AND refuses to retry - a record or
-// directory that cannot be trusted. A marked but retryable state, an
+// directory that cannot be trusted, and a credential another directory
+// replaced. A marked but retryable state, an
 // unmarked validation error, a lock wait and a bare removal error are all
 // retained, because a retry may finish them.
 func TestRetirementOutcomeFollowsTheErrorsOwnVerdict(t *testing.T) {
@@ -692,6 +693,7 @@ func TestRetirementOutcomeFollowsTheErrorsOwnVerdict(t *testing.T) {
 		{"a record that cannot be trusted", identityError(dir, "prod", "a symlink"), verdictTerminal},
 		{"an identity directory that cannot be trusted", identityDirError(dir, "a symlink"), verdictTerminal},
 		{"a login in progress: marked, but retryable", loginIncompleteError("prod"), verdictRetain},
+		{"a credential replaced by another directory: marked and not retryable", credentialReplacedError("prod"), verdictTerminal},
 		{"a validation error without the identity marker", clierr.New(clierr.CodeValidation, "unrelated"), verdictRetain},
 		{"a lock wait", lockWaitError(context.DeadlineExceeded, lockWaitInProcess), verdictRetain},
 		{"a bare removal error", errors.New("remove: permission denied"), verdictRetain},

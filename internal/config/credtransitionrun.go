@@ -125,9 +125,9 @@ func stepError(step transitionStep) error {
 }
 
 // stepWarning is a step's error as the warning the replay leaves behind:
-// the message, then the remedy its hint names. A refusal carries the hint
-// as a typed field, but a command that goes on past the step - a logout -
-// has only this line to say what clears it.
+// the message, then the command its hint names. A refusal carries the
+// hint as a typed field, but a command that goes on past the step - a
+// logout - has only this line to point anywhere.
 func stepWarning(step transitionStep) string {
 	err := stepError(step)
 	if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Hint != "" {
@@ -316,7 +316,7 @@ func ClearFinishedTransition(dir string, cfg *Config) {
 	}
 }
 
-// ErrNoTokenHint is the remedy an entry's "not logged in" carries while a
+// ErrNoTokenHint is the hint an entry's "not logged in" carries while a
 // store change is unfinished. Without it the operator is told to log in,
 // when the credential is very likely sitting in the backend the change has
 // not finished moving it out of.

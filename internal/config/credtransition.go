@@ -96,7 +96,7 @@ type transitionStep struct {
 	// Terminal records that the last attempt found the step impossible to
 	// finish: the credential is in neither backend the step names, or a
 	// destination refused the write for good. A terminal step is reported
-	// with its own non-retryable error and remedy; a retained one with the
+	// with its own non-retryable error and hint; a retained one with the
 	// retryable code. Cleared when a later attempt gets further.
 	Terminal bool `json:"terminal,omitempty"`
 }
@@ -202,6 +202,13 @@ func validateTransitionStep(dir string, i int, s transitionStep) error {
 	}
 	if s.Entry == "" {
 		return bad("for no entry")
+	}
+	if s.Terminal && s.LastError == "" {
+		// Every attempt that gives up records why, so a terminal step
+		// always carries its cause and is rendered with it. One that does
+		// not was not written by this code and would report a refusal
+		// with an empty reason.
+		return bad("recorded as impossible without a cause, which no attempt produces")
 	}
 	if !isLowerHex(s.VerificationID, transitionIDLen) || !isLowerHex(s.CredentialDigest, identityFingerprintLen) {
 		return bad("missing the verifier that proves which credential it may touch")

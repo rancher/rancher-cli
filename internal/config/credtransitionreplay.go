@@ -410,9 +410,11 @@ func retireSourceRecord(ctx context.Context, dir string, s transitionStep) (noti
 // Terminal needs two things of the error: that it carries
 // ErrCredentialIdentity, and that it is a typed error which is not
 // retryable. The marker alone is not enough - its contract is "do not
-// fall through to another credential source", and producers carry it on
-// states a retry can resolve (a login in progress, a credential replaced
-// by a directory sharing this one's identity). What the identity layer
+// fall through to another credential source", and a login in progress
+// carries it on a state a retry can resolve. A credential replaced by a
+// directory sharing this one's identity carries the marker too and is
+// terminal by its own verdict, which is what the second condition takes
+// it from rather than from a list here. What the identity layer
 // marks and also refuses to retry is a record or directory that cannot be
 // trusted, which no later read sees differently; its message carries its
 // own remedy, and the step's cause repeats it. Everything else - the lock

@@ -121,6 +121,18 @@ func TestTransitionUnsafeOrUnreadableIsTerminal(t *testing.T) {
 			require.NoError(t, os.WriteFile(TransitionPath(dir), []byte(
 				"version: 1\nid: 0123456789abcdef0123456789abcdef\nsteps:\n- kind: pin\n  target: file\n  terminal: true\n  lastError: cannot recover\n"), 0o600))
 		}},
+		{name: "a step recorded as impossible with no cause", want: "without a cause", setup: func(t *testing.T, dir string) {
+			t.Helper()
+			// terminalBecause always carries a cause, so no attempt
+			// produces this. Written raw, the way a hand edit would leave
+			// it; read back, it would refuse the next command with an
+			// empty reason.
+			require.NoError(t, os.WriteFile(TransitionPath(dir), []byte(
+				"version: 1\nid: 0123456789abcdef0123456789abcdef\nsteps:\n- kind: delete\n  entry: prod\n  source: keychain\n"+
+					"  verificationId: 0123456789abcdef0123456789abcdef\n"+
+					"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"+
+					"  sourceAccountId: 0123456789abcdef0123456789abcdef\n  terminal: true\n"), 0o600))
+		}},
 		{name: "a symlink", skip: "windows", want: "a symlink", setup: func(t *testing.T, dir string) {
 			t.Helper()
 			backing := filepath.Join(dir, "elsewhere.yaml")
@@ -453,6 +465,26 @@ func TestWriteTransitionNeverReplacesADifferentChange(t *testing.T) {
 
 	require.NoError(t, removeTransition(dir))
 	require.NoError(t, writeTransition(dir, second), "a removed change leaves the path free")
+}
+
+// TestWriteTransitionRefusesAnInvalidManifest asserts the write side
+// validates too. The read side refusing is what keeps an unusable
+// manifest from being replayed; the write side refusing is what keeps one
+// from reaching the disk in the first place, so a step this release
+// cannot account for is never the file another process finds.
+func TestWriteTransitionRefusesAnInvalidManifest(t *testing.T) {
+	dir := t.TempDir()
+	m := validManifest(t)
+	m.Steps = []transitionStep{{Kind: transitionPin, Target: backendFile, Terminal: true, LastError: "cannot recover"}}
+
+	err := writeTransition(dir, m)
+	require.Error(t, err)
+	ce, ok := errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "unusable: step 1 is")
+	require.ErrorContains(t, err, "recorded as impossible")
+	assert.NoFileExists(t, TransitionPath(dir), "nothing reached the disk")
 }
 
 // TestRemoveTransitionIsIdempotent asserts the manifest can be removed and
