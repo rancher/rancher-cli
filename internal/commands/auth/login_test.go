@@ -2910,6 +2910,63 @@ func TestLoginReLoginRetiresThePriorDerivedTokenAndWarnsOnCrossUser(t *testing.T
 	assert.Contains(t, strings.Join(res.Warnings, "\n"), "rancher auth login 'recover-")
 }
 
+// TestLoginNamesTheStoreItWasToldToKeep asserts the flag reaches the
+// login it names: the credential goes to that store, the directory
+// records it, and the variable is only consulted to check they agree.
+func TestLoginNamesTheStoreItWasToldToKeep(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	// A directory that already declares a store: the flag has to outrank
+	// that declaration, or a login naming a store would commit to it and
+	// leave the directory pointing every reader at the other one.
+	seedServer(t, dir, "acme", "https://r.ex", "", true)
+	cfg0, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg0.CredentialStore = "keychain"
+	require.NoError(t, cfg0.Write())
+
+	in := cmdtest.Input{
+		Str:  map[string]string{"credential-store": "file"},
+		Flag: map[string]bool{"token-stdin": true},
+		Pos:  []string{"acme"},
+	}
+	cmd := newPlainLoginCmd(dir, nil)
+	cmd.newStore = config.OpenResolvedStore
+	_, err = cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, "file", cfg.CredentialStore, "the directory records the store it was told to keep")
+	tok, terr := config.NewFileStore(dir).GetToken(config.ServerRef{Name: "acme", URL: "https://r.ex"})
+	require.NoError(t, terr)
+	assert.Equal(t, "id:sec", tok)
+	assert.Empty(t, config.ReadPin(dir), "an explicit store never asks the pin, so it writes none")
+}
+
+// TestLoginRefusesAStoreTheVariableDisagreesWith asserts the one
+// precedence rule the flag has: it outranks the directory's declaration,
+// which is what it is for, but the variable and the flag must agree.
+func TestLoginRefusesAStoreTheVariableDisagreesWith(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "keychain")
+	dir := t.TempDir()
+	in := cmdtest.Input{
+		Str:  map[string]string{"url": "https://r.ex", "credential-store": "file"},
+		Flag: map[string]bool{"token-stdin": true},
+		Pos:  []string{"acme"},
+	}
+	_, err := newPlainLoginCmd(dir, config.NewFileStore(dir)).
+		Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "--credential-store")
+	require.ErrorContains(t, err, "RANCHER_CLI_CREDENTIAL_STORE")
+	assert.NoFileExists(t, config.FilePath(dir), "nothing was written")
+}
+
 // TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished asserts the other
 // arm of the check before the sign-in: a change that still has work left,
 // here a move naming another entry, stops a login that would start a

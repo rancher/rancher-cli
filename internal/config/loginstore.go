@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/zalando/go-keyring"
 )
 
@@ -123,6 +124,17 @@ func loginBackendsOf(dir string, cfg *Config, policy, source, declaration string
 		// re-probed, so a keychain that hiccups can never move a
 		// directory to plaintext behind the operator's back.
 		b.CommitsTo = backendKeychain
+	}
+	if resolved == "auto" && b.CommitsTo == backendFile && b.ReadsNow != "" && b.ReadsNow != backendFile {
+		// The keychain cannot be used right now, on a directory whose
+		// credentials are in the keychain or a helper. `auto` falling back
+		// to the plaintext file here would move all of them out on a
+		// probe - a locked keychain, a session over SSH - which is the
+		// silent downgrade a credential store must never make. Plaintext
+		// is something a login is asked for by name.
+		return b, clierr.New(clierr.CodeValidation, fmt.Sprintf(
+			"the keychain cannot be used right now, and a login that asks for auto never moves this directory's credentials out of %s into the plaintext file %s; unlock or fix the keychain and run this command again, or log in with --credential-store file to keep this entry's credential in plaintext on purpose",
+			b.ReadsNow, CredentialsFilePath(dir)))
 	}
 
 	after := cfg.CredentialStore

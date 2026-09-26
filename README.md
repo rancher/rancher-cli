@@ -278,7 +278,11 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
   `$XDG_CONFIG_HOME/rancher` > `~/.config/rancher`.
 - **Credential store:** OS keychain or a `0600` file; custom backends plug
   in as credential helpers ([CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md)).
-  Precedence and probe/pin semantics:
+  The directory records the store its first login used; change it with
+  `rancher auth login <name> --credential-store keychain|file|auto|exec:<name>`.
+  A change into the keychain moves every entry's credential there; a change
+  into the plaintext file or a helper takes only that entry's, and asks for
+  the others to be logged out first. Precedence and probe/pin semantics:
   [REFERENCE.md](REFERENCE.md#platforms--credential-stores).
 - **Environment overrides** (precedence flag > env > file): the full table
   of available environment overrides is in

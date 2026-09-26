@@ -538,7 +538,9 @@ backend is resolved by `config.OpenStoreWithNotice` on the read path and,
 for a login, by `loginBackendsOf` and `config.OpenResolvedStore`, which open
 an already-physical backend and write no pin. Strict precedence:
 
-`credentialStore` in `config.yaml` (the directory's own declaration, written by its first
+`auth login --credential-store` (that login only; it must agree with
+`RANCHER_CLI_CREDENTIAL_STORE` when both are set) > `credentialStore` in
+`config.yaml` (the directory's own declaration, written by its first
 login after that login's credential commits) > `credstore-pin` file > one-time probe.
 `RANCHER_CLI_CREDENTIAL_STORE` supplies the declaration for a directory that has none;
 a variable naming a store the directory does not declare is a VALIDATION error out of

@@ -209,6 +209,12 @@ func dispatchSite(
 		if accessTimeoutSite(site, d) {
 			return resolveStaticEnum(accessTimeoutSuggestions, site)
 		}
+		// `auth login --credential-store`: the three stores that can be
+		// named without knowing anything about the machine. The flag
+		// carries no enum, because a typed exec:<name> has to be accepted.
+		if credentialStoreSite(site, d) {
+			return resolveStaticEnum(credentialStoreSuggestions, site)
+		}
 		// Machine-config `<kind>/` prefixes for create cluster: compiled-in
 		// kind-table literals (kinds.MachineConfigGroup rows), not server
 		// data - served statically like an enum, before (and regardless of)
@@ -388,6 +394,21 @@ func accessVerbCandidates(site CompletionSite, d runtime.Descriptor, tail []stri
 	}
 	sort.Strings(out)
 	return out, true
+}
+
+// credentialStoreSuggestions are the static --credential-store
+// candidates: the stores a value can name on its own. A credential
+// helper is typed as exec:<name> and is never suggested, because a
+// suggestion has to be valid verbatim and no helper name can be offered
+// without probing for it.
+var credentialStoreSuggestions = []string{"auto", "file", "keychain"}
+
+// credentialStoreSite reports a --credential-store flag-value site on a
+// command whose descriptor carries the flag. Ownership follows the
+// descriptor, so a command without the flag gets no list.
+func credentialStoreSite(site CompletionSite, d runtime.Descriptor) bool {
+	return site.Kind == SiteFlagValue && site.FlagName == "credential-store" &&
+		slices.ContainsFunc(d.Flags, func(f runtime.ArgSpec) bool { return f.Name == "credential-store" })
 }
 
 // accessTimeoutSuggestions are the static --timeout candidates for the

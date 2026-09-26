@@ -258,3 +258,64 @@ func TestLoginPolicyPrefersTheFlagAndRefusesADisagreeingVariable(t *testing.T) {
 		})
 	}
 }
+
+// TestAnAutoLoginNeverMovesADirectoryIntoPlaintext asserts the refusal
+// that keeps `auto` from being a silent downgrade. A login that asks for
+// `auto` on a directory whose credentials are in the keychain or a helper,
+// on a machine whose keychain cannot be used right now, would otherwise
+// put every one of them in the plaintext file on the strength of one
+// probe. It is refused before the sign-in instead, with the two ways out
+// in the message. A fresh directory, which has nothing to move, still
+// falls back to the file store and says so.
+func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
+	for _, tc := range []struct {
+		name, declared, pin, from string
+	}{
+		{name: "a keychain directory with no pin", declared: "keychain", from: "keychain"},
+		{name: "a keychain directory with a stale file pin", declared: "keychain", pin: "file", from: "keychain"},
+		{name: "a helper directory", declared: "exec:vault", from: "exec:vault"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(EnvCredentialStore, "")
+			dir := t.TempDir()
+			if tc.pin != "" {
+				require.NoError(t, WritePin(dir, tc.pin))
+			}
+			orig := keyringUsable
+			keyringUsable = func() bool { return false }
+			resetKeyringUsableCache()
+			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
+
+			cfg := &Config{CredentialStore: tc.declared, Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
+			for _, err := range []error{
+				func() error {
+					_, err := loginBackendsOf(dir, cfg, "auto", PolicySourceFlag, "auto")
+					return err
+				}(),
+				LoginStoreChange(t.Context(), dir, cfg, "prod", "auto", PolicySourceFlag, "auto"),
+			} {
+				require.Error(t, err)
+				ce, ok := errorsAsClierr(err)
+				require.True(t, ok)
+				assert.Equal(t, clierr.CodeValidation, ce.Code)
+				require.ErrorContains(t, err, "never moves this directory's credentials out of "+tc.from+" into the plaintext file")
+				require.ErrorContains(t, err, "--credential-store file")
+			}
+			assert.Equal(t, tc.pin, ReadPin(dir), "the refusal writes nothing")
+		})
+	}
+
+	t.Run("a fresh directory still falls back, and says so", func(t *testing.T) {
+		t.Setenv(EnvCredentialStore, "")
+		dir := t.TempDir()
+		orig := keyringUsable
+		keyringUsable = func() bool { return false }
+		resetKeyringUsableCache()
+		t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
+
+		b, err := loginBackendsOf(dir, &Config{}, "auto", PolicySourceFlag, "auto")
+		require.NoError(t, err)
+		assert.Equal(t, backendFile, b.CommitsTo)
+		assert.Contains(t, b.Notice, "plaintext")
+	})
+}

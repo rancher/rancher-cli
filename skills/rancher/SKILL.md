@@ -58,7 +58,19 @@ None of the three is a reason to try a different server entry.
   not an override. Set the variable before the first login on a directory
   that needs a particular store (CI and headless machines want `file`),
   and leave it unset afterwards. `rancher config status` shows the
-  declaration, its source, and the conflict when there is one.
+  declaration, its source, and the conflict when there is one. To change
+  a directory's store afterwards, pass `--credential-store` to
+  `rancher auth login`: it records the new store only after the new
+  credential is stored in it. A change into the keychain moves every other
+  entry's credential there; a change into `file` or a helper moves none,
+  and refuses while another entry still holds a credential elsewhere.
+  Every refusal comes before the sign-in and names the entries and the
+  `rancher auth logout` to run first. `auto` never moves a keychain
+  directory into plaintext: if the keychain is unusable it refuses, and
+  `--credential-store file` is the explicit choice.
+  `CREDENTIAL_TRANSITION_INCOMPLETE` (exit 3, retryable) means an earlier
+  change has work left: the message names the step and why it could not
+  finish; resolve that, then run the command again.
 - Scripted/CI: pipe the token - `rancher auth login <name> --url <url> --token-stdin < token.txt`,
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
   A piped token is VERIFIED against the server before it is stored: a bad

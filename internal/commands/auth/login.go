@@ -110,6 +110,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "ttl", Type: "string", Desc: "session-token lifetime `duration`, e.g. 90d"},
 			{Name: "no-verify", Type: "bool", Desc: "store the token without an authenticated round-trip against the server"},
+			{Name: "credential-store", Type: "string", Desc: "credential `store` this directory keeps its credentials in: auto, keychain, file or exec:<name>; a change into the keychain moves every entry's credential there, a change into file or a helper needs the other entries logged out first"},
 		},
 		Examples: []string{
 			"rancher auth login prod",
@@ -153,6 +154,16 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	cfg0, err := config.Load(config.FilePath(l.dir))
 	if err != nil {
 		return runtime.Result{}, clierr.New(clierr.CodeGeneric, "reading config: "+err.Error())
+	}
+
+	// A store this release does not know, or one the variable disagrees
+	// with, is refused before anything is registered or written: it is an
+	// answer about the input alone. A refusal that depends on the
+	// directory's state - its other entries, an unfinished change, the
+	// keychain probe - comes later, after a `--url` login has registered
+	// its entry, and leaves that entry behind.
+	if _, _, perr := config.LoginPolicy(in.String("credential-store"), cfg0.CredentialStore); perr != nil {
+		return runtime.Result{}, perr
 	}
 
 	if url != "" {

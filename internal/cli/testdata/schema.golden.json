@@ -575,6 +575,11 @@
           "desc": "store the token without an authenticated round-trip against the server",
           "name": "no-verify",
           "type": "bool"
+        },
+        {
+          "desc": "credential `store` this directory keeps its credentials in: auto, keychain, file or exec:<name>; a change into the keychain moves every entry's credential there, a change into file or a helper needs the other entries logged out first",
+          "name": "credential-store",
+          "type": "string"
         }
       ],
       "group": "auth",

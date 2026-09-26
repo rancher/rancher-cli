@@ -47,6 +47,33 @@ backends is how a command ends up serving a credential nobody asked for.
 Unset the variable, or use a different `--config`. An undeclared
 directory defaults to `auto` (probe once, pin).
 
+Changing a directory's store is `rancher auth login <name>
+--credential-store keychain|file|auto|exec:<name>`. The flag names the
+store outright, so it is not weighed against the declaration - changing
+that is the point - but it must agree with
+`RANCHER_CLI_CREDENTIAL_STORE` when that is set, or it is the same
+VALIDATION error. The new store is recorded only after this entry's new
+credential has been stored in it, so no process resolves the entry to a
+store that does not hold its credential yet. A change into the keychain
+takes the other entries' credentials with it: nothing is logged out, and
+each one keeps its own cached cluster tokens. A change into the plaintext
+file store, or into a credential helper, takes only this entry's
+credential: while another entry still holds one in the store being left,
+the change is refused before the sign-in, naming those entries and the
+`rancher auth logout` to run first, so no credential ends up in plaintext
+unless it was logged in there. `--credential-store auto` never moves a
+keychain or helper directory into plaintext either: when the keychain
+cannot be used at that moment, the login is refused, and naming `file` is
+the way to choose plaintext on purpose. An entry whose credential cannot
+be moved into the keychain - a login that never finished, a keychain slot
+another directory now owns, a helper that creates credentials on demand
+rather than storing them, or a credential that exists in both stores - is
+named before the sign-in, with the `rancher auth logout` that settles it.
+An unfinished change is `CREDENTIAL_TRANSITION_INCOMPLETE`: its message
+names the step that could not finish and why; resolve that, then run the
+command again. A second store change cannot start until the first one
+finishes.
+
 A directory whose backend is the keychain reads only the keychain: on a
 headless machine (no D-Bus, locked keychain) every command fails with the
 way out rather than falling back to a file-stored token, so a headless
