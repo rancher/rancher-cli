@@ -20,6 +20,11 @@ KUBEBUILDER_ASSETS="$("${ENVTEST_TOOL}" use "${ENVTEST_K8S_VERSION}" -p path)"
 export KUBEBUILDER_ASSETS
 echo "==> assets: ${KUBEBUILDER_ASSETS}"
 
+# A fatal runtime error prints only the goroutine that detected it; the
+# other side of a concurrent map access is on another goroutine, so a
+# crash in either suite prints them all.
+export GOTRACEBACK=all
+
 echo "==> provider envtest suite"
 go test -tags envtest -count=1 ./internal/client/provider/
 
