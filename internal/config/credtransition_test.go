@@ -112,6 +112,18 @@ func TestTransitionUnsafeOrUnreadableIsTerminal(t *testing.T) {
 			require.NoError(t, os.WriteFile(TransitionPath(dir),
 				[]byte("version: 1\nid: 0123456789abcdef0123456789abcdef\n"), 0o600))
 		}},
+		{name: "a move into the plaintext file store", want: "a move into the plaintext file store", setup: func(t *testing.T, dir string) {
+			t.Helper()
+			// No change schedules one, and writeTransition refuses it too,
+			// so the file is written the way a hand edit would leave it.
+			vid, err := newTransitionID()
+			require.NoError(t, err)
+			acct, aerr := newKeychainAccountID()
+			require.NoError(t, aerr)
+			require.NoError(t, os.WriteFile(TransitionPath(dir), []byte(
+				"version: 1\nid: 0123456789abcdef0123456789abcdef\nsteps:\n- kind: move\n  entry: staging\n  source: keychain\n  destination: file\n"+
+					"  verificationId: "+vid+"\n  credentialDigest: "+credentialFingerprint(vid, "tok")+"\n  sourceAccountId: "+acct+"\n"), 0o600))
+		}},
 		{name: "a pin recorded as impossible", want: "recorded as impossible", setup: func(t *testing.T, dir string) {
 			t.Helper()
 			// No attempt writes this: a pin either lands or is retried, and
@@ -174,6 +186,7 @@ func TestTransitionUnsafeOrUnreadableIsTerminal(t *testing.T) {
 			require.ErrorContains(t, err, transitionFileName)
 			require.ErrorContains(t, err, "no credential was read or written")
 			require.ErrorContains(t, err, tc.want)
+			assert.Empty(t, ce.Hint, "the message names the file and what to do with it; no command reports it yet")
 
 			after, aerr := os.Lstat(TransitionPath(dir))
 			require.NoError(t, aerr, "the file is left for the operator to inspect")
@@ -427,7 +440,7 @@ func TestTransitionIncompleteNamesTheStepAndItsError(t *testing.T) {
 	require.ErrorContains(t, err, "move staging")
 	require.ErrorContains(t, err, "the keychain is locked")
 	require.ErrorContains(t, err, "run this command again")
-	assert.Equal(t, "rancher config status", ce.Hint)
+	assert.Empty(t, ce.Hint, "no command reports the change yet, so none is named")
 
 	// A step with no entry and no recorded error still says what is left.
 	bare := transitionIncomplete(transitionStep{Kind: transitionPin})
@@ -453,6 +466,7 @@ func TestWriteTransitionNeverReplacesADifferentChange(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorContains(t, err, "already recorded")
 	require.ErrorContains(t, err, transitionFileName)
+	assert.Empty(t, ce.Hint, "no command reports the change that is there yet")
 
 	got, rerr := readTransition(dir)
 	require.NoError(t, rerr)

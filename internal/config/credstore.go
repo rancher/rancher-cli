@@ -1174,6 +1174,21 @@ func execHelperName(policy string) (string, bool) {
 	return name, true
 }
 
+// CheckStorePolicy reports whether p is a credential-store value this
+// release understands. It is the one allowlist - adding a backend means
+// updating it and nothing else - and a login validates the store it is
+// asked for through it rather than carrying a second copy.
+func CheckStorePolicy(p string) error { return checkPolicy(p) }
+
+// OpenResolvedStore opens the store for an ALREADY-PHYSICAL backend:
+// file, keychain or exec:<name>. It applies neither the variable nor the
+// pin, and writes no pin, which is what the login path needs - the login
+// resolves the backend itself and the pin it ends with is written by its
+// own last step, after the credential commits.
+func OpenResolvedStore(backend, dir string) (CredStore, string, error) {
+	return openStoreResolved(backend, dir)
+}
+
 // checkPolicy returns CS-6's error for an unknown effective policy value p.
 // Both openStoreResolved and NewLazyStore call this so the valid-policy
 // allowlist is defined exactly once - adding a new backend means updating
@@ -1233,10 +1248,10 @@ func openStoreResolved(p, dir string) (CredStore, string, error) {
 		}
 		// openStoreResolved cannot propagate to a result envelope from the lazy
 		// path (resolution is a side-effect of the first credential call, outside
-		// any pipeline Result). Callers that have an envelope (login via
-		// OpenStoreWithNotice) get the notice as a return value instead.
-		notice := fmt.Sprintf("keychain unavailable; credentials will be stored in plaintext %s", CredentialsFilePath(dir))
-		return NewFileStore(dir), notice, nil
+		// any pipeline Result). Callers that have an envelope get the notice as a
+		// return value instead; a login never reaches this branch, because it
+		// resolves the backend itself and owns the same disclosure.
+		return NewFileStore(dir), plaintextStoreNotice(dir), nil
 	}
 }
 
@@ -1278,21 +1293,21 @@ var keyringUsable = func() bool {
 var keyringUsableOnceFn = sync.OnceValue(func() bool { return keyringUsable() })
 
 // keyringUsableOnce runs keyringUsable at most once per process and caches
-// the result. A CLI invocation is one process: OpenStore's auto-probe and
-// login's RepinForLogin re-probe would otherwise pay the (bounded,
-// keyringProbeTimeout-worst-case) probe cost twice sequentially on an
-// unusable keychain. keyringUsable itself stays the swappable seam for tests
-// that exercise it directly (e.g. the timeout test); callers that go through
-// OpenStore/RepinForLogin observe the memoized result.
+// the result. A CLI invocation is one process: the read path's auto-probe
+// and the probe a login makes to resolve its own backend would otherwise
+// pay the (bounded, keyringProbeTimeout-worst-case) cost twice
+// sequentially on an unusable keychain. keyringUsable itself stays the
+// swappable seam for tests that exercise it directly (the timeout test);
+// every other caller observes the memoized result.
 func keyringUsableOnce() bool {
 	return keyringUsableOnceFn()
 }
 
-// resetKeyringUsableCache clears keyringUsableOnce's memoized result. Tests
-// that stub keyringUsable and exercise the probe through OpenStore or
-// RepinForLogin must call this first, so their own stub is actually invoked
-// rather than a cached result left over from an earlier test in the same
-// process.
+// resetKeyringUsableCache clears keyringUsableOnce's memoized result.
+// Tests that stub keyringUsable and exercise the probe through a store
+// open or a login's own backend resolution must call this first, so their
+// own stub is actually invoked rather than a cached result left over from
+// an earlier test in the same process.
 func resetKeyringUsableCache() {
 	keyringUsableOnceFn = sync.OnceValue(func() bool { return keyringUsable() })
 }

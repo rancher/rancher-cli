@@ -163,8 +163,6 @@ func TestRewriteMovesAsDeletesSplitsBothSides(t *testing.T) {
 	dir := t.TempDir()
 	vid, err := newTransitionID()
 	require.NoError(t, err)
-	src, serr := newKeychainAccountID()
-	require.NoError(t, serr)
 	dst, derr := newKeychainAccountID()
 	require.NoError(t, derr)
 	id, ierr := newTransitionID()
@@ -172,19 +170,19 @@ func TestRewriteMovesAsDeletesSplitsBothSides(t *testing.T) {
 
 	m := &transitionManifest{Version: transitionVersion, ID: id, Steps: []transitionStep{
 		{
-			Kind: transitionMove, Entry: "prod", Source: backendKeychain, Destination: backendFile,
+			Kind: transitionMove, Entry: "prod", Source: backendFile, Destination: backendKeychain,
 			VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "tok"),
-			SourceAccountID: src, DestAccountID: dst,
+			DestAccountID: dst,
 			// A move that had already been judged impossible: the verdict
 			// is the move's, not the cleanup's.
 			Terminal: true, LastError: "the credential is in neither store",
 		},
 		{
-			Kind: transitionMove, Entry: "staging", Source: backendKeychain, Destination: backendFile,
+			Kind: transitionMove, Entry: "staging", Source: backendFile, Destination: backendKeychain,
 			VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "tok"),
-			SourceAccountID: src,
+			DestAccountID: dst,
 		},
-		{Kind: transitionPin, Target: backendFile},
+		{Kind: transitionPin, Target: backendKeychain},
 	}}
 
 	notices, werr := rewriteMovesAsDeletes(dir, m, []string{"prod"})
@@ -193,10 +191,10 @@ func TestRewriteMovesAsDeletesSplitsBothSides(t *testing.T) {
 
 	require.Len(t, m.Steps, 4)
 	assert.Equal(t, transitionDelete, m.Steps[0].Kind)
-	assert.Equal(t, backendKeychain, m.Steps[0].Source, "the side it was coming from")
-	assert.Equal(t, src, m.Steps[0].SourceAccountID)
+	assert.Equal(t, backendFile, m.Steps[0].Source, "the side it was coming from")
 	assert.Equal(t, transitionDelete, m.Steps[1].Kind)
-	assert.Equal(t, backendFile, m.Steps[1].Source, "the side it was going to")
+	assert.Equal(t, backendKeychain, m.Steps[1].Source, "the side it was going to")
+	assert.Equal(t, dst, m.Steps[1].SourceAccountID, "addressed by the account the move was writing to")
 	assert.Empty(t, m.Steps[1].Destination, "a delete has no destination")
 	assert.Equal(t, transitionMove, m.Steps[2].Kind, "another entry's move is untouched")
 	assert.Equal(t, "staging", m.Steps[2].Entry)
@@ -294,8 +292,8 @@ func TestALogoutFinishesWhileAStepCannot(t *testing.T) {
 	require.NotEmpty(t, notices)
 	assert.Contains(t, notices[len(notices)-1], "could not finish for prod",
 		"and is told the work is still there, in the words the step recorded")
-	assert.Contains(t, notices[len(notices)-1], "hint: rancher config status",
-		"with where to look, since the logout goes on and no refusal will carry the hint; the logout that is running is no remedy for the delete it leaves")
+	assert.NotContains(t, notices[len(notices)-1], "hint:",
+		"and names no command: the logout that is running is no remedy for the delete it leaves, and nothing reports the step yet")
 
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
@@ -432,7 +430,7 @@ func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 	require.True(t, uok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, uce.Code)
 	assert.True(t, uce.Retryable)
-	assert.Equal(t, "rancher config status", uce.Hint)
+	assert.Empty(t, uce.Hint, "no command reports the step yet")
 	require.ErrorContains(t, untried, "delete prod); run this command again")
 	assert.NotContains(t, untried.Error(), "resolved", "nothing to resolve is named for a step no attempt has judged")
 
@@ -441,7 +439,7 @@ func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 	require.True(t, pok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, pce.Code)
 	assert.True(t, pce.Retryable)
-	assert.Equal(t, "rancher config status", pce.Hint, "a step naming no entry has no logout to name")
+	assert.Empty(t, pce.Hint, "a step naming no entry has no logout to name")
 	require.ErrorContains(t, pin, "(pin): writing the pin: permission denied; run this command again once that is resolved")
 	assert.NotContains(t, pin.Error(), "for :", "and no empty subject")
 }

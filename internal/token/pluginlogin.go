@@ -41,6 +41,18 @@ func (t tokenCmd) storeOpener() func(policy, dir string) (config.CredStore, stri
 	return config.OpenStoreWithNotice
 }
 
+// loginStoreOpener is the opener the login primitive gets. It differs
+// from the read path's in one way that matters: it is called with a
+// backend already resolved under the lock, so it never re-applies the
+// variable and never writes a pin. The pin a login ends with is written
+// by the change's own last step, after the credential commits.
+func (t tokenCmd) loginStoreOpener() func(backend, dir string) (config.CredStore, string, error) {
+	if t.openStore != nil {
+		return t.openStore
+	}
+	return config.OpenResolvedStore
+}
+
 // pluginLogin runs the plugin-created login under the per-server flock:
 // re-probe (another process may have finished), the store decision and
 // its disclosure, acquisition, the cluster token that proves the new
@@ -104,6 +116,14 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if entry == "" {
 			entry = config.ExecLoginEntryName(in.serverID)
 		}
+		// The same check `auth login` runs before its sign-in. Here it
+		// matters more: this login has a terminal only sometimes, and a
+		// refusal after the sign-in would have cost a server-issued
+		// token for a login that was never going to be accepted.
+		if serr := config.LoginStoreChange(ctx, t.dir, cfg, entry, decision.Policy, "",
+			config.DeclarationFor(cfg.CredentialStore, "", decision.Policy)); serr != nil {
+			return serr
+		}
 		cred, err = AcquireLoginCredential(ctx, in.client, LoginRequest{Server: in.server, AuthProvider: in.authProvider,
 			AuthFlow: in.authFlow, IdPClient: in.newIdPClient(), ResponseType: "json"}, 0, p)
 		if err != nil {
@@ -131,7 +151,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			OwnsEntry: true, Decision: &decision, ReadOnlyStoreIsFailure: true,
 			Policy: decision.Policy, ObservedDeclaration: cfg.CredentialStore,
 			Declaration: config.DeclarationFor(cfg.CredentialStore, "", decision.Policy),
-			OpenStore:   t.storeOpener(),
+			OpenStore:   t.loginStoreOpener(),
 		})
 		st.Warnings = append(st.Warnings, out.Warnings...)
 		st.Config, st.Commit, st.ConfigRecovery, st.CompensationError = out.ConfigState, out.Commit, out.ConfigRecovery, out.CompensationError

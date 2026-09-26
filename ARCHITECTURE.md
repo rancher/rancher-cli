@@ -534,8 +534,9 @@ reachable command.
 records the server entry only when given `--url` for a name that doesn't exist yet
 (delegating to the same registration path `config add-server` uses) - otherwise the entry
 must already exist, added by `config add-server` or a prior delegated login. The store
-backend is resolved by `config.OpenStoreWithNotice` (login's
-eager path) with strict precedence:
+backend is resolved by `config.OpenStoreWithNotice` on the read path and,
+for a login, by `loginBackendsOf` and `config.OpenResolvedStore`, which open
+an already-physical backend and write no pin. Strict precedence:
 
 `credentialStore` in `config.yaml` (the directory's own declaration, written by its first
 login after that login's credential commits) > `credstore-pin` file > one-time probe.
@@ -712,11 +713,40 @@ respective files via `flock` (released by the OS on process exit):
   `withIdentityLock` for a record write only (login, compensation, the delete paths), never
   for a read. It is innermost: it is taken while the config lock is held, because logins
   and logouts run under that one, and code holding it acquires no other lock.
+- `<dir>/credential-transition.lock` - guards the record of a credential
+  store change (`credential-transition.yaml`) and every step replayed
+  from it; taken by `withTransitionLock`. A login takes it once, around
+  its whole body, and the prelude and the replay run in lock-free inner
+  forms: `withDirLock` is not reentrant, so a nested take would wait on
+  its own process until the deadline. A cold path only; no reader ever
+  touches it.
 
-One ordering rule holds across all four: the config lock is always outermost. Code
-holding any of the other three locks must never acquire it. `RANCHER_CLI_CONFIG_NO_LOCK`
+One ordering rule holds across all five: the config lock is always outermost, then
+the transition lock, then exactly one of `credstore-id.lock` or the helper-records
+lock - never both at once. Code holding any of the inner locks must never acquire an
+outer one. `RANCHER_CLI_CONFIG_NO_LOCK`
 (any non-empty value) skips the `flock` - escape hatch for filesystems with broken
 advisory locking - while the process-level semaphore still serializes in-process callers.
+Without the flock a concurrent command can replace or remove the one record of a store
+change, the same lost-update class the variable already accepts for `config.yaml`.
+
+**A login that changes the credential store.** The store a login commits
+to, the store a reader resolves to before it and the one a reader
+resolves to after it are resolved once, in `loginBackendsOf`, and every
+condition in the login order comes from that one answer. Before the
+commit the login writes the record of what the change has to do - a move
+per other entry, its own old copy, and the pin, last - which stays inert
+until the first config write after the commit names it. Then this entry's
+old copy is removed, or failing that the pin is flipped, before the cache
+binding id advances; the id write follows; and the remaining steps run
+under the lock the login already holds. Every path that ends before the
+naming write removes the record. A change into the plaintext file store
+moves no other entry: it is refused before the sign-in while another
+entry holds a credential in the keychain or a helper, so only the entry
+logging in is ever put in plaintext by a login. When the pin on disk names
+a store the directory neither uses nor is moving to, the login writes the
+pin it ends with before the commit instead of last - the declaration is
+still explicit then, and no reader consults the pin.
 
 **Auth-provider subsystem (`internal/token`).** Login discovers providers at
 `/v1-public/authproviders` and then runs the matching flow: **basic**

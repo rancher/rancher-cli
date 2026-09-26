@@ -15,6 +15,7 @@ import (
 	neturl "net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -1423,10 +1424,13 @@ func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 		Flag: map[string]bool{"token-stdin": true},
 		Pos:  []string{"acme"},
 	}
-	// Inject a file store; under auto with a usable (mock) keychain, login must
-	// re-pin to keychain and write the token there, not to the file store.
-	_, err := newPlainLoginCmd(dir, config.NewFileStore(dir)).
-		Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
+	// The production opener, because the backend the login resolves is what
+	// decides here: under auto with a usable (mock) keychain the credential
+	// goes to the keychain, and the pin that says so is written by the
+	// change's own last step, after the commit.
+	cmd := newPlainLoginCmd(dir, nil)
+	cmd.newStore = config.OpenResolvedStore
+	_, err := cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 
 	if got := config.ReadPin(dir); got != "keychain" {
@@ -1443,11 +1447,12 @@ func TestLoginUpgradesAutoPinToKeychain(t *testing.T) {
 }
 
 // TestLoginFirstPinNoticeReachesWarnings exercises the production wiring
-// (newStore: config.OpenStoreWithNotice) on a fresh auto+usable-keychain
-// machine: the first-pin notice must appear in res.Warnings so it reaches
-// the JSON/YAML envelope, not just a raw stderr line. This covers the
-// regression where openStoreResolved probed and pinned the keychain before
-// RepinForLogin ran, making RepinForLogin return early with no notice.
+// (newStore: config.OpenResolvedStore) on a fresh auto+usable-keychain
+// machine: the moment this machine decides where the directory keeps its
+// credentials must appear in res.Warnings so it reaches the JSON/YAML
+// envelope, not just a raw stderr line. The notice comes from the pin
+// step of the change the login records, which is the only thing that
+// writes that pin.
 func TestLoginFirstPinNoticeReachesWarnings(t *testing.T) {
 	// Non-parallel: keyring.MockInit and keyringUsable are process-globals.
 	// Isolate from the operator's shell so RANCHER_CLI_CREDENTIAL_STORE=file
@@ -1458,7 +1463,7 @@ func TestLoginFirstPinNoticeReachesWarnings(t *testing.T) {
 
 	dir := t.TempDir() // fresh dir, no config → auto policy, no prior pin
 
-	cmd := &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice}
+	cmd := &loginCmd{dir: dir, newStore: config.OpenResolvedStore}
 	res, err := cmd.Execute(t.Context(),
 		cmdtest.Input{Str: map[string]string{"url": "https://r.ex"}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"acme"}},
 		cmdtest.StdinPrompter("id:sec\n"))
@@ -1468,11 +1473,12 @@ func TestLoginFirstPinNoticeReachesWarnings(t *testing.T) {
 	assert.Equal(t, "keychain", config.ReadPin(dir), "auto + usable keychain must pin to keychain")
 }
 
-// TestLoginFileToKeychainRepinNoticeReachesWarnings exercises the production
-// wiring (newStore: config.OpenStoreWithNotice) when the machine was previously
-// pinned to "file" (e.g. first login over SSH) and now has a usable keychain:
-// RepinForLogin must upgrade the pin and emit the re-pin notice into res.Warnings
-// so it appears in the JSON/YAML envelope, not only as a raw stderr line.
+// TestLoginFileToKeychainRepinNoticeReachesWarnings exercises the
+// production wiring (newStore: config.OpenResolvedStore) when the machine
+// was previously pinned to "file" (a first login over SSH) and now has a
+// usable keychain: the login must upgrade the pin and the re-pin notice
+// must reach res.Warnings, so it appears in the JSON/YAML envelope and
+// not only as a raw stderr line.
 func TestLoginFileToKeychainRepinNoticeReachesWarnings(t *testing.T) {
 	// Non-parallel: keyring.MockInit and keyringUsable are process-globals.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
@@ -1481,7 +1487,7 @@ func TestLoginFileToKeychainRepinNoticeReachesWarnings(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, config.WritePin(dir, "file"))
 
-	cmd := &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice}
+	cmd := &loginCmd{dir: dir, newStore: config.OpenResolvedStore}
 	res, err := cmd.Execute(t.Context(),
 		cmdtest.Input{Str: map[string]string{"url": "https://r.ex"}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"acme"}},
 		cmdtest.StdinPrompter("id:sec\n"))
@@ -2902,4 +2908,116 @@ func TestLoginReLoginRetiresThePriorDerivedTokenAndWarnsOnCrossUser(t *testing.T
 	assert.True(t, alive, "another user's token is never deleted on a guess")
 	require.NotEmpty(t, res.Warnings)
 	assert.Contains(t, strings.Join(res.Warnings, "\n"), "rancher auth login 'recover-")
+}
+
+// TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished asserts the other
+// arm of the check before the sign-in: a change that still has work left,
+// here a move naming another entry, stops a login that would start a
+// second change, before anyone authenticates. Two changes cannot stack -
+// the second would forget what the first had already moved.
+func TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	seedServer(t, dir, "prod", "https://r.ex", "", true)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.CredentialStore = "file"
+	cfg.Servers["other"] = config.Server{URL: "https://other.ex"}
+	require.NoError(t, cfg.Write())
+
+	id := "0123456789abcdef0123456789abcdef"
+	manifest := "version: 1\nid: " + id + "\nsteps:\n" +
+		"- kind: move\n  entry: other\n  source: file\n  destination: keychain\n" +
+		"  verificationId: fedcba9876543210fedcba9876543210\n" +
+		"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n" +
+		"  destAccountId: " + id + "\n"
+	require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte(manifest), 0o600))
+	cfg, err = config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.CredentialTransitionID = id
+	require.NoError(t, cfg.Write())
+
+	in := cmdtest.Input{
+		Str:  map[string]string{"credential-store": "keychain"},
+		Flag: map[string]bool{"token-stdin": true},
+		Pos:  []string{"prod"},
+	}
+	cmd := newPlainLoginCmd(dir, nil)
+	cmd.newStore = config.OpenResolvedStore
+	reached := false
+	cmd.verify = func(context.Context, config.Effective) (string, error) { reached = true; return "", nil }
+
+	_, err = cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
+	require.Error(t, err)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
+	assert.False(t, reached, "the refusal arrived before the sign-in")
+}
+
+// TestNewLoginOpensTheBackendItResolved asserts the opener production
+// wires in. A login resolves an already-physical backend under the lock;
+// opening it again through the variable's precedence would refuse, after
+// the sign-in, a login doing exactly what the variable asked for.
+func TestNewLoginOpensTheBackendItResolved(t *testing.T) {
+	cmd, ok := NewLogin(t.TempDir()).(*loginCmd)
+	require.True(t, ok)
+	assert.Equal(t, reflect.ValueOf(config.OpenResolvedStore).Pointer(), reflect.ValueOf(cmd.newStore).Pointer())
+}
+
+// TestLoginRefusesAStoreChangeBeforeTheSignIn asserts the check that runs
+// before anyone is asked to authenticate. A store change the directory
+// cannot make is refused up front; without the check the refusal arrives
+// from the commit instead, after the server has issued a token that then
+// has to be revoked.
+func TestLoginRefusesAStoreChangeBeforeTheSignIn(t *testing.T) {
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	seedServer(t, dir, "prod", "https://r.ex", "", true)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.CredentialStore = "file"
+	require.NoError(t, cfg.Write())
+	// `other` holds a credential in both stores, which is the one entry
+	// state a change into the keychain cannot decide.
+	seedBothStores(t, dir, cfg, "other", "https://other.ex")
+
+	in := cmdtest.Input{
+		Str:  map[string]string{"credential-store": "keychain"},
+		Flag: map[string]bool{"token-stdin": true},
+		Pos:  []string{"prod"},
+	}
+	cmd := newPlainLoginCmd(dir, nil)
+	cmd.newStore = config.OpenResolvedStore
+	// A token source that records whether anything reached it: the point
+	// of the check is that nothing does.
+	reached := false
+	p := cmdtest.StdinPrompter("id:sec\n")
+	cmd.verify = func(context.Context, config.Effective) (string, error) { reached = true; return "", nil }
+
+	_, err = cmd.Execute(t.Context(), in, p)
+	require.Error(t, err)
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "other")
+	assert.False(t, reached, "the refusal arrived before the sign-in")
+
+	after, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, "file", after.CredentialStore, "and nothing was written")
+}
+
+// seedBothStores gives an entry a credential in the file store and a
+// keychain account this directory still addresses.
+func seedBothStores(t *testing.T, dir string, cfg *config.Config, entry, url string) {
+	t.Helper()
+	cfg.Servers[entry] = config.Server{URL: url}
+	require.NoError(t, cfg.Write())
+	require.NoError(t, config.NewFileStore(dir).SetToken(config.ServerRef{Name: entry, URL: url}, "file-copy"))
+	store, _, err := config.OpenResolvedStore("keychain", dir)
+	require.NoError(t, err)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: entry, URL: url}, "keychain-copy"))
 }

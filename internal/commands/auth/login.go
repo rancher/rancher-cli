@@ -22,13 +22,14 @@ import (
 
 type loginCmd struct {
 	dir string
-	// newStore resolves the credential store FROM THE POLICY READ UNDER
-	// THE LOCK. Production wiring uses config.OpenStoreWithNotice; tests
-	// inject a factory returning their fake store. The string return carries
-	// any first-pin notice so Execute can route it into res.Warnings rather
-	// than writing directly to stderr. Replaces the removed store field (the
+	// newStore opens the store the credential commits to, from the BACKEND
+	// RESOLVED UNDER THE LOCK - a physical value, never a policy.
+	// Production wiring uses config.OpenResolvedStore; tests inject a
+	// factory returning their fake store. The string return carries any
+	// store notice so Execute can route it into res.Warnings rather than
+	// writing directly to stderr. Replaces the removed store field (the
 	// dependency-resolution store snapshot this race was about).
-	newStore func(policy, dir string) (config.CredStore, string, error)
+	newStore func(backend, dir string) (config.CredStore, string, error)
 	// tlsPreflight verifies the server's certificate against caPEM (or
 	// system roots when caPEM is empty) before any credential is persisted.
 	// Plain login (an existing entry) still runs this: it enforces already-
@@ -70,7 +71,7 @@ func (l loginCmd) idpClient() *http.Client {
 // from the dependency-resolution snapshot, which can predate a concurrent
 // policy change (config-write-lock plan, review issue 2).
 func NewLogin(dir string) runtime.Command {
-	return &loginCmd{dir: dir, newStore: config.OpenStoreWithNotice, tlsPreflight: register.TLSPreflight, verify: provider.Preflight}
+	return &loginCmd{dir: dir, newStore: config.OpenResolvedStore, tlsPreflight: register.TLSPreflight, verify: provider.Preflight}
 }
 
 // loginVerifyFunc matches provider.Preflight's shape: an authenticated
@@ -402,9 +403,18 @@ func (l loginCmd) authenticateAndStore(
 		return runtime.Result{}, clierr.New(clierr.CodeGeneric, "reading config: "+err.Error())
 	}
 	observedDeclaration := declCfg.CredentialStore
-	policy, _, policyErr := config.EffectivePolicyWithSource(observedDeclaration)
+	requested := in.String("credential-store")
+	policy, policySource, policyErr := config.LoginPolicy(requested, observedDeclaration)
 	if policyErr != nil {
 		return runtime.Result{}, policyErr
+	}
+	// What this login would do to the directory's credential store,
+	// answered before anyone is asked to authenticate: a change that
+	// cannot be made, or one that cannot start while another is
+	// unfinished, costs no server-issued token this way.
+	if serr := config.LoginStoreChange(ctx, l.dir, declCfg, name,
+		policy, policySource, config.DeclarationFor(observedDeclaration, requested, policy)); serr != nil {
+		return runtime.Result{}, serr
 	}
 
 	isHTTPS := strings.HasPrefix(serverURL, "https://")
@@ -514,8 +524,8 @@ func (l loginCmd) authenticateAndStore(
 		Name: name, CanonicalURL: serverURL,
 		Provenance: cred.Provenance, TokenRef: cred.Ref, TokenUserID: cred.UserID,
 		Bearer: bearer, ExpiresAt: cred.ExpiresAt,
-		Policy: policy, ObservedDeclaration: observedDeclaration,
-		Declaration:  config.DeclarationFor(observedDeclaration, "", policy),
+		Policy: policy, PolicySource: policySource, ObservedDeclaration: observedDeclaration,
+		Declaration:  config.DeclarationFor(observedDeclaration, requested, policy),
 		OpenStore:    l.newStore,
 		PendingTrust: pendingCA,
 		PreCheck: func(cfg *config.Config) error {

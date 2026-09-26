@@ -43,6 +43,27 @@ type MutationIntent struct {
 // The caller holds the config lock. cfg is the config loaded under it and
 // may be updated here; the caller writes it.
 func PrepareMutation(ctx context.Context, dir string, cfg *Config, intent MutationIntent) (notices []string, err error) {
+	return prepareMutation(ctx, dir, cfg, intent, func(fn func() error) error {
+		return withTransitionLock(ctx, dir, fn)
+	})
+}
+
+// prepareMutationLocked is PrepareMutation for a caller that already holds
+// the transition lock. The login primitive holds it around its whole body,
+// and withDirLock is not reentrant: a nested take would wait on this very
+// process until the lock deadline and then fail as a timeout.
+func prepareMutationLocked(ctx context.Context, dir string, cfg *Config, intent MutationIntent) (notices []string, err error) {
+	return prepareMutation(ctx, dir, cfg, intent, func(fn func() error) error { return fn() })
+}
+
+// prepareMutation is the prelude's body. locked runs its argument with the
+// transition lock held, however the caller arranges that, so the order of
+// the work is written once and cannot differ between a caller that takes
+// the lock and one that already holds it.
+func prepareMutation(
+	ctx context.Context, dir string, cfg *Config, intent MutationIntent,
+	locked func(func() error) error,
+) (notices []string, err error) {
 	var (
 		retained  []string
 		remaining *transitionManifest
@@ -58,10 +79,10 @@ func PrepareMutation(ctx context.Context, dir string, cfg *Config, intent Mutati
 		// A login died between preparing a change and activating it, so
 		// nothing was ever moved. Removing it is what lets the next store
 		// change start.
-		return nil, withTransitionLock(ctx, dir, func() error { return removeTransition(dir) })
+		return nil, locked(func() error { return removeTransition(dir) })
 	}
 
-	err = withTransitionLock(ctx, dir, func() error {
+	err = locked(func() error {
 		// Re-read under the lock: another process may have finished the
 		// work between the check above and here.
 		fresh, rerr := readTransition(dir)
@@ -103,10 +124,10 @@ func PrepareMutation(ctx context.Context, dir string, cfg *Config, intent Mutati
 }
 
 // stepError is the error a command stopped by a remaining step reports,
-// rebuilt from what the step recorded so the replay's warning, the
-// refusal and `config status` all say the same thing. A step whose last
-// attempt was terminal keeps the verdict it earned - a non-retryable error
-// naming the command the step points at. A step whose last attempt could
+// rebuilt from what the step recorded so the replay's warning and the
+// refusal say the same thing. A step whose last attempt was terminal
+// keeps the verdict it earned - a non-retryable error naming the command
+// the step points at, when it has one. A step whose last attempt could
 // not finish carries the retryable code with the same command riding
 // along as the hint, because some of those never clear on their own. A
 // step no attempt has judged yet says only that work is left, and so does
@@ -194,48 +215,64 @@ func RefusedByTransition(dir string, cfg *Config, intent MutationIntent) error {
 // error return is for failures writing the manifest itself.
 func replayPass(ctx context.Context, dir string, cfg *Config, m *transitionManifest) (notices, retained []string, err error) {
 	for len(m.Steps) > 0 {
-		s := m.Steps[0]
-		var out stepOutcome
-		switch s.Kind {
-		case transitionMove:
-			out = replayMove(ctx, dir, &s, entryURLFor(cfg, s.Entry), func(account string) error {
-				m.Steps[0].DestAccountID = account
-				return writeTransition(dir, *m)
-			})
-		case transitionDelete:
-			out = replayDelete(ctx, dir, s, entryURLFor(cfg, s.Entry))
-		case transitionPin:
-			out = replayPin(dir, s)
+		done, ns, left, rerr := replayStepAt(ctx, dir, cfg, m, 0)
+		notices = append(notices, ns...)
+		if rerr != nil {
+			return notices, nil, rerr
 		}
-		notices = append(notices, out.notices...)
-		if out.verdict != verdictDone {
-			// The step stays, carrying the cause and whether any retry
-			// can help, so `config status` can say what to fix and the
-			// next command reports the verdict this attempt earned.
-			out.record(&m.Steps[0])
-			if werr := writeTransition(dir, *m); werr != nil {
-				return notices, nil, werr
-			}
-			// Terminal and retained are both work the directory still
-			// has, and neither is this function's decision to act on: a
-			// step that can never finish for one entry is no more reason
-			// to refuse a command for another than one that merely could
-			// not finish now. Both come out as warnings, each in its own
-			// words and with the command it points at, and the caller's
-			// own rules decide who is stopped.
-			return notices, []string{stepWarning(m.Steps[0])}, nil
-		}
-		m.Steps = m.Steps[1:]
-		if len(m.Steps) == 0 {
-			return notices, nil, removeTransition(dir)
-		}
-		if werr := writeTransition(dir, *m); werr != nil {
-			return notices, nil, werr
+		if !done {
+			return notices, left, nil
 		}
 	}
 	// Unreachable: a manifest with no steps does not validate, so the
-	// loop always exits through the last-step branch above.
+	// loop always exits through replayStepAt's last-step branch, which
+	// removes the manifest and leaves no steps behind.
 	return notices, nil, nil
+}
+
+// replayStepAt performs the step at index i and settles the manifest: a
+// completed step is removed and the manifest rewritten, or deleted when
+// it was the last one; a step that could not finish keeps the cause and
+// the verdict this attempt earned, so the next command reports what to
+// fix. The caller holds the transition lock.
+//
+// retained is the warning for a step that stayed. Terminal and retained
+// are both work the directory still has, and neither is this function's
+// decision to act on: a step that can never finish for one entry is no
+// more reason to refuse a command for another than one that merely could
+// not finish now. Both come out as warnings, each in its own words and
+// with the command it points at, and the caller's own rules decide who is
+// stopped. The error return is for failures writing the manifest itself.
+func replayStepAt(ctx context.Context, dir string, cfg *Config, m *transitionManifest, i int) (done bool, notices, retained []string, err error) {
+	s := m.Steps[i]
+	var out stepOutcome
+	switch s.Kind {
+	case transitionMove:
+		out = replayMove(ctx, dir, &s, entryURLFor(cfg, s.Entry), func(account string) error {
+			m.Steps[i].DestAccountID = account
+			return writeTransition(dir, *m)
+		})
+	case transitionDelete:
+		out = replayDelete(ctx, dir, s, entryURLFor(cfg, s.Entry))
+	case transitionPin:
+		out = replayPin(dir, s)
+	}
+	notices = append(notices, out.notices...)
+	if out.verdict != verdictDone {
+		out.record(&m.Steps[i])
+		if werr := writeTransition(dir, *m); werr != nil {
+			return false, notices, nil, werr
+		}
+		return false, notices, []string{stepWarning(m.Steps[i])}, nil
+	}
+	m.Steps = slices.Delete(slices.Clone(m.Steps), i, i+1)
+	if len(m.Steps) == 0 {
+		return true, notices, nil, removeTransition(dir)
+	}
+	if werr := writeTransition(dir, *m); werr != nil {
+		return true, notices, nil, werr
+	}
+	return true, notices, nil, nil
 }
 
 // rewriteMovesAsDeletes converts every remaining move for the named

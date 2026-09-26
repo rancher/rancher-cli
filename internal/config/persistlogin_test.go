@@ -29,8 +29,8 @@ func persistFixture(t *testing.T, existing *Server) (dir string, cfgPath string)
 	t.Helper()
 	dir = t.TempDir()
 	t.Setenv(EnvCredentialStore, "")
-	// The file policy is explicit: under auto, RepinForLogin would probe the
-	// keychain and swap the store the test injected.
+	// The file policy is explicit: under auto the login would probe the
+	// keychain and commit to it rather than to the store the test injected.
 	cfg := &Config{Servers: map[string]Server{"other": {URL: "https://other.ex"}}, CurrentServer: "other", TokenReuse: true, CredentialStore: "file"}
 	if existing != nil {
 		cfg.Servers["prod"] = *existing
@@ -496,7 +496,7 @@ func TestPersistRevalidationAbortsBeforeAnyWrite(t *testing.T) {
 		cfg.CredentialStore = "" // auto, pinned to file below
 		require.NoError(t, cfg.Write())
 		require.NoError(t, WritePin(dir, "file"))
-		// RepinForLogin probes the keychain under an auto file pin; the
+		// The login probes the keychain under an auto file pin; the
 		// probe is stubbed unusable so the file pin stands.
 		old := keyringUsable
 		keyringUsable = func() bool { return false }

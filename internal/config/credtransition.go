@@ -117,8 +117,7 @@ func transitionError(dir, what string) error {
 	path := TransitionPath(dir)
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential store change recorded in %s is %s; no credential was read or written; inspect the file and restore a valid copy, or move it aside to abandon the change",
-		path, what)).
-		WithHint("rancher config status")
+		path, what))
 }
 
 // transitionIncomplete reports work the directory still has to do. It is
@@ -131,8 +130,7 @@ func transitionIncomplete(step transitionStep) error {
 	} else {
 		msg += "; run this command again"
 	}
-	return clierr.Retryable(clierr.CodeCredentialTransitionIncomplete, msg).
-		WithHint("rancher config status")
+	return clierr.Retryable(clierr.CodeCredentialTransitionIncomplete, msg)
 }
 
 // transitionAlreadyRecorded refuses to write a manifest over a different
@@ -143,8 +141,7 @@ func transitionIncomplete(step transitionStep) error {
 func transitionAlreadyRecorded(dir string, present transitionStep) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"a credential store change is already recorded in %s (%s); it must finish, or be abandoned, before another is recorded",
-		TransitionPath(dir), stepWhat(present))).
-		WithHint("rancher config status")
+		TransitionPath(dir), stepWhat(present)))
 }
 
 // stepWhat names a step for a message: its kind and, when it has one, its
@@ -221,6 +218,13 @@ func validateTransitionStep(dir string, i int, s transitionStep) error {
 		// replay could never prove the destination received it.
 		if !isPhysicalBackend(s.Destination) || isExecBackend(s.Destination) {
 			return bad("a move into a backend this release cannot verify")
+		}
+		// No change moves another entry into the plaintext file store: a
+		// login puts only its own credential there. A manifest that says
+		// otherwise was not written by this code, and replaying it would
+		// do exactly what that rule forbids.
+		if s.Destination == backendFile {
+			return bad("a move into the plaintext file store, which no change schedules")
 		}
 	}
 	for _, b := range backends {
@@ -555,5 +559,24 @@ var transitionLockSem = make(chan struct{}, 1)
 // the variable already accepts for config.yaml, and the variable stays the
 // escape hatch for filesystems whose advisory locking does not work.
 func withTransitionLock(ctx context.Context, dir string, fn func() error) error {
-	return withDirLock(ctx, dir, transitionLockName, transitionLockSem, nil, nil, fn)
+	return withDirLock(ctx, dir, transitionLockName, transitionLockSem, nil, func() {
+		if transitionLockHeldHook != nil {
+			transitionLockHeldHook()
+		}
+	}, fn)
+}
+
+// transitionLockHeldHook fires once per acquisition of this one lock, so a
+// test can assert how many times a command takes it. The shared flock hook
+// counts every lock in the directory, which cannot tell a nested take of
+// this one - the defect that would wait on its own process until the
+// deadline - from an identity lock a replayed step legitimately takes.
+var transitionLockHeldHook func()
+
+// SetTransitionLockHookForTest sets transitionLockHeldHook; call the
+// returned restore in cleanup. The calling test must not use t.Parallel().
+func SetTransitionLockHookForTest(fn func()) (restore func()) {
+	old := transitionLockHeldHook
+	transitionLockHeldHook = fn
+	return func() { transitionLockHeldHook = old }
 }

@@ -146,16 +146,12 @@ func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 }
 
 // TestLoginSequenceFreshAutoUsableKeychain drives a direct-call sequence
-// (NewLazyStore → RepinForLogin → SetToken) on a fresh auto profile with a
-// usable keychain: exactly one probe, keychain pin, first-pin notice, token in
-// the keychain and no plaintext file. The lazy store never resolves because
-// RepinForLogin returns the concrete upgraded store before SetToken runs.
-//
-// Note: this calls RepinForLogin directly on a never-pinned dir (no prior
-// openStoreResolved). This exercises RepinForLogin's else branch in isolation.
-// The production loginCmd.Execute path (OpenStoreWithNotice runs first, pins
-// the dir, then RepinForLogin sees pin="keychain" and returns early) is covered
-// by TestLoginFirstPinNoticeReachesWarnings in internal/commands/auth/login_test.go.
+// (NewLazyStore → the login's own backend resolution → SetToken) on a
+// fresh auto profile with a
+// usable keychain: exactly one probe, the credential in the keychain, no
+// plaintext file - and NO pin, because a login writes its pin as the last
+// step of the change it records, after the credential commits. The lazy
+// store never resolves: the login opens the backend it resolved.
 func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInit()
@@ -165,15 +161,17 @@ func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	keyringUsable = func() bool { probes++; return true }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	lazy, err := NewLazyStore("", dir)
+	b, err := loginBackendsOf(dir, &Config{}, "", "", "auto")
 	require.NoError(t, err)
-	store, pinWarning, err := RepinForLogin(dir, "", lazy)
+	assert.Equal(t, backendKeychain, b.CommitsTo)
+	assert.True(t, b.WritesPin(), "a directory that has never pinned ends the change with one")
+	store, notice, err := OpenResolvedStore(b.CommitsTo, dir)
 	require.NoError(t, err)
+	assert.Empty(t, notice)
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
 
 	assert.Equal(t, 1, probes)
-	assert.Equal(t, "keychain", ReadPin(dir))
-	assert.Equal(t, NoticeFirstPinKeychain, pinWarning, "expected first-pin notice from RepinForLogin")
+	assert.NoFileExists(t, PinPath(dir), "the pin is the change's last step, not the store open")
 	rec, rerr := readIdentityRecord(dir, "prod")
 	require.NoError(t, rerr)
 	require.NotNil(t, rec, "a keychain write records the entry's identity")
@@ -184,15 +182,17 @@ func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	require.Error(t, bare, "nothing is stored under the bare entry name")
 	_, statErr := os.Stat(filepath.Join(dir, "credentials.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "usable keychain must not produce a plaintext file")
+
+	out := replayPin(dir, transitionStep{Kind: transitionPin, Target: b.CommitsTo})
+	assert.Equal(t, "keychain", ReadPin(dir))
+	assert.Equal(t, []string{NoticeFirstPinKeychain}, out.notices, "the pin step is what says the machine decided")
 }
 
-// TestLoginSequenceFreshAutoUnusableKeychain: same sequence with an
-// unusable keychain. RepinForLogin returns the lazy store unchanged;
-// SetToken resolves it - file pin, exactly one plaintext notice recorded on
-// the lazy store's own NoticeSource buffer (not stderr directly), no
-// first-pin-keychain notice, token in credentials.yaml. The single
-// probe count proves keyringUsableOnce's memo is shared between
-// RepinForLogin and the deferred resolution.
+// TestLoginSequenceFreshAutoUnusableKeychain: the same sequence with an
+// unusable keychain. The backend resolves to the file store with the
+// plaintext disclosure, the credential lands in credentials.yaml, and the
+// pin is still the change's last step. The single probe count proves
+// keyringUsableOnce's memo is shared with the store open.
 func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInit()
@@ -202,21 +202,18 @@ func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	keyringUsable = func() bool { probes++; return false }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	lazy, lazyErr := NewLazyStore("", dir)
-	require.NoError(t, lazyErr)
-	store, pinWarning, repinErr := RepinForLogin(dir, "", lazy)
-	require.NoError(t, repinErr)
-	assert.Equal(t, lazy, store, "unusable keychain must return the input store unchanged")
-	assert.Empty(t, pinWarning, "no pin notice when keychain unusable")
+	b, err := loginBackendsOf(dir, &Config{}, "", "", "auto")
+	require.NoError(t, err)
+	assert.Equal(t, backendFile, b.CommitsTo)
+	assert.Contains(t, b.Notice, "keychain unavailable; credentials will be stored in plaintext")
+	assert.NotContains(t, b.Notice, "pinned credential store: keychain")
+	store, notice, err := OpenResolvedStore(b.CommitsTo, dir)
+	require.NoError(t, err)
+	assert.Empty(t, notice, "the disclosure belongs to the login's own decision, not to opening a named store")
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "tok"))
 
-	notices := store.(NoticeSource).DrainNotices()
-
 	assert.Equal(t, 1, probes)
-	assert.Equal(t, "file", ReadPin(dir))
-	require.Len(t, notices, 1, "must be exactly one plaintext-fallback notice")
-	assert.Contains(t, notices[0], "keychain unavailable; credentials will be stored in plaintext")
-	assert.NotContains(t, notices[0], "pinned credential store: keychain")
+	assert.NoFileExists(t, PinPath(dir), "the pin is the change's last step")
 	tok, err := NewFileStore(dir).GetToken(ServerRef{Name: "prod"})
 	require.NoError(t, err)
 	assert.Equal(t, "tok", tok)

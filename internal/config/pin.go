@@ -18,15 +18,29 @@ import (
 // concurrent pinners compute the same probe result, so no lock is needed.
 const pinFileName = "credstore-pin"
 
-// NoticeFirstPinKeychain is the user-visible message returned when the auto
-// credential-store backend is pinned to the keychain for the first time on
-// this machine. The real emitter is openStoreResolved (credstore.go): it runs
-// before RepinForLogin on the production login path and handles the fresh-machine
-// first-pin case. RepinForLogin's else branch also references it, but that
-// branch is dead on the production path (see its own comment). Sharing the
-// const means a wording change applies uniformly and tests can reference it
-// without repeating the literal.
-const NoticeFirstPinKeychain = "pinned credential store: keychain"
+const (
+	// noticeFirstPinPrefix opens the message for the moment this machine
+	// decides where an `auto` directory keeps its credentials.
+	noticeFirstPinPrefix = "pinned credential store: "
+	// NoticeFirstPinKeychain is that message for the keychain. Two paths
+	// write a first pin and both use this wording: the read path's
+	// openStoreResolved (credstore.go), and a login's own pin step, which
+	// writes the pin after the credential commits. Sharing the constant
+	// means a wording change applies uniformly and tests can reference it
+	// without repeating the literal.
+	NoticeFirstPinKeychain = noticeFirstPinPrefix + "keychain"
+)
+
+// noticePinned is what the moment reads like for any pin write: a first
+// pin names the backend it chose, a later one names both, so an operator
+// reading two runs can tell "this machine decided" from "this machine
+// changed its mind".
+func noticePinned(from, to string) string {
+	if from == "" {
+		return noticeFirstPinPrefix + to
+	}
+	return fmt.Sprintf("credential store re-pinned: %s → %s", from, to)
+}
 
 func PinPath(dir string) string { return filepath.Join(dir, pinFileName) }
 
@@ -109,57 +123,41 @@ func storeConflictError(declared, asked string) error {
 		WithHint("unset " + EnvCredentialStore)
 }
 
-// RepinForLogin re-probes at login time (only under auto): login is rare,
-// interactive, and the moment a new credential is written - the one place a
-// machine pinned "file" by an accident of first run (e.g. over SSH) can
-// upgrade to the keychain. It is upgrade-only and reads the pin FIRST: a
-// keychain pin is never re-probed, so a transient keychain hiccup can never
-// downgrade a machine to plaintext (a genuinely broken keychain fails loudly at
-// SetToken with the pinned-unusable hint). The read path never re-probes (CS-3).
-// The second return value carries any user-visible notice so callers can route
-// it through the warnings pipeline instead of writing to a logging framework.
-// Empty string means no action was taken (already keychain-pinned, explicit
-// policy, or unusable keychain).
-func RepinForLogin(dir, cfgPolicy string, current CredStore) (CredStore, string, error) {
-	policy, perr := EffectivePolicy(cfgPolicy)
-	if perr != nil {
-		return nil, "", perr
+// storeFlagConflictError is the same refusal for a login that names one
+// store on the command line while the variable asks for another. The
+// subject is the login, not the directory: naming config.yaml for a
+// disagreement config.yaml has no part in would send the operator to the
+// wrong file.
+func storeFlagConflictError(requested, asked string) error {
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"this login asks for credentials in %q (--credential-store); %s asks for %q; unset the variable, or drop the flag",
+		requested, EnvCredentialStore, asked)).
+		WithHint("unset " + EnvCredentialStore)
+}
+
+// PolicySourceFlag is what LoginPolicy reports for a store named on the
+// command line. It is the one source that may settle a directory whose
+// declaration and variable disagree, because naming the store is what
+// resolves the disagreement.
+const PolicySourceFlag = "flag"
+
+// LoginPolicy resolves the credential-store policy one login uses, and
+// where it came from.
+//
+// A flag names the store outright: that is what it is for, so it is not
+// weighed against the directory's declaration - changing that declaration
+// is the point - and it is checked only against the variable, which must
+// agree. Without a flag the ordinary rules apply, the config-versus-
+// variable conflict included.
+func LoginPolicy(requested, declared string) (policy, source string, err error) {
+	if requested == "" {
+		return EffectivePolicyWithSource(declared)
 	}
-	if policy != "auto" {
-		return current, "", nil
+	if cerr := CheckStorePolicy(requested); cerr != nil {
+		return "", "", clierr.New(clierr.CodeValidation, cerr.Error())
 	}
-	if ReadPin(dir) == "keychain" {
-		// Already on the keychain - never probe, never downgrade.
-		return current, "", nil
+	if env := os.Getenv(EnvCredentialStore); env != "" && env != requested {
+		return "", "", storeFlagConflictError(requested, env)
 	}
-	// Pin is "file" or absent: this is the only place we probe, and only to
-	// upgrade. If the keychain is unusable, keep the file backend as-is - no
-	// rewrite, no duplicate plaintext notice. keyringUsableOnce shares its
-	// memoized result with OpenStore's own auto-probe above, so a single
-	// `rancher login` process never pays the (bounded) probe cost twice.
-	if !keyringUsableOnce() {
-		return current, "", nil
-	}
-	pinned := ReadPin(dir)
-	if err := WritePin(dir, "keychain"); err != nil {
-		return nil, "", fmt.Errorf("writing credential store pin: %w", err)
-	}
-	var msg string
-	if pinned != "" {
-		msg = fmt.Sprintf("credential store re-pinned: %s → keychain", pinned)
-	} else {
-		// pinned == "": reachable only when RepinForLogin is called directly on
-		// a never-pinned dir without running openStoreResolved first (e.g. in
-		// unit tests or direct callers). Within loginCmd.Execute, openStoreResolved
-		// always runs before RepinForLogin and writes a pin, so this branch is
-		// dead on the production login path.
-		//
-		// Call-order coupling: if login.go ever reorders the two calls or replaces
-		// OpenStoreWithNotice with a bare OpenStore, RepinForLogin would see an
-		// empty pin here and produce a second NoticeFirstPinKeychain in res.Warnings
-		// alongside the one from openStoreResolved. The coupling is documented at
-		// the call site in login.go.
-		msg = NoticeFirstPinKeychain
-	}
-	return newPinnedKeyringStore(dir, true), msg, nil
+	return requested, PolicySourceFlag, nil
 }

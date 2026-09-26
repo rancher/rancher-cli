@@ -176,16 +176,16 @@ func (s transitionStep) matches(token string) bool {
 	return credentialFingerprint(s.VerificationID, token) == s.CredentialDigest
 }
 
-// stepHint is the command a stopped step points at. A move has a remedy
-// of its own: the logout that turns it into cleanups, which clear on
-// absence. A delete has no such conversion - it already is the cleanup -
-// so it points at the status report: the next thing to look at, not
-// something that clears the step.
+// stepHint is the command a stopped step points at, or empty. A move has
+// a remedy of its own: the logout that turns it into cleanups, which clear
+// on absence. A delete has no such conversion - it already is the cleanup
+// - and no command reports the step yet, so it names none; its message
+// carries the step and the cause.
 func stepHint(s transitionStep) string {
 	if s.Kind == transitionMove {
 		return "rancher auth logout " + clierr.ShellQuote(s.Entry)
 	}
-	return "rancher config status"
+	return ""
 }
 
 // terminalStepError is a step that no retry can complete. It is not
@@ -271,8 +271,8 @@ func replayMove(ctx context.Context, dir string, s *transitionStep, entryURL str
 			// credential in a shared keychain slot, or a later login's -
 			// is not this change's to take, and dropping the step here
 			// would leave the entry with a credential in neither place
-			// and nothing to say so. It stays, where `config status`
-			// shows it.
+			// and nothing to say so. It stays, and the next
+			// credential-mutating command reports it.
 			return retainBecause(
 				"the credential in the store it is moving from is not the one the change recorded")
 		}
@@ -293,10 +293,12 @@ func replayMove(ctx context.Context, dir string, s *transitionStep, entryURL str
 			}
 			dest = accessFor(dir, *s, s.Destination, keychainAccount(fresh, s.Entry), entryURL)
 		}
-		// A file destination holding something else is this directory's
-		// own file, not another directory's: the move overwrites it, and
-		// the read-back below is what proves the result. Only a keychain
-		// slot is shared, which is why the rotation above is keychain-only.
+		// Validation refuses a move into the file store, so a replayed
+		// manifest always moves into the keychain; a step with a file
+		// destination is only ever built in memory, and there the move
+		// overwrites the directory's own file, proved by the read-back
+		// below. Only a keychain slot is shared, which is why the rotation
+		// above is keychain-only.
 
 		// 2. Write the destination and read it back. A destination that
 		// does not read back as what was written is not a destination
@@ -485,8 +487,8 @@ func reconcileMoveRecord(ctx context.Context, dir string, s transitionStep) erro
 // login uses, so a crash between the keychain write and the record that
 // names it leaves an account the next pass can still address.
 //
-// Validation admits only the file store and the keychain as a move's
-// destination, so those two are the whole switch.
+// Validation admits only the keychain as a replayed move's destination;
+// the file branch serves a step built in memory.
 func writeBackend(ctx context.Context, dir string, s transitionStep, dest backendAccess, token string) error {
 	if dest.backend == backendFile {
 		_, err := newFileStore(dir, &noticeBuffer{}).SetTokenWithOutcome(
@@ -562,9 +564,16 @@ func replayDelete(ctx context.Context, dir string, s transitionStep, entryURL st
 // steps for a reason: under `auto` every entry that has not moved yet is
 // still read through the old pin, so flipping it early would make those
 // entries unreadable until their own move ran.
+// It is also the moment this machine's answer changes, so it is the step
+// that says so: the pin write is the only place that knows both what the
+// machine used to resolve to and what it resolves to now.
 func replayPin(dir string, s transitionStep) stepOutcome {
+	was := ReadPin(dir)
 	if err := WritePin(dir, s.Target); err != nil {
 		return retain(err)
 	}
-	return stepOutcome{verdict: verdictDone}
+	if was == s.Target {
+		return stepOutcome{verdict: verdictDone}
+	}
+	return stepOutcome{verdict: verdictDone, notices: []string{noticePinned(was, s.Target)}}
 }

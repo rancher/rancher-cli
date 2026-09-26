@@ -892,3 +892,132 @@ func TestPluginLoginNoRequestWhileTheConfigLockIsHeld(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int32(0), violations.Load())
 }
+
+// TestThePluginLoginFinishesTheStoreChangeWithoutAPrompt asserts the
+// plugin-created login runs the same order as `auth login` and finishes
+// it with nothing to answer. kubectl spawns this with no terminal as
+// often as with one, so a directory that has not decided where its
+// credentials live must be decided, recorded and pinned by the login
+// itself, without asking anything. On a bare install the plugin's first
+// read of the directory already writes that pin, before the sign-in, so
+// what this asserts is that the pin names the store the credential went
+// to, not when it was written.
+func TestThePluginLoginFinishesTheStoreChangeWithoutAPrompt(t *testing.T) {
+	keyring.MockInitWithError(errors.New("no keychain on this machine"))
+	config.ResetKeyringUsableCacheForTest(t)
+	x := newPluginFixture(t, true, testrancher.Options{})
+
+	// A directory that declares nothing: the state a bare install is in.
+	cfg, err := config.Load(config.FilePath(x.dir))
+	require.NoError(t, err)
+	cfg.CredentialStore = ""
+	require.NoError(t, cfg.Write())
+	require.NoFileExists(t, config.PinPath(x.dir))
+
+	_, err = x.getToken(t, "c-test", "n", localPrompter())
+	require.NoError(t, err)
+
+	after, lerr := config.Load(config.FilePath(x.dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, "auto", after.CredentialStore, "the directory records the store the login used")
+	assert.Equal(t, "file", config.ReadPin(x.dir), "and the machine's own answer, the store the credential is in")
+	assert.NoFileExists(t, config.TransitionPath(x.dir), "the change has nothing left to do")
+
+	stored, serr := x.store.GetToken(config.ServerRef{Name: x.entryName(), URL: x.url})
+	require.NoError(t, serr)
+	assert.NotEmpty(t, stored, "the credential is where the login said it would be")
+}
+
+// TestThePluginLoginOpensTheBackendItResolved asserts the opener the
+// login path is wired to. The backend is resolved under the lock and is
+// already an answer; running it back through the variable's precedence
+// would report a conflict against the directory's own destination and
+// refuse a login that is doing exactly what the variable asked for.
+func TestThePluginLoginOpensTheBackendItResolved(t *testing.T) {
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
+	x := newPluginFixture(t, true, testrancher.Options{})
+
+	// The variable asks for auto, the directory declares auto, and the
+	// machine is pinned to the file store: the login resolves the keychain
+	// and must open it by name.
+	t.Setenv(config.EnvCredentialStore, "auto")
+	cfg, err := config.Load(config.FilePath(x.dir))
+	require.NoError(t, err)
+	cfg.CredentialStore = "auto"
+	require.NoError(t, cfg.Write())
+	require.NoError(t, config.WritePin(x.dir, "file"))
+
+	_, err = x.getToken(t, "c-test", "n", localPrompter())
+	require.NoError(t, err)
+	assert.Equal(t, "keychain", config.ReadPin(x.dir), "the change ends with the pin it resolved")
+}
+
+// TestThePluginLoginRefusesAStoreChangeWhileAnotherIsUnfinished asserts
+// the other arm of that check on the plugin path: an `auto` directory
+// pinned to the file store on a machine whose keychain works is moved to
+// the keychain by the plugin's login, which is a change of its own, and a
+// change with work left for another entry stops it before the sign-in.
+func TestThePluginLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T) {
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
+	x := newPluginFixture(t, true, testrancher.Options{})
+
+	cfg, err := config.Load(config.FilePath(x.dir))
+	require.NoError(t, err)
+	cfg.CredentialStore = "auto"
+	cfg.Servers["other"] = config.Server{URL: "https://other.ex"}
+	require.NoError(t, cfg.Write())
+	require.NoError(t, config.WritePin(x.dir, "file"))
+	seedUnfinishedMove(t, x.dir, "other")
+
+	_, err = x.getToken(t, "c-test", "n", localPrompter())
+	require.Error(t, err)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
+	assert.Zero(t, x.f.LoginCount(), "nobody was asked to sign in")
+}
+
+// TestThePluginLoginRefusesAStoreChangeBeforeTheSignIn asserts the same
+// check on the plugin path, where it matters more: kubectl spawns this
+// with a terminal only sometimes, and a refusal after the sign-in would
+// have cost an interactive login and a server-issued token for a change
+// that was never going to be made.
+func TestThePluginLoginRefusesAStoreChangeBeforeTheSignIn(t *testing.T) {
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
+	x := newPluginFixture(t, true, testrancher.Options{})
+
+	// A change is unfinished, and its remaining move names the entry this
+	// login would write.
+	cfg, err := config.Load(config.FilePath(x.dir))
+	require.NoError(t, err)
+	entry := config.ExecLoginEntryName(x.url)
+	cfg.Servers[entry] = config.Server{URL: x.url}
+	require.NoError(t, cfg.Write())
+	seedUnfinishedMove(t, x.dir, entry)
+
+	_, err = x.getToken(t, "c-test", "n", localPrompter())
+	require.Error(t, err)
+	require.ErrorContains(t, err, entry)
+	assert.Zero(t, x.f.LoginCount(), "nobody was asked to sign in")
+}
+
+// seedUnfinishedMove records a change that cannot finish, naming entry,
+// and puts it into effect.
+func seedUnfinishedMove(t *testing.T, dir, entry string) {
+	t.Helper()
+	id := "0123456789abcdef0123456789abcdef"
+	vid := "fedcba9876543210fedcba9876543210"
+	digest := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	manifest := "version: 1\nid: " + id + "\nsteps:\n" +
+		"- kind: move\n  entry: " + entry + "\n  source: file\n  destination: keychain\n" +
+		"  verificationId: " + vid + "\n  credentialDigest: " + digest + "\n" +
+		"  destAccountId: " + id + "\n"
+	require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte(manifest), 0o600))
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	cfg.CredentialTransitionID = id
+	require.NoError(t, cfg.Write())
+}

@@ -128,6 +128,20 @@ const (
 	// nothing is wrong with the credential; the directory still names the
 	// store it named before, and the next login writes the new one.
 	ConfigDeclarationNotWritten ConfigState = "declarationNotWritten"
+	// ConfigTransitionNotRecorded means the credential is committed in the
+	// store the login opened, but the config write that would have put the
+	// directory's credential store change into effect failed, so the
+	// change never started: the other entries' credentials are where they
+	// were, and readers still resolve to the store they resolved to
+	// before. Running the login again is the way out.
+	ConfigTransitionNotRecorded ConfigState = "transitionNotRecorded"
+	// ConfigTransitionLost means the config write did put the change into
+	// effect, and the record of what the change still had to do was not
+	// the one it named by the time the login looked: removed, replaced by
+	// another process, or unreadable. Nothing can finish work nobody has
+	// a readable record of, so the login says which of those it found and
+	// names the remedy that fits.
+	ConfigTransitionLost ConfigState = "transitionLost"
 )
 
 // LoginStage is where a login failed: while acquiring the credential or

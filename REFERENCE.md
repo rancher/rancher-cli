@@ -85,7 +85,12 @@ resolves through a machine-local `credstore-pin` file, and failing that a
 one-time probe: the backend is probed once and pinned, the pin is
 re-probed only at `auth login` and only to upgrade file to keychain, and a
 pinned-but-unusable backend is a hard error (never a silent downgrade to
-plaintext).
+plaintext). A login writes the pin as the last step of the change it
+records, after its credential is stored, so a login that fails or is
+cancelled leaves the pin and every other entry's credential exactly as
+they were. The one exception is a pin left behind under an explicit
+declaration that names a store the directory does not use: that pin is
+rewritten before the credential is stored, while no command reads it.
 
 Custom backends plug in as credential helpers: `credentialStore: exec:<name>`
 runs the `rancher-credential-<name>` binary from `PATH` (the shipped

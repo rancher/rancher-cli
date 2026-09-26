@@ -97,7 +97,7 @@ func TestPlanTransitionRefusesAKeychainSlotAnotherDirectoryOwns(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "staging")
 	require.ErrorContains(t, err, "another config directory")
-	require.ErrorContains(t, err, "log those entries out first")
+	require.ErrorContains(t, err, "log that entry out first")
 }
 
 // TestPlanTransitionRefusesAnUnsettledLogin asserts the other
@@ -209,14 +209,14 @@ func TestPlanTransitionFromAHelperMovesOnlyWhatTheRecordsName(t *testing.T) {
 		return nil
 	}))
 
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", "exec:fake", backendFile, "")
+	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", "exec:fake", backendKeychain, "")
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	assert.Equal(t, []string{"staging"}, plan.Moved)
 	require.Len(t, plan.manifest.Steps, 1)
 	step := plan.manifest.Steps[0]
 	assert.Equal(t, "exec:fake", step.Source)
-	assert.Equal(t, backendFile, step.Destination)
+	assert.Equal(t, backendKeychain, step.Destination)
 	assert.Equal(t, "https://s.ex", step.CanonicalURL, "a helper step is addressed by the URL it was scheduled with")
 }
 
@@ -266,4 +266,25 @@ func TestPlanTransitionRefusesWhenASourceCannotBeRead(t *testing.T) {
 	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
 	require.ErrorContains(t, err, "staging")
 	assert.ErrorIs(t, err, errUnreachableKeyring, "the backend's own error is the cause")
+}
+
+// TestPlanTransitionIntoTheFileStoreTakesNoOtherCredential asserts the
+// refusal for a change into the plaintext file store from a credential
+// helper: the helper's other entries are not moved into plaintext on a
+// login that names one entry, and the entry is named with the logout that
+// clears the way.
+func TestPlanTransitionIntoTheFileStoreTakesNoOtherCredential(t *testing.T) {
+	useFakeHelper(t, "ok")
+	dir, cfg := planFixture(t)
+	require.NoError(t, newExecStore("fake", dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
+
+	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", "exec:fake", backendFile, "")
+	require.Error(t, err)
+	assert.Nil(t, plan)
+	ce, ok := errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "the plaintext file store takes only the credential of the entry logging in")
+	require.ErrorContains(t, err, "the credential of staging is still in exec:fake; log that entry out first")
+	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
 }
