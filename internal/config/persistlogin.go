@@ -239,6 +239,11 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	if err != nil {
 		return err
 	}
+	// The authority for the refusals a change of the store readers use
+	// gets; the same check before the sign-in only saves a sign-in.
+	if err := checkStoreChange(dir, cfg, name, b); err != nil {
+		return err
+	}
 	if reason := undisclosedPlaintext(dir, in, b); reason != "" {
 		out.Aborted = reason
 		return fmt.Errorf("%w: %s", ErrPersistAborted, reason)

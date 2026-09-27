@@ -36,9 +36,13 @@ type readerMatrixRow struct {
 	// probe is what the login's keychain probe answers.
 	probe bool
 	// prod is the logging-in entry; staging is another entry, left out of
-	// the directory when its store is empty; prodStale is a copy of prod's
-	// credential in a store the directory does not read.
-	prod, staging, prodStale matrixSeed
+	// the directory when neither of its seeds names a store; prodStale is
+	// a copy of prod's credential in a store the directory does not read;
+	// stagingLeft is a credential staging was logged out of that stayed
+	// in a store the directory does not read.
+	prod, staging, prodStale, stagingLeft matrixSeed
+	// stagingBare makes staging an entry with nothing stored at all.
+	stagingBare bool
 	// lands is the store prod's new credential ends up in.
 	lands string
 	// refused, when set, is text the refusal before the sign-in carries;
@@ -204,6 +208,29 @@ func readerMatrixRows() []readerMatrixRow {
 			lands: backendFile,
 		},
 		{
+			name:     "the auto upgrade stays on the file store while another entry has a credential left in the keychain",
+			declared: "auto", pin: backendFile, probe: true,
+			prod: matrixSeed{backendFile, "prod-old"}, stagingLeft: matrixSeed{backendKeychain, "staging-logged-out"},
+			lands: backendFile,
+		},
+		{
+			name:     "a declared file directory changes to the keychain by name while another entry has a credential left there",
+			declared: backendFile, flag: backendKeychain,
+			prod: matrixSeed{backendFile, "prod-old"}, stagingLeft: matrixSeed{backendKeychain, "staging-logged-out"},
+			refused: "the keychain still holds a credential of staging from an earlier login",
+		},
+		{
+			name:     "a keychain directory changes to the file store by name while another entry has a credential left there",
+			declared: backendKeychain, flag: backendFile,
+			prod: matrixSeed{backendKeychain, "prod-old"}, stagingLeft: matrixSeed{backendFile, "staging-logged-out"},
+			refused: "still holds a credential of staging from an earlier login",
+		},
+		{
+			name: "an unpinned directory that has stored nothing changes to a helper by name",
+			flag: "exec:fake", stagingBare: true,
+			refused: "the credential helper fake may answer for staging",
+		},
+		{
 			name:     "an unpinned directory with credentials in both stores",
 			declared: "auto", probe: true,
 			prod: matrixSeed{backendKeychain, "prod-old"}, staging: matrixSeed{backendFile, "staging-tok"},
@@ -232,7 +259,7 @@ func TestAReaderDuringALoginResolvesTheOldOrTheNewCredential(t *testing.T) {
 
 func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 	t.Helper()
-	for _, s := range []matrixSeed{row.prod, row.staging, row.prodStale} {
+	for _, s := range []matrixSeed{row.prod, row.staging, row.prodStale, row.stagingLeft} {
 		if isExecBackend(s.store) {
 			useFakeHelper(t, "ok")
 			break
@@ -258,7 +285,8 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 	cfg := &Config{CredentialStore: row.declared, CurrentServer: "prod", Servers: map[string]Server{
 		"prod": {URL: urls["prod"], CacheBindingID: "b0"},
 	}}
-	if row.staging.store != "" {
+	hasStaging := row.staging.store != "" || row.stagingLeft.store != "" || row.stagingBare
+	if hasStaging {
 		cfg.Servers["staging"] = Server{URL: urls["staging"]}
 	}
 	cfg.SetPath(FilePath(dir))
@@ -284,9 +312,10 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 	seed("prod", row.prod)
 	seed("staging", row.staging)
 	seed("prod", row.prodStale)
+	seed("staging", row.stagingLeft)
 
 	entries := []string{"prod"}
-	if row.staging.store != "" {
+	if hasStaging {
 		entries = append(entries, "staging")
 	}
 	read := func(entry string) (string, error) {
@@ -419,6 +448,9 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 		assert.Equal(t, row.staging.token, got, "another entry reads its own credential")
 		assert.Equal(t, row.staging.token, matrixStored(t, dir, "staging", urls["staging"], row.staging.store),
 			"from the store it was in: nothing moved it")
+	} else if row.stagingLeft.store != "" {
+		_, err := read("staging")
+		require.ErrorIs(t, err, ErrNoToken, "an entry that was logged out still reads as not logged in")
 	}
 }
 

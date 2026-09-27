@@ -38,7 +38,7 @@ func TestAStoreChangeRefusesWhileAnotherEntryHoldsAFileCredential(t *testing.T) 
 	require.NoError(t, store.SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-tok"))
 	require.NoError(t, store.SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
 
-	err := CheckTransitionSources(dir, cfg, "prod", backendFile)
+	err := CheckTransitionSources(dir, cfg, "prod", backendFile, backendKeychain)
 	ce, ok := errorsAsClierr(err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -48,7 +48,7 @@ func TestAStoreChangeRefusesWhileAnotherEntryHoldsAFileCredential(t *testing.T) 
 	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
 
 	require.NoError(t, store.SetToken(ServerRef{Name: "qa", URL: "https://q.ex"}, "qa-tok"))
-	err = CheckTransitionSources(dir, cfg, "prod", backendFile)
+	err = CheckTransitionSources(dir, cfg, "prod", backendFile, backendKeychain)
 	ce, ok = errorsAsClierr(err)
 	require.True(t, ok)
 	require.ErrorContains(t, err, "the credential of qa is still in")
@@ -64,10 +64,10 @@ func TestAStoreChangeRefusesWhileAnotherEntryHoldsAFileCredential(t *testing.T) 
 func TestAStoreChangeProceedsWhenOnlyItsOwnCredentialIsThere(t *testing.T) {
 	dir, cfg := planFixture(t)
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-tok"))
-	require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendFile))
+	require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendFile, backendKeychain))
 
 	seedKeychainCredential(t, dir, "prod", "prod-keychain")
-	require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendKeychain))
+	require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendKeychain, backendFile))
 }
 
 // TestAStoreChangeRefusesWhileAnotherEntryHoldsAKeychainCredential
@@ -105,7 +105,7 @@ func TestAStoreChangeRefusesWhileAnotherEntryHoldsAKeychainCredential(t *testing
 		t.Run(tc.name, func(t *testing.T) {
 			dir, cfg := planFixture(t)
 			tc.seed(t, dir)
-			err := CheckTransitionSources(dir, cfg, "prod", backendKeychain)
+			err := CheckTransitionSources(dir, cfg, "prod", backendKeychain, backendFile)
 			ce, ok := errorsAsClierr(err)
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -118,7 +118,7 @@ func TestAStoreChangeRefusesWhileAnotherEntryHoldsAKeychainCredential(t *testing
 		dir, cfg := planFixture(t)
 		id := seedKeychainCredential(t, dir, "staging", "staging-tok")
 		require.NoError(t, keyringDelete(keychainAccount(id, "staging")))
-		require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendKeychain))
+		require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendKeychain, backendFile))
 	})
 }
 
@@ -134,7 +134,7 @@ func TestAStoreChangeRefusesWhenTheStoreBeingLeftCannotBeRead(t *testing.T) {
 		restore := SetKeyringBackendForTest(unreachableKeyring{})
 		defer restore()
 
-		err := CheckTransitionSources(dir, cfg, "prod", backendKeychain)
+		err := CheckTransitionSources(dir, cfg, "prod", backendKeychain, backendFile)
 		ce, ok := errorsAsClierr(err)
 		require.True(t, ok)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -148,7 +148,7 @@ func TestAStoreChangeRefusesWhenTheStoreBeingLeftCannotBeRead(t *testing.T) {
 		dir, cfg := planFixture(t)
 		require.NoError(t, os.WriteFile(CredentialsFilePath(dir), []byte("{not yaml"), 0o600))
 
-		err := CheckTransitionSources(dir, cfg, "prod", backendFile)
+		err := CheckTransitionSources(dir, cfg, "prod", backendFile, backendKeychain)
 		ce, ok := errorsAsClierr(err)
 		require.True(t, ok)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -169,7 +169,7 @@ func TestAStoreChangeFromAHelperCountsEveryOtherEntry(t *testing.T) {
 	// No helper on PATH: asking it anything would be an error of its own.
 	t.Setenv("PATH", t.TempDir())
 
-	err := CheckTransitionSources(dir, cfg, "prod", "exec:fake")
+	err := CheckTransitionSources(dir, cfg, "prod", "exec:fake", backendKeychain)
 	ce, ok := errorsAsClierr(err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -179,8 +179,78 @@ func TestAStoreChangeFromAHelperCountsEveryOtherEntry(t *testing.T) {
 	assert.Empty(t, ce.Hint, "two ways out, neither of them a logout")
 
 	alone := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
-	require.NoError(t, CheckTransitionSources(dir, alone, "prod", "exec:fake"),
+	require.NoError(t, CheckTransitionSources(dir, alone, "prod", "exec:fake", backendKeychain),
 		"with no other entry there is nothing to strand")
+}
+
+// TestAStoreChangeRefusesWhileAnotherEntryHasACredentialLeftInTheDestination
+// asserts the store a change moves the directory's readers to is read too.
+// An entry logged out while its keychain copy could not be reached keeps
+// the copy and its identity record; a change that sends every reader to
+// the keychain would serve that entry the credential the operator logged
+// out. So a credential another entry has left in the destination refuses
+// like one it holds in the source, with the logout as the remedy - for the
+// keychain, with the keychain reachable, since that logout has to reach
+// it. For the keychain the record's name is enough: nothing is opened.
+func TestAStoreChangeRefusesWhileAnotherEntryHasACredentialLeftInTheDestination(t *testing.T) {
+	for _, tc := range []struct {
+		name, from, to string
+		seed           func(t *testing.T, dir string)
+		want           string
+	}{
+		{name: "an identity record in the keychain", from: backendFile, to: backendKeychain,
+			want: "the keychain still holds a credential of staging from an earlier login, which a reader of staging would be served after the change; log that entry out first with the keychain reachable",
+			seed: func(t *testing.T, dir string) {
+				t.Helper()
+				// A record whose slot is gone still counts: its name is all
+				// that is read.
+				id := seedKeychainCredential(t, dir, "staging", "staging-a")
+				require.NoError(t, keyringDelete(keychainAccount(id, "staging")))
+			}},
+		{name: "a token in credentials.yaml", from: backendKeychain, to: backendFile,
+			want: "still holds a credential of staging from an earlier login, which a reader of staging would be served after the change; log that entry out first, then",
+			seed: func(t *testing.T, dir string) {
+				t.Helper()
+				require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-a"))
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, cfg := planFixture(t)
+			tc.seed(t, dir)
+			err := CheckTransitionSources(dir, cfg, "prod", tc.from, tc.to)
+			ce, ok := errorsAsClierr(err)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			require.ErrorContains(t, err, "a login changes the store of its own credential only")
+			require.ErrorContains(t, err, tc.want)
+			assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+		})
+	}
+}
+
+// TestAStoreChangeIntoAHelperCountsEveryOtherEntry asserts the helper
+// rule from the destination's side. A helper that creates credentials on
+// demand keeps no record and answers for any entry, so after a change into
+// it every other entry - a logged-out one included - would be served a
+// credential it never logged in with. Every other configured entry counts,
+// the helper is never asked, and the remedies are another directory or
+// removing the entries.
+func TestAStoreChangeIntoAHelperCountsEveryOtherEntry(t *testing.T) {
+	dir, cfg := planFixture(t)
+	t.Setenv("PATH", t.TempDir())
+
+	err := CheckTransitionSources(dir, cfg, "prod", backendFile, "exec:fake")
+	ce, ok := errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "the credential helper fake may answer for qa, staging: after the change each of them would be served a credential it never logged in with")
+	require.ErrorContains(t, err, "use a different --config for the helper")
+	require.ErrorContains(t, err, "rancher config delete-server <name>")
+	assert.Empty(t, ce.Hint, "two ways out, neither of them a logout")
+
+	alone := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
+	require.NoError(t, CheckTransitionSources(dir, alone, "prod", backendFile, "exec:fake"),
+		"with no other entry there is nothing to serve")
 }
 
 // TestAStoreChangeNeedsAPhysicalBackendToLeave asserts a policy is never
@@ -188,7 +258,7 @@ func TestAStoreChangeFromAHelperCountsEveryOtherEntry(t *testing.T) {
 // it.
 func TestAStoreChangeNeedsAPhysicalBackendToLeave(t *testing.T) {
 	dir, cfg := planFixture(t)
-	require.ErrorContains(t, CheckTransitionSources(dir, cfg, "prod", "auto"), "physical backend")
+	require.ErrorContains(t, CheckTransitionSources(dir, cfg, "prod", "auto", backendFile), "physical backend")
 }
 
 // TestPlanAddsTheOldCopyDeleteAndThePinLast asserts the order the steps

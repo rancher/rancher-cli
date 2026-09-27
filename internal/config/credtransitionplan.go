@@ -75,15 +75,19 @@ func newTransitionPlan() (*TransitionPlan, error) {
 }
 
 // CheckTransitionSources refuses a login that changes the store of its
-// own credential away from `from` while any other entry holds a credential
-// there. "Holds" is every answer but absent: a login that never settled,
-// a keychain slot another directory owns and a store that cannot be read
-// refuse too.
+// own credential from `from` to `to` while any other entry holds a
+// credential in `from`, or has one left in `to`. "Holds" is every answer
+// but absent: a login that never settled, a keychain slot another
+// directory owns and a store that cannot be read refuse too. What is left
+// in `to` counts because every reader moves there with the change: an
+// entry logged out while its keychain copy could not be reached keeps
+// that copy and its identity record, and after the change a reader of
+// that entry would be served the credential the operator logged out.
 //
 // A login runs it before the sign-in, so the answer arrives before the
 // operator authenticates, and again under the lock, where it is the
 // authority. It takes no lock and writes nothing.
-func CheckTransitionSources(dir string, cfg *Config, loginEntry, from string) error {
+func CheckTransitionSources(dir string, cfg *Config, loginEntry, from, to string) error {
 	if !isPhysicalBackend(from) {
 		return fmt.Errorf("a credential store change needs a physical backend to leave, not %q", from)
 	}
@@ -109,11 +113,19 @@ func CheckTransitionSources(dir string, cfg *Config, loginEntry, from string) er
 			"a login changes the store of its own credential only, and the credential helper %s may answer for %s, which would then read a store that holds nothing for %s; keep this directory on the helper and use a different --config for the new store, or remove %s with rancher config delete-server <name>, then run this command again",
 			helper, strings.Join(others, ", "), pronounFor(others), pronounFor(others)))
 	}
+	if err := helperDestinationRefusal(to, others); err != nil {
+		return err
+	}
 
 	refusals, err := credentialsHeldIn(dir, from, others)
 	if err != nil {
 		return err
 	}
+	left, err := credentialsLeftIn(dir, to, others)
+	if err != nil {
+		return err
+	}
+	refusals = append(refusals, left...)
 	if len(refusals) == 0 {
 		return nil
 	}
@@ -123,9 +135,87 @@ func CheckTransitionSources(dir string, cfg *Config, loginEntry, from string) er
 		why = append(why, r.why)
 		names = append(names, r.entry)
 	}
+	slices.Sort(names)
+	names = slices.Compact(names)
+	remedy := logOutFirst(names)
+	if to == backendKeychain && len(left) > 0 {
+		remedy += " with the keychain reachable"
+	}
 	return transitionRefusal(fmt.Sprintf(
 		"a login changes the store of its own credential only, and %s; %s, then run this command again",
-		strings.Join(why, "; "), logOutFirst(names)), names)
+		strings.Join(why, "; "), remedy), names)
+}
+
+// credentialsLeftIn names every entry that has a credential in the store a
+// change moves the directory's readers to, when that store is not a
+// helper. For the keychain it is the identity records: a record exists
+// only for a keychain credential, and its name is enough, without opening
+// it or the slot. For the file store it is a key in credentials.yaml.
+func credentialsLeftIn(dir, to string, entries []string) ([]transitionRefusalReason, error) {
+	var left []transitionRefusalReason
+	switch to {
+	case backendKeychain:
+		records, err := identityRecordNames(dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if records[identityFileName(entry)] {
+				left = append(left, transitionRefusalReason{entry: entry, why: fmt.Sprintf(
+					"the keychain still holds a credential of %s from an earlier login, which a reader of %s would be served after the change", entry, entry)})
+			}
+		}
+	case backendFile:
+		tokens, err := newFileStore(dir, &noticeBuffer{}).read()
+		if err != nil {
+			return nil, unreadableCredentialsFile(dir, err)
+		}
+		for _, entry := range entries {
+			if _, ok := tokens[entry]; ok {
+				left = append(left, transitionRefusalReason{entry: entry, why: fmt.Sprintf(
+					"the plaintext file %s still holds a credential of %s from an earlier login, which a reader of %s would be served after the change", CredentialsFilePath(dir), entry, entry)})
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unknown credential backend %q", to)
+	}
+	return left, nil
+}
+
+// CheckHelperDestination is the destination half of CheckTransitionSources
+// for a login that sends the directory's readers to a credential helper
+// from no store at all - an unpinned directory that has stored nothing -
+// where there is no source to read but every other entry still counts.
+func CheckHelperDestination(cfg *Config, loginEntry, to string) error {
+	others := make([]string, 0, len(cfg.Servers))
+	for name := range cfg.Servers {
+		if name != loginEntry {
+			others = append(others, name)
+		}
+	}
+	slices.Sort(others)
+	return helperDestinationRefusal(to, others)
+}
+
+// helperDestinationRefusal refuses a change into a credential helper while
+// any other entry exists. It is the helper-source rule from the other
+// side: a helper that creates credentials on demand keeps no record and
+// answers `get` for any entry, so after the change every other entry - one
+// that was logged out included - would be served a credential the helper
+// created and it never logged in with. Every other entry counts. nil when
+// to is not a helper or there is no other entry.
+func helperDestinationRefusal(to string, others []string) error {
+	helper, ok := execHelperName(to)
+	if !ok || len(others) == 0 {
+		return nil
+	}
+	each := others[0]
+	if len(others) > 1 {
+		each = "each of them"
+	}
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"a login changes the store of its own credential only, and the credential helper %s may answer for %s: after the change %s would be served a credential it never logged in with; keep this directory where it is and use a different --config for the helper, or remove %s with rancher config delete-server <name>, then run this command again",
+		helper, strings.Join(others, ", "), each, pronounFor(others)))
 }
 
 // pronounFor refers back to the entries a refusal names, in the number the

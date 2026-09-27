@@ -134,16 +134,23 @@ func loginBackendsOf(dir string, cfg *Config, entry, policy, declaration string)
 	if resolved == "auto" && b.ReadsNow == backendFile && b.CommitsTo == backendKeychain {
 		// The upgrade takes this entry's credential only. While another
 		// entry's credential is in the file store, moving this one alone
-		// would leave the directory reading two stores, so the login stays
-		// where the directory already reads - no downgrade - and says how
-		// to leave: log the others out, and the next login upgrades.
-		others, oerr := otherFileCredentials(dir, cfg, entry)
+		// would leave the directory reading two stores; while another entry
+		// has a credential left in the keychain from an earlier login, the
+		// move would have that entry's readers served it again. Either way
+		// the login stays where the directory already reads - no
+		// downgrade - and says how to leave: log the others out, and the
+		// next login upgrades.
+		inFile, oerr := otherFileCredentials(dir, cfg, entry)
 		if oerr != nil {
 			return b, oerr
 		}
-		if len(others) > 0 {
+		inKeychain, kerr := otherKeychainRecords(dir, cfg, entry)
+		if kerr != nil {
+			return b, kerr
+		}
+		if len(inFile) > 0 || len(inKeychain) > 0 {
 			b.CommitsTo = backendFile
-			b.Notice = plaintextKeptNotice(dir, others)
+			b.Notice = plaintextKeptNotice(dir, inFile, inKeychain)
 		}
 	}
 	if resolved == "auto" && b.CommitsTo == backendFile && b.ReadsNow != "" && b.ReadsNow != backendFile {
@@ -249,17 +256,72 @@ func unreadableCredentialsFile(dir string, err error) error {
 		WithCause(err)
 }
 
+// otherKeychainRecords names the entries in config.yaml other than entry
+// that have an identity record: a credential in the keychain this
+// directory's readers would be sent to. Only the record names are read.
+func otherKeychainRecords(dir string, cfg *Config, entry string) ([]string, error) {
+	if !hasOtherEntry(cfg, entry) {
+		return nil, nil
+	}
+	records, err := identityRecordNames(dir)
+	if err != nil {
+		return nil, err
+	}
+	var others []string
+	for name := range cfg.Servers {
+		if name != entry && records[identityFileName(name)] {
+			others = append(others, name)
+		}
+	}
+	slices.Sort(others)
+	return others, nil
+}
+
+// hasOtherEntry reports whether config.yaml has an entry other than entry;
+// with none, there is nothing about other entries to look up.
+func hasOtherEntry(cfg *Config, entry string) bool {
+	for name := range cfg.Servers {
+		if name != entry {
+			return true
+		}
+	}
+	return false
+}
+
 // plaintextKeptNotice is the warning an `auto` login gives when it could
-// use the keychain and stays on the file store because other entries'
-// credentials are there.
-func plaintextKeptNotice(dir string, others []string) string {
-	count, which := "1 other credential", "log that entry out"
-	if len(others) > 1 {
-		count, which = fmt.Sprintf("%d other credentials", len(others)), "log those entries out"
+// use the keychain and stays on the file store because other entries have
+// credentials in the file store, or left in the keychain.
+func plaintextKeptNotice(dir string, inFile, inKeychain []string) string {
+	credentials := func(n int) string {
+		if n == 1 {
+			return "1 other credential"
+		}
+		return fmt.Sprintf("%d other credentials", n)
+	}
+	var parts []string
+	if len(inFile) > 0 {
+		parts = append(parts, fmt.Sprintf("keeps %s in the plaintext file %s (%s)",
+			credentials(len(inFile)), CredentialsFilePath(dir), strings.Join(inFile, ", ")))
+	}
+	if len(inKeychain) > 0 {
+		parts = append(parts, fmt.Sprintf("has %s left in the keychain from an earlier login (%s), which a move to the keychain would serve again",
+			credentials(len(inKeychain)), strings.Join(inKeychain, ", ")))
+	}
+	names := slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(inFile), inKeychain...))))
+	which := "log that entry out"
+	if len(names) > 1 {
+		which = "log those entries out"
+	}
+	if len(inKeychain) > 0 {
+		which += " with the keychain reachable"
+	}
+	too := ""
+	if len(inFile) > 0 {
+		too = " too"
 	}
 	return fmt.Sprintf(
-		"this directory keeps %s in the plaintext file %s (%s), so this login stores its credential there too; to move the directory to the keychain, %s, then log in again",
-		count, CredentialsFilePath(dir), strings.Join(others, ", "), which)
+		"this directory %s, so this login stores its credential in the plaintext file %s%s; to move the directory to the keychain, %s, then log in again",
+		strings.Join(parts, " and "), CredentialsFilePath(dir), too, which)
 }
 
 // LoginStoreChange reports what would stop a login before it asks anyone
@@ -280,10 +342,8 @@ func LoginStoreChange(dir string, cfg *Config, entry, policy, declaration string
 	if err := RefusedByTransition(dir, cfg, MutationIntent{ChangesStore: b.ChangesStore()}); err != nil {
 		return "", err
 	}
-	if b.ChangesBackend() {
-		if err := CheckTransitionSources(dir, cfg, entry, b.ReadsNow); err != nil {
-			return "", err
-		}
+	if err := checkStoreChange(dir, cfg, entry, b); err != nil {
+		return "", err
 	}
 	return b.CommitsTo, nil
 }
@@ -292,6 +352,22 @@ func LoginStoreChange(dir string, cfg *Config, entry, policy, declaration string
 // keychain cannot be used and the credential goes to the plaintext file.
 func plaintextStoreNotice(dir string) string {
 	return fmt.Sprintf("keychain unavailable; credentials will be stored in plaintext %s", CredentialsFilePath(dir))
+}
+
+// checkStoreChange is the refusal a change of the store readers use gets,
+// the same for the check before the sign-in and the plan under the lock.
+// It runs whenever readers move: when this entry's credential leaves the
+// store they use, and when an unpinned directory that has stored nothing
+// sends them to a credential helper, where there is no source to read but
+// every other entry still counts.
+func checkStoreChange(dir string, cfg *Config, entry string, b loginBackends) error {
+	switch {
+	case b.ChangesBackend():
+		return CheckTransitionSources(dir, cfg, entry, b.ReadsNow, b.CommitsTo)
+	case b.ReadsNow == "" && isExecBackend(b.CommitsTo):
+		return CheckHelperDestination(cfg, entry, b.CommitsTo)
+	}
+	return nil
 }
 
 // planStoreChange records what a login that changes the directory's
@@ -306,11 +382,6 @@ func plaintextStoreNotice(dir string) string {
 // other, or the pin would never be written.
 func planStoreChange(dir string, cfg *Config, entry, url string, b loginBackends) (storeChange, error) {
 	var ch storeChange
-	if b.ChangesBackend() {
-		if err := CheckTransitionSources(dir, cfg, entry, b.ReadsNow); err != nil {
-			return ch, err
-		}
-	}
 	plan, err := newTransitionPlan()
 	if err != nil {
 		return ch, err

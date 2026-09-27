@@ -755,9 +755,10 @@ resolves to after it are resolved once, in `loginBackendsOf`, and every
 condition in the login order comes from that one answer. A login changes
 the store of its own credential only: it is refused before the sign-in,
 and again under the lock, while another entry holds a credential in the
-store being left (`CheckTransitionSources`; for a helper, every other
-entry counts), and an `auto` upgrade from the file store stays there while
-another entry is in it. Before the commit the login writes the record of
+store being left, or has one left in the store readers move to
+(`CheckTransitionSources`; for a helper on either side, every other entry counts),
+and an `auto` upgrade from the file store stays there while another entry
+is in it or has a keychain identity record. Before the commit the login writes the record of
 what the change has to do - its own old copy's delete and the pin, last -
 which stays inert until the first config write after the commit names it.
 Then this entry's old copy is removed, or failing that the pin is flipped,

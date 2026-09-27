@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -24,8 +26,9 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 		declared, pin, policy, declaration, env string
 		// fileTokens seeds a token for "other" in credentials.yaml;
 		// others makes "other" an entry of the directory as well;
-		// ownToken seeds the logging-in entry's own token.
-		fileTokens, others, ownToken bool
+		// ownToken seeds the logging-in entry's own token; otherRecord
+		// leaves "other" an identity record in credstore-id/.
+		fileTokens, others, ownToken, otherRecord bool
 		// keychain is what the probe answers.
 		keychain                        bool
 		readsNow, commitsTo, readsAfter string
@@ -173,6 +176,15 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 			changes: false, writesPin: false, notice: true,
 		},
 		{
+			// Another entry left a keychain credential behind, so moving
+			// the readers there would serve it again: the login stays.
+			name:     "the auto upgrade stays on the file store while another entry has a credential left in the keychain",
+			declared: "auto", pin: "file", policy: "auto", keychain: true, wantProbe: true,
+			others: true, otherRecord: true,
+			readsNow: "file", commitsTo: "file", readsAfter: "file",
+			changes: false, writesPin: false, notice: true,
+		},
+		{
 			name:     "an unpinned directory stays on the file store while another entry is there, and pins it",
 			declared: "auto", policy: "auto", declaration: "auto", keychain: true, wantProbe: true,
 			fileTokens: true, others: true,
@@ -197,6 +209,10 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 			}
 			if tc.fileTokens {
 				require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "other", URL: "https://r.ex"}, "other-tok"))
+			}
+			if tc.otherRecord {
+				require.NoError(t, os.MkdirAll(identityDirPath(dir), 0o700))
+				require.NoError(t, os.WriteFile(filepath.Join(identityDirPath(dir), identityFileName("other")), []byte("x"), 0o600))
 			}
 			if tc.ownToken {
 				require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-tok"))
@@ -368,4 +384,27 @@ func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
 		assert.Equal(t, backendFile, b.CommitsTo)
 		assert.Contains(t, b.Notice, "plaintext")
 	})
+}
+
+// TestAnUpgradeOnAOneEntryDirectoryLooksUpNoOtherEntry asserts what the
+// `auto` upgrade costs a directory whose only entry is the one logging
+// in - the kubectl plugin's re-login after a 401, say: nothing about other
+// entries is read, so neither credstore-id/ nor credentials.yaml is looked
+// at for them.
+func TestAnUpgradeOnAOneEntryDirectoryLooksUpNoOtherEntry(t *testing.T) {
+	t.Setenv(EnvCredentialStore, "")
+	dir := t.TempDir()
+	require.NoError(t, WritePin(dir, backendFile))
+	orig := keyringUsable
+	keyringUsable = func() bool { return true }
+	resetKeyringUsableCache()
+	t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
+	ops := map[string]int{}
+	t.Cleanup(SetIdentityObserverForTest(func(op string) { ops[op]++ }))
+
+	b, err := loginBackendsOf(dir, &Config{CredentialStore: "auto", Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}, "prod", "auto", "")
+	require.NoError(t, err)
+	assert.Equal(t, backendKeychain, b.CommitsTo, "the upgrade goes through")
+	assert.Zero(t, ops["dirstat"], "no look at credstore-id/")
+	assert.Zero(t, ops["list"])
 }

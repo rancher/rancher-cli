@@ -72,7 +72,14 @@ the keychain), with the keychain reachable, then run the command again.
   `--credential-store file` is the explicit choice. `config edit` refuses
   any change to `credentialStore`. An `auto` login whose
   directory has other entries in the file store stays there and warns: log
-  them out, then log in again to move to the keychain.
+  them out, then log in again to move to the keychain. A credential another
+  entry has left in the destination (a keychain copy a logout could not
+  reach) refuses a change by name and keeps `auto` on the file store the
+  same way; its logout needs the keychain reachable. A change into a
+  credential helper is refused while the directory has any other entry,
+  logged in or not, since the helper may answer for any of them: use a
+  different `--config` for the helper, or remove those entries with
+  `rancher config delete-server`.
   `CREDENTIAL_TRANSITION_INCOMPLETE` (exit 3, retryable) means an earlier
   change has work left: the message names the step and why it could not
   finish; resolve that, then run the command again.

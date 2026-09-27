@@ -61,6 +61,15 @@ one in the store being left - a credential, a login that never finished,
 a keychain slot another directory now owns - the change is refused before
 the sign-in, naming those entries and the `rancher auth logout` to run
 first, so no entry's store changes unless it was logged in there itself.
+A credential another entry has left in the store being moved to counts
+too - a keychain copy kept by a logout that could not reach the
+keychain, say - since every reader moves there with the change and would
+be served it: log that entry out, with the keychain reachable for a
+keychain copy. A change into a credential helper is refused while the
+directory has any other entry, since the helper may answer for any of
+them with a credential it created: keep the directory where it is and
+use a different `--config` for the helper, or remove those entries with
+`rancher config delete-server`.
 A store that cannot be read at that moment refuses too, and its remedy is
 to make it reachable or use a different `--config`, since a logout would
 have to reach the same store. A credential helper can answer for any
@@ -73,9 +82,10 @@ credentials are in is a change asked for by name, like the flag.
 plaintext either: when the keychain cannot be used at that moment, the
 login is refused, and naming `file` is the way to choose plaintext on
 purpose. An `auto` login that could use the keychain on a directory whose
-other entries are in the file store stays there and says so: log those
-entries out, then log in again, and the next login moves the directory to
-the keychain. An unfinished change is `CREDENTIAL_TRANSITION_INCOMPLETE`:
+other entries are in the file store, or have a credential left in the
+keychain, stays on the file store and says so: log those entries out,
+then log in again, and the next login moves the directory to the
+keychain. An unfinished change is `CREDENTIAL_TRANSITION_INCOMPLETE`:
 its message names the step that could not finish and why; resolve that,
 then run the command again. A second store change cannot start until the
 first one finishes. `config edit` refuses to set, change or remove
