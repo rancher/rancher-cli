@@ -45,7 +45,8 @@ setting it to a different one is a VALIDATION error naming both, not a
 silent override: two processes on one directory reading different
 backends is how a command ends up serving a credential nobody asked for.
 Unset the variable, or use a different `--config`. An undeclared
-directory defaults to `auto` (probe once, pin).
+directory defaults to `auto`: its first login probes the keychain and
+pins the answer.
 
 Changing a directory's store is `rancher auth login <name>
 --credential-store keychain|file|auto|exec:<name>`. The flag names the
@@ -54,25 +55,34 @@ that is the point - but it must agree with
 `RANCHER_CLI_CREDENTIAL_STORE` when that is set, or it is the same
 VALIDATION error. The new store is recorded only after this entry's new
 credential has been stored in it, so no process resolves the entry to a
-store that does not hold its credential yet. A change into the keychain
-takes the other entries' credentials with it: nothing is logged out, and
-each one keeps its own cached cluster tokens. A change into the plaintext
-file store, or into a credential helper, takes only this entry's
-credential: while another entry still holds one in the store being left,
-the change is refused before the sign-in, naming those entries and the
-`rancher auth logout` to run first, so no credential ends up in plaintext
-unless it was logged in there. `--credential-store auto` never moves a
-keychain or helper directory into plaintext either: when the keychain
-cannot be used at that moment, the login is refused, and naming `file` is
-the way to choose plaintext on purpose. An entry whose credential cannot
-be moved into the keychain - a login that never finished, a keychain slot
-another directory now owns, a helper that creates credentials on demand
-rather than storing them, or a credential that exists in both stores - is
-named before the sign-in, with the `rancher auth logout` that settles it.
-An unfinished change is `CREDENTIAL_TRANSITION_INCOMPLETE`: its message
-names the step that could not finish and why; resolve that, then run the
-command again. A second store change cannot start until the first one
-finishes.
+store that does not hold its credential yet. A change takes only this
+entry's credential, in every direction: while another entry still holds
+one in the store being left - a credential, a login that never finished,
+a keychain slot another directory now owns - the change is refused before
+the sign-in, naming those entries and the `rancher auth logout` to run
+first, so no entry's store changes unless it was logged in there itself.
+A store that cannot be read at that moment refuses too, and its remedy is
+to make it reachable or use a different `--config`, since a logout would
+have to reach the same store. A credential helper can answer for any
+entry, so leaving a helper is refused while the directory has any other
+entry: keep the directory on the helper and use a different `--config`
+for the new store, or remove those entries with `rancher config
+delete-server`. A variable naming a store other than the one the
+credentials are in is a change asked for by name, like the flag.
+`--credential-store auto` never moves a keychain or helper directory into
+plaintext either: when the keychain cannot be used at that moment, the
+login is refused, and naming `file` is the way to choose plaintext on
+purpose. An `auto` login that could use the keychain on a directory whose
+other entries are in the file store stays there and says so: log those
+entries out, then log in again, and the next login moves the directory to
+the keychain. An unfinished change is `CREDENTIAL_TRANSITION_INCOMPLETE`:
+its message names the step that could not finish and why; resolve that,
+then run the command again. A second store change cannot start until the
+first one finishes. `config edit` refuses to set, change or remove
+`credentialStore`: any of the three would send every reader to a store
+the edit put nothing in. Change it with the login above; no command
+removes a declaration, and a different `--config` starts a fresh
+directory.
 
 A directory whose backend is the keychain reads only the keychain: on a
 headless machine (no D-Bus, locked keychain) every command fails with the
@@ -105,19 +115,43 @@ logged in and needs a fresh login.
 
 Credential-store resolution: `credentialStore:
 keychain|file|auto|exec:<name>` in config is the directory's own choice,
-recorded by its first login; `RANCHER_CLI_CREDENTIAL_STORE` supplies that
-choice for a directory that has not made one, and disagreeing with one
-that has is an error rather than an override. Under `auto` the value
-resolves through a machine-local `credstore-pin` file, and failing that a
-one-time probe: the backend is probed once and pinned, the pin is
-re-probed only at `auth login` and only to upgrade file to keychain, and a
-pinned-but-unusable backend is a hard error (never a silent downgrade to
-plaintext). A login writes the pin as the last step of the change it
+recorded by its first login; `RANCHER_CLI_CREDENTIAL_STORE` chooses the
+store a command on a directory that has not made one reads and a login
+writes, and disagreeing with one that has is an error rather than an
+override. Under `auto` the value resolves through a machine-local
+`credstore-pin` file, and only a login writes it: the directory's first
+login probes the keychain and pins the answer, and a later login
+re-probes only to upgrade file to keychain - and only while no other
+entry's credential is in the file store. No other command probes or pins.
+With no pin, a command reads where the entries' stored credentials are:
+the keychain when an entry has an identity record in `credstore-id/`, the
+file store when only `credentials.yaml` holds them, and nothing when
+neither does. Credentials in both with no pin are a VALIDATION error for
+every credential command, a login included, because nothing says which
+copy is current: log out the entries in the store you do not want to
+keep - to keep the keychain, which holds no plaintext, log out the ones
+the error lists in the file - or use a different `--config`; a keychain
+entry's logout needs the keychain reachable. Only credentials of entries
+in `config.yaml` count. A command that creates an entry - the kubectl
+plugin's login, `auth login --url` for a new name, `config add-server` -
+first removes any credential still stored under that name in the
+keychain, the file store, or a credential helper the directory reads
+from or the login writes to when that helper's records name it, with a
+warning naming each removal: from the moment the entry exists it would
+count as the entry's credential, perhaps a bearer another server issued.
+One in a keychain that cannot be reached refuses the command (a login
+before its sign-in), and one a helper cannot erase refuses it, with
+nothing written. A keychain that `auto` chose
+and the process cannot use is a hard error (never a silent downgrade to
+plaintext) whose way out is making the keychain reachable or a different
+`--config`. A login writes the pin as the last step of the change it
 records, after its credential is stored, so a login that fails or is
 cancelled leaves the pin and every other entry's credential exactly as
-they were. The one exception is a pin left behind under an explicit
-declaration that names a store the directory does not use: that pin is
-rewritten before the credential is stored, while no command reads it.
+they were. The exceptions are written before the credential is stored,
+and state what readers already use: a directory with no pin that a login
+leaves gets the store readers find now, and a pin left behind under an
+explicit declaration that names a store the directory does not use is
+rewritten while no command reads it.
 
 Custom backends plug in as credential helpers: `credentialStore: exec:<name>`
 runs the `rancher-credential-<name>` binary from `PATH` (the shipped
@@ -832,7 +866,7 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 | `AUTH` | 3 | authentication failed: the server rejected the credential (HTTP 401), the exchange with the identity provider failed or timed out, or an environment URL was set without RANCHER_CLI_TOKEN |
 | `CREDENTIAL_REPLACED` | 3 | the stored credential for the server entry was replaced by another config directory that shares this one's identity, or by a login in progress |
 | `LOGIN_INCOMPLETE` | 3 | a login for the server entry is in progress, or ended before it recorded its credential identity |
-| `CREDENTIAL_TRANSITION_INCOMPLETE` | 3 | a change of this directory's credential store has work left: some credentials are still in the backend it moved away from, so a second store change is refused and so is a login for an entry whose credential the change is still carrying; a logout or a delete proceeds and converts the unfinished work to cleanup |
+| `CREDENTIAL_TRANSITION_INCOMPLETE` | 3 | a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet, so a second store change is refused until it is; other commands proceed |
 | `NOT_FOUND` | 4 | no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data |
 | `RBAC` | 6 | the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token |
 | `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422) |

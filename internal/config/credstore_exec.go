@@ -281,6 +281,7 @@ func (s *execStore) SetTokenWithOutcome(ref ServerRef, token string, _ PriorCred
 		}
 		out.State = CommitHelperNonAtomic
 		out.HelperRecordRetained = true
+		afterWrite("helper store")
 		return nil
 	})
 	return out, lerr
@@ -296,6 +297,7 @@ func (s *execStore) eraseCredential(req credhelper.Request) (deleted bool, err e
 	if err != nil {
 		return false, err
 	}
+	afterWrite("helper erase")
 	return resp.Erased == nil || *resp.Erased, nil
 }
 

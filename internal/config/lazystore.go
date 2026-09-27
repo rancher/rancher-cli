@@ -6,10 +6,11 @@ import (
 	"time"
 )
 
-// lazyStore defers backend resolution (the auto probe, the credstore-pin
-// write, the plaintext notice) to the FIRST credential method call, so a
-// command that never touches credentials triggers no store-init side
-// effects - no probe latency, no pin, no config-dir creation (LS-1).
+// lazyStore defers backend resolution (the pin read and, for an `auto`
+// directory with no pin, the look at what its entries have stored) to the
+// FIRST credential method call, so a command that never touches
+// credentials reads nothing it does not need and creates nothing - no
+// config-dir creation (LS-1).
 // resolve runs at most once; its result (or error) is cached for the
 // process lifetime and returned as-is from every call (callers keep their
 // existing error wrapping, spec R1-3).
@@ -23,18 +24,15 @@ type lazyStore struct {
 	// can safely read them from any goroutine without forcing resolution
 	// itself - checking resolved is a query, never a trigger.
 	resolved atomic.Bool
-	// notices holds the first-pin/plaintext-fallback notice recorded during
-	// resolution - a lazyStore is constructed once per invocation, never
-	// shared with another store, so it owns this buffer outright (contrast
-	// keyringStore, which shares one with its wrapped file cache).
-	notices *noticeBuffer
 }
 
-// NewLazyStore validates the EFFECTIVE policy eagerly (an unknown
-// RANCHER_CLI_CREDENTIAL_STORE or config credentialStore still fails fast
-// on every resolveDeps-backed command, CS-6) and captures it, so the
-// deferred resolution provably opens the policy that was validated even if
-// the environment changes mid-process (spec R1-4).
+// NewLazyStore validates the EFFECTIVE policy of cfg's declaration eagerly
+// (an unknown RANCHER_CLI_CREDENTIAL_STORE or config credentialStore still
+// fails fast on every resolveDeps-backed command, CS-6) and captures it, so
+// the deferred resolution provably opens the policy that was validated even
+// if the environment changes mid-process (spec R1-4). cfg is the config the
+// command loaded: its entries are what an unpinned `auto` directory is
+// judged by, so resolution loads nothing of its own.
 //
 // A declaration the variable disagrees with is the one resolution failure
 // that is NOT eager: it is carried into the deferred resolution and
@@ -43,26 +41,18 @@ type lazyStore struct {
 // `config path`, a RANCHER_CLI_TOKEN run - is not failed by a conflict it
 // would never have acted on. An unknown policy value stays eager: it is
 // broken for every command, whether or not one opens the store.
-func NewLazyStore(policy, dir string) (CredStore, error) {
-	p, conflict := EffectivePolicy(policy)
+func NewLazyStore(cfg *Config, dir string) (CredStore, error) {
+	p, conflict := EffectivePolicy(cfg.CredentialStore)
 	if err := checkPolicy(p); err != nil {
 		return nil, err
 	}
 	if conflict != nil {
-		return &lazyStore{notices: &noticeBuffer{}, resolve: func() (CredStore, error) {
+		return &lazyStore{resolve: func() (CredStore, error) {
 			return nil, conflict
 		}}, nil
 	}
-	nb := &noticeBuffer{}
-	return &lazyStore{notices: nb, resolve: func() (CredStore, error) {
-		store, notice, err := openStoreResolved(p, dir)
-		// The lazy path resolves inside a credential operation (SetToken,
-		// GetToken, …), outside any pipeline Result - record it on this
-		// store's own buffer instead of writing to stderr directly; the
-		// invocation's NoticeSource drain (renderErr/renderResult) picks it
-		// up wherever this store is wired onto IO.Notices.
-		nb.record(notice)
-		return store, err
+	return &lazyStore{resolve: func() (CredStore, error) {
+		return openStoreResolved(p, dir, func() (*Config, error) { return cfg, nil })
 	}}, nil
 }
 
@@ -78,18 +68,16 @@ func (l *lazyStore) backend() (CredStore, error) {
 // an invocation that never calls a credential method must see zero
 // store-init side effects (LS-1) even though the pipeline always drains
 // before rendering. Once resolution has happened (by any caller, at any
-// point before this call), the underlying backend's own notices - a later
-// loose-permission finding, say, not just the first-pin notice recorded
-// during resolution - are drained too, in the order they would naturally
-// occur (the pin notice is always recorded before resolved flips true).
+// point before this call), the underlying backend's own notices - a
+// loose-permission finding, say - are drained.
 func (l *lazyStore) DrainNotices() []string {
-	out := l.notices.DrainNotices()
-	if l.resolved.Load() {
-		if ns, ok := l.store.(NoticeSource); ok {
-			out = append(out, ns.DrainNotices()...)
-		}
+	if !l.resolved.Load() {
+		return nil
 	}
-	return out
+	if ns, ok := l.store.(NoticeSource); ok {
+		return ns.DrainNotices()
+	}
+	return nil
 }
 
 func (l *lazyStore) GetToken(ref ServerRef) (string, error) {

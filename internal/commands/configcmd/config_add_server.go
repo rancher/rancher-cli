@@ -57,7 +57,7 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 		return runtime.Result{}, err
 	}
 
-	out, err := register.CommitCreateUnderLock(ctx, c.dir, name, probe)
+	out, err := register.CommitCreateUnderLock(ctx, c.dir, name, "", probe)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -69,6 +69,7 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 	if probe.VersionWarning != "" {
 		res.Warnings = append(res.Warnings, probe.VersionWarning)
 	}
+	res.Warnings = append(res.Warnings, out.Notices...)
 	if !out.Created {
 		tr := runtime.TextLines("server " + out.Name + " unchanged")
 		res.Text, res.StyledText = tr.Text, tr.StyledText

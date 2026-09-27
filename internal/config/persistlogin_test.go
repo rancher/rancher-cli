@@ -53,7 +53,7 @@ func pluginInput(dir, name string, store CredStore) PersistLoginInput {
 		Provenance: clierr.ProvenanceExecLogin, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-new"},
 		TokenUserID: "user-a", Bearer: "ext/token-new:s", ExpiresAt: "2026-10-01T00:00:00Z",
 		OwnsEntry: true, ReadOnlyStoreIsFailure: true, OpenStore: fileOpen(store),
-		Decision: &StoreDecision{RequireSetting: true, Policy: "file", Pin: "", DisclosedPlaintextPath: CredentialsFilePath(dir)},
+		Decision: &StoreDecision{RequireSetting: true, Policy: "file", DisclosedPlaintextPath: CredentialsFilePath(dir)},
 		Now:      func() time.Time { return time.Date(2026, 9, 4, 18, 0, 0, 0, time.UTC) }}
 }
 
@@ -466,11 +466,17 @@ func TestPersistRevalidationAbortsBeforeAnyWrite(t *testing.T) {
 		{"policy became file undisclosed", func(_ string, cfg *Config) { cfg.CredentialStore = "file" },
 			StoreDecision{RequireSetting: true, Policy: "keychain"}, "plaintext"},
 		{"auto pin became file undisclosed", func(dir string, cfg *Config) { cfg.CredentialStore = ""; require.NoError(t, WritePin(dir, "file")) },
-			StoreDecision{RequireSetting: true, Policy: "auto", Pin: "keychain"}, "plaintext"},
+			StoreDecision{RequireSetting: true, Policy: "auto"}, "plaintext"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, path := persistFixture(t, nil)
+			// The login's own answer is what is checked, and under a file
+			// pin it would probe; an unusable keychain keeps the pin.
+			old := keyringUsable
+			keyringUsable = func() bool { return false }
+			resetKeyringUsableCache()
+			t.Cleanup(func() { keyringUsable = old; resetKeyringUsableCache() })
 			cfg, _ := Load(path)
 			tc.mutate(dir, cfg)
 			require.NoError(t, cfg.Write())
@@ -503,7 +509,7 @@ func TestPersistRevalidationAbortsBeforeAnyWrite(t *testing.T) {
 		resetKeyringUsableCache()
 		t.Cleanup(func() { keyringUsable = old; resetKeyringUsableCache() })
 		in := pluginInput(dir, "exec-login-r.ex", NewFileStore(dir))
-		in.Decision = &StoreDecision{RequireSetting: true, Policy: "auto", Pin: "file", DisclosedPlaintextPath: CredentialsFilePath(dir)}
+		in.Decision = &StoreDecision{RequireSetting: true, Policy: "auto", DisclosedPlaintextPath: CredentialsFilePath(dir)}
 		_, err := PersistLoginCredential(t.Context(), dir, in)
 		require.NoError(t, err)
 	})
@@ -592,7 +598,7 @@ func TestPersistSuccessStatesAreSuccessForEveryBackend(t *testing.T) {
 		useFakeHelper(t, "ok")
 		dir, _ := persistFixture(t, derivedEntry())
 		in := pluginInput(dir, "prod", nil)
-		in.OpenStore = func(string, string) (CredStore, string, error) { return OpenStoreWithNotice("exec:fake", dir) }
+		in.OpenStore = func(string, string) (CredStore, string, error) { return OpenResolvedStore("exec:fake", dir) }
 		out, err := PersistLoginCredential(t.Context(), dir, in)
 		require.NoError(t, err)
 		assert.Equal(t, clierr.CredentialHelperNonAtomic, out.CredentialState)
@@ -729,7 +735,7 @@ func TestPersistThroughALazyStoreWritesTheIdentityRecord(t *testing.T) {
 
 	in := loginInput(dir, nil)
 	in.OpenStore = func(policy, d string) (CredStore, string, error) {
-		lazy, lerr := NewLazyStore(policy, d)
+		lazy, lerr := NewLazyStore(&Config{CredentialStore: policy}, d)
 		return lazy, "", lerr
 	}
 	out, err := PersistLoginCredential(t.Context(), dir, in)
@@ -1058,4 +1064,80 @@ func storedFileToken(t *testing.T, dir string) string {
 	}
 	require.NoError(t, err)
 	return tok
+}
+
+// TestAnUndisclosedPlaintextCommitIsAbortedOnABareDirectory asserts the
+// plugin's plaintext promise holds without a read-path pin. A fresh `auto`
+// directory whose keychain cannot be used commits to the file store; a
+// decision that disclosed nothing before the sign-in is aborted, with
+// nothing written, and one that disclosed the file goes through.
+func TestAnUndisclosedPlaintextCommitIsAbortedOnABareDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		disclosed bool
+	}{
+		{name: "nothing disclosed"},
+		{name: "the file disclosed", disclosed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keyring.MockInit()
+			t.Setenv(EnvCredentialStore, "")
+			dir := t.TempDir()
+			old := keyringUsable
+			keyringUsable = func() bool { return false }
+			resetKeyringUsableCache()
+			t.Cleanup(func() { keyringUsable = old; resetKeyringUsableCache() })
+			cfg := &Config{Servers: map[string]Server{}, TokenReuse: true}
+			cfg.SetPath(FilePath(dir))
+			require.NoError(t, cfg.Write())
+
+			in := pluginInput(dir, "exec-login-r.ex", nil)
+			in.OpenStore = OpenResolvedStore
+			in.Policy, in.ObservedDeclaration = "auto", ""
+			in.Declaration = DeclarationFor("", "", "auto")
+			in.Decision = &StoreDecision{RequireSetting: true, Policy: "auto"}
+			if tc.disclosed {
+				in.Decision.DisclosedPlaintextPath = CredentialsFilePath(dir)
+			}
+			out, err := PersistLoginCredential(t.Context(), dir, in)
+			if !tc.disclosed {
+				require.ErrorIs(t, err, ErrPersistAborted)
+				require.ErrorContains(t, err, "did not disclose before the interactive sign-in")
+				assert.Equal(t, clierr.ConfigNotWritten, out.ConfigState)
+				assert.NoFileExists(t, CredentialsFilePath(dir), "nothing reached the plaintext file")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, backendFile, ReadPin(dir), "the login's own pin step wrote it")
+		})
+	}
+}
+
+// TestALoginPassesATypedStoreErrorThroughRatherThanAborting asserts what
+// becomes of a refusal that turns up under the lock, after the sign-in: it
+// keeps its own code and remedy. Only the undisclosed-plaintext comparison
+// is an abort; credentials found in both stores are the both-stores error.
+func TestALoginPassesATypedStoreErrorThroughRatherThanAborting(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv(EnvCredentialStore, "")
+	dir := t.TempDir()
+	cfg := &Config{Servers: map[string]Server{"staging": {URL: "https://s.ex"}, "qa": {URL: "https://q.ex"}}, TokenReuse: true}
+	cfg.SetPath(FilePath(dir))
+	require.NoError(t, cfg.Write())
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
+	seedKeychainCredential(t, dir, "qa", "qa-tok")
+
+	in := pluginInput(dir, "exec-login-r.ex", nil)
+	in.OpenStore = OpenResolvedStore
+	in.Policy, in.ObservedDeclaration = "auto", ""
+	in.Declaration = DeclarationFor("", "", "auto")
+	in.Decision = &StoreDecision{RequireSetting: true, Policy: "auto"}
+	out, err := PersistLoginCredential(t.Context(), dir, in)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrPersistAborted, "not folded into the abort")
+	assert.Empty(t, out.Aborted)
+	assert.True(t, IsCredentialsInBothStores(err))
+	ce, ok := errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }

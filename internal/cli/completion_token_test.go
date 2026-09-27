@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -326,6 +328,52 @@ func TestFileStoreTokenSilentRefusesAStoreConflict(t *testing.T) {
 	t.Setenv(config.EnvCredentialStore, "keychain")
 	assert.Empty(t, fileStoreTokenSilent(dir, "https://rancher.example.com"),
 		"a variable naming another store yields no token")
+}
+
+// TestFileStoreTokenSilentOnAnUnpinnedDirectory asserts completion's
+// answer for an `auto` directory with no pin, which no read pins any more:
+// the file token is offered when the directory's entries keep their
+// credentials in the file store, and nothing when they keep them in the
+// keychain or in both stores - the last is an error for every credential
+// command, and completion has no way to report one.
+// NOT parallel: mutates storedConfig package global and env.
+func TestFileStoreTokenSilentOnAnUnpinnedDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		keychain bool
+		want     string
+	}{
+		{name: "file tokens only", want: "file-token"},
+		{name: "an identity record beside them", keychain: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(config.EnvToken, "")
+			t.Setenv(config.EnvCredentialStore, "")
+			dir := t.TempDir()
+			cfg := &config.Config{
+				CurrentServer: "srv",
+				Servers: map[string]config.Server{
+					"srv":   {URL: "https://rancher.example.com"},
+					"other": {URL: "https://other.example.com"},
+				},
+			}
+			cfg.SetPath(config.FilePath(dir))
+			require.NoError(t, cfg.Write())
+			require.NoError(t, config.NewFileStore(dir).SetToken(
+				config.ServerRef{Name: "srv", URL: "https://rancher.example.com"}, "file-token"))
+			if tc.keychain {
+				// A record names a keychain credential; its content is
+				// never read to answer where the directory keeps them.
+				require.NoError(t, os.MkdirAll(filepath.Join(dir, "credstore-id"), 0o700))
+				sum := sha256.Sum256([]byte("other"))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "credstore-id", hex.EncodeToString(sum[:])), []byte("x"), 0o600))
+			}
+			setStoredConfigForTest(t, cfg, dir)
+
+			assert.Equal(t, tc.want, fileStoreTokenSilent(dir, "https://rancher.example.com"))
+			assert.NoFileExists(t, config.PinPath(dir), "completion writes no pin")
+		})
+	}
 }
 
 // setStoredConfigForTest installs the config snapshot AND the invocation's

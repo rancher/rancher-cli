@@ -14,20 +14,17 @@ import (
 // machine-local probe state, deliberately separate from config.yaml (a
 // portable user declaration): copying config.yaml to another machine must
 // not carry a keychain pin, and pinning into config would erase the record
-// that the user chose auto. Single value, atomic write, last-writer-wins -
-// concurrent pinners compute the same probe result, so no lock is needed.
+// that the user chose auto. Single value, atomic write. Only a login writes
+// it, under the login's config lock; a read never does.
 const pinFileName = "credstore-pin"
 
 const (
 	// noticeFirstPinPrefix opens the message for the moment this machine
 	// decides where an `auto` directory keeps its credentials.
 	noticeFirstPinPrefix = "pinned credential store: "
-	// NoticeFirstPinKeychain is that message for the keychain. Two paths
-	// write a first pin and both use this wording: the read path's
-	// openStoreResolved (credstore.go), and a login's own pin step, which
-	// writes the pin after the credential commits. Sharing the constant
-	// means a wording change applies uniformly and tests can reference it
-	// without repeating the literal.
+	// NoticeFirstPinKeychain is that message for the keychain, as a login's
+	// own pin step gives it after the credential commits. A constant, so
+	// tests can reference it without repeating the literal.
 	NoticeFirstPinKeychain = noticeFirstPinPrefix + "keychain"
 )
 
@@ -62,7 +59,8 @@ func PlatformKeychainLabel() string {
 }
 
 // ReadPin returns the pinned backend, or "" when absent/unreadable/invalid
-// (invalid values re-probe rather than error: the pin is a cache, not config).
+// (an invalid value reads as no pin rather than an error: what the
+// directory has stored then answers, as it does for a missing one).
 func ReadPin(dir string) string {
 	b, err := os.ReadFile(PinPath(dir))
 	if err != nil {

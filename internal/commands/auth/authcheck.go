@@ -74,9 +74,23 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	// opens the store - reaches the report and shows it there.
 	credentialPolicy, storeConflict := config.EffectivePolicy(cfg.CredentialStore)
 	// Only the auto policy consults the pin; explicit policies have no pin.
-	pinned := ""
+	// With no pin, the answer every reader gets is reported beside it:
+	// where the entries' stored credentials are, or the error that both
+	// stores are - which fails the command below, except under
+	// RANCHER_CLI_TOKEN, where it reaches the report.
+	pinned, inUse, storeError := "", "", ""
 	if credentialPolicy == "auto" {
 		pinned = config.ReadPin(a.dir)
+	}
+	if credentialPolicy == "auto" && pinned == "" {
+		switch u, uerr := config.UnpinnedStoreOf(a.dir, cfg); {
+		case uerr != nil:
+			storeError = uerr.Error()
+		case u.Err() != nil:
+			storeError = u.Err().Error()
+		default:
+			inUse = u.Backend()
+		}
 	}
 	eff, err := cfg.Effective(a.store)
 	if err != nil {
@@ -150,10 +164,17 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	if storeConflict != nil {
 		conflict = storeConflict.Error()
 	}
-	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token, credentialPolicy, pinned, conflict, credentialLine)
+	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token,
+		storeReport{policy: credentialPolicy, pinned: pinned, inUse: inUse, err: storeError, conflict: conflict}, credentialLine)
 	store := map[string]any{
 		"policy": credentialPolicy,
 		"pinned": pinned,
+	}
+	if inUse != "" {
+		store["inUse"] = inUse
+	}
+	if storeError != "" {
+		store["error"] = storeError
 	}
 	if conflict != "" {
 		store["conflict"] = conflict
@@ -181,6 +202,14 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	return res, nil
 }
 
+// storeReport is the CREDENTIAL STORE section: the policy, the pin, and
+// for an `auto` directory with no pin the store its stored credentials are
+// in, or the error that they are in both; conflict is the variable
+// disagreeing with the declaration.
+type storeReport struct {
+	policy, pinned, inUse, err, conflict string
+}
+
 // renderAuthCheckText produces a multi-section key/value text view for the
 // default/table output format, following the inspect-cluster convention:
 // uppercase section headers, two-space-indented "key: value" lines. Nil
@@ -198,7 +227,7 @@ func renderAuthCheckText(
 	rancherVersion *string,
 	supported *bool,
 	identity, token any,
-	credentialPolicy, pinned, storeConflict string,
+	store storeReport,
 	credentialLine string,
 ) string {
 	ptrStr := func(p *string) string {
@@ -261,14 +290,20 @@ func renderAuthCheckText(
 	}
 
 	fmt.Fprintf(&b, "\nCREDENTIAL STORE\n")
-	fmt.Fprintf(&b, "  policy: %s\n", credentialPolicy)
-	fmt.Fprintf(&b, "  pinned: %s\n", emptyStr(pinned))
+	fmt.Fprintf(&b, "  policy: %s\n", store.policy)
+	fmt.Fprintf(&b, "  pinned: %s\n", emptyStr(store.pinned))
+	if store.inUse != "" {
+		fmt.Fprintf(&b, "  in use: %s\n", store.inUse)
+	}
+	if store.err != "" {
+		fmt.Fprintf(&b, "  error: %s\n", store.err)
+	}
 	// A conflict is the one store state an environment token lets a command
 	// run through instead of failing on, so the text view names it beside
 	// the policy the directory declared; the structured result carries the
 	// same string.
-	if storeConflict != "" {
-		fmt.Fprintf(&b, "  conflict: %s\n", storeConflict)
+	if store.conflict != "" {
+		fmt.Fprintf(&b, "  conflict: %s\n", store.conflict)
 	}
 
 	return b.String()

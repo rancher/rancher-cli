@@ -691,7 +691,7 @@ func TestAuthCheckTextViewHappyPath(t *testing.T) {
 		&ver, &supported,
 		map[string]any{"userID": "u-abc"},
 		map[string]any{"name": "tok-1", "kind": "derived", "provider": "local", "expiresAt": "2030-01-01T00:00:00Z", "current": true},
-		"auto", "file", "", "",
+		storeReport{policy: "auto", pinned: "file"}, "",
 	)
 	assert.Contains(t, text, "ok: true")
 	assert.Contains(t, text, "server: my-server")
@@ -718,7 +718,7 @@ func TestAuthCheckTextViewNullFields(t *testing.T) {
 		true, "s", "v1.31.0",
 		nil, nil,
 		nil, nil,
-		"keychain", "", "", "",
+		storeReport{policy: "keychain"}, "",
 	)
 	assert.Contains(t, text, "rancherVersion: -")
 	assert.Contains(t, text, "supported: -")
@@ -732,7 +732,7 @@ func TestAuthCheckTextViewNullFields(t *testing.T) {
 // plain - plus the strip invariant and the inactive-style identity.
 func TestStyleAuthCheckTextStripInvariant(t *testing.T) {
 	t.Parallel()
-	text := renderAuthCheckText(true, "my-server", "v1.31.0", nil, nil, nil, nil, "auto", "", "", "")
+	text := renderAuthCheckText(true, "my-server", "v1.31.0", nil, nil, nil, nil, storeReport{policy: "auto"}, "")
 	enabled := style.Style{Enabled: true}
 
 	styled := styleAuthCheckText(text, true, enabled)
@@ -751,7 +751,7 @@ func TestStyleAuthCheckTextStripInvariant(t *testing.T) {
 // unhealthy "ok: false" row turns yellow, never "ok: true".
 func TestStyleAuthCheckTextAccentsFalseOK(t *testing.T) {
 	t.Parallel()
-	text := renderAuthCheckText(false, "my-server", "v1.31.0", nil, nil, nil, nil, "auto", "", "", "")
+	text := renderAuthCheckText(false, "my-server", "v1.31.0", nil, nil, nil, nil, storeReport{policy: "auto"}, "")
 	enabled := style.Style{Enabled: true}
 
 	styled := styleAuthCheckText(text, false, enabled)

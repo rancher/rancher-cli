@@ -34,11 +34,16 @@ func (t tokenCmd) pluginInput(server, serverID, caPEM, clusterID string, client 
 		wantName:     params.Name, ignoreCurrentContext: params.legacyShim}
 }
 
-func (t tokenCmd) storeOpener() func(policy, dir string) (config.CredStore, string, error) {
+// storeOpener opens the store the way a reader of the directory does,
+// from the config the caller loaded: it probes nothing and writes no pin.
+func (t tokenCmd) storeOpener() func(cfg *config.Config, dir string) (config.CredStore, error) {
 	if t.openStore != nil {
-		return t.openStore
+		return func(cfg *config.Config, dir string) (config.CredStore, error) {
+			store, _, err := t.openStore(cfg.CredentialStore, dir)
+			return store, err
+		}
 	}
-	return config.OpenStoreWithNotice
+	return config.OpenStoreFor
 }
 
 // loginStoreOpener is the opener the login primitive gets. It differs
@@ -81,17 +86,12 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			return errNoStoredCredential
 		}
 		// A waiter re-reads through a freshly opened store: the exec
-		// store's in-process cache would still hold a rejected value.
-		// On a clean first use nothing resolved a backend before this
-		// point, so this open is the one that probes and pins under an
-		// auto policy: its notice is the store-selection disclosure and
-		// belongs in the warnings of every path that succeeds from here.
-		fresh, notice, err := t.storeOpener()(cfg.CredentialStore, t.dir)
+		// store's in-process cache would still hold a rejected value. On a
+		// bare install it finds nothing, without a probe or a pin: where
+		// the credential goes is this login's own decision below.
+		fresh, err := t.storeOpener()(cfg, t.dir)
 		if err != nil {
 			return err
-		}
-		if notice != "" {
-			warnings = append(warnings, notice)
 		}
 		tok, _, _, perr := tokenCmd{dir: t.dir, store: fresh, anchor: t.anchor}.storedCredToken(ctx, in.client, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
 		switch {
@@ -105,24 +105,17 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			}
 		}
 
-		decision, disclosure, derr := storeDecision(t.dir, cfg)
+		entry = in.refreshEntry
+		if entry == "" {
+			entry = config.ExecLoginEntryName(in.serverID)
+		}
+		// Decided for the entry the login will write, suffix included.
+		decision, disclosure, derr := storeDecision(t.dir, cfg, config.CollisionFreeName(cfg, entry, in.serverID))
 		if derr != nil {
 			return derr
 		}
 		if disclosure != "" {
 			p.Notice(disclosure)
-		}
-		entry = in.refreshEntry
-		if entry == "" {
-			entry = config.ExecLoginEntryName(in.serverID)
-		}
-		// The same check `auth login` runs before its sign-in. Here it
-		// matters more: this login has a terminal only sometimes, and a
-		// refusal after the sign-in would have cost a server-issued
-		// token for a login that was never going to be accepted.
-		if serr := config.LoginStoreChange(ctx, t.dir, cfg, entry, decision.Policy, "",
-			config.DeclarationFor(cfg.CredentialStore, "", decision.Policy)); serr != nil {
-			return serr
 		}
 		cred, err = AcquireLoginCredential(ctx, in.client, LoginRequest{Server: in.server, AuthProvider: in.authProvider,
 			AuthFlow: in.authFlow, IdPClient: in.newIdPClient(), ResponseType: "json"}, 0, p)
@@ -209,13 +202,26 @@ func freshCredentialError(err error) error {
 
 // storeDecision records the backend the credential will reach, decided
 // before the interactive login, and the disclosure to give when that
-// backend is the plaintext file. The commit revalidates it.
-func storeDecision(dir string, cfg *config.Config) (config.StoreDecision, string, error) {
-	policy, pin, backend, err := config.ResolvedBackend(dir, cfg.CredentialStore)
+// backend is the plaintext file. It is the login's own answer - the same
+// check `auth login` runs before its sign-in, with the probe the login
+// pays anyway - so a login that will commit to the file store says so
+// before anyone signs in, and one that would be refused is refused here:
+// this login has a terminal only sometimes, and a refusal after the
+// sign-in would have cost a server-issued token for a login that was
+// never going to be accepted. The commit revalidates it.
+func storeDecision(dir string, cfg *config.Config, entry string) (config.StoreDecision, string, error) {
+	policy, err := config.EffectivePolicy(cfg.CredentialStore)
 	if err != nil {
 		return config.StoreDecision{}, "", err
 	}
-	d := config.StoreDecision{RequireSetting: true, Policy: policy, Pin: pin}
+	if err := config.CheckOrphanCredentials(dir, cfg, entry); err != nil {
+		return config.StoreDecision{}, "", err
+	}
+	backend, err := config.LoginStoreChange(dir, cfg, entry, policy, config.DeclarationFor(cfg.CredentialStore, "", policy))
+	if err != nil {
+		return config.StoreDecision{}, "", err
+	}
+	d := config.StoreDecision{RequireSetting: true, Policy: policy}
 	if backend != "file" {
 		return d, "", nil
 	}

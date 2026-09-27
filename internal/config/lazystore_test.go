@@ -58,7 +58,7 @@ func TestLazyStoreDrainNoticesRacesFirstResolution(t *testing.T) {
 		backendNotices.record("backend notice")
 		fs := newFileStore(dir, backendNotices)
 
-		l := &lazyStore{notices: &noticeBuffer{}, resolve: func() (CredStore, error) {
+		l := &lazyStore{resolve: func() (CredStore, error) {
 			return fs, nil
 		}}
 
@@ -108,7 +108,7 @@ func TestNewLazyStoreValidatesPolicyEagerly(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "wat")
 	dir := t.TempDir() + "/fresh"
 
-	_, err := NewLazyStore("", dir)
+	_, err := NewLazyStore(&Config{}, dir)
 	require.Error(t, err)
 	require.ErrorContains(t, err, `unknown credential store "wat"`)
 	_, statErr := os.Stat(dir)
@@ -121,7 +121,7 @@ func TestNewLazyStoreValidatesPolicyEagerly(t *testing.T) {
 func TestNewLazyStoreCapturesEffectivePolicy(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "file")
 	dir := t.TempDir()
-	l, err := NewLazyStore("", dir)
+	l, err := NewLazyStore(&Config{}, dir)
 	require.NoError(t, err)
 
 	// Env flips to an INVALID policy after construction; the captured
@@ -139,7 +139,7 @@ func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
 	dir := t.TempDir() + "/fresh"
 
-	_, err := NewLazyStore("", dir)
+	_, err := NewLazyStore(&Config{}, dir)
 	require.NoError(t, err)
 	_, statErr := os.Stat(dir)
 	assert.True(t, os.IsNotExist(statErr), "construction must not create the config dir or pin")
@@ -161,7 +161,7 @@ func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	keyringUsable = func() bool { probes++; return true }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	b, err := loginBackendsOf(dir, &Config{}, "", "", "auto")
+	b, err := loginBackendsOf(dir, &Config{}, "prod", "", "auto")
 	require.NoError(t, err)
 	assert.Equal(t, backendKeychain, b.CommitsTo)
 	assert.True(t, b.WritesPin(), "a directory that has never pinned ends the change with one")
@@ -202,7 +202,7 @@ func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	keyringUsable = func() bool { probes++; return false }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
-	b, err := loginBackendsOf(dir, &Config{}, "", "", "auto")
+	b, err := loginBackendsOf(dir, &Config{}, "prod", "", "auto")
 	require.NoError(t, err)
 	assert.Equal(t, backendFile, b.CommitsTo)
 	assert.Contains(t, b.Notice, "keychain unavailable; credentials will be stored in plaintext")
@@ -229,7 +229,7 @@ func TestLazyStoreDefersAStoreConflict(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "file")
 	dir := t.TempDir()
 
-	store, err := NewLazyStore("keychain", dir)
+	store, err := NewLazyStore(&Config{CredentialStore: "keychain"}, dir)
 	require.NoError(t, err, "construction is not where a conflict surfaces")
 	require.NotNil(t, store)
 	assert.Empty(t, store.(NoticeSource).DrainNotices(), "a store nobody resolved produces nothing")
@@ -252,6 +252,6 @@ func TestLazyStoreDefersAStoreConflict(t *testing.T) {
 // every command, whether or not one opens the store.
 func TestLazyStoreStillFailsFastOnAnUnknownPolicy(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
-	_, err := NewLazyStore("nonsense", t.TempDir())
+	_, err := NewLazyStore(&Config{CredentialStore: "nonsense"}, t.TempDir())
 	require.Error(t, err)
 }

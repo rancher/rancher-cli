@@ -13,10 +13,10 @@ type NoticeSource interface {
 }
 
 // noticeBuffer is a small, mutex-guarded queue of operator-facing notices
-// recorded outside any pipeline Result - a credential store's first-pin
-// notice, a keychain-degrade warning. Safe against a command-body goroutine
-// racing a lazily-resolving store: record and DrainNotices may be called
-// concurrently. A nil *noticeBuffer is a valid, permanently-empty source
+// recorded outside any pipeline Result - a credential file's
+// loose-permission finding, a keychain-degrade warning. Safe against a
+// command-body goroutine racing a lazily-resolving store: record and
+// DrainNotices may be called concurrently. A nil *noticeBuffer is a valid, permanently-empty source
 // (record is then a no-op and DrainNotices returns nil), so a store
 // constructed directly in a test without going through its normal
 // constructor never panics merely for lacking one.

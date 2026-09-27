@@ -266,6 +266,25 @@ func newTempCopy(realPath string) (tmpPath string, baseline []byte, existed bool
 	return tmpPath, baseline, existed, nil
 }
 
+// credentialStoreOffense is the restriction for the declaration, with the
+// remedy each kind of change has: a set or a change is a login that names
+// the store, once the other entries are logged out of the one being left;
+// nothing removes a declaration, and a different --config starts fresh.
+func credentialStoreOffense(before, after string) string {
+	switch {
+	case before == after:
+		return ""
+	case after == "":
+		return "credentialStore removed (no command removes a declaration; a different --config starts a fresh directory)"
+	case before == "":
+		return fmt.Sprintf("credentialStore set (use: rancher auth login <name> --credential-store %s, after logging out the other entries when there are any)",
+			clierr.ShellQuote(after))
+	default:
+		return fmt.Sprintf("credentialStore changed (use: rancher auth login <name> --credential-store %s, after logging out the other entries when there are any)",
+			clierr.ShellQuote(after))
+	}
+}
+
 // checkEditRestrictions diffs the edited buffer against the pre-edit
 // baseline and rejects any change to servers or currentServer - the
 // registration/update/delete/use verbs are the single-write-path invariant's
@@ -321,10 +340,18 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 		offenses = append(offenses, "bindingStamp changed (it advances on its own with any login or logout)")
 	}
 	// The transition id is what makes a recorded store change active.
-	// Clearing it by hand abandons work that has already moved
-	// credentials; setting it names a change that was never prepared.
+	// Clearing it by hand abandons an old copy the change still has to
+	// delete; setting it names a change that was never prepared.
 	if before.CredentialTransitionID != edited.CredentialTransitionID {
 		offenses = append(offenses, "credentialTransitionId changed (a credential store change clears it when it finishes)")
+	}
+	// The declaration is the store every reader of this directory opens.
+	// Setting, changing or removing it by hand moves them to a store the
+	// edit put nothing in: a stale token there is served, and a removed
+	// declaration falls back to `auto` and a pin that may name the file
+	// store. Only a login changes it, after its own credential is stored.
+	if offense := credentialStoreOffense(before.CredentialStore, edited.CredentialStore); offense != "" {
+		offenses = append(offenses, offense)
 	}
 	if len(offenses) == 0 {
 		return nil

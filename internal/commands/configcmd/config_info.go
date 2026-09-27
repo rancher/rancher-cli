@@ -33,9 +33,13 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"and the effective credential-store policy with its source: the " +
 			"RANCHER_CLI_CREDENTIAL_STORE environment variable, the config " +
 			"file's credentialStore key, or the built-in default (auto). " +
-			"Under auto, also reports the probed backend pin when present, or, " +
-			"before any pin exists, credentialStoreDefault, the OS-native " +
-			"keychain auto will try first on this platform (named from the " +
+			"Under auto, also reports the backend pin a login recorded when present. " +
+			"With no pin it reports where the entries' stored credentials are: " +
+			"credentialStoreInUse, keychain when an entry has an identity record " +
+			"or file when only credentials.yaml holds them; credentialStoreError " +
+			"when they are in both, which every credential command refuses; or, " +
+			"when nothing is stored, credentialStoreDefault, the OS-native " +
+			"keychain a login will try first on this platform (named from the " +
 			"platform alone, never probed). " +
 			"Also reports a nested completion section (network: live API " +
 			"completion on/off; timeout: effective per-TAB budget after " +
@@ -65,19 +69,30 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	// this command never opens the store, so it is the one place that can
 	// show the operator both answers instead of failing.
 	policy, source, storeConflict := config.EffectivePolicyWithSource(cfg.CredentialStore)
-	// The pin is auto's probed backend choice - meaningless (and, when
+	// The pin is auto's recorded backend choice - meaningless (and, when
 	// stale, actively misleading) under any explicit policy, so it is
 	// reported only when the effective policy is auto.
 	pin := ""
 	if policy == "auto" {
 		pin = config.ReadPin(c.dir)
 	}
-	// Before any pin exists (no login yet, no prior probe), name what auto
-	// will try first on this machine - a static GOOS-derived label, never a
-	// live probe, so `config status` stays read-only.
-	defaultBackend := ""
+	// With no pin, the answer every reader of the directory gets: where the
+	// entries' stored credentials are, or the error that both stores are.
+	// With nothing stored, name what a login will try first on this
+	// machine - a static GOOS-derived label, never a live probe, so
+	// `config status` stays read-only.
+	defaultBackend, inUse, storeError := "", "", ""
 	if policy == "auto" && pin == "" {
-		defaultBackend = config.PlatformKeychainLabel()
+		switch u, uerr := config.UnpinnedStoreOf(c.dir, cfg); {
+		case uerr != nil:
+			storeError = uerr.Error()
+		case u.Err() != nil:
+			storeError = u.Err().Error()
+		case u.Backend() != "":
+			inUse = u.Backend()
+		default:
+			defaultBackend = config.PlatformKeychainLabel()
+		}
 	}
 
 	fields := []field{
@@ -99,6 +114,12 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	}
 	if pin != "" {
 		fields = append(fields, field{"pin", pin})
+	}
+	if inUse != "" {
+		fields = append(fields, field{"credentialStoreInUse", inUse})
+	}
+	if storeError != "" {
+		fields = append(fields, field{"credentialStoreError", storeError})
 	}
 	if defaultBackend != "" {
 		fields = append(fields, field{"credentialStoreDefault", defaultBackend})

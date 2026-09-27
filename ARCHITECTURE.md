@@ -534,14 +534,16 @@ reachable command.
 records the server entry only when given `--url` for a name that doesn't exist yet
 (delegating to the same registration path `config add-server` uses) - otherwise the entry
 must already exist, added by `config add-server` or a prior delegated login. The store
-backend is resolved by `config.OpenStoreWithNotice` on the read path and,
-for a login, by `loginBackendsOf` and `config.OpenResolvedStore`, which open
-an already-physical backend and write no pin. Strict precedence:
+backend is resolved by `config.NewLazyStore` and `config.OpenStoreFor` on the read path,
+which never probe and never write the pin, and, for a login, by `loginBackendsOf` and
+`config.OpenResolvedStore`, which open an already-physical backend and write no pin.
+Strict precedence:
 
 `auth login --credential-store` (that login only; it must agree with
 `RANCHER_CLI_CREDENTIAL_STORE` when both are set) > `credentialStore` in
 `config.yaml` (the directory's own declaration, written by its first
-login after that login's credential commits) > `credstore-pin` file > one-time probe.
+login after that login's credential commits) > `credstore-pin` file > what the
+directory's entries have stored (`UnpinnedStoreOf`).
 `RANCHER_CLI_CREDENTIAL_STORE` supplies the declaration for a directory that has none;
 a variable naming a store the directory does not declare is a VALIDATION error out of
 `EffectivePolicyWithSource`, so every consumer of the effective policy gets the same
@@ -555,18 +557,32 @@ one the login loaded. The pre-credential entry write must leave it alone: `auth 
 and `Effective` read `config.yaml` without the config lock, and a declaration visible
 before the credential exists sends them to a store that does not hold it yet.
 
-Under the default `auto` policy the backend is probed **once per machine** and the result
-(`keychain` or `file`) is written to a machine-local `credstore-pin` file (0600) - never
-into `config.yaml`, which is a portable user declaration that must not carry
-machine-specific probe state. First resolution emits a notice: on the login path it is
-returned as a string and routed into `res.Warnings` (appears in the JSON/YAML envelope);
-on the lazy path (`NewLazyStore`, used by all other commands) it is written directly to
-stderr in `# warning:` format. Re-probe happens **only at `auth login`** and is **upgrade-only**: a `file`
-(or absent) pin may re-pin to `keychain` if the keychain is now usable; a `keychain` pin
-is never re-probed, so a transiently locked keychain can never silently downgrade to
-plaintext. A pinned-but-unusable backend is a **hard error** with a remediation hint
-(`delete the pin to re-probe, or set RANCHER_CLI_CREDENTIAL_STORE=file`), never a silent
-fallback. `auth status` surfaces `credentialStore: {policy, pinned, conflict}`.
+Under the default `auto` policy **only a login writes the pin**: its first login probes
+the keychain and its pin step writes the result (`keychain` or `file`) to a machine-local
+`credstore-pin` file (0600) - never into `config.yaml`, which is a portable user
+declaration that must not carry machine-specific probe state - and the step's notice
+reaches `res.Warnings`. A read never probes and never pins. With no pin, every reader of
+"`auto` with no pin" - the store a command opens, the login's own backend set, the
+plugin-created login's disclosure, logout, completion, `config status`, `auth status`,
+`config set-completion` - asks one function, `UnpinnedStoreOf`, which answers from the
+entries in `config.yaml` alone: identity records mean the keychain (a record exists only
+for a keychain credential), file tokens and no record mean the file store, nothing means
+nothing to read, and both is a VALIDATION error, since picking either copy could serve the
+wrong user. It costs one look at the names in `credstore-id/` and one read of
+`credentials.yaml`, on an unpinned directory only. A credential stored under a name no entry
+has is ignored, and a command that creates the entry - the plugin's login, `auth login
+--url`'s registration, `config add-server` - removes it first (`RemoveOrphanCredentials`),
+under the lock and before the entry write, with a notice: from the keychain, the file store, and a helper the directory's
+readers ask or the login commits to when its records name the orphan (a helper is asked
+directly, so its orphan would be served). A login that leaves the store readers
+find on an unpinned directory pins that store first, so no reader meets its new credential
+beside the old one with no pin to choose. Re-probe happens **only at `auth login`** and is
+**upgrade-only**: a `file` (or absent) pin may re-pin to `keychain` if the keychain is now
+usable and no other entry's credential is in the file store; a `keychain` pin is never
+re-probed, so a transiently locked keychain can never silently downgrade to plaintext. A
+keychain `auto` chose that the process cannot use is a **hard error** whose remedy is
+the keychain itself or a different `--config`, never a silent fallback. `auth status`
+surfaces `credentialStore: {policy, pinned, inUse, error, conflict}`.
 
 **Exec-credential cache binding.** Every cache record carries a format version, the
 directory that created it, the config entry it came from and that entry's `cacheBindingId`
@@ -707,8 +723,9 @@ respective files via `flock` (released by the OS on process exit):
 - `<dir>/token-cache.lock` - guards every cache write: `SetCachedCred`,
   `DeleteCachedCred`, `DeleteAllCachedCreds`, and the prune paths of
   `GetCachedCred` and `ListCachedCreds`; taken by `withCacheLock`. Plain
-  reads stay lock-free. The credstore pin file (`credstore-pin`) is
-  deliberately lock-free - last-writer-wins by design (see `pin.go`).
+  reads stay lock-free. The credstore pin file (`credstore-pin`) has no
+  lock of its own: only a login writes it, under the login's config lock,
+  and every read takes no lock (see `pin.go`).
 - `<dir>/credhelper-provenance.lock` - guards the helper-records file; taken by
   `withHelperRecordsLock`.
 - `<dir>/credstore-id.lock` - guards the per-entry keychain identity records; taken by
@@ -735,17 +752,18 @@ change, the same lost-update class the variable already accepts for `config.yaml
 **A login that changes the credential store.** The store a login commits
 to, the store a reader resolves to before it and the one a reader
 resolves to after it are resolved once, in `loginBackendsOf`, and every
-condition in the login order comes from that one answer. Before the
-commit the login writes the record of what the change has to do - a move
-per other entry, its own old copy, and the pin, last - which stays inert
-until the first config write after the commit names it. Then this entry's
-old copy is removed, or failing that the pin is flipped, before the cache
-binding id advances; the id write follows; and the remaining steps run
-under the lock the login already holds. Every path that ends before the
-naming write removes the record. A change into the plaintext file store
-moves no other entry: it is refused before the sign-in while another
-entry holds a credential in the keychain or a helper, so only the entry
-logging in is ever put in plaintext by a login. When the pin on disk names
+condition in the login order comes from that one answer. A login changes
+the store of its own credential only: it is refused before the sign-in,
+and again under the lock, while another entry holds a credential in the
+store being left (`CheckTransitionSources`; for a helper, every other
+entry counts), and an `auto` upgrade from the file store stays there while
+another entry is in it. Before the commit the login writes the record of
+what the change has to do - its own old copy's delete and the pin, last -
+which stays inert until the first config write after the commit names it.
+Then this entry's old copy is removed, or failing that the pin is flipped,
+before the cache binding id advances; the id write follows; and the
+remaining steps run under the lock the login already holds. Every path
+that ends before the naming write removes the record. When the pin on disk names
 a store the directory neither uses nor is moving to, the login writes the
 pin it ends with before the commit instead of last - the declaration is
 still explicit then, and no reader consults the pin.
@@ -808,10 +826,9 @@ that drive the gates are stamped by the pipeline from the resolver binding and f
 never read from values the command returned - so a command cannot weaken its own gates.
 
 **Machine-local pin file.** The credential-store decision is a machine-local probe result
-(`credstore-pin`), not portable config, and needs no lock: concurrent first-runs
-last-writer-win with identical values and self-correct on the next run. Writing it into
-`config.yaml` would be a lost-update race from read-only commands and would bake
-machine-specific state into a portable file.
+(`credstore-pin`), not portable config. Only a login writes it, under the login's config
+lock, so there is one writer at a time and no read races it. Writing it into
+`config.yaml` would put machine-specific state into a portable file.
 
 **Kind table + composed resolver.** Generic verbs are generated from a declarative kind
 table whose MCP keys are conformance-tested, and each op's safety binding has exactly one

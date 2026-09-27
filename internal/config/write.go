@@ -32,6 +32,29 @@ func HardenTempFileACL(path string) error {
 	return hardenACLHook(path)
 }
 
+// afterWriteHook runs after each write this package makes that a process
+// taking no lock can observe: a file written by atomic rename, an identity
+// record written or removed, the store-change record written or removed, a
+// keychain set or delete, a credential helper store or erase. what names
+// the write. A test runs a reader from it to ask what that reader resolves
+// to at that moment. Nil in production.
+var afterWriteHook func(what string)
+
+// SetAfterWriteHookForTest sets afterWriteHook; call the returned restore
+// in cleanup. The calling test must not use t.Parallel(): the hook is a
+// package-level seam.
+func SetAfterWriteHookForTest(fn func(what string)) (restore func()) {
+	old := afterWriteHook
+	afterWriteHook = fn
+	return func() { afterWriteHook = old }
+}
+
+func afterWrite(what string) {
+	if afterWriteHook != nil {
+		afterWriteHook(what)
+	}
+}
+
 // atomicWriteFile writes data to path with perm atomically, refusing symlinks and enforcing perms.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
@@ -86,6 +109,6 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		_ = os.Remove(tmpPath)
 		return err
 	}
-
+	afterWrite(filepath.Base(path))
 	return nil
 }

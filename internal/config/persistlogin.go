@@ -19,8 +19,8 @@ import (
 type StoreDecision struct {
 	// RequireSetting aborts when TokenReuse is off at commit time.
 	RequireSetting bool
-	// Policy and Pin are EffectivePolicy and ReadPin at decision time.
-	Policy, Pin string
+	// Policy is the login's EffectivePolicy at decision time.
+	Policy string
 	// DisclosedPlaintextPath is the credentials file the flow warned about
 	// before the login, or empty when no plaintext warning was given.
 	DisclosedPlaintextPath string
@@ -64,13 +64,6 @@ type PersistLoginInput struct {
 	// login's policy, which is what it is for a login that changes
 	// nothing.
 	Policy string
-	// PolicySource is where Policy came from, as LoginPolicy reports it.
-	// A login whose store was named on the command line may settle a
-	// directory whose declaration and variable disagree - naming the
-	// store is what resolves that - and a login that merely resolved the
-	// declaration may not, and never reaches here, because the command
-	// refuses it first.
-	PolicySource string
 	// ObservedDeclaration is config.yaml's credentialStore as this login
 	// read it before authenticating. With Policy set, the value under the
 	// lock must still equal it: a concurrent config edit or a login with a
@@ -199,7 +192,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 			return err
 		}
 	}
-	if reason := revalidate(dir, cfg, in); reason != "" {
+	if reason := revalidate(cfg, in); reason != "" {
 		out.Aborted = reason
 		return fmt.Errorf("%w: %s", ErrPersistAborted, reason)
 	}
@@ -211,10 +204,10 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		policy = declared
 	}
 
-	// The entry name is resolved before the prelude: the prelude asks
-	// whether a remaining step names the entry this login is about to
-	// write, and for a caller that suffixes a collision that is not
-	// the name it asked for.
+	// The entry name is resolved before the store is: whether other
+	// entries keep this login on the file store depends on which entry
+	// this login writes, and for a caller that suffixes a collision that
+	// is not the name it asked for.
 	name, existing, exists, err := resolveEntryName(cfg, in)
 	if err != nil {
 		return err
@@ -231,25 +224,39 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	// decides whether this login may proceed at all. Its answer to
 	// "does this login change the store" comes from a backend set
 	// resolved before the retry; every other use comes from the one
-	// resolved after it, because a retry can write the pin and move
-	// credentials.
-	intent, err := loginBackendsOf(dir, cfg, policy, in.PolicySource, in.Declaration)
+	// resolved after it, because a retry can write the pin and delete an
+	// old copy.
+	intent, err := loginBackendsOf(dir, cfg, name, policy, in.Declaration)
 	if err != nil {
 		return err
 	}
-	notices, err := prepareMutationLocked(ctx, dir, cfg, MutationIntent{
-		Entries: []string{name}, ChangesStore: intent.ChangesStore(),
-	})
+	notices, err := prepareMutationLocked(ctx, dir, cfg, MutationIntent{ChangesStore: intent.ChangesStore()})
 	out.Warnings = append(out.Warnings, notices...)
 	if err != nil {
 		return err
 	}
-	b, err := loginBackendsOf(dir, cfg, policy, in.PolicySource, in.Declaration)
+	b, err := loginBackendsOf(dir, cfg, name, policy, in.Declaration)
 	if err != nil {
 		return err
 	}
+	if reason := undisclosedPlaintext(dir, in, b); reason != "" {
+		out.Aborted = reason
+		return fmt.Errorf("%w: %s", ErrPersistAborted, reason)
+	}
 	if b.Notice != "" {
 		out.Warnings = append(out.Warnings, b.Notice)
+	}
+
+	// A login that creates its entry removes any credential left under
+	// that name first: written next to it, the entry would make that
+	// orphan count, and an unpinned directory would read as keeping
+	// credentials in both stores for every entry until the login ends.
+	if !exists {
+		ns, oerr := RemoveOrphanCredentials(ctx, dir, cfg, name, OrphanHelpers(cfg, policy))
+		out.Warnings = append(out.Warnings, ns...)
+		if oerr != nil {
+			return oerr
+		}
 	}
 
 	entry := newEntry(in, snap, now())
@@ -263,10 +270,10 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	// Step 0. The record of what this change has to do is written
 	// before the credential commits and is inert until a config write
 	// names its id, so a login that dies here leaves nothing to
-	// finish and nothing half-moved.
+	// finish and nothing half-done.
 	var change storeChange
 	if b.ChangesStore() {
-		ch, perr := planStoreChange(ctx, dir, cfg, name, in.CanonicalURL, b)
+		ch, perr := planStoreChange(dir, cfg, name, in.CanonicalURL, b)
 		out.Warnings = append(out.Warnings, ch.notices...)
 		// Before the error: the plan comes back as soon as the record
 		// reached the disk, and an undo has to remove one that did even
@@ -574,10 +581,10 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	return nil
 }
 
-// revalidate re-reads the declaration, the setting and the effective
-// backend under the lock and returns the abort reason, or "" to proceed.
-// Pure reads only: nothing here opens a store or writes a pin.
-func revalidate(dir string, cfg *Config, in PersistLoginInput) string {
+// revalidate re-reads the declaration and the setting under the lock and
+// returns the abort reason, or "" to proceed. Pure reads only: nothing
+// here opens a store or writes a pin.
+func revalidate(cfg *Config, in PersistLoginInput) string {
 	if in.Policy != "" && cfg.CredentialStore != in.ObservedDeclaration {
 		return fmt.Sprintf("the credential store this directory declares changed during the login (%s); run the command again",
 			declarationText(cfg.CredentialStore))
@@ -589,26 +596,23 @@ func revalidate(dir string, cfg *Config, in PersistLoginInput) string {
 	if d.RequireSetting && !cfg.TokenReuse {
 		return "token reuse was turned off during the login (rancher config set-token-reuse off)"
 	}
-	if d.Policy == "" {
+	return ""
+}
+
+// undisclosedPlaintext is the abort reason for a login about to commit to
+// the plaintext file store without having said so before the interactive
+// sign-in, or "" to proceed. b is the login's own answer under the lock,
+// the same one its check before the sign-in gave from what it read then:
+// this catches the directory becoming a plaintext store while the sign-in
+// was open. Anything else that answer refuses - a keychain it cannot use
+// on a directory that reads the keychain, credentials in both stores -
+// was already returned as that answer's own typed error, never folded
+// into this abort.
+func undisclosedPlaintext(dir string, in PersistLoginInput, b loginBackends) string {
+	if in.Decision == nil || in.Decision.Policy == "" {
 		return ""
 	}
-	// The login's own policy whenever it carries one: a login that
-	// carries one disclosed the backend that policy names before the
-	// sign-in; this re-check exists to catch the directory becoming a
-	// plaintext store while the sign-in was open. Asking about the
-	// declaration instead would compare the wrong two things and skip the
-	// disclosure the caller owes. A caller that gave a decision but no
-	// policy of its own resolved against the declaration, so that is what
-	// it is asked about; production has no such caller.
-	policy := in.Policy
-	if policy == "" {
-		policy = cfg.CredentialStore
-	}
-	_, _, backend, berr := ResolvedBackend(dir, policy)
-	if berr != nil {
-		return berr.Error()
-	}
-	if backend == "file" && d.DisclosedPlaintextPath != CredentialsFilePath(dir) {
+	if b.CommitsTo == backendFile && in.Decision.DisclosedPlaintextPath != CredentialsFilePath(dir) {
 		return fmt.Sprintf("the credential store is now the plaintext file %s, which this login did not disclose before the interactive sign-in; run the command again", CredentialsFilePath(dir))
 	}
 	return ""
@@ -639,33 +643,19 @@ func declarationText(declared string) string {
 	return "it now declares " + declared
 }
 
-// ResolvedBackend resolves the credential-store policy, the pin an auto
-// policy consults, and the backend the two name.
-func ResolvedBackend(dir, cfgPolicy string) (policy, pin, backend string, err error) {
-	policy, err = EffectivePolicy(cfgPolicy)
+// CollisionFreeName is the entry a login that suffixes a collision writes
+// for name at canonicalURL: name itself when it is free or already at that
+// URL, else the next free -2, -3, ... suffix. A check before the sign-in
+// asks about this entry, the one the login under the lock will write, so
+// the two agree on which entries are "the other entries".
+func CollisionFreeName(cfg *Config, name, canonicalURL string) string {
+	resolved, _, _, err := resolveEntryName(cfg, PersistLoginInput{
+		Name: name, CanonicalURL: canonicalURL, CollisionSuffix: true, OwnsEntry: true,
+	})
 	if err != nil {
-		return "", "", "", err
+		return name
 	}
-	if policy == "auto" {
-		pin = ReadPin(dir)
-	}
-	return policy, pin, BackendOf(policy, pin), nil
-}
-
-// BackendOf names the kind of backend a policy and pin resolve to without
-// probing: file, keychain, exec, or "" when auto is still unpinned. The
-// plugin-created login uses it to decide, before its interactive login,
-// whether to disclose the plaintext file. It is physicalBackend's answer
-// with a helper's own name dropped, so the two cannot disagree about what
-// a policy and a pin mean.
-func BackendOf(policy, pin string) string {
-	switch b := physicalBackend(policy, pin); {
-	case b == backendFile, b == backendKeychain:
-		return b
-	case isExecBackend(b):
-		return "exec"
-	}
-	return ""
+	return resolved
 }
 
 // resolveEntryName applies the collision policy under the lock.

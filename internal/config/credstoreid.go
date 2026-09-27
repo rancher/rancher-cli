@@ -521,6 +521,7 @@ func writeIdentityRecord(dir string, rec identityRecord) error {
 		_ = root.Remove(tmp)
 		return err
 	}
+	afterWrite("credstore-id " + rec.Entry + " " + string(rec.State))
 	return nil
 }
 
@@ -537,7 +538,10 @@ func removeIdentityRecord(dir, entry string) error {
 	defer func() { _ = root.Close() }()
 
 	observeIdentity("recordremove")
-	if err := root.Remove(identityFileName(entry)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	switch err := root.Remove(identityFileName(entry)); {
+	case err == nil:
+		afterWrite("credstore-id " + entry + " removed")
+	case !errors.Is(err, fs.ErrNotExist):
 		return err
 	}
 	return nil

@@ -12,26 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// validManifest is a two-step change: move one entry's credential from the
-// file store into the keychain, then write the pin that makes the keychain
-// the directory's answer.
+// validManifest is a two-step change: delete one entry's old copy from the
+// file store, then write the pin that makes the keychain the directory's
+// answer.
 func validManifest(t *testing.T) transitionManifest {
 	t.Helper()
 	id, err := newTransitionID()
 	require.NoError(t, err)
 	vid, verr := newTransitionID()
 	require.NoError(t, verr)
-	acct, aerr := newKeychainAccountID()
-	require.NoError(t, aerr)
 	return transitionManifest{
 		Version: transitionVersion,
 		ID:      id,
 		Steps: []transitionStep{
 			{
-				Kind: transitionMove, Entry: "prod",
-				Source: backendFile, Destination: backendKeychain,
+				Kind: transitionDelete, Entry: "prod", Source: backendFile,
 				VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "tok"),
-				DestAccountID: acct,
 			},
 			{Kind: transitionPin, Target: backendKeychain},
 		},
@@ -79,7 +75,7 @@ func validManifestBytes(t *testing.T) []byte {
 
 // TestTransitionUnsafeOrUnreadableIsTerminal asserts every state that is
 // not a manifest this release can act on. A manifest drives deletes across
-// backends: one it cannot read is a set of credential moves nobody can
+// backends: one it cannot read is a set of credential deletes nobody can
 // account for, so it stops the command, says no backend operation ran, and
 // is left on disk for the operator to inspect rather than rewritten.
 func TestTransitionUnsafeOrUnreadableIsTerminal(t *testing.T) {
@@ -112,17 +108,20 @@ func TestTransitionUnsafeOrUnreadableIsTerminal(t *testing.T) {
 			require.NoError(t, os.WriteFile(TransitionPath(dir),
 				[]byte("version: 1\nid: 0123456789abcdef0123456789abcdef\n"), 0o600))
 		}},
-		{name: "a move into the plaintext file store", want: "a move into the plaintext file store", setup: func(t *testing.T, dir string) {
+		{name: "a move an earlier build recorded", want: "step 1 is of no known kind", setup: func(t *testing.T, dir string) {
 			t.Helper()
-			// No change schedules one, and writeTransition refuses it too,
-			// so the file is written the way a hand edit would leave it.
+			// No login records a move any more. One a pre-release build
+			// left behind - staging's credential on its way from the file
+			// store into the keychain - is refused like any kind this
+			// release does not know, with the file named and the way to
+			// set it aside.
 			vid, err := newTransitionID()
 			require.NoError(t, err)
 			acct, aerr := newKeychainAccountID()
 			require.NoError(t, aerr)
 			require.NoError(t, os.WriteFile(TransitionPath(dir), []byte(
-				"version: 1\nid: 0123456789abcdef0123456789abcdef\nsteps:\n- kind: move\n  entry: staging\n  source: keychain\n  destination: file\n"+
-					"  verificationId: "+vid+"\n  credentialDigest: "+credentialFingerprint(vid, "tok")+"\n  sourceAccountId: "+acct+"\n"), 0o600))
+				"version: 1\nid: 0123456789abcdef0123456789abcdef\nsteps:\n- kind: move\n  entry: staging\n  source: file\n  destination: keychain\n"+
+					"  verificationId: "+vid+"\n  credentialDigest: "+credentialFingerprint(vid, "tok")+"\n  destAccountId: "+acct+"\n"), 0o600))
 		}},
 		{name: "a pin recorded as impossible", want: "recorded as impossible", setup: func(t *testing.T, dir string) {
 			t.Helper()
@@ -208,8 +207,8 @@ func TestTransitionStepValidation(t *testing.T) {
 	require.NoError(t, aerr)
 	digest := credentialFingerprint(vid, "tok")
 	ok := transitionStep{
-		Kind: transitionMove, Entry: "prod", Source: backendFile, Destination: backendKeychain,
-		VerificationID: vid, CredentialDigest: digest, DestAccountID: acct,
+		Kind: transitionDelete, Entry: "prod", Source: backendFile,
+		VerificationID: vid, CredentialDigest: digest,
 	}
 	with := func(f func(*transitionStep)) transitionStep {
 		s := ok
@@ -222,22 +221,20 @@ func TestTransitionStepValidation(t *testing.T) {
 		step transitionStep
 		good bool
 	}{
-		{name: "a move from the file store into the keychain", step: ok, good: true},
-		{name: "a delete", good: true, step: with(func(s *transitionStep) {
-			s.Kind, s.Destination, s.DestAccountID = transitionDelete, "", ""
+		{name: "a delete from the file store", step: ok, good: true},
+		{name: "a delete from the keychain naming its account", good: true, step: with(func(s *transitionStep) {
+			s.Source, s.SourceAccountID = backendKeychain, acct
 		})},
 		{name: "a pin", good: true, step: transitionStep{Kind: transitionPin, Target: backendFile}},
+		// No login records a move any more; one left by an earlier build
+		// is refused like any other kind this release does not know.
+		{name: "a move", step: with(func(s *transitionStep) { s.Kind = "move" })},
 		{name: "a pin to nowhere", step: transitionStep{Kind: transitionPin, Target: "auto"}},
 		{name: "a kind this release does not know", step: with(func(s *transitionStep) { s.Kind = "rename" })},
 		{name: "no entry", step: with(func(s *transitionStep) { s.Entry = "" })},
 		{name: "no verifier", step: with(func(s *transitionStep) { s.VerificationID = "" })},
 		{name: "no digest", step: with(func(s *transitionStep) { s.CredentialDigest = "" })},
 		{name: "a policy rather than a backend", step: with(func(s *transitionStep) { s.Source = "auto" })},
-		{name: "a move into a helper, which cannot be verified", step: with(func(s *transitionStep) {
-			// The URL is present so this case exercises the rule it
-			// names and not the missing-URL rule below.
-			s.Destination, s.CanonicalURL = "exec:vault", "https://r.ex"
-		})},
 		{name: "a helper source with no URL to address it by", step: with(func(s *transitionStep) {
 			s.Source = "exec:vault"
 		})},
@@ -245,10 +242,7 @@ func TestTransitionStepValidation(t *testing.T) {
 			s.Source, s.CanonicalURL = "exec:vault", "https://r.ex"
 		})},
 		{name: "a keychain source naming no account", step: with(func(s *transitionStep) {
-			s.Source, s.Destination, s.DestAccountID = backendKeychain, backendFile, ""
-		})},
-		{name: "a keychain destination naming no account", step: with(func(s *transitionStep) {
-			s.DestAccountID = ""
+			s.Source = backendKeychain
 		})},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -338,30 +332,6 @@ func TestPendingTransitionTouchesNoFileWithoutAName(t *testing.T) {
 	assert.Empty(t, ops, "no stat, no read: the config named nothing")
 }
 
-// TestTransitionStepLookups asserts the two questions other paths ask a
-// manifest: which steps still name an entry, and which keychain accounts
-// they address. The second is what lets a logout reach an account the
-// entry's own identity record no longer points at.
-func TestTransitionStepLookups(t *testing.T) {
-	t.Parallel()
-	src, dst := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	m := &transitionManifest{Steps: []transitionStep{
-		{Kind: transitionMove, Entry: "prod", Source: backendKeychain, Destination: backendFile, SourceAccountID: src},
-		{Kind: transitionDelete, Entry: "prod", Source: backendKeychain, SourceAccountID: dst},
-		{Kind: transitionMove, Entry: "staging", Source: backendFile, Destination: backendKeychain, DestAccountID: src},
-		{Kind: transitionPin, Target: backendFile},
-	}}
-
-	assert.Len(t, m.stepsNaming("prod", transitionMove), 1)
-	assert.Len(t, m.stepsNaming("prod", transitionMove, transitionDelete), 2)
-	assert.Empty(t, m.stepsNaming("other", transitionMove, transitionDelete))
-	assert.ElementsMatch(t,
-		[]string{keychainAccount(src, "prod"), keychainAccount(dst, "prod")},
-		m.keychainAccounts("prod"))
-	assert.Equal(t, []string{keychainAccount(src, "staging")}, m.keychainAccounts("staging"))
-	assert.Nil(t, (*transitionManifest)(nil).keychainAccounts("prod"))
-}
-
 // errorsAsClierr is the typed-error extraction these tests repeat.
 func errorsAsClierr(err error) (*clierr.Error, bool) {
 	return errors.AsType[*clierr.Error](err)
@@ -431,13 +401,13 @@ func TestTransitionLockSkipsTheFlockUnderTheVariable(t *testing.T) {
 func TestTransitionIncompleteNamesTheStepAndItsError(t *testing.T) {
 	t.Parallel()
 	err := transitionIncomplete(transitionStep{
-		Kind: transitionMove, Entry: "staging", LastError: "keyring get: the keychain is locked",
+		Kind: transitionDelete, Entry: "staging", LastError: "keyring get: the keychain is locked",
 	})
 	ce, ok := errorsAsClierr(err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
 	assert.True(t, ce.Retryable, "the work completes once the backend answers")
-	require.ErrorContains(t, err, "move staging")
+	require.ErrorContains(t, err, "delete staging")
 	require.ErrorContains(t, err, "the keychain is locked")
 	require.ErrorContains(t, err, "run this command again")
 	assert.Empty(t, ce.Hint, "no command reports the change yet, so none is named")

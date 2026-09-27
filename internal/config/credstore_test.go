@@ -51,33 +51,70 @@ func TestOpenStoreUnknownPolicyErrors(t *testing.T) {
 	assert.ErrorContains(t, err, "keychain, file, auto")
 }
 
-func TestOpenStoreAutoProbesOnceThenPins(t *testing.T) {
-	dir := t.TempDir()
-	probes := 0
-	orig := keyringUsable
-	keyringUsable = func() bool { probes++; return false }
-	resetKeyringUsableCache() // fresh probe, not a result cached by an earlier test
-	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
+// TestTheReadPathNeverProbesAndNeverPins asserts what a command's store
+// open does on an `auto` directory with no pin: it answers from what the
+// directory's entries have stored, with no keychain probe and no pin
+// written - only a login decides where a directory keeps its credentials.
+// Nothing stored reads as "not logged in"; file tokens read the file
+// store; identity records read the keychain; both are an error naming the
+// entries in each.
+func TestTheReadPathNeverProbesAndNeverPins(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		fileToken, keychain bool
+		want, wantErr       string
+	}{
+		{name: "nothing stored", wantErr: ErrNoToken.Error()},
+		{name: "a file token", fileToken: true, want: "file-tok"},
+		{name: "an identity record", keychain: true, want: "keychain-tok"},
+		{name: "both", fileToken: true, keychain: true, wantErr: "credentials in the keychain (prod) and in the plaintext file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(EnvCredentialStore, "")
+			keyring.MockInit()
+			dir := t.TempDir()
+			cfg := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
+			cfg.SetPath(FilePath(dir))
+			require.NoError(t, cfg.Write())
+			ref := ServerRef{Name: "prod", URL: "https://r.ex"}
+			if tc.fileToken {
+				require.NoError(t, NewFileStore(dir).SetToken(ref, "file-tok"))
+			}
+			if tc.keychain {
+				seedKeychainCredential(t, dir, "prod", "keychain-tok")
+			}
+			probes := 0
+			orig := keyringUsable
+			keyringUsable = func() bool { probes++; return true }
+			resetKeyringUsableCache()
+			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
-	if _, err := OpenStore("auto", dir); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := OpenStore("auto", dir); err != nil {
-		t.Fatal(err)
-	}
-	// The second OpenStore call reads the pin written by the first and never
-	// re-probes - this is the pin's own once-per-dir contract. probes still
-	// asserts the underlying keyringUsableOnce process-wide memoization: a
-	// second unpinned dir in the SAME process would reuse this cached result
-	// rather than probing again (deliberate: one process, one probe).
-	if probes != 1 {
-		t.Errorf("probes = %d, want 1 (second run must read the pin)", probes)
-	}
-	if got := ReadPin(dir); got != "file" {
-		t.Errorf("pin = %q, want file", got)
+			for name, open := range map[string]func() (CredStore, error){
+				"OpenStore":    func() (CredStore, error) { return OpenStore("auto", dir) },
+				"OpenStoreFor": func() (CredStore, error) { return OpenStoreFor(cfg, dir) },
+				"NewLazyStore": func() (CredStore, error) { return NewLazyStore(cfg, dir) },
+			} {
+				store, err := open()
+				var tok string
+				if err == nil {
+					tok, err = store.GetToken(ref)
+				}
+				if tc.wantErr != "" {
+					require.ErrorContains(t, err, tc.wantErr, name)
+				} else {
+					require.NoError(t, err, name)
+					assert.Equal(t, tc.want, tok, name)
+				}
+			}
+			assert.Zero(t, probes, "a read never probes the keychain")
+			assert.NoFileExists(t, PinPath(dir), "and never writes the pin")
+		})
 	}
 }
 
+// TestKeyringUsableOnceMemoizesPerProcess asserts one probe per process:
+// a login's check before its sign-in and its resolution under the lock ask
+// the same question, and an unusable keychain costs its wait once.
 func TestKeyringUsableOnceMemoizesPerProcess(t *testing.T) {
 	probes := 0
 	orig := keyringUsable
@@ -85,19 +122,9 @@ func TestKeyringUsableOnceMemoizesPerProcess(t *testing.T) {
 	resetKeyringUsableCache()
 	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
 
-	dirA, dirB := t.TempDir(), t.TempDir()
-	if _, err := OpenStore("auto", dirA); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := OpenStore("auto", dirB); err != nil {
-		t.Fatal(err)
-	}
-	if probes != 1 {
-		t.Errorf("probes = %d, want 1 (a second unpinned dir in the same process must reuse the memoized result)", probes)
-	}
-	if got := ReadPin(dirB); got != "keychain" {
-		t.Errorf("pin for dirB = %q, want keychain (memoized result still applied)", got)
-	}
+	assert.True(t, keyringUsableOnce())
+	assert.True(t, keyringUsableOnce())
+	assert.Equal(t, 1, probes, "the second answer is the first one's")
 }
 
 func TestKeyringUsableDegradesOnHungProbe(t *testing.T) {
@@ -468,8 +495,8 @@ func TestDeleteLoginTokenFailsOnUnreachableKeychainForAKeychainDirectory(t *test
 
 // TestDeleteLoginTokenUnreachableKeychainCarriesThePinHint asserts that
 // the logout path fails with the same remedy the read path gives: a
-// directory whose keychain was chosen by the pin is told how to undo that
-// pin, which is the whole point of the hint.
+// directory whose keychain was chosen by the pin is told the two ways out
+// that work - the keychain itself, or another directory.
 func TestDeleteLoginTokenUnreachableKeychainCarriesThePinHint(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(EnvCredentialStore, "")
@@ -480,8 +507,9 @@ func TestDeleteLoginTokenUnreachableKeychainCarriesThePinHint(t *testing.T) {
 
 	_, _, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "auto")
 	require.ErrorContains(t, err, "no session bus")
-	require.ErrorContains(t, err, "credential store pinned to keychain")
-	require.ErrorContains(t, err, "delete the pin to re-probe")
+	require.ErrorContains(t, err, "make the keychain reachable, or use a different --config")
+	assert.NotContains(t, err.Error(), "delete the pin", "deleting the pin would change nothing")
+	assert.NotContains(t, err.Error(), EnvCredentialStore, "the variable conflicts with every declared directory")
 }
 
 // TestFilePolicyNeverTouchesTheKeychain asserts what a directory that
@@ -710,7 +738,7 @@ func TestKeyringUnreachableGetFailsWithThePinHint(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	_, err := s.GetToken(ServerRef{Name: "prod"})
 	require.ErrorContains(t, err, "no session bus")
-	require.ErrorContains(t, err, "credential store pinned to keychain")
+	require.ErrorContains(t, err, "make the keychain reachable, or use a different --config")
 	assert.NotErrorIs(t, err, ErrNoToken, "the credential may be in the keychain this read could not reach")
 }
 
@@ -728,7 +756,7 @@ func TestKeyringUnreachableDeleteFailsWithThePinHint(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	err := s.DeleteToken(ServerRef{Name: "prod"})
 	require.ErrorContains(t, err, "no session bus")
-	require.ErrorContains(t, err, "credential store pinned to keychain")
+	require.ErrorContains(t, err, "make the keychain reachable, or use a different --config")
 
 	rec, rerr := readIdentityRecord(dir, "prod")
 	require.NoError(t, rerr)

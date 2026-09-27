@@ -33,9 +33,12 @@ for that entry. `CREDENTIAL_TRANSITION_INCOMPLETE` (exit `3`, retryable)
 means a change of the directory's credential store has work left; the
 message names the step, the entry and the backend error that stopped it -
 fix that, then run the command again. A step no retry can finish is
-reported as `VALIDATION` instead: for a move, with the `auth logout` that
-clears it as the hint; for any other step, the message carries the cause.
-None of the three is a reason to try a different server entry.
+reported as `VALIDATION` instead, and the message carries the cause.
+None of the three is a reason to try a different server entry. A
+`VALIDATION` error saying the directory has credentials in both the
+keychain and the plaintext file means nothing records which is current:
+log out the entries it lists in the store to drop (the file ones keep
+the keychain), with the keychain reachable, then run the command again.
 
 - Interactive: `rancher auth login <name> --url <url>` - adds the server
   entry and logs in, no UI trip needed (or add and log in as two steps:
@@ -61,13 +64,15 @@ None of the three is a reason to try a different server entry.
   declaration, its source, and the conflict when there is one. To change
   a directory's store afterwards, pass `--credential-store` to
   `rancher auth login`: it records the new store only after the new
-  credential is stored in it. A change into the keychain moves every other
-  entry's credential there; a change into `file` or a helper moves none,
-  and refuses while another entry still holds a credential elsewhere.
-  Every refusal comes before the sign-in and names the entries and the
+  credential is stored in it. A change takes only that entry's credential
+  and refuses while another entry still holds one in the store being left;
+  the refusal comes before the sign-in and names the entries and the
   `rancher auth logout` to run first. `auto` never moves a keychain
   directory into plaintext: if the keychain is unusable it refuses, and
-  `--credential-store file` is the explicit choice.
+  `--credential-store file` is the explicit choice. `config edit` refuses
+  any change to `credentialStore`. An `auto` login whose
+  directory has other entries in the file store stays there and warns: log
+  them out, then log in again to move to the keychain.
   `CREDENTIAL_TRANSITION_INCOMPLETE` (exit 3, retryable) means an earlier
   change has work left: the message names the step and why it could not
   finish; resolve that, then run the command again.
@@ -647,7 +652,9 @@ rancher oidc-client rotate-secret my-app --apply --yes
 - **`config path` / `config status` / `config edit`:** `config path` prints the
   resolved config file path - point other tooling at it. `config status` adds
   the effective credential store and its source (env > config > auto default,
-  plus the probed pin), and a nested `completion` section (network: on/off;
+  plus the pin a login recorded, or with none where the stored credentials
+  are, and the error when they are in both stores), and a nested
+  `completion` section (network: on/off;
   timeout: effective per-TAB budget; timeoutRaw: only when clamped or
   unparseable) - the first place to check when TAB shows no candidates;
   config.yaml alone cannot reveal an env-supplied store or diagnose a

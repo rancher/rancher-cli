@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,8 +14,9 @@ import (
 )
 
 // repinFixture is an `auto` directory pinned to the file store, holding
-// the logging-in entry's old token and another entry's, on a machine whose
-// keychain works: the state the auto repin starts from.
+// the logging-in entry's old token beside another entry with no stored
+// credential, on a machine whose keychain works: the state the auto repin
+// starts from.
 func repinFixture(t *testing.T) string {
 	t.Helper()
 	t.Setenv(EnvCredentialStore, "")
@@ -34,7 +36,6 @@ func repinFixture(t *testing.T) string {
 	require.NoError(t, WritePin(dir, backendFile))
 	fs := NewFileStore(dir)
 	require.NoError(t, fs.SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-old"))
-	require.NoError(t, fs.SetToken(ServerRef{Name: "staging", URL: "https://staging.ex"}, "staging-tok"))
 	return dir
 }
 
@@ -69,9 +70,9 @@ func keychainTokenFor(t *testing.T, dir, entry string) string {
 }
 
 // TestTheAutoRepinWritesNoPinUntilTheChangeFinishes asserts the whole
-// order for the repin: the credential commits to the keychain, every other
-// entry's token moves there with it, this entry's old file copy is
-// removed, and the pin - the one thing that makes a reader resolve to the
+// order for the repin: the credential commits to the keychain, this
+// entry's old file copy is removed, nothing is written for any other
+// entry, and the pin - the one thing that makes a reader resolve to the
 // new store - is written last, after the commit rather than before it.
 func TestTheAutoRepinWritesNoPinUntilTheChangeFinishes(t *testing.T) {
 	dir := repinFixture(t)
@@ -91,11 +92,10 @@ func TestTheAutoRepinWritesNoPinUntilTheChangeFinishes(t *testing.T) {
 	assert.Equal(t, backendKeychain, ReadPin(dir), "the change's last step is what flips it")
 
 	assert.Equal(t, "id:new", keychainTokenFor(t, dir, "prod"), "the credential committed to the keychain")
-	assert.Equal(t, "staging-tok", keychainTokenFor(t, dir, "staging"), "the other entry moved with it")
 	assert.Empty(t, storedFileToken(t, dir), "this entry's old copy is gone")
-	fs := NewFileStore(dir)
-	_, serr := fs.GetToken(ServerRef{Name: "staging", URL: "https://staging.ex"})
-	require.ErrorIs(t, serr, ErrNoToken, "and so is the one that moved")
+	rec, rerr := readIdentityRecord(dir, "staging")
+	require.NoError(t, rerr)
+	assert.Nil(t, rec, "nothing was written for the entry that did not log in")
 	assert.NoFileExists(t, TransitionPath(dir), "a change with nothing left removes its own record")
 	assert.NotEmpty(t, out.CacheBindingID)
 }
@@ -114,9 +114,6 @@ func TestAFailedLoginLeavesThePinAndEveryFileTokenAsTheyWere(t *testing.T) {
 
 	assert.Equal(t, backendFile, ReadPin(dir), "a login that failed decides nothing")
 	assert.Equal(t, "prod-old", storedFileToken(t, dir))
-	tok, serr := NewFileStore(dir).GetToken(ServerRef{Name: "staging", URL: "https://staging.ex"})
-	require.NoError(t, serr)
-	assert.Equal(t, "staging-tok", tok)
 	assert.NoFileExists(t, TransitionPath(dir), "the record of a change that did not happen goes with it")
 
 	cfg, lerr := Load(FilePath(dir))
@@ -342,8 +339,7 @@ func TestACommitWithNoActivationLeavesTheChangeUnnamed(t *testing.T) {
 	cfg, lerr := Load(FilePath(dir))
 	require.NoError(t, lerr)
 	assert.Empty(t, cfg.CredentialTransitionID)
-	assert.Equal(t, backendFile, ReadPin(dir), "nothing moved, so the pin still says where the tokens are")
-	assert.Equal(t, "staging-tok", mustFileToken(t, dir, "staging", "https://staging.ex"))
+	assert.Equal(t, backendFile, ReadPin(dir), "the change never ran, so the pin still says where the tokens are")
 }
 
 // mustFileToken is one entry's token in credentials.yaml.
@@ -417,7 +413,9 @@ func TestWhenTheOldCopyCannotGoThePinFlipsFirst(t *testing.T) {
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
 	require.NotNil(t, m, "the work that is left stays recorded")
-	assert.NotEmpty(t, m.stepsNaming("prod", transitionDelete), "including the old copy nobody could remove")
+	assert.True(t, slices.ContainsFunc(m.Steps, func(s transitionStep) bool {
+		return s.Kind == transitionDelete && s.Entry == "prod"
+	}), "including the old copy nobody could remove")
 }
 
 // TestWhenTheOldCopyAndThePinBothFailTheIdDoesNotAdvance asserts the one
@@ -448,33 +446,32 @@ func TestWhenTheOldCopyAndThePinBothFailTheIdDoesNotAdvance(t *testing.T) {
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
 	require.NotNil(t, m)
-	assert.Len(t, m.Steps, 3, "the move, the old copy and the pin all still have to happen")
+	assert.Len(t, m.Steps, 2, "the old copy and the pin both still have to happen")
 }
 
-// TestALoginRefusesWhileAChangeNamesItsEntry asserts the prelude's gate
-// for a login that changes no store: a remaining move naming its entry
-// stops it, because that move, retried later, would write the credential
-// it carries over the one the login just stored.
-func TestALoginRefusesWhileAChangeNamesItsEntry(t *testing.T) {
+// TestALoginProceedsPastARemainingDeleteForItsEntry asserts the prelude's
+// gate for a login that changes no store: a remaining delete naming its
+// entry does not stop it. The delete removes only the credential whose
+// digest it carries, and the login's own does not match, so a headless
+// file directory whose old keychain copy is unreachable can still log in.
+func TestALoginProceedsPastARemainingDeleteForItsEntry(t *testing.T) {
 	dir := settledFixture(t)
-	seedActiveMove(t, dir, "prod")
+	seedActiveDelete(t, dir, "prod")
 
 	out, err := PersistLoginCredential(t.Context(), dir, settledInput())
-	require.Error(t, err)
-	ce, ok := errorsAsClierr(err)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
-	assert.Equal(t, clierr.ConfigNotWritten, out.ConfigState, "nothing was written")
-	assert.Equal(t, "prod-old", storedFileToken(t, dir))
+	require.NoError(t, err)
+	assert.Equal(t, "id:new", storedFileToken(t, dir))
+	assert.Contains(t, joinWarnings(out.Warnings), "could not finish for prod", "the step left behind says so")
+	assert.FileExists(t, TransitionPath(dir), "and stays for the next command")
 }
 
 // TestAStoreChangeRefusesWhileAnotherIsUnfinished asserts the other arm:
 // two store changes cannot stack, whatever entries they name. The second
-// would forget the first, and whatever the first had already moved would
-// be left in a backend nothing names.
+// would forget the first, and the old copy the first had still to delete
+// would be left in a backend nothing names.
 func TestAStoreChangeRefusesWhileAnotherIsUnfinished(t *testing.T) {
 	dir := repinFixture(t)
-	seedActiveMove(t, dir, "an-entry-this-login-never-touches")
+	seedActiveDelete(t, dir, "an-entry-this-login-never-touches")
 
 	out, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.Error(t, err)
@@ -485,62 +482,27 @@ func TestAStoreChangeRefusesWhileAnotherIsUnfinished(t *testing.T) {
 	assert.Equal(t, backendFile, ReadPin(dir), "and nothing was decided")
 }
 
-// seedActiveMove records a change that cannot finish, naming entry, and
-// puts it into effect. The file store holds a credential for the entry
-// that the step's digest does not name - the entry's own, or one seeded
-// here when it has none - so every replay leaves the step exactly where it
-// is: work the directory still has.
-func seedActiveMove(t *testing.T, dir, entry string) {
+// seedActiveDelete records a change that cannot finish, naming entry, and
+// puts it into effect: the delete of an old keychain copy, on a keychain
+// this test makes unreachable, so every replay leaves the step exactly
+// where it is - work the directory still has.
+func seedActiveDelete(t *testing.T, dir, entry string) {
 	t.Helper()
-	cfg0, err := Load(FilePath(dir))
-	require.NoError(t, err)
-	ref := ServerRef{Name: entry, URL: cfg0.Servers[entry].URL}
-	if _, gerr := NewFileStore(dir).GetToken(ref); errors.Is(gerr, ErrNoToken) {
-		require.NoError(t, NewFileStore(dir).SetToken(ref, "someone-elses"))
-	}
+	t.Cleanup(SetKeyringBackendForTest(unreachableKeyring{}))
 	vid, err := newTransitionID()
 	require.NoError(t, err)
 	id, err := newTransitionID()
 	require.NoError(t, err)
 	m := transitionManifest{Version: transitionVersion, ID: id, Steps: []transitionStep{{
-		Kind: transitionMove, Entry: entry, Source: backendFile, Destination: backendKeychain,
-		VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "the-one-this-change-carries"),
-		DestAccountID: mustAccount(t),
+		Kind: transitionDelete, Entry: entry, Source: backendKeychain,
+		VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "the-old-copy"),
+		SourceAccountID: mustAccount(t),
 	}}}
 	require.NoError(t, writeTransition(dir, m))
 	cfg, err := Load(FilePath(dir))
 	require.NoError(t, err)
 	cfg.CredentialTransitionID = id
 	require.NoError(t, cfg.Write())
-}
-
-// TestTheGateNamesTheEntryTheLoginWrites asserts the gate asks about the
-// entry the login will actually write. A caller that suffixes a collision
-// does not know that name before the config is loaded under the lock, and
-// asking about the name it passed in would let a login commit a credential
-// a remaining move is about to overwrite.
-//
-// The login here changes no store, so the only thing that can refuse it is
-// a move naming its own entry: the arm this test is about.
-func TestTheGateNamesTheEntryTheLoginWrites(t *testing.T) {
-	dir := settledFixture(t)
-	// prod is registered at another URL, so this login takes prod-2.
-	cfg, err := Load(FilePath(dir))
-	require.NoError(t, err)
-	cfg.Servers["prod"] = Server{URL: "https://elsewhere.ex"}
-	require.NoError(t, cfg.Write())
-	seedActiveMove(t, dir, "prod-2")
-
-	in := settledInput()
-	in.CollisionSuffix, in.OwnsEntry = true, true
-
-	out, err := PersistLoginCredential(t.Context(), dir, in)
-	require.Error(t, err)
-	ce, ok := errorsAsClierr(err)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
-	require.ErrorContains(t, err, "prod-2")
-	assert.Equal(t, clierr.ConfigNotWritten, out.ConfigState, "nothing was written")
 }
 
 // settledFixture is a directory that declares the file store and has
@@ -593,13 +555,11 @@ func TestTheBackendSetIsResolvedAfterTheReplay(t *testing.T) {
 	assert.Equal(t, "id:new", keychainTokenFor(t, dir, "prod"))
 	assert.Contains(t, joinWarnings(out.Warnings), "re-pinned", "the pin write says so once")
 	// What a set resolved before the replay would have done: seen the
-	// directory still reading the file store and moved every other entry
-	// out of it, a change the directory had already made.
-	assert.Equal(t, "staging-tok", mustFileToken(t, dir, "staging", "https://staging.ex"),
-		"an entry this login never named is left exactly as it was")
-	rec, rerr := readIdentityRecord(dir, "staging")
-	require.NoError(t, rerr)
-	assert.Nil(t, rec, "and nothing moved it into the keychain")
+	// directory still reading the file store and recorded a change of its
+	// own - a delete of the old copy and a second pin - that the directory
+	// had already made.
+	assert.Equal(t, "prod-old", storedFileToken(t, dir),
+		"the old copy a second change would have deleted is still there, since this login changed no store")
 }
 
 // seedActivePin records a change whose only step is the keychain pin, and
@@ -633,17 +593,19 @@ func TestTheTransitionLockIsTakenOnceAroundTheLogin(t *testing.T) {
 
 	_, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.NoError(t, err)
-	// The prelude, the manifest write, the old-copy delete, the moves and
-	// the pin all run under the one take the body made.
+	// The prelude and everything the login writes run under the one take
+	// the body made.
 	assert.Equal(t, 1, takes, "the change lock is taken once, around the whole login")
 }
 
-// TestALoginThatNamesAStoreMovesTheOtherEntries asserts the flag's whole
-// effect on a change into the keychain: the credential commits to the
-// store it names, the directory records it, every other entry's credential
-// moves there, and this entry's old copy is removed - after the commit,
-// never before.
-func TestALoginThatNamesAStoreMovesTheOtherEntries(t *testing.T) {
+// TestALoginThatNamesAStoreChangesOnlyItsOwnCredential asserts the flag's
+// whole effect on a change into the keychain. While another entry still
+// holds a credential in the file store the change is refused - before the
+// sign-in and again under the lock - naming it, and nothing is written.
+// Once that entry is logged out the same login goes through: the
+// credential commits to the store it names, the directory records it, and
+// this entry's old copy is removed after the commit, never before.
+func TestALoginThatNamesAStoreChangesOnlyItsOwnCredential(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
 	keyring.MockInit()
 	dir := t.TempDir()
@@ -659,34 +621,50 @@ func TestALoginThatNamesAStoreMovesTheOtherEntries(t *testing.T) {
 
 	in := PersistLoginInput{
 		Name: "prod", CanonicalURL: "https://r.ex", Bearer: "id:new",
-		Provenance: clierr.ProvenanceDerived, Policy: "keychain", PolicySource: PolicySourceFlag,
+		Provenance: clierr.ProvenanceDerived, Policy: "keychain",
 		ObservedDeclaration: "file",
 		Declaration:         DeclarationFor("file", "keychain", "keychain"),
 		OpenStore:           OpenResolvedStore,
 	}
+	refused := func(t *testing.T, err error) {
+		t.Helper()
+		ce, ok := errorsAsClierr(err)
+		require.True(t, ok)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		require.ErrorContains(t, err, "a login changes the store of its own credential only")
+		require.ErrorContains(t, err, "the credential of staging is still in the plaintext file")
+		assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+	}
+	refused(t, loginRefusal(dir, cfg, "prod", in.Policy, in.Declaration))
+	_, err := PersistLoginCredential(t.Context(), dir, in)
+	refused(t, err)
+	after, lerr := Load(FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, "file", after.CredentialStore, "the directory still says where its credentials are")
+	assert.NoFileExists(t, TransitionPath(dir))
+	assert.Equal(t, "prod-old", storedFileToken(t, dir), "nothing was committed")
+	assert.Empty(t, keychainTokenFor(t, dir, "staging"), "and nothing moved")
+
+	require.NoError(t, fs.DeleteToken(ServerRef{Name: "staging", URL: "https://staging.ex"}))
 	out, err := PersistLoginCredential(t.Context(), dir, in)
 	require.NoError(t, err)
-
-	after, lerr := Load(FilePath(dir))
+	after, lerr = Load(FilePath(dir))
 	require.NoError(t, lerr)
 	assert.Equal(t, "keychain", after.CredentialStore, "the directory records the store it was told to keep")
 	assert.Equal(t, "id:new", keychainTokenFor(t, dir, "prod"))
-	assert.Equal(t, "staging-tok", keychainTokenFor(t, dir, "staging"), "the entry nobody named kept its credential")
 	assert.Empty(t, storedFileToken(t, dir), "this entry's old copy is gone")
-	_, serr := fs.GetToken(ServerRef{Name: "staging", URL: "https://staging.ex"})
-	require.ErrorIs(t, serr, ErrNoToken, "and so is the plaintext copy of the one that moved")
-	assert.Contains(t, joinWarnings(out.Warnings), "staging", "the entries that moved are named")
+	assert.NotContains(t, joinWarnings(out.Warnings), "also moves", "no other entry is named, because none changed")
 	assert.NoFileExists(t, TransitionPath(dir))
 }
 
-// TestAChangeIntoTheFileStoreMovesNoOtherEntry asserts the one direction
-// that moves nothing but the login's own credential. A login names one
-// entry; taking every other entry out of the keychain into a plaintext
-// file on that answer would lower their protection without anyone asking
-// for it. So the change is refused before the sign-in and again under the
-// lock, naming the entries still held elsewhere, and nothing is written.
-// Once they are logged out, the same login goes through and only its own
-// credential lands in the file store.
+// TestAChangeIntoTheFileStoreMovesNoOtherEntry asserts the same rule in
+// the direction where it matters most. A login names one entry; taking
+// every other entry out of the keychain into a plaintext file on that
+// answer would lower their protection without anyone asking for it. So the
+// change is refused before the sign-in and again under the lock, naming
+// the entries still in the keychain, and nothing is written. Once they are
+// logged out, the same login goes through and only its own credential
+// lands in the file store.
 func TestAChangeIntoTheFileStoreMovesNoOtherEntry(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
 	keyring.MockInit()
@@ -702,7 +680,7 @@ func TestAChangeIntoTheFileStoreMovesNoOtherEntry(t *testing.T) {
 
 	in := PersistLoginInput{
 		Name: "prod", CanonicalURL: "https://r.ex", Bearer: "id:new",
-		Provenance: clierr.ProvenanceDerived, Policy: "file", PolicySource: PolicySourceFlag,
+		Provenance: clierr.ProvenanceDerived, Policy: "file",
 		ObservedDeclaration: "keychain",
 		Declaration:         DeclarationFor("keychain", "file", "file"),
 		OpenStore:           OpenResolvedStore,
@@ -713,12 +691,12 @@ func TestAChangeIntoTheFileStoreMovesNoOtherEntry(t *testing.T) {
 		ce, ok := errorsAsClierr(err)
 		require.True(t, ok)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		require.ErrorContains(t, err, "the plaintext file store takes only the credential of the entry logging in")
-		require.ErrorContains(t, err, "staging")
+		require.ErrorContains(t, err, "a login changes the store of its own credential only")
+		require.ErrorContains(t, err, "the credential of staging is still in the keychain")
 		assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
 	}
 
-	refused(t, LoginStoreChange(t.Context(), dir, cfg, "prod", in.Policy, in.PolicySource, in.Declaration))
+	refused(t, loginRefusal(dir, cfg, "prod", in.Policy, in.Declaration))
 	_, err := PersistLoginCredential(t.Context(), dir, in)
 	refused(t, err)
 
@@ -736,7 +714,7 @@ func TestAChangeIntoTheFileStoreMovesNoOtherEntry(t *testing.T) {
 	require.NoError(t, derr)
 	cfg, lerr = Load(FilePath(dir))
 	require.NoError(t, lerr)
-	require.NoError(t, LoginStoreChange(t.Context(), dir, cfg, "prod", in.Policy, in.PolicySource, in.Declaration),
+	require.NoError(t, loginRefusal(dir, cfg, "prod", in.Policy, in.Declaration),
 		"with the other entry logged out there is nothing it would take")
 	_, err = PersistLoginCredential(t.Context(), dir, in)
 	require.NoError(t, err)
@@ -761,13 +739,9 @@ func seedKeychainCredential(t *testing.T, dir, entry, token string) string {
 	return id
 }
 
-// TestAnEntryInBothStoresRefusesTheChange asserts the one entry state a
-// move cannot decide: a credential in the store being left AND one in the
-// store being moved to. Writing a second keychain account for the entry
-// would replace the record naming the first and leave what it holds
-// reachable by nothing, so the entry is named and a logout is the remedy.
-// The mirror direction is refused too, for the reason every change into
-// the file store is: it moves no other entry at all.
+// TestAnEntryInBothStoresRefusesTheChange asserts another entry with a
+// credential in each store refuses a change in either direction: the
+// store being left holds one of its credentials whichever it is.
 func TestAnEntryInBothStoresRefusesTheChange(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
 	keyring.MockInit()
@@ -781,26 +755,25 @@ func TestAnEntryInBothStoresRefusesTheChange(t *testing.T) {
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "other", URL: "https://other.ex"}, "other-file"))
 	seedKeychainCredential(t, dir, "other", "other-keychain")
 
-	err := CheckTransitionSources(t.Context(), dir, cfg, "prod", backendFile, backendKeychain)
-	require.Error(t, err)
-	ce, ok := errorsAsClierr(err)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	require.ErrorContains(t, err, "other")
-	require.ErrorContains(t, err, "stored in both")
-	assert.Equal(t, "rancher auth logout "+clierr.ShellQuote("other"), ce.Hint, "one entry gets the one command that settles it")
-
-	mirror := CheckTransitionSources(t.Context(), dir, cfg, "prod", backendKeychain, backendFile)
-	require.ErrorContains(t, mirror, "the plaintext file store takes only the credential of the entry logging in")
-	require.ErrorContains(t, mirror, "other")
+	for from, want := range map[string]string{
+		backendFile:     "the credential of other is still in the plaintext file",
+		backendKeychain: "the credential of other is still in the keychain",
+	} {
+		err := CheckTransitionSources(dir, cfg, "prod", from)
+		ce, ok := errorsAsClierr(err)
+		require.True(t, ok, from)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		require.ErrorContains(t, err, want)
+		assert.Equal(t, "rancher auth logout "+clierr.ShellQuote("other"), ce.Hint, "one entry gets the one command that settles it")
+	}
 }
 
 // TestTheFilePrePinStatesWhatIsAlreadyTrue asserts the one pin a login
 // writes before its credential commits: an unpinned directory whose
-// credentials are in the file store is written down as such before
-// anything moves, so the record stays true if the login fails and a change
-// into `auto` is the same case as a change away from a `file` pin. A
-// directory with nothing in the file store gets no such pin.
+// credentials are in the file store is written down as such before the
+// commit, so the record stays true if the login fails and a change into
+// `auto` is the same case as a change away from a `file` pin. A directory
+// with nothing in the file store gets no such pin.
 func TestTheFilePrePinStatesWhatIsAlreadyTrue(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -826,14 +799,14 @@ func TestTheFilePrePinStatesWhatIsAlreadyTrue(t *testing.T) {
 				require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-old"))
 			}
 
-			b, err := loginBackendsOf(dir, cfg, "auto", "", "")
+			b, err := loginBackendsOf(dir, cfg, "prod", "auto", "")
 			require.NoError(t, err)
-			ch, perr := planStoreChange(t.Context(), dir, cfg, "prod", "https://r.ex", b)
+			ch, perr := planStoreChange(dir, cfg, "prod", "https://r.ex", b)
 			require.NoError(t, perr)
 			plan := ch.plan
 			require.NotNil(t, plan)
 
-			assert.Equal(t, tc.wantPrePin, plan.PrePin)
+			assert.Equal(t, tc.wantPrePin, b.PrePin)
 			assert.Equal(t, tc.wantPrePin, ReadPin(dir), "the pre-pin is written where there is one")
 			assert.Equal(t, transitionPin, plan.manifest.Steps[len(plan.manifest.Steps)-1].Kind,
 				"the pin the change ends with is its last step")
@@ -939,33 +912,35 @@ func TestTheLoginOpensThePhysicalBackendItResolved(t *testing.T) {
 func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		// breakAt is the config write after which the file store stops
+		// breakAt is the config write after which a path stops
 		// answering: `transition` is before step 2, `cachebinding` is
 		// after it and before step 4.
 		breakAt string
-		// breakPin also takes the pin's path, so step 2 cannot remove the
-		// old copy and cannot flip the pin either: the third place a step
-		// runs, and the only carrier of that step's cause.
-		breakPin bool
+		// breakFile takes credentials.yaml, so step 2 cannot remove the
+		// old copy; breakPin takes the pin's path. Both at `transition`
+		// is the one state where step 2 can do neither.
+		breakFile, breakPin bool
 		// want is the whole sentence the step that could not finish
-		// produces, which no other line of the login says.
-		want string
-		// hint is the command that step's warning names; only a move has
-		// one, the logout that turns it into cleanups.
-		hint string
+		// produces, which no other line of the login says; cause is the
+		// backend's own words behind it.
+		want, cause string
+		// fails says the login ends in an error rather than a warning.
+		fails bool
 	}{
-		{name: "the old copy, in step 2", breakAt: "transition",
-			want: "the credential store change could not finish for prod"},
-		{name: "another entry's move, in step 4", breakAt: "cachebinding",
-			want: "the credential store change could not finish for staging", hint: "rancher auth logout 'staging'"},
-		{name: "the pin, in step 2's fallback", breakAt: "transition", breakPin: true,
-			want: "a credential store change is unfinished for this directory (pin)"},
+		{name: "the old copy, in step 2", breakAt: "transition", breakFile: true,
+			want: "the credential store change could not finish for prod", cause: "is a directory"},
+		{name: "the pin, in step 4", breakAt: "cachebinding", breakPin: true,
+			want: "a credential store change is unfinished for this directory (pin)", cause: pinFileName},
+		{name: "the pin, in step 2's fallback", breakAt: "transition", breakFile: true, breakPin: true, fails: true,
+			want: "a credential store change is unfinished for this directory (pin)", cause: pinFileName},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := repinFixture(t)
 			restore := SetPersistWriteHookForTest(func(step string) error {
 				if step == tc.breakAt {
-					breakPath(t, CredentialsFilePath(dir))
+					if tc.breakFile {
+						breakPath(t, CredentialsFilePath(dir))
+					}
 					if tc.breakPin {
 						breakPath(t, PinPath(dir))
 					}
@@ -975,7 +950,7 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 			defer restore()
 
 			out, err := PersistLoginCredential(t.Context(), dir, repinInput())
-			if tc.breakPin {
+			if tc.fails {
 				// With neither the old copy removed nor the pin flipped
 				// the binding id does not advance, which is its own named
 				// state - and the step that could not run still has to
@@ -986,7 +961,7 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 			}
 			assert.Contains(t, joinWarnings(out.Warnings), tc.want,
 				"the step that could not finish says so in its own words")
-			assert.Contains(t, joinWarnings(out.Warnings), "is a directory",
+			assert.Contains(t, joinWarnings(out.Warnings), tc.cause,
 				"with the backend's own cause behind it")
 			line := ""
 			for _, w := range out.Warnings {
@@ -995,12 +970,8 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 				}
 			}
 			require.NotEmpty(t, line)
-			if tc.hint == "" {
-				assert.NotContains(t, line, "hint:", "a step that is not a move names no command")
-			} else {
-				assert.Contains(t, line, "hint: "+tc.hint, "and the command it points at")
-			}
-			if tc.breakPin {
+			assert.NotContains(t, line, "hint:", "no command reports the step yet, so none is named")
+			if tc.fails {
 				return
 			}
 
@@ -1038,7 +1009,7 @@ func TestAnOldCopyAnotherDirectoryOwnsIsLeftAlone(t *testing.T) {
 
 	in := PersistLoginInput{
 		Name: "prod", CanonicalURL: "https://r.ex", Bearer: "id:new",
-		Provenance: clierr.ProvenanceDerived, Policy: "file", PolicySource: PolicySourceFlag,
+		Provenance: clierr.ProvenanceDerived, Policy: "file",
 		ObservedDeclaration: "keychain",
 		Declaration:         DeclarationFor("keychain", "file", "file"),
 		OpenStore:           OpenResolvedStore,
@@ -1092,14 +1063,14 @@ func TestAnOldCopyThatCannotBeReadFlipsThePinInstead(t *testing.T) {
 
 // TestTheRemainingStepsRunAfterTheBindingIdWrite asserts the order of the
 // last two steps: the id a cache record binds to advances first, and the
-// moves and the pin run after it. Running them first would leave the
-// previous login's records valid across work that has already happened.
+// pin runs after it. Running it first would leave the previous login's
+// records valid across work that has already happened.
 func TestTheRemainingStepsRunAfterTheBindingIdWrite(t *testing.T) {
 	dir := repinFixture(t)
 
-	movedAt := map[string]bool{}
+	pinAt := map[string]string{}
 	restore := SetPersistWriteHookForTest(func(step string) error {
-		movedAt[step] = keychainTokenFor(t, dir, "staging") != ""
+		pinAt[step] = ReadPin(dir)
 		return nil
 	})
 	defer restore()
@@ -1107,9 +1078,8 @@ func TestTheRemainingStepsRunAfterTheBindingIdWrite(t *testing.T) {
 	_, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.NoError(t, err)
 
-	assert.False(t, movedAt["cachebinding"], "the other entry has not moved yet when the id advances")
-	assert.Equal(t, "staging-tok", keychainTokenFor(t, dir, "staging"), "and has by the time the login returns")
-	assert.Equal(t, backendKeychain, ReadPin(dir), "with the pin after it")
+	assert.Equal(t, backendFile, pinAt["cachebinding"], "the pin has not moved yet when the id advances")
+	assert.Equal(t, backendKeychain, ReadPin(dir), "and has by the time the login returns")
 }
 
 // TestACreateOnlyDestinationNamesItsWrite asserts the write on the
@@ -1130,7 +1100,7 @@ func TestACreateOnlyDestinationNamesItsWrite(t *testing.T) {
 		require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-old"))
 		return dir, PersistLoginInput{
 			Name: "prod", CanonicalURL: "https://r.ex", Bearer: "id:new",
-			Provenance: clierr.ProvenanceDerived, Policy: "exec:vault", PolicySource: PolicySourceFlag,
+			Provenance: clierr.ProvenanceDerived, Policy: "exec:vault",
 			ObservedDeclaration: "file",
 			Declaration:         DeclarationFor("file", "exec:vault", "exec:vault"),
 			OpenStore:           fileOpen(readOnlyStore{}),
@@ -1171,7 +1141,7 @@ func TestACreateOnlyDestinationNamesItsWrite(t *testing.T) {
 
 	t.Run("a login that declares nothing still rolls back", func(t *testing.T) {
 		dir, in := seed(t)
-		in.Policy, in.PolicySource, in.Declaration = "file", "", ""
+		in.Policy, in.Declaration = "file", ""
 		var steps []string
 		restore := SetPersistWriteHookForTest(func(step string) error {
 			steps = append(steps, step)
@@ -1193,7 +1163,7 @@ func readerResolves(t *testing.T, dir, entry, url string) string {
 	t.Helper()
 	cfg, err := Load(FilePath(dir))
 	require.NoError(t, err)
-	store, _, err := OpenStoreWithNotice(cfg.CredentialStore, dir)
+	store, err := OpenStoreFor(cfg, dir)
 	require.NoError(t, err)
 	tok, gerr := store.GetToken(ServerRef{Name: entry, URL: url})
 	if gerr != nil {
@@ -1272,7 +1242,7 @@ func TestAPinNamingAThirdStoreIsWrittenBeforeTheCommit(t *testing.T) {
 			}))
 			in := PersistLoginInput{
 				Name: "prod", CanonicalURL: "https://r.ex", Bearer: "id:new",
-				Provenance: clierr.ProvenanceDerived, Policy: "auto", PolicySource: PolicySourceFlag,
+				Provenance: clierr.ProvenanceDerived, Policy: "auto",
 				ObservedDeclaration: tc.declared,
 				Declaration:         DeclarationFor(tc.declared, "auto", "auto"),
 				OpenStore:           OpenResolvedStore,
@@ -1322,5 +1292,91 @@ func TestAFailedLoginKeepsTheFilePrePin(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, backendFile, ReadPin(dir), "the pin a failed login wrote states where the tokens are")
 	assert.Equal(t, "prod-old", storedFileToken(t, dir))
+	assert.NoFileExists(t, TransitionPath(dir))
+}
+
+// TestAnAutoUpgradeStaysOnTheFileStoreWhileAnotherEntryIsThere asserts
+// what an `auto` login does when it could use the keychain on a directory
+// that reads the file store and another entry's credential is there. It
+// is not refused - the kubectl plugin's re-login after a 401 has to go
+// through - and it does not move: the credential stays where the directory
+// already reads, nothing is recorded for a change, and the warning names
+// the entries and the way out. A declared `file` directory asked for
+// `auto` the same way ends declared `auto` and pinned `file`.
+func TestAnAutoUpgradeStaysOnTheFileStoreWhileAnotherEntryIsThere(t *testing.T) {
+	for _, tc := range []struct {
+		name, declared, pin, flag string
+		wantNotice                string
+	}{
+		{name: "a file-pinned auto directory", declared: "auto", pin: backendFile},
+		{name: "a declared file directory asked for auto", declared: backendFile, flag: "auto",
+			wantNotice: "pinned credential store: file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := repinFixture(t)
+			cfg, err := Load(FilePath(dir))
+			require.NoError(t, err)
+			cfg.CredentialStore = tc.declared
+			require.NoError(t, cfg.Write())
+			require.NoError(t, os.Remove(PinPath(dir)))
+			if tc.pin != "" {
+				require.NoError(t, WritePin(dir, tc.pin))
+			}
+			require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "staging", URL: "https://staging.ex"}, "staging-tok"))
+
+			policy, _, err := LoginPolicy(tc.flag, tc.declared)
+			require.NoError(t, err)
+			in := repinInput()
+			in.Policy, in.ObservedDeclaration = policy, tc.declared
+			in.Declaration = DeclarationFor(tc.declared, tc.flag, policy)
+			require.NoError(t, loginRefusal(dir, cfg, "prod", in.Policy, in.Declaration), "not a refusal")
+			out, err := PersistLoginCredential(t.Context(), dir, in)
+			require.NoError(t, err)
+
+			assert.Equal(t, "id:new", storedFileToken(t, dir), "the credential stays where the directory reads")
+			assert.Empty(t, keychainTokenFor(t, dir, "prod"))
+			assert.Equal(t, "staging-tok", mustFileToken(t, dir, "staging", "https://staging.ex"))
+			assert.Equal(t, backendFile, ReadPin(dir))
+			assert.NoFileExists(t, TransitionPath(dir), "no change was recorded")
+			after, lerr := Load(FilePath(dir))
+			require.NoError(t, lerr)
+			assert.Equal(t, "auto", after.CredentialStore)
+			warnings := joinWarnings(out.Warnings)
+			assert.Contains(t, warnings, "this directory keeps 1 other credential in the plaintext file "+CredentialsFilePath(dir)+" (staging)")
+			assert.Contains(t, warnings, "log that entry out, then log in again")
+			if tc.wantNotice != "" {
+				assert.Contains(t, warnings, tc.wantNotice)
+			}
+		})
+	}
+}
+
+// TestAFailedLoginKeepsTheKeychainPrePin asserts the mirror of the file
+// pre-pin. An unpinned `auto` directory whose readers find the keychain -
+// identity records, no file token - gets a `keychain` pin before a login
+// that leaves it for the file store commits: without it, the login's new
+// file token beside the records would read as both stores for every
+// entry. It states what readers already use, so a login that fails keeps
+// it and readers still get the keychain credential.
+func TestAFailedLoginKeepsTheKeychainPrePin(t *testing.T) {
+	t.Setenv(EnvCredentialStore, "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	cfg := &Config{CredentialStore: "auto", Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
+	cfg.SetPath(FilePath(dir))
+	require.NoError(t, cfg.Write())
+	seedKeychainCredential(t, dir, "prod", "prod-keychain")
+
+	in := PersistLoginInput{
+		Name: "prod", CanonicalURL: "https://r.ex", Bearer: "id:new",
+		Provenance: clierr.ProvenanceDerived, Policy: "file",
+		ObservedDeclaration: "auto",
+		Declaration:         DeclarationFor("auto", "file", "file"),
+		OpenStore:           fileOpen(failStore{out: CommitOutcome{State: clierr.CredentialNotWritten}, err: errors.New("backend refused")}),
+	}
+	_, err := PersistLoginCredential(t.Context(), dir, in)
+	require.Error(t, err)
+	assert.Equal(t, backendKeychain, ReadPin(dir), "the pin a failed login wrote states where the credentials are")
+	assert.Equal(t, "prod-keychain", readerResolves(t, dir, "prod", "https://r.ex"))
 	assert.NoFileExists(t, TransitionPath(dir))
 }

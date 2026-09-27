@@ -2,6 +2,8 @@ package config
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -28,20 +30,41 @@ func activeTransition(t *testing.T, dir string, steps ...transitionStep) *Config
 	return cfg
 }
 
-// fileMoveStep is a move of one entry's file-store credential into the
-// keychain, with the credential present so the move can run.
-func fileMoveStep(t *testing.T, dir, entry, url, token string) transitionStep {
+// fileDeleteStep is the delete of one entry's old file-store copy, with
+// the credential present so the delete can run.
+func fileDeleteStep(t *testing.T, dir, entry, url, token string) transitionStep {
 	t.Helper()
 	vid, err := newTransitionID()
 	require.NoError(t, err)
-	acct, aerr := newKeychainAccountID()
-	require.NoError(t, aerr)
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: entry, URL: url}, token))
 	return transitionStep{
-		Kind: transitionMove, Entry: entry, Source: backendFile, Destination: backendKeychain,
+		Kind: transitionDelete, Entry: entry, Source: backendFile,
 		VerificationID: vid, CredentialDigest: credentialFingerprint(vid, token),
-		DestAccountID: acct,
 	}
+}
+
+// unreachableDeleteStep is the delete of one entry's old keychain copy.
+// The caller makes the keychain unreachable, so the step cannot run and
+// stays.
+func unreachableDeleteStep(t *testing.T, entry string) transitionStep {
+	t.Helper()
+	vid, err := newTransitionID()
+	require.NoError(t, err)
+	return transitionStep{
+		Kind: transitionDelete, Entry: entry, Source: backendKeychain,
+		VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "old"),
+		SourceAccountID: mustAccount(t),
+	}
+}
+
+// terminalDeleteStep is the delete of one entry's old keychain copy whose
+// slot is already empty and whose identity record does not parse, so the
+// record it has to retire can never be trusted: no retry can finish it.
+func terminalDeleteStep(t *testing.T, dir, entry string) transitionStep {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(identityDirPath(dir), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(identityDirPath(dir), identityFileName(entry)), []byte("not a record"), 0o600))
+	return unreachableDeleteStep(t, entry)
 }
 
 // TestPrepareMutationFinishesTheWorkAndLetsTheCommandThrough asserts the
@@ -50,34 +73,34 @@ func fileMoveStep(t *testing.T, dir, entry, url, token string) transitionStep {
 func TestPrepareMutationFinishesTheWorkAndLetsTheCommandThrough(t *testing.T) {
 	dir := t.TempDir()
 	cfg := activeTransition(t, dir,
-		fileMoveStep(t, dir, "staging", "https://s.ex", "staging-tok"),
+		fileDeleteStep(t, dir, "prod", "https://r.ex", "prod-old"),
 		transitionStep{Kind: transitionPin, Target: backendKeychain})
 
-	_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{Entries: []string{"prod"}})
+	_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{})
 	require.NoError(t, err)
 
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
 	assert.Nil(t, m, "every step finished, so the record of the change is gone")
 	assert.Equal(t, "keychain", ReadPin(dir), "the pin is the last step")
+	_, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
+	require.ErrorIs(t, gerr, ErrNoToken, "and the old copy is gone")
 
 	ClearFinishedTransition(dir, cfg)
 	assert.Empty(t, cfg.CredentialTransitionID, "the next config write forgets the name")
 }
 
 // TestPrepareMutationRefusesASecondStoreChange asserts the rule that keeps
-// two changes from stacking. The first has credentials in a backend the
-// directory no longer names; a second would forget it, and they would stay
-// there with nothing to find them.
+// two changes from stacking. The first has an old copy in a backend the
+// directory no longer names; a second would forget it, and it would stay
+// there with nothing to find it.
 func TestPrepareMutationRefusesASecondStoreChange(t *testing.T) {
 	dir := t.TempDir()
-	stuck := fileMoveStep(t, dir, "staging", "https://s.ex", "staging-tok")
-	// The credential is not where the change says it is, so the step
-	// cannot finish and stays.
-	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "something-else"))
-	cfg := activeTransition(t, dir, stuck)
+	cfg := activeTransition(t, dir, unreachableDeleteStep(t, "staging"))
+	restore := SetKeyringBackendForTest(unreachableKeyring{})
+	defer restore()
 
-	_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{Entries: []string{"prod"}, ChangesStore: true})
+	_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{ChangesStore: true})
 	require.Error(t, err)
 	ce, ok := errorsAsClierr(err)
 	require.True(t, ok)
@@ -90,133 +113,22 @@ func TestPrepareMutationRefusesASecondStoreChange(t *testing.T) {
 	assert.Equal(t, cfg.CredentialTransitionID, m.ID, "and it is still the same one")
 }
 
-// TestPrepareMutationRefusesALoginWhoseEntryAMoveNames asserts why a move
-// blocks a login of its entry and a delete does not. The move is carrying
-// a credential: retried after the login, it would write that credential
-// over the one the login just stored. A delete carries only a digest, and
-// the login's own credential does not match it.
-func TestPrepareMutationRefusesALoginWhoseEntryAMoveNames(t *testing.T) {
-	t.Run("a move for the entry refuses", func(t *testing.T) {
-		dir := t.TempDir()
-		stuck := fileMoveStep(t, dir, "prod", "https://r.ex", "prod-tok")
-		require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "something-else"))
-		cfg := activeTransition(t, dir, stuck)
-
-		_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{Entries: []string{"prod"}})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "prod")
-	})
-
-	t.Run("a delete for the entry does not", func(t *testing.T) {
-		dir := t.TempDir()
-		vid, verr := newTransitionID()
-		require.NoError(t, verr)
-		// An unreachable keychain copy: the step stays, and it can only
-		// ever remove a credential whose digest it carries.
-		acct, aerr := newKeychainAccountID()
-		require.NoError(t, aerr)
-		cfg := activeTransition(t, dir, transitionStep{
-			Kind: transitionDelete, Entry: "prod", Source: backendKeychain,
-			VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "old"),
-			SourceAccountID: acct,
-		})
-
-		_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{Entries: []string{"prod"}})
-		require.NoError(t, err, "a delete cannot restore anything, so it does not block a login")
-	})
-}
-
-// TestPrepareMutationRewritesMovesAsDeletesForALogout asserts what lets a
-// logout run while a change has work left. A move standing afterwards
-// would undo the logout by writing the credential it is carrying into the
-// place the logout just cleared; as two conditional deletes, whatever
-// survives can only take a copy away.
-func TestPrepareMutationRewritesMovesAsDeletesForALogout(t *testing.T) {
+// TestPrepareMutationLetsALoginThroughWhileADeleteRemains asserts why a
+// remaining delete for the entry does not block a login that changes no
+// store: the delete carries only a digest, and the login's own credential
+// does not match it, so a later retry can never remove what the login is
+// about to store.
+func TestPrepareMutationLetsALoginThroughWhileADeleteRemains(t *testing.T) {
 	dir := t.TempDir()
-	stuck := fileMoveStep(t, dir, "prod", "https://r.ex", "prod-tok")
-	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "something-else"))
-	cfg := activeTransition(t, dir, stuck)
+	cfg := activeTransition(t, dir, unreachableDeleteStep(t, "prod"))
+	restore := SetKeyringBackendForTest(unreachableKeyring{})
+	defer restore()
 
-	notices, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{
-		Entries: []string{"prod"}, ClearsCredentials: true,
-	})
-	require.NoError(t, err, "the logout is not blocked by the change it just defused")
-	require.NotEmpty(t, notices)
-	assert.Contains(t, notices[0], "can no longer restore the credential being removed")
-
+	_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{})
+	require.NoError(t, err, "a delete cannot restore anything, so it does not block a login")
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
-	assert.Nil(t, m, "both deletes found nothing of theirs to remove, so the change is over")
-
-	tok, gerr := NewFileStore(dir).GetToken(ServerRef{Name: "prod", URL: "https://r.ex"})
-	require.NoError(t, gerr)
-	assert.Equal(t, "something-else", tok,
-		"the credential the move was carrying was never written back, and the one that is there was left alone")
-}
-
-// TestRewriteMovesAsDeletesSplitsBothSides asserts the shape of the
-// rewrite itself: each move for a target entry becomes two conditional
-// deletes, one for the place the credential was coming from and one for
-// the place it was going to, so whichever copy exists is cleaned up and
-// neither can be recreated. Moves for other entries are untouched.
-func TestRewriteMovesAsDeletesSplitsBothSides(t *testing.T) {
-	dir := t.TempDir()
-	vid, err := newTransitionID()
-	require.NoError(t, err)
-	dst, derr := newKeychainAccountID()
-	require.NoError(t, derr)
-	id, ierr := newTransitionID()
-	require.NoError(t, ierr)
-
-	m := &transitionManifest{Version: transitionVersion, ID: id, Steps: []transitionStep{
-		{
-			Kind: transitionMove, Entry: "prod", Source: backendFile, Destination: backendKeychain,
-			VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "tok"),
-			DestAccountID: dst,
-			// A move that had already been judged impossible: the verdict
-			// is the move's, not the cleanup's.
-			Terminal: true, LastError: "the credential is in neither store",
-		},
-		{
-			Kind: transitionMove, Entry: "staging", Source: backendFile, Destination: backendKeychain,
-			VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "tok"),
-			DestAccountID: dst,
-		},
-		{Kind: transitionPin, Target: backendKeychain},
-	}}
-
-	notices, werr := rewriteMovesAsDeletes(dir, m, []string{"prod"})
-	require.NoError(t, werr)
-	require.Len(t, notices, 1)
-
-	require.Len(t, m.Steps, 4)
-	assert.Equal(t, transitionDelete, m.Steps[0].Kind)
-	assert.Equal(t, backendFile, m.Steps[0].Source, "the side it was coming from")
-	assert.Equal(t, transitionDelete, m.Steps[1].Kind)
-	assert.Equal(t, backendKeychain, m.Steps[1].Source, "the side it was going to")
-	assert.Equal(t, dst, m.Steps[1].SourceAccountID, "addressed by the account the move was writing to")
-	assert.Empty(t, m.Steps[1].Destination, "a delete has no destination")
-	assert.Equal(t, transitionMove, m.Steps[2].Kind, "another entry's move is untouched")
-	assert.Equal(t, "staging", m.Steps[2].Entry)
-	assert.Equal(t, transitionPin, m.Steps[3].Kind)
-
-	// Both deletes carry the digest of the credential the move was
-	// carrying, so neither can remove anything else.
-	assert.Equal(t, credentialFingerprint(vid, "tok"), m.Steps[0].CredentialDigest)
-	assert.Equal(t, credentialFingerprint(vid, "tok"), m.Steps[1].CredentialDigest)
-
-	// Neither inherits the move's verdict: they are new work no attempt
-	// has judged, so a reader that has not replayed them yet reports work
-	// left, never a terminal state with a logout that has just run as its
-	// remedy.
-	for _, d := range m.Steps[:2] {
-		assert.False(t, d.Terminal, "%s %s", d.Kind, d.Source)
-		assert.Empty(t, d.LastError)
-	}
-	rce, ok := errorsAsClierr(refusedBy(m, MutationIntent{ChangesStore: true}))
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, rce.Code)
-	assert.True(t, rce.Retryable, "a delete nobody has tried is retryable work, whatever the move it replaced was")
+	require.NotNil(t, m, "the delete stays for the next command")
 }
 
 // TestPrepareMutationRemovesAbandonedWork asserts the state a login leaves
@@ -240,25 +152,24 @@ func TestPrepareMutationRemovesAbandonedWork(t *testing.T) {
 // prelude will refuse a moment later.
 func TestRefusedByTransitionAnswersBeforeAuthentication(t *testing.T) {
 	dir := t.TempDir()
-	cfg := activeTransition(t, dir, fileMoveStep(t, dir, "prod", "https://r.ex", "prod-tok"))
+	cfg := activeTransition(t, dir, fileDeleteStep(t, dir, "prod", "https://r.ex", "prod-tok"))
 
 	require.Error(t, RefusedByTransition(dir, cfg, MutationIntent{ChangesStore: true}))
-	require.Error(t, RefusedByTransition(dir, cfg, MutationIntent{Entries: []string{"prod"}}))
-	require.NoError(t, RefusedByTransition(dir, cfg, MutationIntent{Entries: []string{"staging"}}),
-		"an entry no remaining move names is free to log in")
+	require.NoError(t, RefusedByTransition(dir, cfg, MutationIntent{}),
+		"a login that changes no store is free to go on")
 	require.NoError(t, RefusedByTransition(dir, &Config{}, MutationIntent{ChangesStore: true}),
 		"a directory with no change recorded refuses nothing")
 }
 
 // TestErrNoTokenHintNamesTheStatusCommand asserts what an entry's "not
 // logged in" says while a change is unfinished. Telling the operator to
-// log in would be wrong: the credential is very likely sitting in the
-// backend the change has not finished moving it out of.
+// log in would be wrong: what is missing may be the pin the change has
+// not written yet.
 func TestErrNoTokenHintNamesTheStatusCommand(t *testing.T) {
 	dir := t.TempDir()
 	assert.Empty(t, ErrNoTokenHint(dir, &Config{}))
 
-	cfg := activeTransition(t, dir, fileMoveStep(t, dir, "prod", "https://r.ex", "prod-tok"))
+	cfg := activeTransition(t, dir, fileDeleteStep(t, dir, "prod", "https://r.ex", "prod-tok"))
 	assert.Equal(t, "rancher config status", ErrNoTokenHint(dir, cfg))
 }
 
@@ -285,9 +196,7 @@ func TestALogoutFinishesWhileAStepCannot(t *testing.T) {
 		SourceAccountID: acct,
 	})
 
-	notices, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{
-		Entries: []string{"prod"}, ClearsCredentials: true,
-	})
+	notices, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{})
 	require.NoError(t, err, "the logout goes on")
 	require.NotEmpty(t, notices)
 	assert.Contains(t, notices[len(notices)-1], "could not finish for prod",
@@ -340,31 +249,21 @@ func (unreachableKeyring) Delete(string, string) error { return errUnreachableKe
 
 var errUnreachableKeyring = errors.New("the keychain is not reachable")
 
-// TestATerminalStepDoesNotRefuseAnotherEntrysCommand asserts the rule
-// terminal and retained steps share: work the directory still has is a
-// warning, and who may proceed is decided by the command's own entries
-// and intent. A step that can never finish for one entry is no more
-// reason to stop a logout of another than one that merely could not
-// finish now. It also asserts what the step says when it does refuse: a
-// terminal step keeps its own non-retryable verdict and the logout that
-// clears it, never the retryable code - an agent branching on retryable
-// must not be told to retry a state no retry can change.
-func TestATerminalStepDoesNotRefuseAnotherEntrysCommand(t *testing.T) {
+// TestATerminalStepDoesNotRefuseAnotherCommand asserts the rule terminal
+// and retained steps share: work the directory still has is a warning, and
+// who may proceed is decided by the command's own intent. A step that can
+// never finish is no more reason to stop a command that changes no store
+// than one that merely could not finish now. It also asserts what the step
+// says when it does refuse: a terminal step keeps its own non-retryable
+// verdict, never the retryable code - an agent branching on retryable must
+// not be told to retry a state no retry can change.
+func TestATerminalStepDoesNotRefuseAnotherCommand(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
-	vid, verr := newTransitionID()
-	require.NoError(t, verr)
-	// A move whose credential is in neither backend: terminal.
-	cfg := activeTransition(t, dir, transitionStep{
-		Kind: transitionMove, Entry: "other", Source: backendFile, Destination: backendKeychain,
-		VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "gone"),
-		DestAccountID: mustAccount(t),
-	})
+	cfg := activeTransition(t, dir, terminalDeleteStep(t, dir, "other"))
 
-	notices, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{
-		Entries: []string{"prod"}, ClearsCredentials: true,
-	})
-	require.NoError(t, err, "the logout of prod is not this step's business")
+	notices, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{})
+	require.NoError(t, err, "a command that changes no store is not this step's business")
 	require.NotEmpty(t, notices)
 	assert.Contains(t, notices[len(notices)-1], "other", "and is told what is stuck")
 
@@ -372,7 +271,7 @@ func TestATerminalStepDoesNotRefuseAnotherEntrysCommand(t *testing.T) {
 	require.NoError(t, rerr)
 	require.NotNil(t, m)
 	assert.True(t, m.Steps[0].Terminal, "the step records that no retry can help")
-	assert.Contains(t, m.Steps[0].LastError, "neither the store", "and the cause, in its own words")
+	assert.Contains(t, m.Steps[0].LastError, "retiring the credential identity for other", "and the cause, in its own words")
 	assert.NotContains(t, m.Steps[0].LastError, "cannot finish for", "not the sentence that wraps it")
 
 	// The same directory still refuses a second store change, with the
@@ -392,8 +291,8 @@ func TestATerminalStepDoesNotRefuseAnotherEntrysCommand(t *testing.T) {
 			ce, ok := errorsAsClierr(serr)
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeValidation, ce.Code, "a terminal step keeps its own code")
-			assert.False(t, ce.Retryable, "no retry can change where the credential is not")
-			assert.Equal(t, "rancher auth logout 'other'", ce.Hint, "the remedy is the logout that turns the move into cleanup")
+			assert.False(t, ce.Retryable, "no retry can change a record that cannot be read")
+			assert.Empty(t, ce.Hint, "no command reports the step yet, so none is named")
 			require.ErrorContains(t, serr, "other")
 		})
 	}
@@ -401,28 +300,28 @@ func TestATerminalStepDoesNotRefuseAnotherEntrysCommand(t *testing.T) {
 
 // TestStepErrorKeepsATerminalVerdict asserts how a remaining step reports
 // when it stops a command: one whose last attempt was terminal keeps its
-// own non-retryable error and the logout that clears it; one that may
-// still finish carries the retryable code and the status command.
+// own non-retryable error; one that may still finish carries the retryable
+// code. Neither names a command: none reports the step yet.
 func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 	t.Parallel()
 	terminal := stepError(transitionStep{
-		Kind: transitionMove, Entry: "prod", Terminal: true,
-		LastError: "the credential is in neither the store it was moving from nor the one it was moving to",
+		Kind: transitionDelete, Entry: "prod", Terminal: true,
+		LastError: "retiring the credential identity for prod: the record is a symlink",
 	})
 	ce, ok := errorsAsClierr(terminal)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.False(t, ce.Retryable)
-	assert.Equal(t, "rancher auth logout 'prod'", ce.Hint)
+	assert.Empty(t, ce.Hint)
 	require.ErrorContains(t, terminal, "cannot finish for prod")
-	require.ErrorContains(t, terminal, "neither the store")
+	require.ErrorContains(t, terminal, "the record is a symlink")
 
-	retained := stepError(transitionStep{Kind: transitionMove, Entry: "prod", LastError: "the keychain is locked"})
+	retained := stepError(transitionStep{Kind: transitionDelete, Entry: "prod", LastError: "the keychain is locked"})
 	rce, rok := errorsAsClierr(retained)
 	require.True(t, rok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, rce.Code)
 	assert.True(t, rce.Retryable)
-	assert.Equal(t, "rancher auth logout 'prod'", rce.Hint, "an attempted step names the way out beside the retry")
+	assert.Empty(t, rce.Hint)
 	require.ErrorContains(t, retained, "could not finish for prod: the keychain is locked")
 
 	untried := stepError(transitionStep{Kind: transitionDelete, Entry: "prod"})
@@ -450,9 +349,9 @@ func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 // final.
 func TestARetainedStepReportsTheRetryableCode(t *testing.T) {
 	dir := t.TempDir()
-	stuck := fileMoveStep(t, dir, "other", "https://o.ex", "other-tok")
-	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "other", URL: "https://o.ex"}, "something-else"))
-	cfg := activeTransition(t, dir, stuck)
+	cfg := activeTransition(t, dir, unreachableDeleteStep(t, "other"))
+	restore := SetKeyringBackendForTest(unreachableKeyring{})
+	defer restore()
 
 	_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{ChangesStore: true})
 	require.Error(t, err)
@@ -460,15 +359,14 @@ func TestARetainedStepReportsTheRetryableCode(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
 	assert.True(t, ce.Retryable)
-	assert.Equal(t, "rancher auth logout 'other'", ce.Hint,
-		"the logout that turns the move into cleanup rides along, since some retained steps never clear on their own")
+	assert.Empty(t, ce.Hint, "no command reports the step yet")
 	require.ErrorContains(t, err, "could not finish for other")
 
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
 	require.NotNil(t, m)
 	assert.False(t, m.Steps[0].Terminal)
-	assert.Contains(t, m.Steps[0].LastError, "not the one the change recorded")
+	assert.Contains(t, m.Steps[0].LastError, errUnreachableKeyring.Error())
 }
 
 // mustAccount is a fresh keychain account id for a test fixture.

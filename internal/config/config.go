@@ -343,7 +343,7 @@ func LoadAndStore(dir string) (*Config, CredStore, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	store, err := NewLazyStore(cfg.CredentialStore, dir)
+	store, err := NewLazyStore(cfg, dir)
 	if err != nil {
 		return nil, nil, err
 	}

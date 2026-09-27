@@ -384,3 +384,35 @@ func TestConfigDeleteServerRunsFromConfigRecoveryCommandAndNamesAnUnwritableDir(
 	_, err = cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"exec-login-r.ex"}}, ui.Discard())
 	require.ErrorContains(t, err, dir, "the failure names the directory it could not write")
 }
+
+// TestDeleteServerClearsTheWayForAStoreChangeFromACreateOnlyHelper
+// asserts the remedy a store change away from a credential helper names.
+// A helper that creates credentials on demand stores nothing a logout can
+// remove and keeps answering for the entry afterwards, so the change is
+// refused while any other entry is configured; removing that entry with
+// `config delete-server` works against such a helper - its erase succeeds
+// on a credential it never stored - and after it the change goes on.
+func TestDeleteServerClearsTheWayForAStoreChangeFromACreateOnlyHelper(t *testing.T) {
+	for _, mode := range []string{"unsupported", "expiresat"} {
+		t.Run(mode, func(t *testing.T) {
+			dir, _ := cmdtest.SeedExecLogout(t, "prod", "prod", "staging")
+			t.Setenv("FAKEHELPER_MODE", mode)
+			t.Setenv("FAKEHELPER_EXPIRESAT", time.Now().Add(time.Minute).UTC().Format(time.RFC3339))
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			_, err = config.LoginStoreChange(dir, cfg, "prod", "keychain", "keychain")
+			require.ErrorContains(t, err, "rancher config delete-server <name>")
+
+			_, err = NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(),
+				cmdtest.Input{Pos: []string{"staging"}}, ui.Discard())
+			require.NoError(t, err, "the helper's erase succeeds on a credential it never stored")
+
+			cfg, err = config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			_, ok := cfg.Servers["staging"]
+			require.False(t, ok, "the entry is gone")
+			_, err = config.LoginStoreChange(dir, cfg, "prod", "keychain", "keychain")
+			require.NoError(t, err, "with no other entry the change is not refused")
+		})
+	}
+}

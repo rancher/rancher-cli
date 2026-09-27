@@ -512,14 +512,14 @@ func TestConfigEditRejectsChangingCurrentServer(t *testing.T) {
 }
 
 // TestConfigEditAllowsNonServerFieldsUnchanged proves the restriction is
-// scoped to servers/currentServer only: completion, credentialStore, and
-// readOnly stay editable.
+// scoped to the fields it names: readOnly stays editable. credentialStore
+// is one of those fields (TestConfigEditRejectsAnyCredentialStoreChange).
 func TestConfigEditAllowsNonServerFieldsUnchanged(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
 	dir := t.TempDir()
 	seedConfigFile(t, dir, validConfigYAML)
 
-	edited := "CurrentServer: prod\nservers:\n  prod:\n    url: https://acme.ex\ncredentialStore: file\nreadOnly: true\n"
+	edited := "CurrentServer: prod\nservers:\n  prod:\n    url: https://acme.ex\nreadOnly: true\n"
 	cmd := &configEditCmd{dir: dir, launchEditor: writesContent(edited)}
 	_, err := cmd.Execute(t.Context(), cmdtest.Input{}, &fakePrompter{canPrompt: true})
 	require.NoError(t, err)
@@ -557,9 +557,8 @@ func TestConfigEditRejectsChangingTheBindingStamp(t *testing.T) {
 
 // TestConfigEditRejectsChangingTheTransitionID asserts the field that
 // makes a recorded credential store change active cannot be edited by
-// hand. Clearing it abandons work that has already moved credentials out
-// of one backend and not yet into the other; setting it names a change
-// that was never prepared, which the next command reads as a manifest it
+// hand. Clearing it abandons an old copy the change still has to delete;
+// setting it names a change that was never prepared, which the next command reads as a manifest it
 // cannot account for. It clears itself when the change finishes.
 func TestConfigEditRejectsChangingTheTransitionID(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")
@@ -578,4 +577,46 @@ func TestConfigEditRejectsChangingTheTransitionID(t *testing.T) {
 	got, readErr := os.ReadFile(config.FilePath(dir))
 	require.NoError(t, readErr)
 	assert.YAMLEq(t, named, string(got), "the real config file must be untouched")
+}
+
+// TestConfigEditRejectsAnyCredentialStoreChange asserts the declaration
+// cannot be set, changed or removed by hand. Each moves every reader of the
+// directory to a store the edit put nothing in - a stale token there is
+// served - and each gets its own remedy. The value is compared after
+// parsing, so an edit that leaves it as it was, however it is spelled, is
+// no offense.
+func TestConfigEditRejectsAnyCredentialStoreChange(t *testing.T) {
+	const servers = "currentServer: prod\nservers:\n  prod:\n    url: https://rancher.example.com\n"
+	for _, tc := range []struct {
+		name, before, after string
+		want                string
+	}{
+		{name: "set on an undeclared directory", after: "credentialStore: file\n",
+			want: "credentialStore set (use: rancher auth login <name> --credential-store 'file', after logging out the other entries when there are any)"},
+		{name: "changed", before: "credentialStore: keychain\n", after: "credentialStore: exec:vault\n",
+			want: "credentialStore changed (use: rancher auth login <name> --credential-store 'exec:vault', after logging out the other entries when there are any)"},
+		{name: "removed", before: "credentialStore: keychain\n",
+			want: "credentialStore removed (no command removes a declaration; a different --config starts a fresh directory)"},
+		{name: "left as it was, spelled another way", before: "credentialStore: file\n", after: "credentialStore: \"file\"\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("EDITOR", "fake-editor")
+			dir := t.TempDir()
+			seedConfigFile(t, dir, tc.before+servers)
+
+			cmd := &configEditCmd{dir: dir, launchEditor: writesContent(tc.after + servers)}
+			_, err := cmd.Execute(t.Context(), cmdtest.Input{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+			got, readErr := os.ReadFile(config.FilePath(dir))
+			require.NoError(t, readErr)
+			if tc.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Contains(t, ce.Message, tc.want)
+			assert.YAMLEq(t, tc.before+servers, string(got), "the real config file must be untouched")
+		})
+	}
 }

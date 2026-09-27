@@ -124,8 +124,9 @@ func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ ru
 
 // completionCapabilityNote returns the credential-store-aware note for
 // --network=true (AC-3). Classification uses ONLY env token presence,
-// the declared credential-store policy, and a read-only ReadPin; it never
-// probes the keyring and never writes a pin.
+// the declared credential-store policy, a read-only ReadPin and, with no
+// pin, where the entries' stored credentials are; it never probes the
+// keyring and never writes a pin.
 func completionCapabilityNote(dir string, cfg *config.Config) string {
 	if os.Getenv(config.EnvToken) != "" {
 		return "live completion enabled; RANCHER_CLI_TOKEN detected - full capability."
@@ -143,6 +144,21 @@ func completionCapabilityNote(dir string, cfg *config.Config) string {
 	isFile := policy == "file" ||
 		(policy == "auto" && pin == "file")
 	isUnpinned := policy == "auto" && pin == ""
+	if isUnpinned {
+		u, uerr := config.UnpinnedStoreOf(dir, cfg)
+		if uerr == nil {
+			uerr = u.Err()
+		}
+		if uerr != nil {
+			return "live completion enabled, but " + uerr.Error()
+		}
+		switch u.Row {
+		case config.UnpinnedKeychain:
+			isKeychain, isUnpinned = true, false
+		case config.UnpinnedFile:
+			isFile, isUnpinned = true, false
+		}
+	}
 
 	switch {
 	case isKeychain:
@@ -154,7 +170,7 @@ func completionCapabilityNote(dir string, cfg *config.Config) string {
 	case isUnpinned:
 		return "credential store not yet resolved; live completion will use RANCHER_CLI_TOKEN " +
 			"or cached exec credentials until the store is pinned " +
-			"(run any authenticated command to pin it)"
+			"(log in to pin it)"
 	default:
 		return "live completion enabled."
 	}

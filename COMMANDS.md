@@ -24,7 +24,7 @@ in detail.
 
 | Command | Purpose |
 |---|---|
-| `auth login [<name>] [--url <url>]` | Log in with a token (interactive prompt or `--token-stdin`, secrets never on the command line); `--url` adds the entry first when `<name>` is new, and refuses when `<name>` is already registered at a different URL. Omitting `<name>` with `--url` derives it from the URL's hostname, with the same refuse-on-collision rule. Verifies a pasted/piped token against the server before storing it (`--no-verify` skips this; not available with the provider sign-in flow, which is already authenticated). Never switches the current server - only a fresh add can bootstrap it when unset. `--credential-store` changes where the directory keeps its credentials, after the new credential is stored: a change into the keychain moves every entry's credential there, a change into the plaintext file or a helper refuses until the other entries are logged out. |
+| `auth login [<name>] [--url <url>]` | Log in with a token (interactive prompt or `--token-stdin`, secrets never on the command line); `--url` adds the entry first when `<name>` is new, and refuses when `<name>` is already registered at a different URL. Omitting `<name>` with `--url` derives it from the URL's hostname, with the same refuse-on-collision rule. Verifies a pasted/piped token against the server before storing it (`--no-verify` skips this; not available with the provider sign-in flow, which is already authenticated). Never switches the current server - only a fresh add can bootstrap it when unset. `--credential-store` changes where the directory keeps its credentials, after the new credential is stored: a change takes only this entry's credential, and refuses before the sign-in while another entry still has one in the store being left. |
 | `auth logout [<name>]` | Clear the stored login token for the current server, `<name>`, or every server with `--all`; keeps server config; deletes the matching exec-credential cache entries; records the logout on the entry so `config status` can list its token |
 | `auth status` | Connectivity + credential preflight (calls the cluster's Kubernetes API) |
 | `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
@@ -37,12 +37,12 @@ in detail.
 |---|---|
 | `config list-servers` | List configured servers |
 | `config use-server [name]` | Switch the current server |
-| `config add-server <name> --url <url>` | Add a server entry (establishes trust); bootstraps the current server if unset - never an upsert (a different URL/CA under an existing name is a conflict) |
+| `config add-server <name> --url <url>` | Add a server entry (establishes trust); bootstraps the current server if unset - never an upsert (a different URL/CA under an existing name is a conflict); a credential still stored under a name no entry had is removed first, with a warning |
 | `config update-server <name>` | Change a server's URL or CA without the credential purge `delete-server` forces; a URL change clears the stored token and exec-credential cache, a CA-only change keeps them |
 | `config delete-server <name>` | Remove a server and its stored credentials; returns the recovery sequence for the tokens the entry still names; does NOT revoke the server-side token |
 | `config path` | Print the resolved config file path (whether or not the file exists yet) |
 | `config status` | Print config diagnostics: file path, current server, effective credential store and its source, completion settings; token reuse and every entry whose CLI-created tokens are still live, with the commands that revoke them; first stop when tab completion shows no candidates |
-| `config edit` | Edit the config in `$VISUAL`/`$EDITOR` on a validated temp copy - never in place |
+| `config edit` | Edit the config in `$VISUAL`/`$EDITOR` on a validated temp copy - never in place; a change to `credentialStore` is refused (a login with `--credential-store` changes it) |
 | `config set-completion` | Persist live-completion preferences: enable/disable network completion and set the per-TAB HTTP budget (max 2s) |
 | `config set-token-reuse` | Let the kubectl exec plugin (`auth get-token`) reuse one login credential per server: on, the first cache miss runs one login and stores an unscoped credential under `exec-login-<host>`; off (default) restores the per-cluster login and lists the dormant plugin-created logins and how to remove them |
 

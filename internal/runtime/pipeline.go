@@ -67,12 +67,12 @@ type IO struct {
 	Capability CapabilityChecker
 
 	// Notices drains operator-facing advisories recorded outside any
-	// Result by this invocation's credential-store dependency (a first-pin
-	// notice, a keychain-degrade warning) - wired from the resolved store
-	// wherever one exists; nil for a command with no store dependency
-	// (schema, a bare local command). renderResult, renderEffect, renderErr,
-	// and finishOnceOnlyResult each drain it exactly once, feeding the one
-	// render they own.
+	// Result by this invocation's credential-store dependency (a
+	// loose-permission finding, a keychain-degrade warning) - wired from
+	// the resolved store wherever one exists; nil for a command with no
+	// store dependency (schema, a bare local command). renderResult,
+	// renderEffect, renderErr, and finishOnceOnlyResult each drain it
+	// exactly once, feeding the one render they own.
 	Notices NoticeSource
 }
 
@@ -799,8 +799,8 @@ func dryRunText(eff safety.Effect) string {
 
 // renderErr writes ce to stderr in the invocation's requested format, after
 // draining streams' NoticeSource: a notice recorded earlier in this
-// invocation (e.g. a lazy store's first-pin notice surfacing on the failure
-// path) leads ce's own error-carried warnings - RenderError's notices
+// invocation (e.g. a lazy store's loose-permission finding surfacing on the
+// failure path) leads ce's own error-carried warnings - RenderError's notices
 // parameter is documented as recorded-earliest-first for exactly this call.
 func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 	_, errStyle := stylesFor(streams)

@@ -11,23 +11,25 @@ import (
 // TestALoginResolvesOneBackendSetAndOpensIt asserts the one answer every
 // condition in the login order is derived from: what a reader resolves to
 // now, what the login commits to, what a reader resolves to afterwards,
-// and the two questions that follow - does anything move, and does the
-// change end with a pin. The rows are the states a directory can be in
-// when a login reaches it.
+// and the two questions that follow - does this entry's credential change
+// store, and does the change end with a pin. The rows are the states a
+// directory can be in when a login reaches it.
 func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		// declared is config.yaml's credentialStore; pin is credstore-pin;
-		// policy is what the login resolved for itself and source is
-		// where it came from; declaration is what it will write
-		// afterwards; env is RANCHER_CLI_CREDENTIAL_STORE.
-		declared, pin, policy, source, declaration, env string
-		// fileTokens seeds credentials.yaml.
-		fileTokens bool
+		// policy is what the login resolved for itself; declaration is
+		// what it will write afterwards; env is
+		// RANCHER_CLI_CREDENTIAL_STORE.
+		declared, pin, policy, declaration, env string
+		// fileTokens seeds a token for "other" in credentials.yaml;
+		// others makes "other" an entry of the directory as well;
+		// ownToken seeds the logging-in entry's own token.
+		fileTokens, others, ownToken bool
 		// keychain is what the probe answers.
 		keychain                        bool
 		readsNow, commitsTo, readsAfter string
-		moves, writesPin, notice        bool
+		changes, writesPin, notice      bool
 		// pinsFirst is the pin written in step 0 because the one on disk
 		// names a third store.
 		pinsFirst bool
@@ -37,61 +39,61 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 			name:   "a fresh directory decides, and the change is the pin alone",
 			policy: "auto", declaration: "auto", keychain: true, wantProbe: true,
 			readsNow: "", commitsTo: "keychain", readsAfter: "",
-			moves: false, writesPin: true,
+			changes: false, writesPin: true,
 		},
 		{
 			name:   "a fresh directory whose keychain cannot be used says so",
 			policy: "auto", declaration: "auto", keychain: false, wantProbe: true,
 			readsNow: "", commitsTo: "file", readsAfter: "",
-			moves: false, writesPin: true, notice: true,
+			changes: false, writesPin: true, notice: true,
 		},
 		{
-			name:   "an unpinned directory holding file tokens moves them",
-			policy: "auto", declaration: "auto", fileTokens: true, keychain: true, wantProbe: true,
+			name:   "an unpinned directory holding its own file token upgrades to the keychain",
+			policy: "auto", declaration: "auto", ownToken: true, keychain: true, wantProbe: true,
 			readsNow: "file", commitsTo: "keychain", readsAfter: "",
-			moves: true, writesPin: true,
+			changes: true, writesPin: true,
 		},
 		{
 			name:     "the auto repin: pinned file, keychain now usable",
 			declared: "auto", pin: "file", policy: "auto", keychain: true, wantProbe: true,
 			readsNow: "file", commitsTo: "keychain", readsAfter: "file",
-			moves: true, writesPin: true,
+			changes: true, writesPin: true,
 		},
 		{
 			name:     "a keychain pin is never re-probed, so a broken keychain never moves a directory to plaintext",
 			declared: "auto", pin: "keychain", policy: "auto", keychain: false,
 			readsNow: "keychain", commitsTo: "keychain", readsAfter: "keychain",
-			moves: false, writesPin: false,
+			changes: false, writesPin: false,
 		},
 		{
 			name:     "a pinned file directory whose keychain stays unusable changes nothing",
 			declared: "auto", pin: "file", policy: "auto", keychain: false, wantProbe: true,
 			readsNow: "file", commitsTo: "file", readsAfter: "file",
-			moves: false, writesPin: false,
+			changes: false, writesPin: false,
 		},
 		{
 			name:     "an explicit policy never asks the pin",
 			declared: "keychain", pin: "file", policy: "keychain",
 			readsNow: "keychain", commitsTo: "keychain", readsAfter: "keychain",
-			moves: false, writesPin: false,
+			changes: false, writesPin: false,
 		},
 		{
-			name:     "the flag moves a keychain directory to the file store",
+			name:     "the flag changes a keychain directory to the file store",
 			declared: "keychain", policy: "file", declaration: "file",
 			readsNow: "keychain", commitsTo: "file", readsAfter: "file",
-			moves: true, writesPin: false,
+			changes: true, writesPin: false,
 		},
 		{
-			name:     "the flag moves a file directory to the keychain",
+			name:     "the flag changes a file directory to the keychain",
 			declared: "file", policy: "keychain", declaration: "keychain", fileTokens: true,
 			readsNow: "file", commitsTo: "keychain", readsAfter: "keychain",
-			moves: true, writesPin: false,
+			changes: true, writesPin: false,
 		},
 		{
 			name:     "a flag equal to the declaration changes nothing",
 			declared: "file", policy: "file", declaration: "file",
 			readsNow: "file", commitsTo: "file", readsAfter: "file",
-			moves: false, writesPin: false,
+			changes: false, writesPin: false,
 		},
 		{
 			// With no pin at all, readers after the declaration write
@@ -101,38 +103,38 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 			name:     "a declared keychain directory asked for auto keeps reading the keychain, and records it",
 			declared: "keychain", policy: "auto", declaration: "auto", keychain: true, wantProbe: true,
 			readsNow: "keychain", commitsTo: "keychain", readsAfter: "keychain",
-			moves: false, writesPin: false, pinsFirst: true,
+			changes: false, writesPin: false, pinsFirst: true,
 		},
 		{
 			// The `file` pre-pin keeps readers on the file store until
-			// each entry has moved, so nothing needs writing early.
+			// the pin step, so nothing needs writing early.
 			name:     "a declared file directory with no pin asked for auto keeps its pin last",
-			declared: "file", policy: "auto", source: PolicySourceFlag, declaration: "auto", keychain: true, wantProbe: true,
+			declared: "file", policy: "auto", declaration: "auto", keychain: true, wantProbe: true,
 			readsNow: "file", commitsTo: "keychain", readsAfter: "",
-			moves: true, writesPin: true,
+			changes: true, writesPin: true,
 		},
 		{
 			name:     "a helper is a backend like any other",
 			declared: "exec:vault", policy: "exec:vault",
 			readsNow: "exec:vault", commitsTo: "exec:vault", readsAfter: "exec:vault",
-			moves: false, writesPin: false,
+			changes: false, writesPin: false,
 		},
 		{
 			// The remedy for a directory the variable and the declaration
 			// disagree about: the flag names the store, and what a reader
 			// resolves to meanwhile is the directory's own record.
 			name:     "a named store settles a directory the variable disagrees with",
-			declared: "keychain", env: "file", policy: "file", source: PolicySourceFlag, declaration: "file",
+			declared: "keychain", env: "file", policy: "file", declaration: "file",
 			readsNow: "keychain", commitsTo: "file", readsAfter: "file",
-			moves: true, writesPin: false,
+			changes: true, writesPin: false,
 		},
 		{
 			// The flag is allowed to name what the directory already
 			// says: that is an ordinary login, not a change.
 			name:     "a flag naming the store the directory already declares",
-			declared: "keychain", policy: "keychain", source: PolicySourceFlag, declaration: "keychain",
+			declared: "keychain", policy: "keychain", declaration: "keychain",
 			readsNow: "keychain", commitsTo: "keychain", readsAfter: "keychain",
-			moves: false, writesPin: false,
+			changes: false, writesPin: false,
 		},
 		{
 			// A keychain pin left behind under an explicit declaration
@@ -140,16 +142,51 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 			// declaration write and a pin step at the end, so the pin is
 			// written first, while no reader asks it.
 			name:     "a pin that names a third store is written first",
-			declared: "keychain", pin: "file", policy: "auto", source: PolicySourceFlag, declaration: "auto",
+			declared: "keychain", pin: "file", policy: "auto", declaration: "auto",
 			keychain: true, wantProbe: true,
 			readsNow: "keychain", commitsTo: "keychain", readsAfter: "keychain",
-			moves: false, writesPin: false, pinsFirst: true,
+			changes: false, writesPin: false, pinsFirst: true,
 		},
 		{
 			name: "a named store on an undeclared directory reads through the pin",
-			env:  "file", policy: "file", source: PolicySourceFlag, declaration: "file", pin: "keychain",
+			env:  "file", policy: "file", declaration: "file", pin: "keychain",
 			readsNow: "keychain", commitsTo: "file", readsAfter: "file",
-			moves: true, writesPin: false,
+			changes: true, writesPin: false,
+		},
+		{
+			// Where the credentials are is the directory's own record: the
+			// variable chooses where this login writes, and a store other
+			// than the one they are in is a change asked for by name.
+			name: "the variable on an undeclared directory is not where the credentials are",
+			env:  "keychain", policy: "keychain", declaration: "keychain", pin: "file", fileTokens: true,
+			readsNow: "file", commitsTo: "keychain", readsAfter: "keychain",
+			changes: true, writesPin: false,
+		},
+		{
+			// Another entry's credential is in the file store, so the
+			// upgrade stays there and says so rather than leave the
+			// directory reading two stores.
+			name:     "the auto upgrade stays on the file store while another entry is there",
+			declared: "auto", pin: "file", policy: "auto", keychain: true, wantProbe: true,
+			fileTokens: true, others: true,
+			readsNow: "file", commitsTo: "file", readsAfter: "file",
+			changes: false, writesPin: false, notice: true,
+		},
+		{
+			name:     "an unpinned directory stays on the file store while another entry is there, and pins it",
+			declared: "auto", policy: "auto", declaration: "auto", keychain: true, wantProbe: true,
+			fileTokens: true, others: true,
+			readsNow: "file", commitsTo: "file", readsAfter: "",
+			changes: false, writesPin: true, notice: true,
+		},
+		{
+			// Declared `auto` and pinned `file`: the pin is written first,
+			// while the declaration is still explicit.
+			name:     "a declared file directory asked for auto stays on the file store while another entry is there",
+			declared: "file", policy: "auto", declaration: "auto", keychain: true, wantProbe: true,
+			fileTokens: true, others: true,
+			readsNow: "file", commitsTo: "file", readsAfter: "file",
+			changes: false, writesPin: false, pinsFirst: true, notice: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -161,23 +198,29 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 			if tc.fileTokens {
 				require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "other", URL: "https://r.ex"}, "other-tok"))
 			}
+			if tc.ownToken {
+				require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-tok"))
+			}
 			probes := 0
 			orig := keyringUsable
 			keyringUsable = func() bool { probes++; return tc.keychain }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
-			cfg := &Config{CredentialStore: tc.declared}
-			b, err := loginBackendsOf(dir, cfg, tc.policy, tc.source, tc.declaration)
+			cfg := &Config{CredentialStore: tc.declared, Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
+			if tc.others {
+				cfg.Servers["other"] = Server{URL: "https://r.ex"}
+			}
+			b, err := loginBackendsOf(dir, cfg, "prod", tc.policy, tc.declaration)
 			require.NoError(t, err)
 
 			assert.Equal(t, tc.readsNow, b.ReadsNow, "what a reader resolves to now")
 			assert.Equal(t, tc.commitsTo, b.CommitsTo, "what the login commits to")
 			assert.Equal(t, tc.readsAfter, b.ReadsAfter, "what a reader resolves to afterwards")
-			assert.Equal(t, tc.moves, b.Moves(), "whether the other entries move")
+			assert.Equal(t, tc.changes, b.ChangesBackend(), "whether this entry's credential changes store")
 			assert.Equal(t, tc.writesPin, b.WritesPin(), "whether the change ends with a pin")
 			assert.Equal(t, tc.pinsFirst, b.PinsFirst, "whether the pin is written before the commit")
-			assert.Equal(t, tc.moves || tc.writesPin || tc.pinsFirst, b.ChangesStore())
+			assert.Equal(t, tc.changes || tc.writesPin || tc.pinsFirst, b.ChangesStore())
 			if tc.notice {
 				assert.Contains(t, b.Notice, "plaintext")
 			} else {
@@ -194,6 +237,13 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 	}
 }
 
+// loginRefusal is LoginStoreChange's refusal alone, for a test that asks
+// only whether the login may go on.
+func loginRefusal(dir string, cfg *Config, entry, policy, declaration string) error {
+	_, err := LoginStoreChange(dir, cfg, entry, policy, declaration)
+	return err
+}
+
 // TestLoginBackendsCarriesAStoreConflict asserts a directory whose
 // declaration the variable disagrees with never gets as far as a backend:
 // a login that reached one would already be wrong about where it is
@@ -202,7 +252,7 @@ func TestLoginBackendsCarriesAStoreConflict(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "file")
 	dir := t.TempDir()
 
-	_, err := loginBackendsOf(dir, &Config{CredentialStore: "keychain"}, "keychain", "", "")
+	_, err := loginBackendsOf(dir, &Config{CredentialStore: "keychain"}, "prod", "keychain", "")
 	require.Error(t, err)
 	ce, ok := errorsAsClierr(err)
 	require.True(t, ok)
@@ -289,10 +339,10 @@ func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
 			cfg := &Config{CredentialStore: tc.declared, Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
 			for _, err := range []error{
 				func() error {
-					_, err := loginBackendsOf(dir, cfg, "auto", PolicySourceFlag, "auto")
+					_, err := loginBackendsOf(dir, cfg, "prod", "auto", "auto")
 					return err
 				}(),
-				LoginStoreChange(t.Context(), dir, cfg, "prod", "auto", PolicySourceFlag, "auto"),
+				loginRefusal(dir, cfg, "prod", "auto", "auto"),
 			} {
 				require.Error(t, err)
 				ce, ok := errorsAsClierr(err)
@@ -313,7 +363,7 @@ func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
 		resetKeyringUsableCache()
 		t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
-		b, err := loginBackendsOf(dir, &Config{}, "auto", PolicySourceFlag, "auto")
+		b, err := loginBackendsOf(dir, &Config{}, "prod", "auto", "auto")
 		require.NoError(t, err)
 		assert.Equal(t, backendFile, b.CommitsTo)
 		assert.Contains(t, b.Notice, "plaintext")

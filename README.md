@@ -280,9 +280,8 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
   in as credential helpers ([CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md)).
   The directory records the store its first login used; change it with
   `rancher auth login <name> --credential-store keychain|file|auto|exec:<name>`.
-  A change into the keychain moves every entry's credential there; a change
-  into the plaintext file or a helper takes only that entry's, and asks for
-  the others to be logged out first. Precedence and probe/pin semantics:
+  A change takes only that entry's credential, and asks for the other
+  entries to be logged out of the store being left first. Precedence and probe/pin semantics:
   [REFERENCE.md](REFERENCE.md#platforms--credential-stores).
 - **Environment overrides** (precedence flag > env > file): the full table
   of available environment overrides is in

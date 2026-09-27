@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
@@ -394,4 +395,82 @@ func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
 	assert.Contains(t, res.Text, "  prod:\n")
 	assert.Contains(t, res.Text, "    credential: no stored credential\n")
 	assert.Contains(t, res.Text, "  noref:\n    provenance: derived\n    currentToken:\n      note: cannot revoke by name: no tokenRef recorded\n")
+}
+
+// TestConfigInfoReportsWhereAnUnpinnedDirectoryKeepsItsCredentials asserts
+// `config status` gives the answer every reader of an `auto` directory
+// with no pin gets, without probing or pinning: the store the entries'
+// stored credentials are in, the both-stores error as a field rather than
+// a failure, and the platform default only when nothing is stored.
+func TestConfigInfoReportsWhereAnUnpinnedDirectoryKeepsItsCredentials(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		file, keychain   map[string]string
+		inUse, errSubstr string
+		platformDefault  bool
+	}{
+		{name: "nothing stored", platformDefault: true},
+		{name: "file tokens", file: map[string]string{"prod": "a"}, inUse: "file"},
+		{name: "identity records", keychain: map[string]string{"prod": "a"}, inUse: "keychain"},
+		{name: "both", file: map[string]string{"staging": "b"}, keychain: map[string]string{"prod": "a"},
+			errSubstr: "credentials in the keychain (prod) and in the plaintext file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keyring.MockInit()
+			t.Setenv(config.EnvCredentialStore, "")
+			dir := t.TempDir()
+			cmdtest.SeedUnpinned(t, dir, tc.file, tc.keychain)
+
+			data := execConfigInfo(t, dir)
+			assert.Equal(t, "auto", data["credentialStore"])
+			if tc.inUse != "" {
+				assert.Equal(t, tc.inUse, data["credentialStoreInUse"])
+			} else {
+				assert.NotContains(t, data, "credentialStoreInUse")
+			}
+			if tc.errSubstr != "" {
+				assert.Contains(t, data["credentialStoreError"], tc.errSubstr)
+			} else {
+				assert.NotContains(t, data, "credentialStoreError")
+			}
+			if tc.platformDefault {
+				assert.Equal(t, config.PlatformKeychainLabel(), data["credentialStoreDefault"])
+			} else {
+				assert.NotContains(t, data, "credentialStoreDefault", "something is stored, so the default is moot")
+			}
+			assert.NoFileExists(t, config.PinPath(dir), "config status never writes the pin")
+		})
+	}
+}
+
+// TestSetCompletionNoteOnAnUnpinnedDirectory asserts the capability note
+// `config set-completion --network true` gives an `auto` directory with no
+// pin: the answer every reader gets, with no probe and no pin, and "log
+// in" as the way to settle a directory that has stored nothing, since a
+// read no longer pins.
+func TestSetCompletionNoteOnAnUnpinnedDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		file, keychain map[string]string
+		want           string
+	}{
+		{name: "nothing stored", want: "(log in to pin it)"},
+		{name: "file tokens", file: map[string]string{"prod": "a"}, want: "full capability (file credential store)"},
+		{name: "identity records", keychain: map[string]string{"prod": "a"}, want: "needs RANCHER_CLI_TOKEN or the file credential store"},
+		{name: "both", file: map[string]string{"staging": "b"}, keychain: map[string]string{"prod": "a"},
+			want: "live completion enabled, but this config directory has credentials in the keychain (prod)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keyring.MockInit()
+			t.Setenv(config.EnvCredentialStore, "")
+			t.Setenv(config.EnvToken, "")
+			dir := t.TempDir()
+			cmdtest.SeedUnpinned(t, dir, tc.file, tc.keychain)
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+
+			assert.Contains(t, completionCapabilityNote(dir, cfg), tc.want)
+			assert.NoFileExists(t, config.PinPath(dir))
+		})
+	}
 }

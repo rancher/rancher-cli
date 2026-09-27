@@ -463,7 +463,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 					return exit(ce)
 				}
 				// The store is the drain handle for every notice recorded
-				// outside a Result (a lazy first-pin notice, a keychain
+				// outside a Result (a loose-permission finding, a keychain
 				// degrade) - wired here so renderErr/renderResult can drain
 				// it ahead of rendering.
 				if ns, ok := store.(runtime.NoticeSource); ok {

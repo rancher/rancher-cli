@@ -196,9 +196,9 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 
 // fileStoreTokenSilent reads the login token from the file credential store
 // WITHOUT logging a warnLoosePerm warning (AC-23, finding 8). Returns "" when:
-//   - policy is not explicitly file, OR pin does not resolve to file (AC-5:
-//     unpinned auto does NOT qualify - we only read when the user explicitly
-//     chose file storage or has pinned the store to file)
+//   - the directory does not read the file store: the policy is not file,
+//     the pin does not name file, and for an unpinned auto directory what
+//     its entries have stored is not the file store (config.UnpinnedStoreOf)
 //   - credentials.yaml is absent or unreadable
 //   - no stored server URL matches effectiveURL (round-2 finding 3: cross-server
 //     URL override must not send server A's token to server B)
@@ -227,8 +227,18 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 		return ""
 	}
 	pin := config.ReadPin(dir)
-	// AC-5: explicit file policy OR pin resolved to file - not unpinned auto.
 	isFile := policy == "file" || (policy == "auto" && pin == "file")
+	if policy == "auto" && pin == "" {
+		// The same answer every reader of an unpinned directory gets:
+		// file tokens and no identity record read the file store, and
+		// credentials in both stores offer nothing.
+		u, uerr := config.UnpinnedStoreOf(dir, cfg)
+		if uerr != nil {
+			completionDebugf("file store skipped: %v", uerr)
+			return ""
+		}
+		isFile = u.Row == config.UnpinnedFile
+	}
 	if !isFile {
 		completionDebugf("file store skipped: credential store policy=%s pin=%q (needs file)", policy, pin)
 		return ""

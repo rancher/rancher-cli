@@ -110,7 +110,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "ttl", Type: "string", Desc: "session-token lifetime `duration`, e.g. 90d"},
 			{Name: "no-verify", Type: "bool", Desc: "store the token without an authenticated round-trip against the server"},
-			{Name: "credential-store", Type: "string", Desc: "credential `store` this directory keeps its credentials in: auto, keychain, file or exec:<name>; a change into the keychain moves every entry's credential there, a change into file or a helper needs the other entries logged out first"},
+			{Name: "credential-store", Type: "string", Desc: "credential `store` this directory keeps its credentials in: auto, keychain, file or exec:<name>; a change of store takes only this entry's credential and needs the other entries logged out of the store being left first"},
 		},
 		Examples: []string{
 			"rancher auth login prod",
@@ -367,12 +367,20 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		return runtime.Result{}, err
 	}
 
-	out, err := register.CommitCreateUnderLock(ctx, l.dir, name, probe)
+	// The policy was checked on the way in; it names the helper, if any,
+	// whose orphan under the new name the registration also removes.
+	policy, _, _ := config.LoginPolicy(in.String("credential-store"), cfg0.CredentialStore)
+	out, err := register.CommitCreateUnderLock(ctx, l.dir, name, policy, probe)
 	if err != nil {
 		return runtime.Result{}, err
 	}
 
-	return l.authenticateDelegated(ctx, in, p, out.Name, out.CanonicalURL, out.CASelector, probe.CABytes, probe.VersionWarning, out.Created)
+	var early []string
+	if probe.VersionWarning != "" {
+		early = append(early, probe.VersionWarning)
+	}
+	early = append(early, out.Notices...)
+	return l.authenticateDelegated(ctx, in, p, out.Name, out.CanonicalURL, out.CASelector, probe.CABytes, early, out.Created)
 }
 
 // authenticatePlain authenticates an already-registered entry: no
@@ -380,19 +388,20 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 // preflight itself, and an auth failure is final - there is no unlocked
 // registration window behind it to recheck for staleness.
 func (l loginCmd) authenticatePlain(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caFingerprint string) (runtime.Result, error) {
-	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, "", "", caFingerprint, false, false)
+	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, "", nil, caFingerprint, false, false)
 }
 
 // authenticateDelegated authenticates immediately after this login's own
-// delegated registration committed: caBytes and versionWarning are already
-// known from that registration's probe (re-running the preflight would
-// repeat the same network round trip, and dropping versionWarning here
-// would silently lose it - registration ran it, login must still surface
-// it), and a failure gets the stale-hint recheck scoped to the
+// delegated registration committed: caBytes and the warnings (the probe's
+// version warning, and any credential the registration removed from under
+// the new name) are already known from that registration (re-running the
+// preflight would repeat the same network round trip, and dropping the
+// warnings here would silently lose them - registration produced them,
+// login must still surface them), and a failure gets the stale-hint recheck scoped to the
 // just-closed unlocked registration window. added is threaded straight
 // into LoginResult.
-func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caBytes, versionWarning string, added bool) (runtime.Result, error) {
-	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, caBytes, versionWarning, "", true, added)
+func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caBytes string, warnings []string, added bool) (runtime.Result, error) {
+	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, caBytes, warnings, "", true, added)
 }
 
 // authenticateAndStore runs the auth flow against (name, serverURL,
@@ -402,30 +411,32 @@ func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p
 // for their caller - no call site passes a bare bool literal.
 func (l loginCmd) authenticateAndStore(
 	ctx context.Context, in runtime.Input, p runtime.Prompter,
-	name, serverURL, caSelector, caBytes, versionWarning, caFingerprint string,
+	name, serverURL, caSelector, caBytes string, earlyWarnings []string, caFingerprint string,
 	delegated, added bool,
 ) (runtime.Result, error) {
 	// The credential store is resolved before the sign-in, not under the
 	// commit lock: the declaration the commit writes has to be the one this
 	// login resolved against, and a variable that disagrees with the
 	// directory must stop the login before it asks anyone to authenticate.
+	// Every refusal here keeps the early warnings: a registration that
+	// removed a credential left under the new name has already done so.
 	declCfg, err := config.Load(config.FilePath(l.dir))
 	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeGeneric, "reading config: "+err.Error())
+		return runtime.Result{}, config.WithNotices(clierr.New(clierr.CodeGeneric, "reading config: "+err.Error()), earlyWarnings)
 	}
 	observedDeclaration := declCfg.CredentialStore
 	requested := in.String("credential-store")
-	policy, policySource, policyErr := config.LoginPolicy(requested, observedDeclaration)
+	policy, _, policyErr := config.LoginPolicy(requested, observedDeclaration)
 	if policyErr != nil {
-		return runtime.Result{}, policyErr
+		return runtime.Result{}, config.WithNotices(policyErr, earlyWarnings)
 	}
 	// What this login would do to the directory's credential store,
 	// answered before anyone is asked to authenticate: a change that
 	// cannot be made, or one that cannot start while another is
 	// unfinished, costs no server-issued token this way.
-	if serr := config.LoginStoreChange(ctx, l.dir, declCfg, name,
-		policy, policySource, config.DeclarationFor(observedDeclaration, requested, policy)); serr != nil {
-		return runtime.Result{}, serr
+	if _, serr := config.LoginStoreChange(l.dir, declCfg, name,
+		policy, config.DeclarationFor(observedDeclaration, requested, policy)); serr != nil {
+		return runtime.Result{}, config.WithNotices(serr, earlyWarnings)
 	}
 
 	isHTTPS := strings.HasPrefix(serverURL, "https://")
@@ -481,9 +492,7 @@ func (l loginCmd) authenticateAndStore(
 	// the state reached and keeps the warnings that belong to steps that
 	// did happen.
 	st := token.LoginStates{Config: clierr.ConfigNotWritten}
-	if versionWarning != "" {
-		st.Warnings = append(st.Warnings, versionWarning)
-	}
+	st.Warnings = append(st.Warnings, earlyWarnings...)
 	cred, authErr := resolveLoginToken(ctx, serverURL, caBytes, l.idpClient, in, p)
 	bearer := cred.Token
 	viaProvider := cred.Provenance != token.ProvenanceUserSupplied
@@ -535,7 +544,7 @@ func (l loginCmd) authenticateAndStore(
 		Name: name, CanonicalURL: serverURL,
 		Provenance: cred.Provenance, TokenRef: cred.Ref, TokenUserID: cred.UserID,
 		Bearer: bearer, ExpiresAt: cred.ExpiresAt,
-		Policy: policy, PolicySource: policySource, ObservedDeclaration: observedDeclaration,
+		Policy: policy, ObservedDeclaration: observedDeclaration,
 		Declaration:  config.DeclarationFor(observedDeclaration, requested, policy),
 		OpenStore:    l.newStore,
 		PendingTrust: pendingCA,

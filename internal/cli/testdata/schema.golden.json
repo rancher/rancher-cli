@@ -577,7 +577,7 @@
           "type": "bool"
         },
         {
-          "desc": "credential `store` this directory keeps its credentials in: auto, keychain, file or exec:<name>; a change into the keychain moves every entry's credential there, a change into file or a helper needs the other entries logged out first",
+          "desc": "credential `store` this directory keeps its credentials in: auto, keychain, file or exec:<name>; a change of store takes only this entry's credential and needs the other entries logged out of the store being left first",
           "name": "credential-store",
           "type": "string"
         }
@@ -1033,7 +1033,7 @@
     {
       "auth": false,
       "commandType": "local",
-      "desc": "Reports the resolved config file path (and whether it exists), the current server (empty when not logged in), and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the probed backend pin when present, or, before any pin exists, credentialStoreDefault, the OS-native keychain auto will try first on this platform (named from the platform alone, never probed). Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). Also reports tokenReuse and, under servers, every entry whose current token is CLI-owned or that names superseded tokens: provenance, owner, expiry, logged-out state, and for each token the recovery sequence that revokes it. The first place to check when tab-completion shows no candidates.",
+      "desc": "Reports the resolved config file path (and whether it exists), the current server (empty when not logged in), and the effective credential-store policy with its source: the RANCHER_CLI_CREDENTIAL_STORE environment variable, the config file's credentialStore key, or the built-in default (auto). Under auto, also reports the backend pin a login recorded when present. With no pin it reports where the entries' stored credentials are: credentialStoreInUse, keychain when an entry has an identity record or file when only credentials.yaml holds them; credentialStoreError when they are in both, which every credential command refuses; or, when nothing is stored, credentialStoreDefault, the OS-native keychain a login will try first on this platform (named from the platform alone, never probed). Also reports a nested completion section (network: live API completion on/off; timeout: effective per-TAB budget after clamping/default; timeoutRaw: only when the stored value was clamped or unparseable). Also reports tokenReuse and, under servers, every entry whose current token is CLI-owned or that names superseded tokens: provenance, owner, expiry, logged-out state, and for each token the recovery sequence that revokes it. The first place to check when tab-completion shows no candidates.",
       "examples": [
         "rancher config status"
       ],
@@ -10237,7 +10237,7 @@
     },
     {
       "code": "CREDENTIAL_TRANSITION_INCOMPLETE",
-      "desc": "a change of this directory's credential store has work left: some credentials are still in the backend it moved away from, so a second store change is refused and so is a login for an entry whose credential the change is still carrying; a logout or a delete proceeds and converts the unfinished work to cleanup",
+      "desc": "a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet, so a second store change is refused until it is; other commands proceed",
       "exit": 3
     },
     {

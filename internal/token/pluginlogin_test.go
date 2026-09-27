@@ -569,14 +569,28 @@ func TestPluginLoginPlaintextDisclosurePrecedesTheLogin(t *testing.T) {
 }
 
 // TestPluginLoginFirstUseReportsTheStoreItPins asserts the store-selection
-// disclosure survives the clean first use. Under an auto policy with no pin
-// and no matching entry, nothing resolves a backend before the plugin login
-// takes the flock, so the open inside it is the probe that pins: its notice
-// must reach the result's warnings rather than being discarded.
+// notice survives the clean first use. Under an auto policy with no pin
+// and no matching entry, the plugin's own read finds nothing and pins
+// nothing; the login decides, and its pin step - the one write of the pin
+// - says so in the result's warnings.
 func TestPluginLoginFirstUseReportsTheStoreItPins(t *testing.T) {
 	keyring.MockInit()
 	config.ResetKeyringUsableCacheForTest(t)
-	x := newPluginFixture(t, true, testrancher.Options{})
+	var (
+		mu             sync.Mutex
+		dir            string
+		pinnedAtSignIn = "unset"
+	)
+	x := newPluginFixture(t, true, testrancher.Options{RequestHook: func(r *http.Request) {
+		if r.URL.Path == "/v1-public/login" {
+			mu.Lock()
+			defer mu.Unlock()
+			pinnedAtSignIn = config.ReadPin(dir)
+		}
+	}})
+	mu.Lock()
+	dir = x.dir
+	mu.Unlock()
 	cfg, err := config.Load(config.FilePath(x.dir))
 	require.NoError(t, err)
 	cfg.CredentialStore = "auto"
@@ -585,8 +599,125 @@ func TestPluginLoginFirstUseReportsTheStoreItPins(t *testing.T) {
 
 	res, err := x.getToken(t, "c-test", "n", localPrompter())
 	require.NoError(t, err)
+	mu.Lock()
+	assert.Empty(t, pinnedAtSignIn, "the plugin's first read no longer pins before its own login does")
+	mu.Unlock()
 	assert.Contains(t, res.Warnings, config.NoticeFirstPinKeychain)
 	assert.Equal(t, "keychain", config.ReadPin(x.dir))
+}
+
+// TestPluginLoginOnABareInstallDisclosesPlaintextBeforeTheSignIn asserts
+// the disclosure no read-path pin write can give any more. On a bare
+// install whose keychain cannot be used, the plugin's store decision is
+// the login's own answer - its memoized probe - so the plaintext file is
+// named before the sign-in, the commit reaches it, and the pin is the
+// login's to write afterwards.
+func TestPluginLoginOnABareInstallDisclosesPlaintextBeforeTheSignIn(t *testing.T) {
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+	config.ResetKeyringUsableCacheForTest(t)
+	var order []string
+	var mu sync.Mutex
+	x := newPluginFixture(t, true, testrancher.Options{RequestHook: func(r *http.Request) {
+		if r.URL.Path == "/v1-public/login" {
+			mu.Lock()
+			order = append(order, "login")
+			mu.Unlock()
+		}
+	}})
+	cfg, err := config.Load(config.FilePath(x.dir))
+	require.NoError(t, err)
+	cfg.CredentialStore = ""
+	require.NoError(t, cfg.Write())
+
+	var errw bytes.Buffer
+	p := noticeOrder{Prompter: ui.New(&errw, newLineReader("e2e-user", "e2e-pass"), false, true), record: func(msg string) {
+		if strings.Contains(msg, config.CredentialsFilePath(x.dir)) {
+			mu.Lock()
+			order = append(order, "disclosure")
+			mu.Unlock()
+		}
+	}}
+	_, err = x.getToken(t, "c-test", "n", p)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"disclosure", "login"}, order)
+	assert.Equal(t, "file", config.ReadPin(x.dir), "the login's pin step wrote it")
+	after, lerr := config.Load(config.FilePath(x.dir))
+	require.NoError(t, lerr)
+	tok, gerr := config.NewFileStore(x.dir).GetToken(config.ServerRef{Name: config.ExecLoginEntryName(x.url), URL: after.Servers[config.ExecLoginEntryName(x.url)].URL})
+	require.NoError(t, gerr)
+	assert.NotEmpty(t, tok, "the credential is in the file it disclosed")
+}
+
+// TestPluginLoginDecidesForTheEntryItWillWrite asserts the store decision
+// before the sign-in is made for the entry the login will write. The
+// derived name is already registered at another URL, so the login writes
+// it with a suffix, and the entry holding the name is then another entry
+// with a file credential: the directory stays on the file store. Deciding
+// for the unsuffixed name would miss that, give no disclosure, and have
+// every attempt aborted after its sign-in for an undisclosed plaintext
+// commit.
+func TestPluginLoginDecidesForTheEntryItWillWrite(t *testing.T) {
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
+	var order []string
+	var mu sync.Mutex
+	x := newPluginFixture(t, true, testrancher.Options{RequestHook: func(r *http.Request) {
+		if r.URL.Path == "/v1-public/login" {
+			mu.Lock()
+			order = append(order, "login")
+			mu.Unlock()
+		}
+	}})
+	taken := config.ExecLoginEntryName(x.url)
+	cfg, err := config.Load(config.FilePath(x.dir))
+	require.NoError(t, err)
+	cfg.CredentialStore = "auto"
+	cfg.Servers[taken] = config.Server{URL: "https://elsewhere.ex"}
+	require.NoError(t, cfg.Write())
+	require.NoError(t, config.WritePin(x.dir, "file"))
+	require.NoError(t, config.NewFileStore(x.dir).SetToken(config.ServerRef{Name: taken, URL: "https://elsewhere.ex"}, "elsewhere-tok"))
+
+	var errw bytes.Buffer
+	p := noticeOrder{Prompter: ui.New(&errw, newLineReader("e2e-user", "e2e-pass"), false, true), record: func(msg string) {
+		if strings.Contains(msg, config.CredentialsFilePath(x.dir)) {
+			mu.Lock()
+			order = append(order, "disclosure")
+			mu.Unlock()
+		}
+	}}
+	_, err = x.getToken(t, "c-test", "n", p)
+	require.NoError(t, err, "the login goes through")
+	mu.Lock()
+	assert.Equal(t, []string{"disclosure", "login"}, order, "the plaintext file is named before the sign-in")
+	mu.Unlock()
+	tok, gerr := config.NewFileStore(x.dir).GetToken(config.ServerRef{Name: taken + "-2", URL: x.url})
+	require.NoError(t, gerr)
+	assert.NotEmpty(t, tok, "the credential is in the file it disclosed, under the suffixed entry")
+}
+
+// TestPluginLoginRefusesAnOrphanInAnUnreachableKeychainBeforeTheSignIn
+// asserts the plugin-created login's check before the sign-in covers the
+// credential it would remove under the lock: one stored under the entry it
+// creates, in a keychain this process cannot reach, refuses with the way
+// out before anyone is asked to sign in.
+func TestPluginLoginRefusesAnOrphanInAnUnreachableKeychainBeforeTheSignIn(t *testing.T) {
+	keyring.MockInit()
+	config.ResetKeyringUsableCacheForTest(t)
+	x := newPluginFixture(t, true, testrancher.Options{})
+	entry := config.ExecLoginEntryName(x.url)
+	ks, _, err := config.OpenResolvedStore("keychain", x.dir)
+	require.NoError(t, err)
+	require.NoError(t, ks.SetToken(config.ServerRef{Name: entry, URL: x.url}, "orphan"))
+	keyring.MockInitWithError(errors.New("dbus: no session bus"))
+	t.Cleanup(keyring.MockInit)
+
+	_, err = x.getToken(t, "c-test", "n", localPrompter())
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "make the keychain reachable, or use a different --config")
+	assert.Zero(t, x.f.LoginCount(), "nobody was asked to sign in")
 }
 
 type noticeOrder struct {
@@ -969,7 +1100,7 @@ func TestThePluginLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T)
 	cfg.Servers["other"] = config.Server{URL: "https://other.ex"}
 	require.NoError(t, cfg.Write())
 	require.NoError(t, config.WritePin(x.dir, "file"))
-	seedUnfinishedMove(t, x.dir, "other")
+	seedUnfinishedDelete(t, x.dir, "other")
 
 	_, err = x.getToken(t, "c-test", "n", localPrompter())
 	require.Error(t, err)
@@ -979,42 +1110,53 @@ func TestThePluginLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T)
 	assert.Zero(t, x.f.LoginCount(), "nobody was asked to sign in")
 }
 
-// TestThePluginLoginRefusesAStoreChangeBeforeTheSignIn asserts the same
-// check on the plugin path, where it matters more: kubectl spawns this
-// with a terminal only sometimes, and a refusal after the sign-in would
-// have cost an interactive login and a server-issued token for a change
-// that was never going to be made.
-func TestThePluginLoginRefusesAStoreChangeBeforeTheSignIn(t *testing.T) {
+// TestThePluginLoginRefusesALeftoverMoveBeforeTheSignIn asserts what a
+// change an earlier build recorded with a move step does to the plugin:
+// the record is refused as one this release cannot read, before anyone is
+// asked to sign in, and the error names the file and the way to set it
+// aside. kubectl spawns this with a terminal only sometimes, and a refusal
+// after the sign-in would have cost an interactive login and a
+// server-issued token.
+func TestThePluginLoginRefusesALeftoverMoveBeforeTheSignIn(t *testing.T) {
 	keyring.MockInit()
 	config.ResetKeyringUsableCacheForTest(t)
 	x := newPluginFixture(t, true, testrancher.Options{})
 
-	// A change is unfinished, and its remaining move names the entry this
-	// login would write.
 	cfg, err := config.Load(config.FilePath(x.dir))
 	require.NoError(t, err)
 	entry := config.ExecLoginEntryName(x.url)
 	cfg.Servers[entry] = config.Server{URL: x.url}
 	require.NoError(t, cfg.Write())
-	seedUnfinishedMove(t, x.dir, entry)
+	seedChange(t, x.dir, "- kind: move\n  entry: "+entry+"\n  source: file\n  destination: keychain\n"+
+		"  verificationId: fedcba9876543210fedcba9876543210\n"+
+		"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"+
+		"  destAccountId: 0123456789abcdef0123456789abcdef\n")
 
 	_, err = x.getToken(t, "c-test", "n", localPrompter())
-	require.Error(t, err)
-	require.ErrorContains(t, err, entry)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, config.TransitionPath(x.dir))
+	require.ErrorContains(t, err, "of no known kind")
+	require.ErrorContains(t, err, "move it aside to abandon the change")
 	assert.Zero(t, x.f.LoginCount(), "nobody was asked to sign in")
 }
 
-// seedUnfinishedMove records a change that cannot finish, naming entry,
-// and puts it into effect.
-func seedUnfinishedMove(t *testing.T, dir, entry string) {
+// seedUnfinishedDelete records a change that has not finished - the delete
+// of an entry's old copy - and puts it into effect.
+func seedUnfinishedDelete(t *testing.T, dir, entry string) {
+	t.Helper()
+	seedChange(t, dir, "- kind: delete\n  entry: "+entry+"\n  source: file\n"+
+		"  verificationId: fedcba9876543210fedcba9876543210\n"+
+		"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n")
+}
+
+// seedChange writes a change record with the given steps, raw, and names
+// it in config.yaml.
+func seedChange(t *testing.T, dir, steps string) {
 	t.Helper()
 	id := "0123456789abcdef0123456789abcdef"
-	vid := "fedcba9876543210fedcba9876543210"
-	digest := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	manifest := "version: 1\nid: " + id + "\nsteps:\n" +
-		"- kind: move\n  entry: " + entry + "\n  source: file\n  destination: keychain\n" +
-		"  verificationId: " + vid + "\n  credentialDigest: " + digest + "\n" +
-		"  destAccountId: " + id + "\n"
+	manifest := "version: 1\nid: " + id + "\nsteps:\n" + steps
 	require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte(manifest), 0o600))
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)

@@ -595,7 +595,7 @@ type keyringStore struct {
 	// address an entry by its name, which every directory on the machine
 	// spells the same way.
 	dir     string
-	pinHint string // non-empty when the pin, not a declaration, chose the keychain
+	pinHint string // non-empty when `auto`, not a declaration, chose the keychain
 	// notices is the SAME buffer as cache's (both constructed from one
 	// newNoticeBuffer() call below) - one buffer, not two merged on drain,
 	// so DrainNotices sees a loose-permission notice from the wrapped file
@@ -604,31 +604,16 @@ type keyringStore struct {
 	notices *noticeBuffer
 }
 
-// keychainPinHint is the remediation appended to every keyring error of a
-// directory whose keychain was chosen by the pin rather than declared: a
-// pinned-but-unusable keychain has to fail with a way out, and a policy
-// that names the keychain outright has nothing to undo. One spelling, so
-// the store's errors and the package-level delete path cannot drift.
-func keychainPinHint(dir string) string {
-	return fmt.Sprintf(" (credential store pinned to keychain at %s; delete the pin to re-probe, or set %s=file)", PinPath(dir), EnvCredentialStore)
-}
-
-// pinHintFor is keychainPinHint for a caller that has only the resolved
-// policy and pin: empty unless the pin is what chose the keychain.
-func pinHintFor(dir, policy, pin string) string {
-	if policy == "auto" && pin == "keychain" {
-		return keychainPinHint(dir)
-	}
-	return ""
-}
-
-// newPinnedKeyringStore builds a keyring-backed store. When pinned is true the
-// store carries a remediation hint appended to every keyring error, so a
-// pinned-but-unusable keychain fails loudly with a way out instead of silently.
+// newPinnedKeyringStore builds a keyring-backed store. When pinned is
+// true - `auto` chose the keychain, by the pin or by what an unpinned
+// directory has stored - the store carries a remediation hint appended to
+// every keyring error, so an unusable keychain fails loudly with a way
+// out instead of silently. A policy that names the keychain outright has
+// nothing to add.
 func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 	hint := ""
 	if pinned {
-		hint = keychainPinHint(dir)
+		hint = readerKeychainHint()
 	}
 	nb := &noticeBuffer{}
 	return &keyringStore{cache: newFileStore(dir, nb), dir: dir, pinHint: hint, notices: nb}
@@ -664,7 +649,11 @@ func keyringSet(account, token string) error {
 	if keyringObserverFn != nil {
 		keyringObserverFn("set")
 	}
-	return keyringBackend.Set(keyringService, account, token)
+	if err := keyringBackend.Set(keyringService, account, token); err != nil {
+		return err
+	}
+	afterWrite("keychain set")
+	return nil
 }
 
 // keyringDelete removes one account, counting the operation.
@@ -672,7 +661,11 @@ func keyringDelete(account string) error {
 	if keyringObserverFn != nil {
 		keyringObserverFn("delete")
 	}
-	return keyringBackend.Delete(keyringService, account)
+	if err := keyringBackend.Delete(keyringService, account); err != nil {
+		return err
+	}
+	afterWrite("keychain delete")
+	return nil
 }
 
 // credentialReplacedError says the keychain slot holds a credential this
@@ -909,15 +902,16 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 	// The keychain step runs when this directory has an identity record for
 	// the entry: the record is the only thing that names the account, so
 	// without one nothing was ever stored there under this directory's
-	// identity and there is nothing to reach. Whether the directory
-	// declares the keychain decides only how a keychain it cannot reach is
-	// reported: loudly for the store the directory declares, as a warning
-	// that keeps the record for one it merely has a leftover record in.
-	policyName, pin, backend, perr := ResolvedBackend(dir, policy)
+	// identity and there is nothing to reach. Whether the directory keeps
+	// its credentials in the keychain decides only how a keychain it cannot
+	// reach is reported: loudly for the store the directory uses, as a
+	// warning that keeps the record for one it merely has a leftover record
+	// in.
+	usesKeychain, hint, perr := keychainIsTheStore(dir, policy)
 	if perr != nil {
 		return nil, nil, perr
 	}
-	deletedFromKeychain, keychainNotices, kerr := deleteKeychainCredential(ctx, dir, ref, backend == "keychain", pinHintFor(dir, policyName, pin))
+	deletedFromKeychain, keychainNotices, kerr := deleteKeychainCredential(ctx, dir, ref, usesKeychain, hint)
 	notices = append(notices, keychainNotices...)
 	if kerr != nil {
 		errs = append(errs, kerr)
@@ -976,6 +970,42 @@ func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy str
 	// credentials.yaml, say) would otherwise be drained by no one.
 	notices = append(notices, fs.DrainNotices()...)
 	return from, notices, errors.Join(errs...)
+}
+
+// keychainIsTheStore reports whether this directory keeps its credentials
+// in the keychain, and the hint its keychain errors carry. Under `auto`
+// the pin answers, and without a pin what the directory has stored does:
+// any identity record means the keychain, whether or not file tokens sit
+// beside it, and the both-stores error is never raised here - a logout is
+// its remedy and has to be able to run. The config is loaded only in that
+// last case, for the entries it names.
+func keychainIsTheStore(dir, policy string) (bool, string, error) {
+	p, err := EffectivePolicy(policy)
+	if err != nil {
+		return false, "", err
+	}
+	switch p {
+	case backendKeychain:
+		return true, "", nil
+	case "auto":
+	default:
+		return false, "", nil
+	}
+	switch ReadPin(dir) {
+	case backendKeychain:
+		return true, readerKeychainHint(), nil
+	case backendFile:
+		return false, "", nil
+	}
+	cfg, err := Load(FilePath(dir))
+	if err != nil {
+		return false, "", err
+	}
+	u, err := UnpinnedStoreOf(dir, cfg)
+	if err != nil || !u.UsesKeychain() {
+		return false, "", err
+	}
+	return true, readerKeychainHint(), nil
 }
 
 // deleteHelperRecords erases every record through eraseHelperCredential:
@@ -1138,31 +1168,33 @@ func ServerHost(raw string) string {
 	return raw
 }
 
-// OpenStore selects a store by policy. policy is the config-file-level
-// declaration; RANCHER_CLI_CREDENTIAL_STORE, when set, outranks it - same
-// precedence as everywhere else env beats config - so an explicit "keychain"
-// argument here can still resolve to the file backend under that env var.
-// Explicit policies ("keychain"/"file") are honored directly and never
-// consult the pin. "auto" reads the pin; when unpinned it probes ONCE, pins
-// the outcome, and produces a notice - discarded here (use OpenStoreWithNotice
-// on the login path, or NewLazyStore on the lazy path, to route the notice).
-// Unknown policies are hard errors (CS-6).
+// OpenStore selects a store the way a reader of the directory does.
+// policy is the config-file-level declaration;
+// RANCHER_CLI_CREDENTIAL_STORE, when set, outranks it - same precedence as
+// everywhere else env beats config - so an explicit "keychain" argument
+// here can still resolve to the file backend under that env var. Explicit
+// policies ("keychain"/"file") are honored directly and never consult the
+// pin. "auto" reads the pin, and with none, what the directory's entries
+// have stored (UnpinnedStoreOf), for which it loads config.yaml. Nothing
+// is probed and nothing is written. Unknown policies are hard errors
+// (CS-6). A command that already holds its config uses OpenStoreFor.
 func OpenStore(policy, dir string) (CredStore, error) {
-	store, _, err := OpenStoreWithNotice(policy, dir)
-	return store, err
-}
-
-// OpenStoreWithNotice is like OpenStore but also returns any first-pin notice
-// as a plain string so callers that own a result pipeline (e.g. auth login)
-// can route it into their warnings envelope rather than writing directly to
-// stderr. An empty string means no notice was produced (already pinned, or an
-// explicit policy that never probes).
-func OpenStoreWithNotice(policy, dir string) (CredStore, string, error) {
 	resolved, err := EffectivePolicy(policy)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	return openStoreResolved(resolved, dir)
+	return openStoreResolved(resolved, dir, func() (*Config, error) { return Load(FilePath(dir)) })
+}
+
+// OpenStoreFor is OpenStore for a caller that has loaded the directory's
+// config already: the policy is its declaration, and the entries an
+// unpinned `auto` directory is judged by are its entries.
+func OpenStoreFor(cfg *Config, dir string) (CredStore, error) {
+	resolved, err := EffectivePolicy(cfg.CredentialStore)
+	if err != nil {
+		return nil, err
+	}
+	return openStoreResolved(resolved, dir, func() (*Config, error) { return cfg, nil })
 }
 
 // execHelperName extracts the helper name from an "exec:<name>" policy value.
@@ -1184,9 +1216,11 @@ func CheckStorePolicy(p string) error { return checkPolicy(p) }
 // file, keychain or exec:<name>. It applies neither the variable nor the
 // pin, and writes no pin, which is what the login path needs - the login
 // resolves the backend itself and the pin it ends with is written by its
-// own last step, after the credential commits.
+// own last step, after the credential commits. The notice it returns is
+// always empty; the login's decision owns every disclosure.
 func OpenResolvedStore(backend, dir string) (CredStore, string, error) {
-	return openStoreResolved(backend, dir)
+	store, err := openStoreResolved(backend, dir, func() (*Config, error) { return &Config{}, nil })
+	return store, "", err
 }
 
 // checkPolicy returns CS-6's error for an unknown effective policy value p.
@@ -1214,45 +1248,45 @@ func checkPolicy(p string) error {
 // policy opened is the policy validated even if the environment changes
 // between construction and first use.
 //
-// The second return value is a non-empty user-visible notice when a first
-// pin is written during this call (keychain or plaintext-fallback). Callers
-// that own a result pipeline route it through warnings; callers that do not
-// (e.g. the lazy-store resolution path) write it to stderr as "# warning: …".
-func openStoreResolved(p, dir string) (CredStore, string, error) {
+// It never probes the keychain and never writes the pin: only a login
+// decides where a directory keeps its credentials. An `auto` directory
+// with no pin is answered from what its entries have stored, and entries
+// is called only then. Nothing stored opens the file store, whose read
+// answers "not logged in"; credentials in both stores are an error.
+func openStoreResolved(p, dir string, entries func() (*Config, error)) (CredStore, error) {
 	if err := checkPolicy(p); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if name, ok := execHelperName(p); ok {
-		return newExecStore(name, dir), "", nil
+		return newExecStore(name, dir), nil
 	}
 	switch p {
 	case "file":
-		return NewFileStore(dir), "", nil
+		return NewFileStore(dir), nil
 	case "keychain":
-		return newPinnedKeyringStore(dir, false), "", nil
-	default: // "auto"
-		switch ReadPin(dir) {
-		case "keychain":
-			return newPinnedKeyringStore(dir, true), "", nil
-		case "file":
-			return NewFileStore(dir), "", nil
-		}
-		if keyringUsableOnce() {
-			if err := WritePin(dir, "keychain"); err != nil {
-				return nil, "", fmt.Errorf("writing credential store pin: %w", err)
-			}
-			return newPinnedKeyringStore(dir, true), NoticeFirstPinKeychain, nil
-		}
-		if err := WritePin(dir, "file"); err != nil {
-			return nil, "", fmt.Errorf("writing credential store pin: %w", err)
-		}
-		// openStoreResolved cannot propagate to a result envelope from the lazy
-		// path (resolution is a side-effect of the first credential call, outside
-		// any pipeline Result). Callers that have an envelope get the notice as a
-		// return value instead; a login never reaches this branch, because it
-		// resolves the backend itself and owns the same disclosure.
-		return NewFileStore(dir), plaintextStoreNotice(dir), nil
+		return newPinnedKeyringStore(dir, false), nil
 	}
+	switch ReadPin(dir) {
+	case "keychain":
+		return newPinnedKeyringStore(dir, true), nil
+	case "file":
+		return NewFileStore(dir), nil
+	}
+	cfg, err := entries()
+	if err != nil {
+		return nil, err
+	}
+	u, err := UnpinnedStoreOf(dir, cfg)
+	if err != nil {
+		return nil, err
+	}
+	switch u.Row {
+	case UnpinnedKeychain:
+		return newPinnedKeyringStore(dir, true), nil
+	case UnpinnedBoth:
+		return nil, u.Err()
+	}
+	return NewFileStore(dir), nil
 }
 
 // keyringProbeTimeout bounds keyringUsable: on macOS the underlying `security`
@@ -1293,9 +1327,9 @@ var keyringUsable = func() bool {
 var keyringUsableOnceFn = sync.OnceValue(func() bool { return keyringUsable() })
 
 // keyringUsableOnce runs keyringUsable at most once per process and caches
-// the result. A CLI invocation is one process: the read path's auto-probe
-// and the probe a login makes to resolve its own backend would otherwise
-// pay the (bounded, keyringProbeTimeout-worst-case) cost twice
+// the result. A CLI invocation is one process: a login's check before its
+// sign-in and the same login's backend resolution under the lock would
+// otherwise pay the (bounded, keyringProbeTimeout-worst-case) cost twice
 // sequentially on an unusable keychain. keyringUsable itself stays the
 // swappable seam for tests that exercise it directly (the timeout test);
 // every other caller observes the memoized result.

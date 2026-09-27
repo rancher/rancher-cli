@@ -1,8 +1,8 @@
 package config
 
 import (
+	"os"
 	"testing"
-	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
@@ -12,7 +12,7 @@ import (
 
 // planFixture is a directory with two entries beside the one logging in,
 // which is the case a store change has to answer for: the operator named
-// one entry, and the others must not be logged out behind their back.
+// one entry, and the others must not be changed behind their back.
 func planFixture(t *testing.T) (dir string, cfg *Config) {
 	t.Helper()
 	keyring.MockInit()
@@ -27,150 +27,175 @@ func planFixture(t *testing.T) (dir string, cfg *Config) {
 	return dir, cfg
 }
 
-// TestPlanTransitionMovesTheOtherEntries asserts what a store change does
-// to entries the operator did not name: it moves them, one step each, and
-// says which. Logging them out would destroy logins nobody asked about.
-func TestPlanTransitionMovesTheOtherEntries(t *testing.T) {
+// TestAStoreChangeRefusesWhileAnotherEntryHoldsAFileCredential asserts
+// the rule for the file store: a login that takes its own credential out
+// of credentials.yaml leaves the others where they are, so it is refused
+// while any of them is still there, naming each one. One entry gets the
+// logout as a runnable hint; several get their names in the message.
+func TestAStoreChangeRefusesWhileAnotherEntryHoldsAFileCredential(t *testing.T) {
 	dir, cfg := planFixture(t)
 	store := NewFileStore(dir)
+	require.NoError(t, store.SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-tok"))
 	require.NoError(t, store.SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
-	require.NoError(t, store.SetToken(ServerRef{Name: "qa", URL: "https://q.ex"}, "qa-tok"))
 
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", backendFile, backendKeychain, "file")
-	require.NoError(t, err)
-	require.NotNil(t, plan)
-	assert.Equal(t, []string{"qa", "staging"}, plan.Moved)
-	require.Len(t, plan.manifest.Steps, 2)
-	for _, s := range plan.manifest.Steps {
-		assert.Equal(t, transitionMove, s.Kind)
-		assert.Equal(t, backendFile, s.Source)
-		assert.Equal(t, backendKeychain, s.Destination)
-		assert.NotEmpty(t, s.DestAccountID, "a keychain destination is addressed by an account of its own")
-		assert.NotEqual(t, "prod", s.Entry, "the entry logging in commits its own new credential")
-	}
-	assert.Empty(t, plan.PrePin, "the directory is already pinned")
-}
-
-// TestPlanTransitionSkipsEntriesWithNothingToMove asserts a directory
-// whose other entries hold no credential records no move for them.
-func TestPlanTransitionSkipsEntriesWithNothingToMove(t *testing.T) {
-	dir, cfg := planFixture(t)
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", backendFile, backendKeychain, "file")
-	require.NoError(t, err)
-	require.NotNil(t, plan)
-	assert.Empty(t, plan.Moved)
-	assert.True(t, plan.Empty(), "a change with nothing to move records nothing")
-}
-
-// TestPlanTransitionPinsTheFileStoreFirstWhenUnpinned asserts the
-// pre-commit pin. A directory declared `file` never reads the pin, so one
-// leaving the file store may have none; writing `file` before anything
-// else states what is already true, stays truthful if the login fails, and
-// makes a change into `auto` the same case as a change away from a `file`
-// pin.
-func TestPlanTransitionPinsTheFileStoreFirstWhenUnpinned(t *testing.T) {
-	dir, cfg := planFixture(t)
-	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
-
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", backendFile, backendKeychain, "")
-	require.NoError(t, err)
-	require.NotNil(t, plan)
-	assert.Equal(t, backendFile, plan.PrePin)
-}
-
-// TestPlanTransitionRefusesAKeychainSlotAnotherDirectoryOwns asserts the
-// answer arrives before the sign-in. A slot whose credential this
-// directory did not store is another config directory's: moving it would
-// take their login, so the change is refused with the entry named and the
-// way out.
-func TestPlanTransitionRefusesAKeychainSlotAnotherDirectoryOwns(t *testing.T) {
-	dir, cfg := planFixture(t)
-	acct, aerr := newKeychainAccountID()
-	require.NoError(t, aerr)
-	require.NoError(t, writeIdentityRecord(dir, identityRecord{
-		Version: identityVersion, Entry: "staging", State: identityActive,
-		ID: acct, Fingerprint: credentialFingerprint(acct, "ours"),
-	}))
-	require.NoError(t, keyringSet(keychainAccount(acct, "staging"), "another-directorys-token"))
-
-	_, err := PlanTransition(t.Context(), dir, cfg, "prod", backendKeychain, backendFile, "")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "staging")
-	require.ErrorContains(t, err, "another config directory")
+	err := CheckTransitionSources(dir, cfg, "prod", backendFile)
+	ce, ok := errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "a login changes the store of its own credential only")
+	require.ErrorContains(t, err, "the credential of staging is still in the plaintext file "+CredentialsFilePath(dir))
 	require.ErrorContains(t, err, "log that entry out first")
+	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+
+	require.NoError(t, store.SetToken(ServerRef{Name: "qa", URL: "https://q.ex"}, "qa-tok"))
+	err = CheckTransitionSources(dir, cfg, "prod", backendFile)
+	ce, ok = errorsAsClierr(err)
+	require.True(t, ok)
+	require.ErrorContains(t, err, "the credential of qa is still in")
+	require.ErrorContains(t, err, "the credential of staging is still in")
+	require.ErrorContains(t, err, "log those entries out first")
+	assert.Empty(t, ce.Hint, "no single command covers two entries")
 }
 
-// TestPlanTransitionRefusesAnUnsettledLogin asserts the other
-// pre-authentication refusal: an entry whose login never finished has a
-// credential nobody can identify, so it cannot be moved.
-func TestPlanTransitionRefusesAnUnsettledLogin(t *testing.T) {
+// TestAStoreChangeProceedsWhenOnlyItsOwnCredentialIsThere asserts the
+// other side of the rule: the entry logging in may hold a credential in
+// the store being left - it is the one that changes - and entries with
+// nothing there do not stop it.
+func TestAStoreChangeProceedsWhenOnlyItsOwnCredentialIsThere(t *testing.T) {
 	dir, cfg := planFixture(t)
-	acct, aerr := newKeychainAccountID()
-	require.NoError(t, aerr)
-	require.NoError(t, writeIdentityRecord(dir, identityRecord{
-		Version: identityVersion, Entry: "staging", State: identityPending,
-		ID: acct, Fingerprint: credentialFingerprint(acct, "half-written"),
-	}))
+	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-tok"))
+	require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendFile))
 
-	_, err := PlanTransition(t.Context(), dir, cfg, "prod", backendKeychain, backendFile, "")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "did not finish")
-	require.ErrorContains(t, err, "staging")
+	seedKeychainCredential(t, dir, "prod", "prod-keychain")
+	require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendKeychain))
 }
 
-// TestPlanTransitionRefusesAHelperDestinationWithCredentialsToMove
-// asserts the one place moving yields to a refusal. A credential helper's
-// `store` cannot be probed without storing and its `get` may create a
-// credential rather than return the one it was given, so no replay could
-// ever prove a move into it landed - and a move that cannot be verified is
-// one that can silently lose a credential.
-func TestPlanTransitionRefusesAHelperDestinationWithCredentialsToMove(t *testing.T) {
-	dir, cfg := planFixture(t)
-	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
+// TestAStoreChangeRefusesWhileAnotherEntryHoldsAKeychainCredential
+// asserts every keychain answer other than absent refuses: a credential
+// this directory stored, a login that never settled, and a slot another
+// config directory owns now. A record whose slot is gone holds nothing.
+func TestAStoreChangeRefusesWhileAnotherEntryHoldsAKeychainCredential(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		seed func(t *testing.T, dir string)
+		want string
+	}{
+		{name: "a credential this directory stored", want: "the credential of staging is still in the keychain",
+			seed: func(t *testing.T, dir string) {
+				t.Helper()
+				seedKeychainCredential(t, dir, "staging", "staging-tok")
+			}},
+		{name: "a login that did not finish", want: "a login for staging did not finish",
+			seed: func(t *testing.T, dir string) {
+				t.Helper()
+				acct, err := newKeychainAccountID()
+				require.NoError(t, err)
+				require.NoError(t, writeIdentityRecord(dir, identityRecord{
+					Version: identityVersion, Entry: "staging", State: identityPending,
+					ID: acct, Fingerprint: credentialFingerprint(acct, "half-written"),
+				}))
+			}},
+		{name: "a slot another directory owns", want: "belongs to another config directory",
+			seed: func(t *testing.T, dir string) {
+				t.Helper()
+				id := seedKeychainCredential(t, dir, "staging", "ours")
+				require.NoError(t, keyringSet(keychainAccount(id, "staging"), "another-directorys-token"))
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, cfg := planFixture(t)
+			tc.seed(t, dir)
+			err := CheckTransitionSources(dir, cfg, "prod", backendKeychain)
+			ce, ok := errorsAsClierr(err)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			require.ErrorContains(t, err, tc.want)
+			assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+		})
+	}
 
-	_, err := PlanTransition(t.Context(), dir, cfg, "prod", backendFile, "exec:vault", "")
-	require.Error(t, err)
-	require.ErrorContains(t, err, "credential helper cannot receive")
-	require.ErrorContains(t, err, "staging")
+	t.Run("a record whose slot is gone holds nothing", func(t *testing.T) {
+		dir, cfg := planFixture(t)
+		id := seedKeychainCredential(t, dir, "staging", "staging-tok")
+		require.NoError(t, keyringDelete(keychainAccount(id, "staging")))
+		require.NoError(t, CheckTransitionSources(dir, cfg, "prod", backendKeychain))
+	})
 }
 
-// TestPlanTransitionIntoAHelperIsFineWithNothingToMove asserts the
-// refusal above is about the other entries, not about helpers: a directory
-// whose only entry is the one logging in has nothing that needs verifying.
-func TestPlanTransitionIntoAHelperIsFineWithNothingToMove(t *testing.T) {
-	dir, cfg := planFixture(t)
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", backendFile, "exec:vault", "")
-	require.NoError(t, err)
-	assert.True(t, plan.Empty())
+// TestAStoreChangeRefusesWhenTheStoreBeingLeftCannotBeRead asserts the
+// refusal for a store that cannot answer at all. Logging the entry out
+// cannot clear it - the logout has to reach the same store - so the
+// remedy is the store itself or another directory, and no logout is
+// offered as a hint.
+func TestAStoreChangeRefusesWhenTheStoreBeingLeftCannotBeRead(t *testing.T) {
+	t.Run("an unreachable keychain", func(t *testing.T) {
+		dir, cfg := planFixture(t)
+		seedKeychainCredential(t, dir, "staging", "staging-tok")
+		restore := SetKeyringBackendForTest(unreachableKeyring{})
+		defer restore()
+
+		err := CheckTransitionSources(dir, cfg, "prod", backendKeychain)
+		ce, ok := errorsAsClierr(err)
+		require.True(t, ok)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		require.ErrorContains(t, err, "staging")
+		require.ErrorContains(t, err, "make that store reachable, or use a different --config")
+		assert.Empty(t, ce.Hint, "a logout cannot reach the store either")
+		assert.ErrorIs(t, err, errUnreachableKeyring, "the backend's own error is the cause")
+	})
+
+	t.Run("an unreadable credentials file", func(t *testing.T) {
+		dir, cfg := planFixture(t)
+		require.NoError(t, os.WriteFile(CredentialsFilePath(dir), []byte("{not yaml"), 0o600))
+
+		err := CheckTransitionSources(dir, cfg, "prod", backendFile)
+		ce, ok := errorsAsClierr(err)
+		require.True(t, ok)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		require.ErrorContains(t, err, CredentialsFilePath(dir)+" cannot be read")
+		require.ErrorContains(t, err, "use a different --config")
+		assert.Empty(t, ce.Hint)
+	})
 }
 
-// TestPlanTransitionRefusesAPolicyRatherThanABackend asserts a step can
-// never carry `auto`: it is a question, and a pin written later would
-// change the answer under work already scheduled.
-func TestPlanTransitionRefusesAPolicyRatherThanABackend(t *testing.T) {
+// TestAStoreChangeFromAHelperCountsEveryOtherEntry asserts the rule for a
+// credential helper source. A helper's `get` may answer for any entry,
+// and one that creates credentials keeps no record of them, so no read can
+// say which entries it serves: every other entry in config.yaml counts,
+// the helper is never asked, and the remedies are another directory or
+// removing the entries, since a logout does not stop a helper answering.
+func TestAStoreChangeFromAHelperCountsEveryOtherEntry(t *testing.T) {
 	dir, cfg := planFixture(t)
-	_, err := PlanTransition(t.Context(), dir, cfg, "prod", backendFile, "auto", "")
-	require.ErrorContains(t, err, "physical backends")
+	// No helper on PATH: asking it anything would be an error of its own.
+	t.Setenv("PATH", t.TempDir())
+
+	err := CheckTransitionSources(dir, cfg, "prod", "exec:fake")
+	ce, ok := errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, "the credential helper fake may answer for qa, staging")
+	require.ErrorContains(t, err, "use a different --config for the new store")
+	require.ErrorContains(t, err, "rancher config delete-server <name>")
+	assert.Empty(t, ce.Hint, "two ways out, neither of them a logout")
+
+	alone := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
+	require.NoError(t, CheckTransitionSources(dir, alone, "prod", "exec:fake"),
+		"with no other entry there is nothing to strand")
 }
 
-// TestPlanTransitionToTheSameBackendIsNoChange asserts a login that does
-// not actually move the directory records nothing.
-func TestPlanTransitionToTheSameBackendIsNoChange(t *testing.T) {
+// TestAStoreChangeNeedsAPhysicalBackendToLeave asserts a policy is never
+// treated as a store: `auto` is a question, and nothing could be read from
+// it.
+func TestAStoreChangeNeedsAPhysicalBackendToLeave(t *testing.T) {
 	dir, cfg := planFixture(t)
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", backendFile, backendFile, "file")
-	require.NoError(t, err)
-	assert.Nil(t, plan)
-	assert.True(t, plan.Empty())
+	require.ErrorContains(t, CheckTransitionSources(dir, cfg, "prod", "auto"), "physical backend")
 }
 
 // TestPlanAddsTheOldCopyDeleteAndThePinLast asserts the order the steps
-// end in. The pin is last because under `auto` every entry that has not
-// moved yet is still read through the old one.
+// end in: the old copy's delete, then the pin.
 func TestPlanAddsTheOldCopyDeleteAndThePinLast(t *testing.T) {
-	dir, cfg := planFixture(t)
-	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
-
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", backendFile, backendKeychain, "file")
+	dir, _ := planFixture(t)
+	plan, err := newTransitionPlan()
 	require.NoError(t, err)
 	require.NoError(t, plan.AddOldCopyDelete("prod", backendFile, "prod-old-tok", "https://r.ex", ""))
 	plan.AddPin(backendKeychain)
@@ -179,112 +204,9 @@ func TestPlanAddsTheOldCopyDeleteAndThePinLast(t *testing.T) {
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
 	require.NotNil(t, m)
-	require.Len(t, m.Steps, 3)
-	assert.Equal(t, transitionMove, m.Steps[0].Kind)
-	assert.Equal(t, transitionDelete, m.Steps[1].Kind)
-	assert.Equal(t, "prod", m.Steps[1].Entry)
-	assert.Equal(t, transitionPin, m.Steps[2].Kind)
-	assert.Equal(t, backendKeychain, m.Steps[2].Target)
-}
-
-// TestPlanTransitionFromAHelperMovesOnlyWhatTheRecordsName asserts the
-// filter on a credential-helper source. A helper's `get` may answer for
-// credentials this CLI never stored - provisioned outside it - and those
-// are not the directory's to move or to erase afterwards. Only the entries
-// the helper records name for that helper are read, and each move carries
-// the canonical URL the helper keys the credential on.
-func TestPlanTransitionFromAHelperMovesOnlyWhatTheRecordsName(t *testing.T) {
-	useFakeHelper(t, "ok")
-	dir, cfg := planFixture(t)
-	store := newExecStore("fake", dir)
-	require.NoError(t, store.SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
-	require.NoError(t, store.SetToken(ServerRef{Name: "qa", URL: "https://q.ex"}, "qa-tok"))
-	// qa's credential stays in the helper, but the directory no longer
-	// records that it stored it: the helper answers for it, the plan must
-	// not.
-	require.NoError(t, withHelperRecordsLock(t.Context(), dir, func(st *helperRecords) error {
-		for _, e := range st.forServer("qa") {
-			st.remove(e)
-		}
-		return nil
-	}))
-
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", "exec:fake", backendKeychain, "")
-	require.NoError(t, err)
-	require.NotNil(t, plan)
-	assert.Equal(t, []string{"staging"}, plan.Moved)
-	require.Len(t, plan.manifest.Steps, 1)
-	step := plan.manifest.Steps[0]
-	assert.Equal(t, "exec:fake", step.Source)
-	assert.Equal(t, backendKeychain, step.Destination)
-	assert.Equal(t, "https://s.ex", step.CanonicalURL, "a helper step is addressed by the URL it was scheduled with")
-}
-
-// TestPlanTransitionRefusesAHelperThatCreatesCredentialsOnDemand asserts
-// the `expiresAt` refusal: a helper that answers `get` with a short-lived
-// credential created on the way out stored nothing that could move, and
-// the change is refused before the sign-in with the entry named.
-func TestPlanTransitionRefusesAHelperThatCreatesCredentialsOnDemand(t *testing.T) {
-	useFakeHelper(t, "ok")
-	dir, cfg := planFixture(t)
-	require.NoError(t, newExecStore("fake", dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
-	t.Setenv("FAKEHELPER_MODE", "expiresat")
-	t.Setenv("FAKEHELPER_EXPIRESAT", time.Now().Add(time.Minute).UTC().Format(time.RFC3339))
-
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", "exec:fake", backendFile, "")
-	require.Error(t, err)
-	assert.Nil(t, plan)
-	ce, ok := errorsAsClierr(err)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	require.ErrorContains(t, err, "on demand")
-	require.ErrorContains(t, err, "staging")
-	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
-}
-
-// TestPlanTransitionRefusesWhenASourceCannotBeRead asserts that a backend
-// which cannot answer at all is a typed refusal like any entry that cannot
-// move - naming the entry, carrying the logout as the hint and the
-// backend's error as the cause - rather than a bare error with no code an
-// agent can branch on and no remedy.
-func TestPlanTransitionRefusesWhenASourceCannotBeRead(t *testing.T) {
-	dir, cfg := planFixture(t)
-	acct, aerr := newKeychainAccountID()
-	require.NoError(t, aerr)
-	require.NoError(t, writeIdentityRecord(dir, identityRecord{
-		Version: identityVersion, Entry: "staging", State: identityActive,
-		ID: acct, Fingerprint: credentialFingerprint(acct, "ours"),
-	}))
-	restore := SetKeyringBackendForTest(unreachableKeyring{})
-	defer restore()
-
-	_, err := PlanTransition(t.Context(), dir, cfg, "prod", backendKeychain, backendFile, "keychain")
-	require.Error(t, err)
-	ce, ok := errorsAsClierr(err)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
-	require.ErrorContains(t, err, "staging")
-	assert.ErrorIs(t, err, errUnreachableKeyring, "the backend's own error is the cause")
-}
-
-// TestPlanTransitionIntoTheFileStoreTakesNoOtherCredential asserts the
-// refusal for a change into the plaintext file store from a credential
-// helper: the helper's other entries are not moved into plaintext on a
-// login that names one entry, and the entry is named with the logout that
-// clears the way.
-func TestPlanTransitionIntoTheFileStoreTakesNoOtherCredential(t *testing.T) {
-	useFakeHelper(t, "ok")
-	dir, cfg := planFixture(t)
-	require.NoError(t, newExecStore("fake", dir).SetToken(ServerRef{Name: "staging", URL: "https://s.ex"}, "staging-tok"))
-
-	plan, err := PlanTransition(t.Context(), dir, cfg, "prod", "exec:fake", backendFile, "")
-	require.Error(t, err)
-	assert.Nil(t, plan)
-	ce, ok := errorsAsClierr(err)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	require.ErrorContains(t, err, "the plaintext file store takes only the credential of the entry logging in")
-	require.ErrorContains(t, err, "the credential of staging is still in exec:fake; log that entry out first")
-	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+	require.Len(t, m.Steps, 2)
+	assert.Equal(t, transitionDelete, m.Steps[0].Kind)
+	assert.Equal(t, "prod", m.Steps[0].Entry)
+	assert.Equal(t, transitionPin, m.Steps[1].Kind)
+	assert.Equal(t, backendKeychain, m.Steps[1].Target)
 }

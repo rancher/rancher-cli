@@ -970,9 +970,11 @@ func TestLoginDeleteBetweenRegisterAndStoreThenReregisterAtNewURLNeverSurfacesOl
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 
-	tok, terr := store.GetToken(config.ServerRef{Name: "qa", URL: "https://b.example.com"})
-	require.NoError(t, terr)
-	assert.Equal(t, "server-a-token", tok, "the pre-existing token must be untouched, and no new token was written under it")
+	// The token stored under qa before any entry had the name is removed
+	// when the login registers qa, and the conflicting login writes
+	// nothing: neither the old token nor a new one is under the name.
+	_, terr := store.GetToken(config.ServerRef{Name: "qa", URL: "https://b.example.com"})
+	require.ErrorIs(t, terr, config.ErrNoToken, "the old token never becomes live for the new address, and no new token was written")
 }
 
 // --- authentication-snapshot conflicts against an EXISTING entry (plain login) ---
@@ -2713,7 +2715,7 @@ func TestLoginEarlyFailureKeepsTheVersionWarning(t *testing.T) {
 	}
 	in := cmdtest.Input{Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}}
 	const versionWarning = "server 2.10.0 is below the supported minimum 2.14; some commands may fail"
-	_, err := cmd.authenticateAndStore(t.Context(), in, cmdtest.StdinPrompter("id:secret"), "prod", "https://r.example", "", "", versionWarning, "", false, false)
+	_, err := cmd.authenticateAndStore(t.Context(), in, cmdtest.StdinPrompter("id:secret"), "prod", "https://r.example", "", "", []string{versionWarning}, "", false, false)
 	ce, d := decodeLoginFailure(t, err)
 	assert.Equal(t, clierr.CodeAuth, d.Primary.Code)
 	assert.Contains(t, ce.Warnings(), versionWarning)
@@ -2969,9 +2971,9 @@ func TestLoginRefusesAStoreTheVariableDisagreesWith(t *testing.T) {
 
 // TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished asserts the other
 // arm of the check before the sign-in: a change that still has work left,
-// here a move naming another entry, stops a login that would start a
-// second change, before anyone authenticates. Two changes cannot stack -
-// the second would forget what the first had already moved.
+// here the delete of another entry's old copy, stops a login that would
+// start a second change, before anyone authenticates. Two changes cannot
+// stack - the second would forget the work the first still has.
 func TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
 	keyring.MockInit()
@@ -2985,10 +2987,9 @@ func TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T) {
 
 	id := "0123456789abcdef0123456789abcdef"
 	manifest := "version: 1\nid: " + id + "\nsteps:\n" +
-		"- kind: move\n  entry: other\n  source: file\n  destination: keychain\n" +
+		"- kind: delete\n  entry: other\n  source: file\n" +
 		"  verificationId: fedcba9876543210fedcba9876543210\n" +
-		"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n" +
-		"  destAccountId: " + id + "\n"
+		"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
 	require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte(manifest), 0o600))
 	cfg, err = config.Load(config.FilePath(dir))
 	require.NoError(t, err)

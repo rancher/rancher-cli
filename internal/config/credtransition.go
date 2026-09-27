@@ -7,18 +7,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"sigs.k8s.io/yaml"
 )
 
-// Changing which store a directory keeps its credentials in moves them one
-// entry at a time, across backends that can each fail on their own. The
-// manifest is the write-ahead record of that work: written before the new
-// credential commits, inert until a config write names its id, and
-// replayed by the next credential-mutating command until every step is
-// done.
+// A login that changes which store a directory keeps its credentials in
+// leaves work behind it, in backends that can each fail on their own: its
+// own old copy to delete and the pin to write. The manifest is the
+// write-ahead record of that work: written before the new credential
+// commits, inert until a config write names its id, and replayed by the
+// next credential-mutating command until every step is done.
 //
 // There is exactly one, at a fixed path. An id-derived path would let two
 // transitions exist at once, and the point of the single file is that a
@@ -35,7 +34,6 @@ const (
 // verify it, so a replay in a later process can tell "already done" from
 // "someone else's credential" without trusting anything but the digest.
 const (
-	transitionMove   = "move"
 	transitionDelete = "delete"
 	transitionPin    = "pin"
 )
@@ -68,22 +66,19 @@ type transitionManifest struct {
 // to delete, without any backend-specific notion of identity and without
 // the same credential being recognizable across two manifests.
 type transitionStep struct {
-	Kind        string `json:"kind"`
-	Entry       string `json:"entry,omitempty"`
-	Source      string `json:"source,omitempty"`
-	Destination string `json:"destination,omitempty"`
+	Kind   string `json:"kind"`
+	Entry  string `json:"entry,omitempty"`
+	Source string `json:"source,omitempty"`
 	// Target is the pin step's backend.
 	Target           string `json:"target,omitempty"`
 	VerificationID   string `json:"verificationId,omitempty"`
 	CredentialDigest string `json:"credentialDigest,omitempty"`
-	// SourceAccountID and DestAccountID name the keychain accounts a step
-	// reads and writes, so a replay addresses the account the step was
-	// scheduled against rather than whatever the entry's identity record
-	// happens to say later.
+	// SourceAccountID names the keychain account a step deletes from, so a
+	// replay addresses the account the step was scheduled against rather
+	// than whatever the entry's identity record happens to say later.
 	SourceAccountID string `json:"sourceAccountId,omitempty"`
-	DestAccountID   string `json:"destAccountId,omitempty"`
-	// CanonicalURL is recorded for a step whose source or destination is a
-	// credential helper: the helper protocol keys a credential on canonical
+	// CanonicalURL is recorded for a step whose source is a credential
+	// helper: the helper protocol keys a credential on canonical
 	// URL plus name, and `config update-server --url` or `config
 	// delete-server` may change or remove the entry's URL before the step
 	// is replayed.
@@ -110,9 +105,9 @@ func newTransitionID() (string, error) { return randomHex(transitionIDLen / 2) }
 
 // transitionError is the terminal verdict on a manifest that cannot be
 // trusted. It names the file, says no backend operation ran, and leaves
-// the file alone: a manifest is the only record of where credentials were
-// being moved, and rewriting one this release cannot read would destroy
-// that record.
+// the file alone: a manifest is the only record of the old copies a change
+// still has to delete, and rewriting one this release cannot read would
+// destroy that record.
 func transitionError(dir, what string) error {
 	path := TransitionPath(dir)
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
@@ -134,7 +129,7 @@ func transitionIncomplete(step transitionStep) error {
 }
 
 // transitionAlreadyRecorded refuses to write a manifest over a different
-// one. The file is the only record of where credentials were being moved,
+// one. The file is the only record of the work the first change has left,
 // so a second change may start only once the first has finished or been
 // abandoned - the callers that are allowed to remove one go through
 // removeTransition, never through a write.
@@ -193,7 +188,7 @@ func validateTransitionStep(dir string, i int, s transitionStep) error {
 			return bad("a pin recorded as impossible, which no attempt produces")
 		}
 		return nil
-	case transitionMove, transitionDelete:
+	case transitionDelete:
 	default:
 		return bad("of no known kind")
 	}
@@ -210,36 +205,14 @@ func validateTransitionStep(dir string, i int, s transitionStep) error {
 	if !isLowerHex(s.VerificationID, transitionIDLen) || !isLowerHex(s.CredentialDigest, identityFingerprintLen) {
 		return bad("missing the verifier that proves which credential it may touch")
 	}
-	backends := []string{s.Source}
-	if s.Kind == transitionMove {
-		backends = append(backends, s.Destination)
-		// A move into a helper cannot be verified: `get` may create a
-		// credential rather than return the one `store` was given, so a
-		// replay could never prove the destination received it.
-		if !isPhysicalBackend(s.Destination) || isExecBackend(s.Destination) {
-			return bad("a move into a backend this release cannot verify")
-		}
-		// No change moves another entry into the plaintext file store: a
-		// login puts only its own credential there. A manifest that says
-		// otherwise was not written by this code, and replaying it would
-		// do exactly what that rule forbids.
-		if s.Destination == backendFile {
-			return bad("a move into the plaintext file store, which no change schedules")
-		}
+	if !isPhysicalBackend(s.Source) {
+		return bad("addressed at no known backend")
 	}
-	for _, b := range backends {
-		if !isPhysicalBackend(b) {
-			return bad("addressed at no known backend")
-		}
-		if isExecBackend(b) && s.CanonicalURL == "" {
-			return bad("a credential-helper step with no server URL to address it by")
-		}
+	if isExecBackend(s.Source) && s.CanonicalURL == "" {
+		return bad("a credential-helper step with no server URL to address it by")
 	}
 	if s.Source == backendKeychain && !isLowerHex(s.SourceAccountID, identityIDLen) {
 		return bad("a keychain step naming no source account")
-	}
-	if s.Kind == transitionMove && s.Destination == backendKeychain && !isLowerHex(s.DestAccountID, identityIDLen) {
-		return bad("a move into the keychain naming no destination account")
 	}
 	return nil
 }
@@ -397,14 +370,17 @@ func writeTransition(dir string, m transitionManifest) error {
 		_ = root.Remove(tmp)
 		return err
 	}
+	afterWrite(transitionFileName)
 	return nil
 }
 
 // removeTransition deletes the manifest; an absent one is not an error.
 // Callers hold the transition lock.
 func removeTransition(dir string) error {
-	err := os.Remove(TransitionPath(dir))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	switch err := os.Remove(TransitionPath(dir)); {
+	case err == nil:
+		afterWrite(transitionFileName + " removed")
+	case !errors.Is(err, fs.ErrNotExist):
 		return err
 	}
 	return nil
@@ -438,8 +414,8 @@ const (
 	TransitionActive
 	// TransitionAbandoned: a valid file the config does not name. A login
 	// died between preparing the manifest and the config write that would
-	// have activated it, so nothing was ever moved and the file is
-	// removable.
+	// have activated it, so none of its work was ever done and the file
+	// is removable.
 	TransitionAbandoned
 	// TransitionFinished: the config names an id and no file is there. The
 	// last step completed and the file was deleted before the config write
@@ -497,44 +473,6 @@ func HasPendingTransition(dir string, cfg *Config) bool {
 	}
 	state, _, err := LoadTransition(dir, cfg)
 	return err != nil || state == TransitionActive
-}
-
-// stepsNaming returns the remaining steps of the given kinds that name the
-// entry.
-func (m *transitionManifest) stepsNaming(entry string, kinds ...string) []transitionStep {
-	if m == nil {
-		return nil
-	}
-	var out []transitionStep
-	for _, s := range m.Steps {
-		if s.Entry == entry && slices.Contains(kinds, s.Kind) {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// keychainAccounts returns the keychain accounts the remaining steps name
-// for the entry, so a delete path can reach an account the entry's own
-// identity record no longer points at.
-func (m *transitionManifest) keychainAccounts(entry string) []string {
-	if m == nil {
-		return nil
-	}
-	var out []string
-	for _, s := range m.Steps {
-		if s.Entry != entry {
-			continue
-		}
-		if s.Source == backendKeychain && s.SourceAccountID != "" {
-			out = append(out, keychainAccount(s.SourceAccountID, entry))
-		}
-		if s.Kind == transitionMove && s.Destination == backendKeychain && s.DestAccountID != "" {
-			out = append(out, keychainAccount(s.DestAccountID, entry))
-		}
-	}
-	slices.Sort(out)
-	return slices.Compact(out)
 }
 
 // transitionLockSem serializes transition work inside one process, the way

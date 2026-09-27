@@ -201,6 +201,9 @@ type CreateOutcome struct {
 	Created         bool
 	CurrentServer   string
 	PointerRepaired bool
+	// Notices are the removals a login's registration made of credentials
+	// left under the name it created; empty for add-server.
+	Notices []string
 }
 
 // bootstrapPointer sets cfg.CurrentServer to name when the pointer is empty
@@ -233,6 +236,13 @@ func bootstrapPointer(cfg *config.Config, name string) bool {
 // when empty or dangling, and cfg.Write() runs only when something actually
 // changed (the entry, the pointer, or both).
 func commitCreate(cfg *config.Config, name string, probe Probe) (CreateOutcome, error) {
+	return commitCreateWith(cfg, name, probe, nil)
+}
+
+// commitCreateWith is commitCreate with beforeCreate run once the name is
+// known to be absent and every check has passed, just before the entry is
+// added; its error stops the commit with nothing written.
+func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate func() error) (CreateOutcome, error) {
 	if ok, rerr := recheckBytes(probe.CanonicalURL, probe.CASelector, probe.CABytes); !ok {
 		return CreateOutcome{}, registrationConflict(name, "CA content changed", rerr)
 	}
@@ -241,6 +251,11 @@ func commitCreate(cfg *config.Config, name string, probe Probe) (CreateOutcome, 
 	created := false
 	switch {
 	case !exists:
+		if beforeCreate != nil {
+			if err := beforeCreate(); err != nil {
+				return CreateOutcome{}, err
+			}
+		}
 		cfg.Servers[name] = config.Server{URL: probe.CanonicalURL, CA: probe.CASelector, CAFingerprint: probe.CAFingerprint}
 		created = true
 	case existing.URL == probe.CanonicalURL && existing.CA == probe.CASelector:
@@ -277,17 +292,31 @@ func commitCreate(cfg *config.Config, name string, probe Probe) (CreateOutcome, 
 // commitCreate against it. Kept in one place so a future change to this
 // lock/load/commit sequence (lock scope, error wrapping, load-inside-lock
 // ordering) can't drift between the two callers.
-func CommitCreateUnderLock(ctx context.Context, dir, name string, probe Probe) (CreateOutcome, error) {
+//
+// Before a new name's entry is written, any credential left under that
+// name is removed (config.RemoveOrphanCredentials), in the same lock, and
+// each removal comes back in Notices - on an error too, carried on it.
+// Left beside the new entry it would count as the entry's credential.
+// loginPolicy is the credential-store policy a login resolved, empty for
+// add-server; a helper it names, or one the directory's readers ask, is
+// covered too.
+func CommitCreateUnderLock(ctx context.Context, dir, name, loginPolicy string, probe Probe) (CreateOutcome, error) {
 	var out CreateOutcome
 	err := config.WithLock(ctx, dir, func() error {
 		cfg, err := config.Load(config.FilePath(dir))
 		if err != nil {
 			return err
 		}
-		out, err = commitCreate(cfg, name, probe)
+		var notices []string
+		out, err = commitCreateWith(cfg, name, probe, func() error {
+			ns, rerr := config.RemoveOrphanCredentials(ctx, dir, cfg, name, config.OrphanHelpers(cfg, loginPolicy))
+			notices = ns
+			return rerr
+		})
+		out.Notices = notices
 		return err
 	})
-	return out, err
+	return out, config.WithNotices(err, out.Notices)
 }
 
 // UpdateSource is update-server's pre-probe snapshot of the entry being

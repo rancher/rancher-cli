@@ -3,7 +3,6 @@ package config
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -13,21 +12,12 @@ import (
 // credentials, which decides what it may do while a store change still has
 // work left.
 type MutationIntent struct {
-	// Entries are the server entries the command is about to touch.
-	Entries []string
 	// ChangesStore is true for a login that would declare a different
 	// store, change the pin, or schedule a change of its own. Those cannot
-	// stack: a second change would forget the first, and the credentials
-	// the first had already moved would be stranded in a backend nothing
-	// names any more.
+	// stack: a second change would forget the first, and an old copy the
+	// first had still to delete would be left in a backend nothing names
+	// any more.
 	ChangesStore bool
-	// ClearsCredentials is true for a logout, a `logout --all`, a
-	// credential-clearing `config update-server`, or a `config
-	// delete-server`. Such a command may proceed while work is left, but
-	// only after every remaining move for its targets has been rewritten
-	// as a delete: a move retried afterwards would put the credential the
-	// command just removed back.
-	ClearsCredentials bool
 }
 
 // PrepareMutation is the prelude every credential-mutating command runs:
@@ -77,8 +67,8 @@ func prepareMutation(
 		return nil, nil
 	case TransitionAbandoned:
 		// A login died between preparing a change and activating it, so
-		// nothing was ever moved. Removing it is what lets the next store
-		// change start.
+		// none of its work was ever done. Removing it is what lets the next
+		// store change start.
 		return nil, locked(func() error { return removeTransition(dir) })
 	}
 
@@ -99,13 +89,6 @@ func prepareMutation(
 			return nil
 		}
 		m = fresh
-		if intent.ClearsCredentials {
-			ns, werr := rewriteMovesAsDeletes(dir, m, intent.Entries)
-			notices = append(notices, ns...)
-			if werr != nil {
-				return werr
-			}
-		}
 		ns, left, rerr := replayPass(ctx, dir, cfg, m)
 		notices = append(notices, ns...)
 		retained = left
@@ -159,26 +142,16 @@ func stepWarning(step transitionStep) string {
 
 // refusedBy is the merge rule: given the steps a directory still has, may
 // a command with this intent go on. A store change never may - two changes
-// cannot stack. A move that still names one of the command's entries would,
-// when finally retried, write the credential it is carrying over whatever
-// the command is about to store, so it refuses too; a delete cannot, since
-// it removes only the credential whose digest it carries, which the
-// command's own is not. The step that refuses reports with the verdict it
-// earned: terminal steps keep their own error, retained ones the retryable
-// code.
+// cannot stack. Any other command may: a remaining delete removes only the
+// credential whose digest it carries, which the command's own is not, and
+// a remaining pin names the store the change already committed to. The
+// step that refuses reports with the verdict it earned: terminal steps
+// keep their own error, retained ones the retryable code.
 func refusedBy(m *transitionManifest, intent MutationIntent) error {
-	if m == nil || len(m.Steps) == 0 {
+	if m == nil || len(m.Steps) == 0 || !intent.ChangesStore {
 		return nil
 	}
-	if intent.ChangesStore {
-		return stepError(m.Steps[0])
-	}
-	for _, e := range intent.Entries {
-		if moves := m.stepsNaming(e, transitionMove); len(moves) > 0 {
-			return stepError(moves[0])
-		}
-	}
-	return nil
+	return stepError(m.Steps[0])
 }
 
 // RefusedByTransition answers the same question PrepareMutation answers,
@@ -203,11 +176,9 @@ func RefusedByTransition(dir string, cfg *Config, intent MutationIntent) error {
 // replayPass runs the remaining steps in order, removing each one under
 // the lock only after its postcondition holds.
 //
-// A failing step stops the pass before every later step. The order is a
-// safety dependency, not a work list: the pin comes last because every
-// entry that has not moved yet is still read through the old one, and a
-// move that has not happened cannot be skipped over in the hope that a
-// later one works.
+// A failing step stops the pass before every later step, so the change
+// finishes in the order it was recorded and the next command resumes where
+// this one stopped.
 //
 // A step that could not finish - now, or ever - is reported as a
 // warning, not as this function's error: whether the calling command may
@@ -247,11 +218,6 @@ func replayStepAt(ctx context.Context, dir string, cfg *Config, m *transitionMan
 	s := m.Steps[i]
 	var out stepOutcome
 	switch s.Kind {
-	case transitionMove:
-		out = replayMove(ctx, dir, &s, entryURLFor(cfg, s.Entry), func(account string) error {
-			m.Steps[i].DestAccountID = account
-			return writeTransition(dir, *m)
-		})
 	case transitionDelete:
 		out = replayDelete(ctx, dir, s, entryURLFor(cfg, s.Entry))
 	case transitionPin:
@@ -273,52 +239,6 @@ func replayStepAt(ctx context.Context, dir string, cfg *Config, m *transitionMan
 		return true, notices, nil, werr
 	}
 	return true, notices, nil, nil
-}
-
-// rewriteMovesAsDeletes converts every remaining move for the named
-// entries into conditional deletes of both its sides, before the caller
-// removes any credential.
-//
-// A logout that left a move standing would be undone by it: the move,
-// retried later, would write the credential it is carrying into the
-// destination the logout had just cleared. Deletes cannot do that. They
-// remove exactly the credential whose digest they carry and nothing else,
-// so whatever survives can only take a copy away, never bring one back.
-// That is what lets a headless directory log out while an old keychain
-// copy is unreachable.
-func rewriteMovesAsDeletes(dir string, m *transitionManifest, entries []string) ([]string, error) {
-	var (
-		notices []string
-		steps   []transitionStep
-		changed bool
-	)
-	for _, s := range m.Steps {
-		if s.Kind != transitionMove || !slices.Contains(entries, s.Entry) {
-			steps = append(steps, s)
-			continue
-		}
-		changed = true
-		// Both deletes are new work no attempt has judged: the move's
-		// recorded verdict and cause do not carry over, or an untried
-		// delete would report as terminal with a logout that has just
-		// run as its remedy.
-		src := s
-		src.Kind, src.Destination, src.DestAccountID = transitionDelete, "", ""
-		src.LastError, src.Terminal = "", false
-		dst := s
-		dst.Kind = transitionDelete
-		dst.Source, dst.SourceAccountID = s.Destination, s.DestAccountID
-		dst.Destination, dst.DestAccountID = "", ""
-		dst.LastError, dst.Terminal = "", false
-		steps = append(steps, src, dst)
-		notices = append(notices, fmt.Sprintf(
-			"the unfinished move of %s's credential is now a cleanup of both copies; it can no longer restore the credential being removed", s.Entry))
-	}
-	if !changed {
-		return nil, nil
-	}
-	m.Steps = steps
-	return notices, writeTransition(dir, *m)
 }
 
 // entryURLFor is the entry's current URL, or empty when the entry is gone
@@ -355,8 +275,7 @@ func ClearFinishedTransition(dir string, cfg *Config) {
 
 // ErrNoTokenHint is the hint an entry's "not logged in" carries while a
 // store change is unfinished. Without it the operator is told to log in,
-// when the credential is very likely sitting in the backend the change has
-// not finished moving it out of.
+// when what is missing may be the pin the change has not written yet.
 func ErrNoTokenHint(dir string, cfg *Config) string {
 	if HasPendingTransition(dir, cfg) {
 		return "rancher config status"
