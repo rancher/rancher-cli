@@ -1636,6 +1636,7 @@ func (unsupportedStore) SetCachedCred(string, string, time.Time, string, string,
 func (unsupportedStore) DeleteCachedCred(string) error                     { return nil }
 func (unsupportedStore) DeleteAllCachedCreds() error                       { return nil }
 func (unsupportedStore) ListCachedCreds() ([]config.CachedCredInfo, error) { return nil, nil }
+func (unsupportedStore) ResolvedBackend() (string, bool)                   { return "exec:unsupported", true }
 
 // commitThenErrorKeyring is a keyring seam whose Set stores the value and
 // then reports an error: the write committed, the transport did not say so.

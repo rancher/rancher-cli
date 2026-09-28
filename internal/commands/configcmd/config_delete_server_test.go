@@ -45,10 +45,10 @@ func seedDeleteServer(t *testing.T, current string, servers []string) (string, c
 	return dir, store
 }
 
-func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
+func TestConfigDeleteServerDeleteFailureChangesOnlyTheIdAndThePause(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "acme", []string{"acme", "other"})
 	path := config.FilePath(dir)
-	before, err := os.ReadFile(path)
+	before, err := config.Load(path)
 	require.NoError(t, err)
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
@@ -61,15 +61,17 @@ func TestConfigDeleteServerDeleteFailureAbortsBeforeAnyWrite(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "keychain locked")
 
-	after, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, before, after, "config file must be byte-identical when delete fails - the write must never be reached")
-
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
-	_, ok := cfg.Servers["acme"]
+	got, ok := cfg.Servers["acme"]
 	assert.True(t, ok, "server entry must still be present after a failed delete (benign failure direction: creds gone, server still configured - never the reverse)")
 	assert.Equal(t, "acme", cfg.CurrentServer, "current server must be untouched too")
+	assert.NotEqual(t, before.Servers["acme"].CacheBindingID, got.CacheBindingID, "the first write advanced the id")
+	assert.Equal(t, config.PauseLocked, got.CacheWritesPaused, "and paused the entry's cache writes")
+	want := before.Servers["acme"]
+	want.CacheBindingID, want.CacheWritesPaused = got.CacheBindingID, got.CacheWritesPaused
+	assert.Equal(t, want, got, "and nothing else about the entry moved")
+	assert.Equal(t, before.Servers["other"], cfg.Servers["other"])
 }
 
 func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *testing.T) {
@@ -133,7 +135,7 @@ func TestConfigDeleteServerUnknownNameIsNotFoundWithCandidates(t *testing.T) {
 
 func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 	dir, store := seedDeleteServer(t, "", []string{"acme"})
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBindingForTest(dir, "", "")))
 
 	res, err := NewConfigDeleteServer(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
@@ -215,7 +217,7 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	_, err := cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
-	assert.NotContains(t, err.Error(), "server config left untouched")
+	assert.NotContains(t, err.Error(), "the server entry is left in place")
 
 	cfgAfter, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)
@@ -226,7 +228,7 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 // TestConfigDeleteServerDeleteLockTimeoutSurvives asserts the exercise-8/9-fixes
 // review finding for this command: a classified LOCK_TIMEOUT from the delete
 // keeps its code, retryability, and exit status through the
-// "server config left untouched" wrap.
+// "the server entry is left in place" wrap.
 func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "acme", []string{"acme"})
 
@@ -242,7 +244,7 @@ func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
 	assert.True(t, ce.Retryable)
 	assert.Equal(t, 8, ce.ExitCode())
-	assert.Contains(t, ce.Message, "server config left untouched")
+	assert.Contains(t, ce.Message, "the server entry is left in place")
 }
 
 // TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure asserts the
@@ -276,7 +278,7 @@ func TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure(t *testing.T) {
 
 	assert.Equal(t,
 		"# warning: keychain unreachable, deleted the file store only\n"+
-			"error (GENERIC): failed to delete credentials for \"acme\"; server config left untouched: "+cacheErr.Error()+"\n",
+			"error (GENERIC): failed to delete credentials for \"acme\"; the server entry is left in place, with only its cache binding id advanced and its cache writes paused: "+cacheErr.Error()+"\n",
 		textBuf.String(), "the warning must print ahead of the error text on the default format")
 
 	var jsonEnv struct {

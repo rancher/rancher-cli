@@ -62,6 +62,7 @@ func PlatformKeychainLabel() string {
 // (an invalid value reads as no pin rather than an error: what the
 // directory has stored then answers, as it does for a missing one).
 func ReadPin(dir string) string {
+	observeIdentity("pinread")
 	b, err := os.ReadFile(PinPath(dir))
 	if err != nil {
 		return ""

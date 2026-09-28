@@ -103,8 +103,17 @@ the first login records it.
 The exec-credential cache follows the same rule. Every record names the
 directory that created it, the server entry it came from and that entry's
 cache binding id, so a copied config directory never serves the
-credentials its source cached, and a login, a logout or a credential
-clearing makes every record of the previous login a miss at once. A
+credentials its source cached, and a login, a logout, a URL change or a
+`config delete-server` makes every record of the previous credential a
+miss at once. While such a change runs, the entry's cache writes are
+paused and each kubectl call for it makes a fresh token rather than
+caching one. A pause that nothing still holds - a change that died or
+failed before its last write - is cleared by the next cache miss that can
+take the config lock; one held by a store change's pin step waits for the
+next login, one made with `RANCHER_CLI_CONFIG_NO_LOCK` for the entry's
+next login or logout, and an unreadable change record holds every pause
+until it is restored or moved aside. `rancher config status` lists every
+paused entry, with the reason, as `cacheWritesPaused`. A
 `config.yaml` the CLI cannot read makes every cached credential a miss as
 well - the record's owner is named in that file - so a broken config
 shows its own error rather than a stale token. A directory with no

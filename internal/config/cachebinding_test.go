@@ -298,7 +298,7 @@ func TestCanonicalDirResolvesEverySpellingOfOneDirectory(t *testing.T) {
 // is something other than the binding - deletion by server URL, expiry
 // pruning, readiness marking - use it so their records stay readable
 // without having to stand up a login.
-func testCacheBinding(dir string) CacheBinding { return CacheBinding{Dir: CanonicalDir(dir)} }
+func testCacheBinding(dir string) CacheBinding { return CacheBindingForTest(CanonicalDir(dir), "", "") }
 
 // testAnchor is the anchor a reader in dir holds: the stamp read first,
 // the config loaded after it. A directory with no entries serves a record

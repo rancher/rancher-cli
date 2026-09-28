@@ -90,7 +90,7 @@ func TestTheAutoRepinWritesNoPinUntilTheChangeFinishes(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, backendFile, pinAtWrite["entry"], "the pin is untouched before the commit")
-	assert.Equal(t, backendFile, pinAtWrite["cachebinding"], "and still is when the binding id advances")
+	assert.Equal(t, backendFile, pinAtWrite["transition"], "and still is when the change is put into effect")
 	assert.Equal(t, backendKeychain, ReadPin(dir), "the change's last step is what flips it")
 
 	assert.Equal(t, "id:new", keychainTokenFor(t, dir, "prod"), "the credential committed to the keychain")
@@ -199,11 +199,11 @@ func TestTheLoginOrderActivatesTheManifestWithItsFirstConfigWrite(t *testing.T) 
 	_, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"entry", "transition", "cachebinding"}, steps,
+	assert.Equal(t, []string{"entry", "transition", "resume"}, steps,
 		"a repin changes neither the declaration nor trust, so the write that names the change is its own")
 	assert.Empty(t, idAtWrite["entry"], "nothing names the change before the commit")
 	assert.Empty(t, idAtWrite["transition"], "the write that names it is the one that has not landed yet")
-	assert.NotEmpty(t, idAtWrite["cachebinding"], "and by the next write it is named")
+	assert.NotEmpty(t, idAtWrite["resume"], "and by the next write it is named")
 }
 
 // TestActivationThatLosesTheManifestIsANamedState asserts what a login
@@ -352,11 +352,12 @@ func mustFileToken(t *testing.T, dir, entry, url string) string {
 	return tok
 }
 
-// TestTheOldCopyIsRemovedBeforeTheBindingIdAdvances asserts the order that
-// keeps a reader from pairing the previous user's credential with the new
-// cache binding id: while the pin still points at the store being left,
-// this entry's old copy goes first, and only then does the id advance.
-func TestTheOldCopyIsRemovedBeforeTheBindingIdAdvances(t *testing.T) {
+// TestTheOldCopyIsRemovedBetweenTheFirstWriteAndTheLast asserts where the
+// old copy's delete sits while the pin still points at the store being
+// left: after the first write, which advanced the entry's cache binding
+// id and paused its cache writes before any of its credential was
+// touched, and before the last write, which resumes them.
+func TestTheOldCopyIsRemovedBetweenTheFirstWriteAndTheLast(t *testing.T) {
 	dir := repinFixture(t)
 
 	oldCopyAt := map[string]string{}
@@ -369,8 +370,9 @@ func TestTheOldCopyIsRemovedBeforeTheBindingIdAdvances(t *testing.T) {
 	_, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.NoError(t, err)
 
+	assert.Equal(t, "prod-old", oldCopyAt["entry"], "the first write lands before any of the entry's credential is touched")
 	assert.Equal(t, "prod-old", oldCopyAt["transition"], "the old copy is still there when the change starts")
-	assert.Empty(t, oldCopyAt["cachebinding"], "and is gone before the id a reader would cache under")
+	assert.Empty(t, oldCopyAt["resume"], "and is gone before cache writes resume")
 }
 
 // breakPath makes every later read and write of a path fail, by putting
@@ -382,10 +384,10 @@ func breakPath(t *testing.T, path string) {
 }
 
 // TestWhenTheOldCopyCannotGoThePinFlipsFirst asserts the fallback: the old
-// copy of this entry's credential cannot be removed, so the pin flips
-// before the binding id advances instead. Either one stops a reader from
-// resolving to the old copy once the new id is visible; the step that
-// could not run stays, and says so.
+// copy of this entry's credential cannot be removed, so the pin flips in
+// step 2 instead. Either one stops a reader from resolving to the old
+// copy; the step that could not run stays, and says so, and holds no
+// pause: readers have left the store it deletes from.
 func TestWhenTheOldCopyCannotGoThePinFlipsFirst(t *testing.T) {
 	dir := repinFixture(t)
 
@@ -406,8 +408,9 @@ func TestWhenTheOldCopyCannotGoThePinFlipsFirst(t *testing.T) {
 
 	out, err := PersistLoginCredential(t.Context(), dir, in)
 	require.NoError(t, err, "the credential is committed and recorded; the leftover work is a warning")
-	assert.Equal(t, backendKeychain, pinAt["cachebinding"], "the pin flipped before the id advanced")
+	assert.Equal(t, backendKeychain, pinAt["resume"], "the pin flipped before the last write")
 	assert.NotEmpty(t, out.CacheBindingID)
+	assert.False(t, out.CacheWritesPaused, "a delete step left holds no pause")
 
 	require.NotEmpty(t, out.Warnings)
 	assert.Contains(t, joinWarnings(out.Warnings), "prod", "the step that could not run names its entry")
@@ -420,12 +423,13 @@ func TestWhenTheOldCopyCannotGoThePinFlipsFirst(t *testing.T) {
 	}), "including the old copy nobody could remove")
 }
 
-// TestWhenTheOldCopyAndThePinBothFailTheIdDoesNotAdvance asserts the one
-// state that stops the binding id: with neither the old copy removed nor
-// the pin flipped, a reader can still resolve to the previous user's
-// credential, so advancing the id would let it be cached under the new
-// login. The login names the state and leaves the change active.
-func TestWhenTheOldCopyAndThePinBothFailTheIdDoesNotAdvance(t *testing.T) {
+// TestWhenTheOldCopyAndThePinBothFailTheLoginStopsPaused asserts the state
+// a login stops in when it can neither remove the old copy nor flip the
+// pin: readers still resolve the previous user's credential, the login
+// names the state, the change stays active with both steps, and the pin
+// step left keeps the entry's cache writes paused, under the id the first
+// write advanced, until a later login finishes it.
+func TestWhenTheOldCopyAndThePinBothFailTheLoginStopsPaused(t *testing.T) {
 	dir := repinFixture(t)
 	restore := SetPersistWriteHookForTest(func(step string) error {
 		if step == "transition" {
@@ -438,12 +442,16 @@ func TestWhenTheOldCopyAndThePinBothFailTheIdDoesNotAdvance(t *testing.T) {
 
 	out, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.Error(t, err)
-	require.ErrorContains(t, err, "neither the old copy nor the credential store pin could be changed")
-	assert.Equal(t, clierr.ConfigCacheBindingNotAdvanced, out.ConfigState)
+	require.ErrorContains(t, err, "neither the old copy nor the credential store pin could be changed, so this directory still reads the previous credential")
+	assert.Equal(t, clierr.ConfigStoreChangeNotApplied, out.ConfigState)
+	ce, ok := errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, "rancher auth login 'prod'", ce.Hint)
 
 	cfg, lerr := Load(FilePath(dir))
 	require.NoError(t, lerr)
-	assert.Empty(t, cfg.Servers["prod"].CacheBindingID, "the id a cache record binds to did not move")
+	assert.NotEmpty(t, cfg.Servers["prod"].CacheBindingID, "the first write advanced the id")
+	assert.Equal(t, PauseLocked, cfg.Servers["prod"].CacheWritesPaused, "and the pin step left keeps cache writes paused")
 	assert.NotEmpty(t, cfg.CredentialTransitionID, "the change is still in effect")
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
@@ -861,6 +869,7 @@ func TestACreateOnlyDestinationStillDeclaresTheStore(t *testing.T) {
 	assert.Empty(t, entry.TokenUserID)
 	assert.Empty(t, entry.CredentialExpiresAt)
 	assert.NotEqual(t, "before", entry.CacheBindingID, "and the previous login's cache records stop being valid")
+	assert.False(t, entry.Paused(), "a change with delete steps only is resumed in the write that puts it into effect")
 }
 
 // readOnlyStore is a credential helper that creates credentials on demand
@@ -919,9 +928,10 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		// breakAt is the config write after which a path stops
-		// answering: `transition` is before step 2, `cachebinding` is
-		// after it and before step 4.
-		breakAt string
+		// answering: `transition` is before step 2. breakAfter is a write
+		// after which it does: the old copy's delete in step 2, before
+		// step 4.
+		breakAt, breakAfter string
 		// breakFile takes credentials.yaml, so step 2 cannot remove the
 		// old copy; breakPin takes the pin's path. Both at `transition`
 		// is the one state where step 2 can do neither.
@@ -935,32 +945,44 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 	}{
 		{name: "the old copy, in step 2", breakAt: "transition", breakFile: true,
 			want: "the credential store change could not finish for prod", cause: "is a directory"},
-		{name: "the pin, in step 4", breakAt: "cachebinding", breakPin: true,
+		{name: "the pin, in step 4", breakAfter: "credentials.yaml", breakPin: true,
 			want: "a credential store change is unfinished for this directory (pin)", cause: pinFileName},
 		{name: "the pin, in step 2's fallback", breakAt: "transition", breakFile: true, breakPin: true, fails: true,
 			want: "a credential store change is unfinished for this directory (pin)", cause: pinFileName},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := repinFixture(t)
+			broken := false
+			breakPaths := func() {
+				if broken {
+					return
+				}
+				broken = true
+				if tc.breakFile {
+					breakPath(t, CredentialsFilePath(dir))
+				}
+				if tc.breakPin {
+					breakPath(t, PinPath(dir))
+				}
+			}
 			restore := SetPersistWriteHookForTest(func(step string) error {
-				if step == tc.breakAt {
-					if tc.breakFile {
-						breakPath(t, CredentialsFilePath(dir))
-					}
-					if tc.breakPin {
-						breakPath(t, PinPath(dir))
-					}
+				if tc.breakAt != "" && step == tc.breakAt {
+					breakPaths()
 				}
 				return nil
 			})
 			defer restore()
+			defer SetAfterWriteHookForTest(func(what string) {
+				if tc.breakAfter != "" && what == tc.breakAfter {
+					breakPaths()
+				}
+			})()
 
 			out, err := PersistLoginCredential(t.Context(), dir, repinInput())
 			if tc.fails {
 				// With neither the old copy removed nor the pin flipped
-				// the binding id does not advance, which is its own named
-				// state - and the step that could not run still has to
-				// say why.
+				// the login stops, which is its own named state - and the
+				// step that could not run still has to say why.
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err, "the credential is committed; what is left over is a warning")
@@ -1030,9 +1052,10 @@ func TestAnOldCopyAnotherDirectoryOwnsIsLeftAlone(t *testing.T) {
 // TestAnOldCopyThatCannotBeReadFlipsThePinInstead asserts what step 2 does
 // when this entry's old copy is in a backend that cannot answer. No delete
 // step can be recorded - a delete is bound to the credential's digest and
-// there is none to compute - so the pin flips before the binding id
-// advances, which is the other way to stop a reader resolving to the copy
-// that is still there.
+// there is none to compute - so the pin flips in step 2, which is the
+// other way to stop a reader resolving to the copy that is still there.
+// Nothing is left to hold a pause; a writer that read the copy is refused
+// by the store check.
 func TestAnOldCopyThatCannotBeReadFlipsThePinInstead(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
 	keyring.MockInit()
@@ -1062,16 +1085,17 @@ func TestAnOldCopyThatCannotBeReadFlipsThePinInstead(t *testing.T) {
 	out, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.NoError(t, err)
 	assert.Contains(t, joinWarnings(out.Warnings), "could not be read and was left where it is")
-	assert.Equal(t, backendKeychain, pinAt["cachebinding"],
-		"the pin flipped before the id advanced, because the copy could not be removed")
+	assert.Equal(t, backendKeychain, pinAt["resume"],
+		"the pin flipped before the last write, because the copy could not be removed")
 	assert.NotEmpty(t, out.CacheBindingID)
+	assert.False(t, out.CacheWritesPaused)
 }
 
-// TestTheRemainingStepsRunAfterTheBindingIdWrite asserts the order of the
-// last two steps: the id a cache record binds to advances first, and the
-// pin runs after it. Running it first would leave the previous login's
-// records valid across work that has already happened.
-func TestTheRemainingStepsRunAfterTheBindingIdWrite(t *testing.T) {
+// TestTheRemainingStepsRunBeforeTheLastWrite asserts the order around the
+// remaining steps: the id a cache record binds to advanced in the first
+// write, before anything, and the pin step runs before the last write,
+// which resumes cache writes once nothing left can move readers.
+func TestTheRemainingStepsRunBeforeTheLastWrite(t *testing.T) {
 	dir := repinFixture(t)
 
 	pinAt := map[string]string{}
@@ -1084,8 +1108,8 @@ func TestTheRemainingStepsRunAfterTheBindingIdWrite(t *testing.T) {
 	_, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.NoError(t, err)
 
-	assert.Equal(t, backendFile, pinAt["cachebinding"], "the pin has not moved yet when the id advances")
-	assert.Equal(t, backendKeychain, ReadPin(dir), "and has by the time the login returns")
+	assert.Equal(t, backendFile, pinAt["entry"], "the pin has not moved yet when the id advances")
+	assert.Equal(t, backendKeychain, pinAt["resume"], "and has before the write that resumes cache writes")
 }
 
 // TestACreateOnlyDestinationNamesItsWrite asserts the write on the
@@ -1273,7 +1297,7 @@ func TestAPinNamingAThirdStoreIsWrittenBeforeTheCommit(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, "id:new", seen["cachebinding"], "as the binding id advances, readers get the new credential")
+			assert.Equal(t, "id:new", seen["resume"], "as cache writes resume, readers get the new credential")
 			assert.Equal(t, "auto", after.CredentialStore)
 			assert.Equal(t, "id:new", readerResolves(t, dir, "prod", "https://r.ex"))
 			if tc.pin != "" {

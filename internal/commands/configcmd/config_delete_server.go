@@ -41,14 +41,18 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// Execute's ordering is safety-critical: delete credentials FIRST, and abort
-// on delete failure before touching cfg or writing anything - the config
-// file stays byte-identical to before the call. Only after a successful
-// delete does the single config write (server removed, current-server
-// pointer cleared if it named the deleted server) happen. A delete failure
-// must never leave a live orphaned token behind a disappeared server entry -
-// the exact bug this command exists to kill; the benign failure direction is
-// creds gone + server still configured, never the reverse.
+// Execute's ordering is safety-critical. The first config write advances
+// the entry's cache binding id and pauses its cache writes, and nothing
+// else: a get-token racing the purge below then writes its record under an
+// id the entry no longer has, or writes nothing. Credentials are deleted
+// next, and a delete failure aborts with the entry, the pointer and every
+// other field as they were - only the id and the pause have moved. Only
+// after a successful delete does the last config write (server removed,
+// current-server pointer cleared if it named the deleted server, other
+// entries' pauses resumed where they may be) happen. A delete failure must
+// never leave a live orphaned token behind a disappeared server entry -
+// the exact bug this command exists to kill; the benign failure direction
+// is creds gone + server still configured, never the reverse.
 func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	name := in.Args()[0]
 
@@ -82,11 +86,19 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		if perr != nil {
 			return perr
 		}
+		entry := srv
+		if berr := config.StartCredentialChange(&entry); berr != nil {
+			return berr
+		}
+		cfg.Servers[name] = entry
+		if werr := config.WriteStep("cachebinding", cfg); werr != nil {
+			return werr
+		}
 		deletedFrom, deletedCache, notices, err = d.delete(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
 		if err != nil {
 			return clierr.WrapUnlessCanceled(err, func(err error) error {
 				return clierr.Wrap(err,
-					fmt.Sprintf("failed to delete credentials for %q; server config left untouched: %v", name, err)).
+					fmt.Sprintf("failed to delete credentials for %q; the server entry is left in place, with only its cache binding id advanced and its cache writes paused: %v", name, err)).
 					WithWarnings(notices...)
 			})
 		}
@@ -95,7 +107,8 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 			cfg.CurrentServer = ""
 			currentCleared = true
 		}
-		return cfg.Write()
+		config.ResumeCacheWrites(d.dir, cfg, name)
+		return config.WriteStep("remove", cfg)
 	}); err != nil {
 		return runtime.Result{}, err
 	}

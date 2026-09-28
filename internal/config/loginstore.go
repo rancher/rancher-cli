@@ -519,25 +519,25 @@ func oldCopyOf(dir, entry, url, from string) (oldCopy, string, error) {
 	return oldCopy{token: tok, url: url}, "", nil
 }
 
-// runOldCopyBeforeBinding performs step 2: the logging-in entry's old
-// copy goes, and if it cannot go the pin flips instead, both before the
-// binding id advances. ok is false only when neither could be done, which
-// is the one state that stops the id from advancing.
-func runOldCopyBeforeBinding(ctx context.Context, dir string, cfg *Config, ch storeChange, entry string) (notices []string, ok bool) {
+// runOldCopyOrPin performs step 2: the logging-in entry's old copy goes,
+// and if it cannot go the pin flips instead, so readers stop resolving
+// to it. ok is false only when neither could be done, which stops the
+// login with readers still on the previous credential.
+func runOldCopyOrPin(ctx context.Context, dir string, cfg *Config, ch storeChange, entry string) (notices []string, ok bool) {
 	m := &ch.plan.manifest
 	i := stepIndex(m, func(s transitionStep) bool {
 		return s.Kind == transitionDelete && s.Entry == entry
 	})
 	switch {
 	case i < 0 && !ch.oldCopyUnread:
-		// No old copy at all: there is nothing a reader could resolve to
-		// and pair with the new id, so the pin keeps its place last.
+		// No old copy at all: there is nothing a reader could resolve to,
+		// so the pin keeps its place last.
 		return nil, true
 	case i < 0:
 		// There is one, and it could not be read, so no step names it.
 		// The pin is the only thing left that stops a reader resolving to
 		// it, so it runs here rather than last.
-		return runPinBeforeBinding(ctx, dir, cfg, m, nil)
+		return runPinEarly(ctx, dir, cfg, m, nil)
 	}
 	done, ns, retained, err := replayStepAt(ctx, dir, cfg, m, i)
 	notices = append(notices, ns...)
@@ -549,12 +549,12 @@ func runOldCopyBeforeBinding(ctx context.Context, dir string, cfg *Config, ch st
 		notices = append(notices, fmt.Sprintf(
 			"the credential store change could not be recorded as it ran: %s", err.Error()))
 	}
-	return runPinBeforeBinding(ctx, dir, cfg, m, notices)
+	return runPinEarly(ctx, dir, cfg, m, notices)
 }
 
-// runPinBeforeBinding runs the change's pin step early, which is what
+// runPinEarly runs the change's pin step early, which is what
 // stops a reader resolving to an old copy that is still there.
-func runPinBeforeBinding(ctx context.Context, dir string, cfg *Config, m *transitionManifest, notices []string) ([]string, bool) {
+func runPinEarly(ctx context.Context, dir string, cfg *Config, m *transitionManifest, notices []string) ([]string, bool) {
 	j := stepIndex(m, func(s transitionStep) bool { return s.Kind == transitionPin })
 	if j < 0 {
 		return notices, false

@@ -170,10 +170,10 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		}
 		entry, records = out.Name, out.SupersededTokens
 		// The record this invocation goes on to write belongs to the
-		// entry this login just wrote, under the binding id it just
-		// advanced - both from the write itself, never a re-read.
+		// entry this login just wrote, as its last write wrote it - from
+		// the write itself, never a re-read.
 		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt, fresh: newFreshToken(ct, in.client, base, cred.Token),
-			binding: config.CacheBinding{Dir: t.cacheDir(), Entry: out.Name, BindingID: out.CacheBindingID}}
+			binding: out.CacheBinding(t.cacheDir())}
 		warnings = append(warnings, st.Warnings...)
 		return nil
 	})

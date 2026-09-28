@@ -49,7 +49,7 @@ what drifted the previous revision of this doc).
 | `internal/commands/configcmd` | The `config` group: server entries (`add-server`, `update-server`, `delete-server`, `use-server`, `ls`), `path`, `info`, `edit`, `set-completion`, `set-token-reuse`. |
 | `internal/commands/register` | Server registration shared by `auth login` and `config add-server/update-server`: URL canonicalization, TLS preflight, CA selection, create and update under the config lock. |
 | `internal/commands/skill` | `skill install/uninstall/status` over `internal/skillinstall`. |
-| `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness. No production importer. |
+| `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness, an exec-plugin process and the harness that holds one mid-call while a command runs. No production importer. |
 | `internal/cli/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
@@ -89,7 +89,7 @@ what drifted the previous revision of this doc).
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
 | `internal/skillinstall` | Installs the embedded rancher agents skill into coding-agent harness skill directories (claude, codex, copilot, agents) with env-override support, user/project scope resolution, presence detection, and provenance/digest stamping. |
-| `internal/testrancher` | Test-only fake of Rancher's public auth surface (`/v1-public/*`) and the ext.cattle.io/v1 Token store's imperative create/revoke behavior, for the e2e harness and unit tests. No production package may import it. |
+| `internal/testrancher` | Test-only fake of Rancher's public auth surface (`/v1-public/*`) and the ext.cattle.io/v1 Token store's imperative create/revoke behavior, plus a Rancher that names each token it makes after the credential that asked, for the e2e harness and unit tests. No production package may import it. |
 | `internal/testrancher/fidelity` | The fidelity oracle for that fake: data-defined probes recorded against a real, digest-pinned Rancher (`make e2e-fidelity`) and replayed against the composite facade by `make e2e`, so drift from real-server behavior fails the build or is pinned as an explicit, machine-checked divergence. Probes marked `Downstream: true` run against the k3s cluster the oracle imports on every boot (`make e2e-fidelity` exports its id as `E2E_FIDELITY_DOWNSTREAM`), or against a Rancher you run yourself with its own downstream cluster (`make e2e-fidelity-downstream`); they are skipped when no downstream id is exported. Test-only. |
 
 ## Package dependency diagram
@@ -363,6 +363,7 @@ graph TD
     cmdtest --> clierr
     cmdtest --> config
     cmdtest --> runtime
+    cmdtest --> token
     cmdtest --> ui
 
     kubeconfigengine --> engine
@@ -589,12 +590,26 @@ directory that created it, the config entry it came from and that entry's `cache
 (a random per-entry value in `config.yaml`), all read in the same config load as the
 credential and carried to the write. A hit needs the version to be current, the directory
 to match, and the entry to exist with the same id - or the record to name no entry and the
-server to still have none, which is the bare-install state. The id advances after a login
-commits and before any credential removal (`auth logout`, `logout --all`, a
-`config update-server` URL change), so records of the previous login are misses at once;
-`config delete-server` needs no advance because it removes the entry and purges the
-server's records with it. The directory a record names is the absolute, cleaned path, so a
-copied config directory serves none of the records the source wrote.
+server to still have none, which is the bare-install state. Every change of an entry's
+credential - a login, `auth logout`, `logout --all`, a `config update-server` URL change,
+`config delete-server` - starts with one config write that advances the id and sets the
+entry's `cacheWritesPaused` (`locked`, or `noLock` for a change made with
+`RANCHER_CLI_CONFIG_NO_LOCK`) before any of the entry's credential is written or deleted,
+so records of the previous credential are misses at once and none is written while the
+change runs: a cache write refuses a binding whose load showed the pause. Every record the
+exec plugin writes after a store read also passes a store check - the store a reader
+resolves from the record's own config load, with the pin or the unpinned decision read at
+the check, has to be the store the credential was read from - so a process whose store was
+fixed before a change writes nothing after it. The change's last write clears the pause,
+under the config lock and only while the store change record reads cleanly and has no pin
+step left that would move readers; a pause made without the lock is cleared only by its
+own change. No write puts an earlier id back, a rollback included, and every entry a
+command creates starts with an id of its own. A pause nobody cleared - a process that died
+inside a change, a failure path that made no further write - is cleared by the exec
+plugin's next cache miss that can take the config lock at once (it tries, never waits, and
+never under `RANCHER_CLI_CONFIG_NO_LOCK`); `config status` lists every paused entry with
+the reason. The directory a record names is the absolute, cleaned path, so a copied config
+directory serves none of the records the source wrote.
 
 The check is anchored by the directory's binding stamp, a random value in
 `cachebinding-stamp` and, as `bindingStamp`, in `config.yaml`. A reader takes it once
@@ -760,10 +775,12 @@ store being left, or has one left in the store readers move to
 and an `auto` upgrade from the file store stays there while another entry
 is in it or has a keychain identity record. Before the commit the login writes the record of
 what the change has to do - its own old copy's delete and the pin, last -
-which stays inert until the first config write after the commit names it.
-Then this entry's old copy is removed, or failing that the pin is flipped,
-before the cache binding id advances; the id write follows; and the
-remaining steps run under the lock the login already holds. Every path
+which stays inert until the first config write after the commit names it;
+the login's own first write, before the record, has already advanced this
+entry's cache binding id and paused its cache writes. Then this entry's old
+copy is removed, or failing that the pin is flipped; the remaining steps
+run under the lock the login already holds; and the last write resumes
+cache writes unless a pin step is left that would move readers. Every path
 that ends before the naming write removes the record. When the pin on disk names
 a store the directory neither uses nor is moving to, the login writes the
 pin it ends with before the commit instead of last - the declaration is

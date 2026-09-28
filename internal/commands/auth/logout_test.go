@@ -140,9 +140,9 @@ func TestLogoutDeletesMatchingExecCache(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
 	// acme.ex and other.ex per seedLogout; cache two entries, one per host,
 	// plus a legacy bare entry (no Server) that must never be touched.
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1", config.CacheBinding{Dir: dir}))
-	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", "", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBindingForTest(dir, "", "")))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1", config.CacheBindingForTest(dir, "", "")))
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", "", config.CacheBindingForTest(dir, "", "")))
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
 	require.NoError(t, err)
@@ -162,8 +162,8 @@ func TestLogoutDeletesMatchingExecCache(t *testing.T) {
 
 func TestLogoutAllDeletesWholeExecCache(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme", "other")
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBindingForTest(dir, "", "")))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1", config.CacheBindingForTest(dir, "", "")))
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
 		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
 	}
 	dir, store := seedLogout(t, "acme", "acme")
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBindingForTest(dir, "", "")))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
@@ -206,11 +206,11 @@ func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
 // --all must catch both via the full-cache wipe.
 func TestLogoutAllCatchesOrphanedCacheEntries(t *testing.T) {
 	dir, store := seedLogout(t, "acme", "acme")
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", config.CacheBindingForTest(dir, "", "")))
 	// Orphaned: no Server field at all (legacy bare entry).
-	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", "", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", "", config.CacheBindingForTest(dir, "", "")))
 	// Orphaned: cached against a host with no matching entry in cfg.Servers.
-	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "removed.ex", "c-1"), "tok-removed", time.Time{}, "kubeuser", "removed.ex", "c-1", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred(config.CacheKey("kubeuser", "removed.ex", "c-1"), "tok-removed", time.Time{}, "kubeuser", "removed.ex", "c-1", config.CacheBindingForTest(dir, "", "")))
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
@@ -444,7 +444,10 @@ func TestLogoutAllReportsBothCleanupFailures(t *testing.T) {
 		"what the per-target loop deleted is still reported")
 
 	_, gerr := fileStore.GetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"})
-	assert.ErrorIs(t, gerr, config.ErrNoToken)
+	require.ErrorIs(t, gerr, config.ErrNoToken)
+	after, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.False(t, after.Servers["acme"].Paused(), "the last config write, before the wipe and the sweep, resumed acme's cache writes")
 }
 
 // TestDeleteBothFailureKeepsBothCauses asserts what a run where both
@@ -577,7 +580,10 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 		lines[len(lines)-1])
 
 	_, gerr := fileStore.GetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"})
-	assert.ErrorIs(t, gerr, config.ErrNoToken, "acme's credential deletion is not undone by the later failure")
+	require.ErrorIs(t, gerr, config.ErrNoToken, "acme's credential deletion is not undone by the later failure")
+	after, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.False(t, after.Servers["acme"].Paused(), "the last config write, before the sweep, resumed acme's cache writes")
 }
 
 // TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential asserts a

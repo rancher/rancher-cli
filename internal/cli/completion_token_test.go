@@ -42,7 +42,7 @@ func TestResolveCompletionTokenExecCredIDOnly(t *testing.T) {
 		config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
 		"exec-token", time.Now().Add(time.Hour),
 		"k8s-ctx", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir, Entry: "srv"},
+		config.CacheBindingForTest(dir, "srv", ""),
 	))
 	cfg := &config.Config{
 		CurrentServer: "srv",
@@ -67,13 +67,13 @@ func TestResolveCompletionTokenAmbiguousExecCredYieldsEmpty(t *testing.T) {
 		config.CacheKey("ctx-a", "https://rancher.example.com", "c-abc"),
 		"tok-a", time.Now().Add(time.Hour),
 		"ctx-a", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir, Entry: "srv"},
+		config.CacheBindingForTest(dir, "srv", ""),
 	))
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("ctx-b", "https://rancher.example.com", "c-abc"),
 		"tok-b", time.Now().Add(time.Hour),
 		"ctx-b", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir, Entry: "srv"},
+		config.CacheBindingForTest(dir, "srv", ""),
 	))
 	cfg := &config.Config{
 		CurrentServer: "srv",
@@ -119,7 +119,7 @@ func TestResolveCompletionTokenInvalidServerURLYieldsEmpty(t *testing.T) {
 				config.CacheKey("bad", badID, "c-1"),
 				"also-should-not-surface", time.Now().Add(time.Hour),
 				"bad", badID, "c-1",
-				config.CacheBinding{Dir: dir, Entry: "srv"},
+				config.CacheBindingForTest(dir, "srv", ""),
 			))
 
 			cfg := &config.Config{
@@ -155,14 +155,14 @@ func TestResolveCompletionTokenShimEntryPlusNativeResolvesNative(t *testing.T) {
 		config.CacheKey("ctx-native", "https://rancher.example.com", "c-abc"),
 		"native-tok", time.Now().Add(time.Hour),
 		"ctx-native", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir, Entry: "srv"},
+		config.CacheBindingForTest(dir, "srv", ""),
 	))
 	// Shim entry ("legacy:x") for the same server+cluster.
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("legacy:x", "https://rancher.example.com", "c-abc"),
 		"shim-tok", time.Now().Add(time.Hour),
 		"legacy:x", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir, Entry: "srv"},
+		config.CacheBindingForTest(dir, "srv", ""),
 	))
 	cfg := &config.Config{
 		CurrentServer: "srv",
@@ -191,7 +191,7 @@ func TestResolveCompletionTokenShimOnlyYieldsEmpty(t *testing.T) {
 		config.CacheKey("legacy:y", "https://rancher.example.com", "c-def"),
 		"shim-only-tok", time.Now().Add(time.Hour),
 		"legacy:y", "https://rancher.example.com", "c-def",
-		config.CacheBinding{Dir: dir, Entry: "srv"},
+		config.CacheBindingForTest(dir, "srv", ""),
 	))
 	cfg := &config.Config{
 		CurrentServer: "srv",
@@ -414,7 +414,7 @@ func TestResolveCompletionTokenWithoutADirectoryReadsNoFile(t *testing.T) {
 		config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
 		"loose-token", time.Now().Add(time.Hour),
 		"k8s-ctx", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: cwd, Entry: "srv"},
+		config.CacheBindingForTest(cwd, "srv", ""),
 	))
 	t.Chdir(cwd)
 	t.Setenv(config.EnvURL, "https://rancher.example.com")
@@ -461,7 +461,7 @@ func TestResolveCompletionTokenObeysTheCacheBinding(t *testing.T) {
 			config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
 			"exec-token", time.Now().Add(time.Hour),
 			"k8s-ctx", "https://rancher.example.com", "c-abc",
-			config.CacheBinding{Dir: dir, Entry: "srv", BindingID: "b1"},
+			config.CacheBindingForTest(dir, "srv", "b1"),
 		))
 		return cfg
 	}

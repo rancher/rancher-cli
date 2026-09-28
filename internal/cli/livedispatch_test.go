@@ -219,7 +219,7 @@ func idOnlyFixture(t *testing.T, srv *httptest.Server, clusters ...string) {
 			config.CacheKey("k8s-ctx", srv.URL, c),
 			"exec-token-"+c, time.Now().Add(time.Hour),
 			"k8s-ctx", srv.URL, c,
-			config.CacheBinding{Dir: dir, Entry: "srv"},
+			config.CacheBindingForTest(dir, "srv", ""),
 		))
 	}
 	cfg := &config.Config{

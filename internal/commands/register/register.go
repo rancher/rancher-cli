@@ -256,7 +256,13 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 				return CreateOutcome{}, err
 			}
 		}
-		cfg.Servers[name] = config.Server{URL: probe.CanonicalURL, CA: probe.CASelector, CAFingerprint: probe.CAFingerprint}
+		// A new entry starts with a cache binding id of its own, so no
+		// record an earlier entry of the same name left can match it.
+		e := config.Server{URL: probe.CanonicalURL, CA: probe.CASelector, CAFingerprint: probe.CAFingerprint}
+		if err := config.AdvanceCacheBinding(&e); err != nil {
+			return CreateOutcome{}, err
+		}
+		cfg.Servers[name] = e
 		created = true
 	case existing.URL == probe.CanonicalURL && existing.CA == probe.CASelector:
 		// Entry no-op: identical existing entry, nothing to rewrite.
@@ -410,15 +416,21 @@ func ValidateUpdate(cfg *config.Config, name string, src UpdateSource, probe Pro
 // ValidateUpdate and ApplyUpdate.
 func ApplyUpdate(cfg *config.Config, plan UpdatePlan) (UpdateOutcome, error) {
 	if len(plan.ChangedFields) > 0 {
-		// A fresh value is what clears the trust fingerprint for free.
-		// The cache binding id is not trust: a URL change clears the
-		// entry's credentials and advances the id first, and dropping it
-		// here would throw that advance away and leave the entry with no
-		// binding at all.
-		cfg.Servers[plan.Name] = config.Server{
-			URL: plan.CanonicalURL, CA: plan.CASelector,
-			CacheBindingID: cfg.Servers[plan.Name].CacheBindingID,
+		e := cfg.Servers[plan.Name]
+		if plan.CredentialsCleared {
+			// A URL change clears the entry's credentials, so the entry
+			// keeps only its address, its trust, and what its change's
+			// first write gave it: the advanced cache binding id and the
+			// pause, which the caller has cleared when it may.
+			e = config.Server{URL: plan.CanonicalURL, CA: plan.CASelector,
+				CacheBindingID: e.CacheBindingID, CacheWritesPaused: e.CacheWritesPaused}
+		} else {
+			// A CA-only update changes no credential: every other field
+			// is kept, a pause a change left included. The fingerprint
+			// belonged to the certificate being replaced.
+			e.URL, e.CA, e.CAFingerprint = plan.CanonicalURL, plan.CASelector, ""
 		}
+		cfg.Servers[plan.Name] = e
 	}
 	repaired := bootstrapPointer(cfg, plan.Name)
 	if len(plan.ChangedFields) > 0 || repaired {

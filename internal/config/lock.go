@@ -114,7 +114,9 @@ func SetWaitForFlockHookForTest(fn func()) (restore func()) {
 // across an interactive login and takes BEFORE this lock; code holding
 // this lock never acquires that one. Code holding the token-cache lock,
 // the helper-records lock or the credential-identity lock must never
-// acquire this lock.
+// acquire this lock. The exec plugin also takes this lock, through
+// tryWithLock, to resume paused cache writes: once, never waiting, and
+// under the same ordering.
 //
 // RANCHER_CLI_CONFIG_NO_LOCK (any non-empty value) skips the flock -
 // escape hatch for filesystems with broken advisory locking - while the
@@ -126,13 +128,31 @@ func WithLock(ctx context.Context, dir string, fn func() error) error {
 				semWaitHook()
 			}
 		},
-		func() {
-			if lockHeldHook != nil {
-				lockHeldHook()
-			}
-		},
-		fn)
+		configLockHeld, fn)
 }
+
+// configLockHeld runs the config lock's held hook, for both ways of
+// taking the lock.
+func configLockHeld() {
+	if lockHeldHook != nil {
+		lockHeldHook()
+	}
+}
+
+// tryWithLock runs fn holding the config lock when it can be taken at
+// once, and reports whether it was. Under RANCHER_CLI_CONFIG_NO_LOCK it
+// takes nothing and runs nothing: without the flock a free lock proves
+// nothing about another process.
+func tryWithLock(dir string, fn func() error) (bool, error) {
+	if flockSkipped() {
+		return false, nil
+	}
+	observeIdentity("configlocktry")
+	return tryDirLock(dir, configLockName, configLockSem, configLockHeld, fn)
+}
+
+// flockSkipped reports whether RANCHER_CLI_CONFIG_NO_LOCK is set.
+func flockSkipped() bool { return os.Getenv(EnvConfigNoLock) != "" }
 
 // withDirLock runs fn while holding one config-directory lock: sem, the
 // in-process semaphore that serializes this process's callers of that one
@@ -164,11 +184,12 @@ func withDirLock(ctx context.Context, dir, name string, sem chan struct{}, semWa
 		return lockWaitError(err, lockWaitInProcess)
 	}
 
-	if os.Getenv(EnvConfigNoLock) == "" {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
+	if !flockSkipped() {
+		path, err := lockFile(dir, name)
+		if err != nil {
 			return err
 		}
-		release, lockErr := waitForFlock(waitCtx, filepath.Join(dir, name), 100*time.Millisecond)
+		release, lockErr := waitForFlock(waitCtx, path, 100*time.Millisecond)
 		if lockErr != nil {
 			return lockWaitError(lockErr, lockWaitCrossProcess)
 		}
@@ -178,6 +199,41 @@ func withDirLock(ctx context.Context, dir, name string, sem chan struct{}, semWa
 		held()
 	}
 	return fn()
+}
+
+// tryDirLock is withDirLock that never waits: the same semaphore and the
+// same flock file, each tried once, and fn run only when both were taken.
+// The caller decides what the escape hatch means for it before calling.
+func tryDirLock(dir, name string, sem chan struct{}, held func(), fn func() error) (bool, error) {
+	select {
+	case sem <- struct{}{}:
+	default:
+		return false, nil
+	}
+	defer func() { <-sem }()
+	path, err := lockFile(dir, name)
+	if err != nil {
+		return false, err
+	}
+	fl := flock.New(path)
+	ok, err := fl.TryLock()
+	if err != nil || !ok {
+		return false, err
+	}
+	defer func() { _ = fl.Unlock() }()
+	if held != nil {
+		held()
+	}
+	return true, fn()
+}
+
+// lockFile is the flock file of the lock name in dir, with dir created
+// first: both ways of taking a lock open the same file.
+func lockFile(dir, name string) (string, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, name), nil
 }
 
 // lockWaitStage says which of the two waits timed out, so the error can

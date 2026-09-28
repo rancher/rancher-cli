@@ -425,11 +425,11 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	// directory, and the entry answering for this server with its cache
 	// binding id. Without it the record names no owner and every reader
 	// treats it as another directory's.
-	binding := config.CacheBinding{Dir: dir}
+	binding := config.CacheBindingForTest(dir, "", "")
 	if cfg, err := config.Load(config.FilePath(dir)); err == nil {
+		binding = config.CacheBindingWithoutEntry(dir, cfg)
 		if names := cfg.MatchingServerNames(srvID); len(names) > 0 {
-			binding.Entry = names[0]
-			binding.BindingID = cfg.Servers[names[0]].CacheBindingID
+			binding = config.CacheBindingFor(dir, cfg, names[0])
 		}
 	}
 	if err := store.SetCachedCred(key, testToken, time.Now().Add(24*time.Hour), name, srvID, cluster, binding); err != nil {

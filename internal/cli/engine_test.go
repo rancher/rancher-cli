@@ -64,6 +64,7 @@ func (c *countingStore) SetCachedCred(string, string, time.Time, string, string,
 func (c *countingStore) DeleteCachedCred(string) error                     { return nil }
 func (c *countingStore) DeleteAllCachedCreds() error                       { return nil }
 func (c *countingStore) ListCachedCreds() ([]config.CachedCredInfo, error) { return nil, nil }
+func (c *countingStore) ResolvedBackend() (string, bool)                   { return "", true }
 
 func TestFactoryResolvesEffectiveOnce(t *testing.T) {
 	t.Parallel()

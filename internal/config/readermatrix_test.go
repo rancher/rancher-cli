@@ -247,8 +247,9 @@ func readerMatrixRows() []readerMatrixRow {
 // resolves to a store holding its own old credential or, for the entry
 // logging in, its new one, or the read fails - but never with the
 // both-stores error, which would stop every entry in the middle of a
-// login. Never a third store, never the previous credential once the
-// binding id has advanced, and never a reader that writes or probes.
+// login. Never a third store, never the previous credential while the
+// binding id has advanced unless the entry's cache writes are paused, and
+// never a reader that writes or probes.
 // Afterwards the new credential is where the row says and every other
 // entry's credential is where it was.
 func TestAReaderDuringALoginResolvesTheOldOrTheNewCredential(t *testing.T) {
@@ -360,7 +361,11 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 		}
 		writes++
 		now, lerr := Load(FilePath(dir))
+		// A reader that still gets prod's previous credential once its id
+		// has advanced must find prod's cache writes paused, so no record
+		// made from it is written under the new id.
 		advanced := lerr == nil && now.Servers["prod"].CacheBindingID != "b0"
+		paused := lerr == nil && now.Servers["prod"].Paused()
 		for _, e := range entries {
 			tok, err := read(e)
 			if IsCredentialsInBothStores(err) {
@@ -391,10 +396,10 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 			old := tok != "" && tok == baseline[e]
 			switch {
 			case e == "prod" && tok == matrixNewToken:
-			case old && e != "prod", old && !advanced:
+			case old && e != "prod", old && !advanced, old && paused:
 			case old:
 				violations = append(violations, fmt.Sprintf(
-					"after write %d (%s) the binding id has advanced and a reader still gets prod's previous credential", writes, what))
+					"after write %d (%s) the binding id has advanced, cache writes are not paused, and a reader still gets prod's previous credential", writes, what))
 			default:
 				violations = append(violations, fmt.Sprintf(
 					"after write %d (%s) a reader of %s gets %q, which is neither its old nor its new credential", writes, what, e, tok))

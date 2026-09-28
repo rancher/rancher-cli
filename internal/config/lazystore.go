@@ -80,6 +80,20 @@ func (l *lazyStore) DrainNotices() []string {
 	return nil
 }
 
+// ResolvedBackend implements CredStore without forcing resolution: the
+// store a lazy store reads from is the one its first credential call
+// fixed, and before that call it has read from none. A resolution that
+// failed fixed no backend.
+func (l *lazyStore) ResolvedBackend() (string, bool) {
+	switch {
+	case !l.resolved.Load():
+		return "", false
+	case l.err != nil:
+		return "", true
+	}
+	return l.store.ResolvedBackend()
+}
+
 func (l *lazyStore) GetToken(ref ServerRef) (string, error) {
 	s, err := l.backend()
 	if err != nil {

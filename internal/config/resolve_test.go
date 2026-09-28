@@ -59,6 +59,7 @@ func (s stubStore) SetCachedCred(string, string, time.Time, string, string, stri
 func (s stubStore) DeleteCachedCred(string) error              { return nil }
 func (s stubStore) DeleteAllCachedCreds() error                { return nil }
 func (s stubStore) ListCachedCreds() ([]CachedCredInfo, error) { return nil, nil }
+func (s stubStore) ResolvedBackend() (string, bool)            { return "", true }
 
 func TestEffectiveSurfacesStoreError(t *testing.T) {
 	t.Parallel()

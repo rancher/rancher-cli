@@ -81,7 +81,10 @@ type CredStore interface {
 	// fingerprints; the same expiry eviction, the same ErrNoToken.
 	GetCachedCredDetail(key string, anchor *CacheAnchor) (CachedCredDetail, error)
 	// SetCachedCred writes the record with the binding it must later be
-	// judged by, taken from the same config load as the credential.
+	// judged by, taken from the same config load as the credential. A
+	// binding whose load showed the entry's cache writes paused writes
+	// nothing and returns ErrCacheWritesPaused; one no constructor built
+	// writes nothing either.
 	SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error
 	// MarkCachedCredReady records fingerprint on key's record only when the
 	// record still holds token, under the cache lock, and reports whether
@@ -90,6 +93,12 @@ type CredStore interface {
 	DeleteCachedCred(key string) error
 	DeleteAllCachedCreds() error
 	ListCachedCreds() ([]CachedCredInfo, error)
+	// ResolvedBackend names the physical store login credentials are read
+	// from - file, keychain or exec:<name> - and reports whether one has
+	// been fixed: false only for a lazy store before its first credential
+	// call. A lazy store whose resolution failed reports true with no
+	// backend.
+	ResolvedBackend() (backend string, fixed bool)
 }
 
 type cachedCred struct {
@@ -179,6 +188,9 @@ func newFileStore(dir string, nb *noticeBuffer) *fileStore {
 // DrainNotices implements runtime.NoticeSource.
 func (f *fileStore) DrainNotices() []string { return f.notices.DrainNotices() }
 
+// ResolvedBackend implements CredStore.
+func (f *fileStore) ResolvedBackend() (string, bool) { return backendFile, true }
+
 // setTokenHook is a test-only synchronization point, invoked (when non-nil)
 // between SetToken's read and write. Lets tests force the exact stale-snapshot
 // interleaving of two fileStore instances (two processes' worth of state).
@@ -263,6 +275,7 @@ func warnLoosePermFI(path string, fi os.FileInfo) string {
 }
 
 func (f *fileStore) read() (map[string]string, error) {
+	observeIdentity("credentialsread")
 	m := map[string]string{}
 	b, err := os.ReadFile(f.path)
 	if err != nil {
@@ -474,6 +487,12 @@ func (f *fileStore) MarkCachedCredReady(key, token, fingerprint string) (bool, e
 }
 
 func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error {
+	// Refused before the cache lock: the refusal needs nothing but the
+	// binding, and a paused entry's writer goes on to try the config lock,
+	// which is never taken while this one is held.
+	if err := binding.writable(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.withCacheLock(func() error {
@@ -485,7 +504,7 @@ func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, ser
 			setCachedLock()
 		}
 		m[key] = cachedCred{Token: token, Expiry: expiry, Name: name, Server: serverHost, Cluster: cluster,
-			Version: cacheRecordVersion, Dir: binding.Dir, Entry: binding.Entry, BindingID: binding.BindingID}
+			Version: cacheRecordVersion, Dir: binding.dir, Entry: binding.entry, BindingID: binding.bindingID}
 		return f.writeCache(m)
 	})
 }
@@ -621,6 +640,9 @@ func newPinnedKeyringStore(dir string, pinned bool) CredStore {
 
 // DrainNotices implements runtime.NoticeSource.
 func (k *keyringStore) DrainNotices() []string { return k.notices.DrainNotices() }
+
+// ResolvedBackend implements CredStore.
+func (k *keyringStore) ResolvedBackend() (string, bool) { return backendKeychain, true }
 
 // keyringUnreachable reports whether err is a backend-unreachable keyring
 // failure - a transport/connection-class error (Linux: godbus "no session
@@ -1254,39 +1276,63 @@ func checkPolicy(p string) error {
 // is called only then. Nothing stored opens the file store, whose read
 // answers "not logged in"; credentials in both stores are an error.
 func openStoreResolved(p, dir string, entries func() (*Config, error)) (CredStore, error) {
-	if err := checkPolicy(p); err != nil {
+	backend, byAuto, err := resolveBackend(p, dir, entries)
+	if err != nil {
 		return nil, err
 	}
-	if name, ok := execHelperName(p); ok {
+	if name, ok := execHelperName(backend); ok {
 		return newExecStore(name, dir), nil
 	}
-	switch p {
-	case "file":
-		return NewFileStore(dir), nil
-	case "keychain":
-		return newPinnedKeyringStore(dir, false), nil
+	if backend == backendKeychain {
+		return newPinnedKeyringStore(dir, byAuto), nil
 	}
-	switch ReadPin(dir) {
-	case "keychain":
-		return newPinnedKeyringStore(dir, true), nil
-	case "file":
-		return NewFileStore(dir), nil
+	return NewFileStore(dir), nil
+}
+
+// resolveBackend is the store a reader of the directory resolves for an
+// ALREADY-EFFECTIVE policy, named rather than opened: the policy itself
+// when it names a store, else the pin, else what the entries have stored.
+// byAuto says `auto` chose it rather than a declaration. It reads the pin
+// and, with none, the unpinned decision's files, and nothing else.
+func resolveBackend(p, dir string, entries func() (*Config, error)) (backend string, byAuto bool, err error) {
+	if err := checkPolicy(p); err != nil {
+		return "", false, err
+	}
+	if _, ok := execHelperName(p); ok || p == backendFile || p == backendKeychain {
+		return p, false, nil
+	}
+	switch pin := ReadPin(dir); pin {
+	case backendKeychain, backendFile:
+		return pin, true, nil
 	}
 	cfg, err := entries()
 	if err != nil {
-		return nil, err
+		return "", false, err
 	}
 	u, err := UnpinnedStoreOf(dir, cfg)
 	if err != nil {
-		return nil, err
+		return "", false, err
 	}
 	switch u.Row {
 	case UnpinnedKeychain:
-		return newPinnedKeyringStore(dir, true), nil
+		return backendKeychain, true, nil
 	case UnpinnedBoth:
-		return nil, u.Err()
+		return "", false, u.Err()
 	}
-	return NewFileStore(dir), nil
+	return backendFile, true, nil
+}
+
+// readerBackend is the store a reader of cfg resolves now in this
+// process: cfg's declaration and the variable as every command applies
+// them, then the pin or the unpinned decision read now. The conflict of
+// a declaration and the variable is its error, as it is every reader's.
+func readerBackend(dir string, cfg *Config) (string, error) {
+	p, err := EffectivePolicy(cfg.CredentialStore)
+	if err != nil {
+		return "", err
+	}
+	backend, _, err := resolveBackend(p, dir, func() (*Config, error) { return cfg, nil })
+	return backend, err
 }
 
 // keyringProbeTimeout bounds keyringUsable: on macOS the underlying `security`

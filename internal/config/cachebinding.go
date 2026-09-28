@@ -147,21 +147,161 @@ func CanonicalDir(dir string) string {
 }
 
 // CacheBinding is what a cache record is written with and judged by: the
-// directory it was created in, the config entry it was created from, and
-// that entry's cache binding id at the time.
+// directory it was created in, the config entry it was created from, that
+// entry's cache binding id at the time, and whether the entry's cache
+// writes were paused then.
 //
-// All three come from the same config load as the credential they belong
-// to, and are carried to the write rather than re-read there: a re-read
+// All of it comes from the same config load as the credential it belongs
+// to, and is carried to the write rather than re-read there: a re-read
 // could pair a credential this process acquired for one login with the id
 // of the login that replaced it in the meantime.
 //
-// An empty Entry means the credential was acquired for a server the
-// directory has no entry for. Such a record is a hit only while that
-// stays true.
+// A binding is built only by its constructors, from an entry of a loaded
+// config or, for a server that config has no entry for, by
+// CacheBindingWithoutEntry. The zero value names no load and is refused
+// by every write, so a producer that does not build one writes nothing,
+// rather than a record the pause would have stopped.
+//
+// No entry means the credential was acquired for a server the directory
+// has no entry for. Such a record is a hit only while that stays true.
+//
+// load and the store are what CheckStore compares: the config the
+// binding was built from, and the store the credential was read from -
+// from, asked at the check, or source, named where no store is at hand.
 type CacheBinding struct {
-	Dir       string
-	Entry     string
-	BindingID string
+	dir, entry, bindingID string
+	paused                bool
+	built                 bool
+	load                  *Config
+	from                  CredStore
+	source                string
+}
+
+// CacheBindingFor is the binding of a record made for entry, from cfg,
+// the config load the credential was read after. An entry cfg does not
+// have gives the zero binding.
+func CacheBindingFor(dir string, cfg *Config, entry string) CacheBinding {
+	if cfg == nil {
+		return CacheBinding{}
+	}
+	s, ok := cfg.Servers[entry]
+	if !ok {
+		return CacheBinding{}
+	}
+	return CacheBinding{dir: dir, entry: entry, bindingID: s.CacheBindingID, paused: s.Paused(), built: true, load: cfg}
+}
+
+// CacheBindingWithoutEntry is the binding of a record made for a server
+// cfg has no entry for.
+func CacheBindingWithoutEntry(dir string, cfg *Config) CacheBinding {
+	if cfg == nil {
+		return CacheBinding{}
+	}
+	return CacheBinding{dir: dir, built: true, load: cfg}
+}
+
+// CacheBindingForTest is a binding for a record a test seeds directly:
+// dir, entry and id as given, not paused. Production code builds its
+// bindings from a config load.
+func CacheBindingForTest(dir, entry, bindingID string) CacheBinding {
+	return CacheBinding{dir: dir, entry: entry, bindingID: bindingID, built: true}
+}
+
+// ReadFrom records the store the binding's credential is read from, for
+// CheckStore. The store is asked which backend it reads at the check,
+// not here: a lazy store fixes its backend at its first credential call,
+// which can come after the load a binding is built from.
+func (b CacheBinding) ReadFrom(store CredStore) CacheBinding {
+	b.from = store
+	return b
+}
+
+// ErrCacheStoreChanged is what CheckStore's refusal is: the store a reader
+// of the binding's load resolves now is not the store the credential was
+// read from, or cannot be resolved at all.
+var ErrCacheStoreChanged = errors.New("the credential store changed while the credential was read")
+
+// CacheStoreChangedError is CheckStore's refusal with its cause - the two
+// stores, or why a reader's store could not be resolved - so the notice a
+// skipped record gets can say what happened.
+type CacheStoreChangedError struct{ Cause string }
+
+func (e *CacheStoreChangedError) Error() string { return ErrCacheStoreChanged.Error() + ": " + e.Cause }
+
+// Is makes a CacheStoreChangedError match ErrCacheStoreChanged.
+func (e *CacheStoreChangedError) Is(target error) bool { return target == ErrCacheStoreChanged }
+
+// CheckStore reports whether a record may be written for a credential
+// read after the binding's load: only when the store a reader resolves
+// from that load - its declaration, then the pin or the unpinned decision
+// read now - is the store the credential came from. A process fixes its
+// store at its first credential call, which can precede a change the
+// load already shows, and whatever copy the change left in the store
+// readers left is still there to be read; a record made from it would
+// carry the entry's current id. A resolution that fails refuses too. A
+// binding no constructor built has nothing to compare, and the write
+// itself refuses it. A binding to no entry has nothing to compare
+// either: its record is served only while the directory has no entry for
+// the server, so no credential of an entry can be stale in it. Nor does
+// one whose store was never read - a lazy store no credential call has
+// resolved - since no copy was read to be stale. A store whose
+// resolution failed, and a named source that is empty, refuse.
+func (b CacheBinding) CheckStore() error {
+	if !b.built || b.entry == "" {
+		return nil
+	}
+	source := b.source
+	if b.from != nil {
+		backend, fixed := b.from.ResolvedBackend()
+		if !fixed {
+			return nil
+		}
+		source = backend
+	}
+	if source == "" {
+		return &CacheStoreChangedError{Cause: "the store it was read from is not known"}
+	}
+	now, err := readerBackend(b.dir, b.load)
+	switch {
+	case err != nil:
+		return &CacheStoreChangedError{Cause: "no store could be resolved: " + err.Error()}
+	case now != source:
+		return &CacheStoreChangedError{Cause: fmt.Sprintf("it was read from %s, and the directory now reads %s", source, now)}
+	}
+	return nil
+}
+
+// Dir is the directory the record is bound to.
+func (b CacheBinding) Dir() string { return b.dir }
+
+// Entry is the config entry the record is bound to, or empty for none.
+func (b CacheBinding) Entry() string { return b.entry }
+
+// BindingID is the entry's cache binding id in the load.
+func (b CacheBinding) BindingID() string { return b.bindingID }
+
+// Paused reports whether the entry's cache writes were paused in the load.
+func (b CacheBinding) Paused() bool { return b.paused }
+
+// ErrCacheWritesPaused is what a cache write returns for a binding whose
+// load showed its entry's cache writes paused: a change of the entry's
+// credential has not finished, and nothing is written for it.
+var ErrCacheWritesPaused = errors.New("exec-credential cache writes for this entry are paused while a change of its credential finishes")
+
+// errCacheBindingUnset is what a cache write returns for a binding no
+// constructor built, or one with no directory: there is nothing a record
+// could later be judged by.
+var errCacheBindingUnset = errors.New("the exec-credential cache record has no binding to a config load")
+
+// writable reports whether a record may be written under b.
+func (b CacheBinding) writable() error {
+	switch {
+	case !b.built || b.dir == "":
+		return errCacheBindingUnset
+	case b.paused:
+		return ErrCacheWritesPaused
+	}
+	return nil
 }
 
 // CacheAnchor is what an exec-credential cache hit is judged against: the
@@ -282,10 +422,9 @@ func (a *CacheAnchor) valid(rec cachedCred) bool {
 	// predates the binding id carries none, and a record made from it
 	// carries none either; refusing that pair would make the cache
 	// useless for such an entry until its next login, and it is not
-	// needed: every path that removes or replaces the entry's credential
-	// writes a non-empty id first, and the one path that removes the
-	// entry outright - config delete-server - purges the server's cache
-	// records with it.
+	// needed: every path that removes or replaces the entry's credential,
+	// config delete-server included, writes a fresh id first, and every
+	// entry a command creates starts with one.
 	return entry.CacheBindingID == rec.BindingID
 }
 

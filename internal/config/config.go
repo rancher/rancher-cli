@@ -168,12 +168,29 @@ type Server struct {
 	// status lists it like a superseded record without reading the store.
 	LoggedOutAt string `json:"loggedOutAt,omitempty"`
 	// CacheBindingID says which exec-credential cache records belong to
-	// this entry's current login. It is a random value, advanced after a
-	// login commits and before any credential removal, so a record made
-	// under the previous login is a miss rather than a credential served
-	// for a user this entry no longer holds.
+	// this entry's current credential. It is a random value, advanced by
+	// the first config write of every change of the entry's credential,
+	// before any of it is written or deleted, so a record made from the
+	// previous credential is a miss rather than a credential served for a
+	// user this entry no longer holds.
 	CacheBindingID string `json:"cacheBindingId,omitempty"`
+	// CacheWritesPaused is set by that same first write and says the
+	// change has not finished: no exec-credential cache record is written
+	// for the entry until it is cleared. PauseLocked is a change made under
+	// the config lock, PauseNoLock one made with RANCHER_CLI_CONFIG_NO_LOCK;
+	// any other value reads as paused too.
+	CacheWritesPaused string `json:"cacheWritesPaused,omitempty"`
 }
+
+// The values of CacheWritesPaused a change writes.
+const (
+	PauseLocked = "locked"
+	PauseNoLock = "noLock"
+)
+
+// Paused reports whether the entry's exec-credential cache writes are
+// paused.
+func (s Server) Paused() bool { return s.CacheWritesPaused != "" }
 
 // CLICreated reports whether a CLI login created the entry's current
 // token: the provenance is derived, legacySession, or execLogin. A token

@@ -105,7 +105,10 @@ func TestCommitCreateAbsentNameCreatesEntry(t *testing.T) {
 	assert.True(t, out.Created)
 	assert.Equal(t, "qa1", out.CurrentServer)
 	assert.True(t, out.PointerRepaired, "bootstrap: pointer was empty")
-	assert.Equal(t, config.Server{URL: "https://qa1.example.com"}, cfg.Servers["qa1"])
+	got := cfg.Servers["qa1"]
+	assert.Len(t, got.CacheBindingID, 32, "a new entry starts with a cache binding id of its own")
+	got.CacheBindingID = ""
+	assert.Equal(t, config.Server{URL: "https://qa1.example.com"}, got)
 }
 
 func TestCommitCreateAbsentNamePathRotationBetweenProbeAndCommit(t *testing.T) {

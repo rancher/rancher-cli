@@ -113,11 +113,31 @@ type PersistLoginOutcome struct {
 	// a caller that goes on to write a cache record binds it to the login
 	// it just made without loading the config a second time.
 	CacheBindingID string
-	ConfigRecovery *clierr.ConfigRecovery
+	// CacheWritesPaused says the entry's cache writes are still paused
+	// after this login: a pin step it left would move readers, or its last
+	// write failed.
+	CacheWritesPaused bool
+	ConfigRecovery    *clierr.ConfigRecovery
+	// written is the config as this login's last write wrote it, which
+	// is what a cache record for the credential it stored is bound to, and
+	// committedTo is the store that credential went to.
+	written     *Config
+	committedTo string
 	// Warnings are the store and pin notices, in order.
 	Warnings           []string
 	CurrentServer      string
 	CurrentServerValid bool
+}
+
+// CacheBinding is the binding of a cache record for the credential this
+// login stored: its entry as the login's last write wrote it, read from
+// the store its commit reached. A login that returned before that write
+// gives the zero binding, which no cache write accepts.
+func (o PersistLoginOutcome) CacheBinding(dir string) CacheBinding {
+	b := CacheBindingFor(dir, o.written, o.Name)
+	b.paused = b.paused || o.CacheWritesPaused
+	b.source = o.committedTo
+	return b
 }
 
 // ErrPersistAborted wraps a revalidation abort: the setting was turned
@@ -264,7 +284,17 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		}
 	}
 
+	// The change's first write: the entry's cache binding id advances and
+	// its cache writes pause before any of its credential is written, so
+	// every cache record made so far is a miss - one a writer that loaded
+	// earlier writes later included - and none is written until the last
+	// write resumes them. The prelude and the orphan removal above touch no
+	// credential a reader of this entry is served: a replay deletes from a
+	// store readers already left, and an orphan has no entry.
 	entry := newEntry(in, snap, now())
+	if berr := StartCredentialChange(&entry); berr != nil {
+		return berr
+	}
 	cfg.Servers[name] = entry
 	if werr := writeStep("entry", cfg); werr != nil {
 		out.ConfigState = clierr.ConfigWriteFailed
@@ -381,23 +411,19 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 			if restored == nil {
 				delete(cfg.Servers, name)
 			} else {
-				cfg.Servers[name] = *restored
+				cfg.Servers[name] = keepsTheChangesID(cfg, name, *restored)
 			}
 			if declares {
 				cfg.CredentialStore = in.Declaration
 				if plan != nil {
 					cfg.CredentialTransitionID = plan.ID()
 				}
-				if restored != nil {
-					e := *restored
-					if berr := AdvanceCacheBinding(&e); berr != nil {
-						return berr
-					}
-					cfg.Servers[name] = e
-				}
 			} else {
 				out.Warnings = appendNotice(out.Warnings, rb.dropManifest())
 			}
+			// The change this write puts into effect has delete steps only,
+			// which hold no pause: this write is its last.
+			ResumeCacheWrites(dir, cfg, name)
 			// Named by what it carries, like every other write after the
 			// commit: a test that fails the declaration write has to be
 			// able to fail this one. Trust is not what names it - this
@@ -421,9 +447,14 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		case commit.State == CommitPossiblyCommitted && snap == nil:
 			// The store may hold the credential and the caller will
 			// revoke it: keep the entry as the `auth logout` handle,
-			// without naming a token that is about to be revoked.
-			cfg.Servers[name] = Server{URL: in.CanonicalURL, CA: in.CA, CAFingerprint: in.CAFingerprint, Provenance: in.Provenance}
+			// without naming a token that is about to be revoked. Its id is
+			// the change's, never an earlier one, and this last write
+			// resumes it.
+			cur := cfg.Servers[name]
+			cfg.Servers[name] = Server{URL: in.CanonicalURL, CA: in.CA, CAFingerprint: in.CAFingerprint, Provenance: in.Provenance,
+				CacheBindingID: cur.CacheBindingID, CacheWritesPaused: cur.CacheWritesPaused}
 			out.Warnings = appendNotice(out.Warnings, rb.dropManifest())
+			ResumeCacheWrites(dir, cfg, name)
 			if werr := writeStep("rollback", cfg); werr != nil {
 				return rollbackFailed(out, name, snap, werr, cerr)
 			}
@@ -510,7 +541,11 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 				name, terr.Error())).
 				WithCause(terr)
 		case state != TransitionActive:
+			// Finished: none of its steps can run, and none is left to
+			// hold a pause. A writer that read the store readers have left
+			// is refused by the store check, so this write resumes.
 			out.ConfigState = clierr.ConfigTransitionLost
+			out.Warnings = appendNotice(out.Warnings, resumeLast(dir, cfg, name))
 			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 				"the credential for %s was stored, but the record of the credential store change is no longer the one this login wrote; the change did not run",
 				name)).
@@ -519,47 +554,21 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	}
 
 	// Step 2. When a reader still resolves to the store this login is
-	// leaving, the old copy of this entry's credential goes before
-	// the binding id advances, and if it cannot go the pin flips
-	// instead: either one stops a reader from pairing the previous
-	// user's credential with the new id. When neither can be done the
-	// id stays where it is and the login says so.
+	// leaving, the old copy of this entry's credential goes now, and if it
+	// cannot go the pin flips instead, so readers stop resolving to it.
+	// When neither can be done the login says so and stops: readers still
+	// resolve the previous credential, and the pin step left keeps this
+	// entry's cache writes paused until a later login finishes it.
 	if plan != nil && b.WritesPin() {
-		ns, ok := runOldCopyBeforeBinding(ctx, dir, cfg, change, name)
+		ns, ok := runOldCopyOrPin(ctx, dir, cfg, change, name)
 		out.Warnings = append(out.Warnings, ns...)
 		if !ok {
-			out.ConfigState = clierr.ConfigCacheBindingNotAdvanced
+			out.ConfigState = clierr.ConfigStoreChangeNotApplied
 			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
-				"the credential for %s was stored, but neither the old copy nor the credential store pin could be changed, so the exec-credential cache records of the previous login could not be invalidated",
+				"the credential for %s was stored, but neither the old copy nor the credential store pin could be changed, so this directory still reads the previous credential",
 				name)).
 				WithHint(LoginHintFor(name))
 		}
-	}
-
-	// Step 3. The entry's cache binding id advances after the commit and
-	// before any cleanup. `auth get-token` takes no config lock: one
-	// that read the old id also read a store still holding the old
-	// credential and caches under the old id, and one that reads the
-	// new id reads a store that already holds the new credential.
-	// Advancing before the commit would let the second of those cache
-	// the previous user's credential under the new id.
-	if berr := AdvanceCacheBinding(&entry); berr != nil {
-		return berr
-	}
-	cfg.Servers[name] = entry
-	// A change whose last step completed leaves a name with no file
-	// behind it; this is the config write that forgets it.
-	ClearFinishedTransition(dir, cfg)
-	if werr := writeStep("cachebinding", cfg); werr != nil {
-		// Not a rollback either: the credential is committed and
-		// recorded. What did not happen is the invalidation of the
-		// cache records the previous login left, which stay usable
-		// until they expire.
-		out.ConfigState = clierr.ConfigCacheBindingNotAdvanced
-		return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
-			"the credential for %s was stored, but the exec-credential cache records of the previous login could not be invalidated: %s",
-			name, werr.Error())).
-			WithHint("rancher auth delete-token --all")
 	}
 
 	// Step 4. Everything the change still has to do, in order, under
@@ -577,8 +586,17 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		}
 	}
 
+	// The change's last write. It resumes every entry's cache writes a
+	// resumer may clear - this one's unless a pin step it left would move
+	// readers - and forgets the name of a change whose last step
+	// completed. A failure leaves the pause for the next miss or change.
+	notice := resumeLast(dir, cfg, name)
+	out.Warnings = appendNotice(out.Warnings, notice)
+	entry = cfg.Servers[name]
 	out.SupersededTokens = entry.SupersededTokens
 	out.CacheBindingID = entry.CacheBindingID
+	out.CacheWritesPaused = entry.Paused() || notice != ""
+	out.written, out.committedTo = cfg, b.CommitsTo
 	out.CurrentServer = cfg.CurrentServer
 	if out.CurrentServer != "" {
 		_, out.CurrentServerValid = cfg.Servers[out.CurrentServer]
@@ -742,20 +760,49 @@ type loginRollback struct {
 }
 
 // undo restores the entry and the config fields, removes the manifest and
-// returns primary; a failed rollback write is reported instead.
+// returns primary; a failed rollback write is reported instead. The
+// entry keeps the id the change's first write gave it, and the rollback
+// write is the change's last: records made after it under that id come
+// from the credential it leaves, which is the one readers resolve.
 func (r loginRollback) undo(out *PersistLoginOutcome, cfg *Config, primary error) error {
 	out.Warnings = appendNotice(out.Warnings, r.dropManifest())
 	cfg.CredentialStore, cfg.CredentialTransitionID = r.declared, r.transition
 	if r.snap == nil {
 		delete(cfg.Servers, r.name)
 	} else {
-		cfg.Servers[r.name] = r.snap.Clone()
+		cfg.Servers[r.name] = keepsTheChangesID(cfg, r.name, *r.snap)
 	}
+	ResumeCacheWrites(r.dir, cfg, r.name)
 	if werr := writeStep("rollback", cfg); werr != nil {
 		return rollbackFailed(out, r.name, r.snap, werr, primary)
 	}
 	out.ConfigState = clierr.ConfigNotWritten
 	return primary
+}
+
+// keepsTheChangesID is s as the entry a rollback writes: everything as it
+// was before the login, but the cache binding id and the pause the
+// change's first write gave it, which cfg still holds. An id never moves
+// back: an earlier one would make every record the previous credential's
+// writers made valid again, beside whatever credential the rollback
+// could not remove.
+func keepsTheChangesID(cfg *Config, name string, s Server) Server {
+	cur := cfg.Servers[name]
+	r := s.Clone()
+	r.CacheBindingID, r.CacheWritesPaused = cur.CacheBindingID, cur.CacheWritesPaused
+	return r
+}
+
+// resumeLast is a change's last write for a login that got as far as its
+// commit: every pause a resumer may clear is cleared, a finished change's
+// name is forgotten, and the notice for a write that failed is returned.
+func resumeLast(dir string, cfg *Config, name string) string {
+	ClearFinishedTransition(dir, cfg)
+	ResumeCacheWrites(dir, cfg, name)
+	if werr := writeStep("resume", cfg); werr != nil {
+		return fmt.Sprintf("cache writes for %s stay paused (%s); the next exec-credential cache miss or credential change resumes them", name, werr.Error())
+	}
+	return ""
 }
 
 // dropManifest removes a manifest this login wrote and never named,

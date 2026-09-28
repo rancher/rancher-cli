@@ -59,6 +59,9 @@ func TestUpdateServerWriteFailureAfterPurgeNamesClearedCredentials(t *testing.T)
 
 	_, terr := store.GetToken(config.ServerRef{Name: "qa1", URL: "https://old.example.com"})
 	require.ErrorIs(t, terr, config.ErrNoToken, "the purge that ran before the failed write is not undone")
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, config.PauseLocked, cfg.Servers["qa1"].CacheWritesPaused, "the pause stays for the next cache miss to clear")
 }
 
 // TestUpdateServerConflictNeverPurgesCredentials exercises the CONFLICT path
@@ -258,6 +261,7 @@ func TestUpdateServerBindingWriteFailureClearsNothing(t *testing.T) {
 	cfg, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)
 	assert.Equal(t, "https://old.example.com", cfg.Servers["qa1"].URL, "the address is untouched")
+	assert.False(t, cfg.Servers["qa1"].Paused(), "and nothing is paused: the first write never landed")
 }
 
 // TestUpdateServerAdvancesTheCacheBindingBeforeThePurge asserts the id the
@@ -278,6 +282,16 @@ func TestUpdateServerAdvancesTheCacheBindingBeforeThePurge(t *testing.T) {
 	before.SetPath(config.FilePath(dir))
 	require.NoError(t, before.Write())
 
+	var atPurge config.Server
+	restore := config.SetAfterWriteHookForTest(func(what string) {
+		if what == "credentials.yaml" {
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			atPurge = cfg.Servers["qa1"]
+		}
+	})
+	t.Cleanup(restore)
+
 	c := newUpdateServerCmd(dir)
 	_, uerr := c.Execute(context.Background(), cmdtest.Input{Str: map[string]string{"url": "https://new.example.com"}, Pos: []string{"qa1"}}, nil)
 	require.NoError(t, uerr)
@@ -287,4 +301,56 @@ func TestUpdateServerAdvancesTheCacheBindingBeforeThePurge(t *testing.T) {
 	assert.Equal(t, "https://new.example.com", after.Servers["qa1"].URL)
 	assert.NotEmpty(t, after.Servers["qa1"].CacheBindingID, "the entry keeps a binding after the write")
 	assert.NotEqual(t, seed.CacheBindingID, after.Servers["qa1"].CacheBindingID, "and it is a new one")
+	assert.Equal(t, config.PauseLocked, atPurge.CacheWritesPaused, "cache writes are paused while the credential is deleted")
+	assert.Equal(t, after.Servers["qa1"].CacheBindingID, atPurge.CacheBindingID, "under the id the first write advanced")
+	assert.False(t, after.Servers["qa1"].Paused(), "and the entry write resumes them")
+}
+
+// TestAURLChangeWhoseDeleteFailsLeavesTheEntryPaused asserts the stop
+// between the first write and the last: the credential could not be
+// cleared, the address is unchanged, and the entry's cache writes stay
+// paused under the advanced id until the next cache miss or change.
+func TestAURLChangeWhoseDeleteFailsLeavesTheEntryPaused(t *testing.T) {
+	dir, store := cmdtest.FilePolicyDir(t)
+	addServerForUpdateTests(t, dir, "qa1", "https://old.example.com")
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "qa1", URL: "https://old.example.com"}, "tok"))
+	before, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(config.CredentialsFilePath(dir)))
+	require.NoError(t, os.Mkdir(config.CredentialsFilePath(dir), 0o700))
+
+	_, err = newUpdateServerCmd(dir).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"url": "https://new.example.com"}, Pos: []string{"qa1"}}, nil)
+	require.ErrorContains(t, err, "its cache binding id has already been advanced and its cache writes paused")
+	after, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, "https://old.example.com", after.Servers["qa1"].URL)
+	assert.NotEqual(t, before.Servers["qa1"].CacheBindingID, after.Servers["qa1"].CacheBindingID)
+	assert.Equal(t, config.PauseLocked, after.Servers["qa1"].CacheWritesPaused)
+}
+
+// TestAURLChangeWithoutTheLockClearsThePauseItMade asserts the setter's
+// side of the marker a change made with RANCHER_CLI_CONFIG_NO_LOCK
+// leaves: no other process may clear it, so the entry write that ends the
+// URL change has to.
+func TestAURLChangeWithoutTheLockClearsThePauseItMade(t *testing.T) {
+	dir, store := cmdtest.FilePolicyDir(t)
+	addServerForUpdateTests(t, dir, "qa1", "https://old.example.com")
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "qa1", URL: "https://old.example.com"}, "tok"))
+	t.Setenv(config.EnvConfigNoLock, "1")
+	var atUpdate string
+	t.Cleanup(config.SetPersistWriteHookForTest(func(step string) error {
+		if step == "update" {
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			atUpdate = cfg.Servers["qa1"].CacheWritesPaused
+		}
+		return nil
+	}))
+
+	_, err := newUpdateServerCmd(dir).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"url": "https://new.example.com"}, Pos: []string{"qa1"}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, config.PauseNoLock, atUpdate, "the first write marked the pause as made without the lock")
+	after, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.False(t, after.Servers["qa1"].Paused())
 }

@@ -356,6 +356,10 @@ func (s *execStore) GetCachedCred(key string, anchor *CacheAnchor) (string, time
 func (s *execStore) GetCachedCredDetail(key string, anchor *CacheAnchor) (CachedCredDetail, error) {
 	return s.cache.GetCachedCredDetail(key, anchor)
 }
+
+// ResolvedBackend implements CredStore.
+func (s *execStore) ResolvedBackend() (string, bool) { return backendExecPre + s.helper, true }
+
 func (s *execStore) SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error {
 	return s.cache.SetCachedCred(key, token, expiry, name, serverHost, cluster, binding)
 }

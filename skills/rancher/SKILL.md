@@ -664,6 +664,13 @@ rancher oidc-client rotate-secret my-app --apply --yes
   `completion` section (network: on/off;
   timeout: effective per-TAB budget; timeoutRaw: only when clamped or
   unparseable) - the first place to check when TAB shows no candidates;
+  and `cacheWritesPaused`, every entry whose exec-credential cache writes
+  are paused while a change of its credential finishes, with the reason
+  (`pinStep`: the next login finishes the store change; `noLock`: a login
+  or logout of the entry clears it; `changeRecordUnreadable`: restore or
+  move the change record aside; `none`: the next cache miss resumes it) -
+  where kubectl's "not caching ... (see `rancher config status`)" notice
+  points;
   config.yaml alone cannot reveal an env-supplied store or diagnose a
   misconfigured completion timeout. `config edit` opens the config in
   `$VISUAL`/`$EDITOR` on a temp copy and validates it before writing back;

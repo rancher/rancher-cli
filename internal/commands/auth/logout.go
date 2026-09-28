@@ -78,7 +78,7 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		if perr != nil {
 			return perr
 		}
-		if rerr := advanceCacheBindings(cfg, targets); rerr != nil {
+		if rerr := startCredentialChanges(cfg, targets); rerr != nil {
 			return rerr
 		}
 		if all {
@@ -170,23 +170,25 @@ func (logoutCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []stri
 	return view.ServerNames()
 }
 
-// advanceCacheBindings gives every target entry a fresh cache binding id
-// and writes the config, BEFORE any credential is deleted. A get-token
-// that read the old id and the old credential a moment earlier writes its
-// record under an id that no longer matches, so the purge cannot race a
-// record into existence behind it; a delete that then fails may leave the
-// login credential usable, but no stale cache record survives either way.
-// A target whose entry is no longer in the config has no id to advance -
-// `logout --all` reaches identity records whose entry was removed by hand
-// - and is skipped.
-func advanceCacheBindings(cfg *config.Config, targets []string) error {
+// startCredentialChanges is the logout's first write, BEFORE any credential
+// is deleted: every target entry gets a fresh cache binding id and its
+// cache writes pause. A get-token that read the old id and the old
+// credential a moment earlier writes its record under an id that no
+// longer matches, and one that loads after this write and reads the
+// credential before the delete writes nothing, so neither the purge nor
+// the delete can race a record into existence behind it. The pause is
+// cleared by the logout's last write, or, when the logout stops before
+// it, by the next exec-credential cache miss. A target whose entry is no
+// longer in the config has no id to advance - `logout --all` reaches
+// identity records whose entry was removed by hand - and is skipped.
+func startCredentialChanges(cfg *config.Config, targets []string) error {
 	var changed bool
 	for _, name := range targets {
 		entry, ok := cfg.Servers[name]
 		if !ok {
 			continue
 		}
-		if err := config.AdvanceCacheBinding(&entry); err != nil {
+		if err := config.StartCredentialChange(&entry); err != nil {
 			return err
 		}
 		cfg.Servers[name] = entry
@@ -258,7 +260,7 @@ func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, target
 		done = append(done, s)
 		stamped = stampLoggedOut(cfg, s) || stamped
 	}
-	notices = writeLogoutStamps(cfg, stamped, notices)
+	notices = l.writeLast(cfg, targets, stamped, notices)
 	return deletedFrom, deletedCache, notices, nil
 }
 
@@ -274,14 +276,23 @@ func stampLoggedOut(cfg *config.Config, name string) bool {
 	return true
 }
 
-// writeLogoutStamps writes the stamped entries once. A failed write is a
-// notice, never a failure: the tokens are already deleted.
-func writeLogoutStamps(cfg *config.Config, stamped bool, notices []string) []string {
-	if !stamped {
-		return notices
-	}
-	if err := config.WriteStep("logout", cfg); err != nil {
-		return append(notices, fmt.Sprintf("could not record the logout on the server entry (%v); config status will still show a stored credential", err))
+// writeLast is the logout's last write: the stamped entries, and every
+// pause a resumer may clear - the targets' own included - in one write,
+// or a write of the pauses alone when nothing was stamped. A failed write
+// is a notice, never a failure: the tokens are already deleted, and the
+// pause stays for the next exec-credential cache miss or credential
+// change. After a failed stamp write nothing more is tried.
+func (l logoutCmd) writeLast(cfg *config.Config, targets []string, stamped bool, notices []string) []string {
+	resumed := config.ResumeCacheWrites(l.dir, cfg, targets...)
+	switch {
+	case stamped:
+		if err := config.WriteStep("logout", cfg); err != nil {
+			return append(notices, fmt.Sprintf("could not record the logout on the server entry (%v); config status will still show a stored credential", err))
+		}
+	case resumed:
+		if err := config.WriteStep("resume", cfg); err != nil {
+			return append(notices, fmt.Sprintf("cache writes for %s stay paused (%v); the next exec-credential cache miss or credential change resumes them", strings.Join(targets, ", "), err))
+		}
 	}
 	return notices
 }
@@ -314,7 +325,10 @@ func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []
 		done = append(done, s)
 		stamped = stampLoggedOut(cfg, s) || stamped
 	}
-	notices = writeLogoutStamps(cfg, stamped, notices)
+	// The last config write comes before the wipe and the sweep: every
+	// target's credential is already gone, so a writer that loads after
+	// it reads none, and a wipe or sweep failure below leaves no pause.
+	notices = l.writeLast(cfg, targets, stamped, notices)
 	deletedCache, cacheNotices, cacheErr := config.DeleteAllExecCache(l.dir)
 	notices = append(notices, cacheNotices...)
 

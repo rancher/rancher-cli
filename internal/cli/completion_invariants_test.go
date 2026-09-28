@@ -398,13 +398,13 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 		config.CacheKey("k8s-ctx", "example.invalid", "c-abc"),
 		"tok-valid", time.Now().Add(time.Hour),
 		"k8s-ctx", "example.invalid", "c-abc",
-		config.CacheBinding{Dir: dir, Entry: "srv"},
+		config.CacheBindingForTest(dir, "srv", ""),
 	))
 	require.NoError(t, fileStore.SetCachedCred(
 		config.CacheKey("k8s-old", "example.invalid", "c-abc"),
 		"tok-expired", time.Now().Add(-time.Hour),
 		"k8s-old", "example.invalid", "c-abc",
-		config.CacheBinding{Dir: dir, Entry: "srv"},
+		config.CacheBindingForTest(dir, "srv", ""),
 	))
 
 	cfg := &config.Config{

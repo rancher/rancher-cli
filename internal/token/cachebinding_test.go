@@ -1,11 +1,13 @@
 package token
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -41,7 +43,7 @@ func newTokenCommandForTest(t *testing.T, dir string, store config.CredStore) ru
 
 // testBinding is the binding a record written in dir for server carries,
 // computed the way the production write computes it: the entry a
-// credential lookup would choose, and that entry's cache binding id.
+// credential lookup would choose, built from that load.
 //
 // An entry a test seeded by hand carries no binding id, exactly as an
 // entry whose last login predates the id does, and a record made from it
@@ -50,10 +52,12 @@ func testBinding(t *testing.T, dir, server string) config.CacheBinding {
 	t.Helper()
 	cfg, err := config.Load(config.FilePath(dir))
 	if err != nil {
-		return config.CacheBinding{Dir: config.CanonicalDir(dir)}
+		return config.CacheBindingForTest(config.CanonicalDir(dir), "", "")
 	}
-	entry, id := anchorEntry(cfg, server, "", false)
-	return config.CacheBinding{Dir: config.CanonicalDir(dir), Entry: entry, BindingID: id}
+	if entry := anchorEntry(cfg, server, "", false); entry != "" {
+		return config.CacheBindingFor(config.CanonicalDir(dir), cfg, entry)
+	}
+	return config.CacheBindingWithoutEntry(config.CanonicalDir(dir), cfg)
 }
 
 // seedCache writes a cache record the way a real invocation would, bound
@@ -311,6 +315,111 @@ func TestHotPathOperationCounts(t *testing.T) {
 			"the confirmation that failed, then the one confirming the second judgement")
 		assert.Zero(t, locks)
 		assert.Zero(t, flocks)
+	})
+
+	t.Run("a miss adds only the store check before its write", func(t *testing.T) {
+		// A whole plugin process on a miss: the root hook's stamp read and
+		// load, resolveDeps' load and lazy store, then the command. The
+		// counts are the base's plus the store check at the write: nothing
+		// for a declared store, a pin read for `auto`, and with no pin the
+		// unpinned decision's look at the identity records and its read of
+		// credentials.yaml.
+		m := newMadeFrom(t)
+		for _, tc := range []struct {
+			name, decl, pin string
+			want            map[string]int
+		}{
+			{"a declared store", "file", "",
+				map[string]int{"configload": 4, "stampread": 1, "credentialsread": 1}},
+			{"auto, pinned", "auto", "file",
+				map[string]int{"configload": 4, "stampread": 1, "credentialsread": 1, "pinread": 2}},
+			{"auto, unpinned", "auto", "",
+				map[string]int{"configload": 4, "stampread": 1, "credentialsread": 3, "pinread": 2, "dirstat": 2}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				mdir := t.TempDir()
+				mcfg := &config.Config{CredentialStore: tc.decl, Servers: map[string]config.Server{"prod": {URL: m.URL}}}
+				mcfg.SetPath(config.FilePath(mdir))
+				require.NoError(t, mcfg.Write())
+				if tc.pin != "" {
+					require.NoError(t, config.WritePin(mdir, tc.pin))
+				}
+				require.NoError(t, config.NewFileStore(mdir).SetToken(config.ServerRef{Name: "prod", URL: m.URL}, "alice"))
+
+				ops, keyringOps, locks, flocks := count(t, nil, func(*config.CacheAnchor) {
+					anchor := config.NewCacheAnchor(mdir)
+					loaded, lerr := config.Load(config.FilePath(mdir))
+					require.NoError(t, lerr)
+					_, lazy, serr := config.LoadAndStore(mdir)
+					require.NoError(t, serr)
+					cmd := tokenCmd{dir: mdir, store: lazy, anchor: anchor.WithConfig(loaded)}
+					_, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": m.URL, "name": "prod", "cluster": "local"}}, ui.Discard())
+					require.NoError(t, err)
+				})
+				assert.Equal(t, tc.want, ops)
+				assert.Zero(t, keyringOps)
+				assert.Zero(t, locks, "an unpaused miss never takes the config lock")
+				assert.Equal(t, 1, flocks, "the record write takes the cache flock, once")
+				served := tokenCmd{dir: mdir, store: config.NewFileStore(mdir), anchor: anchorFor(mdir)}
+				_, _, _, hit := served.probeFlagCache("prod", m.URL, "local", ui.Discard())
+				assert.True(t, hit, "and the record was written")
+			})
+		}
+	})
+
+	t.Run("a miss on a paused entry tries the lock once", func(t *testing.T) {
+		// The same whole process on a declared file store, with the
+		// entry's cache writes paused: the record is refused before the
+		// cache lock, then one try of the config lock and, when taken, one
+		// load, one look at the store change record - one stat, since
+		// config.yaml names none - and one write that resumes.
+		m := newMadeFrom(t)
+		base := map[string]int{"configload": 4, "stampread": 1, "credentialsread": 1}
+		for _, tc := range []struct {
+			name   string
+			setup  func(t *testing.T, dir string)
+			extra  map[string]int
+			locks  int
+			writes []string
+		}{
+			{name: "the lock is free", extra: map[string]int{"configlocktry": 1, "configload": 1, "manifeststat": 1},
+				locks: 1, writes: []string{"resume"}},
+			{name: "the lock is held", extra: map[string]int{"configlocktry": 1}, setup: func(t *testing.T, dir string) {
+				t.Helper()
+				other := flock.New(config.LockPath(dir))
+				ok, err := other.TryLock()
+				require.NoError(t, err)
+				require.True(t, ok)
+				t.Cleanup(func() { _ = other.Unlock() })
+			}},
+			{name: "the lock is skipped", setup: func(t *testing.T, _ string) {
+				t.Helper()
+				t.Setenv(config.EnvConfigNoLock, "1")
+			}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				mdir := pausedPlugin(t, m.URL)
+				if tc.setup != nil {
+					tc.setup(t, mdir)
+				}
+				var writes []string
+				restoreWrites := config.SetPersistWriteHookForTest(func(step string) error { writes = append(writes, step); return nil })
+				defer restoreWrites()
+				ops, keyringOps, locks, flocks := count(t, nil, func(*config.CacheAnchor) {
+					_, err := kubectl(t, mdir, m.URL, ui.Discard(), nil)
+					require.NoError(t, err)
+				})
+				want := maps.Clone(base)
+				for k, v := range tc.extra {
+					want[k] += v
+				}
+				assert.Equal(t, want, ops)
+				assert.Zero(t, keyringOps)
+				assert.Equal(t, tc.locks, locks)
+				assert.Zero(t, flocks, "the refused record never takes the cache flock")
+				assert.Equal(t, tc.writes, writes)
+			})
+		}
 	})
 
 	t.Run("pruning a record this directory no longer owns is a write", func(t *testing.T) {

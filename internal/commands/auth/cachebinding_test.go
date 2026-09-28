@@ -61,12 +61,29 @@ func TestLogoutAdvancesTheCacheBindingBeforeDeleting(t *testing.T) {
 	})
 	t.Cleanup(restore)
 
+	// And once that write lands the entry's cache writes are paused, so a
+	// get-token that loads now writes nothing until the logout's last
+	// write resumes them.
+	var pausedAfterFirstWrite string
+	restoreAfter := config.SetAfterWriteHookForTest(func(what string) {
+		if what == "config.yaml" && pausedAfterFirstWrite == "" {
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			pausedAfterFirstWrite = cfg.Servers["acme"].CacheWritesPaused + "."
+		}
+	})
+	t.Cleanup(restoreAfter)
+
 	runLogout(t, dir, "acme")
 
 	assert.Equal(t, "tok-acme", credentialAtBindingWrite, "the id advances while the credential is still there")
+	assert.Equal(t, config.PauseLocked+".", pausedAfterFirstWrite, "in the same write that pauses the entry's cache writes")
 	after := bindingIDs(t, dir, "acme")
 	assert.NotEqual(t, before["acme"], after["acme"])
 	assert.NotEmpty(t, after["acme"])
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.False(t, cfg.Servers["acme"].Paused(), "and the last write resumes them")
 	_, gerr := store.GetToken(ref)
 	require.ErrorIs(t, gerr, config.ErrNoToken, "and the credential is gone afterwards")
 }
@@ -86,8 +103,11 @@ func TestLogoutAllAdvancesEveryTargetsCacheBinding(t *testing.T) {
 	require.NoError(t, err)
 
 	after := bindingIDs(t, dir, "acme", "acme2")
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
 	for _, n := range []string{"acme", "acme2"} {
 		assert.NotEmpty(t, after[n], "%s has a binding", n)
 		assert.NotEqual(t, before[n], after[n], "%s advanced", n)
+		assert.False(t, cfg.Servers[n].Paused(), "%s resumed by the last write", n)
 	}
 }

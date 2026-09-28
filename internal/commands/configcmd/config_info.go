@@ -46,6 +46,11 @@ func (configInfoCmd) Describe() runtime.Descriptor {
 			"clamping/default; timeoutRaw: only when the stored value was " +
 			"clamped or unparseable). " +
 			"Also reports tokenReuse and, under servers, every entry whose current token is CLI-owned or that names superseded tokens: provenance, owner, expiry, logged-out state, and for each token the recovery sequence that revokes it. " +
+			"Also reports cacheWritesPaused: every entry whose exec-credential cache writes are paused while a change of its credential finishes, with the reason the pause stays - " +
+			"pinStep (a credential store change still has to write its pin, which switches where credentials are read from; the next login finishes it), " +
+			"changeRecordUnreadable (the store change record cannot be read; restore or move it aside), " +
+			"noLock (the change ran with RANCHER_CLI_CONFIG_NO_LOCK; a login or logout of the entry clears it), " +
+			"or none (the next exec-credential cache miss or credential change resumes it). " +
 			"The first place to check when " +
 			"tab-completion shows no candidates.",
 		CommandType: runtime.Local,
@@ -155,6 +160,17 @@ func (c configInfoCmd) Execute(_ context.Context, _ runtime.Input, _ runtime.Pro
 	}
 	var text strings.Builder
 	data := renderFields(fields, "", &text)
+
+	// Entries whose cache writes a change left paused. No other report
+	// shows them, and every kubectl call for them makes a fresh token
+	// until the pause is cleared.
+	if paused := config.PausedEntries(c.dir, cfg); len(paused) > 0 {
+		text.WriteString("cacheWritesPaused:\n")
+		for _, p := range paused {
+			fmt.Fprintf(&text, "  %s: %s\n", p.Entry, pauseReasonText(c.dir, p.Entry, p.Reason))
+		}
+		data["cacheWritesPaused"] = paused
+	}
 
 	// The entries render from their own projections: entryReport owns the
 	// JSON shape (list-shaped records, shared with set-token-reuse and
@@ -281,15 +297,31 @@ func recoveryField(serverURL, userID string, ref clierr.TokenRef) field {
 	return field{"recovery", append(seq, "("+clierr.RecoverySequenceAssumption+")")}
 }
 
+// pauseReasonText is the reason entry's pause stays, as config status
+// says it, with what clears it.
+func pauseReasonText(dir, entry, reason string) string {
+	switch reason {
+	case config.PauseReasonPinStep:
+		return "pinStep - a credential store change still has to write its pin, which switches where credentials are read from; the next login finishes it"
+	case config.PauseReasonChangeRecordUnreadable:
+		return "changeRecordUnreadable - the credential store change record " + config.TransitionPath(dir) + " cannot be read; inspect it, then restore a valid copy or move it aside"
+	case config.PauseReasonNoLock:
+		return "noLock - the change ran with " + config.EnvConfigNoLock + "; a login or logout of the entry clears it: rancher auth login " + clierr.ShellQuote(entry)
+	}
+	return "none - the next exec-credential cache miss or credential change resumes it"
+}
+
 // configInfoSectionHeaders is the exact line config status always emits for
 // its nested sections: the completion block is unconditional (see
 // Execute's field list above), so "completion:" needs no presence check;
-// "servers:" appears only when there are CLI-owned tokens.
-var configInfoSectionHeaders = map[string]bool{"completion:": true, "servers:": true}
+// "servers:" appears only when there are CLI-owned tokens, and
+// "cacheWritesPaused:" only when an entry's cache writes are paused.
+var configInfoSectionHeaders = map[string]bool{"completion:": true, "servers:": true, "cacheWritesPaused:": true}
 
 // styleConfigInfoText applies config status's bold span to text, the plain
-// rendering built above: the "completion:" and "servers:" section labels,
-// bold, whole line. Every flat "key: value" line stays plain.
+// rendering built above: the "completion:", "servers:" and
+// "cacheWritesPaused:" section labels, bold, whole line. Every flat
+// "key: value" line stays plain.
 func styleConfigInfoText(text string, s style.Style) string {
 	return runtime.BoldExactLines(text, configInfoSectionHeaders, s)
 }

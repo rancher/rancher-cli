@@ -103,11 +103,11 @@ func TestPersistSuccessWritesEntryOnceAndRecordsThePriorToken(t *testing.T) {
 			}
 			out, err := PersistLoginCredential(t.Context(), dir, in)
 			require.NoError(t, err)
-			// Two: the entry before the commit, and the entry's cache
-			// binding id after it. They cannot be one write - the id
-			// must not become visible until the credential it belongs
-			// to is in the store.
-			assert.Equal(t, 2, writes, "the entry write and the cache binding write")
+			// Two: the first, before the commit, which advances the
+			// entry's cache binding id and pauses its cache writes, and
+			// the last, after it, which resumes them. They cannot be one
+			// write - no record may be written between the two.
+			assert.Equal(t, 2, writes, "the first write and the last")
 			assert.Equal(t, clierr.ConfigWritten, out.ConfigState)
 			assert.Equal(t, clierr.CredentialCommitted, out.CredentialState)
 			assert.Nil(t, out.ConfigRecovery)
@@ -291,7 +291,11 @@ func TestPersistRollsBackOnEveryErrorCarryingCommit(t *testing.T) {
 				_, present := cfg.Servers[name]
 				assert.False(t, present, "a created entry is removed")
 			} else {
-				assert.Equal(t, before, cfg.Servers[name], "an updated entry is restored to its snapshot")
+				got := cfg.Servers[name]
+				assert.NotEqual(t, before.CacheBindingID, got.CacheBindingID, "all but the id, which never moves back")
+				assert.False(t, got.Paused(), "and the rollback, the change's last write, resumes cache writes")
+				before.CacheBindingID = got.CacheBindingID
+				assert.Equal(t, before, got, "an updated entry is restored to its snapshot")
 			}
 			assert.Equal(t, "other", cfg.CurrentServer)
 		})
@@ -326,6 +330,8 @@ func TestPersistKeepsACreatedEntryWhenTheCallerCannotClearTheStore(t *testing.T)
 	assert.Nil(t, got.TokenRef, "the entry never names a token the caller will revoke")
 	assert.Empty(t, got.TokenUserID)
 	assert.Empty(t, got.CredentialExpiresAt)
+	assert.Len(t, got.CacheBindingID, randomIDLen, "the handle carries the id the change's first write gave it")
+	assert.False(t, got.Paused(), "and its write, the change's last, resumes cache writes")
 }
 
 // TestPersistReadOnlyHelperForLoginRestoresAndReturnsTheSentinel
@@ -794,7 +800,12 @@ func TestPersistIdentityRevertFailureRollsTheEntryBack(t *testing.T) {
 
 	after, lerr := Load(path)
 	require.NoError(t, lerr)
-	assert.Equal(t, *snapshot, after.Servers["prod"], "a login that stored nothing leaves the entry as it found it")
+	got := after.Servers["prod"]
+	assert.NotEqual(t, snapshot.CacheBindingID, got.CacheBindingID, "all but the id, which never moves back")
+	assert.False(t, got.Paused())
+	want := *snapshot
+	want.CacheBindingID = got.CacheBindingID
+	assert.Equal(t, want, got, "a login that stored nothing leaves the entry as it found it")
 	assert.Equal(t, "token-old", after.Servers["prod"].TokenRef.Name)
 }
 

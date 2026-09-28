@@ -110,19 +110,22 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		}
 		if plan.CredentialsCleared {
 			// Delete-first ordering, as delete-server: a purge failure must
-			// leave config.yaml untouched, never a half-migrated entry
-			// pointed at the new address with the old token still live.
-			// One field moves ahead of the purge: the entry's cache
-			// binding id. A get-token that read the old id and the old
-			// credential a moment earlier would otherwise write a record
-			// the purge cannot see and the entry would still accept. The
-			// address and every other field stay behind the contract.
+			// leave config.yaml untouched but for the change's first write,
+			// never a half-migrated entry pointed at the new address with
+			// the old token still live. That first write moves two fields
+			// ahead of the purge: the entry's cache binding id advances and
+			// its cache writes pause. A get-token that read the old id and
+			// the old credential a moment earlier would otherwise write a
+			// record the purge cannot see and the entry would still
+			// accept, and one that loads after it and reads the credential
+			// before the delete writes nothing. The address and every other
+			// field stay behind the contract; the entry write resumes.
 			policy, perr := config.EffectivePolicy(cfg.CredentialStore)
 			if perr != nil {
 				return perr
 			}
 			entry := cfg.Servers[name]
-			if berr := config.AdvanceCacheBinding(&entry); berr != nil {
+			if berr := config.StartCredentialChange(&entry); berr != nil {
 				return berr
 			}
 			cfg.Servers[name] = entry
@@ -134,10 +137,12 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			if err != nil {
 				return clierr.WrapUnlessCanceled(err, func(err error) error {
 					return clierr.Wrap(err,
-						fmt.Sprintf("failed to clear credentials for %q; the server address is unchanged, though its cache binding id has already been advanced: %v", name, err)).
+						fmt.Sprintf("failed to clear credentials for %q; the server address is unchanged, though its cache binding id has already been advanced and its cache writes paused: %v", name, err)).
 						WithWarnings(notices...)
 				})
 			}
+			// The entry write that follows is the change's last.
+			config.ResumeCacheWrites(c.dir, cfg, name)
 		}
 		out, err = register.ApplyUpdate(cfg, plan)
 		if err != nil && plan.CredentialsCleared {

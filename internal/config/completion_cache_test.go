@@ -24,7 +24,7 @@ func TestReadOnlyCachedCredNoticesLoosePermissions(t *testing.T) {
 	}
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred("k", "tok", time.Now().Add(time.Hour), "", "", "", config.CacheBinding{Dir: dir}))
+	require.NoError(t, store.SetCachedCred("k", "tok", time.Now().Add(time.Hour), "", "", "", config.CacheBindingForTest(dir, "", "")))
 	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
 
 	tok, _, notice, err := config.ReadOnlyCachedCred(dir, "k", testAnchorExternal(t, dir))
@@ -51,12 +51,12 @@ func TestReadOnlyCachedCredsNeverWrites(t *testing.T) {
 		config.CacheKey("live", "https://rancher.example.com", "c-abc"),
 		"token-live", time.Now().Add(time.Hour),
 		"live", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir}))
+		config.CacheBindingForTest(dir, "", "")))
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("expired", "https://rancher.example.com", "c-abc"),
 		"token-expired", time.Now().Add(-time.Hour),
 		"expired", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir}))
+		config.CacheBindingForTest(dir, "", "")))
 
 	infos, err := config.ReadOnlyCachedCreds(dir)
 	require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestReadOnlyCachedCredsForClusterWithTokens(t *testing.T) {
 		config.CacheKey("ctx", "https://rancher.example.com", "c-abc"),
 		"my-token", time.Now().Add(time.Hour),
 		"ctx", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir}))
+		config.CacheBindingForTest(dir, "", "")))
 
 	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "https://rancher.example.com", "c-abc", testAnchorExternal(t, dir))
 	require.NoError(t, err)
@@ -100,7 +100,7 @@ func TestReadOnlyCachedCredsForClusterWithTokensExpiredExcluded(t *testing.T) {
 		config.CacheKey("ctx", "https://rancher.example.com", "c-abc"),
 		"expired-tok", time.Now().Add(-time.Hour),
 		"ctx", "https://rancher.example.com", "c-abc",
-		config.CacheBinding{Dir: dir}))
+		config.CacheBindingForTest(dir, "", "")))
 
 	entries, err := config.ReadOnlyCachedCredsForClusterWithTokens(dir, "https://rancher.example.com", "c-abc", testAnchorExternal(t, dir))
 	require.NoError(t, err)
