@@ -16,9 +16,10 @@ import (
 // (the legacy CLI's exec-credential plugin). It adapts the legacy flags onto
 // the native get-token machinery. --user is a cache-slot component and the
 // basic-auth username default; it carries no principal claim and does not
-// select among stored login credentials - stored-login selection follows the
-// same server-ranking a nameless native call uses (current server, then sorted
-// name). Deprecated by design - it retires with the kubeconfigs that need it;
+// select among stored login credentials - it identifies no entry, so the call
+// uses the one user entry for the server that has a stored login, else the
+// plugin's own login entry while token reuse is on, and fails when several
+// entries of the kind it would use do. Deprecated by design - it retires with the kubeconfigs that need it;
 // agents and new kubeconfigs use `auth get-token`.
 //
 // The `token` entry in root.go is marked bare: adaptEntry never calls
@@ -56,7 +57,10 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 			"use `auth get-token`; this command exists so existing " +
 			"kubeconfigs keep working after swapping the binary. " +
 			"--user is the cache-slot key and basic-auth username default; " +
-			"stored-login selection follows server-ranking, not --user.",
+			"it does not pick a stored login: the call uses the one user " +
+			"entry for the server that has a login, else the plugin's own " +
+			"login entry while token reuse is on, and fails when several " +
+			"entries of the kind it would use have one.",
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string", Required: true, Desc: "Rancher server `url` (https assumed when schemeless)"},

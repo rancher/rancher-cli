@@ -209,21 +209,26 @@ func IsSupportedScheme(canonicalURL string) bool {
 	return ok && (scheme == "http" || scheme == "https")
 }
 
-// Effective merges env vars over the current server. Env wins.
-// Ordering is deliberate: the effective URL and env token are resolved BEFORE
-// any credential-store access, so (a) RANCHER_CLI_TOKEN works even when the
-// configured store is broken (CI escape hatch), and (b) a stored token is
-// read only when the effective URL still addresses the server it belongs to -
-// a divergent RANCHER_CLI_URL never receives another server's credential.
-func (c *Config) Effective(store CredStore) (Effective, error) {
-	var eff Effective
+// EffectiveConnection is Effective without the credential: the server
+// name, URL, CA and inventory the current server and the environment
+// give, and no store access at all. A caller that needs only where to
+// connect and whom to trust uses it, so it never reads, and cannot fail
+// on, a credential it will not use.
+func (c *Config) EffectiveConnection() Effective {
+	eff, _, _, _ := c.connection()
+	return eff
+}
+
+// connection resolves everything Effective resolves before the credential,
+// and returns the current server's entry beside it for the credential read.
+func (c *Config) connection() (eff Effective, name string, s Server, serverErr error) {
 	if len(c.Servers) > 0 {
 		eff.KnownServers = make(map[string]string, len(c.Servers))
 		for n, srv := range c.Servers {
 			eff.KnownServers[n] = srv.URL
 		}
 	}
-	name, s, serverErr := c.CurrentServerEntry()
+	name, s, serverErr = c.CurrentServerEntry()
 	if serverErr == nil {
 		// Field assignments, not a struct literal: a literal would zero the
 		// KnownServers inventory built above.
@@ -234,12 +239,27 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 	if v := os.Getenv(EnvURL); v != "" {
 		if serverErr == nil && !SameServerURL(v, s.URL) {
 			// Never pair a CA or display name with a server they were not
-			// issued for; and (below) never read the stored token either.
+			// issued for; and (in Effective) never read the stored token
+			// either.
 			eff.CA = ""
 			eff.ServerName = ""
 		}
 		eff.URL = v
 	}
+	if v := os.Getenv(EnvCACert); v != "" {
+		eff.CA = v
+	}
+	return eff, name, s, serverErr
+}
+
+// Effective merges env vars over the current server. Env wins.
+// Ordering is deliberate: the effective URL and env token are resolved BEFORE
+// any credential-store access, so (a) RANCHER_CLI_TOKEN works even when the
+// configured store is broken (CI escape hatch), and (b) a stored token is
+// read only when the effective URL still addresses the server it belongs to -
+// a divergent RANCHER_CLI_URL never receives another server's credential.
+func (c *Config) Effective(store CredStore) (Effective, error) {
+	eff, name, s, serverErr := c.connection()
 
 	// Token: env short-circuits the store entirely; otherwise read the
 	// stored token only when the effective URL still matches the configured
@@ -258,10 +278,6 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		default:
 			return Effective{}, fmt.Errorf("credential store: %w", terr)
 		}
-	}
-
-	if v := os.Getenv(EnvCACert); v != "" {
-		eff.CA = v
 	}
 	return eff, nil
 }

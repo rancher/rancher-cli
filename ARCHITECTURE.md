@@ -668,8 +668,10 @@ longer read - ends the candidate search in `storedTokenForServer` rather than fa
 through to a sibling entry that shares the URL, which would authenticate as that entry's
 user; callers test `config.IsCredentialIdentityError`, which reads the sentinel every such
 error carries as its cause, because the code they carry is shared with unrelated failures.
-A store that could not be reached is the opposite case and still falls through: it says
-nothing about who any entry is. The plugin's lane decision makes one exception, for
+A store that could not be reached says nothing about who any entry is, but it leaves open
+whether that entry holds a credential: a call that names no entry returns the failure when
+the entry sits at or above the rank of the one that answers, and only a failure below a clear
+winner is passed over. The plugin's lane decision makes one exception, for
 `LOGIN_INCOMPLETE` alone, so parallel kubectl calls queue on the plugin login's lock; behind
 that lock every identity error is terminal again.
 
@@ -721,7 +723,12 @@ Logout has two paths, not one, because they need different completeness/cost tra
 `token-cache.yaml` (0600), separate from login tokens in `credentials.yaml`. A
 **flags-first fast path** serves a warm hit from `--name`/`--server`/`--cluster` alone
 with no config read, so a broken config never blocks kubectl's exec-credential path; full
-connection resolution runs only on a miss. `delete-token <name>` resolves the bare name
+connection resolution runs only on a miss. On a miss `identifyEntry` (`internal/token`)
+turns `--name` into one server entry - the exact name, else `<entry>` for
+`<entry>-<cluster>` - and the credential lookup, the cache record's anchor and the CA all
+read only that entry, with the plugin's own login entry as the one fallback while token
+reuse is on; a call that identifies no entry ranks the entries for its URL and fails when
+more than one at the winning rank has a credential. `delete-token <name>` resolves the bare name
 against every record and **deletes all matches**, and is **idempotent** (zero matches →
 success, never `NOT_FOUND`) so teardown scripts stay green.
 

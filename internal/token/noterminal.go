@@ -25,25 +25,27 @@ func interactiveLoginRequired(provider, remedy string) *clierr.Error {
 }
 
 // noTerminalCall is what the plugin's no-terminal remedies are filled in
-// with: the call's --name, the server URL, the CA the call resolved - its
-// --cacert, or else the matching entry's CA in config.yaml; a path or an
-// inline PEM - and whether a sign-in would store a login
+// with: the call's --name and --cluster, the server URL, the CA the call
+// resolved - its --cacert, or else the CA of the entry the call means or
+// the matching entry in config.yaml; a path or an inline PEM - whether the
+// call is the legacy shim's, and whether a sign-in would store a login
 // credential - token reuse on and a cluster named, the plugin-created
 // login's lane - which later calls reuse with a --name or without.
 type noTerminalCall struct {
-	name, serverURL, caCert string
-	keepsLogin              bool
+	name, clusterID, serverURL, caCert string
+	shim                               bool
+	keepsLogin                         bool
 }
 
 // withNoTerminalRemedies is the exec plugin's form of that refusal. kubectl
 // may run the plugin with no terminal, and from a bare install, so the
 // error names the ways to a credential that need none:
-//   - a token piped to auth login, with the plugin's --name, the server and
-//     the CA the call resolved - none for an entry already registered here,
-//     whose own CA auth login uses. With no --name, or one auth login
-//     refuses, the message asks for a name; with an inline CA, for the CA's
-//     file. Either way no hint is given, since a hint is a command that runs
-//     as written;
+//   - a token piped to auth login, with the entry the call means (else the
+//     plugin's --name), the server and the CA the call resolved - none for
+//     an entry already registered here, whose own CA auth login uses. With
+//     no --name, or one auth login refuses, the message asks for a name;
+//     with an inline CA, for the CA's file. Either way no hint is given,
+//     since a hint is a command that runs as written;
 //   - kubectl run once in a terminal, only where what it makes is kept: a
 //     login credential in the plugin-created login's lane, or else, with a
 //     --name, the cluster token until it expires. With neither the message
@@ -59,22 +61,35 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 		return err
 	}
 	name := call.name
-	named := name != "" && config.ValidateEntryName(name) == nil
+	// loginEntry is the entry the suggested auth login signs in to: the entry
+	// the call means, which may carry a different name than the --name
+	// that identified it, else the --name itself.
+	loginEntry := name
 	existing := false
-	var pending config.UnfinishedChange
-	if cfg, lerr := config.Load(config.FilePath(t.dir)); lerr == nil {
-		if s, ok := cfg.Servers[name]; ok {
+	var (
+		pending config.UnfinishedChange
+		cfg     *config.Config
+	)
+	if loaded, lerr := config.Load(config.FilePath(t.dir)); lerr == nil {
+		cfg = loaded
+		if id, ierr := identifyEntry(cfg, call.serverURL, call.name, call.clusterID, call.shim); ierr == nil && id != "" {
+			loginEntry = id
+		}
+		pending = config.UnfinishedChangeOf(t.dir, cfg)
+	}
+	named := loginEntry != "" && config.ValidateEntryName(loginEntry) == nil
+	if cfg != nil {
+		if s, ok := cfg.Servers[loginEntry]; ok {
 			// auth login refuses a name registered at another server, and
 			// for one registered here it uses the entry's own CA and
 			// refuses a --cacert that differs from it.
 			existing = config.SameServerURL(s.URL, call.serverURL)
 			named = named && existing
 		}
-		pending = config.UnfinishedChangeOf(t.dir, cfg)
 	}
 	entry := "<name>"
 	if named {
-		entry = clierr.ShellQuote(name)
+		entry = clierr.ShellQuote(loginEntry)
 	}
 	caFlag, inlineCA := "", false
 	switch {
@@ -99,7 +114,11 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 		// Only the cluster token is kept, under this call's --name.
 		msg += "; or run kubectl once in a terminal and sign in, which lasts until the cached token expires"
 	default:
-		msg += "; this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with rancher kubeconfig"
+		cluster := "<id>"
+		if call.clusterID != "" {
+			cluster = clierr.ShellQuote(call.clusterID)
+		}
+		msg += "; this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with rancher kubeconfig --cluster " + cluster
 	}
 	msg += "; or use rancher create kubeconfig for a kubeconfig that carries its own token"
 	out := clierr.New(clierr.CodeAuth, msg).WithCause(err)

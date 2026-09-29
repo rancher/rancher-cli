@@ -1048,10 +1048,31 @@ until it expires; `rancher get tokens` lists it and `rancher delete token
 <name>` revokes it (on a server without `ext.cattle.io` tokens the plugin
 creates a v3 token instead: `rancher get management-tokens` and `rancher
 delete management-token <name>`). On a cache miss the plugin first
-tries to create a token from the stored `auth login` credential for the matching
-server; when that credential lives in the OS keychain, this can trigger a
-keychain-unlock prompt - CI and other non-interactive runs should use
+tries to create a token from a stored `auth login` credential; when that
+credential lives in the OS keychain, this can trigger a keychain-unlock
+prompt - CI and other non-interactive runs should use
 `RANCHER_CLI_CREDENTIAL_STORE=file` or a warm `--name` cache.
+
+`--name` also picks the server entry whose credential is used: the entry with
+exactly that name, else the entry `<entry>` when `--name` is
+`<entry>-<cluster>` with the call's own `--cluster` (the form `rancher
+kubeconfig` writes). Only that entry's credential is used - another entry for
+the same URL never stands in - and, with token reuse on, the plugin's own login
+entry for the server is the one fallback. An entry registered at another server
+is an error. When `--name` picks no entry, the plugin considers the entries for
+the URL that have a credential. Entries you logged in to come ahead of the
+plugin's own login entry (a candidate only while token reuse is on), and within
+each group the current server's entry comes first. It uses the entry that comes
+first; if several tie for first, it fails and names them, and if the store cannot
+read an entry that would come first or tie for it, it fails with that error. To
+choose, add `--name <entry>-<cluster>` to the exec entry, or run `rancher config
+use-server <entry>` (this switches the directory's current server for every
+process using it; switch back with `rancher config use-server <previous>`) and
+regenerate the kubeconfig with `rancher kubeconfig --cluster <id>`. The legacy
+`rancher token` shim picks no entry by name and ignores the current server, so
+it fails when several user entries (or, with none, several plugin login
+entries) have a credential; regenerate its kubeconfig, or clear the unwanted
+entry's login with `rancher auth logout <entry>`.
 
 ## Token reuse for kubectl (opt-in)
 

@@ -86,19 +86,35 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true},
 		{name: "a --name auth login would refuse", flags: map[string]string{"name": config.ExecLoginPrefix + "x"},
 			login: "rancher auth login <name> --url " + clierr.ShellQuote(url) + " --token-stdin"},
-		{name: "a --name the directory has at another server", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login <name> --url " + clierr.ShellQuote(url) + " --token-stdin",
-			setup: func(t *testing.T, dir string) {
-				t.Helper()
-				cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"prod-c-1": {URL: "https://elsewhere.ex"}}}
-				cfg.SetPath(config.FilePath(dir))
-				require.NoError(t, cfg.Write())
-			}},
 		{name: "a --name the directory has at this server, logged out", flags: map[string]string{"name": "prod-c-1"},
 			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"prod-c-1": {URL: url}}}
+				cfg.SetPath(config.FilePath(dir))
+				require.NoError(t, cfg.Write())
+			}},
+		{name: "an entry-cluster --name, the entry registered here, logged out", flags: map[string]string{"name": "prod-c-1"},
+			login: "rancher auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"prod": {URL: url}}}
+				cfg.SetPath(config.FilePath(dir))
+				require.NoError(t, cfg.Write())
+			}},
+		{name: "an entry-cluster --name, the entry registered here, with an inline --cacert", flags: map[string]string{"name": "prod-c-1", "cacert": caPEM},
+			login: "rancher auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"prod": {URL: url, CA: caPEM}}}
+				cfg.SetPath(config.FilePath(dir))
+				require.NoError(t, cfg.Write())
+			}},
+		{name: "an entry-cluster --name, the entry registered here, with token reuse on", flags: map[string]string{"name": "prod-c-1"},
+			login: "rancher auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true, reuse: true,
+			setup: func(t *testing.T, dir string) {
+				t.Helper()
+				cfg := &config.Config{CredentialStore: "file", TokenReuse: true, Servers: map[string]config.Server{"prod": {URL: url}}}
 				cfg.SetPath(config.FilePath(dir))
 				require.NoError(t, cfg.Write())
 			}},
@@ -190,7 +206,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				assert.NotContains(t, err.Error(), "until the cached token expires", "the plugin's own login keeps a login credential, --name or not")
 			case tc.flags["name"] == "":
 				assert.NotContains(t, err.Error(), "run kubectl once in a terminal", "with no --name nothing a terminal sign-in makes is kept")
-				require.ErrorContains(t, err, "this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with rancher kubeconfig")
+				require.ErrorContains(t, err, "this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with rancher kubeconfig --cluster 'c-1'")
 			default:
 				require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 			}
@@ -335,3 +351,23 @@ func (usernameOnly) ReadLine(context.Context) (string, error) { return "", ui.Er
 func (usernameOnly) Notice(string)                            {}
 func (usernameOnly) CanPrompt() bool                          { return false }
 func (usernameOnly) NoInput() bool                            { return false }
+
+// TestNoTerminalRemedyDoesNotSuggestANameRegisteredElsewhere asserts the
+// remedy builder alone: a --name the directory registers at another server
+// is not suggested as the entry to sign in to, since auth login refuses it.
+// The exec plugin itself stops earlier with a typed error for that name, so
+// this reaches the builder directly.
+func TestNoTerminalRemedyDoesNotSuggestANameRegisteredElsewhere(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"prod-c-1": {URL: "https://elsewhere.ex"}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	cmd := tokenCmd{dir: dir, store: config.NewFileStore(dir)}
+	err := cmd.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "sign in"),
+		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.ex"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	require.ErrorContains(t, err, "rancher auth login <name> --url 'https://r.ex' --token-stdin")
+	assert.Empty(t, ce.Hint, "a login that would be refused is no hint")
+}

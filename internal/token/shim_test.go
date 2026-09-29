@@ -296,9 +296,8 @@ func (s *errGetTokenStore) GetToken(ref config.ServerRef) (string, error) {
 // TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate is the round-3
 // repro for finding 1: a hard credential-store error for the stored current
 // current-context server (A) must not abort a cache-miss shim create for an
-// unrelated target server (B). Before the fix, resolveConn called
-// cfg.Effective unconditionally on a cache miss, and Effective's GetToken for
-// A hard-failed even though A was never the target.
+// unrelated target server (B). Resolving the connection reads no stored
+// credential, so A's store is never asked.
 func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate(t *testing.T) {
 	srvB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == ExtTokensPath && r.Method == http.MethodPost {
@@ -332,8 +331,8 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate(t *testing.T) {
 
 	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 	// No --cluster, no --cacerts: resolveConn enters the config-fallback branch
-	// but must skip cfg.Effective (ignoreCurrentContext=true, explicitServer=true)
-	// and never call GetToken for server A.
+	// but reads no credential (ignoreCurrentContext=true, explicitServer=true)
+	// and never calls GetToken for server A.
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srvB.URL, "user": "b-user"}},
 		ui.Discard())
@@ -487,17 +486,16 @@ func TestLegacyTokenPaddedClusterHitsSameCacheSlot(t *testing.T) {
 		"padded-cluster invocation must not create a distinct 'local  ' slot")
 }
 
-// TestShimPathIgnoresCurrentContext is the permanent class guard against the shim
-// picking up stored current-context state. A config whose current context names a
-// same-host server entry ("wrong-server") whose GetToken hard-errors is paired with
-// a "right-server" entry (sorted first) that has a valid stored login token. A shim
-// invocation with the shared host URL, no --cluster, no --cacerts must succeed - it
-// must not call cfg.Effective (needsEff gated), must pick the CA from sorted order
-// not current-context (caForServer ignoreCurrentContext), and must pick the stored login
-// credential from rank-3 (sorted) not rank-2 (current-context). This test catches:
-// (1) caForServer ignoring the current-context tie-break when ignoreCurrentContext=true,
-// (2) storedTokenForServer ignoring rank-2 when ignoreCurrentContext=true,
-// (3) needsEff not calling cfg.Effective for the current-context server.
+// TestShimPathIgnoresCurrentContext asserts the shim never reads the current
+// server's credential. A config whose current context names a server entry at
+// another URL ("wrong-server") whose GetToken hard-errors is paired with a
+// "right-server" entry at the call's URL that has a valid stored login token.
+// A shim invocation with that URL, no --cluster, no --cacerts must succeed - it
+// reads no stored credential while resolving the connection, so the current
+// server's store failure cannot reach it. The same-URL half of the shim's independence from
+// the current server (its ranking and its CA) is asserted by
+// TestStoredTokenForServerShimIgnoresTheCurrentServer, the state table's shim
+// rows and TestCaForServerDeterministicWithMultipleMatches.
 func TestShimPathIgnoresCurrentContext(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -513,15 +511,15 @@ func TestShimPathIgnoresCurrentContext(t *testing.T) {
 
 	dir := t.TempDir()
 	base := config.NewFileStore(dir)
-	// right-server (sorted first: "right-server" < "wrong-server") has a valid token.
+	// right-server, at the call's URL, has a valid token.
 	require.NoError(t, base.SetToken(config.ServerRef{Name: "right-server"}, "right-stored-tok"))
-	// wrong-server is the current server; GetToken for it will hard-error.
+	// wrong-server is the current server, at another URL; GetToken for it will hard-error.
 
 	cfg := &config.Config{
 		CurrentServer: "wrong-server",
 		Servers: map[string]config.Server{
 			"right-server": {URL: srv.URL, CA: ""},
-			"wrong-server": {URL: srv.URL, CA: ""},
+			"wrong-server": {URL: "https://wrong.example", CA: ""},
 		},
 	}
 	cfg.SetPath(config.FilePath(dir))
@@ -533,10 +531,8 @@ func TestShimPathIgnoresCurrentContext(t *testing.T) {
 
 	cmd := NewLegacyTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
 	// No --cluster, no --cacerts: resolveConn enters the config-fallback branch
-	// for CA resolution. On the shim path (legacyShim), caForServer ignores the
-	// current-context preference and returns right-server's CA (sorted first).
-	// storedTokenForServer ignores rank-2 (wrong-server) and falls to rank-3;
-	// right-server is first in sorted order and has a valid token.
+	// for CA resolution without reading the current server's credential;
+	// right-server is the only entry for the URL and has a valid token.
 	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "user": "testuser"}},
 		ui.Discard())

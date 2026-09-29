@@ -441,6 +441,18 @@ enabled, the file also carries direct contexts (`<entry>-fqdn`, or one
 `<entry>-<node>` per control-plane node) and makes one current; the proxy
 context `<entry>` is always present, so `--context <entry>` is the
 fallback when the direct endpoint is unreachable from where you run.
+The exec entry's `--name <entry>-<cluster>` picks the server entry whose login
+is used, so entries for one URL as different users stay apart. When a
+kubeconfig names no such entry, the plugin uses the current server's entry if it
+is a user entry with a login, else the one user entry for the URL that has one,
+else the plugin's own login entry while token reuse is on. When several entries
+tie for first it fails and lists them, and when the store cannot read an entry
+that would come first or tie for it, it fails with that error. Fix
+a tie by adding `--name <entry>-<cluster>` to the exec entry (changes nothing
+else), or by regenerating the kubeconfig: `rancher config use-server <entry>`
+switches the directory's current server for every process using it (switch
+back with `rancher config use-server <previous>`), then
+`rancher kubeconfig --cluster <id>`.
 Cached credentials: `rancher auth list-tokens` /
 `rancher auth delete-token` (local cache only; the server-side token
 stays valid until `rancher delete token <name>`, or `delete

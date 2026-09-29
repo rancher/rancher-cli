@@ -245,13 +245,13 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 	}
 
 	// The current server wins when its URL is the effective URL - the same
-	// priority internal/token's serverCandidateRank gives the
+	// priority internal/token's candidateRanker gives the
 	// authenticated-command path. Completion is deliberately STRICTER than
 	// that shared ranking: a current server without a stored token yields
-	// nothing, never a same-URL sibling's token, because completion runs
-	// silently and an unexpected identity could not be noticed or
-	// corrected the way an interactive command's output allows. A tie-break
-	// change to serverCandidateRank needs a matching decision here.
+	// nothing, never the token of another entry that shares the URL,
+	// because completion runs silently and an unexpected identity could not
+	// be noticed or corrected the way an interactive command's output
+	// allows. A change to candidateRanker needs a matching decision here.
 	if name, cur, err := cfg.CurrentServerEntry(); err == nil && config.SameServerURL(cur.URL, effectiveURL) {
 		tok := config.ReadFileTokenSilent(dir, name)
 		if tok == "" {

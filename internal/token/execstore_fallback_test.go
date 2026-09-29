@@ -143,8 +143,9 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 
 // TestGetTokenFTPConfigServerHelperNeverInvoked is the final-re-review
 // finding-2 repro at the get-token level: when the config's current server
-// URL uses an unsupported scheme (ftp://), Config.Effective must not invoke
-// the exec credential helper before post-resolution validation rejects it.
+// URL uses an unsupported scheme (ftp://), the exec credential helper is not
+// invoked: resolving the connection reads no stored credential, and
+// post-resolution validation rejects the scheme before any lookup.
 //
 // The fakehelper is in "ok" mode - any invocation writes a get entry to the
 // state log (creating the file). The state file absent after the command

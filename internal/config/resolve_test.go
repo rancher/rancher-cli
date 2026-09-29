@@ -534,3 +534,42 @@ func TestEffectiveKeepsKnownServersWithResolvedContext(t *testing.T) {
 	assert.Equal(t, "", eff.URL)
 	assert.Len(t, eff.KnownServers, 2, "inventory present when no current server resolves")
 }
+
+// TestEffectiveConnectionMatchesEffectiveWithoutTheCredential asserts that
+// EffectiveConnection resolves the name, URL, CA and inventory exactly as
+// Effective does, environment overrides included, and reads no credential: it
+// takes no store, so a store that fails every read cannot affect it.
+func TestEffectiveConnectionMatchesEffectiveWithoutTheCredential(t *testing.T) {
+	c := &Config{
+		CurrentServer: "prod",
+		Servers: map[string]Server{
+			"prod":    {URL: "https://prod.example.com", CA: "PROD-CA"},
+			"prod-eu": {URL: "https://eu.example.com"},
+		},
+	}
+	cases := []struct {
+		name string
+		env  map[string]string
+	}{
+		{name: "the current server alone"},
+		{name: "a divergent URL clears the CA and name", env: map[string]string{"RANCHER_CLI_URL": "https://staging.example.com"}},
+		{name: "the same URL keeps them", env: map[string]string{"RANCHER_CLI_URL": "https://prod.example.com/"}},
+		{name: "a CA from the environment", env: map[string]string{"RANCHER_CLI_CACERT": "ENV-CA"}},
+		{name: "a token in the environment does not change the connection", env: map[string]string{"RANCHER_CLI_TOKEN": "id:secret"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, k := range []string{"RANCHER_CLI_URL", "RANCHER_CLI_CACERT", "RANCHER_CLI_TOKEN"} {
+				t.Setenv(k, tc.env[k])
+			}
+			full, err := c.Effective(stubStore{token: "tok"})
+			require.NoError(t, err)
+			conn := c.EffectiveConnection()
+			assert.Equal(t, full.ServerName, conn.ServerName)
+			assert.Equal(t, full.URL, conn.URL)
+			assert.Equal(t, full.CA, conn.CA)
+			assert.Equal(t, full.KnownServers, conn.KnownServers)
+			assert.Empty(t, conn.Token, "the connection carries no credential")
+		})
+	}
+}

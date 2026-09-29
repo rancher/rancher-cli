@@ -886,15 +886,14 @@ func candidateIDsToken(cs []clierr.Candidate) []string {
 	return out
 }
 
-// TestStoredTokenForServerNoticeScopedToWinningRank is the round-4 repro
-// for the cosmetic finding: the multiple-candidates notice must fire only
-// when the WINNING rank itself had more than one token-bearing candidate -
-// a rank-0 exact --name win must stay silent even if an unrelated,
-// lower-ranked server happens to also carry a stale token.
-func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
+// TestStoredTokenForServerIdentifiedEntryWinsOutright asserts that an
+// exact --name match is a certainty: its credential is the one returned, and
+// another entry on the URL that also holds a credential neither competes nor
+// is mentioned.
+func TestStoredTokenForServerIdentifiedEntryWinsOutright(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
-	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "tok-a")) // exact --name match, rank 0
-	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-z"}, "tok-z")) // unrelated, rank 3 (stale)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "tok-a"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-z"}, "tok-z"))
 	cfg := &config.Config{
 		Servers: map[string]config.Server{
 			"prod-a": {URL: "https://r.ex"},
@@ -902,13 +901,11 @@ func TestStoredTokenForServerNoticeScopedToWinningRank(t *testing.T) {
 		},
 	}
 
-	var notices bytes.Buffer
-	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-a", false, ui.New(&notices, strings.NewReader(""), true, false))
+	got, ok, serr := lookupStored(cfg, store, "https://r.ex", "prod-a", "", false)
 	require.NoError(t, serr)
 	require.True(t, ok)
 	assert.Equal(t, "prod-a", got.name)
 	assert.Equal(t, "tok-a", got.token)
-	assert.Empty(t, notices.String(), "a rank-0 exact --name win is a certainty, not a tie-break")
 }
 
 // TestGetTokenSurfacesRealCreateFailureNotInteractive is the round-2 repro for
@@ -974,10 +971,9 @@ func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
 	assert.Contains(t, notices.String(), "config unreadable")
 }
 
-// TestStoredTokenForServerTieBreak is the round-2 repro for finding 8: two
-// Servers entries sharing a BaseURL must resolve deterministically -
-// preferring the current context's server, else the lexicographically
-// smallest name - not whichever a Go map iteration happens to yield.
+// TestStoredTokenForServerTieBreak asserts how two entries sharing a URL
+// resolve when the call names neither: the current server wins, and with no
+// current server the lookup refuses to pick one.
 func TestStoredTokenForServerTieBreak(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "tok-a"))
@@ -989,17 +985,18 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 		},
 	}
 
-	t.Run("no current context prefers the lexicographically smallest name", func(t *testing.T) {
-		got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
-		require.NoError(t, serr)
-		require.True(t, ok)
-		assert.Equal(t, "prod-a", got.name)
-		assert.Equal(t, "tok-a", got.token)
+	t.Run("no current server is an error naming both entries", func(t *testing.T) {
+		_, ok, serr := lookupStored(cfg, store, "https://r.ex", "", "c-1", false)
+		assert.False(t, ok)
+		ce, isCE := errors.AsType[*clierr.Error](serr)
+		require.True(t, isCE, "%v", serr)
+		assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+		assert.Equal(t, []string{"prod-a", "prod-b"}, candidateIDsToken(ce.Candidates), "the entries are named in name order")
 	})
 
 	t.Run("the current server wins the tie, regardless of name order", func(t *testing.T) {
 		cfg.CurrentServer = "prod-b"
-		got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+		got, ok, serr := lookupStored(cfg, store, "https://r.ex", "", "", false)
 		require.NoError(t, serr)
 		require.True(t, ok)
 		assert.Equal(t, "prod-b", got.name)
@@ -1021,7 +1018,7 @@ func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
 			"prod-b": {URL: "https://r.ex"},
 		},
 	}
-	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+	got, ok, serr := lookupStored(cfg, store, "https://r.ex", "", "", false)
 	require.NoError(t, serr)
 	require.True(t, ok, "a tokenless top-ranked candidate must not short-circuit the search")
 	assert.Equal(t, "prod-b", got.name)
@@ -1044,20 +1041,27 @@ func TestStoredTokenForServerStopsOnACredentialIdentityError(t *testing.T) {
 		{"a login that did not settle", clierr.Retryable(clierr.CodeLoginIncomplete, "a login for 'prod-a' is in progress").WithCause(config.ErrCredentialIdentity)},
 		{"a record that cannot be read", clierr.New(clierr.CodeValidation, "the credential identity record for 'prod-a' is unreadable").WithCause(config.ErrCredentialIdentity)},
 	}
+	// prod-b answers in both shapes. With no current server it ties prod-a's
+	// rank, where a read failure of any kind would be returned anyway. With
+	// prod-b current it is a clear winner ranked above prod-a, where only
+	// the identity rule can return the error.
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			base := config.NewFileStore(t.TempDir())
-			require.NoError(t, base.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
-			store := entryErrStore{CredStore: base, entry: "prod-a", err: tc.err}
-			cfg := &config.Config{Servers: map[string]config.Server{
-				"prod-a": {URL: "https://r.ex"},
-				"prod-b": {URL: "https://r.ex"},
-			}}
+		for _, current := range []string{"", "prod-b"} {
+			t.Run(tc.name+", current server "+current, func(t *testing.T) {
+				base := config.NewFileStore(t.TempDir())
+				require.NoError(t, base.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
+				store := entryErrStore{CredStore: base, entry: "prod-a", err: tc.err}
+				cfg := &config.Config{CurrentServer: current, Servers: map[string]config.Server{
+					"prod-a": {URL: "https://r.ex"},
+					"prod-b": {URL: "https://r.ex"},
+				}}
 
-			_, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
-			require.ErrorIs(t, serr, tc.err)
-			assert.False(t, ok, "the matching sibling is never used instead")
-		})
+				got, ok, serr := lookupStored(cfg, store, "https://r.ex", "", "", false)
+				require.ErrorIs(t, serr, tc.err)
+				assert.False(t, ok, "the matching sibling is never used instead")
+				assert.Empty(t, got.token)
+			})
+		}
 	}
 }
 
@@ -1089,31 +1093,63 @@ func TestIsLoginIncomplete(t *testing.T) {
 	assert.False(t, isLoginIncomplete(nil))
 }
 
-// TestStoredTokenForServerContinuesPastAnUnreachableStore asserts the
-// other half of the rule: a store that could not be reached says nothing
-// about who any entry is, so the search goes on and a sibling that
-// answers is still this caller's own credential. Only when no candidate
-// answers does that failure surface.
-func TestStoredTokenForServerContinuesPastAnUnreachableStore(t *testing.T) {
+// TestStoredTokenForServerUnreachableStoreDecidesOnlyBelowTheWinner asserts
+// the other half of the identity rule: a store that could not be reached
+// says nothing about who an entry is, but it leaves unknown whether that
+// entry holds a credential. A read that fails at or above the rank of the
+// entry that answers is returned, never answered around; one below it
+// cannot change the choice and does not block a clear winner. With no
+// entry answering, the failure surfaces.
+func TestStoredTokenForServerUnreachableStoreDecidesOnlyBelowTheWinner(t *testing.T) {
 	unreachable := errors.New(`keyring get "prod-a": dbus: no session bus`)
+	newCfg := func(current string) *config.Config {
+		return &config.Config{CurrentServer: current, Servers: map[string]config.Server{
+			"prod-a": {URL: "https://r.ex"},
+			"prod-b": {URL: "https://r.ex"},
+		}}
+	}
 	base := config.NewFileStore(t.TempDir())
 	require.NoError(t, base.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
 	store := entryErrStore{CredStore: base, entry: "prod-a", err: unreachable}
-	cfg := &config.Config{Servers: map[string]config.Server{
-		"prod-a": {URL: "https://r.ex"},
-		"prod-b": {URL: "https://r.ex"},
-	}}
 
-	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
-	require.NoError(t, serr)
-	require.True(t, ok)
-	assert.Equal(t, "tok-b", got.token)
-
-	// With no sibling to answer, the same failure is what surfaces.
-	delete(cfg.Servers, "prod-b")
-	_, ok, serr = storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
-	assert.False(t, ok)
-	require.ErrorIs(t, serr, unreachable)
+	t.Run("at the winning rank, with no current server", func(t *testing.T) {
+		_, ok, serr := lookupStored(newCfg(""), store, "https://r.ex", "", "", false)
+		assert.False(t, ok)
+		require.ErrorIs(t, serr, unreachable)
+	})
+	t.Run("above the entry that answers: the current server is unreadable", func(t *testing.T) {
+		_, ok, serr := lookupStored(newCfg("prod-a"), store, "https://r.ex", "", "", false)
+		assert.False(t, ok)
+		require.ErrorIs(t, serr, unreachable)
+	})
+	t.Run("below the winner: the current server answers", func(t *testing.T) {
+		got, ok, serr := lookupStored(newCfg("prod-b"), store, "https://r.ex", "", "", false)
+		require.NoError(t, serr)
+		require.True(t, ok)
+		assert.Equal(t, "tok-b", got.token)
+	})
+	t.Run("two unreadable entries either side of the winner: the lowest-ranked failure is the one compared", func(t *testing.T) {
+		high := errors.New(`keyring get "prod-a": dbus: no session bus`)
+		low := errors.New(`keyring get "exec-login-r": helper timed out`)
+		cfg := &config.Config{CurrentServer: "prod-a", TokenReuse: true, Servers: map[string]config.Server{
+			"prod-a":       {URL: "https://r.ex"},
+			"prod-b":       {URL: "https://r.ex"},
+			"exec-login-r": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin},
+		}}
+		unreadableHigh := config.CredStore(entryErrStore{CredStore: base, entry: "prod-a", err: high})
+		both := entryErrStore{CredStore: unreadableHigh, entry: "exec-login-r", err: low}
+		_, ok, serr := lookupStored(cfg, both, "https://r.ex", "", "", false)
+		assert.False(t, ok, "prod-b is not chosen over the unreadable current server")
+		require.ErrorIs(t, serr, high)
+		require.NotErrorIs(t, serr, low)
+	})
+	t.Run("no entry answers", func(t *testing.T) {
+		cfg := newCfg("")
+		delete(cfg.Servers, "prod-b")
+		_, ok, serr := lookupStored(cfg, store, "https://r.ex", "", "", false)
+		assert.False(t, ok)
+		require.ErrorIs(t, serr, unreachable)
+	})
 }
 
 // TestStoredTokenForServerNamePicksNamedServer is the round-3 repro for
@@ -1129,35 +1165,75 @@ func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
 			"prod-b": {URL: "https://r.ex"},
 		},
 	}
-	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "prod-b", false, ui.Discard())
+	got, ok, serr := lookupStored(cfg, store, "https://r.ex", "prod-b", "", false)
 	require.NoError(t, serr)
 	require.True(t, ok)
 	assert.Equal(t, "prod-b", got.name, "--name must win over the lexicographic default")
 	assert.Equal(t, "tok-b", got.token)
 }
 
-// TestStoredTokenForServerIgnoreCurrentContextSkipsLegacyNamedEntry is the round-7
-// finding-3 repro: a config.yaml entry literally named "legacy:<user>" (a
-// hand-edited file, or one written before auth login rejected the prefix)
-// must NOT win the exact-name tier for a shim call. Under ignoreCurrentContext,
-// wantName is a cache-slot label with no entry-name preference, so selection
-// follows sorted order alone - "aaa" here, not the exact-name match, which
-// sorts after it.
+// TestStoredTokenForServerIgnoreCurrentContextSkipsLegacyNamedEntry asserts
+// that a config.yaml entry literally named "legacy:<user>" (a hand-edited
+// file, or one written before auth login rejected the prefix) is not the
+// entry a shim call means. The shim's name is a cache-slot label, so it
+// identifies nothing: with the entry the only one holding a credential it is
+// used like any other candidate, and with a second one holding a credential
+// the lookup refuses to choose.
 func TestStoredTokenForServerIgnoreCurrentContextSkipsLegacyNamedEntry(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "legacy:zed"}, "tok-legacy"))
-	require.NoError(t, store.SetToken(config.ServerRef{Name: "aaa"}, "tok-aaa"))
 	cfg := &config.Config{
 		Servers: map[string]config.Server{
 			"legacy:zed": {URL: "https://r.ex"},
 			"aaa":        {URL: "https://r.ex"},
 		},
 	}
-	got, ok, serr := storedTokenForServer(cfg, store, "https://r.ex", "legacy:zed", true, ui.Discard())
+	identified, err := identifyEntry(cfg, "https://r.ex", "legacy:zed", "", true)
+	require.NoError(t, err)
+	assert.Empty(t, identified, "a shim call never identifies an entry")
+
+	got, ok, serr := lookupStored(cfg, store, "https://r.ex", "legacy:zed", "", true)
 	require.NoError(t, serr)
 	require.True(t, ok)
-	assert.Equal(t, "aaa", got.name, "sorted order must win; wantName carries no preference under ignoreCurrentContext")
-	assert.Equal(t, "tok-aaa", got.token)
+	assert.Equal(t, "legacy:zed", got.name, "the only entry with a credential is used")
+
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "aaa"}, "tok-aaa"))
+	_, ok, serr = lookupStored(cfg, store, "https://r.ex", "legacy:zed", "", true)
+	assert.False(t, ok)
+	ce, isCE := errors.AsType[*clierr.Error](serr)
+	require.True(t, isCE, "%v", serr)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Equal(t, []string{"aaa", "legacy:zed"}, candidateIDsToken(ce.Candidates), "the entries are named in name order")
+}
+
+// TestStoredTokenForServerShimIgnoresTheCurrentServer asserts the shim is
+// driven by its flags alone: with two readable entries on the call's URL,
+// one of them the directory's current server, a native call uses the current
+// entry's credential while the shim gets the tie error and neither token.
+func TestStoredTokenForServerShimIgnoresTheCurrentServer(t *testing.T) {
+	store := config.NewFileStore(t.TempDir())
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "tok-a"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
+	cfg := &config.Config{
+		CurrentServer: "prod-b",
+		Servers: map[string]config.Server{
+			"prod-a": {URL: "https://r.ex"},
+			"prod-b": {URL: "https://r.ex"},
+		},
+	}
+
+	got, ok, serr := lookupStored(cfg, store, "https://r.ex", "", "c-1", false)
+	require.NoError(t, serr)
+	require.True(t, ok)
+	assert.Equal(t, "tok-b", got.token, "a native call prefers the current server")
+
+	got, ok, serr = lookupStored(cfg, store, "https://r.ex", "legacy:user", "c-1", true)
+	assert.False(t, ok)
+	assert.Empty(t, got.token, "the shim serves neither entry's token")
+	ce, isCE := errors.AsType[*clierr.Error](serr)
+	require.True(t, isCE, "%v", serr)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Equal(t, []string{"prod-a", "prod-b"}, candidateIDsToken(ce.Candidates), "the entries are named in name order")
 }
 
 // TestStoredTokenForServerMatchesEquivalentURLSpellings is the impl-review
@@ -1169,7 +1245,7 @@ func TestStoredTokenForServerMatchesEquivalentURLSpellings(t *testing.T) {
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod"}, "tok"))
 	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: "https://host"}}}
 
-	got, ok, serr := storedTokenForServer(cfg, store, "HTTPS://HOST:443", "", false, ui.Discard())
+	got, ok, serr := lookupStored(cfg, store, "HTTPS://HOST:443", "", "", false)
 	require.NoError(t, serr)
 	require.True(t, ok, "an equivalent URL spelling must still match the configured server")
 	assert.Equal(t, "prod", got.name)
@@ -2252,7 +2328,7 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 		}
 		// Run many times: map iteration order varies, so nondeterminism surfaces.
 		for i := range 20 {
-			got := caForServer(cfg, "https://shared.example", false)
+			got := caForServer(cfg, "https://shared.example", "", false)
 			assert.Equal(t, caAlpha, got, "alpha < zeta: caAlpha must win on every call (iteration %d)", i)
 		}
 	})
@@ -2266,7 +2342,7 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 				"zeta":  {URL: "https://shared.example", CA: caZeta},
 			},
 		}
-		got := caForServer(cfg, "https://shared.example", false)
+		got := caForServer(cfg, "https://shared.example", "", false)
 		assert.Equal(t, caZeta, got, "current server zeta must win over sorted alpha")
 	})
 
@@ -2281,23 +2357,18 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 				"zeta":  {URL: "https://shared.example", CA: caZeta},
 			},
 		}
-		got := caForServer(cfg, "https://shared.example", true)
+		got := caForServer(cfg, "https://shared.example", "", true)
 		assert.Equal(t, caAlpha, got, "ignoreCurrentContext=true: current server zeta must be ignored; sorted alpha wins")
 	})
 }
 
-// TestNeedsEffGateEachDisjunct is the structural assertion for the needsEff gate in
-// resolveConn. For each combination of inputs where ALL three disjuncts are
-// false, cfg.Effective (and its GetToken call) must not fire. errGetTokenStore
-// errors on GetToken for "unrelated" - if Effective is called unexpectedly,
-// resolveConn returns an error and the test fails.
-//
-//   - Disjunct 1: server == ""
-//   - Disjunct 2: cluster == "" && !ignoreCurrentContext
-//   - Disjunct 3: caIn == "" && !explicitServer
-//
-// All three negations hold in each case below, so needsEff=false.
-func TestNeedsEffGateEachDisjunct(t *testing.T) {
+// TestResolveConnReadsNoCredential asserts that resolving the connection
+// reads no stored credential, whichever of the server, cluster and CA the
+// flags leave to the config: errGetTokenStore errors on GetToken for
+// "unrelated", the current server, so a call that read its credential would
+// return that error. The cases below leave nothing to the config or leave
+// it the server and CA.
+func TestResolveConnReadsNoCredential(t *testing.T) {
 	const inlinePEM = "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----"
 
 	cases := []struct {
@@ -2322,11 +2393,15 @@ func TestNeedsEffGateEachDisjunct(t *testing.T) {
 			ignoreCurrentContext: true,
 		},
 		{
+			// Nothing on the flags: the server and CA come from the current
+			// entry, whose login the call does not need.
+			name:   "server and CA from the current entry",
+			server: "", cluster: "c-1", caIn: "",
+			ignoreCurrentContext: false,
+		},
+		{
 			// Shim's common case: explicit server + ignoreCurrentContext=true, caIn="".
-			// Disjunct 1: server!="" → false.
-			// Disjunct 2: cluster="" but ignoreCurrentContext=true → false.
-			// Disjunct 3: caIn="" but explicitServer=true → false.
-			// Config is loaded (outer if: caIn==""), but Effective must not run.
+			// Config is loaded (caIn==""), but no credential is read.
 			name:   "ignoreCurrentContext true empty cluster and caIn",
 			server: "https://test.example.com", cluster: "", caIn: "",
 			ignoreCurrentContext: true,
@@ -2337,7 +2412,7 @@ func TestNeedsEffGateEachDisjunct(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			// Write a config with a current server pointing at "unrelated".
-			// If Effective is called, GetToken for "unrelated" errors → resolveConn
+			// If a credential is read, GetToken for "unrelated" errors → resolveConn
 			// propagates the error and the test catches it.
 			cfg := &config.Config{
 				CurrentServer: "unrelated",
@@ -2352,17 +2427,17 @@ func TestNeedsEffGateEachDisjunct(t *testing.T) {
 
 			_, _, _, err := cmd.resolveConn(tc.server, tc.cluster, tc.caIn, tc.ignoreCurrentContext)
 			require.NoError(t, err,
-				"resolveConn must not call cfg.Effective when needsEff=false (case %q)", tc.name)
+				"resolveConn must read no stored credential (case %q)", tc.name)
 		})
 	}
 }
 
 // TestResolveConnIgnoreCurrentContextRequiresServer asserts the resolveConn side of the
 // blank---server class: a ignoreCurrentContext caller with no server must get the
-// "--server is required" validation error without cfg.Effective ever running -
+// "--server is required" validation error without any credential being read -
 // never the stored current-context URL. errGetTokenStore errors on GetToken
-// for "unrelated", so an unexpected Effective call would surface as a different
-// error and fail the assertions below.
+// for "unrelated", so an unexpected credential read would surface as a
+// different error and fail the assertions below.
 func TestResolveConnIgnoreCurrentContextRequiresServer(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{
@@ -2516,9 +2591,11 @@ func seedEntry(t *testing.T, dir string, store config.CredStore, name string, s 
 }
 
 // TestStoredTokenForServerRanksUserEntriesAboveExecLogin asserts the
-// provenance tier: a user entry wins over a plugin login entry even when
-// the plugin entry is the exact --name match or the current server; with
-// the setting off the plugin entry is not a candidate at all.
+// provenance tier for a call that names no entry: a user entry wins over a
+// plugin login entry even when the plugin entry is the current server; with
+// the setting off the plugin entry is not a candidate at all. A call that
+// names the plugin entry means it, and reads its credential while the
+// setting is on.
 func TestStoredTokenForServerRanksUserEntriesAboveExecLogin(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -2529,29 +2606,36 @@ func TestStoredTokenForServerRanksUserEntriesAboveExecLogin(t *testing.T) {
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "exec-login-r.ex", URL: "https://r.ex"}, "ext/p:s"))
 	require.NoError(t, store.SetToken(config.ServerRef{Name: "zz-user", URL: "https://r.ex"}, "ext/u:s"))
 
-	got, ok, err := storedTokenForServer(cfg, store, "https://r.ex", "exec-login-r.ex", false, ui.Discard())
+	got, ok, err := lookupStored(cfg, store, "https://r.ex", "", "", false)
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.Equal(t, "zz-user", got.name)
-	assert.Equal(t, "ext/u:s", got.token)
+	assert.Equal(t, "zz-user", got.name, "a user entry outranks the plugin entry, current server or not")
 	assert.Empty(t, got.entry.Provenance)
 
-	got, ok, err = storedTokenForServer(cfg, store, "https://r.ex", "", true, ui.Discard())
+	got, ok, err = lookupStored(cfg, store, "https://r.ex", "exec-login-r.ex", "", false)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "exec-login-r.ex", got.name, "naming the plugin entry means it")
+
+	got, ok, err = lookupStored(cfg, store, "https://r.ex", "", "", true)
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, "zz-user", got.name, "the shim's ordering keeps user before plugin too")
 
 	require.NoError(t, store.DeleteToken(config.ServerRef{Name: "zz-user", URL: "https://r.ex"}))
-	got, ok, err = storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+	got, ok, err = lookupStored(cfg, store, "https://r.ex", "", "", false)
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, "exec-login-r.ex", got.name)
 	assert.Equal(t, clierr.ProvenanceExecLogin, got.entry.Provenance)
 
 	cfg.TokenReuse = false
-	_, ok, err = storedTokenForServer(cfg, store, "https://r.ex", "", false, ui.Discard())
+	_, ok, err = lookupStored(cfg, store, "https://r.ex", "", "", false)
 	require.NoError(t, err)
 	assert.False(t, ok, "with the setting off a plugin login entry is skipped entirely")
+	_, ok, err = lookupStored(cfg, store, "https://r.ex", "exec-login-r.ex", "", false)
+	require.NoError(t, err)
+	assert.False(t, ok, "and naming it does not read it")
 }
 
 // TestStoredCredTokenClassifiesRejections asserts the 401/403 rules per
@@ -2740,4 +2824,26 @@ func TestGetTokenCreateForbiddenIsRBACNotInteractive(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, int32(0), authProviderHits.Load(), "a 403 never falls back to the interactive flow")
+}
+
+// TestStoredTokenForServerBlankTokenIsNotACredential asserts a stored value
+// that is only whitespace is a miss, not a credential: it neither wins nor
+// makes a tie with the entry that holds a real token.
+func TestStoredTokenForServerBlankTokenIsNotACredential(t *testing.T) {
+	store := config.NewFileStore(t.TempDir())
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-a"}, "  \n"))
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "prod-b"}, "tok-b"))
+	cfg := &config.Config{Servers: map[string]config.Server{
+		"prod-a": {URL: "https://r.ex"},
+		"prod-b": {URL: "https://r.ex"},
+	}}
+
+	got, ok, serr := lookupStored(cfg, store, "https://r.ex", "", "", false)
+	require.NoError(t, serr)
+	require.True(t, ok)
+	assert.Equal(t, "prod-b", got.name)
+
+	got, ok, serr = lookupStored(cfg, store, "https://r.ex", "prod-a", "", false)
+	require.NoError(t, serr)
+	assert.False(t, ok, "an identified entry holding only whitespace has no credential: %q", got.token)
 }

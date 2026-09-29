@@ -161,6 +161,12 @@ type tokenCmd struct {
 	// from the exec cluster's rest.Config; nil means kube.HTTPClient. The
 	// probe builds its own client, so the Rancher seam cannot reach it.
 	newDirectClient directClientFactory
+	// resolved is the identification the connection was set up under, when
+	// this call read config.yaml to choose the CA. The credential lookup
+	// reads config.yaml again; if it identifies another entry the file
+	// changed between the two reads, and the call stops rather than pair one
+	// entry's trust with another's login.
+	resolved entryChoice
 }
 
 // clientFor is newClient or its production default.
@@ -296,7 +302,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 
 	// Full resolution (config + CA disk I/O): required to authenticate on a miss
 	// and to build the definitive cache key when --server was not provided.
-	server, caPEM, clusterID, caSource, err := t.resolveConnWithCA(params.Server, params.Cluster, params.CACert, params.legacyShim)
+	server, caPEM, clusterID, caSource, choice, err := t.resolveConnWithCA(params.Server, params.Cluster, params.CACert, params.Name, params.legacyShim)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -365,6 +371,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		return runtime.Result{}, err
 	}
 
+	t.resolved = choice
 	rancherToken, reuseOn, binding, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
 	// The plugin-created login exists to serve cluster-scoped tokens, so it
 	// runs only for an invocation that names a cluster. The legacy shim
@@ -410,7 +417,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		if err != nil {
 			// This lane is taken only when the plugin-created login is not,
 			// so a sign-in here keeps no login credential.
-			return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, serverURL: serverID, caCert: caSource})
+			return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim})
 		}
 		// The interactive login's cluster-scoped token has no parent
 		// bearer: it revokes itself if the wait below is cancelled.
@@ -419,7 +426,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			binding: binding}
 	case err != nil:
 		// The plugin-created login reaches the same sign-in prompts.
-		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, serverURL: serverID, caCert: caSource, keepsLogin: pluginLane})
+		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim, keepsLogin: pluginLane})
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth provider and credentials")
@@ -1280,14 +1287,16 @@ func generateKey() (string, error) {
 // as plain strings rather than a runtime.Input, so callers (runWithParams)
 // can pass runParams fields directly without an adapter wrapper.
 func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurrentContext bool) (server, caPEM, cluster string, err error) {
-	server, caPEM, cluster, _, err = t.resolveConnWithCA(flagServer, flagCluster, caIn, ignoreCurrentContext)
+	server, caPEM, cluster, _, _, err = t.resolveConnWithCA(flagServer, flagCluster, caIn, "", ignoreCurrentContext)
 	return server, caPEM, cluster, err
 }
 
 // resolveConnWithCA is resolveConn that also returns the CA as it was
-// chosen - the --cacert value, or else the matching entry's CA from
-// config.yaml, a path or an inline PEM - before it is read.
-func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn string, ignoreCurrentContext bool) (server, caPEM, cluster, caSource string, err error) {
+// chosen - the --cacert value, or else the CA of the entry wantName
+// identifies, or else of the matching entry, from config.yaml, a path or an
+// inline PEM - before it is read, and the identification the CA was chosen
+// under when config.yaml was read to make it.
+func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName string, ignoreCurrentContext bool) (server, caPEM, cluster, caSource string, choice entryChoice, err error) {
 	server = flagServer
 	cluster = flagCluster
 	explicitServer := server != ""
@@ -1303,10 +1312,9 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn string, ignore
 
 	// A ignoreCurrentContext caller is flag-driven by definition: an absent
 	// --server must fail here, never be filled from the config's current
-	// context below. This also keeps the needsEff gate honest - past this
-	// point server == "" implies !ignoreCurrentContext.
+	// context below - past this point server == "" implies !ignoreCurrentContext.
 	if server == "" && ignoreCurrentContext {
-		return "", "", "", "", clierr.New(clierr.CodeValidation, "--server is required")
+		return "", "", "", "", entryChoice{}, clierr.New(clierr.CodeValidation, "--server is required")
 	}
 
 	// The native get-token path requires --cluster: a token must never be created
@@ -1314,41 +1322,30 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn string, ignore
 	// the legacy semantic where an empty --cluster is a deliberate unscoped
 	// create - still purely flag-driven, never filled from stored state.
 	if cluster == "" && !ignoreCurrentContext {
-		return "", "", "", "", clierr.New(clierr.CodeValidation, "--cluster is required")
+		return "", "", "", "", entryChoice{}, clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
 
 	if server == "" || caIn == "" {
 		cfg, cerr := config.Load(config.FilePath(t.dir))
 		if cerr != nil {
-			return "", "", "", "", cerr
+			return "", "", "", "", entryChoice{}, cerr
 		}
-		// cfg.Effective reads the current server's credential from the store -
-		// GetToken for a server that may be entirely unrelated to the --server
-		// the caller wants. Call it only when a field actually needs it:
-		// URL from config (server == "") or CA from the current server
-		// (!explicitServer). With an explicit --server and ignoreCurrentContext (every
-		// shim call), config.yaml may still be needed for caForServer, but
-		// Effective must not run - a hard store error for an unrelated server must
-		// never abort an otherwise healthy create.
-		// needsEff mirrors the two Effective fields consumed below:
-		//   - eff.URL when server == ""
-		//   - eff.CA  when caIn == "" && !explicitServer
-		// If a new Effective-sourced field is added below, add its condition here.
-		needsEff := server == "" || (caIn == "" && !explicitServer)
-		var eff config.Effective
-		if needsEff {
-			var effErr error
-			eff, effErr = cfg.Effective(t.store)
-			if effErr != nil {
-				return "", "", "", "", effErr
-			}
-		}
+		// The current server's URL and CA come from EffectiveConnection, which
+		// reads no credential: this call needs where to connect and whom to
+		// trust, never the current entry's login, and a store failure on an
+		// entry it does not use must not abort it.
+		eff := cfg.EffectiveConnection()
 		if server == "" {
 			server = eff.URL
 		}
-		if caIn == "" {
-			if explicitServer {
-				caIn = caForServer(cfg, server, ignoreCurrentContext)
+		if caIn == "" && server != "" {
+			identified, ierr := identifyEntry(cfg, server, wantName, cluster, ignoreCurrentContext)
+			if ierr != nil {
+				return "", "", "", "", entryChoice{}, ierr
+			}
+			choice = entryChoice{known: true, name: identified}
+			if identified != "" || explicitServer {
+				caIn = caForServer(cfg, server, identified, ignoreCurrentContext)
 			} else {
 				caIn = eff.CA
 			}
@@ -1356,14 +1353,14 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn string, ignore
 	}
 
 	if server == "" {
-		return "", "", "", "", clierr.New(clierr.CodeValidation,
+		return "", "", "", "", entryChoice{}, clierr.New(clierr.CodeValidation,
 			"--server is required; pass it, or add and log in to a server first")
 	}
 	caPEM, err = config.ResolveCA(caIn)
 	if err != nil {
-		return "", "", "", "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
+		return "", "", "", "", entryChoice{}, clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
 	}
-	return server, caPEM, cluster, caIn, nil
+	return server, caPEM, cluster, caIn, choice, nil
 }
 
 // schemeRE matches an explicit URI scheme followed by "://", independent of
@@ -1553,26 +1550,39 @@ func provenanceTier(s config.Server) int {
 	return 0
 }
 
-// serverCandidateRank orders storedTokenForServer's BaseURL-matching
-// candidates: (0) an exact --name match, (1) a candidate whose name is a
-// prefix of --name in the "<server>-<clusterID>" entry-name shape, (2) the
-// current server, (3) everything else (broken by the
-// lexicographic order candidates already carry on input).
-// serverCandidateRankCount is the number of distinct ranks serverCandidateRank
-// returns (0..serverCandidateRankCount-1), so callers can scan every rank
-// without a second magic number drifting out of sync with the switch below.
-const serverCandidateRankCount = 4
+// The ranker orders an entry by its provenance tier first and its place
+// among the tier's entries second. candidateRankCount is the number of
+// distinct ranks that gives, derived from both counts so a caller can scan
+// every rank without a second number drifting out of sync with the ranker:
+// a third provenance tier raises candidateTierCount, and the scan follows.
+const (
+	candidateTierCount = 2
+	candidatePlaces    = 2
+	candidateRankCount = candidateTierCount * candidatePlaces
+)
 
-func serverCandidateRank(name, wantName, curServer string) int {
-	switch {
-	case wantName != "" && name == wantName:
-		return 0
-	case wantName != "" && strings.HasPrefix(wantName, name+"-"):
-		return 1
-	case curServer != "" && name == curServer:
-		return 2
-	default:
-		return 3
+// candidateRanker orders the entries that answer for one server URL when
+// the call names none of them: lower is preferred. The provenance tier
+// comes first, then the current server ahead of every other entry. One
+// ranker for both callers, for the reason MatchingServerNames gives for
+// the candidate set itself - the entry a cache record is bound to and the
+// entry a credential is read from must be the same entry, and a
+// tie-break changed at one site and not the other would bind a record to
+// an entry the credential lookup never chooses, so every record for that
+// server becomes a miss.
+// ignoreCurrentContext drops the current-server preference: the shim is
+// driven by its flags alone, never by stored current-context state.
+func candidateRanker(cfg *config.Config, ignoreCurrentContext bool) func(string) int {
+	curServer := ""
+	if !ignoreCurrentContext {
+		curServer = cfg.CurrentServer
+	}
+	return func(n string) int {
+		rank := provenanceTier(cfg.Servers[n]) * candidatePlaces
+		if curServer == "" || n != curServer {
+			rank++
+		}
+		return rank
 	}
 }
 
@@ -1585,81 +1595,25 @@ func isLoginIncomplete(err error) bool {
 	return ok && ce.Code == clierr.CodeLoginIncomplete
 }
 
-// storedTokenForServer finds the configured server entry whose URL matches
-// server (compared by scheme+host via kube.BaseURL) and has a stored login
-// token, and returns that name and token. Selects from the same
-// matchingServerNames candidate set caForServer uses, but resolves the
-// credential store's token instead of the config's CA. Multiple Servers entries can share a BaseURL (e.g. re-login
-// under a new --name against the same host); serverCandidateRank orders
-// them deterministically, and every candidate in that order is tried in
-// turn - the first one with an actual stored token wins, so a
-// higher-ranked-but-tokenless sibling never masks a lower-ranked one that
-// does have a token. p is noticed only when more than one candidate AT THE
-// WINNING RANK had a stored token - an exact --name match (rank 0) winning
-// outright is a certainty, not a tie-break, even if some unrelated
-// lower-ranked server also happens to have a stale token.
-// ignoreCurrentContext gates every non-sorted tier: wantName is forced to ""
-// (the shim's name is a cache-slot label, never an entry-name preference, so
-// ranks 0 and 1 must not fire even against a hand-edited "legacy:"-named
-// entry) and curServer is forced to "" (rank 2, the operator's
-// interactive-session state) - stored-login selection falls directly to
-// rank-3 (deterministic sorted order), consistent with how ignoreCurrentContext
-// gates the cluster and CA fallbacks in resolveConn/caForServer.
-// A provenance tier precedes every rank: user entries before plugin login
-// entries; a plugin login entry is a candidate only while the token-reuse
-// setting is on.
-// anchorEntry names the config entry a cache record written on this
-// invocation belongs to when no stored credential produced it - an
-// interactive login, or a session driven by RANCHER_CLI_TOKEN. It ranks
-// the same candidates the credential lookup ranks, so the record is
-// anchored to the entry a later lookup would choose, and it does NOT
-// apply the token-reuse filter: a dormant plugin entry should anchor the
-// record rather than leave it anchored to nothing and invalidated the
-// moment the setting is turned on.
-//
-// The name comes from the caller's config load, never a second one, and
-// the binding is built from that same load: a re-read could pair this
-// invocation's credential with the id of a login that replaced it since.
-//
-// Empty when the directory has no entry for the server at all, which is
-// the bare-install state and is a hit only while it lasts.
-func anchorEntry(cfg *config.Config, server, wantName string, ignoreCurrentContext bool) string {
-	candidates := cfg.MatchingServerNames(server)
-	if len(candidates) == 0 {
-		return ""
+// storedTokenForServer finds the stored login credential the call may use
+// for server. identified is the entry identifyEntry chose; when it is set,
+// only that entry's credential is read, with the plugin's own login entry
+// as the one fallback while token reuse is on (see identifiedCredential).
+// When identified is empty the call named no entry, and the entries that
+// answer for the URL are ranked by candidateRanker; more than one
+// credentialed entry at the winning rank is an error, never a pick.
+// A plugin login entry is a candidate only while the token-reuse setting is
+// on. ignoreCurrentContext is the shim's flag-driven mode: no
+// current-server preference, and the error's remedy is the shim's.
+func storedTokenForServer(cfg *config.Config, store config.CredStore, server, identified, clusterID string, ignoreCurrentContext bool) (storedCredential, bool, error) {
+	if identified != "" {
+		return identifiedCredential(cfg, store, server, identified)
 	}
-	rankOf := candidateRanker(cfg, wantName, ignoreCurrentContext)
-	best := candidates[0]
-	bestRank := rankOf(best)
-	for _, n := range candidates[1:] {
-		if r := rankOf(n); r < bestRank {
-			best, bestRank = n, r
-		}
-	}
-	return best
+	return rankedCredential(cfg, store, server, clusterID, ignoreCurrentContext)
 }
 
-// candidateRanker orders entries that answer for one server URL: lower is
-// preferred. One ranker for both callers, for the reason MatchingServerNames
-// gives for the candidate set itself - the entry a cache record is bound to
-// and the entry a credential is read from must be the same entry, and a
-// tie-break changed at one site and not the other would bind a record to an
-// entry the credential lookup never chooses, so every record for that server
-// becomes a miss.
-func candidateRanker(cfg *config.Config, wantName string, ignoreCurrentContext bool) func(string) int {
-	if ignoreCurrentContext {
-		wantName = ""
-	}
-	curServer := ""
-	if !ignoreCurrentContext {
-		curServer = cfg.CurrentServer
-	}
-	return func(n string) int {
-		return provenanceTier(cfg.Servers[n])*serverCandidateRankCount + serverCandidateRank(n, wantName, curServer)
-	}
-}
-
-func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (storedCredential, bool, error) {
+// rankedCredential is the lookup for a call that named no entry.
+func rankedCredential(cfg *config.Config, store config.CredStore, server, clusterID string, ignoreCurrentContext bool) (storedCredential, bool, error) {
 	candidates := cfg.MatchingServerNames(server)
 	if !cfg.TokenReuse {
 		candidates = slices.DeleteFunc(candidates, func(n string) bool {
@@ -1670,29 +1624,25 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 		return storedCredential{}, false, nil
 	}
 
-	// A ignoreCurrentContext caller's wantName is a cache-slot label
-	// ("legacy:<user>"), not a principal or entry-name preference:
-	// stored-login selection must follow server-ranking alone, so the
-	// name-driven tiers (ranks 0 and 1) are suppressed the same way rank 2's
-	// current-server tier is below. A hand-edited config.yaml can contain a
-	// literally "legacy:"-prefixed entry name (auth login rejects the prefix,
-	// but nothing rewrites existing files), so this cannot rely on the
-	// entry-name namespace staying clean.
-	rankOf := candidateRanker(cfg, wantName, ignoreCurrentContext)
+	rankOf := candidateRanker(cfg, ignoreCurrentContext)
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return rankOf(candidates[i]) < rankOf(candidates[j])
 	})
 
 	hitsByRank := map[int][]storedCredential{}
-	// firstHardErr remembers the FIRST non-not-found helper/store failure - a
+	// firstHardErr remembers the first non-not-found helper/store failure - a
 	// missing helper binary, timeout, malformed response, version mismatch,
-	// backend outage - so a genuinely misconfigured store is surfaced rather
-	// than silently treated as "no credential" and papered over by the
-	// interactive fallback. A clean miss (ErrNoToken / empty token) is skipped.
-	var firstHardErr error
+	// backend outage - and hardErrRank the rank of the entry it came from.
+	// Candidates are read in rank order, so the first is the lowest. A
+	// genuinely misconfigured store is surfaced rather than silently treated
+	// as "no credential" and papered over by the interactive fallback. A
+	// clean miss (ErrNoToken / empty token) is skipped.
+	var (
+		firstHardErr error
+		hardErrRank  int
+	)
 	for _, n := range candidates {
-		r := config.ServerRef{Name: n, URL: cfg.Servers[n].URL}
-		t, gerr := store.GetToken(r)
+		cred, ok, gerr := readEntryCredential(cfg, store, n)
 		if gerr != nil {
 			// Anything the identity layer says about this entry ends the
 			// search instead of moving on: a credential another directory
@@ -1701,30 +1651,33 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 			// cannot be established". The remaining candidates are other
 			// entries that merely share the URL, so using one of them
 			// would authenticate as that entry's user and hide the
-			// message. A store that could not be reached is the other
-			// case, and keeps the behaviour below: it says nothing about
-			// identity, so a sibling that answers is still this caller's
-			// own credential.
+			// message. A store that could not be reached says nothing about
+			// identity, but it leaves the winner unknown: the entry may
+			// hold a credential at or above the rank of the one that
+			// answers, so the choice below is made only when no failed
+			// read could change it.
 			if config.IsCredentialIdentityError(gerr) {
 				return storedCredential{}, false, gerr
 			}
-			if !errors.Is(gerr, config.ErrNoToken) && firstHardErr == nil {
-				firstHardErr = gerr
+			if firstHardErr == nil {
+				firstHardErr, hardErrRank = gerr, rankOf(n)
 			}
 			continue
 		}
-		if strings.TrimSpace(t) == "" {
-			continue
+		if ok {
+			hitsByRank[rankOf(n)] = append(hitsByRank[rankOf(n)], cred)
 		}
-		hitsByRank[rankOf(n)] = append(hitsByRank[rankOf(n)], storedCredential{name: n, token: t, ref: r, entry: cfg.Servers[n]})
 	}
-	for rank := range 2 * serverCandidateRankCount {
+	for rank := range candidateRankCount {
 		hs := hitsByRank[rank]
 		if len(hs) == 0 {
 			continue
 		}
+		if firstHardErr != nil && hardErrRank <= rank {
+			return storedCredential{}, false, firstHardErr
+		}
 		if len(hs) > 1 {
-			p.Notice(fmt.Sprintf("%d configured servers matching this URL have stored credentials; using %q", len(hs), hs[0].name))
+			return storedCredential{}, false, entryNotNamedError(cfg, hs, clusterID, ignoreCurrentContext)
 		}
 		return hs[0], true, nil
 	}
@@ -1732,6 +1685,40 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, wa
 	// error, surface it - a helper misconfiguration must not silently fall
 	// through to interactive auth.
 	return storedCredential{}, false, firstHardErr
+}
+
+// anchorEntry names the config entry a cache record written on this
+// invocation belongs to when no stored credential produced it - an
+// interactive login, or a session driven by RANCHER_CLI_TOKEN. It is the
+// identified entry when the call names one, else the entry candidateRanker
+// prefers, so the record is anchored to the entry a later lookup would
+// read. It does NOT apply the token-reuse filter: a dormant plugin entry
+// should anchor the record rather than leave it anchored to nothing and
+// invalidated the moment the setting is turned on.
+//
+// The name comes from the caller's config load, never a second one, and
+// the binding is built from that same load: a re-read could pair this
+// invocation's credential with the id of a login that replaced it since.
+//
+// Empty when the directory has no entry for the server at all, which is
+// the bare-install state and is a hit only while it lasts.
+func anchorEntry(cfg *config.Config, server, identified string, ignoreCurrentContext bool) string {
+	if identified != "" {
+		return identified
+	}
+	candidates := cfg.MatchingServerNames(server)
+	if len(candidates) == 0 {
+		return ""
+	}
+	rankOf := candidateRanker(cfg, ignoreCurrentContext)
+	best := candidates[0]
+	bestRank := rankOf(best)
+	for _, n := range candidates[1:] {
+		if r := rankOf(n); r < bestRank {
+			best, bestRank = n, r
+		}
+	}
+	return best
 }
 
 // clustersPath is the management Cluster collection/object path, reached
@@ -1814,17 +1801,18 @@ const legacyTokenTTL = 15 * time.Minute
 // no-input leftovers in the package's fix history). Any other non-nil error
 // is a real failure (network/TLS/5xx, or an unresolvable --cluster) that
 // the caller must surface directly.
-// ignoreCurrentContext is forwarded to storedTokenForServer to gate rank-2
-// (current-server preference) - see runParams.legacyShim.
+// wantName is the exec entry's --name; identifyEntry decides which server
+// entry, if any, it means, and everything below reads that entry alone.
+// ignoreCurrentContext is the shim's flag-driven mode - see
+// runParams.legacyShim.
 // The second result is the token-reuse setting as this call read it, so the
 // caller decides the plugin lane without loading config.yaml again; a config
 // it could not read reads as off.
 // storedCredToken also reports the cache binding a record written on this
 // invocation belongs to, from the same config load it made here: the
-// selected entry when a stored credential produced the credential, and
-// the highest-ranked entry answering for the server otherwise, so an
-// interactive or environment-driven session anchors its record to the
-// entry a later lookup would choose.
+// entry that supplied the credential when a stored one produced it, and
+// otherwise the entry a later lookup would read (anchorEntry), so an
+// interactive or environment-driven session anchors its record to it.
 func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, bool, config.CacheBinding, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
@@ -1836,10 +1824,17 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	// store held nothing, so each binding names that store; which backend
 	// it read is asked at the write, once the read has fixed it.
 	binding := config.CacheBindingWithoutEntry(t.cacheDir(), cfg).ReadFrom(t.store)
-	if anchorName := anchorEntry(cfg, server, wantName, ignoreCurrentContext); anchorName != "" {
+	identified, ierr := identifyEntry(cfg, server, wantName, clusterID, ignoreCurrentContext)
+	if ierr != nil {
+		return Token{}, cfg.TokenReuse, binding, ierr
+	}
+	if t.resolved.known && t.resolved.name != identified {
+		return Token{}, cfg.TokenReuse, binding, configChangedError(t.resolved.name, identified)
+	}
+	if anchorName := anchorEntry(cfg, server, identified, ignoreCurrentContext); anchorName != "" {
 		binding = config.CacheBindingFor(t.cacheDir(), cfg, anchorName).ReadFrom(t.store)
 	}
-	sc, ok, serr := storedTokenForServer(cfg, t.store, server, wantName, ignoreCurrentContext, p)
+	sc, ok, serr := storedTokenForServer(cfg, t.store, server, identified, clusterID, ignoreCurrentContext)
 	if serr != nil {
 		// A hard store/helper failure (missing binary, timeout, malformed
 		// response, version mismatch, backend outage) must surface, never be
@@ -1926,17 +1921,19 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 	return err
 }
 
-// caForServer returns the CA of the configured server entry whose URL matches
-// server (compared by scheme+host via SameServerURL), or "" if none matches -
-// an explicit --server with no --cacert never silently borrows a different
-// server's trust root. When multiple entries share a host and ignoreCurrentContext
-// is false, the current server wins; ties are broken by sorted entry
-// name (the same determinism storedTokenForServer uses at ranks 2 and 3), so
-// repeated calls with the same config always return the same CA regardless of
-// map-iteration order. When ignoreCurrentContext is true the current-server
-// preference is suppressed and sorted order alone determines the winner -
-// consistent with how ignoreCurrentContext gates the rank-2 fallback.
-func caForServer(cfg *config.Config, server string, ignoreCurrentContext bool) string {
+// caForServer returns the CA of the configured server entry the call
+// means: the identified entry's, when identifyEntry found one, even if it
+// has none. Otherwise the CA of an entry whose URL matches server (compared
+// by scheme+host via SameServerURL), or "" if none matches - an explicit
+// --server with no --cacert never silently borrows a different server's
+// trust root. Among several matching entries and no identified one, the
+// current server wins unless ignoreCurrentContext, and the first by sorted
+// entry name otherwise, so repeated calls with the same config always
+// return the same CA regardless of map-iteration order.
+func caForServer(cfg *config.Config, server, identified string, ignoreCurrentContext bool) string {
+	if identified != "" {
+		return cfg.Servers[identified].CA
+	}
 	matches := matchingServerNames(cfg, server)
 	if len(matches) == 0 {
 		return ""

@@ -247,10 +247,10 @@ func TestHotPathOperationCounts(t *testing.T) {
 	})
 
 	t.Run("the plugin's resolved path with no --server, past a change record", func(t *testing.T) {
-		// The server comes from the current entry, which has no stored
-		// credential while config.yaml names a store change: the path
-		// that finds the missing credential goes on to serve the cache,
-		// and reads no change record.
+		// The server comes from the current entry while config.yaml names
+		// a store change. Where to connect needs the entry's URL and CA,
+		// not its login, so the path reads no credential and no change
+		// record before it serves the cache.
 		t.Setenv(execInfoEnv, "")
 		cdir := t.TempDir()
 		const id = "0123456789abcdef0123456789abcdef"
@@ -272,8 +272,8 @@ func TestHotPathOperationCounts(t *testing.T) {
 			served = cred.Status.Token
 		})
 		assert.Equal(t, "cached-tok", served, "the record is served")
-		assert.Equal(t, map[string]int{"configload": 1, "credentialsread": 1, "stampread": 1}, ops,
-			"the connection's config load and credential read, then the confirmation; no change record stat")
+		assert.Equal(t, map[string]int{"configload": 1, "stampread": 1}, ops,
+			"the connection's config load, then the confirmation; no credential read, no change record stat")
 		assert.Zero(t, keyringOps)
 		assert.Zero(t, locks)
 		assert.Zero(t, flocks)
