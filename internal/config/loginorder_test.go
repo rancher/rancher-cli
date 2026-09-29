@@ -937,14 +937,15 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 		// is the one state where step 2 can do neither.
 		breakFile, breakPin bool
 		// want is the whole sentence the step that could not finish
-		// produces, which no other line of the login says; cause is the
-		// backend's own words behind it.
+		// produces, which no other line of the login says; cause names
+		// the path the backend's own error is about, since the OS words
+		// for reading a directory differ between platforms.
 		want, cause string
 		// fails says the login ends in an error rather than a warning.
 		fails bool
 	}{
 		{name: "the old copy, in step 2", breakAt: "transition", breakFile: true,
-			want: "the credential store change could not finish for prod", cause: "is a directory"},
+			want: "the credential store change could not finish for prod", cause: "credentials.yaml"},
 		{name: "the pin, in step 4", breakAfter: "credentials.yaml", breakPin: true,
 			want: "a credential store change is unfinished for this directory (pin)", cause: pinFileName},
 		{name: "the pin, in step 2's fallback", breakAt: "transition", breakFile: true, breakPin: true, fails: true,
