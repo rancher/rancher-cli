@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -78,13 +79,20 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		if perr != nil {
 			return perr
 		}
-		if rerr := startCredentialChanges(cfg, targets); rerr != nil {
-			return rerr
+		// The directory's unfinished store change goes first, after the
+		// logout's own validation and before its first write.
+		prelude, perr := config.PrepareCredentialDelete(cmdCtx, l.dir, cfg)
+		if perr != nil {
+			return perr
 		}
+		if rerr := startCredentialChanges(cfg, targets); rerr != nil {
+			return config.WithNotices(rerr, prelude)
+		}
+		// Each delete path appends to its own copy of the prelude's notices.
 		if all {
-			deletedFrom, deletedCache, notices, err = l.deleteAll(cmdCtx, cfg, targets, policy)
+			deletedFrom, deletedCache, notices, err = l.deleteAll(cmdCtx, cfg, targets, policy, slices.Clone(prelude))
 		} else {
-			deletedFrom, deletedCache, notices, err = l.deleteTargets(cmdCtx, cfg, targets, policy)
+			deletedFrom, deletedCache, notices, err = l.deleteTargets(cmdCtx, cfg, targets, policy, slices.Clone(prelude))
 		}
 		return err
 	}); err != nil {
@@ -243,10 +251,11 @@ func logoutTargets(dir string, cfg *config.Config, all bool, name string) ([]str
 // exec-credential cache entries via config.DeleteTokenEverywhere (the single delete
 // point), reporting the token backends touched per server so a partial
 // failure names what was already deleted, plus every cache key removed
-// across all targets.
-func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, []string, error) {
+// across all targets. notices starts with the prelude's, so a failure
+// carries them too.
+func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, targets []string, policy string, notices []string) (map[string][]string, []string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
-	var deletedCache, notices []string
+	var deletedCache []string
 	done := make([]string, 0, len(targets))
 	var stamped bool
 	for _, s := range targets {
@@ -309,10 +318,10 @@ func (l logoutCmd) writeLast(cfg *config.Config, targets []string, stamped bool,
 // orphaned-helper sweep - are best effort and independent: both run, and
 // a failure in one never stops the other, because each is the only path
 // to credentials the other cannot see. A run where both fail reports both
-// causes; whatever any step did delete stays in the payload.
-func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []string, policy string) (map[string][]string, []string, []string, error) {
+// causes; whatever any step did delete stays in the payload. notices
+// starts with the prelude's, as in deleteTargets.
+func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []string, policy string, notices []string) (map[string][]string, []string, []string, error) {
 	deletedFrom := make(map[string][]string, len(targets))
-	var notices []string
 	done := make([]string, 0, len(targets))
 	var stamped bool
 	for _, s := range targets {

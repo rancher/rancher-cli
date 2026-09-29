@@ -238,7 +238,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		s := existing.Clone()
 		snap = &s
 	}
-	rb := loginRollback{dir: dir, name: name, snap: snap, declared: declared, transition: cfg.CredentialTransitionID}
+	rb := loginRollback{dir: dir, name: name, snap: snap, declared: declared}
 
 	// The prelude retries the change this directory already has, and
 	// decides whether this login may proceed at all. Its answer to
@@ -255,6 +255,11 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	if err != nil {
 		return err
 	}
+	// What a rollback puts back is the change's name as the prelude left
+	// it: a finished one is already forgotten, and restoring it would make
+	// the record this login writes next, if a rollback cannot remove it,
+	// read as a change this directory does not name.
+	rb.transition = cfg.CredentialTransitionID
 	b, err := loginBackendsOf(dir, cfg, name, policy, in.Declaration)
 	if err != nil {
 		return err
@@ -534,12 +539,12 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		case terr != nil:
 			// The record is there and cannot be read. Running the login
 			// again meets the same file, so the remedy is the one the
-			// read itself names.
+			// read itself names, and the hint is the report that shows it.
 			out.ConfigState = clierr.ConfigTransitionLost
 			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 				"the credential for %s was stored, but the record of the credential store change cannot be read: %s; the change did not run",
 				name, terr.Error())).
-				WithCause(terr)
+				WithCause(terr).WithHint(statusCommand)
 		case state != TransitionActive:
 			// Finished: none of its steps can run, and none is left to
 			// hold a pause. A writer that read the store readers have left

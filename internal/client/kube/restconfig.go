@@ -46,14 +46,16 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 		// no token. A concrete configured ServerName is the designed
 		// post-add state under two-phase registration - added but never
 		// logged in, or logged out - so it is NOT_LOGGED_IN with a concrete
-		// login hint. An env-only RANCHER_CLI_URL carries no name to
+		// login hint, and a message that names the directory's unfinished
+		// store change, read here and only here - the status report as the
+		// hint while its record cannot be read. An env-only RANCHER_CLI_URL carries no name to
 		// interpolate (Effective clears ServerName on a mismatched env URL,
 		// or never had one on a blank machine), so it stays AUTH with body
 		// guidance naming RANCHER_CLI_TOKEN and no machine hint.
 		if eff.ServerName != "" {
-			return nil, clierr.New(clierr.CodeNotLoggedIn,
+			return nil, eff.UnfinishedChange().Apply(clierr.New(clierr.CodeNotLoggedIn,
 				fmt.Sprintf("not logged in to %q", eff.ServerName)).
-				WithHint(config.LoginHintFor(eff.ServerName))
+				WithHint(config.LoginHintFor(eff.ServerName)))
 		}
 		return nil, clierr.New(clierr.CodeAuth,
 			"no token for server; set "+config.EnvToken+", or unset "+config.EnvURL+" and use a configured server")

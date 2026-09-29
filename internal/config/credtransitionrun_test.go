@@ -161,16 +161,54 @@ func TestRefusedByTransitionAnswersBeforeAuthentication(t *testing.T) {
 		"a directory with no change recorded refuses nothing")
 }
 
-// TestErrNoTokenHintNamesTheStatusCommand asserts what an entry's "not
-// logged in" says while a change is unfinished. Telling the operator to
-// log in would be wrong: what is missing may be the pin the change has
-// not written yet.
-func TestErrNoTokenHintNamesTheStatusCommand(t *testing.T) {
+// TestUnfinishedChangeNoteNamesTheStatusCommand asserts what an error with
+// a remedy of its own - an entry's "not logged in", say - adds about the
+// directory's store change. While a change is unfinished the login is
+// still the remedy, and what is missing may be the pin the change has not
+// written yet, so the message says where to see it. While a record
+// config.yaml names cannot be read, the login would be refused on it, so
+// the status report becomes the hint and the login moves into the
+// message. With no change named it opens nothing, which is what keeps the
+// paths that call it free.
+func TestUnfinishedChangeNoteNamesTheStatusCommand(t *testing.T) {
 	dir := t.TempDir()
-	assert.Empty(t, ErrNoTokenHint(dir, &Config{}))
+	ops := map[string]int{}
+	restore := SetIdentityObserverForTest(func(op string) { ops[op]++ })
+	assert.Equal(t, UnfinishedChange{}, UnfinishedChangeOf(dir, &Config{}))
+	require.NoError(t, os.WriteFile(TransitionPath(dir), []byte("not: [yaml"), 0o600))
+	assert.Equal(t, UnfinishedChange{}, UnfinishedChangeOf(dir, &Config{}), "a record config.yaml does not name is not looked at here")
+	restore()
+	assert.Empty(t, ops, "no change named, no file opened")
+	require.NoError(t, os.Remove(TransitionPath(dir)))
 
+	notLoggedIn := func() error {
+		return clierr.New(clierr.CodeNotLoggedIn, `not logged in to "prod"`).WithHint("rancher auth login 'prod'")
+	}
 	cfg := activeTransition(t, dir, fileDeleteStep(t, dir, "prod", "https://r.ex", "prod-tok"))
-	assert.Equal(t, "rancher config status", ErrNoTokenHint(dir, cfg))
+	const note = "a credential store change is unfinished; run rancher config status to see it"
+	active := UnfinishedChangeOf(dir, cfg)
+	assert.Equal(t, UnfinishedChange{Note: note}, active)
+	err := active.Apply(notLoggedIn())
+	ce, ok := errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
+	assert.Equal(t, `not logged in to "prod"; `+note, ce.Message)
+	assert.Equal(t, "rancher auth login 'prod'", ce.Hint, "the login still fixes it")
+	assert.Equal(t, err, active.Apply(err), "a message that carries the note is not given it twice")
+
+	require.NoError(t, os.WriteFile(TransitionPath(dir), []byte("not: [yaml"), 0o600))
+	damaged := UnfinishedChangeOf(dir, cfg)
+	assert.True(t, damaged.Refuses, "a named record that cannot be read refuses the login")
+	err = damaged.Apply(notLoggedIn())
+	ce, ok = errorsAsClierr(err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
+	assert.Equal(t, "rancher config status", ce.Hint)
+	assert.Equal(t, `not logged in to "prod"; the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run rancher config status to see it; after that: rancher auth login 'prod'`, ce.Message,
+		"the login stays in the message, as what to run once the record is restored")
+
+	require.NoError(t, os.Remove(TransitionPath(dir)))
+	assert.Equal(t, UnfinishedChange{}, UnfinishedChangeOf(dir, cfg), "a change whose last step finished is not")
 }
 
 // TestALogoutFinishesWhileAStepCannot asserts the guarantee the merge
@@ -201,8 +239,8 @@ func TestALogoutFinishesWhileAStepCannot(t *testing.T) {
 	require.NotEmpty(t, notices)
 	assert.Contains(t, notices[len(notices)-1], "could not finish for prod",
 		"and is told the work is still there, in the words the step recorded")
-	assert.NotContains(t, notices[len(notices)-1], "hint:",
-		"and names no command: the logout that is running is no remedy for the delete it leaves, and nothing reports the step yet")
+	assert.Contains(t, notices[len(notices)-1], "hint: rancher config status",
+		"and names the report that shows it: the logout that is running is no remedy for the delete it leaves")
 
 	m, rerr := readTransition(dir)
 	require.NoError(t, rerr)
@@ -292,7 +330,7 @@ func TestATerminalStepDoesNotRefuseAnotherCommand(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeValidation, ce.Code, "a terminal step keeps its own code")
 			assert.False(t, ce.Retryable, "no retry can change a record that cannot be read")
-			assert.Empty(t, ce.Hint, "no command reports the step yet, so none is named")
+			assert.Equal(t, "rancher config status", ce.Hint, "the report that shows the step")
 			require.ErrorContains(t, serr, "other")
 		})
 	}
@@ -301,7 +339,8 @@ func TestATerminalStepDoesNotRefuseAnotherCommand(t *testing.T) {
 // TestStepErrorKeepsATerminalVerdict asserts how a remaining step reports
 // when it stops a command: one whose last attempt was terminal keeps its
 // own non-retryable error; one that may still finish carries the retryable
-// code. Neither names a command: none reports the step yet.
+// code. Each names rancher config status, the report that shows the step:
+// no other command finishes it.
 func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 	t.Parallel()
 	terminal := stepError(transitionStep{
@@ -312,7 +351,7 @@ func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.False(t, ce.Retryable)
-	assert.Empty(t, ce.Hint)
+	assert.Equal(t, "rancher config status", ce.Hint)
 	require.ErrorContains(t, terminal, "cannot finish for prod")
 	require.ErrorContains(t, terminal, "the record is a symlink")
 
@@ -321,7 +360,7 @@ func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 	require.True(t, rok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, rce.Code)
 	assert.True(t, rce.Retryable)
-	assert.Empty(t, rce.Hint)
+	assert.Equal(t, "rancher config status", rce.Hint)
 	require.ErrorContains(t, retained, "could not finish for prod: the keychain is locked")
 
 	untried := stepError(transitionStep{Kind: transitionDelete, Entry: "prod"})
@@ -329,7 +368,7 @@ func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 	require.True(t, uok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, uce.Code)
 	assert.True(t, uce.Retryable)
-	assert.Empty(t, uce.Hint, "no command reports the step yet")
+	assert.Equal(t, "rancher config status", uce.Hint)
 	require.ErrorContains(t, untried, "delete prod); run this command again")
 	assert.NotContains(t, untried.Error(), "resolved", "nothing to resolve is named for a step no attempt has judged")
 
@@ -338,7 +377,7 @@ func TestStepErrorKeepsATerminalVerdict(t *testing.T) {
 	require.True(t, pok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, pce.Code)
 	assert.True(t, pce.Retryable)
-	assert.Empty(t, pce.Hint, "a step naming no entry has no logout to name")
+	assert.Equal(t, "rancher config status", pce.Hint, "a pin step too: no other command writes it")
 	require.ErrorContains(t, pin, "(pin): writing the pin: permission denied; run this command again once that is resolved")
 	assert.NotContains(t, pin.Error(), "for :", "and no empty subject")
 }
@@ -359,7 +398,7 @@ func TestARetainedStepReportsTheRetryableCode(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
 	assert.True(t, ce.Retryable)
-	assert.Empty(t, ce.Hint, "no command reports the step yet")
+	assert.Equal(t, "rancher config status", ce.Hint)
 	require.ErrorContains(t, err, "could not finish for other")
 
 	m, rerr := readTransition(dir)

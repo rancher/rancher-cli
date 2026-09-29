@@ -411,6 +411,15 @@ func (c *Config) Write() error {
 // Path returns the file path this config was loaded from / writes to.
 func (c *Config) Path() string { return c.path }
 
+// dir is the directory this config was loaded from, or empty for one that
+// names no file.
+func (c *Config) dir() string {
+	if c.path == "" {
+		return ""
+	}
+	return filepath.Dir(c.path)
+}
+
 // SetPath overrides the write target.
 func (c *Config) SetPath(p string) { c.path = p }
 

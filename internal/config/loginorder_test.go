@@ -274,7 +274,7 @@ func TestActivationThatLosesTheManifestIsANamedState(t *testing.T) {
 				// read's own cause says what to do with it.
 				ce, ok := errorsAsClierr(err)
 				require.True(t, ok)
-				assert.Empty(t, ce.Hint)
+				assert.Equal(t, "rancher config status", ce.Hint, "the report that shows the file and why it cannot be used")
 			}
 			assert.Equal(t, clierr.ConfigTransitionLost, out.ConfigState)
 			assert.Equal(t, "id:new", keychainTokenFor(t, dir, "prod"), "the credential is committed and stays committed")
@@ -998,7 +998,7 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 				}
 			}
 			require.NotEmpty(t, line)
-			assert.NotContains(t, line, "hint:", "no command reports the step yet, so none is named")
+			assert.Contains(t, line, "hint: rancher config status", "the report that shows the step")
 			if tc.fails {
 				return
 			}

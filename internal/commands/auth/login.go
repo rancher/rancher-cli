@@ -146,7 +146,7 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	// slots - checked unconditionally (a name in this namespace can never
 	// be a real entry; add-server rejects it the same way at creation).
 	if name != "" {
-		if ce := register.ValidateEntryName(name); ce != nil {
+		if ce := config.ValidateEntryName(name); ce != nil {
 			return runtime.Result{}, ce
 		}
 	}
@@ -292,7 +292,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		// reserved legacy: namespace; the check stays so a future
 		// derivation change cannot start producing reserved names
 		// unchecked.
-		if ce := register.ValidateEntryName(name); ce != nil {
+		if ce := config.ValidateEntryName(name); ce != nil {
 			return runtime.Result{}, ce
 		}
 	}

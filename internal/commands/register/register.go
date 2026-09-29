@@ -114,21 +114,6 @@ func Prepare(ctx context.Context, tlsPreflight TLSPreflightFunc, canonicalURL, c
 	}, nil
 }
 
-// ValidateEntryName rejects a server name reserved for the legacy token
-// shim's cache slots (names are born at registration now - add-server and
-// login's delegated add both call this before any probe or write).
-func ValidateEntryName(name string) *clierr.Error {
-	switch {
-	case config.IsLegacyCacheSlot(name):
-		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("server names starting with %q are reserved for the legacy token shim's cache slots; use a different name", config.LegacyCachePrefix))
-	case config.IsExecLoginEntryName(name):
-		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("server names starting with %q are reserved for the exec plugin's own login entries; use a different name", config.ExecLoginPrefix))
-	}
-	return nil
-}
-
 // CAPresence summarizes a stored CA selector's kind for a result envelope -
 // presence and shape only, never the bytes: "none" (system roots), "inline"
 // (a literal PEM), or "path" (a file path).

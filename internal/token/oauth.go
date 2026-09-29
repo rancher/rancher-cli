@@ -70,8 +70,7 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 	input.authFlow = strings.ToLower(resolveAuthFlow(input.authFlow))
 
 	if p.NoInput() {
-		return notAttempted, clierr.New(clierr.CodeAuth,
-			"interactive login required for "+input.authProvider+"; run without --no-input, or use a cached --name")
+		return notAttempted, interactiveLoginRequired(input.authProvider, "run without --no-input, or use a cached --name")
 	}
 
 	if input.idpClient == nil {

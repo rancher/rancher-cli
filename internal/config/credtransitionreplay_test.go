@@ -182,8 +182,8 @@ func TestReplayIsTerminalWhenTheSourceRecordCannotBeTrusted(t *testing.T) {
 		assert.False(t, ce.Retryable, "a record no retry can read is not retryable work")
 		require.ErrorContains(t, err, "retiring the credential identity for prod")
 		require.ErrorContains(t, err, "delete the file and log in again")
-		assert.Empty(t, ce.Hint,
-			"a delete already is the cleanup; a logout would change nothing, so no command is named")
+		assert.Equal(t, "rancher config status", ce.Hint,
+			"a delete already is the cleanup and a logout would change nothing, so the hint is the report that shows the step")
 		require.Len(t, out.notices, 1)
 		assert.Contains(t, out.notices[0], "already gone",
 			"the credential itself is gone, and that fact survives the failure")

@@ -224,6 +224,61 @@ func TestHotPathOperationCounts(t *testing.T) {
 		assert.Zero(t, ops["manifeststat"])
 	})
 
+	t.Run("the plugin's resolved path", func(t *testing.T) {
+		// kubectl names the Rancher proxy it is about to use, so the flag
+		// fast path is skipped and the hit is served after the config
+		// load that resolves the connection.
+		t.Setenv(execInfoEnv, execInfoFor(t, "https://r.ex/k8s/clusters/c-1", nil))
+		var served string
+		ops, keyringOps, locks, flocks := count(t, anchorFor(dir), func(anchor *config.CacheAnchor) {
+			cmd := tokenCmd{dir: dir, store: store, anchor: anchor}
+			res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": "https://r.ex", "name": "prod", "cluster": "c-1"}}, ui.Discard())
+			require.NoError(t, err)
+			cred, ok := res.Data.(*execCredential)
+			require.True(t, ok)
+			served = cred.Status.Token
+		})
+		assert.Equal(t, "cached-tok", served, "the record is served")
+		assert.Equal(t, map[string]int{"configload": 1, "stampread": 1}, ops,
+			"the connection's config load, then the confirmation; no credential read, no change record stat")
+		assert.Zero(t, keyringOps)
+		assert.Zero(t, locks)
+		assert.Zero(t, flocks)
+	})
+
+	t.Run("the plugin's resolved path with no --server, past a change record", func(t *testing.T) {
+		// The server comes from the current entry, which has no stored
+		// credential while config.yaml names a store change: the path
+		// that finds the missing credential goes on to serve the cache,
+		// and reads no change record.
+		t.Setenv(execInfoEnv, "")
+		cdir := t.TempDir()
+		const id = "0123456789abcdef0123456789abcdef"
+		ccfg := &config.Config{CurrentServer: "prod", CredentialTransitionID: id,
+			Servers: map[string]config.Server{"prod": {URL: "https://r.ex", CacheBindingID: "b1"}}}
+		ccfg.SetPath(config.FilePath(cdir))
+		require.NoError(t, ccfg.Write())
+		require.NoError(t, os.WriteFile(config.TransitionPath(cdir), []byte("version: 1\nid: "+id+"\nsteps:\n- kind: pin\n  target: file\n"), 0o600))
+		cstore := config.NewFileStore(cdir)
+		require.NoError(t, seedCache(t, cdir, cstore, key, "cached-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
+
+		var served string
+		ops, keyringOps, locks, flocks := count(t, anchorFor(cdir), func(anchor *config.CacheAnchor) {
+			cmd := tokenCmd{dir: cdir, store: cstore, anchor: anchor}
+			res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"name": "prod", "cluster": "c-1"}}, ui.Discard())
+			require.NoError(t, err)
+			cred, ok := res.Data.(*execCredential)
+			require.True(t, ok)
+			served = cred.Status.Token
+		})
+		assert.Equal(t, "cached-tok", served, "the record is served")
+		assert.Equal(t, map[string]int{"configload": 1, "credentialsread": 1, "stampread": 1}, ops,
+			"the connection's config load and credential read, then the confirmation; no change record stat")
+		assert.Zero(t, keyringOps)
+		assert.Zero(t, locks)
+		assert.Zero(t, flocks)
+	})
+
 	t.Run("a miss costs no second stamp read", func(t *testing.T) {
 		ops, _, locks, flocks := count(t, anchorFor(dir), func(anchor *config.CacheAnchor) {
 			cmd := tokenCmd{dir: dir, store: store, anchor: anchor}

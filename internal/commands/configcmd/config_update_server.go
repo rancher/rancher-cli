@@ -124,16 +124,24 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			if perr != nil {
 				return perr
 			}
+			// The directory's unfinished store change goes first, after
+			// the plan that says credentials clear and before any write.
+			prelude, perr := config.PrepareCredentialDelete(ctx, c.dir, cfg)
+			if perr != nil {
+				return perr
+			}
 			entry := cfg.Servers[name]
 			if berr := config.StartCredentialChange(&entry); berr != nil {
-				return berr
+				return config.WithNotices(berr, prelude)
 			}
 			cfg.Servers[name] = entry
 			if werr := config.WriteStep("cachebinding", cfg); werr != nil {
-				return werr
+				return config.WithNotices(werr, prelude)
 			}
 			ref := config.ServerRef{Name: name, URL: src.CanonicalURL}
-			deletedFrom, deletedCache, notices, err = config.DeleteTokenEverywhere(ctx, c.dir, ref, policy)
+			var deleted []string
+			deletedFrom, deletedCache, deleted, err = config.DeleteTokenEverywhere(ctx, c.dir, ref, policy)
+			notices = slices.Concat(prelude, deleted)
 			if err != nil {
 				return clierr.WrapUnlessCanceled(err, func(err error) error {
 					return clierr.Wrap(err,

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -529,4 +530,43 @@ func TestResolveCompletionTokenObeysTheCacheBinding(t *testing.T) {
 		assert.Empty(t, resolveCompletionToken("c-abc").Token,
 			"the record was made under the previous login")
 	})
+}
+
+// TestLiveCompletionOperationCounts asserts what live completion's
+// exec-credential cache branch costs a TAB press: the reads it makes to
+// decide the file store does not answer, the record read and the stamp
+// read that confirms it. No lock, no keychain call and no look at a
+// credential store change record, which a directory that names none
+// never opens.
+func TestLiveCompletionOperationCounts(t *testing.T) {
+	// NOT parallel: mutates the storedConfig package global, the process
+	// anchor and the package-level observers.
+	t.Setenv(config.EnvToken, "")
+	t.Setenv(config.EnvURL, "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	cfg := &config.Config{
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com", CacheBindingID: "b1"}},
+	}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	require.NoError(t, config.NewFileStore(dir).SetCachedCred(
+		config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
+		"exec-token", time.Now().Add(time.Hour),
+		"k8s-ctx", "https://rancher.example.com", "c-abc",
+		config.CacheBindingForTest(dir, "srv", "b1"),
+	))
+	setStoredConfigForTest(t, cfg, dir)
+
+	var token string
+	c := cmdtest.CountOperations(t, func() { token = resolveCompletionToken("c-abc").Token })
+
+	assert.Equal(t, "exec-token", token)
+	assert.Equal(t, map[string]int{"pinread": 1, "dirstat": 1, "credentialsread": 1, "stampread": 1}, c.Ops,
+		"the unpinned decision's look and read, then the confirmation of the record")
+	assert.Zero(t, c.Keychain)
+	assert.Zero(t, c.ConfigLocks)
+	assert.Zero(t, c.Flocks)
+	assert.Zero(t, c.TransitionLocks)
 }

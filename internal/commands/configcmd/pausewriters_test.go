@@ -122,7 +122,8 @@ func TestConfigEditRefusesAChangeToACachePause(t *testing.T) {
 // `config update-server --url`, a change of the entry's credential, ends
 // with the entry paused when the directory's store change has a pin step
 // left that would move readers: its entry write resumes only what a
-// resumer may.
+// resumer may. The command's own prelude retries the change first, so the
+// pin step stays only behind a delete the keychain cannot run.
 func TestAURLChangeKeepsItsPauseWhileAPinStepWouldMoveReaders(t *testing.T) {
 	dir, store := cmdtest.FilePolicyDir(t)
 	addServerForUpdateTests(t, dir, "qa1", "https://old.example.com")
@@ -130,10 +131,12 @@ func TestAURLChangeKeepsItsPauseWhileAPinStepWouldMoveReaders(t *testing.T) {
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	cfg.CredentialStore = "auto"
-	cfg.CredentialTransitionID = "0123456789abcdef0123456789abcdef"
 	require.NoError(t, cfg.Write())
 	require.NoError(t, config.WritePin(dir, "file"))
-	require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte("version: 1\nid: 0123456789abcdef0123456789abcdef\nsteps:\n- kind: pin\n  target: keychain\n"), 0o600))
+	t.Cleanup(config.SetKeyringBackendForTest(cmdtest.UnreachableKeyring{}))
+	cmdtest.WriteChangeRecord(t, dir, true,
+		cmdtest.ChangeStep{Kind: "delete", Entry: "gone", Source: "keychain", Token: "gone-old", SourceAccountID: "0123456789abcdef0123456789abcdef"},
+		cmdtest.ChangeStep{Kind: "pin", Target: "keychain"})
 
 	_, err = newUpdateServerCmd(dir).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"url": "https://new.example.com"}, Pos: []string{"qa1"}}, nil)
 	require.NoError(t, err)
@@ -244,13 +247,13 @@ func TestConfigStatusListsEveryPausedEntryWithItsReason(t *testing.T) {
 		{name: "made without the lock", pause: config.PauseNoLock, reason: config.PauseReasonNoLock,
 			text: "prod: noLock - the change ran with RANCHER_CLI_CONFIG_NO_LOCK; a login or logout of the entry clears it: rancher auth login 'prod'"},
 		{name: "a pin step left", pause: config.PauseLocked, reason: config.PauseReasonPinStep,
-			text: "prod: pinStep - a credential store change still has to write its pin, which switches where credentials are read from; the next login finishes it",
+			text: "prod: pinStep - a credential store change still has to write its pin, which switches where credentials are read from; the next auth login, auth logout, config delete-server or config update-server --url finishes it",
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte("version: 1\nid: "+id+"\nsteps:\n- kind: pin\n  target: keychain\n"), 0o600))
 			}},
 		{name: "a change record that cannot be read", pause: config.PauseLocked, reason: config.PauseReasonChangeRecordUnreadable,
-			text: "cannot be read; inspect it, then restore a valid copy or move it aside",
+			text: "cannot be read; inspect it, then restore a valid copy or move it aside; credentialStoreChange says why it cannot be read",
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte("not: [yaml"), 0o600))

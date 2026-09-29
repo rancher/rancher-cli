@@ -53,8 +53,11 @@ func NewCheck(dir string, store config.CredStore) runtime.Command {
 
 func (authCheckCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "auth status",
-		Usage:       "Verify connectivity and credentials against the current server",
+		Name:  "auth status",
+		Usage: "Verify connectivity and credentials against the current server",
+		Desc: "Checks the current server's connectivity and stored credential and reports the server and Rancher versions, the identity, the token and the credential store. " +
+			"Also reports credentialStoreChange when the directory has a credential store change record, the same report config status gives. " +
+			"A failure before the report keeps its own hint and names an unfinished change in its message; while the change record cannot be read, rancher config status is the hint and the failure's own remedy stays in its message.",
 		CommandType: runtime.Local,
 		Examples:    []string{"rancher auth status -o json"},
 		Network:     true,
@@ -68,6 +71,12 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	// The credential store change record, read once: the report shows it,
+	// and an error returned before the report keeps its own remedy as the
+	// hint and names an unfinished change in its message - or, while the
+	// record cannot be read, names the status report as the hint and keeps
+	// the remedy in the message.
+	change := config.ChangeRecordStatusOf(a.dir, cfg)
 	// A declaration the variable disagrees with is not raised here: every
 	// path that reads a credential fails on it inside Effective below, and
 	// the one path that does not - a RANCHER_CLI_TOKEN run, which never
@@ -94,18 +103,18 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	}
 	eff, err := cfg.Effective(a.store)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, change.Pending().Apply(err)
 	}
 	// Answer "am I logged in" in state terms, not plumbing: with no
 	// effective URL the preflight would fail with the generic
 	// NOT_LOGGED_IN; the config-aware form names the configured servers
 	// and the re-login shortcut (the common shape right after a logout).
 	if eff.URL == "" {
-		return runtime.Result{}, cfg.ErrNotLoggedIn()
+		return runtime.Result{}, change.Pending().Apply(cfg.ErrNotLoggedIn())
 	}
 	ver, err := a.preflight(ctx, eff)
 	if err != nil {
-		return runtime.Result{}, err
+		return runtime.Result{}, change.Pending().Apply(err)
 	}
 
 	// credential describes the stored credential when it is the effective one
@@ -165,7 +174,8 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 		conflict = storeConflict.Error()
 	}
 	text := renderAuthCheckText(true, eff.ServerName, ver, rancherVersion, supported, identity, token,
-		storeReport{policy: credentialPolicy, pinned: pinned, inUse: inUse, err: storeError, conflict: conflict}, credentialLine)
+		storeReport{policy: credentialPolicy, pinned: pinned, inUse: inUse, err: storeError, conflict: conflict}, credentialLine) +
+		renderChangeSection(change)
 	store := map[string]any{
 		"policy": credentialPolicy,
 		"pinned": pinned,
@@ -187,6 +197,9 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	}
 	if credential != nil {
 		data["credential"] = credential
+	}
+	if change != nil {
+		data["credentialStoreChange"] = change
 	}
 	res := runtime.Result{
 		Kind:       "AuthCheck",
@@ -309,12 +322,26 @@ func renderAuthCheckText(
 	return b.String()
 }
 
-// authCheckSectionHeaders is the fixed, always-present section header set
-// renderAuthCheckText emits - every one of them, every call, regardless of
-// which sub-objects came back null.
+// renderChangeSection is the CREDENTIAL STORE CHANGE section: the same
+// report config status gives, or nothing when there is none.
+func renderChangeSection(change *config.ChangeRecordStatus) string {
+	if change == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\nCREDENTIAL STORE CHANGE\n")
+	for _, line := range change.TextLines() {
+		fmt.Fprintf(&b, "  %s\n", line)
+	}
+	return b.String()
+}
+
+// authCheckSectionHeaders is the section header set auth status emits:
+// every one renderAuthCheckText writes, every call, regardless of which
+// sub-objects came back null, and the change section when there is one.
 var authCheckSectionHeaders = map[string]bool{
 	"AUTH STATUS": true, "VERSIONS": true, "IDENTITY": true,
-	"TOKEN": true, "CREDENTIAL STORE": true,
+	"TOKEN": true, "CREDENTIAL STORE": true, "CREDENTIAL STORE CHANGE": true,
 }
 
 // styleAuthCheckText applies auth status's bold spans to text, the plain

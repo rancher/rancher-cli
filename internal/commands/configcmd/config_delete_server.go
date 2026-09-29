@@ -3,6 +3,7 @@ package configcmd
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -41,7 +42,10 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// Execute's ordering is safety-critical. The first config write advances
+// Execute's ordering is safety-critical. The directory's unfinished store
+// change goes first, after the not-found check and before any write, so a
+// change record that cannot be read refuses with the config untouched and
+// nothing deleted. The first config write advances
 // the entry's cache binding id and pauses its cache writes, and nothing
 // else: a get-token racing the purge below then writes its record under an
 // id the entry no longer has, or writes nothing. Credentials are deleted
@@ -86,15 +90,21 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 		if perr != nil {
 			return perr
 		}
+		prelude, perr := config.PrepareCredentialDelete(cmdCtx, d.dir, cfg)
+		if perr != nil {
+			return perr
+		}
 		entry := srv
 		if berr := config.StartCredentialChange(&entry); berr != nil {
-			return berr
+			return config.WithNotices(berr, prelude)
 		}
 		cfg.Servers[name] = entry
 		if werr := config.WriteStep("cachebinding", cfg); werr != nil {
-			return werr
+			return config.WithNotices(werr, prelude)
 		}
-		deletedFrom, deletedCache, notices, err = d.delete(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
+		var deleted []string
+		deletedFrom, deletedCache, deleted, err = d.delete(cmdCtx, d.dir, config.ServerRef{Name: name, URL: srv.URL}, policy)
+		notices = slices.Concat(prelude, deleted)
 		if err != nil {
 			return clierr.WrapUnlessCanceled(err, func(err error) error {
 				return clierr.Wrap(err,
@@ -108,7 +118,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 			currentCleared = true
 		}
 		config.ResumeCacheWrites(d.dir, cfg, name)
-		return config.WriteStep("remove", cfg)
+		return config.WithNotices(config.WriteStep("remove", cfg), notices)
 	}); err != nil {
 		return runtime.Result{}, err
 	}

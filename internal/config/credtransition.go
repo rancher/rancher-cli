@@ -103,6 +103,11 @@ func TransitionPath(dir string) string { return filepath.Join(dir, transitionFil
 // hex.
 func newTransitionID() (string, error) { return randomHex(transitionIDLen / 2) }
 
+// statusCommand is the hint of every error about a store change that no
+// other command fixes: its report shows the change record, what is left
+// and why it stopped.
+const statusCommand = "rancher config status"
+
 // transitionError is the terminal verdict on a manifest that cannot be
 // trusted. It names the file, says no backend operation ran, and leaves
 // the file alone: a manifest is the only record of the old copies a change
@@ -112,7 +117,7 @@ func transitionError(dir, what string) error {
 	path := TransitionPath(dir)
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential store change recorded in %s is %s; no credential was read or written; inspect the file and restore a valid copy, or move it aside to abandon the change",
-		path, what))
+		path, what)).WithHint(statusCommand)
 }
 
 // transitionIncomplete reports work the directory still has to do. It is
@@ -125,7 +130,7 @@ func transitionIncomplete(step transitionStep) error {
 	} else {
 		msg += "; run this command again"
 	}
-	return clierr.Retryable(clierr.CodeCredentialTransitionIncomplete, msg)
+	return clierr.Retryable(clierr.CodeCredentialTransitionIncomplete, msg).WithHint(statusCommand)
 }
 
 // transitionAlreadyRecorded refuses to write a manifest over a different
@@ -136,7 +141,7 @@ func transitionIncomplete(step transitionStep) error {
 func transitionAlreadyRecorded(dir string, present transitionStep) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"a credential store change is already recorded in %s (%s); it must finish, or be abandoned, before another is recorded",
-		TransitionPath(dir), stepWhat(present)))
+		TransitionPath(dir), stepWhat(present))).WithHint(statusCommand)
 }
 
 // stepWhat names a step for a message: its kind and, when it has one, its
@@ -419,8 +424,9 @@ const (
 	TransitionAbandoned
 	// TransitionFinished: the config names an id and no file is there. The
 	// last step completed and the file was deleted before the config write
-	// that would have cleared the name. Nothing is pending; the next config
-	// write clears it.
+	// that would have cleared the name. Nothing is pending; the next
+	// credential command's prelude clears it, and that command's config
+	// writes carry the clear.
 	TransitionFinished
 )
 
@@ -468,11 +474,7 @@ func LoadTransition(dir string, cfg *Config) (TransitionState, *transitionManife
 // which is what keeps the hot paths free: a directory that has never had a
 // transition never opens the manifest.
 func HasPendingTransition(dir string, cfg *Config) bool {
-	if cfg == nil || cfg.CredentialTransitionID == "" {
-		return false
-	}
-	state, _, err := LoadTransition(dir, cfg)
-	return err != nil || state == TransitionActive
+	return UnfinishedChangeOf(dir, cfg).Note != ""
 }
 
 // transitionLockSem serializes transition work inside one process, the way

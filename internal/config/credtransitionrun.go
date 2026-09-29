@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
@@ -31,11 +32,28 @@ type MutationIntent struct {
 // install never has a manifest to be refused on.
 //
 // The caller holds the config lock. cfg is the config loaded under it and
-// may be updated here; the caller writes it.
+// may be updated here; the caller writes it. A change whose last step
+// finished - before this call or during it - has its name cleared in cfg,
+// so the caller's config writes forget it.
 func PrepareMutation(ctx context.Context, dir string, cfg *Config, intent MutationIntent) (notices []string, err error) {
 	return prepareMutation(ctx, dir, cfg, intent, func(fn func() error) error {
 		return withTransitionLock(ctx, dir, fn)
 	})
+}
+
+// PrepareCredentialDelete is the prelude of a command that deletes an
+// entry's credential and never changes the store - auth logout, config
+// delete-server, and config update-server when a URL change clears the
+// credential. It runs after the command's own validation and before its
+// first write. No remaining step refuses it: a delete step removes only
+// the credential whose digest it carries, which the command's own
+// credential is not, and a pin step names the store the change already
+// committed to. A record that cannot be read does, with nothing deleted
+// and nothing written. The notices of the work it did ride on its error,
+// since a command that stops here returns nothing else.
+func PrepareCredentialDelete(ctx context.Context, dir string, cfg *Config) ([]string, error) {
+	notices, err := PrepareMutation(ctx, dir, cfg, MutationIntent{})
+	return notices, WithNotices(err, notices)
 }
 
 // prepareMutationLocked is PrepareMutation for a caller that already holds
@@ -63,7 +81,16 @@ func prepareMutation(
 		return nil, lerr
 	}
 	switch state {
-	case TransitionNone, TransitionFinished:
+	case TransitionNone:
+		return nil, nil
+	case TransitionFinished:
+		// Nothing is left, and a name left behind would make the next
+		// change record - written by a login that dies before naming it -
+		// read as a change this directory does not name, which refuses
+		// every credential command, instead of as work that never started.
+		// No lock is needed: a new change is recorded only under the
+		// config lock the caller holds.
+		cfg.CredentialTransitionID = ""
 		return nil, nil
 	case TransitionAbandoned:
 		// A login died between preparing a change and activating it, so
@@ -79,23 +106,33 @@ func prepareMutation(
 		if rerr != nil {
 			return rerr
 		}
-		if fresh == nil || fresh.ID != m.ID {
-			// Finished, or replaced by a change this command never loaded.
-			// The second is reachable only with the flock skipped. A
-			// manifest this pass did not settle is deliberately left to
-			// the command that owns it rather than refused on here, and
-			// with the flock skipped that is the same lost-update residual
-			// withTransitionLock already documents.
+		if fresh == nil {
+			// Finished by another process since the check above.
+			cfg.CredentialTransitionID = ""
+			return nil
+		}
+		if fresh.ID != m.ID {
+			// Replaced by a change this command never loaded, which is
+			// reachable only with the flock skipped. A manifest this pass
+			// did not settle is deliberately left to the command that owns
+			// it rather than refused on here, and with the flock skipped
+			// that is the same lost-update residual withTransitionLock
+			// already documents.
 			return nil
 		}
 		m = fresh
 		ns, left, rerr := replayPass(ctx, dir, cfg, m)
 		notices = append(notices, ns...)
 		retained = left
-		if rerr == nil && len(m.Steps) > 0 {
+		switch {
+		case rerr != nil:
+		case len(m.Steps) > 0:
 			// What the pass left is decided here, under the lock that
 			// settled it, rather than read back from disk afterwards.
 			remaining = m
+		default:
+			// The pass finished the change and removed its record.
+			cfg.CredentialTransitionID = ""
 		}
 		return rerr
 	})
@@ -109,15 +146,14 @@ func prepareMutation(
 // stepError is the error a command stopped by a remaining step reports,
 // rebuilt from what the step recorded so the replay's warning and the
 // refusal say the same thing. A step whose last attempt was terminal
-// keeps the verdict it earned - a non-retryable error naming the command
-// the step points at, when it has one. A step whose last attempt could
-// not finish carries the retryable code with the same command riding
-// along as the hint, because some of those never clear on their own. A
-// step no attempt has judged yet says only that work is left, and so does
-// an attempted step that names no entry - the pin - since its subject
-// would be empty; its cause still rides in the message. An agent that
-// branches on retryable must never be told to retry a state no retry can
-// change.
+// keeps the verdict it earned - a non-retryable error. A step whose last
+// attempt could not finish carries the retryable code, because some of
+// those never clear on their own. A step no attempt has judged yet says
+// only that work is left, and so does an attempted step that names no
+// entry - the pin - since its subject would be empty; its cause still
+// rides in the message. Every one names the status report as its hint:
+// no other command finishes a step. An agent that branches on retryable
+// must never be told to retry a state no retry can change.
 func stepError(step transitionStep) error {
 	switch {
 	case step.Terminal:
@@ -273,12 +309,56 @@ func ClearFinishedTransition(dir string, cfg *Config) {
 	}
 }
 
-// ErrNoTokenHint is the hint an entry's "not logged in" carries while a
-// store change is unfinished. Without it the operator is told to log in,
-// when what is missing may be the pin the change has not written yet.
-func ErrNoTokenHint(dir string, cfg *Config) string {
-	if HasPendingTransition(dir, cfg) {
-		return "rancher config status"
+// The notes an error adds about the directory's store change. The first
+// sits beside a remedy that still works; the second replaces it as the
+// hint, since that remedy is a credential command the record refuses.
+const (
+	unfinishedChangeNote = "a credential store change is unfinished; run " + statusCommand + " to see it"
+	unreadableChangeNote = "the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + statusCommand + " to see it"
+)
+
+// UnfinishedChange is what an error with a remedy of its own - "not
+// logged in", credentials in both stores, the exec plugin's sign-in with
+// no terminal, auth status's failures - says about the directory's store
+// change: nothing, a note beside that remedy, or, while the change record
+// cannot be read, a note and the status report as the hint.
+type UnfinishedChange struct {
+	Note string
+	// Refuses: the record cannot be read, so the error's own remedy is
+	// refused until it is restored or moved aside.
+	Refuses bool
+}
+
+// UnfinishedChangeOf reads the directory's store change for such an
+// error, the way the status report reads it. It opens nothing when
+// config.yaml names no change, so the paths that call it pay nothing for
+// it then: a record nothing names is seen by the status commands and by
+// the prelude of the command a hint names, which refuses on it.
+func UnfinishedChangeOf(dir string, cfg *Config) UnfinishedChange {
+	if dir == "" || cfg == nil || cfg.CredentialTransitionID == "" {
+		return UnfinishedChange{}
 	}
-	return ""
+	return ChangeRecordStatusOf(dir, cfg).Pending()
+}
+
+// Apply adds the note to err's message, keeping its code and cause. When
+// the record refuses, the error's hint moves into its message, as the
+// command to run once the record is restored, and the status report
+// becomes the hint. An error whose message already carries the note - it
+// was given it where it was raised - or a cancellation is returned as it
+// is.
+func (u UnfinishedChange) Apply(err error) error {
+	if err == nil || u.Note == "" || strings.Contains(err.Error(), u.Note) {
+		return err
+	}
+	return clierr.WrapUnlessCanceled(err, func(err error) error {
+		out := clierr.Wrap(err, err.Error()+"; "+u.Note)
+		if !u.Refuses {
+			return out
+		}
+		if out.Hint != "" && !strings.Contains(out.Message, out.Hint) {
+			out = out.WithMessage(out.Message + "; after that: " + out.Hint)
+		}
+		return out.WithHint(statusCommand)
+	})
 }

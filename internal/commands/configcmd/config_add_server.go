@@ -5,6 +5,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/register"
+	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -40,7 +41,7 @@ func (configAddServerCmd) Describe() runtime.Descriptor {
 
 func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	name := in.Args()[0]
-	if ce := register.ValidateEntryName(name); ce != nil {
+	if ce := config.ValidateEntryName(name); ce != nil {
 		return runtime.Result{}, ce
 	}
 	url := in.String("url")

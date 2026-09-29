@@ -166,6 +166,23 @@ type Effective struct {
 	// server, no env) can answer with the re-login shortcut instead of
 	// the blank-machine wording - see ErrNotLoggedInFor and kube.RESTConfig.
 	KnownServers map[string]string
+	// noTokenFrom is the config whose current server's entry has no stored
+	// credential, kept for UnfinishedChange; nil otherwise. The change
+	// record is read only when a caller builds the "not logged in" error,
+	// never here: the exec plugin takes this branch and goes on to serve
+	// its cache.
+	noTokenFrom *Config
+}
+
+// UnfinishedChange is what the "not logged in" error says about an
+// unfinished store change when the current server's entry has no stored
+// credential, and nothing otherwise. Call it only where that error is
+// built: it reads the change record when config.yaml names one.
+func (e Effective) UnfinishedChange() UnfinishedChange {
+	if e.noTokenFrom == nil {
+		return UnfinishedChange{}
+	}
+	return UnfinishedChangeOf(e.noTokenFrom.dir(), e.noTokenFrom)
 }
 
 // IsSupportedSchemeURL reports whether rawURL canonicalizes to an http or
@@ -235,7 +252,9 @@ func (c *Config) Effective(store CredStore) (Effective, error) {
 		case terr == nil:
 			eff.Token = tok
 		case errors.Is(terr, ErrNoToken):
-			// no stored token: leave empty; RESTConfig reports it with a login hint
+			// No stored token: leave it empty; RESTConfig reports it with a
+			// login hint, and names an unfinished store change beside it.
+			eff.noTokenFrom = c
 		default:
 			return Effective{}, fmt.Errorf("credential store: %w", terr)
 		}

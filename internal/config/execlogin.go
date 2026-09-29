@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -22,4 +23,21 @@ func IsExecLoginEntryName(name string) bool { return strings.HasPrefix(name, Exe
 // persistence primitive with a numeric suffix.
 func ExecLoginEntryName(canonicalURL string) string {
 	return clierr.HostEntryName(ExecLoginPrefix, canonicalURL)
+}
+
+// ValidateEntryName rejects a server name reserved for the legacy token
+// shim's cache slots or the exec plugin's own login entries (names are
+// born at registration now - add-server and login's delegated add both
+// call this before any probe or write). The exec plugin asks it too, so a
+// login it names as a remedy is one auth login accepts.
+func ValidateEntryName(name string) *clierr.Error {
+	switch {
+	case IsLegacyCacheSlot(name):
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("server names starting with %q are reserved for the legacy token shim's cache slots; use a different name", LegacyCachePrefix))
+	case IsExecLoginEntryName(name):
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("server names starting with %q are reserved for the exec plugin's own login entries; use a different name", ExecLoginPrefix))
+	}
+	return nil
 }

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -218,4 +220,26 @@ func TestTheOrphanNoticeSaysWhatWasRemoved(t *testing.T) {
 			assert.Nil(t, rec, "the record is gone")
 		})
 	}
+}
+
+// TestWithNoticesLetsACancellationThrough asserts the notices ride on a
+// command's error, and that a cancellation is returned as it is: wrapped,
+// it would read as a failure of its own rather than as the interruption.
+func TestWithNoticesLetsACancellationThrough(t *testing.T) {
+	t.Parallel()
+	notices := []string{"removed a credential stored under prod that no entry named, from file"}
+
+	failed := WithNotices(errors.New("disk full"), notices)
+	ce, ok := errors.AsType[*clierr.Error](failed)
+	require.True(t, ok)
+	assert.Equal(t, notices, ce.Warnings())
+	require.ErrorContains(t, failed, "disk full")
+
+	canceled := WithNotices(context.Canceled, notices)
+	require.ErrorIs(t, canceled, context.Canceled)
+	_, wrapped := errors.AsType[*clierr.Error](canceled)
+	assert.False(t, wrapped, "a cancellation passes through unchanged")
+
+	plain := errors.New("disk full")
+	assert.Equal(t, plain, WithNotices(plain, nil), "with nothing to carry the error is returned as it is")
 }

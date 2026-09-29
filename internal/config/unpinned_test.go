@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -67,6 +68,8 @@ func TestUnpinnedStoreCountsConfiguredEntriesOnly(t *testing.T) {
 // no plaintext, that a keychain entry's logout needs the keychain, and a
 // different --config - and nothing that tells the operator to write the
 // pin by hand, which would pick a copy that may serve the wrong user.
+// While a store change is unfinished the message also names it, with the
+// logout still the hint.
 func TestTheBothStoresErrorNamesTheWayOut(t *testing.T) {
 	u := Unpinned{Row: UnpinnedBoth, KeychainEntries: []string{"prod"}, FileEntries: []string{"staging"}, dir: "/d"}
 	err := u.Err()
@@ -79,7 +82,28 @@ func TestTheBothStoresErrorNamesTheWayOut(t *testing.T) {
 	require.ErrorContains(t, err, "or use a different --config")
 	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
 	assert.NotContains(t, err.Error(), pinFileName)
-	assert.NotContains(t, err.Error(), "rancher config status", "no command reports the state yet")
+	assert.NotContains(t, err.Error(), "rancher config status", "with no change unfinished there is nothing more to see")
+
+	// While a store change is unfinished, the logout stays the hint and
+	// the message names the change, which is what may have left the copy.
+	dir := t.TempDir()
+	pending := activeTransition(t, dir, fileDeleteStep(t, dir, "staging", "https://s.ex", "staging-old"))
+	withChange := Unpinned{Row: UnpinnedBoth, KeychainEntries: []string{"prod"}, FileEntries: []string{"staging"}, dir: dir, cfg: pending}
+	wce, ok := errorsAsClierr(withChange.Err())
+	require.True(t, ok)
+	require.ErrorContains(t, withChange.Err(), "a credential store change is unfinished; run rancher config status to see it")
+	assert.Equal(t, "rancher auth logout 'staging'", wce.Hint, "the logout is still what fixes it")
+
+	// While the record it names cannot be read, the logout would be
+	// refused on it: the report is the hint, the logout stays in the
+	// message.
+	require.NoError(t, os.WriteFile(TransitionPath(dir), []byte("not: [yaml"), 0o600))
+	dce, ok := errorsAsClierr(withChange.Err())
+	require.True(t, ok)
+	require.ErrorContains(t, withChange.Err(), "the credential store change record cannot be read")
+	require.ErrorContains(t, withChange.Err(), "run rancher auth logout 'staging'")
+	assert.Equal(t, 1, strings.Count(withChange.Err().Error(), "rancher auth logout 'staging'"), "a remedy the message already names is not added again")
+	assert.Equal(t, "rancher config status", dce.Hint)
 
 	two := Unpinned{Row: UnpinnedBoth, KeychainEntries: []string{"prod"}, FileEntries: []string{"qa", "staging"}, dir: "/d"}
 	tce, ok := errorsAsClierr(two.Err())

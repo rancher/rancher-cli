@@ -12,9 +12,11 @@ a local file.
 credentialStore: exec:vault
 ```
 
-or per invocation: `RANCHER_CLI_CREDENTIAL_STORE=exec:vault` (env beats
-config). The name after `exec:` must match `^[a-z0-9][a-z0-9-]*$`; the CLI
-runs the binary `rancher-credential-<name>` found on `PATH`.
+or with `RANCHER_CLI_CREDENTIAL_STORE=exec:vault`, which chooses the store
+of a directory that declares none and must agree with a declared one: a
+variable naming a different store than `credentialStore` is refused. The
+name after `exec:` must match `^[a-z0-9][a-z0-9-]*$`; the CLI runs the
+binary `rancher-credential-<name>` found on `PATH`.
 
 There is **no fallback**: if the helper is missing or fails, the command
 fails with the helper's error. `RANCHER_CLI_TOKEN` still bypasses credential

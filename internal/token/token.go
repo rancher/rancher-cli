@@ -296,7 +296,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 
 	// Full resolution (config + CA disk I/O): required to authenticate on a miss
 	// and to build the definitive cache key when --server was not provided.
-	server, caPEM, clusterID, err := t.resolveConn(params.Server, params.Cluster, params.CACert, params.legacyShim)
+	server, caPEM, clusterID, caSource, err := t.resolveConnWithCA(params.Server, params.Cluster, params.CACert, params.legacyShim)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -408,7 +408,9 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		var res SessionAcquireResult
 		res, err = loginAndGenerateCred(ctx, client, input, p)
 		if err != nil {
-			return runtime.Result{}, err
+			// This lane is taken only when the plugin-created login is not,
+			// so a sign-in here keeps no login credential.
+			return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, serverURL: serverID, caCert: caSource})
 		}
 		// The interactive login's cluster-scoped token has no parent
 		// bearer: it revokes itself if the wait below is cancelled.
@@ -416,7 +418,8 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			fresh:   newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer),
 			binding: binding}
 	case err != nil:
-		return runtime.Result{}, err
+		// The plugin-created login reaches the same sign-in prompts.
+		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, serverURL: serverID, caCert: caSource, keepsLogin: pluginLane})
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth provider and credentials")
@@ -862,8 +865,7 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 
 	if samlProviders[input.authProvider] {
 		if p.NoInput() {
-			return SessionAcquireResult{}, clierr.New(clierr.CodeAuth,
-				"interactive login required for "+input.authProvider+"; run without --no-input, or use a cached --name")
+			return SessionAcquireResult{}, interactiveLoginRequired(input.authProvider, "run without --no-input, or use a cached --name")
 		}
 		return samlAuth(ctx, client, input, p)
 	}
@@ -885,8 +887,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	username, err := p.Prompt(ctx, label)
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return notAttempted, clierr.New(clierr.CodeAuth,
-				"interactive login required for "+input.authProvider+"; run in a terminal, or use a cached --name")
+			return notAttempted, interactiveLoginRequired(input.authProvider, "run in a terminal, or use a cached --name")
 		}
 		return notAttempted, err
 	}
@@ -900,8 +901,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	password, err := p.PromptSecret(ctx, "Enter password: ")
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return notAttempted, clierr.New(clierr.CodeAuth,
-				"interactive login required for "+input.authProvider+"; run in a terminal, or use a cached --name")
+			return notAttempted, interactiveLoginRequired(input.authProvider, "run in a terminal, or use a cached --name")
 		}
 		return notAttempted, err
 	}
@@ -1280,6 +1280,14 @@ func generateKey() (string, error) {
 // as plain strings rather than a runtime.Input, so callers (runWithParams)
 // can pass runParams fields directly without an adapter wrapper.
 func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurrentContext bool) (server, caPEM, cluster string, err error) {
+	server, caPEM, cluster, _, err = t.resolveConnWithCA(flagServer, flagCluster, caIn, ignoreCurrentContext)
+	return server, caPEM, cluster, err
+}
+
+// resolveConnWithCA is resolveConn that also returns the CA as it was
+// chosen - the --cacert value, or else the matching entry's CA from
+// config.yaml, a path or an inline PEM - before it is read.
+func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn string, ignoreCurrentContext bool) (server, caPEM, cluster, caSource string, err error) {
 	server = flagServer
 	cluster = flagCluster
 	explicitServer := server != ""
@@ -1298,7 +1306,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 	// context below. This also keeps the needsEff gate honest - past this
 	// point server == "" implies !ignoreCurrentContext.
 	if server == "" && ignoreCurrentContext {
-		return "", "", "", clierr.New(clierr.CodeValidation, "--server is required")
+		return "", "", "", "", clierr.New(clierr.CodeValidation, "--server is required")
 	}
 
 	// The native get-token path requires --cluster: a token must never be created
@@ -1306,13 +1314,13 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 	// the legacy semantic where an empty --cluster is a deliberate unscoped
 	// create - still purely flag-driven, never filled from stored state.
 	if cluster == "" && !ignoreCurrentContext {
-		return "", "", "", clierr.New(clierr.CodeValidation, "--cluster is required")
+		return "", "", "", "", clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
 
 	if server == "" || caIn == "" {
 		cfg, cerr := config.Load(config.FilePath(t.dir))
 		if cerr != nil {
-			return "", "", "", cerr
+			return "", "", "", "", cerr
 		}
 		// cfg.Effective reads the current server's credential from the store -
 		// GetToken for a server that may be entirely unrelated to the --server
@@ -1332,7 +1340,7 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 			var effErr error
 			eff, effErr = cfg.Effective(t.store)
 			if effErr != nil {
-				return "", "", "", effErr
+				return "", "", "", "", effErr
 			}
 		}
 		if server == "" {
@@ -1348,14 +1356,14 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 	}
 
 	if server == "" {
-		return "", "", "", clierr.New(clierr.CodeValidation,
+		return "", "", "", "", clierr.New(clierr.CodeValidation,
 			"--server is required; pass it, or add and log in to a server first")
 	}
 	caPEM, err = config.ResolveCA(caIn)
 	if err != nil {
-		return "", "", "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
+		return "", "", "", "", clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
 	}
-	return server, caPEM, cluster, nil
+	return server, caPEM, cluster, caIn, nil
 }
 
 // schemeRE matches an explicit URI scheme followed by "://", independent of

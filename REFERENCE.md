@@ -87,8 +87,19 @@ keychain, stays on the file store and says so: log those entries out,
 then log in again, and the next login moves the directory to the
 keychain. An unfinished change is `CREDENTIAL_TRANSITION_INCOMPLETE`:
 its message names the step that could not finish and why; resolve that,
-then run the command again. A second store change cannot start until the
-first one finishes. `config edit` refuses to set, change or remove
+then run the command again. Every `auth login`, `auth logout`, `config
+delete-server` and `config update-server --url` retries what the change
+left before its own work, and only a second store change is refused while
+some of it remains. `rancher config status` shows the change as
+`credentialStoreChange`, with each piece of work left and why it stopped.
+A change record that cannot be read refuses all of those commands, logout
+included, until it is restored or moved aside: it is the only record of
+the old copies left to delete. While a change is unfinished, an error
+whose remedy is a login or logout - "not logged in", credentials in both
+stores, the kubectl plugin with no terminal - names the change in its
+message; while the record config.yaml names cannot be read, its hint is
+`rancher config status` instead, and the remedy stays in the message.
+`config edit` refuses to set, change or remove
 `credentialStore`: any of the three would send every reader to a store
 the edit put nothing in. Change it with the login above; no command
 removes a declaration, and a different `--config` starts a fresh
@@ -109,10 +120,12 @@ miss at once. While such a change runs, the entry's cache writes are
 paused and each kubectl call for it makes a fresh token rather than
 caching one. A pause that nothing still holds - a change that died or
 failed before its last write - is cleared by the next cache miss that can
-take the config lock; one held by a store change's pin step waits for the
-next login, one made with `RANCHER_CLI_CONFIG_NO_LOCK` for the entry's
-next login or logout, and an unreadable change record holds every pause
-until it is restored or moved aside. `rancher config status` lists every
+take the config lock. One held by a store change's pin step waits for the
+next `auth login`, `auth logout`, `config delete-server` or `config
+update-server --url`, each of which finishes the change; one made with
+`RANCHER_CLI_CONFIG_NO_LOCK` waits for the entry's next login or logout;
+and an unreadable change record holds every pause until it is restored or
+moved aside. `rancher config status` lists every
 paused entry, with the reason, as `cacheWritesPaused`. A
 `config.yaml` the CLI cannot read makes every cached credential a miss as
 well - the record's owner is named in that file - so a broken config

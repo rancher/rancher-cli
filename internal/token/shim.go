@@ -137,7 +137,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 			// ride this error: the probe's global dedup already marked the
 			// path seen, so no later read can re-surface it.
 			if warn != "" {
-				return runtime.Result{}, clierr.Wrap(serr, serr.Error()).WithWarnings(warn)
+				return runtime.Result{}, config.WithNotices(serr, []string{warn})
 			}
 			return runtime.Result{}, serr
 		}
@@ -182,10 +182,7 @@ func (c legacyTokenCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		notices = append([]string{warn}, notices...)
 	}
 	if err != nil {
-		if len(notices) > 0 {
-			return runtime.Result{}, clierr.Wrap(err, err.Error()).WithWarnings(notices...)
-		}
-		return runtime.Result{}, err
+		return runtime.Result{}, config.WithNotices(err, notices)
 	}
 	res.Warnings = append(notices, res.Warnings...)
 	return res, nil

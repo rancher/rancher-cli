@@ -92,7 +92,30 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 		assert.Equal(t, "rancher auth login 'qa1'", ce.Hint)
+		assert.Equal(t, `not logged in to "qa1"`, ce.Message, "nothing more while no change is unfinished")
 	})
+	for _, tc := range []struct {
+		name   string
+		record string
+		hint   string
+		note   string
+	}{
+		{"a tokenless server while a store change is unfinished keeps the login hint and names the change",
+			"version: 1\nid: " + changeID + "\nsteps:\n- kind: pin\n  target: file\n", "rancher auth login 'qa1'",
+			"; a credential store change is unfinished; run rancher config status to see it"},
+		{"a tokenless server while the change record cannot be read names the report as the hint",
+			"not: [yaml", "rancher config status",
+			"; the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run rancher config status to see it; after that: rancher auth login 'qa1'"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := RESTConfig(tokenlessWithChange(t, tc.record), "local")
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
+			assert.Equal(t, tc.hint, ce.Hint)
+			assert.Equal(t, `not logged in to "qa1"`+tc.note, ce.Message)
+		})
+	}
 	t.Run("env-only tokenless URL on a blank machine stays AUTH with no hint", func(t *testing.T) {
 		_, err := RESTConfig(config.Effective{URL: "https://r.ex", CA: "PEM"}, "local")
 		var ce *clierr.Error
@@ -162,4 +185,28 @@ func TestHTTPClientSendsKubernetesUserAgent(t *testing.T) {
 	assert.NotEmpty(t, agent)
 	assert.False(t, strings.HasPrefix(agent, "Go-http-client"), "the default Go agent must not leak: %q", agent)
 	assert.Equal(t, rest.DefaultKubernetesUserAgent(), agent)
+}
+
+// changeID is the id tokenlessWithChange names in config.yaml.
+const changeID = "0123456789abcdef0123456789abcdef"
+
+// tokenlessWithChange is the Effective of a directory whose current
+// server, qa1, has no stored credential while config.yaml names a store
+// change whose record holds record.
+func tokenlessWithChange(t *testing.T, record string) config.Effective {
+	t.Helper()
+	t.Setenv(config.EnvToken, "")
+	t.Setenv(config.EnvURL, "")
+	t.Setenv(config.EnvCACert, "")
+	dir := t.TempDir()
+	cfg := &config.Config{CurrentServer: "qa1", CredentialTransitionID: changeID,
+		Servers: map[string]config.Server{"qa1": {URL: "https://r.ex"}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte(record), 0o600))
+	loaded, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	eff, err := loaded.Effective(config.NewFileStore(dir))
+	require.NoError(t, err)
+	return eff
 }

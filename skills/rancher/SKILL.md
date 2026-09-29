@@ -34,6 +34,9 @@ means a change of the directory's credential store has work left; the
 message names the step, the entry and the backend error that stopped it -
 fix that, then run the command again. A step no retry can finish is
 reported as `VALIDATION` instead, and the message carries the cause.
+`rancher config status` shows the change as `credentialStoreChange`. A
+change record that cannot be read refuses logins, logouts and server
+changes with `VALIDATION` naming the file: restore it or move it aside.
 None of the three is a reason to try a different server entry. A
 `VALIDATION` error saying the directory has credentials in both the
 keychain and the plaintext file means nothing records which is current:
@@ -666,9 +669,10 @@ rancher oidc-client rotate-secret my-app --apply --yes
   unparseable) - the first place to check when TAB shows no candidates;
   and `cacheWritesPaused`, every entry whose exec-credential cache writes
   are paused while a change of its credential finishes, with the reason
-  (`pinStep`: the next login finishes the store change; `noLock`: a login
-  or logout of the entry clears it; `changeRecordUnreadable`: restore or
-  move the change record aside; `none`: the next cache miss resumes it) -
+  (`pinStep`: the next login, logout, `config delete-server` or `config
+  update-server --url` finishes the store change; `noLock`: a login or
+  logout of the entry clears it; `changeRecordUnreadable`: restore or move
+  the change record aside; `none`: the next cache miss resumes it) -
   where kubectl's "not caching ... (see `rancher config status`)" notice
   points;
   config.yaml alone cannot reveal an env-supplied store or diagnose a

@@ -141,14 +141,17 @@ func OrphanHelpers(cfg *Config, loginPolicy string) []string {
 	return out
 }
 
-// WithNotices carries the removals a command made before it failed on the
-// error it returns, so nothing it removed goes unannounced. err is
-// returned as it is when there are none.
+// WithNotices carries the work a command did before it failed - the
+// removals, the store change's steps - on the error it returns, so none of
+// it goes unannounced. err is returned as it is when there are none, and a
+// cancellation passes through unchanged so it still reads as one.
 func WithNotices(err error, notices []string) error {
 	if err == nil || len(notices) == 0 {
 		return err
 	}
-	return clierr.Wrap(err, err.Error()).WithWarnings(notices...)
+	return clierr.WrapUnlessCanceled(err, func(err error) error {
+		return clierr.Wrap(err, err.Error()).WithWarnings(notices...)
+	})
 }
 
 func orphanRemovedNotice(name, store string) string {

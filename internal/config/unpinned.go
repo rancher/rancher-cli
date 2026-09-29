@@ -45,6 +45,9 @@ type Unpinned struct {
 	// FileEntries have a token in credentials.yaml. Both are sorted.
 	KeychainEntries, FileEntries []string
 	dir                          string
+	// cfg is the config the answer was read from, for the note Err adds
+	// while a store change is unfinished.
+	cfg *Config
 }
 
 // UnpinnedStoreOf answers for dir, counting the entries of cfg only. It
@@ -52,7 +55,7 @@ type Unpinned struct {
 // and one read of credentials.yaml. A directory it cannot trust or a
 // credentials file it cannot read is an error, never "nothing".
 func UnpinnedStoreOf(dir string, cfg *Config) (Unpinned, error) {
-	u := Unpinned{dir: dir}
+	u := Unpinned{dir: dir, cfg: cfg}
 	if cfg == nil || len(cfg.Servers) == 0 {
 		return u, nil
 	}
@@ -115,7 +118,10 @@ func IsCredentialsInBothStores(err error) bool { return errors.Is(err, errCreden
 
 // Err is the error every credential command gets for the both-stores
 // answer, and nil for every other. It lists the entries in each store and
-// the logouts that keep the keychain, which holds no plaintext.
+// the logouts that keep the keychain, which holds no plaintext. A logout
+// stays the hint while a store change is unfinished - that change may be
+// what left the second copy - and the message names the change; while the
+// change record cannot be read the status report is the hint instead.
 func (u Unpinned) Err() error {
 	if u.Row != UnpinnedBoth {
 		return nil
@@ -124,15 +130,15 @@ func (u Unpinned) Err() error {
 	for _, e := range u.FileEntries {
 		logouts = append(logouts, "rancher auth logout "+clierr.ShellQuote(e))
 	}
-	err := clierr.New(clierr.CodeValidation, fmt.Sprintf(
+	msg := fmt.Sprintf(
 		"this config directory has credentials in the keychain (%s) and in the plaintext file %s (%s), and nothing records which of the two is current, so neither is read; log out the entries in the store you do not want to keep, then run this command again - to keep the keychain, which holds no plaintext, run %s; a keychain entry's logout needs the keychain reachable; or use a different --config",
 		strings.Join(u.KeychainEntries, ", "), CredentialsFilePath(u.dir), strings.Join(u.FileEntries, ", "),
-		strings.Join(logouts, ", then "))).
-		WithCause(errCredentialsInBothStores)
+		strings.Join(logouts, ", then "))
+	err := clierr.New(clierr.CodeValidation, msg).WithCause(errCredentialsInBothStores)
 	if len(logouts) == 1 {
-		return err.WithHint(logouts[0])
+		err = err.WithHint(logouts[0])
 	}
-	return err
+	return UnfinishedChangeOf(u.dir, u.cfg).Apply(err)
 }
 
 // identityRecordNames is the set of names in credstore-id/ spelled like a

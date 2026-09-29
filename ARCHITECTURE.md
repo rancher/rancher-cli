@@ -752,8 +752,9 @@ respective files via `flock` (released by the OS on process exit):
   from it; taken by `withTransitionLock`. A login takes it once, around
   its whole body, and the prelude and the replay run in lock-free inner
   forms: `withDirLock` is not reentrant, so a nested take would wait on
-  its own process until the deadline. A cold path only; no reader ever
-  touches it.
+  its own process until the deadline. The other credential-mutating
+  commands take it only while a change record is active or abandoned. A
+  cold path only; no reader ever touches it.
 
 One ordering rule holds across all five: the config lock is always outermost, then
 the transition lock, then exactly one of `credstore-id.lock` or the helper-records
@@ -785,6 +786,26 @@ that ends before the naming write removes the record. When the pin on disk names
 a store the directory neither uses nor is moving to, the login writes the
 pin it ends with before the commit instead of last - the declaration is
 still explicit then, and no reader consults the pin.
+
+**Every credential-mutating command finishes a store change first.**
+`auth logout` (both forms), `config delete-server`, and `config
+update-server` when a URL change clears the credential run the same
+prelude a login runs (`PrepareCredentialDelete`), after their own
+validation and before their first write: each remaining delete is retried
+by its digest and dropped when its credential was replaced, a pin is
+written, a change that never started is removed, and a finished change's
+name is cleared in the config the command writes. No remaining step
+refuses them. A change record that cannot be read or trusted, named by
+`config.yaml` or not, refuses all of them with nothing deleted and nothing
+written. `config status` and `auth status` read the record the same way
+(`ChangeRecordStatusOf`) and report it as `credentialStoreChange`; every
+error about a change no other command fixes has `rancher config status`
+as its hint, and an error whose own remedy still works - "not logged in",
+the both-stores error, the exec plugin's sign-in without a terminal -
+keeps its hint and names the unfinished change in its message
+(`UnfinishedChangeOf`); while a record `config.yaml` names cannot be read,
+that remedy would be refused, so the status report becomes the hint and
+the remedy moves into the message.
 
 **Auth-provider subsystem (`internal/token`).** Login discovers providers at
 `/v1-public/authproviders` and then runs the matching flow: **basic**
