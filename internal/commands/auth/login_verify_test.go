@@ -190,7 +190,7 @@ func TestLoginDelegatedVerifyFailureGetsUndoGuidanceNotNoVerifyHint(t *testing.T
 	_, err := cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, "rancher auth login 'fresh'", ce.Hint, "the hint stays the undo-registration retry command, not --no-verify")
+	assert.Equal(t, clierr.Rancher+" auth login 'fresh'", ce.Hint, "the hint stays the undo-registration retry command, not --no-verify")
 	assert.Contains(t, ce.Message, "delete-server", "the message keeps the undo-the-registration guidance")
 	assert.Contains(t, ce.Message, "--no-verify", "the message also mentions --no-verify as a secondary option")
 

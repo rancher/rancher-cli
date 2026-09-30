@@ -722,7 +722,7 @@ func credentialReplacedError(entry string) error {
 	return clierr.New(clierr.CodeCredentialReplaced, fmt.Sprintf(
 		"the stored credential for %s was replaced by another config directory that shares this one's identity, or by a login in progress; retry, then log in again",
 		clierr.ShellQuote(entry))).
-		WithHint("rancher auth login " + clierr.ShellQuote(entry)).
+		WithHint(LoginHintFor(entry)).
 		WithCause(ErrCredentialIdentity)
 }
 
@@ -733,7 +733,7 @@ func loginIncompleteError(entry string) error {
 	return clierr.Retryable(clierr.CodeLoginIncomplete, fmt.Sprintf(
 		"a login for %s is in progress or did not complete; retry, then log in again",
 		clierr.ShellQuote(entry))).
-		WithHint("rancher auth login " + clierr.ShellQuote(entry)).
+		WithHint(LoginHintFor(entry)).
 		WithCause(ErrCredentialIdentity)
 }
 
@@ -1242,6 +1242,16 @@ func OpenStoreFor(cfg *Config, dir string) (CredStore, error) {
 		return nil, err
 	}
 	return openStoreResolved(resolved, dir, func() (*Config, error) { return cfg, nil })
+}
+
+// OpenDeclaredStore opens the store cfg's declaration names, whatever
+// RANCHER_CLI_CREDENTIAL_STORE says: the store an exec entry that sets the
+// variable to the empty value reads. cfg must declare one.
+func OpenDeclaredStore(cfg *Config, dir string) (CredStore, error) {
+	if cfg.CredentialStore == "" {
+		return nil, errors.New("the config directory declares no credential store")
+	}
+	return openStoreResolved(cfg.CredentialStore, dir, func() (*Config, error) { return cfg, nil })
 }
 
 // execHelperName extracts the helper name from an "exec:<name>" policy value.

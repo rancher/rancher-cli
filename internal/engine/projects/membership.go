@@ -56,7 +56,7 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	if current != "" && current != projectID {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("namespace %q belongs to project %q; remove it from that project first", nsName, current)).
-			WithHint(fmt.Sprintf("rancher project remove-namespace %s --project %s --cluster %s",
+			WithHint(fmt.Sprintf(clierr.Rancher+" project remove-namespace %s --project %s --cluster %s",
 				clierr.ShellQuote(nsName), clierr.ShellQuote(current), clierr.ShellQuote(cluster)))
 	}
 

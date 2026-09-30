@@ -224,8 +224,8 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 	seed := rowEntry{name: "exec-login-seed", user: "svc", plugin: true}
 	seedTwo := rowEntry{name: "exec-login-seed-2", user: "svc", plugin: true}
 	const (
-		useServerUnset = "rancher config use-server <entry> (this sets the directory's current server, which is unset now), then rancher kubeconfig --cluster 'c-test'"
-		useServerBack  = "rancher config use-server <entry> (this switches the directory's current server; switch back with rancher config use-server 'staging'), then rancher kubeconfig --cluster 'c-test'"
+		useServerUnset = clierr.Rancher + " config use-server <entry> (this sets the directory's current server, which is unset now), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"
+		useServerBack  = clierr.Rancher + " config use-server <entry> (this switches the directory's current server; switch back with " + clierr.Rancher + " config use-server 'staging'), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"
 	)
 
 	rows := []entryRow{
@@ -269,7 +269,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:   []rowEntry{prod, prodEUNoCred},
 			flagName:  "prod-eu-c-test",
 			wantCode:  clierr.CodeAuth,
-			wantMsg:   []string{"interactive login required", "rancher auth login 'prod-eu' --url", "--token-stdin", "rancher create kubeconfig"},
+			wantMsg:   []string{"interactive login required", clierr.Rancher + " auth login 'prod-eu' --url", "--token-stdin", clierr.Rancher + " create kubeconfig"},
 			noNetwork: true,
 			mutation:  "read every entry on the URL when the identified entry has no credential; suggest the --name as the entry to sign in to",
 		},
@@ -315,7 +315,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			name:      "a bare install with no terminal names the remedies",
 			flagName:  "prod-eu-c-test",
 			wantCode:  clierr.CodeAuth,
-			wantMsg:   []string{"interactive login required", "rancher auth login", "--token-stdin", "rancher create kubeconfig"},
+			wantMsg:   []string{"interactive login required", clierr.Rancher + " auth login", "--token-stdin", clierr.Rancher + " create kubeconfig"},
 			noNetwork: true,
 			mutation:  "none: the bare install is unchanged and the row asserts it stays so",
 		},
@@ -332,7 +332,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			reuse:     true,
 			flagName:  "prod-eu-c-test",
 			wantCode:  clierr.CodeAmbiguousSelection,
-			wantMsg:   []string{"'exec-login-seed'", "'exec-login-seed-2'", "rancher auth logout"},
+			wantMsg:   []string{"'exec-login-seed'", "'exec-login-seed-2'", clierr.Rancher + " auth logout"},
 			noNetwork: true,
 			mutation:  "use the first plugin login entry",
 		},
@@ -341,7 +341,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:   []rowEntry{prod, {name: "prod-eu", url: otherServerURL, user: "bob"}},
 			flagName:  "prod-eu",
 			wantCode:  clierr.CodeConflict,
-			wantMsg:   []string{"'prod-eu'", otherServerURL, "runs for %URL%", "rancher kubeconfig --cluster 'c-test'"},
+			wantMsg:   []string{"'prod-eu'", otherServerURL, "runs for %URL%", clierr.Rancher + " kubeconfig --cluster 'c-test'"},
 			noNetwork: true,
 			mutation:  "treat an identified entry on another URL as identifying nothing",
 		},
@@ -411,7 +411,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:   []rowEntry{seed, seedTwo},
 			reuse:     true,
 			wantCode:  clierr.CodeAmbiguousSelection,
-			wantMsg:   []string{"'exec-login-seed', 'exec-login-seed-2'", "rancher auth logout <entry>", "rancher config delete-server <entry>"},
+			wantMsg:   []string{"'exec-login-seed', 'exec-login-seed-2'", clierr.Rancher + " auth logout <entry>", clierr.Rancher + " config delete-server <entry>"},
 			noNetwork: true,
 			mutation:  "pick the first entry at the winning rank; give the regenerate remedy for a tie of plugin login entries",
 		},
@@ -579,7 +579,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:    []rowEntry{{name: "prod-eu", url: otherServerURL, user: "bob", current: true}},
 			flagName:   "prod-eu-c-test",
 			wantCode:   clierr.CodeConflict,
-			wantMsg:    []string{"no entry is registered there", "regenerate the kubeconfig from 'prod-eu' with rancher auth login 'prod-eu' (if it has no login), then rancher kubeconfig --cluster 'c-test'"},
+			wantMsg:    []string{"no entry is registered there", "regenerate the kubeconfig from 'prod-eu' with " + clierr.Rancher + " auth login 'prod-eu' (if it has no login), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"},
 			wantNotMsg: []string{"use-server", "switch back"},
 			noNetwork:  true,
 			mutation:   "offer the switch to the entry that is already the current server; leave out the login step",
@@ -589,7 +589,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:   []rowEntry{{name: "prod-eu", url: otherServerURL, user: "bob"}, {name: "staging", url: "https://third.example", current: true}},
 			flagName:  "prod-eu-c-test",
 			wantCode:  clierr.CodeConflict,
-			wantMsg:   []string{"no entry is registered there", "rancher config use-server 'prod-eu' (this switches the directory's current server; switch back with rancher config use-server 'staging'), then rancher auth login 'prod-eu' (if it has no login), then rancher kubeconfig --cluster 'c-test'"},
+			wantMsg:   []string{"no entry is registered there", clierr.Rancher + " config use-server 'prod-eu' (this switches the directory's current server; switch back with " + clierr.Rancher + " config use-server 'staging'), then " + clierr.Rancher + " auth login 'prod-eu' (if it has no login), then " + clierr.Rancher + " kubeconfig --cluster 'c-test'"},
 			noNetwork: true,
 			mutation:  "leave out the switch for an entry that is not the current server",
 		},
@@ -598,7 +598,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			entries:   []rowEntry{prod, {name: "prod-eu", url: otherServerURL, user: "bob"}},
 			flagName:  "prod-eu-c-test",
 			wantCode:  clierr.CodeConflict,
-			wantMsg:   []string{"to use 'prod-eu', regenerate the kubeconfig from it with rancher config use-server 'prod-eu'", "regenerate it from an entry registered there with rancher config use-server <entry>"},
+			wantMsg:   []string{"to use 'prod-eu', regenerate the kubeconfig from it with " + clierr.Rancher + " config use-server 'prod-eu'", "regenerate it from an entry registered there with " + clierr.Rancher + " config use-server <entry>"},
 			noNetwork: true,
 			mutation:  "offer only the route through an entry at the call's URL",
 		},
@@ -620,11 +620,8 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 // lookupStored is the credential lookup as storedCredToken runs it: the
 // name is identified once, then the credential is read for that answer.
 func lookupStored(cfg *config.Config, store config.CredStore, server, wantName, clusterID string, shim bool) (storedCredential, bool, error) {
-	identified, err := identifyEntry(cfg, server, wantName, clusterID, shim)
-	if err != nil {
-		return storedCredential{}, false, err
-	}
-	return storedTokenForServer(cfg, store, server, identified, clusterID, shim)
+	l := lookupStoredLogin(cfg, store, server, wantName, clusterID, shim, entryChoice{})
+	return l.cred, l.Outcome == LookupAnswered, l.Err
 }
 
 // TestIdentifyEntry asserts what the lookup makes of config.IdentifyEntry's
@@ -873,7 +870,7 @@ func TestNotNamedRemedyQuotesTheClusterInTheNameSuffix(t *testing.T) {
 	hits := []storedCredential{{name: "prod", entry: config.Server{URL: "https://r.ex"}}, {name: "prod-eu", entry: config.Server{URL: "https://r.ex"}}}
 	msg := entryNotNamedError(&config.Config{}, hits, "my cluster", false).Message
 	assert.Contains(t, msg, "--name <entry>-'my cluster'")
-	assert.Contains(t, msg, "rancher kubeconfig --cluster 'my cluster'")
+	assert.Contains(t, msg, clierr.Rancher+" kubeconfig --cluster 'my cluster'")
 	plain := entryNotNamedError(&config.Config{}, hits, "c-1", false).Message
 	assert.Contains(t, plain, "--name <entry>-c-1")
 }

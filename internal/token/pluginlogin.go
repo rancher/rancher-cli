@@ -158,7 +158,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 				primary = clierr.New(clierr.CodeConflict, out.Aborted).WithCause(perr)
 			case errors.Is(perr, config.ErrTokenStoreUnsupported):
 				primary = clierr.New(clierr.CodeGeneric,
-					fmt.Sprintf("the credential store (policy %s) cannot store a login credential, so one cannot be reused across clusters; fix the store, or turn the setting off with: rancher config set-token-reuse off (%v)", decision.Policy, perr)).
+					fmt.Sprintf("the credential store (policy %s) cannot store a login credential, so one cannot be reused across clusters; fix the store, or turn the setting off with: "+config.TokenReuseOffCommand+" (%v)", decision.Policy, perr)).
 					WithCause(perr)
 			}
 			if cerr := ctx.Err(); cerr != nil {

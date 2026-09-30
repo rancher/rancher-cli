@@ -345,7 +345,7 @@ func TestPatchNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "deployment not found: web", ce.Message)
-	assert.Equal(t, "list with: rancher get deployments --cluster 'c-abc'", ce.Hint)
+	assert.Equal(t, "list with: "+clierr.Rancher+" get deployments --cluster 'c-abc'", ce.Hint)
 }
 
 // TestPatchNonNotFoundPassesThrough asserts that a non-NOT_FOUND error from the

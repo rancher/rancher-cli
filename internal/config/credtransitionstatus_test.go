@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // TestTheStatusReportSeesWhatThePreludeSees asserts the one reading both
@@ -146,7 +148,7 @@ func TestEffectiveCarriesTheUnfinishedChangeNote(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, eff.Token)
 	assert.Zero(t, ops["manifeststat"], "no change record is read to find a missing credential")
-	assert.Equal(t, UnfinishedChange{Note: "a credential store change is unfinished; run rancher config status to see it"}, eff.UnfinishedChange())
+	assert.Equal(t, UnfinishedChange{Note: "a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"}, eff.UnfinishedChange())
 
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod", URL: "https://r.ex"}, "prod-tok"))
 	eff, err = loaded.Effective(NewFileStore(dir))

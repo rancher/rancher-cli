@@ -381,7 +381,7 @@ func TestPersistRollbackFailureReportsConfigRecovery(t *testing.T) {
 			assert.Equal(t, clierr.ConfigRollbackFailed, out.ConfigState)
 			require.NotNil(t, out.ConfigRecovery)
 			assert.Equal(t, name, out.ConfigRecovery.Entry)
-			assert.Equal(t, "rancher config delete-server "+clierr.ShellQuote(name), out.ConfigRecovery.Command)
+			assert.Equal(t, clierr.Rancher+" config delete-server "+clierr.ShellQuote(name), out.ConfigRecovery.Command)
 			cfg, _ := Load(path)
 			assert.Equal(t, "token-new", cfg.Servers[name].TokenRef.Name, "the entry stays as written after the failed rollback")
 			if existing == nil {
@@ -450,8 +450,8 @@ func TestPersistRecoveryCommandQuotesAHostileEntryName(t *testing.T) {
 	in.Name = hostile
 	out, _ := PersistLoginCredential(t.Context(), dir, in)
 	require.NotNil(t, out.ConfigRecovery)
-	assert.Equal(t, "rancher config delete-server 'prod it'\\''s; rm -rf /'", out.ConfigRecovery.Command)
-	words, err := exec.Command("/bin/sh", "-c", "printf '%s\\n' "+strings.TrimPrefix(out.ConfigRecovery.Command, "rancher ")).Output()
+	assert.Equal(t, clierr.Rancher+" config delete-server 'prod it'\\''s; rm -rf /'", out.ConfigRecovery.Command)
+	words, err := exec.Command("/bin/sh", "-c", "printf '%s\\n' "+strings.TrimPrefix(clierr.ExpandRemedies(out.ConfigRecovery.Command, ""), "rancher ")).Output()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"config", "delete-server", hostile}, strings.Split(strings.TrimRight(string(words), "\n"), "\n"))
 }

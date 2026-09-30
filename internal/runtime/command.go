@@ -177,6 +177,12 @@ type Descriptor struct {
 	// (ShapeUnspecified) on every registered descriptor, and renderResult
 	// verifies the actual Result against it at run time.
 	Shape OutputShape
+	// RemedyConfigDir makes every remedy command the command prints name
+	// the config directory it ran against (IO.RemedyDir): for a command
+	// whose directory can come from an exec entry or a flag, which the
+	// shell that runs the remedy does not carry. Go-only; the manifest
+	// does not carry it.
+	RemedyConfigDir bool `json:"-"`
 }
 
 // Delivery classifies how a command's successful Result must be delivered.

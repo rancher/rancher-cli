@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -112,6 +113,10 @@ func EffectivePolicyWithSource(cfgPolicy string) (policy, source string, err err
 	return "auto", "default", nil
 }
 
+// ErrCredentialStoreConflict is the cause of the refusal when the
+// directory's declared store and RANCHER_CLI_CREDENTIAL_STORE disagree.
+var ErrCredentialStoreConflict = errors.New("the declared credential store and " + EnvCredentialStore + " disagree")
+
 // storeConflictError reports the declaration and the variable naming
 // different stores. VALIDATION: the command was asked for two stores and
 // choosing either one risks serving a credential the caller did not mean.
@@ -119,7 +124,8 @@ func storeConflictError(declared, asked string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"this config directory stores credentials in %q (config.yaml credentialStore); %s asks for %q; unset the variable, or use a different --config",
 		declared, EnvCredentialStore, asked)).
-		WithHint("unset " + EnvCredentialStore)
+		WithHint("unset " + EnvCredentialStore).
+		WithCause(ErrCredentialStoreConflict)
 }
 
 // storeFlagConflictError is the same refusal for a login that names one

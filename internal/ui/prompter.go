@@ -31,11 +31,21 @@ type Prompter struct {
 	in      io.Reader
 	noInput bool
 	isTTY   bool
+	// rewrite maps a notice before it is written; nil writes it as given.
+	rewrite func(string) string
 }
 
 // New builds a Prompter from resolved streams and flags.
 func New(errw io.Writer, in io.Reader, noInput, isTTY bool) *Prompter {
 	return &Prompter{err: errw, in: in, noInput: noInput, isTTY: isTTY}
+}
+
+// WithNoticeRewrite makes every notice pass through f before it is
+// written: the invocation's form of the remedy commands it holds. It
+// returns p, for use at construction.
+func (p *Prompter) WithNoticeRewrite(f func(string) string) *Prompter {
+	p.rewrite = f
+	return p
 }
 
 // Discard is a Prompter currently used only by tests: prompts fail, notices
@@ -56,6 +66,9 @@ func (p *Prompter) NoInput() bool { return p.noInput }
 
 // Notice writes an informational/warning line to Err (never Out).
 func (p *Prompter) Notice(msg string) {
+	if p.rewrite != nil {
+		msg = p.rewrite(msg)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	_, _ = fmt.Fprintln(p.err, msg)

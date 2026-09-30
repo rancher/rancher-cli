@@ -58,7 +58,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 	keyring.MockInit()
 	srv := localProviderServer(t)
 	url := config.CanonicalServerIdentity(srv.URL)
-	const note = "a credential store change is unfinished; run rancher config status to see it"
+	const note = "a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"
 	caPEM := selfSignedCAPEM(t)
 	caPath := filepath.Join(t.TempDir(), "ca.pem")
 	require.NoError(t, os.WriteFile(caPath, []byte(caPEM), 0o600))
@@ -81,13 +81,13 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 		// a file the message asks for, and is no hint.
 		inlineCA bool
 	}{
-		{name: "a bare install with no --name", login: "rancher auth login <name> --url " + clierr.ShellQuote(url) + " --token-stdin"},
+		{name: "a bare install with no --name", login: clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(url) + " --token-stdin"},
 		{name: "a bare install with --name", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true},
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true},
 		{name: "a --name auth login would refuse", flags: map[string]string{"name": config.ExecLoginPrefix + "x"},
-			login: "rancher auth login <name> --url " + clierr.ShellQuote(url) + " --token-stdin"},
+			login: clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(url) + " --token-stdin"},
 		{name: "a --name the directory has at this server, logged out", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
+			login: clierr.Rancher + " auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"prod-c-1": {URL: url}}}
@@ -95,7 +95,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "an entry-cluster --name, the entry registered here, logged out", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"prod": {URL: url}}}
@@ -103,7 +103,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "an entry-cluster --name, the entry registered here, with an inline --cacert", flags: map[string]string{"name": "prod-c-1", "cacert": caPEM},
-			login: "rancher auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"prod": {URL: url, CA: caPEM}}}
@@ -111,7 +111,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "an entry-cluster --name, the entry registered here, with token reuse on", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true, reuse: true,
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true, reuse: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg := &config.Config{CredentialStore: "file", TokenReuse: true, Servers: map[string]config.Server{"prod": {URL: url}}}
@@ -119,7 +119,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "a directory whose change record cannot be read", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", unreadable: true,
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", unreadable: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				require.NoError(t, os.MkdirAll(dir, 0o700))
@@ -129,7 +129,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "a directory in use while a store change is unfinished", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true, withNote: true,
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true, withNote: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				const id = "0123456789abcdef0123456789abcdef"
@@ -140,7 +140,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "no --name, with token reuse on", reuse: true,
-			login: "rancher auth login <name> --url " + clierr.ShellQuote(url) + " --token-stdin",
+			login: clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(url) + " --token-stdin",
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg := &config.Config{CredentialStore: "file", TokenReuse: true}
@@ -148,17 +148,17 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "a --cacert path", flags: map[string]string{"name": "prod-c-1", "cacert": caPath},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --cacert " + clierr.ShellQuote(caPath) + " --token-stdin", hint: true},
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --cacert " + clierr.ShellQuote(caPath) + " --token-stdin", hint: true},
 		{name: "an inline --cacert", flags: map[string]string{"name": "prod-c-1", "cacert": caPEM}, inlineCA: true,
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin"},
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin"},
 		{name: "a --cacert path, the --name already registered here", flags: map[string]string{"name": "prod-c-1", "cacert": caPath},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
+			login: clierr.Rancher + " auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
 			setup: registeredHere(url, "")},
 		{name: "an inline --cacert, the --name already registered here", flags: map[string]string{"name": "prod-c-1", "cacert": caPEM},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
+			login: clierr.Rancher + " auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true,
 			setup: registeredHere(url, caPEM)},
 		{name: "a --cacert path, a reserved --name registered here", flags: map[string]string{"name": config.ExecLoginPrefix + "x", "cacert": caPath},
-			login: "rancher auth login <name> --url " + clierr.ShellQuote(url) + " --cacert " + clierr.ShellQuote(caPath) + " --token-stdin",
+			login: clierr.Rancher + " auth login <name> --url " + clierr.ShellQuote(url) + " --cacert " + clierr.ShellQuote(caPath) + " --token-stdin",
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				// The login the message names is a new entry, so it
@@ -168,7 +168,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "a CA from another entry at this server, for a new --name", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --cacert " + clierr.ShellQuote(caPath) + " --token-stdin", hint: true,
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --cacert " + clierr.ShellQuote(caPath) + " --token-stdin", hint: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{"other": {URL: url, CA: caPath}}}
@@ -176,7 +176,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				require.NoError(t, cfg.Write())
 			}},
 		{name: "the plugin's own login, with token reuse on", flags: map[string]string{"name": "prod-c-1"},
-			login: "rancher auth login 'prod-c-1' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true, reuse: true,
+			login: clierr.Rancher + " auth login 'prod' --url " + clierr.ShellQuote(url) + " --token-stdin", hint: true, reuse: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg := &config.Config{CredentialStore: "file", TokenReuse: true}
@@ -206,14 +206,14 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				assert.NotContains(t, err.Error(), "until the cached token expires", "the plugin's own login keeps a login credential, --name or not")
 			case tc.flags["name"] == "":
 				assert.NotContains(t, err.Error(), "run kubectl once in a terminal", "with no --name nothing a terminal sign-in makes is kept")
-				require.ErrorContains(t, err, "this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with rancher kubeconfig --cluster 'c-1'")
+				require.ErrorContains(t, err, "this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with "+clierr.Rancher+" kubeconfig --cluster 'c-1'")
 			default:
 				require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 			}
-			require.ErrorContains(t, err, "rancher create kubeconfig")
+			require.ErrorContains(t, err, clierr.Rancher+" create kubeconfig")
 			switch {
 			case tc.unreadable:
-				assert.Equal(t, "rancher config status", ce.Hint, "the login would be refused on the record")
+				assert.Equal(t, clierr.Rancher+" config status", ce.Hint, "the login would be refused on the record")
 				require.ErrorContains(t, err, "the credential store change record cannot be read")
 				assert.Equal(t, 1, strings.Count(err.Error(), tc.login), "a remedy the message already names is not added again")
 			case tc.inlineCA:
@@ -280,7 +280,7 @@ func TestTheLegacyShimNamesTheRemediesWithoutATerminal(t *testing.T) {
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
-			require.ErrorContains(t, err, "pipe an API token to rancher auth login <name> --url "+clierr.ShellQuote(config.CanonicalServerIdentity(srv.URL))+" --token-stdin, with a name of your choice for <name>")
+			require.ErrorContains(t, err, "pipe an API token to "+clierr.Rancher+" auth login <name> --url "+clierr.ShellQuote(config.CanonicalServerIdentity(srv.URL))+" --token-stdin, with a name of your choice for <name>")
 			require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 			assert.Empty(t, ce.Hint, "the shim's slot is no name auth login accepts")
 		})
@@ -368,6 +368,6 @@ func TestNoTerminalRemedyDoesNotSuggestANameRegisteredElsewhere(t *testing.T) {
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.ex"})
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
-	require.ErrorContains(t, err, "rancher auth login <name> --url 'https://r.ex' --token-stdin")
+	require.ErrorContains(t, err, clierr.Rancher+" auth login <name> --url 'https://r.ex' --token-stdin")
 	assert.Empty(t, ce.Hint, "a login that would be refused is no hint")
 }

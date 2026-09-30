@@ -422,7 +422,7 @@ func TestLoginPlainUnknownAuthorityCompensationFailureIsReported(t *testing.T) {
 	assert.Equal(t, compensateErr.Error(), d.CredentialRecovery.CompensationError)
 	assert.Contains(t, d.Primary.Message, configErr.Error())
 	assert.Equal(t, config.LoginHintFor("prod"), d.Primary.Hint)
-	assert.Equal(t, "rancher auth logout "+clierr.ShellQuote("prod"), d.CredentialRecovery.Command)
+	assert.Equal(t, clierr.Rancher+" auth logout "+clierr.ShellQuote("prod"), d.CredentialRecovery.Command)
 
 	cfg, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)
@@ -497,7 +497,7 @@ func TestLoginDelegatedKnownEntryRotatedCANeverAutoTrusts(t *testing.T) {
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
 	assert.Equal(t, 0, p.prompts, "a known entry's rotated CA must never auto-trust on the delegated path")
 	assert.Contains(t, ce.Message, "rancher auth login 'prod'", "must point at the plain-login path that can actually re-establish trust")
-	assert.Equal(t, "rancher auth login 'prod'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth login 'prod'", ce.Hint)
 }
 
 // controllableStore wraps a real CredStore and fails a chosen call ordinal

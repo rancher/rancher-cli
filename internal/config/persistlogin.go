@@ -559,7 +559,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 				"the credential for %s was stored, but the record of the credential store change cannot be read: %s; the change did not run",
 				name, terr.Error())).
-				WithCause(terr).WithHint(statusCommand)
+				WithCause(terr).WithHint(StatusCommand)
 		case state != TransitionActive:
 			// Finished: none of its steps can run, and none is left to
 			// hold a pause. A writer that read the store readers have left
@@ -637,7 +637,7 @@ func revalidate(cfg *Config, in PersistLoginInput) string {
 	}
 	d := *in.Decision
 	if d.RequireSetting && !cfg.TokenReuse {
-		return "token reuse was turned off during the login (rancher config set-token-reuse off)"
+		return "token reuse was turned off during the login (" + TokenReuseOffCommand + ")"
 	}
 	return ""
 }
@@ -861,7 +861,7 @@ func rollbackFailed(out *PersistLoginOutcome, name string, snap *Server, werr, p
 		Prior: priorEntry(snap),
 		// The entry name is operator-chosen and only prefix-checked, so it is
 		// shell-quoted like every value a machine hint carries.
-		Command: "rancher config delete-server " + clierr.ShellQuote(name),
+		Command: DeleteServerCommand + " " + clierr.ShellQuote(name),
 	}
 	return fmt.Errorf("%w (restoring the config entry also failed: %v)", primary, werr)
 }

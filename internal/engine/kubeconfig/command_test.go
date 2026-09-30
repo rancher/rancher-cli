@@ -41,10 +41,12 @@ type stubFactory struct {
 	resolveErr error
 	objects    map[string]*unstructured.Unstructured
 	lists      map[string]*unstructured.UnstructuredList
+	// getErrs fails the GET of the named object with its error.
+	getErrs map[string]error
 }
 
 func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) {
-	return &stubClusterClient{objects: f.objects, lists: f.lists}, nil
+	return &stubClusterClient{objects: f.objects, lists: f.lists, getErrs: f.getErrs}, nil
 }
 func (f stubFactory) ResolveCluster(_ context.Context, nameOrID string) (string, error) {
 	if f.resolveErr != nil {
@@ -64,12 +66,16 @@ var _ engine.ClusterClientFactory = stubFactory{}
 type stubClusterClient struct {
 	objects map[string]*unstructured.Unstructured
 	lists   map[string]*unstructured.UnstructuredList
+	getErrs map[string]error
 }
 
 func (c *stubClusterClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	key := name
 	if ns != "" {
 		key = ns + "/" + name
+	}
+	if err, ok := c.getErrs[key]; ok {
+		return nil, err
 	}
 	if obj, ok := c.objects[key]; ok {
 		return obj, nil
@@ -162,6 +168,23 @@ func loadKubeconfig(t *testing.T, res runtime.Result) *clientcmdapi.Config {
 	return kc
 }
 
+// writeLoggedIn stores a login for "prod" in dir's file store, so the exec
+// plugin's lookup answers with the session's own entry and the command
+// prints no notice about which login kubectl uses.
+func writeLoggedIn(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, config.NewFileStore(dir).SetToken(config.ServerRef{Name: "prod", URL: "https://r.example.com"}, "tok"))
+}
+
+// assertOnlyMachineNotice asserts the prompter printed the line naming
+// what the file records of this machine, and nothing else.
+func assertOnlyMachineNotice(t *testing.T, notices, dir string) {
+	t.Helper()
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Equal(t, machineNotice(config.CanonicalDir(dir), recordedStore(cfg), "rancher", false)+"\n", notices)
+}
+
 // writeTestConfig writes a config.yaml with server "prod" -> https://r.example.com
 // (optionally with a CA) and current server set to "prod".
 func writeTestConfig(t *testing.T, ca string) string {
@@ -201,6 +224,13 @@ func TestKubeconfigEmitsExecSection(t *testing.T) {
 		"--cacert", caPEM,
 	}, user.Exec.Args)
 	assert.Equal(t, "prod-c-abc", cfg.CurrentContext)
+	// The directory and the store variable, in that order; the store
+	// variable's value per declaration and session is asserted by
+	// TestKubeconfigRecordsTheDirectoryAndTheStoreVariable.
+	require.Len(t, user.Exec.Env, 2)
+	assert.Equal(t, clientcmdapi.ExecEnvVar{Name: config.EnvConfigDir, Value: config.CanonicalDir(dir)}, user.Exec.Env[0])
+	assert.Equal(t, config.EnvCredentialStore, user.Exec.Env[1].Name)
+	assert.Equal(t, "install the rancher CLI: https://github.com/rancher/rancher-cli", user.Exec.InstallHint)
 }
 
 func TestKubeconfigExecArgsOmitCacertWhenNoCA(t *testing.T) {
@@ -280,8 +310,12 @@ func TestKubeconfigEnvOnlySession(t *testing.T) {
 	dir := t.TempDir() // no config.yaml at all - no stored context, no stored server
 
 	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
-	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-env"}}, nil)
+	var notices bytes.Buffer
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-env"}}, ui.New(&notices, nil, true, false))
 	require.NoError(t, err)
+	// Nothing stored answers for the file: the notice names the ways to get
+	// a login (the prompter here expands no remedy, so they read plain).
+	assert.Contains(t, notices.String(), "no stored login in "+config.CanonicalDir(dir)+" answers for this kubeconfig")
 
 	kc, err := clientcmd.Load(res.RawBytes)
 	require.NoError(t, err)
@@ -340,12 +374,13 @@ func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {
 func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
+	writeLoggedIn(t, dir)
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
 	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, p)
 	require.NoError(t, err)
-	assert.Empty(t, errBuf.String())
+	assertOnlyMachineNotice(t, errBuf.String(), dir)
 }
 
 func TestKubeconfigOmitsCADataWhenUnconfigured(t *testing.T) {
@@ -372,6 +407,7 @@ func (f stubFactory) ImpersonatedCluster(ctx context.Context, id string, _ engin
 func TestKubeconfigDirectFQDNContextIsCurrent(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
+	writeLoggedIn(t, dir)
 	ca := testCAPEM(t)
 	objects, lists := aceObjects("c-abc", "ace.example.test", ca)
 	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"webprod": "c-abc"}, objects: objects, lists: lists})
@@ -387,7 +423,7 @@ func TestKubeconfigDirectFQDNContextIsCurrent(t *testing.T) {
 	assert.Equal(t, "prod-c-abc-fqdn", kc.CurrentContext)
 	assert.True(t, kc.AuthInfos["prod-c-abc"].Exec.ProvideClusterInfo)
 	assert.Equal(t, "https://r.example.com/k8s/clusters/c-abc", kc.Clusters["prod-c-abc"].Server, "the proxy context is still present")
-	assert.Empty(t, notices.String())
+	assertOnlyMachineNotice(t, notices.String(), dir)
 }
 
 // TestKubeconfigDirectNodeContexts asserts one context per control-plane
@@ -458,10 +494,11 @@ func TestKubeconfigDirectOmittedIsOneNotice(t *testing.T) {
 
 // TestKubeconfigDirectEndpointOffIsUnchanged asserts a cluster without the
 // endpoint yields today's file: one context, no provideClusterInfo, no
-// notice.
+// notice but the one naming what the file records of this machine.
 func TestKubeconfigDirectEndpointOffIsUnchanged(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
+	writeLoggedIn(t, dir)
 	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
 	var notices bytes.Buffer
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-abc"}}, ui.New(&notices, nil, true, false))
@@ -469,5 +506,5 @@ func TestKubeconfigDirectEndpointOffIsUnchanged(t *testing.T) {
 	kc := loadKubeconfig(t, res)
 	require.Len(t, kc.Contexts, 1)
 	assert.False(t, kc.AuthInfos["prod-c-abc"].Exec.ProvideClusterInfo)
-	assert.Empty(t, notices.String())
+	assertOnlyMachineNotice(t, notices.String(), dir)
 }

@@ -229,6 +229,9 @@ func (tokenCmd) Describe() runtime.Descriptor {
 		// being silently ignored.
 		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table", "json"}},
 		Shape:        runtime.ShapeExecJSON,
+		// kubectl runs the plugin with the directory its exec entry names,
+		// which the operator's shell does not carry.
+		RemedyConfigDir: true,
 	}
 }
 
@@ -275,7 +278,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		}
 	}
 
-	return t.runWithParams(ctx, runParams{
+	res, err := t.runWithParams(ctx, runParams{
 		Server:        flagServer,
 		Name:          name,
 		Cluster:       in.String("cluster"),
@@ -285,6 +288,10 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		ProbedKey:     flagKey,
 		ProbedNoticed: noticed,
 	}, p)
+	if err != nil {
+		return res, t.withStoreConflictSteps(err, flagServer, name, in.String("cluster"))
+	}
+	return res, nil
 }
 
 // runWithParams runs the full get-token flow (config resolution, cache,
@@ -544,7 +551,7 @@ func (t tokenCmd) resumeCacheWrites(entry string, p runtime.Prompter) {
 	if err == nil && res.Tried {
 		// With the lock taken, a pause that stays is one only another
 		// command or the operator can clear, and config status names what.
-		msg += " (see `rancher config status`)"
+		msg += " (see `" + config.StatusCommand + "`)"
 	}
 	p.Notice(msg)
 }
@@ -1613,7 +1620,7 @@ func isLoginIncomplete(err error) bool {
 // A plugin login entry is a candidate only while the token-reuse setting is
 // on. ignoreCurrentContext is the shim's flag-driven mode: no
 // current-server preference, and the error's remedy is the shim's.
-func storedTokenForServer(cfg *config.Config, store config.CredStore, server, identified, clusterID string, ignoreCurrentContext bool) (storedCredential, bool, error) {
+func storedTokenForServer(cfg *config.Config, store CredentialReader, server, identified, clusterID string, ignoreCurrentContext bool) (storedCredential, bool, error) {
 	if identified != "" {
 		return identifiedCredential(cfg, store, server, identified)
 	}
@@ -1621,7 +1628,7 @@ func storedTokenForServer(cfg *config.Config, store config.CredStore, server, id
 }
 
 // rankedCredential is the lookup for a call that named no entry.
-func rankedCredential(cfg *config.Config, store config.CredStore, server, clusterID string, ignoreCurrentContext bool) (storedCredential, bool, error) {
+func rankedCredential(cfg *config.Config, store CredentialReader, server, clusterID string, ignoreCurrentContext bool) (storedCredential, bool, error) {
 	candidates := cfg.MatchingServerNames(server)
 	if !cfg.TokenReuse {
 		candidates = slices.DeleteFunc(candidates, func(n string) bool {
@@ -1793,28 +1800,28 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 		p.Notice(fmt.Sprintf("config unreadable: %v - skipping token creation from the stored credential", err))
 		return Token{}, false, config.CacheBinding{}, errNoStoredCredential
 	}
-	identified, ierr := identifyEntry(cfg, server, wantName, clusterID, ignoreCurrentContext)
-	if ierr != nil {
-		return Token{}, cfg.TokenReuse, config.CacheBinding{}, ierr
+	lookup := lookupStoredLogin(cfg, t.store, server, wantName, clusterID, ignoreCurrentContext, t.resolved)
+	if lookup.identifiedErr {
+		return Token{}, cfg.TokenReuse, config.CacheBinding{}, lookup.Err
 	}
-	if t.resolved.known && t.resolved.name != identified {
-		return Token{}, cfg.TokenReuse, config.CacheBinding{}, configChangedError(t.resolved.name, identified)
-	}
+	identified := lookup.Identified
 	// Every record this call leads to is made after a read of t.store,
 	// the stored credential's or the interactive fallback's because the
 	// store held nothing, so each binding names that store; which backend
-	// it read is asked at the write, once the read has fixed it.
+	// it read is asked at the write, once the read has fixed it. The
+	// binding is built from this load alone, so building it after the read
+	// changes nothing.
 	binding := config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, "", ignoreCurrentContext).ReadFrom(t.store)
-	sc, ok, serr := storedTokenForServer(cfg, t.store, server, identified, clusterID, ignoreCurrentContext)
-	if serr != nil {
+	switch lookup.Outcome {
+	case LookupRefused, LookupReadFailed:
 		// A hard store/helper failure (missing binary, timeout, malformed
 		// response, version mismatch, backend outage) must surface, never be
 		// papered over by falling through to interactive auth.
-		return Token{}, cfg.TokenReuse, binding, serr
-	}
-	if !ok {
+		return Token{}, cfg.TokenReuse, binding, lookup.Err
+	case LookupNone:
 		return Token{}, cfg.TokenReuse, binding, errNoStoredCredential
 	}
+	sc := lookup.cred
 	// The entry that answered decides the binding: the identified entry's
 	// own credential binds the record to that entry alone, and so does a
 	// sign-in after the server rejects it.
@@ -1887,7 +1894,7 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
 		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):
-		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%v); falling back to interactive login; refresh it with: rancher auth login %s", sc.name, err, clierr.ShellQuote(sc.name)))
+		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%v); falling back to interactive login; refresh it with: "+clierr.Rancher+" auth login %s", sc.name, err, clierr.ShellQuote(sc.name)))
 		return errStoredCredentialRejected
 	}
 	return err

@@ -128,7 +128,7 @@ func (u Unpinned) Err() error {
 	}
 	logouts := make([]string, 0, len(u.FileEntries))
 	for _, e := range u.FileEntries {
-		logouts = append(logouts, "rancher auth logout "+clierr.ShellQuote(e))
+		logouts = append(logouts, LogoutHintFor(e))
 	}
 	msg := fmt.Sprintf(
 		"this config directory has credentials in the keychain (%s) and in the plaintext file %s (%s), and nothing records which of the two is current, so neither is read; log out the entries in the store you do not want to keep, then run this command again - to keep the keychain, which holds no plaintext, run %s; a keychain entry's logout needs the keychain reachable; or use a different --config",

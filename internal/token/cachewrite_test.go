@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -270,7 +271,7 @@ func TestAMissOnAPausedEntryResumesWhatNobodyCleared(t *testing.T) {
 				return
 			}
 			assert.Contains(t, notices.String(), "not caching: a credential change for prod has not finished")
-			assert.Equal(t, tc.status, strings.Contains(notices.String(), "(see `rancher config status`)"))
+			assert.Equal(t, tc.status, strings.Contains(notices.String(), "(see `"+clierr.Rancher+" config status`)"))
 		})
 	}
 }

@@ -37,7 +37,7 @@ func (p *TransitionPlan) ID() string { return p.manifest.ID }
 func transitionRefusal(msg string, entries []string) error {
 	err := clierr.New(clierr.CodeValidation, msg)
 	if len(entries) == 1 {
-		return err.WithHint("rancher auth logout " + clierr.ShellQuote(entries[0]))
+		return err.WithHint(LogoutHintFor(entries[0]))
 	}
 	return err
 }
@@ -110,7 +110,7 @@ func CheckTransitionSources(dir string, cfg *Config, loginEntry, from, to string
 		// out does not stop the helper answering for it, so the remedies
 		// are another directory for the new store or removing the entry.
 		return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"a login changes the store of its own credential only, and the credential helper %s may answer for %s, which would then read a store that holds nothing for %s; keep this directory on the helper and use a different --config for the new store, or remove %s with rancher config delete-server <name>, then run this command again",
+			"a login changes the store of its own credential only, and the credential helper %s may answer for %s, which would then read a store that holds nothing for %s; keep this directory on the helper and use a different --config for the new store, or remove %s with "+DeleteServerCommand+" <name>, then run this command again",
 			helper, strings.Join(others, ", "), pronounFor(others), pronounFor(others)))
 	}
 	if err := helperDestinationRefusal(to, others); err != nil {
@@ -214,7 +214,7 @@ func helperDestinationRefusal(to string, others []string) error {
 		each = "each of them"
 	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"a login changes the store of its own credential only, and the credential helper %s may answer for %s: after the change %s would be served a credential it never logged in with; keep this directory where it is and use a different --config for the helper, or remove %s with rancher config delete-server <name>, then run this command again",
+		"a login changes the store of its own credential only, and the credential helper %s may answer for %s: after the change %s would be served a credential it never logged in with; keep this directory where it is and use a different --config for the helper, or remove %s with "+DeleteServerCommand+" <name>, then run this command again",
 		helper, strings.Join(others, ", "), each, pronounFor(others)))
 }
 

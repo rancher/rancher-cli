@@ -185,7 +185,7 @@ func TestTransitionUnsafeOrUnreadableIsTerminal(t *testing.T) {
 			require.ErrorContains(t, err, transitionFileName)
 			require.ErrorContains(t, err, "no credential was read or written")
 			require.ErrorContains(t, err, tc.want)
-			assert.Equal(t, "rancher config status", ce.Hint, "the report that shows the file and why it cannot be used")
+			assert.Equal(t, clierr.Rancher+" config status", ce.Hint, "the report that shows the file and why it cannot be used")
 
 			after, aerr := os.Lstat(TransitionPath(dir))
 			require.NoError(t, aerr, "the file is left for the operator to inspect")
@@ -410,7 +410,7 @@ func TestTransitionIncompleteNamesTheStepAndItsError(t *testing.T) {
 	require.ErrorContains(t, err, "delete staging")
 	require.ErrorContains(t, err, "the keychain is locked")
 	require.ErrorContains(t, err, "run this command again")
-	assert.Equal(t, "rancher config status", ce.Hint, "the report that shows every step left")
+	assert.Equal(t, clierr.Rancher+" config status", ce.Hint, "the report that shows every step left")
 
 	// A step with no entry and no recorded error still says what is left.
 	bare := transitionIncomplete(transitionStep{Kind: transitionPin})
@@ -436,7 +436,7 @@ func TestWriteTransitionNeverReplacesADifferentChange(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorContains(t, err, "already recorded")
 	require.ErrorContains(t, err, transitionFileName)
-	assert.Equal(t, "rancher config status", ce.Hint, "the report that shows the change that is there")
+	assert.Equal(t, clierr.Rancher+" config status", ce.Hint, "the report that shows the change that is there")
 
 	got, rerr := readTransition(dir)
 	require.NoError(t, rerr)

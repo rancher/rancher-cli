@@ -417,7 +417,7 @@ func TestGetNamedNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "user not found: u-xxx", ce.Message)
-	assert.Equal(t, "list with: rancher get users", ce.Hint)
+	assert.Equal(t, "list with: "+clierr.Rancher+" get users", ce.Hint)
 }
 
 // TestGetWaitNotFoundCurated asserts that the --wait path surfaces a curated
@@ -438,7 +438,7 @@ func TestGetWaitNotFoundCurated(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "cluster not found: missing", ce.Message)
-	assert.Equal(t, "list with: rancher get clusters", ce.Hint)
+	assert.Equal(t, "list with: "+clierr.Rancher+" get clusters", ce.Hint)
 }
 
 // TestGetNamedNotFoundWithHintPassesThrough asserts the has-hint guard: a

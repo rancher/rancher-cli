@@ -199,7 +199,7 @@ func identityError(dir, entry, problem string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential identity record for %s is %s: %s; note the id it holds, delete any %s keychain entry whose account name starts with that id, then delete the file and log in again",
 		clierr.ShellQuote(entry), problem, path, keyringService)).
-		WithHint("rancher auth login " + clierr.ShellQuote(entry)).
+		WithHint(LoginHintFor(entry)).
 		WithCause(ErrCredentialIdentity)
 }
 
@@ -211,7 +211,7 @@ func identityListError(dir, name, problem string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential identity record %s %s; move it aside and log in again - until then no server in this directory can be logged out",
 		filepath.Join(identityDirPath(dir), name), problem)).
-		WithHint("rancher auth login").
+		WithHint(LoginCommand).
 		WithCause(ErrCredentialIdentity)
 }
 
@@ -222,7 +222,7 @@ func identityDirError(dir, problem string) error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential identity directory %s is %s; move it aside and log in again",
 		identityDirPath(dir), problem)).
-		WithHint("rancher auth login").
+		WithHint(LoginCommand).
 		WithCause(ErrCredentialIdentity)
 }
 

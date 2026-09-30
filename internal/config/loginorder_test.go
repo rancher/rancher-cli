@@ -274,7 +274,7 @@ func TestActivationThatLosesTheManifestIsANamedState(t *testing.T) {
 				// read's own cause says what to do with it.
 				ce, ok := errorsAsClierr(err)
 				require.True(t, ok)
-				assert.Equal(t, "rancher config status", ce.Hint, "the report that shows the file and why it cannot be used")
+				assert.Equal(t, clierr.Rancher+" config status", ce.Hint, "the report that shows the file and why it cannot be used")
 			}
 			assert.Equal(t, clierr.ConfigTransitionLost, out.ConfigState)
 			assert.Equal(t, "id:new", keychainTokenFor(t, dir, "prod"), "the credential is committed and stays committed")
@@ -446,7 +446,7 @@ func TestWhenTheOldCopyAndThePinBothFailTheLoginStopsPaused(t *testing.T) {
 	assert.Equal(t, clierr.ConfigStoreChangeNotApplied, out.ConfigState)
 	ce, ok := errorsAsClierr(err)
 	require.True(t, ok)
-	assert.Equal(t, "rancher auth login 'prod'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth login 'prod'", ce.Hint)
 
 	cfg, lerr := Load(FilePath(dir))
 	require.NoError(t, lerr)
@@ -643,7 +643,7 @@ func TestALoginThatNamesAStoreChangesOnlyItsOwnCredential(t *testing.T) {
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		require.ErrorContains(t, err, "a login changes the store of its own credential only")
 		require.ErrorContains(t, err, "the credential of staging is still in the plaintext file")
-		assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+		assert.Equal(t, clierr.Rancher+" auth logout 'staging'", ce.Hint)
 	}
 	refused(t, loginRefusal(dir, cfg, "prod", in.Policy, in.Declaration))
 	_, err := PersistLoginCredential(t.Context(), dir, in)
@@ -703,7 +703,7 @@ func TestAChangeIntoTheFileStoreMovesNoOtherEntry(t *testing.T) {
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		require.ErrorContains(t, err, "a login changes the store of its own credential only")
 		require.ErrorContains(t, err, "the credential of staging is still in the keychain")
-		assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+		assert.Equal(t, clierr.Rancher+" auth logout 'staging'", ce.Hint)
 	}
 
 	refused(t, loginRefusal(dir, cfg, "prod", in.Policy, in.Declaration))
@@ -778,7 +778,7 @@ func TestAnEntryInBothStoresRefusesTheChange(t *testing.T) {
 		require.True(t, ok, from)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		require.ErrorContains(t, err, want)
-		assert.Equal(t, "rancher auth logout "+clierr.ShellQuote("other"), ce.Hint, "one entry gets the one command that settles it")
+		assert.Equal(t, clierr.Rancher+" auth logout "+clierr.ShellQuote("other"), ce.Hint, "one entry gets the one command that settles it")
 	}
 }
 
@@ -999,7 +999,7 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 				}
 			}
 			require.NotEmpty(t, line)
-			assert.Contains(t, line, "hint: rancher config status", "the report that shows the step")
+			assert.Contains(t, line, "hint: "+clierr.Rancher+" config status", "the report that shows the step")
 			if tc.fails {
 				return
 			}

@@ -22,7 +22,29 @@ const fileName = "config.yaml"
 // executable-hint contract (a machine hint is a complete command, never a
 // placeholder).
 func LoginHintFor(name string) string {
-	return "rancher auth login " + clierr.ShellQuote(name)
+	return LoginCommand + " " + clierr.ShellQuote(name)
+}
+
+// The remedy commands the shared credential and store-change code names,
+// each opened by clierr.Rancher so the invocation that prints it can name
+// its config directory.
+const (
+	// LoginCommand logs in; LoginHintFor names the entry.
+	LoginCommand = clierr.Rancher + " auth login"
+	// DeleteServerCommand removes a server entry; the entry follows.
+	DeleteServerCommand = clierr.Rancher + " config delete-server"
+	// TokenReuseOffCommand turns token reuse off.
+	TokenReuseOffCommand = clierr.Rancher + " config set-token-reuse off"
+	// StatusCommand reports the directory's state, a store change's
+	// included: the hint of every error about a store change that no other
+	// command fixes, since its report shows the change record, what is left
+	// and why it stopped.
+	StatusCommand = clierr.Rancher + " config status"
+)
+
+// LogoutHintFor is the command that logs out entry name.
+func LogoutHintFor(name string) string {
+	return clierr.Rancher + " auth logout " + clierr.ShellQuote(name)
 }
 
 // ErrNotLoggedIn builds the standard not-logged-in error for callers that
@@ -54,7 +76,7 @@ func (c *Config) ErrNotLoggedIn() *clierr.Error {
 func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 	if len(servers) == 0 {
 		return clierr.New(clierr.CodeNotLoggedIn,
-			"not logged in and no "+EnvURL+" set; add a server with: rancher auth login --url <url>")
+			"not logged in and no "+EnvURL+" set; add a server with: "+clierr.Rancher+" auth login --url <url>")
 	}
 	names := make([]string, 0, len(servers))
 	for n := range servers {
@@ -71,7 +93,7 @@ func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 	}
 	return clierr.New(clierr.CodeNotLoggedIn,
 		"not logged in - no current server; configured servers: "+strings.Join(names, ", ")+
-			"; select one with: rancher config use-server <name>").
+			"; select one with: "+clierr.Rancher+" config use-server <name>").
 		WithCandidates(cands)
 }
 

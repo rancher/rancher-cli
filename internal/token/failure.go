@@ -65,7 +65,7 @@ func credentialRecoveryFor(st LoginStates, server string) *clierr.CredentialReco
 	return &clierr.CredentialRecovery{
 		Backend: st.Commit.Backend, State: state, PriorSource: st.Commit.PriorSource,
 		HelperRecordRetained: st.Commit.HelperRecordRetained, CompensationError: st.CompensationError,
-		Command: "rancher auth logout " + clierr.ShellQuote(server), DataLossRisk: clierr.DataLossRiskText(server),
+		Command: clierr.Rancher + " auth logout " + clierr.ShellQuote(server), DataLossRisk: clierr.DataLossRiskText(server),
 	}
 }
 
@@ -208,7 +208,7 @@ func reLogin(server string) (text, hint string) {
 	if config.IsExecLoginEntryName(server) {
 		return "run the kubectl command again; the exec plugin logs in when token reuse is on", ""
 	}
-	cmd := "rancher auth login " + clierr.ShellQuote(server)
+	cmd := clierr.Rancher + " auth login " + clierr.ShellQuote(server)
 	return "log in again with: " + cmd, cmd
 }
 
@@ -221,6 +221,7 @@ func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool)
 	switch {
 	case f.Ref != nil:
 		_, revoke := clierr.RecoveryCommands(*f.Ref)
+		revoke = clierr.MarkRemedy(revoke)
 		if persisted {
 			return fmt.Sprintf("revoke %s with: %s", f.Ref.String(), revoke), revoke
 		}
@@ -236,7 +237,7 @@ func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool)
 		var lists []string
 		for _, k := range kinds {
 			list, _ := clierr.RecoveryCommands(clierr.TokenRef{Kind: k})
-			lists = append(lists, list)
+			lists = append(lists, clierr.MarkRemedy(list))
 		}
 		prefix := ""
 		if !persisted {
@@ -263,7 +264,7 @@ func unmarkedSessionText(s clierr.UnmarkedTokenSearch) string {
 	return fmt.Sprintf("a session token may have been created through %s %s; the CLI stopped waiting at %s, "+
 		"but the browser sign-in can still complete after that, so the token may be newer; "+
 		"these facts narrow the candidates but cannot identify one token; "+
-		"inspect them with: rancher get management-tokens -o json, or in the UI under Account & API Keys",
+		"inspect them with: "+clierr.Rancher+" get management-tokens -o json, or in the UI under Account & API Keys",
 		s.AuthProvider, window, s.PollEndedAt)
 }
 

@@ -91,7 +91,7 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
-		assert.Equal(t, "rancher auth login 'qa1'", ce.Hint)
+		assert.Equal(t, clierr.Rancher+" auth login 'qa1'", ce.Hint)
 		assert.Equal(t, `not logged in to "qa1"`, ce.Message, "nothing more while no change is unfinished")
 	})
 	for _, tc := range []struct {
@@ -101,11 +101,11 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		note   string
 	}{
 		{"a tokenless server while a store change is unfinished keeps the login hint and names the change",
-			"version: 1\nid: " + changeID + "\nsteps:\n- kind: pin\n  target: file\n", "rancher auth login 'qa1'",
-			"; a credential store change is unfinished; run rancher config status to see it"},
+			"version: 1\nid: " + changeID + "\nsteps:\n- kind: pin\n  target: file\n", clierr.Rancher + " auth login 'qa1'",
+			"; a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"},
 		{"a tokenless server while the change record cannot be read names the report as the hint",
-			"not: [yaml", "rancher config status",
-			"; the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run rancher config status to see it; after that: rancher auth login 'qa1'"},
+			"not: [yaml", clierr.Rancher + " config status",
+			"; the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + clierr.Rancher + " config status to see it; after that: " + clierr.Rancher + " auth login 'qa1'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := RESTConfig(tokenlessWithChange(t, tc.record), "local")

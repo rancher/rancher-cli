@@ -877,7 +877,7 @@ func TestAuthCheckNotLoggedInNamesKnownServers(t *testing.T) {
 	assert.Contains(t, ce.Message, "not logged in")
 	// The hinted command must be complete and valid verbatim: a concrete,
 	// shell-quoted name, executable with no substitution.
-	assert.Equal(t, "rancher auth login 'default'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth login 'default'", ce.Hint)
 }
 
 // TestAuthCheckReportsCredentialProvenance asserts auth status names the

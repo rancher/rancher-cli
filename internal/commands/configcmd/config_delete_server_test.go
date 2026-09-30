@@ -371,7 +371,7 @@ func TestConfigDeleteServerRunsFromConfigRecoveryCommandAndNamesAnUnwritableDir(
 	restore()
 	require.Error(t, err)
 	require.NotNil(t, out.ConfigRecovery)
-	name := strings.Trim(strings.TrimPrefix(out.ConfigRecovery.Command, "rancher config delete-server "), "'")
+	name := strings.Trim(strings.TrimPrefix(clierr.ExpandRemedies(out.ConfigRecovery.Command, ""), "rancher config delete-server "), "'")
 	cmd := NewConfigDeleteServer(dir).(runtime.ReadCommand)
 	_, err = cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{name}}, ui.Discard())
 	require.NoError(t, err)

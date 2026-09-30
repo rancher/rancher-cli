@@ -452,15 +452,20 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 			if bare {
 				cmd = make(runDeps{version: version})
 			} else {
-				dir, store, anchor, err := resolveDeps(c)
+				// One resolution: the directory the command opens is the
+				// one its remedies name, set before the config load. No load
+				// error carries a remedy today; the order covers any later
+				// one, and a test holds it.
+				dir, err := config.ResolveDir(c.String("config"))
 				if err != nil {
-					// Render before exiting, like the Before hook above: a
-					// bare exit here would fail non-zero with an empty
-					// stderr. Flags have already parsed successfully, so
-					// the invocation's own --output value is trusted.
-					ce := clierr.New(clierr.CodeGeneric, err.Error())
-					_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
-					return exit(ce)
+					return renderDepsError(c, io, err)
+				}
+				if d.RemedyConfigDir {
+					io.RemedyDir = remedyDirFor(dir)
+				}
+				store, anchor, err := openDirectory(dir)
+				if err != nil {
+					return renderDepsError(c, io, err)
 				}
 				// The store is the drain handle for every notice recorded
 				// outside a Result (a loose-permission finding, a keychain

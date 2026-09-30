@@ -70,7 +70,7 @@ func mapErr(err error) error {
 		// message names both; which cluster to inspect is unknown here, so
 		// no hint names one.
 		return clierr.Retryable(clierr.CodeGeneric,
-			err.Error()+" - the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected (check with: rancher inspect cluster <cluster-id>)")
+			err.Error()+" - the server may be slow, or, if the target is a downstream cluster, its agent may be disconnected (check with: "+InspectClusterRemedy+")")
 	case isUnexpectedServerError(err):
 		msg := err.Error()
 		// The substring refines the message only - it is never the classifier,
@@ -87,6 +87,14 @@ func mapErr(err error) error {
 	}
 }
 
+// InspectClusterRemedy and AuthStatusRemedy are the commands the error
+// mapping names: the cluster's own state when a read timed out, the
+// session's when the server refused it.
+const (
+	InspectClusterRemedy = clierr.Rancher + " inspect cluster <cluster-id>"
+	AuthStatusRemedy     = clierr.Rancher + " auth status"
+)
+
 // withDeniedFallback substitutes deniedFallbackMessage(status) and a hint
 // pointing at `rancher auth status` when ce's message is empty or
 // whitespace-only, otherwise returns ce untouched.
@@ -95,7 +103,7 @@ func withDeniedFallback(ce *clierr.Error, status int) *clierr.Error {
 		return ce
 	}
 	ce.Message = deniedFallbackMessage(status)
-	return ce.WithHint("rancher auth status")
+	return ce.WithHint(AuthStatusRemedy)
 }
 
 // isGatewayError reports a 502 or 504 StatusError; both are retryable

@@ -3,6 +3,7 @@ package kubeconfig
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"k8s.io/client-go/tools/clientcmd"
@@ -12,9 +13,13 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
+
+// canonicalDir is config.CanonicalDir behind a package var, so a test can
+// make the directory impossible to make absolute (a removed working
+// directory on Linux) without changing the process's own.
+var canonicalDir = config.CanonicalDir
 
 type kubeconfigCmd struct {
 	dir     string
@@ -38,12 +43,18 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 			"feature is on, the file also carries the direct contexts Rancher's own kubeconfig carries: <entry>-fqdn when the endpoint " +
 			"names an fqdn, else one <entry>-<node> per control-plane node, and the direct context is current. When those contexts " +
 			"cannot be derived (the endpoint's feature is off, the nodes cannot be read, no control-plane node has an address), the " +
-			"proxy-only file is printed and one notice on stderr says why.",
+			"proxy-only file is printed and one notice on stderr says why. The user entry's env records this config directory, absolute, " +
+			"and RANCHER_CLI_CREDENTIAL_STORE (empty when the directory declares its store, else the value set now), so the file works " +
+			"for this user on this machine only; notices on stderr say so, and name the stored login kubectl's exec plugin will use when " +
+			"it is not this session's. installHint says how to install rancher, or how to regenerate the file for another --exec-command.",
 		Flags: []runtime.ArgSpec{
 			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` to generate the kubeconfig for"},
+			{Name: "exec-command", Type: "string", Desc: "`command` kubectl runs for the exec plugin: a name looked up on PATH where kubectl runs, or a path, " +
+				"made absolute from the working directory (a leading ~ is the home directory); default rancher"},
 		},
 		Examples: []string{
 			"rancher kubeconfig --cluster prod > prod.yaml",
+			"rancher kubeconfig --cluster prod --exec-command ~/bin/rancher > prod.yaml",
 		},
 		CommandType: runtime.Local,
 		Network:     true,
@@ -53,6 +64,9 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 		// and then ignore it (the create kubeconfig precedent).
 		OutputPolicy: runtime.OutputPolicy{AllowedFormats: []string{"table"}},
 		Shape:        runtime.ShapeBytes,
+		// The file it writes names this directory, and its remedies are
+		// read where that directory may not be the shell's.
+		RemedyConfigDir: true,
 	}
 }
 
@@ -79,6 +93,18 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	id := in.String("cluster")
 	if id == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required")
+	}
+	execValue := in.String("exec-command")
+	command, commandIsPath, err := execCommand(execValue, execValue != "" || in.IsSet("exec-command"))
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	// The exec entry names the directory absolute, so kubectl's working
+	// directory and environment never choose another one; it is the form
+	// a cache record carries.
+	dir := canonicalDir(c.dir)
+	if dir == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, fmt.Sprintf("the config directory %s cannot be made absolute", clierr.ShellQuote(c.dir)))
 	}
 	id, err = c.clients.ResolveCluster(ctx, id)
 	if err != nil {
@@ -138,13 +164,16 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		return runtime.Result{}, err
 	}
 
+	store := recordedStore(cfg)
 	kc := clientcmdapi.Config{
 		Clusters: map[string]*clientcmdapi.Cluster{entryName: cluster},
 		AuthInfos: map[string]*clientcmdapi.AuthInfo{entryName: {
 			Exec: &clientcmdapi.ExecConfig{
 				APIVersion:      "client.authentication.k8s.io/v1beta1",
-				Command:         "rancher",
+				Command:         command,
 				Args:            execArgs,
+				Env:             execEnv(dir, store),
+				InstallHint:     installHint(command, eff.ServerName, id, dir, base, caPEM != ""),
 				InteractiveMode: clientcmdapi.IfAvailableExecInteractiveMode,
 				// With a direct context in the file the plugin must learn
 				// which server kubectl is about to use, so it can wait for
@@ -173,9 +202,18 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	if len(direct.Omitted) > 0 && p != nil {
 		reasons := make([]string, len(direct.Omitted))
 		for i, r := range direct.Omitted {
-			reasons[i] = output.Printable(r)
+			// A reason can relay a remedy (a timed-out read names
+			// rancher inspect cluster), which the prompter expands.
+			reasons[i] = runtime.PrintableRemedies(r)
 		}
 		p.Notice("direct endpoint contexts omitted: " + strings.Join(reasons, "; "))
+	}
+	if p != nil {
+		if n := lookupNotice(lookupCall{cfg: cfg, dir: dir, server: base, serverID: config.CanonicalServerIdentity(base),
+			name: entryName, clusterID: id, ca: caPEM, eff: eff, envToken: os.Getenv(config.EnvToken) != "", store: c.store}); n != "" {
+			p.Notice(n)
+		}
+		p.Notice(machineNotice(dir, store, command, commandIsPath))
 	}
 
 	b, err := clientcmd.Write(kc)

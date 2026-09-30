@@ -380,7 +380,11 @@ func (d LoginFailureDetails) TextDetails() []string {
 		lines = append(lines, fateLine("cluster token", d.ClusterToken))
 	}
 	if d.ConfigRecovery != nil {
-		lines = append(lines, "config entry "+d.ConfigRecovery.Entry+" could not be restored; remove it with: "+d.ConfigRecovery.Command)
+		line := "config entry " + d.ConfigRecovery.Entry + " could not be restored"
+		if d.ConfigRecovery.Command != "" {
+			line += "; remove it with: " + d.ConfigRecovery.Command
+		}
+		lines = append(lines, line)
 		if d.ConfigRecovery.Prior != nil {
 			lines = append(lines, "  prior entry: "+d.ConfigRecovery.Prior.text())
 		}

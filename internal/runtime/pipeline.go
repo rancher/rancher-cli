@@ -74,6 +74,16 @@ type IO struct {
 	// renderEffect, renderErr, and finishOnceOnlyResult each drain it
 	// exactly once, feeding the one render they own.
 	Notices NoticeSource
+
+	// RemedyDir is the config directory every remedy command this
+	// invocation prints names with --config, absolute where it can be made
+	// so; "" for a command whose remedies name none. Set by the CLI layer
+	// for the commands whose directory can come from somewhere the
+	// operator's shell does not carry (Descriptor.RemedyConfigDir). The
+	// renderers of this invocation - errors, warnings and the prompter's
+	// notices - write it after the word rancher in every remedy command
+	// (clierr.RemedyMarker); it is never a process-wide value.
+	RemedyDir string
 }
 
 // NoticeSource drains buffered operator-facing notices in the order they
@@ -248,7 +258,7 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 
 // runRead executes a read command.
 func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
-	p := ui.New(streams.Err, streams.In, streams.NoInput, streams.IsTTY)
+	p := ui.New(streams.Err, streams.In, streams.NoInput, streams.IsTTY).WithNoticeRewrite(streams.ExpandText)
 	res, err := c.Execute(ctx, in, p)
 	if err != nil {
 		return 0, renderErr(streams, toClierr(ctx, err))
@@ -611,8 +621,9 @@ func mirrorWarnings(w io.Writer, warnings []string, silent map[string]int, s sty
 // act on it.
 func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error) {
 	outStyle, errStyle := stylesFor(streams)
-	notices := drainNotices(streams)
-	res.Warnings = append(append([]string{}, notices...), res.Warnings...)
+	notices := streams.expandAll(drainNotices(streams))
+	res.Warnings = append(append([]string{}, notices...), streams.expandAll(res.Warnings)...)
+	res.OnceOnlyNotice = streams.ExpandText(res.OnceOnlyNotice)
 
 	if ce := checkResultShape(d, res, streams.Format); ce != nil {
 		return notices, ce
@@ -656,7 +667,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 		if d.Delivery == DeliveryOnceOnly {
 			text = boldShownOnceLine(text, outStyle)
 		}
-		if _, err := streams.Out.Write([]byte(text)); err != nil {
+		if _, err := streams.Out.Write([]byte(plainRemedies(text))); err != nil {
 			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
 		// Mirror every Warnings entry to stderr except OnceOnlyNotice
@@ -702,11 +713,11 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// "table" and "wide" - `get --wait`'s wide output is table-family too,
 	// not a separate body, so the wait line belongs on it as well.
 	if textRenderFormat(streams.Format) && res.Summary != "" {
-		if _, err := fmt.Fprintln(streams.Out, res.Summary); err != nil {
+		if _, err := fmt.Fprintln(streams.Out, plainRemedies(res.Summary)); err != nil {
 			return notices, clierr.New(clierr.CodeGeneric, err.Error())
 		}
 	}
-	if err := output.RenderStyled(streams.Out, streams.Format, env, outStyle); err != nil {
+	if err := output.RenderStyled(plainRemedyWriter{streams.Out}, streams.Format, env, outStyle); err != nil {
 		return notices, clierr.New(clierr.CodeGeneric, err.Error())
 	}
 	// renderTable (output/render.go) only ever reads env.Data, so an
@@ -739,9 +750,9 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	// (reading the current server's CA, say); drain ahead of eff.Warnings
 	// so that notice is not silently stranded in the source until whatever
 	// later invocation happens to drain it.
-	eff.Warnings = append(drainNotices(streams), eff.Warnings...)
+	eff.Warnings = streams.expandAll(append(drainNotices(streams), eff.Warnings...))
 	if textRenderFormat(streams.Format) {
-		if _, err := streams.Out.Write([]byte(dryRunText(eff))); err != nil {
+		if _, err := streams.Out.Write([]byte(plainRemedies(dryRunText(eff)))); err != nil {
 			return clierr.New(clierr.CodeGeneric, err.Error())
 		}
 		// Effect.Warnings are deliberately excluded from dryRunText's body -
@@ -753,7 +764,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	}
 	env := output.NewEnvelope("Effect", eff)
 	env.Warnings = append(env.Warnings, eff.Warnings...)
-	if err := output.Render(streams.Out, streams.Format, env); err != nil {
+	if err := output.Render(plainRemedyWriter{streams.Out}, streams.Format, env); err != nil {
 		return clierr.New(clierr.CodeGeneric, err.Error())
 	}
 	// renderTable (render.go) encodes env.Data alone, so envelope-level
@@ -815,7 +826,7 @@ func renderErr(streams IO, ce *clierr.Error) *clierr.Error {
 // renderResult has already drained; every other error path goes through
 // renderErr.
 func renderErrDrained(streams IO, ce *clierr.Error, errStyle style.Style, notices []string) *clierr.Error {
-	_ = RenderErrorStyled(streams.Err, streams.Format, ce, errStyle, notices...)
+	_ = RenderErrorStyled(streams.Err, streams.Format, streams.ExpandError(ce), errStyle, streams.expandAll(notices)...)
 	return ce
 }
 
@@ -846,7 +857,13 @@ func RenderError(w io.Writer, format string, ce *clierr.Error, notices ...string
 // to RenderError regardless of s, the same eligibility rule RenderStyled
 // enforces for the table renderer.
 func RenderErrorStyled(w io.Writer, format string, ce *clierr.Error, s style.Style, notices ...string) error {
+	// A caller with an invocation expands its remedy commands first
+	// (IO.ExpandError); whatever is left is written as the plain command.
+	ce = ce.MapText(plainRemedies)
 	warnings := append(append([]string{}, notices...), ce.Warnings()...)
+	for i, warn := range warnings {
+		warnings[i] = plainRemedies(warn)
+	}
 	if envelopeCarriesWarnings(format) {
 		env := output.ErrorEnvelope(ce)
 		env.Warnings = warnings

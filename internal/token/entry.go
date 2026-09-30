@@ -49,7 +49,7 @@ func configChangedError(was, now string) *clierr.Error {
 // readEntryCredential reads one entry's stored login credential. A clean
 // miss - nothing stored, or a blank value - is (zero, false, nil); every
 // other store failure is returned as it came.
-func readEntryCredential(cfg *config.Config, store config.CredStore, name string) (storedCredential, bool, error) {
+func readEntryCredential(cfg *config.Config, store CredentialReader, name string) (storedCredential, bool, error) {
 	s := cfg.Servers[name]
 	ref := config.ServerRef{Name: name, URL: s.URL}
 	tok, err := store.GetToken(ref)
@@ -67,7 +67,7 @@ func readEntryCredential(cfg *config.Config, store config.CredStore, name string
 // any kind, is returned rather than answered by another entry. The one
 // fallback is the plugin's own login entry for the server, while token
 // reuse is on. A plugin login entry is never read with the setting off.
-func identifiedCredential(cfg *config.Config, store config.CredStore, server, identified string) (storedCredential, bool, error) {
+func identifiedCredential(cfg *config.Config, store CredentialReader, server, identified string) (storedCredential, bool, error) {
 	isPluginEntry := cfg.Servers[identified].Provenance == clierr.ProvenanceExecLogin
 	if isPluginEntry && !cfg.TokenReuse {
 		return storedCredential{}, false, nil
@@ -111,8 +111,8 @@ func pluginEntriesError(server string, names []string, cfg *config.Config) *clie
 		cands[i] = clierr.Candidate{ID: n, Name: cfg.Servers[n].URL}
 	}
 	return clierr.New(clierr.CodeAmbiguousSelection, fmt.Sprintf(
-		"more than one login entry the exec plugin created answers for %s (%s); keep one: for each other entry run rancher auth logout <entry>, then rancher config delete-server <entry>",
-		server, quotedList(names))).WithCandidates(cands)
+		"more than one login entry the exec plugin created answers for %s (%s); keep one: for each other entry run "+clierr.Rancher+" auth logout <entry>, then "+clierr.Rancher+" config delete-server <entry>",
+		server, quotedList(names))).WithCandidates(cands).WithCause(errLookupRefused)
 }
 
 // useServerRemedy names the command that selects entry (a quoted name, or
@@ -120,9 +120,9 @@ func pluginEntriesError(server string, names []string, cfg *config.Config) *clie
 // how to undo it.
 func useServerRemedy(entry, current string) string {
 	if current == "" {
-		return "rancher config use-server " + entry + " (this sets the directory's current server, which is unset now)"
+		return clierr.Rancher + " config use-server " + entry + " (this sets the directory's current server, which is unset now)"
 	}
-	return "rancher config use-server " + entry + " (this switches the directory's current server; switch back with rancher config use-server " + clierr.ShellQuote(current) + ")"
+	return clierr.Rancher + " config use-server " + entry + " (this switches the directory's current server; switch back with " + clierr.Rancher + " config use-server " + clierr.ShellQuote(current) + ")"
 }
 
 // entryNotNamedError is the refusal when a call names no entry and more than
@@ -148,7 +148,7 @@ func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID s
 	if clusterID != "" {
 		clusterArg, clusterSuffix = clierr.ShellQuote(clusterID), shellWordIfNeeded(clusterID)
 	}
-	regenerate := useServerRemedy("<entry>", cfg.CurrentServer) + ", then rancher kubeconfig --cluster " + clusterArg
+	regenerate := useServerRemedy("<entry>", cfg.CurrentServer) + ", then " + clierr.Rancher + " kubeconfig --cluster " + clusterArg
 	var msg string
 	if ignoreCurrentContext {
 		msg = fmt.Sprintf(
@@ -159,7 +159,7 @@ func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID s
 			"more than one server entry for %s has a stored login (%s) and this exec entry names none of them; give the exec entry --name <entry>-%s, or regenerate the kubeconfig from the entry you want with %s",
 			hits[0].entry.URL, quotedList(names), clusterSuffix, regenerate)
 	}
-	return clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands)
+	return clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands).WithCause(errLookupRefused)
 }
 
 // entryOnOtherServerError is the refusal when the entry a call names is
@@ -177,7 +177,7 @@ func entryOnOtherServerError(name, entryURL, server, clusterID, current string, 
 			entry, entryURL, server, entry, fromNamed))
 	}
 	return clierr.New(clierr.CodeConflict, fmt.Sprintf(
-		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, regenerate the kubeconfig from it with %s; to use %s, regenerate it from an entry registered there with %s, then rancher kubeconfig --cluster %s",
+		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, regenerate the kubeconfig from it with %s; to use %s, regenerate it from an entry registered there with %s, then "+clierr.Rancher+" kubeconfig --cluster %s",
 		entry, entryURL, server, entry, fromNamed, server, useServerRemedy("<entry>", current), cluster))
 }
 
@@ -186,7 +186,7 @@ func entryOnOtherServerError(name, entryURL, server, clusterID, current string, 
 // current server, log in to it if a URL change cleared its login, then write
 // the kubeconfig.
 func namedEntryRoute(name, entry, cluster, current string) string {
-	steps := "rancher auth login " + entry + " (if it has no login), then rancher kubeconfig --cluster " + cluster
+	steps := clierr.Rancher + " auth login " + entry + " (if it has no login), then " + clierr.Rancher + " kubeconfig --cluster " + cluster
 	if name == current {
 		return steps
 	}

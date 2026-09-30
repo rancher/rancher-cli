@@ -203,8 +203,8 @@ precedence is flag > environment > file.
 | `RANCHER_CLI_URL` | server URL |
 | `RANCHER_CLI_TOKEN` | token, used directly and never persisted |
 | `RANCHER_CLI_CACERT` | CA bundle (PEM) |
-| `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>`; chooses the store for a directory that has not declared one, and must not disagree with one that has (a different value is a VALIDATION error, not an override); a keychain directory reads the keychain only, so set `file` where no keychain is reachable |
-| `RANCHER_CLI_CONFIG_DIR` | config directory |
+| `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>`; chooses the store for a directory that has not declared one, and must not disagree with one that has (a different value is a VALIDATION error, not an override); a keychain directory reads the keychain only, so set `file` where no keychain is reachable. `rancher kubeconfig` sets it in the exec entry: empty for a directory that declares its store, else the value set when it ran |
+| `RANCHER_CLI_CONFIG_DIR` | config directory; `rancher kubeconfig` sets it, absolute, in every exec entry it writes |
 | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
 | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |
 | `RANCHER_CLI_CONFIG_NO_LOCK` | disables the config directory's cross-process write lock; escape hatch for filesystems with broken file locking |
@@ -355,7 +355,8 @@ If the installer cannot be used, install by hand:
    `rancher-credential-vault`.
 2. Rename them to `rancher.exe` and `rancher-credential-vault.exe`. Both
    names matter: the kubeconfig exec plugin invokes the bare command
-   `rancher`, and a credential store helper is invoked as
+   `rancher` (unless `rancher kubeconfig --exec-command` named another),
+   and a credential store helper is invoked as
    `rancher-credential-<name>` - on Windows, Go's process lookup only
    resolves a bare name against a `PATHEXT` extension (`.exe`) on `PATH`.
 3. Verify both executables against `SHA256SUMS` (PowerShell) - the
@@ -593,6 +594,36 @@ the identity the direct endpoint sees carries the user and
 `system:authenticated` only, without the `system:cattle:authenticated`
 group and the principal extras the proxy adds, so a binding on those
 groups decides differently on the two paths.
+
+The exec entry records what the file depends on. Its `env` sets
+`RANCHER_CLI_CONFIG_DIR` to the config directory `rancher kubeconfig` ran
+against, absolute, the default included, and `RANCHER_CLI_CREDENTIAL_STORE`
+to the empty value when that directory declares its store, else to the value
+set when it ran (or empty); kubectl adds the entry's `env` after its own
+environment, so the plugin opens that directory and store from any shell or
+working directory. The file therefore works for this user on this machine
+only, and every run says so on stderr. A directory that is moved, renamed or
+deleted strands its kubeconfigs: the plugin opens the recorded path, which
+is then empty (a sign-in there starts a new directory), so write the
+kubeconfig again from the directory's new place. `--exec-command <command>`
+names the command the exec entry runs, default `rancher`: a bare name kubectl
+looks up on its PATH, or a path, made absolute from the working directory (a
+leading `~` or `~/` is the home directory; `~user` is refused). `installHint`,
+which kubectl prints when the command cannot be run, names the install URL
+for the default command, and for another the steps that write the kubeconfig
+again from the entry it was written from (`rancher --config <dir> config
+use-server <entry>`, then `rancher --config <dir> kubeconfig --cluster
+<id>`); a file written in an environment-only session, which has no entry,
+names the variables to set instead (`RANCHER_CLI_URL`, `RANCHER_CLI_CACERT`
+when the file carries a CA, and `RANCHER_CLI_TOKEN`) before `rancher --config
+<dir> kubeconfig --cluster <id>`. When the directory's path holds characters
+a terminal line cannot show, no command is offered, in `installHint` or in any
+remedy: the text says the path cannot be printed. A second stderr notice comes from the exec plugin's own lookup over
+the store it will open: which stored login kubectl will use when it is not
+this session's (under `RANCHER_CLI_TOKEN`, the plugin's own login entry, or
+an entry named `<current>-<id>`), how to get one when none answers, that the
+plugin will refuse the file and why, or that the store could not be read.
+The notices are a snapshot: a later login or logout changes the answer.
 
 `create machine-config` curates driver flags for `digitaloceanconfig`
 (`--region`, `--size`, `--image`, `--monitoring`, `--ipv6`,
@@ -1005,7 +1036,10 @@ reports the outcome in the error's `details`:
   the credential from every backend).
 - `configRecovery`: an entry this login wrote could not be restored;
   `command` removes it and `prior` is its complete earlier state (absent
-  when the login created the entry).
+  when the login created the entry). For the exec plugin in a config
+  directory whose path holds characters a terminal line cannot show, both
+  recovery `command` fields are empty and the message says why: no command
+  can name that directory.
 - `operationMarker`: the tokens a password or device-code sign-in creates
   carry `[op:<marker>]` in their description, so a leftover can be found
   by listing the collection its `kind` names and revoked with the
@@ -1053,8 +1087,18 @@ creates a v3 token instead: `rancher get management-tokens` and `rancher
 delete management-token <name>`). On a cache miss the plugin first
 tries to create a token from a stored `auth login` credential; when that
 credential lives in the OS keychain, this can trigger a keychain-unlock
-prompt - CI and other non-interactive runs should use
-`RANCHER_CLI_CREDENTIAL_STORE=file` or a warm `--name` cache.
+prompt - CI and other non-interactive runs should run `rancher kubeconfig`
+from a directory that declares the file store (log in with
+`--credential-store file`), whose exec entry then reads that store whatever
+kubectl's environment sets, or keep a warm `--name` cache.
+
+The plugin opens the directory the exec entry records (`RANCHER_CLI_CONFIG_DIR`
+in its `env`), and every command that reads a config directory it prints as a
+remedy - in an error, a warning or a notice, its own and the shared ones it
+relays - names that directory with `--config`, the default included, so it
+runs from a shell that names another (`rancher schema`, which reads none,
+stays as it is). `rancher kubeconfig` does the same. The legacy `rancher token`
+shim's remedies carry no `--config`: its kubeconfigs record no directory.
 
 `--name` also picks the server entry whose credential is used: the entry with
 exactly that name, else the entry `<entry>` when `--name` is

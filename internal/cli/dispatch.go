@@ -215,6 +215,11 @@ func dispatchSite(
 		if credentialStoreSite(site, d) {
 			return resolveStaticEnum(credentialStoreSuggestions, site)
 		}
+		// kubeconfig --exec-command: PATH names for a bare word, nothing
+		// for a path, so the shell completes files. Owned even when empty.
+		if execCommandSite(site, d) {
+			return execCommandCandidates(site)
+		}
 		// Machine-config `<kind>/` prefixes for create cluster: compiled-in
 		// kind-table literals (kinds.MachineConfigGroup rows), not server
 		// data - served statically like an enum, before (and regardless of)

@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	unfinishedNote = "a credential store change is unfinished; run rancher config status to see it"
-	unreadableNote = "the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run rancher config status to see it"
+	unfinishedNote = "a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"
+	unreadableNote = "the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + clierr.Rancher + " config status to see it"
 )
 
 // TestAuthStatusReportsTheCredentialStoreChange asserts auth status adds
@@ -77,8 +77,8 @@ func TestAuthStatusReportsTheCredentialStoreChange(t *testing.T) {
 		hint string
 	}{
 		{name: "not logged in, found by the connection", preflight: provider.Preflight,
-			code: clierr.CodeNotLoggedIn, hint: "rancher auth login 'default'"},
-		{name: "no current server", code: clierr.CodeNotLoggedIn, hint: "rancher auth login 'default'",
+			code: clierr.CodeNotLoggedIn, hint: clierr.Rancher + " auth login 'default'"},
+		{name: "no current server", code: clierr.CodeNotLoggedIn, hint: clierr.Rancher + " auth login 'default'",
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				cfg, err := config.Load(config.FilePath(dir))
@@ -91,9 +91,9 @@ func TestAuthStatusReportsTheCredentialStoreChange(t *testing.T) {
 				t.Helper()
 				require.NoError(t, os.WriteFile(config.CredentialsFilePath(dir), []byte("not: [yaml"), 0o600))
 			}},
-		{name: "the server refuses", code: clierr.CodeAuth, hint: "rancher auth login 'default'",
+		{name: "the server refuses", code: clierr.CodeAuth, hint: clierr.Rancher + " auth login 'default'",
 			preflight: func(context.Context, config.Effective) (string, error) {
-				return "", clierr.New(clierr.CodeAuth, "login rejected").WithHint("rancher auth login 'default'")
+				return "", clierr.New(clierr.CodeAuth, "login rejected").WithHint(clierr.Rancher + " auth login 'default'")
 			}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,7 +127,7 @@ func TestAuthStatusReportsTheCredentialStoreChange(t *testing.T) {
 						// The login or logout the hint names is refused on
 						// the record; the report is the hint instead, and
 						// the remedy stays in the message.
-						note, hint = unreadableNote, "rancher config status"
+						note, hint = unreadableNote, clierr.Rancher+" config status"
 					}
 					damaged := strings.HasPrefix(record, "damaged")
 					if tc.code != "" || damaged {

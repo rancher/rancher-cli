@@ -45,7 +45,7 @@ func TestAStoreChangeRefusesWhileAnotherEntryHoldsAFileCredential(t *testing.T) 
 	require.ErrorContains(t, err, "a login changes the store of its own credential only")
 	require.ErrorContains(t, err, "the credential of staging is still in the plaintext file "+CredentialsFilePath(dir))
 	require.ErrorContains(t, err, "log that entry out first")
-	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth logout 'staging'", ce.Hint)
 
 	require.NoError(t, store.SetToken(ServerRef{Name: "qa", URL: "https://q.ex"}, "qa-tok"))
 	err = CheckTransitionSources(dir, cfg, "prod", backendFile, backendKeychain)
@@ -110,7 +110,7 @@ func TestAStoreChangeRefusesWhileAnotherEntryHoldsAKeychainCredential(t *testing
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			require.ErrorContains(t, err, tc.want)
-			assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+			assert.Equal(t, clierr.Rancher+" auth logout 'staging'", ce.Hint)
 		})
 	}
 
@@ -175,7 +175,7 @@ func TestAStoreChangeFromAHelperCountsEveryOtherEntry(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorContains(t, err, "the credential helper fake may answer for qa, staging")
 	require.ErrorContains(t, err, "use a different --config for the new store")
-	require.ErrorContains(t, err, "rancher config delete-server <name>")
+	require.ErrorContains(t, err, clierr.Rancher+" config delete-server <name>")
 	assert.Empty(t, ce.Hint, "two ways out, neither of them a logout")
 
 	alone := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
@@ -223,7 +223,7 @@ func TestAStoreChangeRefusesWhileAnotherEntryHasACredentialLeftInTheDestination(
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
 			require.ErrorContains(t, err, "a login changes the store of its own credential only")
 			require.ErrorContains(t, err, tc.want)
-			assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+			assert.Equal(t, clierr.Rancher+" auth logout 'staging'", ce.Hint)
 		})
 	}
 }
@@ -245,7 +245,7 @@ func TestAStoreChangeIntoAHelperCountsEveryOtherEntry(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorContains(t, err, "the credential helper fake may answer for qa, staging: after the change each of them would be served a credential it never logged in with")
 	require.ErrorContains(t, err, "use a different --config for the helper")
-	require.ErrorContains(t, err, "rancher config delete-server <name>")
+	require.ErrorContains(t, err, clierr.Rancher+" config delete-server <name>")
 	assert.Empty(t, ce.Hint, "two ways out, neither of them a logout")
 
 	alone := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}

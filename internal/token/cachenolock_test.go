@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -36,6 +37,6 @@ func TestAMissLeavesAPauseMadeWithoutTheLock(t *testing.T) {
 	after, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	assert.Equal(t, config.PauseNoLock, after.Servers["prod"].CacheWritesPaused, "the pause stays for the change that made it")
-	assert.Contains(t, notices.String(), "not caching: a credential change for prod has not finished (see `rancher config status`)",
+	assert.Contains(t, notices.String(), "not caching: a credential change for prod has not finished (see `"+clierr.Rancher+" config status`)",
 		"config status names the reason and what clears it")
 }

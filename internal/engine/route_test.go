@@ -31,5 +31,5 @@ func TestResolveDownstreamClusterMissingFlagNamesLocalAndHintsClusterList(t *tes
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "--cluster local")
 	assert.Contains(t, ce.Message, "cattle-tokens")
-	assert.Equal(t, "rancher get cluster", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" get cluster", ce.Hint)
 }

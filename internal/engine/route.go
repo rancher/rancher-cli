@@ -21,7 +21,7 @@ const FlagCluster = "cluster"
 // so and names the value, the hint lists the clusters to choose from.
 const (
 	ClusterRequiredMessage = "--cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local"
-	ClusterRequiredHint    = "rancher get cluster"
+	ClusterRequiredHint    = clierr.Rancher + " get cluster"
 )
 
 // ResolveDownstreamCluster resolves --cluster for a command that always

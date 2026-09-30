@@ -293,19 +293,17 @@ func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 	cmd.ShellComplete = universalShellCompleteFunc(d, sc, lc)
 }
 
-// resolveDeps resolves the config dir from --config (flag > env > XDG) and
-// opens the credential store per the config's policy. This is THE single
-// place dir/store are resolved, so --config always takes effect.
+// resolveDeps opens the credential store per the config's policy for dir.
+// adaptEntry resolves dir from --config (flag > env > XDG), once, for the
+// command and its remedies alike - the single place the directory is
+// resolved, so --config always takes effect - and this is the single place
+// the store is opened for it.
 // config.LoadAndStore encapsulates the Load + NewLazyStore pairing. The store
 // is LAZY: policy-name validation happens here (fail fast on every
 // resolveDeps-backed command), but the auto probe / credstore-pin write /
 // config-dir creation defer to the first credential call - an invocation
 // that never touches credentials leaves no store-init side effects.
-func resolveDeps(c *ucli.Command) (string, config.CredStore, *config.CacheAnchor, error) {
-	dir, err := config.ResolveDir(c.String("config"))
-	if err != nil {
-		return "", nil, nil, err
-	}
+func resolveDeps(dir string) (config.CredStore, *config.CacheAnchor, error) {
 	// The stamp the root hook already read anchors this load too: it
 	// precedes every config load in the process, which is what the check
 	// needs, and reading a second one here would cost the plugin's cache
@@ -318,9 +316,34 @@ func resolveDeps(c *ucli.Command) (string, config.CredStore, *config.CacheAnchor
 	}
 	cfg, store, err := config.LoadAndStore(dir)
 	if err != nil {
-		return "", nil, nil, err
+		return nil, nil, err
 	}
-	return dir, store, anchor.WithConfig(cfg), nil
+	return store, anchor.WithConfig(cfg), nil
+}
+
+// openDirectory is resolveDeps behind a package var, so a test can make
+// the config load fail with the error it needs.
+var openDirectory = resolveDeps
+
+// remedyDirFor is the directory the invocation's remedies name, dir being
+// the one the invocation opens: absolute, so a remedy run from another
+// working directory reaches it, and as resolved when it cannot be made
+// absolute.
+func remedyDirFor(dir string) string {
+	if abs := config.CanonicalDir(dir); abs != "" {
+		return abs
+	}
+	return dir
+}
+
+// renderDepsError renders a failure to resolve or open the invocation's
+// directory, before the command runs: a bare exit would fail non-zero with
+// an empty stderr. Flags have already parsed, so the invocation's own
+// --output value is trusted, and its remedies name its directory.
+func renderDepsError(c *ucli.Command, io runtime.IO, err error) error {
+	ce := clierr.New(clierr.CodeGeneric, err.Error())
+	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), io.ExpandError(ce), errStyle(c, c.String("color")))
+	return exit(ce)
 }
 
 // exit converts a structured error into a urfave exit with the right code.

@@ -49,6 +49,7 @@ what drifted the previous revision of this doc).
 | `internal/commands/configcmd` | The `config` group: server entries (`add-server`, `update-server`, `delete-server`, `use-server`, `ls`), `path`, `info`, `edit`, `set-completion`, `set-token-reuse`. |
 | `internal/commands/register` | Server registration shared by `auth login` and `config add-server/update-server`: URL canonicalization, TLS preflight, CA selection, create and update under the config lock. |
 | `internal/commands/skill` | `skill install/uninstall/status` over `internal/skillinstall`. |
+| `internal/remedytest` | Test-only: the top-level commands that read a config directory, from the schema manifest golden, which the checks that every remedy command names the directory share. No production importer. |
 | `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness, an exec-plugin process and the harness that holds one mid-call while a command runs. No production importer. |
 | `internal/cli/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
@@ -75,7 +76,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/observe/complete` | The logs command's live completion source, `PodSource` (`--pod`: the pods of the typed target in its namespace under its selector, on the local cluster or the resolved downstream cluster as the target's row says), and the curated target table itself, which `observe` imports back. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands, plus a delete-user override that guards against self-deletion: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
 | `internal/engine/rbac/complete` | The rbac commands' live completion sources: `RoleSource` (grant's and revoke's `--role` values, listed from the collection the typed scope selects), `SubjectSource` (the shared `--as` value of the access commands: the non-system management Users by id and unambiguous username), `GrantRevokeSource` (grant's and revoke's own: `--role` and the subject positional together) and the role vocabulary rule `RoleKind` the commands import back. A restricted `complete` package: its imports are an exact allowlist enforced by a conformance test. |
-| `internal/engine/kubeconfig` | The direct endpoint entries of a cluster's Authorized Cluster Endpoint for `rancher kubeconfig`: reads the management Cluster (`spec.localClusterAuthEndpoint`, `status.caCert`), the multi-cluster-management Feature and the management Nodes through the local cluster client, validates every entry (an https URL without a path, a parsable CA) and returns the entries to emit with the reasons for anything omitted; the command folds them into the kubeconfig and the exec plugin (`internal/token`) waits for a fresh token to be accepted at the endpoint kubectl is about to use. Provides the `rancher kubeconfig` command (`NewCommand`). |
+| `internal/engine/kubeconfig` | `rancher kubeconfig`'s exec entry records the config directory and the store variable in its `env`, and the command decides its notices with the exec plugin's own lookup (`token.LookupStoredLogin`). The direct endpoint entries of a cluster's Authorized Cluster Endpoint for `rancher kubeconfig`: reads the management Cluster (`spec.localClusterAuthEndpoint`, `status.caCert`), the multi-cluster-management Feature and the management Nodes through the local cluster client, validates every entry (an https URL without a path, a parsable CA) and returns the entries to emit with the reasons for anything omitted; the command folds them into the kubeconfig and the exec plugin (`internal/token`) waits for a fresh token to be accepted at the endpoint kubectl is about to use. Provides the `rancher kubeconfig` command (`NewCommand`). |
 | `internal/engine/access` | Authorization questions answered by the server's reviews (`access can`, `access list`, `access who-can`): posts SubjectAccessReview, SelfSubjectAccessReview, SelfSubjectRulesReview, and SelfSubjectReview through the Rancher proxy, classifies each answer per the review outcome matrix, and resolves the subject, resource, and scope a question needs. Nothing here evaluates a Role's rules client-side. `who-can` reads the cluster's RBAC binding subjects as candidates and asks one SubjectAccessReview each. `explain` parses the authorizer's reason into the one binding it names and walks the Rancher chain behind that binding (owner labels, GlobalRole annotations, RoleTemplate inheritance) with a bounded, request-counted traversal; `internal/engine/rbac` carries the copy of wrangler's `SafeConcatName` the aggregation-grammar labels need. `clusters` reads the caller's clusters from the steve collection through the root client (the one steve read in the suite), probes each with a SelfSubjectReview under one fan-out semaphore, and reads the management bindings that grant them with their own completeness. `projects` adds the steve project collection and, per reachable cluster, the caller's steve namespace collection, asks one SelfSubjectAccessReview per project namespace (get the namespace: the grant Rancher gives a project's members), rolls the answers up into a visibility per project, and keeps Rancher membership (a ProjectRoleTemplateBinding naming the subject) apart from it. |
 | `internal/engine/access/complete` | The access commands' live completion sources: `ClusterSource` (the shared `--cluster` value and the management cluster kind: every id plus each unique display name) and `ProjectsClusterSource` (`access projects`' own `--cluster`: the steve cluster collection walked under the command's page protocol), and `QuestionSource` (`access can`, `who-can` and `explain`'s resource positional, `--group` and `--subresource`, read from the typed cluster's two aggregated discovery roots and resolved by the commands' own rules). A restricted `complete` package under the import and declaration fences. |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
@@ -137,6 +138,7 @@ graph TD
     access["internal/engine/access"]
     accesscomplete["internal/engine/access/complete"]
     kubeconfigengine["internal/engine/kubeconfig"]
+    remedytest["internal/remedytest"]
     config["internal/config"]
     credhelper["credhelper"]
     install["install"]
@@ -373,6 +375,7 @@ graph TD
     kubeconfigengine --> config
     kubeconfigengine --> output
     kubeconfigengine --> runtime
+    kubeconfigengine --> token
 
     provisioning --> selfuser
 
@@ -747,9 +750,24 @@ its own; full connection resolution runs only on a miss. `config.IdentifyEntry` 
 and the credential lookup, the cache record's binding, the CA and every cache hit use its
 answer; the lookup reads only that entry, with the plugin's own login entry as the one
 fallback while token reuse is on; a call that identifies no entry ranks the entries for its
-URL and fails when more than one at the winning rank has a credential. `delete-token <name>` resolves the bare name
+URL and fails when more than one at the winning rank has a credential. That lookup is one function,
+`token.LookupStoredLogin`, returning one typed outcome; `rancher kubeconfig` calls it too. `delete-token <name>` resolves the bare name
 against every record and **deletes all matches**, and is **idempotent** (zero matches →
 success, never `NOT_FOUND`) so teardown scripts stay green.
+
+**Remedies name the invocation's directory.** A remedy command opens with
+`clierr.Rancher`, the word rancher behind a marker character. `runtime.IO.RemedyDir`,
+set by the CLI layer before the config load for a command whose descriptor sets
+`RemedyConfigDir` (`auth get-token`, `kubeconfig`), makes that invocation's
+renderers - errors in text and JSON with their details, warnings, and the
+prompter's notices - write `--config` and the directory, shell-quoted, after
+rancher; every other command prints the plain command, and result data never
+carries the marker (a U+2063 just before the word rancher in structured output
+is dropped, whatever wrote it). It is carried on the invocation, never in a
+process-wide value. For a directory a terminal line cannot show no command is
+offered: each text keeps its words up to the clause holding its first command
+and says the path cannot be printed, the hint is dropped whenever it holds a
+command, and a details payload's command fields are emptied.
 
 **Exec-credential cache stays on disk.** Even under the keychain backend, the exec-credential cache
 - live short-lived bearer tokens - still lives in `token-cache.yaml` on disk (0600). The

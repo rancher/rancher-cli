@@ -265,7 +265,7 @@ func hintToken(k Kind) string {
 // through untouched. Only hint-less NOT_FOUNDs (the raw apiserver passthrough)
 // get the "<kind> not found: <name>" treatment.
 func NotFoundCurated(k Kind, name, clusterID string) error {
-	hint := "list with: rancher get " + hintToken(k)
+	hint := "list with: " + clierr.Rancher + " get " + hintToken(k)
 	if k.Scope == Downstream {
 		hint += " --cluster " + clierr.ShellQuote(clusterID)
 	}
@@ -815,7 +815,7 @@ var table = []Kind{
 		// Token creation must go through Rancher's auth lifecycle (key
 		// generation, TTL clamp, identity derivation). Use `create token` (the
 		// ext.cattle.io kind) for new tokens instead.
-		NoCreateViaManifest: "token creation must go through Rancher's auth lifecycle - use 'rancher create token' (the ext.cattle.io kind) for new tokens",
+		NoCreateViaManifest: "token creation must go through Rancher's auth lifecycle - use '" + clierr.Rancher + " create token' (the ext.cattle.io kind) for new tokens",
 	},
 	{
 		Key: "kubeconfig", Name: "kubeconfig", Aliases: []string{"kubeconfigs"},

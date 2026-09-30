@@ -111,7 +111,13 @@ jobs:
       # differing only in case are two directories to a record, which is
       # a miss and not a wrong hit.
       - run: go test -race -count=1 ./internal/config/
-      - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves' ./internal/token/
+      # The exec plugin's remedies carry a shell-quoted Windows path, and
+      # the lookup and the no-terminal login run on it too.
+      - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/
+      # What the kubeconfig records resolves through Windows' own path
+      # calls: the directory as spelled, volumes, both separators and ~\ in
+      # --exec-command, and the remedies naming a quoted Windows path.
+      - run: go test -race -count=1 -run 'TestExecCommand|TestKubeconfigRecords|TestKubeconfigNotices|TestKubeconfigInstallHint|TestKubeconfigLookup|TestKubeconfigReuses|TestKubeconfigEntryName' ./internal/engine/kubeconfig/
 
   e2e-windows:
     # The same suite as the e2e job, on the platform whose exec, path,

@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // TestUnpinnedStoreCountsConfiguredEntriesOnly asserts the four answers and
@@ -77,12 +79,12 @@ func TestTheBothStoresErrorNamesTheWayOut(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "VALIDATION", string(ce.Code))
 	require.ErrorContains(t, err, "the keychain (prod) and in the plaintext file "+filepath.Join("/d", "credentials.yaml")+" (staging)")
-	require.ErrorContains(t, err, "to keep the keychain, which holds no plaintext, run rancher auth logout 'staging'")
+	require.ErrorContains(t, err, "to keep the keychain, which holds no plaintext, run "+clierr.Rancher+" auth logout 'staging'")
 	require.ErrorContains(t, err, "a keychain entry's logout needs the keychain reachable")
 	require.ErrorContains(t, err, "or use a different --config")
-	assert.Equal(t, "rancher auth logout 'staging'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth logout 'staging'", ce.Hint)
 	assert.NotContains(t, err.Error(), pinFileName)
-	assert.NotContains(t, err.Error(), "rancher config status", "with no change unfinished there is nothing more to see")
+	assert.NotContains(t, err.Error(), "config status", "with no change unfinished there is nothing more to see")
 
 	// While a store change is unfinished, the logout stays the hint and
 	// the message names the change, which is what may have left the copy.
@@ -91,8 +93,8 @@ func TestTheBothStoresErrorNamesTheWayOut(t *testing.T) {
 	withChange := Unpinned{Row: UnpinnedBoth, KeychainEntries: []string{"prod"}, FileEntries: []string{"staging"}, dir: dir, cfg: pending}
 	wce, ok := errorsAsClierr(withChange.Err())
 	require.True(t, ok)
-	require.ErrorContains(t, withChange.Err(), "a credential store change is unfinished; run rancher config status to see it")
-	assert.Equal(t, "rancher auth logout 'staging'", wce.Hint, "the logout is still what fixes it")
+	require.ErrorContains(t, withChange.Err(), "a credential store change is unfinished; run "+clierr.Rancher+" config status to see it")
+	assert.Equal(t, clierr.Rancher+" auth logout 'staging'", wce.Hint, "the logout is still what fixes it")
 
 	// While the record it names cannot be read, the logout would be
 	// refused on it: the report is the hint, the logout stays in the
@@ -101,14 +103,14 @@ func TestTheBothStoresErrorNamesTheWayOut(t *testing.T) {
 	dce, ok := errorsAsClierr(withChange.Err())
 	require.True(t, ok)
 	require.ErrorContains(t, withChange.Err(), "the credential store change record cannot be read")
-	require.ErrorContains(t, withChange.Err(), "run rancher auth logout 'staging'")
-	assert.Equal(t, 1, strings.Count(withChange.Err().Error(), "rancher auth logout 'staging'"), "a remedy the message already names is not added again")
-	assert.Equal(t, "rancher config status", dce.Hint)
+	require.ErrorContains(t, withChange.Err(), "run "+clierr.Rancher+" auth logout 'staging'")
+	assert.Equal(t, 1, strings.Count(withChange.Err().Error(), clierr.Rancher+" auth logout 'staging'"), "a remedy the message already names is not added again")
+	assert.Equal(t, clierr.Rancher+" config status", dce.Hint)
 
 	two := Unpinned{Row: UnpinnedBoth, KeychainEntries: []string{"prod"}, FileEntries: []string{"qa", "staging"}, dir: "/d"}
 	tce, ok := errorsAsClierr(two.Err())
 	require.True(t, ok)
-	require.ErrorContains(t, two.Err(), "run rancher auth logout 'qa', then rancher auth logout 'staging'")
+	require.ErrorContains(t, two.Err(), "run "+clierr.Rancher+" auth logout 'qa', then "+clierr.Rancher+" auth logout 'staging'")
 	assert.Empty(t, tce.Hint, "no single command covers two entries")
 }
 

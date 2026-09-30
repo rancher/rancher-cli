@@ -368,7 +368,7 @@ func TestNotFoundCuratedShape(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "user not found: u-xxx", ce.Message)
-	assert.Equal(t, "list with: rancher get users", ce.Hint)
+	assert.Equal(t, "list with: "+clierr.Rancher+" get users", ce.Hint)
 }
 
 // TestNotFoundCuratedHyphenatedKind asserts the hyphenated-kind case: the hint
@@ -381,7 +381,7 @@ func TestNotFoundCuratedHyphenatedKind(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "fleet-cluster not found: local", ce.Message)
-	assert.Equal(t, "list with: rancher get fleetclusters", ce.Hint)
+	assert.Equal(t, "list with: "+clierr.Rancher+" get fleetclusters", ce.Hint)
 }
 
 // TestNotFoundCuratedDownstreamCarriesCluster asserts that a Downstream-scoped
@@ -395,7 +395,7 @@ func TestNotFoundCuratedDownstreamCarriesCluster(t *testing.T) {
 	err := NotFoundCurated(k, "web", "c-abc123")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, "list with: rancher get deployments --cluster 'c-abc123'", ce.Hint)
+	assert.Equal(t, "list with: "+clierr.Rancher+" get deployments --cluster 'c-abc123'", ce.Hint)
 }
 
 func TestLookupGVK(t *testing.T) {

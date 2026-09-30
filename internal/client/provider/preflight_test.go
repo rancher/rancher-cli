@@ -68,7 +68,7 @@ func TestPreflightPassesThroughRESTConfigErrors(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
-		assert.Equal(t, "rancher auth login 'qa1'", ce.Hint)
+		assert.Equal(t, clierr.Rancher+" auth login 'qa1'", ce.Hint)
 	})
 	t.Run("env-only URL resolved but no token stays AUTH with no hint", func(t *testing.T) {
 		t.Parallel()

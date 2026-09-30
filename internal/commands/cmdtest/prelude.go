@@ -317,7 +317,7 @@ func RunPreludeRows(t *testing.T, run func(t *testing.T, dir string) ([]string, 
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok)
 				assert.Equal(t, clierr.CodeValidation, ce.Code)
-				assert.Equal(t, "rancher config status", ce.Hint)
+				assert.Equal(t, clierr.Rancher+" config status", ce.Hint)
 				require.ErrorContains(t, err, config.TransitionPath(dir))
 				require.ErrorContains(t, err, "no credential was read or written")
 				assert.Equal(t, "prod-tok", fileToken(t, dir, config.ServerRef{Name: "prod", URL: "https://prod.ex"}), "nothing is deleted")
@@ -389,7 +389,7 @@ func assertStepStays(t *testing.T, dir string, warnings []string, cause string) 
 	assert.Contains(t, string(b), "lastError:", "the step records why it stopped")
 	joined := strings.Join(warnings, "\n")
 	assert.Contains(t, joined, cause)
-	assert.Contains(t, joined, "hint: rancher config status")
+	assert.Contains(t, joined, "hint: "+clierr.Rancher+" config status")
 	assert.NotEmpty(t, namedChange(t, dir), "the change is still in flight")
 }
 

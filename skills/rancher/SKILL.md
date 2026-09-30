@@ -436,7 +436,14 @@ kubectl --kubeconfig kc.yaml get nodes
 
 The kubeconfig uses an exec-credential plugin that calls `rancher auth
 get-token` - the `rancher` binary must stay on PATH for kubectl to
-authenticate. When the cluster has the Authorized Cluster Endpoint
+authenticate, or pass `--exec-command <path>` for one that is not. The exec
+entry records the config directory (absolute) and `RANCHER_CLI_CREDENTIAL_STORE`
+(empty when the directory declares its store), so kubectl authenticates through
+the directory the file was written from, whatever its own environment names;
+the file works for this user on this machine only, and moving the directory
+means writing its kubeconfigs again. Every command the plugin and `rancher
+kubeconfig` print as a remedy that reads a config directory names that
+directory with `--config` (`rancher schema` reads none). When the cluster has the Authorized Cluster Endpoint
 enabled, the file also carries direct contexts (`<entry>-fqdn`, or one
 `<entry>-<node>` per control-plane node) and makes one current; the proxy
 context `<entry>` is always present, so `--context <entry>` is the
@@ -661,7 +668,9 @@ rancher oidc-client rotate-secret my-app --apply --yes
   Precedence: `--project` flag > unscoped.
 - **Isolation for scripted sessions:** point `RANCHER_CLI_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CLI_CREDENTIAL_STORE=file` so a scripted run
-  never touches the operator's real config or OS keychain.
+  never touches the operator's real config or OS keychain. A kubeconfig written
+  in such a session records that directory and stops working when it is
+  removed.
 - **Read-only sessions:** `--read-only` (or config `readOnly: true` / a
   non-empty `RANCHER_CLI_READONLY` - including the literal `"false"`) refuses
   every mutating command before any network call, one-way with no

@@ -51,3 +51,20 @@ complete -c rancher -e
 # the cursor in the same token. bash and zsh need explicit handling - see
 # bash.sh and zsh.sh.
 complete -c rancher -f -a '(__rancher_perform_completion)'
+
+# kubeconfig --exec-command reads a word with a / or a leading ~ as a path
+# and a bare word as a name on PATH. The binary completes the bare words
+# and returns nothing for a path word, which every other shell answers
+# with its own file completion; fish never offers files (the -f above),
+# so this one rule offers them for a path word after --exec-command.
+function __rancher_exec_command_path
+    set -l tokens (commandline -opc)
+    set -l cur (commandline -ct)
+    if string match -q -- '--exec-command=*' $cur
+        set cur (string replace -- '--exec-command=' '' $cur)
+    else if test "$tokens[-1]" != --exec-command
+        return 1
+    end
+    string match -q -r -- '^~|/' $cur
+end
+complete -c rancher -n __rancher_exec_command_path -F

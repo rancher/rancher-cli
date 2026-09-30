@@ -34,7 +34,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/register"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
-	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/rancher/rancher-cli/internal/testrancher"
@@ -822,7 +821,7 @@ func TestLoginDelegatedFailedAuthExactMatchGetsRetryHintAndUndo(t *testing.T) {
 	_, err := cmd.Execute(t.Context(), in, cmdtest.StdinPrompter(""))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, "rancher auth login 'prod'", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" auth login 'prod'", ce.Hint)
 	assert.Contains(t, ce.Message, "delete-server")
 
 	cfg, lerr := config.Load(config.FilePath(dir))
@@ -2456,7 +2455,7 @@ func TestLoginKeyringPossiblyCommittedFailsWithKeychainRecovery(t *testing.T) {
 	assert.Equal(t, clierr.CredentialPossiblyCommitted, d.CredentialState)
 	require.NotNil(t, d.CredentialRecovery)
 	assert.Equal(t, clierr.BackendKeyring, d.CredentialRecovery.Backend)
-	assert.Equal(t, "rancher auth logout "+clierr.ShellQuote("prod"), d.CredentialRecovery.Command)
+	assert.Equal(t, clierr.Rancher+" auth logout "+clierr.ShellQuote("prod"), d.CredentialRecovery.Command)
 	assert.Contains(t, d.Recovery, "may be this login's token, the earlier value, or another value")
 	require.NotNil(t, d.DerivedToken)
 	assert.Equal(t, clierr.ResultRevoked, d.DerivedToken.Cleanup.Result)
@@ -2503,7 +2502,7 @@ func loginFailureEnvelope(t *testing.T, err error, serverURL string) []byte {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "expected a structured error, got %v", err)
 	var buf bytes.Buffer
-	require.NoError(t, output.Render(&buf, "json", output.ErrorEnvelope(ce)))
+	require.NoError(t, runtime.RenderError(&buf, "json", ce))
 	return bytes.ReplaceAll(buf.Bytes(), []byte(serverURL), []byte("$SERVER"))
 }
 

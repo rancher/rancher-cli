@@ -93,7 +93,7 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 		}
 		return changed
 	}); err != nil {
-		rep.Warnings = append(rep.Warnings, fmt.Sprintf("could not update the superseded-token records of %s (%v); they are listed by: rancher config status", entry, err))
+		rep.Warnings = append(rep.Warnings, fmt.Sprintf("could not update the superseded-token records of %s (%v); they are listed by: "+config.StatusCommand, entry, err))
 	}
 	return rep
 }
@@ -102,6 +102,9 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 // revokes it.
 func keptWarning(rec config.SupersededToken, serverURL, why string) string {
 	seq := clierr.RecoverySequence(serverURL, rec.UserID, rec.Ref)
+	for i := range seq {
+		seq[i] = clierr.MarkRemedy(seq[i])
+	}
 	return fmt.Sprintf("the superseded token %s was not retired: %s; revoke it with: %s (%s)",
 		rec.Ref.String(), why, strings.Join(seq, "; "), clierr.RecoverySequenceAssumption)
 }

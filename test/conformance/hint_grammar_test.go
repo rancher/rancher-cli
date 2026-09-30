@@ -2,7 +2,9 @@ package conformance
 
 import (
 	"go/ast"
+	"go/parser"
 	"go/token"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -60,6 +62,46 @@ func hintGrammarViolation(literal string) string {
 // being silently skipped - see the sentinel's own doc for why that is safe.
 type flattener struct {
 	funcsByName map[string][]*ast.FuncDecl
+	// consts holds every package-level constant by its package's import
+	// path and name, so a hint built on a named command (config.LoginCommand,
+	// a package's own const) is checked as the literal it is.
+	consts map[string]map[string]constDecl
+	// scope is the file the expression being walked is in: its package,
+	// for an unqualified name, and its imports, for a qualified one.
+	scope fileScope
+	// funcScope is the file each function was declared in.
+	funcScope map[*ast.FuncDecl]fileScope
+}
+
+// fileScope is what names in one file refer to: its own package's import
+// path, and each import's name to its path.
+type fileScope struct {
+	pkg     string
+	imports map[string]string
+}
+
+// constDecl is one package-level constant's value and the file it was
+// declared in, whose names its value refers to.
+type constDecl struct {
+	value ast.Expr
+	scope fileScope
+}
+
+// scopeOf is the fileScope of f at path (relative to the module root).
+func scopeOf(f *ast.File, path string) fileScope {
+	s := fileScope{pkg: modulePrefix + filepath.ToSlash(filepath.Dir(path)), imports: map[string]string{}}
+	for _, imp := range f.Imports {
+		ip, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		name := ip[strings.LastIndex(ip, "/")+1:]
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		s.imports[name] = ip
+	}
+	return s
 }
 
 // flatten returns every literal string the expression could evaluate to, as
@@ -123,6 +165,25 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 		}
 		return []string{unresolved}
 
+	case *ast.SelectorExpr:
+		// clierr.Rancher opens every remedy command: the word rancher with
+		// the marker the invocation expands, so a hint built on it is
+		// checked as the command it prints.
+		id, ok := e.X.(*ast.Ident)
+		if !ok {
+			return []string{unresolved}
+		}
+		if id.Name == "clierr" && e.Sel.Name == "Rancher" {
+			return []string{"rancher"}
+		}
+		// Only a package's constant: a field or a method of a value is
+		// runtime data.
+		pkg, ok := fl.scope.imports[id.Name]
+		if !ok {
+			return []string{unresolved}
+		}
+		return fl.flattenConst(pkg, e.Sel.Name, depth)
+
 	case *ast.Ident:
 		if vals, ok := localAssigns[e.Name]; ok {
 			var out []string
@@ -133,11 +194,25 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 				return out
 			}
 		}
-		return []string{unresolved}
+		return fl.flattenConst(fl.scope.pkg, e.Name, depth)
 
 	default:
 		return []string{unresolved}
 	}
+}
+
+// flattenConst resolves the constant name of package pkg through its
+// declaration, walked in the scope of the file that declares it;
+// unresolved when the package declares none by that name.
+func (fl *flattener) flattenConst(pkg, name string, depth int) []string {
+	c, ok := fl.consts[pkg][name]
+	if !ok {
+		return []string{unresolved}
+	}
+	outer := fl.scope
+	fl.scope = c.scope
+	defer func() { fl.scope = outer }()
+	return fl.flatten(c.value, nil, depth+1)
 }
 
 // flattenReturns resolves every return statement in fd's body against fd's
@@ -147,6 +222,11 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 func (fl *flattener) flattenReturns(fd *ast.FuncDecl, depth int) []string {
 	if fd.Body == nil {
 		return nil
+	}
+	if s, ok := fl.funcScope[fd]; ok {
+		outer := fl.scope
+		fl.scope = s
+		defer func() { fl.scope = outer }()
 	}
 	assigns := collectLocalAssigns(fd.Body)
 	var out []string
@@ -235,10 +315,18 @@ func TestHintGrammarConformance(t *testing.T) {
 			}
 		}
 	}
-	fl := &flattener{funcsByName: funcsByName}
+	fl := &flattener{funcsByName: funcsByName, consts: packageConsts(files, paths), funcScope: map[*ast.FuncDecl]fileScope{}}
+	for i, f := range files {
+		for _, decl := range f.Decls {
+			if fd, ok := decl.(*ast.FuncDecl); ok {
+				fl.funcScope[fd] = scopeOf(f, paths[i])
+			}
+		}
+	}
 
 	for i, f := range files {
 		path := paths[i]
+		fl.scope = scopeOf(f, path)
 		for _, decl := range f.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
 			if !ok || fd.Body == nil {
@@ -271,4 +359,71 @@ func TestHintGrammarConformance(t *testing.T) {
 			})
 		}
 	}
+}
+
+// packageConsts collects every package-level constant that has a value,
+// by its package's import path and name; paths[i] is files[i]'s path
+// relative to the module root.
+func packageConsts(files []*ast.File, paths []string) map[string]map[string]constDecl {
+	out := map[string]map[string]constDecl{}
+	for fi, f := range files {
+		scope := scopeOf(f, paths[fi])
+		if out[scope.pkg] == nil {
+			out[scope.pkg] = map[string]constDecl{}
+		}
+		for _, decl := range f.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok || len(vs.Names) != len(vs.Values) {
+					continue
+				}
+				for i, n := range vs.Names {
+					out[scope.pkg][n.Name] = constDecl{value: vs.Values[i], scope: scope}
+				}
+			}
+		}
+	}
+	return out
+}
+
+// TestHintFlattenerReadsTheRemedyMarkerAsRancher asserts a hint built on
+// clierr.Rancher is checked as the command it prints: two invocations in
+// one hint are still one too many.
+func TestHintFlattenerReadsTheRemedyMarkerAsRancher(t *testing.T) {
+	t.Parallel()
+	expr, err := parser.ParseExpr(`clierr.Rancher + " auth login 'p', then " + clierr.Rancher + " config status"`)
+	require.NoError(t, err)
+	fl := &flattener{funcsByName: map[string][]*ast.FuncDecl{}}
+	got := fl.flatten(expr, nil, 0)
+	require.Equal(t, []string{"rancher auth login 'p', then rancher config status"}, got)
+	require.NotEmpty(t, hintGrammarViolation(got[0]))
+
+	// A named command is read through its declaration, in its own package;
+	// a field of the same name is runtime data.
+	decl, err := parser.ParseFile(token.NewFileSet(), "internal/config/x.go", `package config
+import "github.com/rancher/rancher-cli/internal/clierr"
+const LoginCommand = clierr.Rancher + " auth login"
+const Hint = "rancher auth login, then rancher config status"`, 0)
+	require.NoError(t, err)
+	user, err := parser.ParseFile(token.NewFileSet(), "internal/token/y.go", `package token
+import "github.com/rancher/rancher-cli/internal/config"`, 0)
+	require.NoError(t, err)
+	fl = &flattener{funcsByName: map[string][]*ast.FuncDecl{},
+		consts: packageConsts([]*ast.File{decl, user}, []string{"internal/config/x.go", "internal/token/y.go"}),
+		scope:  scopeOf(user, "internal/token/y.go")}
+	named, err := parser.ParseExpr(`config.LoginCommand + ", then " + clierr.Rancher + " config status"`)
+	require.NoError(t, err)
+	got = fl.flatten(named, nil, 0)
+	require.Equal(t, []string{"rancher auth login, then rancher config status"}, got)
+	require.NotEmpty(t, hintGrammarViolation(got[0]))
+	field, err := parser.ParseExpr(`ce.Hint`)
+	require.NoError(t, err)
+	require.Equal(t, []string{unresolved}, fl.flatten(field, nil, 0))
+	unqualified, err := parser.ParseExpr(`Hint`)
+	require.NoError(t, err)
+	require.Equal(t, []string{unresolved}, fl.flatten(unqualified, nil, 0), "another package's constant is not this one's")
 }

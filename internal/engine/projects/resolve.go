@@ -125,7 +125,7 @@ func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, cl
 
 	return MatchOneOrError(nameOrID, ids, func(id string) string { return displayByID[id] }, cands,
 		"project not found: "+nameOrID,
-		fmt.Sprintf("rancher get projects --cluster %s", clierr.ShellQuote(clusterID)),
+		fmt.Sprintf(clierr.Rancher+" get projects --cluster %s", clierr.ShellQuote(clusterID)),
 		func(idFound bool, displayMatchCount int) string {
 			if idFound {
 				return fmt.Sprintf("%q matches both a project id and a different project's display name; pass the project id", nameOrID)

@@ -6222,15 +6222,21 @@
     {
       "auth": true,
       "commandType": "local",
-      "desc": "Prints a kubeconfig whose user entry runs the rancher exec-credential plugin. One context reaches the cluster through the Rancher proxy. When the cluster has the Authorized Cluster Endpoint enabled and the multi-cluster-management feature is on, the file also carries the direct contexts Rancher's own kubeconfig carries: <entry>-fqdn when the endpoint names an fqdn, else one <entry>-<node> per control-plane node, and the direct context is current. When those contexts cannot be derived (the endpoint's feature is off, the nodes cannot be read, no control-plane node has an address), the proxy-only file is printed and one notice on stderr says why.",
+      "desc": "Prints a kubeconfig whose user entry runs the rancher exec-credential plugin. One context reaches the cluster through the Rancher proxy. When the cluster has the Authorized Cluster Endpoint enabled and the multi-cluster-management feature is on, the file also carries the direct contexts Rancher's own kubeconfig carries: <entry>-fqdn when the endpoint names an fqdn, else one <entry>-<node> per control-plane node, and the direct context is current. When those contexts cannot be derived (the endpoint's feature is off, the nodes cannot be read, no control-plane node has an address), the proxy-only file is printed and one notice on stderr says why. The user entry's env records this config directory, absolute, and RANCHER_CLI_CREDENTIAL_STORE (empty when the directory declares its store, else the value set now), so the file works for this user on this machine only; notices on stderr say so, and name the stored login kubectl's exec plugin will use when it is not this session's. installHint says how to install rancher, or how to regenerate the file for another --exec-command.",
       "examples": [
-        "rancher kubeconfig --cluster prod > prod.yaml"
+        "rancher kubeconfig --cluster prod > prod.yaml",
+        "rancher kubeconfig --cluster prod --exec-command ~/bin/rancher > prod.yaml"
       ],
       "flags": [
         {
           "desc": "cluster `id|name` to generate the kubeconfig for",
           "name": "cluster",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "`command` kubectl runs for the exec plugin: a name looked up on PATH where kubectl runs, or a path, made absolute from the working directory (a leading ~ is the home directory); default rancher",
+          "name": "exec-command",
           "type": "string"
         }
       ],

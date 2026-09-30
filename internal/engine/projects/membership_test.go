@@ -228,7 +228,7 @@ func TestLoadMembershipTargetNotFoundCurated(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, "namespace not found: no-ns", ce.Message)
-	assert.Equal(t, "list with: rancher get namespaces --cluster 'c-x'", ce.Hint)
+	assert.Equal(t, "list with: "+clierr.Rancher+" get namespaces --cluster 'c-x'", ce.Hint)
 
 	// hint-bearing 404 passes through unchanged
 	hinted := clierr.New(clierr.CodeNotFound, "unsupported group").WithHint("try another group")
