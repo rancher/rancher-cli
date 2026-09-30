@@ -594,10 +594,12 @@ func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
+	// The shim's cache slot, as shim.go names it for --user prod.
+	slot := config.LegacyCachePrefix + "prod"
 	cmd := tokenCmd{dir: dir, store: store}
 	res, err := cmd.runWithParams(t.Context(), runParams{
 		Server:     srv.URL,
-		Name:       "prod",
+		Name:       slot,
 		legacyShim: true,
 	}, ui.Discard())
 	require.NoError(t, err)
@@ -605,7 +607,7 @@ func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
 	assert.Equal(t, "ext/created:secret", cred.Status.Token)
 	assert.Nil(t, cred.Status.ExpirationTimestamp, "zero expiry must not set ExpirationTimestamp")
 
-	tok, exp, cerr := store.GetCachedCred(config.CacheKey("prod", config.CanonicalServerIdentity(srv.URL), ""), anchorFor(dir))
+	tok, exp, cerr := store.GetCachedCred(config.CacheKey(slot, config.CanonicalServerIdentity(srv.URL), ""), anchorFor(dir))
 	require.NoError(t, cerr, "zero-expiry credential must be cached on the legacy shim path")
 	assert.Equal(t, "ext/created:secret", tok)
 	assert.True(t, exp.IsZero(), "cached expiry must be zero")

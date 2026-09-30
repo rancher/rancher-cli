@@ -82,9 +82,10 @@ type CredStore interface {
 	GetCachedCredDetail(key string, anchor *CacheAnchor) (CachedCredDetail, error)
 	// SetCachedCred writes the record with the binding it must later be
 	// judged by, taken from the same config load as the credential. A
-	// binding whose load showed the entry's cache writes paused writes
-	// nothing and returns ErrCacheWritesPaused; one no constructor built
-	// writes nothing either.
+	// binding whose load showed an entry it is bound to with its cache
+	// writes paused writes nothing and returns a *CacheWritesPausedError
+	// naming that entry; a binding no constructor built, and one refused
+	// on purpose (CacheBinding.Refused), write nothing either.
 	SetCachedCred(key, token string, expiry time.Time, name, serverHost, cluster string, binding CacheBinding) error
 	// MarkCachedCredReady records fingerprint on key's record only when the
 	// record still holds token, under the cache lock, and reports whether
@@ -107,19 +108,44 @@ type cachedCred struct {
 	Name    string    `json:"name,omitempty"`
 	Server  string    `json:"server,omitempty"`
 	Cluster string    `json:"cluster,omitempty"`
-	// Version, Dir, Entry and BindingID are what make this record
-	// judgeable: which directory created it, which config entry it was
-	// created from, and that entry's cache binding id at the time. A
-	// record without them cannot be judged and is a miss, which is what
-	// every record written before they existed is.
-	Version   int    `json:"version,omitempty"`
-	Dir       string `json:"dir,omitempty"`
+	// Version and the fields after it are what make this record
+	// judgeable: which directory created it, and what the exec plugin's
+	// lookup for its call read (CacheBinding says which record is bound to
+	// what). A record written in another shape cannot be judged and is a
+	// miss, which is what every record written before this one is.
+	Version int    `json:"version,omitempty"`
+	Dir     string `json:"dir,omitempty"`
+	// Kind names the rule the record was written by, and so what a
+	// hit requires: the identified entry's own credential, another record
+	// of a call that identified an entry, or a call that identified none.
+	Kind string `json:"kind,omitempty"`
+	// Identified is the entry the call's --name identified, empty for
+	// none.
+	Identified string `json:"identified,omitempty"`
+	// Entry and BindingID are the identified entry and its cache binding
+	// id, for a call that identified one.
 	Entry     string `json:"entry,omitempty"`
 	BindingID string `json:"bindingId,omitempty"`
+	// Entries, when present, is a list the reader's own must equal, each
+	// entry with its cache binding id: every entry answering for Server
+	// for a call that identified none, the plugin login entries answering
+	// for it for one that did. Present and empty is a list with no entry.
+	Entries *[]cachedEntry `json:"entries,omitempty"`
+	// CurrentServer and TokenReuse, when present, are the values the
+	// record was written under, which the reader's load must still show.
+	CurrentServer *string `json:"currentServer,omitempty"`
+	TokenReuse    *bool   `json:"tokenReuse,omitempty"`
 	// ReadyEndpoints are the fingerprints of the direct endpoints that
 	// have accepted this token; an endpoint absent here is re-probed by
 	// the exec plugin before the token is handed to kubectl for it.
 	ReadyEndpoints []string `json:"readyEndpoints,omitempty"`
+}
+
+// cachedEntry is one entry of a cache record's list: its name and the
+// cache binding id it had when the record was written.
+type cachedEntry struct {
+	Name      string `json:"name"`
+	BindingID string `json:"bindingId,omitempty"`
 }
 
 // CachedCredDetail is one cached exec credential with its readiness.
@@ -503,8 +529,7 @@ func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, ser
 		if setCachedLock != nil {
 			setCachedLock()
 		}
-		m[key] = cachedCred{Token: token, Expiry: expiry, Name: name, Server: serverHost, Cluster: cluster,
-			Version: cacheRecordVersion, Dir: binding.dir, Entry: binding.entry, BindingID: binding.bindingID}
+		m[key] = binding.record(token, expiry, name, serverHost, cluster)
 		return f.writeCache(m)
 	})
 }

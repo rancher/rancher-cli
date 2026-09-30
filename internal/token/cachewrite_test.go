@@ -3,6 +3,7 @@ package token
 import (
 	"bytes"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 // The tests in this file assert where an exec-credential cache record's
@@ -36,52 +38,118 @@ func writeEntries(t *testing.T, dir string, reuse bool, servers map[string]confi
 	require.NoError(t, cfg.Write())
 }
 
-// TestEveryRecordIsBoundToTheEntryItsCredentialCameFrom asserts where each
-// site that produces a cache record's binding takes it from: the stored
-// credential's own entry, the entry a later lookup would choose when no
-// stored credential produced the token, and for each the id and the pause
-// that entry had in the same load. An entry whose cache writes are paused
-// there hands on a binding every write refuses.
-func TestEveryRecordIsBoundToTheEntryItsCredentialCameFrom(t *testing.T) {
+// diskRecord is what a cache record in token-cache.yaml is bound to.
+type diskRecord struct {
+	Kind          string       `json:"kind,omitempty"`
+	Identified    string       `json:"identified,omitempty"`
+	Entry         string       `json:"entry,omitempty"`
+	BindingID     string       `json:"bindingId,omitempty"`
+	Entries       *[]diskEntry `json:"entries,omitempty"`
+	CurrentServer *string      `json:"currentServer,omitempty"`
+	TokenReuse    *bool        `json:"tokenReuse,omitempty"`
+}
+
+// diskEntry is one entry of a record's list, with its cache binding id.
+type diskEntry struct {
+	Name      string `json:"name"`
+	BindingID string `json:"bindingId,omitempty"`
+}
+
+// recordUnder writes a record under b in a scratch directory and returns
+// what token-cache.yaml then holds for it, or the write's refusal.
+func recordUnder(t *testing.T, b config.CacheBinding) (diskRecord, error) {
+	t.Helper()
+	scratch := t.TempDir()
+	if err := config.NewFileStore(scratch).SetCachedCred("k", "tok", time.Now().Add(time.Hour), "n", "https://r.ex", "c", b); err != nil {
+		return diskRecord{}, err
+	}
+	raw, err := os.ReadFile(filepath.Join(scratch, "token-cache.yaml"))
+	require.NoError(t, err)
+	var m map[string]diskRecord
+	require.NoError(t, yaml.Unmarshal(raw, &m))
+	return m["k"], nil
+}
+
+// TestEveryRecordIsBoundToWhatItsLookupRead asserts where each site that
+// produces a cache record's binding takes it from, from one load: a call
+// whose --name identifies an entry and reads its own credential binds the
+// record to that entry alone; one that identifies an entry that holds
+// nothing binds it to that entry and the token-reuse setting; one that
+// identifies none binds it, whichever entry answered or none, exactly to
+// every entry for the URL, to the current server and to the setting. Each
+// entry carries the id that load showed, and an entry paused there hands
+// on a binding every write refuses, naming the entry.
+func TestEveryRecordIsBoundToWhatItsLookupRead(t *testing.T) {
 	m := newMadeFrom(t)
 	for _, paused := range []string{"", config.PauseLocked} {
 		t.Run("paused="+paused, func(t *testing.T) {
 			dir := t.TempDir()
 			t.Setenv(config.EnvCredentialStore, "")
-			// "a-guess" ranks first among the entries at this URL and holds
-			// nothing; prod holds the credential.
+			// "a-guess" holds nothing; prod holds the credential once the
+			// test stores it. prod is the current server.
 			writeEntries(t, dir, false, map[string]config.Server{
 				"a-guess": {URL: m.URL, CacheBindingID: "guess-id", CacheWritesPaused: paused},
 				"prod":    {URL: m.URL, CacheBindingID: "prod-id", CacheWritesPaused: paused},
 			})
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			cfg.CurrentServer = "prod"
+			require.NoError(t, cfg.Write())
 			store := config.NewFileStore(dir)
 			cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
+			unnamed := diskRecord{
+				Kind:          "server",
+				Entries:       &[]diskEntry{{Name: "a-guess", BindingID: "guess-id"}, {Name: "prod", BindingID: "prod-id"}},
+				CurrentServer: new("prod"), TokenReuse: new(false),
+			}
+			check := func(t *testing.T, b config.CacheBinding, want diskRecord, pausedEntry string) {
+				t.Helper()
+				got, werr := recordUnder(t, b)
+				if paused != "" {
+					var pe *config.CacheWritesPausedError
+					require.ErrorAs(t, werr, &pe)
+					assert.Equal(t, pausedEntry, pe.Entry, "the refusal names the paused entry")
+					return
+				}
+				require.NoError(t, werr)
+				assert.Equal(t, want, got)
+			}
 
-			// No stored credential: the guess.
-			_, _, guess, err := cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "", false, ui.Discard())
+			// Nothing stored, nothing identified: every entry for the URL.
+			_, _, b, err := cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "", false, ui.Discard())
 			require.ErrorIs(t, err, errNoStoredCredential)
-			assert.Equal(t, "a-guess", guess.Entry())
-			assert.Equal(t, "guess-id", guess.BindingID())
-			assert.Equal(t, paused != "", guess.Paused())
+			check(t, b, unnamed, "a-guess")
 
-			// A stored credential: its own entry.
+			// Nothing stored, prod identified: prod and the setting.
+			_, _, b, err = cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "prod", false, ui.Discard())
+			require.ErrorIs(t, err, errNoStoredCredential)
+			check(t, b, diskRecord{Kind: "identifiedEntry", Identified: "prod", Entry: "prod", BindingID: "prod-id", TokenReuse: new(false)}, "prod")
+
 			require.NoError(t, store.SetToken(config.ServerRef{Name: "prod", URL: m.URL}, "alice"))
-			tok, _, stored, err := cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "", false, ui.Discard())
+
+			// prod's credential answers the unnamed call: still every entry.
+			tok, _, b, err := cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "", false, ui.Discard())
 			require.NoError(t, err)
-			assert.Equal(t, "prod", stored.Entry())
-			assert.Equal(t, "prod-id", stored.BindingID())
-			assert.Equal(t, paused != "", stored.Paused())
-			assert.Equal(t, stored, tok.binding, "the token carries the binding it was made under")
+			assert.Equal(t, b, tok.binding, "the token carries the binding it was made under")
+			check(t, b, unnamed, "a-guess")
+
+			// prod's own credential answers the call that identifies it:
+			// prod alone.
+			tok, _, b, err = cmd.storedCredToken(t.Context(), m.Client(), m.URL, "local", "prod", false, ui.Discard())
+			require.NoError(t, err)
+			assert.Equal(t, b, tok.binding, "the token carries the binding it was made under")
+			check(t, b, diskRecord{Kind: "ownCredential", Identified: "prod", Entry: "prod", BindingID: "prod-id"}, "prod")
 		})
 	}
 }
 
-// TestThePluginLoginsRecordsAreBoundToTheEntryTheirCredentialCameFrom
-// asserts the plugin lane's two sites: a waiter that finds another
-// process's login already stored takes the binding from its own second
-// read, and the plugin-created login takes it from the entry its last
-// write wrote.
-func TestThePluginLoginsRecordsAreBoundToTheEntryTheirCredentialCameFrom(t *testing.T) {
+// TestThePluginLoginsRecordsAreBoundToWhatItsLookupRead asserts the plugin
+// lane's two sites for a call that identifies no entry: the plugin-created
+// login binds its record to the entries its lookup read under the
+// plugin-login lock, with the entry it created added under the id its last
+// write wrote; a waiter that finds another process's login already stored
+// takes the binding from its own read, which shows that entry's pause.
+func TestThePluginLoginsRecordsAreBoundToWhatItsLookupRead(t *testing.T) {
 	t.Run("the plugin-created login", func(t *testing.T) {
 		x := newPluginFixture(t, true, testrancher.Options{})
 		tok, _, err := x.command(x.store).pluginLogin(t.Context(), x.command(x.store).pluginInput(x.url, x.url, "", "c-test", x.client(),
@@ -89,9 +157,13 @@ func TestThePluginLoginsRecordsAreBoundToTheEntryTheirCredentialCameFrom(t *test
 		require.NoError(t, err)
 		entry, ok := x.entry(t)
 		require.True(t, ok)
-		assert.Equal(t, x.entryName(), tok.binding.Entry())
-		assert.Equal(t, entry.CacheBindingID, tok.binding.BindingID())
-		assert.Equal(t, entry.Paused(), tok.binding.Paused())
+		got, err := recordUnder(t, tok.binding)
+		require.NoError(t, err)
+		assert.Equal(t, diskRecord{
+			Kind:          "server",
+			Entries:       &[]diskEntry{{Name: x.entryName(), BindingID: entry.CacheBindingID}},
+			CurrentServer: new(""), TokenReuse: new(true),
+		}, got)
 	})
 
 	t.Run("a waiter that finds the login stored", func(t *testing.T) {
@@ -109,9 +181,9 @@ func TestThePluginLoginsRecordsAreBoundToTheEntryTheirCredentialCameFrom(t *test
 		tok, _, err := x.command(x.store).pluginLogin(t.Context(), x.command(x.store).pluginInput(x.url, x.url, "", "c-test", x.client(),
 			runParams{Name: "n", AuthProvider: "localProvider"}), ui.Discard())
 		require.NoError(t, err)
-		assert.Equal(t, x.entryName(), tok.binding.Entry())
-		assert.Equal(t, e.CacheBindingID, tok.binding.BindingID())
-		assert.True(t, tok.binding.Paused(), "from the waiter's own read, which shows the pause")
+		assert.Equal(t, x.entryName(), tok.binding.PausedEntry(), "from the waiter's own read, which shows the pause")
+		_, werr := recordUnder(t, tok.binding)
+		require.ErrorIs(t, werr, config.ErrCacheWritesPaused)
 	})
 }
 

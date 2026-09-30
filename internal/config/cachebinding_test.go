@@ -40,11 +40,12 @@ func seedStampedConfig(t *testing.T) (dir string, cfg *Config, stamp string) {
 
 // TestConfigWriteStampsWhatCanInvalidateARecord asserts the rule the
 // binding stamp is written by: a write that changes which entries exist,
-// which URL one answers for, or which cache binding id one carries
-// advances the stamp, and a write that changes anything else does not. A
-// cache record's validity depends on exactly those three, so a write that
-// touches none of them cannot invalidate one, and stamping it would throw
-// away every warm hit in the directory for nothing.
+// which URL one answers for, which cache binding id one carries, the
+// current server or the token-reuse setting advances the stamp, and a
+// write that changes anything else does not. A cache record's validity
+// depends on exactly those five, so a write that touches none of them
+// cannot invalidate one, and stamping it would throw away every warm hit
+// in the directory for nothing.
 func TestConfigWriteStampsWhatCanInvalidateARecord(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -67,14 +68,20 @@ func TestConfigWriteStampsWhatCanInvalidateARecord(t *testing.T) {
 			e.CacheBindingID = "b2"
 			c.Servers["prod"] = e
 		}},
-		{name: "the current server pointer moves", mutate: func(c *Config) {
+		{name: "the current server pointer moves", stamped: true, mutate: func(c *Config) {
 			c.CurrentServer = ""
+		}},
+		{name: "the current server pointer is written with its own value", mutate: func(c *Config) {
+			c.CurrentServer = "prod"
 		}},
 		{name: "a completion preference changes", mutate: func(c *Config) {
 			c.Completion.Network = true
 		}},
-		{name: "token reuse is turned on", mutate: func(c *Config) {
+		{name: "token reuse is turned on", stamped: true, mutate: func(c *Config) {
 			c.TokenReuse = true
+		}},
+		{name: "token reuse is written with its own value", mutate: func(c *Config) {
+			c.TokenReuse = false
 		}},
 		{name: "an entry's trust changes", mutate: func(c *Config) {
 			e := c.Servers["prod"]
@@ -282,7 +289,8 @@ func TestCanonicalDirResolvesEverySpellingOfOneDirectory(t *testing.T) {
 		// Everything but the directory lines up, so the directory is
 		// what each of these turns on.
 		rec := func(recDir string) cachedCred {
-			return cachedCred{Version: cacheRecordVersion, Dir: recDir, Entry: "prod", BindingID: "b1"}
+			return cachedCred{Version: cacheRecordVersion, Dir: recDir, Name: "prod", Server: "https://r.ex",
+				Kind: recordOwnCredential, Identified: "prod", Entry: "prod", BindingID: "b1"}
 		}
 		cfg := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex", CacheBindingID: "b1"}}}
 		require.True(t, (&CacheAnchor{Dir: canon, Cfg: cfg}).valid(rec(canon)), "the control case is a hit")
@@ -313,15 +321,30 @@ func testAnchor(t *testing.T, dir string) *CacheAnchor {
 
 // TestCacheRecordValidity asserts what makes a record servable. The
 // binding is what says who a cached cluster credential belongs to: the
-// directory that created it, the config entry it came from, and that
-// entry's cache binding id. Any of the three disagreeing means the
-// credential is not this reader's to serve.
+// directory that created it, and what the exec plugin's lookup for its
+// call read - here, a record made from the identified entry's own
+// credential, bound to that entry's cache binding id, and one of a call
+// that identified no entry, bound exactly to the server's entries. Any of
+// them disagreeing means the credential is not this reader's to serve.
 func TestCacheRecordValidity(t *testing.T) {
 	const dir = "/tmp/dir"
 	cfg := func(stamp string, servers map[string]Server) *Config {
 		return &Config{BindingStamp: stamp, Servers: servers}
 	}
 	bound := map[string]Server{"prod": {URL: "https://r.ex", CacheBindingID: "b1"}}
+	own := func(change func(*cachedCred)) cachedCred {
+		rec := cachedCred{Version: cacheRecordVersion, Dir: dir, Name: "prod", Server: "https://r.ex",
+			Kind: recordOwnCredential, Identified: "prod", Entry: "prod", BindingID: "b1"}
+		if change != nil {
+			change(&rec)
+		}
+		return rec
+	}
+	unnamed := func(server string) cachedCred {
+		none, off := "", false
+		return cachedCred{Version: cacheRecordVersion, Dir: dir, Name: "kube", Server: server, Kind: recordServer,
+			Entries: &[]cachedEntry{}, CurrentServer: &none, TokenReuse: &off}
+	}
 
 	for _, tc := range []struct {
 		name  string
@@ -331,70 +354,75 @@ func TestCacheRecordValidity(t *testing.T) {
 	}{
 		{
 			name:  "the entry and its binding agree",
-			rec:   cachedCred{Version: 1, Dir: dir, Entry: "prod", BindingID: "b1"},
+			rec:   own(nil),
 			a:     &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", bound)},
 			valid: true,
 		},
 		{
 			name: "the entry's binding has advanced",
-			rec:  cachedCred{Version: 1, Dir: dir, Entry: "prod", BindingID: "b0"},
+			rec:  own(func(r *cachedCred) { r.BindingID = "b0" }),
 			a:    &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", bound)},
 		},
 		{
 			name: "the entry is gone",
-			rec:  cachedCred{Version: 1, Dir: dir, Entry: "prod", BindingID: "b1"},
+			rec:  own(nil),
 			a:    &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", nil)},
 		},
 		{
 			name: "another directory created it",
-			rec:  cachedCred{Version: 1, Dir: "/tmp/other", Entry: "prod", BindingID: "b1"},
+			rec:  own(func(r *cachedCred) { r.Dir = "/tmp/other" }),
 			a:    &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", bound)},
 		},
 		{
 			name: "it names no directory at all",
-			rec:  cachedCred{Version: 1, Entry: "prod", BindingID: "b1"},
+			rec:  own(func(r *cachedCred) { r.Dir = "" }),
 			a:    &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", bound)},
 		},
 		{
 			name: "a record written before the binding fields existed",
-			rec:  cachedCred{Dir: dir, Entry: "prod", BindingID: "b1"},
+			rec:  own(func(r *cachedCred) { r.Version = 0 }),
+			a:    &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", bound)},
+		},
+		{
+			name: "a record written in the shape before this one",
+			rec:  cachedCred{Version: 1, Dir: dir, Name: "prod", Server: "https://r.ex", Entry: "prod", BindingID: "b1"},
 			a:    &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", bound)},
 		},
 		{
 			name: "the load was overtaken by a binding change",
-			rec:  cachedCred{Version: 1, Dir: dir, Entry: "prod", BindingID: "b1"},
+			rec:  own(nil),
 			a:    &CacheAnchor{Dir: dir, Stamp: "s0", Cfg: cfg("s1", bound)},
 		},
 		{
 			name: "the config could not be read",
-			rec:  cachedCred{Version: 1, Dir: dir, Entry: "prod", BindingID: "b1"},
+			rec:  own(nil),
 			a:    &CacheAnchor{Dir: dir, Stamp: "s1"},
 		},
 		{
 			name: "no anchor at all",
-			rec:  cachedCred{Version: 1, Dir: dir, Entry: "prod", BindingID: "b1"},
+			rec:  own(nil),
 		},
 		{
 			name: "an entry whose login predates the binding id",
-			rec:  cachedCred{Version: 1, Dir: dir, Entry: "prod"},
+			rec:  own(func(r *cachedCred) { r.BindingID = "" }),
 			a: &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1",
 				map[string]Server{"prod": {URL: "https://r.ex"}})},
 			valid: true,
 		},
 		{
 			name:  "no entry, and the server has none either",
-			rec:   cachedCred{Version: 1, Dir: dir, Server: "https://r.ex"},
+			rec:   unnamed("https://r.ex"),
 			a:     &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", nil)},
 			valid: true,
 		},
 		{
 			name: "no entry, but the server has one now",
-			rec:  cachedCred{Version: 1, Dir: dir, Server: "https://r.ex"},
+			rec:  unnamed("https://r.ex"),
 			a:    &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", bound)},
 		},
 		{
 			name: "no entry, and another server's entry exists",
-			rec:  cachedCred{Version: 1, Dir: dir, Server: "https://other.ex"},
+			rec:  unnamed("https://other.ex"),
 			a:    &CacheAnchor{Dir: dir, Stamp: "s1", Cfg: cfg("s1", bound)},
 			// The entry that exists answers for a different server, so
 			// this record's "the directory had no entry" still holds.
@@ -402,7 +430,7 @@ func TestCacheRecordValidity(t *testing.T) {
 		},
 		{
 			name:  "the bare install: no stamp anywhere, no entries",
-			rec:   cachedCred{Version: 1, Dir: dir, Server: "https://r.ex"},
+			rec:   unnamed("https://r.ex"),
 			a:     &CacheAnchor{Dir: dir, Cfg: cfg("", nil)},
 			valid: true,
 		},

@@ -282,8 +282,12 @@ func TestALoginThatCreatesItsEntryStartsItWithAnIDOfItsOwn(t *testing.T) {
 	require.NoError(t, err)
 	store := NewFileStore(dir)
 	expiry := time.Now().Add(time.Hour)
-	require.NoError(t, store.SetCachedCred("left", "earlier-entry", expiry, "n", "https://r.ex", "c", CacheBindingForTest(canon, "exec-login-r.ex", "")))
-	require.NoError(t, store.SetCachedCred("bare", "no-entry", expiry, "n", "https://r.ex", "c", CacheBindingWithoutEntry(canon, cfg)))
+	// An earlier entry of the same name, with no id, left this record.
+	earlier := &Config{TokenReuse: cfg.TokenReuse, Servers: map[string]Server{
+		"exec-login-r.ex": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin},
+	}}
+	require.NoError(t, store.SetCachedCred("left", "earlier-entry", expiry, "exec-login-r.ex", "https://r.ex", "c", CacheBindingFor(canon, earlier, "exec-login-r.ex")))
+	require.NoError(t, store.SetCachedCred("bare", "no-entry", expiry, "n", "https://r.ex", "c", CacheBindingForServer(canon, cfg, "https://r.ex", false)))
 	_, _, err = store.GetCachedCred("bare", testAnchor(t, dir))
 	require.NoError(t, err, "while the directory has no entry for the server, the record is its own")
 

@@ -497,10 +497,17 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 // invocation made, under the binding the token carries, and reports
 // whether it did. Every record the plugin writes passes through here: the
 // store check first, then the write, which refuses a binding whose load
-// showed the entry's cache writes paused. A record that is not written is
-// a notice, never an error; the credential is returned either way.
+// showed any entry it is bound to with its cache writes paused. A record
+// that is not written is a notice, never an error, except for a call its
+// lookup refuses, which writes nothing and says nothing; the credential is
+// returned either way.
 func (t tokenCmd) writeCacheRecord(key string, tok Token, expiry time.Time, name, serverID, clusterID string, p runtime.Prompter) bool {
 	b := tok.binding
+	if b.Refused() {
+		// The call's lookup refuses the call as the directory now stands,
+		// so nothing is cached; the next call's refusal names the remedy.
+		return false
+	}
 	if err := b.CheckStore(); err != nil {
 		cause := err.Error()
 		if changed, ok := errors.AsType[*config.CacheStoreChangedError](err); ok {
@@ -510,30 +517,30 @@ func (t tokenCmd) writeCacheRecord(key string, tok Token, expiry time.Time, name
 		return false
 	}
 	err := t.store.SetCachedCred(key, tok.Token, expiry, name, serverID, clusterID, b)
-	switch {
-	case err == nil:
+	if err == nil {
 		return true
-	case errors.Is(err, config.ErrCacheWritesPaused):
-		t.resumeCacheWrites(b, serverID, p)
-	default:
-		p.Notice("cache write failed: " + err.Error())
 	}
+	if paused, ok := errors.AsType[*config.CacheWritesPausedError](err); ok {
+		t.resumeCacheWrites(paused.Entry, p)
+		return false
+	}
+	p.Notice("cache write failed: " + err.Error())
 	return false
 }
 
 // resumeCacheWrites is what a miss does when its record was refused for
-// a pause: it tries the config lock once, and holding it resumes every
-// pause a resumer may clear, so the next call caches. This call's own
-// record is not written either way, because its credential was read
-// before the lock was taken. The skipped write is a notice only when the
-// pause stays; a resume write that failed adds nothing to it, and the
-// next miss tries again.
-func (t tokenCmd) resumeCacheWrites(b config.CacheBinding, serverID string, p runtime.Prompter) {
-	res, err := config.TryResumeCacheWrites(t.dir, b.Entry())
+// a pause of entry, one of the entries the record is bound to: it tries the
+// config lock once, and holding it resumes every pause a resumer may
+// clear, so the next call caches. This call's own record is not written
+// either way, because its credential was read before the lock was taken.
+// The skipped write is a notice only when entry's pause stays; a resume
+// write that failed adds nothing to it, and the next miss tries again.
+func (t tokenCmd) resumeCacheWrites(entry string, p runtime.Prompter) {
+	res, err := config.TryResumeCacheWrites(t.dir, entry)
 	if err == nil && res.Tried && res.Stays == "" {
 		return
 	}
-	msg := fmt.Sprintf("not caching: a credential change for %s has not finished", recordSubject(b, serverID))
+	msg := fmt.Sprintf("not caching: a credential change for %s has not finished", entry)
 	if err == nil && res.Tried {
 		// With the lock taken, a pause that stays is one only another
 		// command or the operator can clear, and config status names what.
@@ -542,8 +549,9 @@ func (t tokenCmd) resumeCacheWrites(b config.CacheBinding, serverID string, p ru
 	p.Notice(msg)
 }
 
-// recordSubject names what a skipped record would have been for: its
-// entry, or the server when the directory has no entry for it.
+// recordSubject names what a skipped record would have been for: the
+// entry the call identified, or the server for a call that identifies
+// none.
 func recordSubject(b config.CacheBinding, serverID string) string {
 	if b.Entry() != "" {
 		return b.Entry()
@@ -1687,40 +1695,6 @@ func rankedCredential(cfg *config.Config, store config.CredStore, server, cluste
 	return storedCredential{}, false, firstHardErr
 }
 
-// anchorEntry names the config entry a cache record written on this
-// invocation belongs to when no stored credential produced it - an
-// interactive login, or a session driven by RANCHER_CLI_TOKEN. It is the
-// identified entry when the call names one, else the entry candidateRanker
-// prefers, so the record is anchored to the entry a later lookup would
-// read. It does NOT apply the token-reuse filter: a dormant plugin entry
-// should anchor the record rather than leave it anchored to nothing and
-// invalidated the moment the setting is turned on.
-//
-// The name comes from the caller's config load, never a second one, and
-// the binding is built from that same load: a re-read could pair this
-// invocation's credential with the id of a login that replaced it since.
-//
-// Empty when the directory has no entry for the server at all, which is
-// the bare-install state and is a hit only while it lasts.
-func anchorEntry(cfg *config.Config, server, identified string, ignoreCurrentContext bool) string {
-	if identified != "" {
-		return identified
-	}
-	candidates := cfg.MatchingServerNames(server)
-	if len(candidates) == 0 {
-		return ""
-	}
-	rankOf := candidateRanker(cfg, ignoreCurrentContext)
-	best := candidates[0]
-	bestRank := rankOf(best)
-	for _, n := range candidates[1:] {
-		if r := rankOf(n); r < bestRank {
-			best, bestRank = n, r
-		}
-	}
-	return best
-}
-
 // clustersPath is the management Cluster collection/object path, reached
 // through the same local-cluster proxy ExtTokensPath uses.
 const clustersPath = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
@@ -1810,30 +1784,27 @@ const legacyTokenTTL = 15 * time.Minute
 // it could not read reads as off.
 // storedCredToken also reports the cache binding a record written on this
 // invocation belongs to, from the same config load it made here: the
-// entry that supplied the credential when a stored one produced it, and
-// otherwise the entry a later lookup would read (anchorEntry), so an
-// interactive or environment-driven session anchors its record to it.
+// identified entry alone when its own credential answered, and otherwise
+// what the lookup for this call reads (config.CacheBindingForLookup),
+// which also binds the record of an interactive sign-in that follows.
 func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, server, clusterID, wantName string, ignoreCurrentContext bool, p runtime.Prompter) (Token, bool, config.CacheBinding, error) {
 	cfg, err := config.Load(config.FilePath(t.dir))
 	if err != nil {
 		p.Notice(fmt.Sprintf("config unreadable: %v - skipping token creation from the stored credential", err))
 		return Token{}, false, config.CacheBinding{}, errNoStoredCredential
 	}
+	identified, ierr := identifyEntry(cfg, server, wantName, clusterID, ignoreCurrentContext)
+	if ierr != nil {
+		return Token{}, cfg.TokenReuse, config.CacheBinding{}, ierr
+	}
+	if t.resolved.known && t.resolved.name != identified {
+		return Token{}, cfg.TokenReuse, config.CacheBinding{}, configChangedError(t.resolved.name, identified)
+	}
 	// Every record this call leads to is made after a read of t.store,
 	// the stored credential's or the interactive fallback's because the
 	// store held nothing, so each binding names that store; which backend
 	// it read is asked at the write, once the read has fixed it.
-	binding := config.CacheBindingWithoutEntry(t.cacheDir(), cfg).ReadFrom(t.store)
-	identified, ierr := identifyEntry(cfg, server, wantName, clusterID, ignoreCurrentContext)
-	if ierr != nil {
-		return Token{}, cfg.TokenReuse, binding, ierr
-	}
-	if t.resolved.known && t.resolved.name != identified {
-		return Token{}, cfg.TokenReuse, binding, configChangedError(t.resolved.name, identified)
-	}
-	if anchorName := anchorEntry(cfg, server, identified, ignoreCurrentContext); anchorName != "" {
-		binding = config.CacheBindingFor(t.cacheDir(), cfg, anchorName).ReadFrom(t.store)
-	}
+	binding := config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, "", ignoreCurrentContext).ReadFrom(t.store)
 	sc, ok, serr := storedTokenForServer(cfg, t.store, server, identified, clusterID, ignoreCurrentContext)
 	if serr != nil {
 		// A hard store/helper failure (missing binary, timeout, malformed
@@ -1844,9 +1815,10 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	if !ok {
 		return Token{}, cfg.TokenReuse, binding, errNoStoredCredential
 	}
-	// A stored credential names its own entry, which outranks the guess
-	// above: the record belongs to the login that produced it.
-	binding = config.CacheBindingFor(t.cacheDir(), cfg, sc.name).ReadFrom(t.store)
+	// The entry that answered decides the binding: the identified entry's
+	// own credential binds the record to that entry alone, and so does a
+	// sign-in after the server rejects it.
+	binding = config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, sc.name, ignoreCurrentContext).ReadFrom(t.store)
 	stored, ref := sc.token, sc.ref
 	base := kube.BaseURL(server)
 	resolvedCluster, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)

@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -293,11 +292,12 @@ type Config struct {
 	CredentialTransitionID string `json:"credentialTransitionId,omitempty"`
 
 	path string
-	// loadedLookup is the entry lookup this config was read with, or nil
-	// for one built in memory. Write compares against it to decide whether
-	// the directory needs a fresh binding stamp; a nil baseline is treated
-	// as changed, because nothing is known about what was there before.
-	loadedLookup map[string]entryLookupRow
+	// loadedInputs is what this config was read with of the inputs a cache
+	// record is judged against, or nil for one built in memory. Write
+	// compares against it to decide whether the directory needs a fresh
+	// binding stamp; a nil baseline is treated as changed, because nothing
+	// is known about what was there before.
+	loadedInputs *recordInputs
 }
 
 // FilePath returns the config-file path inside a config directory.
@@ -335,7 +335,8 @@ func Load(path string) (*Config, error) {
 			// A missing file has a known prior lookup - the empty one -
 			// so the first write in a fresh directory stamps only if it
 			// actually adds an entry.
-			c.loadedLookup = c.entryLookup()
+			in := c.recordInputs()
+			c.loadedInputs = &in
 			return c, nil
 		}
 		return c, err
@@ -345,7 +346,8 @@ func Load(path string) (*Config, error) {
 		return c, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	parsed.path = path
-	parsed.loadedLookup = parsed.entryLookup()
+	in := parsed.recordInputs()
+	parsed.loadedInputs = &in
 	return parsed, nil
 }
 
@@ -372,12 +374,13 @@ func LoadAndStore(dir string) (*Config, CredStore, error) {
 // the whole span inside config.WithLock (the command sites' lock boundary
 // tests are the enforcement point) - a direct load→Write from a new command
 // reintroduces the concurrent lost-update the lock exists to prevent.
-// A write that changes which entries exist, which URL one answers for, or
-// which cache binding id one carries also advances the directory's binding
-// stamp: the stamp file first, then this file carrying the same value, so
-// a reader that saw the old stamp and then loaded the new config never
-// judges a cache record against entries that have moved - it re-anchors on
-// the newer stamp and judges once more instead. A failure between the two
+// A write that changes which entries exist, which URL one answers for,
+// which cache binding id one carries, the current server or the
+// token-reuse setting also advances the directory's binding stamp: the
+// stamp file first, then this file carrying the same value, so a reader
+// that saw the old stamp and then loaded the new config never judges a
+// cache record against entries that have moved - it re-anchors on the
+// newer stamp and judges once more instead. A failure between the two
 // leaves them permanently disagreeing, so every reader in the directory
 // pays that second look and still misses, on every invocation, until the
 // next such write; the old value is never put back.
@@ -385,8 +388,8 @@ func (c *Config) Write() error {
 	if c.path == "" {
 		return fmt.Errorf("config path is empty")
 	}
-	lookup := c.entryLookup()
-	stamped := c.loadedLookup == nil || !maps.Equal(c.loadedLookup, lookup)
+	inputs := c.recordInputs()
+	stamped := c.loadedInputs == nil || !c.loadedInputs.equal(inputs)
 	if stamped {
 		stamp, serr := newBindingStamp()
 		if serr != nil {
@@ -404,7 +407,7 @@ func (c *Config) Write() error {
 	if err := atomicWriteFile(c.path, b, 0600); err != nil {
 		return err
 	}
-	c.loadedLookup = lookup
+	c.loadedInputs = &inputs
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -41,30 +42,29 @@ func newTokenCommandForTest(t *testing.T, dir string, store config.CredStore) ru
 	return NewTokenCommand(dir, store, anchorFor(dir))
 }
 
-// testBinding is the binding a record written in dir for server carries,
-// computed the way the production write computes it: the entry a
-// credential lookup would choose, built from that load.
+// testBinding is the binding a record written in dir for a call named
+// name carries, computed the way the production write computes it from
+// that load: the identified entry alone when --name identifies one, whose
+// own credential the test takes to have answered, else what the lookup
+// of a call that identifies none reads.
 //
 // An entry a test seeded by hand carries no binding id, exactly as an
 // entry whose last login predates the id does, and a record made from it
 // carries none either: the pair is equal and the record is served.
-func testBinding(t *testing.T, dir, server string) config.CacheBinding {
+func testBinding(t *testing.T, dir, name, server, cluster string) config.CacheBinding {
 	t.Helper()
 	cfg, err := config.Load(config.FilePath(dir))
 	if err != nil {
 		return config.CacheBindingForTest(config.CanonicalDir(dir), "", "")
 	}
-	if entry := anchorEntry(cfg, server, "", false); entry != "" {
-		return config.CacheBindingFor(config.CanonicalDir(dir), cfg, entry)
-	}
-	return config.CacheBindingWithoutEntry(config.CanonicalDir(dir), cfg)
+	return config.CacheBindingForSeed(config.CanonicalDir(dir), cfg, name, server, cluster)
 }
 
 // seedCache writes a cache record the way a real invocation would, bound
-// to the entry a lookup for server would choose.
+// to what the lookup for the call reads.
 func seedCache(t *testing.T, dir string, store config.CredStore, key, token string, expiry time.Time, name, server, cluster string) error {
 	t.Helper()
-	return store.SetCachedCred(key, token, expiry, name, server, cluster, testBinding(t, dir, server))
+	return store.SetCachedCred(key, token, expiry, name, server, cluster, testBinding(t, dir, name, server, cluster))
 }
 
 // TestCopiedDirectoryDoesNotServeItsSourcesCacheRecords asserts what the
@@ -209,6 +209,54 @@ func TestHotPathOperationCounts(t *testing.T) {
 		assert.Zero(t, ops["recordread"])
 		assert.Zero(t, ops["manifeststat"],
 			"a directory that names no store change never opens the manifest")
+	})
+
+	t.Run("a hit of each record kind", func(t *testing.T) {
+		// Each kind of record is judged against the load the anchor
+		// already holds: the identification run again, and for the kinds
+		// bound to a list the entries for the URL compared in memory.
+		kdir := t.TempDir()
+		kcfg := &config.Config{CurrentServer: "prod", TokenReuse: true, Servers: map[string]config.Server{
+			"prod":              {URL: "https://r.ex", CacheBindingID: "b1"},
+			"staging":           {URL: "https://r.ex", CacheBindingID: "b2"},
+			"exec-login-plugin": {URL: "https://r.ex", CacheBindingID: "b3", Provenance: clierr.ProvenanceExecLogin},
+		}}
+		kcfg.SetPath(config.FilePath(kdir))
+		require.NoError(t, kcfg.Write())
+		kstore := config.NewFileStore(kdir)
+		canon := config.CanonicalDir(kdir)
+		kinds := []struct {
+			name    string
+			call    string
+			shim    bool
+			binding config.CacheBinding
+		}{
+			{"the identified entry's own credential", "prod-c-1", false, config.CacheBindingFor(canon, kcfg, "prod")},
+			{"a plugin login entry's own credential", "exec-login-plugin-c-1", false, config.CacheBindingFor(canon, kcfg, "exec-login-plugin")},
+			{"another record of an identified call", "staging-c-1", false, config.CacheBindingForIdentified(canon, kcfg, "https://r.ex", "staging")},
+			{"a call that identifies no entry", "kube-c-1", false, config.CacheBindingForServer(canon, kcfg, "https://r.ex", false)},
+			{"the legacy shim", config.LegacyCachePrefix + "kube", true, config.CacheBindingForServer(canon, kcfg, "https://r.ex", true)},
+		}
+		for _, k := range kinds {
+			t.Run(k.name, func(t *testing.T) {
+				kkey := config.CacheKey(k.call, config.CanonicalServerIdentity("https://r.ex"), "c-1")
+				require.NoError(t, kstore.SetCachedCred(kkey, "tok-"+k.call, time.Now().Add(time.Hour), k.call, "https://r.ex", "c-1", k.binding))
+				ops, keyringOps, locks, flocks := count(t, anchorFor(kdir), func(anchor *config.CacheAnchor) {
+					var hit bool
+					if k.shim {
+						_, _, _, hit, _ = shimProbeFlagCache(kdir, k.call, "https://r.ex", "c-1", anchor, ui.Discard())
+					} else {
+						cmd := tokenCmd{dir: kdir, store: kstore, anchor: anchor}
+						_, _, _, hit = cmd.probeFlagCache(k.call, "https://r.ex", "c-1", ui.Discard())
+					}
+					require.True(t, hit)
+				})
+				assert.Equal(t, map[string]int{"stampread": 1}, ops, "the confirmation only: no config load, no identity or change record read")
+				assert.Zero(t, keyringOps)
+				assert.Zero(t, locks)
+				assert.Zero(t, flocks)
+			})
+		}
 	})
 
 	t.Run("the legacy shim's fast path", func(t *testing.T) {

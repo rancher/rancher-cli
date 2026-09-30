@@ -164,11 +164,12 @@ func TestDeleteServerAdvancesTheBindingStamp(t *testing.T) {
 	assert.Equal(t, after.BindingStamp, onDisk, "the file and the config agree")
 }
 
-// TestUseServerLeavesTheBindingStampAlone asserts the pointer move does
-// not advance the stamp: it changes no entry, so no cache record can have
-// become invalid, and throwing away the directory's warm hits for it
-// would be a cost with nothing bought.
-func TestUseServerLeavesTheBindingStampAlone(t *testing.T) {
+// TestUseServerAdvancesTheBindingStamp asserts the pointer move advances
+// the stamp. The current server decides which entry the exec plugin reads
+// for a kubeconfig that names none, so a cached kubectl credential of such
+// a call is judged against it, and a reader whose config load came before
+// the move must see the stamp change and judge the record again.
+func TestUseServerAdvancesTheBindingStamp(t *testing.T) {
 	dir := seedDeclaredServer(t, "file")
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -183,7 +184,9 @@ func TestUseServerLeavesTheBindingStampAlone(t *testing.T) {
 	after, aerr := config.Load(config.FilePath(dir))
 	require.NoError(t, aerr)
 	assert.Equal(t, "other", after.CurrentServer)
-	assert.Equal(t, before.BindingStamp, after.BindingStamp)
+	assert.NotEqual(t, before.BindingStamp, after.BindingStamp)
+	onDisk, _ := config.ReadBindingStamp(dir)
+	assert.Equal(t, after.BindingStamp, onDisk, "the file and the config agree")
 }
 
 // TestAddServerAdvancesTheBindingStamp asserts registering an entry

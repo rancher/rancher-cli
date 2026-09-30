@@ -214,18 +214,18 @@ func idOnlyFixture(t *testing.T, srv *httptest.Server, clusters ...string) {
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 	store := config.NewFileStore(dir)
+	cfg := &config.Config{
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
+		Completion:    config.CompletionConfig{Network: true},
+	}
 	for _, c := range clusters {
 		require.NoError(t, store.SetCachedCred(
 			config.CacheKey("k8s-ctx", srv.URL, c),
 			"exec-token-"+c, time.Now().Add(time.Hour),
 			"k8s-ctx", srv.URL, c,
-			config.CacheBindingForTest(dir, "srv", ""),
+			config.CacheBindingForSeed(dir, cfg, "k8s-ctx", srv.URL, c),
 		))
-	}
-	cfg := &config.Config{
-		CurrentServer: "srv",
-		Servers:       map[string]config.Server{"srv": {URL: srv.URL}},
-		Completion:    config.CompletionConfig{Network: true},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())

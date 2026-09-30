@@ -3,11 +3,15 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // The binding stamp anchors an exec-credential cache hit in time. A reader
@@ -118,9 +122,9 @@ func writeBindingStamp(dir, stamp string) error {
 }
 
 // cacheRecordVersion is the current exec-credential cache record shape. A
-// record written by an older binary carries none of the binding fields
-// below, so it cannot be judged and is a miss.
-const cacheRecordVersion = 1
+// record written by an older binary does not carry what the record is bound
+// to in this shape, so it cannot be judged and is a miss.
+const cacheRecordVersion = 2
 
 // CanonicalDir is the directory value a cache record is written with and
 // judged by: absolute and cleaned, which is C0's form.
@@ -147,39 +151,104 @@ func CanonicalDir(dir string) string {
 }
 
 // CacheBinding is what a cache record is written with and judged by: the
-// directory it was created in, the config entry it was created from, that
-// entry's cache binding id at the time, and whether the entry's cache
-// writes were paused then.
+// directory it was created in, the entry the call's --name identified (or
+// none), and what the exec plugin's lookup for that call reads - the
+// entries the record is bound to, each with its cache binding id, and,
+// where the lookup depends on them, the current server and the
+// token-reuse setting. A record is served only while the lookup, run again
+// over the reader's own config load, would read the same entries.
+//
+// Which entries a record is bound to follows from how the call's lookup
+// reads them:
+//
+//   - a record made from the identified entry's own credential (or signed
+//     in after the server rejected it) is bound to that entry alone, and,
+//     for a plugin login entry, to the setting, without which that entry is
+//     never read (CacheBindingFor);
+//   - any other record of a call that identifies an entry is bound to that
+//     entry, to the setting, and, while the setting is on, exactly to the
+//     server's plugin login entries, the one entry that lookup may read
+//     after it (CacheBindingForIdentified);
+//   - the record of a call that identifies none is bound exactly to every
+//     entry that answers for the server, to the current server, which the
+//     lookup prefers among them, and to the setting
+//     (CacheBindingForServer).
+//
+// "Exactly" means the list may neither gain nor lose an entry.
 //
 // All of it comes from the same config load as the credential it belongs
 // to, and is carried to the write rather than re-read there: a re-read
 // could pair a credential this process acquired for one login with the id
 // of the login that replaced it in the meantime.
 //
-// A binding is built only by its constructors, from an entry of a loaded
-// config or, for a server that config has no entry for, by
-// CacheBindingWithoutEntry. The zero value names no load and is refused
-// by every write, so a producer that does not build one writes nothing,
-// rather than a record the pause would have stopped.
-//
-// No entry means the credential was acquired for a server the directory
-// has no entry for. Such a record is a hit only while that stays true.
+// A binding is built only by its constructors. The zero value names no
+// load and is refused by every write, so a producer that does not build
+// one writes nothing, rather than a record the pause would have stopped.
 //
 // load and the store are what CheckStore compares: the config the
 // binding was built from, and the store the credential was read from -
 // from, asked at the check, or source, named where no store is at hand.
 type CacheBinding struct {
-	dir, entry, bindingID string
-	paused                bool
-	built                 bool
-	load                  *Config
-	from                  CredStore
-	source                string
+	dir        string
+	kind       string
+	identified string
+	// entry is the entry the record is bound to by its id alone: the
+	// identified entry, empty for a call that identifies none.
+	entry boundEntry
+	// identifiedIsPlugin reports that the identified entry is a plugin
+	// login entry, whose lookup reads no other.
+	identifiedIsPlugin bool
+	listed             bool
+	list               []boundEntry
+	currentBound       bool
+	current            string
+	reuseBound         bool
+	reuse              bool
+	built              bool
+	// refused marks a binding no record is written under on purpose: the
+	// call's lookup, over the binding's load, refuses the call.
+	refused bool
+	load    *Config
+	from    CredStore
+	source  string
 }
 
-// CacheBindingFor is the binding of a record made for entry, from cfg,
-// the config load the credential was read after. An entry cfg does not
-// have gives the zero binding.
+// The kinds of cache record, one per rule above, which a record names so
+// a hit judges it by that kind's rule and requires everything the kind is
+// bound to.
+const (
+	recordOwnCredential = "ownCredential"
+	recordIdentified    = "identifiedEntry"
+	recordServer        = "server"
+)
+
+// boundEntry is one entry a record is bound to: its name, its cache binding
+// id in the load, and whether its cache writes were paused there.
+type boundEntry struct {
+	name, id string
+	paused   bool
+}
+
+func boundEntryOf(cfg *Config, name string) boundEntry {
+	s := cfg.Servers[name]
+	return boundEntry{name: name, id: s.CacheBindingID, paused: s.Paused()}
+}
+
+func boundEntriesOf(cfg *Config, names []string) []boundEntry {
+	out := make([]boundEntry, len(names))
+	for i, n := range names {
+		out[i] = boundEntryOf(cfg, n)
+	}
+	return out
+}
+
+// CacheBindingFor is the binding of a record made from entry's own stored
+// credential by a call whose --name identified entry, from cfg, the config
+// load the credential was read after: bound to entry alone, and, when entry
+// is a plugin login entry, to the token-reuse setting. The same binding
+// covers the sign-in that follows a rejection of that credential, since
+// the lookup read that entry and nothing else. An entry cfg does not have
+// gives the zero binding.
 func CacheBindingFor(dir string, cfg *Config, entry string) CacheBinding {
 	if cfg == nil {
 		return CacheBinding{}
@@ -188,23 +257,134 @@ func CacheBindingFor(dir string, cfg *Config, entry string) CacheBinding {
 	if !ok {
 		return CacheBinding{}
 	}
-	return CacheBinding{dir: dir, entry: entry, bindingID: s.CacheBindingID, paused: s.Paused(), built: true, load: cfg}
+	b := CacheBinding{dir: dir, kind: recordOwnCredential, identified: entry, entry: boundEntryOf(cfg, entry), built: true, load: cfg}
+	if s.Provenance == clierr.ProvenanceExecLogin {
+		b.reuseBound, b.reuse = true, cfg.TokenReuse
+	}
+	return b
 }
 
-// CacheBindingWithoutEntry is the binding of a record made for a server
-// cfg has no entry for.
-func CacheBindingWithoutEntry(dir string, cfg *Config) CacheBinding {
+// CacheBindingForIdentified is the binding of any other record of a call
+// whose --name identified entry, for server: the plugin's own login entry
+// answering for it, the plugin-created login, or an interactive sign-in.
+// It is bound to entry, to the token-reuse setting, and, while the setting
+// is on, exactly to the server's plugin login entries; not to the other
+// entries for the server, nor to the current server, which that lookup
+// never reads. An entry cfg does not have gives the zero binding, and so
+// does a list the lookup refuses (see refusesPluginEntries).
+func CacheBindingForIdentified(dir string, cfg *Config, server, entry string) CacheBinding {
 	if cfg == nil {
 		return CacheBinding{}
 	}
-	return CacheBinding{dir: dir, built: true, load: cfg}
+	s, ok := cfg.Servers[entry]
+	if !ok {
+		return CacheBinding{}
+	}
+	b := CacheBinding{dir: dir, kind: recordIdentified, identified: entry, entry: boundEntryOf(cfg, entry),
+		identifiedIsPlugin: s.Provenance == clierr.ProvenanceExecLogin,
+		reuseBound:         true, reuse: cfg.TokenReuse, built: true, load: cfg}
+	if cfg.TokenReuse {
+		b.listed, b.list = true, boundEntriesOf(cfg, cfg.PluginLoginEntries(server))
+	}
+	if b.refusesPluginEntries() {
+		return CacheBinding{refused: true}
+	}
+	return b
 }
 
-// CacheBindingForTest is a binding for a record a test seeds directly:
-// dir, entry and id as given, not paused. Production code builds its
-// bindings from a config load.
+// refusesPluginEntries reports that the lookup of the call this binding
+// is for refuses it over the binding's list (PluginFallbackRefused).
+func (b CacheBinding) refusesPluginEntries() bool {
+	return b.kind == recordIdentified && PluginFallbackRefused(b.identifiedIsPlugin, len(b.list))
+}
+
+// PluginFallbackRefused reports whether the exec plugin's lookup refuses a
+// call whose --name identified an entry with no credential of its own,
+// given how many plugin login entries answer for the call's server: a user
+// entry falls back to the server's one plugin login entry, and more than
+// one is refused, since the fallback is one entry and never a choice among
+// several; a plugin login entry reads no other. The lookup, the cache
+// writers and a cache hit all ask this.
+func PluginFallbackRefused(identifiedIsPlugin bool, pluginLoginEntries int) bool {
+	return !identifiedIsPlugin && pluginLoginEntries > 1
+}
+
+// CacheBindingForLookup is the binding of the record a call writes,
+// picked from what its lookup found in cfg, the config load its
+// credentials were read after: identified is the entry the call's --name
+// identified, empty for none, and answered the entry whose stored
+// credential made the token, empty for a sign-in. The identified entry's
+// own credential gives CacheBindingFor, any other answer of a call that
+// identifies an entry CacheBindingForIdentified, and a call that
+// identifies none CacheBindingForServer (legacyShim for the legacy
+// `rancher token` shim's lookup). Every writer picks its binding here.
+func CacheBindingForLookup(dir string, cfg *Config, server, identified, answered string, legacyShim bool) CacheBinding {
+	switch {
+	case identified != "" && answered == identified:
+		return CacheBindingFor(dir, cfg, identified)
+	case identified != "":
+		return CacheBindingForIdentified(dir, cfg, server, identified)
+	}
+	return CacheBindingForServer(dir, cfg, server, legacyShim)
+}
+
+// CacheBindingForServer is the binding of a record of a call whose --name
+// identifies no entry, for server: bound exactly to every entry that
+// answers for server, to the current server - its name when it is one of
+// them, else none - and to the token-reuse setting. The legacy `rancher
+// token` shim's lookup ignores the current server, so its records
+// (legacyShim) are not bound to it. A server cfg has no entry for gives
+// the empty list, the bare-install case.
+func CacheBindingForServer(dir string, cfg *Config, server string, legacyShim bool) CacheBinding {
+	if cfg == nil {
+		return CacheBinding{}
+	}
+	names := cfg.MatchingServerNames(server)
+	b := CacheBinding{dir: dir, kind: recordServer, listed: true, list: boundEntriesOf(cfg, names), reuseBound: true, reuse: cfg.TokenReuse, built: true, load: cfg}
+	if !legacyShim {
+		b.currentBound, b.current = true, currentAmong(cfg.CurrentServer, names)
+	}
+	return b
+}
+
+// currentAmong is the current server as a record is bound to it: its name
+// when it is one of names, else empty. The lookup only asks whether a
+// candidate is the current server.
+func currentAmong(current string, names []string) string {
+	if slices.Contains(names, current) {
+		return current
+	}
+	return ""
+}
+
+// CacheBindingForTest is a binding for a record a test seeds directly,
+// with no config load: for a non-empty entry, a record made from that
+// entry's own credential by a call that identified it, with the given id;
+// for an empty one, a record of a call that identifies no entry, made
+// while the directory had no entry for the server, no current server and
+// the setting off. Production code builds its bindings from a config
+// load.
 func CacheBindingForTest(dir, entry, bindingID string) CacheBinding {
-	return CacheBinding{dir: dir, entry: entry, bindingID: bindingID, built: true}
+	if entry == "" {
+		return CacheBinding{dir: dir, kind: recordServer, listed: true, currentBound: true, reuseBound: true, built: true}
+	}
+	return CacheBinding{dir: dir, kind: recordOwnCredential, identified: entry, entry: boundEntry{name: entry, id: bindingID}, built: true}
+}
+
+// CacheBindingForSeed is the binding the exec plugin writes for a call
+// with --name name, for server and cluster, over cfg: the identified
+// entry alone when the name identifies one at server - the record of a
+// call its own credential answered - else what the lookup of a call that
+// identifies none reads. For a test or a harness that seeds the cache as
+// a real call would; the exec plugin itself picks its binding from what
+// its lookup read.
+func CacheBindingForSeed(dir string, cfg *Config, name, server, cluster string) CacheBinding {
+	legacyShim := IsLegacyCacheSlot(name)
+	identified := ""
+	if id := IdentifyEntry(cfg, server, name, cluster, legacyShim); !id.OtherURL {
+		identified = id.Entry
+	}
+	return CacheBindingForLookup(dir, cfg, server, identified, identified, legacyShim)
 }
 
 // ReadFrom records the store the binding's credential is read from, for
@@ -240,14 +420,14 @@ func (e *CacheStoreChangedError) Is(target error) bool { return target == ErrCac
 // readers left is still there to be read; a record made from it would
 // carry the entry's current id. A resolution that fails refuses too. A
 // binding no constructor built has nothing to compare, and the write
-// itself refuses it. A binding to no entry has nothing to compare
+// itself refuses it. A binding bound to no entry has nothing to compare
 // either: its record is served only while the directory has no entry for
 // the server, so no credential of an entry can be stale in it. Nor does
 // one whose store was never read - a lazy store no credential call has
 // resolved - since no copy was read to be stale. A store whose
 // resolution failed, and a named source that is empty, refuse.
 func (b CacheBinding) CheckStore() error {
-	if !b.built || b.entry == "" {
+	if !b.built || (b.entry.name == "" && len(b.list) == 0) {
 		return nil
 	}
 	source := b.source
@@ -274,34 +454,126 @@ func (b CacheBinding) CheckStore() error {
 // Dir is the directory the record is bound to.
 func (b CacheBinding) Dir() string { return b.dir }
 
-// Entry is the config entry the record is bound to, or empty for none.
-func (b CacheBinding) Entry() string { return b.entry }
+// Entry is the entry the record is bound to by its id alone - the entry the
+// call identified - or empty for a call that identifies none.
+func (b CacheBinding) Entry() string { return b.entry.name }
 
-// BindingID is the entry's cache binding id in the load.
-func (b CacheBinding) BindingID() string { return b.bindingID }
+// BindingID is that entry's cache binding id in the load.
+func (b CacheBinding) BindingID() string { return b.entry.id }
 
-// Paused reports whether the entry's cache writes were paused in the load.
-func (b CacheBinding) Paused() bool { return b.paused }
+// PausedEntry names an entry the record is bound to whose cache writes were
+// paused in the load, or is empty when none was.
+func (b CacheBinding) PausedEntry() string {
+	if b.entry.paused {
+		return b.entry.name
+	}
+	for _, e := range b.list {
+		if e.paused {
+			return e.name
+		}
+	}
+	return ""
+}
 
-// ErrCacheWritesPaused is what a cache write returns for a binding whose
-// load showed its entry's cache writes paused: a change of the entry's
-// credential has not finished, and nothing is written for it.
-var ErrCacheWritesPaused = errors.New("exec-credential cache writes for this entry are paused while a change of its credential finishes")
+// Paused reports whether an entry the record is bound to had its cache
+// writes paused in the load.
+func (b CacheBinding) Paused() bool { return b.PausedEntry() != "" }
+
+// withWritten is b with the entry a login wrote bound to the id and pause
+// that write left, in place of what b's load showed for it: added to the
+// list when the login created it, and the load CheckStore resolves from
+// replaced by the config that write wrote. A binding whose list cannot
+// hold the entry - one not bound to a list - gives the zero binding, since
+// its record would not be bound to the entry its credential came from, and
+// so does a list the call's lookup now refuses: a login that added a
+// second plugin login entry for the server of a call that identifies a
+// user entry.
+func (b CacheBinding) withWritten(written *Config, name string, paused bool) CacheBinding {
+	s, ok := written.Servers[name]
+	if !b.built || !ok || !b.listed {
+		return CacheBinding{}
+	}
+	wrote := boundEntry{name: name, id: s.CacheBindingID, paused: paused || s.Paused()}
+	list := slices.Clone(b.list)
+	i, found := slices.BinarySearchFunc(list, name, func(e boundEntry, n string) int { return strings.Compare(e.name, n) })
+	if found {
+		list[i] = wrote
+	} else {
+		list = slices.Insert(list, i, wrote)
+	}
+	b.list, b.load, b.from = list, written, nil
+	if b.refusesPluginEntries() {
+		return CacheBinding{refused: true}
+	}
+	return b
+}
+
+// ErrCacheWritesPaused matches every CacheWritesPausedError, for a caller
+// that asks only whether a write was refused for a pause.
+var ErrCacheWritesPaused = errors.New("exec-credential cache writes are paused while a change of a credential finishes")
+
+// CacheWritesPausedError is what a cache write returns for a binding whose
+// load showed an entry it is bound to with its cache writes paused: a
+// change of that entry's credential has not finished, and nothing is
+// written. It names the entry, so the exec plugin can try to resume that
+// entry's writes and say why they stay paused.
+type CacheWritesPausedError struct{ Entry string }
+
+func (e *CacheWritesPausedError) Error() string {
+	return fmt.Sprintf("exec-credential cache writes for %s are paused while a change of its credential finishes", e.Entry)
+}
+
+// Is makes a CacheWritesPausedError match ErrCacheWritesPaused.
+func (e *CacheWritesPausedError) Is(target error) bool { return target == ErrCacheWritesPaused }
 
 // errCacheBindingUnset is what a cache write returns for a binding no
 // constructor built, or one with no directory: there is nothing a record
-// could later be judged by.
-var errCacheBindingUnset = errors.New("the exec-credential cache record has no binding to a config load")
+// could later be judged by. The exec plugin reaches it when the config
+// directory could not be resolved or config.yaml could not be read.
+var errCacheBindingUnset = errors.New("the config directory could not be resolved or its config.yaml could not be read when the credential was made")
 
-// writable reports whether a record may be written under b.
+// errCacheRecordRefused is what a cache write returns for a binding whose
+// call its lookup refuses (Refused): no record is written for it.
+var errCacheRecordRefused = errors.New("no cache record is written for a call its credential lookup refuses")
+
+// Refused reports that no record is written under b on purpose: the call's
+// lookup, over the binding's load, refuses the call as the directory now
+// stands. The next call's own refusal says why and what to do, so the
+// skipped write needs no notice of its own.
+func (b CacheBinding) Refused() bool { return b.refused }
+
+// writable reports whether a record may be written under b: never when an
+// entry it is bound to was paused in the load.
 func (b CacheBinding) writable() error {
 	switch {
+	case b.refused:
+		return errCacheRecordRefused
 	case !b.built || b.dir == "":
 		return errCacheBindingUnset
-	case b.paused:
-		return ErrCacheWritesPaused
+	case b.Paused():
+		return &CacheWritesPausedError{Entry: b.PausedEntry()}
 	}
 	return nil
+}
+
+// record is the cache record b writes for a credential.
+func (b CacheBinding) record(token string, expiry time.Time, name, server, cluster string) cachedCred {
+	rec := cachedCred{Token: token, Expiry: expiry, Name: name, Server: server, Cluster: cluster,
+		Version: cacheRecordVersion, Dir: b.dir, Kind: b.kind, Identified: b.identified, Entry: b.entry.name, BindingID: b.entry.id}
+	if b.listed {
+		entries := make([]cachedEntry, len(b.list))
+		for i, e := range b.list {
+			entries[i] = cachedEntry{Name: e.name, BindingID: e.id}
+		}
+		rec.Entries = &entries
+	}
+	if b.currentBound {
+		rec.CurrentServer = &b.current
+	}
+	if b.reuseBound {
+		rec.TokenReuse = &b.reuse
+	}
+	return rec
 }
 
 // CacheAnchor is what an exec-credential cache hit is judged against: the
@@ -408,24 +680,94 @@ func (a *CacheAnchor) valid(rec cachedCred) bool {
 	if rec.Dir == "" || a.Dir == "" || rec.Dir != a.Dir {
 		return false
 	}
-	if rec.Entry == "" {
-		// Written for a server this directory had no entry for: valid
-		// while that holds, a miss the moment one exists, because the
-		// entry is then what decides who the credential belongs to.
-		return !a.Cfg.HasEntryForServer(rec.Server)
-	}
-	entry, ok := a.Cfg.Servers[rec.Entry]
-	if !ok {
+	return a.Cfg.servesRecord(rec)
+}
+
+// servesRecord reports whether the exec plugin's lookup for the record's
+// call, run over c, would read what the record is bound to: the same
+// identification and no refusal, then, by the record's kind, the one
+// entry and its id, the exact list with every id, and the current server
+// and the token-reuse setting where the kind binds them. A record of no
+// known kind, or missing or carrying a binding its kind does not have, is a
+// miss, never judged by another kind's rule.
+//
+// Ids compare by plain equality, the two empties included. An entry whose
+// login predates the binding id carries none, and a record made from it
+// carries none either; refusing that pair would make the cache useless for
+// such an entry until its next login, and it is not needed: every path
+// that removes or replaces the entry's credential, config delete-server
+// included, writes a fresh id first, and every entry a command creates
+// starts with one.
+func (c *Config) servesRecord(rec cachedCred) bool {
+	legacyShim := IsLegacyCacheSlot(rec.Name)
+	id := IdentifyEntry(c, rec.Server, rec.Name, rec.Cluster, legacyShim)
+	if id.OtherURL || id.Entry != rec.Identified {
 		return false
 	}
-	// Plain equality, the two empties included. An entry whose login
-	// predates the binding id carries none, and a record made from it
-	// carries none either; refusing that pair would make the cache
-	// useless for such an entry until its next login, and it is not
-	// needed: every path that removes or replaces the entry's credential,
-	// config delete-server included, writes a fresh id first, and every
-	// entry a command creates starts with one.
-	return entry.CacheBindingID == rec.BindingID
+	if rec.TokenReuse != nil && *rec.TokenReuse != c.TokenReuse {
+		return false
+	}
+	switch rec.Kind {
+	case recordServer:
+		if rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || (rec.CurrentServer == nil) != legacyShim {
+			return false
+		}
+		names := c.MatchingServerNames(rec.Server)
+		if rec.CurrentServer != nil && currentAmong(c.CurrentServer, names) != *rec.CurrentServer {
+			return false
+		}
+		return c.sameEntries(names, *rec.Entries)
+	case recordOwnCredential:
+		s, ok := c.identifiedEntryOf(rec)
+		if !ok || rec.Entries != nil {
+			return false
+		}
+		// A plugin login entry is read only with the setting on, so a
+		// record of one is bound to the setting; a user entry's is not.
+		return (rec.TokenReuse != nil) == (s.Provenance == clierr.ProvenanceExecLogin)
+	case recordIdentified:
+		s, ok := c.identifiedEntryOf(rec)
+		if !ok || rec.TokenReuse == nil || (rec.Entries != nil) != *rec.TokenReuse {
+			return false
+		}
+		if rec.Entries == nil {
+			return true
+		}
+		plugins := c.PluginLoginEntries(rec.Server)
+		if PluginFallbackRefused(s.Provenance == clierr.ProvenanceExecLogin, len(plugins)) {
+			return false
+		}
+		return c.sameEntries(plugins, *rec.Entries)
+	}
+	return false
+}
+
+// identifiedEntryOf is the entry a record of an identified call is bound to
+// by its id: the identified entry, present with the id the record carries.
+// Such a record is never bound to the current server.
+func (c *Config) identifiedEntryOf(rec cachedCred) (Server, bool) {
+	if rec.Identified == "" || rec.Entry != rec.Identified || rec.CurrentServer != nil {
+		return Server{}, false
+	}
+	s, ok := c.Servers[rec.Entry]
+	if !ok || s.CacheBindingID != rec.BindingID {
+		return Server{}, false
+	}
+	return s, true
+}
+
+// sameEntries reports whether names, sorted, are exactly the entries a
+// record lists, each with the cache binding id the record carries for it.
+func (c *Config) sameEntries(names []string, listed []cachedEntry) bool {
+	if len(names) != len(listed) {
+		return false
+	}
+	for i, n := range names {
+		if listed[i].Name != n || c.Servers[n].CacheBindingID != listed[i].BindingID {
+			return false
+		}
+	}
+	return true
 }
 
 // staleRecord reports whether this record is one the reader can prove is
@@ -604,18 +946,20 @@ func cachedAttempt[T any](a *CacheAnchor, read func(*CacheAnchor) (T, bool, erro
 	return zero, false, retry{again: true, stamp: stamp, seen: stamp != ""}, nil
 }
 
-// HasEntryForServer reports whether any entry answers for this server.
-// The comparison is the one the token package's candidate set uses, so a
-// record's "the directory had no entry for this server" can never mean
-// something different from the credential lookup's.
-func (c *Config) HasEntryForServer(server string) bool {
-	return len(c.MatchingServerNames(server)) > 0
+// PluginLoginEntries lists the plugin's own login entries - the execLogin
+// provenance - among the entries answering for server, sorted. The exec
+// plugin reads one of them after an identified entry with no credential,
+// and more than one refuses the call.
+func (c *Config) PluginLoginEntries(server string) []string {
+	return slices.DeleteFunc(c.MatchingServerNames(server), func(n string) bool {
+		return c.Servers[n].Provenance != clierr.ProvenanceExecLogin
+	})
 }
 
 // MatchingServerNames lists the entries answering for a server, compared
 // by scheme and host, sorted for determinism. One matching policy for
-// every caller: the credential lookup, the CA lookup and the cache
-// record's entry rule.
+// every caller: the credential lookup, the CA lookup and the lists a cache
+// record is bound to.
 func (c *Config) MatchingServerNames(server string) []string {
 	var names []string
 	for n, s := range c.Servers {
@@ -627,26 +971,39 @@ func (c *Config) MatchingServerNames(server string) []string {
 	return names
 }
 
-// entryLookupRow is the part of one server entry a cache record's validity
+// entryInputRow is the fields of one server entry a cache record's validity
 // depends on.
-type entryLookupRow struct {
+type entryInputRow struct {
 	url       string
 	bindingID string
 }
 
-// entryLookup is the part of config.yaml an exec-credential cache record
+// recordInputs is the config.yaml content an exec-credential cache record
 // is judged against: which entries exist, which URL each one answers for,
-// and the cache binding id each one carries. A config write that leaves
-// all three unchanged cannot make any record invalid, so it needs no
-// fresh stamp; one that adds, removes or re-addresses an entry, or
-// advances an entry's binding id, can, so it writes one.
+// the cache binding id each one carries, the current server and the
+// token-reuse setting. The last two decide which entry the exec plugin's
+// lookup reads for a call that names none, and whether it reads the
+// plugin's own login entries at all. A config write that leaves all of it
+// unchanged cannot make any record invalid, so it needs no fresh stamp;
+// one that changes any of it can, so it writes one.
 //
 // The predicate is evaluated rather than listed, so a config writer added
 // later cannot forget to stamp.
-func (c *Config) entryLookup() map[string]entryLookupRow {
-	out := make(map[string]entryLookupRow, len(c.Servers))
+type recordInputs struct {
+	entries       map[string]entryInputRow
+	currentServer string
+	tokenReuse    bool
+}
+
+func (c *Config) recordInputs() recordInputs {
+	out := recordInputs{entries: make(map[string]entryInputRow, len(c.Servers)), currentServer: c.CurrentServer, tokenReuse: c.TokenReuse}
 	for name, s := range c.Servers {
-		out[name] = entryLookupRow{url: s.URL, bindingID: s.CacheBindingID}
+		out.entries[name] = entryInputRow{url: s.URL, bindingID: s.CacheBindingID}
 	}
 	return out
+}
+
+// equal reports whether two loads give a cache record the same inputs.
+func (r recordInputs) equal(o recordInputs) bool {
+	return r.currentServer == o.currentServer && r.tokenReuse == o.tokenReuse && maps.Equal(r.entries, o.entries)
 }

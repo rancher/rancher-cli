@@ -103,7 +103,9 @@ message; while the record config.yaml names cannot be read, its hint is
 `credentialStore`: any of the three would send every reader to a store
 the edit put nothing in. Change it with the login above; no command
 removes a declaration, and a different `--config` starts a fresh
-directory.
+directory. It also refuses a change of `tokenReuse`, which a cached
+kubectl credential is judged against: use `rancher config set-token-reuse
+on` or `off`.
 
 A directory whose backend is the keychain reads only the keychain: on a
 headless machine (no D-Bus, locked keychain) every command fails with the
@@ -112,11 +114,12 @@ machine wants `RANCHER_CLI_CREDENTIAL_STORE=file` from the start, before
 the first login records it.
 
 The exec-credential cache follows the same rule. Every record names the
-directory that created it, the server entry it came from and that entry's
-cache binding id, so a copied config directory never serves the
+directory that created it and the server entries its lookup read, each with
+its cache binding id, so a copied config directory never serves the
 credentials its source cached, and a login, a logout, a URL change or a
 `config delete-server` makes every record of the previous credential a
-miss at once. While such a change runs, the entry's cache writes are
+miss at once (which records each change ends is under "kubectl
+integration" below). While such a change runs, the entry's cache writes are
 paused and each kubectl call for it makes a fresh token rather than
 caching one. A pause that nothing still holds - a change that died or
 failed before its last write - is cleared by the next cache miss that can
@@ -1073,6 +1076,24 @@ regenerate the kubeconfig with `rancher kubeconfig --cluster <id>`. The legacy
 it fails when several user entries (or, with none, several plugin login
 entries) have a credential; regenerate its kubeconfig, or clear the unwanted
 entry's login with `rancher auth logout <entry>`.
+
+A cached kubectl credential is served only while that choice would still be
+made the same way. None is served once `--name` picks another entry, or an
+entry at another server, nor while the call would be refused. One made from
+the picked entry's own login is a miss after that entry's next login,
+logout, removal or URL change. One made any other way - through the
+plugin's own login entry, by an interactive sign-in, or for a `--name` that
+picks no entry - is also a miss after a login, logout, removal or URL
+change of any entry the choice reads, or a new entry it would read. With no
+entry picked it is a miss after `rancher config use-server` too, when the
+current server moves to or from one of the entries for the URL (not for the
+legacy `rancher token` shim, which ignores the current server). Each one
+whose choice depends on token reuse is a miss after `rancher config
+set-token-reuse` changes it. A miss makes one fresh token for the cluster,
+which is then cached. That includes a sign-in the plugin stores in its own
+login entry for a `--name` that picks another plugin login entry: it is a
+miss after a change of the picked entry, of token reuse, or of the plugin
+login entries for the URL.
 
 ## Token reuse for kubectl (opt-in)
 

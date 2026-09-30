@@ -87,16 +87,20 @@ func TestAStoreThatForwardsItsCacheRefusesThePausedBindingToo(t *testing.T) {
 }
 
 // TestALoginsOutcomeBindsToTheEntryItsLastWriteWrote asserts the binding
-// the plugin-created login hands its own cache record: the entry as the
-// login's last write wrote it, id included, and the zero binding for a
-// login that did not get that far.
+// the plugin-created login hands its own cache record when the call
+// identified the entry the login wrote: the entry as the login's last
+// write wrote it, id included, and the zero binding for a login that did
+// not get that far.
 func TestALoginsOutcomeBindsToTheEntryItsLastWriteWrote(t *testing.T) {
 	dir := settledFixture(t)
+	before, berr := Load(FilePath(dir))
+	require.NoError(t, berr)
+	lookup := CacheBindingFor(CanonicalDir(dir), before, "prod")
 	out, err := PersistLoginCredential(t.Context(), dir, settledInput())
 	require.NoError(t, err)
 	cfg, lerr := Load(FilePath(dir))
 	require.NoError(t, lerr)
-	b := out.CacheBinding(CanonicalDir(dir))
+	b := out.CacheBindingOver(CanonicalDir(dir), lookup)
 	assert.Equal(t, "prod", b.Entry())
 	assert.Equal(t, cfg.Servers["prod"].CacheBindingID, b.BindingID())
 	assert.Equal(t, cfg.Servers["prod"].Paused(), b.Paused())
@@ -105,7 +109,7 @@ func TestALoginsOutcomeBindsToTheEntryItsLastWriteWrote(t *testing.T) {
 	in.OpenStore = fileOpen(failStore{out: CommitOutcome{State: clierr.CredentialNotWritten}, err: errors.New("backend refused")})
 	failed, ferr := PersistLoginCredential(t.Context(), dir, in)
 	require.Error(t, ferr)
-	require.ErrorIs(t, NewFileStore(dir).SetCachedCred("k", "tok", time.Now().Add(time.Hour), "n", "https://r.ex", "c", failed.CacheBinding(CanonicalDir(dir))),
+	require.ErrorIs(t, NewFileStore(dir).SetCachedCred("k", "tok", time.Now().Add(time.Hour), "n", "https://r.ex", "c", failed.CacheBindingOver(CanonicalDir(dir), lookup)),
 		errCacheBindingUnset, "a login that failed binds nothing")
 }
 
@@ -126,6 +130,9 @@ func TestTheStoreCheckComparesTheStoreReadWithWhatReadersResolve(t *testing.T) {
 		// noEntry binds the record to no entry, as a record for a server
 		// the directory has no entry for is.
 		noEntry bool
+		// unnamed binds the record as a call that identifies no entry
+		// does: to every entry for the server, prod among them.
+		unnamed bool
 		ok      bool
 	}{
 		{name: "a declared store, read from it", decl: "keychain", source: backendKeychain, ok: true},
@@ -159,6 +166,8 @@ func TestTheStoreCheckComparesTheStoreReadWithWhatReadersResolve(t *testing.T) {
 		{name: "the variable against the declaration", decl: "file", env: "keychain", source: backendFile},
 		{name: "a store that is not known", decl: "file", source: ""},
 		{name: "a record bound to no entry", decl: "file", source: "", noEntry: true, ok: true},
+		{name: "an unnamed call's record, read from the declared store", decl: "keychain", source: backendKeychain, unnamed: true, ok: true},
+		{name: "an unnamed call's record, read from the one it left", decl: "file", source: backendKeychain, unnamed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			keyring.MockInit()
@@ -175,7 +184,10 @@ func TestTheStoreCheckComparesTheStoreReadWithWhatReadersResolve(t *testing.T) {
 			}
 			b := CacheBindingFor(dir, cfg, "prod")
 			if tc.noEntry {
-				b = CacheBindingWithoutEntry(dir, cfg)
+				b = CacheBindingForServer(dir, cfg, "https://none.ex", false)
+			}
+			if tc.unnamed {
+				b = CacheBindingForServer(dir, cfg, "https://r.ex", false)
 			}
 			b.source = tc.source
 			err := b.CheckStore()
@@ -230,9 +242,13 @@ func TestEveryStoreSaysWhichBackendItReads(t *testing.T) {
 // the login's last write wrote, with the pin read at the check.
 func TestThePluginLoginsRecordIsCheckedAgainstTheStoreItsCommitReached(t *testing.T) {
 	dir := repinFixture(t)
-	out, err := PersistLoginCredential(t.Context(), dir, repinInput())
+	in := repinInput()
+	before, berr := Load(FilePath(dir))
+	require.NoError(t, berr)
+	lookup := CacheBindingFor(CanonicalDir(dir), before, in.Name)
+	out, err := PersistLoginCredential(t.Context(), dir, in)
 	require.NoError(t, err)
-	b := out.CacheBinding(CanonicalDir(dir))
+	b := out.CacheBindingOver(CanonicalDir(dir), lookup)
 	require.NoError(t, b.CheckStore(), "the commit reached the keychain, which the pin now names")
 
 	require.NoError(t, WritePin(dir, backendFile))
@@ -262,7 +278,8 @@ func TestTheStoreCheckKnowsWhetherAStoreWasRead(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
 
 	out := PersistLoginOutcome{Name: "prod", written: cfg}
-	require.ErrorIs(t, out.CacheBinding(dir).CheckStore(), ErrCacheStoreChanged, "an outcome that names no store")
+	lookup := CacheBindingFor(dir, cfg, "prod")
+	require.ErrorIs(t, out.CacheBindingOver(dir, lookup).CheckStore(), ErrCacheStoreChanged, "an outcome that names no store")
 	out.committedTo = backendFile
-	require.NoError(t, out.CacheBinding(dir).CheckStore())
+	require.NoError(t, out.CacheBindingOver(dir, lookup).CheckStore())
 }

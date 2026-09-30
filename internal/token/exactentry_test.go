@@ -627,87 +627,33 @@ func lookupStored(cfg *config.Config, store config.CredStore, server, wantName, 
 	return storedTokenForServer(cfg, store, server, identified, clusterID, shim)
 }
 
-// TestIdentifyEntry asserts how a --name becomes an entry: an exact entry
-// name, else the entry named by the name less "-<cluster>", nothing looser,
-// over every entry in the directory, and never for the shim.
+// TestIdentifyEntry asserts what the lookup makes of config.IdentifyEntry's
+// answer (its rules are asserted in internal/config): an identified entry
+// is passed through, none is none, and an entry registered at another URL
+// is the typed refusal naming the entry, never a reason to use the URL's
+// other entries.
 func TestIdentifyEntry(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Servers: map[string]config.Server{
 		"prod":       {URL: "https://r.ex"},
-		"prod-eu":    {URL: "https://r.ex"},
 		"prod-elsew": {URL: "https://elsewhere.ex"},
-		"legacy:zed": {URL: "https://r.ex"},
 	}}
-	cases := []struct {
-		name, wantName, cluster string
-		shim                    bool
-		want                    string
-		wantCode                string
-	}{
-		{name: "an exact entry name", wantName: "prod-eu", cluster: "c-1", want: "prod-eu"},
-		{name: "an exact entry name, no cluster", wantName: "prod-eu", want: "prod-eu"},
-		{name: "the entry-cluster form", wantName: "prod-eu-c-1", cluster: "c-1", want: "prod-eu"},
-		{name: "the entry-cluster form for the shorter entry", wantName: "prod-c-1", cluster: "c-1", want: "prod"},
-		{name: "the entry-cluster form needs the call's own cluster", wantName: "prod-eu-c-1", cluster: "c-2"},
-		{name: "the entry-cluster form needs a cluster", wantName: "prod-eu-c-1"},
-		{name: "a name that only begins with an entry's name identifies nothing", wantName: "prod-west-c-1", cluster: "c-1"},
-		{name: "a name that names no entry", wantName: "kube-c-1", cluster: "c-1"},
-		{name: "no name", cluster: "c-1"},
-		{name: "the cluster alone is not an entry", wantName: "-c-1", cluster: "c-1"},
-		{name: "the shim never identifies", wantName: "prod-eu", cluster: "c-1", shim: true},
-		{name: "the shim never identifies a hand-edited legacy entry", wantName: "legacy:zed", shim: true},
-		{name: "an exact entry at another URL", wantName: "prod-elsew", cluster: "c-1", wantCode: clierr.CodeConflict},
-		{name: "an entry-cluster entry at another URL", wantName: "prod-elsew-c-1", cluster: "c-1", wantCode: clierr.CodeConflict},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got, err := identifyEntry(cfg, "https://r.ex", tc.wantName, tc.cluster, tc.shim)
-			if tc.wantCode != "" {
-				ce, ok := errors.AsType[*clierr.Error](err)
-				require.True(t, ok, "%v", err)
-				assert.Equal(t, tc.wantCode, ce.Code)
-				assert.Empty(t, got)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
-		})
-	}
+	got, err := identifyEntry(cfg, "https://r.ex", "prod-c-1", "c-1", false)
+	require.NoError(t, err)
+	assert.Equal(t, "prod", got)
 
-	t.Run("another spelling of the same URL is not another URL", func(t *testing.T) {
-		t.Parallel()
-		got, err := identifyEntry(cfg, "HTTPS://R.EX:443", "prod-eu", "c-1", false)
-		require.NoError(t, err)
-		assert.Equal(t, "prod-eu", got)
-	})
-}
+	got, err = identifyEntry(cfg, "https://r.ex", "kube-c-1", "c-1", false)
+	require.NoError(t, err)
+	assert.Empty(t, got)
 
-// TestAnchorEntry asserts that a cache record is anchored to the entry the
-// credential lookup reads: the identified entry whatever else answers for
-// the URL, else the entry the ranking prefers, and nothing for a URL with no
-// entry.
-func TestAnchorEntry(t *testing.T) {
-	t.Parallel()
-	cfg := &config.Config{
-		CurrentServer: "prod",
-		Servers: map[string]config.Server{
-			"prod":            {URL: "https://r.ex"},
-			"prod-eu":         {URL: "https://r.ex"},
-			"exec-login-seed": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin},
-		},
+	for _, name := range []string{"prod-elsew", "prod-elsew-c-1"} {
+		got, err = identifyEntry(cfg, "https://r.ex", name, "c-1", false)
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "%s: %v", name, err)
+		assert.Equal(t, clierr.CodeConflict, ce.Code, name)
+		assert.Contains(t, ce.Message, "prod-elsew", name)
+		assert.Empty(t, got, name)
 	}
-	assert.Equal(t, "prod-eu", anchorEntry(cfg, "https://r.ex", "prod-eu", false), "the identified entry, though prod is current")
-	assert.Equal(t, "prod-eu", anchorEntry(cfg, "https://r.ex", "prod-eu", true), "and for the shim's mode")
-	assert.Equal(t, "exec-login-seed", anchorEntry(cfg, "https://r.ex", "exec-login-seed", false), "an identified plugin entry anchors too")
-	assert.Equal(t, "prod", anchorEntry(cfg, "https://r.ex", "", false), "unidentified: the current server")
-	cfg.CurrentServer = "prod-eu"
-	assert.Equal(t, "prod-eu", anchorEntry(cfg, "https://r.ex", "", false), "unidentified: the current server")
-	assert.Equal(t, "prod", anchorEntry(cfg, "https://r.ex", "", true), "unidentified in the shim's mode: first by name among user entries, the current server ignored")
-	cfg.CurrentServer = "prod"
-	delete(cfg.Servers, "prod")
-	assert.Equal(t, "prod-eu", anchorEntry(cfg, "https://r.ex", "", false), "a user entry before the plugin's login entry")
-	assert.Empty(t, anchorEntry(cfg, "https://other.example", "", false), "no entry for the URL")
 }
 
 // TestStoredTokenForServerIdentifiedEntryFailuresAreNotMasked asserts that

@@ -13,6 +13,12 @@ exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACER
 
 seedexeccache e2e-c-test c-test
 
+# The seeded record is the one the exec plugin serves for the entry the
+# --name identifies: the token comes from the cache, not from a token
+# created from the stored login.
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test
+jsonquery stdout status.token e2e:secret
+
 exec rancher kubeconfig --cluster testcluster
 cp stdout kc.yaml
 

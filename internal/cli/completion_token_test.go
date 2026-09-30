@@ -39,16 +39,16 @@ func TestResolveCompletionTokenExecCredIDOnly(t *testing.T) {
 	dir := t.TempDir()
 	// No env token, no file store token (CredentialStore not set to "file").
 	store := config.NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(
-		config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
-		"exec-token", time.Now().Add(time.Hour),
-		"k8s-ctx", "https://rancher.example.com", "c-abc",
-		config.CacheBindingForTest(dir, "srv", ""),
-	))
 	cfg := &config.Config{
 		CurrentServer: "srv",
 		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
 	}
+	require.NoError(t, store.SetCachedCred(
+		config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
+		"exec-token", time.Now().Add(time.Hour),
+		"k8s-ctx", "https://rancher.example.com", "c-abc",
+		config.CacheBindingForSeed(dir, cfg, "k8s-ctx", "https://rancher.example.com", "c-abc"),
+	))
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfigForTest(t, cfg, dir)
@@ -63,23 +63,23 @@ func TestResolveCompletionTokenAmbiguousExecCredYieldsEmpty(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
+	cfg := &config.Config{
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+	}
 	// Two entries for the same server+cluster → ambiguous.
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("ctx-a", "https://rancher.example.com", "c-abc"),
 		"tok-a", time.Now().Add(time.Hour),
 		"ctx-a", "https://rancher.example.com", "c-abc",
-		config.CacheBindingForTest(dir, "srv", ""),
+		config.CacheBindingForSeed(dir, cfg, "ctx-a", "https://rancher.example.com", "c-abc"),
 	))
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("ctx-b", "https://rancher.example.com", "c-abc"),
 		"tok-b", time.Now().Add(time.Hour),
 		"ctx-b", "https://rancher.example.com", "c-abc",
-		config.CacheBindingForTest(dir, "srv", ""),
+		config.CacheBindingForSeed(dir, cfg, "ctx-b", "https://rancher.example.com", "c-abc"),
 	))
-	cfg := &config.Config{
-		CurrentServer: "srv",
-		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
-	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfigForTest(t, cfg, dir)
@@ -114,20 +114,20 @@ func TestResolveCompletionTokenInvalidServerURLYieldsEmpty(t *testing.T) {
 			fileStore := config.NewFileStore(dir)
 			require.NoError(t, fileStore.SetToken(config.ServerRef{Name: "bad"}, "should-not-surface"))
 
+			cfg := &config.Config{
+				CurrentServer:   "bad",
+				Servers:         map[string]config.Server{"bad": {URL: tc.serverURL}},
+				CredentialStore: "file",
+			}
 			// Seed an exec-cache entry under the bad URL's identity.
 			badID := config.CanonicalServerIdentity(tc.serverURL)
 			require.NoError(t, fileStore.SetCachedCred(
 				config.CacheKey("bad", badID, "c-1"),
 				"also-should-not-surface", time.Now().Add(time.Hour),
 				"bad", badID, "c-1",
-				config.CacheBindingForTest(dir, "srv", ""),
+				config.CacheBindingForSeed(dir, cfg, "bad", badID, "c-1"),
 			))
 
-			cfg := &config.Config{
-				CurrentServer:   "bad",
-				Servers:         map[string]config.Server{"bad": {URL: tc.serverURL}},
-				CredentialStore: "file",
-			}
 			cfg.SetPath(config.FilePath(dir))
 			require.NoError(t, cfg.Write())
 			setStoredConfigForTest(t, cfg, dir)
@@ -151,24 +151,24 @@ func TestResolveCompletionTokenShimEntryPlusNativeResolvesNative(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
+	cfg := &config.Config{
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+	}
 	// Native entry ("ctx-native").
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("ctx-native", "https://rancher.example.com", "c-abc"),
 		"native-tok", time.Now().Add(time.Hour),
 		"ctx-native", "https://rancher.example.com", "c-abc",
-		config.CacheBindingForTest(dir, "srv", ""),
+		config.CacheBindingForSeed(dir, cfg, "ctx-native", "https://rancher.example.com", "c-abc"),
 	))
 	// Shim entry ("legacy:x") for the same server+cluster.
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("legacy:x", "https://rancher.example.com", "c-abc"),
 		"shim-tok", time.Now().Add(time.Hour),
 		"legacy:x", "https://rancher.example.com", "c-abc",
-		config.CacheBindingForTest(dir, "srv", ""),
+		config.CacheBindingForSeed(dir, cfg, "legacy:x", "https://rancher.example.com", "c-abc"),
 	))
-	cfg := &config.Config{
-		CurrentServer: "srv",
-		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
-	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfigForTest(t, cfg, dir)
@@ -187,17 +187,17 @@ func TestResolveCompletionTokenShimOnlyYieldsEmpty(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
+	cfg := &config.Config{
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
+	}
 	// Only a shim entry - no native entry.
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("legacy:y", "https://rancher.example.com", "c-def"),
 		"shim-only-tok", time.Now().Add(time.Hour),
 		"legacy:y", "https://rancher.example.com", "c-def",
-		config.CacheBindingForTest(dir, "srv", ""),
+		config.CacheBindingForSeed(dir, cfg, "legacy:y", "https://rancher.example.com", "c-def"),
 	))
-	cfg := &config.Config{
-		CurrentServer: "srv",
-		Servers:       map[string]config.Server{"srv": {URL: "https://rancher.example.com"}},
-	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	setStoredConfigForTest(t, cfg, dir)
@@ -411,11 +411,12 @@ func TestResolveCompletionTokenWithoutADirectoryReadsNoFile(t *testing.T) {
 	// that did look there would find a usable record.
 	cwd := t.TempDir()
 	store := config.NewFileStore(cwd)
+	seen := &config.Config{Servers: map[string]config.Server{"srv": {URL: "https://rancher.example.com"}}}
 	require.NoError(t, store.SetCachedCred(
 		config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
 		"loose-token", time.Now().Add(time.Hour),
 		"k8s-ctx", "https://rancher.example.com", "c-abc",
-		config.CacheBindingForTest(cwd, "srv", ""),
+		config.CacheBindingForSeed(config.CanonicalDir(cwd), seen, "k8s-ctx", "https://rancher.example.com", "c-abc"),
 	))
 	t.Chdir(cwd)
 	t.Setenv(config.EnvURL, "https://rancher.example.com")
@@ -462,7 +463,7 @@ func TestResolveCompletionTokenObeysTheCacheBinding(t *testing.T) {
 			config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
 			"exec-token", time.Now().Add(time.Hour),
 			"k8s-ctx", "https://rancher.example.com", "c-abc",
-			config.CacheBindingForTest(dir, "srv", "b1"),
+			config.CacheBindingForSeed(dir, cfg, "k8s-ctx", "https://rancher.example.com", "c-abc"),
 		))
 		return cfg
 	}
@@ -555,7 +556,7 @@ func TestLiveCompletionOperationCounts(t *testing.T) {
 		config.CacheKey("k8s-ctx", "https://rancher.example.com", "c-abc"),
 		"exec-token", time.Now().Add(time.Hour),
 		"k8s-ctx", "https://rancher.example.com", "c-abc",
-		config.CacheBindingForTest(dir, "srv", "b1"),
+		config.CacheBindingForSeed(dir, cfg, "k8s-ctx", "https://rancher.example.com", "c-abc"),
 	))
 	setStoredConfigForTest(t, cfg, dir)
 

@@ -421,16 +421,15 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	dir := ts.Getenv("RANCHER_CLI_CONFIG_DIR")
 	store := config.NewFileStore(dir)
 	key := config.CacheKey(name, srvID, cluster)
-	// The record carries the binding a real invocation would write: the
-	// directory, and the entry answering for this server with its cache
-	// binding id. Without it the record names no owner and every reader
-	// treats it as another directory's.
+	// The record carries the binding a real invocation would write for
+	// this --name: the directory, and, when the name identifies an entry,
+	// that entry and its cache binding id, as a call answered by the
+	// entry's own login writes it; else what the lookup of a call that
+	// identifies none reads. Without it the record names no owner and
+	// every reader treats it as another directory's.
 	binding := config.CacheBindingForTest(dir, "", "")
 	if cfg, err := config.Load(config.FilePath(dir)); err == nil {
-		binding = config.CacheBindingWithoutEntry(dir, cfg)
-		if names := cfg.MatchingServerNames(srvID); len(names) > 0 {
-			binding = config.CacheBindingFor(dir, cfg, names[0])
-		}
+		binding = config.CacheBindingForSeed(dir, cfg, name, srvID, cluster)
 	}
 	if err := store.SetCachedCred(key, testToken, time.Now().Add(24*time.Hour), name, srvID, cluster, binding); err != nil {
 		ts.Fatalf("seedexeccache: %v", err)

@@ -585,18 +585,36 @@ keychain `auto` chose that the process cannot use is a **hard error** whose reme
 the keychain itself or a different `--config`, never a silent fallback. `auth status`
 surfaces `credentialStore: {policy, pinned, inUse, error, conflict}`.
 
-**Exec-credential cache binding.** Every cache record carries a format version, the
-directory that created it, the config entry it came from and that entry's `cacheBindingId`
-(a random per-entry value in `config.yaml`), all read in the same config load as the
-credential and carried to the write. A hit needs the version to be current, the directory
-to match, and the entry to exist with the same id - or the record to name no entry and the
-server to still have none, which is the bare-install state. Every change of an entry's
-credential - a login, `auth logout`, `logout --all`, a `config update-server` URL change,
-`config delete-server` - starts with one config write that advances the id and sets the
-entry's `cacheWritesPaused` (`locked`, or `noLock` for a change made with
-`RANCHER_CLI_CONFIG_NO_LOCK`) before any of the entry's credential is written or deleted,
-so records of the previous credential are misses at once and none is written while the
-change runs: a cache write refuses a binding whose load showed the pause. Every record the
+**Exec-credential cache binding.** Every cache record carries a format version (2), the
+directory that created it, its kind (which of the three rules below wrote it, so a hit
+requires exactly what that rule binds it to), the entry its call's `--name` identified (or
+none), and what the exec plugin's lookup for that call read, each entry with its
+`cacheBindingId` (a random per-entry value in `config.yaml`), all read in the same config
+load as the credential and carried to the write. A record made from the identified entry's
+own credential (or signed in after the server rejected it) is bound to that entry alone,
+and, for a plugin login entry, to the token-reuse setting; any other record of a call that
+identifies an entry - the plugin's login entry answering for it, the plugin-created login,
+an interactive sign-in - is bound to that entry, to the setting and, while it is on,
+exactly to the URL's plugin login entries - and none is written or served while the URL
+has more than one, which that lookup refuses for an identified user entry; the record of a
+call that identifies none is bound exactly to every entry for its URL, to the current
+server (its name when it is one of them, else none; not for the legacy `token` shim, which
+ignores it) and to the setting. "Exactly" means no entry may be added to or removed from
+the list. For the plugin-created login the ids come from its lookup's load under the
+plugin-login lock, except the entry it wrote, whose id is the one its last write wrote. A
+call whose `--name` identifies a plugin login entry, when the plugin-created login stores
+its sign-in in another one, gets the record of any other identified call: bound to the
+entry it names, the setting and the URL's plugin login entries. A hit needs the version to
+be current, the directory to match, the identification (`config.IdentifyEntry`) run again
+over the reader's own load to give the same entry and no refusal, and every binding to
+hold; a record of a server with no entry is the empty list, which is the bare-install
+state. Every change of an entry's credential - a login, `auth logout`, `logout --all`, a
+`config update-server` URL change, `config delete-server` - starts with one config write
+that advances the id and sets the entry's `cacheWritesPaused` (`locked`, or `noLock` for a
+change made with `RANCHER_CLI_CONFIG_NO_LOCK`) before any of the entry's credential is
+written or deleted, so records of the previous credential are misses at once and none is
+written while the change runs: a cache write refuses a binding whose load showed any entry
+it is bound to paused, and names that entry. Every record the
 exec plugin writes after a store read also passes a store check - the store a reader
 resolves from the record's own config load, with the pin or the unpinned decision read at
 the check, has to be the store the credential was read from - so a process whose store was
@@ -619,14 +637,15 @@ validated against. Disagreement is not a verdict: a reader whose stamp does not 
 with the config it loaded holds two halves from different moments, so it re-anchors on the
 current stamp, loads once more and judges again. That costs exactly one extra load, and
 only then a miss. A config write advances the stamp when it changes which entries exist,
-an entry's canonical URL or an entry's `cacheBindingId` - evaluated by comparing the
-lookup being written against the one loaded, not by a list of writers - and writes the
+an entry's canonical URL, an entry's `cacheBindingId`, the current server or the
+token-reuse setting - evaluated by comparing the inputs being written against the ones
+loaded, not by a list of writers - and writes the
 stamp file before `config.yaml`. A crash between the two leaves them permanently
 disagreeing: every reader pays the reload and misses, on every invocation, until the next
 such write puts them back in step. A stamp file that cannot be read at all costs the same
 and no more - failing the command instead would brick the login that would rewrite the
 file. Neither state breaks anything else, so the directory looks healthy; `config status`
-reports both under `cacheBindingStamp`, the one place either is visible. Both fields are in `config edit`'s restriction list.
+reports both under `cacheBindingStamp`, the one place either is visible. Both fields are in `config edit`'s restriction list, and so are `currentServer` and `tokenReuse`, which `config edit` would write without moving the stamp.
 
 The four readers are the exec plugin's flag fast path and its resolved path, the legacy
 `token` shim and live completion. All four call one validation function. The first three
@@ -719,16 +738,16 @@ Logout has two paths, not one, because they need different completeness/cost tra
   logout.
 
 **Exec-credential cache.** `auth get-token` caches short-lived bearer tokens as records
-(`{Name, Server, Cluster, Token, Expiry}`) keyed `<name>@<serverHost>/<cluster>` in
-`token-cache.yaml` (0600), separate from login tokens in `credentials.yaml`. A
-**flags-first fast path** serves a warm hit from `--name`/`--server`/`--cluster` alone
-with no config read, so a broken config never blocks kubectl's exec-credential path; full
-connection resolution runs only on a miss. On a miss `identifyEntry` (`internal/token`)
-turns `--name` into one server entry - the exact name, else `<entry>` for
-`<entry>-<cluster>` - and the credential lookup, the cache record's anchor and the CA all
-read only that entry, with the plugin's own login entry as the one fallback while token
-reuse is on; a call that identifies no entry ranks the entries for its URL and fails when
-more than one at the winning rank has a credential. `delete-token <name>` resolves the bare name
+(`{Name, Server, Cluster, Token, Expiry}` plus the binding above) keyed
+`<name>@<serverHost>/<cluster>` in `token-cache.yaml` (0600), separate from login tokens
+in `credentials.yaml`. A **flags-first fast path** serves a warm hit from
+`--name`/`--server`/`--cluster` and the invocation's config load, with no config read of
+its own; full connection resolution runs only on a miss. `config.IdentifyEntry` turns
+`--name` into one server entry - the exact name, else `<entry>` for `<entry>-<cluster>` -
+and the credential lookup, the cache record's binding, the CA and every cache hit use its
+answer; the lookup reads only that entry, with the plugin's own login entry as the one
+fallback while token reuse is on; a call that identifies no entry ranks the entries for its
+URL and fails when more than one at the winning rank has a credential. `delete-token <name>` resolves the bare name
 against every record and **deletes all matches**, and is **idempotent** (zero matches →
 success, never `NOT_FOUND`) so teardown scripts stay green.
 

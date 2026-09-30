@@ -10,41 +10,16 @@ import (
 )
 
 // identifyEntry returns the server entry an exec entry's --name means, or
-// "" when it means none. The name is the entry itself, or the
-// "<entry>-<cluster>" form rancher kubeconfig writes with the same
-// --cluster: an exact entry name wins; else, with a cluster, the entry
-// named by the name less "-<cluster>". Each step yields at most one entry,
-// and nothing else about a name identifies an entry - a name that merely
-// begins with another entry's name means that entry no more than any
-// other. Every entry in the directory is looked at, not only those that
-// answer for server: an identified entry registered at another URL is an
-// error, never a reason to use the URL's other entries.
-//
-// The shim never identifies an entry: its name is a cache-slot label.
-//
-// This is the one place a name becomes an entry. The credential lookup,
-// the cache record's anchor and the CA all use its answer.
+// "" when it means none, as config.IdentifyEntry decides it. An identified
+// entry registered at another URL is an error, never a reason to use the
+// URL's other entries. The shim (ignoreCurrentContext) never identifies an
+// entry.
 func identifyEntry(cfg *config.Config, server, wantName, clusterID string, ignoreCurrentContext bool) (string, error) {
-	if ignoreCurrentContext || wantName == "" {
-		return "", nil
+	id := config.IdentifyEntry(cfg, server, wantName, clusterID, ignoreCurrentContext)
+	if id.OtherURL {
+		return "", entryOnOtherServerError(id.Entry, cfg.Servers[id.Entry].URL, server, clusterID, cfg.CurrentServer, len(cfg.MatchingServerNames(server)) > 0)
 	}
-	name := ""
-	if _, ok := cfg.Servers[wantName]; ok {
-		name = wantName
-	} else if clusterID != "" {
-		if entry, found := strings.CutSuffix(wantName, "-"+clusterID); found {
-			if _, ok := cfg.Servers[entry]; ok {
-				name = entry
-			}
-		}
-	}
-	if name == "" {
-		return "", nil
-	}
-	if s := cfg.Servers[name]; !config.SameServerURL(s.URL, server) {
-		return "", entryOnOtherServerError(name, s.URL, server, clusterID, cfg.CurrentServer, len(cfg.MatchingServerNames(server)) > 0)
-	}
-	return name, nil
+	return id.Entry, nil
 }
 
 // entryChoice is an identification made at one moment: the entry a call's
@@ -110,24 +85,21 @@ func identifiedCredential(cfg *config.Config, store config.CredStore, server, id
 	return readEntryCredential(cfg, store, plugin)
 }
 
-// pluginEntryFor returns the plugin's own login entry for server: the one
-// entry with the execLogin provenance that answers for it, "" when there is
-// none. More than one is an error, since the fallback is one entry and
-// never a choice among several.
+// pluginEntryFor returns the plugin's own login entry for server, the
+// fallback of a call whose identified user entry holds no credential: the
+// one entry with the execLogin provenance that answers for it, "" when
+// there is none. A plugin login entry has no fallback, so its caller never
+// asks. The refusal of several (config.PluginFallbackRefused for a user
+// entry) is an error.
 func pluginEntryFor(cfg *config.Config, server string) (string, error) {
-	var found []string
-	for _, n := range cfg.MatchingServerNames(server) {
-		if cfg.Servers[n].Provenance == clierr.ProvenanceExecLogin {
-			found = append(found, n)
-		}
-	}
-	switch len(found) {
-	case 0:
+	found := cfg.PluginLoginEntries(server)
+	switch {
+	case config.PluginFallbackRefused(false, len(found)):
+		return "", pluginEntriesError(server, found, cfg)
+	case len(found) == 0:
 		return "", nil
-	case 1:
-		return found[0], nil
 	}
-	return "", pluginEntriesError(server, found, cfg)
+	return found[0], nil
 }
 
 // pluginEntriesError is the refusal when more than one login entry the exec

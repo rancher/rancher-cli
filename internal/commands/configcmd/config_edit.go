@@ -332,6 +332,18 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 	if before.CurrentServer != edited.CurrentServer {
 		offenses = append(offenses, "currentServer changed (use: rancher config use-server)")
 	}
+	// The setting decides whether the exec plugin reads its own login
+	// entries, so a cached kubectl credential is judged against it, and
+	// only a config write that moves the binding stamp can change it
+	// without a reader serving a record against the old value. This
+	// command writes the file as edited and moves no stamp.
+	if before.TokenReuse != edited.TokenReuse {
+		state := "off"
+		if edited.TokenReuse {
+			state = "on"
+		}
+		offenses = append(offenses, "tokenReuse changed (use: rancher config set-token-reuse "+state+")")
+	}
 	// The binding stamp is how a cache reader tells a load that was
 	// overtaken from one that was not. Editing it by hand makes records
 	// from before a login look current again, which is the stale-credential

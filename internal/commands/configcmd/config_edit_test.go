@@ -620,3 +620,37 @@ func TestConfigEditRejectsAnyCredentialStoreChange(t *testing.T) {
 		})
 	}
 }
+
+// TestConfigEditRejectsChangingTokenReuse asserts the token-reuse setting
+// cannot be edited by hand, either way. A cached kubectl credential is
+// judged against the setting, and config edit writes the file without
+// moving the binding stamp, so a cache hit whose load came before the edit
+// would serve a record against the old value. The refusal names the
+// command that writes the edited value.
+func TestConfigEditRejectsChangingTokenReuse(t *testing.T) {
+	for _, tc := range []struct {
+		name, before, after, remedy string
+	}{
+		{name: "turned on", before: "false", after: "true", remedy: "rancher config set-token-reuse on"},
+		{name: "turned off", before: "true", after: "false", remedy: "rancher config set-token-reuse off"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("EDITOR", "fake-editor")
+			dir := t.TempDir()
+			seeded := "currentServer: prod\ntokenReuse: " + tc.before + "\nservers:\n  prod:\n    url: https://rancher.example.com\n"
+			seedConfigFile(t, dir, seeded)
+
+			changed := "currentServer: prod\ntokenReuse: " + tc.after + "\nservers:\n  prod:\n    url: https://rancher.example.com\n"
+			cmd := &configEditCmd{dir: dir, launchEditor: writesContent(changed)}
+			_, err := cmd.Execute(t.Context(), cmdtest.Input{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Contains(t, ce.Message, "tokenReuse changed (use: "+tc.remedy+")")
+
+			got, readErr := os.ReadFile(config.FilePath(dir))
+			require.NoError(t, readErr)
+			assert.YAMLEq(t, seeded, string(got), "the real config file must be untouched")
+		})
+	}
+}

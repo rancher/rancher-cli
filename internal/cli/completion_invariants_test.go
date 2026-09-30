@@ -392,26 +392,26 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 
+	cfg := &config.Config{
+		CurrentServer: "srv",
+		Servers:       map[string]config.Server{"srv": {URL: "https://example.invalid"}},
+		Completion:    config.CompletionConfig{Network: true}, // exercise the live path
+	}
 	// Seed token-cache.yaml with one valid and one expired entry before writing config.
 	fileStore := config.NewFileStore(dir)
 	require.NoError(t, fileStore.SetCachedCred(
 		config.CacheKey("k8s-ctx", "example.invalid", "c-abc"),
 		"tok-valid", time.Now().Add(time.Hour),
 		"k8s-ctx", "example.invalid", "c-abc",
-		config.CacheBindingForTest(dir, "srv", ""),
+		config.CacheBindingForSeed(dir, cfg, "k8s-ctx", "example.invalid", "c-abc"),
 	))
 	require.NoError(t, fileStore.SetCachedCred(
 		config.CacheKey("k8s-old", "example.invalid", "c-abc"),
 		"tok-expired", time.Now().Add(-time.Hour),
 		"k8s-old", "example.invalid", "c-abc",
-		config.CacheBindingForTest(dir, "srv", ""),
+		config.CacheBindingForSeed(dir, cfg, "k8s-old", "example.invalid", "c-abc"),
 	))
 
-	cfg := &config.Config{
-		CurrentServer: "srv",
-		Servers:       map[string]config.Server{"srv": {URL: "https://example.invalid"}},
-		Completion:    config.CompletionConfig{Network: true}, // round-4: exercise live path
-	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).

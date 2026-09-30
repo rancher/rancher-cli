@@ -93,7 +93,10 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if err != nil {
 			return err
 		}
-		tok, _, _, perr := tokenCmd{dir: t.dir, store: fresh, anchor: t.anchor}.storedCredToken(ctx, in.client, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
+		// This load's binding is the one the login's record takes: it was
+		// made before the reads below found no credential, so an entry that
+		// gets a login after it has another id than the record carries.
+		tok, _, lookup, perr := tokenCmd{dir: t.dir, store: fresh, anchor: t.anchor}.storedCredToken(ctx, in.client, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
 		switch {
 		case perr == nil:
 			result = tok
@@ -169,11 +172,11 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			return FailLogin(primary, clierr.StageCommit, st, cred, name)
 		}
 		entry, records = out.Name, out.SupersededTokens
-		// The record this invocation goes on to write belongs to the
-		// entry this login just wrote, as its last write wrote it - from
-		// the write itself, never a re-read.
+		// The record this invocation goes on to write is bound to what the
+		// lookup above read, with the entry this login just wrote as its
+		// last write wrote it - from the write itself, never a re-read.
 		result = Token{Token: ct.Bearer, ExpiresAt: ct.ExpiresAt, fresh: newFreshToken(ct, in.client, base, cred.Token),
-			binding: out.CacheBinding(t.cacheDir())}
+			binding: out.CacheBindingOver(t.cacheDir(), lookup)}
 		warnings = append(warnings, st.Warnings...)
 		return nil
 	})

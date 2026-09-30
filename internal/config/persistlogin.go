@@ -129,13 +129,29 @@ type PersistLoginOutcome struct {
 	CurrentServerValid bool
 }
 
-// CacheBinding is the binding of a cache record for the credential this
-// login stored: its entry as the login's last write wrote it, read from
-// the store its commit reached. A login that returned before that write
-// gives the zero binding, which no cache write accepts.
-func (o PersistLoginOutcome) CacheBinding(dir string) CacheBinding {
-	b := CacheBindingFor(dir, o.written, o.Name)
-	b.paused = b.paused || o.CacheWritesPaused
+// CacheBindingOver is the binding of the cache record for the credential
+// this login stored, for a call whose own lookup found none: lookup is
+// that lookup's binding, from the config load it made after the
+// plugin-login lock was taken, before the credentials it read came up
+// empty. Every entry it is bound to keeps the id that load showed, except
+// the entry this login wrote, which is bound with the id its last write
+// wrote, and added to the list when the login created it. A call that
+// identified the entry this login wrote gets a record made from the
+// identified entry's own credential, bound to it alone. The store checked
+// is the one the commit reached, resolved from the config that write
+// wrote. A login that returned before that write, or a lookup binding no
+// constructor built, gives the zero binding, which no cache write accepts.
+func (o PersistLoginOutcome) CacheBindingOver(dir string, lookup CacheBinding) CacheBinding {
+	if o.written == nil || !lookup.built {
+		return CacheBinding{}
+	}
+	var b CacheBinding
+	if lookup.identified == o.Name {
+		b = CacheBindingForLookup(dir, o.written, "", o.Name, o.Name, false)
+		b.entry.paused = b.entry.paused || o.CacheWritesPaused
+	} else {
+		b = lookup.withWritten(o.written, o.Name, o.CacheWritesPaused)
+	}
 	b.source = o.committedTo
 	return b
 }
