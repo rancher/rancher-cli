@@ -63,8 +63,8 @@ func useTokenFakeHelper(t *testing.T, mode string) {
 	t.Setenv("FAKEHELPER_STATE", filepath.Join(t.TempDir(), "state.json"))
 }
 
-// TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken is the
-// impl-review finding-1 repro: when the credential store is a helper serving a
+// TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken asserts
+// that when the credential store is a helper serving a
 // SHORT-LIVED token and get-token falls back to the legacy (pre-ext.cattle.io)
 // path, the returned credential must carry the helper's REAL expiry (never the
 // fabricated now+legacyTokenTTL) and must never be written to the on-disk cache.
@@ -104,7 +104,7 @@ func TestGetTokenLegacyFallbackDoesNotPersistShortLivedHelperToken(t *testing.T)
 	assert.ErrorIs(t, cerr, config.ErrNoToken, "a memory-only short-lived helper token must not reach the disk cache")
 }
 
-// TestGetTokenSurfacesHardHelperError is the impl-review finding-3 repro: a
+// TestGetTokenSurfacesHardHelperError asserts that a
 // hard helper failure (a helper that exits non-zero, or returns garbage) must
 // surface as the real error instead of being swallowed as a credential miss
 // and papered over by the interactive fallback.
@@ -141,11 +141,11 @@ func TestGetTokenSurfacesHardHelperError(t *testing.T) {
 	}
 }
 
-// TestGetTokenFTPConfigServerHelperNeverInvoked is the final-re-review
-// finding-2 repro at the get-token level: when the config's current server
-// URL uses an unsupported scheme (ftp://), the exec credential helper is not
-// invoked: resolving the connection reads no stored credential, and
-// post-resolution validation rejects the scheme before any lookup.
+// TestGetTokenFTPConfigServerHelperNeverInvoked asserts, at the get-token
+// level, that when the config's current server URL uses an unsupported scheme
+// (ftp://), the exec credential helper is not invoked: resolving the connection
+// reads no stored credential, and post-resolution validation rejects the scheme
+// before any lookup.
 //
 // The fakehelper is in "ok" mode - any invocation writes a get entry to the
 // state log (creating the file). The state file absent after the command
@@ -179,9 +179,10 @@ func TestGetTokenFTPConfigServerHelperNeverInvoked(t *testing.T) {
 		"exec helper must not be invoked for a config server URL with an unsupported scheme")
 }
 
-// TestGetTokenHelperNotFoundFallsBackToInteractive is finding-3's other half:
-// a clean not-found from the helper (no token) is NOT a hard error and must
-// still fall through to the interactive provider flow.
+// TestGetTokenHelperNotFoundFallsBackToInteractive asserts the counterpart of
+// TestGetTokenSurfacesHardHelperError: a clean not-found from the helper (no
+// token) is NOT a hard error and must still fall through to the interactive
+// provider flow.
 func TestGetTokenHelperNotFoundFallsBackToInteractive(t *testing.T) {
 	useTokenFakeHelper(t, "notfound")
 

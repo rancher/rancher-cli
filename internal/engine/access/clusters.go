@@ -141,7 +141,7 @@ type probeOutcome struct {
 	terminal error
 }
 
-// classifyProbe applies the Section 6a classifier to one cluster's review.
+// classifyProbe applies the probe classifier to one cluster's review.
 // The subject's Kubernetes username is what a successful review must
 // report; a review answering as someone else means the proxy ignored the
 // impersonation and the run cannot answer for the subject anywhere.
@@ -191,7 +191,7 @@ func (c *clustersCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "the management cluster client")
 	}
-	// Step 0: the caller's own identity on the management cluster. It is
+	// The caller's own identity on the management cluster. It is
 	// also the local row's answer in caller mode.
 	caller, r := whoami(ctx, local)
 	if r.kind != outcomeAnswer {

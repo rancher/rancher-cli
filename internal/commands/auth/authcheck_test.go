@@ -86,7 +86,7 @@ func TestAuthCheckSurfacesCredentialStorePin(t *testing.T) {
 	assert.Equal(t, "file", cs["pinned"])
 }
 
-// TestAuthCheckRancherVersionSupportPayload asserts PS-8's additive auth-check
+// TestAuthCheckRancherVersionSupportPayload asserts the additive auth-check
 // payload fields: rancherVersion and supported, alongside (never replacing)
 // the existing serverVersion k8s-discovery key.
 func TestAuthCheckRancherVersionSupportPayload(t *testing.T) {
@@ -203,16 +203,18 @@ func TestAuthCheckHitsServerVersion(t *testing.T) {
 	assert.Equal(t, "AuthCheck", res.Kind)
 }
 
-// alwaysOKPreflight and alwaysOKVersion stand in for the preflight/rancherVersion
-// probes in the PS-2 identity/token tests below, which exercise the two new
-// probes and have nothing to do with PS-8's floor check.
+// alwaysOKPreflight and alwaysOKVersion stand in for the
+// preflight/rancherVersion probes in the identity/token tests below, which
+// exercise the identity and token probes and have nothing to do with the
+// version floor check.
 func alwaysOKPreflight(context.Context, config.Effective) (string, error) { return "v1.31.0", nil }
 func alwaysOKVersion(context.Context, config.Effective) (string, error)   { return "v2.15.0", nil }
 
 // writeAuthCheckConfig gives Effective() a resolvable current context/server
-// (needed only when a test cares about the STORED token, e.g. proving env
-// wins over it; every other PS-2 test below sets RANCHER_CLI_TOKEN directly and
-// skips this, matching TestAuthCheckUsesInjectedPreflight's config-free style).
+// (needed only when a test cares about the STORED token, e.g. proving env wins
+// over it; every other identity/token test below sets RANCHER_CLI_TOKEN
+// directly and skips this, matching TestAuthCheckUsesInjectedPreflight's
+// config-free style).
 func writeAuthCheckConfig(t *testing.T, dir string) {
 	t.Helper()
 	cfg := &config.Config{
@@ -223,9 +225,9 @@ func writeAuthCheckConfig(t *testing.T, dir string) {
 	require.NoError(t, cfg.Write())
 }
 
-// TestAuthCheckIdentityAndTokenHappyPath asserts PS-2's additive payload: both
-// probes returning full metadata decode into the AuthCheck envelope
-// alongside (never replacing) PS-8's rancherVersion/supported keys.
+// TestAuthCheckIdentityAndTokenHappyPath asserts the additive identity and
+// token payload: both probes returning full metadata decode into the AuthCheck
+// envelope alongside (never replacing) the rancherVersion/supported keys.
 func TestAuthCheckIdentityAndTokenHappyPath(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
 	dir := seedAuthedDir(t)
@@ -317,7 +319,7 @@ func TestAuthCheckTokenEnvOverrideWinsOverStore(t *testing.T) {
 	assert.Equal(t, "env-1", token["name"])
 }
 
-// TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe asserts PS-2's v3 fallback: a
+// TestAuthCheckNonExtTokenCallsV3ProbeNotExtProbe asserts the v3 fallback: a
 // non-ext (management.cattle.io/v3) effective token routes to the v3token probe
 // and never touches the ext probe. Here the v3 probe returns RBAC denial, so
 // token degrades to null with the RBAC warning - the same posture the ext probe
@@ -375,10 +377,10 @@ func TestAuthCheckNoTokenAtAllIsNotLegacy(t *testing.T) {
 	assert.Empty(t, res.Warnings)
 }
 
-// TestAuthCheckIdentityDegradation covers PS-2's null+warning posture for
+// TestAuthCheckIdentityDegradation covers the null+warning posture for
 // the identity probe across every non-version failure cause: RBAC denial
 // (the expected outcome under a genuinely read-only token, since SelfUser is
-// a create-verb request - PS-5's recipe), a timeout, and the ext.cattle.io
+// a create-verb request), a timeout, and the ext.cattle.io
 // group/resource being absent (pre-2.14, or a served-but-partial install).
 // None of these ever fail the check itself.
 func TestAuthCheckIdentityDegradation(t *testing.T) {
@@ -431,8 +433,8 @@ func TestAuthCheckIdentityDegradation(t *testing.T) {
 // probe is actually invoked, not short-circuited by the legacy-token path)
 // whose lookup is denied or times out nulls the token field with a naming
 // warning and never fails the check. The 404 case is deliberately NOT in
-// this table (finding 1): the version probe is stubbed to alwaysOKVersion
-// here (supported == true), and that combination is now its own dedicated
+// this table: the version probe is stubbed to alwaysOKVersion
+// here (supported == true), and that combination is its own dedicated
 // test below rather than one row here, since a 404 alone can't tell
 // "group absent" and "object missing within a present group" apart.
 func TestAuthCheckTokenDegradation(t *testing.T) {
@@ -475,7 +477,7 @@ func TestAuthCheckTokenDegradation(t *testing.T) {
 	}
 }
 
-// TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent asserts finding 1's first
+// TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent asserts the first
 // branch: a token-probe 404 when the version probe could NOT confirm the
 // server is at or above the ext.cattle.io floor (2.14) keeps the existing
 // group-absent wording - the two probes disagreeing here (one says
@@ -502,14 +504,12 @@ func TestAuthCheckTokenNotFoundBelowFloorIsGroupAbsent(t *testing.T) {
 	assert.Contains(t, res.Warnings, "token metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)")
 }
 
-// TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken asserts finding 1's fix: once
+// TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken asserts that once
 // the version probe has confirmed the server IS at or above the floor, the
 // same token-probe 404 can only mean the named token object itself was
 // deleted/rotated server-side (a stale RANCHER_CLI_TOKEN or credential-store id) -
 // never that ext.cattle.io itself is missing, which a >= 2.14 server
-// already contradicts. Before this fix, this case wrongly reused the
-// below-floor wording (see the "missing group/resource" row this replaced in
-// TestAuthCheckTokenDegradation).
+// already contradicts.
 func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
 	dir := seedAuthedDir(t)
@@ -529,12 +529,12 @@ func TestAuthCheckTokenNotFoundAboveFloorIsRotatedToken(t *testing.T) {
 	assert.Contains(t, res.Warnings, "token metadata unavailable: stored token not found on the server (revoked or rotated) - re-authenticate with rancher auth login")
 }
 
-// TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes asserts finding
-// 4's ordering contract: the version/identity/token probes now run
-// concurrently (errgroup), but the warnings list must always assemble in
-// this fixed order regardless of which goroutine happens to finish first.
-// Run with -race, this also exercises finding 4's no-shared-mutable-state
-// design (each goroutine writes only its own dedicated result variables).
+// TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes asserts the
+// ordering contract: the version/identity/token probes run concurrently
+// (errgroup), but the warnings list must always assemble in this fixed order
+// regardless of which goroutine happens to finish first. Run with -race, this
+// also exercises the no-shared-mutable-state design (each goroutine writes only
+// its own dedicated result variables).
 func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.T) {
 	t.Setenv("RANCHER_CLI_TOKEN", "ext/derived-1:secretvalue")
 	dir := seedAuthedDir(t)
@@ -561,7 +561,7 @@ func TestAuthCheckWarningOrderIsDeterministicDespiteConcurrentProbes(t *testing.
 	}
 }
 
-// TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken asserts the PS-5
+// TestAuthCheckIdentityDegradesUnderReadOnlyRBACToken asserts the
 // read-only-recipe note explicitly (not just as one row of the degradation
 // table above): SelfUser identity is a create-verb request, so a genuinely
 // read-only RBAC token degrades identity to null with the RBAC warning -

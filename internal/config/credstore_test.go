@@ -652,7 +652,7 @@ func TestDeleteExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
 	assert.NoError(t, err, "legacy bare entry (no Server) must be kept")
 }
 
-// Round-2 pin: two config entries with different --name values ("acme-admin",
+// Two config entries with different --name values ("acme-admin",
 // "acme-viewer") that both point at the same host each cache their own
 // exec-credential entry. Logging out one deletes BOTH - deliberately, not a
 // bug: matching by config-entry name is structurally unreliable (a cache
@@ -770,7 +770,7 @@ func TestKeyringUnreachableDeleteFailsWithThePinHint(t *testing.T) {
 // TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable: an oversized
 // token must surface go-keyring's own message plainly, not the
 // "unreachable... locked keychain? no D-Bus session?" remedy - a
-// data-size failure is not a connectivity one (XP-6 fix round, finding 6).
+// data-size failure is not a connectivity one.
 func TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInitWithError(keyring.ErrSetDataTooBig)
@@ -786,7 +786,7 @@ func TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable(t *testing.T) {
 // TestKeyringUnreachableSetRefusesWithRemedy: a login write under an
 // unreachable keychain must hard-fail with the env-var remedy and must
 // NOT create a plaintext credentials file - the anti-silent-downgrade
-// guarantee (XP-6, decided: guarantee wins on the write path).
+// guarantee.
 func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInitWithError(errors.New("dbus: no session bus"))
@@ -846,7 +846,7 @@ func TestCanonicalServerIdentityHTTPEquivalentSpellingsShareOneIdentity(t *testi
 
 func TestCanonicalServerIdentityHTTPAndHTTPSAreDistinct(t *testing.T) {
 	t.Parallel()
-	// The P1 finding: same host, different scheme - must produce DIFFERENT identities.
+	// Same host, different scheme - must produce DIFFERENT identities.
 	assert.NotEqual(t, CanonicalServerIdentity("http://host"), CanonicalServerIdentity("https://host"),
 		"http and https identities must be distinct")
 	assert.NotEqual(t, CanonicalServerIdentity("http://host:80"), CanonicalServerIdentity("https://host:443"),
@@ -947,7 +947,7 @@ func TestFileStoreCacheLockPreventsLostUpdate(t *testing.T) {
 	assert.NoError(t, errB, "key-b must survive after concurrent write")
 }
 
-// TestFileStoreCacheLockPreventsLostUpdateOnExpiry asserts the reviewer's exact
+// TestFileStoreCacheLockPreventsLostUpdateOnExpiry asserts this
 // interleaving: SetCachedCred (A, adding key-a) races GetCachedCred (B,
 // pruning an expired key-b). Without the fix, B reads the cache before A's
 // write, then prunes and writes a snapshot that does not include key-a - a
@@ -1076,8 +1076,8 @@ func TestFileStoreCacheGetServesConcurrentlyRefreshedKey(t *testing.T) {
 	assert.Equal(t, "tok-fresh", tok)
 }
 
-// TestDeleteAllCachedCredsHonorsCacheLock asserts the round-8 wipe race:
-// DeleteAllCachedCreds must block on the flock while a concurrent
+// TestDeleteAllCachedCredsHonorsCacheLock asserts that
+// DeleteAllCachedCreds blocks on the flock while a concurrent
 // SetCachedCred's read-modify-write is in flight. Without the lock, the
 // Remove lands mid-write and the writer's write-back silently resurrects
 // the "deleted" entries - no error surfaced to either process.

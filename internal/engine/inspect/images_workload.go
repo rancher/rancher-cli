@@ -11,10 +11,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// workloadIdentity is IM-9's full owner identity. UID distinguishes
+// workloadIdentity is the full owner identity. UID distinguishes
 // generations of a deleted-and-recreated controller: the recreated object
 // does not own the old generation's pods, so collapsing them would
-// overstate the effect of acting on the row (IM-17).
+// overstate the effect of acting on the row.
 type workloadIdentity struct {
 	APIVersion string `json:"apiVersion"`
 	Kind       string `json:"kind"`
@@ -33,8 +33,8 @@ type imageWorkloadRow struct {
 // (image, namespace, owning workload object), pod-counted.
 type imageWorkloadRows []imageWorkloadRow
 
-// ownerKey memoizes resolution per first-level controller reference
-// (IM-15): apiVersion and uid are part of the identity - same kind/name in
+// ownerKey memoizes resolution per first-level controller reference:
+// apiVersion and uid are part of the identity - same kind/name in
 // another API group or a recreated generation is a different owner.
 type ownerKey struct{ ns, apiVersion, kind, name, uid string }
 
@@ -113,10 +113,9 @@ func sortWorkloadRows(rows imageWorkloadRows) {
 }
 
 // resolveWorkload maps a pod to its owning workload identity. Ownerless
-// pods are their own workload (IM-16: apiVersion v1, the pod's own uid).
+// pods are their own workload (apiVersion v1, the pod's own uid).
 // The owner chain runs once per unique owner reference; a memo hit walks
-// nothing, so a failed owner is recorded exactly once, which is IM-16's
-// warning dedup.
+// nothing, so a failed owner is recorded exactly once (the warning dedup).
 func resolveWorkload(ctx context.Context, client engine.ClusterClient, sec *sections, clusterID, ns string, pod *unstructured.Unstructured, memo map[ownerKey]workloadIdentity) (workloadIdentity, error) {
 	ref, ok := controllerRef(pod)
 	if !ok {
@@ -133,7 +132,7 @@ func resolveWorkload(ctx context.Context, client engine.ClusterClient, sec *sect
 	if err != nil {
 		return workloadIdentity{}, err
 	}
-	// IM-16: any walk failure retains the FIRST-level reference - a
+	// Any walk failure retains the FIRST-level reference - a
 	// partially-walked chain's last element is an unverified guess.
 	src := owners[len(owners)-1]
 	if degraded {
@@ -174,7 +173,7 @@ func (r imageWorkloadRows) Rows() [][]string {
 type generationKey struct{ ns, apiVersion, kind, name string }
 
 // generationSuffixes finds workload identities that collide when uid and
-// image are ignored (IM-11): every generation of such an identity gets an
+// image are ignored: every generation of such an identity gets an
 // @uid-prefix suffix, image-independent, so the old-image/new-image
 // rollover case stays readable.
 func generationSuffixes(rows imageWorkloadRows) map[string]string {
@@ -223,7 +222,7 @@ func uniquePrefix(uid string, all []string) string {
 
 // clusterImageWorkloads is --all-clusters --by workload's payload.
 // Rendering is per cluster, so generation disambiguation scopes per
-// rendered cluster (IM-11).
+// rendered cluster.
 type clusterImageWorkloads map[string]imageWorkloadRows
 
 func (c clusterImageWorkloads) Columns() []string {

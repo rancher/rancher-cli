@@ -36,9 +36,9 @@ func TestCountGenerated(t *testing.T) {
 	assert.Equal(t, 0, countGenerated([]SchemaCommand{{Name: "schema"}}, generated))
 }
 
-// TestSchemaGateLineMatrix is the SE-3 conformance test: the gate line is a
+// TestSchemaGateLineMatrix asserts that the gate line is a
 // total function of (commandType, destructive, stability) with exact wordings,
-// enumerated over every combination. The expected strings restate the spec
+// enumerated over every combination. The expected strings restate the wording
 // independently of the implementation.
 func TestSchemaGateLineMatrix(t *testing.T) {
 	t.Parallel()
@@ -180,7 +180,7 @@ func TestSchemaCommandCardOmitsEmptySections(t *testing.T) {
 	assert.Contains(t, lines, "global flags: see `rancher schema --all -o json` (globalFlags)")
 }
 
-// TestSchemaCommandCardDependsOnInput asserts the SE-3 dependsOnInput wording on
+// TestSchemaCommandCardDependsOnInput asserts the dependsOnInput wording on
 // a rendered card (not just the gate function).
 func TestSchemaCommandCardDependsOnInput(t *testing.T) {
 	t.Parallel()
@@ -199,7 +199,7 @@ func TestSchemaCommandCardDependsOnInput(t *testing.T) {
 		"gates: --apply; --yes when the input is destructive (see description)")
 }
 
-// TestSchemaKindCardFields asserts the SE-5 kind card: identity (canonical
+// TestSchemaKindCardFields asserts the kind card: identity (canonical
 // name, key, aliases), GVR, scope, the namespace/routing line, wait default,
 // traits, and the verb table in get/patch/delete order.
 func TestSchemaKindCardFields(t *testing.T) {
@@ -299,7 +299,7 @@ func TestSchemaKindNamespaceLine(t *testing.T) {
 	}
 }
 
-// TestSchemaKindVerbLine covers the SE-5 wording as a function of VerbState,
+// TestSchemaKindVerbLine covers the wording as a function of VerbState,
 // including the degenerate shapes production data never produces.
 func TestSchemaKindVerbLine(t *testing.T) {
 	t.Parallel()
@@ -330,7 +330,7 @@ func TestSchemaExitCodeStripOrdersByExitThenName(t *testing.T) {
 		got)
 }
 
-// tocManifest is a hand-ordered manifest exercising every SE-9 TOC shape: a
+// tocManifest is a hand-ordered manifest exercising every TOC shape: a
 // leading unnamed section, a named section, a generated group that also holds
 // a non-generated command, a later unnamed section, and a second generated
 // group that must NOT render a second vocabulary block.
@@ -362,7 +362,7 @@ func tocManifest() Manifest {
 	}
 }
 
-// TestSchemaTOCSectionOrderAndVocabularyBlock covers SE-9: the bare TOC
+// TestSchemaTOCSectionOrderAndVocabularyBlock asserts that the bare TOC
 // renders the manifest's sections in order, one line per non-generated
 // command, with generated get/patch/delete collapsed into ONE kind-vocabulary
 // block at the position of the first generated command's group, counts
@@ -414,7 +414,7 @@ func TestSchemaTOCSectionOrderAndVocabularyBlock(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(text, "get/patch/delete <kind>"), "exactly one global vocabulary block")
 }
 
-// TestSchemaSearchFragment covers SE-11's fragment rendering: a match visible
+// TestSchemaSearchFragment covers fragment rendering: a match visible
 // in the rendered line (name or usage) carries no fragment; an alias match
 // names the full alias form; a desc match shows the surrounding fragment with
 // ellipses.
@@ -433,7 +433,7 @@ func TestTocLinePrimeMarker(t *testing.T) {
 }
 
 // TestSchemaFilteredTOCCarriesPrimeMarker proves the filtered/search TOC
-// (SE-10/SE-11) projects the same marker as the bare TOC, since both render
+// projects the same marker as the bare TOC, since both render
 // through tocLine.
 func TestSchemaFilteredTOCCarriesPrimeMarker(t *testing.T) {
 	t.Parallel()
@@ -544,9 +544,9 @@ func TestSchemaSearchFragment(t *testing.T) {
 	assert.Equal(t, "", searchFragment(c, "zzz"), "no match yields no fragment")
 }
 
-// TestTOCRendersReadOnlyLine asserts the spec'd read-only mirror: BOTH TOC text views gain
-// a read-only line when active, so tocView's unconditional readOnly
-// fields mirror text on the bare and filtered paths alike.
+// TestTOCRendersReadOnlyLine asserts the read-only mirror: BOTH TOC text views
+// gain a read-only line when active, so tocView's unconditional readOnly fields
+// mirror text on the bare and filtered paths alike.
 func TestTOCRendersReadOnlyLine(t *testing.T) {
 	t.Parallel()
 	m := readOnlyTOCManifest()
@@ -554,7 +554,7 @@ func TestTOCRendersReadOnlyLine(t *testing.T) {
 	assert.Contains(t, renderFilteredTOC(m, schemaFilters{verb: "get"}, nil), "read-only (RANCHER_CLI_READONLY)")
 
 	// Zero-hit filtered result: the early-return branch must carry the
-	// read-only line too (review P1).
+	// read-only line too.
 	empty := readOnlyTOCManifest()
 	empty.Commands = nil
 	assert.Contains(t, renderFilteredTOC(empty, schemaFilters{verb: "zzz"}, nil), "read-only (RANCHER_CLI_READONLY)")

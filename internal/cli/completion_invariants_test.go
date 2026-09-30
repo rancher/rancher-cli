@@ -28,7 +28,7 @@ import (
 // hashDir hashes each file's path, ModTime (nanoseconds), size, and contents.
 // Including ModTime ensures that an atomic same-byte rewrite - which produces a
 // new inode and a changed ModTime even when content is identical - is detectable
-// (round-3 finding 5: content hash alone cannot detect same-byte atomic rewrites).
+// (a content hash alone cannot detect same-byte atomic rewrites).
 func hashDir(t *testing.T, dir string) string {
 	t.Helper()
 	h := sha256.New()
@@ -37,7 +37,7 @@ func hashDir(t *testing.T, dir string) string {
 			return err
 		}
 		// Include path + ModTime + size in the hash so an atomic same-byte rewrite
-		// is detected via the changed ModTime (round-3 finding 5).
+		// is detected via the changed ModTime.
 		_, _ = fmt.Fprintf(h, "%s|%d|%d\n", path, fi.ModTime().UnixNano(), fi.Size())
 		data, rerr := os.ReadFile(path)
 		if rerr != nil {
@@ -50,23 +50,22 @@ func hashDir(t *testing.T, dir string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-// AC-22: No keyring call on any completion path (round-3 finding 3).
+// No keyring call on any completion path.
 // Uses config.SetKeyringObserverForTest to count actual keyring ops - unlike
 // MockInitWithError alone, the observer proves keyring was structurally never
 // reached, not just that errors were handled gracefully.
 // Setup: keychain-pinned config, live completion ON, cluster value present so
 // dispatch reaches token resolution. No env token → no mgmt token → zero
 // requests. Assert zero keyring ops AND zero HTTP requests.
-func TestAC22NoKeyringOnCompletionPath(t *testing.T) {
-	// NOT parallel: mutates process-global keyring state and env (findings 14/R2-9,
-	// round-3 findings 3+4).
+func TestCompletionNeverTouchesKeyring(t *testing.T) {
+	// NOT parallel: mutates process-global keyring state and env.
 	var keyringOps atomic.Int32
 	config.SetKeyringObserverForTest(func(op string) { keyringOps.Add(1) })
 	t.Cleanup(func() {
 		config.SetKeyringObserverForTest(nil)
 		keyring.MockInit()
 	})
-	keyring.MockInitWithError(fmt.Errorf("AC-22 VIOLATION: keyring accessed on completion path"))
+	keyring.MockInitWithError(fmt.Errorf("keyring accessed on completion path"))
 
 	var hits atomic.Int32
 	srvBad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +84,7 @@ func TestAC22NoKeyringOnCompletionPath(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	require.NoError(t, config.WritePin(dir, "keychain"))
-	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
+	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config.
 	t.Setenv(config.EnvConfigDir, dir)
 	cli.SetStoredConfigForTest(t, cfg, dir)
 	// Drive a cluster-dependent site with a cluster value present so dispatch
@@ -98,44 +97,44 @@ func TestAC22NoKeyringOnCompletionPath(t *testing.T) {
 	root.ErrWriter = &stderr
 	root.Writer = io.Discard
 	runErr := root.Run(t.Context(), []string{"rancher", "usage", "--cluster", "my-cluster", "--generate-shell-completion"})
-	require.NoError(t, runErr, "AC-22: completion must not fail when keyring is unavailable")
-	assert.Empty(t, stderr.String(), "AC-22: completion must not write to stderr")
-	assert.Equal(t, int32(0), keyringOps.Load(), "AC-22: completion must not contact the keyring")
-	assert.Equal(t, int32(0), hits.Load(), "AC-22: no token → no HTTP requests")
+	require.NoError(t, runErr, "completion must not fail when keyring is unavailable")
+	assert.Empty(t, stderr.String(), "completion must not write to stderr")
+	assert.Equal(t, int32(0), keyringOps.Load(), "completion must not contact the keyring")
+	assert.Equal(t, int32(0), hits.Load(), "no token → no HTTP requests")
 }
 
-// AC-23: No stderr from a real TAB callback (finding 13: run the real callback).
-// Round-4 finding 3: config must have Completion.Network=true so dispatch
+// No stderr from a real TAB callback (runs the real callback).
+// The config must have Completion.Network=true so dispatch
 // reaches live token/network paths (not the early-return for network-off).
 // Two sub-paths are exercised:
 //
 //	(a) unreachable server with no file token → empty stdout, nil error, empty stderr
 //	(b) unreadable credentials.yaml (chmod 000) → silent failure, nil error, empty stderr
-func TestAC23CompletionNoStderr(t *testing.T) {
-	// NOT parallel: mutates rawArgv and env globals (finding 14, round-3 finding 4).
+func TestCompletionNoStderr(t *testing.T) {
+	// NOT parallel: mutates rawArgv and env globals.
 	keyring.MockInit()
 	dir := t.TempDir()
 	cfg := &config.Config{
 		CurrentServer:   "srv",
 		Servers:         map[string]config.Server{"srv": {URL: "https://example.invalid"}},
 		CredentialStore: "file",
-		Completion:      config.CompletionConfig{Network: true}, // round-4: must reach live path
+		Completion:      config.CompletionConfig{Network: true}, // must reach the live path
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
 	// Sub-path (b): write credentials.yaml then make it unreadable so
-	// fileStoreTokenSilent fails silently (AC-23: no stderr on read error).
+	// fileStoreTokenSilent fails silently (no stderr on read error).
 	credsPath := filepath.Join(dir, "credentials.yaml")
 	require.NoError(t, os.WriteFile(credsPath, []byte("srv: tok\n"), 0o600))
 	require.NoError(t, os.Chmod(credsPath, 0o000))
 	t.Cleanup(func() { _ = os.Chmod(credsPath, 0o600) })
 
-	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
+	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config.
 	t.Setenv(config.EnvConfigDir, dir)
 	cli.SetStoredConfigForTest(t, cfg, dir)
 
-	// v2 protocol (round-5): proto sentinel + words + self-prefixed empty cur field.
+	// v2 protocol: proto sentinel + words + self-prefixed empty cur field.
 	// --rancher-completion-cur= (no value after =) → cursor after space, no partial typed.
 	origV1 := cli.GetRawV1CompletionForTest()
 	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
@@ -155,11 +154,11 @@ func TestAC23CompletionNoStderr(t *testing.T) {
 		"--rancher-completion-cur=",
 		"--generate-shell-completion",
 	}))
-	require.NoError(t, runErr, "AC-23: completion must not exit nonzero")
-	assert.Empty(t, stderr.String(), "AC-23: no stderr on any failure path (unreadable creds or unreachable server)")
+	require.NoError(t, runErr, "completion must not exit nonzero")
+	assert.Empty(t, stderr.String(), "no stderr on any failure path (unreadable creds or unreachable server)")
 }
 
-// AC-24: At most two HTTP requests per full TAB dispatch (round-3 finding 4).
+// At most two HTTP requests per full TAB dispatch.
 // Drives the actual two-request path: display-name cluster at a --namespace site.
 // rawArgv=["get","pod","--cluster","prod","--namespace","kube-"] → dispatch:
 //
@@ -168,9 +167,8 @@ func TestAC23CompletionNoStderr(t *testing.T) {
 //
 // Assert exactly 2 hits (not vacuous 0 <= 2).
 // A companion zero-hit test is TestNoClusterNoRequests in dispatch_test.go.
-func TestAC24AtMostTwoRequestsPerTAB(t *testing.T) {
-	// NOT parallel: mutates rawArgv, storedConfig, and env globals (finding 14,
-	// round-3 finding 4).
+func TestCompletionAtMostTwoRequestsPerTab(t *testing.T) {
+	// NOT parallel: mutates rawArgv, storedConfig, and env globals.
 	keyring.MockInit()
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,12 +191,12 @@ func TestAC24AtMostTwoRequestsPerTAB(t *testing.T) {
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
+	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config.
 	t.Setenv(config.EnvConfigDir, dir)
 	cli.SetStoredConfigForTest(t, cfg, dir)
 	t.Setenv(config.EnvToken, "test-token")
 	// Display-name cluster "prod" at --namespace site → two requests.
-	// v2 protocol (round-5): proto sentinel + words (--namespace flag last in argv,
+	// v2 protocol: proto sentinel + words (--namespace flag last in argv,
 	// no value in args) + self-prefixed cur field for partial "kube-".
 	// ParseArgTail: currentWord="kube-" non-flag, --namespace is last in args → SiteFlagValue(namespace).
 	origV1b := cli.GetRawV1CompletionForTest()
@@ -222,20 +220,20 @@ func TestAC24AtMostTwoRequestsPerTAB(t *testing.T) {
 		"--generate-shell-completion",
 	}))
 
-	assert.Equal(t, int32(2), hits.Load(), "AC-24: exactly 2 HTTP requests for display-name resolution + namespace list")
-	assert.LessOrEqual(t, hits.Load(), int32(2), "AC-24: at most 2 HTTP requests per TAB")
-	assert.Contains(t, out.String(), "kube-system", "AC-24: namespace candidates must include kube-system")
+	assert.Equal(t, int32(2), hits.Load(), "exactly 2 HTTP requests for display-name resolution + namespace list")
+	assert.LessOrEqual(t, hits.Load(), int32(2), "at most 2 HTTP requests per TAB")
+	assert.Contains(t, out.String(), "kube-system", "namespace candidates must include kube-system")
 }
 
-// AC-25: Secrets and cloud-credentials never completable (deny-by-default).
-func TestAC25SecretNotCompletable(t *testing.T) {
+// Secrets and cloud-credentials are never completable (deny-by-default).
+func TestSecretNotCompletable(t *testing.T) {
 	t.Parallel()
 	k, ok := kinds.Lookup("secret")
 	require.True(t, ok)
-	assert.False(t, k.Completable, "AC-25: secret must not be completable")
+	assert.False(t, k.Completable, "secret must not be completable")
 }
 
-func TestAC25CompletableAllowlistIsExactlyTenKinds(t *testing.T) {
+func TestCompletableAllowlistIsExactlyTenKinds(t *testing.T) {
 	t.Parallel()
 	var completable []string
 	for _, k := range kinds.All() {
@@ -246,19 +244,18 @@ func TestAC25CompletableAllowlistIsExactlyTenKinds(t *testing.T) {
 	sort.Strings(completable)
 	assert.Equal(t,
 		[]string{"cluster", "deployment", "namespace", "node", "nodedriver", "oidcclient", "pod", "project", "provisioning-cluster", "user"},
-		completable, "AC-25/AC-15: allowlist must be exactly the six spec'd kinds plus nodedriver, user, provisioning-cluster, and oidcclient (2026-08-26, first Prime-capability kind)")
+		completable, "allowlist must be exactly these ten kinds (oidcclient is the first Prime-capability kind)")
 }
 
-// AC-28: Full-callback tests for the five live-completion flag-value sites
-// (round-3 finding 1, round-4 finding 1+2). Each sub-test runs the real root.Run
-// callback using the REAL v2 script shape:
+// Full-callback tests for the five live-completion flag-value sites. Each
+// sub-test runs the real root.Run callback using the REAL v2 script shape:
 //
 //	rancher --rancher-completion-proto=2 <words-before-flag-value> <currentWord> --generate-shell-completion
 //
 // <words-before-flag-value> contains the flag but NOT its partial value;
 // <currentWord> is the partial being typed. This is what the updated shell
 // scripts send. NOT parallel: t.Setenv mutates env globals.
-func TestAC28FullCallbackFlagValueSites(t *testing.T) {
+func TestFullCallbackFlagValueSites(t *testing.T) {
 	clusterItems := `{"items":[{"metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`
 	nsItems := `{"items":[{"metadata":{"name":"default"}},{"metadata":{"name":"kube-system"}}]}`
 	nodeItems := `{"items":[{"metadata":{"name":"node-1"}}]}`
@@ -363,32 +360,31 @@ func TestAC28FullCallbackFlagValueSites(t *testing.T) {
 	})
 }
 
-// AC-26: Candidate sanitization (charset enforcement + sort).
-func TestAC26SanitizationDropsLeadingHyphen(t *testing.T) {
+// Candidate sanitization (charset enforcement + sort).
+func TestSanitizationDropsLeadingHyphen(t *testing.T) {
 	t.Parallel()
 	got := cli.SanitizeCandidatesForTest([]string{"-bad", "good", "also-good"})
 	assert.Equal(t, []string{"also-good", "good"}, got)
 }
 
-func TestAC26SanitizationDropsShellMetachars(t *testing.T) {
+func TestSanitizationDropsShellMetachars(t *testing.T) {
 	t.Parallel()
 	got := cli.SanitizeCandidatesForTest([]string{"$(inject)", "good.name", "has space", "valid_1"})
 	assert.Equal(t, []string{"good.name", "valid_1"}, got)
 }
 
-// AC-27: Completion path writes nothing to disk - snapshot before/after (round-3
-// finding 5). hashDir includes path + ModTime + size + content, so an atomic
-// same-byte rewrite is detected via the changed ModTime. runErr is asserted nil
-// so a failed invocation cannot masquerade as a no-write success.
+// Completion path writes nothing to disk - snapshot before/after. hashDir
+// includes path + ModTime + size + content, so an atomic same-byte rewrite is
+// detected via the changed ModTime. runErr is asserted nil so a failed
+// invocation cannot masquerade as a no-write success.
 //
-// Round-4 finding 3: config has Completion.Network=true and token-cache.yaml is
-// seeded with one valid AND one expired exec-cred entry. The existing
+// The config has Completion.Network=true and token-cache.yaml is seeded with
+// one valid AND one expired exec-cred entry. The existing
 // ListCachedCreds/GetCachedCred prune expired entries on read by writing the
-// cache file (AC-6a violation). After a full live dispatch the snapshot must be
-// unchanged - proving no prune-on-read write occurred.
-func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
-	// NOT parallel: mutates storedConfig, rawArgv, and env globals (finding 14,
-	// round-3 finding 4).
+// cache file, which completion must never do. After a full live dispatch the
+// snapshot must be unchanged - proving no prune-on-read write occurred.
+func TestCompletionWritesNothingToDisk(t *testing.T) {
+	// NOT parallel: mutates storedConfig, rawArgv, and env globals.
 	keyring.MockInit()
 	dir := t.TempDir()
 
@@ -414,7 +410,7 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config (round-3 finding 4).
+	// RANCHER_CLI_CONFIG_DIR makes the root Before hook load this config.
 	t.Setenv(config.EnvConfigDir, dir)
 	cli.SetStoredConfigForTest(t, cfg, dir)
 	// Snapshot AFTER seeding but BEFORE dispatch.
@@ -431,14 +427,14 @@ func TestAC27CompletionWritesNothingToDisk(t *testing.T) {
 	require.NoError(t, err)
 	root.Writer = io.Discard
 	root.ErrWriter = io.Discard
-	// Capture runErr: a failed invocation must not masquerade as a no-write success
-	// (round-3 finding 5).
+	// Capture runErr: a failed invocation must not masquerade as a no-write
+	// success.
 	runErr := root.Run(t.Context(), cli.SanitizedArgsForTest([]string{
 		"rancher", "--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc", "--rancher-completion-cur=",
 		"--generate-shell-completion",
 	}))
-	require.NoError(t, runErr, "AC-27: completion must not exit nonzero")
-	assert.Equal(t, before, hashDir(t, dir), "AC-27: completion must write nothing (no prune-on-read or other writes)")
+	require.NoError(t, runErr, "completion must not exit nonzero")
+	assert.Equal(t, before, hashDir(t, dir), "completion must write nothing (no prune-on-read or other writes)")
 }
 
 // TestGlobalFlagSetsAgree asserts the 4-way lockstep agreement between the
@@ -502,7 +498,7 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 // returns false for unrecognized flags. The equals-form branch must apply the same
 // guard: get --cluster=<TAB>, get --namespace=<TAB>, get --node=<TAB> must all
 // produce ZERO HTTP requests at the group level (no kind is chosen yet, so firing
-// a live fetch is a premature network request - the security assertion for this fix).
+// a live fetch is a premature network request - a security assertion).
 //
 // NOT parallel: mutates rawArgv/rawCurrentWord globals, storedConfig, and env.
 func TestGroupLiveFlagValueCandidates(t *testing.T) {

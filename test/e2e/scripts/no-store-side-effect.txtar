@@ -1,4 +1,4 @@
-# LS-1 regression (Windows acceptance FAIL 2): an informational command must
+# Regression: an informational command must
 # not probe the keychain, write credstore-pin, or create the config dir.
 # Clears Setup's RANCHER_CLI_CREDENTIAL_STORE=file default so the auto path
 # is what's under test - under the lazy store it never resolves, so this is

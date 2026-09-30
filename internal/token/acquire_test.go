@@ -185,7 +185,7 @@ func TestAcquireLegacyFallbackTransfersSession(t *testing.T) {
 
 // TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups asserts the no-create path
 // of the full acquisition: a SAML sign-in the browser never completes is an
-// unknown, unmarked S with the handoff, D not attempted, both cleanups
+// unknown, unmarked S with the SAML handoff, D not attempted, both cleanups
 // explicitly notAttempted, and no operation marker (no marked create was
 // attempted). Not parallel: it shrinks the SAML timing.
 func TestAcquireSAMLTimeoutCarriesNotAttemptedCleanups(t *testing.T) {
@@ -316,7 +316,7 @@ func samlProviderFacadeInMemory(t *testing.T, opts testrancher.Options) (*testra
 // (usually a facade deposit) before the CLI's first poll.
 type handoffPrompter struct {
 	// The embedded prompter is silent and non-TTY with NoInput false: the
-	// SAML gate refuses a NoInput prompter before the handoff.
+	// SAML gate refuses a NoInput prompter before the SAML handoff.
 	runtime.Prompter
 	requestID string
 	publicKey string
@@ -358,7 +358,7 @@ func assertAuthTokensOnly(t *testing.T, f *testrancher.Facade) {
 
 // TestSAMLPostHandoffFailuresAreUnknownWithHandoff asserts the asynchronous
 // state machine: after the browser URL is published, cancellation and
-// timeout are unknown S creates carrying the handoff; a deposited auth
+// timeout are unknown S creates carrying the SAML handoff; a deposited auth
 // token with a valid bearer is known; a payload that cannot be decoded is
 // unknown; a decrypted bearer failing validation is unidentified.
 func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
@@ -366,8 +366,8 @@ func TestSAMLPostHandoffFailuresAreUnknownWithHandoff(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			f, client := samlProviderFacadeInMemory(t, testrancher.Options{})
 			ctx, cancel := context.WithCancel(t.Context())
-			// Synchronous: after the handoff is recorded, before the first poll,
-			// so no timer race decides the outcome.
+			// Synchronous: after the SAML handoff is recorded, before the first
+			// poll, so no timer race decides the outcome.
 			p := newHandoffPrompter(func(string, string) { cancel() })
 			res, err := loginAndGenerateCred(ctx, client, samlInput(rancherOrigin), p)
 			require.ErrorIs(t, err, context.Canceled)

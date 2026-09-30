@@ -383,11 +383,11 @@ func breakPath(t *testing.T, path string) {
 	require.NoError(t, os.Mkdir(path, 0o700))
 }
 
-// TestWhenTheOldCopyCannotGoThePinFlipsFirst asserts the fallback: the old
-// copy of this entry's credential cannot be removed, so the pin flips in
-// step 2 instead. Either one stops a reader from resolving to the old
-// copy; the step that could not run stays, and says so, and holds no
-// pause: readers have left the store it deletes from.
+// TestWhenTheOldCopyCannotGoThePinFlipsFirst asserts the fallback: the old copy
+// of this entry's credential cannot be removed, so the pin flips in the
+// old-copy step instead. Either one stops a reader from resolving to the old
+// copy; the step that could not run stays, and says so, and holds no pause:
+// readers have left the store it deletes from.
 func TestWhenTheOldCopyCannotGoThePinFlipsFirst(t *testing.T) {
 	dir := repinFixture(t)
 
@@ -395,7 +395,7 @@ func TestWhenTheOldCopyCannotGoThePinFlipsFirst(t *testing.T) {
 	restore := SetPersistWriteHookForTest(func(step string) error {
 		if step == "transition" {
 			// The write that puts the change into effect is the last
-			// moment before step 2, so this is where the file store
+			// moment before the old-copy step, so this is where the file store
 			// becomes unreadable: the credential is committed by now.
 			breakPath(t, CredentialsFilePath(dir))
 		}
@@ -927,14 +927,14 @@ func TestTheLoginOpensThePhysicalBackendItResolved(t *testing.T) {
 func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		// breakAt is the config write after which a path stops
-		// answering: `transition` is before step 2. breakAfter is a write
-		// after which it does: the old copy's delete in step 2, before
-		// step 4.
+		// breakAt is the config write after which a path stops answering:
+		// `transition` is before the old-copy step. breakAfter is a write after
+		// which it does: the old copy's delete in the old-copy step, before the
+		// replay.
 		breakAt, breakAfter string
-		// breakFile takes credentials.yaml, so step 2 cannot remove the
-		// old copy; breakPin takes the pin's path. Both at `transition`
-		// is the one state where step 2 can do neither.
+		// breakFile takes credentials.yaml, so the old-copy step cannot remove
+		// the old copy; breakPin takes the pin's path. Both at `transition` is
+		// the one state where the old-copy step can do neither.
 		breakFile, breakPin bool
 		// want is the whole sentence the step that could not finish
 		// produces, which no other line of the login says; cause names
@@ -944,11 +944,11 @@ func TestAStepThatCouldNotFinishIsAWarning(t *testing.T) {
 		// fails says the login ends in an error rather than a warning.
 		fails bool
 	}{
-		{name: "the old copy, in step 2", breakAt: "transition", breakFile: true,
+		{name: "the old copy, in the old-copy step", breakAt: "transition", breakFile: true,
 			want: "the credential store change could not finish for prod", cause: "credentials.yaml"},
-		{name: "the pin, in step 4", breakAfter: "credentials.yaml", breakPin: true,
+		{name: "the pin, in the replay", breakAfter: "credentials.yaml", breakPin: true,
 			want: "a credential store change is unfinished for this directory (pin)", cause: pinFileName},
-		{name: "the pin, in step 2's fallback", breakAt: "transition", breakFile: true, breakPin: true, fails: true,
+		{name: "the pin, in the old-copy step's fallback", breakAt: "transition", breakFile: true, breakPin: true, fails: true,
 			want: "a credential store change is unfinished for this directory (pin)", cause: pinFileName},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1050,13 +1050,13 @@ func TestAnOldCopyAnotherDirectoryOwnsIsLeftAlone(t *testing.T) {
 	assert.Equal(t, "another-directorys", tok, "the other directory's credential survives the change")
 }
 
-// TestAnOldCopyThatCannotBeReadFlipsThePinInstead asserts what step 2 does
-// when this entry's old copy is in a backend that cannot answer. No delete
-// step can be recorded - a delete is bound to the credential's digest and
-// there is none to compute - so the pin flips in step 2, which is the
-// other way to stop a reader resolving to the copy that is still there.
-// Nothing is left to hold a pause; a writer that read the copy is refused
-// by the store check.
+// TestAnOldCopyThatCannotBeReadFlipsThePinInstead asserts what the old-copy
+// step does when this entry's old copy is in a backend that cannot answer. No
+// delete step can be recorded - a delete is bound to the credential's digest
+// and there is none to compute - so the pin flips in the old-copy step, which
+// is the other way to stop a reader resolving to the copy that is still there.
+// Nothing is left to hold a pause; a writer that read the copy is refused by
+// the store check.
 func TestAnOldCopyThatCannotBeReadFlipsThePinInstead(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")
 	keyring.MockInit()

@@ -323,7 +323,7 @@ func TestUsageByNodeRejectsProjectFlag(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// UU-41: --project alone (no --by) → member-namespace rows, not a single
+// --project alone (no --by) → member-namespace rows, not a single
 // project bucket.
 func TestUsageProjectAloneGivesMemberNamespaceRows(t *testing.T) {
 	t.Parallel()
@@ -383,7 +383,7 @@ func TestUsageProjectAloneIncludesZeroPodMembers(t *testing.T) {
 	assert.Equal(t, "0", env.Data["ns-empty"].CPURequest)
 }
 
-// UU-41: --by project --project X → single project bucket.
+// --by project --project X → single project bucket.
 func TestUsageByProjectWithProjectFlagGivesSingleBucket(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
@@ -411,8 +411,7 @@ func TestUsageByProjectWithProjectFlagGivesSingleBucket(t *testing.T) {
 	assert.NotContains(t, env.Data, "ns1")
 }
 
-// podOnNode lives here (usage_test.go) so Task 2's node-filter test compiles
-// before Task 3 exists; Task 3's usage_node_test.go reuses it.
+// podOnNode lives here (usage_test.go) and usage_node_test.go reuses it.
 func podOnNode(ns, name, nodeName, cpuReq, memReq, cpuLim, memLim string) *unstructured.Unstructured {
 	p := podWithResources(ns, name, cpuReq, memReq, cpuLim, memLim)
 	_ = unstructured.SetNestedField(p.Object, nodeName, "spec", "nodeName")

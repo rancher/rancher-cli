@@ -69,7 +69,7 @@ func (l loginCmd) idpClient() *http.Client {
 // NewLogin builds the `auth login` command (local). The store is resolved
 // inside Execute from the config loaded under the config write lock - never
 // from the dependency-resolution snapshot, which can predate a concurrent
-// policy change (config-write-lock plan, review issue 2).
+// policy change.
 func NewLogin(dir string) runtime.Command {
 	return &loginCmd{dir: dir, newStore: config.OpenResolvedStore, tlsPreflight: register.TLSPreflight, verify: provider.Preflight}
 }
@@ -776,7 +776,7 @@ func resolveLoginToken(ctx context.Context, server, caPEM string, newIdPClient f
 	return cred, nil
 }
 
-// promptForToken offers the paste-or-provider choice (EXT-R-8): --auth-provider
+// promptForToken offers the paste-or-provider choice: --auth-provider
 // or --auth-flow already signal provider intent and skip straight to it,
 // mirroring get-token's own explicit-flag shortcut past its provider menu.
 // newIdPClient is a constructor, not a client: the identity-provider client

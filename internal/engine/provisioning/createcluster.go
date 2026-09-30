@@ -1,4 +1,4 @@
-// createcluster.go implements Task 7 (spec D-3) `create cluster`: an
+// createcluster.go implements `create cluster`: an
 // imported, custom, or node-driver provisioning.cattle.io/v1 Cluster.
 package provisioning
 
@@ -78,7 +78,7 @@ const clusterNamespace = "fleet-default"
 // still rejected here. Recomputed on every call: kinds.All() is a cheap
 // slice copy over a handful of rows, and nothing else in this codebase
 // memoizes a derived kind table (kinds.Bindings() itself recomputes fresh on
-// every call). kinds.MachineConfigGroup is the single source every Task 3
+// every call). kinds.MachineConfigGroup is the single source every
 // machine-config kind row shares in kinds.go, so a future machine-config
 // driver row added there is picked up here automatically.
 func machineConfigKinds() map[string]bool {
@@ -93,7 +93,7 @@ func machineConfigKinds() map[string]bool {
 
 // machineConfigKindNames renders machineConfigKinds sorted - the single
 // source for create cluster's VALIDATION hint, create machine-config's
-// <kind> Enum (MC-2), and both schema descs.
+// <kind> Enum, and both schema descs.
 func machineConfigKindNames() []string {
 	set := machineConfigKinds()
 	keys := make([]string, 0, len(set))
@@ -458,14 +458,13 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 	return eff, exec, nil
 }
 
-// versionWarnings runs Task 6's FetchVersions for a WARN-ONLY note (spec
-// D-7; review R1-2): a version absent from the merged rke2/k3s discovery
-// list appends one warning naming the distro defaults, appended to
-// Effect.Warnings BEFORE confirmation. Any FetchVersions error (server
-// unreachable, older server) degrades to no warning at all, silently - the
-// server is the authority on whether the version is real; discovery here is
-// advisory only and must never turn into a hard failure of an otherwise
-// valid create.
+// versionWarnings runs FetchVersions for a WARN-ONLY note: a version absent
+// from the merged rke2/k3s discovery list appends one warning naming the distro
+// defaults, appended to Effect.Warnings BEFORE confirmation. Any FetchVersions
+// error (server unreachable, older server) degrades to no warning at all,
+// silently - the server is the authority on whether the version is real;
+// discovery here is advisory only and must never turn into a hard failure of an
+// otherwise valid create.
 func (c createClusterCmd) versionWarnings(ctx context.Context, k8sVersion string) []string {
 	if k8sVersion == "" {
 		return nil

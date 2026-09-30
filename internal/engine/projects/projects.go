@@ -93,7 +93,7 @@ func quotaKeySetDiff(a, b map[string]any) []string {
 
 // buildQuotaSpecs validates and parses --quota-limit/--namespace-default-quota
 // (mandatory-together, matching key sets - webhook-verified constraints
-// enforced client-side per spec PC-8) and returns the two limit maps, both
+// enforced client-side) and returns the two limit maps, both
 // nil if neither flag was given.
 func buildQuotaSpecs(in runtime.Input) (limit, nsDefault map[string]any, err error) {
 	limitStr := in.String("quota-limit")

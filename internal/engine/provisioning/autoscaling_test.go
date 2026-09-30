@@ -152,7 +152,7 @@ func TestClearAutoscalingRemovesBounds(t *testing.T) {
 	assert.Contains(t, res.Text, "left at manual quantity 4")
 }
 
-// TestClearAutoscalingOnUnmanagedPoolIsNoOp asserts the design's convergence
+// TestClearAutoscalingOnUnmanagedPoolIsNoOp asserts the convergence
 // contract: a pool that already carries neither bound succeeds, naming
 // nothing-to-clear rather than surfacing a raw path-not-found error.
 func TestClearAutoscalingOnUnmanagedPoolIsNoOp(t *testing.T) {

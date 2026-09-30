@@ -24,10 +24,9 @@ const crtCollectionPath = testrancher.CRTCollectionPath
 // internal/client/provider's Create/Update/Delete calls.
 const localSecretsPath = "/k8s/clusters/local/api/v1/namespaces/default/secrets"
 
-// All returns the first-slice probe set: bearer-validation and RBAC-denial
+// All returns the probe set: bearer-validation and RBAC-denial
 // auth probes, facade-owned ext-token mutation probes, and kube-proxy
-// mutation-pipeline probes. Each family's oracle target is documented in the
-// spec ("which layer it oracles").
+// mutation-pipeline probes.
 func All() []Probe {
 	probes := []Probe{}
 	probes = append(probes, authProbes()...)
@@ -52,7 +51,7 @@ func All() []Probe {
 // is an APIService pointing at a service that does not exist, created
 // and removed around the observation; the aggregated Stale mark for it
 // appears only after the API server's availability controller runs, so
-// that shape is a recorded spike fact asserted by unit tests, not a probe.
+// that shape is asserted by unit tests, not a probe.
 func discoveryProbes() []Probe {
 	const (
 		aggregatedAccept = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList," +

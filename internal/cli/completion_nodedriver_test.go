@@ -13,7 +13,7 @@ import (
 )
 
 // nodeDriverServer serves the management NodeDriver list, counting hits. One
-// name carries shell metacharacters to exercise the AC-21 sanitize boundary.
+// name carries shell metacharacters to exercise the candidate sanitizing step.
 func nodeDriverServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32

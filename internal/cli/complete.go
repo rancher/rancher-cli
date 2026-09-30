@@ -15,7 +15,7 @@ var (
 )
 
 // setStoredConfig stores the config loaded by the root Before hook for use
-// by completion callbacks (AC-19: one config load per TAB invocation).
+// by completion callbacks (one config load per TAB invocation).
 func setStoredConfig(cfg *config.Config, dir string) {
 	storedConfigMu.Lock()
 	defer storedConfigMu.Unlock()

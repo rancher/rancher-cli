@@ -31,7 +31,7 @@ var clustersGVR = schema.GroupVersionResource{Group: "management.cattle.io", Ver
 var rootTimeout = 30 * time.Second
 
 // clientFactory implements engine.ClusterClientFactory for one invocation.
-// Config + credentials resolve exactly once (RF-1): one server, one token,
+// Config + credentials resolve exactly once: one server, one token,
 // one context snapshot per invocation - a concurrent `auth login` cannot
 // swap identity between Plan and Execute.
 type clientFactory struct {
@@ -156,7 +156,7 @@ func (f *clientFactory) ImpersonatedCluster(_ context.Context, clusterID string,
 }
 
 // Root resolves the memoized engine.RootClient for this invocation, building
-// the underlying httpx client at most once (RF-1: one server, one token, one
+// the underlying httpx client at most once (one server, one token, one
 // TLS config per invocation).
 func (f *clientFactory) Root() (engine.RootClient, error) {
 	f.rootOnce.Do(func() {
@@ -226,7 +226,7 @@ func excerpt(b []byte, n int) string {
 }
 
 // ServerInfo resolves the memoized /rancherversion version+edition for this
-// invocation, fetching at most once (RF-1, mirroring Root's rootOnce): the
+// invocation, fetching at most once (mirroring Root's rootOnce): the
 // unauthenticated config.Effective-built HTTP path RancherVersion uses
 // today, never engine.RootClientFactory.
 func (f *clientFactory) ServerInfo(ctx context.Context) (provider.ServerInfo, error) {
@@ -433,7 +433,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 		Flags:       flagsFor(d),
 		// Slice flags receive one entry per occurrence: urfave's default
 		// comma-splitting would tear a value like `--set tags=a,b` into two
-		// entries (MC-6a). Only slice/map flags read this; single-value
+		// entries. Only slice/map flags read this; single-value
 		// flags are untouched.
 		DisableSliceFlagSeparator: true,
 		OnUsageError:              onUsageError,

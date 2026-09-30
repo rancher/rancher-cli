@@ -20,7 +20,7 @@ import (
 )
 
 // conditionMessageLimit is the text-view truncation bound for condition
-// messages (IC-1a "truncated sanely"); the JSON envelope always carries
+// messages (truncated sanely); the JSON envelope always carries
 // the full message. Join commands are exempt - they are copy-pasted.
 const conditionMessageLimit = 120
 
@@ -153,7 +153,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 			}
 			res.Machines = machs
 			if res.Cluster.KubernetesVersion == "" {
-				// IC-4b: pending clusters carry only the DESIRED version on the
+				// Pending clusters carry only the DESIRED version on the
 				// provisioning spec; "" stays "" - never a fabricated value.
 				desired, _, _ := unstructured.NestedString(prov.Object, "spec", "kubernetesVersion")
 				res.Cluster.KubernetesVersion = desired
@@ -161,7 +161,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		case provAbsent:
 			res.ProvisioningNote = absentNote
 		case provUnavailable:
-			// Sections stay omitted; the warning already names the cause (IC-7a).
+			// Sections stay omitted; the warning already names the cause.
 		}
 		return nil
 	})
@@ -231,12 +231,12 @@ const (
 // fleet-default and selects the unique object whose status.clusterName
 // equals the resolved management cluster id. metadata.name is the
 // user-supplied provisioning name and spec.displayName can be renamed -
-// neither correlates reliably (IC-4). Zero matches is confirmed absence
-// (IC-7); a list failure or multiple matches is "could not determine"
-// (IC-7a), each recorded as one `provisioning` degraded entry: the
+// neither correlates reliably. Zero matches is confirmed absence;
+// a list failure or multiple matches is "could not determine",
+// each recorded as one `provisioning` degraded entry: the
 // correlation is why status, machinePools, and the dependent machine
 // lookup are all absent, so its fan-out gets one entry and one warning,
-// not one per missing key. The third return is the IC-7 confirmed-absence
+// not one per missing key. The third return is the confirmed-absence
 // note (non-empty only when provAbsent), scoped to the namespace that was
 // searched - derived from provKind.DefaultNamespace, never a second
 // hardcoded string. An expired context is the one list failure that does
@@ -270,13 +270,13 @@ func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient
 // statusFrom reads exactly what provisioning.cattle.io/v1.ClusterStatus
 // exposes: ready and conditions (type/status/reason/message). Conditions
 // are ALWAYS a non-nil slice so the marshaled envelope carries
-// "conditions":[] (IC-5); no phase/transitioning/error fields - they
+// "conditions":[]; no phase/transitioning/error fields - they
 // belong to other API representations and never appear on this CR.
 //
 // The Ready field is derived from the Ready condition when present:
-// status.ready can flip true ~90s before the Ready condition leaves Unknown
-// (live exercise observed this), so the condition is authoritative and
-// status.ready is the fallback only when the condition is absent.
+// status.ready can flip true ~90s before the Ready condition leaves Unknown, so
+// the condition is authoritative and status.ready is the fallback only when the
+// condition is absent.
 func statusFrom(prov *unstructured.Unstructured) *clusterStatus {
 	ready, _, _ := unstructured.NestedBool(prov.Object, "status", "ready")
 	st := &clusterStatus{Ready: ready, Conditions: []clusterCondition{}}
@@ -330,7 +330,7 @@ func agentFrom(obj *unstructured.Unstructured) *agentStatus {
 // machineConfigRef kind/name, quantity, and the etcd/controlplane/worker
 // roles as a sorted string slice. Always returns a non-nil slice - the
 // CALLER's pointer distinguishes "correlated but poolless" (pointer to
-// empty, IC-9) from "section absent" (nil pointer, IC-7/7a).
+// empty) from "section absent" (nil pointer).
 func machinePoolsFrom(prov *unstructured.Unstructured) []machinePool {
 	pools := []machinePool{}
 	raw, _, _ := unstructured.NestedSlice(prov.Object, "spec", "rkeConfig", "machinePools")
@@ -372,13 +372,13 @@ func machinePoolsFrom(prov *unstructured.Unstructured) []machinePool {
 	return pools
 }
 
-// fetchRegistration reads the default registration token via the IC-4a
+// fetchRegistration reads the default registration token via the
 // fetch and applies inspect's OWN placeholder policy over the
 // policy-neutral reporter: a placeholder-bearing field is dropped (its
 // omitempty tag makes it disappear from the wire) and warned about - an
 // advisory warning, since the section is still present and usable. A
 // failed read - Root() or the fetch - omits the whole section as a
-// `registration` degraded entry (IC-8), except an expired context, which
+// `registration` degraded entry, except an expired context, which
 // returns as the error.
 // When NO surfaced field survives (all five empty after placeholder
 // drops, or a server response with every field empty) the section is nil -
@@ -478,7 +478,7 @@ func clusterMachines(ctx context.Context, mgmt engine.ClusterClient, sec *sectio
 
 // machineErrorMessage extracts the most relevant failing condition message
 // from a CAPI Machine object. Conditions whose reason contains "Error" (e.g.
-// CreateError from the DigitalOcean 422 live exercise) are preferred; any
+// CreateError from a DigitalOcean 422 response) are preferred; any
 // other non-True condition with a non-empty message is the fallback.
 func machineErrorMessage(obj map[string]any) string {
 	var errCond, anyCond string
@@ -500,13 +500,12 @@ func machineErrorMessage(obj map[string]any) string {
 	return anyCond
 }
 
-// clusterResult is `inspect cluster`'s payload - the JSON shape IS the
-// agent contract (IC-5). Pointer semantics carry the tri-state: nil =
-// section absent (never null/{}), a nil *[]machinePool = absent while a
-// pointer to an empty slice marshals "machinePools":[] (IC-9 vs IC-7/7a -
-// Go's omitempty drops non-nil empty slices, so a plain slice cannot
-// distinguish them). ProvisioningNote is RESERVED for confirmed absence,
-// at the root.
+// clusterResult is `inspect cluster`'s payload - the JSON shape IS the agent
+// contract. Pointer semantics carry the tri-state: nil = section absent (never
+// null/{}), a nil *[]machinePool = absent while a pointer to an empty slice
+// marshals "machinePools":[] (Go's omitempty drops non-nil empty slices, so a
+// plain slice cannot distinguish them). ProvisioningNote is RESERVED for
+// confirmed absence, at the root.
 type clusterResult struct {
 	Cluster          clusterIdentity   `json:"cluster"`
 	Agent            *agentStatus      `json:"agent,omitempty"`
@@ -523,7 +522,7 @@ type clusterResult struct {
 
 // agentStatus is the MANAGEMENT Cluster's agent-connectivity view - the
 // Connected and Ready conditions the provisioning-derived status never
-// carries (a live exercise saw status.ready stay true through a real agent
+// carries (status.ready can stay true through a real agent
 // outage). Tri-state per the clusterResult pointer convention: the section
 // is nil when neither condition exists; each field is nil when its own
 // condition is absent - nothing is fabricated. Message carries the first
@@ -584,7 +583,7 @@ type clusterIdentity struct {
 type clusterStatus struct {
 	Ready bool `json:"ready"`
 	// Conditions is always non-nil: the marshaled envelope must contain
-	// "conditions":[] even when the CR reports none (IC-5).
+	// "conditions":[] even when the CR reports none.
 	Conditions []clusterCondition `json:"conditions"`
 }
 
@@ -648,7 +647,7 @@ func withheldHint(clusterID string) string {
 // (custom-cluster join) and the import pair (imported-cluster manifest) -
 // plus manifestUrl; one is never substituted for the other. Every field
 // is individually omitempty so a placeholder-bearing or empty field
-// DISAPPEARS from the wire rather than marshaling "" (IC-5).
+// DISAPPEARS from the wire rather than marshaling "".
 //
 // When --registration is absent the struct carries only Withheld=true,
 // Message, and Hint, serializing as
@@ -707,7 +706,7 @@ func regLabel(label string, notApplicable bool) string {
 	return label
 }
 
-// renderClusterText is the IC-1a default rendering: a deliberate
+// renderClusterText is the default rendering: a deliberate
 // multi-section text view (a summary row cannot carry conditions, pools,
 // and join commands). Omitted sections render a CONCISE availability
 // marker in place; the detailed cause lives only in Result.Warnings,
@@ -722,7 +721,7 @@ func renderClusterText(r clusterResult) string {
 	renderMembersSection(&b, r)
 	renderMachinesSection(&b, r)
 	// Registration values render FULL-WIDTH and are never truncated: they
-	// are meant to be copy-pasted (IC-1a).
+	// are meant to be copy-pasted.
 	b.WriteString("\nREGISTRATION\n")
 	switch {
 	case r.Registration != nil && r.Registration.Withheld:
@@ -877,10 +876,10 @@ func writeRegistrationField(b *strings.Builder, label, value string) {
 	fmt.Fprintf(b, "  %s:\n    %s\n", label, value)
 }
 
-// orderedConditions applies the ONLY derived trouble summarization the
-// spec allows, and only in the text view: conditions with status "False"
-// whose reason or message is non-empty list first; everything else keeps
-// its server order. The JSON envelope always carries the raw order.
+// orderedConditions is the one place inspect cluster derives a trouble
+// ordering, and only in the text view: conditions with status "False" whose
+// reason or message is non-empty list first; everything else keeps its
+// server order. The JSON envelope always carries the raw order.
 func orderedConditions(conds []clusterCondition) []clusterCondition {
 	trouble := make([]clusterCondition, 0, len(conds))
 	rest := make([]clusterCondition, 0, len(conds))

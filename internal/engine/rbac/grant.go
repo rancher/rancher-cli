@@ -26,7 +26,7 @@ type grantCmd struct {
 // rbac resolution rules; a fully qualified principal with no user object
 // takes the provisioning path (userPrincipalName only + preview warning).
 // Duplicate detection is a best-effort client-side list (check/use race
-// accepted and documented in the design).
+// accepted).
 func NewGrant(clients engine.ClusterClientFactory) runtime.Command {
 	return &grantCmd{clients: clients}
 }
@@ -112,7 +112,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		return safety.Effect{}, nil, err
 	}
 
-	// Best-effort duplicate preflight (design: check/use race accepted).
+	// Best-effort duplicate preflight (a check/use race is accepted).
 	list, err := client.List(ctx, bindKind.GVR, scope.NS, "")
 	if err != nil {
 		return safety.Effect{}, nil, err
@@ -347,15 +347,14 @@ func rolePoolAtScope(ctx context.Context, client engine.ClusterClient, roleKind 
 	return cands, nil
 }
 
-// bindingMatchesSubject reports whether an existing binding is for the
-// same subject. The base rule (grant AND revoke): userName equals the
-// resolved id, or userPrincipalName/groupPrincipalName equals the
-// principal AS GIVEN by the caller (sub.Principal - what the spec
-// promises; NOT rs.Principal, which bare-name resolution rewrites to
-// preferredPrincipal). With aliasPrincipals (grant's duplicate detection
+// bindingMatchesSubject reports whether an existing binding is for the same
+// subject. The base rule (grant AND revoke): userName equals the resolved id,
+// or userPrincipalName/groupPrincipalName equals the principal AS GIVEN by the
+// caller (sub.Principal, NOT rs.Principal, which bare-name resolution rewrites
+// to preferredPrincipal). With aliasPrincipals (grant's duplicate detection
 // only), any of the resolved user's principalIds also matches, so a
-// principal-only binding under a different identity alias of the same
-// user is still a duplicate.
+// principal-only binding under a different identity alias of the same user is
+// still a duplicate.
 func bindingMatchesSubject(b *unstructured.Unstructured, rs ResolvedSubject, sub Subject, aliasPrincipals bool) bool {
 	if sub.Kind == SubjectGroup {
 		gp, _, _ := unstructured.NestedString(b.Object, "groupPrincipalName")

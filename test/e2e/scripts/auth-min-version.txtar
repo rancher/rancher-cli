@@ -1,7 +1,7 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# PS-8: the version probe now hits GET /rancherversion (unauthenticated,
+# The version probe hits GET /rancherversion (unauthenticated,
 # ldflags-stamped). Envtest is a raw k8s apiserver - it does not serve
 # /rancherversion - so the probe always degrades to null + UnknownServerVersionWarning
 # here. The below-floor and at-floor code paths are covered by the injected-stub
@@ -13,13 +13,13 @@ jsonquery stdout data.rancherVersion ''
 jsonquery stdout data.supported ''
 jsonquery stdout 'warnings.0' 'cannot determine server version, assuming supported'
 
-# PS-2: envtest's ext.cattle.io group serves tokens and kubeconfigs only -
+# envtest's ext.cattle.io group serves tokens and kubeconfigs only -
 # no SelfUser CRD is registered, so the identity probe 404s exactly like a
 # server missing the whole group.
 jsonquery stdout data.identity ''
 jsonquery stdout 'warnings.1' 'identity metadata unavailable: ext.cattle.io not served by this server (requires Rancher >= 2.14, the supported minimum)'
 
-# PS-2: the test token (e2e:secret) has no ext/ prefix, so the v3 fallback
+# The test token (e2e:secret) has no ext/ prefix, so the v3 fallback
 # probe runs. The "e2e" management.cattle.io/v3 Token is seeded globally in
 # harness_test.go's seedManagementToken() - always present, no ordering
 # dependency. It carries authProvider "local" and no isDerived/expiresAt/current.

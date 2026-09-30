@@ -12,7 +12,7 @@ import (
 )
 
 // serverEntry is one server in the ServerList payload. Fields are exported so the
-// -o json / -o yaml envelope carries real data; the slice also implements
+// -o json / -o yaml envelope carries real data; the ServerList also implements
 // output.Tabular for -o table / -o name.
 type serverEntry struct {
 	Current bool   `json:"current"`
@@ -104,7 +104,7 @@ func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ run
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `config use-server <TAB>`
-// completes server names from the already-loaded config snapshot (AC-19).
+// completes server names from the already-loaded config snapshot.
 func (serverSwitchCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
 	return view.ServerNames()
 }

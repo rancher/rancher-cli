@@ -1,7 +1,7 @@
 # The identity-provider stub runs on its own TLS origin, trusted through
 # SSL_CERT_FILE, which Go reads into the system pool on every platform.
 
-# Device-code login against the facade's IdP stub (spec FA-4.2): non-TTY is
+# Device-code login against the facade's IdP stub: non-TTY is
 # allowed here (asserted by TestOAuthDeviceCodeFlowNonTTYAllowed) - no ttyin
 # needed. Login completes after the stub's pending polls; the stored
 # credential is asserted by exercising it, never by string-matching the

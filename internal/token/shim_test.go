@@ -121,8 +121,8 @@ func TestLegacyTokenEmitsV1Beta1(t *testing.T) {
 }
 
 // TestLegacyTokenAuthFlowEnvPrecedence verifies the three-level resolution:
-// flag > RANCHER_CLI_OAUTH_AUTH_FLOW > CATTLE_OAUTH_AUTH_FLOW. After fix 2
-// the logic lives in resolveAuthFlow (oauth.go), the single source of truth
+// flag > RANCHER_CLI_OAUTH_AUTH_FLOW > CATTLE_OAUTH_AUTH_FLOW. The logic
+// lives in resolveAuthFlow (oauth.go), the single source of truth
 // for both the native get-token path and the legacy token shim.
 func TestLegacyTokenAuthFlowEnvPrecedence(t *testing.T) {
 	t.Run("flag wins over both env vars", func(t *testing.T) {
@@ -210,15 +210,13 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 		"the scoped (c-ctx) key must not exist; the context cluster must be ignored by the shim")
 }
 
-// TestLegacyTokenCacheHitIgnoresBrokenConfig is the fix-1 failing test: a
-// shim invocation with a warm cache entry used to succeed through a broken
-// config.yaml, and no longer does. The shim's fast path exists so the
-// plugin serves a warm credential without a config load, but a record's
+// TestLegacyTokenBrokenConfigMakesTheWarmHitAMiss asserts that a warm cache
+// entry is a miss behind a broken config.yaml. The shim's fast path exists so
+// the plugin serves a warm credential without a config load, but a record's
 // owner is named in that file: the entry and its cache binding id. Serving
 // one the shim cannot check means serving the previous user's credential
-// after a re-login, which is the whole defect this closes. The shim now
-// validates against the snapshot the root hook loaded, and no snapshot
-// means no hit.
+// after a re-login. The shim validates against the snapshot the root hook
+// loaded, and no snapshot means no hit.
 func TestLegacyTokenBrokenConfigMakesTheWarmHitAMiss(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
@@ -293,8 +291,8 @@ func (s *errGetTokenStore) GetToken(ref config.ServerRef) (string, error) {
 	return s.CredStore.GetToken(ref)
 }
 
-// TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate is the round-3
-// repro for finding 1: a hard credential-store error for the stored current
+// TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate asserts that
+// a hard credential-store error for the stored current
 // current-context server (A) must not abort a cache-miss shim create for an
 // unrelated target server (B). Resolving the connection reads no stored
 // credential, so A's store is never asked.
@@ -341,8 +339,8 @@ func TestLegacyTokenStoreErrorForAmbientServerDoesNotBlockCreate(t *testing.T) {
 	assert.Equal(t, "ext/b-tok:secret", cred.Status.Token)
 }
 
-// TestLegacyTokenRejectsEmptyUser is the round-3 repro for finding 5:
-// --user="" must be rejected with a VALIDATION clierr. Required:true in the
+// TestLegacyTokenRejectsEmptyUser asserts that
+// --user="" is rejected with a VALIDATION clierr. Required:true in the
 // descriptor only catches the absent flag; Execute must validate the value.
 func TestLegacyTokenRejectsEmptyUser(t *testing.T) {
 	t.Parallel()
@@ -369,7 +367,7 @@ func TestLegacyTokenRejectsWhitespaceUser(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// TestLegacyTokenRejectsBlankServer covers the round-7 finding-2 gap: an
+// TestLegacyTokenRejectsBlankServer covers the gap where an
 // empty or whitespace-only --server passes the pipeline's Required check
 // (which only rejects the literal empty string when the flag is absent) and
 // would otherwise fall through to resolveConn's config fallback, silently
@@ -389,8 +387,8 @@ func TestLegacyTokenRejectsBlankServer(t *testing.T) {
 	}
 }
 
-// TestLegacyTokenPaddedUserHitsSameCacheSlot is the failing-first test for
-// finding 2: --user with incidental whitespace padding must be trimmed before
+// TestLegacyTokenPaddedUserHitsSameCacheSlot asserts that
+// --user with incidental whitespace padding must be trimmed before
 // the cache slot is computed. A call with "  alice" must hit the same key as
 // a call with "alice", ensuring a templated or hand-edited kubeconfig that
 // produces padded values does not fragment the cache.
@@ -440,7 +438,7 @@ func TestLegacyTokenPaddedUserHitsSameCacheSlot(t *testing.T) {
 		"padded-user invocation must not create a distinct 'legacy:  alice' slot")
 }
 
-// TestLegacyTokenPaddedClusterHitsSameCacheSlot is the Fix-4 test for --cluster:
+// TestLegacyTokenPaddedClusterHitsSameCacheSlot asserts, for --cluster, that
 // a padded cluster value ("  local  ") must be trimmed to "local" before the cache
 // slot is computed. This also exercises the resolveClusterIDForCreate short-circuit for
 // "local" - no cluster-list HTTP round-trip is needed, keeping the server stub minimal.

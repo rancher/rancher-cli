@@ -152,7 +152,7 @@ func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// TestCreateSecretDryRunEffectNeverLeaksLiteralValue asserts DR-001 discipline:
+// TestCreateSecretDryRunEffectNeverLeaksLiteralValue asserts that
 // engine.PlanCreate builds Target-only Effects (no diff, no object payload),
 // so a dry-run of a create secret leaks nothing - this test proves it by
 // rendering the Effect to JSON and checking the literal never appears.

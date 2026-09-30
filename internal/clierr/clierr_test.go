@@ -79,9 +79,9 @@ func TestCodesDescribeEveryCode(t *testing.T) {
 	}
 }
 
-// TestAllCodesDropsNotImplemented asserts DR-013: NOT_IMPLEMENTED is a
-// permanently-dead branch (no construction site ever advertises it) and has
-// been removed. The count asserts the full enum: 10 originals plus
+// TestAllCodesDropsNotImplemented asserts that NOT_IMPLEMENTED, a
+// permanently-dead branch (no construction site ever advertises it), is absent
+// from the enum. The count asserts the full enum: 10 originals plus
 // LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, CAPABILITY_UNSUPPORTED,
 // INTERRUPTED, CREDENTIAL_REPLACED, LOGIN_INCOMPLETE and
 // CREDENTIAL_TRANSITION_INCOMPLETE.
@@ -211,7 +211,7 @@ func TestWithWarningsPreservedByWithMessageAndWrap(t *testing.T) {
 	})
 }
 
-// TestWrapPreservesClassification asserts the exercise-8/9-fixes review fix:
+// TestWrapPreservesClassification asserts that
 // command wrappers adding context must not flatten a classified error (a
 // LOCK_TIMEOUT from a store lock) into the GENERIC catch-all.
 func TestWrapPreservesClassification(t *testing.T) {

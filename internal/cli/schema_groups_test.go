@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSchemaGroupsMatchRootAssembly is the SE-18 test: the manifest's Groups
+// TestSchemaGroupsMatchRootAssembly checks that the manifest's Groups
 // reproduce the root assembly EXACTLY - section order and per-section command
 // order are both derived from the built root's own command tree (never a
 // hand-list), covering the leading fixed top-level section and the
@@ -70,12 +70,12 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 		expected = append(expected, runtime.SchemaGroup{Name: "", Commands: []string{c.name}})
 	}
 
-	// SE-18 is a structural invariant (section order, per-section command
-	// order). For named groups, strip Desc before comparing - descs are set
-	// separately in buildWiredRegistry and are not part of the assembly
-	// alignment contract. Unnamed ("") sections must never carry a Desc
-	// (they are positional bookmarks), so their full struct is compared
-	// directly: a stray Desc assignment fails here rather than being masked.
+	// Groups alignment is a structural invariant (section order, per-section
+	// command order). For named groups, strip Desc before comparing - descs are
+	// set separately in buildWiredRegistry and are not part of the assembly
+	// alignment contract. Unnamed ("") sections must never carry a Desc (they
+	// are positional bookmarks), so their full struct is compared directly: a
+	// stray Desc assignment fails here rather than being masked.
 	got := make([]runtime.SchemaGroup, len(m.Groups))
 	for i, g := range m.Groups {
 		if g.Name != "" {
@@ -105,7 +105,7 @@ func TestSchemaGroupsMatchRootAssembly(t *testing.T) {
 
 // TestSchemaProjectShadowing asserts the deliberate collision between the
 // "project" kind and the "project" group. Resolution order is command →
-// group → kind (revised 2026-08-20: a kind is reachable via --kind, a
+// group → kind (a kind is reachable via --kind, a
 // shadowed group had no disambiguator), so rancher schema project returns
 // the GROUP card carrying the kind-view hint, and --kind returns the kind
 // card carrying the group-view hint.
@@ -166,12 +166,12 @@ func TestSchemaProjectShadowing(t *testing.T) {
 }
 
 // TestSchemaGroupDescsComplete is the conformance guard for groupDescs in
-// root.go: every named group in the built manifest must carry a non-empty
-// Desc. A group added to buildEntries without a matching groupDescs entry
-// silently ships a desc-less card - Desc has omitempty, renderGroupCard skips
-// an empty desc, the SE-18 structural test strips Desc before comparing, and
-// golden -update would bless the gap. This test turns that silent gap into a
-// build failure at the moment the group is added.
+// root.go: every named group in the built manifest must carry a non-empty Desc.
+// A group added to buildEntries without a matching groupDescs entry silently
+// ships a desc-less card - Desc has omitempty, renderGroupCard skips an empty
+// desc, the structural alignment test strips Desc before comparing, and golden
+// -update would bless the gap. This test turns that silent gap into a build
+// failure at the moment the group is added.
 func TestSchemaGroupDescsComplete(t *testing.T) {
 	m := schemaManifest(t)
 	for _, g := range m.Groups {
@@ -183,7 +183,7 @@ func TestSchemaGroupDescsComplete(t *testing.T) {
 	}
 }
 
-// TestSchemaCommandGroupField asserts SE-18's informational per-command Group:
+// TestSchemaCommandGroupField asserts the informational per-command Group:
 // grouped commands carry their section name; the two positional-root
 // sections' commands carry "".
 func TestSchemaCommandGroupField(t *testing.T) {
@@ -207,7 +207,7 @@ func TestSchemaCommandGroupField(t *testing.T) {
 //
 // Resolution order is command → kind → group, so:
 //   - A single-token command name shadowing a group name means the group card
-//     for that name is unreachable (command wins at tier 1).
+//     for that name is unreachable (the command wins).
 //   - A kind identifier shadowing a group name means the group card is
 //     reachable only via --kind (groups win the collision tier).
 //
@@ -222,7 +222,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 	// Add an entry here whenever a new deliberate collision is introduced -
 	// the test enforces that every collision is reviewed.
 	knownShadowings := map[string]string{
-		"project": "the project group wins the selector (revised 2026-08-20); the kind card is reachable via --kind and each card hints the other; renaming would churn the TOC layout",
+		"project": "the project group wins the selector; the kind card is reachable via --kind and each card hints the other; renaming would churn the TOC layout",
 		"cluster": "the cluster group wins the selector, same as project; the kind card is reachable via --kind and each card hints the other; renaming would churn every agent prompt referencing the family",
 	}
 
@@ -233,7 +233,7 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 		}
 	}
 
-	// Tier 2: kind identifiers × group names.
+	// Kind identifiers × group names.
 	for _, k := range m.Kinds {
 		identifiers := append([]string{k.Name, k.Key}, k.Aliases...)
 		for _, id := range identifiers {
@@ -245,11 +245,11 @@ func TestSchemaKindGroupCollisionSweep(t *testing.T) {
 		}
 	}
 
-	// Tier 1: single-token command names × group names (command wins first).
+	// Single-token command names × group names (command wins first).
 	for _, c := range m.Commands {
 		if !strings.Contains(c.Name, " ") && groupNames[c.Name] {
 			assert.Contains(t, knownShadowings, c.Name,
-				"command %q collides with group %q - command wins at tier 1, group card unreachable; add to knownShadowings with a rationale comment",
+				"command %q collides with group %q - command wins, group card unreachable; add to knownShadowings with a rationale comment",
 				c.Name, c.Name)
 		}
 	}

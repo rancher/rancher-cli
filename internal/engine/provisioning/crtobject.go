@@ -1,4 +1,4 @@
-// crtobject.go is the policy-neutral CRT boundary (spec IC-4a): the flat
+// crtobject.go is the policy-neutral CRT boundary: the flat
 // decoded view of a Steve clusterregistrationtoken object, the typed-error
 // decoders, the placeholder REPORTER (which names placeholder-bearing
 // protected fields and decides nothing), and the narrow default-token
@@ -138,7 +138,7 @@ type crtViewStatus struct {
 // them yet - but the object itself is always served). json.Unmarshal
 // alone would silently accept {} or an unrelated payload, and a caller
 // like FetchDefaultCRT would then treat a structurally invalid response
-// as a successful empty read instead of surfacing an error (IC-8).
+// as a successful empty read instead of surfacing an error.
 func (v crtView) validate(path string) error {
 	if v.Metadata.Namespace == "" || v.Metadata.Name == "" || v.Status == nil {
 		return clierr.New(clierr.CodeGeneric,
@@ -228,7 +228,7 @@ func DecodeCRTCollection(path string, body []byte) ([]CRTObject, error) {
 // Narrow by design and used ONLY by inspect cluster's registration
 // section: a single default-token fetch cannot back the collection get,
 // which fetches the whole Steve collection, preserves tokens across
-// namespaces, and filters locally (spec IC-4a).
+// namespaces, and filters locally.
 func FetchDefaultCRT(ctx context.Context, root engine.RootClient, managementClusterID string) (CRTObject, error) {
 	path := crtCollectionPath + "/" + managementClusterID + "/default-token"
 	body, err := root.GetJSON(ctx, path)

@@ -53,7 +53,7 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
-	// Round-4 repro: a stored `--cacert /path/to/ca.pem` login (a path, not
+	// Regression case: a stored `--cacert /path/to/ca.pem` login (a path, not
 	// inline PEM) went straight to CAData as raw bytes, so client-go tried to
 	// use the literal path string as a certificate and every cluster command
 	// failed to parse it. eff.CA must resolve through config.ResolveCA, same

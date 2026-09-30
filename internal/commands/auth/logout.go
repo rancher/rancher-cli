@@ -173,7 +173,7 @@ func styleLogoutText(text string, openers int, s style.Style) string {
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `auth logout <server> <TAB>`
-// completes server names from the already-loaded config snapshot (AC-14).
+// completes server names from the already-loaded config snapshot.
 func (logoutCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
 	return view.ServerNames()
 }

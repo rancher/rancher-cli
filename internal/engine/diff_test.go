@@ -56,10 +56,9 @@ func TestDiffObjectsEscapesSlashAndTildeKeys(t *testing.T) {
 	}, diffs)
 }
 
-// TestDiffObjectsTypeMismatchAtMetaDoesNotLeakManagedFields is the latent bug
-// repro: when a type mismatch forces /metadata to be emitted wholesale as
-// DiffEntry.From/To, the emitted copies must not carry managedFields or
-// resourceVersion.
+// TestDiffObjectsTypeMismatchAtMetaDoesNotLeakManagedFields asserts that when a
+// type mismatch forces /metadata to be emitted wholesale as DiffEntry.From/To,
+// the emitted copies must not carry managedFields or resourceVersion.
 func TestDiffObjectsTypeMismatchAtMetaDoesNotLeakManagedFields(t *testing.T) {
 	t.Parallel()
 	// a has /metadata as a map (the normal case); b has /metadata as a string
@@ -87,12 +86,11 @@ func TestDiffObjectsTypeMismatchAtMetaDoesNotLeakManagedFields(t *testing.T) {
 	assert.Equal(t, "foo", from["name"], "non-skipped keys must be preserved")
 }
 
-// The leak paths the branch review reproduced: the strip must apply to
-// every wholesale-emitted value (either side, any branch) and recurse into
-// nested maps, not just direct children of the mismatch prefix. The review's
-// third repro, "not-a-map"-vs-object, drives the identical default-branch
-// scrub the nil-vs-object case assertions (nil and a string both fall through the
-// type switch), so it is not duplicated here.
+// The strip must apply to every wholesale-emitted value (either side, any
+// branch) and recurse into nested maps, not just direct children of the
+// mismatch prefix. The "not-a-map"-vs-object case drives the identical
+// default-branch scrub as the nil-vs-object case (nil and a string both fall
+// through the type switch), so it is not duplicated here.
 func TestDiffObjectsScrubsAllWholesaleEmissions(t *testing.T) {
 	t.Parallel()
 	full := map[string]any{

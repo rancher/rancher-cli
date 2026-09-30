@@ -16,7 +16,7 @@ jsonquery stdout 'data.#' 1
 jsonquery stdout data.0.metadata.name proj-member-cm
 
 # named get of the non-member's configmap under --project → VALIDATION, never
-# a silent no-op (PC-3).
+# a silent no-op.
 ! exec rancher get configmap proj-other-cm --cluster testcluster --namespace proj-ns-other --project web
 stderr 'error \(VALIDATION\):'
 
@@ -37,7 +37,7 @@ jsonquery stdout 'data.#' 1
 jsonquery stdout data.0.metadata.name proj-ns-member
 
 # root-position --project reaches usage via urfave lineage (usage's own
-# local --project flag is gone; PC-6's inversion of DR-004's failure mode).
+# local --project flag is gone).
 # --project without --by returns member-namespace rows; rows derive from pods,
 # so a pod-less project yields an empty map - the by discriminator still
 # proves the project resolved and the namespace grouping ran.
@@ -63,7 +63,7 @@ jsonquery stdout data.degraded.0.section metrics
 jsonquery stdout data.degraded.0.state unavailable
 jsonquery stdout 'warnings.#' 1
 
-# PC-8: quota flags on create project (mandatory-together, matching keys).
+# Quota flags on create project (mandatory-together, matching keys).
 exec rancher create project web-quota --cluster testcluster --quota-limit limitsCpu=2,limitsMemory=4Gi --namespace-default-quota limitsCpu=1,limitsMemory=2Gi --apply
 exec rancher get project web-quota --cluster testcluster -o json
 jsonquery stdout data.spec.resourceQuota.limit.limitsCpu 2

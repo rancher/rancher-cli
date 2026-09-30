@@ -108,7 +108,7 @@ func TestParseLoginResponse(t *testing.T) {
 		}`)
 		tok, err := parseLoginResponse(body)
 		require.NoError(t, err)
-		assert.Equal(t, "ext/token-xyz:secretabc", tok.Token, "ext/ prefix must survive untouched (EXT-3)")
+		assert.Equal(t, "ext/token-xyz:secretabc", tok.Token, "ext/ prefix must survive untouched")
 		assert.Equal(t, "2026-08-01T12:00:00Z", tok.ExpiresAt)
 	})
 
@@ -143,7 +143,7 @@ func TestParseLoginResponse(t *testing.T) {
 			"status": {}
 		}`)
 		tok, err := parseLoginResponse(body)
-		require.NoError(t, err, "empty bearer is not a parse error; token.go's empty-token guard owns it (EXT-6)")
+		require.NoError(t, err, "empty bearer is not a parse error; token.go's empty-token guard owns it")
 		assert.Empty(t, tok.Token)
 	})
 

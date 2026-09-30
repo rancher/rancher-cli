@@ -173,14 +173,14 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestPositionalKindsMatchTheLedger is a golden of the wiring on purpose:
-// the bespoke first-positional table names exactly the twelve commands
-// the design's site ledger gives a kind (the three inspect leaves, the
-// five cluster-family verbs, the three oidc-client secret verbs and
-// create password-change-request), and the two other tables carry
-// exactly the keys the ledger assigns them. An intended change to the
-// wiring edits this test in the same commit.
-func TestPositionalKindsMatchTheLedger(t *testing.T) {
+// TestPositionalKindsMatchTheWiringTables is a golden of the wiring on purpose:
+// the bespoke first-positional table names exactly the twelve commands that get
+// a kind (the three inspect leaves, the five cluster-family verbs, the three
+// oidc-client secret verbs and create password-change-request), and the
+// flag-source and kind-source tables carry exactly the keys listed in the
+// assertions. An intended change to the wiring edits this test in the same
+// commit.
+func TestPositionalKindsMatchTheWiringTables(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
 		"inspect cluster":                "managementcluster",

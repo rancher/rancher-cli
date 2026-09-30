@@ -186,9 +186,9 @@ func TestResolveProjectByExactID(t *testing.T) {
 // TestResolveProjectForbiddenListFallsBackToGet asserts the member path: a
 // project member cannot LIST the collection (grants are get-on-object), so
 // a forbidden list must fall back to a direct get of nameOrID instead of
-// turning an allowed question into an RBAC error. Regression for the
-// demo-rehearsal find (2026-08-17): `inspect project demo-web` failed RBAC
-// for a member fully entitled to that project.
+// turning an allowed question into an RBAC error. Regression:
+// `inspect project demo-web` failed RBAC for a member fully entitled to
+// that project.
 func TestResolveProjectForbiddenListFallsBackToGet(t *testing.T) {
 	t.Parallel()
 	obj := project("demo-web", "demo-web")
@@ -221,8 +221,8 @@ func TestResolveProjectForbiddenListAndGetSurfacesRBACWithHint(t *testing.T) {
 	assert.Contains(t, cerr.Message, "exact project id")
 }
 
-// TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound asserts the
-// review-round shape: when the fallback get says the id does not exist,
+// TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound asserts that
+// when the fallback get says the id does not exist,
 // NOT_FOUND (exit 4) is the answer - a typo must not masquerade as an
 // RBAC denial (exit 6), and scripts branch on that difference.
 func TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound(t *testing.T) {

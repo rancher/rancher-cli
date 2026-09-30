@@ -41,12 +41,9 @@ func assertCompletion(t *testing.T, res runtime.Result) map[string]any {
 	c, ok := data["completion"].(map[string]any)
 	require.True(t, ok, "completion must be a nested map[string]any")
 
-	// Regression guard against two real prior shapes:
-	//   flat-dotted (completion.network etc.) - shipped briefly on main before
-	//     the nested shape was settled;
-	//   camelCase (completionNetwork etc.) - existed as a working-tree
-	//     changeset on 2026-08-10, dropped before merge.
-	// Both forms were concrete code, not speculation.
+	// Regression guard: the completion fields must appear only in the nested
+	// map, never as flat-dotted (completion.network etc.) or camelCase
+	// (completionNetwork etc.) top-level keys.
 	for _, dead := range []string{
 		"completion.network", "completion.timeout", "completion.timeoutRaw",
 		"completionNetwork", "completionTimeout", "completionTimeoutRaw",
@@ -182,8 +179,8 @@ func TestConfigInfoCompletionBlock(t *testing.T) {
 }
 
 // TestConfigInfoEffectiveStoreSources asserts the env > config > default
-// resolution the command exists to make visible (vault-helper exercise
-// S-05: an env-supplied store is invisible in config.yaml and list-servers).
+// resolution the command exists to make visible (an env-supplied store
+// is invisible in config.yaml and list-servers).
 // No t.Parallel(): t.Setenv.
 func TestConfigInfoEffectiveStoreSources(t *testing.T) {
 	t.Run("a variable that disagrees with the declaration is reported, not applied", func(t *testing.T) {

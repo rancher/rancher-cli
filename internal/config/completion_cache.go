@@ -10,7 +10,7 @@ import (
 )
 
 // ReadOnlyCachedCreds returns all unexpired exec-credential cache entries
-// without pruning expired ones from disk (AC-6a, AC-27). The existing
+// without pruning expired ones from disk. The existing
 // ListCachedCreds prunes on read; this function is the strictly-read-only
 // counterpart used on every completion path.
 func ReadOnlyCachedCreds(dir string) ([]CachedCredInfo, error) {
@@ -148,7 +148,7 @@ func ReadOnlyCachedCred(dir, key string, anchor *CacheAnchor) (token string, exp
 }
 
 // ReadFileTokenSilent reads the login token for serverName from credentials.yaml
-// WITHOUT calling warnLoosePerm (AC-23, finding 8). Used only on completion paths
+// WITHOUT calling warnLoosePerm. Used only on completion paths
 // where any stderr output would appear as a TAB candidate.
 func ReadFileTokenSilent(dir, serverName string) string {
 	b, err := os.ReadFile(filepath.Join(dir, "credentials.yaml"))
@@ -163,7 +163,7 @@ func ReadFileTokenSilent(dir, serverName string) string {
 }
 
 // CachedCredEntry is CachedCredInfo with the bearer token included.
-// Used on the completion path (finding 8) so the token is propagated through
+// Used on the completion path so the token is propagated through
 // the first file read, avoiding a second parse of token-cache.yaml.
 // CachedCredInfo is kept unchanged for its other callers.
 type CachedCredEntry struct {
@@ -176,7 +176,7 @@ type CachedCredEntry struct {
 
 // ReadOnlyCachedCredsForClusterWithTokens returns unexpired entries matching
 // serverHost and cluster, each including its bearer token. This allows a single
-// token-cache.yaml read to supply both entry metadata and the token (finding 8).
+// token-cache.yaml read to supply both entry metadata and the token.
 // Every entry is judged against the anchor, so a completion request never
 // authenticates with a record made in another directory or for a login
 // that has been replaced since. A nil anchor yields nothing.

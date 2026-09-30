@@ -28,7 +28,7 @@ jsonquery schema.json 'data.errorCodes.#(code="AUTH").exit' 3
 ! exec rancher schema get pod --all -o json
 jsonquery stderr data.error.code VALIDATION
 
-# CW-2: per-command selection is the flattened card (no commands array,
+# Per-command selection is the flattened card (no commands array,
 # no kinds)
 exec rancher schema get pod -o json
 cp stdout one.json
@@ -36,7 +36,7 @@ jsonquery one.json data.name 'get pod'
 jsonquery one.json 'data.kinds.#' ''
 jsonquery one.json 'data.commands.#' ''
 
-# CW-2b: quoted single-token selector - one argv token must behave like
+# Quoted single-token selector - one argv token must behave like
 # two unquoted tokens; the schema command joins args before matching.
 exec rancher schema 'get pod' -o json
 jsonquery stdout data.name 'get pod'

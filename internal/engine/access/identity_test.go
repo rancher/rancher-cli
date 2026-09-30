@@ -213,7 +213,7 @@ func TestPlanIdentitySubjectWithoutClusterAccess(t *testing.T) {
 
 // TestPlanIdentityImpersonationRefusedRefusesList asserts list has no
 // SubjectAccessReview to fall back to: the same Rancher refusal that routes
-// can to the SAR path ends list with the step 5 refusal.
+// can to the SAR path ends list with the impersonation refusal.
 func TestPlanIdentityImpersonationRefusedRefusesList(t *testing.T) {
 	t.Parallel()
 	refused := &fakeClient{script: []scripted{{resp: http403(`{"message":"not allowed to impersonate user"}`)}}}
@@ -227,9 +227,10 @@ func TestPlanIdentityImpersonationRefusedRefusesList(t *testing.T) {
 	assert.Equal(t, "rancher get globalroles", ce.Hint)
 }
 
-// TestRefusalMessagesNameTheMissingRight asserts the step 5 and step 6
-// refusals name the right the caller lacks for the subject's kind, and
-// that the two list refusals point at the point question instead.
+// TestRefusalMessagesNameTheMissingRight asserts the impersonation and
+// SubjectAccessReview refusals name the right the caller lacks for the
+// subject's kind, and that the two list refusals point at the point question
+// instead.
 func TestRefusalMessagesNameTheMissingRight(t *testing.T) {
 	t.Parallel()
 	user := ResolvedSubject{Subject: AccessSubject{Kind: KindUser, Name: "u-abc12"}}

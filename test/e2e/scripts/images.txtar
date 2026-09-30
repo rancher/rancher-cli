@@ -8,7 +8,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 exec rancher create resource -f pod.yaml --cluster testcluster --apply
 
 # envtest has no scheduler or kubelet, so nothing sets the pod's phase.
-# IM-14 includes only Running|Pending: set the phase through the harness's
+# Images include only Running|Pending pods: set the phase through the harness's
 # status lever ("core" is the sentinel for the empty API group).
 flipstatus testcluster core/v1/pods default images-pod '{"phase":"Pending"}'
 

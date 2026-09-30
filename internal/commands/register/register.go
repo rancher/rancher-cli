@@ -470,7 +470,7 @@ func commitUpdate(cfg *config.Config, name string, src UpdateSource, probe Probe
 }
 
 // TLSPreflight performs the every-https-path TLS preflight: an
-// unauthenticated GET against the same /rancherversion endpoint the PS-8
+// unauthenticated GET against the same /rancherversion endpoint the
 // version probe uses, built with caPEM as the trusted root (system roots
 // when empty). Only the TLS handshake matters here - any response status
 // proves the certificate verified. A classified certificate-verification

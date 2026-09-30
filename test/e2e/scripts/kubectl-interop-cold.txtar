@@ -1,4 +1,4 @@
-# The full kubectl round trip COLD (spec FA-4.5) - live-exercise Phase 7,
+# The full kubectl round trip COLD,
 # hermetic: no seedexeccache, no warm cache. `rancher kubeconfig` embeds
 # the stored login CA directly into the exec plugin's own --cacert flag
 # (kubeconfig.go), so the exec plugin's first credential request creates

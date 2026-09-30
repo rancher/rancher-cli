@@ -159,8 +159,8 @@ func runObservation(ctx context.Context, tgt Target, o Observation, captured map
 	return res, decoded, nil
 }
 
-// attempt builds the observation's request from the spec and sends it through
-// doResilient, which supplies the connection-reset retry.
+// attempt builds the observation's HTTP request from its RequestSpec and sends
+// it through doResilient, which supplies the connection-reset retry.
 func attempt(ctx context.Context, tgt Target, o Observation, captured map[string]string) (*http.Response, error) {
 	build := func() (*http.Request, error) {
 		u := tgt.BaseURL() + substitute(o.Request.Path, captured)

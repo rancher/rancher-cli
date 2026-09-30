@@ -1,6 +1,6 @@
 // Package provisioning holds the read-only cloud-credential resolver plus
-// its `get cloud-credential` listing surface - the D-1 slice of Tranche D.
-// SECRET HYGIENE (spec D-R2-1): every function here reads Kubernetes Secret
+// its `get cloud-credential` listing surface.
+// SECRET HYGIENE: every function here reads Kubernetes Secret
 // objects in cattle-global-data but retains ONLY key names and metadata
 // (name, the field.cattle.io/name annotation, creationTimestamp) - never a
 // `data` VALUE. A `data` value must never flow into CloudCredRef, a
@@ -58,7 +58,7 @@ type CloudCredRef struct {
 // returned; anything else matches against display names. 0 matches →
 // NOT_FOUND with candidates; >1 → AMBIGUOUS_SELECTION requiring the ID.
 // Reads Secret objects but retains ONLY key names + metadata - never a
-// data value (spec D-R2-1).
+// data value.
 func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (CloudCredRef, error) {
 	obj, err := resolveCredentialObj(ctx, clients, nameOrID)
 	if err != nil {
@@ -156,7 +156,7 @@ func displayNameOf(obj *unstructured.Unstructured) string {
 }
 
 // refFrom builds the public CloudCredRef from a Secret object, reading ONLY
-// metadata and `data` KEY NAMES - never a `data` value (spec D-R2-1).
+// metadata and `data` KEY NAMES - never a `data` value.
 func refFrom(obj *unstructured.Unstructured) CloudCredRef {
 	name := obj.GetName()
 	return CloudCredRef{

@@ -150,10 +150,10 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 }
 
 // TestConfigDeleteServerWritesNoCredstorePin is SUPPLEMENTARY coverage of
-// the delete's own store-independence (spec R2-1): it bypasses resolveDeps
-// by construction, so it passes before AND after the adapter swap - the
-// real resolveDeps regression lives in internal/cli's through-the-root
-// tests (Task 3 Step 0). This one asserts that the command itself never
+// the delete's own store-independence: it bypasses resolveDeps
+// by construction, so it passes whichever way resolveDeps opens the store -
+// the real resolveDeps regression lives in internal/cli's through-the-root
+// tests. This one asserts that the command itself never
 // resolves the injected store.
 func TestConfigDeleteServerWritesNoCredstorePin(t *testing.T) {
 	t.Setenv(config.EnvCredentialStore, "")
@@ -202,8 +202,8 @@ func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	assert.Equal(t, []string{"acme"}, got)
 }
 
-// TestDeleteServerCancellationPassesThrough asserts the fourth-review P1 for
-// config delete-server: a cancellation surfacing from the delete must pass
+// TestDeleteServerCancellationPassesThrough asserts, for
+// config delete-server, that a cancellation surfacing from the delete must pass
 // through unchanged, not be rewrapped as a generic delete failure.
 func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	dir := t.TempDir()
@@ -225,8 +225,8 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 	assert.True(t, ok, "the server entry must be untouched after a cancelled delete")
 }
 
-// TestConfigDeleteServerDeleteLockTimeoutSurvives asserts the exercise-8/9-fixes
-// review finding for this command: a classified LOCK_TIMEOUT from the delete
+// TestConfigDeleteServerDeleteLockTimeoutSurvives asserts that
+// a classified LOCK_TIMEOUT from the delete
 // keeps its code, retryability, and exit status through the
 // "the server entry is left in place" wrap.
 func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {

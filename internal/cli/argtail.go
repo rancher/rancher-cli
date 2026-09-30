@@ -37,7 +37,7 @@ func SetCurrentWord(w string) { rawCurrentWord = w }
 // GetCurrentWord returns the captured current word (v2 protocol).
 func GetCurrentWord() string { return rawCurrentWord }
 
-// CaptureArgv processes os.Args[1:] before urfave parses (round-5 encoding):
+// CaptureArgv processes os.Args[1:] before urfave parses:
 //  1. Detects the v2 proto sentinel and strips it.
 //  2. Scans remaining tokens: strips --generate-shell-completion; extracts
 //     rawCurrentWord from --rancher-completion-cur=<word> and drops that token;
@@ -113,7 +113,7 @@ type CompletionSite struct {
 //
 // When hasMarker is true (v2 protocol): currentWord was extracted from the
 // --rancher-completion-cur= field by CaptureArgv; args contains only
-// words-before-cursor. currentWord is classified FIRST (round-5 finding 1):
+// words-before-cursor. currentWord is classified FIRST:
 //   - contains '=' with '-' prefix  → equals-form SiteFlagValue
 //   - starts with '-' without '='   → SiteNameLike (partial flag name)
 //   - otherwise (non-flag or empty) → parse args to find if the last meaningful

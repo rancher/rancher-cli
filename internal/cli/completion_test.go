@@ -26,8 +26,8 @@ func TestCompletionCommandRegisteredWithShellCompletionField(t *testing.T) {
 	assert.Contains(t, names, "completion")
 }
 
-// TestCompletionEmissionHasNoSideEffects is the external-review no-
-// side-effects regression: emission must never touch config/store/pin. It
+// TestCompletionEmissionHasNoSideEffects asserts that emission never touches
+// config, store or pin. It
 // deliberately does NOT force RANCHER_CLI_CREDENTIAL_STORE=file like every
 // other test in this package - leaving the store policy at its "auto"
 // default is what would expose a rewire onto adaptEntry (which calls
@@ -71,10 +71,10 @@ func TestCompletionArgsUsageRendersEnumValues(t *testing.T) {
 	assert.Equal(t, "<bash|zsh|fish|pwsh>", cmd.ArgsUsage)
 }
 
-// TestCompletionSelfCompletesShellArgument asserts spec SC-2's self-completion
-// requirement: `completion`'s own --generate-shell-completion lists the same
+// TestCompletionSelfCompletesShellArgument asserts self-completion:
+// `completion`'s own --generate-shell-completion lists the same
 // shells the command accepts, via the same Adapt-level ShellCompleter wiring
-// Task 3 mirrors for adaptEntry.
+// that adaptEntry uses.
 func TestCompletionSelfCompletesShellArgument(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()

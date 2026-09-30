@@ -224,7 +224,7 @@ func TestRenderJSONStripsManagedFields(t *testing.T) {
 	require.NoError(t, Render(&buf, "json", env))
 	out := buf.String()
 	assert.NotContains(t, out, "managedFields")
-	assert.Contains(t, out, "\n  \"data\"", "indentation preserved on the slow path (MF-2)")
+	assert.Contains(t, out, "\n  \"data\"", "indentation preserved on the slow path")
 	assert.Contains(t, out, "cm<&>", "HTML escaping stays disabled on the slow path")
 	assert.True(t, strings.HasSuffix(out, "\n"), "trailing newline preserved")
 	var got map[string]any
@@ -257,14 +257,14 @@ func TestRenderFastPathByteIdentical(t *testing.T) {
 	var want bytes.Buffer
 	require.NoError(t, encodeJSON(&want, env))
 	assert.Equal(t, want.String(), got.String(),
-		"no managedFields: output is byte-identical to today's encoder (MF-2 fast path)")
+		"no managedFields: output is byte-identical to the standard encoder (fast path)")
 
 	var gotYAML bytes.Buffer
 	require.NoError(t, Render(&gotYAML, "yaml", env))
 	wantYAML, err := yaml.Marshal(env)
 	require.NoError(t, err)
 	assert.Equal(t, string(wantYAML), gotYAML.String(),
-		"no managedFields: yaml output is byte-identical to yaml.Marshal (MF-2 fast path)")
+		"no managedFields: yaml output is byte-identical to yaml.Marshal (fast path)")
 }
 
 func TestRenderTemplateRootAndStrip(t *testing.T) {
@@ -277,13 +277,13 @@ func TestRenderTemplateRootAndStrip(t *testing.T) {
 	})
 	// The template interrogates the managedFields key itself: this MUST
 	// render "absent" only once the template branch scrubs its view, so
-	// the test is red before Step 7 (MF-7).
+	// the test fails until it does.
 	const probe = "template={{.name}}/{{.obj.metadata.uid}}/" +
 		"{{if index .obj.metadata \"managedFields\"}}present{{else}}absent{{end}}"
 	var buf bytes.Buffer
 	require.NoError(t, Render(&buf, probe, envDirty))
 	assert.Equal(t, "root-field/u1/absent\n", buf.String(),
-		"root stays env.Data AND managedFields is gone from the template view (MF-2)")
+		"root stays env.Data AND managedFields is gone from the template view")
 
 	envClean := NewEnvelope("X", map[string]any{"name": "root-field"})
 	buf.Reset()
@@ -333,7 +333,7 @@ func TestRenderTableAndNameNeverMarshal(t *testing.T) {
 	t.Parallel()
 	env := NewEnvelope("X", marshalBomb{})
 	var buf bytes.Buffer
-	require.NoError(t, Render(&buf, "table", env), "table renders via Tabular alone (MF-2 step 0)")
+	require.NoError(t, Render(&buf, "table", env), "table renders via Tabular alone")
 	assert.Contains(t, buf.String(), "NAME")
 	buf.Reset()
 	require.NoError(t, Render(&buf, "name", env))

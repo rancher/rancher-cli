@@ -405,7 +405,7 @@ func cmdRawGet(ts *testscript.TestScript, neg bool, args []string) {
 // config.CacheKey/SetCachedCred keeps the key composition and file format
 // guaranteed-consistent with what get-token reads; a hand-written fixture
 // can't work here since the cache key embeds the facade's host:port, which
-// is dynamic per test run AND per-script now (FA-3) - the host comes from
+// is dynamic per test run AND per-script now - the host comes from
 // this script's own TEST_RANCHER_URL, not the global shim.
 func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	if len(args) != 2 {

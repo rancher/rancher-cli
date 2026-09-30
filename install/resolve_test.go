@@ -31,9 +31,9 @@ func TestDryRunResolvesStableLatest(t *testing.T) {
 	assert.Contains(t, out, "asset: "+s.srv.URL+"/rancher/rancher-cli/releases/download/v1.2.3/SHA256SUMS")
 }
 
-// TestStable404WithTokenHintsAtScope covers F2: when a token is present and
-// the stable-latest endpoint returns 404, the error must suggest the token may
-// lack access (scope/SSO) - not just steer the user toward --pre.
+// TestStable404WithTokenHintsAtScope covers the case where a token is present
+// and the stable-latest endpoint returns 404, the error must suggest the token
+// may lack access (scope/SSO) - not just steer the user toward --pre.
 func TestStable404WithTokenHintsAtScope(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)

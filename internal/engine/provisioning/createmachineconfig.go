@@ -1,5 +1,5 @@
-// createmachineconfig.go implements `create machine-config <kind> <name>`
-// (spec MC-1..MC-13): guided authoring of the rke-machine-config.cattle.io
+// createmachineconfig.go implements `create machine-config <kind> <name>`:
+// guided authoring of the rke-machine-config.cattle.io
 // CR that `create cluster --machine-config <kind>/<name>` references.
 // Driver fields sit at the CR ROOT alongside apiVersion/kind/metadata -
 // machine-config resources have NO spec wrapper (rancher's
@@ -23,11 +23,11 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// doKind is the one machine-config kind with curated flags (MC-5/MC-7a).
+// doKind is the one machine-config kind with curated flags.
 const doKind = "digitaloceanconfig"
 
 // doCuratedFlag maps one curated CLI flag to its DigitaloceanConfig driver
-// field. isBool marks the tri-state booleans (MC-5a): written only when
+// field. isBool marks the tri-state booleans: written only when
 // the flag is present, so the server/driver default stays authoritative
 // when omitted. Strings (including the comma-separated tags list) are
 // written verbatim.
@@ -58,8 +58,8 @@ type createMachineConfigCmd struct {
 // NewCreateMachineConfig builds `create machine-config <kind> <name>`
 // (mutating): a standalone machine-config CR in fleet-default, referenced
 // afterwards by `create cluster --machine-config <kind>/<name>`. Explicit
-// name, never generateName (MC-3); fixed fleet-default namespace, no
-// --namespace flag (MC-4). Mirrors create cluster's build/Plan split.
+// name, never generateName; fixed fleet-default namespace, no
+// --namespace flag. Mirrors create cluster's build/Plan split.
 func NewCreateMachineConfig(clients engine.ClusterClientFactory) runtime.Command {
 	return &createMachineConfigCmd{clients: clients}
 }
@@ -102,12 +102,12 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 }
 
 // build validates input and assembles the machine-config CR. Pure - no
-// ctx, no network (MC-10). Validation order: kind (the runtime layer's
+// ctx, no network. Validation order: kind (the runtime layer's
 // Enum already guards it once registered; build re-checks defensively),
-// --set key=value shape, Kubernetes envelope-key rejection (MC-6:
-// apiVersion/kind/metadata/status are object identity, not driver fields -
+// --set key=value shape, Kubernetes envelope-key rejection
+// (apiVersion/kind/metadata/status are object identity, not driver fields -
 // refused before any overlay), duplicates, curated collisions and
-// kind-scoping (MC-7/MC-7a), credential-field rejection (MC-8).
+// kind-scoping, credential-field rejection.
 func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructured, kinds.Kind, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
@@ -125,7 +125,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 			fmt.Sprintf("argument <kind>=%q is not a machine-config kind; one of: %s", kindName, machineConfigKindsHint()))
 	}
 
-	// Credential rejection (MC-8) folds case - lowercased key → the
+	// Credential rejection folds case - lowercased key → the
 	// canonical casing from the metadata - so no casing of a credential
 	// field slips past and persists a secret as a plaintext CR field.
 	meta, _ := kinds.MachineConfigFieldsFor(k.Name)
@@ -139,7 +139,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	}
 
 	// --set entries: shape, envelope-key rejection, and duplicates first
-	// (MC-10 order), values held raw until the collision/credential checks
+	// (in that order), values held raw until the collision/credential checks
 	// pass.
 	type setEntry struct {
 		key string
@@ -174,7 +174,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		entries = append(entries, setEntry{key: key, raw: raw})
 	}
 
-	// Curated flags: kind-scoping (MC-7a) by PRESENCE - a set flag on a
+	// Curated flags: kind-scoping by PRESENCE - a set flag on a
 	// foreign kind is refused, never ignored or written to a foreign CR.
 	fields := map[string]any{}
 	for _, cf := range doCuratedFlags {
@@ -246,8 +246,8 @@ func (c createMachineConfigCmd) Plan(ctx context.Context, in runtime.Input) (saf
 // Kubernetes envelope: apiVersion, kind, metadata, status) against the
 // dry-run response's top-level keys and names every key the server
 // silently dropped - rke-machine-config CRDs may prune unknown fields, so
-// a typo surfaces at preview time rather than as a silently thinner CR
-// (MC-12). Presence, not value, decides: a key submitted with a null
+// a typo surfaces at preview time rather than as a silently thinner CR.
+// Presence, not value, decides: a key submitted with a null
 // value that vanishes server-side is pruned like any other. Returns ""
 // when nothing was pruned.
 func prunedKeyWarning(submitted, dryRun map[string]any) string {
@@ -331,7 +331,7 @@ var _ runtime.MutatingCommand = (*createMachineConfigCmd)(nil)
 // but a JSON NUMBER stays the literal string, because IntFlag fields are
 // published as "string" (a backward-compat choice upstream) and a typed
 // CRD rejects a JSON number for them. Anything that is not valid JSON is
-// the raw string (MC-6). The decoded forms (bool, string, []any,
+// the raw string. The decoded forms (bool, string, []any,
 // map[string]any, nil) are all JSON-safe for apimachinery's deep copies.
 func parseSetValue(raw string) any {
 	var v any

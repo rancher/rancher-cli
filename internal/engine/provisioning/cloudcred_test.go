@@ -73,7 +73,7 @@ var _ engine.ClusterClient = (*fakeClient)(nil)
 type fakeFactory struct {
 	c engine.ClusterClient
 	// clusterErr, when set, makes Cluster return this error instead of c -
-	// the injectable-error seam review finding 1 needs to assert
+	// the injectable-error seam that lets a test assert
 	// clients.Cluster()'s precedence over a simultaneous release-fetch
 	// failure (versions.go's fetchVersionsDetailed).
 	clusterErr error
@@ -192,7 +192,7 @@ func TestResolveCloudCredentialNotFound(t *testing.T) {
 	assert.Equal(t, "AWS Prod", cerr.Candidates[0].Name)
 }
 
-// TestResolveCloudCredentialExactIDMissFallsThroughToListPath asserts fix 1: when
+// TestResolveCloudCredentialExactIDMissFallsThroughToListPath asserts that when
 // a cc-* exact-id Get returns the curated "secret not found" shape (the dynamic
 // client curates 404s by literal kind name), the resolver must fall through to
 // the list-based path and return the domain-specific "cloud credential not found"
@@ -218,7 +218,7 @@ func TestResolveCloudCredentialExactIDMissFallsThroughToListPath(t *testing.T) {
 }
 
 // TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID asserts
-// finding 2: a legacy secret with no cc- prefix (credential-shaped only by
+// that a legacy secret with no cc- prefix (credential-shaped only by
 // its *credentialConfig- data key) must resolve via BOTH its bare name and
 // its "cattle-global-data:<name>" namespaced form. Before the fix, the
 // namespaced form fell through the List path and matched against the
@@ -261,7 +261,7 @@ func TestResolveCloudCredentialAmbiguousDisplayName(t *testing.T) {
 	assert.Empty(t, cerr.Hint, "candidates already carry the selection guidance")
 }
 
-// TestResolveCloudCredentialAmbiguousCandidatesNarrowed asserts run-1 finding:
+// TestResolveCloudCredentialAmbiguousCandidatesNarrowed asserts that
 // when the display name collides, candidates must contain ONLY the
 // credentials sharing that display name, not every credential of the query.
 func TestResolveCloudCredentialAmbiguousCandidatesNarrowed(t *testing.T) {
@@ -376,7 +376,7 @@ func TestGetCloudCredentialByNameResolvesOne(t *testing.T) {
 }
 
 // TestResolveCloudCredentialNeverLeaksSecretValue is the non-negotiable
-// hygiene test (spec D-R2-1): the sentinel secret VALUE must never surface
+// hygiene test: the sentinel secret VALUE must never surface
 // in any returned struct, Result, or error string produced by either the
 // resolver or the read command, however rendered.
 func TestResolveCloudCredentialNeverLeaksSecretValue(t *testing.T) {

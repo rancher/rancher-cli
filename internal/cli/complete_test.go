@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// k8sList is a minimal Kubernetes-style list response for testing (finding 10).
+// k8sList is a minimal Kubernetes-style list response for testing.
 // The management K8s API uses the k8s items envelope, not Norman {"data":[...]}.
 type k8sList struct {
 	Items []map[string]any `json:"items"`
@@ -55,7 +55,7 @@ func TestResolveDisplayNameToClusterIDNotFound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := resolveDisplayNameToClusterID(ctx, hc, cap, "nonexistent")
-	assert.Equal(t, "", got, "finding 3: not-found must return empty string")
+	assert.Equal(t, "", got, "not-found must return empty string")
 }
 
 func TestResolveDisplayNameToClusterIDAmbiguous(t *testing.T) {
@@ -71,7 +71,7 @@ func TestResolveDisplayNameToClusterIDAmbiguous(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := resolveDisplayNameToClusterID(ctx, hc, cap, "prod")
-	assert.Equal(t, "", got, "finding 3: ambiguous match must return empty string")
+	assert.Equal(t, "", got, "ambiguous match must return empty string")
 }
 
 func TestResolveDisplayNameToClusterIDUnambiguous(t *testing.T) {
@@ -86,7 +86,7 @@ func TestResolveDisplayNameToClusterIDUnambiguous(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := resolveDisplayNameToClusterID(ctx, hc, cap, "prod")
-	assert.Equal(t, "c-abc", got, "finding 3: single match must return the cluster ID")
+	assert.Equal(t, "c-abc", got, "single match must return the cluster ID")
 }
 
 func TestSanitizeCandidatesDropsHostileNames(t *testing.T) {
@@ -263,12 +263,12 @@ func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
 	assert.Equal(t, want, got, "token --auth-flow <TAB> must surface exactly the enum candidates")
 }
 
-// TestSchemaPositionalCompletionSurfaces drives schema's SE-12 selector
+// TestSchemaPositionalCompletionSurfaces drives schema's selector
 // candidates through the real Adapt-installed ShellComplete callback
 // (BuildRoot + root.Run), the same wiring path the use-context callback tests
 // assert. The candidates come from schemaCmd.CompleteArgs via the config-local
 // dispatch layer; no network is involved. Multi-token selector candidates
-// ("get pods") are dropped at this layer by the AC-21 completion charset
+// ("get pods") are dropped at this layer by the completion charset
 // (sanitizeCandidates rejects spaces), so the shell sees the single-token
 // subset - the full candidate set is asserted at the runtime layer by
 // TestSchemaPositionalCompletionShape.
@@ -299,7 +299,7 @@ func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 	assert.True(t, sort.StringsAreSorted(lines), "surfaced candidates stay sorted: %v", lines)
 	for _, l := range lines {
 		assert.NotContains(t, l, " ",
-			"the AC-21 charset admits no multi-token candidate at the surface layer")
+			"the completion charset admits no multi-token candidate at the surface layer")
 	}
 }
 

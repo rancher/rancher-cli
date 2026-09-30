@@ -10,8 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// TestScaleUpIsAlwaysDestructive asserts the rev-5 ruling: provisioningcluster
-// is a Sensitive kind, so every scale is Destructive regardless of
+// TestScaleUpIsAlwaysDestructive asserts that provisioningcluster is a
+// Sensitive kind, so every scale is Destructive regardless of
 // direction - the same gate a generic patch on the same object already
 // demands.
 func TestScaleUpIsAlwaysDestructive(t *testing.T) {

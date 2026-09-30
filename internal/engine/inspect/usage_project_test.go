@@ -211,10 +211,10 @@ func TestUsageByProjectNodeFilter(t *testing.T) {
 	assert.Equal(t, "100m", env.Data["p-x"].CPURequest, "only n1's pods count under --node n1")
 }
 
-// TestUsageByProjectMemberFallbackWithProjectFlag asserts the member path
-// (review round 2): a forbidden projects List with --project set falls back
-// to a direct get of the named project - a member's per-project usage stays
-// reachable even though they cannot list the collection.
+// TestUsageByProjectMemberFallbackWithProjectFlag asserts the member path: a
+// forbidden projects List with --project set falls back to a direct get of the
+// named project - a member's per-project usage stays reachable even though they
+// cannot list the collection.
 func TestUsageByProjectMemberFallbackWithProjectFlag(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")

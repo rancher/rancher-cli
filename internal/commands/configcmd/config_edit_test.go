@@ -321,8 +321,8 @@ func TestConfigEditAbsentFileBaseline(t *testing.T) {
 	})
 }
 
-// TestConfigEditCanceledLockWaitPassesThrough asserts the re-review P2 finding:
-// a cancellation hitting the write-lock wait must surface as the caller's
+// TestConfigEditCanceledLockWaitPassesThrough asserts that
+// a cancellation hitting the write-lock wait surfaces as the caller's
 // own context.Canceled - never dressed as "writing config failed" - while
 // the edits stay preserved in the temp file.
 func TestConfigEditCanceledLockWaitPassesThrough(t *testing.T) {
@@ -348,7 +348,7 @@ func TestConfigEditCanceledLockWaitPassesThrough(t *testing.T) {
 	require.NoError(t, statErr, "edits must stay preserved on cancellation")
 }
 
-// TestConfigEditReadFailureNamedAsReadFailure asserts the third-review P2: a
+// TestConfigEditReadFailureNamedAsReadFailure asserts that a
 // failed comparison read during write-back must say the CHECK failed, not
 // claim "writing config failed" for a write that was never attempted.
 func TestConfigEditReadFailureNamedAsReadFailure(t *testing.T) {
@@ -375,11 +375,10 @@ func TestConfigEditReadFailureNamedAsReadFailure(t *testing.T) {
 	assert.NotContains(t, err.Error(), "writing config failed")
 }
 
-// TestConfigEditLockTimeoutNamesPreservedEdits asserts the fourth-review P2:
+// TestConfigEditLockTimeoutNamesPreservedEdits asserts that
 // when lock acquisition itself times out - before the write-back closure
-// ever runs - the error must still tell the user their edits are preserved
-// at the temp path; that branch is the one guaranteed-safe case and was the
-// only one not saying so.
+// ever runs - the error still tells the user their edits are preserved
+// at the temp path; that branch is the one guaranteed-safe case.
 // No t.Parallel(): package-level lock hook and timeout seam.
 func TestConfigEditLockTimeoutNamesPreservedEdits(t *testing.T) {
 	t.Setenv("EDITOR", "fake-editor")

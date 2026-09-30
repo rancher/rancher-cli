@@ -355,11 +355,10 @@ func splitOwnerTarget(target string) (ownerTargetParts, bool) {
 	}
 }
 
-// rejectProject enforces PC-3 for the composites that bypass Route
-// (inspect pod/deployment, images): a TYPED --project flag would otherwise
-// reach them and be silently ignored, exactly the class of no-op DR-004
-// removed --project for. cmd is the command name for the message
-// ("inspect pod", "images", ...).
+// rejectProject rejects --project for the composites that bypass Route (inspect
+// pod/deployment, images): a TYPED --project flag would otherwise reach them
+// and be silently ignored; a typed flag that does nothing is rejected instead.
+// cmd is the command name for the message ("inspect pod", "images", ...).
 func rejectProject(in runtime.Input, cmd string) error {
 	if resources.TypedProject(in) == "" {
 		return nil
@@ -393,7 +392,7 @@ var recursableOwnerKinds = map[string]bool{
 // ownerChain walks obj's controller ownerRef chain, fetching each recursable
 // owner in turn. Unknown owner kinds (no kind-table row, or not one of the
 // recursable controller kinds) are reported as-is and end the walk - never an
-// error, per the spec's risk note on custom controllers. A fetch failure
+// error, because custom controllers can own objects. A fetch failure
 // keeps the ref info and records a partial outcome under section instead of
 // aborting the walk; clusterID prefixes the owner target in all-clusters
 // mode and is empty otherwise. The bool reports whether the walk degraded -

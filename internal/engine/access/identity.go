@@ -55,10 +55,11 @@ func whoami(ctx context.Context, c engine.ClusterClient) (callerIdentity, review
 	return callerIdentity{Username: name, Groups: groups}, r
 }
 
-// callerPreflight is step 0: the caller's own SelfSubjectReview on the
-// target cluster. Commands call it right after obtaining the cluster
-// client, before discovery and scope, so a caller without cluster access
-// is refused before any other request can fail for a less clear reason.
+// callerPreflight is the first identity check: the caller's own
+// SelfSubjectReview on the target cluster. Commands call it right after
+// obtaining the cluster client, before discovery and scope, so a caller without
+// cluster access is refused before any other request can fail for a less clear
+// reason.
 func callerPreflight(ctx context.Context, callerClient engine.ClusterClient, clusterID string) (callerIdentity, error) {
 	caller, r := whoami(ctx, callerClient)
 	switch r.kind {
@@ -72,10 +73,10 @@ func callerPreflight(ctx context.Context, callerClient engine.ClusterClient, clu
 	}
 }
 
-// planIdentity runs steps 1-5 of the identity protocol given the step-0
-// caller identity. local is the management cluster client (for Rancher
-// user resolution); callerClient is the caller's client on the target
-// cluster.
+// planIdentity runs the identity protocol after the caller's own identity
+// check, given that caller identity. local is the management cluster client
+// (for Rancher user resolution); callerClient is the caller's client on the
+// target cluster.
 func planIdentity(ctx context.Context, clients engine.ClusterClientFactory, callerClient, local engine.ClusterClient,
 	clusterID string, caller callerIdentity, as ParsedSubject, forList bool) (identityPlan, error) {
 	callerSubject, callerPrincipals := enrichCaller(ctx, local, caller.Username)
@@ -173,8 +174,9 @@ func groupListMessage(raw string) string {
 	return fmt.Sprintf("no server operation lists a group's rules; ask a point question with: rancher access can <verb> <resource> --as %s", raw)
 }
 
-// sarFallback is step 5: a SubjectAccessReview posted as the caller. list
-// has no SubjectAccessReview equivalent and refuses instead.
+// sarFallback is the fallback when impersonation is refused or the route
+// drops it: a SubjectAccessReview posted as the caller. list has no
+// SubjectAccessReview equivalent and refuses instead.
 func sarFallback(plan identityPlan, forList bool, resolved ResolvedSubject, clusterID string) (identityPlan, error) {
 	if forList {
 		return identityPlan{}, impersonationRefusal(resolved, clusterID)
@@ -195,7 +197,7 @@ func impersonationRefusal(resolved ResolvedSubject, clusterID string) *clierr.Er
 		WithHint("rancher get globalroles")
 }
 
-// sarRefusal is step 6: the review endpoint refused the caller's
+// sarRefusal is the refusal when the review endpoint refuses the caller's
 // SubjectAccessReview.
 func sarRefusal(resolved ResolvedSubject, clusterID string) *clierr.Error {
 	where := "cluster " + clusterID

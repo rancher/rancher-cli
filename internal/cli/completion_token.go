@@ -15,7 +15,7 @@ type TokenCapability struct {
 	Token string
 	// IDOnly reports that the token is exec-credential-only: cluster-dependent
 	// completion sites must accept only cluster IDs, never display names
-	// (AC-6a: a downstream-scoped token cannot resolve a display name via the
+	// (a downstream-scoped token cannot resolve a display name via the
 	// management cluster list).
 	IDOnly bool
 	// ServerURL is the Rancher server URL (for HTTP client construction).
@@ -25,7 +25,7 @@ type TokenCapability struct {
 }
 
 // completionConnection is the read-only resolved connection for a TAB request.
-// It mirrors Config.Effective precedence (finding 7) without touching the
+// It mirrors Config.Effective precedence without touching the
 // credential store. Scope (cluster/project) is not connection state - it
 // comes from the typed arg tail alone, extracted at the dispatch layer.
 type completionConnection struct {
@@ -34,12 +34,12 @@ type completionConnection struct {
 }
 
 // resolveCompletionConnection resolves server URL and CA in strict read-only
-// precedence, mirroring Config.Effective (finding 7, AC-17):
+// precedence, mirroring Config.Effective:
 //
 //  1. Config current server (base)
 //  2. RANCHER_CLI_URL, RANCHER_CLI_CACERT env overrides
 //
-// Never touches the credential store or keyring (AC-22).
+// Never touches the credential store or keyring.
 func resolveCompletionConnection() completionConnection {
 	cfg := storedConfigSnapshot()
 	var conn completionConnection
@@ -74,15 +74,16 @@ func resolveCompletionConnection() completionConnection {
 }
 
 // resolveCompletionToken resolves the token for a TAB completion request
-// following AC-4 → AC-5 → AC-6 order. It NEVER touches the keyring (AC-22).
-// It uses resolveCompletionConnection for URL/CA (finding 7) so env overrides
+// in this order: env token, file credential store, exec-cred cache. It
+// NEVER touches the keyring.
+// It uses resolveCompletionConnection for URL/CA so env overrides
 // (RANCHER_CLI_URL, RANCHER_CLI_CACERT) are honoured.
 //
-//   - AC-4: RANCHER_CLI_TOKEN env - full capability (management + downstream).
-//   - AC-5: file credential store login token - full capability (explicit file
-//     policy or pinned to file only; unpinned auto does NOT qualify, AC-5).
-//   - AC-6: single unexpired exec-cred cache entry for server+cluster -
-//     downstream-scoped (ID-only for cluster-dependent sites, AC-6a).
+//   - RANCHER_CLI_TOKEN env - full capability (management + downstream).
+//   - file credential store login token - full capability (explicit file
+//     policy or pinned to file only; unpinned auto does NOT qualify).
+//   - single unexpired exec-cred cache entry for server+cluster -
+//     downstream-scoped (ID-only for cluster-dependent sites).
 //
 // Returns a zero TokenCapability (Token=="") when no usable source is found.
 func resolveCompletionToken(clusterID string) TokenCapability {
@@ -96,7 +97,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 	// Validate the server URL before any stored-credential read. Completion
 	// is best-effort: an unsupported or malformed URL silently yields an
 	// empty capability rather than surfacing a stored record that cannot
-	// be safely used (AC-22: never trigger a helper exec for an invalid identity).
+	// be safely used (never trigger a helper exec for an invalid identity).
 	canonServerURL, csErr := credhelper.CanonicalServerURL(conn.ServerURL)
 	if csErr != nil {
 		completionDebugf("stop: server URL: %v", csErr)
@@ -112,17 +113,17 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 		dir = v.ConfigDir()
 	}
 
-	// AC-4: env token - full management capability.
+	// Env token - full management capability.
 	if tok := os.Getenv(config.EnvToken); tok != "" {
 		completionDebugf("token: %s (full capability)", config.EnvToken)
 		return TokenCapability{Token: tok, IDOnly: false, ServerURL: conn.ServerURL, CACert: conn.CACert}
 	}
 
-	// AC-5: file credential store - full management capability.
-	// Only when the store policy explicitly targets the file (AC-5, finding 8).
+	// File credential store - full management capability.
+	// Only when the store policy explicitly targets the file.
 	// Pass the effective URL so fileStoreTokenSilent looks up the credential for
 	// the server whose URL MATCHES the effective URL, not the stored current server
-	// name (round-2 finding 3: RANCHER_CLI_URL pointing at server B while config
+	// name (RANCHER_CLI_URL pointing at server B while config
 	// current server is A must not send A's token to B).
 	if tok := fileStoreTokenSilent(dir, conn.ServerURL); tok != "" {
 		completionDebugf("token: file credential store (full capability)")
@@ -139,7 +140,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 		return TokenCapability{}
 	}
 
-	// AC-6: exec-cred cache - downstream-scoped, ID-only.
+	// Exec-cred cache - downstream-scoped, ID-only.
 	if clusterID == "" {
 		completionDebugf("stop: no token: no %s, no file-store login for this URL, and no --cluster for the exec-credential cache", config.EnvToken)
 		return TokenCapability{}
@@ -167,10 +168,10 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 		return TokenCapability{}
 	}
 	// Exclude legacy:-prefixed cache entries before the single-entry ambiguity
-	// check (AC-6a). Shim slots (written by `rancher token` for ACE kubeconfigs)
+	// check. Shim slots (written by `rancher token` for ACE kubeconfigs)
 	// are never completion candidates - a user never selects them via --name, and
 	// the native get-token command explicitly rejects them. Filtering here
-	// preserves AC-6a's fail-closed semantics for genuinely ambiguous NATIVE
+	// preserves the fail-closed semantics for genuinely ambiguous NATIVE
 	// entries: shim + one native → native resolves; shim only → no candidates.
 	// config.IsLegacyCacheSlot is the single source for this predicate so a
 	// future prefix rename compiles instead of silently diverging.
@@ -181,7 +182,7 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 		}
 	}
 	if len(native) != 1 {
-		// Missing, error, or ambiguous (AC-6a: multiple principals → skip).
+		// Missing, error, or ambiguous (multiple principals: skip).
 		completionDebugf("stop: no token: %d unexpired exec-credential cache entries for cluster %s (need exactly 1)", len(native), clusterID)
 		return TokenCapability{}
 	}
@@ -195,12 +196,12 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 }
 
 // fileStoreTokenSilent reads the login token from the file credential store
-// WITHOUT logging a warnLoosePerm warning (AC-23, finding 8). Returns "" when:
+// WITHOUT logging a warnLoosePerm warning. Returns "" when:
 //   - the directory does not read the file store: the policy is not file,
 //     the pin does not name file, and for an unpinned auto directory what
 //     its entries have stored is not the file store (config.UnpinnedStoreOf)
 //   - credentials.yaml is absent or unreadable
-//   - no stored server URL matches effectiveURL (round-2 finding 3: cross-server
+//   - no stored server URL matches effectiveURL (a cross-server
 //     URL override must not send server A's token to server B)
 //
 // effectiveURL is the resolved server URL from resolveCompletionConnection;
@@ -260,7 +261,7 @@ func fileStoreTokenSilent(dir, effectiveURL string) string {
 		return tok
 	}
 
-	// Round-2 finding 3: find the server whose URL matches the effective URL.
+	// Find the server whose URL matches the effective URL.
 	// If no stored server matches unambiguously, skip the file token (the effective
 	// URL is pointing at a different server than any stored context).
 	var matchName string

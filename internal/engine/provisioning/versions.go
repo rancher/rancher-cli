@@ -1,4 +1,4 @@
-// versions.go implements D-7's `get kubernetes-versions`: it merges the
+// versions.go implements `get kubernetes-versions`: it merges the
 // channel-server's rke2/k3s release lists with the two default-version
 // Settings and the ui-k8s-supported-versions-range Setting into one table,
 // so a caller can see every installable version, which one Rancher installs
@@ -25,7 +25,7 @@ const (
 	// rke2ReleasePath and k3sReleasePath are the unauthenticated mux routes
 	// rancher's routes.go:139-140 registers server-side for the
 	// channel-server release lists. RootClient sends credentials to them
-	// anyway, per the one-policy rule (spec D-10) - no anonymous
+	// anyway, per the one-policy rule - no anonymous
 	// special-casing.
 	rke2ReleasePath = "/v1-rke2-release/release"
 	k3sReleasePath  = "/v1-k3s-release/release"
@@ -60,7 +60,7 @@ var distroSpecs = []struct {
 }
 
 // Version carries one merged `get kubernetes-versions` row; also consumed by
-// Task 7's warn-only create-time validation.
+// create's warn-only version validation.
 type Version struct {
 	Distro  string `json:"distro"` // "rke2" | "k3s"
 	Version string `json:"version"`
@@ -69,8 +69,8 @@ type Version struct {
 	// (semver core then rN suffix). Absent from JSON when false (omitempty).
 	Newest bool `json:"newest,omitempty"`
 	// Supported reports whether Version falls inside the server's
-	// ui-k8s-supported-versions-range setting (spec D-7's
-	// in-supported-range?, review R1-5). nil = range setting absent or
+	// ui-k8s-supported-versions-range setting.
+	// nil = range setting absent or
 	// unparseable - unknown, not false.
 	Supported *bool `json:"supported,omitempty"`
 }
@@ -161,7 +161,7 @@ type rangeClause struct {
 
 // rangeTokenRE scans a raw range string for `>=`/`<=`/`>`/`<`/`=` immediately
 // (optionally with whitespace) followed by a `MAJOR.MINOR[.PATCH|.x]`
-// operand - the entire grammar spec D-7 requires, and nothing more. A
+// operand - the entire grammar the setting uses, and nothing more. A
 // string with no such token (empty, or genuinely unparseable garbage) never
 // matches, which is exactly how parseSupportedRange reports "advisory data
 // unavailable" without a special-case.
@@ -170,7 +170,7 @@ var rangeTokenRE = regexp.MustCompile(`(>=|<=|>|<|=)\s*(\d+)\.(\d+)(?:\.(\d+)|\.
 // parseSupportedRange parses raw into its AND-ed comparator clauses. ok is
 // false when raw carries no recognizable clause at all (empty or garbage) -
 // the caller's contract is "unknown", never an error: the range is
-// advisory (spec D-7).
+// advisory.
 func parseSupportedRange(raw string) (clauses []rangeClause, ok bool) {
 	matches := rangeTokenRE.FindAllStringSubmatch(raw, -1)
 	if len(matches) == 0 {
@@ -243,7 +243,7 @@ func clauseHolds(c rangeClause, major, minor, patch int) bool {
 // version string) against rangeRaw, the advisory
 // ui-k8s-supported-versions-range setting value. nil means "unknown" - an
 // absent/empty/unparseable range, or a version string normalizeVersion
-// cannot resolve to at least MAJOR.MINOR - never an error, per spec D-7.
+// cannot resolve to at least MAJOR.MINOR - never an error.
 func versionSupported(rangeRaw, rawVersion string) *bool {
 	clauses, ok := parseSupportedRange(rangeRaw)
 	if !ok {
@@ -275,10 +275,10 @@ func versionSupported(rangeRaw, rawVersion string) *bool {
 // fetchReleaseVersions GETs path against root and decodes its channel-server
 // release envelope ({"data":[{"version": "..."}, ...]}, channelserver
 // model/config.go:22-30 - the collection key is "data", matched against the
-// fixture testrancher serves; the acceptance pass against a real server
-// corrects this if the shape differs). A malformed body is a typed
-// CodeGeneric error naming "decoding" and path, mirroring Task 5's
-// decodeCRTCollection contract exactly - never a panic, never an empty slice
+// fixture testrancher serves; a test against a real server would correct
+// this if the shape differs). A malformed body is a typed
+// CodeGeneric error naming "decoding" and path, mirroring decodeCRTCollection's
+// contract exactly - never a panic, never an empty slice
 // standing in for the failure silently. Any error root.GetJSON itself
 // returns (including a 404) is returned as-is, already clierr-mapped.
 func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path string) ([]string, error) {
@@ -304,7 +304,7 @@ func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path stri
 // getSettingValue reads the named management.cattle.io/v3 Setting and
 // returns its value; ANY failure (not found, RBAC, decode) degrades to ""
 // rather than propagating - a missing/empty setting means "no default
-// marked" / "range unknown", never an error (spec D-7). SettingValue's
+// marked" / "range unknown", never an error. SettingValue's
 // presence bool is deliberately dropped: this path treats absent and empty
 // identically by that same rule.
 func getSettingValue(ctx context.Context, client engine.ClusterClient, name string) string {
@@ -351,8 +351,8 @@ func newestVersionIndex(vs []string) int {
 // fetchVersionsDetailed is FetchVersions' full implementation, additionally
 // returning the raw supported-range setting (for the command envelope's
 // transparency field) and any degraded-fetch warnings. FetchVersions itself
-// discards the latter two so its signature stays exactly what Task 7
-// consumes; NewGetKubernetesVersions's Execute uses this directly to
+// discards the latter two so its signature stays exactly what its
+// callers consume; NewGetKubernetesVersions's Execute uses this directly to
 // surface both on the command Result.
 func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, clients engine.ClusterClientFactory) ([]Version, string, []string, error) {
 	root, err := roots.Root()
@@ -361,7 +361,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	}
 	// Resolved before the fan-out below, deliberately: a client-resolution
 	// failure is shown over a simultaneous release-fetch failure because it
-	// is the more fundamental root cause (review finding 1).
+	// is the more fundamental root cause.
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return nil, "", nil, err
@@ -370,8 +370,8 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	// Each distro's release fetch and default-version setting read, plus
 	// the shared supported-range setting read, depend only on the
 	// already-resolved root/client above, never on each other, so they run
-	// concurrently via a PLAIN errgroup.Group - never errgroup.WithContext
-	// (review finding 2): WithContext's shared derived context cancels
+	// concurrently via a PLAIN errgroup.Group - never errgroup.WithContext:
+	// WithContext's shared derived context cancels
 	// every sibling goroutine's in-flight request the instant ANY of them
 	// returns a non-nil error, which would turn a genuine hard failure on
 	// one distro into a raced, possibly "context canceled"-wrapped error on
@@ -466,7 +466,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 // (an older server that predates that route) degrades to the other
 // distro's rows alone - never an error; the omission is only visible as a
 // warning on NewGetKubernetesVersions's Result, since this function's
-// signature carries no warnings channel (Task 7 consumes exactly this
+// signature carries no warnings channel (callers consume exactly this
 // shape).
 func FetchVersions(ctx context.Context, roots engine.RootClientFactory, clients engine.ClusterClientFactory) ([]Version, error) {
 	rows, _, _, err := fetchVersionsDetailed(ctx, roots, clients)
@@ -475,7 +475,7 @@ func FetchVersions(ctx context.Context, roots engine.RootClientFactory, clients 
 
 // versionsResult is `get kubernetes-versions`' payload: the merged rows
 // under "versions" plus the raw supported-range setting, echoed beside
-// them for transparency (spec D-7) alongside the per-row Supported
+// them for transparency alongside the per-row Supported
 // boolean. It implements output.Tabular so -o table shows
 // DISTRO/VERSION/DEFAULT/SUPPORTED while -o json/-o yaml also carry the raw
 // range string under "supportedRange". The rows key is "versions", never

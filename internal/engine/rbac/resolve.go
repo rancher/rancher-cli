@@ -44,7 +44,7 @@ func preferredPrincipal(principalIDs []string) string {
 	return principalIDs[0]
 }
 
-// ResolveSubject resolves a parsed Subject to binding fields per the spec:
+// ResolveSubject resolves a parsed Subject to binding fields:
 // groups pass through; bare user names resolve against existing users
 // only; fully qualified user principals resolve via deterministic-id and
 // principalIds lookups and fall through to the provisioning path when no
@@ -148,7 +148,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	}
 
 	// Bare name/id: exact-id Get wins outright (deliberate precedence
-	// change from MatchOneOrError's ambiguity detection - spec'd).
+	// change from MatchOneOrError's ambiguity detection).
 	// On Get miss, list scan matches exact equality on displayName OR
 	// username; a single user matching both fields counts once;
 	// >1 match → AMBIGUOUS_SELECTION; 0 → NOT_FOUND.

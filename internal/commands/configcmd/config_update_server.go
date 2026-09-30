@@ -21,7 +21,7 @@ type configUpdateServerCmd struct {
 // [--cacert ... | --clear-cacert]` (local): moves an existing entry's
 // address or trust without the credential purge delete-server would force.
 // A URL change still clears the stored login token and its exec-credential
-// cache (Decision 5 - a bearer token created by one host must never be
+// cache (a bearer token created by one host must never be
 // presented to another); a CA-only change keeps them.
 func NewConfigUpdateServer(dir string) runtime.Command {
 	return &configUpdateServerCmd{dir: dir, tlsPreflight: register.TLSPreflight}

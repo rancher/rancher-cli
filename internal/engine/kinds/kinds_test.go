@@ -15,7 +15,7 @@ import (
 )
 
 // cliOnlyKinds are table rows with no rancher-ai-mcp tool counterpart at
-// the recorded vocabulary snapshot (mcp-kinds-050e375.json): the tranche-D
+// the recorded vocabulary snapshot (mcp-kinds-050e375.json): the
 // provisioning surface predates MCP provisioning tools. Revisit when the
 // MCP vocabulary grows provisioning kinds - a key appearing in BOTH this
 // set and a future fixture must fail, so stale exemptions cannot linger.
@@ -226,8 +226,8 @@ func TestProjectScopable(t *testing.T) {
 	}
 }
 
-// TestClusterRowsCarryWaitDefaultConditionReady asserts IC-10/IC-11 at the
-// row level: BOTH cluster rows' bare---wait default is the LITERAL
+// TestClusterRowsCarryWaitDefaultConditionReady asserts at the
+// row level that BOTH cluster rows' bare---wait default is the LITERAL
 // "condition=Ready". A literal expectation on purpose - a silent row edit
 // must fail here, not round-trip.
 func TestClusterRowsCarryWaitDefaultConditionReady(t *testing.T) {
@@ -304,7 +304,7 @@ func TestAllKindsHaveNonEmptyName(t *testing.T) {
 }
 
 // TestUserRowDeletableAndCompletable asserts the user kind row's flags: the row
-// must be Deletable and Completable after the grant-cleanup slice, and must
+// must be Deletable and Completable, and must
 // carry no NoDeleteReason (that field belongs to non-deletable kinds only).
 func TestUserRowDeletableAndCompletable(t *testing.T) {
 	t.Parallel()

@@ -127,7 +127,7 @@ func writeBindingStamp(dir, stamp string) error {
 const cacheRecordVersion = 2
 
 // CanonicalDir is the directory value a cache record is written with and
-// judged by: absolute and cleaned, which is C0's form.
+// judged by: absolute and cleaned.
 //
 // The spelling the caller typed will not do. Two working directories with
 // the same relative `--config .rancher` name two different directories,

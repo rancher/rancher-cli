@@ -355,7 +355,7 @@ func (ssCmd) Execute(context.Context, Input, Prompter) (Result, error) {
 	return Result{}, nil
 }
 
-// TestSchemaPublishesStringSliceFlagType asserts MC-6a's manifest contract:
+// TestSchemaPublishesStringSliceFlagType asserts the manifest contract:
 // the stringSlice flag type is published verbatim in the schema manifest.
 func TestSchemaPublishesStringSliceFlagType(t *testing.T) {
 	t.Parallel()
@@ -422,9 +422,9 @@ func TestValidateSuccessExitCodes(t *testing.T) {
 	}
 }
 
-// TestSchemaCommandGates asserts the per-command gates field (Linux acceptance
-// F6): the manifest states each command's unconditional gate flags instead
-// of leaving them inferable from commandType/destructive convention.
+// TestSchemaCommandGates asserts the per-command gates field: the manifest
+// states each command's unconditional gate flags instead of leaving them
+// inferable from commandType/destructive convention.
 func TestSchemaCommandGates(t *testing.T) {
 	t.Parallel()
 	reg := NewRegistry(stubResolver{

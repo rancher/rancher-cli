@@ -13,7 +13,7 @@ var extTokensGVR = schema.GroupVersionResource{Group: "ext.cattle.io", Version: 
 
 var mgmtTokensGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "tokens"}
 
-// TokenMetadata is the ext.cattle.io/v1 Token metadata `auth status`'s PS-2
+// TokenMetadata is the ext.cattle.io/v1 Token metadata `auth status`'s
 // token probe reads back for the EFFECTIVE token (eff.Token, never the
 // stored credential directly - RANCHER_CLI_TOKEN overrides the store and this
 // must report on whichever one is actually authenticating the request).
@@ -74,7 +74,7 @@ func EffectiveTokenMetadata(ctx context.Context, eff config.Effective, name stri
 }
 
 // V3TokenMetadata GETs the management.cattle.io/v3 Token named name for
-// `auth status`'s PS-2 token probe fallback. The v3 Token carries all five
+// `auth status`'s token probe fallback. The v3 Token carries all five
 // output fields at the object root (not under spec/status): authProvider,
 // expiresAt, isDerived, current, and metadata.name. isDerived is mapped to
 // Kind ("derived" when true, "session" otherwise) so the return type is

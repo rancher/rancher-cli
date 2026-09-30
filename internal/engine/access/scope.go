@@ -22,10 +22,9 @@ const (
 	scopeAllNamespaces
 )
 
-// Scope is the resolved target of a question: the wire scope the design
-// documents plus the unexported fan-out targets (one for -n, the project's
-// members for --project, every listed namespace for --all-namespaces; nil
-// for cluster scope).
+// Scope is the resolved target of a question: the wire scope plus the
+// unexported fan-out targets (one for -n, the project's members for --project,
+// every listed namespace for --all-namespaces; nil for cluster scope).
 type Scope struct {
 	Cluster       string   `json:"cluster"`
 	Namespace     string   `json:"namespace,omitempty"`

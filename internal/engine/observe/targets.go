@@ -81,7 +81,7 @@ const (
 
 // Resolve maps a Target and the invocation's --cluster flag onto a concrete
 // cluster, namespace, and pod list, running every target-specific
-// degradation chain from the design spec (LS-1): the server selector
+// degradation chain: the server selector
 // fallback ending in the Docker-install message, the kube-api-auth ACE
 // precheck, and the fleet-agent namespace resolution chain.
 func Resolve(ctx context.Context, clients engine.ClusterClientFactory, t Target, in runtime.Input) (Resolved, error) {
@@ -231,14 +231,14 @@ func resolveServerPods(ctx context.Context, client engine.ClusterClient) (string
 	return "", nil, clierr.New(clierr.CodeNotFound, dockerInstallHint)
 }
 
-// resolveFleetAgentPods runs the fleet-agent namespace resolution chain
-// (LS-1): the management Cluster's spec.fleetWorkspaceName, the fleetcluster
+// resolveFleetAgentPods runs the fleet-agent namespace resolution chain:
+// the management Cluster's spec.fleetWorkspaceName, the fleetcluster
 // named after the provisioning identity in that workspace (Rancher keys
 // fleet Clusters by the provisioning name, not the mgmt id), its
 // spec.agentNamespace, falling through to the local/downstream defaults and
 // finally the legacy fleet-system namespace when no pods match. Every read
 // in the chain degrades silently to the next default on error/absence -
-// per the design spec, "no-permission" is a fall-through, not a failure.
+// "no-permission" is a fall-through, not a failure.
 func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClient, clusterID string) (string, []unstructured.Unstructured, error) {
 	isLocal := clusterID == engine.LocalCluster
 

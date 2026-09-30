@@ -8,12 +8,11 @@ run:
     - e2e
     - e2e_fidelity
 
-# Pinned lint policy for the Go modernization sweep (see AGENTS.md's
-# "Modern Go for the pinned toolchain" convention). `default: standard`
-# keeps golangci-lint's built-in default set (errcheck, gosimple, govet,
-# ineffassign, staticcheck, unused); the additions below enforce the
-# sweep's test idioms so a regression is a lint failure, not a future
-# audit.
+# Pinned lint policy for modern Go (see AGENTS.md's "Modern Go for the
+# pinned toolchain" convention). `default: standard` keeps golangci-lint's
+# built-in default set (errcheck, gosimple, govet, ineffassign, staticcheck,
+# unused); the additions below enforce the modern test idioms so a
+# regression is a lint failure, not a future audit.
 linters:
   default: standard
   enable:

@@ -89,7 +89,7 @@ func TestLazyStoreDrainNoticesRacesFirstResolution(t *testing.T) {
 }
 
 // TestLazyStoreDeferredErrorIsStable: a failed resolution surfaces the SAME
-// raw error from the first and every later call (spec R1-3: returned as-is,
+// raw error from the first and every later call (returned as-is;
 // callers add their own context).
 func TestLazyStoreDeferredErrorIsStable(t *testing.T) {
 	boom := errors.New("writing credential store pin: disk full")
@@ -102,7 +102,7 @@ func TestLazyStoreDeferredErrorIsStable(t *testing.T) {
 }
 
 // TestNewLazyStoreValidatesPolicyEagerly: an unknown effective policy fails
-// at CONSTRUCTION with OpenStore's exact error text (CS-6 unchanged), and no
+// at CONSTRUCTION with OpenStore's exact error text, and no
 // filesystem state appears.
 func TestNewLazyStoreValidatesPolicyEagerly(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "wat")
@@ -115,7 +115,7 @@ func TestNewLazyStoreValidatesPolicyEagerly(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr))
 }
 
-// TestNewLazyStoreCapturesEffectivePolicy (spec R1-4): the policy resolved
+// TestNewLazyStoreCapturesEffectivePolicy: the policy resolved
 // at construction is the policy opened, even if env changes before first
 // use.
 func TestNewLazyStoreCapturesEffectivePolicy(t *testing.T) {
@@ -133,7 +133,7 @@ func TestNewLazyStoreCapturesEffectivePolicy(t *testing.T) {
 	assert.Equal(t, "tok", tok)
 }
 
-// TestNewLazyStoreNoSideEffectsBeforeFirstUse asserts LS-1's core: constructing
+// TestNewLazyStoreNoSideEffectsBeforeFirstUse asserts that constructing
 // the store for a fresh dir creates NOTHING until a credential call happens.
 func TestNewLazyStoreNoSideEffectsBeforeFirstUse(t *testing.T) {
 	t.Setenv(EnvCredentialStore, "")

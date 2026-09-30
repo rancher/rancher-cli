@@ -9,12 +9,12 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 )
 
-// renderCommandCard builds the operator-facing card for one command (SE-1):
+// renderCommandCard builds the operator-facing card for one command:
 // usage line with args, the command-declared flags, the contract line, the
-// gate line (SE-3), Desc as body, examples, and a footer of the global
+// gate line, Desc as body, examples, and a footer of the global
 // exit-code strip plus one pointer line to the global flags. Per-command
 // error codes are deliberately absent - no per-command source of truth
-// exists yet (SE-16). Rendered via Result.Text under default/table only;
+// exists yet. Rendered via Result.Text under default/table only;
 // the structured formats keep serving Result.Data.
 func renderCommandCard(m Manifest, c SchemaCommand) string {
 	var b strings.Builder
@@ -92,7 +92,7 @@ func flagLine(f ArgSpec) string {
 	return line
 }
 
-// contractLine renders the command's contract facts in SE-1's order -
+// contractLine renders the command's contract facts in this order -
 // commandType · contract · stability · destructive · network · auth - omitting
 // segments with no value (contract/stability unresolved, destructive unset,
 // network/auth false).
@@ -116,7 +116,7 @@ func contractLine(c SchemaCommand) string {
 	return "contract: " + strings.Join(parts, " · ")
 }
 
-// gateLine is SE-3's total function of (commandType, destructive, stability);
+// gateLine is a total function of (commandType, destructive, stability);
 // the wordings are contract, asserted verbatim by TestSchemaGateLineMatrix.
 // A mutating destructive value other than "true"/"dependsOnInput" (including
 // unset) carries no destructive gate; a non-mutating commandType other than
@@ -196,11 +196,11 @@ func renderGroupCard(m Manifest, gv groupView) string {
 	return b.String()
 }
 
-// renderKindCard builds the operator-facing card for one kind (SE-5):
+// renderKindCard builds the operator-facing card for one kind:
 // identity (canonical name, key, aliases), the GVR, scope, the namespace
 // policy with the routing flags a named op needs, wait default, traits
 // (sensitive, completable), and the effective verb table from the manifest's
-// SE-17 data. Rendered via Result.Text under default/table only; the
+// kind data. Rendered via Result.Text under default/table only; the
 // structured formats keep serving Result.Data.
 func renderKindCard(m Manifest, k SchemaKind) string {
 	var b strings.Builder
@@ -268,8 +268,8 @@ func kindNamespaceLine(k SchemaKind) string {
 	}
 }
 
-// verbLine renders one verb of the SE-5 table, worded exactly per spec:
-// `available (contract · stability)` | `refused - <note>` |
+// verbLine renders one verb of the kind card's verb table in one of these
+// forms: `available (contract · stability)` | `refused - <note>` |
 // `not available - <reason>` | `not available`. The degenerate shapes
 // (available without a binding, refused without a note) drop the empty
 // segment rather than rendering stray punctuation.
@@ -302,7 +302,7 @@ func verbLine(verb string, vs VerbState) string {
 
 // readOnlyLine renders the session's read-only banner for the TOC text
 // views - both of them, so tocView's unconditional readOnly fields mirror
-// text on the bare and filtered paths alike (schema disclosure spec).
+// text on the bare and filtered paths alike.
 func readOnlyLine(m Manifest) string {
 	if !m.ReadOnly {
 		return ""
@@ -329,7 +329,7 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 			indent = "  "
 		}
 		// Render the global generated vocabulary block at the first group that
-		// contains generated commands (SE-9: one collapsed line for all of them).
+		// contains generated commands (one collapsed line for all of them).
 		if pGenCount > 0 && !blockDone {
 			blockDone = true
 			fmt.Fprintf(&b, "\nget/patch/delete <kind> - %d generated commands across %d kinds\n",
@@ -368,7 +368,7 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 	return b.String()
 }
 
-// renderTOC builds the bare-`schema` table of contents (SE-9): a header of
+// renderTOC builds the bare-`schema` table of contents: a header of
 // CLI version plus derived counts, the manifest's ordered sections with one
 // line per non-generated command, the generated get/patch/delete commands
 // collapsed into ONE kind-vocabulary block at the position of the first
@@ -376,7 +376,7 @@ func renderTOCText(m Manifest, withManifestLine bool) string {
 // `-o json` pointer. Rendered via Result.Text under default/table only.
 func renderTOC(m Manifest) string { return renderTOCText(m, true) }
 
-// renderFilteredTOC builds the filter/search result view (SE-10/SE-11):
+// renderFilteredTOC builds the filter/search result view:
 // a match-count header naming the active filters, every retained command as
 // its own line in pruned-section order (no vocabulary collapse - the matches
 // ARE the content), a search's matching fragment where the match is not
@@ -483,7 +483,7 @@ func countGenerated(cmds []SchemaCommand, generated map[string]bool) int {
 }
 
 // generatedCommandNames derives the generated command set from the kind
-// vocabulary (SE-17's rule: available and refused verbs are registered
+// vocabulary (available and refused verbs are registered
 // commands, absent verbs are not) - never from name-shape guessing.
 func generatedCommandNames(ks []SchemaKind) map[string]bool {
 	out := map[string]bool{}
@@ -508,7 +508,7 @@ func commandIndex(cmds []SchemaCommand) map[string]SchemaCommand {
 }
 
 // searchFragment shows WHERE a search term matched when the TOC line itself
-// does not (SE-11): "" for a name or usage match (already visible), the full
+// does not: "" for a name or usage match (already visible), the full
 // alias form for an alias match, or an ellipsed fragment of the desc around
 // the match. The term is matched case-insensitively, mirroring searchMatches.
 func searchFragment(c SchemaCommand, term string) string {

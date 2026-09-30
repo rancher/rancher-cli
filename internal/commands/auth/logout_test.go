@@ -200,7 +200,7 @@ func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
 	assert.Contains(t, res.Warnings[0], "group/world-readable")
 }
 
-// Round-3 repro: --all's per-server host-scoped delete (round 2) missed a
+// --all's per-server host-scoped delete would miss a
 // legacy bare entry (no Server field) and an entry cached against a server
 // no longer in config.yaml - neither is reachable by any per-server delete.
 // --all must catch both via the full-cache wipe.
@@ -289,11 +289,10 @@ func TestLogoutAllExecPolicyErasesEveryServer(t *testing.T) {
 	assert.Empty(t, cmdtest.HelperCreds(t, statePath), "--all erases every helper-held credential")
 }
 
-// TestLogoutAllDeletesOrphanedHelperCredential is the impl-review
-// finding-2 repro: a helper credential recorded for a server
-// name absent from config.yaml (left behind by a crash/failed write) is unreachable
-// from the per-server logout loop, so `logout --all` must delete it via the
-// orphaned-record path and report it.
+// TestLogoutAllDeletesOrphanedHelperCredential asserts that a helper credential
+// recorded for a server name absent from config.yaml (left behind by a
+// crash/failed write) is unreachable from the per-server logout loop, so
+// `logout --all` must delete it via the orphaned-record path and report it.
 func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	t.Setenv("PATH", cmdtest.BuildFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKEHELPER_MODE", "ok")
@@ -587,15 +586,14 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 }
 
 // TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential asserts a
-// safety property the server-registration restructure adds: registration
-// (config.yaml) commits BEFORE any authentication or credential write, in
-// its own lock cycle. A registration-time config-write failure must
-// therefore leave no helper credential behind at all - the interleaving
-// (helper store succeeds, then config write fails) that used to strand a
-// credential is now structurally impossible, because delegated login can
-// no longer reach the credential-write step without registration's own
-// cfg.Write() having already succeeded. TestLogoutAllDeletesOrphanedHelperCredential
-// covers `logout --all`'s orphan sweep directly, independent of login.
+// safety property: registration (config.yaml) commits BEFORE any authentication
+// or credential write, in its own lock cycle. A registration-time config-write
+// failure must therefore leave no helper credential behind at all - the
+// interleaving (helper store succeeds, then config write fails) that would
+// strand a credential is structurally impossible, because delegated login
+// cannot reach the credential-write step without registration's own cfg.Write()
+// having already succeeded. TestLogoutAllDeletesOrphanedHelperCredential covers
+// `logout --all`'s orphan sweep directly, independent of login.
 func TestDelegatedLoginConfigWriteFailureNeverStrandsHelperCredential(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("symlink-based config-write failure needs POSIX symlink semantics")
@@ -653,7 +651,7 @@ func TestLogoutAllNeverRepairsADanglingCurrentServer(t *testing.T) {
 	assert.Equal(t, "ghost", cfgAfter.CurrentServer, "the dangling pointer is left exactly as it was")
 }
 
-// TestDeleteFailureCancellationPassesThrough asserts the fourth-review P1: a
+// TestDeleteFailureCancellationPassesThrough asserts that a
 // delete interrupted by the caller's own cancellation must surface as
 // context.Canceled through logout's failure shaping - never rewrapped into
 // the generic "failed to log out" clierr, which severs the errors.Is chain
@@ -719,8 +717,8 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 	})
 }
 
-// TestDeleteFailurePreservesLockTimeout asserts the exercise-8/9-fixes review
-// finding: a LOCK_TIMEOUT surfacing from the token-cache or helper-records
+// TestDeleteFailurePreservesLockTimeout asserts that
+// a LOCK_TIMEOUT surfacing from the token-cache or helper-records
 // lock inside the delete must keep its code and retryability through logout's
 // failure shaping - flattening it to GENERIC hides exit 8 and the retry
 // signal from scripted callers.

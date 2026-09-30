@@ -90,13 +90,14 @@ func fetchVersionResponse(ctx context.Context, eff config.Effective) (rancherVer
 }
 
 // RancherVersion reads the server's ldflags-stamped version from the
-// unauthenticated GET /rancherversion endpoint for `auth status`'s PS-8 floor
-// check. Unlike the previous server-version Setting, this endpoint requires no
-// RBAC permissions and reflects the binary's actual stamped version rather than
-// an editable config object - it is equivalent to checking the running binary,
-// not a user-editable value. Any error (connectivity, non-200 status,
-// unrecognized response body) is returned as-is; the caller folds it into
-// PS-8's warn-only "cannot determine" posture rather than failing the check.
+// unauthenticated GET /rancherversion endpoint for `auth status`'s
+// minimum-version check. Unlike the previous server-version Setting, this
+// endpoint requires no RBAC permissions and reflects the binary's actual
+// stamped version rather than an editable config object - it is equivalent to
+// checking the running binary, not a user-editable value. Any error
+// (connectivity, non-200 status, unrecognized response body) is returned as-is;
+// the caller folds it into the check's warn-only "cannot determine" posture
+// rather than failing the check.
 func RancherVersion(ctx context.Context, eff config.Effective) (string, error) {
 	r, err := fetchVersionResponse(ctx, eff)
 	if err != nil {

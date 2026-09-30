@@ -155,7 +155,7 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "the cluster client")
 	}
-	// Step 0 of the identity protocol, as in every access command: no
+	// The identity protocol's first check, as in every access command: no
 	// subject is named, but a caller without cluster access is refused here
 	// for the one reason every command gives, so a refused binding LIST
 	// below always means the list right is missing.

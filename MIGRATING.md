@@ -39,7 +39,7 @@ conformance test (`internal/cli/migrating_test.go` +
 | `namespaces ls` | → `rancher get namespaces` (`--project <p>` lists a project's project namespaces) |
 | `namespaces create` | → `rancher create namespace <name> [--project <p>]` |
 | `namespaces delete` (alias `rm`) | → `rancher delete namespace <name>` |
-| `namespaces move` | → `rancher project remove-namespace <ns> --project <old>` then `rancher project add-namespace <ns> --project <new>` - an explicit two-step, never an implicit move (spec PC-4) |
+| `namespaces move` | → `rancher project remove-namespace <ns> --project <old>` then `rancher project add-namespace <ns> --project <new>` - an explicit two-step, never an implicit move |
 | `nodes ls` | → `rancher get nodes` |
 | `nodes delete` (alias `rm`) | DROPPED - the `node` kind is `Deletable: false`; use `kubectl delete node` via `rancher kubeconfig --cluster <id>` + kubectl, or the Rancher UI |
 | `projects ls` | → `rancher get projects` |

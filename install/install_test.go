@@ -133,7 +133,7 @@ func TestVerifyAttestationWithoutGhIsFatal(t *testing.T) {
 	s := newStub(t)
 	writeRelease(s, "v1.2.3", false)
 	s.setLatest("v1.2.3")
-	// PATH without gh (toolPath from the Task 3 harness): the capability
+	// PATH without gh (built by toolPath): the capability
 	// probe fails deterministically regardless of the host.
 	_, errOut, code := runInstall(t, s, []string{"PATH=" + toolPath(t, baseTools...)}, "--verify-attestation")
 	require.NotEqual(t, 0, code)
@@ -384,9 +384,9 @@ func TestAdversarialBodyDoesNotConfuseAwkFallback(t *testing.T) {
 		"fake id 999999 must not appear - awk must have exited at the body: line")
 }
 
-// TestScopedTokenPublicRepoFallsBackToBrowserPath covers finding 2: a token is
-// present but the releases/tags metadata endpoint returns 403 (scoped PAT that
-// cannot read this repo). fetch_asset_ids must print a fallback note and leave
+// TestScopedTokenPublicRepoFallsBackToBrowserPath covers a present token whose
+// releases/tags metadata endpoint returns 403 (a scoped PAT that cannot read
+// this repo). fetch_asset_ids must print a fallback note and leave
 // CLI_ASSET_ID empty so download() uses the browser URL, which succeeds on a
 // public repo.
 func TestScopedTokenPublicRepoFallsBackToBrowserPath(t *testing.T) {
@@ -505,7 +505,7 @@ func TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage(t *testing.T) {
 		"error must not mis-diagnose the cause as a missing release asset")
 }
 
-// TestDryRunWithTokenShowsAPIAssetURLs covers F3: --dry-run with a token runs
+// TestDryRunWithTokenShowsAPIAssetURLs covers --dry-run with a token runs
 // fetch_asset_ids so the asset lines in the preview reflect the true download
 // source (API endpoint with numeric ids) rather than the browser URL.
 func TestDryRunWithTokenShowsAPIAssetURLs(t *testing.T) {

@@ -101,8 +101,8 @@ func TestDeletePlanCapturesResourceVersionAndExecUsesIt(t *testing.T) {
 		"the executor deletes with the captured RV precondition, for real")
 }
 
-// TestDeleteMultiWordKindUsesK8sKindCasing is the exercise bug 7 repro for
-// the delete path: the envelope kind must echo k.K8sKind's casing
+// TestDeleteMultiWordKindUsesK8sKindCasing asserts, for
+// the delete path, that the envelope kind echoes k.K8sKind's casing
 // ("StatefulSet"), not a naive first-rune capitalization ("Statefulset").
 func TestDeleteMultiWordKindUsesK8sKindCasing(t *testing.T) {
 	t.Parallel()
@@ -324,10 +324,10 @@ func TestDeleteExecPhaseNotFoundWithHintPassesThrough(t *testing.T) {
 	assert.Contains(t, ce.Hint, "auth list-tokens", "already-curated hint must pass through")
 }
 
-// TestDeleteCarriesRowCascadeWarning asserts the S-10 exercise fix, table-row
-// form: a kind whose row declares DeleteCascadeWarning gets that advisory in
-// its generic delete Effect (gitrepo is the first user), and rows without
-// one stay warning-free.
+// TestDeleteCarriesRowCascadeWarning asserts, in table-row form, that a kind
+// whose row declares DeleteCascadeWarning gets that advisory in its generic
+// delete Effect (gitrepo is the first user), and rows without one stay
+// warning-free.
 func TestDeleteCarriesRowCascadeWarning(t *testing.T) {
 	t.Parallel()
 	gitrepo := mustKind(t, "gitrepo")
@@ -349,7 +349,7 @@ func TestDeleteCarriesRowCascadeWarning(t *testing.T) {
 	assert.Empty(t, eff2.Warnings, "a row without DeleteCascadeWarning must not grow one")
 }
 
-// TestWaitStalledScopedToOptInKinds asserts the round-3 review fix: the
+// TestWaitStalledScopedToOptInKinds asserts that the
 // Stalled=True fast-fail fires only for rows with WaitFailsOnStalled
 // (fleet's kstatus kinds), never for kinds whose controllers may use
 // Stalled transiently.

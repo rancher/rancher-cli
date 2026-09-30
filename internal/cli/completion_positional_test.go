@@ -15,7 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
-// TestPositionalEnumCandidatesStatic asserts MC-14/MC-15: a positional site
+// TestPositionalEnumCandidatesStatic asserts that a positional site
 // whose ArgSpec carries an Enum is OWNED by the static layer - served
 // index-aware and partial-filtered, with an unmatched partial owned but
 // empty; an enum-less positional (the <name> site) and an out-of-range
@@ -120,7 +120,7 @@ func TestPositionalEnumOwnershipStopsLowerLayers(t *testing.T) {
 	assert.Equal(t, int32(1), sc.calls.Load())
 }
 
-// TestCompletionShellPositionalParity asserts MC-14's free rider: the
+// TestCompletionShellPositionalParity asserts that the
 // `completion <shell>` positional is served by the same static layer,
 // partial-filtered, through dispatchSite with the network gate OFF and
 // zero HTTP requests.

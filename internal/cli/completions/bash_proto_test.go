@@ -170,7 +170,7 @@ func TestBashProtoV2RequestShape(t *testing.T) {
 			},
 		},
 		{
-			// equals-form regression (AC-21a): bash's default word breaks split
+			// equals-form regression: bash's default word breaks split
 			// --by=n into three tokens (--by, =, n) with COMP_CWORD pointing at n.
 			// _get_comp_words_by_ref -n "=:" rejoins them; the request must carry
 			// --rancher-completion-cur=--by=n, not --rancher-completion-cur=n.

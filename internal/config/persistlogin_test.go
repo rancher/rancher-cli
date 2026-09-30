@@ -383,7 +383,7 @@ func TestPersistRollbackFailureReportsConfigRecovery(t *testing.T) {
 			assert.Equal(t, name, out.ConfigRecovery.Entry)
 			assert.Equal(t, "rancher config delete-server "+clierr.ShellQuote(name), out.ConfigRecovery.Command)
 			cfg, _ := Load(path)
-			assert.Equal(t, "token-new", cfg.Servers[name].TokenRef.Name, "the entry stays as written after step 3")
+			assert.Equal(t, "token-new", cfg.Servers[name].TokenRef.Name, "the entry stays as written after the failed rollback")
 			if existing == nil {
 				assert.Nil(t, out.ConfigRecovery.Prior)
 				return
@@ -628,7 +628,7 @@ func TestPersistSuccessStatesAreSuccessForEveryBackend(t *testing.T) {
 }
 
 // TestPersistRotatedLoginTrustFailureRestoresTheOldIdentity asserts the
-// compensation the design spells out for a rotated entry, driven through
+// compensation for a rotated entry, driven through
 // the login rather than by calling the two halves by hand: the trust write
 // fails after the commit, the account the rotation created is deleted, the
 // record goes back to the identity and fingerprint the entry had, and the

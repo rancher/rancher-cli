@@ -3,7 +3,7 @@ package kinds
 // MachineConfigFields is one machine-config kind's driver-field vocabulary -
 // the single compiled source shared by `create machine-config`
 // (validation) and the completion surface (--set key candidates), the
-// OutputFormats one-source pattern (MC-16).
+// OutputFormats one-source pattern.
 //
 // Source of truth - verify against https://github.com/rancher/rancher
 // when editing:
@@ -18,17 +18,17 @@ package kinds
 //     rancher/rancher), drivers/digitalocean/digitalocean.go GetCreateFlags.
 type MachineConfigFields struct {
 	// Curated driver fields carried by dedicated create machine-config
-	// flags (MC-5). Empty for the four kinds not yet curated.
+	// flags. Empty for the four kinds not yet curated.
 	Curated []string
 	// Known non-credential driver fields - the full field vocabulary a
 	// --set key may name. Superset of Curated; empty for uncurated kinds.
 	// The --set COMPLETION candidates are Known minus Curated minus
-	// Credential (MC-16): a curated field is set via its flag and MC-7
-	// rejects it through --set, so suggesting it would violate
+	// Credential: a curated field is set via its flag and
+	// --set rejects it, so suggesting it would violate
 	// suggestions-valid-verbatim.
 	Known []string
 	// Credential-carried fields - rejected by create machine-config with a
-	// cloud-credential hint (MC-8), never suggested. Stored in the
+	// cloud-credential hint, never suggested. Stored in the
 	// canonical confirmed casings (they feed completion and docs); the
 	// rejection folds case, so any casing of these names is refused.
 	Credential []string

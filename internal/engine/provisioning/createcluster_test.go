@@ -246,7 +246,7 @@ func TestCreateClusterCustomHasEmptyRKEConfigNoMachinePools(t *testing.T) {
 // TestCreateClusterNodeDriverBuildsFullPoolAndResolvesCredential asserts the
 // node-driver object shape (rancher cluster_types.go:11-105,121-169,176+):
 // a single machine pool with the resolved cloud-credential secret name and
-// the Task 3 K8sKind casing on machineConfigRef.
+// the K8sKind casing on machineConfigRef.
 func TestCreateClusterNodeDriverBuildsFullPoolAndResolvesCredential(t *testing.T) {
 	t.Parallel()
 	client := &ccRecClient{objects: map[string]*unstructured.Unstructured{
@@ -419,7 +419,7 @@ func TestCreateClusterNodeDriverMalformedMachineConfigIsValidation(t *testing.T)
 }
 
 // TestMachineConfigKindsTracksKindsTable proves machineConfigKinds() returns
-// exactly the five node-driver config kinds Task 3 specifies. The expected
+// exactly the five node-driver config kinds. The expected
 // set is spelled out here as literal kind keys - deliberately NOT
 // recomputed by filtering kinds.All() on kinds.MachineConfigGroup, which
 // would just be the production code's own selection restated: a partial
@@ -478,7 +478,7 @@ func TestMachineConfigFlagCarriesNoEnum(t *testing.T) {
 	}
 }
 
-// TestCreateClusterModeExclusivity covers every combination the brief names:
+// TestCreateClusterModeExclusivity covers every combination:
 // --import + --custom, and either of those with the node-driver flags.
 func TestCreateClusterModeExclusivity(t *testing.T) {
 	t.Parallel()
@@ -505,7 +505,7 @@ func TestCreateClusterModeExclusivity(t *testing.T) {
 }
 
 // TestCreateClusterVersionWarningPresentWhenNotDiscovered proves the
-// warn-only version check (spec D-7 / review R1-2): a --k8s-version absent
+// warn-only version check: a --k8s-version absent
 // from FetchVersions' merged list appends an Effect warning naming the
 // distro defaults, PRE-confirmation.
 func TestCreateClusterVersionWarningPresentWhenNotDiscovered(t *testing.T) {

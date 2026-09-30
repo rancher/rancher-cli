@@ -91,7 +91,7 @@ func (p *noticeCapturingPrompter) Notice(msg string) {
 }
 
 // TestLoginPlainUnknownAuthorityCardLabelsLeafOnlyServingCertificate asserts
-// that the interactive consent card, not just the tier-1 error text, gets
+// that the interactive consent card, not just the error text, gets
 // the leaf-only wording: the fixture here is a self-signed leaf with no
 // separate CA, so the card the operator actually consents to must label
 // the fingerprint a serving certificate, never a certificate authority.

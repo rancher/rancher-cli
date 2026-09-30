@@ -58,7 +58,7 @@ spec:
             # Rancher's real Setting carries its value TOP-LEVEL (a sibling
             # of spec/status, not nested under either) - without these two
             # properties, envtest's structural schema silently prunes any
-            # seeded top-level value/default (PS-8 e2e coverage needs both).
+            # seeded top-level value/default (the e2e tests need both).
             value:   {type: string}
             default: {type: string}
             spec:    {type: object, x-kubernetes-preserve-unknown-fields: true}

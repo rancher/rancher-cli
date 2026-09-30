@@ -39,7 +39,7 @@ func TestParseTTLRejections(t *testing.T) {
 		"12h1d",   // days segment not leading
 		"1d2d",    // second days segment
 		"1.5d",    // fractional days
-		"213504d", // the reviewer's overflow repro: wraps to ~25 minutes unbounded
+		"213504d", // overflows time.Duration: wraps to ~25 minutes if unbounded
 	} {
 		_, err := ParseTTL(in)
 		require.Error(t, err, in)
@@ -56,7 +56,7 @@ func TestParseTTLDaysOverflow(t *testing.T) {
 	t.Parallel()
 
 	_, err := ParseTTL("213504d")
-	require.Error(t, err, "the reviewer's repro must fail, not wrap to ~25 minutes")
+	require.Error(t, err, "an overflowing day count must fail, not wrap to ~25 minutes")
 
 	got, err := ParseTTL(fmt.Sprintf("%dd", maxDays))
 	require.NoError(t, err, "the exact bound must still be accepted")

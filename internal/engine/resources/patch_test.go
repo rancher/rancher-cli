@@ -118,8 +118,8 @@ func TestPatchPlanDiffsAndExecUsesRV(t *testing.T) {
 	assert.Equal(t, "7", client.updates[1].obj.GetResourceVersion(), "the update carries the fetched RV precondition")
 }
 
-// TestPatchMultiWordKindUsesK8sKindCasing is the exercise bug 7 repro for
-// the patch path: the envelope kind must echo k.K8sKind's casing
+// TestPatchMultiWordKindUsesK8sKindCasing asserts, for
+// the patch path, that the envelope kind echoes k.K8sKind's casing
 // ("StatefulSet"), not a naive first-rune capitalization ("Statefulset").
 func TestPatchMultiWordKindUsesK8sKindCasing(t *testing.T) {
 	t.Parallel()
@@ -152,7 +152,7 @@ func TestPatchSensitiveKindIsDestructive(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, eff.Destructive, "patching a sensitive kind must be destructive")
 
-	// Round-2: redaction is now gated on Sensitive (same flag as the --yes
+	// Redaction is gated on Sensitive (same flag as the --yes
 	// gate above), not the literal "secret" kind - but a Sensitive kind
 	// whose payload isn't under /data or /stringData must see no behavior
 	// change: the redaction condition fires, the path-shape check just never
@@ -365,8 +365,8 @@ func TestPatchNonNotFoundPassesThrough(t *testing.T) {
 	assert.Equal(t, "forbidden", ce.Message)
 }
 
-// TestPatchClusterResolvesDisplayName is the round-2 repro for finding 3:
-// patch must resolve a cluster's positional name the same way get does -
+// TestPatchClusterResolvesDisplayName asserts that
+// patch resolves a cluster's positional name the same way get does -
 // id hit, display hit, ambiguous, and miss - so the two commands agree on
 // what a name means for the managementcluster kind.
 func TestPatchClusterResolvesDisplayName(t *testing.T) {
@@ -422,7 +422,7 @@ func TestPatchClusterResolvesDisplayName(t *testing.T) {
 	})
 }
 
-// TestPatchEffectEnricherObservesObjectsAndWarns is Task 8's hook coverage:
+// TestPatchEffectEnricherObservesObjectsAndWarns covers the hook:
 // an enricher passed to NewPatch is invoked with the exact orig/patched
 // objects Plan computed, and a warning it appends survives into the
 // returned Effect. This is the seam the provisioningcluster quorum-preview
@@ -508,9 +508,8 @@ func TestPatchInvalidOpsRejected(t *testing.T) {
 
 // TestPatchExecPhaseNotFoundCurated asserts the post-confirmation TOCTOU path:
 // the object is deleted between the dry-run and the real update; the dynamic
-// client curates the NOT_FOUND (Fix 3 - client-level curation covers this,
-// dissolving the earlier patch.go exec-wrapper approach). The fake simulates
-// the pre-curated shape the real client now produces.
+// client curates the NOT_FOUND (client-level curation covers this). The fake
+// simulates the pre-curated shape the real client now produces.
 func TestPatchExecPhaseNotFoundCurated(t *testing.T) {
 	t.Parallel()
 	k := mustKind(t, "deployment")

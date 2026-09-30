@@ -68,7 +68,7 @@ func TestMachineConfigFieldsDigitaloceanVocabulary(t *testing.T) {
 
 // TestMachineConfigFieldsInvariants: Known contains every Curated key and
 // no Credential key - a curated flag always writes a known field, and the
-// completion set (Known - Curated - Credential, MC-16) can be computed by
+// completion set (Known - Curated - Credential) can be computed by
 // subtraction alone, so no candidate can be one validation rejects.
 func TestMachineConfigFieldsInvariants(t *testing.T) {
 	t.Parallel()

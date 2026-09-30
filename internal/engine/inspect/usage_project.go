@@ -115,7 +115,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		nsByProject[ns] = pid // empty string means unowned
 	}
 
-	// UU-3's membership rule holds under this grouping too: --namespace with
+	// The membership rule holds under this grouping too: --namespace with
 	// --project must name a member namespace.
 	if namespace != "" && filterID != "" && nsByProject[namespace] != filterID {
 		return runtime.Result{}, projects.NotMemberError(namespace, filterID,
@@ -181,7 +181,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		return runtime.Result{}, err
 	}
 	// names makes the table SCOPE column show project display names while
-	// JSON row keys stay project ids (UU-18/UU-25). "<none>" has no entry
+	// JSON row keys stay project ids. "<none>" has no entry
 	// and renders as-is.
 	return usageResult(byProject, rows, displayByID, sec), nil
 }

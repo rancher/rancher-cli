@@ -59,7 +59,7 @@ func TestHelperRecordsConcurrentAddsLoseNothing(t *testing.T) {
 }
 
 // Cross-PROCESS lock tests: goroutine tests cannot prove flock semantics.
-// The fake helper's lockhold mode (Task 7's main.go) acquires the flock at a
+// The fake helper's lockhold mode acquires the flock at a
 // caller-supplied path; the tests build it from helperRecordsLockName so the
 // lock and prints "locked" AFTER acquisition; waitForLocked (fixtures file)
 // blocks on that stdout line, so the parent can never race the child to the

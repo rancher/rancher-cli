@@ -174,7 +174,7 @@ func errBodyVault(t *testing.T, status int, errs ...string) *vaultHandler {
 	}))
 }
 
-// TestVaultErrorsSurfaceResponseBody asserts the live-exercise S-12 finding:
+// TestVaultErrorsSurfaceResponseBody asserts that
 // the helper must surface Vault's own error reason (e.g. "invalid token"),
 // not substitute one canned policy hint for every non-2xx. The policy hint
 // stays, but only on 403 and only as a parenthetical after the real cause.
@@ -223,8 +223,8 @@ func TestVaultErrorsSurfaceResponseBody(t *testing.T) {
 	})
 
 	t.Run("whitespace-only errors array falls back to the raw body", func(t *testing.T) {
-		// One, two, and three blank entries: 2+ is the round-5 repro, where
-		// joining blanks first fabricated a bare ";" reason that blocked
+		// One, two, and three blank entries: with two or more, joining
+		// the blanks first would fabricate a bare ";" reason that blocks
 		// the raw-body fallback.
 		for _, errs := range [][]string{{"   "}, {"", ""}, {"", "", ""}} {
 			h := errBodyVault(t, http.StatusForbidden, errs...)
@@ -259,7 +259,7 @@ func routeVault(t *testing.T, routes map[string]func(w http.ResponseWriter)) *va
 	}))
 }
 
-// TestVaultEraseOutcomeClassification asserts round-2 findings 3 and 4: the
+// TestVaultEraseOutcomeClassification asserts that the
 // erase's presence read shares Get's semantics (a 200 whose data is
 // null/empty reads as absent, exactly as a get would), and a denied read
 // under a delete-only policy yields an UNKNOWN outcome with a successful

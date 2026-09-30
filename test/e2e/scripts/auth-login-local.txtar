@@ -1,10 +1,10 @@
-# Local-provider login end to end, fed through a real pty (spec FA-4.1):
+# Local-provider login end to end, fed through a real pty:
 # basicAuth's username/password prompts gate on CanPrompt() = isTTY &&
 # !noInput (ui/prompter.go, adapter.go), so a plain stdin heredoc dead-ends
-# before reading anything - ttyin-spike.txtar (Task 1) proved a pty drives
-# these prompts. --cacert is mandatory: provider login builds its HTTP
+# before reading anything, whereas a pty drives these prompts. --cacert is
+# mandatory: provider login builds its HTTP
 # client from --cacert only (login_ext.go), and RANCHER_CLI_CACERT never reaches
-# it. FA-4 rule: assert data.* only, never warnings.* (the server-version
+# it. Assert data.* only, never warnings.* (the server-version
 # Setting is a shared singleton auth-min-version.txtar patches concurrently).
 [!unix] skip 'ttyin (real pty) is unix-only'
 

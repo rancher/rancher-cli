@@ -23,7 +23,7 @@ type patchCmd struct {
 
 // EffectEnricher lets a per-kind override append advisory content to a
 // patch's Effect after the server dry-run built it (e.g. the
-// provisioningcluster override's etcd-quorum preview, Task 8). It receives
+// provisioningcluster override's etcd-quorum preview). It receives
 // the original and patched objects Plan already computed and a pointer to
 // the Effect about to be returned; it never gates - Action/Destructive/
 // Stability remain the only gating fields - it only informs.

@@ -255,8 +255,8 @@ func TestGetTokenCacheKeyScopedByServer(t *testing.T) {
 	assert.Equal(t, "tok-r2", cred.Status.Token, "get-token must return the token scoped to the requested server")
 }
 
-// TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey is the third-re-review
-// repro: --server host (schemeless) must NOT serve a legacy host-only cache
+// TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey asserts that
+// --server host (schemeless) must NOT serve a legacy host-only cache
 // record whose scheme is unknowable. The fast path must apply the default-https
 // normalization and then skip the probe when the result still does not yield a
 // valid absolute canonical URL (or in this case: the normalized key is distinct
@@ -300,7 +300,7 @@ func TestGetTokenSchemelessFlagHitsCurrentHTTPSKey(t *testing.T) {
 	assert.Equal(t, "https-tok", cred.Status.Token, "schemeless --server must hit the current https:// cache record")
 }
 
-// TestGetTokenCreatesFromStoredLoginCredential is the exercise-bug-4 repro: on
+// TestGetTokenCreatesFromStoredLoginCredential asserts that on
 // a cache miss, get-token must create a cluster-scoped token from the stored
 // login credential for the matching configured server BEFORE ever touching
 // the interactive provider flow. authProviderHits stays at 0 to prove the
@@ -345,16 +345,16 @@ func TestGetTokenCreatesFromStoredLoginCredential(t *testing.T) {
 }
 
 // TestGetTokenFallsBackToInteractiveWhenCreateRejected covers the "create is
-// rejected" half of the fallback: a stored credential exists but the derived token create
-// call fails, so get-token must still fall through to the interactive flow
-// (observed here as an authproviders hit) rather than surfacing the derived token create
-// error directly.
-// TestGetTokenLegacyFallbackCachesWithBoundedTTL is the round-3 repro for
-// finding 5: a legacy (pre-ext.cattle.io) Rancher's stored-credential
-// fallback must still be cached - with a bounded, conservative TTL, since
-// the raw stored token carries no expiry of its own - rather than never
-// (a zero expiry trips round-2's own no-zero-expiry-cache gate, forcing a
-// full create-then-404 round trip on every single invocation).
+// rejected" half of the fallback: a stored credential exists but the derived
+// token create call fails, so get-token must still fall through to the
+// interactive flow (observed here as an authproviders hit) rather than
+// surfacing the derived token create error directly.
+// TestGetTokenLegacyFallbackCachesWithBoundedTTL asserts that a legacy
+// (pre-ext.cattle.io) Rancher's stored-credential fallback is still cached -
+// with a bounded, conservative TTL, since the raw stored token carries no
+// expiry of its own - rather than never (a zero expiry trips the
+// no-zero-expiry-cache gate, forcing a full create-then-404 round trip on every
+// single invocation).
 func TestGetTokenLegacyFallbackCachesWithBoundedTTL(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound) // no ext.cattle.io on this Rancher at all
@@ -502,8 +502,8 @@ func TestGetTokenFallsBackToInteractiveWithNoStoredCredential(t *testing.T) {
 	assert.Equal(t, int32(1), authProviderHits.Load(), "no stored credential must fall through to the interactive flow")
 }
 
-// TestGetTokenCachesCreatedExpiry is the round-2 repro for finding 1: the
-// stored-credential create's status.expiresAt must be propagated into the
+// TestGetTokenCachesCreatedExpiry asserts that the
+// stored-credential create's status.expiresAt is propagated into the
 // cached credential's real expiry, not silently dropped.
 func TestGetTokenCachesCreatedExpiry(t *testing.T) {
 	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
@@ -535,10 +535,10 @@ func TestGetTokenCachesCreatedExpiry(t *testing.T) {
 	assert.WithinDuration(t, time.Now().Add(time.Hour), gotExpiry, time.Minute)
 }
 
-// TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry is the round-2 repro for
-// finding 1: a derived token create response with no expiresAt must never be cached - a
-// zero expiry reads back as never-expiring (GetCachedCred only evicts a
-// past, non-zero expiry), so caching it would serve a stale token forever.
+// TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry asserts that a derived token
+// create response with no expiresAt is never cached - a zero expiry reads back
+// as never-expiring (GetCachedCred only evicts a past, non-zero expiry), so
+// caching it would serve a stale token forever.
 func TestGetTokenSkipsCacheWhenCreateCarriesNoExpiry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == ExtTokensPath && r.Method == http.MethodPost {
@@ -613,8 +613,8 @@ func TestZeroExpiryCachedWhenAllowed(t *testing.T) {
 	assert.True(t, exp.IsZero(), "cached expiry must be zero")
 }
 
-// TestGetTokenCreateScopesToCluster is the round-2 repro for finding 2:
-// --cluster must be threaded into the derived token create request as spec.clusterName, so
+// TestGetTokenCreateScopesToCluster asserts that --cluster is
+// threaded into the derived token create request as spec.clusterName, so
 // two different --cluster values produce two distinct scoped creates.
 func TestGetTokenCreateScopesToCluster(t *testing.T) {
 	var gotClusters []string
@@ -655,10 +655,10 @@ func TestGetTokenCreateScopesToCluster(t *testing.T) {
 	assert.ElementsMatch(t, []string{"c-a", "c-b"}, gotClusters)
 }
 
-// TestGetTokenClusterDisplayNameResolves is the round-3 repro for finding
-// 3: an unresolved display name passed to --cluster must resolve to the
-// cluster's id (via the cluster list, using the stored credential) before
-// creating - a raw, unresolved display name must never reach spec.clusterName.
+// TestGetTokenClusterDisplayNameResolves asserts that an unresolved display
+// name passed to --cluster must resolve to the cluster's id (via the cluster
+// list, using the stored credential) before creating - a raw, unresolved
+// display name must never reach spec.clusterName.
 func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	var gotCluster, gotAuth string
 	var listHits atomic.Int32
@@ -697,9 +697,9 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	assert.Equal(t, "Bearer stored-login-token", gotAuth, "cluster resolution uses the stored credential, not a fresh session")
 }
 
-// TestGetTokenClusterMissErrorsWithoutCreating is the round-3 repro for
-// finding 3's "unresolvable → propagate the resolution error" half: an
-// unresolvable --cluster must fail directly, never create an unscoped token.
+// TestGetTokenClusterMissErrorsWithoutCreating asserts the "unresolvable →
+// propagate the resolution error" half: an unresolvable --cluster must fail
+// directly, never create an unscoped token.
 func TestGetTokenClusterMissErrorsWithoutCreating(t *testing.T) {
 	var derivedCreateHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -733,7 +733,7 @@ func TestGetTokenClusterMissErrorsWithoutCreating(t *testing.T) {
 	assert.Equal(t, int32(0), derivedCreateHits.Load(), "an unresolvable cluster must never reach the derived token create call")
 }
 
-// TestGetTokenClusterIDDisplayCollisionIsAmbiguous is the round-4 repro:
+// TestGetTokenClusterIDDisplayCollisionIsAmbiguous asserts that
 // resolveClusterIDForCreate must not let an id-based match short-circuit ahead
 // of checking every cluster's spec.displayName too. A string that matches
 // one cluster's id AND a different cluster's display name is ambiguous -
@@ -785,10 +785,9 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	assert.Equal(t, int32(0), derivedCreateHits.Load(), "an ambiguous cluster must never reach the derived token create call")
 }
 
-// TestGetTokenRejectsLegacyPrefixName is the fix-3 failing test: the native
-// get-token command must reject --name values starting with "legacy:" (they
-// are reserved for the legacy token shim's cache slots). Without fix 3 this
-// test fails because no such validation exists.
+// TestGetTokenRejectsLegacyPrefixName asserts that the native
+// get-token command rejects --name values starting with "legacy:" (they
+// are reserved for the legacy token shim's cache slots).
 func TestGetTokenRejectsLegacyPrefixName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -832,7 +831,7 @@ func TestGetTokenRejectsLegacyPrefixNameBeforeCacheLookup(t *testing.T) {
 }
 
 // errCacheStore wraps a CredStore but returns a fixed error from GetCachedCred,
-// so fix-4's double-notice test can inject a repeatable store failure without
+// so the double-notice test can inject a repeatable store failure without
 // corrupting any other store method.
 type errCacheStore struct {
 	config.CredStore
@@ -847,9 +846,9 @@ func (s *errCacheStore) GetCachedCred(key string, _ *config.CacheAnchor) (string
 // with a store that errors on GetCachedCred produces the "cache read failed"
 // notice exactly once - even when the resolved cache key differs from the
 // fast-path probed key (which happens whenever the current context fills in a
-// non-empty cluster). The original fix-4 fixture had no current-context
-// cluster, so flagKey == cacheKey; the sub-test below exercises the masked
-// gap the re-review identified.
+// non-empty cluster). A fixture with no current-context
+// cluster makes flagKey == cacheKey; the sub-test below exercises the case
+// that fixture would mask.
 func TestCacheReadErrorNoticedOnce(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 404 everywhere: looks like legacy Rancher (no ext.cattle.io).
@@ -910,10 +909,10 @@ func TestStoredTokenForServerIdentifiedEntryWinsOutright(t *testing.T) {
 	assert.Equal(t, "tok-a", got.token)
 }
 
-// TestGetTokenSurfacesRealCreateFailureNotInteractive is the round-2 repro for
-// finding 6: a non-auth create failure (a 500 here, standing in for
-// network/TLS failures too) must surface as the real error, never papered
-// over as "interactive login required".
+// TestGetTokenSurfacesRealCreateFailureNotInteractive asserts that a non-auth
+// create failure (a 500 here, standing in for network/TLS failures too) must
+// surface as the real error, never papered over as "interactive login
+// required".
 func TestGetTokenSurfacesRealCreateFailureNotInteractive(t *testing.T) {
 	var authProviderHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -946,8 +945,8 @@ func TestGetTokenSurfacesRealCreateFailureNotInteractive(t *testing.T) {
 	assert.Equal(t, int32(0), authProviderHits.Load(), "a real create failure must not fall through to the interactive flow")
 }
 
-// TestGetTokenNoticesUnreadableConfigOnStoredCredPath is the round-2 repro
-// for finding 7: a config.yaml the stored-credential path can't parse must
+// TestGetTokenNoticesUnreadableConfigOnStoredCredPath asserts that
+// a config.yaml the stored-credential path can't parse must
 // be noticed, not silently folded into a generic "requires login" error.
 func TestGetTokenNoticesUnreadableConfigOnStoredCredPath(t *testing.T) {
 	dir := t.TempDir()
@@ -1006,8 +1005,8 @@ func TestStoredTokenForServerTieBreak(t *testing.T) {
 	})
 }
 
-// TestStoredTokenForServerExhaustsCandidatesWithNoToken is the round-3
-// repro for finding 1: the tie-break's chosen candidate having no stored
+// TestStoredTokenForServerExhaustsCandidatesWithNoToken asserts that the
+// tie-break's chosen candidate having no stored
 // token must not mask a sibling that does - every candidate is tried, not
 // just the top-ranked one.
 func TestStoredTokenForServerExhaustsCandidatesWithNoToken(t *testing.T) {
@@ -1154,8 +1153,8 @@ func TestStoredTokenForServerUnreachableStoreDecidesOnlyBelowTheWinner(t *testin
 	})
 }
 
-// TestStoredTokenForServerNamePicksNamedServer is the round-3 repro for
-// finding 2: an explicit --name must win over the lexicographic default,
+// TestStoredTokenForServerNamePicksNamedServer asserts that an
+// explicit --name must win over the lexicographic default,
 // even when neither is the current context's server.
 func TestStoredTokenForServerNamePicksNamedServer(t *testing.T) {
 	store := config.NewFileStore(t.TempDir())
@@ -1238,8 +1237,8 @@ func TestStoredTokenForServerShimIgnoresTheCurrentServer(t *testing.T) {
 	assert.Equal(t, []string{"prod-a", "prod-b"}, candidateIDsToken(ce.Candidates), "the entries are named in name order")
 }
 
-// TestStoredTokenForServerMatchesEquivalentURLSpellings is the impl-review
-// finding-4 repro: candidate matching must use canonical server identity, so
+// TestStoredTokenForServerMatchesEquivalentURLSpellings asserts that
+// candidate matching uses canonical server identity, so
 // a configured "https://host" is found for a "HTTPS://HOST:443" query (case
 // and an explicit default port are irrelevant) rather than skipped.
 func TestStoredTokenForServerMatchesEquivalentURLSpellings(t *testing.T) {
@@ -1567,12 +1566,12 @@ func TestBasicAuthExtTokenResponse(t *testing.T) {
 
 	cred := res.Data.(*execCredential)
 	assert.Equal(t, "ext/token-e2e:sssss", cred.Status.Token,
-		"ext bearer must reach the exec credential with its prefix intact (EXT-3)")
+		"ext bearer must reach the exec credential with its prefix intact")
 }
 
 func TestGetTokenCacheHitExtToken(t *testing.T) {
 	// An ext-issued bearer ("ext/<name>:<value>") must round-trip the exec-cred
-	// cache byte-for-byte - the ext/ prefix is opaque data (EXT-3).
+	// cache byte-for-byte - the ext/ prefix is opaque data.
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	require.NoError(t, seedCache(t, dir, store, config.CacheKey("prod", "https://r.ex", "c-1"), "ext/token-abc:secretxyz", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
@@ -1774,7 +1773,7 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 	assert.Equal(t, int32(0), rancherHits.Load())
 }
 
-// DR-009 repro: the loopback callback used to reflect error/error_description
+// The loopback callback must not reflect error/error_description
 // query params into its HTML response unescaped. A malicious redirect to the
 // callback URL (or a compromised IdP) must not get its markup executed.
 func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
@@ -1815,7 +1814,7 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 	assert.Contains(t, string(body), "&lt;script&gt;")
 }
 
-// DR-009 repro: an unsolicited request with the wrong (or no) state must not
+// An unsolicited request with the wrong (or no) state must not
 // consume the callback's one-shot handler - otherwise the real IdP redirect
 // that arrives afterward gets no response at all.
 func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
@@ -1879,10 +1878,10 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 		"a forged-only callback must not hang silently - the user must see why the wait continues")
 }
 
-// DR-010 repro: samlAuth's poll select had no ctx.Done() case, unlike the
-// OAuth authcode flow's equivalent select - SIGTERM/caller cancellation was
-// only honored on the next poll tick instead of promptly. Shrinking the poll
-// interval and cancelling well before the first tick proves the fix: without
+// samlAuth's poll select needs a ctx.Done() case, like the OAuth
+// authcode flow's equivalent select, so SIGTERM/caller cancellation is
+// honored promptly rather than on the next poll tick. Shrinking the poll
+// interval and cancelling well before the first tick shows it: without
 // the ctx.Done() case, samlAuth would not return until that first tick fired.
 func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 	origTimeout, origPoll := samlAuthTimeout, samlPollInterval
@@ -2177,12 +2176,12 @@ func TestGetTokenIPv6ColdPathNormalizesToHTTPS(t *testing.T) {
 		"normalised https://[::1]:port must reach the connection path, not error on a schemeless IPv6 URL")
 }
 
-// TestGetTokenFTPServerReadableConfigRejectsResolvedProbe is the fifth-re-review
-// repro for the post-resolution probe: a --server ftp://host flag bypasses the
-// fast-path validation (which already rejects unsupported schemes), so with a
-// readable config the resolved probe must catch it. The test uses a readable
-// (empty) config so resolveConn succeeds and the second validation point is
-// exercised, proving the seeded cache record is never served.
+// TestGetTokenFTPServerReadableConfigRejectsResolvedProbe asserts the
+// post-resolution probe: a --server ftp://host flag bypasses the fast-path
+// validation (which already rejects unsupported schemes), so with a readable
+// config the resolved probe must catch it. The test uses a readable (empty)
+// config so resolveConn succeeds and the second validation point is exercised,
+// proving the seeded cache record is never served.
 func TestGetTokenFTPServerReadableConfigRejectsResolvedProbe(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -2200,10 +2199,10 @@ func TestGetTokenFTPServerReadableConfigRejectsResolvedProbe(t *testing.T) {
 	assert.ErrorContains(t, err, "ftp://host", "error must name the invalid resolved server")
 }
 
-// TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe is the fifth-re-review
-// repro for the post-resolution probe: a malformed --server https://[::1 (unclosed
-// bracket) bypasses the fast-path (CanonicalServerURL errors → fast path skipped),
-// and with a readable config the resolved probe must catch it. The seeded cache
+// TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe asserts the
+// post-resolution probe: a malformed --server https://[::1 (unclosed bracket)
+// bypasses the fast-path (CanonicalServerURL errors → fast path skipped), and
+// with a readable config the resolved probe must catch it. The seeded cache
 // record under the lowercased-fallback identity must not be served.
 func TestGetTokenMalformedServerReadableConfigRejectsResolvedProbe(t *testing.T) {
 	t.Parallel()
@@ -2281,7 +2280,7 @@ func TestBasicAuthUsernameDefault(t *testing.T) {
 	assert.Equal(t, "test-tok:s", tok.Bearer)
 }
 
-// TestBasicAuthTrimsPaddedUsername is the round-7 finding-4 repro: a
+// TestBasicAuthTrimsPaddedUsername asserts that a
 // non-blank answer with incidental padding (a paste with a trailing newline,
 // an autocomplete artifact) must be trimmed before it is sent - previously
 // TrimSpace was used only for the emptiness check and the raw " bob " went
@@ -2310,8 +2309,8 @@ func TestBasicAuthTrimsPaddedUsername(t *testing.T) {
 	assert.Equal(t, "bob", gjson.GetBytes(gotBody, "username").String(), "padding must be trimmed from the sent username")
 }
 
-// TestCaForServerDeterministicWithMultipleMatches is the round-3 repro for
-// finding 2: when multiple cfg.Servers entries share a host, caForServer must
+// TestCaForServerDeterministicWithMultipleMatches asserts that
+// when multiple cfg.Servers entries share a host, caForServer must
 // return the same CA on every call regardless of Go's non-deterministic map
 // iteration order. Current-context server wins; otherwise the
 // lexicographically first entry name wins.
@@ -2469,8 +2468,8 @@ type errDeleteCacheStore struct {
 
 func (s *errDeleteCacheStore) DeleteCachedCred(string) error { return s.delErr }
 
-// TestDeleteTokenNamedPreservesLockTimeout asserts the exercise-8/9-fixes
-// review finding: a named delete whose store delete times out on the
+// TestDeleteTokenNamedPreservesLockTimeout asserts that
+// a named delete whose store delete times out on the
 // token-cache lock must surface LOCK_TIMEOUT (exit 8, retryable), matching
 // the --all path's pass-through, not the GENERIC catch-all.
 func TestDeleteTokenNamedPreservesLockTimeout(t *testing.T) {

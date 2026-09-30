@@ -60,7 +60,7 @@ func TestSetCompletionTimeout(t *testing.T) {
 	require.NoError(t, err)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
-	// Timeout stored as string duration (finding 6); EffectiveCompletionTimeout parses it.
+	// Timeout stored as string duration; EffectiveCompletionTimeout parses it.
 	assert.Equal(t, "750ms", cfg.Completion.Timeout)
 	assert.Equal(t, 750*time.Millisecond, config.EffectiveCompletionTimeout(cfg))
 	// --timeout alone carries no capability note, so Text must not be empty.

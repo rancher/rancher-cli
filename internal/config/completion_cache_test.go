@@ -39,7 +39,7 @@ func TestReadOnlyCachedCredNoticesLoosePermissions(t *testing.T) {
 
 // TestReadOnlyCachedCredsNeverWrites is a pure file-store test: ReadOnlyCachedCreds
 // reads token-cache.yaml directly and never touches the keyring.
-// keyring.MockInit() is NOT needed (round-3 finding 6).
+// keyring.MockInit() is NOT needed.
 // t.Parallel() is safe because no global state (keyring or env) is mutated.
 func TestReadOnlyCachedCredsNeverWrites(t *testing.T) {
 	t.Parallel()
@@ -72,7 +72,7 @@ func TestReadOnlyCachedCredsNeverWrites(t *testing.T) {
 }
 
 // TestReadOnlyCachedCredsForClusterWithTokens verifies that the token is
-// propagated in a single file read (finding 8: no second parse needed).
+// propagated in a single file read (no second parse needed).
 func TestReadOnlyCachedCredsForClusterWithTokens(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -88,7 +88,7 @@ func TestReadOnlyCachedCredsForClusterWithTokens(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	assert.Equal(t, "ctx", entries[0].Name)
-	assert.Equal(t, "my-token", entries[0].Token, "finding 8: token must be present without a second file read")
+	assert.Equal(t, "my-token", entries[0].Token, "token must be present without a second file read")
 }
 
 func TestReadOnlyCachedCredsForClusterWithTokensExpiredExcluded(t *testing.T) {

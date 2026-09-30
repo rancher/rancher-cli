@@ -99,7 +99,7 @@ func TestEmptyPreferredVersionIsNotCached(t *testing.T) {
 	assert.Equal(t, 2, disc.calls, "an empty preferred version must not poison the memo")
 }
 
-// TestAbsentExtGroupYieldsFriendlyHint asserts EXT-R-4: an older Rancher without
+// TestAbsentExtGroupYieldsFriendlyHint asserts that an older Rancher without
 // the aggregated ext.cattle.io APIService must surface a hint pointing at the
 // pre-existing local alternatives, not the generic "not served" message other
 // groups get. Non-ext absent groups carry their own actionable hint.
@@ -369,7 +369,7 @@ func TestDynamicRepoGetNotFoundMapsToClierr(t *testing.T) {
 }
 
 // TestClientGetCuratesKnownGVRNotFound asserts that Get curates a hint-less
-// NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
+// NOT_FOUND for a GVR that resolves in the kinds table.
 func TestClientGetCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
@@ -402,7 +402,7 @@ func TestClientGetHintedNotFoundPassesThrough(t *testing.T) {
 }
 
 // TestClientGetUnknownGVRNotFoundPassesThrough asserts that Get does not curate a
-// hint-less NOT_FOUND for a GVR absent from the kinds table (Fix 3: unknown GVR
+// hint-less NOT_FOUND for a GVR absent from the kinds table (an unknown GVR
 // passes through untouched by curateNotFound).
 func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -425,7 +425,7 @@ func TestClientGetUnknownGVRNotFoundPassesThrough(t *testing.T) {
 }
 
 // TestClientDeleteCuratesKnownGVRNotFound asserts that Delete curates a hint-less
-// NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
+// NOT_FOUND for a GVR that resolves in the kinds table.
 func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()
@@ -439,7 +439,7 @@ func TestClientDeleteCuratesKnownGVRNotFound(t *testing.T) {
 }
 
 // TestClientUpdateCuratesKnownGVRNotFound asserts that Update curates a hint-less
-// NOT_FOUND for a GVR that resolves in the kinds table (Fix 3).
+// NOT_FOUND for a GVR that resolves in the kinds table.
 func TestClientUpdateCuratesKnownGVRNotFound(t *testing.T) {
 	t.Parallel()
 	r, _ := newFakeClient()

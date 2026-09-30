@@ -1,7 +1,7 @@
 package safety
 
 // Action is the closed verb vocabulary for Effects. A strict superset of
-// rancher-ai-mcp's PlanResource.Type (create|update|delete) per AL-2.
+// rancher-ai-mcp's PlanResource.Type (create|update|delete).
 type Action string
 
 const (
@@ -88,7 +88,7 @@ type Effect struct {
 	// confirmation (version-not-in-discovery, etcd-quorum impact, deletion
 	// cascade). They never gate - gating is Action/Destructive/Stability's
 	// job - they inform the user/agent deciding whether to --apply.
-	// json:"-" DELIBERATELY (review R2-6): the Effect marshals inside the
+	// json:"-" DELIBERATELY: the Effect marshals inside the
 	// envelope's data field, and renderEffect copies these into the
 	// envelope's top-level warnings - serializing here too would emit
 	// every warning twice (data.warnings + warnings).

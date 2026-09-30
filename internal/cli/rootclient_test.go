@@ -71,7 +71,7 @@ func TestRootClientSendsBearerAndCA(t *testing.T) {
 }
 
 func TestRootClientRejectsUnknownCA(t *testing.T) {
-	// review R1-4: spec D-10 names bad-CA as a required transport case.
+	// An unknown CA is a required transport case: TLS verification must fail.
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
 	defer srv.Close()
 	// Seed config WITHOUT the server's cert as CA (self-signed unknown CA).
@@ -87,7 +87,7 @@ func TestRootClientRejectsUnknownCA(t *testing.T) {
 }
 
 func TestRootClientTimesOut(t *testing.T) {
-	// review R1-4: timeout case. Server hangs past the client deadline; the
+	// Timeout case. Server hangs past the client deadline; the
 	// test injects a short timeout via the factory seam rather than waiting
 	// out the 30s default - a package-var/option seam for the timeout
 	// (mirroring keyringProbeTimeout's test-shrinkable pattern in
@@ -98,7 +98,7 @@ func TestRootClientTimesOut(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { <-hang }))
 	defer func() { close(hang); srv.Close() }()
 	f := seedRootConfig(t, srv)
-	restore := setRootTimeoutForTest(t, 100*time.Millisecond) // the seam this task adds
+	restore := setRootTimeoutForTest(t, 100*time.Millisecond)
 	defer restore()
 	rc, err := f.Root()
 	require.NoError(t, err)

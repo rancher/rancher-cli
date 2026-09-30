@@ -216,8 +216,8 @@ func shimAnchor(dir string, given *config.CacheAnchor) *config.CacheAnchor {
 // when the probe fired a "cache read failed" notice (a real, non-ErrNoToken
 // error); the caller sets ProbedNoticed so runWithParams's resolved-key
 // re-check is quiet only when the fast path already emitted a notice - a
-// clean miss does NOT silence a distinct error on the resolved key
-// (notice-zero fix). warn is ReadOnlyCachedCred's standalone-function
+// clean miss does NOT silence a distinct error on the resolved key.
+// warn is ReadOnlyCachedCred's standalone-function
 // return notice (a loose-permission finding on token-cache.yaml) - already
 // folded into r.Warnings on a hit; the caller must still carry it forward
 // on a miss, since r is discarded there.
@@ -225,11 +225,9 @@ func shimAnchor(dir string, given *config.CacheAnchor) *config.CacheAnchor {
 // binding stamp it read before its config load, paired with that load's
 // snapshot. The shim adds no config load of its own, and a snapshot the
 // root hook could not produce - an unreadable or unparseable config.yaml -
-// makes every record a miss. That is a guarantee this command used to
-// give the other way round: the fast path existed so a broken config
-// could not block a warm hit. It cannot any more, because a record whose
-// binding cannot be checked is the previous user's credential after a
-// re-login, and serving it is the defect this whole change closes.
+// makes every record a miss: a record whose binding cannot be checked may be
+// the previous user's credential after a re-login, so a broken config blocks
+// the fast path.
 // A record this probe judges away is reported as a miss and left where
 // it is. Deleting it belongs to the store-backed readers, and the shim's
 // slow path reaches that prune only when the key it resolves differs

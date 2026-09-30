@@ -1,7 +1,7 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# get clusterregistrationtoken is a Steve /v1 read (Task 5, spec D-4): the
+# get clusterregistrationtoken is a Steve /v1 read: the
 # facade's fixture spans two namespaces, and every command/manifest field
 # carries the REAL spliced token - never the k8s proxy's own "{token}"
 # placeholder.

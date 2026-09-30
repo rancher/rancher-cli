@@ -33,8 +33,8 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 		keychain                        bool
 		readsNow, commitsTo, readsAfter string
 		changes, writesPin, notice      bool
-		// pinsFirst is the pin written in step 0 because the one on disk
-		// names a third store.
+		// pinsFirst is the pin written in the pre-commit step because the one
+		// on disk names a third store.
 		pinsFirst bool
 		wantProbe bool
 	}{
@@ -235,7 +235,7 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 			assert.Equal(t, tc.readsAfter, b.ReadsAfter, "what a reader resolves to afterwards")
 			assert.Equal(t, tc.changes, b.ChangesBackend(), "whether this entry's credential changes store")
 			assert.Equal(t, tc.writesPin, b.WritesPin(), "whether the change ends with a pin")
-			assert.Equal(t, tc.pinsFirst, b.PinsFirst, "whether the pin is written before the commit")
+			assert.Equal(t, tc.pinsFirst, b.PinsFirst, "whether the pin is written in the pre-commit step")
 			assert.Equal(t, tc.changes || tc.writesPin || tc.pinsFirst, b.ChangesStore())
 			if tc.notice {
 				assert.Contains(t, b.Notice, "plaintext")

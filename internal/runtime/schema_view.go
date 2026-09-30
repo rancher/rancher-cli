@@ -158,8 +158,8 @@ func newCardView(m Manifest, c SchemaCommand, kindHint string) cardView {
 
 // cardJSON is the typed marshal shape: embedding flattens the command's
 // fields to the top level while keeping deterministic field order for
-// BOTH encoders (an untyped map would be encoder-defined in YAML -
-// plan-review round 3, P3). readOnlyJSON is embedded (mirrors tocJSON and
+// BOTH encoders (an untyped map would be encoder-defined in YAML).
+// readOnlyJSON is embedded (mirrors tocJSON and
 // kindJSON); GlobalExitCodes is unconditional on the card.
 type cardJSON struct {
 	SchemaCommand

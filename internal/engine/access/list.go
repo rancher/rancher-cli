@@ -124,7 +124,7 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	}
 	ctx, cancel := fanOutContext(ctx, budget)
 	defer cancel()
-	// Step 0 before scope: the caller's own access to the cluster.
+	// Before scope: the caller's own access to the cluster.
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")

@@ -110,7 +110,7 @@ type Kind struct {
 	Scope            Scope
 	Deletable        bool // false = no generic delete generated (clusters, nodes)
 	// NoDeleteReason states, for a Deletable: false row, why generic delete
-	// is absent - surfaced by `rancher schema` (SE-7). "" renders a plain
+	// is absent - surfaced by `rancher schema`. "" renders a plain
 	// "not available". Meaningless on Deletable: true rows; leave empty.
 	NoDeleteReason string
 	Sensitive      bool // patch on this kind is Destructive (parity branch 2)
@@ -119,30 +119,28 @@ type Kind struct {
 	// for kinds where the expression is grounded in a real, well-known
 	// status.state/status.conditions shape; when in doubt, leave empty.
 	WaitDefault string
-	// WaitFailsOnStalled marks the kind's controller as kstatus-conformant
-	// and gates BOTH consequences: the Stalled=True fail-fast (abort the
-	// wait even when the awaited condition reads satisfied - Fleet sets
-	// Ready=True alongside Stalled=True on a failed GitRepo clone) AND the
-	// fresh-success advisory warning (freshSuccessWarning), AND the
-	// generation staleness gate (settled). Opt-in per row because not every
-	// controller treats Stalled as terminal; set it only where the kind's
-	// controller is known to use kstatus abort semantics.
-	// Six condition=Ready rows (provisioningcluster, capicluster,
-	// capimachine, capimachineset, capimachinedeployment, k3kcluster) are
-	// candidate beneficiaries of the fresh-success advisory but stay unset
-	// deliberately: their controllers are unvetted for kstatus semantics
-	// and no birth-window race has been observed on them; vetting is queued
-	// for a future live exercise. A future kind wanting only one of the
-	// gated behaviours would need a new axis.
+	// WaitFailsOnStalled marks the kind's controller as kstatus-conformant and
+	// gates BOTH consequences: the Stalled=True fail-fast (abort the wait even
+	// when the awaited condition reads satisfied - Fleet sets Ready=True
+	// alongside Stalled=True on a failed GitRepo clone) AND the fresh-success
+	// advisory warning (freshSuccessWarning), AND the generation staleness gate
+	// (settled). Opt-in per row because not every controller treats Stalled as
+	// terminal; set it only where the kind's controller is known to use kstatus
+	// abort semantics. Six condition=Ready rows (provisioningcluster,
+	// capicluster, capimachine, capimachineset, capimachinedeployment,
+	// k3kcluster) are candidate beneficiaries of the fresh-success advisory but
+	// stay unset deliberately: their controllers are unvetted for kstatus
+	// semantics and no birth-window race has been observed on them. A future
+	// kind wanting only one of the gated behaviours would need a new axis.
 	WaitFailsOnStalled bool
 	// DeleteCascadeWarning, when non-empty, is appended to the generic
 	// delete's Effect warnings: a plain statement of what the server removes
 	// beyond the named object. Advisory only, never a gate (Destructive
 	// already forces --yes). Bespoke delete overrides carry their own text.
 	DeleteCascadeWarning string
-	// Completable marks this kind as eligible for live name completion (AC-15).
+	// Completable marks this kind as eligible for live name completion.
 	// Deny-by-default: a new row gets no completion until this is explicitly set.
-	// Secrets and cloud-credentials are never set (AC-25).
+	// Secrets and cloud-credentials are never set.
 	Completable bool
 	Binding     safety.Binding
 	Columns     []Column // extra table columns beyond NAME
@@ -438,8 +436,7 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"},
 		Policy: NSPlain, K8sKind: "DaemonSet", Scope: Downstream, Deletable: true,
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		// Field names verified against the apps/v1 DaemonSetStatus schema, not
-		// the audit appendix (its daemonset capture carries no paths).
+		// Field names checked against the apps/v1 DaemonSetStatus schema:
 		// desiredNumberScheduled/currentNumberScheduled are non-omitempty;
 		// numberAvailable is omitempty, so Default:"0" carries its absence.
 		Columns: []Column{
@@ -729,11 +726,9 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "provisioning.cattle.io", Version: "v1", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Completable: true, Sensitive: true, WaitDefault: "condition=Ready",
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		// READY's wire type was contested (CRD printer column vs. the audit
-		// table); the CRD's additionalPrinterColumns declares
-		// status.ready's type as "string" (verified in the audit appendix),
-		// so a plain Path is correct - the typed leaf ladder renders a real
-		// bool leaf identically if the wire ever carries one.
+		// The CRD's additionalPrinterColumns declares status.ready's type as
+		// "string", so a plain Path is correct - the typed leaf ladder
+		// renders a real bool leaf identically if the wire ever carries one.
 		Columns: []Column{
 			{Header: "VERSION", Path: []string{"spec", "kubernetesVersion"}},
 			{Header: "CLUSTER-NAME", Path: []string{"status", "clusterName"}},
@@ -780,7 +775,7 @@ var table = []Kind{
 		// Empty GVR version: ext.cattle.io is resolved via discovery at call
 		// time; group absence means an older Rancher without the aggregated
 		// imperative API (both kinds shipped in v2.12; the CLI's own
-		// supported floor is now 2.14 - PS-8).
+		// supported floor is now 2.14).
 		Key: "token", Name: "token", Aliases: []string{"tokens"},
 		GVR:    schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "tokens"},
 		Policy: NSNone, K8sKind: "Token", Scope: Management, Deletable: true, Sensitive: true,
@@ -828,10 +823,10 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "Kubeconfig", Scope: Management, Deletable: true, Sensitive: true,
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns: []Column{
-			// TTL and TOKENS/CLUSTERS are omitted: the audit couldn't verify
-			// their exact wire paths against a live server - not a renderer
-			// limit. Add them once a verifying environment confirms the
-			// paths (TOKENS/CLUSTERS would be Count-expressible).
+			// TTL and TOKENS/CLUSTERS are omitted: their exact wire paths
+			// are not verified against a live server - not a renderer
+			// limit. Add them once a server confirms the paths
+			// (TOKENS/CLUSTERS would be Count-expressible).
 			{Header: "SUMMARY", Path: []string{"status", "summary"}},
 			// DESCRIPTION is wide-only: kubectl's own printer treats it (and
 			// USER/CLUSTERS) as wide-only material too.
@@ -846,7 +841,7 @@ var table = []Kind{
 		// rancher's own tests (status_test.go:70); the other four machine-config
 		// kinds below follow the same capitalization rule but are not individually
 		// literal-confirmed - verify against a real server before relying on the
-		// exact casing in a live/Windows acceptance pass.
+		// exact casing.
 		// Sensitive: false deliberately - these CONFIGS carry instance parameters
 		// (region, size, image) for the node driver; credentials live in the
 		// driver's cc-* Secret, not on this resource.
@@ -862,7 +857,7 @@ var table = []Kind{
 		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
-		// K8sKind "DigitaloceanConfig" TD-1-confirmed 2026-07-24 against
+		// K8sKind "DigitaloceanConfig" confirmed against
 		// rancher's convert.Capitalize(driverName+"Config") rule
 		// (dynamicschema.go addConfigSchema) during the create
 		// machine-config field-curation pass; field vocabulary lives in
@@ -916,7 +911,7 @@ var table = []Kind{
 		// Namespace = the cluster's management namespace; NSPlain gives the
 		// --namespace flag. Deletable: false - CRTs are consumed, not deleted, in
 		// the generic verb surface. This row carries identity only: its get is
-		// overridden to a Steve read and its patch is refused (Task 5).
+		// overridden to a Steve read and its patch is refused.
 		Key: "clusterregistrationtoken", Name: "clusterregistrationtoken", Aliases: []string{"clusterregistrationtokens", "crt"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterregistrationtokens"},
 		Policy: NSPlain, K8sKind: "ClusterRegistrationToken", Scope: Management, Deletable: false,
@@ -943,7 +938,7 @@ func Bindings() map[string]safety.Binding {
 	return out
 }
 
-// ProjectScopable reports whether --project applies to k (PC-3): a
+// ProjectScopable reports whether --project applies to k: a
 // Downstream NSPlain kind validates/filters by project membership, plus the
 // one carve-out - the namespace kind itself (NSNone/Downstream), which
 // converts an unnamed --project into a label-selector list rather than a

@@ -134,7 +134,7 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	heldRoles := map[string]bool{}
 	for i := range list.Items {
 		b := &list.Items[i]
-		// No aliasPrincipals: the spec's revoke contract is narrower -
+		// No aliasPrincipals: revoke matches more narrowly -
 		// a provisioned binding is revocable by the SAME principal
 		// string that granted it, plus resolved-userName matches.
 		if !bindingMatchesSubject(b, rs, sub, false) {

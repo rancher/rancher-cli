@@ -43,7 +43,7 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	}
 	if eff.Token == "" {
 		// eff.URL is resolved (a current server or RANCHER_CLI_URL exists) but
-		// no token. A concrete configured ServerName is the designed
+		// no token. A concrete configured ServerName is the normal
 		// post-add state under two-phase registration - added but never
 		// logged in, or logged out - so it is NOT_LOGGED_IN with a concrete
 		// login hint, and a message that names the directory's unfinished

@@ -99,10 +99,9 @@ func (e *RootStatusError) Error() string { return "http status " + strconv.Itoa(
 // ROOT (Steve /v1 collections, the channel-server release routes) - the
 // surfaces ClusterClient's per-cluster /k8s/clusters/<id> proxy cannot
 // reach. GET-only BY DESIGN: no write verb exists on this port, keeping
-// the tranche's zero-Norman / writes-through-CRDs posture structural
-// (spec D-10). Every call sends the session's credentials, including to
-// routes that happen to be unauthenticated server-side - one policy, no
-// anonymous special-casing (spec D-10).
+// the zero-Norman / writes-through-CRDs posture structural. Every call sends
+// the session's credentials, including to routes that happen to be
+// unauthenticated server-side - one policy, no anonymous special-casing.
 type RootClient interface {
 	// GetJSON GETs path (absolute, starting "/") against the server root
 	// and returns the response body. Non-2xx maps to a clierr code:

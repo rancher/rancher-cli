@@ -60,8 +60,8 @@ func (r refusingExecuteResolverRead) ResolveCapability(context.Context, Input) (
 }
 
 // refusingPlanResolverMutating fails the test if Plan is ever invoked,
-// proving the deferred capability stage runs before Plan - the mode-1
-// ordering invariant, same as refusingPlanMutating asserts for the static path.
+// proving the deferred capability stage runs before Plan - the same ordering
+// refusingPlanMutating asserts for the static path.
 type refusingPlanResolverMutating struct {
 	d        Descriptor
 	resolved CapabilityRequirement

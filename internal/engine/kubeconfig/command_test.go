@@ -228,8 +228,8 @@ func TestKubeconfigRequiresClusterFlag(t *testing.T) {
 	assert.Contains(t, ce.Message, "--cluster is required")
 }
 
-// Round-2 repro: RANCHER_CLI_URL overriding a stored context's server used to
-// keep pairing the NEW url with the STORED server's CA and entry name.
+// A RANCHER_CLI_URL override of a stored context's server must not pair the
+// NEW url with the STORED server's CA and entry name.
 // Overriding only RANCHER_CLI_URL against a stored context must fall back to
 // RANCHER_CLI_CACERT (or none) and a host-derived name - never a stored CA
 // against a URL it was never issued for.
@@ -269,11 +269,10 @@ func TestKubeconfigEnvURLMatchingStoredServerKeepsStoredCAAndName(t *testing.T) 
 	assert.Equal(t, []byte(prodCA), cluster.CertificateAuthorityData, "same URL is not a mismatch - the stored CA still applies")
 }
 
-// DR-007 repro: kubeconfig used to call cfg.CurrentServer() directly, so an
-// env-only session (RANCHER_CLI_URL/RANCHER_CLI_CACERT, no stored context) failed
-// with CONTEXT_NOT_SET even though every other command works from env alone.
-// It must now resolve via Effective like everything else, and synthesize an
-// entry name from the server host since no stored server name exists.
+// kubeconfig resolves via Effective like every other command, so an env-only
+// session (RANCHER_CLI_URL/RANCHER_CLI_CACERT, no stored context) works instead
+// of failing with CONTEXT_NOT_SET. It synthesizes an entry name from the
+// server host since no stored server name exists.
 func TestKubeconfigEnvOnlySession(t *testing.T) {
 	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
 	t.Setenv("RANCHER_CLI_URL", "https://env.example.com")
@@ -319,7 +318,7 @@ func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
 // A malformed server URL makes kube.BaseURL's url.Parse fail, falling back to
 // raw string trimming that preserves the original scheme case verbatim - the
 // warning must still fire (case-insensitive, not-https rather than a literal
-// "http://" match) instead of silently skipping it (CW-7 review finding 10).
+// "http://" match) instead of silently skipping it.
 func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

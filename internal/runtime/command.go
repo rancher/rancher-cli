@@ -140,7 +140,7 @@ type Descriptor struct {
 	Toolset     string      `json:"toolset,omitempty"`     // MCP toolset filter ("core" today)
 	Network     bool        `json:"network"`               // performs network I/O
 	Auth        bool        `json:"auth"`                  // requires credentials
-	// ProjectScope reports whether --project applies to this command (PC-3):
+	// ProjectScope reports whether --project applies to this command:
 	// true for generated per-kind commands whose kind is
 	// kinds.ProjectScopable; false (the zero value) for every fixed command.
 	ProjectScope bool `json:"projectScope,omitempty"`
@@ -208,10 +208,10 @@ type Input interface {
 	String(name string) string
 	Bool(name string) bool
 	// Strings returns every occurrence of a stringSlice flag, ordered, one
-	// entry per occurrence - never comma-split (MC-6a).
+	// entry per occurrence - never comma-split.
 	Strings(name string) []string
 	// IsSet reports whether the named flag was explicitly provided on the
-	// command line - the tri-state seam for boolean flags (MC-5a: an
+	// command line - the tri-state seam for boolean flags (an
 	// omitted bool is distinguishable from an explicit false).
 	IsSet(name string) bool
 	Args() []string
@@ -329,7 +329,7 @@ type MutatingCommand interface {
 }
 
 // ConfigView is a minimal read-only snapshot of the loaded config, passed
-// into CompleteArgs so completers never re-read the config file (AC-19).
+// into CompleteArgs so completers never re-read the config file.
 // internal/cli implements this over the single Before-loaded *config.Config.
 type ConfigView interface {
 	ServerNames() []string
@@ -340,7 +340,7 @@ type ConfigView interface {
 // config-local shell completion candidates (e.g. context names, server names,
 // fixed shell lists). Installed at adapter-wiring time; runs synchronously
 // inside a shell TAB keystroke. view is an immutable snapshot of the config
-// loaded by the root Before hook (one load total per TAB invocation, AC-19).
+// loaded by the root Before hook (one load total per TAB invocation).
 // CompleteArgs must never prompt, write, or touch the network.
 type ShellCompleter interface {
 	CompleteArgs(ctx context.Context, view ConfigView) []string

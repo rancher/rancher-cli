@@ -153,7 +153,7 @@ func fileIsTTY(w io.Writer) bool {
 
 // resolveReadOnly OR's the three read-only sources into one bool plus active
 // source names. It resets then conditionally re-sets the stored config so
-// completion always reflects this invocation's config state (AC-19: one load
+// completion always reflects this invocation's config state (one load
 // per TAB). Config load failure degrades gracefully: read-only state still
 // derives from env/flag sources; stored config is cleared rather than left
 // stale.
@@ -169,7 +169,7 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 		// about to hand a cached credential back.
 		anchor := config.NewCacheAnchor(dir)
 		if cfg, err := config.Load(config.FilePath(dir)); err == nil {
-			setStoredConfig(cfg, dir) // single load shared with completion (AC-19)
+			setStoredConfig(cfg, dir) // single load shared with completion
 			config.SetProcessCacheAnchor(anchor.WithConfig(cfg))
 			completionDebugf("config loaded: dir=%s currentServer=%q servers=%d", dir, cfg.CurrentServer, len(cfg.Servers))
 			if cfg.ReadOnly {
@@ -206,7 +206,7 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 		Flags:       flagsFor(d),
 		// Slice flags receive one entry per occurrence: urfave's default
 		// comma-splitting would tear a value like `--set tags=a,b` into two
-		// entries (MC-6a). Only slice/map flags read this; single-value
+		// entries. Only slice/map flags read this; single-value
 		// flags are untouched.
 		DisableSliceFlagSeparator: true,
 		OnUsageError:              onUsageError,
@@ -276,7 +276,7 @@ func commandIsPrime(cmd *ucli.Command) bool {
 }
 
 // installShellComplete installs the universal completion callback on cmd for
-// every adapted leaf (AC-17a). When the command also implements
+// every adapted leaf. When the command also implements
 // runtime.ShellCompleter, the config-local delegation layer is wired in;
 // when it implements completion.Completer, its live source is consulted
 // first for every live site.
@@ -300,8 +300,7 @@ func installShellComplete(rc runtime.Command, cmd *ucli.Command) {
 // is LAZY: policy-name validation happens here (fail fast on every
 // resolveDeps-backed command), but the auto probe / credstore-pin write /
 // config-dir creation defer to the first credential call - an invocation
-// that never touches credentials leaves no store-init side effects
-// (spec LS-1; Windows acceptance FAIL 2).
+// that never touches credentials leaves no store-init side effects.
 func resolveDeps(c *ucli.Command) (string, config.CredStore, *config.CacheAnchor, error) {
 	dir, err := config.ResolveDir(c.String("config"))
 	if err != nil {

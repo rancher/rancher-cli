@@ -95,7 +95,7 @@ func TestLegacyTokenShimBindingIsInternalDeprecated(t *testing.T) {
 	assert.Equal(t, "deprecated", stability)
 }
 
-// TestDeleteProvisioningClusterBindingTracksKindRow asserts Finding 5's fix:
+// TestDeleteProvisioningClusterBindingTracksKindRow asserts that
 // "delete provisioning-cluster" has no generic binding (kinds.Bindings()
 // skips it - the row is Deletable: false), so BuildRoot must compose an
 // EXTRA resolver entry for it derived from the provisioningcluster row's own
@@ -103,11 +103,9 @@ func TestLegacyTokenShimBindingIsInternalDeprecated(t *testing.T) {
 // literal, which has no machine-checked link back to the row and can
 // silently drift from a future edit to the row's Binding in kinds.go. This
 // test asserts the schema-reported contract/stability for the op equals
-// kinds.Lookup("provisioningcluster").Binding exactly; before the fix (a
-// hand-copied literal in provider.NewResolver), temporarily editing the
-// row's Binding in kinds.go to a different contract/stability made this test
-// fail while the hand-copied literal silently kept the stale value - the
-// exact drift this composition now closes.
+// kinds.Lookup("provisioningcluster").Binding exactly. A hand-copied literal
+// would silently keep a stale value after an edit to the row's Binding in
+// kinds.go; deriving it from the row closes that drift.
 func TestDeleteProvisioningClusterBindingTracksKindRow(t *testing.T) {
 	pcRow, ok := kinds.Lookup("provisioningcluster")
 	require.True(t, ok)
@@ -177,7 +175,7 @@ func TestSchemaContractEnumMatchesCommandContracts(t *testing.T) {
 }
 
 // TestSchemaDisclosureSizes asserts the point of progressive disclosure:
-// the bare TOC and a narrowed card stay small (spec acceptance: TOC
+// the bare TOC and a narrowed card stay small (TOC
 // < 20KB, card < 3KB). A regression here means a view regrew a
 // full-manifest section.
 func TestSchemaDisclosureSizes(t *testing.T) {
@@ -369,7 +367,7 @@ func TestPrimeMarkerConformance(t *testing.T) {
 	for _, c := range manifest.Commands {
 		primeByName[c.Name] = c.Prime
 	}
-	// The rule is restated here from the design on purpose rather than
+	// The rule is restated here on purpose rather than
 	// imported from runtime: a conformance test that asked the code under
 	// test what to expect would only check that the code agrees with itself.
 	groupAllPrime := func(g runtime.SchemaGroup) bool {
@@ -513,7 +511,7 @@ func TestNoLowercasePrimeMarkerLiteral(t *testing.T) {
 }
 
 // TestSchemaTOCGolden asserts the bare `schema -o json` TOC shape - the
-// progressive-disclosure contract (spec 2026-08-06): orientation payload,
+// progressive-disclosure contract: orientation payload,
 // not the manifest. Regenerate with -update; drift is a signal.
 func TestSchemaTOCGolden(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -558,8 +556,7 @@ func TestBuildRootWiresGeneratedCommands(t *testing.T) {
 // TestKindOverridesReplaceExactlyTheirVerb asserts the override mechanism: an
 // overridden verb+kind resolves to the override's command, every other verb
 // of that kind and every other kind stays generic, and no command name is
-// registered twice. With the empty kindOverrideTable this task ships, this
-// is a pure regression net for later tasks' overrides.
+// registered twice.
 func TestKindOverridesReplaceExactlyTheirVerb(t *testing.T) {
 	t.Parallel()
 	root, err := BuildRoot("v-test")
@@ -580,7 +577,7 @@ func TestKindOverridesReplaceExactlyTheirVerb(t *testing.T) {
 
 // markerCmd stands in for a real override: Describe().Name matches the
 // generic constructor's name (the override contract kinds.Bindings() depends
-// on - BINDING NOTE in the plan) while Usage carries a marker string so
+// on) while Usage carries a marker string so
 // tests can tell it apart from the generic command. It implements
 // ReadCommand (not just Command) because reg.Validate requires every
 // registered command to satisfy ReadCommand or MutatingCommand.
@@ -640,7 +637,7 @@ func TestKindOverrideSubstitutesExactlyItsVerb(t *testing.T) {
 	assert.Equal(t, genericBundleGet.Usage, bundleGet.Usage, "get bundle (an untouched kind) must be byte-identical to the generic")
 }
 
-// TestSchemaManifestExposesProjectScope asserts PS-6: a generated get command
+// TestSchemaManifestExposesProjectScope asserts that a generated get command
 // for a ProjectScopable kind (pod: NSPlain+Downstream) advertises
 // projectScope: true, while a fixed command (schema itself) does not.
 func TestSchemaManifestExposesProjectScope(t *testing.T) {
@@ -680,8 +677,8 @@ func TestBuildRootWiresAliases(t *testing.T) {
 	assert.Contains(t, project.Aliases, "projects")
 }
 
-// TestAdaptEntrySetsArgsUsageFromDescriptorArgs asserts PS-9's second adapter
-// site: adaptEntry (every generated get/patch/delete leaf) sets ArgsUsage
+// TestAdaptEntrySetsArgsUsageFromDescriptorArgs asserts that adaptEntry (every
+// generated get/patch/delete leaf) sets ArgsUsage
 // from the same Descriptor.Args the manifest publishes, exactly like Adapt.
 func TestAdaptEntrySetsArgsUsageFromDescriptorArgs(t *testing.T) {
 	t.Parallel()
@@ -724,16 +721,14 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 	assert.ErrorContains(t, werr, "token")
 }
 
-// TestBuildRootWiresProvisioningClusterDelete asserts the D-6/R1-1 gotcha for
-// real: provisioningcluster's row stays Deletable: false, so
-// kinds.Bindings() never emits "delete provisioning-cluster" - the ONLY
-// reason BuildRoot succeeds with the del override registered is the extra
-// resolver entry BuildRoot composes for that exact op string, derived from
-// the row's own Binding (see TestDeleteProvisioningClusterBindingTracksKindRow
-// for the derivation check). Before that entry existed in any form, this test
-// failed with wireEntry's "no resolver binding" error (verified during TDD
-// and again at self-review by temporarily removing the entry) - the
-// regression net this test now stands guard for.
+// TestBuildRootWiresProvisioningClusterDelete asserts, for real, that
+// provisioningcluster's row stays Deletable: false, so kinds.Bindings() never
+// emits "delete provisioning-cluster" - the ONLY reason BuildRoot succeeds with
+// the del override registered is the extra resolver entry BuildRoot composes
+// for that exact op string, derived from the row's own Binding (see
+// TestDeleteProvisioningClusterBindingTracksKindRow for the derivation check).
+// Without that entry, BuildRoot fails with wireEntry's "no resolver binding"
+// error; this test guards against that.
 func TestBuildRootWiresProvisioningClusterDelete(t *testing.T) {
 	// Not t.Parallel: schemaCommandNames calls t.Setenv, which panics when
 	// combined with t.Parallel (same constraint TestBuildRootWiresGeneratedCommands
@@ -766,8 +761,8 @@ func (m markerDelCmd) Plan(context.Context, runtime.Input) (safety.Effect, runti
 	return safety.Effect{}, nil, nil
 }
 
-// TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster asserts Finding
-// 5 (round 2)'s fix: BuildRoot's extra delete-binding resolver is derived by
+// TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster asserts that
+// BuildRoot's extra delete-binding resolver is derived by
 // looping kindOverrideTable for every del override on a Deletable: false
 // row, not by naming "provisioningcluster" and its op literally. "node"
 // (Deletable: false, no del override in production) stands in for a
@@ -809,23 +804,19 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 	require.NotNil(t, pcDelete, "delete provisioning-cluster must still be wired alongside the new override")
 }
 
-// TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision asserts Finding 3
-// (fix-round 3): the delOverrides loop's "if row.Deletable { continue }"
-// branch had no test ever exercising it - every del override in production,
+// TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision asserts the
+// delOverrides loop's "if row.Deletable { continue }" branch: composing an
+// extra "delete <name>" entry for a Deletable: true row would collide with
+// kinds.Bindings()'s own entry for that op. Every del override in production,
 // and TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster's own
-// "node" stand-in, sits on a Deletable: false row. The comment above the
-// loop claims composing an extra "delete <name>" entry for a Deletable: true
-// row would collide with kinds.Bindings()'s own entry for that op - this
-// test proves that claim rather than leaving it asserted-but-unverified.
-// "project" (Deletable: true, no override in production) stands in for a
-// hypothetical del override installed on an already-deletable kind:
-// installing one here and still getting a successful BuildRoot demonstrates
-// the branch genuinely prevents the ComposeResolvers duplicate-binding
-// error, not just "happens not to matter today" (verified during TDD by
-// temporarily removing the branch, which turned this test's BuildRoot call
-// into the "operation \"delete project\" resolved by both resolvers" error).
-// NOT t.Parallel - it mutates the package-level kindOverrideTable (same
-// constraint as the sibling tests in this file).
+// "node" stand-in, sits on a Deletable: false row, so this test covers the
+// other case. "project" (Deletable: true, no override in production) stands in
+// for a hypothetical del override installed on an already-deletable kind:
+// installing one here and still getting a successful BuildRoot demonstrates the
+// branch prevents the ComposeResolvers duplicate-binding error; without the
+// branch, BuildRoot fails with the "operation \"delete project\" resolved by
+// both resolvers" error. NOT t.Parallel - it mutates the package-level
+// kindOverrideTable (same constraint as the sibling tests in this file).
 func TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision(t *testing.T) {
 	orig := kindOverrideTable
 	projectKind, ok := kinds.Lookup("project")
@@ -896,10 +887,9 @@ func TestSchemaCommandEndToEnd(t *testing.T) {
 	assert.NotEmpty(t, gf, "schema --all must carry a non-empty globalFlags array")
 }
 
-// TestSchemaReportsConfigSourcedReadOnly is the external-review regression:
-// the schema command sits on the Adapt path that never calls resolveDeps, so
-// a config-file-sourced readOnly must still reach the manifest - not just
-// env/flag sources.
+// TestSchemaReportsConfigSourcedReadOnly asserts that a config-file-sourced
+// readOnly reaches the manifest, not just env/flag sources: the schema
+// command sits on the Adapt path that never calls resolveDeps.
 func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -922,7 +912,7 @@ func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
 	assert.Contains(t, env.Data.ReadOnlySources, "config readOnly")
 }
 
-// DR-006 repro: an unknown top-level command or an unknown kind under a group
+// An unknown top-level command or an unknown kind under a group
 // must surface the standard VALIDATION envelope at exit 2, not urfave's own
 // unhinted "No help topic" text at exit 3 (indistinguishable from the AUTH
 // exit code).
@@ -1086,8 +1076,8 @@ func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
 	assert.Equal(t, "Error", env["kind"])
 }
 
-// exercise bug 2 repro: unknown command "version" is the friction item - the
-// hint must point at --version, not the generic `rancher schema` hint.
+// An unknown command "version" is a common mistake: the hint must point at
+// --version, not the generic `rancher schema` hint.
 func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	orig := rawArgv
 	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
@@ -1167,9 +1157,8 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	assert.NotContains(t, env3.Data.Error.Message, "provisioning-cluster")
 }
 
-// exercise bug 2 repro: an unknown flag on a real command must surface the
-// standard VALIDATION envelope at exit 2, not urfave's own unhinted
-// "Incorrect Usage" text.
+// An unknown flag on a real command must surface the standard VALIDATION
+// envelope at exit 2, not urfave's own unhinted "Incorrect Usage" text.
 func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 	orig := rawArgv
 	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
@@ -1337,7 +1326,7 @@ func TestAllNamespacesHintTargeted(t *testing.T) {
 	})
 }
 
-// TestAllNamespacesHintsBothShareOpeningClause asserts F5: both rendered
+// TestAllNamespacesHintsBothShareOpeningClause asserts that both rendered
 // wordings of the -A/--all-namespaces message detail open with
 // noAllNamespacesFlag. Calling allNamespacesEntry.detail directly for a
 // get-context command and a non-get-context command verifies the shared
@@ -1391,13 +1380,13 @@ func TestExplicitConfigDirKeepsStderrPureJSON(t *testing.T) {
 	assert.Equal(t, "NOT_LOGGED_IN", errObj["code"])
 }
 
-// TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback asserts the SC-1 hard
-// requirement: resolveReadOnly already degrades to not-read-only on a config
-// load error (adapter.go:129-143) rather than failing the command, on BOTH a
-// before-only path (schema, Adapt-wired, no resolveDeps) and the completion
-// callback (Before runs, then completion returns before Action). This must
-// hold with no code change to resolveReadOnly/resolveDeps - the test only
-// asserts existing behavior against regression.
+// TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback asserts the hard
+// requirement that resolveReadOnly already degrades to not-read-only on a
+// config load error (adapter.go:129-143) rather than failing the command, on
+// BOTH a before-only path (schema, Adapt-wired, no resolveDeps) and the
+// completion callback (Before runs, then completion returns before Action).
+// This must hold with no code change to resolveReadOnly/resolveDeps - the test
+// only asserts existing behavior against regression.
 func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -1460,7 +1449,7 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 // the same envelope-everywhere contract every other unmatched command name
 // gets (see TestUnknownCommandIsValidationNotExitThree), not urfave's own
 // unhinted "No help topic" text and not a custom help Action (the command is
-// machinery, not surface, per STOP adjudication 2026-07-12).
+// internal machinery, not part of the command surface).
 func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 	orig := rawArgv
 	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion

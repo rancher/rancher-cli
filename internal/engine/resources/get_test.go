@@ -310,8 +310,8 @@ func TestGetClusterNamedMiss(t *testing.T) {
 	assert.Empty(t, client.getName, "Get must not be called on a failed resolution")
 }
 
-// TestResultKindUsesK8sKindCasing is the exercise bug 7 repro: envelope
-// kinds must echo the manifest's Kubernetes casing (k.K8sKind), not
+// TestResultKindUsesK8sKindCasing asserts that envelope
+// kinds echo the manifest's Kubernetes casing (k.K8sKind), not
 // a naive first-rune capitalization, which would mangle
 // multi-word kinds like "roletemplate" -> "Roletemplate" instead of
 // "RoleTemplate".
@@ -388,7 +388,7 @@ func TestGetManagementKindIgnoresClusterFlagRouting(t *testing.T) {
 	assert.Equal(t, []string{engine.LocalCluster}, fac.clusterCalls, "management kind served by the local proxy")
 	assert.Equal(t, []string{"c-abc"}, client.listNS, "--cluster becomes the resolved namespace")
 
-	// F3: get by name with an empty --cluster must NOT silently target "local".
+	// Get by name with an empty --cluster must NOT silently target "local".
 	byName := NewGet(k, &recFactory{client: &memClient{items: []unstructured.Unstructured{projectObj("p-1", "web", "c-abc")}}})
 	rc := byName.(runtime.ReadCommand)
 	_, err := rc.Execute(t.Context(), input{args: []string{"web"}}, nil)
@@ -441,7 +441,7 @@ func TestGetWaitNotFoundCurated(t *testing.T) {
 	assert.Equal(t, "list with: rancher get clusters", ce.Hint)
 }
 
-// TestGetNamedNotFoundWithHintPassesThrough asserts Fix 1's has-hint guard: a
+// TestGetNamedNotFoundWithHintPassesThrough asserts the has-hint guard: a
 // NOT_FOUND that already carries a hint (e.g. resolveVersion's unsupported-
 // group diagnostic) must pass through verbatim - its message and hint must
 // not be overwritten by the generic "<kind> not found: <name>" curation.
@@ -571,7 +571,7 @@ func TestRoutePolicyMatrix(t *testing.T) {
 	}
 }
 
-// TestRouteIgnoresUntypedProjectOnNonScopableKinds asserts the PC-3 rule:
+// TestRouteIgnoresUntypedProjectOnNonScopableKinds asserts that
 // when no --project flag is typed, non-scopable kinds must not produce a
 // "--project does not apply" rejection. The typed-flag rejections stay
 // asserted in TestRoutePolicyMatrix above.
@@ -755,7 +755,7 @@ func decodeEnvelopeDyn(t *testing.T, b []byte, format string) map[string]any {
 // TestGetOutputOmitsManagedFields drives named-get and list-get through the
 // full runtime.Run → output.Render pipeline with a fixture that carries
 // managedFields, and asserts the field is absent from both json and yaml
-// output while neighboring metadata survives (MF-3, MF-7a).
+// output while neighboring metadata survives.
 func TestGetOutputOmitsManagedFields(t *testing.T) {
 	t.Parallel()
 	obj := &unstructured.Unstructured{Object: map[string]any{
@@ -784,7 +784,7 @@ func TestGetOutputOmitsManagedFields(t *testing.T) {
 			meta := doc["data"].(map[string]any)["metadata"].(map[string]any)
 			assert.NotContains(t, meta, "managedFields")
 			assert.Equal(t, "mf-cm", meta["name"])
-			assert.Equal(t, "cm-uid-1", meta["uid"], "neighboring metadata survives (MF-7a)")
+			assert.Equal(t, "cm-uid-1", meta["uid"], "neighboring metadata survives")
 			ownerRefs := meta["ownerReferences"].([]any)
 			require.Len(t, ownerRefs, 1)
 			assert.Equal(t, "own-1", ownerRefs[0].(map[string]any)["uid"])
@@ -1121,7 +1121,7 @@ func TestGetUserNamedIncludeSystemRejected(t *testing.T) {
 
 // TestGetUserNamedIncludeSystemFalseRejected asserts the IsSet seam: an
 // explicit --include-system=false on a named get is still a typed no-op and
-// must be rejected the same as --include-system=true (MC-5a tri-state).
+// must be rejected the same as --include-system=true (tri-state).
 func TestGetUserNamedIncludeSystemFalseRejected(t *testing.T) {
 	t.Parallel()
 	cmd, ok := NewGet(mustKind(t, "user"), &recFactory{client: &memClient{}}).(runtime.ReadCommand)

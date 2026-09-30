@@ -146,7 +146,7 @@ func groupHeldRows(items []unstructured.Unstructured, userID string, principalID
 //
 // Row principal for a direct row is the populated, OWNED userPrincipalName -
 // never an unrelated value a malformed binding happens to carry - else
-// the ruled fallback (local:// principal, then first principalIds element,
+// the fallback (local:// principal, then first principalIds element,
 // then the user id); never the bare user id when a principal exists. Row
 // principal for a group row is the matched groupPrincipalName as-is.
 // DisplayName is enrichment from the caller's displayNames map (the
@@ -187,10 +187,10 @@ func heldRow(b *unstructured.Unstructured, ownIdentity map[string]bool, userID s
 	}
 }
 
-// sortMemberRows applies the ruled (principal, role, binding) order -
+// sortMemberRows applies the (principal, role, binding) order -
 // binding distinguishes rows sharing a principal and role, keeping
-// duplicate out-of-band bindings deterministic. A local copy: ResolveMembers
-// owns the identical comparator over its own rows and stays untouched.
+// duplicate out-of-band bindings deterministic. A local copy of the
+// comparator ResolveMembers applies to its own rows.
 func sortMemberRows(rows []MemberRow) {
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].Principal != rows[j].Principal {

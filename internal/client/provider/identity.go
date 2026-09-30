@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Identity is `auth status`'s PS-2 identity probe. It POSTs an empty SelfUser
+// Identity is `auth status`'s identity probe. It POSTs an empty SelfUser
 // to ext.cattle.io/v1 selfusers and returns status.userID. The store is
 // create-only (rancher: pkg/ext/stores/selfuser/store.go, no Getter/Lister) -
 // the server fills status.userID from the request's bearer identity, so

@@ -34,7 +34,7 @@ func (setCompletionCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			// Type "string" + Enum because runtime.Input has no presence method:
-			// a bool flag cannot distinguish "omitted" from "false" (finding 5).
+			// a bool flag cannot distinguish "omitted" from "false".
 			{Name: "network", Type: "string", Enum: []string{"true", "false"}, Desc: "enable live resource-name completion (true|false)"},
 			{Name: "timeout", Type: "string", Desc: "per-TAB HTTP `budget` (e.g. 500ms, 1s; max 2s)"},
 		},
@@ -123,7 +123,7 @@ func (c setCompletionCmd) Execute(cmdCtx context.Context, in runtime.Input, _ ru
 }
 
 // completionCapabilityNote returns the credential-store-aware note for
-// --network=true (AC-3). Classification uses ONLY env token presence,
+// --network=true. Classification uses ONLY env token presence,
 // the declared credential-store policy, a read-only ReadPin and, with no
 // pin, where the entries' stored credentials are; it never probes the
 // keyring and never writes a pin.

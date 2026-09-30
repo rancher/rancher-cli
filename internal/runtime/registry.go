@@ -163,9 +163,8 @@ type SchemaCommand struct {
 	// time). Never separately authored - the source of
 	// truth is the requirement itself.
 	Prime bool `json:"prime,omitempty"`
-	// LearnMore rides beside Prime for the planning moment of the nudge
-	// contract: agents reading the manifest get the one stable,
-	// product-owned URL without parsing prose. Projected from
+	// LearnMore rides beside Prime: agents reading the manifest get the one
+	// stable, product-owned URL without parsing prose. Projected from
 	// clierr.LearnMorePrimeURL, present exactly when Prime is.
 	LearnMore string `json:"learnMore,omitempty"`
 	// Gates lists the flags this command unconditionally requires before it
@@ -176,7 +175,7 @@ type SchemaCommand struct {
 	// read-only and local commands.
 	Gates []string `json:"gates,omitempty"`
 	// Group is the root section this command renders under (informational -
-	// Manifest.Groups carries the ordered sections; SE-18). "" for the two
+	// Manifest.Groups carries the ordered sections). "" for the two
 	// positional-root sections (fixed top-level and ungrouped entries).
 	Group string `json:"group,omitempty"`
 	// OutputPolicy is a projection of Descriptor.OutputPolicy.AllowedFormats:
@@ -193,7 +192,7 @@ type SchemaCommand struct {
 	Shape string `json:"shape"`
 }
 
-// Verb states for SchemaKind.Verbs (SE-17): available and refused verbs are
+// Verb states for SchemaKind.Verbs: available and refused verbs are
 // both registered commands (a refusal declines at Plan); an absent verb has
 // no registered command.
 const (
@@ -212,7 +211,7 @@ type VerbState struct {
 	Note      string `json:"note,omitempty"`
 }
 
-// SchemaKind is one kind row in the manifest (SE-8): identity, routing, and
+// SchemaKind is one kind row in the manifest: identity, routing, and
 // the effective verb surface. Built by the surface layer (which sees both the
 // kind table and its overrides) and handed to the registry at BuildRoot -
 // runtime owns the DTO, not its construction.
@@ -279,7 +278,7 @@ func effectSchema() EffectSchema {
 type Manifest struct {
 	CLIVersion string `json:"cliVersion"`
 	// MinRancherVersion is the CLI's declared minimum supported server
-	// version (PS-8, warn-only floor); always present.
+	// version (a warn-only floor); always present.
 	MinRancherVersion string `json:"minRancherVersion"`
 	OutputAPIVersion  string `json:"outputApiVersion"`
 	// ReadOnly reports this invocation's resolved read-only state (config +
@@ -298,8 +297,8 @@ type Manifest struct {
 	EnvVars      []EnvVar          `json:"envVars"`
 	EffectSchema EffectSchema      `json:"effectSchema"`
 	Commands     []SchemaCommand   `json:"commands"`
-	// Kinds is the kind vocabulary with its effective verb surface (SE-8,
-	// SE-17); Groups are the root's ordered sections (SE-18). Both are set
+	// Kinds is the kind vocabulary with its effective verb surface;
+	// Groups are the root's ordered sections. Both are set
 	// by BuildRoot via SetKinds/SetGroups; registries built without them
 	// (tests) omit the fields.
 	Kinds  []SchemaKind  `json:"kinds,omitempty"`
@@ -310,7 +309,7 @@ type Manifest struct {
 	ShellCompletion []string `json:"shellCompletion"`
 }
 
-// SchemaGroup is one ordered root section (SE-18): sections appear in EXACT
+// SchemaGroup is one ordered root section: sections appear in EXACT
 // root-assembly order with commands in registration order. The two
 // positional-root sections - the leading fixed top-level commands and the
 // ungrouped-entry run - carry Name "" and are distinguished by position.
@@ -346,7 +345,7 @@ func (reg *Registry) Register(c Command) { reg.cmds = append(reg.cmds, c) }
 // from the kind table and its overrides, same direction as resolver bindings.
 func (reg *Registry) SetKinds(ks []SchemaKind) { reg.kinds = ks }
 
-// SetGroups installs the manifest's ordered root sections (SE-18), built by
+// SetGroups installs the manifest's ordered root sections, built by
 // the surface layer from the same registration data that assembles the root.
 func (reg *Registry) SetGroups(gs []SchemaGroup) { reg.groups = gs }
 

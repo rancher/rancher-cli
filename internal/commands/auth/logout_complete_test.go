@@ -12,7 +12,7 @@ import (
 
 func TestLogoutCompleteArgsReturnsServerNames(t *testing.T) {
 	// No keyring.MockInit: logoutCmd.CompleteArgs calls view.ServerNames() only,
-	// never touches keyring (round-2 finding 9: unnecessary keyring setup removed).
+	// never touches keyring.
 	t.Parallel()
 	dir, _ := seedLogout(t, "acme", "acme", "prod")
 	cmd := NewLogout(dir)

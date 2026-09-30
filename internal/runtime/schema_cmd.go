@@ -72,7 +72,7 @@ func (s *schemaCmd) Describe() Descriptor {
 }
 
 // CompleteArgs implements ShellCompleter: `schema <TAB>` offers every valid
-// schema selector, offline from the registry alone (SE-12) - full command
+// schema selector, offline from the registry alone - full command
 // names; command aliases in their full typed form ("get pods", "get po" -
 // never the bare leaf alias, which Execute's selection would reject; the verb
 // comes from the command name's first token); and kind names, keys, and
@@ -145,7 +145,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			StyledText: func(s style.Style) string { return styleSchemaTOC(text, m, allPrimeGroups(m), s) }}, nil
 	}
 	if f.active() {
-		// SE-20: filters and --search span the whole surface; a positional
+		// Filters and --search span the whole surface; a positional
 		// selector (or --kind, itself a selection modifier) conflicts.
 		if len(in.Args()) > 0 || asKind {
 			return Result{}, filterSelectorConflict(f, len(in.Args()) > 0)
@@ -166,7 +166,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			StyledText: func(s style.Style) string { return styleSchemaTOC(text, m, allPrimeGroups(m), s) }}, nil
 	}
 	want := strings.Join(in.Args(), " ")
-	// Resolution order (SE-5/SE-6): command match wins; a positional that
+	// Resolution order: command match wins; a positional that
 	// names no command is looked up against Manifest.Kinds; --kind skips the
 	// command pass and forces the kind interpretation.
 	if !asKind {
@@ -186,7 +186,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 			}
 		}
 	}
-	// Resolution order (SE-5/SE-6 revised 2026-08-20): groups sit in the
+	// Resolution order: groups sit in the
 	// COMMAND tier - command, then group, then kind - because --kind exists
 	// to reach a shadowed kind, while nothing could reach a group shadowed
 	// by a kind (the "project" collision). Named groups only: the unnamed
@@ -227,7 +227,7 @@ func (s *schemaCmd) Execute(ctx context.Context, in Input, _ Prompter) (Result, 
 	return Result{}, unknownSelection(m, want, asKind)
 }
 
-// schemaFilters holds the five SE-10/SE-11 filter/search flags. All active
+// schemaFilters holds the five filter/search flags. All active
 // filters must match for a command to be retained (they compose as AND).
 type schemaFilters struct {
 	verb        string
@@ -275,7 +275,7 @@ func (f schemaFilters) describe() []string {
 
 // keep reports whether c survives every active filter: --verb matches the
 // first name token, --destructive keeps true and dependsOnInput, --contract the
-// resolver contract, --mutating the commandType, --search SE-11's substring set.
+// resolver contract, --mutating the commandType, --search the substring set.
 func (f schemaFilters) keep(c SchemaCommand) bool {
 	if f.verb != "" {
 		verb, _, _ := strings.Cut(c.Name, " ")
@@ -298,7 +298,7 @@ func (f schemaFilters) keep(c SchemaCommand) bool {
 	return true
 }
 
-// searchMatches is SE-11's match set: a case-insensitive substring of the
+// searchMatches is the --search match set: a case-insensitive substring of the
 // command's name or full alias forms (matchesSubstring), usage, or desc.
 func searchMatches(c SchemaCommand, q string) bool {
 	if matchesSubstring(c, q) {
@@ -309,9 +309,9 @@ func searchMatches(c SchemaCommand, q string) bool {
 }
 
 // filterManifest applies f to m's commands and prunes Groups to the retained
-// set per SE-18. Kinds are untouched: command filters describe commands, not
+// set. Kinds are untouched: command filters describe commands, not
 // the kind vocabulary. Commands stays a non-nil slice so a zero-hit manifest
-// still serializes the valid empty `commands` array (SE-2).
+// still serializes the valid empty `commands` array.
 func filterManifest(m Manifest, f schemaFilters) Manifest {
 	keep := map[string]bool{}
 	cmds := make([]SchemaCommand, 0, len(m.Commands))
@@ -326,7 +326,7 @@ func filterManifest(m Manifest, f schemaFilters) Manifest {
 	return m
 }
 
-// filterSelectorConflict is SE-20's VALIDATION error: filters/--search span
+// filterSelectorConflict is the VALIDATION error: filters/--search span
 // the whole surface and cannot combine with a positional selector or with
 // --kind (which requires one).
 func filterSelectorConflict(f schemaFilters, hasSelector bool) error {
@@ -350,7 +350,7 @@ func allConflict(mode string) error {
 
 // lookupKind resolves a positional selector against the manifest's kind rows
 // by exact match on the canonical name, the key, or any alias - manifest data
-// only, mirroring kinds.Lookup without importing it (SE-5).
+// only, mirroring kinds.Lookup without importing it.
 func lookupKind(ks []SchemaKind, want string) (SchemaKind, bool) {
 	for _, k := range ks {
 		if want == k.Name || want == k.Key {
@@ -364,7 +364,7 @@ func lookupKind(ks []SchemaKind, want string) (SchemaKind, bool) {
 }
 
 // filterGroups prunes each ordered section to the retained command names and
-// drops empty sections, preserving relative order (SE-18's consistency rule:
+// drops empty sections, preserving relative order (the consistency rule:
 // the manifest never carries two contradictory command sets). Desc is
 // intentionally omitted from filtered sections - a filtered section covers
 // only the retained commands, not the full set the group desc was written for.
@@ -407,12 +407,12 @@ func lookupGroup(gs []SchemaGroup, want string) (SchemaGroup, bool) {
 	return SchemaGroup{}, false
 }
 
-// maxNearestMatches caps SE-4's candidate list: a short query can substring-
+// maxNearestMatches caps the candidate list: a short query can substring-
 // match a large slice of the generated commands, and past a screenful the
 // list stops helping.
 const maxNearestMatches = 10
 
-// commandListCmd and kindsArrayCmd are SE-4's two paste-valid pointers to the
+// commandListCmd and kindsArrayCmd are the two paste-valid pointers to the
 // full surface: -o name for the command list, -o json for the kinds array.
 // unknownSelection names both in its message when the miss is genuinely
 // ambiguous (no single command covers both), and carries the one that
@@ -420,7 +420,7 @@ const maxNearestMatches = 10
 const commandListCmd = "rancher schema -o name"
 const kindsArrayCmd = "rancher schema -o json"
 
-// unknownSelection builds SE-4's VALIDATION error for a positional that
+// unknownSelection builds the VALIDATION error for a positional that
 // matches nothing, listing nearest matches when any exist. Under --kind
 // (kindOnly) the selector could only ever be a kind, so the message and the
 // candidate set are restricted to kinds.
@@ -484,7 +484,7 @@ func commandNamed(m Manifest, name string) bool {
 	return false
 }
 
-// nearestSelectors finds SE-4's nearest matches: a case-insensitive substring
+// nearestSelectors finds the nearest matches: a case-insensitive substring
 // search of want over command names and full alias forms (the "<verb> <alias>"
 // shape matchesAlias resolves) plus kind names, keys, and aliases - every
 // candidate deduplicated to its selectable name (a command/kind collision

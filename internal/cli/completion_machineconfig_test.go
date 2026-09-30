@@ -26,7 +26,7 @@ func createMachineConfigDescriptor() runtime.Descriptor {
 	}
 }
 
-// TestMachineConfigSetKeyCandidates asserts MC-16: kind-scoped key
+// TestMachineConfigSetKeyCandidates asserts that kind-scoped key
 // candidates = Known - Credential - Curated, as key= continuation tokens,
 // in space and equals form, only for create machine-config's --set - and
 // the case OWNS that site for every kind (owned even when empty).
@@ -71,7 +71,7 @@ func TestMachineConfigSetKeyCandidates(t *testing.T) {
 		require.NotEmpty(t, f.Curated)
 		for _, cur := range f.Curated {
 			assert.NotContains(t, got, cur+"=",
-				"curated key %q must never be suggested - MC-7 rejects it via --set", cur)
+				"curated key %q must never be suggested - --set rejects it", cur)
 		}
 	})
 
@@ -141,8 +141,8 @@ func TestMachineConfigSetKeyCandidates(t *testing.T) {
 	})
 }
 
-// TestMachineConfigSetKeysServedWithoutNetwork asserts MC-16's static
-// position: compiled-in metadata, served through dispatchSite with the
+// TestMachineConfigSetKeysServedWithoutNetwork asserts that the key candidates
+// are static: compiled-in metadata, served through dispatchSite with the
 // network gate OFF and zero HTTP requests.
 func TestMachineConfigSetKeysServedWithoutNetwork(t *testing.T) {
 	// NOT parallel: mutates storedConfig.
@@ -194,15 +194,13 @@ func TestMachineConfigSetSiteOwnershipStopsLiveLayer(t *testing.T) {
 	assert.Zero(t, hits.Load(), "an owned static site must never reach the live layer")
 }
 
-// TestCreateMachineConfigSetFullCallback drives the real adaptEntry
-// callback through BuildRoot/root.Run under the v2 protocol (MC-16
-// "through the adapted command"): CaptureArgv, routing-prefix stripping,
-// ParseArgTail, the stringSlice flag adapter, and callback dispatch are
-// all on the path. The site is fully static, so the network gate stays
-// OFF throughout (the server URL is a closed port; any HTTP attempt
-// fails the run loudly via an empty result where a candidate is
-// asserted). NOT parallel: t.Setenv mutates env globals, setStoredConfig
-// mutates storedConfig.
+// TestCreateMachineConfigSetFullCallback drives the real adaptEntry callback
+// through BuildRoot/root.Run under the v2 protocol: CaptureArgv, routing-prefix
+// stripping, ParseArgTail, the stringSlice flag adapter, and callback dispatch
+// are all on the path. The site is fully static, so the network gate stays OFF
+// throughout (the server URL is a closed port; any HTTP attempt fails the run
+// loudly via an empty result where a candidate is asserted). NOT parallel:
+// t.Setenv mutates env globals, setStoredConfig mutates storedConfig.
 func TestCreateMachineConfigSetFullCallback(t *testing.T) {
 	setup := func(t *testing.T) {
 		t.Helper()

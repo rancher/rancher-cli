@@ -49,10 +49,9 @@ func TestPreflightRefusesCrossOriginRedirect(t *testing.T) {
 	assert.Zero(t, hits.Load())
 }
 
-// Round-2 repro: Preflight (behind `auth status`) used to rewrap every
-// RESTConfig error as AUTH, so `auth status` reported a different code/exit
-// than every other command for the identical missing-context/missing-token
-// state. RESTConfig's own typed errors must pass through unchanged.
+// Preflight (behind `auth status`) must pass RESTConfig's typed errors
+// through unchanged, so `auth status` reports the same code and exit as every
+// other command for the identical missing-context/missing-token state.
 func TestPreflightPassesThroughRESTConfigErrors(t *testing.T) {
 	t.Parallel()
 	t.Run("no context and no RANCHER_CLI_URL stays NOT_LOGGED_IN with no hint", func(t *testing.T) {

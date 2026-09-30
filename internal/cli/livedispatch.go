@@ -149,7 +149,7 @@ func claimLiveSource(req completion.Request, d runtime.Descriptor, lc completion
 		}
 	case req.Index == 0:
 		key, ok := positional[d.Name]
-		if !ok && isAC10Verb(d.Name) {
+		if !ok && isGeneratedVerb(d.Name) {
 			if k, found := kindForDescriptor(d); found {
 				key, ok = k.Key, true
 			}
@@ -259,7 +259,7 @@ func completionTimeout() time.Duration {
 }
 
 // newCompletionClient builds the one http.Client of a live dispatch,
-// straight from httpx and never through resolveDeps (AC-20, AC-22), bound
+// straight from httpx and never through resolveDeps, bound
 // by the TAB budget on its own so a request cannot outlive it whatever
 // context it is given.
 func newCompletionClient(caPEM string) (*http.Client, error) {

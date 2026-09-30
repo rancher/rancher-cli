@@ -422,7 +422,7 @@ func shimClusterAccessRefusal(w http.ResponseWriter, cluster, user string) {
 // envtest reverse proxy, with the resolved identity injected as impersonation
 // headers. It is a constructor, not a single shared instance, because auth
 // scenarios need their own facade's ValidBearer composed in without a union
-// of issued-token sets across scripts (FA-2/FA-3): deterministic
+// of issued-token sets across scripts: deterministic
 // per-instance token names/secrets mean two scripts can hold the literal
 // same bearer, and a shared validity set would keep one script's revoked
 // bearer alive via another script's set.
@@ -644,9 +644,9 @@ func buildAndStartEnv(build, startEnv func() error, stopEnv func()) error {
 	return nil
 }
 
-// DR-011 repro: a build failure racing a slower, successful envtest start
-// must still stop envtest - the goroutine leaked etcd/kube-apiserver
-// processes before this fix, since env.Stop() was only reachable via the
+// A build failure racing a slower, successful envtest start
+// must still stop envtest, or the goroutine leaks etcd/kube-apiserver
+// processes, since env.Stop() is only reachable via the
 // sequential path after m.Run(), never on this early-panic path.
 func TestBuildAndStartEnvStopsEnvOnBuildFailureAfterEnvStarted(t *testing.T) {
 	t.Parallel()
@@ -844,7 +844,7 @@ func TestScenarios(t *testing.T) {
 			// --cacert on login for that.
 			e.Setenv("RANCHER_CLI_CACERT", facadeCACertPEM)
 			e.Setenv("RANCHER_CLI_CONFIG_DIR", filepath.Join(e.WorkDir, "rancher-config"))
-			// E2E-A-003: credstore-pin.txtar clears this itself as its first
+			// credstore-pin.txtar clears this itself as its first
 			// line (`env RANCHER_CLI_CREDENTIAL_STORE=`) - testscript.Env carries
 			// no script name, so the exemption lives in the script.
 			e.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -975,7 +975,7 @@ xTcaSBkjD+QCIQCer+Qsv1FU0Wm7T/W+ZaAIOos95Ps3Kt62v9A1srSvgQ==
 // "cattle-system" is seeded here (not per-script) because the logs and
 // support-bundle target tables both hardcode it, and per-script creation
 // races across scripts sharing this one apiserver. "cattle-global-data" is
-// Task 7's cloud-credential namespace (seedCloudCredential's Secret lives
+// the cloud-credential namespace (seedCloudCredential's Secret lives
 // there) - seeded here for the same reason. "cattle-local-user-passwords" is
 // where `create user` writes the backing password Secret.
 func seedNamespaces() {
@@ -993,17 +993,16 @@ func seedNamespaces() {
 }
 
 // seedCloudCredential creates the fixture cloud-credential Secrets in
-// cattle-global-data - global and one-time (Task 7, review R2-2):
-// `create cluster`'s node-driver e2e scenarios resolve --cloud-credential
-// by display name, and a per-script Setup creating these same fixtures
-// would race AlreadyExists across every script sharing this one envtest
-// apiserver. cc-e2etest ("e2e-cred") carries the amazonec2 driver key;
-// cc-e2edo ("e2e-do-cred") the digitalocean one, so the machine-config
-// two-step flow pairs a DO config with a DO credential. The data
+// cattle-global-data - global and one-time: `create cluster`'s node-driver e2e
+// scenarios resolve --cloud-credential by display name, and a per-script Setup
+// creating these same fixtures would race AlreadyExists across every script
+// sharing this one envtest apiserver. cc-e2etest ("e2e-cred") carries the
+// amazonec2 driver key; cc-e2edo ("e2e-do-cred") the digitalocean one, so the
+// machine-config two-step flow pairs a DO config with a DO credential. The data
 // key/value mirror cloudcred.go's driver-detection contract
 // (<driver>credentialConfig-<key>); "ZHVtbXk=" is the base64 encoding of
-// "dummy" - ResolveCloudCredential never reads a data VALUE (spec
-// D-R2-1), so the content is an arbitrary placeholder.
+// "dummy" - ResolveCloudCredential never reads a data VALUE, so the content is
+// an arbitrary placeholder.
 func seedCloudCredential() {
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
 	for _, cred := range []struct {
@@ -1142,7 +1141,7 @@ func seedUserAttributeObjects() {
 // seedManagementToken creates the management.cattle.io/v3 Token whose name
 // matches the harness credential id ("e2e" - the id portion of
 // testToken "e2e:secret"). Seeding it globally (rather than per-script)
-// ensures auth status's PS-2 v3 fallback probe returns deterministic metadata
+// ensures auth status's v3 fallback probe returns deterministic metadata
 // regardless of script execution order, and lets management-token.txtar's
 // session-guard test rely on it without its own seedobj call racing other
 // scripts on the shared apiserver.

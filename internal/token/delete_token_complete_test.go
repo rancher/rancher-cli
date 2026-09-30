@@ -23,8 +23,7 @@ func (v testConfigView) ConfigDir() string      { return v.dir }
 var _ runtime.ConfigView = testConfigView{}
 
 func TestDeleteTokenCompleteArgsReturnsEntryNames(t *testing.T) {
-	// No keyring.MockInit: ReadOnlyCachedCreds reads a file, never keyring
-	// (round-2 finding 9: keyring setup unnecessary for this code path).
+	// No keyring.MockInit: ReadOnlyCachedCreds reads a file, never keyring.
 	t.Parallel()
 	cacheDir := t.TempDir()
 	store := config.NewFileStore(cacheDir)
@@ -40,7 +39,7 @@ func TestDeleteTokenCompleteArgsReturnsEntryNames(t *testing.T) {
 		"k8s-staging", "rancher.example.com", "c-def",
 		config.CacheBindingForTest(cacheDir, "", ""),
 	))
-	// Command constructed with EMPTY dir (finding 2: must not fall back to d.dir).
+	// Command constructed with EMPTY dir (must not fall back to d.dir).
 	// Candidates must come from the view's dir, not the command's own dir.
 	cmd := token.NewDeleteTokenCommand("", store)
 	sc, ok := cmd.(runtime.ShellCompleter)
@@ -50,7 +49,7 @@ func TestDeleteTokenCompleteArgsReturnsEntryNames(t *testing.T) {
 }
 
 func TestDeleteTokenCompleteArgsExcludesCompositeKeys(t *testing.T) {
-	// No keyring.MockInit: ReadOnlyCachedCreds reads a file (round-2 finding 9).
+	// No keyring.MockInit: ReadOnlyCachedCreds reads a file.
 	t.Parallel()
 	cacheDir := t.TempDir()
 	store := config.NewFileStore(cacheDir)
@@ -60,7 +59,8 @@ func TestDeleteTokenCompleteArgsExcludesCompositeKeys(t *testing.T) {
 		"ctx", "host.example.com", "c-abc",
 		config.CacheBindingForTest(cacheDir, "", ""),
 	))
-	// Command constructed with EMPTY dir (finding 2: proving candidates come from view).
+	// Command constructed with EMPTY dir (proving candidates come from the
+	// view).
 	cmd := token.NewDeleteTokenCommand("", store)
 	sc := cmd.(runtime.ShellCompleter)
 	got := sc.CompleteArgs(t.Context(), testConfigView{dir: cacheDir})
@@ -72,7 +72,7 @@ func TestDeleteTokenCompleteArgsExcludesCompositeKeys(t *testing.T) {
 }
 
 // TestDeleteTokenCompleteArgsEmptyViewDirYieldsNil proves the d.dir fallback
-// is gone: when the view supplies no dir, CompleteArgs returns nil (finding 2).
+// is gone: when the view supplies no dir, CompleteArgs returns nil.
 func TestDeleteTokenCompleteArgsEmptyViewDirYieldsNil(t *testing.T) {
 	t.Parallel()
 	cacheDir := t.TempDir()
@@ -88,5 +88,5 @@ func TestDeleteTokenCompleteArgsEmptyViewDirYieldsNil(t *testing.T) {
 	cmd := token.NewDeleteTokenCommand(cacheDir, store)
 	sc := cmd.(runtime.ShellCompleter)
 	got := sc.CompleteArgs(t.Context(), testConfigView{dir: ""})
-	assert.Nil(t, got, "finding 2: empty view dir must yield nil, not fall back to d.dir")
+	assert.Nil(t, got, "empty view dir must yield nil, not fall back to d.dir")
 }

@@ -27,11 +27,10 @@ func seedDeleteConfig(t *testing.T) string {
 	return dir
 }
 
-// TestConfigDeleteServerThroughRootWritesNoPin asserts the actual FAIL-2
-// regression at the resolveDeps level: running the real CLI's
-// delete-server on a fresh auto profile must delete the token WITHOUT
-// probing or writing a credstore pin. RED before the lazy-store swap
-// (eager OpenStore pins on every command), GREEN after.
+// TestConfigDeleteServerThroughRootWritesNoPin asserts at the
+// resolveDeps level that running the real CLI's delete-server on a fresh
+// auto profile deletes the token WITHOUT probing or writing a credstore
+// pin. An eager OpenStore would pin on every command.
 func TestConfigDeleteServerThroughRootWritesNoPin(t *testing.T) {
 	dir := seedDeleteConfig(t)
 
@@ -46,8 +45,7 @@ func TestConfigDeleteServerThroughRootWritesNoPin(t *testing.T) {
 	assert.ErrorIs(t, terr, config.ErrNoToken, "token must be deleted")
 }
 
-// TestAuthLogoutThroughRootWritesNoPin: same contract for auth logout
-// (spec R2-1 names both delete commands).
+// TestAuthLogoutThroughRootWritesNoPin: same contract for auth logout.
 func TestAuthLogoutThroughRootWritesNoPin(t *testing.T) {
 	dir := seedDeleteConfig(t)
 

@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// TestSchemaViewMarshalDelegation is the SE-19 regression guard: the schema
+// TestSchemaViewMarshalDelegation is a regression guard: the schema
 // view marshals byte-identically to the manifest it wraps under both json and
 // yaml (the view adds the -o name contract WITHOUT changing structured
 // output), and the default/table path still renders Result.Text, never the
@@ -46,11 +46,11 @@ func TestSchemaViewMarshalDelegation(t *testing.T) {
 	}
 }
 
-// TestSchemaFormatCompat is the SE-2 matrix for W4: every selection shape
+// TestSchemaFormatCompat is the matrix over every selection shape
 // (bare, command, kind, filtered-to-zero) rendered under json, yaml, name, and
 // template, asserted on decoded fields. `-o name` emits the selection's name
 // set one per line - for bare and filtered selections that is the command
-// names (NEW: it previously emitted nothing).
+// names.
 func TestSchemaFormatCompat(t *testing.T) {
 	t.Parallel()
 	m := kindRegistry().Schema("test", "2.14")

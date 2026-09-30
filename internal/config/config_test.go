@@ -62,9 +62,8 @@ func TestCurrentServerEntryUnsetIsNotLoggedIn(t *testing.T) {
 }
 
 // TestCompletionTimeoutWithRaw asserts the floor/cap/default contract for
-// CompletionTimeoutWithRaw, and indirectly EffectiveCompletionTimeout (now a
-// thin wrapper). Covers the pre-existing gap noted in the review: the contract
-// was previously only exercised indirectly via set_completion_test.go.
+// CompletionTimeoutWithRaw, and indirectly EffectiveCompletionTimeout (a
+// thin wrapper).
 func TestCompletionTimeoutWithRaw(t *testing.T) {
 	cases := []struct {
 		name      string

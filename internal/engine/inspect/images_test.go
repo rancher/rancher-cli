@@ -205,7 +205,7 @@ func TestImagesIncludesTerminatingRunningPod(t *testing.T) {
 	client := newFakeClient().withList(podKind.GVR, list)
 	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
-	require.Len(t, rows, 1, "a terminating pod stays included until it leaves the List (IM-14)")
+	require.Len(t, rows, 1, "a terminating pod stays included until it leaves the List")
 	assert.Equal(t, "img-t", rows[0].Image)
 }
 
@@ -237,7 +237,7 @@ func TestImagesCountIsPerReference(t *testing.T) {
 	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	assert.Equal(t, 2, rows[0].Count, "same image in init and app container is two references (IM-18)")
+	assert.Equal(t, 2, rows[0].Count, "same image in init and app container is two references")
 }
 
 func TestImagesMatchFiltersAndORs(t *testing.T) {
@@ -308,12 +308,12 @@ func TestImagesDescriptorDeclaresByEnumAndMatchSlice(t *testing.T) {
 	}
 	require.Contains(t, flags, "by")
 	assert.Equal(t, []string{"image", "workload"}, flags["by"].Enum,
-		"pipeline Enum validation and static completion both hang off this (IM-2/IM-22)")
+		"pipeline Enum validation and static completion both hang off this")
 	require.Contains(t, flags, "match")
 	assert.Equal(t, "stringSlice", flags["match"].Type,
-		"a plain string flag would keep one occurrence (IM-3)")
-	assert.NotEmpty(t, d.Desc, "long-form semantics live on the schema-only Descriptor.Desc (IM-20)")
-	assert.NotEmpty(t, d.Examples, "blast-radius recipe ships in the schema (IM-20)")
+		"a plain string flag would keep one occurrence")
+	assert.NotEmpty(t, d.Desc, "long-form semantics live on the schema-only Descriptor.Desc")
+	assert.NotEmpty(t, d.Examples, "blast-radius recipe ships in the schema")
 }
 
 func TestImagesMatchNothingYieldsNonNilEmpty(t *testing.T) {
@@ -351,7 +351,7 @@ func TestImagesEphemeralSharingAppImageCountsTwo(t *testing.T) {
 	rows, err := imagesFor(t.Context(), client, nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	assert.Equal(t, 2, rows[0].Count, "ephemeral container sharing the app image is a second reference (IM-18)")
+	assert.Equal(t, 2, rows[0].Count, "ephemeral container sharing the app image is a second reference")
 }
 
 func TestImagesResultZeroValueNilSafe(t *testing.T) {

@@ -1,8 +1,8 @@
-// quorum.go implements Task 8 (spec D-5): a pure etcd-quorum-impact
-// computation over a provisioningcluster patch's original and patched
-// objects. It is deliberately side-effect-free and imports nothing beyond
-// unstructured - the caller (resources.NewPatch's EffectEnricher hook,
-// wired in internal/cli/root.go) decides what to do with the result.
+// quorum.go implements a pure etcd-quorum-impact computation over a
+// provisioningcluster patch's original and patched objects. It is deliberately
+// side-effect-free and imports nothing beyond unstructured - the caller
+// (resources.NewPatch's EffectEnricher hook, wired in internal/cli/root.go)
+// decides what to do with the result.
 package provisioning
 
 import (
@@ -43,7 +43,7 @@ func ComputeQuorumDelta(orig, patched *unstructured.Unstructured) (QuorumDelta, 
 	if after%2 == 0 {
 		note += "; even etcd counts do not improve fault tolerance"
 	}
-	// Simplified crossing rule (per spec D-5): a drop below the old
+	// Simplified crossing rule: a drop below the old
 	// majority threshold (floor(before/2)+1, using real division) loses
 	// quorum majority. Written as 2*after < before+2 to stay in integer
 	// arithmetic instead of computing a float.
@@ -57,8 +57,8 @@ func ComputeQuorumDelta(orig, patched *unstructured.Unstructured) (QuorumDelta, 
 
 // etcdMemberCount sums spec.rkeConfig.machinePools[].quantity over pools
 // with etcdRole: true. A pool with no quantity field defaults to 1 - the
-// rancher default for an unset machine pool size (createcluster.go, Task
-// 7, always sets it explicitly, but a hand-authored manifest or an RFC
+// rancher default for an unset machine pool size (createcluster.go
+// always sets it explicitly, but a hand-authored manifest or an RFC
 // 6902 patch removing the field must still be counted correctly).
 func etcdMemberCount(u *unstructured.Unstructured) int {
 	if u == nil {

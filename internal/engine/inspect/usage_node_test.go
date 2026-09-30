@@ -11,9 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// nodeObj, nodeMetricsObj, and nodeMetricsObjPtr move here VERBATIM from
-// topnode_test.go (which this task deletes) - without this move, deleting
-// topnode_test.go breaks compilation of this file:
+// nodeObj, nodeMetricsObj and nodeMetricsObjPtr build the Node and
+// NodeMetrics fixtures the node usage tests in this package use.
 
 func nodeObj(name string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
@@ -32,8 +31,8 @@ func nodeMetricsObjPtr(name, cpu, memory string) *unstructured.Unstructured {
 	}}
 }
 
-// podOnNode is NOT defined here - Task 2 already added it to usage_test.go;
-// this file just uses it.
+// podOnNode is NOT defined here - it lives in usage_test.go; this file just
+// uses it.
 
 func TestUsageByNodeJoinsNodeMetrics(t *testing.T) {
 	t.Parallel()

@@ -1,7 +1,7 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# PS-5: RANCHER_CLI_READONLY is non-empty (including the string "false", per the
+# RANCHER_CLI_READONLY is non-empty (including the string "false", per the
 # one-way env rule) -> every Mutating command is refused before any network
 # call - no -f/--cluster/--apply needed, since the gate fires ahead of
 # validateInput and Plan alike.
@@ -22,7 +22,7 @@ jsonquery stdout data.readOnlySources.0 RANCHER_CLI_READONLY
 
 env RANCHER_CLI_READONLY=
 
-# external-review regression: schema is wired via Adapt, which never calls
+# schema is wired via Adapt, which never calls
 # resolveDeps, so a config-file-sourced readOnly must still reach the
 # manifest - not just env/flag sources.
 exec rancher --config ro-config schema -o json

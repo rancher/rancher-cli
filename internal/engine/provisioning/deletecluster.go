@@ -1,6 +1,6 @@
-// deletecluster.go implements the D-6 override for the provisioningcluster
+// deletecluster.go implements the override for the provisioningcluster
 // row: `delete provisioning-cluster` ships even though the row stays
-// Deletable: false (spec D-R1-3 - the row's Deletable flag governs generic
+// Deletable: false (the row's Deletable flag governs generic
 // verb GENERATION, not whether a bespoke command may exist for the kind).
 // The command wraps resources.NewGuardedDelete's Plan sequence (Route ->
 // Get -> rv capture -> dry-run delete -> Effect) unchanged, adding exactly
@@ -20,16 +20,12 @@ import (
 )
 
 // cascadeWarning is the advisory note appended to every non-refused
-// provisioning-cluster delete's Effect.Warnings (never a gate - Task 2's
-// Warnings contract). It states the real cascade: the provisioning
-// controller's remove path deletes the linked CAPI Cluster, which per
-// cluster-api's own ownership graph takes down that Cluster's Machines and
-// (for an RKE2/K3s control plane) its RKEControlPlane object, and separately
-// removes the corresponding management.cattle.io Cluster
-// (rancher provisioningv2 remove paths; audit row 6). The exact upstream
-// source file/line is not reproduced here verbatim - this line is written to
-// be factually accurate to that removal path rather than quoting the audit
-// document.
+// provisioning-cluster delete's Effect.Warnings (never a gate). It states the
+// real cascade: the provisioning controller's remove path deletes the linked
+// CAPI Cluster, which per cluster-api's own ownership graph takes down that
+// Cluster's Machines and (for an RKE2/K3s control plane) its RKEControlPlane
+// object, and separately removes the corresponding management.cattle.io Cluster
+// (rancher provisioningv2 remove paths).
 const cascadeWarning = "deleting this provisioning cluster cascades: the provisioning controller removes the linked CAPI Cluster, which takes its Machines and RKEControlPlane with it, and separately removes the corresponding management Cluster"
 
 // localClusterName is the literal argument value NewDeleteProvisioningCluster

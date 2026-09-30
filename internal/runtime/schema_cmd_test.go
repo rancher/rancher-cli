@@ -58,7 +58,7 @@ func viewCard(t *testing.T, res Result) map[string]any {
 }
 
 // groupCommandNames extracts all command names from the groups of a TOC JSON
-// map, in order across all groups - the flat name list SE-18 membership and
+// map, in order across all groups - the flat name list the group membership and
 // bare-generated assertions need. Call sites that require per-group structure
 // (e.g. asserting group count or accessing a specific group's entries) should
 // access toc["groups"] directly instead of using this helper.
@@ -162,7 +162,7 @@ func cardRegistry() *Registry {
 	return reg
 }
 
-// TestSchemaSelectionSetsCardText covers SE-1's wiring: selecting a command
+// TestSchemaSelectionSetsCardText covers the wiring: selecting a command
 // yields a Result whose Text is the card (rendered under default/table) while
 // Data keeps the filtered manifest for the structured formats.
 func TestSchemaSelectionSetsCardText(t *testing.T) {
@@ -190,7 +190,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 		assert.Contains(t, lines, "gates: --apply --yes --allow-deprecated")
 	})
 
-	t.Run("bare manifest renders the TOC as Text (SE-9)", func(t *testing.T) {
+	t.Run("bare manifest renders the TOC as Text", func(t *testing.T) {
 		t.Parallel()
 		res, err := cmd.(ReadCommand).Execute(t.Context(), tin{}, nil)
 		require.NoError(t, err)
@@ -214,13 +214,13 @@ func TestSchemaSelectionCardShape(t *testing.T) {
 }
 
 // kindRegistry builds a registry with a kind vocabulary mirroring the
-// production shapes W3 must render - a refused verb (CRT patch), an
+// production shapes the kind card must render - a refused verb (CRT patch), an
 // override-added verb (provisioning-cluster delete), a reasoned absence
 // (cluster delete), a plain absence (widget delete), and the kubeconfig
 // command/kind collision. The registered generated commands and the ordered
-// sections are DERIVED from the kind rows' own verb states (SE-17's rule:
-// available and refused verbs are registered commands; absent verbs are not),
-// so the fixture cannot contradict itself.
+// sections are DERIVED from the kind rows' own verb states (available and
+// refused verbs are registered commands; absent verbs are not), so the fixture
+// cannot contradict itself.
 func kindRegistry() *Registry {
 	ks := []SchemaKind{
 		{
@@ -309,9 +309,9 @@ func kindRegistry() *Registry {
 	return reg
 }
 
-// TestSchemaSelectionCommandWinsCollision covers SE-6: a positional naming
-// both a command and a kind resolves to the command card (with the kind-view
-// footnote); --kind forces the kind interpretation.
+// TestSchemaSelectionCommandWinsCollision covers the collision case: a
+// positional naming both a command and a kind resolves to the command card
+// (with the kind-view footnote); --kind forces the kind interpretation.
 func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
@@ -355,9 +355,9 @@ func TestSchemaSelectionCommandWinsCollision(t *testing.T) {
 	})
 }
 
-// TestSchemaKindCardVerbTable covers SE-5's verb table: for every exemplar
+// TestSchemaKindCardVerbTable covers the verb table: for every exemplar
 // kind, each verb line is derived from the manifest's own VerbState via the
-// spec wording - available (contract · stability) | refused - <note> |
+// fixed wording - available (contract · stability) | refused - <note> |
 // not available - <reason> | not available - then the four interesting
 // states are asserted so the fixture cannot drift silently.
 func TestSchemaKindCardVerbTable(t *testing.T) {
@@ -412,7 +412,7 @@ func TestSchemaKindCardVerbTable(t *testing.T) {
 	})
 }
 
-// TestSchemaKindStructured covers the SE-2 kind row for structured output:
+// TestSchemaKindStructured covers the kind row for structured output:
 // -o json is the envelope whose data IS the kind row - name and verbs at top
 // level, no commands or groups wrapper (the per-verb detail is one more call away).
 func TestSchemaKindStructured(t *testing.T) {
@@ -442,8 +442,9 @@ func TestSchemaKindStructured(t *testing.T) {
 	assert.NotContains(t, data, "groups", "kind-row carries no groups wrapper")
 }
 
-// TestSchemaKindFlagRequiresSelector covers SE-20: --kind is a selection
-// modifier, so bare --kind without a positional selector is VALIDATION.
+// TestSchemaKindFlagRequiresSelector covers the conflict rule: --kind is a
+// selection modifier, so bare --kind without a positional selector is
+// VALIDATION.
 func TestSchemaKindFlagRequiresSelector(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
@@ -455,7 +456,7 @@ func TestSchemaKindFlagRequiresSelector(t *testing.T) {
 	assert.Contains(t, ce.Message, "--kind")
 }
 
-// TestSchemaKindFlagWithGlobalFlags asserts the SE-20 success case: --kind
+// TestSchemaKindFlagWithGlobalFlags asserts the success case: --kind
 // composes with global flags - `schema kubeconfig --kind -o json` succeeds
 // and emits the kind-filtered envelope.
 func TestSchemaKindFlagWithGlobalFlags(t *testing.T) {
@@ -480,9 +481,9 @@ func TestSchemaKindFlagWithGlobalFlags(t *testing.T) {
 	assert.NotContains(t, data, "commands", "kind-row carries no commands wrapper")
 }
 
-// TestSchemaUnknownSelectionNearestMatch covers SE-4: an unknown selection is
-// a VALIDATION error listing nearest matches - case-insensitive substring
-// over command names, full alias forms, and kind names/aliases/keys.
+// TestSchemaUnknownSelectionNearestMatch covers the nearest match: an unknown
+// selection is a VALIDATION error listing nearest matches - case-insensitive
+// substring over command names, full alias forms, and kind names/aliases/keys.
 func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(cardRegistry(), "test", "2.14", nil)
@@ -591,7 +592,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 
 	t.Run("multi-token miss is command-shaped: single -o name hint, no kinds noise", func(t *testing.T) {
 		t.Parallel()
-		// Exercise-11 finding 6.1: `schema get pdo` is structurally a
+		// `schema get pdo` is structurally a
 		// command typo - kinds are single tokens, always - so the noun and
 		// hint collapse to the command tier.
 		kcmd := NewSchemaCommand(kindRegistry(), "test", "2.14", nil)
@@ -642,7 +643,7 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.NotContains(t, ce.Hint, "-o name")
 	})
 
-	// TestSchemaUnknownSelectionPaddedSingleTokenGetsDualHint asserts round-2 Low-6:
+	// TestSchemaUnknownSelectionPaddedSingleTokenGetsDualHint asserts that
 	// a single arg with surrounding whitespace (e.g. " pod") contains a space
 	// but is a single token - strings.Fields splits it to one element, so it
 	// must stay in the dual tier, not the command tier.
@@ -752,9 +753,9 @@ func TestSchemaReadOnlyFalseWhenResolverNil(t *testing.T) {
 	assert.NotContains(t, toc, "readOnlySources")
 }
 
-// TestSchemaFilters covers SE-10: --verb, --destructive, --contract, and
+// TestSchemaFilters covers the filters: --verb, --destructive, --contract, and
 // --mutating filter the manifest's commands (composing with each other and
-// with --search), prune Groups to the retained set (SE-18), and render the
+// with --search), prune Groups to the retained set, and render the
 // filtered TOC as Text.
 func TestSchemaFilters(t *testing.T) {
 	t.Parallel()
@@ -818,7 +819,7 @@ func TestSchemaFilters(t *testing.T) {
 	})
 }
 
-// TestSchemaSearch covers SE-11: --search is a case-insensitive substring over
+// TestSchemaSearch covers search: --search is a case-insensitive substring over
 // name, aliases, usage, and desc; the filtered TOC shows the matching
 // fragment; zero hits print a no-matches message naming the active filters and
 // exit 0.
@@ -866,9 +867,9 @@ func TestSchemaSearch(t *testing.T) {
 	})
 }
 
-// TestSchemaSelectorFilterConflict covers SE-20: a positional selector
-// (command or kind) or --kind combined with any of the five filter/search
-// flags is a VALIDATION error naming the conflict.
+// TestSchemaSelectorFilterConflict covers the conflict rule: a positional
+// selector (command or kind) or --kind combined with any of the five
+// filter/search flags is a VALIDATION error naming the conflict.
 func TestSchemaSelectorFilterConflict(t *testing.T) {
 	t.Parallel()
 
@@ -927,8 +928,8 @@ func TestSchemaSelectorFilterConflict(t *testing.T) {
 	})
 }
 
-// TestSchemaGroupsCommandsConsistency is the SE-18 invariant after every W4
-// result shape: the flattened Groups[].Commands set-equals the manifest's
+// TestSchemaGroupsCommandsConsistency asserts, for every result shape,
+// that the flattened Groups[].Commands set-equals the manifest's
 // Commands names, empty sections are dropped, and a zero hit carries empty
 // Groups.
 func TestSchemaGroupsCommandsConsistency(t *testing.T) {
@@ -950,9 +951,10 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 	for _, tc := range shapes {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			// SE-18 is a manifest invariant: assert on the manifest directly
-			// for bare/filtered selections (their tocView JSON collapses
-			// generated commands and does not carry a flat commands list).
+			// Groups alignment is a manifest invariant: assert on the manifest
+			// directly for bare/filtered selections (their tocView JSON
+			// collapses generated commands and does not carry a flat commands
+			// list).
 			var m Manifest
 			switch tc.name {
 			case "bare":
@@ -964,16 +966,16 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 				require.NoError(t, err)
 				if cv, ok := res.Data.(cardView); ok {
 					// cardView carries only exitCodes+cmd; reconstruct the
-					// single-command sub-manifest to verify SE-18's Groups
+					// single-command sub-manifest to verify the Groups
 					// set-equals invariant for command selections.
 					m = Manifest{
 						Commands: []SchemaCommand{cv.cmd},
 						Groups:   filterGroups(full.Groups, map[string]bool{cv.cmd.Name: true}),
 					}
 				} else if kv, ok := res.Data.(kindView); ok {
-					// SE-18 is a manifest invariant; kindView carries only the kind
-					// row - no manifest to check - so assert the row is non-empty and
-					// return early.
+					// Groups alignment is a manifest invariant; kindView
+					// carries only the kind row - no manifest to check - so
+					// assert the row is non-empty and return early.
 					assert.NotEmpty(t, kv.kind.Name)
 					return
 				} else {
@@ -1027,11 +1029,12 @@ func TestSchemaGroupsCommandsConsistency(t *testing.T) {
 	}
 }
 
-// completionRegistry builds the SE-12 shape exemplars: a verbed command whose
-// aliases are also kind identifiers (get pod), a verbed command whose alias is
-// NOT a kind identifier (get project → projects, so the bare-leaf-alias
-// exclusion is observable), the kubeconfig command/kind collision, and a kind
-// whose key differs from its name (cluster → managementcluster).
+// completionRegistry builds the shape exemplars for positional completion: a
+// verbed command whose aliases are also kind identifiers (get pod), a verbed
+// command whose alias is NOT a kind identifier (get project → projects, so the
+// bare-leaf-alias exclusion is observable), the kubeconfig command/kind
+// collision, and a kind whose key differs from its name (cluster →
+// managementcluster).
 func completionRegistry() *Registry {
 	reg := NewRegistry(stubResolver{})
 	reg.Register(fakeRead{d: Descriptor{
@@ -1067,7 +1070,7 @@ func completionRegistry() *Registry {
 	return reg
 }
 
-// TestSchemaPositionalCompletionCandidatesResolve is SE-12's shipping gate:
+// TestSchemaPositionalCompletionCandidatesResolve is the shipping gate:
 // every candidate CompleteArgs offers must resolve through the actual
 // selection logic in Execute - a suggestion `rancher schema` would then
 // reject cannot ship. Run against every registry fixture so command-only,
@@ -1085,7 +1088,7 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 			t.Parallel()
 			cmd := NewSchemaCommand(reg, "test", "2.14", nil)
 			sc, ok := cmd.(ShellCompleter)
-			require.True(t, ok, "schema must implement ShellCompleter (SE-12)")
+			require.True(t, ok, "schema must implement ShellCompleter")
 			cands := sc.CompleteArgs(t.Context(), nil)
 			require.NotEmpty(t, cands)
 			for _, cand := range cands {
@@ -1107,7 +1110,7 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 
 // TestSchemaAllReturnsFullManifest asserts --all as exact delegation: the
 // result marshals byte-equivalent to the registry's own manifest -
-// nothing filtered, nothing added (review P2). Text is the TOC (the
+// nothing filtered, nothing added. Text is the TOC (the
 // table view stays the TOC under --all; structured output carries the
 // full manifest). The self-referential footer must be absent.
 func TestSchemaAllReturnsFullManifest(t *testing.T) {
@@ -1221,7 +1224,7 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 	})
 }
 
-// TestSchemaPositionalCompletionShape asserts SE-12's candidate shape: command
+// TestSchemaPositionalCompletionShape asserts the candidate shape: command
 // aliases appear only in their full typed form ("get pods", never a bare
 // "projects"), kind names/keys/aliases appear as bare tokens, the
 // command/kind collision (kubeconfig) dedupes to one candidate, and the set
@@ -1230,7 +1233,7 @@ func TestSchemaPositionalCompletionShape(t *testing.T) {
 	t.Parallel()
 	cmd := NewSchemaCommand(completionRegistry(), "test", "2.14", nil)
 	sc, ok := cmd.(ShellCompleter)
-	require.True(t, ok, "schema must implement ShellCompleter (SE-12)")
+	require.True(t, ok, "schema must implement ShellCompleter")
 	cands := sc.CompleteArgs(t.Context(), nil)
 
 	assert.True(t, sort.StringsAreSorted(cands), "candidates are deterministically sorted: %v", cands)
@@ -1347,7 +1350,7 @@ func TestSchemaGroupCardResolution(t *testing.T) {
 
 // TestSchemaGroupResolutionPrecedence covers the resolution-order contract:
 // command match wins over a same-name group; a GROUP wins over a same-name
-// kind (revised 2026-08-20 - kinds are reachable via --kind, groups have no
+// kind (kinds are reachable via --kind, groups have no
 // disambiguator), each collision card naming the other view.
 func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 	t.Parallel()
@@ -1412,8 +1415,8 @@ func TestSchemaGroupResolutionPrecedence(t *testing.T) {
 	})
 }
 
-// TestSchemaGroupKindFlagBlocksGroupResolution asserts finding 1 of the
-// independent review: --kind forces the kind-only interpretation, so a
+// TestSchemaGroupKindFlagBlocksGroupResolution asserts that --kind
+// forces the kind-only interpretation, so a
 // group-only selector with --kind must return kind-not-found (the kindOnly
 // unknownSelection path), never fall through to the group tier.
 // A positive case (kind selector + --kind) is already covered by
@@ -1442,7 +1445,7 @@ func TestSchemaGroupKindFlagBlocksGroupResolution(t *testing.T) {
 	})
 }
 
-// TestSchemaUnknownSelectionSuggestsGroups covers SE-4's nearest-match
+// TestSchemaUnknownSelectionSuggestsGroups covers the nearest-match
 // extension: a partial selector that substring-matches a group name returns
 // the group as a candidate alongside command candidates. --kind excludes
 // groups from the candidate set (consistent with the group-tier guard).
@@ -1513,8 +1516,8 @@ func mixedGroupRegistry() *Registry {
 	return reg
 }
 
-// TestSchemaGroupCardCollapsesGeneratedCommands asserts finding 2 of the
-// independent review: the group card reuses the TOC's generated-command
+// TestSchemaGroupCardCollapsesGeneratedCommands asserts that
+// the group card reuses the TOC's generated-command
 // collapse - bespoke commands listed individually; generated per-kind
 // commands collapsed to one summary line. Both text and JSON are covered.
 func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
@@ -1581,7 +1584,7 @@ func TestSchemaGroupCardCollapsesGeneratedCommands(t *testing.T) {
 	})
 }
 
-// TestSchemaGroupCompletionCandidates covers SE-12 for groups: every named
+// TestSchemaGroupCompletionCandidates covers groups: every named
 // group is offered as a completion candidate, unnamed ("") sections are not,
 // and every group candidate resolves through Execute.
 func TestSchemaGroupCompletionCandidates(t *testing.T) {

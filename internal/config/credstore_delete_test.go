@@ -12,13 +12,9 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// TestDeleteExecCacheForServerHTTPLegacyHostDeletes verifies that a legacy cache
-// record stored with an HTTP host:port spelling (HOST:80) is deleted when the
-// logout target is http://host. The delete must interpret the stored host using
-// the TARGET's scheme to strip its default port, not always https.
-// TestHTTPAndHTTPSServersHaveDistinctCacheIdentity is the P1 regression test
-// for the scheme-collapse finding: credentials cached for http://host and
-// https://host on the same --name/--cluster must remain fully isolated.
+// TestHTTPAndHTTPSServersHaveDistinctCacheIdentity asserts that credentials
+// cached for http://host and https://host on the same --name/--cluster stay
+// fully isolated.
 //
 // (a) CanonicalServerIdentity produces two distinct values.
 // (b) The two entries are stored under different keys.
@@ -80,6 +76,10 @@ func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoToken, "https entry must be gone after https delete")
 }
 
+// TestDeleteExecCacheForServerHTTPLegacyHostDeletes verifies that a legacy
+// cache record stored with an HTTP host:port spelling (HOST:80) is deleted when
+// the logout target is http://host. The delete must interpret the stored host
+// using the TARGET's scheme to strip its default port, not always https.
 func TestDeleteExecCacheForServerHTTPLegacyHostDeletes(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
@@ -94,11 +94,10 @@ func TestDeleteExecCacheForServerHTTPLegacyHostDeletes(t *testing.T) {
 	assert.ErrorIs(t, gerr, ErrNoToken, "the HOST:80 cache entry must be gone")
 }
 
-// TestDeleteExecCacheForServerNormalizesLegacyHostSpelling is the impl-review
-// finding-4 repro: a cache record whose Server host was stored with a
-// different-but-equivalent spelling (uppercase, explicit default port) must
-// still be deleted on logout, since the delete now compares canonical hosts
-// rather than raw bytes.
+// TestDeleteExecCacheForServerNormalizesLegacyHostSpelling asserts that a cache
+// record whose Server host was stored with a different-but-equivalent spelling
+// (uppercase, explicit default port) is still deleted on logout, since the
+// delete compares canonical hosts rather than raw bytes.
 func TestDeleteExecCacheForServerNormalizesLegacyHostSpelling(t *testing.T) {
 	dir := t.TempDir()
 	fs := NewFileStore(dir)
@@ -249,7 +248,7 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	from, _, err := DeleteLoginToken(t.Context(), dir, execRef(), "auto") // policy-independent: "auto" names no helper
 	require.NoError(t, err, "a leftover crash record deletes as success")
 	// Nothing was ever stored, so the no-op erase is not reported as a
-	// deletion (friction-4 semantics) - the replay and the cleanup below
+	// deletion - the replay and the cleanup below
 	// are the crash-boundary guarantees this test asserts.
 	assert.NotContains(t, from, "helper:fake")
 	assert.Contains(t, fakeHelperLog(t, statePath), "erase https://rancher.example.com prod",
@@ -260,7 +259,7 @@ func TestDeleteOrphanedRecordErasesRecordedIdentity(t *testing.T) {
 	}))
 }
 
-// TestDeleteLoginTokenNoOpEraseNotReported asserts live-exercise friction 4:
+// TestDeleteLoginTokenNoOpEraseNotReported asserts that
 // when the helper holds no credential for the identity, the delete still runs
 // the idempotent erase, but must NOT report the helper in deletedFrom - the
 // output could not distinguish a no-op from an actual deletion. The policy
@@ -277,12 +276,11 @@ func TestDeleteLoginTokenNoOpEraseNotReported(t *testing.T) {
 	assert.Empty(t, from)
 }
 
-// TestDeleteLoginTokenCancellableWhileRecordsLockHeld asserts the third-review
-// P1: a delete waiting on a contended helper-records lock must be
-// interruptible by the caller's context - before this, the wait was built
-// from context.Background() and Ctrl-C during logout could not reach it
-// (while the command also held the config write lock, blocking every other
-// invocation on the machine).
+// TestDeleteLoginTokenCancellableWhileRecordsLockHeld asserts that
+// a delete waiting on a contended helper-records lock is interruptible by
+// the caller's context: a wait built from context.Background() would let
+// Ctrl-C during logout not reach it while the command also held the config
+// write lock, blocking every other invocation on the machine.
 func TestDeleteLoginTokenCancellableWhileRecordsLockHeld(t *testing.T) {
 	keyring.MockInit()
 	useFakeHelper(t, "ok")

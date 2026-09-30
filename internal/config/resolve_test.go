@@ -102,12 +102,12 @@ func TestEffectiveFromFile(t *testing.T) {
 	})
 }
 
-// Round-3 repro: a RANCHER_CLI_URL override pointing at a DIFFERENT server than
+// A RANCHER_CLI_URL override pointing at a DIFFERENT server than
 // the stored context's must never carry that stored server's CA or display
 // name into the new Effective - every command through Effective (get,
 // create, patch, delete, auth status, kubeconfig) shares this one choke
 // point, not just kubeconfig.
-// Round-4 repro: an explicit default port (:443 https, :80 http) spelled out
+// An explicit default port (:443 https, :80 http) spelled out
 // on one side and omitted on the other is the same server, not divergence -
 // the third normalization axis to recur here (after case, then trailing
 // slash), asserted in one exported matrix so a fourth lands in one place too.
@@ -207,8 +207,8 @@ func TestEffectiveEnvOnlyNoFile(t *testing.T) {
 	assert.Equal(t, "id:sec", eff.Token)
 }
 
-// TestEffectiveUnsupportedSchemeSkipsStore is the final-re-review finding-2
-// repro at the config-package level: Config.Effective must never read the
+// TestEffectiveUnsupportedSchemeSkipsStore asserts that
+// Config.Effective never reads the
 // credential store when the configured server URL uses an unsupported scheme.
 // The token is left empty and no error is returned; the helper is never invoked.
 func TestEffectiveUnsupportedSchemeSkipsStore(t *testing.T) {

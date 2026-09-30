@@ -886,12 +886,12 @@ func (f failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errors.New("no request expected")
 }
 
-// TestCallStopsWhenConfigChangesBetweenItsTwoReads asserts the hand-off end to
-// end: the call sets its connection up under one identification (the CA is
-// chosen from prod-eu), config.yaml gains an entry named exactly like the exec
-// entry's --name before the credential lookup reads it again, and the call
-// stops with the retryable CONFLICT before any login or request, instead of
-// pairing prod-eu's trust with the new entry's login.
+// TestCallStopsWhenConfigChangesBetweenItsTwoReads asserts, end to end, that
+// the call sets its connection up under one identification (the CA is chosen
+// from prod-eu), config.yaml gains an entry named exactly like the exec entry's
+// --name before the credential lookup reads it again, and the call stops with
+// the retryable CONFLICT before any login or request, instead of pairing
+// prod-eu's trust with the new entry's login.
 func TestCallStopsWhenConfigChangesBetweenItsTwoReads(t *testing.T) {
 	t.Setenv(execInfoEnv, "")
 	dir := t.TempDir()

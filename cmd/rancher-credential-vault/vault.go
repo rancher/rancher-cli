@@ -96,8 +96,8 @@ func (h *vaultHandler) do(method, url string, body any) (int, []byte, error) {
 // [...]} envelope, or raw text for a non-JSON body), and - on 403 only -
 // a parenthetical policy hint naming the capabilities the verb needs. The
 // body must lead: a 403 can be an invalid/expired token just as well as a
-// missing policy capability, and Vault's body says which (live-exercise
-// S-12: a canned policy hint alone misdirects token problems).
+// missing policy capability, and Vault's body says which (a canned
+// policy hint alone misdirects token problems).
 func httpError(verb string, code int, body []byte, policyHint string) error {
 	msg := fmt.Sprintf("vault %s: HTTP %d", verb, code)
 	if reason := vaultErrors(body); reason != "" {

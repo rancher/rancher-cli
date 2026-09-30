@@ -63,7 +63,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	}
 	// Effective (not CurrentServerEntry) so an env-only session (RANCHER_CLI_URL/
 	// RANCHER_CLI_TOKEN, no stored server) works exactly like every other
-	// command - kubeconfig used to be the one command that didn't.
+	// command.
 	eff, err := cfg.Effective(c.store)
 	if err != nil {
 		return runtime.Result{}, err
@@ -98,7 +98,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	if !strings.HasPrefix(strings.ToLower(base), "https://") {
 		// client-go silently refuses to wire exec-credential auth for a non-https
 		// server (no error, no Authorization header) - warn so the resulting
-		// kubeconfig's silent 401s are explainable (CW-7). Inverted (warn on
+		// kubeconfig's silent 401s are explainable. Inverted (warn on
 		// NOT-https, case-insensitive) rather than matching "http://" literally:
 		// BaseURL's error-fallback path can return a malformed or differently
 		// cased scheme that a literal "http://" prefix check would miss.

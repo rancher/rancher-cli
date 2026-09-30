@@ -205,7 +205,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	}
 	ctx, cancel := fanOutContext(ctx, budget)
 	defer cancel()
-	// Order: cluster client, caller preflight (step 0), discovery, scope,
+	// Order: cluster client, caller preflight, discovery, scope,
 	// then the rest of the identity protocol.
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {

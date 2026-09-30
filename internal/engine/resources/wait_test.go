@@ -189,8 +189,8 @@ func TestWaitSatisfiedRancherStatePathUnchanged(t *testing.T) {
 	assert.False(t, waitSatisfied(stateObj("provisioning", ""), cond))
 }
 
-// TestWaitSatisfiedStatusStateIsCaseSensitive is the round-2 repro for
-// finding 4: the case-insensitive compare belongs only to the status.phase
+// TestWaitSatisfiedStatusStateIsCaseSensitive asserts that
+// the case-insensitive compare belongs only to the status.phase
 // fallback. status.state is Rancher's own vocabulary (lowercase, e.g.
 // "active") and must stay an exact match - a case-insensitive compare
 // there would let a "state=Active" wait spuriously match "active" today,
@@ -299,12 +299,12 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 	})
 }
 
-// TestGetClusterBareWaitAppliesRowDefault asserts IC-11 at the command boundary:
-// a bare `get cluster <name> --wait` (no --for) applies the row's
-// WaitDefault end to end - the command resolves the expression from the
-// kind row, parses it, and polls until the Ready condition flips. The
-// polling fake satisfies the condition only on the THIRD Get, so a
-// non-polling shortcut or a wrong default expression fails loudly.
+// TestGetClusterBareWaitAppliesRowDefault asserts, at the command boundary,
+// that a bare `get cluster <name> --wait` (no --for) applies the row's
+// WaitDefault end to end - the command resolves the expression from the kind
+// row, parses it, and polls until the Ready condition flips. The polling fake
+// satisfies the condition only on the THIRD Get, so a non-polling shortcut or a
+// wrong default expression fails loudly.
 func TestGetClusterBareWaitAppliesRowDefault(t *testing.T) {
 	withFastPoll(t)
 	synctest.Test(t, func(t *testing.T) {
@@ -492,8 +492,8 @@ func multiConditionObj(conds ...[3]string) *unstructured.Unstructured {
 	}}
 }
 
-// TestWaitForFailsFastOnStalled asserts the Fleet GitRepo shape from live
-// exercise 8: a failed clone leaves Ready=True AND Stalled=True, and the
+// TestWaitForFailsFastOnStalled asserts the Fleet GitRepo shape: a failed clone
+// leaves Ready=True AND Stalled=True, and the
 // wait must fail with the Stalled message instead of declaring the Ready
 // condition satisfied.
 func TestWaitForFailsFastOnStalled(t *testing.T) {
@@ -560,7 +560,7 @@ func TestWaitForStalledEmptyMessageRendersConditionShape(t *testing.T) {
 	})
 }
 
-// TestWaitForSkipsUnsettledGenerations asserts the exercise-11 settle gate: an
+// TestWaitForSkipsUnsettledGenerations asserts the settle gate: an
 // object whose status.observedGeneration lags metadata.generation carries
 // conditions from an older spec - the wait must keep polling instead of
 // trusting a satisfied condition or a Stalled abort on it.
@@ -594,7 +594,7 @@ func TestWaitForSkipsUnsettledGenerations(t *testing.T) {
 	})
 }
 
-// TestWaitTimeoutWithUnsettledObservationShowsCaveat asserts the round-2 High-1
+// TestWaitTimeoutWithUnsettledObservationShowsCaveat asserts the
 // caveat: when a kstatus-opted (failOnStalled=true) wait times out and the
 // only observation had a lagging observedGeneration, the timeout message must
 // include the generation caveat so operators know the reported state is stale.
@@ -656,7 +656,7 @@ func TestSettledAbsentFieldIsSettled(t *testing.T) {
 	assert.True(t, settled(obj), "absent observedGeneration (omitempty zero) must be treated as settled")
 }
 
-// TestFreshSuccessWarningElapsedFormatting asserts the round-2 Low-4 edge cases:
+// TestFreshSuccessWarningElapsedFormatting asserts the edge cases:
 // a sub-second-old object and a future creationTimestamp (server/client clock
 // skew) both render "immediately after creation" instead of "0s after creation"
 // or a negative duration.
@@ -687,7 +687,7 @@ func TestFreshSuccessWarningElapsedFormatting(t *testing.T) {
 }
 
 // TestFreshSuccessWarning asserts the advisory covering the window generation
-// tracking cannot close (exercise-11 S-09.3): a kstatus controller may
+// tracking cannot close: a kstatus controller may
 // flip Stalled only after retry backoff, so a success on a seconds-old
 // object warns; an aged object does not.
 func TestFreshSuccessWarning(t *testing.T) {

@@ -12,9 +12,11 @@ import (
 	ucli "github.com/urfave/cli/v3"
 )
 
-func TestCheckFlagValuesIncident(t *testing.T) {
+func TestCheckFlagValuesUnsetVariableBeforeFlag(t *testing.T) {
 	t.Parallel()
-	// Exact incident: DEMO_CC unset → --cloud-credential --k8s-version v1.35.7+rke2r1
+	// An unset shell variable after --cloud-credential leaves the flag
+	// followed by the next one:
+	// --cloud-credential --k8s-version v1.35.7+rke2r1
 	flags := []runtime.ArgSpec{
 		{Name: "cloud-credential", Type: "string"},
 		{Name: "k8s-version", Type: "string"},

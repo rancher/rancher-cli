@@ -63,7 +63,7 @@ type supportBundleCmd struct {
 }
 
 // NewSupportBundle builds `support-bundle [--targets ...|all] [--clusters
-// a,b|*] [--since <dur>] [--tail N=10000] [-f out]` (SB-1): packs every
+// a,b|*] [--since <dur>] [--tail N=10000] [-f out]`: packs every
 // API-reachable diagnostic surface - curated component logs, cluster/node
 // state, per-namespace events, and the CLI's own settings/features/schema
 // snapshot - into one tar.gz, tri-state manifested so support can tell
@@ -405,7 +405,7 @@ func collectFeatures(ctx context.Context, local engine.ClusterClient) ([]byte, e
 // applicable target's logs, streaming each into bw as it is collected, and
 // returns the manifest items and the set of namespaces any attempted
 // target resolved to (for the caller's per-namespace events collection) -
-// cattle-system is always included, per the design spec.
+// cattle-system is always included.
 func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string, []string) {
 	var items []manifestItem
 	var warnings []string

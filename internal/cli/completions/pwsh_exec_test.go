@@ -330,8 +330,8 @@ $null = TabExpansion2 -inputScript $line -cursorColumn $line.Length
 	}
 }
 
-// TestPwshCompletionRespectsCursorAndLiteralWildcards exercises the two
-// behaviors 0e34e5a added with no execution coverage: cursor-boundary
+// TestPwshCompletionRespectsCursorAndLiteralWildcards exercises two completion
+// behaviors that had no execution coverage: cursor-boundary
 // truncation (a token typed after the cursor must not affect completion) and
 // literal-wildcard prefix matching (a '*' in the typed word must not act as a
 // glob).

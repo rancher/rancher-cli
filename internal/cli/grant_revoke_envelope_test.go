@@ -402,7 +402,7 @@ func grRun(t *testing.T, root *ucli.Command, dir string, args ...string) (stdout
 
 // TestGrantRevokeEnvelope asserts the grant/revoke serialization contract from
 // build-root through the runtime pipeline to the rendered JSON envelope for
-// every command/scope combination in the design matrix.
+// every command/scope combination.
 func TestGrantRevokeEnvelope(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 

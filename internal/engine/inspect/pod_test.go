@@ -384,7 +384,7 @@ func TestInspectPodTailFlagValidation(t *testing.T) {
 // TestInspectPodOutputOmitsManagedFields drives the full runtime.Run →
 // output.Render pipeline for `inspect pod` with a pod fixture that carries
 // managedFields in its metadata, and asserts the field is absent from both
-// json and yaml output while the pod's name survives (MF-3, MF-7a).
+// json and yaml output while the pod's name survives.
 func TestInspectPodOutputOmitsManagedFields(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
@@ -431,7 +431,7 @@ func TestInspectPodOutputOmitsManagedFields(t *testing.T) {
 				runtime.IO{Out: &buf, Format: format}, safety.Binding{})
 			require.Nil(t, ce)
 			assert.NotContains(t, buf.String(), "managedFields",
-				"the pod nested inside the composite document is scrubbed (MF-3)")
+				"the pod nested inside the composite document is scrubbed")
 			raw := buf.Bytes()
 			if format == "yaml" {
 				var err error

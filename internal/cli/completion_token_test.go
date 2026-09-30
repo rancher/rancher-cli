@@ -87,9 +87,9 @@ func TestResolveCompletionTokenAmbiguousExecCredYieldsEmpty(t *testing.T) {
 	assert.Empty(t, cap.Token, "ambiguous exec-cred must yield empty")
 }
 
-// TestResolveCompletionTokenInvalidServerURLYieldsEmpty is the final-re-review
-// finding-1 repro: completion must return an empty capability for a configured
-// server URL that fails HTTP(S) validation, never surfacing a stored record.
+// TestResolveCompletionTokenInvalidServerURLYieldsEmpty asserts that completion
+// returns an empty capability for a configured server URL that fails HTTP(S)
+// validation, never surfacing a stored record.
 //
 // Three sub-cases: unsupported scheme (ftp://), malformed URL (https://[::1),
 // and empty hostname (https://:443). Each seeds both a file-store token and an
@@ -140,11 +140,10 @@ func TestResolveCompletionTokenInvalidServerURLYieldsEmpty(t *testing.T) {
 	}
 }
 
-// TestResolveCompletionTokenShimEntryPlusNativeResolvesNative is the failing-
-// first test for round-4 finding 1 (AC-6 collision). A shim cache entry for
-// the same server+cluster as a native entry must be excluded from the
-// single-entry candidacy count so completion still resolves from the native
-// entry (shim + 1 native → native).
+// TestResolveCompletionTokenShimEntryPlusNativeResolvesNative asserts that a
+// shim cache entry for the same server+cluster as a native entry must be
+// excluded from the single-entry candidacy count so completion still resolves
+// from the native entry (shim + 1 native → native).
 func TestResolveCompletionTokenShimEntryPlusNativeResolvesNative(t *testing.T) {
 	// NOT parallel: mutates storedConfig package global and env.
 	t.Setenv(config.EnvToken, "")
@@ -179,8 +178,9 @@ func TestResolveCompletionTokenShimEntryPlusNativeResolvesNative(t *testing.T) {
 }
 
 // TestResolveCompletionTokenShimOnlyYieldsEmpty verifies the shim-only case:
-// when only a legacy:-prefixed cache entry exists for a server+cluster, AC-6
-// must yield an empty capability - the slot is kubectl's, not the operator's.
+// when only a legacy:-prefixed cache entry exists for a server+cluster,
+// completion must yield an empty capability - the slot is kubectl's, not the
+// operator's.
 func TestResolveCompletionTokenShimOnlyYieldsEmpty(t *testing.T) {
 	// NOT parallel: mutates storedConfig package global and env.
 	t.Setenv(config.EnvToken, "")
@@ -206,7 +206,7 @@ func TestResolveCompletionTokenShimOnlyYieldsEmpty(t *testing.T) {
 		"shim-only entry must yield empty capability (not a completion candidate)")
 }
 
-// TestFileStoreTokenCrossServerURLOverride proves round-2 finding 3:
+// TestFileStoreTokenCrossServerURLOverride asserts that
 // RANCHER_CLI_URL pointing at server B must not send server A's token to B.
 func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 	// NOT parallel: mutates storedConfig and env globals.
@@ -222,8 +222,7 @@ func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	// Write a file-store token for server A using the real API (round-3 finding 2:
-	// config.WriteFileToken does not exist; use NewFileStore.SetToken instead).
+	// Write a file-store token for server A using the real API.
 	require.NoError(t, config.NewFileStore(dir).SetToken(config.ServerRef{Name: "srv-a"}, "token-for-a"))
 	setStoredConfigForTest(t, cfg, dir)
 
@@ -232,7 +231,7 @@ func TestFileStoreTokenCrossServerURLOverride(t *testing.T) {
 
 	// Must return empty: server A's token must not be sent to server B.
 	cap := resolveCompletionToken("")
-	assert.Empty(t, cap.Token, "round-2 finding 3: cross-server URL override must not send server A token to server B")
+	assert.Empty(t, cap.Token, "cross-server URL override must not send server A token to server B")
 }
 
 // TestResolveCompletionTokenFileStoreSameURLServers asserts the file-store

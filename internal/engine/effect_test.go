@@ -82,7 +82,7 @@ func (c *obsClient) Logs(context.Context, string, string, LogOptions) (string, e
 	return "", nil
 }
 
-// TestPlanCreateObservedExposesDryRunResult asserts the MC-12 seam: the
+// TestPlanCreateObservedExposesDryRunResult asserts the dry-run seam: the
 // caller receives the SERVER's dry-run object (not its own submission),
 // the Effect stays the diff-less create shape, and the executor still
 // performs the real write.
@@ -113,7 +113,7 @@ func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
 	assert.Equal(t, "digitaloceanconfigs/web-pool", eff.Target)
 	assert.Equal(t, "digitaloceanconfig", eff.DisplayKind)
 	assert.Equal(t, "web-pool", eff.DisplayName)
-	assert.Empty(t, eff.Diff, "create previews are diff-less (MC-11)")
+	assert.Empty(t, eff.Diff, "create previews are diff-less")
 	assert.False(t, eff.Destructive)
 
 	res, err := exec(t.Context())

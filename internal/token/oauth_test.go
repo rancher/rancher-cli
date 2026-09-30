@@ -258,7 +258,7 @@ func interactivePrompter() *ui.Prompter {
 	return ui.New(io.Discard, strings.NewReader(""), false, false)
 }
 
-// TestDeviceCodeFlowSucceedsAcrossSplitOrigins asserts the topology the design
+// TestDeviceCodeFlowSucceedsAcrossSplitOrigins asserts the topology this flow
 // exists for: Rancher on one self-signed origin, the identity provider on
 // another, each verified by its own client, and the flow completes.
 func TestDeviceCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
@@ -310,7 +310,7 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 }
 
 // TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority asserts
-// the leak the design closes from the other side: dialing the IdP with the
+// the leak this flow closes from the other side: dialing the IdP with the
 // Rancher-pinned client fails as an IdP certificate error, never TLS_TRUST.
 func TestDeviceCodeFlowWithRancherClientAsIdPClientFailsUnknownAuthority(t *testing.T) {
 	t.Parallel()

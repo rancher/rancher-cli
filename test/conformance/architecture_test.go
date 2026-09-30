@@ -18,7 +18,7 @@ const modulePrefix = "github.com/rancher/rancher-cli/"
 // TestArchitectureDocMatchesImports parses ARCHITECTURE.md's mermaid
 // dependency graph and fails when it diverges from the real package-level
 // import graph - missing edges, phantom edges, or undocumented packages.
-// Dependency-documentation drift (finding L-5/UD-3) becomes a build failure.
+// Dependency-documentation drift becomes a build failure.
 func TestArchitectureDocMatchesImports(t *testing.T) {
 	t.Parallel()
 	doc, err := os.ReadFile("ARCHITECTURE.md")

@@ -13,13 +13,13 @@ import (
 // the Effect, the SERVER's dry-run response, and the closure that performs
 // the real create. The dry-run response is exposed so a caller can compare
 // its submission against what the server accepted (create machine-config's
-// pruned-key warning, MC-12); PlanCreate delegates here, so every existing
+// pruned-key warning); PlanCreate delegates here, so every existing
 // create keeps its Effect byte-for-byte. The Effect carries no
 // contract/stability - the resolver Binding drives the pipeline's gates and
 // the manifest is the only published source. resultKind names the Result
 // envelope kind.
 // effectCluster is the cluster the mutation semantically targets - NOT the
-// proxy the client connects through (see PlanCreate's original PE-5 note).
+// proxy the client connects through.
 // displayKind is the kind table's canonical CLI name - the ONLY source for
 // default-format text (never resultKind, which is the envelope Result.Kind
 // and may be a Kubernetes/API identity such as "Cluster" or "Secret").

@@ -323,7 +323,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	}
 	out.ConfigState = clierr.ConfigWritten
 
-	// Step 0. The record of what this change has to do is written
+	// The pre-commit step. The record of what this change has to do is written
 	// before the credential commits and is inert until a config write
 	// names its id, so a login that dies here leaves nothing to
 	// finish and nothing half-done.
@@ -488,13 +488,12 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	if commit.Notice != "" {
 		out.Warnings = append(out.Warnings, commit.Notice)
 	}
-	// Step 1. The first config write after the commit carries the
-	// declaration, the trust and the id of the change, and is what
-	// puts all three into effect: until the credential is in the
-	// destination store, a reader that takes no lock would resolve a
-	// new declaration to a store still holding the previous login's
-	// credential, and a change named before the commit would be
-	// replayed for a login that never happened.
+	// The declaration write. The first config write after the commit carries
+	// the declaration, the trust and the id of the change, and is what puts all
+	// three into effect: until the credential is in the destination store, a
+	// reader that takes no lock would resolve a new declaration to a store
+	// still holding the previous login's credential, and a change named before
+	// the commit would be replayed for a login that never happened.
 	declares := in.Declaration != "" && in.Declaration != declared
 	if declares {
 		cfg.CredentialStore = in.Declaration
@@ -574,12 +573,12 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		}
 	}
 
-	// Step 2. When a reader still resolves to the store this login is
-	// leaving, the old copy of this entry's credential goes now, and if it
-	// cannot go the pin flips instead, so readers stop resolving to it.
-	// When neither can be done the login says so and stops: readers still
-	// resolve the previous credential, and the pin step left keeps this
-	// entry's cache writes paused until a later login finishes it.
+	// The old-copy step. When a reader still resolves to the store this login
+	// is leaving, the old copy of this entry's credential goes now, and if it
+	// cannot go the pin flips instead, so readers stop resolving to it. When
+	// neither can be done the login says so and stops: readers still resolve
+	// the previous credential, and the pin step left undone keeps this entry's
+	// cache writes paused until a later login finishes it.
 	if plan != nil && b.WritesPin() {
 		ns, ok := runOldCopyOrPin(ctx, dir, cfg, change, name)
 		out.Warnings = append(out.Warnings, ns...)
@@ -592,7 +591,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		}
 	}
 
-	// Step 4. Everything the change still has to do, in order, under
+	// The replay. Everything the change still has to do, in order, under
 	// the lock this body already holds. A step that could not finish
 	// is a warning and stays for the next credential-mutating
 	// command: the credential is committed and recorded, and the work

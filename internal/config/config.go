@@ -76,7 +76,7 @@ func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 }
 
 // CompletionConfig holds the shell-completion preferences written by
-// `config set-completion` (AC-1, AC-2).
+// `config set-completion`.
 type CompletionConfig struct {
 	// Network enables live resource-name completion over the Rancher API.
 	// Default false; set via `config set-completion --network true`.
@@ -91,14 +91,14 @@ type CompletionConfig struct {
 
 const (
 	// CompletionTimeoutDefault is the effective timeout when Timeout is empty
-	// or unparseable (AC-2).
+	// or unparseable.
 	CompletionTimeoutDefault = 500 * time.Millisecond
-	// CompletionTimeoutMax is the hard cap for per-TAB HTTP budgets (AC-2).
+	// CompletionTimeoutMax is the hard cap for per-TAB HTTP budgets.
 	CompletionTimeoutMax = 2 * time.Second
 )
 
 // EffectiveCompletionTimeout returns the per-TAB HTTP budget from cfg,
-// applying default/floor/cap semantics (AC-2):
+// applying default/floor/cap semantics:
 //   - empty or unparseable → CompletionTimeoutDefault (500ms)
 //   - ≤ 0 → CompletionTimeoutDefault (floor non-positive)
 //   - > CompletionTimeoutMax → CompletionTimeoutMax (2s cap)

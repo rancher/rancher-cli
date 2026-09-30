@@ -113,10 +113,9 @@ func TestStripRoutingPrefix(t *testing.T) {
 	}
 }
 
-// Finding 2: stripRoutingPrefixByCmd tests (leading globals, alias depth).
+// stripRoutingPrefixByCmd tests (leading globals, alias depth).
 // These call stripRoutingPrefixByDepth directly from dispatch.go - the function
-// is defined there and NOT redefined here (round-2 finding 2: redefinition is a
-// compile error).
+// is defined there and NOT redefined here.
 func TestStripRoutingPrefixByCmdLeadingGlobalFlags(t *testing.T) {
 	t.Parallel()
 	// --output json before "get pod" - two non-flag routing tokens to skip (depth=2).
@@ -147,28 +146,29 @@ func TestKindForDescriptorSecretNotCompletable(t *testing.T) {
 	d := runtime.Descriptor{Name: "get secret"}
 	k, ok := kindForDescriptor(d)
 	assert.True(t, ok)
-	assert.False(t, k.Completable, "secret must never be completable (AC-25)")
+	assert.False(t, k.Completable, "secret must never be completable")
 }
 
-// Round-2 finding 7: inspect leaves must NOT get live positional completion.
-// AC-15a adds inspect aliases for suggestion; it does NOT enable live resource names.
+// Inspect leaves must NOT get live positional completion. Inspect aliases are
+// offered as suggestions; they do NOT enable live resource names.
 func TestInspectLeafGetsNoLivePositionalCompletion(t *testing.T) {
 	t.Parallel()
 	d := runtime.Descriptor{Name: "inspect pod"}
-	// isAC10Verb("inspect pod") is false, so no kind source is looked up for it.
-	assert.False(t, isAC10Verb(d.Name), "inspect is not an AC-10 verb")
+	// isGeneratedVerb("inspect pod") is false, so no kind source is looked up
+	// for it.
+	assert.False(t, isGeneratedVerb(d.Name), "inspect is not a generated verb")
 }
 
-func TestGetPodIsAC10Verb(t *testing.T) {
+func TestGetPodIsGeneratedVerb(t *testing.T) {
 	t.Parallel()
-	assert.True(t, isAC10Verb("get pod"))
-	assert.True(t, isAC10Verb("patch deployment"))
-	assert.True(t, isAC10Verb("delete namespace"))
-	assert.False(t, isAC10Verb("inspect pod"))
-	assert.False(t, isAC10Verb("inspect deployment"))
+	assert.True(t, isGeneratedVerb("get pod"))
+	assert.True(t, isGeneratedVerb("patch deployment"))
+	assert.True(t, isGeneratedVerb("delete namespace"))
+	assert.False(t, isGeneratedVerb("inspect pod"))
+	assert.False(t, isGeneratedVerb("inspect deployment"))
 }
 
-// Round-2 finding 5: no cluster anywhere → liveCandidates returns nil with ZERO requests.
+// No cluster anywhere → liveCandidates returns nil with ZERO requests.
 // With env management token set and no cluster in any source, cluster-dependent
 // sites must not issue /k8s/clusters//... requests.
 func TestNoClusterNoRequests(t *testing.T) {
@@ -197,7 +197,7 @@ func TestNoClusterNoRequests(t *testing.T) {
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Nil(t, got, "no cluster → nil candidates with zero requests")
-	assert.Equal(t, int32(0), hits.Load(), "round-2 finding 5: no HTTP requests when cluster unresolved")
+	assert.Equal(t, int32(0), hits.Load(), "no HTTP requests when cluster unresolved")
 }
 
 // TestNetworkGateZeroHits asserts that a reachable server receives zero requests
@@ -263,11 +263,11 @@ func TestPathInjectionClusterSlashReturnsNil(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
-	assert.Nil(t, got, "finding 1: path injection via cluster segment must yield nil")
-	assert.Equal(t, int32(0), hits.Load(), "finding 1: zero HTTP requests for invalid cluster segment")
+	assert.Nil(t, got, "path injection via cluster segment must yield nil")
+	assert.Equal(t, int32(0), hits.Load(), "zero HTTP requests for invalid cluster segment")
 }
 
-// Finding 1 (SECURITY): path injection via --namespace must yield zero HTTP requests.
+// Path injection via --namespace must yield zero HTTP requests.
 func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	var hits atomic.Int32
@@ -293,8 +293,8 @@ func TestPathInjectionNamespaceSlashReturnsNil(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
-	assert.Nil(t, got, "finding 1: path injection via namespace segment must yield nil")
-	assert.Equal(t, int32(0), hits.Load(), "finding 1: zero HTTP requests for invalid namespace segment")
+	assert.Nil(t, got, "path injection via namespace segment must yield nil")
+	assert.Equal(t, int32(0), hits.Load(), "zero HTTP requests for invalid namespace segment")
 }
 
 // Bare-dot namespace segments ("..", "...") must be rejected by the seam's
@@ -324,8 +324,8 @@ func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 		got := liveCandidates(ctx, site, d, nil, tail)
-		assert.Nil(t, got, "round-4 finding 1: bare-dot namespace %q must yield nil", ns)
-		assert.Equal(t, int32(0), hits.Load(), "round-4 finding 1: zero HTTP requests for bare-dot namespace %q", ns)
+		assert.Nil(t, got, "bare-dot namespace %q must yield nil", ns)
+		assert.Equal(t, int32(0), hits.Load(), "zero HTTP requests for bare-dot namespace %q", ns)
 	}
 }
 
@@ -395,8 +395,8 @@ func TestNonCompletableDownstreamKindIssuesZeroResolutionRequests(t *testing.T) 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	got := liveCandidates(ctx, site, d, nil, tail)
-	assert.Nil(t, got, "round-4 finding 3: non-completable downstream kind must yield nil")
-	assert.Equal(t, int32(0), hits.Load(), "round-4 finding 3: non-completable downstream kind must issue zero requests")
+	assert.Nil(t, got, "non-completable downstream kind must yield nil")
+	assert.Equal(t, int32(0), hits.Load(), "non-completable downstream kind must issue zero requests")
 }
 
 // TestFlagNameCandidatesDedupeSharedAlias: two flags with different primary

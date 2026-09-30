@@ -89,7 +89,8 @@ Two gotchas:
   code can't show - never its provenance. No references to design
   docs, reviews, rounds or findings, handoffs, recordings, tasks, or
   commit hashes; a reader with only the repo must get the full
-  meaning. Test doc-comments say "asserts", never "pins": "pin" is
+  meaning (test/conformance/planningrefs_test.go enforces this).
+  Test doc-comments say "asserts", never "pins": "pin" is
   reserved for the credential-store and CA pin features and for
   dependency pins (images, tools, modules).
 - **Descriptions:** operator-facing help is terse and plain; the schema `desc`

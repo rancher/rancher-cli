@@ -972,7 +972,7 @@ instead of refusing. No RBAC permissions are required.
 
 Graduation intent, not implemented today: refuse-with-escape-hatch (e.g. a
 `--allow-unsupported-server`-style flag) once there's real-use feedback on
-the warn-only period. Tracked as future work.
+the warn-only period.
 
 **`auth status` enrichment.** Beyond connectivity, `auth status -o json` also
 reports `rancherVersion`/`supported` (the version-floor check above),

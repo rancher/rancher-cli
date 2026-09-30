@@ -1,10 +1,10 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# Task 8 (spec D-5): patching a provisioningcluster's machine pool previews
+# Patching a provisioningcluster's machine pool previews
 # the etcd-quorum impact as an advisory warning, never a gate. Seed a
-# node-driver-shaped cluster (full manifest, not `create cluster` - spec
-# D-8 wants pool-scaling coverage through the generic manifest path too)
+# node-driver-shaped cluster (full manifest, not `create cluster`, so pool
+# scaling is also covered through the generic manifest path)
 # with a 3-member etcd pool; provisioningcluster is Sensitive, so --apply
 # alone is refused.
 exec rancher create resource -f scale-cluster.yaml --apply --yes

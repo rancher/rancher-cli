@@ -29,11 +29,11 @@ type trustCandidate struct {
 const dynamiclistenerCAMarker = "dynamiclistener-ca"
 
 // offerGuidedTrust inspects a preflight failure for a classified
-// unknown-authority TLS_TRUST error and, when the session can prompt, shows
-// the Tier-1 card and asks for explicit consent. priorFingerprint is the
-// entry's previously recorded CAFingerprint, if any - non-empty makes the
-// card open with a changed-identity warning naming it next to the new
-// candidate's, rather than rendering first-contact-indistinguishable.
+// unknown-authority TLS_TRUST error and, when the session can prompt, shows the
+// certificate trust card and asks for explicit consent. priorFingerprint is the
+// entry's previously recorded CAFingerprint, if any - non-empty makes the card
+// open with a changed-identity warning naming it next to the new candidate's,
+// rather than rendering first-contact-indistinguishable.
 //
 // declined is true exactly when the caller should treat err as the
 // ORIGINAL classified failure (not a TLS_TRUST error, can't prompt, not
@@ -103,8 +103,8 @@ func reverifyFailedError(details tlstrust.Details, cause error) *clierr.Error {
 	return clierr.New(clierr.CodeTLSTrust, msg+"; the certificate was not stored - try again")
 }
 
-// confirmTrust renders the Tier-1 card and asks the one explicit yes/no
-// question the design specifies. Any answer other than "y"/"yes"
+// confirmTrust renders the trust card and asks the one explicit yes/no
+// question. Any answer other than "y"/"yes"
 // (case-insensitive) - including a read error - declines.
 func confirmTrust(ctx context.Context, p runtime.Prompter, d tlstrust.Details, priorFingerprint string) bool {
 	p.Notice(trustCard(d, priorFingerprint))

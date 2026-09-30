@@ -150,8 +150,8 @@ func TestAdaptedPrimeCommandExecutionFailsLoudWithoutChecker(t *testing.T) {
 	assert.NotContains(t, out.String(), `"Pong"`, "execution must never reach the command")
 }
 
-// TestArgsUsageRendersRequiredAndOptionalArgs asserts PS-9's helper: required
-// Args render "<name>", optional Args render "[name]", space-joined in
+// TestArgsUsageRendersRequiredAndOptionalArgs asserts the args usage helper:
+// required Args render "<name>", optional Args render "[name]", space-joined in
 // declared order - the SAME Descriptor.Args the manifest publishes, so help
 // text cannot drift from schema. Args with a non-empty Enum render the
 // pipe-joined values instead of the bare name.
@@ -308,7 +308,7 @@ func (c *sliceEchoCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Pr
 	return runtime.Result{Kind: "Echo", Data: emptyTabularData{}}, nil
 }
 
-// TestAdaptedStringSliceFlagRoundTrip asserts MC-6a/MC-5a through the real
+// TestAdaptedStringSliceFlagRoundTrip asserts, through the real
 // urfave adapter: a stringSlice descriptor becomes a StringSliceFlag whose
 // occurrences arrive ordered and NEVER comma-split, and IsSet reports flag
 // presence for tri-state booleans.

@@ -28,12 +28,12 @@ type loginBackends struct {
 	// CommitsTo is what this login writes its credential to. The store is
 	// opened from this value and every manifest step is built from it.
 	CommitsTo string
-	// ReadsAfter is what a reader resolves to once the declaration this
-	// login writes is on disk and the pin is what step 0 leaves it as.
+	// ReadsAfter is what a reader resolves to once the declaration this login
+	// writes is on disk and the pin is what the pre-commit step leaves it as.
 	ReadsAfter string
 	// Pin is credstore-pin as this login read it.
 	Pin string
-	// PrePin is the pin step 0 writes, before the commit, or empty. A
+	// PrePin is the pin the pre-commit step writes, or empty. A
 	// directory with no pin that this login's credential leaves the file
 	// store from gets `file`, and an unpinned `auto` directory that readers
 	// find in the keychain gets `keychain`: it states what readers already
@@ -44,8 +44,8 @@ type loginBackends struct {
 	// fail in the middle of the login. With PinsFirst it is the store this
 	// login commits to.
 	PrePin string
-	// PinsFirst says the login writes the pin it ends with in step 0,
-	// before the commit. It is set only when the declaration the login
+	// PinsFirst says the login writes the pin it ends with in the pre-commit
+	// step. It is set only when the declaration the login
 	// leaves makes readers ask the pin while the pin names a third store,
 	// neither the one readers use now nor the one this login commits to.
 	// That can only happen under an explicit declaration, which no
@@ -185,7 +185,7 @@ func loginBackendsOf(dir string, cfg *Config, entry, policy, declaration string)
 		}
 	}
 	// What a reader resolves to right after the declaration write, with
-	// the pin as step 0 leaves it.
+	// the pin as the pre-commit step leaves it.
 	pinAtActivation := b.Pin
 	if b.PrePin != "" {
 		pinAtActivation = b.PrePin
@@ -429,18 +429,18 @@ func planStoreChange(dir string, cfg *Config, entry, url string, b loginBackends
 	return ch, nil
 }
 
-// storeChange is what step 0 left behind: the record of the change, and
-// the one thing step 2 needs that the record cannot say - whether this
-// entry's old copy could be read at all.
+// storeChange is what the pre-commit step left behind: the record of the
+// change, and the one thing the old-copy step needs that the record cannot
+// say: whether this entry's old copy could be read at all.
 type storeChange struct {
 	// plan is nil when the login records no change, and set as soon as the
 	// record reaches the disk, so an undo removes one that did.
 	plan *TransitionPlan
-	// oldCopyUnread says the backend holding this entry's old copy could
-	// not be read, so no delete step names it: a delete is bound to the
-	// credential's digest and there was none to compute. Step 2 cannot
-	// remove that copy and flips the pin instead, which is the other way
-	// to stop a reader resolving to it.
+	// oldCopyUnread says the backend holding this entry's old copy could not be
+	// read, so no delete step names it: a delete is bound to the credential's
+	// digest and there was none to compute. The old-copy step cannot remove
+	// that copy and flips the pin instead, which is the other way to stop a
+	// reader resolving to it.
 	oldCopyUnread bool
 	notices       []string
 }
@@ -519,10 +519,10 @@ func oldCopyOf(dir, entry, url, from string) (oldCopy, string, error) {
 	return oldCopy{token: tok, url: url}, "", nil
 }
 
-// runOldCopyOrPin performs step 2: the logging-in entry's old copy goes,
-// and if it cannot go the pin flips instead, so readers stop resolving
-// to it. ok is false only when neither could be done, which stops the
-// login with readers still on the previous credential.
+// runOldCopyOrPin performs the old-copy step: the logging-in entry's old copy
+// goes, and if it cannot go the pin flips instead, so readers stop resolving to
+// it. ok is false only when neither could be done, which stops the login with
+// readers still on the previous credential.
 func runOldCopyOrPin(ctx context.Context, dir string, cfg *Config, ch storeChange, entry string) (notices []string, ok bool) {
 	m := &ch.plan.manifest
 	i := stepIndex(m, func(s transitionStep) bool {

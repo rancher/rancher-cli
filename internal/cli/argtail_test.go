@@ -56,7 +56,7 @@ func TestParseArgTail(t *testing.T) {
 			hasMarker:   true,
 			want:        CompletionSite{Kind: SitePositional, Index: 0},
 		},
-		// Round-5 finding 1: equals-form currentWord → SiteFlagValue equals-form.
+		// Equals-form currentWord classifies as an equals-form SiteFlagValue.
 		{
 			name:        "v2: equals-form currentWord → flagValue equals (currentWord classified first)",
 			args:        []string{},
@@ -65,7 +65,7 @@ func TestParseArgTail(t *testing.T) {
 			want:        CompletionSite{Kind: SiteFlagValue, FlagName: "by", FlagSpelling: "--by", EqualsForm: true, Partial: "n"},
 		},
 		{
-			// Round-5 finding 1: partial flag in currentWord → SiteNameLike.
+			// A partial flag in currentWord classifies as SiteNameLike.
 			name:        "v2: partial flag currentWord → SiteNameLike (urfave default completer)",
 			args:        []string{},
 			currentWord: "--cl",
@@ -73,7 +73,7 @@ func TestParseArgTail(t *testing.T) {
 			want:        CompletionSite{Kind: SiteNameLike},
 		},
 		{
-			// Round-5 finding 1: non-flag currentWord, last args token is value-taking flag
+			// A non-flag currentWord after a value-taking flag classifies as
 			// → space-form SiteFlagValue with Partial=currentWord.
 			name:        "v2: non-flag currentWord, flag-last in args → SiteFlagValue space-form",
 			args:        []string{"--cluster"},
@@ -82,7 +82,8 @@ func TestParseArgTail(t *testing.T) {
 			want:        CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster", EqualsForm: false, Partial: "c-abc"},
 		},
 		{
-			// Round-5 finding 1: non-flag currentWord, no flag at end → SitePositional.
+			// A non-flag currentWord with no trailing flag classifies as
+			// SitePositional.
 			name:        "v2: non-flag currentWord, no trailing flag → SitePositional",
 			args:        []string{"--cluster", "c-abc"},
 			currentWord: "mypod",
@@ -246,8 +247,9 @@ func TestCaptureArgvV1NoSentinelNoCurrentWord(t *testing.T) {
 
 func TestSanitizedArgsStripsBothProtocolFields(t *testing.T) {
 	t.Parallel()
-	// SanitizedArgs must strip both the sentinel and the cur field (round-5: never forward
-	// currentWord to urfave, so unknown-command dispatch cannot fire on typed text).
+	// SanitizedArgs must strip both the sentinel and the cur field (never
+	// forward currentWord to urfave, so unknown-command dispatch cannot fire on
+	// typed text).
 	in := []string{"rancher", "--rancher-completion-proto=2", "get", "pod", "--rancher-completion-cur=c-", "--generate-shell-completion"}
 	got := SanitizedArgs(in)
 	assert.Equal(t, []string{"rancher", "get", "pod", "--generate-shell-completion"}, got)
@@ -260,10 +262,10 @@ func TestSanitizedArgsStripsEmptyCurField(t *testing.T) {
 	assert.Equal(t, []string{"rancher", "usage", "--generate-shell-completion"}, got)
 }
 
-// TestParseArgTailRepeatableFlagArity asserts MC-6a's completion arity: a
-// stringSlice flag takes a value on EVERY occurrence - a second --set after
-// a completed first one is a flag-value site, and a completed pair counts
-// no positional.
+// TestParseArgTailRepeatableFlagArity asserts the completion arity of a
+// repeatable flag: a stringSlice flag takes a value on EVERY occurrence - a
+// second --set after a completed first one is a flag-value site, and a
+// completed pair counts no positional.
 func TestParseArgTailRepeatableFlagArity(t *testing.T) {
 	t.Parallel()
 	leaf := runtime.Descriptor{

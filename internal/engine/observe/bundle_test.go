@@ -113,8 +113,8 @@ func TestRenderBundleText(t *testing.T) {
 		renderBundleText("/tmp/b.tar.gz", 5, 1024, 2, 1).Text)
 }
 
-// TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError is the exercise bug 6
-// repro: kube-api-auth on a non-ACE cluster is a structural inapplicability
+// TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError asserts that
+// kube-api-auth on a non-ACE cluster is a structural inapplicability
 // detected at target resolution time, not an attempted-and-failed
 // collection, so it must manifest as skipped, never error.
 func TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError(t *testing.T) {

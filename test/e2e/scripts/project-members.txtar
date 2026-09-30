@@ -33,7 +33,7 @@ stdout projectroletemplatebindings/project-member-
 exec rancher grant alice --role project-member --project members-proj --cluster testcluster --apply --yes
 
 # the binding carries BOTH userName and userPrincipalName from the one
-# resolved user (PC-7: forecloses Rancher's EnsureUser orphan-user trap).
+# resolved user (no orphan user is created, unlike Rancher's EnsureUser).
 exec rancher get prtb --namespace members-proj -o json
 jsonquery stdout 'data.#' 1
 jsonquery stdout data.0.userName u-alice

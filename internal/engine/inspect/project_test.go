@@ -599,7 +599,7 @@ func TestProjectMemberSystemJSONContract(t *testing.T) {
 	assert.False(t, has, "zero System must omit the key")
 }
 
-// TestInspectProjectNotFoundCurated asserts Fix 1: the post-Resolve project Get
+// TestInspectProjectNotFoundCurated asserts that the post-Resolve project Get
 // returns a hint-less NOT_FOUND; it must be curated to "project not found:
 // <id>" with a list hint - the same shape inspect cluster uses.
 func TestInspectProjectNotFoundCurated(t *testing.T) {

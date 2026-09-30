@@ -241,7 +241,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		return runtime.Result{}, lerr
 	}
 	items := list.Items
-	// caller-side list filtering (PC-3): a Downstream NSPlain kind under a
+	// caller-side list filtering: a Downstream NSPlain kind under a
 	// project without --namespace carries the member set here; the
 	// namespace-kind special case instead carries a server-side Selector
 	// above and leaves Members nil.
@@ -327,7 +327,7 @@ func hasName(in runtime.Input) bool {
 }
 
 // ProjectScope carries the effective --project scope a routing decision
-// resolved (PC-3): nil means unscoped. Members is the project's member
+// resolved: nil means unscoped. Members is the project's member
 // namespace set, used for caller-side membership validation and list
 // filtering (the generic Downstream NSPlain path). Selector is a server-side
 // label selector, used only by the namespace-kind special case (Members is
@@ -344,7 +344,7 @@ type ProjectScope struct {
 // one seam.
 func TypedProject(in runtime.Input) string { return in.String(FlagProject) }
 
-// rejectProjectScope enforces PC-3's "never a silent no-op" rule for kind
+// rejectProjectScope enforces the "never a silent no-op" rule for kind
 // families that do not support project scoping: an explicitly TYPED
 // --project is a VALIDATION error, never an ignored value.
 func rejectProjectScope(in runtime.Input, k kinds.Kind) error {
@@ -381,7 +381,7 @@ func resolveProjectScope(ctx context.Context, clients engine.ClusterClientFactor
 // Route maps a kind's NamespacePolicy + input to the client cluster id, the
 // namespace, the Effect's target cluster (the identity a mutation lands on,
 // which differs from the client cluster for management namespaced kinds), and
-// the effective project scope (PC-3; nil when unscoped):
+// the effective project scope (nil when unscoped):
 //
 //	NSNone:      client per scope,     ns "",                 effect = client
 //	NSCluster:   client "local",       ns = resolved --cluster, effect that cluster
@@ -392,14 +392,14 @@ func resolveProjectScope(ctx context.Context, clients engine.ClusterClientFactor
 // ("local"); a Downstream kind resolves --cluster (name-or-id) via
 // ResolveCluster - the flag is required, a VALIDATION error when absent.
 //
-// SAFETY (review F3) - for NSCluster kinds an empty --cluster must NEVER
+// SAFETY - for NSCluster kinds an empty --cluster must NEVER
 // silently become "local" (ResolveCluster("") returns LocalCluster, which as a
 // namespace targets the local cluster's own resources): an empty --cluster is
 // allowed only for a nameless list (namespace "" = across all clusters);
 // addressing a resource by name requires --cluster. NSPlain applies the same
 // fail-fast rule to --namespace before any network resolution.
 //
-// PC-3 project scope: a Downstream NSPlain kind validates/filters by project
+// Project scope: a Downstream NSPlain kind validates/filters by project
 // membership inside Route (named ops and mutations can never skip it); every
 // other kind family rejects a non-empty project outright, EXCEPT the
 // namespace kind itself (NSNone/Downstream), which converts an unnamed
@@ -494,7 +494,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 	}
 }
 
-// routeNamespaceKind is PC-3's special case: the namespace kind's own
+// routeNamespaceKind is the special case: the namespace kind's own
 // membership IS the project label, so --project converts a list into a
 // server-side label-selector query rather than a rejection or a caller-side
 // membership filter. A named op still validates membership like any other

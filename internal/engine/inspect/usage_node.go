@@ -81,7 +81,7 @@ func (c *usageCmd) collectByNode(ctx context.Context, client engine.ClusterClien
 	for _, pod := range pods.Items {
 		nn, _, _ := unstructured.NestedString(pod.Object, "spec", "nodeName")
 		if nn == "" {
-			continue // pending/unscheduled - excluded per spec UU-19
+			continue // pending/unscheduled - excluded
 		}
 		grouped[nn] = append(grouped[nn], pod)
 	}

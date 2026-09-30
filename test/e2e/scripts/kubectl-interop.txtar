@@ -1,9 +1,8 @@
 # This script sticks to the WARM exec-credential cache path via
 # seedexeccache; kubectl-interop-cold.txtar covers the cold round trip
 # through the facade's /v1-public/* endpoints and the ext.cattle.io/v1
-# token create instead (spec FA-0 supersedes the old "shim must not grow"
-# note - the facade is a separate layer composed in front of the
-# unchanged router).
+# token create instead (the facade is a separate layer composed in front of
+# the unchanged router).
 # seedexeccache pre-warms the cache through the real config store API, so
 # get-token takes its cache fast-path here without touching login at all.
 [!kubectl] skip 'kubectl not on PATH'

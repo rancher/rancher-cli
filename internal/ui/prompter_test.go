@@ -71,10 +71,9 @@ func TestNoticeWritesToErr(t *testing.T) {
 	assert.Equal(t, "heads up\n", errw.String())
 }
 
-// Round-3 repro: a background goroutine (the OAuth loopback callback
-// handler) calling Notice concurrently with the main goroutine's own
-// Notice/Prompt calls raced on the shared writer with no synchronization.
-// Run with -race; fails on the unguarded implementation.
+// A background goroutine (the OAuth loopback callback handler) calling
+// Notice concurrently with the main goroutine's own Notice/Prompt calls
+// must not race on the shared writer. Run with -race.
 func TestNoticeIsSafeForConcurrentUse(t *testing.T) {
 	var errw bytes.Buffer
 	p := New(&errw, strings.NewReader(""), true, false)

@@ -1,4 +1,4 @@
-# The exercise-bug-4 regression (spec FA-4.3): a login's --cacert persists
+# Regression: a login's --cacert persists
 # that CA into the config's server entry (login.go), which is what a later
 # bare `auth get-token --server ...` call borrows via caForServer
 # (token.go's own resolveConn) - env RANCHER_CLI_CACERT never reaches that path.
@@ -20,7 +20,7 @@ jsonquery execcred.json kind ExecCredential
 exec rancher delete token fac-token-1 --apply --yes -o json
 jsonquery stdout data.deleted fac-token-1
 
-# Deterministic per-instance token names/secrets (FA-1) let this replay the
+# Deterministic per-instance token names/secrets let this replay the
 # just-revoked bearer verbatim - actual reuse of a dead credential, not an
 # inference.
 env RANCHER_CLI_TOKEN=ext/fac-token-1:fac-secret-1

@@ -111,7 +111,7 @@ func crtBodyFixture(t *testing.T, ns, token string, overrides map[string]any) []
 	return b
 }
 
-// marshaledDoc asserts the MARSHALED envelope shape (IC-5): the wire JSON,
+// marshaledDoc asserts the MARSHALED envelope shape: the wire JSON,
 // not the in-memory struct.
 func marshaledDoc(t *testing.T, data any) (map[string]any, string) {
 	t.Helper()
@@ -172,7 +172,7 @@ func TestInspectClusterHappyPathEnvelope(t *testing.T) {
 	assert.Equal(t, "prod", cluster["name"])
 	assert.Equal(t, "active", cluster["state"])
 	assert.Equal(t, "v1.30.4+rke2r1", cluster["kubernetesVersion"],
-		"the management-OBSERVED version wins over the provisioning spec (IC-4b)")
+		"the management-OBSERVED version wins over the provisioning spec")
 
 	_, hasNote := doc["provisioningNote"]
 	assert.False(t, hasNote, "the note is RESERVED for confirmed absence")
@@ -208,7 +208,7 @@ func TestInspectClusterHappyPathEnvelope(t *testing.T) {
 	}
 }
 
-// TestInspectClusterCorrelatesRenamedClusterByStatusClusterName asserts IC-14's
+// TestInspectClusterCorrelatesRenamedClusterByStatusClusterName asserts the
 // correlation rule: a provisioning CR whose metadata.name AND
 // spec.displayName differ from every management identity still correlates
 // via status.clusterName, and a non-matching sibling CR is ignored.
@@ -233,17 +233,17 @@ func TestInspectClusterCorrelatesRenamedClusterByStatusClusterName(t *testing.T)
 	_, hasNote := doc["provisioningNote"]
 	assert.False(t, hasNote)
 	mpRaw, ok := doc["machinePools"]
-	require.True(t, ok, "the matched CR's empty rkeConfig marshals an EMPTY pools array (IC-9)")
+	require.True(t, ok, "the matched CR's empty rkeConfig marshals an EMPTY pools array")
 	mpSlice, ok := mpRaw.([]any)
 	require.True(t, ok, "machinePools is a JSON array")
-	assert.Empty(t, mpSlice, "the matched CR's empty rkeConfig marshals an EMPTY pools array (IC-9)")
+	assert.Empty(t, mpSlice, "the matched CR's empty rkeConfig marshals an EMPTY pools array")
 	statusDoc, ok := doc["status"].(map[string]any)
 	require.True(t, ok)
 	condsRaw, ok := statusDoc["conditions"]
-	require.True(t, ok, "conditions key is always present (IC-5)")
+	require.True(t, ok, "conditions key is always present")
 	condsSlice, ok := condsRaw.([]any)
 	require.True(t, ok, "conditions is a JSON array")
-	assert.Empty(t, condsSlice, "conditions are ALWAYS a non-nil slice (IC-5)")
+	assert.Empty(t, condsSlice, "conditions are ALWAYS a non-nil slice")
 }
 
 func TestInspectClusterVersionPrecedence(t *testing.T) {
@@ -285,8 +285,8 @@ func TestInspectClusterVersionPrecedence(t *testing.T) {
 	})
 }
 
-// TestInspectClusterProvisioningAbsent is IC-7: the LIST succeeded and
-// matched zero objects - confirmed absence. provisioningNote at the ROOT,
+// TestInspectClusterProvisioningAbsent asserts confirmed absence: the LIST
+// succeeded and matched zero objects. provisioningNote at the ROOT,
 // status/machinePools keys absent from the wire, NOT an error, NO warning
 // for it (the note is the signal).
 func TestInspectClusterProvisioningAbsent(t *testing.T) {
@@ -312,7 +312,7 @@ func TestInspectClusterProvisioningAbsent(t *testing.T) {
 	assert.True(t, hasReg, "the registration read is independent of the provisioning CR")
 }
 
-// TestInspectClusterProvisioningUnavailable is IC-7a's unavailable branch:
+// TestInspectClusterProvisioningUnavailable asserts the unavailable branch:
 // the lookup failed (RBAC/discovery/transport), so an agent must NOT read
 // "definitely none" - no note, a warning naming the cause, NOT an error.
 func TestInspectClusterProvisioningUnavailable(t *testing.T) {
@@ -333,14 +333,14 @@ func TestInspectClusterProvisioningUnavailable(t *testing.T) {
 
 	doc, _ := marshaledDoc(t, res.Data)
 	_, hasNote := doc["provisioningNote"]
-	assert.False(t, hasNote, "unavailable is NOT the absence note - the distinction is the contract (IC-7a)")
+	assert.False(t, hasNote, "unavailable is NOT the absence note - the distinction is the contract")
 	_, hasStatus := doc["status"]
 	assert.False(t, hasStatus)
 	_, hasPools := doc["machinePools"]
 	assert.False(t, hasPools)
 }
 
-// TestInspectClusterProvisioningAmbiguous is IC-7a's ambiguous branch:
+// TestInspectClusterProvisioningAmbiguous asserts the ambiguous branch:
 // multiple provisioning CRs reporting the same status.clusterName is a
 // server-side anomaly - treated as unavailable, never as a pick-one.
 func TestInspectClusterProvisioningAmbiguous(t *testing.T) {
@@ -370,7 +370,7 @@ func TestInspectClusterProvisioningAmbiguous(t *testing.T) {
 	assert.False(t, hasPools)
 }
 
-// TestInspectClusterRegistrationUnavailable is IC-8: any registration
+// TestInspectClusterRegistrationUnavailable asserts that any registration
 // read failure - the fetch itself or Root() - omits the section and warns.
 func TestInspectClusterRegistrationUnavailable(t *testing.T) {
 	t.Parallel()
@@ -595,8 +595,8 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 	})
 }
 
-// TestInspectClusterRegistrationPlaceholderFieldDropped is the IC-8
-// placeholder policy over the IC-4a reporter: the affected field
+// TestInspectClusterRegistrationPlaceholderFieldDropped asserts the
+// placeholder policy: the affected field
 // DISAPPEARS from the wire (individually-omitempty), the others survive,
 // a warning names the field, and the literal placeholder never reaches
 // output as data.
@@ -719,7 +719,7 @@ func TestInspectClusterRegistrationWindowsPlaceholderSuppressed(t *testing.T) {
 	}
 }
 
-// TestInspectClusterResolutionErrors asserts IC-2/IC-14's argument failures
+// TestInspectClusterResolutionErrors asserts the argument failures
 // through the provider's REAL error vocabulary (clientFactory.ResolveCluster
 // delegates to projects.MatchOneOrError - the same contract get cluster's
 // named path uses): an unknown name-or-id is the structured NOT_FOUND
@@ -762,7 +762,7 @@ func TestInspectClusterResolutionErrors(t *testing.T) {
 	}
 }
 
-// TestInspectClusterMgmtGetErrorIsCommandError is IC-6: the management
+// TestInspectClusterMgmtGetErrorIsCommandError asserts that the management
 // Cluster read is the only hard requirement - failure there IS the
 // command's error, and no further read is attempted.
 func TestInspectClusterMgmtGetErrorIsCommandError(t *testing.T) {
@@ -790,7 +790,7 @@ func TestInspectClusterRejectsProject(t *testing.T) {
 	assert.Contains(t, ce.Message, "--project does not apply to inspect cluster")
 }
 
-// TestInspectClusterTextSections asserts the IC-1a multi-section text view
+// TestInspectClusterTextSections asserts the multi-section text view
 // section by section: order, content, the trouble-first condition
 // ordering, sane message truncation, and the NEVER-truncated join
 // commands.
@@ -834,7 +834,7 @@ func TestInspectClusterTextSections(t *testing.T) {
 	iReg := strings.Index(text, "\nREGISTRATION\n")
 	require.Equal(t, 0, iCluster, "CLUSTER is the first section")
 	require.True(t, iConds > iCluster && iPools > iConds && iReg > iPools,
-		"sections render in the IC-1a order: CLUSTER, CONDITIONS, MACHINE POOLS, REGISTRATION")
+		"sections render in this order: CLUSTER, CONDITIONS, MACHINE POOLS, REGISTRATION")
 
 	assert.Contains(t, text, "id: c-abc")
 	assert.Contains(t, text, "name: prod")
@@ -858,7 +858,7 @@ func TestInspectClusterTextSections(t *testing.T) {
 }
 
 // TestInspectClusterTextAvailabilityMarkers asserts the CONCISE in-place
-// markers for omitted sections (IC-1a): the marker on stdout, the
+// markers for omitted sections: the marker on stdout, the
 // detailed cause ONLY in Warnings.
 func TestInspectClusterTextAvailabilityMarkers(t *testing.T) {
 	t.Parallel()
@@ -1082,7 +1082,7 @@ func TestClusterMachinesLookupTriState(t *testing.T) {
 	require.Error(t, err, "caller cancellation aborts the command")
 }
 
-// TestClusterMachinesWithCreateError is the live-exercise scenario: a CAPI
+// TestClusterMachinesWithCreateError covers a CAPI
 // Machine carrying a CreateError condition surfaces the message in both text
 // and JSON - the DO 422 that was otherwise invisible to every rancher command.
 func TestClusterMachinesWithCreateError(t *testing.T) {
@@ -1170,7 +1170,7 @@ func TestRenderClusterTextMachinesSection(t *testing.T) {
 		"empty machines with pools unavailable stays a plain none")
 }
 
-// TestReadyConditionOverridesStatusReady asserts the live-exercise fix: when
+// TestReadyConditionOverridesStatusReady asserts that when
 // the Ready condition is present, its status drives the ready field rather
 // than status.ready, which was observed flipping true ~90s before the
 // condition left Unknown.
@@ -1216,8 +1216,8 @@ func TestMachineConditionMessageSanitized(t *testing.T) {
 }
 
 // TestInspectClusterStdoutStderrSplit drives the REAL pipeline
-// (runtime.Run's Text branch) and asserts stdout and stderr separately
-// (IC-1a): sections + markers on stdout, "# warning: ..." detail on
+// (runtime.Run's Text branch) and asserts stdout and stderr separately:
+// sections + markers on stdout, "# warning: ..." detail on
 // stderr, no duplication of the same text across the two streams.
 func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 	t.Parallel()

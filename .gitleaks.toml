@@ -1,7 +1,7 @@
 [extend]
 useDefault = true
 
-# The one historical gitleaks finding (assessed 2026-08-10): a synthetic
+# The one historical gitleaks finding: a synthetic
 # DigitalOcean-shaped token in the secret-scrubbing test
 # TestCreateMachineConfigSetMalformed. Its 32-hex body cannot be a real DO
 # token (those are 64 hex); it exists precisely to assert that secrets never

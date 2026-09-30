@@ -26,7 +26,7 @@ func TestScrubManagedFieldsDeletesOnlyUnderMetadata(t *testing.T) {
 	assert.NotContains(t, meta, "managedFields")
 	assert.Equal(t, "cm", meta["name"])
 	assert.Equal(t, "user-data-survives", tree["managedFields"],
-		"a managedFields key outside a metadata map survives (MF-2)")
+		"a managedFields key outside a metadata map survives")
 	inner := tree["nested"].([]any)[0].(map[string]any)["metadata"].(map[string]any)
 	assert.NotContains(t, inner, "managedFields")
 	assert.Equal(t, "u1", inner["uid"])
@@ -37,7 +37,7 @@ func TestScrubbedEnvelopeTreeFastPath(t *testing.T) {
 	env := NewEnvelope("X", map[string]any{"metadata": map[string]any{"name": "clean"}})
 	tree, hit, err := scrubbedTree(env)
 	require.NoError(t, err)
-	assert.False(t, hit, "no managedFields literal means no tree (MF-2 fast path)")
+	assert.False(t, hit, "no managedFields literal means no tree (fast path)")
 	assert.Nil(t, tree)
 }
 
@@ -57,5 +57,5 @@ func TestScrubbedEnvelopeTreeSlowPath(t *testing.T) {
 	meta := data["metadata"].(map[string]any)
 	assert.NotContains(t, meta, "managedFields")
 	assert.Equal(t, "9007199254740993", meta["generation"].(interface{ String() string }).String(),
-		"large ints survive as json.Number, no float64 round-trip (MF-2)")
+		"large ints survive as json.Number, no float64 round-trip")
 }

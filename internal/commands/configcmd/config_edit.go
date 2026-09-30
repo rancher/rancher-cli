@@ -148,8 +148,8 @@ func (c configEditCmd) Execute(ctx context.Context, _ runtime.Input, p runtime.P
 				return runtime.Result{}, writeErr
 			}
 			// Both the conflict clierr and I/O errors preserve tempPath - in
-			// the conflict case the brief requires it; for I/O failures the
-			// user's work must not be lost.
+			// the conflict case the user needs it to recover their edits; for
+			// I/O failures the user's work must not be lost.
 			if ce, ok := errors.AsType[*clierr.Error](writeErr); ok {
 				// A clierr produced inside fn (conflict, read failure)
 				// already names the preserved temp path at its source; a

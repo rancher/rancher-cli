@@ -806,7 +806,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 
 // CompleteArgs implements runtime.ShellCompleter: `auth delete-token <TAB>`
 // completes cached exec-credential entry display names from a strictly
-// read-only cache scan (AC-12). Composite keys are not offered.
+// read-only cache scan. Composite keys are not offered.
 func (d deleteTokenCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
 	dir := view.ConfigDir()
 	if dir == "" {
@@ -831,7 +831,7 @@ func (d deleteTokenCmd) CompleteArgs(_ context.Context, view runtime.ConfigView)
 // LoginRequest is the constructible counterpart to loginInput: loginInput's
 // fields are unexported, so no command outside this package could build one
 // to drive the identity-provider dance. `auth login`'s own provider flow
-// (EXT-R-8) is the first consumer.
+// is the first consumer.
 type LoginRequest struct {
 	Server       string
 	ClusterID    string
@@ -986,13 +986,13 @@ func SetSAMLTimingForTest(timeout, interval time.Duration) (restore func()) {
 	return func() { samlAuthTimeout, samlPollInterval = prevTimeout, prevInterval }
 }
 
-// samlAuth signs in through the browser: it publishes a URL carrying a
-// request id and a public key, then polls Rancher's authtokens collection
-// for the encrypted token the browser deposits there. Nothing here creates a
-// token - the server does, out of band - so every failure after the URL is
-// published leaves a session token that may exist and can only be found
-// through the handoff this returns. The created token is always v3 and never
-// carries a description, so it can never be marked.
+// samlAuth signs in through the browser: it publishes a URL carrying a request
+// id and a public key, then polls Rancher's authtokens collection for the
+// encrypted token the browser deposits there. Nothing here creates a token -
+// the server does, out of band - so every failure after the URL is published
+// leaves a session token that may exist and can only be found through the SAML
+// handoff this returns. The created token is always v3 and never carries a
+// description, so it can never be marked.
 func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (SessionAcquireResult, error) {
 	res := SessionAcquireResult{Create: CreateResult{Outcome: CreateNotAttempted, Kind: TokenKindV3}}
 
@@ -1041,8 +1041,8 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	q.Set("responseType", loginResponseType(input))
 	loginURL.RawQuery = q.Encode()
 
-	// The handoff is recorded before the URL reaches the operator: from the
-	// moment it can be opened, a token may exist, and every exit below must
+	// The SAML handoff is recorded before the URL reaches the operator: from
+	// the moment it can be opened, a token may exist, and every exit below must
 	// carry the criteria that find it.
 	res.Handoff = &SAMLHandoff{Provider: input.authProvider, RequestID: id, HandoffAt: time.Now().UTC().Format(time.RFC3339)}
 	res.Create.Outcome = CreateUnknown

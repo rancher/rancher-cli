@@ -24,7 +24,7 @@ import (
 )
 
 var updateFacade = flag.Bool("update-facade", false,
-	"record facade goldens for divergence-pinned probes (wave-4 reconciliation)")
+	"record facade goldens for divergence-pinned probes")
 
 // fidelityDir is the fidelity library's testdata root, relative to this
 // package directory (test/e2e/).

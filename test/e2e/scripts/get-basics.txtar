@@ -16,7 +16,7 @@ jsonquery -yaml cm.out.yaml data.metadata.name basics-cm
 exec rancher get cm basics-cm --cluster testcluster --namespace default -o json
 jsonquery stdout data.metadata.name basics-cm
 
-# MF-8: the served object really carries managedFields (positive
+# The served object really carries managedFields (positive
 # precondition - without it the absence assertions below are vacuous) ...
 rawget core/v1/configmaps default basics-cm cm.raw.json
 ! jsonquery cm.raw.json metadata.managedFields ''

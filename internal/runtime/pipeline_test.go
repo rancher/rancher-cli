@@ -221,10 +221,9 @@ func TestRunDeprecatedGateUsesBinding(t *testing.T) {
 	assert.Contains(t, ce.Message, "--allow-deprecated")
 }
 
-// TestRenderEffectWarningsJSONOnce covers case (a) from the plan (D-10b,
-// review R2-6): an Effect.Warnings note rides the -o json dry-run envelope's
-// top-level "warnings" exactly once - Effect.Warnings' json:"-" tag must not
-// let it leak into env.data too.
+// TestRenderEffectWarningsJSONOnce covers the case where an Effect.Warnings
+// note rides the -o json dry-run envelope's top-level "warnings" exactly once -
+// Effect.Warnings' json:"-" tag must not let it leak into env.data too.
 func TestRenderEffectWarningsJSONOnce(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
@@ -317,11 +316,11 @@ func TestDryRunTextDiffLines(t *testing.T) {
 		"  dry run - re-run with --apply to execute\n", out.String())
 }
 
-// TestRenderEffectRawFormatsWarningsToStderr covers the round-4 High+Low-1 fix:
-// raw-output formats (-o name, -o template=...) carry only the target field on
-// stdout - the Effect envelope's "warnings" key is never emitted. renderEffect
-// must mirror each warning to stderr as "# warning: <w>" so they are not
-// silently dropped (same contract as renderResult under raw formats).
+// TestRenderEffectRawFormatsWarningsToStderr asserts that raw-output formats
+// (-o name, -o template=...) carry only the target field on stdout - the Effect
+// envelope's "warnings" key is never emitted - so renderEffect must mirror each
+// warning to stderr as "# warning: <w>" so they are not silently dropped (same
+// contract as renderResult under raw formats).
 func TestRenderEffectRawFormatsWarningsToStderr(t *testing.T) {
 	t.Parallel()
 	formats := []string{"name", "template={{.target}}"}
@@ -377,13 +376,9 @@ func TestRenderEffectWarningsCombineDryRun(t *testing.T) {
 	})
 }
 
-// TestRunApplyRendersEffectWarnings covers Finding 1 of the adjudicated
-// review (pipeline.go:96): runMutating rendered eff.Warnings only inside the
-// streams.DryRun branch (via renderEffect); the --apply path went
-// exec(ctx) -> renderResult(streams, res), which never saw eff.Warnings at
-// all. A real --apply --yes delete/patch/create must carry every advisory
-// warning (cascade-delete, quorum-impact, version-mismatch) forward onto the
-// applied Result, exactly once.
+// TestRunApplyRendersEffectWarnings asserts that an --apply run carries every
+// Effect.Warnings entry (cascade-delete, quorum-impact, version-mismatch)
+// onto the applied Result, exactly once, not only into the dry-run preview.
 func TestRunApplyRendersEffectWarnings(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
@@ -406,9 +401,9 @@ func TestRunApplyRendersEffectWarnings(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out.String(), "note-a"))
 }
 
-// TestRunApplyCombinesEffectWarnings covers Finding 1's ordering requirement:
-// multiple Effect.Warnings notes ride together on the applied Result in
-// the original order, each appearing exactly once.
+// TestRunApplyCombinesEffectWarnings covers ordering: multiple Effect.Warnings
+// notes ride together on the applied Result in the original order, each
+// appearing exactly once.
 func TestRunApplyCombinesEffectWarnings(t *testing.T) {
 	t.Parallel()
 	cmd := fakeMutating{
@@ -575,9 +570,9 @@ func TestValidateInput(t *testing.T) {
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
-	// Positional args get the same Enum check Flags already had (external
-	// review finding 6) - a command like `completion <shell>` can rely on
-	// this generic path instead of hand-rolling its own.
+	// Positional args get the same Enum check Flags already had - a command
+	// like `completion <shell>` can rely on this generic path instead of
+	// hand-rolling its own.
 	t.Run("bad positional enum", func(t *testing.T) {
 		cmd := fakeRead{d: Descriptor{Name: "x", CommandType: Local, Args: []ArgSpec{
 			{Name: "shell", Type: "string", Required: true, Enum: []string{"bash", "zsh"}},
@@ -992,15 +987,10 @@ func TestCheckResultShapeRejectsWideAndStyledText(t *testing.T) {
 	assert.Contains(t, ce.Error(), "returned both WideText and StyledText")
 }
 
-// TestRenderResultEnvelopeWarningsTableStderr covers Finding 4 of the
-// adjudicated review (pipeline.go:251): renderResult's envelope path set
-// env.Warnings but never wrote anything to stderr, and renderTable
-// (output/render.go) only ever reads env.Data - so in default/table format
-// every Result's warnings silently vanished (e.g. `top node`'s
-// metrics-server-absent warning, `inspect` warnings). This is pre-existing
-// and broader than provisioning. Table/default mode must now write each
-// warning to stderr as "# warning: <w>", stdout must not carry it, and each
-// warning must appear exactly once total.
+// TestRenderResultEnvelopeWarningsTableStderr asserts that table/default mode
+// writes each Result warning to stderr as "# warning: <w>": renderTable
+// (output/render.go) reads only env.Data, so the table on stdout never
+// carries it, and each warning appears exactly once across both streams.
 func TestRenderResultEnvelopeWarningsTableStderr(t *testing.T) {
 	t.Parallel()
 	cmd := fakeRead{
@@ -1017,7 +1007,7 @@ func TestRenderResultEnvelopeWarningsTableStderr(t *testing.T) {
 }
 
 // TestRenderResultEnvelopeWarningsJSONEnvelopeOnly covers the -o json/-o yaml
-// half of Finding 4: warnings stay inside the envelope only, with no
+// half: warnings stay inside the envelope only, with no
 // duplicate stderr "# warning:" write.
 func TestRenderResultEnvelopeWarningsJSONEnvelopeOnly(t *testing.T) {
 	t.Parallel()
@@ -1037,9 +1027,9 @@ func TestRenderResultEnvelopeWarningsJSONEnvelopeOnly(t *testing.T) {
 	assert.Empty(t, errBuf.String())
 }
 
-// nodeMetricsRows mirrors inspect.nodeRows (internal/engine/inspect/topnode.go):
-// `top node`'s output.Tabular payload of {"node", "usage"} maps, rendering
-// NAME/CPU/MEMORY with "<none>" for a degraded row.
+// nodeMetricsRows is an output.Tabular payload of {"name"} maps that renders
+// NAME/CPU/MEMORY with "<none>" for CPU and MEMORY, as a degraded
+// node-metrics row reads.
 type nodeMetricsRows []map[string]string
 
 func (n nodeMetricsRows) Columns() []string { return []string{"NAME", "CPU", "MEMORY"} }
@@ -1063,17 +1053,12 @@ type fooTabularData struct {
 func (f fooTabularData) Columns() []string { return []string{"NAME"} }
 func (f fooTabularData) Rows() [][]string  { return [][]string{{f.Foo}} }
 
-// TestTopNodeShapedResultWarningsSurviveTableOutput is the regression proof
-// requested by the adjudication for Finding 4: it demonstrates the
-// pre-existing bug (every command's warnings vanished in default/table
-// output, not just provisioning's) is fixed, using a Result shaped exactly
-// like `top node`'s real output - Kind "NodeMetrics", an output.Tabular Data
-// payload, and the one metrics-unavailable warning topnode.go emits when
-// metrics-server is absent. Before the fix, this warning was silently
-// dropped in table/default
-// format; a user running `rancher-cli top node` with no metrics-server saw
-// no indication their CPU/MEMORY columns were "<none>" because metrics were
-// unreachable, not because usage was legitimately zero.
+// TestTopNodeShapedResultWarningsSurviveTableOutput asserts, with a Result
+// shaped like a node-metrics read - Kind "NodeMetrics", an output.Tabular Data
+// payload, and one metrics-unavailable warning - that the warning reaches
+// stderr in table/default format while the table still renders: without it a
+// user cannot tell that "<none>" CPU/MEMORY columns mean metrics were
+// unreachable, not that usage is zero.
 func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
 	t.Parallel()
 	warning := "metrics.k8s.io unavailable on cluster c-abc123"
@@ -1094,9 +1079,9 @@ func TestTopNodeShapedResultWarningsSurviveTableOutput(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out.String()+errBuf.String(), warning))
 }
 
-// TestRenderResultRawFormatsWarningsToStderr asserts the round-3 High-1 fix:
-// raw-output formats (-o name, -o template=...) carry only the named field on
-// stdout - the envelope's warnings key is never emitted. renderResult must
+// TestRenderResultRawFormatsWarningsToStderr asserts that raw-output
+// formats (-o name, -o template=...) carry only the named field on
+// stdout - the envelope's warnings key is never emitted - so renderResult must
 // mirror each warning to stderr as "# warning: <w>" so they are not silently
 // dropped.
 func TestRenderResultRawFormatsWarningsToStderr(t *testing.T) {
@@ -1486,12 +1471,11 @@ func TestRunOrdinaryCommandDrainsNoticeSourceOnSuccess(t *testing.T) {
 	})
 }
 
-// TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat asserts the
-// warning-delivery fix for the raw-output shapes: ShapeBytes (RawBytes) and
-// ShapeExecJSON (Raw) results never had an envelope to carry Warnings, and
-// the RawBytes/Raw branches used to return before the stderr mirror loop
-// ran at all - silently dropping them under every format, not just
-// json/yaml. Both branches now mirror unconditionally.
+// TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat asserts that
+// warnings on the raw-output shapes reach stderr under every format:
+// ShapeBytes (RawBytes) and ShapeExecJSON (Raw) results have no envelope to
+// carry Warnings, so both branches mirror them to stderr unconditionally
+// rather than returning before the mirror loop.
 func TestRunRawBytesAndExecJSONWarningsMirrorUnderEveryFormat(t *testing.T) {
 	t.Parallel()
 	for _, format := range []string{"", "table", "json"} {
@@ -1544,7 +1528,7 @@ func TestValidateInputMissingRequiredFlagUsesDeclaredMessage(t *testing.T) {
 	assert.Empty(t, ce.Hint)
 }
 
-// TestValidateInputStringSlicePerEntry asserts MC-6a's validateInput
+// TestValidateInputStringSlicePerEntry asserts validateInput's
 // semantics: Required means at least one occurrence; Enum membership is
 // checked on every entry.
 func TestValidateInputStringSlicePerEntry(t *testing.T) {

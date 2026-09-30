@@ -12,7 +12,7 @@ import (
 
 // Preflight verifies connectivity and credentials by asking the server for
 // its version. It owns rest.Config construction and error mapping so
-// commands never reach into client/kube directly (L-2): auth failures map
+// commands never reach into client/kube directly: auth failures map
 // to AUTH, everything else stays GENERIC/retryable instead of being
 // mislabeled as an auth problem.
 //

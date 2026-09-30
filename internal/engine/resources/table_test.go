@@ -374,8 +374,7 @@ func TestTableRowsRenderJoinAndDefault(t *testing.T) {
 // TestTableRowsRenderSettingProvenance asserts Setting's CUSTOMIZED/SOURCE
 // columns against the real wire shape: value/default/customized/source sit
 // at the object root (Setting is a flat CRD, not spec/status), and both
-// fields are always emitted (never omitempty), verified live against a
-// v2.14.3 Rancher server on 2026-08-18.
+// fields are always emitted (never omitempty).
 func TestTableRowsRenderSettingProvenance(t *testing.T) {
 	t.Parallel()
 	k, ok := kinds.Lookup("setting")
@@ -402,12 +401,11 @@ func TestTableRowsRenderSettingProvenance(t *testing.T) {
 
 // TestTableRowsRenderFeatureBoolStatus asserts Feature's VALUE/DEFAULT/DYNAMIC/
 // LOCKED columns: all are plain status bools (or, for VALUE, the merged
-// spec.value/status.default fallback) verified live against a v2.14.3
-// Rancher server on 2026-08-18. lockedValue is an omitempty *bool - absent
-// (unlocked) must render blank, never "false", since a locked-false feature
-// is a real, different state. VALUE is asserted both directions: spec.value
-// absent falls through to status.default, and spec.value present (even
-// false) wins over status.default.
+// spec.value/status.default fallback). lockedValue is an omitempty *bool -
+// absent (unlocked) must render blank, never "false", since a locked-false
+// feature is a real, different state. VALUE is asserted both directions:
+// spec.value absent falls through to status.default, and spec.value present
+// (even false) wins over status.default.
 func TestTableRowsRenderFeatureBoolStatus(t *testing.T) {
 	t.Parallel()
 	k, ok := kinds.Lookup("feature")
@@ -561,9 +559,9 @@ func TestTableWideColumnsAndRowsOrder(t *testing.T) {
 	assert.Equal(t, [][]string{{"w1", "Widget One", "https://example.com", ""}}, tab.WideRows())
 }
 
-// TestShippedColumnRows spot-checks the column-audit rows shipped in this
-// slice against real kinds.Lookup rows and wire-shaped fixtures, decoding
-// fields per repo convention rather than string-matching rendered output.
+// TestShippedColumnRows spot-checks the column rows against real kinds.Lookup
+// rows and wire-shaped fixtures, decoding fields per repo convention rather
+// than string-matching rendered output.
 func TestShippedColumnRows(t *testing.T) {
 	t.Parallel()
 

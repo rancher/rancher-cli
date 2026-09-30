@@ -55,7 +55,7 @@ const (
 	defaultDerivedTTL = 15 * time.Minute
 
 	// CRTCollectionPath is the Steve /v1 collection route for
-	// clusterregistrationtokens (Task 5, spec D-4). It must match
+	// clusterregistrationtokens. It must match
 	// internal/engine/provisioning's own crtCollectionPath - duplicated there
 	// rather than imported, since production code cannot import this test-only
 	// package. internal/testrancher/fidelity consumes THIS constant (it may
@@ -70,8 +70,8 @@ const (
 	// served only when Options.ProjectVisibility says what each bearer sees.
 	ProjectsCollectionPath = "/v1/management.cattle.io.projects"
 
-	// rke2ReleasePath/k3sReleasePath are the channel-server release routes
-	// (Task 6, spec D-7). Must match internal/engine/provisioning's own
+	// rke2ReleasePath/k3sReleasePath are the channel-server release routes.
+	// Must match internal/engine/provisioning's own
 	// rke2ReleasePath/k3sReleasePath constants - duplicated here for the
 	// same reason as crtCollectionPath above.
 	rke2ReleasePath = "/v1-rke2-release/release"
@@ -101,7 +101,7 @@ type User struct {
 }
 
 // Options configures a Facade instance. Every facade instance is meant to be
-// per-script (FA-3): its counters and token store are not safe to share
+// per-script: its counters and token store are not safe to share
 // across concurrent scripts.
 type Options struct {
 	// Fallthrough handles every request the facade does not own: the
@@ -125,10 +125,10 @@ type Options struct {
 	// serving /idp/* itself; the caller serves IdPHandler there. Empty keeps
 	// the stub on the facade's own origin.
 	IdPURL string
-	// SeedToken, when set, is accepted as a valid bearer for the derived token create
-	// endpoint alongside facade-issued tokens - the static seed token every
-	// existing e2e script already authenticates with (FA-1: "the derived token create
-	// requires a valid facade-issued (or seed) bearer").
+	// SeedToken, when set, is accepted as a valid bearer for the derived token
+	// create endpoint alongside facade-issued tokens - the static seed token
+	// every existing e2e script already authenticates with (the derived token
+	// create requires a valid facade-issued or seed bearer).
 	SeedToken string
 	// ExtraProviders are provider types listed alongside localProvider, for
 	// a flow the facade does not itself serve (the SAML authtokens flow
@@ -465,8 +465,8 @@ func (f *Facade) DepositAuthTokenRaw(requestID, b64 string) {
 	f.authTokens[requestID] = b64
 }
 
-// New builds a Facade from opts, applying defaults for the fields FA-1
-// leaves optional.
+// New builds a Facade from opts, applying defaults for the optional
+// fields.
 func New(opts Options) *Facade {
 	if opts.LoginUser == "" {
 		opts.LoginUser = "e2e-user"
@@ -506,8 +506,9 @@ func (f *Facade) ValidBearer(bearer string) bool {
 	return false
 }
 
-// ServeHTTP dispatches auth paths to the facade's own handlers; everything
-// else falls through to opts.Fallthrough (FA-0: layer, don't grow).
+// ServeHTTP dispatches auth paths to the facade's own handlers; everything else
+// falls through to opts.Fallthrough (the facade is a layer in front of the
+// existing router; it does not grow into a full fake).
 func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.opts.RequestHook != nil {
 		f.opts.RequestHook(r)
@@ -1389,8 +1390,8 @@ type crtFixture struct {
 	Token     string
 }
 
-// crtFixtures spans multiple namespaces (Task 5, spec D-4 review R3-3's
-// namespace-filter test fixture set): "c-fixture" is the namespace
+// crtFixtures spans multiple namespaces (the namespace-filter test fixture
+// set): "c-fixture" is the namespace
 // test/e2e/scripts/registration-token.txtar addresses; "c-other" exists purely
 // so a bare `get clusterregistrationtoken` (no --namespace) proves more
 // than one namespace is present, and so a --namespace c-fixture read never
@@ -1606,7 +1607,7 @@ func (f *Facade) handleCRTSingle(w http.ResponseWriter, r *http.Request, rest st
 }
 
 // rke2ReleaseFixture/k3sReleaseFixture are the two deterministic versions
-// each channel-server route serves (Task 6, spec D-7): raw
+// each channel-server route serves: raw
 // "vMAJOR.MINOR.PATCH+<distro>rN"-shaped strings, exactly the form
 // internal/engine/provisioning's normalizeVersion strips down to
 // MAJOR.MINOR.PATCH before any supported-range comparison.
@@ -1618,12 +1619,12 @@ var (
 // handleRelease serves a channel-server release collection envelope
 // ({"data":[{"version": "..."}, ...]}) - the "data" key is kept identical to
 // internal/engine/provisioning's fetchReleaseVersions decode (channelserver
-// model/config.go:22-30's own collection key; the acceptance pass against a
-// real server corrects this fixture if the real shape differs). Unlike the
+// model/config.go:22-30's own collection key; a test against a
+// real server would correct this fixture if the real shape differs). Unlike the
 // facade's other routes, this one is deliberately UNAUTHENTICATED: rancher's
 // routes.go:139-140 registers it as a bare mux route server-side, so no
 // authorizedBearer check gates it here - RootClient still sends credentials
-// to it (spec D-10's one-policy rule), but the fixture must accept the
+// to it (the one-policy rule), but the fixture must accept the
 // request regardless, exactly like the real server would.
 func (f *Facade) handleRelease(w http.ResponseWriter, versions []string) {
 	data := make([]map[string]any, 0, len(versions))

@@ -10,10 +10,10 @@ import (
 // directory with no pin, the look at what its entries have stored) to the
 // FIRST credential method call, so a command that never touches
 // credentials reads nothing it does not need and creates nothing - no
-// config-dir creation (LS-1).
+// config-dir creation.
 // resolve runs at most once; its result (or error) is cached for the
 // process lifetime and returned as-is from every call (callers keep their
-// existing error wrapping, spec R1-3).
+// existing error wrapping).
 type lazyStore struct {
 	resolve func() (CredStore, error)
 	once    sync.Once
@@ -28,9 +28,9 @@ type lazyStore struct {
 
 // NewLazyStore validates the EFFECTIVE policy of cfg's declaration eagerly
 // (an unknown RANCHER_CLI_CREDENTIAL_STORE or config credentialStore still
-// fails fast on every resolveDeps-backed command, CS-6) and captures it, so
+// fails fast on every resolveDeps-backed command) and captures it, so
 // the deferred resolution provably opens the policy that was validated even
-// if the environment changes mid-process (spec R1-4). cfg is the config the
+// if the environment changes mid-process. cfg is the config the
 // command loaded: its entries are what an unpinned `auto` directory is
 // judged by, so resolution loads nothing of its own.
 //
@@ -66,7 +66,7 @@ func (l *lazyStore) backend() (CredStore, error) {
 
 // DrainNotices implements runtime.NoticeSource. It never forces resolution:
 // an invocation that never calls a credential method must see zero
-// store-init side effects (LS-1) even though the pipeline always drains
+// store-init side effects even though the pipeline always drains
 // before rendering. Once resolution has happened (by any caller, at any
 // point before this call), the underlying backend's own notices - a
 // loose-permission finding, say - are drained.

@@ -8,12 +8,12 @@ import (
 )
 
 // MinRancherVersion is the CLI's declared minimum supported Rancher server
-// version (PS-8, warn-only floor). It moves forward deliberately, in a
+// version (a warn-only floor). It moves forward deliberately, in a
 // commit, when the CLI starts depending on newer server API - no
 // per-feature version matrix.
 const MinRancherVersion = "2.14"
 
-// UnknownServerVersionWarning is PS-8's warn-only text for when a server's
+// UnknownServerVersionWarning is the warn-only text for when a server's
 // Rancher version cannot be determined at all: GET /rancherversion failing
 // (unreachable, non-200, unrecognized body), or (via EvalMinVersionSupport)
 // a successfully read value with no parseable major.minor prefix (dev/head
@@ -54,7 +54,7 @@ func sign(n int) int {
 }
 
 // compareVersions compares two Rancher version strings numerically on
-// major.minor.patch (PS-8): an absent patch component compares as 0 on
+// major.minor.patch: an absent patch component compares as 0 on
 // either side ("2.14" == "2.14.0"; "2.14.1" >= "2.14"; "2.14.0" < "2.14.2").
 // ok is false when either string has no parseable leading major.minor - the
 // caller must treat that as unknown, never as below-floor.
@@ -75,7 +75,7 @@ func compareVersions(a, b string) (cmp int, ok bool) {
 }
 
 // EvalMinVersionSupport evaluates raw (a server-version Setting value)
-// against MinRancherVersion for PS-8's warn-only floor. supported is nil
+// against MinRancherVersion for the warn-only floor. supported is nil
 // when raw has no parseable major.minor (dev/head builds) - the same
 // "assume supported" posture as UnknownServerVersionWarning, never a
 // failure. warning is "" only when supported is true.

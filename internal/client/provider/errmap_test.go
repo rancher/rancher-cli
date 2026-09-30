@@ -117,7 +117,7 @@ func TestMapErrConflictRetryable(t *testing.T) {
 	})
 }
 
-// TestMapErrDeniedFallback covers exercise bug 5: Rancher's proxy paths
+// TestMapErrDeniedFallback covers the case where Rancher's proxy paths
 // reject an invalid/insufficient token with an empty-body 403, which
 // apierrors passes through as an empty Error() string. mapErr must never
 // hand the pipeline an empty message for a denied request.

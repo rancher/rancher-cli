@@ -139,7 +139,7 @@ type Probe struct {
 	SubstituteCaptures bool
 }
 
-// Validate enforces the probe-definition invariants from the spec.
+// Validate enforces the probe-definition invariants.
 func (p Probe) Validate() error {
 	if p.Name == "" {
 		return fmt.Errorf("probe has no name")

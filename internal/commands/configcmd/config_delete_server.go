@@ -25,8 +25,7 @@ type configDeleteServerCmd struct {
 // NewConfigDeleteServer builds `config delete-server <name>` (local): removes
 // a configured server (clearing the current-server pointer when it names it)
 // and deletes its stored credentials - the orphaned-creds cleanup nothing
-// else performs today. It does NOT revoke the server-side token (that is
-// `auth logout --revoke`, ledgered/out of scope).
+// else performs. It does NOT revoke the server-side token.
 func NewConfigDeleteServer(dir string) runtime.Command {
 	return &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
 }
@@ -157,7 +156,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `config delete-server <TAB>`
-// completes server names from the already-loaded config snapshot (AC-19).
+// completes server names from the already-loaded config snapshot.
 func (configDeleteServerCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
 	return view.ServerNames()
 }

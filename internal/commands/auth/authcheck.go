@@ -23,10 +23,10 @@ type authCheckCmd struct {
 	// provider.Preflight in NewAuthCheck.
 	preflight func(ctx context.Context, eff config.Effective) (string, error)
 	// rancherVersion reads the server's stamped version from GET /rancherversion
-	// for the PS-8 floor check, injectable for tests; defaults to
+	// for the minimum-version check, injectable for tests; defaults to
 	// provider.RancherVersion in NewAuthCheck.
 	rancherVersion func(ctx context.Context, eff config.Effective) (string, error)
-	// identity is the PS-2 identity probe (POST an empty SelfUser, read back
+	// identity is the identity probe (POST an empty SelfUser, read back
 	// status.userID), injectable for tests; defaults to provider.Identity.
 	identity func(ctx context.Context, eff config.Effective) (string, error)
 	// token reads back the effective token's ext.cattle.io/v1 Token metadata
@@ -163,7 +163,7 @@ func (a authCheckCmd) Execute(ctx context.Context, _ runtime.Input, _ runtime.Pr
 	})
 	_ = g.Wait()
 
-	// tokenWarning needs supported (the version probe's PS-8 floor verdict,
+	// tokenWarning needs supported (the version probe's floor verdict,
 	// only known once the goroutines above have joined) to classify a
 	// token-probe 404, so it happens here rather than inside probeToken.
 	token := tokenRaw
@@ -363,7 +363,7 @@ func styleAuthCheckText(text string, ok bool, s style.Style) string {
 }
 
 // checkMinRancherVersion evaluates the server's stamped version (from GET
-// /rancherversion) against config.MinRancherVersion (PS-8, warn-only floor).
+// /rancherversion) against config.MinRancherVersion (a warn-only floor).
 // Any failure to read it at all - connectivity, a non-200 response, an
 // unrecognized body - is folded into the same "cannot determine" posture as
 // an unparseable value (a dev/head build): auth status's own success never
@@ -383,7 +383,7 @@ func (a authCheckCmd) checkMinRancherVersion(ctx context.Context, eff config.Eff
 	return &raw, supported, warning
 }
 
-// checkIdentity runs the PS-2 identity probe. A nil identity field (only
+// checkIdentity runs the identity probe. A nil identity field (only
 // possible when a test builds authCheckCmd directly without going through
 // NewAuthCheck) is treated as "not wired for this check" and stays silently
 // null - auth status's own success never depends on it either way. Any other
@@ -413,7 +413,7 @@ var errV3TokenNotFound = errors.New("v3 token not found on the server")
 // grows.
 const rotatedTokenAdvisory = "token metadata unavailable: stored token not found on the server (revoked or rotated) - re-authenticate with rancher auth login"
 
-// probeToken runs the PS-2 token probe for the EFFECTIVE token (eff.Token -
+// probeToken runs the token probe for the EFFECTIVE token (eff.Token -
 // never the stored credential directly, so a RANCHER_CLI_TOKEN override is
 // always the one reported on). The "ext/" prefix sniff is the one the
 // token package's bearer validation uses, applied here to the long-lived
@@ -490,7 +490,7 @@ func (a authCheckCmd) probeToken(ctx context.Context, eff config.Effective) (any
 // means either the ext.cattle.io group itself is absent (below the 2.14 floor)
 // or the group is present but the specific named token object was
 // deleted/rotated server-side (a stale RANCHER_CLI_TOKEN or credential-store
-// id). supported (the version probe's PS-8 floor verdict) resolves the
+// id). supported (the version probe's floor verdict) resolves the
 // ambiguity: once it has confirmed the server IS at or above the floor, the
 // same 404 can only be the latter. When supported is nil or false, the
 // group-absent wording is the only thing that can honestly be said.
@@ -507,15 +507,15 @@ func tokenWarning(err error, supported *bool) string {
 	return degradeWarning("token", err)
 }
 
-// degradeWarning turns a PS-2 probe failure into the null-plus-warning
-// posture both identity and token metadata degrade to: RBAC denial, a
-// timeout, and the ext.cattle.io group/resource being missing (below the
-// 2.14 floor, or genuinely absent for some other reason on a >= 2.14
-// server) are all warn-only - auth status's own success (`ok`) never depends
-// on either probe. The missing-group wording deliberately does not reuse
-// EvalMinVersionSupport's below-floor text: a server the version check
-// already reported as >= 2.14 must not also be told it is below the
-// minimum just because this group happens to be absent.
+// degradeWarning turns an identity or token probe failure into the
+// null-plus-warning posture both identity and token metadata degrade to: RBAC
+// denial, a timeout, and the ext.cattle.io group/resource being missing (below
+// the 2.14 floor, or genuinely absent for some other reason on a >= 2.14
+// server) are all warn-only - auth status's own success (`ok`) never depends on
+// either probe. The missing-group wording deliberately does not reuse
+// EvalMinVersionSupport's below-floor text: a server the version check already
+// reported as >= 2.14 must not also be told it is below the minimum just
+// because this group happens to be absent.
 func degradeWarning(field string, err error) string {
 	if ce, ok := errors.AsType[*clierr.Error](err); ok {
 		switch ce.Code {

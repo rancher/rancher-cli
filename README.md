@@ -24,7 +24,7 @@ operators get the same commands with readable table output.
 [Commands](COMMANDS.md) · [Reference](REFERENCE.md) ·
 [Migration](MIGRATING.md) · [Contributing](AGENTS.md)
 
-<!-- demo: asciinema/GIF slot - fill from rehearsal recordings -->
+<!-- demo: asciinema/GIF slot -->
 
 ## Install
 

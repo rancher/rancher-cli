@@ -37,7 +37,7 @@ type createSecretCmd struct {
 // required, ordinary namespaced Secret on the target cluster) and
 // project-scoped (--project + --project-scoped, written on the management
 // cluster into the project's backing namespace - Rancher's own
-// GetProjectBackingNamespace fallback semantics, spec PC-9).
+// GetProjectBackingNamespace fallback semantics).
 func NewCreateSecret(clients engine.ClusterClientFactory) runtime.Command {
 	return &createSecretCmd{clients: clients}
 }
@@ -139,7 +139,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		if statusEmpty {
 			// status.backingNamespace was absent/empty; the fallback still
 			// writes to a namespace, but propagation only works there on
-			// Rancher 2.12+ (spec PC-9).
+			// Rancher 2.12+.
 			inner := exec
 			exec = func(ctx context.Context) (runtime.Result, error) {
 				res, err := inner(ctx)

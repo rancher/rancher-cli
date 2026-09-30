@@ -84,7 +84,7 @@ what drifted the previous revision of this doc).
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery + typed clients) aimed at the Rancher k8s proxy endpoint, every one over `HTTPClient`, the single client-go `http.Client` carrying the same-origin redirect policy. |
 | `internal/client/httpx` | Constructs the hardened `*http.Client`s: `New` (TLS floor / CA / insecure, proxy, timeouts) for Rancher-origin callers (`internal/token`'s auth flows, `internal/client/provider`'s `/rancherversion` probe, `internal/cli`'s GET-only `engine.RootClient`), `NewExternal` (operating-system roots only) for identity-provider endpoints, the shared `RejectCrossOriginRedirect` policy every client carries, and the closed `Origin` tuple those decisions compare. |
 | `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, attributes it to a request by normalized origin (`ClassifyForOrigin`, `KindOf`), and picks the candidate trust anchor from the chain the failed handshake itself already observed - no separate probe dial. |
-| `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl-parity, MF-2). It is also the terminal-safety boundary: `Printable` strips control and Unicode format characters from server-sourced text in every text format (table cells and headers, names; the runtime applies it to warning, error, and dry-run preview lines; text builders at each insertion), while json, yaml, and template stay verbatim. |
+| `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl parity). It is also the terminal-safety boundary: `Printable` strips control and Unicode format characters from server-sourced text in every text format (table cells and headers, names; the runtime applies it to warning, error, and dry-run preview lines; text builders at each insertion), while json, yaml, and template stay verbatim. |
 | `internal/output/style` | Presentation-only ANSI wrap functions (bold/red/yellow/cyan) gated by an enable flag, plus a strip function that restores the exact unstyled bytes. |
 | `internal/clierr` | Structured CLI error type with stable error codes, exit-code mapping, and candidate/hint enrichment. |
 | `internal/ui` | TTY prompter/notifier: prompts and notices to stderr, refusing interaction without a TTY or under `--no-input`. |
@@ -751,7 +751,7 @@ URL and fails when more than one at the winning rank has a credential. `delete-t
 against every record and **deletes all matches**, and is **idempotent** (zero matches →
 success, never `NOT_FOUND`) so teardown scripts stay green.
 
-**CS-5 posture (accepted).** Even under the keychain backend, the exec-credential cache
+**Exec-credential cache stays on disk.** Even under the keychain backend, the exec-credential cache
 - live short-lived bearer tokens - still lives in `token-cache.yaml` on disk (0600). The
 OS keychain has no list API, and `auth list-tokens` needs enumeration, so the cache is
 file-backed regardless of policy. Accepted trade-off.
@@ -952,10 +952,10 @@ correctness (previews are server-computed dry-runs under real admission and
 RBAC), the kind table's generated verbs are only possible untyped, and parts
 of the surface (ext.cattle.io, CAPI) resolve served versions by discovery at
 call time. The stated cost is no compile-time field safety; the mitigations
-are structural - field paths verified against Rancher source during design
-review, conformance tests asserting the vocabulary, live acceptance exercises
-against real servers, and thin hand-owned structs (a few fields, decoded
-locally) where a specific shape matters. kubectl makes the same choice for
+are structural - field paths checked against Rancher source, conformance
+tests asserting the vocabulary, tests against real servers, and thin
+hand-owned structs (a few fields, decoded locally) where a specific shape
+matters. kubectl makes the same choice for
 its generic verbs.
 
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
@@ -966,7 +966,7 @@ inventory above closes that window: `config.WithLock` takes an exclusive `flock`
 that wins, both within a process and across processes. kubectl's earlier attempt at
 kubeconfig locking is the cautionary reference: it locked every file in `KUBECONFIG`,
 so a read-only entry the command never intended to write could turn a valid operation
-into `permission denied` (kubernetes/kubectl#708). The design here avoids that by using
+into `permission denied` (kubernetes/kubectl#708). This CLI avoids that by using
 a single dedicated lock file per protected data set rather than locking the data files
 themselves, and by exposing `RANCHER_CLI_CONFIG_NO_LOCK` as an escape hatch for
 filesystems with broken advisory locking. The grouping rule: one lock per set of
@@ -978,8 +978,7 @@ lock acquisition end to end and the deletes' helper-records waits; the
 store-interface paths reachable inside a locked span - credential-helper
 subprocess calls and cache-lock waits - remain bounded by their own timeouts but
 are not interruptible, because `CredStore` carries no context parameter.
-Threading a context through that interface is a tracked follow-up
-(auth-token-modernization). Waits are bounded at 60 s; a
-many-server `logout --all` can legitimately exceed it (each helper call takes
-up to 30 s inside the lock); `RANCHER_CLI_CONFIG_NO_LOCK` is the escape hatch
-for that case.
+Threading a context through that interface would make them interruptible.
+Waits are bounded at 60 s; a many-server `logout --all` can legitimately
+exceed it (each helper call takes up to 30 s inside the lock);
+`RANCHER_CLI_CONFIG_NO_LOCK` is the escape hatch for that case.

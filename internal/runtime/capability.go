@@ -3,7 +3,7 @@ package runtime
 import "context"
 
 // CapabilityOutcome is the detector's four-outcome result for one capability
-// requirement (design: two normative signals, four outcomes).
+// requirement.
 type CapabilityOutcome int
 
 const (

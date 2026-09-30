@@ -114,7 +114,7 @@ func TestWorkloadImagesResolvesAndMemoizes(t *testing.T) {
 		Workload: workloadIdentity{APIVersion: "apps/v1", Kind: "deployment", Name: "web", UID: "dep-1"},
 		Pods:     3,
 	}, rows[0])
-	assert.Len(t, client.getCalls, 1, "three replicas, one memoized ReplicaSet fetch (IM-15)")
+	assert.Len(t, client.getCalls, 1, "three replicas, one memoized ReplicaSet fetch")
 }
 
 func TestWorkloadImagesGenerationsStaySeparate(t *testing.T) {
@@ -131,7 +131,7 @@ func TestWorkloadImagesGenerationsStaySeparate(t *testing.T) {
 
 	rows, _, _, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
-	require.Len(t, rows, 2, "same-name generations must not collapse (IM-17)")
+	require.Len(t, rows, 2, "same-name generations must not collapse")
 	assert.NotEqual(t, rows[0].Workload.UID, rows[1].Workload.UID)
 }
 
@@ -151,7 +151,7 @@ func TestWorkloadImagesDegradesToFirstLevelRef(t *testing.T) {
 	require.Len(t, rows, 1)
 	assert.Equal(t, workloadIdentity{
 		APIVersion: "apps/v1", Kind: "replicaset", Name: "gone-rs", UID: "rs-gone",
-	}, rows[0].Workload, "failure keeps the first-level ref (IM-16)")
+	}, rows[0].Workload, "failure keeps the first-level ref")
 	assert.Equal(t, 2, rows[0].Pods)
 	require.Len(t, warns, 1, "memoization dedupes the warning")
 	assert.Equal(t, "ownerResolution unavailable for apps/v1|ReplicaSet|web|gone-rs|rs-gone: boom", warns[0])
@@ -232,7 +232,7 @@ func TestWorkloadImagesDeepWalkFailureKeepsFirstLevelRef(t *testing.T) {
 	require.Len(t, rows, 1)
 	assert.Equal(t, workloadIdentity{
 		APIVersion: "apps/v1", Kind: "replicaset", Name: "mid-rs", UID: "rs-1",
-	}, rows[0].Workload, "a failure past the first hop still falls back to the FIRST-level ref (IM-16)")
+	}, rows[0].Workload, "a failure past the first hop still falls back to the FIRST-level ref")
 }
 
 func TestWorkloadImagesMemoKeyIsolatesUID(t *testing.T) {
@@ -252,7 +252,7 @@ func TestWorkloadImagesMemoKeyIsolatesUID(t *testing.T) {
 
 	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
-	require.Len(t, rows, 2, "identical ns/kind/name with distinct uids must not share a memo entry (IM-15)")
+	require.Len(t, rows, 2, "identical ns/kind/name with distinct uids must not share a memo entry")
 	assert.Len(t, client.getCalls, 2, "one resolution per distinct owner reference")
 	require.Len(t, warns, 1, "the stale reference uid-mismatches")
 	uids := []string{rows[0].Workload.UID, rows[1].Workload.UID}
@@ -286,7 +286,7 @@ func TestWorkloadImagesIdentityIsolatesAPIVersion(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, warns)
 	assert.Empty(t, client.getCalls, "non-recursable owners are never fetched")
-	require.Len(t, rows, 2, "identical except API group must stay two rows (IM-15/IM-17)")
+	require.Len(t, rows, 2, "identical except API group must stay two rows")
 	want := []workloadIdentity{
 		{APIVersion: "gadgets.io/v1", Kind: "customapp", Name: "same-name", UID: "u-1"},
 		{APIVersion: "widgets.io/v1", Kind: "customapp", Name: "same-name", UID: "u-1"},
@@ -310,12 +310,12 @@ func TestWorkloadImagesMatchAndEphemeralThroughGrouping(t *testing.T) {
 
 	rows, _, _, err := workloadImagesWith(t.Context(), client, "", []string{"drop-me"})
 	require.NoError(t, err)
-	require.Len(t, rows, 1, "ephemeral-container image is visible to workload grouping (IM-6)")
-	assert.Equal(t, "drop-me:1", rows[0].Image, "--match filters inside the workload path (IM-3)")
+	require.Len(t, rows, 1, "ephemeral-container image is visible to workload grouping")
+	assert.Equal(t, "drop-me:1", rows[0].Image, "--match filters inside the workload path")
 
 	rows, _, _, err = workloadImagesWith(t.Context(), client, "", []string{"keep-me", "drop-me"})
 	require.NoError(t, err)
-	require.Len(t, rows, 2, "repeatable needles OR through workload grouping (IM-3)")
+	require.Len(t, rows, 2, "repeatable needles OR through workload grouping")
 	images := []string{rows[0].Image, rows[1].Image}
 	assert.ElementsMatch(t, []string{"keep-me:1", "drop-me:1"}, images)
 }
@@ -356,7 +356,7 @@ func TestWorkloadImagesPerPodImageDedup(t *testing.T) {
 	rows, _, _, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	assert.Equal(t, 1, rows[0].Pods, "one pod, twice-referenced image, pods = 1 (IM-17)")
+	assert.Equal(t, 1, rows[0].Pods, "one pod, twice-referenced image, pods = 1")
 }
 
 func TestWorkloadRowsTableDisambiguatesGenerations(t *testing.T) {
@@ -372,7 +372,7 @@ func TestWorkloadRowsTableDisambiguatesGenerations(t *testing.T) {
 	got := rows.Rows()
 	require.Len(t, got, 3)
 	assert.Equal(t, "deployment.apps/app@aaaaaaaa", got[0][2],
-		"different-image generations still get the suffix (IM-11)")
+		"different-image generations still get the suffix")
 	assert.Equal(t, "deployment.apps/app@bbbbbbbb", got[1][2])
 	assert.Equal(t, "deployment.apps/solo", got[2][2], "single generation, no suffix")
 }
@@ -387,7 +387,7 @@ func TestWorkloadRowsSuffixGrowsPastSharedPrefix(t *testing.T) {
 	}
 	got := rows.Rows()
 	assert.Equal(t, "deployment.apps/x@aaaaaaaa-o", got[0][2],
-		"shared 8-char prefix forces the shortest unique prefix (IM-11)")
+		"shared 8-char prefix forces the shortest unique prefix")
 	assert.Equal(t, "deployment.apps/x@aaaaaaaa-t", got[1][2])
 }
 
@@ -420,7 +420,7 @@ func TestWorkloadImagesSkipsInactivePods(t *testing.T) {
 	failed := ownedPod("failed-pod", "default", "img-gone", "phase-rs", "rs-1")
 	require.NoError(t, unstructured.SetNestedField(failed.Object, "Failed", "status", "phase"))
 
-	// Terminating: phase stays Running until the pod leaves the List (IM-14).
+	// Terminating: phase stays Running until the pod leaves the List.
 	terminating := ownedPod("terminating-pod", "default", "img-c", "phase-rs", "rs-1")
 	require.NoError(t, unstructured.SetNestedField(terminating.Object, "2026-07-26T00:00:00Z", "metadata", "deletionTimestamp"))
 
@@ -434,7 +434,7 @@ func TestWorkloadImagesSkipsInactivePods(t *testing.T) {
 	rows, _, warns, err := workloadImagesWith(t.Context(), client, "", nil)
 	require.NoError(t, err)
 	assert.Empty(t, warns)
-	require.Len(t, rows, 3, "Succeeded and Failed pods must not contribute rows (IM-24)")
+	require.Len(t, rows, 3, "Succeeded and Failed pods must not contribute rows")
 
 	var images []string
 	for _, r := range rows {

@@ -70,7 +70,7 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 		by = byNamespace
 	}
 
-	// UU-6: --by node rejects --namespace and --project.
+	// --by node rejects --namespace and --project.
 	if by == byNode {
 		if in.String(resources.FlagNamespace) != "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -160,7 +160,7 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 		if len(members) == 0 {
 			return usageResult(byNamespace, usageRows{}, nil, sec), nil
 		}
-		// UU-5 BREAKING: --project without --by now returns member-namespace
+		// --project without --by returns member-namespace
 		// rows, not a single project bucket. The single-bucket form is
 		// --by project --project X (collectByProject). Every member namespace
 		// gets a row, zero-pod members included.
@@ -352,10 +352,10 @@ func (u usageRows) Rows() [][]string {
 // usageEnvelope is the top-level Result.Data for the `usage` command. It
 // wraps the bare usageRows with a "by" discriminator so agents know the
 // grouping without re-deriving it from flags. aggregateUsage still returns
-// bare usageRows so project.go's type-assert is untouched (UU-23). names,
+// bare usageRows so project.go's type-assert is untouched. names,
 // when non-nil, maps a row key to the label the table SCOPE column shows
 // (the project grouping keys rows by project id but displays the project
-// name, UU-18/UU-25); it is unexported so the JSON shape stays {"by","rows"}.
+// name); it is unexported so the JSON shape stays {"by","rows"}.
 type usageEnvelope struct {
 	By   string    `json:"by"`
 	Data usageRows `json:"rows"`
@@ -373,7 +373,7 @@ func (e usageEnvelope) Rows() [][]string {
 		return rows
 	}
 	// Substitute display names before sorting so rows sort by the label shown
-	// in the table, not by the internal id (UU-18/UU-25).
+	// in the table, not by the internal id.
 	for _, row := range rows {
 		if display, ok := e.names[row[0]]; ok {
 			row[0] = display

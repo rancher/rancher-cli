@@ -155,14 +155,14 @@ func buildEntries() []entry {
 // schema/completion/routing identity; only execution changes. A kind
 // whose row would not generate a verb (Deletable:false + del override)
 // still gets the override's command - that is how provisioningcluster
-// delete ships guarded without a bare Deletable flip (spec D-R1-3).
+// delete ships guarded without a bare Deletable flip.
 type kindOverride struct {
 	get   func(k kinds.Kind, d runDeps) runtime.Command
 	patch func(k kinds.Kind, d runDeps) runtime.Command
 	del   func(k kinds.Kind, d runDeps) runtime.Command
 	// refusals marks override commands that are pure refusals (registered,
 	// but declining at Plan), keyed by verb; the note is surfaced as the
-	// verb's state in the schema manifest (SE-17). A verb listed here must
+	// verb's state in the schema manifest. A verb listed here must
 	// also have its constructor set above.
 	refusals map[string]string
 }
@@ -183,7 +183,7 @@ func delOverrideOnNonDeletable(k kinds.Kind, ov kindOverride) bool {
 // package var rather than a literal inside kindOverrides so tests can
 // install a marker override and restore the original on cleanup.
 //
-// clusterregistrationtoken (Task 5, spec D-4): get is a Steve /v1 read (the
+// clusterregistrationtoken: get is a Steve /v1 read (the
 // only place the real token is spliced into the command/manifest fields);
 // patch is refused outright - the row is read-only surface.
 // featureRestartWarning returns the advisory for a feature whose read
@@ -268,7 +268,7 @@ var kindOverrideTable = map[string]kindOverride{
 	"user": {
 		del: func(k kinds.Kind, d runDeps) runtime.Command { return rbac.NewDeleteUser(k, d.clients) },
 	},
-	// provisioningcluster (Task 8, spec D-5): patch keeps the generic
+	// provisioningcluster: patch keeps the generic
 	// diff/redaction/RV-precondition behavior - only an advisory etcd-quorum
 	// preview is added, via the EffectEnricher seam, never a gate.
 	"provisioningcluster": {
@@ -279,9 +279,9 @@ var kindOverrideTable = map[string]kindOverride{
 				}
 			})
 		},
-		// del (Task 9, spec D-6): the row stays Deletable: false (no generic
+		// del: the row stays Deletable: false (no generic
 		// verb would be generated), but the override still supplies a
-		// bespoke, guarded delete command - the exact D-R1-3 point. See
+		// bespoke, guarded delete command. See
 		// BuildRoot's extra "delete provisioning-cluster" resolver, derived
 		// from this row's own Binding: kinds.Bindings() never emits a
 		// binding for this op since the row is not Deletable, so wireEntry
@@ -299,8 +299,8 @@ func kindOverrides() map[string]kindOverride {
 	return kindOverrideTable
 }
 
-// schemaKinds builds the manifest's kind rows (SE-8) with the effective verb
-// surface (SE-17) from the same two sources buildEntries generates commands
+// schemaKinds builds the manifest's kind rows with the effective verb
+// surface from the same two sources buildEntries generates commands
 // from - the kind table and the override registry - so the manifest cannot
 // drift from what is actually registered: a refusals entry surfaces as
 // "refused"; a del override on a Deletable: false row surfaces delete as
@@ -371,7 +371,7 @@ func registeredVerbState(k kinds.Kind, verb string, ov kindOverride) runtime.Ver
 
 // wireEntry validates one entry and returns its urfave leaf plus the
 // command's registered name (BuildRoot records it in the entry's root
-// section - SE-18). It probes Describe() with zero deps (Describe must be
+// section). It probes Describe() with zero deps (Describe must be
 // dir/store/client-independent), checks the name's group matches the declared
 // group, requires every engine command - read or mutating (CommandType !=
 // Local) - to resolve to a binding, registers the probe, and wires it through
@@ -689,7 +689,7 @@ func composeBindings() (runtime.Resolver, error) {
 		derivedOps[op] = row.Binding
 	}
 	// A kindOverrideTable row whose del override sits on a Deletable: false
-	// kind (D-R1-3) never gets a binding from kinds.Bindings() above - the
+	// kind never gets a binding from kinds.Bindings() above - the
 	// row is not Deletable, so kinds.Bindings() skips "delete <name>" for it -
 	// which would otherwise fail wireEntry's check. Rather than hand-copy
 	// each such row's Binding into a literal that could silently drift from
@@ -815,7 +815,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		"skill":  "Install, remove, and inspect agent skills packaged with this CLI.",
 		"create": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",
 		// "project" is both a command group and a kind. Resolution order is
-		// command → group → kind (revised 2026-08-20), so rancher schema
+		// command → group → kind, so rancher schema
 		// project returns THIS group's card carrying a kind-view hint, and
 		// --kind reaches the kind card. The collision is deliberate and
 		// allowlisted (TestSchemaGroupKindCollisionsAreDeliberate): renaming
@@ -844,8 +844,8 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		"delete": "Delete a resource by name. Generated for kinds that support deletion; some kinds add guards or cascade warnings.",
 	}
 
-	// The manifest's ordered sections mirror assembleCommands below exactly
-	// (SE-18): the fixed top-level commands lead, then each entry group at
+	// The manifest's ordered sections mirror assembleCommands below exactly:
+	// the fixed top-level commands lead, then each entry group at
 	// first appearance - the ungrouped ("") run at its real position - with
 	// commands in registration order. Empty groups are skipped, as in
 	// assembleCommands.

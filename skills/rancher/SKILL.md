@@ -725,10 +725,10 @@ rancher oidc-client rotate-secret my-app --apply --yes
   exec-credential kubeconfig from config alone (no server call, no embedded
   secret) - the interactive default. `create kubeconfig` generates a
   SERVER-SIDE, embedded, revocable kubeconfig via the ext Kubeconfig store -
-  for CI/handoff where an exec plugin isn't usable. Every ext.cattle.io
-  operation here is also plain Kubernetes API - `kubectl get/create
-  tokens.ext.cattle.io` and `kubeconfigs.ext.cattle.io` work too - the CLI
-  adds the auth bootstrap, the ms-vs-seconds TTL conversion, and shown-once
-  handling on top.
+  for handing the kubeconfig to CI or another party where an exec plugin
+  isn't usable. Every ext.cattle.io operation here is also plain Kubernetes
+  API - `kubectl get/create tokens.ext.cattle.io` and
+  `kubeconfigs.ext.cattle.io` work too - the CLI adds the auth bootstrap, the
+  ms-vs-seconds TTL conversion, and shown-once handling on top.
 - Migrating from the legacy `rancher` CLI? `MIGRATING.md` in the release maps
   every old command to its replacement.

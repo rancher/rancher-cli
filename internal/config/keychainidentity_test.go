@@ -14,8 +14,8 @@ import (
 
 // keychainDir returns a fresh config directory and a keychain store over
 // it. Every directory a test makes this way shares one in-memory keychain,
-// which is the model the design works from: one operating-system user, one
-// keychain, many config directories.
+// which models one operating-system user with one keychain and many config
+// directories.
 func keychainDir(t *testing.T) (string, CredStore) {
 	t.Helper()
 	dir := t.TempDir()
@@ -42,7 +42,7 @@ func recordFor(t *testing.T, dir, entry string) identityRecord {
 	return *rec
 }
 
-// TestKeychainAccountsSeparateUnrelatedDirectories asserts P2's close: two
+// TestKeychainAccountsSeparateUnrelatedDirectories asserts that two
 // directories that never shared a file store the same server name under
 // different keychain accounts, each reads only its own, and neither is
 // reachable under the bare entry name.
@@ -113,11 +113,11 @@ func TestKeychainRecordCreatedOnlyByAWrite(t *testing.T) {
 	assert.NoDirExists(t, identityDirPath(fileDir), "a file store keeps its credential in the directory already")
 }
 
-// TestKeychainCopyThenReloginInTheOriginal asserts the case the design
-// names first: a copied directory shares its original's identity until the
-// original stores something new, and then learns it loud rather than using
-// a credential it never stored. The copy's other entry keeps working, and
-// the copy's own login separates that one entry alone.
+// TestKeychainCopyThenReloginInTheOriginal asserts the case of a copied
+// directory: it shares its original's identity until the original stores
+// something new, and then learns it loud rather than using a credential it
+// never stored. The copy's other entry keeps working, and the copy's own login
+// separates that one entry alone.
 func TestKeychainCopyThenReloginInTheOriginal(t *testing.T) {
 	keyring.MockInit()
 	prod := ServerRef{Name: "prod", URL: "https://prod.ex"}
@@ -581,11 +581,10 @@ func TestKeychainCrashAfterTheReadBackLeavesThePendingRecord(t *testing.T) {
 	assert.Equal(t, "token-2", tok)
 }
 
-// TestKeychainLogoutRacingALoginIsLoud asserts the interleaving the design
-// accepts and the property it keeps: a delete in one copy can land between
-// another copy's compare and its own write, and the result is a loud
-// "not logged in" in the other process, never a credential it did not
-// store.
+// TestKeychainLogoutRacingALoginIsLoud asserts the accepted interleaving and
+// the property it keeps: a delete in one copy can land between another copy's
+// compare and its own write, and the result is a loud "not logged in" in the
+// other process, never a credential it did not store.
 func TestKeychainLogoutRacingALoginIsLoud(t *testing.T) {
 	keyring.MockInit()
 	prod := ServerRef{Name: "prod", URL: "https://prod.ex"}

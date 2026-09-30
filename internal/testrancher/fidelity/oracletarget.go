@@ -153,7 +153,7 @@ func newStandardPassword() (string, error) {
 // standardBearer provisions the e2e-fid-standard local user (idempotently:
 // delete-before-create keeps kept-container reruns clean), binds the
 // baseline `user` global role - a bare /v3/users create attaches no global
-// role bindings, and a role-less user is not the spec's "standard identity":
+// role bindings, and a role-less user is not the probes' "standard identity":
 // it gets schema-hidden responses (an empty 200 collection, a bodyless 404)
 // rather than a baseline user's, so the role realizes that identity - and
 // logs in as it. Cleanup relies on Rancher cascading a deleted user's global

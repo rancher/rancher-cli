@@ -32,8 +32,8 @@ var (
 )
 
 // hintGrammarViolation reports why literal (a hint string, or a candidate
-// flattened from one) violates the corpus-grammar ruling, or "" when it is
-// clean. The ruling: every hint is a single paste-valid POSIX-sh command
+// flattened from one) violates the hint grammar, or "" when it is clean.
+// The grammar: every hint is a single paste-valid POSIX-sh command
 // carrying only concrete, already-known values, or there is no hint at all.
 func hintGrammarViolation(literal string) string {
 	switch {
@@ -198,7 +198,7 @@ func collectLocalAssigns(body *ast.BlockStmt) map[string][]ast.Expr {
 // resolves every WithHint(...) call site's argument, and every composite
 // literal's Hint: field value, to their literal string content (as far as a
 // best-effort AST walk can trace it - see flattener) and fails the build on
-// any literal that violates the hint-normalization ruling (a "run:" prefix,
+// any literal that violates the hint grammar (a "run:" prefix,
 // an " OR " double-command, [optional] brackets, a <placeholder>, or more
 // than one rancher invocation in one hint). The Hint: field check catches
 // hints that reach the wire through a struct literal instead of

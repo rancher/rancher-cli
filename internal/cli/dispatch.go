@@ -20,14 +20,14 @@ import (
 // universalShellCompleteFunc returns a urfave ShellCompleteFunc that
 // dispatches TAB completions in order: (1) arg-tail site parse, (2) enum
 // static, (3) config-local (ShellCompleter delegation), (4) live (gated on
-// completion.network). Installed on EVERY adapted leaf (AC-17a). lc is the
+// completion.network). Installed on EVERY adapted leaf. lc is the
 // command's own live source owner, nil for a command without one.
 func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter, lc completion.Completer) ucli.ShellCompleteFunc {
 	return func(ctx context.Context, c *ucli.Command) {
 		// Strip command routing tokens from rawArgv using the invoked urfave
 		// command's lineage depth - NOT the canonical descriptor name string.
 		// This handles leading global flags (--output json get pod) and alias
-		// invocations (inspect po → depth 2) correctly (finding 2).
+		// invocations (inspect po → depth 2) correctly.
 		tail := stripRoutingPrefixByCmd(rawArgv, c)
 		site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, d, globalArgSpecs)
 
@@ -199,7 +199,7 @@ func dispatchSite(
 	lc completion.Completer,
 	tail []string,
 ) []string {
-	// Layer 1: enum static (AC-13), for flag values AND positionals (MC-14).
+	// Layer 1: enum static, for flag values AND positionals.
 	if site.Kind == SiteFlagValue {
 		if cands := enumCandidates(site, d); len(cands) > 0 {
 			return cands
@@ -261,8 +261,8 @@ func dispatchSite(
 	return cands
 }
 
-// completionNetworkEnabled reports whether live completion is configured
-// (AC-1); dispatchSite's live layer runs only when it is.
+// completionNetworkEnabled reports whether live completion is configured;
+// dispatchSite's live layer runs only when it is.
 func completionNetworkEnabled() bool {
 	cfg := storedConfigSnapshot()
 	return cfg != nil && cfg.Completion.Network
@@ -302,12 +302,12 @@ func allowedOutputEnum(enum []string, policy runtime.OutputPolicy) []string {
 	return out
 }
 
-// completionCharset is the allowlist for candidate values (AC-21). The
+// completionCharset is the allowlist for candidate values. The
 // first character must not be a hyphen, which would parse as a flag.
 var completionCharset = regexp.MustCompile(`^[A-Za-z0-9._][A-Za-z0-9._-]*$`)
 
 // sanitizeCandidates drops values that do not conform to the shell-safe
-// charset and returns the survivors sorted (AC-21, AC-26).
+// charset and returns the survivors sorted.
 func sanitizeCandidates(candidates []string) []string {
 	out := make([]string, 0, len(candidates))
 	for _, c := range candidates {
@@ -339,13 +339,13 @@ func resolveStaticEnum(enum []string, site CompletionSite) []string {
 }
 
 // positionalEnumCandidates returns static enum candidates for a positional
-// site - Descriptor.Args[site.Index].Enum filtered by the typed partial
-// (MC-14) - plus an OWNERSHIP flag: owned is true whenever the indexed arg
+// site - Descriptor.Args[site.Index].Enum filtered by the typed partial -
+// plus an OWNERSHIP flag: owned is true whenever the indexed arg
 // carries an Enum, in which case the caller must terminate the dispatch
 // with these candidates even when the filter matched nothing (an unmatched
 // partial must not fall through to the delegation/live layers and
 // resurface an unfiltered list). Index-aware by construction, so an
-// enum-less positional (a <name> site, MC-15) or an index past the
+// enum-less positional (a <name> site) or an index past the
 // declared args is not owned. Compiled-in literals, same charset doctrine
 // as resolveStaticEnum: the shell-safe sanitize gate does not apply.
 func positionalEnumCandidates(site CompletionSite, d runtime.Descriptor) ([]string, bool) {
@@ -490,7 +490,7 @@ func resolveDisplayNameToClusterID(ctx context.Context, hc *http.Client, cap Tok
 // cluster's --machine-config flag while the typed value has no "/" yet.
 // The kinds are compiled-in literals - every kinds.MachineConfigGroup row,
 // the same single source createcluster.go's VALIDATION hint and schema desc
-// derive from - not server data, so like resolveStaticEnum the AC-21
+// derive from - not server data, so like resolveStaticEnum the
 // shell-safe charset does not gate them: the "/" (and trailing "/") must
 // survive. Returns nil for every other site; create cluster's own
 // completion source owns the `<kind>/partial` form. This projection and
@@ -517,11 +517,11 @@ func machineConfigPrefixCandidates(site CompletionSite, d runtime.Descriptor) []
 }
 
 // machineConfigSetKeyCandidates serves kind-scoped `key=` continuation
-// tokens for create machine-config's --set flag (MC-16): the kind is read
+// tokens for create machine-config's --set flag: the kind is read
 // from the typed tail's first positional, and the candidates are that
-// kind's Known driver fields MINUS the MC-8 credential set MINUS the
-// curated-flag fields - MC-7 rejects a curated key via --set
-// unconditionally and MC-8 rejects credential keys, so neither may ever
+// kind's Known driver fields MINUS the credential fields MINUS the
+// curated-flag fields - create machine-config rejects a curated key via --set
+// unconditionally and rejects credential keys, so neither may ever
 // be suggested (suggestions valid verbatim). Uncurated kinds (empty
 // Known) get no candidates.
 //
@@ -534,8 +534,7 @@ func machineConfigPrefixCandidates(site CompletionSite, d runtime.Descriptor) []
 //
 // Compiled-in literals, not server data: like resolveStaticEnum the
 // shell-safe charset does not gate them (the trailing "=" must survive),
-// and no network gate applies. Curated-value completion is a ledgered
-// follow-up (MC-17).
+// and no network gate applies. Curated-value completion is not offered.
 func machineConfigSetKeyCandidates(site CompletionSite, d runtime.Descriptor, tail []string) ([]string, bool) {
 	if d.Name != "create machine-config" || site.FlagName != "set" {
 		return nil, false
@@ -611,11 +610,11 @@ func firstPositionalToken(tail []string, leafFlags []runtime.ArgSpec) string {
 	return ""
 }
 
-// isAC10Verb reports whether the descriptor name starts with a generated
+// isGeneratedVerb reports whether the descriptor name starts with a generated
 // verb (get, patch, delete), whose first positional completes as the kind
 // its last word names. A bespoke command completes only through the
 // positionalKinds table.
-func isAC10Verb(descriptorName string) bool {
+func isGeneratedVerb(descriptorName string) bool {
 	parts := strings.Fields(descriptorName)
 	if len(parts) == 0 {
 		return false
@@ -640,7 +639,7 @@ func kindForDescriptor(d runtime.Descriptor) (kinds.Kind, bool) {
 }
 
 // stripRoutingPrefixByCmd removes command routing tokens from argv using the
-// invoked urfave command's Lineage depth (finding 2). This correctly handles:
+// invoked urfave command's Lineage depth. This correctly handles:
 //   - alias invocations: `inspect po arg` (c.Lineage depth=2, skip "inspect","po")
 //   - leading global flags: `--output json get pod --cluster x` (skip 2 non-flag tokens)
 func stripRoutingPrefixByCmd(argv []string, c *ucli.Command) []string {

@@ -289,7 +289,7 @@ func TestGroupSubcommandCompletionGetKindNamesRegression(t *testing.T) {
 
 // TestGroupSubcommandCompletionGetPrefixFiltered: `get po<TAB>` under v2
 // must return only the kind name "pod" and its alias "po", NOT the full 60+
-// unfiltered kind list. This is the High finding: aliasAwareGroupComplete
+// unfiltered kind list. The regression this guards: aliasAwareGroupComplete
 // fell through to the unfiltered v1 branch for non-flag currentWords.
 func TestGroupSubcommandCompletionGetPrefixFiltered(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -330,9 +330,9 @@ func TestGroupEqualsFormFlagValueCompletion(t *testing.T) {
 	assert.NotEmpty(t, strings.TrimSpace(got), "get --output=<TAB> must produce output")
 }
 
-// TestLeafEqualsFormFlagValueCompletion: `usage --output=<TAB>` under v2
-// already worked before this fix; guard it as a regression test alongside
-// the group path.
+// TestLeafEqualsFormFlagValueCompletion asserts that `usage --output=<TAB>`
+// under v2 offers the --output values on a leaf command, as the group path
+// does.
 func TestLeafEqualsFormFlagValueCompletion(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -404,7 +404,7 @@ func TestGroupSpaceFormFlagValueCompletion(t *testing.T) {
 }
 
 // TestImagesByFlagValueCompletion: `images --by <TAB>` must offer exactly
-// the enum values image and workload (IM-22); --match must offer nothing.
+// the enum values image and workload; --match must offer nothing.
 func TestImagesByFlagValueCompletion(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -418,7 +418,7 @@ func TestImagesByFlagValueCompletion(t *testing.T) {
 	assert.NotContains(t, tokens, "namespace", "images --by <TAB> must not leak usage's enum")
 
 	got = runNameLikeCompletion(t, []string{"images", "--match"}, "")
-	assert.Empty(t, extractTokens(got), "images --match <TAB> is free text, no suggestions (IM-23)")
+	assert.Empty(t, extractTokens(got), "images --match <TAB> is free text, no suggestions")
 }
 
 // TestFlagNameCompletionIncludeSystem asserts the no-silent-no-op generation

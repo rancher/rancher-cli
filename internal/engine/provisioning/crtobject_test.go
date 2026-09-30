@@ -14,7 +14,7 @@ import (
 // TestDecodeCRTObjectIsPolicyNeutral proves the decoder returns values
 // exactly as decoded - including a still-unformatted "{token}"
 // placeholder - and never errors on one: detection is PlaceholderFields'
-// job, and deciding what to do about it is the caller's (IC-4a).
+// job, and deciding what to do about it is the caller's.
 func TestDecodeCRTObjectIsPolicyNeutral(t *testing.T) {
 	t.Parallel()
 	status := splicedStatus("tok-aaa")
@@ -51,7 +51,7 @@ func TestDecodeCRTObjectMalformedBody(t *testing.T) {
 // missing metadata.namespace, metadata.name, or the status object - is
 // the same typed decode error as malformed JSON, never a silently-empty
 // CRTObject. Without this, FetchDefaultCRT would hand inspect cluster a
-// successful-looking empty registration read and the IC-8 warning would
+// successful-looking empty registration read and the registration warning would
 // be skipped.
 func TestDecodeCRTObjectWrongShape(t *testing.T) {
 	t.Parallel()
@@ -169,7 +169,7 @@ func TestDecodeCRTCollectionDecodesEveryObject(t *testing.T) {
 	assert.Equal(t, "tok-bbb", objs[1].Token)
 }
 
-// TestPlaceholderFieldsReportsEachProtectedField is IC-4a's reporter
+// TestPlaceholderFieldsReportsEachProtectedField asserts the reporter
 // contract, table-driven over the seven formatter-protected fields: the
 // reporter names exactly the placeholder-bearing field(s) and decides
 // nothing. Token is deliberately never reported - it is the splice
@@ -242,7 +242,7 @@ func TestFetchDefaultCRTPathAndDecode(t *testing.T) {
 
 // TestFetchDefaultCRTPropagatesRootError asserts that a transport/RBAC/404
 // failure surfaces as the RootClient's own typed error - inspect cluster
-// degrades it to a warning (IC-8), which needs the error intact.
+// degrades it to a warning, which needs the error intact.
 func TestFetchDefaultCRTPropagatesRootError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

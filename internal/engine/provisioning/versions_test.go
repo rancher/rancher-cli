@@ -139,7 +139,7 @@ func TestFetchVersionsSupportedEvaluation(t *testing.T) {
 
 // TestFetchVersionsDegradesOnOlderServer proves a 404 on one distro's
 // channel-server route (an older Rancher server) degrades to the OTHER
-// distro's rows plus a warning - never an error (spec D-7).
+// distro's rows plus a warning - never an error.
 func TestFetchVersionsDegradesOnOlderServer(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(releaseHandler(t, map[string][]string{
@@ -166,8 +166,8 @@ func TestFetchVersionsDegradesOnOlderServer(t *testing.T) {
 }
 
 // TestFetchVersionsDegradesEachDistroIndependently proves the table-driven
-// fetch (each distro's release call now runs concurrently with the other,
-// finding 7/8) still degrades each distro on its own: a 404 on k3s alone,
+// fetch (each distro's release call now runs concurrently with the other)
+// still degrades each distro on its own: a 404 on k3s alone,
 // on rke2 alone, and on both at once all yield the OTHER distro's rows (or
 // none, for "both") plus one warning per omitted distro - never an error,
 // and never a false warning for the distro that DID resolve.
@@ -220,8 +220,8 @@ func TestFetchVersionsDegradesEachDistroIndependently(t *testing.T) {
 	}
 }
 
-// TestFetchVersionsMalformedReleaseBody is spec D-10's transport case
-// (Task 5's precedent, review R2-5): a body that is not valid JSON must
+// TestFetchVersionsMalformedReleaseBody asserts the transport case:
+// a body that is not valid JSON must
 // decode to a typed CodeGeneric error naming "decoding" - never a panic,
 // never an empty rows slice standing in for the failure silently.
 func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
@@ -251,7 +251,7 @@ func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
 }
 
 // TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministically
-// asserts review finding 2: when BOTH distros' release fetch hard-fails at
+// asserts that when BOTH distros' release fetch hard-fails at
 // close to the same time (not a 404-degrade - a genuine 500), the returned
 // error must be rke2's (distroSpecs' fixed first entry), deterministically,
 // never whichever goroutine happened to race to completion first, and never
@@ -281,7 +281,7 @@ func TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministica
 }
 
 // TestFetchVersionsDetailedClientResolutionErrorPrecedesReleaseFetchFailure
-// asserts review finding 1: clients.Cluster() now resolves BEFORE the
+// asserts that clients.Cluster() resolves BEFORE the
 // release-fetch fan-out starts, so when it fails at the same time a release
 // fetch would also have failed, the caller must see the client-resolution
 // error - the more fundamental root cause - never a release-fetch error.
@@ -316,8 +316,7 @@ func TestNewGetKubernetesVersionsDescribe(t *testing.T) {
 }
 
 // TestNewGetKubernetesVersionsExecuteTabularRendersSupportedColumn proves
-// the table renderer emits "yes"/"no"/"" for Supported's true/false/nil,
-// per spec D-7.
+// the table renderer emits "yes"/"no"/"" for Supported's true/false/nil.
 func TestNewGetKubernetesVersionsExecuteTabularRendersSupportedColumn(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(releaseHandler(t, map[string][]string{

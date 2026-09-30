@@ -97,7 +97,7 @@ CA_FILE="${STATE_ROOT}/ca.pem"
 UPDATE_FLAG="${E2E_FIDELITY_UPDATE_FLAG:-}"
 
 if [ -z "${ORACLE_IMAGE}" ]; then
-  echo "error: ORACLE_IMAGE is not pinned yet; set the literal tag+digest in scripts/e2e-fidelity (wave 4)" >&2
+  echo "error: ORACLE_IMAGE is not pinned yet; set the literal tag+digest in scripts/e2e-fidelity" >&2
   exit 1
 fi
 

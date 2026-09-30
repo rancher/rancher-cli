@@ -31,10 +31,10 @@ func leafOf(t *testing.T, c tls.Certificate) *x509.Certificate {
 	return leaf
 }
 
-// TestClassifyUntypedUnknownAuthorityLeafOnly is the live-incident repro: a
+// TestClassifyUntypedUnknownAuthorityLeafOnly asserts that a
 // leaf issued by an absent CA, presented WITHOUT that CA (dynamiclistener's
-// leaf-only shape), failing with an untyped platform error. It must
-// classify unknownAuthority with the --cacert guidance - not invalidChain
+// leaf-only shape) and failing with an untyped platform error,
+// classifies as unknownAuthority with the --cacert guidance - not invalidChain
 // with contact-the-operator.
 func TestClassifyUntypedUnknownAuthorityLeafOnly(t *testing.T) {
 	t.Parallel()

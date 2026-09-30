@@ -29,7 +29,7 @@ type logsCmd struct {
 }
 
 // NewLogs builds `logs <target> [--cluster] [--tail N=200] [--since <dur>]
-// [--previous] [--container] [--timestamps] [--pod]` (LS-1/LS-2): curated,
+// [--previous] [--container] [--timestamps] [--pod]`: curated,
 // verified-location logs for a Rancher component, merging every matched
 // pod/container into one prefixed body, or narrowing to one pod with --pod.
 func NewLogs(clients engine.ClusterClientFactory) runtime.Command {
@@ -159,7 +159,7 @@ func parseTailFlag(raw string) (*int64, error) {
 }
 
 // parseSinceFlag wraps extres.ParseTTL for the duration GRAMMAR without its
-// zero-sentinel semantics (LS-2): omitted → nil (no limit); a parsed
+// zero-sentinel semantics: omitted → nil (no limit); a parsed
 // duration → *int64(seconds); an explicit zero ("0s") → VALIDATION, since a
 // pointer *0 means "logs since now" to PodLogOptions.SinceSeconds - silently
 // empty output, never what --since 0s meant to ask for.
@@ -180,8 +180,8 @@ func parseSinceFlag(raw string) (*int64, error) {
 }
 
 // mergeText renders entries as the Text-mode default: every log line
-// prefixed with "[pod/container]", interleaved in fetch order (LS-2) - no
-// timestamp re-sort in v1; --timestamps lets callers sort themselves.
+// prefixed with "[pod/container]", interleaved in fetch order - no
+// timestamp re-sort; --timestamps lets callers sort themselves.
 func mergeText(entries []logEntry) string {
 	var b strings.Builder
 	for _, e := range entries {
@@ -200,7 +200,7 @@ func mergeText(entries []logEntry) string {
 }
 
 // logEntry is one container's fetched log line set, tagged with its source
-// (Data's {pods, entries} shape from LS-3).
+// (Data's {pods, entries} shape).
 type logEntry struct {
 	Pod       string `json:"pod"`
 	Container string `json:"container"`

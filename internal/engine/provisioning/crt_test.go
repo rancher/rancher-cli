@@ -232,7 +232,7 @@ func TestNewGetCRTNotFound(t *testing.T) {
 	assert.Equal(t, runtime.Result{}, res)
 }
 
-// TestNewGetCRTMalformedBody is spec D-10's transport case (review R2-5):
+// TestNewGetCRTMalformedBody asserts the transport case:
 // a body that is not valid JSON must decode to a typed CodeGeneric error
 // naming "decoding" and the path - never a panic, never an empty/zero
 // Result standing in for the failure silently.
@@ -259,7 +259,7 @@ func TestNewGetCRTMalformedBody(t *testing.T) {
 	})
 }
 
-// TestNewGetCRTNamespaceFiltering is R3-3's namespace-filtering contract: the
+// TestNewGetCRTNamespaceFiltering asserts the namespace-filtering contract: the
 // Steve read always GETs the root collection and filters DECODED objects
 // locally. A bare list returns every namespace; --namespace narrows to one,
 // and the OTHER namespace's token must appear NOWHERE in the filtered
@@ -305,7 +305,7 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 	assert.NotContains(t, out, "c-bbb", "the other namespace must never leak into filtered output")
 }
 
-// TestNewGetCRTListDegradesBadRowInsteadOfAborting is finding 3's fix: a
+// TestNewGetCRTListDegradesBadRowInsteadOfAborting asserts that a
 // list containing one row with an unspliced "{token}" placeholder must NOT
 // abort the whole result (the pre-fix behavior - one bad row hid every
 // healthy row). Instead the bad row's offending field is blanked, a warning
@@ -357,15 +357,14 @@ func TestNewGetCRTListDegradesBadRowInsteadOfAborting(t *testing.T) {
 	assert.NotContains(t, string(b), placeholderToken, "the placeholder must never reach output as data")
 }
 
-// TestNewGetCRTNamedGetOnBadRowStaysStrict is finding 3's regression proof
-// for the branch the fix must NOT touch: a single-object get ("named"
-// branch, with a name arg) on a row carrying an unspliced placeholder must
-// still fail loud with the typed CodeGeneric error - the list-degrade
-// behavior above applies only to the no-name-arg list path.
-// TestNewGetCRTPlaceholderGuardTable already exercises this exhaustively
-// over all seven guarded fields; this test asserts the same contract narrowly
-// so a future change to the list path can't accidentally soften the
-// named-get path without a dedicated test catching it.
+// TestNewGetCRTNamedGetOnBadRowStaysStrict asserts the branch list degradation
+// must NOT touch: a single-object get ("named" branch, with a name arg) on a
+// row carrying an unspliced placeholder must still fail loud with the typed
+// CodeGeneric error - the list-degrade behavior above applies only to the
+// no-name-arg list path. TestNewGetCRTPlaceholderGuardTable already exercises
+// this exhaustively over all seven guarded fields; this test asserts the same
+// contract narrowly so a future change to the list path can't accidentally
+// soften the named-get path without a dedicated test catching it.
 func TestNewGetCRTNamedGetOnBadRowStaysStrict(t *testing.T) {
 	t.Parallel()
 	status := splicedStatus("tok-aaa")
@@ -407,8 +406,8 @@ func TestNewRefuseCRTPatchRejectsAsReadOnly(t *testing.T) {
 	assert.Equal(t, "", eff.Target)
 }
 
-// TestNewGetCRTDescribeMirrorsGenericGet asserts the schema-parity contract
-// (finding 6): the override's Descriptor must be STRUCT-EQUAL to what the
+// TestNewGetCRTDescribeMirrorsGenericGet asserts the schema-parity contract:
+// the override's Descriptor must be STRUCT-EQUAL to what the
 // LIVE resources.NewGet(k, ...) generates for this row - not to a
 // hand-duplicated literal that can silently drift out of sync with the
 // generator (resources/get.go's getFlags) while still passing. Mirrors
@@ -424,7 +423,7 @@ func TestNewGetCRTDescribeMirrorsGenericGet(t *testing.T) {
 	assert.Equal(t, "get clusterregistrationtoken", override.Name)
 }
 
-// TestNewRefuseCRTPatchDescribeMirrorsGenericPatch is finding 6's
+// TestNewRefuseCRTPatchDescribeMirrorsGenericPatch is a
 // struct-equality parity test for the patch override, against the LIVE
 // resources.NewPatch(k, ...) generator.
 func TestNewRefuseCRTPatchDescribeMirrorsGenericPatch(t *testing.T) {

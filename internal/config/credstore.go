@@ -26,13 +26,13 @@ var ErrNoToken = errors.New("no stored token")
 // by the legacy token shim (`rancher token`). The prefix is defined here so
 // every site that needs it - internal/token/token.go (native rejection guard),
 // internal/token/shim.go (slot construction), internal/cli/completion_token.go
-// (AC-6 ambiguity filter) - shares one constant; a future rename or second
-// reserved namespace compiles instead of silently diverging.
+// (completion's ambiguity filter) - shares one constant; a future rename or
+// second reserved namespace compiles instead of silently diverging.
 const LegacyCachePrefix = "legacy:"
 
 // IsLegacyCacheSlot reports whether name was written by the legacy token shim
 // (i.e. it begins with LegacyCachePrefix). Used to exclude shim slots from
-// native --name validation and from the AC-6 completion ambiguity count.
+// native --name validation and from the completion ambiguity count.
 func IsLegacyCacheSlot(name string) bool {
 	return strings.HasPrefix(name, LegacyCachePrefix)
 }
@@ -269,7 +269,7 @@ var warnedLoosePerm sync.Map // path -> struct{}
 
 // warnLoosePerm reports a non-empty notice when a credential file is
 // group/world readable, so a plaintext token in a 0644 file does not sit
-// unremarked (CS-1). It notices at most once per path per process; every
+// unremarked. It notices at most once per path per process; every
 // later call for the same path returns "". On Windows this Unix-perm check
 // is SKIPPED via permCheckApplicable (NTFS ignores mode bits; Mode().Perm()
 // is synthetic there and would false-positive on every file) - the
@@ -851,7 +851,7 @@ func (k *keyringStore) SetTokenWithOutcome(ref ServerRef, token string, prior Pr
 	}
 }
 
-// setError renders a failed keychain write. XP-6 write path: NEVER silently
+// setError renders a failed keychain write. NEVER silently
 // degrade a login write to the plaintext file - the pin's guarantee is that
 // a transient keychain failure cannot downgrade the machine's storage.
 // Refuse with the explicit opt-in remedy instead.
@@ -900,7 +900,7 @@ func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.ca
 // directory's store may have changed between the login and the logout, so
 // either may still hold one - AND
 // deletes every exec-credential cache entry cached against serverURL's host
-// (the cache is file-backed regardless of policy, CS-5). No backend's
+// (the cache is file-backed regardless of policy). No backend's
 // failure short-circuits another; per-backend errors are joined so a live
 // token/cache entry is never left behind unreported. fromBackends lists the
 // login-token backends actually deleted; deletedCache lists the cache keys
@@ -1223,8 +1223,8 @@ func ServerHost(raw string) string {
 // policies ("keychain"/"file") are honored directly and never consult the
 // pin. "auto" reads the pin, and with none, what the directory's entries
 // have stored (UnpinnedStoreOf), for which it loads config.yaml. Nothing
-// is probed and nothing is written. Unknown policies are hard errors
-// (CS-6). A command that already holds its config uses OpenStoreFor.
+// is probed and nothing is written. Unknown policies are hard errors.
+// A command that already holds its config uses OpenStoreFor.
 func OpenStore(policy, dir string) (CredStore, error) {
 	resolved, err := EffectivePolicy(policy)
 	if err != nil {
@@ -1270,7 +1270,7 @@ func OpenResolvedStore(backend, dir string) (CredStore, string, error) {
 	return store, "", err
 }
 
-// checkPolicy returns CS-6's error for an unknown effective policy value p.
+// checkPolicy returns the error for an unknown effective policy value p.
 // Both openStoreResolved and NewLazyStore call this so the valid-policy
 // allowlist is defined exactly once - adding a new backend means updating
 // this one allowlist - both paths share it, so they cannot silently diverge.

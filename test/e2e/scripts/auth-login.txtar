@@ -1,5 +1,5 @@
 # config-flow: never sets RANCHER_CLI_URL/RANCHER_CLI_TOKEN - the point is to prove
-# the STORED token (E2E-A-002), not an env override, drives auth.
+# the STORED token, not an env override, drives auth.
 
 stdin token.txt
 exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --token-stdin

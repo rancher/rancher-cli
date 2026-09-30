@@ -144,7 +144,7 @@ func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {
 	assert.True(t, ok, "config written exactly as on success")
 }
 
-// TestLoginRejectsLegacyPrefixedName is the round-7 finding-3 repro: a
+// TestLoginRejectsLegacyPrefixedName asserts that a
 // "legacy:"-prefixed name must be rejected before any auth or config write -
 // such a server entry would win the token shim's exact-name stored-login
 // tier and defeat its documented server-ranking guarantee.
@@ -166,10 +166,9 @@ func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 	assert.False(t, ok, "the reserved name must never reach the config")
 }
 
-// TestLoginOtherStoreErrorAborts asserts the deliberate new behavior (What it
-// costs): a failed credential write after a successful delegated
-// registration leaves the freshly added entry behind - a valid first-class
-// state, not rolled back.
+// TestLoginOtherStoreErrorAborts asserts that a failed credential write after a
+// successful delegated registration leaves the freshly added entry behind - a
+// valid first-class state, not rolled back.
 func TestLoginOtherStoreErrorAborts(t *testing.T) {
 	t.Parallel()
 	dir, store := cmdtest.FilePolicyDir(t)
@@ -218,7 +217,7 @@ func TestLoginDelegatedAddCreatesEntryAndAuthenticates(t *testing.T) {
 
 func TestLoginExtTokenViaStdin(t *testing.T) {
 	// ext-issued bearers look like "ext/token-abc:secret"; the id:secret split
-	// cuts at the FIRST colon so the ext/ prefix stays inside the id (EXT-3).
+	// cuts at the FIRST colon so the ext/ prefix stays inside the id.
 	t.Parallel()
 	dir, store := cmdtest.FilePolicyDir(t)
 	in := cmdtest.Input{
@@ -235,8 +234,8 @@ func TestLoginExtTokenViaStdin(t *testing.T) {
 	assert.Equal(t, "ext/token-abc:secretxyz", tok)
 }
 
-// TestLoginTokenStdinRejectsProviderFlags asserts the fix for combining
-// --token-stdin with any provider flag: the two paths are mutually
+// TestLoginTokenStdinRejectsProviderFlags asserts that combining
+// --token-stdin with any provider flag is rejected: the two paths are mutually
 // exclusive, and silently ignoring the provider flags would surprise a
 // caller who set --ttl expecting it to reach the derived token create request.
 func TestLoginTokenStdinRejectsProviderFlags(t *testing.T) {
@@ -286,7 +285,7 @@ func TestLoginTokenViaPrompt(t *testing.T) {
 	t.Parallel()
 	dir, store := cmdtest.FilePolicyDir(t)
 	seedServer(t, dir, "acme", "https://r.ex", "", false)
-	// isTTY=true, noInput=false -> CanPrompt. Two prompts now fire (EXT-R-8's
+	// isTTY=true, noInput=false -> CanPrompt. Two prompts fire (the
 	// paste-or-provider menu, then the secret itself), so the input needs a
 	// reader that doesn't lose the second line to Scanner over-read (see
 	// lineReader's doc comment) - a plain strings.Reader would drop "id:sec".
@@ -1183,7 +1182,7 @@ func TestLoginSerializedUnderConfigLock(t *testing.T) {
 }
 
 // extLoginFakeOpts configures the httptest fake server standing in for
-// Rancher across the EXT-R-8 provider-flow tests: the IdP dance
+// Rancher across the provider-flow tests: the IdP dance
 // (/v1-public/*) and the ext Token store create/revoke, both reached ONLY
 // through the /k8s/clusters/local proxy prefix - a bare /apis/... path is
 // deliberately unregistered, so a proxy-path regression 404s here exactly as
@@ -1364,7 +1363,7 @@ func TestLoginProviderFlowTTLPlumbedToCreateBodyInMilliseconds(t *testing.T) {
 }
 
 // TestLoginProviderFlowOmitsTTLFromCreateBodyWhenAbsent asserts createDerivedToken's
-// omit-when-unset idiom (fix #5) end to end: no --ttl must mean the derived token create
+// omit-when-unset idiom end to end: no --ttl must mean the derived token create
 // request body carries no "ttl" key at all, not an explicit ttl: 0 - the
 // unit tests in duration_test.go cover TTLMilliseconds itself, but not that
 // login's own request-building actually omits the key.
@@ -1394,7 +1393,7 @@ func TestLoginProviderFlowOmitsTTLFromCreateBodyWhenAbsent(t *testing.T) {
 }
 
 // TestLoginProviderFlowSubSecondTTLIsValidation exercises the sub-unit
-// truncation rejection (fix #6) through login's own flow, not just the
+// truncation rejection through login's own flow, not just the
 // shared TTLMilliseconds unit test: a --ttl that parses but rounds to 0ms
 // must fail before any network call, as VALIDATION.
 func TestLoginProviderFlowSubSecondTTLIsValidation(t *testing.T) {
@@ -1673,7 +1672,7 @@ func (k *commitThenErrorKeyring) Delete(service, user string) error {
 // depositingPrompter stands in for the browser on the SAML path: it reads
 // the published login URL and runs onHandoff before the CLI's first poll.
 // The embedded prompter is silent and non-TTY with NoInput false - the SAML
-// gate refuses a NoInput prompter before any handoff.
+// gate refuses a NoInput prompter before any browser handoff.
 type depositingPrompter struct {
 	runtime.Prompter
 	onHandoff func(requestID, publicKey string)

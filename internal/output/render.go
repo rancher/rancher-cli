@@ -34,7 +34,7 @@ type WideTabular interface {
 const TemplatePrefix = "template="
 
 // renderSource picks what the structured encoders serialize: the original
-// envelope on the fast path, the scrubbed tree otherwise (MF-2).
+// envelope on the fast path, the scrubbed tree otherwise.
 func renderSource(env *Envelope) (any, error) {
 	tree, hit, err := scrubbedTree(env)
 	if err != nil {
@@ -104,7 +104,7 @@ func RenderStyled(w io.Writer, format string, env *Envelope, s style.Style) erro
 
 // renderTemplate executes a Go template over the JSON view of env.Data with
 // managedFields scrubbed. Templates address the same shape agents see under
-// -o json - CW-4. UseNumber preserves large int64 values verbatim.
+// -o json. UseNumber preserves large int64 values verbatim.
 func renderTemplate(w io.Writer, src string, env *Envelope) error {
 	tmpl, err := template.New("out").Parse(src)
 	if err != nil {
@@ -112,7 +112,7 @@ func renderTemplate(w io.Writer, src string, env *Envelope) error {
 	}
 	// Execute the template over the JSON view of data, so templates address
 	// the same shape agents see under -o json (and json.Marshaler-only
-	// payloads like get's table are reachable at all) - CW-4. Decode with
+	// payloads like get's table are reachable at all). Decode with
 	// UseNumber so a large int64 (byte counts, unix-nano timestamps) prints
 	// verbatim as json.Number instead of round-tripping through float64 and
 	// rendering as scientific notation.

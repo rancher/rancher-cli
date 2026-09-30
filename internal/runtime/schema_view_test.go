@@ -38,7 +38,7 @@ func readOnlyTOCManifest() Manifest {
 	}
 }
 
-// TestTOCViewBareMirrorsTheTOC asserts the spec'd bare TOC JSON shape:
+// TestTOCViewBareMirrorsTheTOC asserts the bare TOC JSON shape:
 // header facts, groups with name+usage entries, kind NAMES only, the
 // global exit map - and none of the full-manifest sections.
 func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
@@ -51,7 +51,7 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	assert.Equal(t, "v-test", got["cliVersion"])
 	assert.Equal(t, float64(3), got["commandCount"], "commandCount counts ALL commands, generated included (mirrors the header)")
 	assert.Equal(t, float64(2), got["kindCount"])
-	assert.Equal(t, float64(2), got["generatedCommandCount"], "the collapsed line's N (spec'd collapse mirror)")
+	assert.Equal(t, float64(2), got["generatedCommandCount"], "the collapsed line's N (collapse mirror)")
 	assert.Equal(t, true, got["readOnly"])
 	assert.Contains(t, got, "globalExitCodes")
 	assert.Equal(t, []any{"pod", "cluster"}, got["kinds"])
@@ -66,7 +66,7 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 
 	// Generated commands are COLLAPSED on the bare path: absent from the
 	// per-group commands list, represented instead by a generated summary
-	// object - exactly what renderTOC does (spec'd collapse mirror).
+	// object - exactly what renderTOC does (collapse mirror).
 	// All-generated groups carry no commands key (omitempty), so the
 	// iteration uses a nil-safe type assertion.
 	var flat []string
@@ -86,7 +86,7 @@ func TestTOCViewBareMirrorsTheTOC(t *testing.T) {
 	}
 }
 
-// TestTOCViewFilteredOmitsBareOnlyFields asserts the spec'd conditionality: a filtered
+// TestTOCViewFilteredOmitsBareOnlyFields asserts the conditionality: a filtered
 // selection has no kinds, no kindCount, no globalExitCodes - its text
 // header renders a match count and no exit strip.
 func TestTOCViewFilteredOmitsBareOnlyFields(t *testing.T) {
@@ -106,7 +106,7 @@ func TestTOCViewFilteredOmitsBareOnlyFields(t *testing.T) {
 	for _, absent := range []string{"kinds", "kindCount", "globalExitCodes", "effectSchema", "generatedCommandCount"} {
 		assert.NotContains(t, got, absent)
 	}
-	// readOnly stays unconditional (round-3: both text views show it).
+	// readOnly stays unconditional (both text views show it).
 	assert.Equal(t, true, got["readOnly"])
 }
 
@@ -119,7 +119,7 @@ func TestTOCViewNameRows(t *testing.T) {
 		"-o name is unchanged: EVERY selection command, generated included")
 }
 
-// TestCardViewFlattensTheCommand asserts the spec'd card shape: data IS the command -
+// TestCardViewFlattensTheCommand asserts the card shape: data IS the command -
 // fields at top level, no commands array - plus globalExitCodes and the
 // kindViewHint mirror of the text card's collision pointer.
 func TestCardViewFlattensTheCommand(t *testing.T) {
@@ -179,7 +179,7 @@ func TestCardViewNameRows(t *testing.T) {
 	assert.Equal(t, [][]string{{"get pod"}}, v.Rows())
 }
 
-// TestKindViewMarshalsTheRowOnly asserts the spec'd kind view: a kind selection's data
+// TestKindViewMarshalsTheRowOnly asserts the kind view: a kind selection's data
 // is the kind row - verb STATE included, per-verb flags deliberately not
 // (the two-step: schema <kind> then schema <verb> <kind>).
 func TestKindViewMarshalsTheRowOnly(t *testing.T) {
@@ -220,7 +220,7 @@ func TestKindViewReadOnlyPropagates(t *testing.T) {
 }
 
 // TestTOCGeneratedCountMatchesTheText asserts the mirror as an assertion,
-// not a golden eyeball (plan-review round 4): the JSON's
+// not a golden eyeball: the JSON's
 // generatedCommandCount equals the N the bare text TOC actually prints
 // in its collapsed line, on the same manifest.
 func TestTOCGeneratedCountMatchesTheText(t *testing.T) {

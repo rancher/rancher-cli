@@ -25,7 +25,7 @@ const (
 	flagMatch = "match"
 )
 
-// matchesAny is IM-3: case-sensitive substring over the raw ref, values
+// matchesAny does a case-sensitive substring over the raw ref, values
 // OR, no needles matches everything. Precision comes from delimiters in
 // the needle (registry.old.corp/, /nginx:), not pattern syntax.
 func matchesAny(ref string, needles []string) bool {
@@ -50,7 +50,7 @@ const (
 	byWorkload = "workload"
 )
 
-// imagesResult is the by-discriminated envelope (IM-7): one Result Kind,
+// imagesResult is the by-discriminated envelope: one Result Kind,
 // agents branch on "by". Exactly one of RowData/Clusters is set.
 type imagesResult struct {
 	By       string         `json:"by"`
@@ -288,7 +288,7 @@ func everyScanFailed(failures map[string]error) error {
 }
 
 // podActive reports whether a pod counts toward the image inventory. Only
-// Running and Pending pods are active (IM-14): completed-job images are not
+// Running and Pending pods are active: completed-job images are not
 // blast radius; a Pending rollout pod's images are. Terminating pods retain
 // their phase until they leave the List, so they stay included.
 func podActive(pod map[string]any) bool {
@@ -299,8 +299,8 @@ func podActive(pod map[string]any) bool {
 var podImageFields = []string{"containers", "initContainers", "ephemeralContainers"}
 
 // podImageRefs returns every image reference in the pod spec, in field
-// order, duplicates preserved: --by image counts references (IM-18) while
-// --by workload dedupes per pod (IM-17).
+// order, duplicates preserved: --by image counts references while
+// --by workload dedupes per pod.
 func podImageRefs(pod map[string]any) []string {
 	var out []string
 	for _, field := range podImageFields {
@@ -320,7 +320,7 @@ func podImageRefs(pod map[string]any) []string {
 
 // imagesFor lists a cluster's pods across all namespaces, skips inactive
 // pods, and dedupes every container image reference into a sorted, counted
-// slice. needles filters by substring (IM-3); nil matches everything.
+// slice. needles filters by substring; nil matches everything.
 func imagesFor(ctx context.Context, client engine.ClusterClient, needles []string) (imageRows, error) {
 	podKind, _ := kinds.Lookup("pod")
 	list, err := client.List(ctx, podKind.GVR, "", "")

@@ -47,7 +47,7 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 // deleteFlags is get's flag set with the flags a delete (always a named op)
 // requires marked Required so the pipeline rejects before Plan:
 //   - an NSCluster kind's --cluster (it becomes the namespace; an empty value
-//     must not fall through to the local cluster - F3);
+//     must not fall through to the local cluster);
 //   - an NSPlain kind's --namespace (an empty value would 404 opaquely).
 //
 // NSWorkspace deletes need nothing marked Required - the kind's

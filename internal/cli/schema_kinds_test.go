@@ -13,7 +13,7 @@ import (
 // schemaManifest returns the full schema manifest directly from the registry
 // for manifest-invariant assertions. The bare schema -o json now returns the
 // TOC view, not the full manifest, so tests that need the full manifest
-// (SE-17/SE-18 invariants) bypass the presentation layer entirely.
+// (manifest invariants) bypass the presentation layer entirely.
 func schemaManifest(t *testing.T) runtime.Manifest {
 	t.Helper()
 	m, err := buildManifest("v-test")
@@ -21,7 +21,7 @@ func schemaManifest(t *testing.T) runtime.Manifest {
 	return m
 }
 
-// TestSchemaKindVerbSurfaceMatchesRegisteredCommands is the SE-17 invariant:
+// TestSchemaKindVerbSurfaceMatchesRegisteredCommands asserts the invariant:
 // over the full kinds × {get,patch,delete} domain, a verb whose state is
 // available OR refused has a registered generated command "<verb> <name>"
 // (a refusal is a registered command that declines at Plan), and an absent
@@ -80,7 +80,7 @@ func TestSchemaManagementTokenCreateRefused(t *testing.T) {
 	assert.Equal(t, string(safety.Deprecated), create.Stability)
 }
 
-// TestSchemaKindsManifestFields asserts the SE-8 kind rows: the refused verb
+// TestSchemaKindsManifestFields asserts the kind rows: the refused verb
 // (CRT patch), the override-added verb (provisioning-cluster delete), a
 // reasoned absence (cluster delete), and the identity/routing fields.
 func TestSchemaKindsManifestFields(t *testing.T) {
