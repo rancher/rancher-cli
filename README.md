@@ -326,8 +326,8 @@ version floors, offline guarantees, and live-completion detail:
 Requires Go 1.27.1+ to build from source:
 
     make build        # bin/rancher
-    make test         # go test -race -cover ./...
-    make validate     # gofmt + vet + lint + race tests (the commit gate)
+    make test         # go test -cover ./... (-race everywhere but the source scans and the cache model)
+    make validate     # gofmt + vet + lint + tests (race detector except the source scans and the cache model); the commit gate
     make e2e          # end-to-end suite against an envtest-backed fake Rancher
     make e2e-fidelity     # verify recorded fidelity goldens against a real Rancher in Docker
     make e2e-fidelity-downstream  # verify downstream-cluster fidelity goldens against your own Rancher

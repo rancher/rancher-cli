@@ -89,8 +89,9 @@ if git --no-pager grep -nE 'docs/(design|handoffs|reviews|plans|backlog)' -- ':!
 fi
 
 # -vet=off: the full go vet ./... already ran above; go test's implicit
-# vet subset would only repeat a fraction of it.
-go test -race -vet=off ./...
+# vet subset would only repeat a fraction of it. scripts/test runs every
+# package with -race except the source scans and the cache model.
+./scripts/test -vet=off
 
 # Build contract: both executables, built from current source - never
 # trusting leftovers in bin/.

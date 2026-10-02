@@ -15,8 +15,8 @@ Go 1.27.1+. Automation is `make`, dispatching to `scripts/`:
 | Command | Does |
 |---|---|
 | `make build` | build `bin/rancher` (CGO-free) |
-| `make test` | `go test -race -cover ./...` |
-| `make validate` | gofmt, vet, lint, race - the commit gate |
+| `make test` | `go test -cover` on every package, with `-race` on all but `test/conformance` and `test/cachemodel` |
+| `make validate` | gofmt, vet, lint, tests (race detector except the source scans and the cache model) - the commit gate |
 | `make e2e` | envtest provider suite + testscript scenarios |
 | `make e2e-fidelity` | verify recorded fidelity goldens against a real Rancher in Docker with an imported k3s downstream (~7-9 min boot; never on PRs - CI runs it on demand or weekly) |
 | `make e2e-fidelity-update` | re-record the fidelity oracle goldens, downstream family included (review the diff like the schema golden) |

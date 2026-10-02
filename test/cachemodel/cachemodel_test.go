@@ -1,4 +1,10 @@
-package config
+// Package cachemodel is the model of the exec-credential cache described
+// below. It is a package of its own, apart from internal/config, because
+// scripts/validate and scripts/test run it without the race detector: the
+// model enumerates states on one goroutine per scenario, sharing nothing
+// between them, so the detector has nothing to find and the run takes
+// several times longer.
+package cachemodel
 
 import (
 	"fmt"
@@ -11,7 +17,7 @@ import (
 )
 
 // This file is a model of the exec-credential cache across a change of an
-// entry's credential. It does not run the package's code: it states the
+// entry's credential. It does not run internal/config's code: it states the
 // protocol as a small state machine - the files a directory holds, the
 // processes that read and write them, and the order of each process's
 // durable writes - enumerates every interleaving of a few processes, with
@@ -184,9 +190,9 @@ func (s modelStore) policy() modelPolicy {
 
 func (s modelStore) String() string {
 	if s == modelKeychain {
-		return backendKeychain
+		return "keychain"
 	}
-	return backendFile
+	return "file"
 }
 
 // modelUser is whose credential a store holds or a token was made from;

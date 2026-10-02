@@ -1,3 +1,4 @@
 #!/bin/bash
-# Enforce the per-commit validation gate (gofmt + vet + lint + race tests).
+# Enforce the per-commit validation gate (gofmt + vet + lint + tests; the
+# race detector covers all but the source scans and the cache model).
 exec make validate

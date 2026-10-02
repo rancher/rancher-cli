@@ -1,4 +1,123 @@
 #!/bin/bash
+# Runs the unit tests: every package with the race detector, except the
+# ones listed in norace below, which run in a second pass without it. The
+# passes run one after the other with their output streaming, both always
+# run, and the script exits non-zero when either failed. Flags given to
+# this script go to both passes and replace the default -cover.
+#
+# -coverprofile=FILE is the one flag that writes a file. Each pass writes
+# its own profile and the two are merged into FILE (the profiles hold
+# different packages); -covermode=atomic is added unless the flags name a
+# mode, because the merged profiles must share one.
+#
+# The listed packages hold the source scans (test/conformance) and the
+# cache model (test/cachemodel). Their tests read files or enumerate
+# states and test no concurrent code, so the race detector has nothing to
+# find, and under it they run several times slower (the
+# planning-reference scan about 18 times). A package on this list must
+# contain no goroutine, channel, timer callback or sync primitive other
+# than sync.OnceValue and sync.OnceValues, and no test of it may write
+# package state that tests running in parallel read;
+# TestNoRacePackagesHoldNoConcurrency (test/conformance) reads the norace
+# line below and fails on the first kind, but only -race could see the
+# second. Keep the list as the one assignment of the form
+# norace=(dir dir ...), one module-relative directory per word, no leading
+# ./ and no trailing /. A package is matched by its whole import path.
 set -e
 cd "$(dirname "$0")/.."
-go test -race -cover ./...
+
+norace=(test/conformance test/cachemodel)
+
+flags=()
+profile=
+covermode=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -coverprofile=* | --coverprofile=*)
+      profile=${1#*=}
+      ;;
+    -coverprofile | --coverprofile)
+      if [ $# -lt 2 ]; then
+        echo "error: $1 needs a file name" >&2
+        exit 2
+      fi
+      profile=$2
+      shift
+      ;;
+    -covermode | --covermode | -covermode=* | --covermode=*)
+      covermode=1
+      flags+=("$1")
+      ;;
+    *)
+      flags+=("$1")
+      ;;
+  esac
+  shift
+done
+if [ ${#flags[@]} -eq 0 ] && [ -z "$profile" ]; then
+  flags=(-cover)
+fi
+
+# Capturing these first makes a failing go list stop the script.
+module=$(go list -m)
+all_pkgs=$(go list ./...)
+race_pkgs=()
+while IFS= read -r pkg; do
+  skip=
+  for dir in "${norace[@]}"; do
+    if [ "$pkg" = "$module/$dir" ]; then
+      skip=1
+    fi
+  done
+  if [ -z "$skip" ]; then
+    race_pkgs+=("$pkg")
+  fi
+done <<<"$all_pkgs"
+
+norace_pkgs=()
+for dir in "${norace[@]}"; do
+  norace_pkgs+=("$module/$dir")
+done
+
+race_flags=("${flags[@]}")
+norace_flags=("${flags[@]}")
+if [ -n "$profile" ]; then
+  profiles=$(mktemp -d)
+  trap 'rm -rf "$profiles"' EXIT
+  if [ -z "$covermode" ]; then
+    race_flags+=(-covermode=atomic)
+    norace_flags+=(-covermode=atomic)
+  fi
+  race_flags+=("-coverprofile=$profiles/race")
+  norace_flags+=("-coverprofile=$profiles/norace")
+fi
+
+status=0
+go test -race "${race_flags[@]}" "${race_pkgs[@]}" || status=1
+go test "${norace_flags[@]}" "${norace_pkgs[@]}" || status=1
+
+if [ -n "$profile" ]; then
+  written=()
+  for f in "$profiles/race" "$profiles/norace"; do
+    if [ -s "$f" ]; then
+      written+=("$f")
+    fi
+  done
+  if [ ${#written[@]} -gt 0 ]; then
+    mode=$(head -n 1 "${written[0]}")
+    for f in "${written[@]}"; do
+      if [ "$(head -n 1 "$f")" != "$mode" ]; then
+        echo "error: the passes wrote different coverage modes; not merging" >&2
+        exit 1
+      fi
+    done
+    {
+      echo "$mode"
+      for f in "${written[@]}"; do
+        tail -n +2 "$f"
+      done
+    } >"$profile"
+  fi
+fi
+
+exit "$status"
