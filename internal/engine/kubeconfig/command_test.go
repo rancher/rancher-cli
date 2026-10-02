@@ -168,11 +168,21 @@ func loadKubeconfig(t *testing.T, res runtime.Result) *clientcmdapi.Config {
 	return kc
 }
 
-// writeLoggedIn stores a login for "prod" in dir's file store, so the exec
-// plugin's lookup answers with the session's own entry and the command
-// prints no notice about which login kubectl uses.
+// loggedInOwner is the owner writeLoggedIn records for prod's login.
+const loggedInOwner = "u-test"
+
+// writeLoggedIn stores a login for "prod" in dir's file store, recording
+// its owner as a login does, so the exec plugin's lookup answers with the
+// session's own entry, the exec entry names that owner with --user-id,
+// and the command prints no notice about which login kubectl uses.
 func writeLoggedIn(t *testing.T, dir string) {
 	t.Helper()
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	s := cfg.Servers["prod"]
+	s.TokenUserID = loggedInOwner
+	cfg.Servers["prod"] = s
+	require.NoError(t, cfg.Write())
 	require.NoError(t, config.NewFileStore(dir).SetToken(config.ServerRef{Name: "prod", URL: "https://r.example.com"}, "tok"))
 }
 

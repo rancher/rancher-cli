@@ -202,7 +202,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 			require.ErrorContains(t, err, "pipe an API token to "+tc.login)
 			switch {
 			case tc.reuse:
-				require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in; ")
+				require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in")
 				assert.NotContains(t, err.Error(), "until the cached token expires", "the plugin's own login keeps a login credential, --name or not")
 			case tc.flags["name"] == "":
 				assert.NotContains(t, err.Error(), "run kubectl once in a terminal", "with no --name nothing a terminal sign-in makes is kept")
@@ -210,7 +210,9 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 			default:
 				require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 			}
-			require.ErrorContains(t, err, clierr.Rancher+" create kubeconfig")
+			// No row's current server holds a login for the call's server, so
+			// create kubeconfig, which uses that login, is not offered.
+			assert.NotContains(t, err.Error(), "create kubeconfig")
 			switch {
 			case tc.unreadable:
 				assert.Equal(t, clierr.Rancher+" config status", ce.Hint, "the login would be refused on the record")

@@ -46,7 +46,9 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 			"proxy-only file is printed and one notice on stderr says why. The user entry's env records this config directory, absolute, " +
 			"and RANCHER_CLI_CREDENTIAL_STORE (empty when the directory declares its store, else the value set now), so the file works " +
 			"for this user on this machine only; notices on stderr say so, and name the stored login kubectl's exec plugin will use when " +
-			"it is not this session's. installHint says how to install rancher, or how to regenerate the file for another --exec-command.",
+			"it is not this session's. The exec entry names that login's recorded owner with --user-id, so the plugin hands kubectl only " +
+			"that user's tokens; a notice says when the login records no owner. installHint says how to install rancher, or how to " +
+			"regenerate the file for another --exec-command.",
 		Flags: []runtime.ArgSpec{
 			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` to generate the kubeconfig for"},
 			{Name: "exec-command", Type: "string", Desc: "`command` kubectl runs for the exec plugin: a name looked up on PATH where kubectl runs, or a path, " +
@@ -138,9 +140,22 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		serverName = config.ServerHost(base)
 	}
 	entryName := fmt.Sprintf("%s-%s", serverName, id)
+	if err := reservedName(entryName, id, base, eff.CA); err != nil {
+		return runtime.Result{}, err
+	}
+
+	// The plugin's own lookup, run once: it decides the --user-id the
+	// exec entry carries and the notices below.
+	lc := lookupCall{cfg: cfg, dir: dir, server: base, serverID: config.CanonicalServerIdentity(base),
+		name: entryName, clusterID: id, ca: caPEM, caSource: eff.CA, eff: eff, envToken: os.Getenv(config.EnvToken) != "", store: c.store}
+	lk := lc.lookup()
+	owner, ownerNotice := lc.recordedOwner(lk)
 
 	cluster := &clientcmdapi.Cluster{Server: base + "/k8s/clusters/" + id}
 	execArgs := []string{"auth", "get-token", "--server", base, "--cluster", id, "--name", entryName}
+	if owner != "" {
+		execArgs = append(execArgs, "--user-id", owner)
+	}
 	if caPEM != "" {
 		cluster.CertificateAuthorityData = []byte(caPEM)
 		// The exec plugin resolves its own CA from the current server at
@@ -209,9 +224,11 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		p.Notice("direct endpoint contexts omitted: " + strings.Join(reasons, "; "))
 	}
 	if p != nil {
-		if n := lookupNotice(lookupCall{cfg: cfg, dir: dir, server: base, serverID: config.CanonicalServerIdentity(base),
-			name: entryName, clusterID: id, ca: caPEM, eff: eff, envToken: os.Getenv(config.EnvToken) != "", store: c.store}); n != "" {
+		if n := lookupNotice(lc, lk); n != "" {
 			p.Notice(n)
+		}
+		if ownerNotice != "" {
+			p.Notice(ownerNotice)
 		}
 		p.Notice(machineNotice(dir, store, command, commandIsPath))
 	}

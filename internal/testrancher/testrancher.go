@@ -148,6 +148,15 @@ type Options struct {
 	// LegacyLoginBodyUserID adds userId to the v3 login body, as pre-ext
 	// servers do.
 	LegacyLoginBodyUserID bool
+	// SelfSubjectReviews answers POST
+	// /k8s/clusters/<id>/apis/authentication.k8s.io/v1/selfsubjectreviews
+	// as Rancher does: 201 with status.userInfo.username the bearer's
+	// owner and no uid, 401 for a bearer the facade does not know.
+	// Otherwise the path falls through.
+	SelfSubjectReviews bool
+	// SelfSubjectReviewStatus forces the status of every SelfSubjectReview
+	// answer; 0 answers as above.
+	SelfSubjectReviewStatus int
 	// OmitSpecOnCreate withholds spec on ext token create responses.
 	OmitSpecOnCreate bool
 	// ScopedCreateStatus forces the status of a cluster-scoped ext create.
@@ -155,6 +164,10 @@ type Options struct {
 	// ScopedCreateClusterName overrides the echoed spec.clusterName on a
 	// scoped create; an empty string omits it.
 	ScopedCreateClusterName *string
+	// DerivedCreateOwner and ScopedCreateOwner override the spec.userID an
+	// unscoped and a cluster-scoped ext create echo, while the token stays
+	// the bearer's owner's; an empty string omits it.
+	DerivedCreateOwner, ScopedCreateOwner *string
 	// V3TokenCreate serves POST /v3/tokens, the Norman cluster-token
 	// create.
 	V3TokenCreate bool
@@ -244,6 +257,8 @@ type Options struct {
 	// answers 404, "fail" answers 500.
 	SessionDeleteMode string
 	DerivedDeleteMode string
+	// ClusterDeleteMode is the same for a cluster-scoped ext token.
+	ClusterDeleteMode string
 
 	// EnableSAMLAuthTokens serves the authtokens collection the browser sign-in
 	// polls.
@@ -401,14 +416,20 @@ func (f *Facade) TokenOwner(name string) (string, bool) {
 	return rec.userID, true
 }
 
+// SeedOwner owns the seed token: the user the e2e harness's cluster proxy
+// authenticates the seed bearer as, so a SelfSubjectReview through the
+// proxy and the facade's token creates name one owner for it, as Rancher's
+// do for every token.
+const SeedOwner = "e2e-admin"
+
 // BearerOwner resolves a bearer to its token's owner; the seed token is
-// owned by user-seed.
+// owned by SeedOwner.
 func (f *Facade) BearerOwner(bearer string) (string, bool) {
 	if bearer == "" {
 		return "", false
 	}
 	if f.opts.SeedToken != "" && bearer == f.opts.SeedToken {
-		return "user-seed", true
+		return SeedOwner, true
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -491,7 +512,7 @@ func New(opts Options) *Facade {
 	for _, id := range opts.AdminUserIDs {
 		admins[id] = true
 	}
-	admins["user-seed"] = true
+	admins[SeedOwner] = true
 	f := &Facade{opts: opts, admins: admins, tokens: map[string]*record{}, authTokens: map[string]string{}}
 	if opts.EnableIdP {
 		f.idp = newIdPStub(opts.IdPPendingPolls)
@@ -566,6 +587,8 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.idp.handleDeviceCode(w, r)
 	case f.idp != nil && f.opts.IdPURL == "" && r.Method == http.MethodPost && r.URL.Path == "/idp/token":
 		f.idp.handleToken(w, r)
+	case f.opts.SelfSubjectReviews && r.Method == http.MethodPost && selfSubjectReviewCluster(r.URL.Path) != "":
+		f.handleSelfSubjectReview(w, r)
 	case strings.HasPrefix(r.URL.Path, "/v3-public"):
 		http.NotFound(w, r)
 	default:
@@ -868,7 +891,18 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		if f.opts.DerivedBearerOverride != "" {
 			bearer = f.opts.DerivedBearerOverride
 		}
-		writeExtTokenAsWithScope(w, http.StatusCreated, rec, rec.name, bearer, !f.opts.OmitSpecOnCreate, echoedClusterName)
+		echoed := rec
+		if o := f.opts.DerivedCreateOwner; role == "derived" && o != nil {
+			c := *rec
+			c.userID = *o
+			echoed = &c
+		}
+		if o := f.opts.ScopedCreateOwner; role == "cluster" && o != nil {
+			c := *rec
+			c.userID = *o
+			echoed = &c
+		}
+		writeExtTokenAsWithScope(w, http.StatusCreated, echoed, rec.name, bearer, !f.opts.OmitSpecOnCreate, echoedClusterName)
 	}
 }
 
@@ -1176,6 +1210,8 @@ func (f *Facade) deleteMode(rec *record) string {
 		return f.opts.SessionDeleteMode
 	case "derived":
 		return f.opts.DerivedDeleteMode
+	case "cluster":
+		return f.opts.ClusterDeleteMode
 	}
 	return ""
 }
@@ -1737,6 +1773,42 @@ func (f *Facade) authorizedBearer(r *http.Request) bool {
 		return true
 	}
 	return f.ValidBearer(tok)
+}
+
+// selfSubjectReviewCluster is the cluster a SelfSubjectReview path goes
+// through, "" for any other path.
+func selfSubjectReviewCluster(path string) string {
+	rest, ok := strings.CutPrefix(path, "/k8s/clusters/")
+	if !ok {
+		return ""
+	}
+	cluster, tail, ok := strings.Cut(rest, "/")
+	if !ok || tail != "apis/authentication.k8s.io/v1/selfsubjectreviews" {
+		return ""
+	}
+	return cluster
+}
+
+// handleSelfSubjectReview answers a SelfSubjectReview with the bearer's
+// owner as the username, the field Rancher fills from the token's owner;
+// Rancher's answer carries no uid.
+func (f *Facade) handleSelfSubjectReview(w http.ResponseWriter, r *http.Request) {
+	if f.opts.SelfSubjectReviewStatus != 0 {
+		w.WriteHeader(f.opts.SelfSubjectReviewStatus)
+		return
+	}
+	bearer := bearerFromHeader(r)
+	owner, ok := f.BearerOwner(bearer)
+	if !ok || (bearer != f.opts.SeedToken && !f.ValidBearer(bearer)) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"apiVersion": "authentication.k8s.io/v1", "kind": "SelfSubjectReview",
+		"status": map[string]any{"userInfo": map[string]any{
+			"username": owner, "groups": []string{"system:authenticated", "system:cattle:authenticated"},
+		}},
+	})
 }
 
 func bearerFromHeader(r *http.Request) string {

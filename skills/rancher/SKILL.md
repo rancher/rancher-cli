@@ -89,7 +89,8 @@ the keychain), with the keychain reachable, then run the command again.
 - Scripted/CI: pipe the token - `rancher auth login <name> --url <url> --token-stdin < token.txt`,
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
   A piped token is VERIFIED against the server before it is stored: a bad
-  token or unreachable server fails the login and stores nothing. To stage a
+  token or unreachable server fails the login and stores nothing. The check
+  also records the token's owner (`tokenUserId` in the `-o json` result). To stage a
   credential without the round-trip (e.g. the server is down), add
   `--no-verify` - the result then reports `"verified": false` under `-o json`
   and says "not verified" in text. Behind a corporate proxy, set
@@ -460,6 +461,21 @@ else), or by regenerating the kubeconfig: `rancher config use-server <entry>`
 switches the directory's current server for every process using it (switch
 back with `rancher config use-server <previous>`), then
 `rancher kubeconfig --cluster <id>`.
+The exec entry also carries `--user-id <id>` when that login records its
+owner: the plugin then hands kubectl only that user's tokens. It refuses
+(`AUTH`) an entry whose login records another user, revokes a created
+token whose owner is not the user (`AUTH`; `GENERIC` when the response
+names none), fails closed on a Rancher without `ext.cattle.io`
+(`CAPABILITY_UNSUPPORTED`), and after an interactive sign-in checks the
+user with one `SelfSubjectReview`. The refusal of an entry whose login
+records another user, and of a created token another user's login made,
+name a login of a user entry with `--token-stdin`, or of a new entry when no
+user entry is the call's, never one of the plugin's own login entries; the
+others name no login. Without a terminal the error says which plugin login
+entry it did not use and why. A notice says
+when the login records no owner (log in again without `--no-verify`, then
+regenerate the kubeconfig). `--name` values starting with `user-id:` are
+reserved.
 Cached credentials: `rancher auth list-tokens` /
 `rancher auth delete-token` (local cache only; the server-side token
 stays valid until `rancher delete token <name>`, or `delete

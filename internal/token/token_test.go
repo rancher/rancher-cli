@@ -46,7 +46,11 @@ type tin struct {
 func (t tin) String(k string) string  { return t.s[k] }
 func (t tin) Bool(k string) bool      { return t.b[k] }
 func (t tin) Strings(string) []string { return nil }
-func (t tin) IsSet(string) bool       { return false }
+func (t tin) IsSet(k string) bool {
+	_, inS := t.s[k]
+	_, inB := t.b[k]
+	return inS || inB
+}
 
 // selfSignedCAPEM returns a freshly generated self-signed certificate as PEM,
 // for tests that need a --cacert value httpx.New accepts without any server
@@ -226,7 +230,7 @@ func TestGetTokenBrokenConfigMakesEveryCacheHitAMiss(t *testing.T) {
 	require.Error(t, lerr, "the config is unreadable, so the root hook stores no snapshot")
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor}
-	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	assert.False(t, hit, "a record whose binding cannot be checked is never served")
 
 	// And the record is left alone: a reader that cannot judge one must
@@ -273,7 +277,7 @@ func TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey(t *testing.T) {
 	// makes every cache hit a miss, which would pass this assertion for
 	// the wrong reason.
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	_, _, _, hit := cmd.probeFlagCache("prod", "host", "c-1", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", "host", "c-1", "", ui.Discard())
 	assert.False(t, hit, "schemeless --server must not serve a legacy host-only cache record")
 }
 
@@ -2047,7 +2051,7 @@ func TestGetTokenMalformedServerNoFastPathCacheHit(t *testing.T) {
 	key := config.CacheKey("prod", fallbackID, "c-1")
 	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	_, _, _, hit := cmd.probeFlagCache("prod", malformed, "c-1", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", malformed, "c-1", "", ui.Discard())
 	assert.False(t, hit, "malformed --server must not produce a fast-path cache hit")
 }
 
@@ -2063,7 +2067,7 @@ func TestGetTokenUnsupportedSchemeNoFastPathCacheHit(t *testing.T) {
 	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", ftpID, "c-1"))
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	_, _, _, hit := cmd.probeFlagCache("prod", "ftp://host", "c-1", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", "ftp://host", "c-1", "", ui.Discard())
 	assert.False(t, hit, "unsupported scheme --server must not produce a fast-path cache hit")
 }
 

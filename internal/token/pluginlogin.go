@@ -96,7 +96,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		// This load's binding is the one the login's record takes: it was
 		// made before the reads below found no credential, so an entry that
 		// gets a login after it has another id than the record carries.
-		tok, _, lookup, perr := tokenCmd{dir: t.dir, store: fresh, anchor: t.anchor}.storedCredToken(ctx, in.client, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
+		tok, _, lookup, perr := tokenCmd{dir: t.dir, store: fresh, anchor: t.anchor, user: t.user}.storedCredToken(ctx, in.client, in.server, in.clusterID, in.wantName, in.ignoreCurrentContext, p)
 		switch {
 		case perr == nil:
 			result = tok
@@ -111,9 +111,22 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		entry = in.refreshEntry
 		if entry == "" {
 			entry = config.ExecLoginEntryName(in.serverID)
+			// A call whose --name identifies a plugin login entry logs that
+			// entry in, so the entry it reads next time holds the login;
+			// the lookup's binding names the entry the --name identified.
+			if identified := lookup.Entry(); cfg.Servers[identified].Provenance == clierr.ProvenanceExecLogin {
+				entry = identified
+			}
+		}
+		target := config.CollisionFreeName(cfg, entry, in.serverID)
+		// Checked on this load, before anything is disclosed or signed in:
+		// an entry another call logged in for another user while this one
+		// waited is never written over. The caller signs in instead.
+		if s, ok := cfg.Servers[target]; ok && t.user.otherOwner(s.TokenUserID) {
+			return errNoStoredCredential
 		}
 		// Decided for the entry the login will write, suffix included.
-		decision, disclosure, derr := storeDecision(t.dir, cfg, config.CollisionFreeName(cfg, entry, in.serverID))
+		decision, disclosure, derr := storeDecision(t.dir, cfg, target)
 		if derr != nil {
 			return derr
 		}
@@ -131,6 +144,9 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		acquired = true
 		base := kube.BaseURL(in.server)
 		st := LoginStates{Config: clierr.ConfigNotWritten}
+		if t.user.otherOwner(cred.UserID) {
+			return FailLogin(t.user.pluginSignInRefused(cred.UserID), clierr.StageAuthentication, st, cred, entry)
+		}
 		resolved, err := resolveClusterIDForCreate(ctx, in.client, base, cred.Token, in.clusterID)
 		if err != nil {
 			return FailLogin(freshCredentialError(err), clierr.StageClusterToken, st, cred, entry)
@@ -140,9 +156,23 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			st.ClusterToken = clusterTokenFate(ctx, ct, cred)
 			return FailLogin(freshCredentialError(err), clierr.StageClusterToken, st, cred, entry)
 		}
+		owner := cred.UserID
+		if t.user.userID != "" {
+			// Both creates must name the call's user where they name an
+			// owner, and one of them must: nothing is stored otherwise.
+			switch {
+			case t.user.otherOwner(ct.UserID):
+				st.ClusterToken = clusterTokenFate(ctx, ct, cred)
+				return FailLogin(t.user.pluginSignInRefused(ct.UserID), clierr.StageClusterToken, st, cred, entry)
+			case ct.UserID == "" && cred.UserID == "":
+				st.ClusterToken = clusterTokenFate(ctx, ct, cred)
+				return FailLogin(t.user.pluginSignInRefused(""), clierr.StageClusterToken, st, cred, entry)
+			}
+			owner = t.user.userID
+		}
 		out, perr := config.PersistLoginCredential(ctx, t.dir, config.PersistLoginInput{
 			Name: entry, CollisionSuffix: true, CanonicalURL: in.serverID, CA: in.caPEM,
-			Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: cred.UserID,
+			Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: owner,
 			Bearer: cred.Token, ExpiresAt: cred.ExpiresAt,
 			OwnsEntry: true, Decision: &decision, ReadOnlyStoreIsFailure: true,
 			Policy: decision.Policy, ObservedDeclaration: cfg.CredentialStore,

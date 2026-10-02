@@ -5,17 +5,24 @@
 # the unchanged router).
 # seedexeccache pre-warms the cache through the real config store API, so
 # get-token takes its cache fast-path here without touching login at all.
+# The pasted login records its owner, e2e-admin, so the kubeconfig names it
+# with --user-id; a warm record is seeded in that user's slot and one, with
+# another token, in the slot of the same --name without it, so each read
+# shows which slot it came from.
 [!kubectl] skip 'kubectl not on PATH'
 
 stdin token.txt
 exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --token-stdin
 
-seedexeccache e2e-c-test c-test
+seedexeccache -token e2e-std:secret e2e-c-test c-test
+seedexeccache e2e-c-test c-test e2e-admin
 
 # The seeded record is the one the exec plugin serves for the entry the
 # --name identifies: the token comes from the cache, not from a token
-# created from the stored login.
+# created from the stored login, with --user-id and without it.
 exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test
+jsonquery stdout status.token e2e-std:secret
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test --user-id e2e-admin
 jsonquery stdout status.token e2e:secret
 
 exec rancher kubeconfig --cluster testcluster

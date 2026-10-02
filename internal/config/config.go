@@ -20,8 +20,12 @@ const fileName = "config.yaml"
 // below emits when (and only when) a name is known. Replaces the retired
 // LoginHint constant, which could not carry a concrete name under the
 // executable-hint contract (a machine hint is a complete command, never a
-// placeholder).
+// placeholder). A name in the exec plugin's own login entry namespace gets
+// none: auth login refuses it, and a hint is a command that runs.
 func LoginHintFor(name string) string {
+	if IsExecLoginEntryName(name) {
+		return ""
+	}
 	return LoginCommand + " " + clierr.ShellQuote(name)
 }
 
@@ -84,6 +88,19 @@ func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 	}
 	sort.Strings(names)
 	if len(names) == 1 {
+		if IsExecLoginEntryName(names[0]) {
+			// auth login refuses the name; a login under the name derived
+			// from the server's host and port reaches the same server. The
+			// name is given, since auth login derives none from an IPv6
+			// address; it is free, the plugin login entry being the only one,
+			// and has no leading dash, which would read as a flag ([::1]).
+			url := servers[names[0]]
+			name := strings.TrimLeft(clierr.HostEntryName("", url), "-")
+			login := LoginCommand + " " + clierr.ShellQuote(name) + " --url " + clierr.ShellQuote(url)
+			return clierr.New(clierr.CodeNotLoggedIn, "not logged in - no current server; the only server entry, "+
+				clierr.ShellQuote(names[0])+", is the exec plugin's own login entry, which auth login refuses; log in under a server entry of your own with: "+login).
+				WithHint(login)
+		}
 		return clierr.New(clierr.CodeNotLoggedIn, "not logged in - no current server").
 			WithHint(LoginHintFor(names[0]))
 	}
@@ -174,8 +191,10 @@ type Server struct {
 	// TokenRef names the stored credential's server-side token, read only by
 	// revocation. Missing or malformed means "cannot revoke by name".
 	TokenRef *clierr.TokenRef `json:"tokenRef,omitempty"`
-	// TokenUserID is the token's owner as the create response reported it;
-	// empty when the response carried no owner (a SAML legacy credential).
+	// TokenUserID is the token's owner as the create response reported it,
+	// or, for a pasted token, as auth login's SelfSubjectReview reported it;
+	// empty when no response carried one (a SAML legacy credential, or a
+	// pasted token stored with --no-verify).
 	TokenUserID string `json:"tokenUserId,omitempty"`
 	// CredentialExpiresAt is the server-reported expiry, for display only:
 	// serving a token is decided by the server's answer, never by this.

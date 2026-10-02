@@ -317,7 +317,7 @@ func TestThePluginLoginsOwnRecordWaitsForItsLastWrite(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, strings.Join(res.Warnings, "\n"), "stay paused", "the login says its last write failed")
 	cmd := tokenCmd{dir: x.dir, store: x.store, anchor: anchorFor(x.dir)}
-	_, _, _, hit := cmd.probeFlagCache("n", x.url, "c-test", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("n", x.url, "c-test", "", ui.Discard())
 	assert.False(t, hit, "the login's own record was not written while its entry was paused")
 	entry, ok := x.entry(t)
 	require.True(t, ok)

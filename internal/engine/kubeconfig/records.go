@@ -111,9 +111,12 @@ type lookupCall struct {
 	cfg                   *config.Config
 	dir, server, serverID string
 	name, clusterID, ca   string
-	eff                   config.Effective
-	envToken              bool
-	store                 config.CredStore
+	// caSource is the session's CA as config.yaml or the environment names
+	// it, a path or an inline PEM, for a remedy that names a new entry.
+	caSource string
+	eff      config.Effective
+	envToken bool
+	store    config.CredStore
 }
 
 // lookupStore is the store the plugin will open: the declared one when
@@ -130,20 +133,62 @@ func (l lookupCall) lookupStore() (token.CredentialReader, error) {
 	return l.store, nil
 }
 
+// lookup is the exec plugin's own lookup for the call, over the store it
+// will open; a store that cannot be opened is a read failure.
+func (l lookupCall) lookup() token.StoredLogin {
+	reader, err := l.lookupStore()
+	if err != nil {
+		return token.StoredLogin{Outcome: token.LookupReadFailed, Err: err}
+	}
+	return token.LookupStoredLogin(l.cfg, reader, l.server, l.name, l.clusterID)
+}
+
+// recordedOwner is the --user-id the exec entry carries - the owner the
+// login that answers records, when it is a user id - or why it carries
+// none: the answering login records no owner. Any other outcome of the
+// lookup gives neither; its notice says what it is.
+func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
+	if lk.Outcome != token.LookupAnswered {
+		return "", ""
+	}
+	recorded := l.cfg.Servers[lk.Entry].TokenUserID
+	if token.ValidUserID(recorded) {
+		return recorded, ""
+	}
+	whose := "the stored login of " + clierr.ShellQuote(lk.Entry)
+	if lk.PluginEntry {
+		whose = "the stored login of the exec plugin's own login entry " + clierr.ShellQuote(lk.Entry)
+	}
+	if recorded != "" {
+		return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose + " records the owner " +
+			clierr.ShellQuote(recorded) + ", which --user-id does not accept, so the exec plugin does not check the user")
+	}
+	again := ", then run " + clierr.Rancher + " kubeconfig --cluster " + clierr.ShellQuote(l.clusterID) + " again"
+	var remedy string
+	// auth login refuses a name in the exec plugin's own login entry
+	// namespace whatever the entry's provenance, so such a name is never
+	// the login target.
+	switch {
+	case !lk.PluginEntry && !config.IsExecLoginEntryName(lk.Entry):
+		remedy = "pipe an API token to " + clierr.Rancher + " auth login " + clierr.ShellQuote(lk.Entry) + " --token-stdin" + again
+	case lk.Identified != "" && lk.Identified != lk.Entry && !config.IsExecLoginEntryName(lk.Identified):
+		// The identified entry fell back to the plugin login entry: its
+		// own login, which records its owner, then answers.
+		remedy = "pipe an API token to " + clierr.Rancher + " auth login " + clierr.ShellQuote(lk.Identified) + " --token-stdin" + again
+	default:
+		remedy = token.NewEntryLoginRemedy(l.cfg, "", l.clusterID, l.serverID, l.caSource)
+	}
+	return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose +
+		" records no owner, so the exec plugin does not check the user; " + remedy)
+}
+
 // lookupNotice is what the kubeconfig says about the login kubectl's exec
-// plugin will use, decided by the plugin's own lookup over the store it
+// plugin will use, decided by the plugin's own lookup lk over the store it
 // will open: nothing when it is the session's own; which login otherwise;
 // how to get one when none answers; the plugin's refusal with its
 // remedies; or that the store could not be read. A store failure is a
 // notice, so RANCHER_CLI_TOKEN still writes the file.
-func lookupNotice(l lookupCall) string {
-	reader, err := l.lookupStore()
-	var lk token.StoredLogin
-	if err == nil {
-		lk = token.LookupStoredLogin(l.cfg, reader, l.server, l.name, l.clusterID)
-	} else {
-		lk = token.StoredLogin{Outcome: token.LookupReadFailed, Err: err}
-	}
+func lookupNotice(l lookupCall, lk token.StoredLogin) string {
 	switch lk.Outcome {
 	case token.LookupAnswered:
 		if !l.envToken && lk.Entry == l.eff.ServerName {
@@ -178,4 +223,25 @@ func lookupNotice(l lookupCall) string {
 	}
 	return runtime.PrintableRemedies(fmt.Sprintf("could not check the stored login for %s (%v); kubectl's exec plugin fails the same way until it can",
 		clierr.ShellQuote(entry), lk.Err))
+}
+
+// reservedName refuses a --name auth get-token refuses: one in the
+// namespace of the legacy token shim's cache slots or of the exec plugin's
+// --user-id cache slots, which an environment-only session's host can
+// begin with. The remedy is a login under an entry of another name, with
+// the session's CA, made current.
+func reservedName(name, clusterID, serverURL, ca string) error {
+	prefix := ""
+	switch {
+	case config.IsLegacyCacheSlot(name):
+		prefix = config.LegacyCachePrefix
+	case config.IsUserIDCacheSlot(name):
+		prefix = config.UserIDCachePrefix
+	default:
+		return nil
+	}
+	login := token.NoTerminalLogin(nil, "", clusterID, serverURL, ca, false)
+	return clierr.New(clierr.CodeValidation, "the kubeconfig's --name "+clierr.ShellQuote(name)+" would start with "+clierr.ShellQuote(prefix)+
+		", which auth get-token refuses; log in with a server entry of another name: pipe an API token to "+login.Text()+
+		", then "+clierr.Rancher+" config use-server <name>, then "+clierr.Rancher+" kubeconfig --cluster "+clierr.ShellQuote(clusterID))
 }

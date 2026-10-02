@@ -1,0 +1,39 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "login-kubeconfig-cluster",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "baseType": "token",
+        "expiresAt": "\u003cts\u003e",
+        "id": "{loginid}",
+        "token": "\u003csecret\u003e",
+        "type": "token"
+      }
+    },
+    {
+      "name": "review-downstream-with-the-login-token",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e"
+        },
+        "status": {
+          "userInfo": {
+            "extra": "\u003cextra\u003e",
+            "groups": [
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "{owneruid}"
+          }
+        }
+      }
+    }
+  ]
+}

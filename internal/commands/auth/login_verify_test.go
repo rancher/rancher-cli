@@ -18,14 +18,23 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
-// newVerifyFake starts an httptest server standing in for the k8s discovery
-// endpoint provider.Preflight probes (BaseURL + /k8s/clusters/local/version):
-// a request bearing wantToken succeeds, anything else gets an unauthenticated
-// 401 the way a real Rancher proxy rejects a bad token.
-func newVerifyFake(t *testing.T, wantToken string) *httptest.Server {
+// verifyOwner is the owner the verify fake reports for its token.
+const verifyOwner = "u-owner1"
+
+// newVerifyFake starts an httptest server standing in for the
+// SelfSubjectReview provider.Owner posts (BaseURL +
+// /k8s/clusters/local/apis/authentication.k8s.io/v1/selfsubjectreviews): a
+// request bearing wantToken is answered with verifyOwner as the username
+// and no uid, as Rancher answers, anything else gets an unauthenticated
+// 401 the way a real Rancher proxy rejects a bad token. Every request is
+// counted in *requests when requests is set.
+func newVerifyFake(t *testing.T, wantToken string, requests ...*int) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/k8s/clusters/local/version" {
+		for _, n := range requests {
+			*n++
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/k8s/clusters/local/apis/authentication.k8s.io/v1/selfsubjectreviews" {
 			http.NotFound(w, r)
 			return
 		}
@@ -34,20 +43,21 @@ func newVerifyFake(t *testing.T, wantToken string) *httptest.Server {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"major":"1","minor":"31","gitVersion":"v1.31.0"}`))
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview","status":{"userInfo":{"username":"` + verifyOwner + `","groups":["system:authenticated"]}}}`))
 	}))
 	t.Cleanup(srv.Close)
 	return srv
 }
 
-// verifyLoginCmd wires the real provider.Preflight into loginCmd.verify -
+// verifyLoginCmd wires the real provider.Owner into loginCmd.verify -
 // unlike newPlainLoginCmd's nil-skip default, these tests exercise the
 // verification round-trip itself.
 func verifyLoginCmd(dir string, store config.CredStore) *loginCmd {
 	return &loginCmd{
 		dir:      dir,
 		newStore: func(string, string) (config.CredStore, string, error) { return store, "", nil },
-		verify:   provider.Preflight,
+		verify:   provider.Owner,
 	}
 }
 
@@ -65,6 +75,32 @@ func TestLoginVerifiesValidTokenBeforeStoringSucceeds(t *testing.T) {
 	tok, terr := store.GetToken(config.ServerRef{Name: "prod"})
 	require.NoError(t, terr)
 	assert.Equal(t, "id:sec", tok)
+}
+
+// TestLoginRecordsThePastedTokensOwner asserts the one request that
+// proves a pasted token also names its owner, which the login records on
+// the entry and reports in its result; --no-verify makes no request and
+// records none.
+func TestLoginRecordsThePastedTokensOwner(t *testing.T) {
+	t.Parallel()
+	for _, noVerify := range []bool{false, true} {
+		var requests int
+		srv := newVerifyFake(t, "id:sec", &requests)
+		dir, store := cmdtest.FilePolicyDir(t)
+		seedServer(t, dir, "prod", srv.URL, "", false)
+		in := cmdtest.Input{Flag: map[string]bool{"token-stdin": true, "no-verify": noVerify}, Pos: []string{"prod"}}
+		res, err := verifyLoginCmd(dir, store).Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
+		require.NoError(t, err)
+		want, wantRequests := verifyOwner, 1
+		if noVerify {
+			want, wantRequests = "", 0
+		}
+		assert.Equal(t, want, res.Data.(map[string]any)["tokenUserId"])
+		cfg, lerr := config.Load(config.FilePath(dir))
+		require.NoError(t, lerr)
+		assert.Equal(t, want, cfg.Servers["prod"].TokenUserID)
+		assert.Equal(t, wantRequests, requests)
+	}
 }
 
 func TestLoginVerifyRejects401TokenNothingPersisted(t *testing.T) {

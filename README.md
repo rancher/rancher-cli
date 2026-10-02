@@ -160,7 +160,7 @@ or point any other agent's instructions file at it.
 
 Kubeconfigs that authenticate through the exec plugin log in once per cluster by default; `rancher config set-token-reuse on` lets the plugin keep one login credential per server instead (see REFERENCE.md, Token reuse for kubectl).
 
-A kubeconfig from `rancher kubeconfig` records its config directory, so kubectl authenticates through that directory from any shell or working directory; it works for this user on this machine, and a directory that moves needs its kubeconfigs written again. `--exec-command` names the binary kubectl runs when `rancher` is not on its PATH.
+A kubeconfig from `rancher kubeconfig` records its config directory, so kubectl authenticates through that directory from any shell or working directory; it works for this user on this machine, and a directory that moves needs its kubeconfigs written again. It also names, with `--user-id`, the Rancher user its login belongs to, and the exec plugin then refuses rather than hand kubectl another user's token. `--exec-command` names the binary kubectl runs when `rancher` is not on its PATH.
 
 Composite reads (`inspect *`, `images`, `usage`) answer with what the caller
 can see: a collector they cannot read is named in the payload's `degraded`

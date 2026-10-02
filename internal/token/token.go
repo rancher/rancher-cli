@@ -124,11 +124,14 @@ type loginInput struct {
 // surface has no skip-verify flag anywhere; pin the CA instead.
 type runParams struct {
 	Server, Name, Cluster, AuthProvider, AuthFlow, CACert string
-	SkipVerify                                            bool
-	UsernameDefault                                       string
-	ProbedKey                                             string
-	ProbedNoticed                                         bool
-	legacyShim                                            bool
+	// UserID is --user-id: the Rancher user every token the call hands
+	// kubectl must belong to; "" for none. It is part of the cache key.
+	UserID          string
+	SkipVerify      bool
+	UsernameDefault string
+	ProbedKey       string
+	ProbedNoticed   bool
+	legacyShim      bool
 }
 
 type typedProvider interface {
@@ -167,6 +170,9 @@ type tokenCmd struct {
 	// changed between the two reads, and the call stops rather than pair one
 	// entry's trust with another's login.
 	resolved entryChoice
+	// user is the call's --user-id with what its remedies name, set with
+	// resolved: every token the call hands kubectl must be that user's.
+	user userCheck
 }
 
 // clientFor is newClient or its production default.
@@ -216,11 +222,13 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM", Env: []string{"RANCHER_CLI_CACERT"}},
+			{Name: userIDFlag, Type: "string", Desc: "Rancher user `id` the token must belong to; needs --name"},
 		},
 		Network: true,
 		Auth:    true,
 		Examples: []string{
 			"rancher auth get-token --server https://rancher.example.com --cluster c-1 --name prod",
+			"rancher auth get-token --server https://rancher.example.com --cluster c-1 --name prod-c-1 --user-id u-abc12",
 		},
 		// The exec-credential plugin's stdout is a bare ExecCredential object
 		// kubectl parses directly - no envelope exists to vary with -o. table
@@ -248,6 +256,9 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots; use a different name")
 	}
+	if config.IsUserIDCacheSlot(name) {
+		return runtime.Result{}, userIDPrefixRefused()
+	}
 
 	// Require --cluster BEFORE the cache probe, not only in resolveConn: a
 	// still-valid cache entry keyed with an empty cluster component (written
@@ -258,6 +269,11 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	// path via runWithParams, which run() never fronts for it.
 	if in.String("cluster") == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--cluster is required")
+	}
+	// Checked before the cache probe too: the value is part of the key.
+	userID, err := readUserID(in, name, in.String("cluster"))
+	if err != nil {
+		return runtime.Result{}, t.withNewEntryLogin(err, in)
 	}
 
 	flagServer := in.String("server")
@@ -272,7 +288,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	if ec, err := loadExecCluster(); err == nil && ec == nil {
 		var r runtime.Result
 		var hit bool
-		flagKey, noticed, r, hit = t.probeFlagCache(name, flagServer, in.String("cluster"), p)
+		flagKey, noticed, r, hit = t.probeFlagCache(name, flagServer, in.String("cluster"), userID, p)
 		if hit {
 			return r, nil
 		}
@@ -285,6 +301,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 		AuthProvider:  in.String("auth-provider"),
 		AuthFlow:      in.String("auth-flow"),
 		CACert:        in.String("cacert"),
+		UserID:        userID,
 		ProbedKey:     flagKey,
 		ProbedNoticed: noticed,
 	}, p)
@@ -306,6 +323,9 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"--name values starting with '"+config.LegacyCachePrefix+"' are reserved for the legacy token shim's cache slots; use a different name")
 	}
+	if config.IsUserIDCacheSlot(params.Name) {
+		return runtime.Result{}, userIDPrefixRefused()
+	}
 
 	// Full resolution (config + CA disk I/O): required to authenticate on a miss
 	// and to build the definitive cache key when --server was not provided.
@@ -324,7 +344,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("resolved server %q: unsupported scheme (only http and https are supported)", server))
 	}
-	cacheKey := config.CacheKey(params.Name, serverID, clusterID)
+	cacheKey := config.CacheKeyFor(params.Name, serverID, clusterID, params.UserID)
 
 	// The endpoint kubectl is about to use, when the kubeconfig asked
 	// kubectl to say: a direct endpoint gets the readiness wait, the
@@ -379,6 +399,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	}
 
 	t.resolved = choice
+	t.user = userCheck{userID: params.UserID, clusterID: clusterID, serverID: serverID, caSource: caSource}
 	rancherToken, reuseOn, binding, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
 	// The plugin-created login exists to serve cluster-scoped tokens, so it
 	// runs only for an invocation that names a cluster. The legacy shim
@@ -413,8 +434,12 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			err = errStoredCredentialRejected
 		}
 	}
+	// A plugin login entry another user's login was recorded for is not the
+	// call's: the call signs in without entering the plugin lane, so it
+	// takes no flock another call's sign-in may hold.
+	skipped, skipping := errors.AsType[*pluginEntrySkipped](err)
 	switch {
-	case errors.Is(err, errNoStoredCredential), errors.Is(err, errStoredCredentialRejected):
+	case errors.Is(err, errNoStoredCredential), errors.Is(err, errStoredCredentialRejected), skipping:
 		// Built only when a live login is needed: the cached-credential
 		// path, the steady state under kubectl's exec plugin, never dials
 		// an identity provider.
@@ -424,16 +449,24 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		if err != nil {
 			// This lane is taken only when the plugin-created login is not,
 			// so a sign-in here keeps no login credential.
-			return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim})
+			call := noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim, userID: params.UserID}
+			if skipping {
+				call.skipped, call.skippedOwner = skipped.entry, skipped.owner
+			}
+			return runtime.Result{}, t.withNoTerminalRemedies(err, call)
 		}
 		// The interactive login's cluster-scoped token has no parent
 		// bearer: it revokes itself if the wait below is cancelled.
-		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt,
-			fresh:   newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer),
-			binding: binding}
+		fresh := newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer)
+		if params.UserID != "" {
+			if oerr := t.user.checkSignInOwner(ctx, client, kube.BaseURL(server), res.Create, fresh); oerr != nil {
+				return runtime.Result{}, oerr
+			}
+		}
+		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: fresh, binding: binding}
 	case err != nil:
 		// The plugin-created login reaches the same sign-in prompts.
-		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim, keepsLogin: pluginLane})
+		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim, keepsLogin: pluginLane, userID: params.UserID})
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth provider and credentials")
@@ -634,15 +667,16 @@ func directNotReadyWarning(server, entry string) string {
 	return fmt.Sprintf("the new credential may not yet be accepted at %s; %s is the immediate fallback", server, fallback)
 }
 
-// computeCacheProbeKey validates and normalizes name, server, and cluster into
-// the cache-key string that both probeFlagCache and shimProbeFlagCache use.
+// computeCacheProbeKey validates and normalizes name, server, cluster and
+// userID into the cache-key string that both probeFlagCache and
+// shimProbeFlagCache use.
 // Keeping this logic here means future scheme, normalization, or CacheKey-shape
 // changes need only be applied once - the "fast-path probed key == slow-path
 // resolved key" invariant and the notice-once suppression both depend on the two
 // probes producing identical keys. Returns ("", false) when the probe is
 // impossible: a required field is empty, the URL is not parseable, or the scheme
 // is not http/https.
-func computeCacheProbeKey(name, server, cluster string) (string, bool) {
+func computeCacheProbeKey(name, server, cluster, userID string) (string, bool) {
 	if name == "" || server == "" {
 		return "", false
 	}
@@ -654,7 +688,7 @@ func computeCacheProbeKey(name, server, cluster string) (string, bool) {
 	if !config.IsSupportedScheme(cu) {
 		return "", false
 	}
-	return config.CacheKey(name, cu, cluster), true
+	return config.CacheKeyFor(name, cu, cluster, userID), true
 }
 
 // probeFlagCache attempts a flag-only cache probe when name and server are both
@@ -671,8 +705,8 @@ func computeCacheProbeKey(name, server, cluster string) (string, bool) {
 // notices (drained elsewhere via its NoticeSource) rather than returning
 // one inline, so this read closure's own notice is always "" and the
 // discarded 5th return value is never meaningful here.
-func (t tokenCmd) probeFlagCache(name, server, cluster string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
-	key, noticed, r, hit, _ = probeCacheWith(name, server, cluster, func(k string) (string, time.Time, string, error) {
+func (t tokenCmd) probeFlagCache(name, server, cluster, userID string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
+	key, noticed, r, hit, _ = probeCacheWith(name, server, cluster, userID, func(k string) (string, time.Time, string, error) {
 		type read struct {
 			token  string
 			expiry time.Time
@@ -707,8 +741,8 @@ func (t tokenCmd) probeFlagCache(name, server, cluster string, p runtime.Prompte
 // alongside the token (a loose-permission finding on the shim's direct file
 // read, say) - fired independently of hit/miss, since read may notice
 // before it even knows whether the key is present.
-func probeCacheWith(name, server, cluster string, read func(string) (string, time.Time, string, error), p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
-	key, ok := computeCacheProbeKey(name, server, cluster)
+func probeCacheWith(name, server, cluster, userID string, read func(string) (string, time.Time, string, error), p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
+	key, ok := computeCacheProbeKey(name, server, cluster, userID)
 	if !ok {
 		return "", false, runtime.Result{}, false, ""
 	}
@@ -1620,9 +1654,9 @@ func isLoginIncomplete(err error) bool {
 // A plugin login entry is a candidate only while the token-reuse setting is
 // on. ignoreCurrentContext is the shim's flag-driven mode: no
 // current-server preference, and the error's remedy is the shim's.
-func storedTokenForServer(cfg *config.Config, store CredentialReader, server, identified, clusterID string, ignoreCurrentContext bool) (storedCredential, bool, error) {
+func storedTokenForServer(cfg *config.Config, store CredentialReader, server, identified, clusterID string, ignoreCurrentContext bool, user userCheck) (storedCredential, bool, error) {
 	if identified != "" {
-		return identifiedCredential(cfg, store, server, identified)
+		return identifiedCredential(cfg, store, server, identified, user)
 	}
 	return rankedCredential(cfg, store, server, clusterID, ignoreCurrentContext)
 }
@@ -1800,7 +1834,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 		p.Notice(fmt.Sprintf("config unreadable: %v - skipping token creation from the stored credential", err))
 		return Token{}, false, config.CacheBinding{}, errNoStoredCredential
 	}
-	lookup := lookupStoredLogin(cfg, t.store, server, wantName, clusterID, ignoreCurrentContext, t.resolved)
+	lookup := lookupStoredLogin(cfg, t.store, server, wantName, clusterID, ignoreCurrentContext, t.resolved, t.user)
 	if lookup.identifiedErr {
 		return Token{}, cfg.TokenReuse, config.CacheBinding{}, lookup.Err
 	}
@@ -1820,6 +1854,10 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 		return Token{}, cfg.TokenReuse, binding, lookup.Err
 	case LookupNone:
 		return Token{}, cfg.TokenReuse, binding, errNoStoredCredential
+	case LookupSkipped:
+		// The sign-in this leads to reads nothing the lookup did not, so
+		// its record takes this binding, bound to the skipped entry too.
+		return Token{}, cfg.TokenReuse, binding, &pluginEntrySkipped{entry: lookup.Skipped, owner: lookup.SkippedOwner}
 	}
 	sc := lookup.cred
 	// The entry that answered decides the binding: the identified entry's
@@ -1842,6 +1880,10 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	bearer, expiresAt := created.Bearer, created.ExpiresAt
 	if err != nil {
 		switch {
+		case errors.Is(err, ErrExtGroupAbsent) && !isPlugin && t.user.userID != "":
+			// The stored login itself would be handed kubectl, and no
+			// response says whose it is.
+			return Token{}, cfg.TokenReuse, binding, t.user.noOwnerWithoutExtTokens(sc.name)
 		case errors.Is(err, ErrExtGroupAbsent) && !isPlugin:
 			// Legacy Rancher with no ext.cattle.io: use the stored token
 			// itself, matching auth login's own fallback. The stored token
@@ -1879,7 +1921,13 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	// The child token is CLI-created even when the stored parent is not:
 	// its cleanup deletes it with the parent bearer whatever the parent's
 	// provenance.
-	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: newFreshToken(created, client, base, stored), binding: binding}, cfg.TokenReuse, binding, nil
+	fresh := newFreshToken(created, client, base, stored)
+	if t.user.userID != "" {
+		if oerr := t.user.checkCreatedOwner(ctx, cfg, created, fresh, sc, identified); oerr != nil {
+			return Token{}, cfg.TokenReuse, binding, oerr
+		}
+	}
+	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: fresh, binding: binding}, cfg.TokenReuse, binding, nil
 }
 
 // classifyRejection maps a 401 or 403 from any credential-authenticated
@@ -1894,7 +1942,13 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
 		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):
-		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%v); falling back to interactive login; refresh it with: "+clierr.Rancher+" auth login %s", sc.name, err, clierr.ShellQuote(sc.name)))
+		refresh := "; refresh it with: " + clierr.Rancher + " auth login " + clierr.ShellQuote(sc.name)
+		if config.IsExecLoginEntryName(sc.name) {
+			// auth login refuses the name; the sign-in this falls back to
+			// is the one way to a login here.
+			refresh = ""
+		}
+		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%v); falling back to interactive login%s", sc.name, err, refresh))
 		return errStoredCredentialRejected
 	}
 	return err

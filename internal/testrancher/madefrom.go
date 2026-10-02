@@ -13,7 +13,8 @@ import (
 // MadeFrom is a Rancher that makes a cluster token from whatever login
 // credential the request bears, and names the token after that
 // credential, so a test can tell which login a cached token was made
-// from. It serves nothing but the ext token create.
+// from; the token's owner is user-<credential>. It serves nothing but the
+// ext token create.
 type MadeFrom struct {
 	URL string
 
@@ -46,7 +47,7 @@ func NewMadeFrom() *MadeFrom {
 		}
 		bearer := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = fmt.Fprintf(w, `{"metadata":{"name":"from-%s"},"status":{"bearerToken":%q,"expiresAt":%q}}`, bearer, MadeFromToken(bearer), expiresAt)
+		_, _ = fmt.Fprintf(w, `{"metadata":{"name":"from-%s"},"spec":{"userID":%q},"status":{"bearerToken":%q,"expiresAt":%q}}`, bearer, "user-"+bearer, MadeFromToken(bearer), expiresAt)
 	}))
 	m.URL = m.srv.URL
 	return m

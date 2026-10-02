@@ -37,6 +37,19 @@ func IsLegacyCacheSlot(name string) bool {
 	return strings.HasPrefix(name, LegacyCachePrefix)
 }
 
+// UserIDCachePrefix begins the cache key of every exec plugin call with
+// --user-id. It is reserved like LegacyCachePrefix: auth get-token refuses
+// a --name, and auth login and config add-server an entry name, that
+// starts with it, so the key of a call without --user-id, which begins
+// with its --name, can never equal the key of a call with one.
+const UserIDCachePrefix = "user-id:"
+
+// IsUserIDCacheSlot reports whether name lies in the reserved namespace
+// UserIDCachePrefix opens.
+func IsUserIDCacheSlot(name string) bool {
+	return strings.HasPrefix(name, UserIDCachePrefix)
+}
+
 const keyringService = "rancher-cli"
 
 // keyringObserverFn is an optional test hook called on every keyring operation
@@ -174,7 +187,22 @@ type CachedCredInfo struct {
 // output) so that equivalent URL spellings - including http vs https - produce
 // distinct keys. The parameter is named serverHost for historical reasons.
 func CacheKey(name, serverHost, cluster string) string {
-	return name + "@" + serverHost + "/" + cluster
+	return CacheKeyFor(name, serverHost, cluster, "")
+}
+
+// CacheKeyFor is the exec plugin's cache key for a call with --name name
+// and --user-id userID, for serverHost (a canonical server identity) and
+// cluster: CacheKey's form for a call without --user-id, and
+// user-id:<userID>/<name>@<serverHost>/<cluster> for one with it. Every
+// key the plugin reads or writes is built here. A user id is a Kubernetes
+// object name, which holds no "/", so the user id ends at the first "/"
+// and two user ids give two keys.
+func CacheKeyFor(name, serverHost, cluster, userID string) string {
+	key := name + "@" + serverHost + "/" + cluster
+	if userID == "" {
+		return key
+	}
+	return UserIDCachePrefix + userID + "/" + key
 }
 
 // fileStore keeps tokens in a 0600 YAML map file.

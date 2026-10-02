@@ -243,6 +243,11 @@ func dispatchSite(
 		if execCommandSite(site, d) {
 			return execCommandCandidates(site)
 		}
+		// auth get-token --user-id: the owner the identified entry
+		// records, from config.yaml. Owned even when empty.
+		if userIDSite(site, d) {
+			return userIDCandidates(site, tail)
+		}
 		// Machine-config `<kind>/` prefixes for create cluster: compiled-in
 		// kind-table literals (kinds.MachineConfigGroup rows), not server
 		// data - served statically like an enum, before (and regardless of)

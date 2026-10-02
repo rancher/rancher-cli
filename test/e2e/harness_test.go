@@ -791,6 +791,77 @@ func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, getClusters(created.Status.BearerToken), "the same bearer must 401 at the proxy after revocation")
 }
 
+// TestSeedBearerHasOneOwner asserts the facade and the cluster proxy behind
+// it name one owner for the seed bearer, as Rancher names one for every
+// token: a SelfSubjectReview through the proxy answers the user the token
+// creates name as owner, so a login that records the review's answer and
+// the exec plugin's check of a create agree. The seed bearer also keeps
+// the right to revoke another owner's token.
+func TestSeedBearerHasOneOwner(t *testing.T) {
+	var facade *testrancher.Facade
+	router := newRouter(facadeIdentityResolver(shimIdentities, func(tok string) bool {
+		return facade != nil && facade.ValidBearer(tok)
+	}))
+	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken,
+		Users: []testrancher.User{{Name: "carol", Password: "pw-carol", UserID: "user-carol"}}})
+	srv := httptest.NewTLSServer(facade)
+	defer srv.Close()
+	client := srv.Client()
+
+	post := func(path, bearer, body string) (int, []byte) {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+path, strings.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		b, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		return resp.StatusCode, b
+	}
+
+	status, body := post("/k8s/clusters/local"+selfSubjectReviewPath, testToken, `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`)
+	require.Equal(t, http.StatusCreated, status, string(body))
+	var review struct {
+		Status struct {
+			UserInfo struct {
+				Username string `json:"username"`
+			} `json:"userInfo"`
+		} `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal(body, &review))
+	owner, ok := facade.BearerOwner(testToken)
+	require.True(t, ok)
+	assert.Equal(t, review.Status.UserInfo.Username, owner, "the review and the facade name one owner for the seed bearer")
+
+	status, body = post("/k8s/clusters/local/apis/ext.cattle.io/v1/tokens", testToken, `{"spec":{}}`)
+	require.Equal(t, http.StatusCreated, status, string(body))
+	var created struct {
+		Spec struct {
+			UserID string `json:"userID"`
+		} `json:"spec"`
+	}
+	require.NoError(t, json.Unmarshal(body, &created))
+	assert.Equal(t, owner, created.Spec.UserID, "a create with the seed bearer names that owner")
+
+	// carol's own token, revoked with the seed bearer.
+	status, body = post("/v1-public/login", "", `{"type":"localProvider","username":"carol","password":"pw-carol","responseType":"json"}`)
+	require.Equal(t, http.StatusCreated, status, string(body))
+	var login struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal(body, &login))
+	require.NotEmpty(t, login.ID)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodDelete, srv.URL+"/k8s/clusters/local/apis/management.cattle.io/v3/tokens/"+login.ID, nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "the seed bearer revokes another owner's token")
+}
+
 func TestScenarios(t *testing.T) {
 	testscript.Run(t, testscript.Params{
 		Dir: "scripts",

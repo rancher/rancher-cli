@@ -265,13 +265,16 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			mutation: "read every entry on the URL when the identified entry has no credential",
 		},
 		{
-			name:      "an identified entry without a credential never falls back to another entry: no terminal",
-			entries:   []rowEntry{prod, prodEUNoCred},
-			flagName:  "prod-eu-c-test",
-			wantCode:  clierr.CodeAuth,
-			wantMsg:   []string{"interactive login required", clierr.Rancher + " auth login 'prod-eu' --url", "--token-stdin", clierr.Rancher + " create kubeconfig"},
-			noNetwork: true,
-			mutation:  "read every entry on the URL when the identified entry has no credential; suggest the --name as the entry to sign in to",
+			name:     "an identified entry without a credential never falls back to another entry: no terminal",
+			entries:  []rowEntry{prod, prodEUNoCred},
+			flagName: "prod-eu-c-test",
+			wantCode: clierr.CodeAuth,
+			wantMsg:  []string{"interactive login required", clierr.Rancher + " auth login 'prod-eu' --url", "--token-stdin"},
+			// prod is not the current server, and its login is not the one
+			// the exec entry names, so create kubeconfig is not offered.
+			wantNotMsg: []string{"create kubeconfig"},
+			noNetwork:  true,
+			mutation:   "read every entry on the URL when the identified entry has no credential; suggest the --name as the entry to sign in to",
 		},
 		{
 			name:     "the plugin's login entry answers for an identified entry without a credential while token reuse is on",
@@ -312,12 +315,14 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			mutation: "drop the plugin login entry fallback",
 		},
 		{
-			name:      "a bare install with no terminal names the remedies",
-			flagName:  "prod-eu-c-test",
-			wantCode:  clierr.CodeAuth,
-			wantMsg:   []string{"interactive login required", clierr.Rancher + " auth login", "--token-stdin", clierr.Rancher + " create kubeconfig"},
-			noNetwork: true,
-			mutation:  "none: the bare install is unchanged and the row asserts it stays so",
+			name:     "a bare install with no terminal names the remedies",
+			flagName: "prod-eu-c-test",
+			wantCode: clierr.CodeAuth,
+			wantMsg:  []string{"interactive login required", clierr.Rancher + " auth login", "--token-stdin"},
+			// No login anywhere, so create kubeconfig could not run.
+			wantNotMsg: []string{"create kubeconfig"},
+			noNetwork:  true,
+			mutation:   "none: the bare install is unchanged and the row asserts it stays so",
 		},
 		{
 			name:     "an identified plugin login entry is not read with token reuse off",
@@ -620,7 +625,7 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 // lookupStored is the credential lookup as storedCredToken runs it: the
 // name is identified once, then the credential is read for that answer.
 func lookupStored(cfg *config.Config, store config.CredStore, server, wantName, clusterID string, shim bool) (storedCredential, bool, error) {
-	l := lookupStoredLogin(cfg, store, server, wantName, clusterID, shim, entryChoice{})
+	l := lookupStoredLogin(cfg, store, server, wantName, clusterID, shim, entryChoice{}, userCheck{})
 	return l.cred, l.Outcome == LookupAnswered, l.Err
 }
 
@@ -720,7 +725,7 @@ func TestCacheRecordIsAnchoredToTheIdentifiedEntry(t *testing.T) {
 
 	probe := func() bool {
 		c := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-		_, _, _, hit := c.probeFlagCache("prod-eu-c-test", srv.URL, "c-test", ui.Discard())
+		_, _, _, hit := c.probeFlagCache("prod-eu-c-test", srv.URL, "c-test", "", ui.Discard())
 		return hit
 	}
 	require.True(t, probe(), "the sign-in's record is served")

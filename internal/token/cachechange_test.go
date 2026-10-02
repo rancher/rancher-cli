@@ -117,7 +117,7 @@ func served(t *testing.T, dir, url string) string {
 	_, store, err := config.LoadAndStore(dir)
 	require.NoError(t, err)
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor.WithConfig(cfg)}
-	_, _, r, hit := cmd.probeFlagCache("prod", url, "local", ui.Discard())
+	_, _, r, hit := cmd.probeFlagCache("prod", url, "local", "", ui.Discard())
 	if !hit {
 		return ""
 	}

@@ -35,6 +35,10 @@ type noTerminalCall struct {
 	name, clusterID, serverURL, caCert string
 	shim                               bool
 	keepsLogin                         bool
+	// userID is the call's --user-id: the login and the sign-in the
+	// remedies name are that user's. skipped is the plugin login entry the
+	// call did not use because it records skippedOwner.
+	userID, skipped, skippedOwner string
 }
 
 // withNoTerminalRemedies is the exec plugin's form of that refusal. kubectl
@@ -51,7 +55,8 @@ type noTerminalCall struct {
 //     --name, the cluster token until it expires. With neither the message
 //     says the exec entry needs a --name;
 //   - a kubeconfig that carries its own token, create kubeconfig with the
-//     cluster and both of its gates.
+//     cluster and both of its gates, only when the current server's login
+//     would serve the call (currentLoginServes).
 //
 // While a store change is unfinished the message names it too, and while
 // its record cannot be read the status report is the hint. Every other
@@ -70,26 +75,56 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 		pending = config.UnfinishedChangeOf(t.dir, cfg)
 	}
 	login := NoTerminalLogin(cfg, call.name, call.clusterID, call.serverURL, call.caCert, call.shim)
-	msg := fmt.Sprintf("interactive login required for %s, and this call has no terminal to answer it; to log in without one, pipe an API token to %s", nt.provider, login.Text())
+	of, signIn := "", "sign in"
+	if call.userID != "" {
+		of, signIn = " of Rancher user "+clierr.ShellQuote(call.userID), "sign in as "+clierr.ShellQuote(call.userID)
+	}
+	msg := fmt.Sprintf("interactive login required for %s, and this call has no terminal to answer it; to log in without one, pipe an API token%s to %s", nt.provider, of, login.Text())
 	cluster := "<id>"
 	if call.clusterID != "" {
 		cluster = clierr.ShellQuote(call.clusterID)
 	}
 	switch {
 	case call.keepsLogin:
-		msg += "; or run kubectl once in a terminal and sign in"
+		msg += "; or run kubectl once in a terminal and " + signIn
 	case call.name != "":
 		// Only the cluster token is kept, under this call's --name.
-		msg += "; or run kubectl once in a terminal and sign in, which lasts until the cached token expires"
+		msg += "; or run kubectl once in a terminal and " + signIn + ", which lasts until the cached token expires"
 	default:
 		msg += "; this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with " + clierr.Rancher + " kubeconfig --cluster " + cluster
 	}
-	msg += "; or use " + CreateKubeconfigRemedy(call.clusterID) + " for a kubeconfig that carries its own token"
+	if t.currentLoginServes(cfg, call) {
+		msg += "; or use " + CreateKubeconfigRemedy(call.clusterID) + " for a kubeconfig that carries its own token"
+	}
+	if call.skipped != "" {
+		msg += "; the exec plugin's own login entry " + clierr.ShellQuote(call.skipped) + " records Rancher user " +
+			clierr.ShellQuote(call.skippedOwner) + " as its owner, so this call does not use it"
+	}
 	out := clierr.New(clierr.CodeAuth, msg).WithCause(err)
 	if h := login.Hint(); h != "" {
 		out = out.WithHint(h)
 	}
 	return pending.Apply(out)
+}
+
+// currentLoginServes reports whether create kubeconfig, which uses the
+// directory's current server and its login, would give the call a
+// kubeconfig for the right server and user: the current server answers for
+// the call's URL and holds a login, and, for a call with --user-id, that
+// login records the call's user. A store that cannot be read says no.
+func (t tokenCmd) currentLoginServes(cfg *config.Config, call noTerminalCall) bool {
+	if cfg == nil || t.store == nil {
+		return false
+	}
+	s, ok := cfg.Servers[cfg.CurrentServer]
+	if !ok || !config.SameServerURL(s.URL, call.serverURL) {
+		return false
+	}
+	if call.userID != "" && s.TokenUserID != call.userID {
+		return false
+	}
+	tok, err := t.store.GetToken(config.ServerRef{Name: cfg.CurrentServer, URL: s.URL})
+	return err == nil && strings.TrimSpace(tok) != ""
 }
 
 // entryOfName is the server entry an exec entry's --name stands for, as
@@ -140,6 +175,15 @@ type LoginRemedy struct {
 	// InlineCA reports that the call carries its CA inline, so auth login
 	// needs it from a file the command cannot name.
 	InlineCA bool
+	// InlineCAEntry, when set, is the server entry whose config.yaml record
+	// carries that inline CA, for a login of another server than the exec
+	// entry's; empty means the exec entry carries it.
+	InlineCAEntry string
+	// Then are the steps after the login that make the exec entry use it,
+	// for an exec entry whose --name stands for an entry auth login
+	// refuses: the new entry made current, then the kubeconfig written
+	// again from it. Empty when the login alone is enough.
+	Then string
 }
 
 // Text is the login as a sentence names it, with what the operator has to
@@ -149,8 +193,15 @@ func (l LoginRemedy) Text() string {
 	if !l.Named {
 		s += ", with a name of your choice for <name>"
 	}
-	if l.InlineCA {
+	switch {
+	case l.InlineCA && l.InlineCAEntry != "":
+		s += ", adding --cacert with the path of a file that holds the server's CA certificate, which server entry " +
+			clierr.ShellQuote(l.InlineCAEntry) + " carries inline in config.yaml"
+	case l.InlineCA:
 		s += ", adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline"
+	}
+	if l.Then != "" {
+		s += ", then " + l.Then
 	}
 	return s
 }
@@ -173,7 +224,11 @@ func (l LoginRemedy) Hint() string {
 // which the plugin then identifies for every cluster's kubeconfig; else
 // the --name. A name auth login refuses, or one registered at another URL,
 // becomes <name>. An entry registered here uses its own CA, so no --cacert
-// is named for it.
+// is named for it. When the entry is one of the exec plugin's own login
+// entries, which auth login refuses, the new entry the login makes is not
+// the one the exec entry names, so the remedy goes on to make it current
+// and write the kubeconfig again from it (such a name is never Named, so
+// the remedy is no hint).
 func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert string, shim bool) LoginRemedy {
 	loginEntry := entryOfName(cfg, serverURL, name, clusterID, shim)
 	named := loginEntry != "" && config.ValidateEntryName(loginEntry) == nil
@@ -199,9 +254,21 @@ func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert stri
 	default:
 		caFlag = " --cacert " + clierr.ShellQuote(caCert)
 	}
+	then := ""
+	if config.IsExecLoginEntryName(loginEntry) {
+		cluster, current := "<id>", ""
+		if clusterID != "" {
+			cluster = clierr.ShellQuote(clusterID)
+		}
+		if cfg != nil {
+			current = cfg.CurrentServer
+		}
+		then = useServerRemedy("<name>", current) + ", then " + clierr.Rancher + " kubeconfig --cluster " + cluster
+	}
 	return LoginRemedy{
 		Command:  fmt.Sprintf(clierr.Rancher+" auth login %s --url %s%s --token-stdin", entry, clierr.ShellQuote(serverURL), caFlag),
 		Named:    named,
 		InlineCA: inlineCA,
+		Then:     then,
 	}
 }

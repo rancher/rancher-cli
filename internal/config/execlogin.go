@@ -26,7 +26,8 @@ func ExecLoginEntryName(canonicalURL string) string {
 }
 
 // ValidateEntryName rejects a server name reserved for the legacy token
-// shim's cache slots or the exec plugin's own login entries (names are
+// shim's cache slots, the exec plugin's cache slots of calls with
+// --user-id, or the exec plugin's own login entries (names are
 // born at registration now - add-server and login's delegated add both
 // call this before any probe or write). The exec plugin asks it too, so a
 // login it names as a remedy is one auth login accepts.
@@ -35,6 +36,9 @@ func ValidateEntryName(name string) *clierr.Error {
 	case IsLegacyCacheSlot(name):
 		return clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("server names starting with %q are reserved for the legacy token shim's cache slots; use a different name", LegacyCachePrefix))
+	case IsUserIDCacheSlot(name):
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("server names starting with %q are reserved for the exec plugin's cache slots of calls with --user-id; use a different name", UserIDCachePrefix))
 	case IsExecLoginEntryName(name):
 		return clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("server names starting with %q are reserved for the exec plugin's own login entries; use a different name", ExecLoginPrefix))

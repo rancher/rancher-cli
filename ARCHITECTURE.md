@@ -884,6 +884,13 @@ with a `127.0.0.1` callback). All of this HTTP goes through
 The native surface has no skip-verify flag; only the legacy `rancher token` shim's
 `--skip-verify` (kept for Rancher-generated kubeconfigs that pass it verbatim) sets
 `InsecureSkipVerify`, for that client only.
+A call with `--user-id` checks the owner of every token it hands kubectl:
+the create responses' owner (ext `spec.userID`, v3 `userId`), or, after an
+interactive sign-in, one `SelfSubjectReview` the plugin posts over the same
+`httpx` client through `/k8s/clusters/<cluster>` (`requestOwner`); the user
+id is part of the cache key (`config.CacheKeyFor`). `auth login` checks a
+pasted token with `provider.Owner`, the same review on the local cluster,
+and records the owner it names.
 `get-token`'s stored-credential fast path resolves a `--cluster` display
 name to its id the same way `get`/`patch` do, sharing
 `internal/engine/projects.MatchByIDOrDisplay`'s id-or-display collision

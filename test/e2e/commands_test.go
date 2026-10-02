@@ -399,7 +399,9 @@ func cmdRawGet(ts *testscript.TestScript, neg bool, args []string) {
 }
 
 // cmdSeedExecCache pre-warms the exec-credential cache `rancher auth
-// get-token` reads: seedexeccache <name> <cluster>. Scenarios that want
+// get-token` reads: seedexeccache [-token <token>] <name> <cluster>
+// [<user-id>], the slot of a call with --user-id when one is given, holding
+// the harness token unless -token names another. Scenarios that want
 // warm-cache state without exercising login use this instead of the
 // facade's cold create/login paths. Seeding through the real
 // config.CacheKey/SetCachedCred keeps the key composition and file format
@@ -408,10 +410,18 @@ func cmdRawGet(ts *testscript.TestScript, neg bool, args []string) {
 // is dynamic per test run AND per-script now - the host comes from
 // this script's own TEST_RANCHER_URL, not the global shim.
 func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
-	if len(args) != 2 {
-		ts.Fatalf("usage: seedexeccache <name> <cluster>")
+	tok := testToken
+	if len(args) >= 2 && args[0] == "-token" {
+		tok, args = args[1], args[2:]
+	}
+	if len(args) != 2 && len(args) != 3 {
+		ts.Fatalf("usage: seedexeccache [-token <token>] <name> <cluster> [<user-id>]")
 	}
 	name, cluster := args[0], args[1]
+	userID := ""
+	if len(args) == 3 {
+		userID = args[2]
+	}
 
 	rawURL := ts.Getenv("TEST_RANCHER_URL")
 	if _, err := url.Parse(rawURL); err != nil {
@@ -420,7 +430,7 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	srvID := config.CanonicalServerIdentity(rawURL)
 	dir := ts.Getenv("RANCHER_CLI_CONFIG_DIR")
 	store := config.NewFileStore(dir)
-	key := config.CacheKey(name, srvID, cluster)
+	key := config.CacheKeyFor(name, srvID, cluster, userID)
 	// The record carries the binding a real invocation would write for
 	// this --name: the directory, and, when the name identifies an entry,
 	// that entry and its cache binding id, as a call answered by the
@@ -431,7 +441,7 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	if cfg, err := config.Load(config.FilePath(dir)); err == nil {
 		binding = config.CacheBindingForSeed(dir, cfg, name, srvID, cluster)
 	}
-	if err := store.SetCachedCred(key, testToken, time.Now().Add(24*time.Hour), name, srvID, cluster, binding); err != nil {
+	if err := store.SetCachedCred(key, tok, time.Now().Add(24*time.Hour), name, srvID, cluster, binding); err != nil {
 		ts.Fatalf("seedexeccache: %v", err)
 	}
 }

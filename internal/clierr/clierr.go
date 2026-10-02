@@ -275,7 +275,7 @@ var codeDescs = map[string]string{
 	CodeAmbiguousSelection:             "more than one value matched and none was selected; the error lists the candidates when it can",
 	CodeConflict:                       "a write collided with existing state: a resource changed on the server since it was read, a name already exists, a server entry is registered with a different URL or CA, or the config directory changed while the command ran",
 	CodeLockTimeout:                    "a config-directory lock was not released within the wait, usually because another rancher process is writing",
-	CodeAuth:                           "authentication failed: the server rejected the credential (HTTP 401), the exchange with the identity provider failed or timed out, or an environment URL was set without RANCHER_CLI_TOKEN",
+	CodeAuth:                           "authentication failed: the server rejected the credential (HTTP 401), the exchange with the identity provider failed or timed out, an environment URL was set without RANCHER_CLI_TOKEN, or the credential belongs to another Rancher user than the call names",
 	CodeCredentialReplaced:             "the stored credential for the server entry was replaced by another config directory that shares this one's identity, or by a login in progress",
 	CodeLoginIncomplete:                "a login for the server entry is in progress, or ended before it recorded its credential identity",
 	CodeCredentialTransitionIncomplete: "a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet, so a second store change is refused until it is; other commands proceed",

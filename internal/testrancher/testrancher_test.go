@@ -1111,3 +1111,50 @@ func TestDerivedCreateAuthenticatesBeforeTheHook(t *testing.T) {
 	assert.Equal(t, []string{"fac-token-2"}, f.TokensWithDescriptionContaining("ext", "[op:abc]"), "the create the hook held still produced its token")
 	assert.False(t, f.ValidBearer(tok.Status.BearerToken), "the revocation landed")
 }
+
+// TestSelfSubjectReviewNamesTheBearersOwner asserts the facade answers a
+// SelfSubjectReview through a cluster's path as Rancher does: 201 with the
+// bearer's owner as status.userInfo.username and no uid, 401 for a bearer
+// it does not know, the forced status when one is set, and a fall through
+// with the option off.
+func TestSelfSubjectReviewNamesTheBearersOwner(t *testing.T) {
+	const path = "/k8s/clusters/c-1/apis/authentication.k8s.io/v1/selfsubjectreviews"
+	post := func(t *testing.T, srv *httptest.Server, bearer string) (int, map[string]any) {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+path,
+			strings.NewReader(`{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		resp, err := srv.Client().Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		var body map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		return resp.StatusCode, body
+	}
+	for _, tc := range []struct {
+		name   string
+		opts   testrancher.Options
+		bearer string
+		status int
+		user   string
+	}{
+		{"the seed bearer", testrancher.Options{SelfSubjectReviews: true, SeedToken: "seed:secret"}, "seed:secret", http.StatusCreated, "e2e-admin"},
+		{"an unknown bearer", testrancher.Options{SelfSubjectReviews: true, SeedToken: "seed:secret"}, "other:secret", http.StatusUnauthorized, ""},
+		{"a forced status", testrancher.Options{SelfSubjectReviews: true, SelfSubjectReviewStatus: http.StatusInternalServerError, SeedToken: "seed:secret"}, "seed:secret", http.StatusInternalServerError, ""},
+		{"the option off", testrancher.Options{SeedToken: "seed:secret", Fallthrough: &recordingHandler{}}, "seed:secret", http.StatusTeapot, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(testrancher.New(tc.opts))
+			t.Cleanup(srv.Close)
+			status, body := post(t, srv, tc.bearer)
+			assert.Equal(t, tc.status, status)
+			if tc.user == "" {
+				return
+			}
+			userInfo := body["status"].(map[string]any)["userInfo"].(map[string]any)
+			assert.Equal(t, tc.user, userInfo["username"])
+			assert.NotContains(t, userInfo, "uid", "Rancher's answer carries no uid")
+		})
+	}
+}

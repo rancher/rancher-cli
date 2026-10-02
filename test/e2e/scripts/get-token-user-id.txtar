@@ -1,0 +1,49 @@
+# --user-id end to end: a pasted token's login records its owner; rancher
+# kubeconfig names that owner with --user-id after --name; kubectl through
+# the file gets a token the server reports as that user's, and the next
+# call is served from that user's cache slot. A --user-id naming another
+# user is refused before any request, and --user-id without --name is
+# refused.
+[!kubectl] skip 'kubectl not on PATH'
+
+stdin token.txt
+exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --token-stdin -o json
+jsonquery stdout data.tokenUserId e2e-admin
+
+exec rancher kubeconfig --cluster testcluster
+cp stdout kc.yaml
+jsonquery -yaml kc.yaml users.0.user.exec.args.6 --name
+jsonquery -yaml kc.yaml users.0.user.exec.args.7 e2e-c-test
+jsonquery -yaml kc.yaml users.0.user.exec.args.8 --user-id
+jsonquery -yaml kc.yaml users.0.user.exec.args.9 e2e-admin
+! stderr 'names no Rancher user'
+
+exec kubectl --kubeconfig kc.yaml get namespaces
+stdout default
+
+# kubectl's call wrote one record, in the slot of the name and the user
+# id; get-token with the same arguments returns one token twice and adds
+# no other record.
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout 'data.#(key%"user-id:e2e-admin/e2e-c-test@*").name' e2e-c-test
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test --user-id e2e-admin
+cp stdout first.json
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test --user-id e2e-admin
+cmp stdout first.json
+! stdout 'e2e:secret'
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 1
+
+# Another user named: refused before any request, with the login remedy.
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test --user-id u-other -o json
+jsonquery stderr data.error.code AUTH
+stderr 'server entry ''e2e'' holds the login of Rancher user ''e2e-admin'', and this exec entry names user ''u-other'' with --user-id'
+
+# --user-id needs --name.
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id e2e-admin -o json
+jsonquery stderr data.error.code VALIDATION
+stderr '--user-id needs --name'
+
+-- token.txt --
+e2e:secret

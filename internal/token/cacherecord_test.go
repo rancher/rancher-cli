@@ -127,7 +127,7 @@ func (r *recordFixture) callTo(name string, terminal bool, notices *bytes.Buffer
 func (r *recordFixture) hit(name string) bool {
 	r.t.Helper()
 	c := tokenCmd{dir: r.dir, store: r.store, anchor: anchorFor(r.dir)}
-	_, _, _, hit := c.probeFlagCache(name, r.srv.URL, "c-test", ui.Discard())
+	_, _, _, hit := c.probeFlagCache(name, r.srv.URL, "c-test", "", ui.Discard())
 	return hit
 }
 
@@ -285,7 +285,7 @@ func (r *recordFixture) cachedOwner(name string, shim bool) (string, bool) {
 		_, _, res, hit, _ = shimProbeFlagCache(r.dir, config.LegacyCachePrefix+name, r.srv.URL, "c-test", anchorFor(r.dir), ui.Discard())
 	} else {
 		c := tokenCmd{dir: r.dir, store: r.store, anchor: anchorFor(r.dir)}
-		_, _, res, hit = c.probeFlagCache(name, r.srv.URL, "c-test", ui.Discard())
+		_, _, res, hit = c.probeFlagCache(name, r.srv.URL, "c-test", "", ui.Discard())
 	}
 	if !hit {
 		return "", false
@@ -824,11 +824,12 @@ func TestAPauseOfAnotherBoundEntryIsNamedAndResumed(t *testing.T) {
 }
 
 // TestASignInForAnotherPluginLoginEntryIsCachedForTheEntryItNames
-// asserts the record a call naming a plugin login entry with no login gets
-// when the plugin-created login stores its sign-in in the URL's own plugin
-// login entry: bound to the entry the call names, the token-reuse setting
-// and the URL's plugin login entries, each with its id, so the next call
-// is served from the cache without signing in again.
+// asserts that a call naming a plugin login entry with no login, other
+// than the URL's own, has the plugin-created login store its sign-in in
+// that entry, and the record it gets: the record of that entry's own
+// credential, bound to the entry with the id the login's last write gave
+// it and to the token-reuse setting, so the next call is served from the
+// cache without signing in again.
 func TestASignInForAnotherPluginLoginEntryIsCachedForTheEntryItNames(t *testing.T) {
 	r := newRecordFixture(t, true)
 	r.edit(func(cfg *config.Config) {
@@ -844,7 +845,10 @@ func TestASignInForAnotherPluginLoginEntryIsCachedForTheEntryItNames(t *testing.
 	cfg, err := config.Load(config.FilePath(r.dir))
 	require.NoError(t, err)
 	plugins := cfg.PluginLoginEntries(r.srv.URL)
-	require.Len(t, plugins, 2, "the sign-in went to the URL's own plugin login entry")
+	require.Equal(t, []string{pluginEntry}, plugins, "the sign-in went to the entry the call names, not to a new one")
+	stored, err := r.store.GetToken(config.ServerRef{Name: pluginEntry, URL: r.srv.URL})
+	require.NoError(t, err)
+	require.NotEmpty(t, stored, "the entry the call names holds the login")
 	raw, err := os.ReadFile(filepath.Join(r.dir, "token-cache.yaml"))
 	require.NoError(t, err)
 	var records map[string]diskRecord
@@ -852,12 +856,10 @@ func TestASignInForAnotherPluginLoginEntryIsCachedForTheEntryItNames(t *testing.
 	key := config.CacheKey(name, config.CanonicalServerIdentity(r.srv.URL), "c-test")
 	rec, ok := records[key]
 	require.True(t, ok, "the record is written")
-	listed := make([]diskEntry, len(plugins))
-	for i, n := range plugins {
-		listed[i] = diskEntry{Name: n, BindingID: cfg.Servers[n].CacheBindingID}
-	}
-	assert.Equal(t, diskRecord{Kind: "identifiedEntry", Identified: pluginEntry, Entry: pluginEntry,
-		BindingID: cfg.Servers[pluginEntry].CacheBindingID, Entries: &listed, TokenReuse: new(true)}, rec)
+	// The login made the entry's own credential the one the next lookup
+	// reads, so the record is that credential's: the entry and the setting.
+	assert.Equal(t, diskRecord{Kind: "ownCredential", Identified: pluginEntry, Entry: pluginEntry,
+		BindingID: cfg.Servers[pluginEntry].CacheBindingID, TokenReuse: new(true)}, rec)
 
 	got, err = r.call(name, false)
 	require.NoError(t, err, "the next call, with no terminal, is served from the cache")

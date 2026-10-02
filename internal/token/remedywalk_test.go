@@ -2,7 +2,9 @@ package token
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -52,11 +54,23 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	add("several plugin login entries", pluginEntriesError("https://r.example.com", []string{"exec-login-r.ex", "exec-login-r.ex2"}, cfg))
 	add("a tie", entryNotNamedError(cfg, hits, "c-1", false))
 	add("a tie under the legacy shim", entryNotNamedError(cfg, hits, "c-1", true))
-	add("an entry at another URL", entryOnOtherServerError("prod", "https://other.example.com", "https://r.example.com", "c-1", "prod", false))
-	add("an entry at another URL with one here", entryOnOtherServerError("prod", "https://other.example.com", "https://r.example.com", "c-1", "staging", true))
+	elsewhere := func(current string, here bool, extra map[string]config.Server) *config.Config {
+		c := &config.Config{CurrentServer: current, Servers: map[string]config.Server{"prod": {URL: "https://other.example.com"}}}
+		if here {
+			c.Servers["staging"] = config.Server{URL: "https://r.example.com"}
+		}
+		maps.Copy(c.Servers, extra)
+		return c
+	}
+	add("an entry at another URL", entryOnOtherServerError(elsewhere("prod", false, nil), "prod", "https://r.example.com", "c-1"))
+	add("an entry at another URL with one here", entryOnOtherServerError(elsewhere("staging", true, nil), "prod", "https://r.example.com", "c-1"))
+	plugin := map[string]config.Server{"exec-login-o": {URL: "https://other.example.com", CA: "/etc/rancher/other-ca.pem", Provenance: clierr.ProvenanceExecLogin}}
+	add("a plugin login entry at another URL", entryOnOtherServerError(elsewhere("prod", false, plugin), "exec-login-o", "https://r.example.com", "c-1"))
+	add("a plugin login entry at another URL with one here", entryOnOtherServerError(elsewhere("staging", true, plugin), "exec-login-o", "https://r.example.com", "c-1"))
 	add("not logged in, blank", config.ErrNotLoggedInFor(nil))
 	add("not logged in, one entry", config.ErrNotLoggedInFor(map[string]string{"prod": "https://r.example.com"}))
 	add("not logged in, several entries", config.ErrNotLoggedInFor(map[string]string{"prod": "a", "staging": "b"}))
+	add("not logged in, the one entry a plugin login entry", config.ErrNotLoggedInFor(map[string]string{"exec-login-r.ex": "https://[2001:db8::1]:8443"}))
 
 	dir := t.TempDir()
 	nt := tokenCmd{dir: dir}
@@ -78,6 +92,46 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		add(name, tokenCmd{dir: changed}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
 			noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com"}))
 	}
+
+	// A directory whose current server holds the user's login at the
+	// call's server: create kubeconfig is offered.
+	logged := t.TempDir()
+	lc := &config.Config{CurrentServer: "prod", Servers: map[string]config.Server{"prod": {URL: "https://r.example.com", TokenUserID: "u-abc12"}}}
+	lc.SetPath(config.FilePath(logged))
+	require.NoError(t, lc.Write())
+	require.NoError(t, config.NewFileStore(logged).SetToken(config.ServerRef{Name: "prod", URL: "https://r.example.com"}, "id:secret"))
+	add("no terminal, the current server's login serves the call", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
+		interactiveLoginRequired("localProvider", "x"), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
+	add("no terminal, a --name of a plugin login entry", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
+		interactiveLoginRequired("localProvider", "x"), noTerminalCall{name: "exec-login-r.ex-c-1", clusterID: "c-1", serverURL: "https://r.example.com", caCert: "/etc/rancher/ca.pem"}))
+	add("--user-id without --name, no entry for the server", tokenCmd{dir: dir}.withNewEntryLogin(func() error {
+		_, err := readUserID(tin{s: map[string]string{"user-id": "u-abc12"}}, "", "c-1")
+		return err
+	}(), tin{s: map[string]string{"server": "https://r.example.com", "cluster": "c-1", "user-id": "u-abc12", "cacert": "/etc/rancher/ca.pem"}}))
+	add("no terminal, with --user-id", nt.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
+	add("no terminal, with --user-id, a plugin login entry skipped", nt.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", skipped: "exec-login-r.ex", skippedOwner: "u-other"}))
+	add("--user-id without --name", func() error {
+		_, err := readUserID(tin{s: map[string]string{"user-id": "u-abc12"}}, "", "c-1")
+		return err
+	}())
+	for name, ca := range map[string]string{"": "", ", a CA path": "/etc/rancher/ca.pem", ", an inline CA": "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"} {
+		u := userCheck{userID: "u-abc12", clusterID: "c-1", serverID: "https://r.example.com", caSource: ca}
+		add("another owner's login in a user entry"+name, u.entryOwnerRefused(cfg, "prod", "u-other", false, true))
+		add("another owner's plugin login entry"+name, u.entryOwnerRefused(cfg, "exec-login-r.ex", "u-other", true, true))
+		add("another owner recorded by a plugin login entry"+name, u.entryOwnerRefused(cfg, "exec-login-r.ex", "u-other", true, false))
+		created := CreateResult{Outcome: CreateKnown, Kind: TokenKindExt, Ref: &TokenRef{Kind: TokenKindExt, Name: "token-abc"}, UserID: "u-other"}
+		gone := &freshToken{create: created, cleanup: func(context.Context) RevokeOutcome { return RevokeOutcome{Result: ResultFailed, Error: "500"} }}
+		add("a created token of another owner"+name, u.checkCreatedOwner(t.Context(), cfg, created, gone,
+			storedCredential{name: "prod", entry: cfg.Servers["prod"]}, "prod"))
+		add("a created token of another owner, from the fallback"+name, u.checkCreatedOwner(t.Context(), cfg, created, gone,
+			storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}, "prod"))
+		add("a created token of another owner, from a plugin login entry"+name, u.checkCreatedOwner(t.Context(), cfg, created, gone,
+			storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}, ""))
+	}
+
+	texts["a login of a new entry, no user named"] = NewEntryLoginRemedy(cfg, "", "c-1", "https://r.example.com", "/etc/rancher/ca.pem")
 
 	rec := config.SupersededToken{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc"}}
 	texts["a superseded token that was kept"] = keptWarning(rec, "https://r.example.com", "the server refused")
@@ -145,4 +199,16 @@ func TestEveryExecPluginRemedyIsWrittenForTheInvocation(t *testing.T) {
 func ExecPluginRemedyTextsForTest(t *testing.T) map[string]string {
 	t.Helper()
 	return execPluginRemedyTexts(t)
+}
+
+// TestNoExecPluginRemedyLogsInOrRemovesAPluginLoginEntry asserts no remedy
+// names auth login, auth logout or config delete-server on a plugin login
+// entry: auth login refuses the name, and the entry may be another user's
+// login that their kubeconfigs use.
+func TestNoExecPluginRemedyLogsInOrRemovesAPluginLoginEntry(t *testing.T) {
+	t.Parallel()
+	re := regexp.MustCompile(`rancher (?:auth login|auth logout|config delete-server) '?` + regexp.QuoteMeta(config.ExecLoginPrefix))
+	for name, s := range execPluginRemedyTexts(t) {
+		assert.NotRegexp(t, re, clierr.ExpandRemedies(s, ""), name)
+	}
 }

@@ -84,11 +84,11 @@ func TestCopiedDirectoryDoesNotServeItsSourcesCacheRecords(t *testing.T) {
 	copyDirectory(t, source, copyDir)
 
 	inSource := tokenCmd{dir: source, store: store, anchor: anchorFor(source)}
-	_, _, _, hit := inSource.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, _, hit := inSource.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	assert.True(t, hit, "the directory that made the record still serves it")
 
 	inCopy := tokenCmd{dir: copyDir, store: config.NewFileStore(copyDir), anchor: anchorFor(copyDir)}
-	_, _, _, hit = inCopy.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, _, hit = inCopy.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	assert.False(t, hit, "the copy never serves the credential its source cached")
 }
 
@@ -106,7 +106,7 @@ func TestBareInstallServesItsOwnCacheRecords(t *testing.T) {
 	require.NoFileExists(t, config.BindingStampPath(dir))
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	require.True(t, hit, "an absent config.yaml is the bare-install state, not a broken one")
 	assert.Equal(t, "bare-tok", r.Data.(*execCredential).Status.Token)
 
@@ -117,7 +117,7 @@ func TestBareInstallServesItsOwnCacheRecords(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	cmd = tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	_, _, _, hit = cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, _, hit = cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	assert.False(t, hit, "an entry now decides who the credential belongs to")
 }
 
@@ -137,14 +137,14 @@ func TestADamagedBindingStampCostsTheCacheAndNothingElse(t *testing.T) {
 		require.NoError(t, os.WriteFile(config.BindingStampPath(dir), []byte(content), 0o600))
 
 		cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-		_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+		_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 		assert.False(t, hit, "a record that cannot be judged is not served")
 
 		// The record survives: the reader could not judge it, which is
 		// not the same as knowing it is not this directory's.
 		require.NoError(t, os.Remove(config.BindingStampPath(dir)))
 		cmd = tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-		_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+		_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 		require.True(t, hit, "with the stamp gone the same record serves again")
 		assert.Equal(t, "cached-tok", r.Data.(*execCredential).Status.Token)
 	}
@@ -196,7 +196,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 	t.Run("the plugin's flag fast path", func(t *testing.T) {
 		ops, keyringOps, locks, flocks := count(t, anchorFor(dir), func(anchor *config.CacheAnchor) {
 			cmd := tokenCmd{dir: dir, store: store, anchor: anchor}
-			_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+			_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 			require.True(t, hit)
 		})
 		assert.Equal(t, 1, ops["stampread"],
@@ -247,7 +247,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 						_, _, _, hit, _ = shimProbeFlagCache(kdir, k.call, "https://r.ex", "c-1", anchor, ui.Discard())
 					} else {
 						cmd := tokenCmd{dir: kdir, store: kstore, anchor: anchor}
-						_, _, _, hit = cmd.probeFlagCache(k.call, "https://r.ex", "c-1", ui.Discard())
+						_, _, _, hit = cmd.probeFlagCache(k.call, "https://r.ex", "c-1", "", ui.Discard())
 					}
 					require.True(t, hit)
 				})
@@ -294,6 +294,36 @@ func TestHotPathOperationCounts(t *testing.T) {
 		assert.Zero(t, flocks)
 	})
 
+	t.Run("with --user-id, on both paths", func(t *testing.T) {
+		// The user id is one more key component: the slot it names is read
+		// at the same cost, on the flag fast path and on the resolved path.
+		ukey := config.CacheKeyFor("prod", config.CanonicalServerIdentity("https://r.ex"), "c-1", "u-abc12")
+		require.NoError(t, seedCache(t, dir, store, ukey, "cached-user-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
+		for _, resolved := range []bool{false, true} {
+			t.Run(map[bool]string{false: "flag fast path", true: "resolved path"}[resolved], func(t *testing.T) {
+				want := map[string]int{"stampread": 1}
+				if resolved {
+					t.Setenv(execInfoEnv, execInfoFor(t, "https://r.ex/k8s/clusters/c-1", nil))
+					want = map[string]int{"configload": 1, "stampread": 1}
+				}
+				var served string
+				ops, keyringOps, locks, flocks := count(t, anchorFor(dir), func(anchor *config.CacheAnchor) {
+					cmd := tokenCmd{dir: dir, store: store, anchor: anchor}
+					res, err := cmd.Execute(t.Context(), tin{s: map[string]string{"server": "https://r.ex", "name": "prod", "cluster": "c-1", "user-id": "u-abc12"}}, ui.Discard())
+					require.NoError(t, err)
+					cred, ok := res.Data.(*execCredential)
+					require.True(t, ok)
+					served = cred.Status.Token
+				})
+				assert.Equal(t, "cached-user-tok", served, "the record of the user id's slot is served")
+				assert.Equal(t, want, ops, "no read beyond the path's own")
+				assert.Zero(t, keyringOps)
+				assert.Zero(t, locks)
+				assert.Zero(t, flocks)
+			})
+		}
+	})
+
 	t.Run("the plugin's resolved path with no --server, past a change record", func(t *testing.T) {
 		// The server comes from the current entry while config.yaml names
 		// a store change. Where to connect needs the entry's URL and CA,
@@ -330,7 +360,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 	t.Run("a miss costs no second stamp read", func(t *testing.T) {
 		ops, _, locks, flocks := count(t, anchorFor(dir), func(anchor *config.CacheAnchor) {
 			cmd := tokenCmd{dir: dir, store: store, anchor: anchor}
-			_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "another-cluster", ui.Discard())
+			_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "another-cluster", "", ui.Discard())
 			require.False(t, hit)
 		})
 		assert.Zero(t, ops["stampread"],
@@ -354,7 +384,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 
 		ops, keyringOps, locks, flocks := count(t, anchor.WithConfig(loaded), func(a *config.CacheAnchor) {
 			cmd := tokenCmd{dir: dir, store: store, anchor: a}
-			_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+			_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 			require.True(t, hit, "the record is still this entry's")
 		})
 		assert.Equal(t, 1, ops["configload"], "exactly one reload, and only on this path")
@@ -407,7 +437,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 		restoreFlock := config.SetWaitForFlockHookForTest(func() { flocks++ })
 
 		cmd := tokenCmd{dir: late, store: lstore, anchor: anchor}
-		_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+		_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 		restore()
 		restoreLock()
 		restoreFlock()
@@ -464,7 +494,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 				assert.Zero(t, locks, "an unpaused miss never takes the config lock")
 				assert.Equal(t, 1, flocks, "the record write takes the cache flock, once")
 				served := tokenCmd{dir: mdir, store: config.NewFileStore(mdir), anchor: anchorFor(mdir)}
-				_, _, _, hit := served.probeFlagCache("prod", m.URL, "local", ui.Discard())
+				_, _, _, hit := served.probeFlagCache("prod", m.URL, "local", "", ui.Discard())
 				assert.True(t, hit, "and the record was written")
 			})
 		}
@@ -547,7 +577,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 
 		ops, keyringOps, locks, flocks := count(t, anchorFor(pruned), func(a *config.CacheAnchor) {
 			cmd := tokenCmd{dir: pruned, store: pstore, anchor: a}
-			_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+			_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 			require.False(t, hit, "a record bound to the previous login is not served")
 		})
 		assert.Equal(t, 1, flocks, "the prune takes the token-cache flock, once")
@@ -627,7 +657,7 @@ func TestACrashBetweenTheTwoHalvesTaxesEveryReader(t *testing.T) {
 	defer restore()
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor}
-	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	assert.False(t, hit, "the two halves never line up, so the record is never served")
 	assert.Equal(t, 1, ops["configload"], "and the reader pays a reload to find that out")
 	assert.Equal(t, 1, ops["stampread"], "re-anchoring reads the stamp again")
@@ -642,7 +672,7 @@ func TestACrashBetweenTheTwoHalvesTaxesEveryReader(t *testing.T) {
 	anchor = anchorFor(dir)
 	ops = map[string]int{}
 	cmd = tokenCmd{dir: dir, store: store, anchor: anchor}
-	_, _, _, hit = cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, _, hit = cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	assert.True(t, hit, "the entry and its binding id never moved, so the record is still good")
 	assert.Zero(t, ops["configload"], "and the reload is not paid again")
 }
@@ -697,7 +727,7 @@ func TestOneRelativeSpellingIsNotOneDirectory(t *testing.T) {
 	require.NoError(t, seedCache(t, spelling, store, key, "source-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
 
 	cmd := tokenCmd{dir: spelling, store: store, anchor: anchorFor(spelling)}
-	_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	require.True(t, hit, "the directory that made the record serves it")
 	require.Equal(t, "source-tok", r.Data.(*execCredential).Status.Token)
 
@@ -713,7 +743,7 @@ func TestOneRelativeSpellingIsNotOneDirectory(t *testing.T) {
 	storeB := config.NewFileStore(spelling)
 	t.Run("the native plugin serves nothing in the copy", func(t *testing.T) {
 		cmd := tokenCmd{dir: spelling, store: storeB, anchor: anchorFor(spelling)}
-		_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+		_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 		assert.False(t, hit)
 	})
 
@@ -758,7 +788,7 @@ func TestOneDirectoryReachedByTwoSpellingsIsOneDirectory(t *testing.T) {
 		dir + string(filepath.Separator),
 	} {
 		cmd := tokenCmd{dir: spelling, store: config.NewFileStore(spelling), anchor: anchorFor(spelling)}
-		_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+		_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 		require.True(t, hit, "spelling %q names the same directory", spelling)
 		assert.Equal(t, "tok", r.Data.(*execCredential).Status.Token)
 	}
@@ -806,7 +836,7 @@ func TestAnUnrelatedEntryChangeCostsOneReloadNotTheHit(t *testing.T) {
 	require.Equal(t, "b1", loaded.Servers["prod"].CacheBindingID, "and left this entry alone")
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor.WithConfig(loaded)}
-	_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, r, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	require.True(t, hit, "an unrelated entry change does not cost the hit")
 	assert.Equal(t, "cached-tok", r.Data.(*execCredential).Status.Token)
 }
@@ -842,6 +872,6 @@ func TestAChangeToTheEntryItselfIsStillAMiss(t *testing.T) {
 	require.NoError(t, aerr)
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor.WithConfig(loaded)}
-	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
 	assert.False(t, hit, "the previous login's credential is never served after a completed one")
 }

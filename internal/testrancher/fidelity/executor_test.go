@@ -599,3 +599,43 @@ func TestCaptureValueIndexesArraysAndBracketedKeys(t *testing.T) {
 	_, err = captureValue(body, "data.7.id")
 	require.ErrorContains(t, err, `no element "7"`)
 }
+
+// TestRunProbeSetupRecordsValuesForRequestsAndTeardown asserts a value a
+// setup step records reaches the observations' requests as a {name}
+// placeholder, is substituted out of the recorded body like a capture,
+// and reaches the teardown.
+func TestRunProbeSetupRecordsValuesForRequestsAndTeardown(t *testing.T) {
+	t.Parallel()
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"owner":"u-fixture1"}`))
+	}))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+
+	var tornDownWith string
+	p := Probe{
+		Name: "fam/setup-records",
+		Setup: []Step{{Name: "create", Do: func(_ context.Context, _ Target, captured map[string]string) error {
+			captured["fixtureid"] = "u-fixture1"
+			return nil
+		}}},
+		Observations: []Observation{
+			{Name: "post", Request: RequestSpec{Method: http.MethodPost, Path: "/x", Body: `{"user":"{fixtureid}"}`, Identity: IdentityAdmin}},
+		},
+		SubstituteCaptures: true,
+		Teardown: []Step{{Name: "delete", Do: func(_ context.Context, _ Target, captured map[string]string) error {
+			tornDownWith = captured["fixtureid"]
+			return nil
+		}}},
+	}
+	results, err := RunProbe(t.Context(), tgt, p)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"user":"u-fixture1"}`, gotBody)
+	require.Len(t, results, 1)
+	assert.Equal(t, "{fixtureid}", results[0].Body["owner"])
+	assert.Equal(t, "u-fixture1", tornDownWith)
+}

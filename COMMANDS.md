@@ -24,10 +24,10 @@ in detail.
 
 | Command | Purpose |
 |---|---|
-| `auth login [<name>] [--url <url>]` | Log in with a token (interactive prompt or `--token-stdin`, secrets never on the command line); `--url` adds the entry first when `<name>` is new, and refuses when `<name>` is already registered at a different URL. Omitting `<name>` with `--url` derives it from the URL's hostname, with the same refuse-on-collision rule. Verifies a pasted/piped token against the server before storing it (`--no-verify` skips this; not available with the provider sign-in flow, which is already authenticated). Never switches the current server - only a fresh add can bootstrap it when unset. `--credential-store` changes where the directory keeps its credentials, after the new credential is stored: a change takes only this entry's credential, and refuses before the sign-in while another entry still has one in the store being left. |
+| `auth login [<name>] [--url <url>]` | Log in with a token (interactive prompt or `--token-stdin`, secrets never on the command line); `--url` adds the entry first when `<name>` is new, and refuses when `<name>` is already registered at a different URL. Omitting `<name>` with `--url` derives it from the URL's hostname, with the same refuse-on-collision rule. Verifies a pasted/piped token against the server before storing it, with one `SelfSubjectReview` that also names the token's owner, which the login records (`--no-verify` skips this and records no owner; not available with the provider sign-in flow, which is already authenticated). Never switches the current server - only a fresh add can bootstrap it when unset. `--credential-store` changes where the directory keeps its credentials, after the new credential is stored: a change takes only this entry's credential, and refuses before the sign-in while another entry still has one in the store being left. |
 | `auth logout [<name>]` | Clear the stored login token for the current server, `<name>`, or every server with `--all`; keeps server config; deletes the matching exec-credential cache entries; records the logout on the entry so `config status` can list its token |
 | `auth status` | Connectivity + credential preflight (calls the cluster's Kubernetes API); an unfinished credential store change and what it has left |
-| `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand) |
+| `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand); with `--user-id` it hands kubectl only tokens Rancher reports as that user's |
 | `auth list-tokens` | List cached exec-credential entries (name, server, cluster, expiry) |
 | `auth delete-token [<name>]` | Clear cached exec-credential token(s); idempotent (no match = success) |
 
@@ -135,7 +135,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 | Command | Purpose |
 |---|---|
 | `token` | Legacy exec-credential shim for Rancher-generated kubeconfigs (deprecated; new kubeconfigs use `auth get-token`) |
-| `kubeconfig` | Emit a LOCAL exec-credential kubeconfig for a cluster (no embedded secret), with the direct endpoint contexts when the cluster has the Authorized Cluster Endpoint; the exec entry records its config directory, and `--exec-command` names the binary kubectl runs - see `create kubeconfig` for the server-created, embedded alternative |
+| `kubeconfig` | Emit a LOCAL exec-credential kubeconfig for a cluster (no embedded secret), with the direct endpoint contexts when the cluster has the Authorized Cluster Endpoint; the exec entry records its config directory and, with `--user-id`, the owner its login records, and `--exec-command` names the binary kubectl runs - see `create kubeconfig` for the server-created, embedded alternative |
 
 ## Discovery & tooling
 

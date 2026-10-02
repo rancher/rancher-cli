@@ -7,6 +7,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"k8s.io/client-go/rest"
 )
 
@@ -21,21 +22,9 @@ import (
 // caller's own cancellation passes through unmapped, never as a retryable
 // connectivity failure.
 func Preflight(ctx context.Context, eff config.Effective) (string, error) {
-	rc, err := kube.RESTConfig(eff, "local")
+	rc, err := localRESTConfig(eff)
 	if err != nil {
-		// RESTConfig already returns a typed *clierr.Error (NOT_LOGGED_IN,
-		// AUTH) with the right code and hint for its own choke points - pass
-		// it through unchanged so `auth status` reports the same code/exit as
-		// every other command for the identical state, instead of relabeling
-		// everything AUTH here.
-		if ce, ok := errors.AsType[*clierr.Error](err); ok {
-			return "", ce
-		}
-		hint := ""
-		if eff.ServerName != "" {
-			hint = config.LoginHintFor(eff.ServerName)
-		}
-		return "", clierr.New(clierr.CodeAuth, err.Error()).WithHint(hint)
+		return "", err
 	}
 	disc, err := kube.Discovery(discoveryConfig(rc))
 	if err != nil {
@@ -49,6 +38,26 @@ func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 		return "", clierr.New(clierr.CodeGeneric, "server returned no version info")
 	}
 	return ver.GitVersion, nil
+}
+
+// localRESTConfig is the rest.Config of the local cluster's path for eff,
+// with the error mapping auth status and auth login share: RESTConfig's
+// typed errors (NOT_LOGGED_IN, AUTH) pass through unchanged, so every
+// command reports the same code for the same state; any other is AUTH,
+// with the entry's login as the hint when the entry is named.
+func localRESTConfig(eff config.Effective) (*rest.Config, error) {
+	rc, err := kube.RESTConfig(eff, engine.LocalCluster)
+	if err == nil {
+		return rc, nil
+	}
+	if ce, ok := errors.AsType[*clierr.Error](err); ok {
+		return nil, ce
+	}
+	hint := ""
+	if eff.ServerName != "" {
+		hint = config.LoginHintFor(eff.ServerName)
+	}
+	return nil, clierr.New(clierr.CodeAuth, err.Error()).WithHint(hint)
 }
 
 // discoveryConfig returns a copy of rc bounded by requestTimeout, the same

@@ -56,6 +56,8 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access/explain-local-globalrole-labels", "access/explain-management-shapes",
 		"discovery/aggregated-downstream", "discovery/aggregated-not-served-on-local",
 		"discovery/dead-group-legacy-document",
+		"owner/local-creates-name-the-creator", "owner/login-body-names-no-owner",
+		"owner-downstream/scoped-creates-and-reviews", "owner-downstream/cluster-login-and-review",
 	}
 	var got []string
 	for _, p := range All() {

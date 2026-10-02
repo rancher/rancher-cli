@@ -40,6 +40,7 @@ func All() []Probe {
 	probes = append(probes, directEndpointProbes()...)
 	probes = append(probes, accessProbes()...)
 	probes = append(probes, discoveryProbes()...)
+	probes = append(probes, ownerProbes()...)
 	return probes
 }
 

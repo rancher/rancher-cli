@@ -165,6 +165,32 @@ func TestLoginRejectsLegacyPrefixedName(t *testing.T) {
 	assert.False(t, ok, "the reserved name must never reach the config")
 }
 
+// TestLoginRejectsUserIDPrefixedName asserts a "user-id:"-prefixed name
+// is refused before any auth or config write, by the plain and the
+// delegated login alike: the exec plugin's cache keys of calls with
+// --user-id begin with that prefix, and a call whose --name is such an
+// entry would read them.
+func TestLoginRejectsUserIDPrefixedName(t *testing.T) {
+	t.Parallel()
+	for _, in := range []cmdtest.Input{
+		{Flag: map[string]bool{"token-stdin": true}, Pos: []string{"user-id:alice"}},
+		{Str: map[string]string{"url": "https://r.ex"}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"user-id:alice"}},
+	} {
+		t.Run(in.Str["url"], func(t *testing.T) {
+			t.Parallel()
+			dir, store := cmdtest.FilePolicyDir(t)
+			_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, cmdtest.StdinPrompter("id:secret"))
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			require.ErrorContains(t, ce, `server names starting with "user-id:" are reserved`)
+			cfg, err := config.Load(config.FilePath(dir))
+			require.NoError(t, err)
+			assert.Empty(t, cfg.Servers, "the reserved name must never reach the config")
+		})
+	}
+}
+
 // TestLoginOtherStoreErrorAborts asserts that a failed credential write after a
 // successful delegated registration leaves the freshly added entry behind - a
 // valid first-class state, not rolled back.

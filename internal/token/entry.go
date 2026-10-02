@@ -17,7 +17,7 @@ import (
 func identifyEntry(cfg *config.Config, server, wantName, clusterID string, ignoreCurrentContext bool) (string, error) {
 	id := config.IdentifyEntry(cfg, server, wantName, clusterID, ignoreCurrentContext)
 	if id.OtherURL {
-		return "", entryOnOtherServerError(id.Entry, cfg.Servers[id.Entry].URL, server, clusterID, cfg.CurrentServer, len(cfg.MatchingServerNames(server)) > 0)
+		return "", entryOnOtherServerError(cfg, id.Entry, server, clusterID)
 	}
 	return id.Entry, nil
 }
@@ -66,8 +66,9 @@ func readEntryCredential(cfg *config.Config, store CredentialReader, name string
 // entry's own credential is the only one read; a store failure on it, of
 // any kind, is returned rather than answered by another entry. The one
 // fallback is the plugin's own login entry for the server, while token
-// reuse is on. A plugin login entry is never read with the setting off.
-func identifiedCredential(cfg *config.Config, store CredentialReader, server, identified string) (storedCredential, bool, error) {
+// reuse is on. A plugin login entry is never read with the setting off,
+// and, for a call with --user-id, never when it records another owner.
+func identifiedCredential(cfg *config.Config, store CredentialReader, server, identified string, user userCheck) (storedCredential, bool, error) {
 	isPluginEntry := cfg.Servers[identified].Provenance == clierr.ProvenanceExecLogin
 	if isPluginEntry && !cfg.TokenReuse {
 		return storedCredential{}, false, nil
@@ -81,6 +82,9 @@ func identifiedCredential(cfg *config.Config, store CredentialReader, server, id
 	plugin, err := pluginEntryFor(cfg, server)
 	if err != nil || plugin == "" {
 		return storedCredential{}, false, err
+	}
+	if owner := cfg.Servers[plugin].TokenUserID; user.otherOwner(owner) {
+		return storedCredential{}, false, &pluginEntrySkipped{entry: plugin, owner: owner}
 	}
 	return readEntryCredential(cfg, store, plugin)
 }
@@ -162,30 +166,51 @@ func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID s
 	return clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands).WithCause(errLookupRefused)
 }
 
-// entryOnOtherServerError is the refusal when the entry a call names is
-// registered at a different URL than the one the call runs for. The named
-// entry is the first route to offer: its kubeconfig regenerated from where
-// it is now. Regenerating from an entry registered at the call's URL is the
-// other route, offered only when one exists.
-func entryOnOtherServerError(name, entryURL, server, clusterID, current string, entriesAtServer bool) *clierr.Error {
+// entryOnOtherServerError is the refusal when the entry name a call names
+// is registered in cfg at a different URL than server, the one the call
+// runs for. The named entry is the first route to offer: its kubeconfig
+// regenerated from where it is now. Regenerating from an entry registered
+// at the call's URL is the other route, offered only when one exists.
+func entryOnOtherServerError(cfg *config.Config, name, server, clusterID string) *clierr.Error {
 	entry := clierr.ShellQuote(name)
+	entryURL, current := cfg.Servers[name].URL, cfg.CurrentServer
 	cluster := clierr.ShellQuote(clusterID)
-	fromNamed := namedEntryRoute(name, entry, cluster, current)
-	if !entriesAtServer {
+	// auth login refuses a plugin login entry's name, so its route logs in
+	// a new entry at its URL, with its CA, and regenerates from that one.
+	plugin := config.IsExecLoginEntryName(name)
+	ownEntry := ""
+	if plugin {
+		s := cfg.Servers[name]
+		ownEntry = "log in there under a server entry of your own, since auth login refuses the exec plugin's own login entries: " +
+			userCheck{clusterID: clusterID, serverID: s.URL, caSource: s.CA, caEntry: name}.loginOfNewEntry(cfg)
+	}
+	if len(cfg.MatchingServerNames(server)) == 0 {
+		route := "regenerate the kubeconfig from " + entry + " with " + namedEntryRoute(name, entry, cluster, current)
+		if plugin {
+			route = ownEntry
+		}
 		return clierr.New(clierr.CodeConflict, fmt.Sprintf(
-			"the exec entry names server entry %s, which is registered at %s, but this call runs for %s and no entry is registered there; regenerate the kubeconfig from %s with %s",
-			entry, entryURL, server, entry, fromNamed))
+			"the exec entry names server entry %s, which is registered at %s, but this call runs for %s and no entry is registered there; %s",
+			entry, entryURL, server, route))
+	}
+	route := "regenerate the kubeconfig from it with " + namedEntryRoute(name, entry, cluster, current)
+	if plugin {
+		route = ownEntry
 	}
 	return clierr.New(clierr.CodeConflict, fmt.Sprintf(
-		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, regenerate the kubeconfig from it with %s; to use %s, regenerate it from an entry registered there with %s, then "+clierr.Rancher+" kubeconfig --cluster %s",
-		entry, entryURL, server, entry, fromNamed, server, useServerRemedy("<entry>", current), cluster))
+		"the exec entry names server entry %s, which is registered at %s, but this call runs for %s; to use %s, %s; to use %s, regenerate it from an entry registered there with %s, then "+clierr.Rancher+" kubeconfig --cluster %s",
+		entry, entryURL, server, entry, route, server, useServerRemedy("<entry>", current), cluster))
 }
 
 // namedEntryRoute is the steps that regenerate the kubeconfig from the named
-// entry where it is registered now: select it unless it is already the
+// user entry where it is registered now: select it unless it is already the
 // current server, log in to it if a URL change cleared its login, then write
-// the kubeconfig.
+// the kubeconfig. A plugin login entry's name gets none: auth login refuses
+// it, and the route for one is a login of a new entry.
 func namedEntryRoute(name, entry, cluster, current string) string {
+	if config.IsExecLoginEntryName(name) {
+		return ""
+	}
 	steps := clierr.Rancher + " auth login " + entry + " (if it has no login), then " + clierr.Rancher + " kubeconfig --cluster " + cluster
 	if name == current {
 		return steps

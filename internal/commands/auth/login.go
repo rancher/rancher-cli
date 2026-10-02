@@ -41,8 +41,9 @@ type loginCmd struct {
 	// inert value: tests that do not exercise TLS behavior leave it unset.
 	tlsPreflight register.TLSPreflightFunc
 	// verify performs an authenticated self-read against the resolved token
-	// before it is persisted. Follows tlsPreflight's own nil-skip idiom:
-	// production wiring sets it to provider.Preflight; a test-constructed
+	// before it is persisted, and returns the token's owner. Follows
+	// tlsPreflight's own nil-skip idiom: production wiring sets it to
+	// provider.Owner; a test-constructed
 	// struct that leaves it nil never dials out for this check. Skipped
 	// unconditionally for a provider-issued token (already authenticated by
 	// construction) and whenever --no-verify is set.
@@ -71,11 +72,12 @@ func (l loginCmd) idpClient() *http.Client {
 // from the dependency-resolution snapshot, which can predate a concurrent
 // policy change.
 func NewLogin(dir string) runtime.Command {
-	return &loginCmd{dir: dir, newStore: config.OpenResolvedStore, tlsPreflight: register.TLSPreflight, verify: provider.Preflight}
+	return &loginCmd{dir: dir, newStore: config.OpenResolvedStore, tlsPreflight: register.TLSPreflight, verify: provider.Owner}
 }
 
-// loginVerifyFunc matches provider.Preflight's shape: an authenticated
-// self-read against a resolved (URL, CA, token) triple.
+// loginVerifyFunc matches provider.Owner's shape: an authenticated
+// self-read against a resolved (URL, CA, token) triple that returns the
+// token's owner.
 type loginVerifyFunc func(ctx context.Context, eff config.Effective) (string, error)
 
 // pinnedTrustFailure rewrites a TLS_TRUST error from plain login's preflight
@@ -142,9 +144,11 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 	url := in.String("url")
 	cacert := in.String("cacert")
 
-	// The "legacy:" prefix is reserved for the legacy token shim's cache
-	// slots - checked unconditionally (a name in this namespace can never
-	// be a real entry; add-server rejects it the same way at creation).
+	// Names in the reserved namespaces - the legacy token shim's cache
+	// slots (legacy:), the exec plugin's cache slots of calls with
+	// --user-id (user-id:) and its own login entries (exec-login-) - are
+	// refused unconditionally: none can be a real entry, and add-server
+	// refuses them the same way at creation.
 	if name != "" {
 		if ce := config.ValidateEntryName(name); ce != nil {
 			return runtime.Result{}, ce
@@ -289,9 +293,9 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 				"a server name cannot be derived from an IPv6 address; pass an explicit name: rancher auth login <name> --url <url>")
 		}
 		// With colons refused above, a derived name cannot land in the
-		// reserved legacy: namespace; the check stays so a future
-		// derivation change cannot start producing reserved names
-		// unchecked.
+		// legacy: or user-id: namespace, but a host can begin with
+		// exec-login-; the check refuses that, and keeps a future
+		// derivation change from producing reserved names unchecked.
 		if ce := config.ValidateEntryName(name); ce != nil {
 			return runtime.Result{}, ce
 		}
@@ -523,7 +527,8 @@ func (l loginCmd) authenticateAndStore(
 	// says so.
 	noVerify := in.Bool("no-verify")
 	if !viaProvider && !noVerify && l.verify != nil {
-		if _, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: caBytes, Token: bearer, ServerName: name}); verr != nil {
+		owner, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: caBytes, Token: bearer, ServerName: name})
+		if verr != nil {
 			if ce, ok := errors.AsType[*clierr.Error](verr); ok && !delegated {
 				verr = ce.WithMessage(ce.Message + "; re-run with --no-verify to store the token without checking it").
 					WithHint("")
@@ -534,6 +539,9 @@ func (l loginCmd) authenticateAndStore(
 			}
 			return runtime.Result{}, composed
 		}
+		// The request that proved the token also named its owner, which
+		// the login records as a create response's owner is recorded.
+		cred.UserID = owner
 	}
 
 	var pendingCA *config.PendingTrust

@@ -91,6 +91,22 @@ func TestAddServerRejectsLegacyPrefixedName(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
+// TestAddServerRejectsUserIDPrefixedName asserts the namespace of the
+// exec plugin's cache slots of calls with --user-id is refused as a
+// server name.
+func TestAddServerRejectsUserIDPrefixedName(t *testing.T) {
+	dir, _ := cmdtest.FilePolicyDir(t)
+	c := newAddServerCmd(dir)
+	_, err := c.Execute(t.Context(), cmdtest.Input{Str: map[string]string{"url": "https://qa1.example.com"}, Pos: []string{"user-id:x"}}, nil)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, ce, `server names starting with "user-id:" are reserved`)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Servers)
+}
+
 // TestAddServerRejectsExecLoginPrefixedName asserts the other reserved
 // namespace: the entries the exec plugin creates for its own logins.
 func TestAddServerRejectsExecLoginPrefixedName(t *testing.T) {

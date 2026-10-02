@@ -100,9 +100,13 @@ type NormalizeRule struct {
 
 // Step is a fixture action run before or after a probe's observations.
 // Fixture behavior asserted by the oracle belongs in Observations, never
-// here - steps exist only for cleanup and idempotency. captured is the
-// probe's resolved capture set: empty during setup, complete during
-// teardown, usable via {name} placeholders in step-built paths.
+// here - steps exist only to create fixtures and clean them up. captured
+// is the probe's capture set: during setup it holds only the downstream
+// id of a Downstream probe, and a setup step may record values in it - the
+// id of a fixture it created, for the teardown to delete by, or a value an
+// observation's request needs as a {name} placeholder; it is complete
+// during teardown. Recorded values are substituted like captures when
+// SubstituteCaptures is set.
 type Step struct {
 	Name string
 	Do   func(ctx context.Context, tgt Target, captured map[string]string) error

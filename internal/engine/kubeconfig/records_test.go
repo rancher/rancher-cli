@@ -40,11 +40,14 @@ func (c countingStore) GetToken(ref config.ServerRef) (string, error) {
 }
 
 // recordsSetup is one directory for a kubeconfig run: its config, the
-// entries with a stored login, and the session's variables.
+// entries with a stored login, each recording its owner as u-<entry>
+// unless unowned, and the session's variables.
 type recordsSetup struct {
 	cfg      config.Config
 	loggedIn []string
+	unowned  bool
 	envURL   string
+	envCA    string
 	envToken bool
 	envStore string
 	failRead error
@@ -58,7 +61,7 @@ type recordsSetup struct {
 func runRecords(t *testing.T, s recordsSetup) (*clientcmdapi.ExecConfig, []string, string, error) {
 	t.Helper()
 	t.Setenv(config.EnvURL, s.envURL)
-	t.Setenv(config.EnvCACert, "")
+	t.Setenv(config.EnvCACert, s.envCA)
 	t.Setenv(config.EnvToken, "")
 	if s.envToken {
 		t.Setenv(config.EnvToken, "env-token")
@@ -66,6 +69,15 @@ func runRecords(t *testing.T, s recordsSetup) (*clientcmdapi.ExecConfig, []strin
 	t.Setenv(config.EnvCredentialStore, s.envStore)
 	dir := t.TempDir()
 	cfg := s.cfg
+	if !s.unowned {
+		servers := maps.Clone(cfg.Servers)
+		for _, e := range s.loggedIn {
+			entry := servers[e]
+			entry.TokenUserID = "u-" + e
+			servers[e] = entry
+		}
+		cfg.Servers = servers
+	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 	file := config.NewFileStore(dir)
