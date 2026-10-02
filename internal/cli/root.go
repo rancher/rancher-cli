@@ -494,24 +494,28 @@ func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
 // completeCurrentWordV2 is the single v2-protocol classification of the
 // current word for non-leaf ShellComplete callbacks (verb groups and the root
 // command): equals-form flag value, space-form flag value, partial flag name,
-// or bare word. Flag-value sites route through the full dispatch pipeline
-// (enum → live), partial flag names get flag-name candidates; only the
+// or bare word. Flag-value sites get the static enum values of the global
+// flags (no request: a live source for a global flag, such as the project
+// list, needs a cluster, and the only way to name one is a leaf flag that a
+// root or group rejects), partial flag names get flag-name candidates; only the
 // bare-word branch differs per level, so the caller supplies it (a group
 // lists its leaves with aliases, the root lists top-level commands).
 func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func(w io.Writer)) {
+	// A flag this level does not accept, or a word that names no command,
+	// sits between the command path and the word being completed: the
+	// command rejects the line whatever is completed next (a command name,
+	// a flag or a flag's value), so offer nothing.
+	if lineRejected(cmd, stripRoutingPrefixByCmd(rawArgv, cmd), true) {
+		return
+	}
 	w := cmd.Root().Writer
 	if strings.HasPrefix(rawCurrentWord, "-") {
 		if eq := strings.Index(rawCurrentWord, "="); eq > 0 {
-			// Equals-form flag value (e.g. --output=json<TAB>, --project=p1<TAB>):
-			// route through the full dispatch pipeline (enum → live), the same as
-			// the leaf path does - BUT only when the flag is a recognized global
-			// value-taking flag. resolveFlagCanonical falls back to the bare trimmed
-			// name for any unknown flag, so without this guard a per-leaf flag like
-			// --cluster= would resolve to FlagName:"cluster", get dispatched, and
-			// fire a live cluster-list HTTP request before any kind is chosen.
-			// An empty Descriptor is passed - enumCandidates and liveCandidates
-			// both fall back to globalArgSpecs for global flags, so --output enum
-			// candidates are found without any leaf flags.
+			// Equals-form flag value (e.g. --output=json<TAB>): the static enum
+			// values, as the leaf path offers - but only for a recognized global
+			// value-taking flag. An empty Descriptor is passed: enumCandidates
+			// falls back to globalArgSpecs, so --output enum candidates are
+			// found without any leaf flags.
 			spelling := rawCurrentWord[:eq]
 			canonical := resolveFlagCanonical(spelling, globalArgSpecs)
 			if flagTakesValue(canonical, globalArgSpecs) {
@@ -522,8 +526,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 					EqualsForm:   true,
 					Partial:      rawCurrentWord[eq+1:],
 				}
-				tail := stripRoutingPrefixByCmd(rawArgv, cmd)
-				for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, nil, tail) {
+				for _, cand := range enumCandidates(site, runtime.Descriptor{}) {
 					_, _ = fmt.Fprintln(w, cand)
 				}
 			}
@@ -539,18 +542,29 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 	}
 	// Space-form flag value (e.g. `get --output <TAB>`, `rancher -o <TAB>`):
 	// if the last token in the arg tail is a value-taking flag, the current
-	// word is its partial value - route through the full dispatch pipeline
-	// (enum → live), the same as the leaf path does, and skip the bare-word
-	// branch. An empty Descriptor is sufficient; enum and live both fall back
-	// to globalArgSpecs for global flags.
+	// word is its partial value - offer its static enum values, the same as
+	// the leaf path does, and skip the bare-word branch. An empty Descriptor
+	// is sufficient; the enum falls back to globalArgSpecs for global flags.
 	tail := stripRoutingPrefixByCmd(rawArgv, cmd)
 	if site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, runtime.Descriptor{}, globalArgSpecs); site.Kind == SiteFlagValue {
-		for _, cand := range dispatchSite(ctx, site, runtime.Descriptor{}, nil, nil, tail) {
+		for _, cand := range enumCandidates(site, runtime.Descriptor{}) {
 			_, _ = fmt.Fprintln(w, cand)
 		}
 		return
 	}
 	bareWord(w)
+}
+
+// lineRejected reports whether the words typed before the current one make
+// a line the command rejects whatever is completed next: a flag cmd does not
+// accept (urfave fails with "flag provided but not defined"), or, when
+// wordsReject is set, a word that is neither a flag nor a flag's value (at
+// the root or a group urfave enters a subcommand that word names, so it
+// names none). A rejected line is offered nothing, and no request is made
+// for it.
+func lineRejected(cmd *ucli.Command, tail []string, wordsReject bool) bool {
+	words, _, undefined := tailWords(tail, levelFlags(cmd))
+	return undefined || (wordsReject && len(words) > 0)
 }
 
 // printCompletionCandidate writes one completion candidate line using
@@ -926,6 +940,10 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		}, GlobalFlags()...),
 		CommandNotFound: commandNotFound,
 		OnUsageError:    onUsageError,
+		// Inherited by every command: urfave adds no `help` subcommand
+		// anywhere, so `help` is an ordinary unknown command name and a
+		// positional argument named help always reaches its command.
+		HideHelpCommand: true,
 		// urfave's auto-appended completion command is renamed and kept hidden
 		// machinery only: its subcommands are stripped so it can never emit
 		// urfave's own (divergent) scripts - `completion <shell>` (wired below,
@@ -936,6 +954,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 			c.Hidden = true
 			c.Commands = nil
 			c.CommandNotFound = commandNotFound
+			c.OnUsageError = onUsageError
 		},
 		Before: func(ctx context.Context, c *ucli.Command) (context.Context, error) {
 			config.SetReadOnlyOverride(resolveReadOnly(c))

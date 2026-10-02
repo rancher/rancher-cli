@@ -24,6 +24,7 @@ conformance test (`internal/cli/migrating_test.go` +
 | `login` (alias `l`) | → `rancher auth login` |
 | `context switch` | REMOVED - scope is per-invocation; set the active server pointer with `rancher config use-server` |
 | `context current` | REMOVED - scope is per-invocation; `rancher config status` shows the current server; `rancher config list-servers` lists all (active marked with *) |
+| `help` (alias `h`) | REMOVED - there is no `help` command; add `--help` or `-h` to any command (`rancher get pod --help`), or run `rancher schema` for every command and flag |
 | `clusters ls` | → `rancher get clusters` |
 | `clusters create` | → `rancher create cluster <name> --import` (imported), `--custom` (custom cluster), or `--machine-config <kind/name> --cloud-credential <id>` (node-driver) |
 | `clusters import` | DROPPED - same reason as `clusters create` |

@@ -2,14 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
 	"github.com/rancher/rancher-cli/internal/cli"
 	"github.com/rancher/rancher-cli/internal/skillinstall"
 	"github.com/rancher/rancher-cli/skills"
-	ucli "github.com/urfave/cli/v3"
 )
 
 // VERSION is injected at build time via -ldflags "-X main.VERSION=...".
@@ -27,9 +25,6 @@ func main() {
 	ctx, stop := cli.InterruptContext(context.Background(), os.Exit)
 	defer stop()
 	if err := root.Run(ctx, cli.SanitizedArgs(os.Args)); err != nil {
-		if ec, ok := errors.AsType[ucli.ExitCoder](err); ok {
-			os.Exit(ec.ExitCode())
-		}
-		os.Exit(1)
+		os.Exit(cli.ReportRunError(root, err))
 	}
 }

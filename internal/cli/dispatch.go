@@ -29,6 +29,13 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 		// This handles leading global flags (--output json get pod) and alias
 		// invocations (inspect po → depth 2) correctly.
 		tail := stripRoutingPrefixByCmd(rawArgv, c)
+		// A flag the command does not accept makes the line one it rejects:
+		// offer nothing, and make no request for it. Under the v1 protocol
+		// the argv still holds the partial word being completed, which would
+		// read as an undefined flag, so the check is v2 only.
+		if rawProtoV2 && lineRejected(c, tail, false) {
+			return
+		}
 		site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, d, globalArgSpecs)
 
 		if site.Kind == SiteNameLike {

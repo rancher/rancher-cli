@@ -68,6 +68,9 @@ func TestPwshCompletionScriptExecutesSafely(t *testing.T) {
 	}
 	markerPath := filepath.Join(t.TempDir(), "pwn_marker")
 
+	// The payload sits where a flag's value belongs, so the line is one the
+	// CLI accepts (a payload in place of a kind name would be an unknown
+	// command, and completion offers nothing after one).
 	driver := fmt.Sprintf(`
 $ErrorActionPreference = 'Stop'
 $env:PATH = %s + [System.IO.Path]::PathSeparator + $env:PATH
@@ -78,7 +81,7 @@ $r1 = TabExpansion2 -inputScript $line1 -cursorColumn $line1.Length
 Write-Output ('KINDS:' + (($r1.CompletionMatches | ForEach-Object { $_.CompletionText }) -join ','))
 
 Remove-Item -ErrorAction SilentlyContinue %s
-$payload = 'rancher get "$(New-Item -Path ' + %s + ' -ItemType File -Force)" po'
+$payload = 'rancher get pods --cluster "$(New-Item -Path ' + %s + ' -ItemType File -Force)" --na'
 $r2 = TabExpansion2 -inputScript $payload -cursorColumn $payload.Length
 Write-Output ('AFTERPAYLOAD:' + (($r2.CompletionMatches | ForEach-Object { $_.CompletionText }) -join ','))
 Write-Output ('MARKER:' + (Test-Path %s))

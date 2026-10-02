@@ -317,9 +317,9 @@ func TestBuildRootFlagsPrimeCommandsInMetadata(t *testing.T) {
 	}
 
 	// BuildRoot is called fresh, rather than reused from wr, so the tree
-	// walked below is never Run(): urfave's Run lazily appends a synthetic
-	// "help" subcommand to every command it visits, which would otherwise
-	// turn an ordinary leaf into a false "group" by the time this walks it.
+	// walked below is the one BuildRoot returns, never one a Run() has set
+	// up: urfave's setup adds hidden nodes and flags to the commands it
+	// visits.
 	root, err := BuildRoot("golden")
 	require.NoError(t, err)
 

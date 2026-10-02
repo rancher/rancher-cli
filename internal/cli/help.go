@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"os"
 	"slices"
@@ -19,6 +20,80 @@ func init() {
 	ucli.RootCommandHelpTemplate = rootCommandHelpTemplate
 	ucli.CommandHelpTemplate = commandHelpTemplate
 	ucli.SubcommandHelpTemplate = subcommandHelpTemplate
+	ucli.ShowCommandHelp = showCommandHelp
+}
+
+// visibleSubcommand returns the visible subcommand of node named word
+// (by name or alias), or nil. It is the one lookup behind every level of
+// the `--help <words>` walk and behind the hint for a mistyped `help`.
+func visibleSubcommand(node *ucli.Command, word string) *ucli.Command {
+	for _, sub := range node.VisibleCommands() {
+		if sub.HasName(word) {
+			return sub
+		}
+	}
+	return nil
+}
+
+// showCommandHelp is urfave's seam for "show help for the subcommand
+// named name under cmd", reached by `<cmd> --help [words]`, by
+// `<cmd> <sub> --help` (cmd is the parent, name the command run), by
+// `<leaf> <arg> --help` and, as urfave's default action, by a root or group
+// run with an unknown first word (`rancher nosuch`, `rancher get help`).
+// Three cases:
+//   - cmd has no subcommand of that name and no CommandNotFound seam: name
+//     is an argument of cmd, not a topic, so cmd shows its own card.
+//     urfave's stock implementation fails here with "No help topic" and
+//     exit 3 (the AUTH exit code) without printing anything.
+//   - name is a visible subcommand: the words that follow it in cmd's
+//     arguments name a path, and the card is that of the deepest command
+//     named, so `rancher --help get pod` shows `get pod`. The path ends at
+//     a flag or at a command with no visible subcommands (whose next words
+//     are its arguments). Below a command that has visible subcommands, a
+//     hidden subcommand shows its own card and any other unknown word is an
+//     unknown command, reported with the words typed after it.
+//   - anything else (a hidden subcommand, an unknown name under a root,
+//     group or hidden command that owns a CommandNotFound seam) keeps
+//     urfave's behavior.
+func showCommandHelp(ctx context.Context, cmd *ucli.Command, name string) error {
+	if cmd.Command(name) == nil && cmd.CommandNotFound == nil {
+		showHelpCard(cmd)
+		return nil
+	}
+	node := visibleSubcommand(cmd, name)
+	if node == nil {
+		return ucli.DefaultShowCommandHelp(ctx, cmd, name)
+	}
+	words := cmd.Args().Tail()
+	for i, word := range words {
+		if strings.HasPrefix(word, "-") || len(node.VisibleCommands()) == 0 {
+			break
+		}
+		next := visibleSubcommand(node, word)
+		if next == nil {
+			if node.Command(word) != nil {
+				return ucli.DefaultShowCommandHelp(ctx, node, word)
+			}
+			reportUnknownCommand(node, word, words[i+1:])
+			return nil
+		}
+		node = next
+	}
+	showHelpCard(node)
+	return nil
+}
+
+// showHelpCard prints cmd's own help: the group card for a command with
+// visible subcommands, the leaf card otherwise.
+func showHelpCard(cmd *ucli.Command) {
+	tmpl := cmd.CustomHelpTemplate
+	if tmpl == "" {
+		tmpl = ucli.CommandHelpTemplate
+		if len(cmd.VisibleCommands()) > 0 {
+			tmpl = ucli.SubcommandHelpTemplate
+		}
+	}
+	ucli.HelpPrinter(cmd.Root().Writer, tmpl, cmd)
 }
 
 // printStyledHelp renders templ through urfave's own template engine,

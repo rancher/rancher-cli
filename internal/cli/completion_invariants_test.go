@@ -484,21 +484,22 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 		"root.Flags (adapter.go + root.go) and runtime.GlobalFlags() (registry.go) must enumerate the same canonical flag names")
 }
 
-// TestGroupLiveFlagValueCandidates verifies that value-taking global flags
-// without a static enum (--context, --project) at the group level route through
-// the full dispatch pipeline and return live candidates when network is enabled -
-// matching the leaf path's behavior (get pod --context <TAB> already works via
-// the leaf's descriptor; this test asserts the same for the group level). Also
-// verifies --config yields no candidates gracefully (no enum, no live site, shell
-// falls back to file completion) and the network-off path returns nothing with
-// zero HTTP requests.
+// TestGroupLiveFlagValueCandidates covers value-taking global flags without a
+// static enum (--project, --config) when network completion is enabled. The
+// --project subtest runs on a line the CLI accepts, `get pods --cluster c-abc
+// --project`, and asserts the leaf's live project candidates and at least one
+// HTTP request; at a root or group there is no live fetch for a global flag
+// (TestCompletionRejectedLineMakesNoRequest asserts the group lines that could), because the project
+// list needs a cluster and only a leaf accepts --cluster. The --config subtest
+// asserts no candidates and zero requests at the group level (no enum, no
+// live site, the shell falls back to file completion), and the network-off
+// path returns nothing with zero HTTP requests.
 //
 // Per-leaf flags (--cluster, --namespace, --node) are NOT in globalArgSpecs. The
-// space-form branch (ParseArgTail) correctly skips them because flagTakesValue
-// returns false for unrecognized flags. The equals-form branch must apply the same
-// guard: get --cluster=<TAB>, get --namespace=<TAB>, get --node=<TAB> must all
-// produce ZERO HTTP requests at the group level (no kind is chosen yet, so firing
-// a live fetch is a premature network request - a security assertion).
+// equals-form branch must not build a site for them: get --cluster=<TAB>,
+// get --namespace=<TAB>, get --node=<TAB> must all produce ZERO HTTP requests
+// at the group level (no kind is chosen yet, so firing a live fetch is a
+// premature network request - a security assertion).
 //
 // NOT parallel: mutates rawArgv/rawCurrentWord globals, storedConfig, and env.
 func TestGroupLiveFlagValueCandidates(t *testing.T) {
@@ -541,13 +542,15 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 
 	t.Run("get --project space-form network-on", func(t *testing.T) {
 		// --project is a global flag in globalArgSpecs; --cluster c-abc in the tail
-		// provides the cluster ID so the live project fetch can resolve.
+		// provides the cluster ID so the live project fetch can resolve. The line
+		// names a kind (pods), as the command requires: leaf flags are not
+		// accepted before the kind.
 		var hits atomic.Int32
 		srv := newCountingSrv(t, &hits)
 		setupDir(t, srv.URL, true)
-		got := runNameLikeCompletion(t, []string{"get", "--cluster", "c-abc", "--project"}, "")
-		assert.Contains(t, got, "p-xyz", "get --project <TAB> network-on: project candidate must appear")
-		assert.Greater(t, hits.Load(), int32(0), "get --project <TAB> network-on: must issue at least one HTTP request")
+		got := runNameLikeCompletion(t, []string{"get", "pods", "--cluster", "c-abc", "--project"}, "")
+		assert.Contains(t, got, "p-xyz", "get pods --project <TAB> network-on: project candidate must appear")
+		assert.Greater(t, hits.Load(), int32(0), "get pods --project <TAB> network-on: must issue at least one HTTP request")
 	})
 
 	t.Run("get --config space-form no-candidates", func(t *testing.T) {

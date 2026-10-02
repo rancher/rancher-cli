@@ -2,9 +2,11 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -409,6 +411,10 @@ func resolveGuidance[T any](entries []hintEntry[T], in T) (detail, hint string) 
 type notFoundInput struct {
 	c    *ucli.Command
 	name string
+	// after holds the words typed after name, in order. Callers pass them
+	// explicitly: the command c may not have run, so it has no parsed
+	// arguments to read.
+	after []string
 }
 
 // notFoundHints is the registration table for targeted command-not-found
@@ -431,12 +437,53 @@ var notFoundHints = []hintEntry[notFoundInput]{
 		},
 		detail: constText[notFoundInput]("cluster deletion goes through rancher delete provisioning-cluster <name> (management clusters are not directly deletable)"),
 	},
+	{
+		// There is no help command; help is the --help flag. The hint is the
+		// command the caller meant, built from the words typed around
+		// `help` (or its short spelling `h`).
+		match: func(in notFoundInput) bool { return in.name == "help" || in.name == "h" },
+		hint:  helpHint,
+	},
+}
+
+// helpHint returns the runnable `--help` command for a mistyped `help` (or
+// `h`) command. The words are the path down to the command that did not know
+// `help`, then the words typed after it, in the order typed (`rancher help
+// get pod` and `rancher get help pod` both give `rancher get pod --help`).
+// Words are kept while each one names a visible command under the previous
+// one, so the hint never names a command that does not exist. Every word
+// kept is a command name, which needs no shell quoting. The words typed
+// after `help` come parsed from commandNotFound and raw from the `--help`
+// walk, so a flag the command accepts and its value can sit among them:
+// they are skipped. Any other flag ends the words.
+func helpHint(in notFoundInput) string {
+	var typed []string
+	lineage := in.c.Lineage()
+	for _, c := range slices.Backward(lineage[:len(lineage)-1]) { // not the root
+		typed = append(typed, c.Name)
+	}
+	words, kept, _ := tailWords(in.after, levelFlags(in.c))
+	typed = append(typed, words[:kept]...)
+
+	var hint strings.Builder
+	hint.WriteString("rancher")
+	node := in.c.Root()
+	for _, word := range typed {
+		next := visibleSubcommand(node, word)
+		if next == nil {
+			break
+		}
+		node = next
+		hint.WriteString(" " + word)
+	}
+	hint.WriteString(" --help")
+	return hint.String()
 }
 
 // notFoundGuidance returns commandNotFound's message detail (possibly "")
 // and hint for name.
-func notFoundGuidance(c *ucli.Command, name string) (detail, hint string) {
-	return resolveGuidance(notFoundHints, notFoundInput{c: c, name: name})
+func notFoundGuidance(c *ucli.Command, name string, after []string) (detail, hint string) {
+	return resolveGuidance(notFoundHints, notFoundInput{c: c, name: name, after: after})
 }
 
 // usageErrorInput bundles the arguments passed to onUsageError.
@@ -506,14 +553,56 @@ func usageErrorGuidance(c *ucli.Command, err error) (detail, hint string) {
 // yet at this point, so the rendering format comes from a raw-argv scan
 // (scanOutputFormat), not a parsed --output value.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
+	reportUnknownCommand(c, name, c.Args().Tail())
+}
+
+// reportUnknownCommand renders the unknown-command error for name under c
+// and exits. after is the words typed after name (see notFoundInput).
+func reportUnknownCommand(c *ucli.Command, name string, after []string) {
 	msg := fmt.Sprintf("unknown command %q", name)
-	detail, hint := notFoundGuidance(c, name)
+	detail, hint := notFoundGuidance(c, name, after)
 	if detail != "" {
 		msg += "; " + detail
 	}
 	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
-	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)))
+	renderRawArgvError(c, ce)
 	ucli.OsExiter(ce.ExitCode())
+}
+
+// renderRawArgvError writes ce to the root's error writer in the format and
+// color the raw command line selects. It serves errors raised where no
+// flag has parsed successfully yet (an unknown command, a flag parse
+// failure) or that no command rendered (an error urfave returns itself).
+func renderRawArgvError(c *ucli.Command, ce *clierr.Error) {
+	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)))
+}
+
+// ReportRunError handles an error Run returned to the process entry point
+// and returns the process exit code. It renders an error only when nothing
+// else has:
+//   - An error the command pipeline rendered comes back from Run with an
+//     empty message; it keeps its exit code.
+//   - urfave writes an error's text itself in two ways. "Incorrect Usage"
+//     is written only by a command with no OnUsageError handler, and every
+//     command has one (the command tree test asserts it). An error passed
+//     to its exit handler is written and then followed by an immediate
+//     process exit, so it never returns here.
+//
+// A non-empty message that does return was therefore written by nobody. It
+// is rendered as a GENERIC error in the requested output format, and its
+// exit code is GENERIC's: a code urfave chose (its help error uses 3, the
+// AUTH code) must not reach the caller. An error with no message that is
+// not an exit code exits 1.
+func ReportRunError(root *ucli.Command, err error) int {
+	if msg := err.Error(); msg != "" {
+		ce := clierr.New(clierr.CodeGeneric, msg)
+		renderRawArgvError(root, ce)
+		return ce.ExitCode()
+	}
+	if ec, ok := errors.AsType[ucli.ExitCoder](err); ok {
+		return ec.ExitCode()
+	}
+	return clierr.ExitCode(clierr.CodeGeneric)
 }
 
 // onUsageError is urfave/cli's seam for a flag-parse failure (unknown flag,
@@ -532,6 +621,6 @@ func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
 		msg += "; " + detail
 	}
 	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
-	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)))
+	renderRawArgvError(c, ce)
 	return exit(ce)
 }

@@ -3,8 +3,10 @@ package cli
 import (
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
+	ucli "github.com/urfave/cli/v3"
 )
 
 // The --rancher-completion-* token namespace is reserved for the v2 completion
@@ -244,6 +246,77 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 		}
 	}
 	return CompletionSite{Kind: SitePositional, Index: positional, Partial: currentWord}
+}
+
+// levelFlags returns the flags cmd accepts, as name (and alias) to whether
+// the flag takes a value: its own, which include the help flag urfave adds
+// (and, at the root, the version flag), and the ones its ancestors apply to
+// their subcommands (every flag that is not local to its command). It is
+// read from the command tree, so it follows what urfave parses, not a
+// separate list.
+func levelFlags(cmd *ucli.Command) map[string]bool {
+	flags := map[string]bool{}
+	for i, c := range cmd.Lineage() {
+		for _, f := range c.Flags {
+			if lf, ok := f.(ucli.LocalFlag); i > 0 && (!ok || lf.IsLocal()) {
+				continue
+			}
+			// A command's own flag wins: urfave does not apply an ancestor's
+			// flag when the command already has a flag with one of its names.
+			if i > 0 && slices.ContainsFunc(f.Names(), func(name string) bool { _, ok := flags[name]; return ok }) {
+				continue
+			}
+			df, ok := f.(ucli.DocGenerationFlag)
+			takesValue := ok && df.TakesValue()
+			for _, name := range f.Names() {
+				flags[name] = takesValue
+			}
+		}
+	}
+	return flags
+}
+
+// tailWords scans tail, the words typed after a command path, under flags
+// (see levelFlags). It returns the words that are neither flags nor the
+// value of a flag that takes one, how many of those words precede the first
+// flag that is not in flags (all of them when there is none), and whether
+// the tail holds such a flag. A flag that is not in flags is rejected by
+// urfave and counts as a flag without a value. A "--" ends the flags: the
+// words after it are all words. So does a word whose byte after the dash
+// is not a letter (`-1`, or a dash before a multi-byte character), which
+// urfave reads as a value, with the words after it; the test is on that
+// one byte, as urfave makes it. It is the one scan of a tail, for the
+// check that a line is rejected and for the hint built from the words typed
+// after a mistyped `help`.
+func tailWords(tail []string, flags map[string]bool) (words []string, beforeUndefined int, undefined bool) {
+	beforeUndefined = -1
+	for i := 0; i < len(tail); i++ {
+		word := tail[i]
+		if word == "--" {
+			words = append(words, tail[i+1:]...)
+			break
+		}
+		if len(word) < 2 || word[0] != '-' {
+			words = append(words, word)
+			continue
+		}
+		if b := word[1]; b != '-' && !unicode.IsLetter(rune(b)) {
+			words = append(words, tail[i:]...)
+			break
+		}
+		name, _, hasValue := strings.Cut(strings.TrimLeft(word, "-"), "=")
+		takesValue, defined := flags[name]
+		if !defined && beforeUndefined < 0 {
+			beforeUndefined = len(words)
+		}
+		if takesValue && !hasValue {
+			i++
+		}
+	}
+	if beforeUndefined < 0 {
+		return words, len(words), false
+	}
+	return words, beforeUndefined, true
 }
 
 // scanOutputFormat performs a raw-argv scan for an -o/--output value when no

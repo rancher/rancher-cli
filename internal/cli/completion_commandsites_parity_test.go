@@ -123,7 +123,7 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "access can --subresource of a short name", words: []string{"access", "can", "get", "po", "--cluster", "c-aaa11", "--subresource"}, want: podSubresources, hits: discovery},
 		{name: "access can --subresource= equals form", words: []string{"access", "can", "get", "pods", "--cluster", "c-aaa11"}, cur: "--subresource=", want: []string{"--subresource=exec", "--subresource=log", "--subresource=status"}, hits: discovery},
 		{name: "access can --subresource with the cluster before the verb", words: []string{"access", "can", "--cluster", "c-aaa11", "get", "pods", "--subresource"}, want: podSubresources, hits: discovery},
-		{name: "access can --subresource with a boolean flag between", words: []string{"access", "can", "get", "--all-namespaces", "pods", "--cluster", "c-aaa11", "--subresource"}, want: podSubresources, hits: discovery},
+		{name: "access can --subresource with a boolean flag between", words: []string{"access", "can", "get", "--no-input", "pods", "--cluster", "c-aaa11", "--subresource"}, want: podSubresources, hits: discovery},
 		{name: "access can --subresource of a cluster-scoped resource", words: []string{"access", "can", "get", "nodes", "--cluster", "c-aaa11", "--subresource"}, want: []string{"proxy", "status"}, hits: discovery},
 		{name: "access can --subresource of a qualified name", words: []string{"access", "can", "get", "deployments.apps", "--cluster", "c-aaa11", "--subresource"}, want: []string{"scale", "status"}, hits: discovery},
 		{name: "access can --subresource under --group", words: []string{"access", "can", "get", "deployments", "--group", "apps", "--cluster", "c-aaa11", "--subresource"}, want: []string{"scale", "status"}, hits: discovery},
