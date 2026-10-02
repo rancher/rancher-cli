@@ -10,21 +10,19 @@ import (
 // requirements is the declaration a kind's generic derivation makes: a
 // downstream kind lists through the typed cluster's proxy with whatever
 // credential the caller has; a management kind lists through the
-// management cluster's proxy with a management token, and a kind whose
-// namespace is the cluster (a project) needs the typed cluster resolved
-// first. The second value is false for a kind that does not complete.
+// management cluster's proxy with a management token. The second value is
+// false for a kind that does not complete, and for a kind whose namespace
+// is the cluster (a project): its names come from the projects the caller
+// can read, which its own source lists (projects/complete), never from the
+// management LIST.
 func requirements(k kinds.Kind) (completion.Requirements, bool) {
-	if !k.Completable {
+	if !k.Completable || k.Policy == kinds.NSCluster {
 		return completion.Requirements{}, false
 	}
 	if k.Scope == kinds.Downstream {
 		return completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialAny, Allowance: completion.AllowanceOne}, true
 	}
-	cluster := completion.ClusterNone
-	if k.Policy == kinds.NSCluster {
-		cluster = completion.ClusterResolved
-	}
-	return completion.Requirements{Cluster: cluster, Credential: completion.CredentialManagement, Allowance: completion.AllowanceOne}, true
+	return completion.Requirements{Cluster: completion.ClusterNone, Credential: completion.CredentialManagement, Allowance: completion.AllowanceOne}, true
 }
 
 // KindSource returns the generic live completion source for the kind whose
@@ -94,8 +92,6 @@ func listPath(req completion.Request, k kinds.Kind) (completion.Path, bool) {
 		return built(completion.NamespacedPath(req.ClusterID, g, v, ns, r))
 	case k.Policy == kinds.NSNone:
 		return built(completion.ManagementPath(g, v, r))
-	case k.Policy == kinds.NSCluster:
-		return built(completion.ManagementNamespacedPath(g, v, req.ClusterID, r))
 	case k.Policy == kinds.NSWorkspace && ns == "":
 		return built(completion.ManagementNamespacedPath(g, v, k.DefaultNamespace, r))
 	default:

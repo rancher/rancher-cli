@@ -48,7 +48,7 @@ func planRevoke(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Eff
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "revoke must be MutatingCommand")
-	return mc.Plan(t.Context(), in)
+	return mc.Plan(typedProjectContext(t, in), in)
 }
 
 func TestRevokeAllRolesAtScope(t *testing.T) {
@@ -61,7 +61,6 @@ func TestRevokeAllRolesAtScope(t *testing.T) {
 				revokeBinding("prtb-po", "p-x", "rv-po", "roleTemplateName", "project-owner", "u-abc", "", ""),
 				revokeBinding("prtb-other", "p-x", "rv-other", "roleTemplateName", "project-member", "u-xyz", "", ""),
 			}},
-			"projects": projectList("p-x"),
 		},
 		gets:        map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
 		allowDelete: true,
@@ -107,7 +106,6 @@ func TestRevokeSingleRole(t *testing.T) {
 				revokeBinding("prtb-po", "p-x", "rv-po", "roleTemplateName", "project-owner", "u-abc", "", ""),
 				revokeBinding("prtb-other", "p-x", "rv-other", "roleTemplateName", "project-member", "u-xyz", "", ""),
 			}},
-			"projects": projectList("p-x"),
 		},
 		gets:        map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
 		allowDelete: true,
@@ -176,7 +174,6 @@ func TestRevokeZeroMatchesListsHeldRoles(t *testing.T) {
 				revokeBinding("prtb-pm", "p-x", "rv-pm", "roleTemplateName", "project-member", "u-abc", "", ""),
 				revokeBinding("prtb-po", "p-x", "rv-po", "roleTemplateName", "project-owner", "u-abc", "", ""),
 			}},
-			"projects": projectList("p-x"),
 		},
 		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
 	}
@@ -226,7 +223,6 @@ func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {
 				args:    []string{"u-abc"},
 			},
 			listsByGVR: map[string]*unstructured.UnstructuredList{
-				"projects":                    projectList("p-x"),
 				"projectroletemplatebindings": {},
 			},
 			gets:       map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},

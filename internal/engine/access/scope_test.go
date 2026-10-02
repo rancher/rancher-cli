@@ -90,7 +90,7 @@ func TestRejectSelectorsOnClusterScopedResource(t *testing.T) {
 func TestResolveScopeNamespaceMustExist(t *testing.T) {
 	t.Parallel()
 	c := scopeClient("team-a")
-	sc, err := resolveScope(t.Context(), c, "c-phmj7", scopeFlags{namespace: "team-a"})
+	sc, err := resolveScope(t.Context(), c, "c-phmj7", scopeFlags{namespace: "team-a"}, runtime.Project{})
 	require.NoError(t, err)
 	assert.Equal(t, "c-phmj7", sc.Cluster)
 	assert.Equal(t, []string{"team-a"}, sc.targets)
@@ -99,17 +99,22 @@ func TestResolveScopeNamespaceMustExist(t *testing.T) {
 	assert.Equal(t, "team-a", m["namespace"])
 	_, hasList := m["namespaces"]
 	assert.False(t, hasList, "targets are not wire scope")
-	_, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{namespace: "ghost"})
+	_, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{namespace: "ghost"}, runtime.Project{})
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	require.ErrorContains(t, err, "namespace ghost not found on cluster c-phmj7")
 }
 
+// TestResolveScopeProjectAndAllNamespacesTakeListedNames asserts the
+// targets are the names the project's namespace read and the -A LIST
+// return, and that the scope records the project's id even when the
+// typed --project was its display name.
 func TestResolveScopeProjectAndAllNamespacesTakeListedNames(t *testing.T) {
 	t.Parallel()
 	c := scopeClient("team-b", "team-a")
-	sc, err := resolveScope(t.Context(), c, "c-phmj7", scopeFlags{project: "p-cvrp4"})
+	project := clientProject(c, "p-cvrp4", "Team")
+	sc, err := resolveScope(t.Context(), c, "c-phmj7", scopeFlags{project: "Team"}, project)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"team-a", "team-b"}, sc.targets, "sorted, as listed")
 	assert.Equal(t, []string{"team-a", "team-b"}, sc.Namespaces, "project members are wire scope")
@@ -119,7 +124,7 @@ func TestResolveScopeProjectAndAllNamespacesTakeListedNames(t *testing.T) {
 	_, hasNS := m["namespace"]
 	assert.False(t, hasNS)
 
-	sc, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{allNamespaces: true, allowAll: true})
+	sc, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{allNamespaces: true, allowAll: true}, runtime.Project{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"team-a", "team-b"}, sc.targets)
 	assert.Nil(t, sc.Namespaces, "-A lists nothing in scope; rows carry the names")
@@ -128,12 +133,12 @@ func TestResolveScopeProjectAndAllNamespacesTakeListedNames(t *testing.T) {
 	// No per-namespace GET happened: the fake would have failed on a GET
 	// for a name absent from Objects; make one absent and assert success.
 	c.Objects = map[string]*unstructured.Unstructured{}
-	sc, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{project: "p-cvrp4"})
+	sc, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{project: "p-cvrp4"}, project)
 	require.NoError(t, err)
 	assert.Len(t, sc.targets, 2)
 
 	c.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
-	sc, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{project: "p-empty"})
+	sc, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{project: "p-empty"}, clientProject(c, "p-empty", "Empty"))
 	require.NoError(t, err)
 	assert.Empty(t, sc.targets, "an empty project is a legal empty target set")
 	assert.Equal(t, scopeProject, sc.mode)
@@ -141,9 +146,27 @@ func TestResolveScopeProjectAndAllNamespacesTakeListedNames(t *testing.T) {
 
 func TestResolveScopeClusterMode(t *testing.T) {
 	t.Parallel()
-	sc, err := resolveScope(t.Context(), scopeClient(), "c-phmj7", scopeFlags{})
+	sc, err := resolveScope(t.Context(), scopeClient(), "c-phmj7", scopeFlags{}, runtime.Project{})
 	require.NoError(t, err)
 	assert.Equal(t, scopeCluster, sc.mode)
 	assert.Nil(t, sc.targets)
 	assert.Equal(t, map[string]any{"cluster": "c-phmj7"}, scopeJSON(t, sc))
+}
+
+// TestResolveScopeFollowsTheProjectRead asserts the project scope comes from
+// the project the command read, not from the typed string: the typed value
+// only feeds the selector checks, and with no project read the scope is
+// the cluster's.
+func TestResolveScopeFollowsTheProjectRead(t *testing.T) {
+	t.Parallel()
+	c := scopeClient("team-b", "team-a")
+	sc, err := resolveScope(t.Context(), c, "c-phmj7", scopeFlags{}, clientProject(c, "p-cvrp4", "Team"))
+	require.NoError(t, err)
+	assert.Equal(t, "p-cvrp4", sc.Project)
+	assert.Equal(t, []string{"team-a", "team-b"}, sc.targets)
+
+	sc, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{project: "Team"}, runtime.Project{})
+	require.NoError(t, err)
+	assert.Empty(t, sc.Project)
+	assert.Equal(t, scopeCluster, sc.mode)
 }

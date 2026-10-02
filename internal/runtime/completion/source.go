@@ -68,6 +68,9 @@ const (
 	// through its continuation tokens, bounded like the access commands'
 	// own page walk.
 	AllowanceSteveClusterPages
+	// AllowanceSteveProjectPages is one cluster's steve project collection
+	// followed page by page, bounded like the command's own read.
+	AllowanceSteveProjectPages
 )
 
 // DiscoveryGroupLimit bounds the group documents a source reads on a

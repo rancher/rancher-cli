@@ -54,16 +54,15 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		// 6902) is documented once, on the --patch flag that carries the
 		// payload - repeating it in every leaf's usage made `patch -h` read
 		// like a stutter, and "patch" appeared twice per line.
-		Usage:        "Patch the " + c.k.Name,
-		CommandType:  runtime.Mutating,
-		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
-		Flags:        patchFlags(c.k),
-		Destructive:  destructive,
-		Network:      true,
-		Auth:         true,
-		ProjectScope: kinds.ProjectScopable(c.k),
-		Capability:   c.k.Capability,
-		Shape:        runtime.ShapeText,
+		Usage:       "Patch the " + c.k.Name,
+		CommandType: runtime.Mutating,
+		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Flags:       patchFlags(c.k),
+		Destructive: destructive,
+		Network:     true,
+		Auth:        true,
+		Capability:  c.k.Capability,
+		Shape:       runtime.ShapeText,
 	}
 }
 
@@ -98,7 +97,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		return safety.Effect{}, nil, err
 	}
 
-	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, c.k, in, true)
+	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, c.k, in, OpNamed, in.Args()[0])
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

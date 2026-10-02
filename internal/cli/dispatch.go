@@ -51,6 +51,15 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 			if rawProtoV2 {
 				w := c.Root().Writer
 				for _, cand := range nameLikeCandidates(c, rawCurrentWord) {
+					if candidateToken(cand) == "--"+runtime.FlagProject {
+						// The global flag: offered by a command that takes it,
+						// with what it does there, and by no other.
+						desc, takes := commandProject(c)
+						if !takes {
+							continue
+						}
+						cand = formatCandidate(candidateToken(cand), desc)
+					}
 					_, _ = fmt.Fprintln(w, cand)
 				}
 			} else {
@@ -79,6 +88,13 @@ func nameLikeCandidates(c *ucli.Command, currentWord string) []string {
 		return flagNameCandidates(c, currentWord)
 	}
 	return subcommandCandidates(c, currentWord)
+}
+
+// candidateToken is the token of a "name:usage" or bare "name" completion
+// line.
+func candidateToken(line string) string {
+	token, _, _ := strings.Cut(line, ":")
+	return token
 }
 
 // formatCandidate returns the "name:usage" or bare "name" completion line,

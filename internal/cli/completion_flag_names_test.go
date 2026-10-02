@@ -462,3 +462,31 @@ func TestFlagNameCompletionSelector(t *testing.T) {
 	got = runNameLikeCompletion(t, []string{"get", "pods", "--selector"}, "")
 	assert.Empty(t, extractTokens(got), "a label selector is free text: no candidates")
 }
+
+// TestFlagNameCompletionOffersProjectOnlyWhereTaken asserts --project is
+// offered as a flag name on a command that takes it and left out on one
+// that refuses it, while a group, where the command is not known yet,
+// keeps it.
+func TestFlagNameCompletionOffersProjectOnlyWhereTaken(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv(config.EnvConfigDir, t.TempDir())
+	for _, tc := range []struct {
+		words []string
+		want  bool
+	}{
+		{[]string{"get", "pod"}, true},
+		{[]string{"usage"}, true},
+		{[]string{"get", "node"}, false},
+		{[]string{"inspect", "pod"}, false},
+		{[]string{"project", "remove-namespace"}, false},
+		{[]string{"get"}, true},
+	} {
+		got := extractTokens(runNameLikeCompletion(t, tc.words, "--pro"))
+		if tc.want {
+			assert.Contains(t, got, "--project", "%v --pro<TAB>", tc.words)
+		} else {
+			assert.NotContains(t, got, "--project", "%v --pro<TAB>", tc.words)
+		}
+	}
+}

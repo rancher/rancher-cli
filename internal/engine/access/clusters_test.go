@@ -290,7 +290,7 @@ func TestClustersDiscoveryFailureIsTerminal(t *testing.T) {
 	cmd.roots = fakeRootFactory{fakeRootClient{srv}}
 	_, err := cmd.Execute(t.Context(), clustersInput("", ""), nil)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "rancher root GET")
+	require.ErrorContains(t, err, "GET /v1/management.cattle.io.clusters answered 500")
 }
 
 func TestClustersProvenanceFailureDegradesNotAborts(t *testing.T) {

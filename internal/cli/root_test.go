@@ -637,25 +637,43 @@ func TestKindOverrideSubstitutesExactlyItsVerb(t *testing.T) {
 	assert.Equal(t, genericBundleGet.Usage, bundleGet.Usage, "get bundle (an untouched kind) must be byte-identical to the generic")
 }
 
-// TestSchemaManifestExposesProjectScope asserts that a generated get command
-// for a ProjectScopable kind (pod: NSPlain+Downstream) advertises
-// projectScope: true, while a fixed command (schema itself) does not.
-func TestSchemaManifestExposesProjectScope(t *testing.T) {
+// TestSchemaManifestListsProjectWhereCommandsTakeIt asserts that a command
+// takes --project exactly when its manifest entry lists a project flag: a
+// generated get of a project scopable kind (pod) lists it as optional,
+// project add-namespace as required, and a fixed command (schema), project
+// remove-namespace and create secret's removed --project-scoped do not
+// appear.
+func TestSchemaManifestListsProjectWhereCommandsTakeIt(t *testing.T) {
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)
 
-	byName := map[string]bool{}
+	flags := map[string]map[string]runtime.ArgSpec{}
 	for _, c := range m.Commands {
-		byName[c.Name] = c.ProjectScope
+		flags[c.Name] = map[string]runtime.ArgSpec{}
+		for _, f := range c.Flags {
+			flags[c.Name][f.Name] = f
+		}
+	}
+	project := func(cmd string) (runtime.ArgSpec, bool) {
+		t.Helper()
+		fs, ok := flags[cmd]
+		require.True(t, ok, "%s must be a registered command", cmd)
+		f, ok := fs[runtime.FlagProject]
+		return f, ok
 	}
 
-	scopable, ok := byName["get pod"]
-	require.True(t, ok, "get pod must be a registered command")
-	assert.True(t, scopable, "pod is NSPlain+Downstream, so get pod must be projectScope: true")
-
-	fixed, ok := byName["schema"]
-	require.True(t, ok, "schema must be a registered command")
-	assert.False(t, fixed, "a fixed command must not advertise projectScope")
+	f, ok := project("get pod")
+	require.True(t, ok, "pod is NSPlain+Downstream, so get pod must list the project flag")
+	assert.Equal(t, "string", f.Type)
+	assert.False(t, f.Required)
+	f, ok = project("project add-namespace")
+	require.True(t, ok)
+	assert.True(t, f.Required, "add-namespace needs its target project")
+	for _, cmd := range []string{"schema", "project remove-namespace", "get node"} {
+		_, ok := project(cmd)
+		assert.False(t, ok, "%s must not list the project flag", cmd)
+	}
+	assert.NotContains(t, flags["create secret"], "project-scoped")
 }
 
 func TestBuildRootWiresAliases(t *testing.T) {
@@ -732,7 +750,7 @@ func TestWireEntryRejectsThreeTokenName(t *testing.T) {
 func TestBuildRootWiresProvisioningClusterDelete(t *testing.T) {
 	// Not t.Parallel: schemaCommandNames calls t.Setenv, which panics when
 	// combined with t.Parallel (same constraint TestBuildRootWiresGeneratedCommands
-	// and TestSchemaManifestExposesProjectScope already observe).
+	// and TestSchemaManifestListsProjectWhereCommandsTakeIt already observe).
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 

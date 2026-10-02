@@ -60,10 +60,11 @@ what drifted the previous revision of this doc).
 | `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, downstream-cluster resolution, and reusable plan/execute helpers; depends only on runtime + safety + clierr contracts. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, contract bindings, table columns. |
 | `internal/engine/kinds/complete` | The generic live completion source of the kind table: for any Completable kind, its objects' names derived from the row's group, version, resource, namespace policy and scope alone (`KindSource`), plus the shared `--namespace` and `--node` sources, which are that derivation for the namespace and node kinds. A restricted `complete` package under the import and declaration fences. |
-| `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (cluster/namespace, plus `--project` resolution and membership validation) and table projection. |
+| `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (`Route`, given the operation: cluster/namespace, plus the `--project` refusal for a kind or operation it does not apply to and membership validation against the project the pipeline resolved) and table projection. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
-| `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), plus project name resolution and project-namespace lookup. |
-| `internal/engine/projects/complete` | The projects' live completion source: `ProjectSource`, the shared `--project` value and the project kind's name (management Projects in the resolved cluster's namespace, every id plus each unique display name). A restricted `complete` package under the import and declaration fences. |
+| `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), the project membership commands, plus the membership label helpers and the backing-namespace lookup. |
+| `internal/engine/projects/complete` | The projects' live completion sources over the completion connection's project lister: `ProjectSource` (the shared `--project` value: every id plus each unique display name), `ProjectIDSource` (the project kind's name for the generated verbs: ids only) and `ProjectPositionalSource` (`inspect project`'s positional). A restricted `complete` package under the import and declaration fences. |
+| `internal/engine/steve` | Rancher's steve API read as the caller: one request type and getter, the collection page protocol (`ReadCollection`), the project and cluster collections, and the `--project` lookup (`ResolveProjectFlag`: the per-cluster project collection matched by id or display name, then one GET by id; without `--cluster`, the refusal naming the clusters the project is on). |
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing - reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
 | `internal/engine/provisioning/complete` | The provisioning commands' live completion sources: `CreateClusterSource` (create cluster's `--machine-config` live half, the typed kind's configs answered behind its `<kind>/` prefix, and `--cloud-credential`, the cattle-global-data credential Secrets by id and unique display name) and `PoolSource` (the cluster-family verbs' `--pool`, the machine pools of the cluster typed as the first positional). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
@@ -123,6 +124,7 @@ graph TD
     inspect["internal/engine/inspect"]
     projects["internal/engine/projects"]
     projectscomplete["internal/engine/projects/complete"]
+    steve["internal/engine/steve"]
     provisioning["internal/engine/provisioning"]
     provisioningcomplete["internal/engine/provisioning/complete"]
     extres["internal/engine/extres"]
@@ -171,6 +173,7 @@ graph TD
     cli --> kindscomplete
     cli --> accesscomplete
     cli --> projectscomplete
+    cli --> steve
     cli --> usercomplete
     cli --> rbaccomplete
     cli --> engine
@@ -241,6 +244,9 @@ graph TD
     inspect --> resources
     inspect --> runtime
     inspect --> clierr
+    inspect --> steve
+    inspect --> projectscomplete
+    inspect --> completion
     inspect --> outputstyle
 
     projects --> engine
@@ -250,8 +256,10 @@ graph TD
     projects --> clierr
     projects --> config
 
-    projectscomplete --> kinds
     projectscomplete --> completion
+    steve --> engine
+    steve --> kinds
+    steve --> clierr
 
     provisioning --> engine
     provisioning --> kinds
@@ -328,11 +336,11 @@ graph TD
     access --> engine
     access --> kinds
     access --> rbac
-    access --> projects
     access --> runtime
     access --> clierr
     access --> output
     access --> accesscomplete
+    access --> steve
     access --> completion
 
     accesscomplete --> kinds
@@ -412,8 +420,23 @@ graph TD
 Every command runs through `runtime.Run`, which type-switches on the command interface.
 Before that switch, every command - read or mutating - passes through stages the switch
 never sees: `validateFormat` (closes the `-o` value set) → read-only refusal for
-`Mutating` commands → `--dry-run` applicability → `validateInput` → the **capability
-stage**.
+`Mutating` commands → `--dry-run` applicability → the **`--project` check** →
+`validateInput` → the **capability stage** → the **project stage**.
+
+**`--project` check and project stage.** A command takes the global `--project` only
+by listing `runtime.ProjectFlag` in its `Descriptor.Flags`. Before any request, `Run`
+refuses a typed `--project` on every other command (with the command's
+`ProjectRefusalHint` when it implements one) and a blank one; `validateInput` refuses a
+typed blank value of every value-taking flag. With `--project` typed, a missing
+required `--cluster` is left to the command's cluster step. After the capability stage
+the project stage puts the lookup (`IO.Projects`) on the context; it runs on the
+command's first read, `runtime.TypedProjectOn(ctx, in, clusterID)`, and nothing is sent
+before it, so each command's own input checks come first. The lookup runs once per
+invocation and refuses a project resolved on another cluster; when the value is one
+project's id and another project's display name, the warning saying so is written before
+the invocation's other notices. `engine.ResolveDownstreamCluster` turns an empty `--cluster` with
+`--project` typed into the lookup's refusal, which names the clusters the project is
+on.
 
 **Capability stage (static or deferred).** A command's capability requirement (e.g.
 "requires Rancher Prime") is either declared statically on its `Descriptor` - every
@@ -500,7 +523,7 @@ copied from rancher-ai-mcp (`testdata/mcp-kinds-050e375.json`) - the test matche
 `Key`, never `Name`, so the CLI's user-facing vocabulary can evolve independently of the
 MCP identity.
 
-**Scope routing / safety rule** (`resources.route`, shared by get and delete):
+**Scope routing / safety rule** (`resources.Route`, shared by get, delete, patch and create resource; the caller passes the operation - list, named, create - and the name):
 
 - Management + Namespaced, addressing a resource *by name* → `--cluster` required.
 - Downstream + Namespaced, by name → `--namespace` required (`--cluster` is also
@@ -885,7 +908,8 @@ from a legacy `cli2.json`. Run `rancher auth login` once per server instead.
 **Scope is explicit and per-invocation.** Config holds servers and a
 `currentServer` pointer only. No cluster or project is ever persisted or implied.
 `--cluster` routes to a downstream cluster (required wherever routing is needed);
-`--project` filters Downstream namespaced kinds to a project's project namespaces.
+`--project` names a project on the cluster `--cluster` names, for the commands that
+list it among their flags; a list is filtered to the project's namespaces.
 Defaults may never filter or place - a missing scope flag either widens the operation
 or is a `VALIDATION` error, never a silent fallback to stored state.
 

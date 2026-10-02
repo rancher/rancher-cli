@@ -100,7 +100,7 @@ func (c *deleteGuardCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	// binds both the isDerived check and the exec's resourceVersion precondition -
 	// a second GET is deliberately avoided to close the TOCTOU window between
 	// the guard decision and execution.
-	clientCluster, ns, effectCluster, _, err := resources.Route(ctx, c.clients, c.k, in, true)
+	clientCluster, ns, effectCluster, _, err := resources.Route(ctx, c.clients, c.k, in, resources.OpNamed, in.Args()[0])
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

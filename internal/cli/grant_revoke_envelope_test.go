@@ -102,14 +102,6 @@ func grUserItem(id string, principalIDs []string) map[string]any {
 	}
 }
 
-func grProjectItem(id, clusterID string) map[string]any {
-	return map[string]any{
-		"metadata": map[string]any{"name": id, "namespace": clusterID, "resourceVersion": "30"},
-		"spec":     map[string]any{"displayName": "test-project"},
-		"status":   map[string]any{},
-	}
-}
-
 func grBindingItem(ns, name, rv, roleField, roleVal, subjectField, subjectVal string) map[string]any {
 	return map[string]any{
 		"metadata":   map[string]any{"name": name, "namespace": ns, "resourceVersion": rv},
@@ -243,11 +235,14 @@ func grHandler(opts *serverOpts) http.Handler {
 		}))
 	})
 
-	// Project LIST in c-x namespace.
-	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-x/projects", func(w http.ResponseWriter, r *http.Request) {
-		grWriteJSON(w, grKubeList([]map[string]any{
-			grProjectItem("p-x", "c-x"),
-		}))
+	// The projects of c-x as steve lists them for the caller: the --project
+	// lookup.
+	mux.HandleFunc("/v1/management.cattle.io.projects/c-x", func(w http.ResponseWriter, r *http.Request) {
+		grWriteJSON(w, map[string]any{"count": 1, "revision": "1", "data": []map[string]any{{
+			"id":       "c-x/p-x",
+			"metadata": map[string]any{"name": "p-x"},
+			"spec":     map[string]any{"clusterName": "c-x", "displayName": "test-project"},
+		}}})
 	})
 
 	// Project GET p-x in c-x namespace (for BackingNamespace).
@@ -389,6 +384,17 @@ func grConfigDir(t *testing.T, srv *httptest.Server) string {
 	return dir
 }
 
+// grRoot builds a fresh root for one run. A root keeps a flag's set state
+// from an earlier run, so a reused root would report a flag an earlier run
+// typed as typed and empty in a later run that did not type it.
+func grRoot(t *testing.T) *ucli.Command {
+	t.Helper()
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+	return root
+}
+
 // grRun runs the root command and captures stdout/stderr.
 func grRun(t *testing.T, root *ucli.Command, dir string, args ...string) (stdout, stderr []byte, runErr error) {
 	t.Helper()
@@ -406,10 +412,6 @@ func grRun(t *testing.T, root *ucli.Command, dir string, args ...string) (stdout
 func TestGrantRevokeEnvelope(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 
-	root, err := BuildRoot("v-test")
-	require.NoError(t, err)
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
 	provID := rbac.ProvisionedUserID("okta_user://ghost")
 	provWarn := "no user exists for principal \"okta_user://ghost\" - Rancher will provision user \"" + provID + "\" when the binding applies"
 
@@ -419,7 +421,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "u-abc", "--role", "project-member",
 			"--project", "p-x", "--cluster", "c-x", "--dry-run", "-o", "json")
 
@@ -450,7 +452,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "u-abc", "--role", "cluster-owner",
 			"--cluster", "c-x", "--dry-run", "-o", "json")
 
@@ -476,7 +478,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "u-abc", "--role", "admin",
 			"--global", "--dry-run", "-o", "json")
 
@@ -503,7 +505,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "okta_user://ghost", "--role", "project-member",
 			"--project", "p-x", "--cluster", "c-x", "--dry-run", "-o", "json")
 
@@ -528,7 +530,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "okta_user://ghost", "--role", "cluster-owner",
 			"--cluster", "c-x", "--dry-run", "-o", "json")
 
@@ -553,7 +555,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "okta_user://ghost", "--role", "admin",
 			"--global", "--dry-run", "-o", "json")
 
@@ -578,7 +580,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		dir := grConfigDir(t, srv)
 
 		// No --apply, no --dry-run → CONFIRMATION_REQUIRED.
-		stdout, stderr, runErr := grRun(t, root, dir,
+		stdout, stderr, runErr := grRun(t, grRoot(t), dir,
 			"grant", "u-abc", "--role", "project-member",
 			"--project", "p-x", "--cluster", "c-x", "-o", "json")
 
@@ -598,7 +600,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		dir := grConfigDir(t, srv)
 
 		// --apply --yes triggers real create; no --dry-run.
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "u-abc", "--role", "project-member",
 			"--project", "p-x", "--cluster", "c-x", "--apply", "--yes", "-o", "json")
 
@@ -616,7 +618,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "u-abc", "--role", "admin",
 			"--global", "--apply", "--yes", "-o", "json")
 
@@ -642,7 +644,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"grant", "okta_group://gid", "--role", "project-member",
 			"--project", "p-x", "--cluster", "c-x", "--dry-run", "-o", "json")
 
@@ -671,7 +673,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		dir := grConfigDir(t, srv)
 
 		// No --role → both bindings matched; dry-run deletes them.
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"revoke", "u-abc", "--project", "p-x", "--cluster", "c-x",
 			"--dry-run", "-o", "json")
 
@@ -695,7 +697,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"revoke", "u-abc", "--role", "cluster-owner",
 			"--cluster", "c-x", "--dry-run", "-o", "json")
 
@@ -725,7 +727,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		dir := grConfigDir(t, srv)
 
 		// --apply --yes, no --dry-run → Plan then Execute; second real delete 409s.
-		stdout, stderr, runErr := grRun(t, root, dir,
+		stdout, stderr, runErr := grRun(t, grRoot(t), dir,
 			"revoke", "u-abc", "--project", "p-x", "--cluster", "c-x",
 			"--apply", "--yes", "-o", "json")
 
@@ -754,7 +756,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		defer srv.Close()
 		dir := grConfigDir(t, srv)
 
-		stdout, _, runErr := grRun(t, root, dir,
+		stdout, _, runErr := grRun(t, grRoot(t), dir,
 			"revoke", "u-abc", "--role", "admin",
 			"--global", "--apply", "--yes", "-o", "json")
 

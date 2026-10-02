@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
@@ -113,6 +114,8 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 			http.Error(w, "nope", http.StatusNotFound)
 		case "/denied":
 			http.Error(w, "nope", http.StatusUnauthorized)
+		case "/forbidden":
+			http.Error(w, "nope", http.StatusForbidden)
 		default:
 			http.Error(w, "boom", http.StatusInternalServerError)
 		}
@@ -130,6 +133,12 @@ func TestRootClientMapsStatusToClierr(t *testing.T) {
 	_, err = rc.GetJSON(t.Context(), "/denied")
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
+	assert.Equal(t, provider.AuthStatusRemedy, ce.Hint, "a refused credential names the status check")
+
+	_, err = rc.GetJSON(t.Context(), "/forbidden")
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeAuth, ce.Code)
+	assert.Empty(t, ce.Hint, "a 403 is not a credential problem")
 
 	_, err = rc.GetJSON(t.Context(), "/boom")
 	require.ErrorAs(t, err, &ce)

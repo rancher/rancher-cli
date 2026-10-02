@@ -36,6 +36,7 @@ func All() []Probe {
 	probes = append(probes, userPasswordWorkflowProbes()...)
 	probes = append(probes, accessDownstreamProbes()...)
 	probes = append(probes, memberProbes()...)
+	probes = append(probes, projectLookupProbes()...)
 	probes = append(probes, directEndpointProbes()...)
 	probes = append(probes, accessProbes()...)
 	probes = append(probes, discoveryProbes()...)

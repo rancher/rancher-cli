@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -165,6 +166,10 @@ func (f *clientFactory) Root() (engine.RootClient, error) {
 			f.rootErr = err
 			return
 		}
+		if err := kube.RequireLogin(eff); err != nil {
+			f.rootErr = err
+			return
+		}
 		caPEM, err := config.ResolveCA(eff.CA)
 		if err != nil {
 			f.rootErr = err
@@ -206,7 +211,10 @@ func (r *rootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return body, nil
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+	case resp.StatusCode == http.StatusUnauthorized:
+		return nil, clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status)).
+			WithHint(provider.AuthStatusRemedy).WithCause(status)
+	case resp.StatusCode == http.StatusForbidden:
 		return nil, clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status)).WithCause(status)
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("rancher root GET %s: not found", path)).WithCause(status)
@@ -428,7 +436,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 		Aliases:     d.Aliases,
 		Usage:       d.Usage,
 		Description: primeDescription(d),
-		Metadata:    primeMetadata(d),
+		Metadata:    leafMetadata(d),
 		ArgsUsage:   argsUsage(d.Args),
 		Flags:       flagsFor(d),
 		// Slice flags receive one entry per occurrence: urfave's default
@@ -448,6 +456,10 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 		},
 		Action: func(ctx context.Context, c *ucli.Command) error {
 			io := buildIO(c)
+			if ce := emptyConfigFlag(c); ce != nil {
+				_ = runtime.RenderErrorStyled(c.Root().ErrWriter, io.Format, ce, errStyle(c, io.Color))
+				return exit(ce)
+			}
 			var cmd runtime.Command
 			if bare {
 				cmd = make(runDeps{version: version})
@@ -477,6 +489,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				f := newClientFactory(dir, store)
 				io.ServerIdentity = f.Identity
 				io.Capability = newCapabilityChecker(f)
+				io.Projects = projectResolver{f}
 				cmd = make(runDeps{clients: f, roots: f, serverBase: f, src: newFileSource(io.In), dir: dir, store: store, anchor: anchor, version: version, sessionNamer: f})
 			}
 			status, ce := runtime.Run(ctx, cmd, cmdInput{c}, io, b)
@@ -491,4 +504,27 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 	}
 	installShellComplete(probe, cmd)
 	return cmd
+}
+
+// emptyConfigFlag refuses a blank --config. The flag also reads
+// RANCHER_CLI_CONFIG_DIR, and urfave reports a value from the environment
+// as set: a variable set to "" is the shell's way to unset it, so a blank
+// value with the variable set to "" is not refused (a typed empty --config
+// then cannot be told apart and runs as the default directory); a value
+// equal to a blank variable is refused naming the variable.
+func emptyConfigFlag(c *ucli.Command) *clierr.Error {
+	v := c.String("config")
+	if !c.IsSet("config") || strings.TrimSpace(v) != "" {
+		return nil
+	}
+	env, set := os.LookupEnv(config.EnvConfigDir)
+	switch {
+	case set && env == "":
+		return nil
+	case set && env == v:
+		return clierr.New(clierr.CodeValidation,
+			config.EnvConfigDir+" is blank; set it to a directory or unset it")
+	default:
+		return runtime.EmptyValueError("config")
+	}
 }

@@ -14,7 +14,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -40,6 +39,7 @@ func (c *listCmd) Describe() runtime.Descriptor {
 			{Name: "cluster", Type: "string", Required: true, Desc: "cluster name or id",
 				MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint},
 			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace to list rules in (default: default)"},
+			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "all-namespaces", Type: "bool", Aliases: []string{"A"}, Desc: "list rules in every namespace you can list"},
 			{Name: "as", Type: "string", Desc: "user name, id, or principal, or system:serviceaccount:<ns>:<name>; omitted = you"},
 			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "kind of a bare --as value when ambiguous (group is rejected here)"},
@@ -137,14 +137,11 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "the caller's identity review")
 	}
-	if flags.project != "" {
-		id, err := projects.ResolveProject(ctx, c.clients, clusterID, flags.project)
-		if err != nil {
-			return runtime.Result{}, budgetError(ctx, err, "project resolution")
-		}
-		flags.project = id
+	project, err := typedProject(ctx, in, clusterID)
+	if err != nil {
+		return runtime.Result{}, budgetError(ctx, err, "project resolution")
 	}
-	scope, err := resolveScope(ctx, callerClient, clusterID, flags)
+	scope, err := resolveScope(ctx, callerClient, clusterID, flags, project)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "namespace discovery")
 	}

@@ -36,7 +36,7 @@ func serialFanOut(t *testing.T) {
 
 // whoCanFactory serves everything a who-can run reads from one client
 // (the caller's cluster client doubles as the management client): the
-// caller whoami, discovery, namespaces and projects, the bindings of
+// caller whoami, discovery, namespaces, the bindings of
 // bindingsClient, the Rancher Users and UserAttributes the candidates
 // resolve against, and the UserAttribute LIST behind knownMembers. The
 // scripted answers are the SubjectAccessReviews, in row order.
@@ -53,7 +53,6 @@ func whoCanFactory(script ...scripted) *fakeFactory {
 	}
 	c.Lists["namespaces||"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{nsObj("team-a", nil), nsObj("team-b", nil)}}
 	c.Lists["namespaces||field.cattle.io/projectId=p-cvrp4"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{nsObj("team-a", nil), nsObj("team-b", nil)}}
-	c.Lists["projects|c-phmj7|"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{projectObj("c-phmj7", "p-cvrp4", "Team"), projectObj("c-phmj7", "p-empty", "Empty")}}
 	// u-def34's cache also names system:masters: the fixed row must never
 	// list it, while the bound group still does.
 	c.Lists["userattributes||"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -307,7 +306,7 @@ func TestWhoCanAllowedWithEvaluationErrorWarnsAndKeepsRows(t *testing.T) {
 		sarAnswer(false, ""), sarAnswer(false, ""),
 		sarAnswer(true, adminReason), withErr,
 	)
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	assert.Equal(t, 0, res.ExitStatus)
@@ -419,7 +418,8 @@ func TestWhoCanKubernetesGroupSkipsTheMembershipCache(t *testing.T) {
 // counts over every pair, and a subject whose allowed reason names the
 // same ClusterRoleBinding in every namespace collapsing to namespace "*",
 // while a per-namespace grant, a mixed answer, and the fixed system:masters
-// row (allowed with no reason) keep their rows.
+// row (allowed with no reason) keep their rows. --project is typed as the
+// display name; the scope and the text name the project's id.
 func TestWhoCanProjectRowsAndClusterWideCollapse(t *testing.T) {
 	serialFanOut(t)
 	// candidates for p-cvrp4 (team-a, team-b), sorted: group eng, group
@@ -433,7 +433,7 @@ func TestWhoCanProjectRowsAndClusterWideCollapse(t *testing.T) {
 		sarAnswer(true, aliceReason), sarAnswer(false, ""),
 		sarAnswer(true, adminReason), sarAnswer(true, adminReason),
 	)
-	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
+	res, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "Team"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeSubjects(t, res)
 	assert.Equal(t, subjectsRollup{Candidates: 6, Rows: 12, Evaluated: 12, Allowed: 5, Denied: 5, Unknown: 2, GroupsUnknown: 2,
@@ -477,7 +477,7 @@ func TestWhoCanAllNamespacesAndEmptyProject(t *testing.T) {
 	assert.Equal(t, "team-a", out.Subjects[0].Namespace)
 
 	f = whoCanFactory()
-	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-empty"}, "get", "pods"), nil)
+	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out = decodeSubjects(t, res)
 	assert.Equal(t, 0, res.ExitStatus)
@@ -592,12 +592,26 @@ func TestWhoCanIncompleteDiscoveryWarns(t *testing.T) {
 
 	f = whoCanFactory()
 	f.caller.ResourcesErr = incompleteFor("dead.example")
-	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(),
+	res, err = NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"),
 		canInput(map[string]string{"project": "p-empty"}, "get", "deployments"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, SourceScopeDiscovery, decodeSubjects(t, res).ResultSource)
 	require.Len(t, res.Warnings, 1)
 	assert.Contains(t, res.Warnings[0], "discovery for API group(s) dead.example failed")
+}
+
+// TestWhoCanBudgetCoversProjectRead asserts --timeout is already running
+// when the project is read: a lookup that waits for its context ends as
+// the staged budget error, before any candidate is read or question asked.
+func TestWhoCanBudgetCoversProjectRead(t *testing.T) {
+	t.Parallel()
+	f := whoCanFactory()
+	_, err := NewWhoCan(f, f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}, "get", "pods"), nil)
+	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during project resolution")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.False(t, ce.Retryable)
+	assert.Len(t, f.caller.Reviews, 1, "the preflight ran; no question was asked")
 }
 
 // TestWhoCanDescriptor asserts the descriptor contract: read-only,

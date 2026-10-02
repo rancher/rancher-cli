@@ -57,17 +57,6 @@ func diffPaths(entries []safety.DiffEntry) []string {
 	return out
 }
 
-// projectList builds a one-item projects list for the given project id so
-// ResolveProject can find it by id.
-func projectList(id string) *unstructured.UnstructuredList {
-	return &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-		{Object: map[string]any{
-			"metadata": map[string]any{"name": id},
-			"spec":     map[string]any{"displayName": id},
-		}},
-	}}
-}
-
 // projectGetObj is the project object returned by BackingNamespace (no
 // backingNamespace field → falls back to the project id as the namespace).
 func projectGetObj(id string) *unstructured.Unstructured {
@@ -80,7 +69,7 @@ func planGrant(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Effe
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "grant must be MutatingCommand")
-	return mc.Plan(t.Context(), in)
+	return mc.Plan(typedProjectContext(t, in), in)
 }
 
 func TestGrantProjectUserByID(t *testing.T) {
@@ -92,7 +81,6 @@ func TestGrantProjectUserByID(t *testing.T) {
 			"/project-member": roleGet("project-member"),
 		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
-			"projects":                    projectList("p-x"),
 			"projectroletemplatebindings": {},
 		},
 		allowCreate: true,
@@ -275,7 +263,6 @@ func TestGrantProvisioningWarnsAndPredictsID(t *testing.T) {
 			"/project-member": roleGet("project-member"),
 		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
-			"projects":                    projectList("p-x"),
 			"projectroletemplatebindings": {},
 		},
 		allowCreate: true,
@@ -312,7 +299,6 @@ func TestGrantGroupPassthrough(t *testing.T) {
 			"/project-member": roleGet("project-member"),
 		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
-			"projects":                    projectList("p-x"),
 			"projectroletemplatebindings": {},
 		},
 		allowCreate: true,
@@ -357,7 +343,6 @@ func TestGrantDuplicateConflict(t *testing.T) {
 				args:    []string{"u-abc"},
 			},
 			listsByGVR: map[string]*unstructured.UnstructuredList{
-				"projects": projectList("p-x"),
 				"projectroletemplatebindings": {Items: []unstructured.Unstructured{
 					{Object: prtbObj("pm-1", "u-abc", "", "", "project-member")},
 				}},
@@ -441,7 +426,6 @@ func TestGrantDuplicateAliasConflict(t *testing.T) {
 			"/project-member": roleGet("project-member"),
 		},
 		listsByGVR: map[string]*unstructured.UnstructuredList{
-			"projects": projectList("p-x"),
 			"projectroletemplatebindings": {Items: []unstructured.Unstructured{
 				{Object: prtbObj("pm-1", "", "okta_user://alice", "", "project-member")},
 			}},
@@ -471,9 +455,7 @@ func TestGrantDuplicateForbiddenPassthrough(t *testing.T) {
 			"c-x/p-x":         projectGetObj("p-x"),
 			"/project-member": roleGet("project-member"),
 		},
-		listsByGVR: map[string]*unstructured.UnstructuredList{
-			"projects": projectList("p-x"),
-		},
+		listsByGVR: map[string]*unstructured.UnstructuredList{},
 		listErrByGVR: map[string]error{
 			"projectroletemplatebindings": forbidden,
 		},
@@ -507,9 +489,7 @@ func TestGrantStaleHashIDOccupiedConflict(t *testing.T) {
 			"c-x/p-x":         projectGetObj("p-x"),
 			"/project-member": roleGet("project-member"),
 		},
-		listsByGVR: map[string]*unstructured.UnstructuredList{
-			"projects": projectList("p-x"),
-		},
+		listsByGVR: map[string]*unstructured.UnstructuredList{},
 	}
 	cmd := NewGrant(fakeFactory{c: client})
 
@@ -594,7 +574,6 @@ func TestGrantEmptyContextRoleRejected(t *testing.T) {
 				"/base-viewer": {Object: map[string]any{"metadata": map[string]any{"name": "base-viewer"}}},
 			},
 			listsByGVR: map[string]*unstructured.UnstructuredList{
-				"projects": projectList("p-x"),
 				"roletemplates": {Items: []unstructured.Unstructured{
 					{Object: map[string]any{"metadata": map[string]any{"name": "cluster-owner"}, "context": "cluster"}},
 					{Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},

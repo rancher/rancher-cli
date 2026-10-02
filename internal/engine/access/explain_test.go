@@ -164,14 +164,17 @@ func TestExplainProxyDenialIsDeniedWithoutAChain(t *testing.T) {
 	assert.Len(t, f.caller.Reviews, 1, "no authorization review as the caller")
 }
 
-// TestExplainRejectsProject asserts explain answers one namespace or the
-// cluster scope: --project, the global flag that reaches every command, is
-// refused before any request (--all-namespaces is not a flag of explain and
-// the surface refuses it).
-func TestExplainRejectsProject(t *testing.T) {
+// TestExplainNeverReadsTheProjectFlag asserts access explain's parse leaves
+// --project unread: explain does not take it (the pipeline refuses it), so
+// no value can reach its scope, while can and who-can read it into their
+// selector check.
+func TestExplainNeverReadsTheProjectFlag(t *testing.T) {
 	t.Parallel()
-	f, local := explainFixtures(scripted{resp: sar(true, explainReason)})
-	_, err := NewExplain(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4"}, "delete", "pods"), nil)
-	require.ErrorContains(t, err, "explain answers one namespace")
-	assert.Empty(t, f.caller.Reviews, "validation fires before the first request")
+	in := canInput(map[string]string{"namespace": "team-a", "project": "web"}, "get", "pods")
+	p, err := parseQuestion(in, false, false)
+	require.NoError(t, err)
+	assert.Empty(t, p.scope.project)
+	assert.Equal(t, "team-a", p.scope.namespace)
+	_, err = parseQuestion(in, false, true)
+	require.ErrorContains(t, err, "pass at most one of --namespace, --project, --all-namespaces")
 }

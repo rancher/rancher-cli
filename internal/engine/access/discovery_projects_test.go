@@ -52,6 +52,9 @@ func pagedServerAt(t *testing.T, path string, pages map[string]stevePage) (*http
 	return srv, &paths
 }
 
+// TestListProjectsOrdersByClusterThenProject asserts the access commands'
+// project set is ordered by cluster then project, whatever order the steve
+// collection answers in.
 func TestListProjectsOrdersByClusterThenProject(t *testing.T) {
 	t.Parallel()
 	srv, paths := pagedServerAt(t, steveProjectsPath, map[string]stevePage{
@@ -69,62 +72,6 @@ func TestListProjectsOrdersByClusterThenProject(t *testing.T) {
 		{Cluster: "local", Project: "p-l", DisplayName: "System"},
 	}, rows)
 	assert.Equal(t, []string{steveProjectsPath}, *paths)
-}
-
-func TestListProjectsFollowsContinueAndDeduplicates(t *testing.T) {
-	t.Parallel()
-	srv, paths := pagedServerAt(t, steveProjectsPath, map[string]stevePage{
-		"":  {Data: []map[string]any{steveProject("c-m-a", "p-1", "a")}, Count: new(3), Continue: "n", Revision: "9"},
-		"n": {Data: []map[string]any{steveProject("c-m-a", "p-1", "a"), steveProject("c-m-a", "p-2", "b")}, Count: new(3), Revision: "9"},
-	})
-	rows, err := listProjects(t.Context(), fakeRootClient{srv})
-	require.NoError(t, err)
-	assert.Len(t, rows, 2, "an agreeing repeat is one row")
-	assert.Len(t, *paths, 2)
-}
-
-func TestListProjectsProtocolErrorsAreTerminal(t *testing.T) {
-	t.Parallel()
-	cases := map[string]struct {
-		item map[string]any
-		want string
-	}{
-		"no id":                   {map[string]any{"type": "x", "spec": map[string]any{"clusterName": "c"}}, "item 0 has no id"},
-		"not cluster/project":     {map[string]any{"id": "p-1", "spec": map[string]any{"clusterName": "c"}}, `"p-1" is not a <cluster>/<project> id`},
-		"leading slash":           {map[string]any{"id": "/p-1", "spec": map[string]any{"clusterName": "c"}}, `"/p-1" is not a <cluster>/<project> id`},
-		"trailing slash":          {map[string]any{"id": "c-m-a/", "spec": map[string]any{"clusterName": "c-m-a"}}, `"c-m-a/" is not a <cluster>/<project> id`},
-		"extra segment":           {map[string]any{"id": "c-m-a/p-1/extra", "metadata": map[string]any{"name": "p-1/extra"}, "spec": map[string]any{"clusterName": "c-m-a"}}, `"c-m-a/p-1/extra" is not a <cluster>/<project> id`},
-		"no clusterName":          {map[string]any{"id": "c-m-a/p-1", "spec": map[string]any{}}, `"c-m-a/p-1" has no spec.clusterName`},
-		"clusterName disagrees":   {map[string]any{"id": "c-m-a/p-1", "spec": map[string]any{"clusterName": "c-m-b"}}, `"c-m-a/p-1" belongs to cluster "c-m-b"`},
-		"metadata.name disagrees": {map[string]any{"id": "c-m-a/p-1", "metadata": map[string]any{"name": "p-2"}, "spec": map[string]any{"clusterName": "c-m-a"}}, `"c-m-a/p-1" names itself "p-2"`},
-	}
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			srv, paths := pagedServerAt(t, steveProjectsPath, map[string]stevePage{
-				"": {Data: []map[string]any{tc.item}, Count: new(1), Revision: "1"},
-			})
-			_, err := listProjects(t.Context(), fakeRootClient{srv})
-			require.ErrorContains(t, err, tc.want)
-			ce, ok := errors.AsType[*clierr.Error](err)
-			require.True(t, ok)
-			assert.False(t, ce.Retryable, "a malformed item is never retried")
-			assert.Len(t, *paths, 1, "terminal on the first read")
-		})
-	}
-}
-
-func TestListProjectsDuplicateThatDisagreesIsAChangedCollection(t *testing.T) {
-	t.Parallel()
-	srv, paths := pagedServerAt(t, steveProjectsPath, map[string]stevePage{
-		"": {Data: []map[string]any{steveProject("c-m-a", "p-1", "a"), steveProject("c-m-a", "p-1", "b")}, Count: new(2), Revision: "1"},
-	})
-	_, err := listProjects(t.Context(), fakeRootClient{srv})
-	require.ErrorContains(t, err, "repeated item c-m-a/p-1 disagrees with itself")
-	ce, ok := errors.AsType[*clierr.Error](err)
-	require.True(t, ok)
-	assert.True(t, ce.Retryable)
-	assert.Len(t, *paths, 2, "one whole-read retry, then the retryable failure")
 }
 
 func TestListNamespacesReadsTheClusterCollectionAndTheProjectLabel(t *testing.T) {

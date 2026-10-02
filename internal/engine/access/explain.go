@@ -85,18 +85,11 @@ type explainResult struct {
 }
 
 const (
-	explainScopeMessage = "explain answers one namespace: pass -n <namespace> or ask a cluster-scoped question"
-	deniedNote          = "the CLI found no binding above that the server accepted for this request"
+	deniedNote = "the CLI found no binding above that the server accepted for this request"
 )
 
 func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	// explain answers one place: --project is a global flag that reaches
-	// every command, so it is refused here before the shared parser
-	// (--all-namespaces is not declared and never arrives).
-	if in.String(flagProject) != "" {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, explainScopeMessage)
-	}
-	p, err := parseQuestion(in, false)
+	p, err := parseQuestion(in, false, false)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -137,7 +130,7 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 			return runtime.Result{}, err
 		}
 	}
-	scope, err := resolveScope(ctx, callerClient, clusterID, p.scope)
+	scope, err := resolveScope(ctx, callerClient, clusterID, p.scope, runtime.Project{})
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "namespace discovery")
 	}

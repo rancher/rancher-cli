@@ -185,14 +185,6 @@ func TestInspectUserEnabledTriState(t *testing.T) {
 	}
 }
 
-func TestInspectUserTypedProjectRejected(t *testing.T) {
-	cmd := newUserCmdFake(newFakeClient())
-	_, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}, s: map[string]string{"project": "p-x"}}, nil)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-}
-
 func TestInspectUserGroupsMultiProviderAndDuplicatePrincipal(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
 	ua := &unstructured.Unstructured{Object: map[string]any{

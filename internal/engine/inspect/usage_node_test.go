@@ -52,7 +52,7 @@ func TestUsageByNodeJoinsNodeMetrics(t *testing.T) {
 		withList(podKind.GVR, pods).
 		withList(nodeMetricsGVR, metrics)
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node"}})
 	require.NoError(t, err)
 
@@ -83,7 +83,7 @@ func TestUsageByNodeDegradesWithoutMetricsServer(t *testing.T) {
 		withList(podKind.GVR, pods).
 		withListErr(nodeMetricsGVR, errors.New("no metrics server"))
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node"}})
 	require.NoError(t, err)
 
@@ -108,7 +108,7 @@ func TestUsageByNodeSingleNode(t *testing.T) {
 		withObject(nodeMetricsGVR, "", "n1", nodeMetricsObjPtr("n1", "40m", "50Mi")).
 		withList(podKind.GVR, pods)
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node", "node": "n1"}})
 	require.NoError(t, err)
 
@@ -132,7 +132,7 @@ func TestUsageByNodeSingleNodeDegradesWithoutMetricsServer(t *testing.T) {
 		withObject(nodeKind.GVR, "", "n1", nodeObj("n1")).
 		withList(podKind.GVR, pods)
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node", "node": "n1"}})
 	require.NoError(t, err)
 
@@ -161,7 +161,7 @@ func TestUsageByNodePendingPodsExcluded(t *testing.T) {
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*pendingPod}}).
 		withList(nodeMetricsGVR, &unstructured.UnstructuredList{})
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node"}})
 	require.NoError(t, err)
 
@@ -183,7 +183,7 @@ func TestUsageByNodeGetNotFoundCurated(t *testing.T) {
 	client := newFakeClient().
 		withGetErr(nodeKind.GVR, "", "n1", kinds.NotFoundCurated(nodeKind, "n1", "c-abc")).
 		withList(podKind.GVR, pods)
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node", "node": "n1"}})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -195,7 +195,7 @@ func TestUsageByNodeGetNotFoundCurated(t *testing.T) {
 	client2 := newFakeClient().
 		withGetErr(nodeKind.GVR, "", "n1", hinted).
 		withList(podKind.GVR, pods)
-	cmd2 := NewUsage(&fakeFactory{client: client2})
+	cmd2 := NewUsage(&fakeFactory{client: client2}, nil)
 	_, err2 := execRead(t, cmd2, input{s: map[string]string{"cluster": "c-abc", "by": "node", "node": "n1"}})
 	var ce2 *clierr.Error
 	require.ErrorAs(t, err2, &ce2)
@@ -224,7 +224,7 @@ func TestUsageByNodeGhostNodeKeepsRow(t *testing.T) {
 		withList(podKind.GVR, pods).
 		withList(nodeMetricsGVR, metrics)
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "node"}})
 	require.NoError(t, err)
 

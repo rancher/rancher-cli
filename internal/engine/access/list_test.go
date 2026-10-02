@@ -193,9 +193,8 @@ func TestListSubjectWithoutClusterAccess(t *testing.T) {
 func TestListEmptyProjectIsCompleteScopeDiscovery(t *testing.T) {
 	t.Parallel()
 	f := listFactory("user-vwq4j")
-	f.caller.Lists["projects|c-phmj7|"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{projectObj("c-phmj7", "p-empty", "Empty")}}
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-empty"}), nil)
+	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}), nil)
 	require.NoError(t, err)
 	out := decodeList(t, res)
 	assert.Empty(t, out.Namespaces)
@@ -206,13 +205,12 @@ func TestListEmptyProjectIsCompleteScopeDiscovery(t *testing.T) {
 	assert.Equal(t, map[string]any{"cluster": "c-phmj7", "project": "p-empty"}, scopeJSON(t, out.Scope))
 
 	f = listFactory("user-vwq4j")
-	f.caller.Lists["projects|c-phmj7|"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{projectObj("c-phmj7", "p-empty", "Empty")}}
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
 	f.impersonated = map[string]*fakeClient{"u-abc12": {script: []scripted{{resp: http403("")}}}}
 	local := localWith("u-abc12")
 	local.Lists["clusterroletemplatebindings|c-phmj7|"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{}
-	res, err = NewList(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-empty", "as": "u-abc12"}), nil)
+	res, err = NewList(f, local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty", "as": "u-abc12"}), nil)
 	require.NoError(t, err)
 	out = decodeList(t, res)
 	assert.Equal(t, SourceScopeDiscovery, out.ResultSource)
@@ -221,13 +219,13 @@ func TestListEmptyProjectIsCompleteScopeDiscovery(t *testing.T) {
 }
 
 // TestListProjectScopeCarriesMembers asserts the --project wire scope
-// names the project and its member namespaces, and -A marks allNamespaces.
+// names the project by its id, also when --project was typed as the
+// display name, and its member namespaces, and -A marks allNamespaces.
 func TestListProjectScopeCarriesMembers(t *testing.T) {
 	t.Parallel()
 	f := listFactory("user-vwq4j", scripted{resp: rules(false)}, scripted{resp: rules(false)})
-	f.caller.Lists["projects|c-phmj7|"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{projectObj("c-phmj7", "p-cvrp4", "Team")}}
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-cvrp4"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{nsObj("team-b", nil), nsObj("team-a", nil)}}
-	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4"}), nil)
+	res, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "Team"}), nil)
 	require.NoError(t, err)
 	out := decodeList(t, res)
 	assert.Equal(t, map[string]any{"cluster": "c-phmj7", "project": "p-cvrp4", "namespaces": []any{"team-a", "team-b"}}, scopeJSON(t, out.Scope))
@@ -337,4 +335,18 @@ func TestListTimeoutBoundsTheSingleNamespace(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, ce.Retryable)
 	assert.Len(t, f.caller.Reviews, 1)
+}
+
+// TestListBudgetCoversProjectRead asserts --timeout is already running
+// when the project is read: a lookup that waits for its context ends as
+// the staged budget error, before any rules review.
+func TestListBudgetCoversProjectRead(t *testing.T) {
+	t.Parallel()
+	f := listFactory("user-vwq4j")
+	_, err := NewList(f, f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}), nil)
+	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during project resolution")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.False(t, ce.Retryable)
+	assert.Len(t, f.caller.Reviews, 1, "the preflight ran; no rules were asked")
 }

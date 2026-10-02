@@ -4,6 +4,11 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # create project object; a fixed (non-generateName) name lands as the id.
 exec rancher create project web --cluster testcluster --apply
 
+# a display name resolves through the cluster's steve project collection: the
+# fixture project p-empty is displayed as Empty and holds no namespace.
+exec rancher get namespaces --project Empty --cluster testcluster -o json
+jsonquery stdout 'data.#' 0
+
 # a namespace born a member (create namespace --project) and a plain one.
 exec rancher create namespace proj-ns-member --project web --cluster testcluster --apply
 exec rancher create namespace proj-ns-other --cluster testcluster --apply
@@ -20,9 +25,10 @@ jsonquery stdout data.0.metadata.name proj-member-cm
 ! exec rancher get configmap proj-other-cm --cluster testcluster --namespace proj-ns-other --project web
 stderr 'error \(VALIDATION\):'
 
-# a workspace-policy kind rejects --project outright.
+# a workspace-policy kind does not take --project: the pipeline refuses it
+# before any request.
 ! exec rancher get gitrepos --project web
-stderr 'error \(VALIDATION\):'
+stderr 'error \(VALIDATION\): --project does not apply to get gitrepo'
 
 # membership commands: add a second namespace, see it join the membership
 # listing, then remove it again.
@@ -31,7 +37,13 @@ exec rancher project add-namespace proj-ns-second --project web --cluster testcl
 exec rancher get namespaces --project web --cluster testcluster -o json
 jsonquery stdout 'data.#' 2
 
-exec rancher project remove-namespace proj-ns-second --project web --cluster testcluster --apply
+# remove-namespace reads the project from the namespace's own label: a
+# --project is refused, with the command to run instead.
+! exec rancher project remove-namespace proj-ns-second --project web --cluster testcluster --apply -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message '--project does not apply to project remove-namespace'
+jsonquery stderr data.error.hint 'rancher project remove-namespace ''proj-ns-second'' --cluster ''testcluster'' --dry-run'
+exec rancher project remove-namespace proj-ns-second --cluster testcluster --apply
 exec rancher get namespaces --project web --cluster testcluster -o json
 jsonquery stdout 'data.#' 1
 jsonquery stdout data.0.metadata.name proj-ns-member

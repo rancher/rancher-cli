@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -330,6 +331,191 @@ func TestCreateResourceRejectsNoCreateViaManifestKind(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Contains(t, ce.Message, "create token")
 	assert.Empty(t, ce.Hint)
+}
+
+// requestFactory is recFactory that also records every cluster
+// resolution: resolving a cluster name reaches the server.
+type requestFactory struct {
+	recFactory
+	resolveCalls []string
+}
+
+func (f *requestFactory) ResolveCluster(ctx context.Context, s string) (string, error) {
+	f.resolveCalls = append(f.resolveCalls, s)
+	return f.recFactory.ResolveCluster(ctx, s)
+}
+
+// countingChecker is a CapabilityChecker that permits every requirement
+// and counts its calls: each one is a request to the server.
+type countingChecker struct{ calls int }
+
+func (c *countingChecker) Check(context.Context, runtime.CapabilityRequirement) runtime.CapabilityDecision {
+	c.calls++
+	return runtime.CapabilityDecision{Outcome: runtime.CapabilityProceed}
+}
+
+// countingProjects resolves every --project to project p-1 on cluster
+// c-abc, whose one namespace is ns1, and counts its lookups.
+type countingProjects struct{ calls int }
+
+func (p *countingProjects) ResolveProject(context.Context, runtime.Input, string) (runtime.Project, string, error) {
+	p.calls++
+	return runtime.Project{Cluster: "c-abc", ID: "p-1", DisplayName: "web",
+		Namespaces: func(context.Context) (map[string]bool, error) { return map[string]bool{"ns1": true}, nil }}, "", nil
+}
+
+const namespaceManifest = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: ns1\n"
+
+func configMapManifest(ns string) string {
+	return "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n  namespace: " + ns + "\ndata:\n  k: v\n"
+}
+
+// TestCreateResourceNamespaceWithProjectPointsAtCreateNamespace asserts a
+// Namespace manifest with --project is VALIDATION from the capability
+// stage, and from Route's refusal on a direct call to Plan, before any
+// request or project read, with the hint naming create namespace with the
+// typed values.
+func TestCreateResourceNamespaceWithProjectPointsAtCreateNamespace(t *testing.T) {
+	t.Parallel()
+	in := input{s: map[string]string{"filename": "m.yaml", "cluster": "prod", "project": "web"}}
+	wantHint := clierr.Rancher + " create namespace 'ns1' --cluster 'prod' --project 'web' --dry-run"
+
+	client := &createClient{}
+	fac := &requestFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	cmd := NewCreate(fac, mapFileSource{"m.yaml": []byte(namespaceManifest)}).(*createCmd)
+
+	_, err := cmd.ResolveCapability(unreadProjectContext(t), in)
+	requireValidation(t, err)
+	ce, _ := errors.AsType[*clierr.Error](err)
+	assert.Equal(t, wantHint, ce.Hint)
+
+	_, _, err = cmd.Plan(unreadProjectContext(t), in)
+	requireValidation(t, err)
+	ce, _ = errors.AsType[*clierr.Error](err)
+	assert.Equal(t, "--project does not place a namespace created from a manifest in a project; create it with create namespace --project", ce.Message)
+	assert.Equal(t, wantHint, ce.Hint)
+
+	assert.Empty(t, fac.clusterCalls)
+	assert.Empty(t, fac.resolveCalls)
+	assert.Empty(t, client.creates)
+}
+
+// TestCreateResourceConfigMapInProjectNamespacePreviews asserts a
+// namespaced manifest whose namespace is one of the project's previews
+// through the one dry-run create.
+func TestCreateResourceConfigMapInProjectNamespacePreviews(t *testing.T) {
+	t.Parallel()
+	client := &createClient{}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	ctx, reads := projectContext(t, "ns1")
+	cmd := NewCreate(fac, mapFileSource{"m.yaml": []byte(configMapManifest("ns1"))})
+
+	eff, exec, err := cmd.(runtime.MutatingCommand).Plan(ctx, input{s: map[string]string{"filename": "m.yaml", "cluster": "prod", "project": "web"}})
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+	assert.Equal(t, "configmaps/cm", eff.Target)
+	assert.Equal(t, "c-abc", eff.Cluster)
+	assert.Equal(t, int32(1), reads.Load(), "the namespace is checked against the project's namespaces")
+	require.Len(t, client.creates, 1)
+	assert.True(t, client.creates[0].dryRun)
+	assert.Equal(t, "ns1", client.creates[0].ns)
+}
+
+// TestCreateResourceConfigMapOutsideProjectIsValidation asserts a
+// namespaced manifest whose namespace is not one of the project's is
+// refused before the dry-run create.
+func TestCreateResourceConfigMapOutsideProjectIsValidation(t *testing.T) {
+	t.Parallel()
+	client := &createClient{}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	ctx, _ := projectContext(t, "ns1")
+	cmd := NewCreate(fac, mapFileSource{"m.yaml": []byte(configMapManifest("ns-other"))})
+
+	_, _, err := cmd.(runtime.MutatingCommand).Plan(ctx, input{s: map[string]string{"filename": "m.yaml", "cluster": "prod", "project": "web"}})
+	requireValidation(t, err)
+	require.ErrorContains(t, err, "ns-other")
+	require.ErrorContains(t, err, "p-1")
+	assert.Empty(t, client.creates)
+}
+
+// TestCreateResourceProjectRefusalPrecedesEveryRequest asserts, through
+// the pipeline, that create resource refuses --project for every manifest
+// family it does not apply to before any request: no cluster resolution,
+// no cluster client, no capability check, no project lookup, no dry-run
+// create. The last row is the control: an allowed create through the same
+// harness reaches the project lookup and the dry-run create.
+func TestCreateResourceProjectRefusalPrecedesEveryRequest(t *testing.T) {
+	t.Parallel()
+	const prtbManifest = "apiVersion: management.cattle.io/v3\nkind: ProjectRoleTemplateBinding\n" +
+		"metadata:\n  name: b1\n  namespace: p-1\nroleTemplateName: project-member\n"
+	const gitRepoManifest = "apiVersion: fleet.cattle.io/v1alpha1\nkind: GitRepo\n" +
+		"metadata:\n  name: g1\n  namespace: fleet-default\nspec:\n  repo: https://example.com/r.git\n"
+	const oidcClientManifest = "apiVersion: management.cattle.io/v3\nkind: OIDCClient\nmetadata:\n  name: o1\n"
+	for _, tc := range []struct {
+		name     string
+		manifest string
+		cluster  string
+		wantMsg  string
+		wantHint string
+	}{
+		{name: "NSPlain kind that is not project scopable", manifest: prtbManifest, cluster: "prod",
+			wantMsg: "--project does not apply to projectroletemplatebinding"},
+		{name: "Namespace", manifest: namespaceManifest, cluster: "prod",
+			wantMsg:  "--project does not place a namespace created from a manifest in a project; create it with create namespace --project",
+			wantHint: "rancher create namespace 'ns1' --cluster 'prod' --project 'web' --dry-run"},
+		{name: "NSCluster with --cluster and metadata.namespace", manifest: projectManifest, cluster: "prod",
+			wantMsg: "--project does not apply to project"},
+		{name: "NSWorkspace", manifest: gitRepoManifest,
+			wantMsg: "--project does not apply to gitrepo"},
+		{name: "capability row", manifest: oidcClientManifest,
+			wantMsg: "--project does not apply to oidcclient"},
+		{name: "control: namespaced manifest in the project", manifest: configMapManifest("ns1"), cluster: "prod"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &createClient{}
+			fac := &requestFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+			checker := &countingChecker{}
+			projects := &countingProjects{}
+			flags := map[string]string{"filename": "m.yaml", "project": "web"}
+			set := map[string]bool{"filename": true, "project": true}
+			if tc.cluster != "" {
+				flags["cluster"], set["cluster"] = tc.cluster, true
+			}
+			var out, errOut bytes.Buffer
+			_, ce := runtime.Run(t.Context(), NewCreate(fac, mapFileSource{"m.yaml": []byte(tc.manifest)}),
+				input{s: flags, isSet: set},
+				runtime.IO{Out: &out, Err: &errOut, Format: "json", DryRun: true, Capability: checker, Projects: projects},
+				safety.Binding{})
+
+			if tc.wantMsg == "" {
+				require.Nil(t, ce, "%v", ce)
+				assert.Equal(t, 1, projects.calls, "the allowed create reads the project")
+				require.Len(t, client.creates, 1)
+				assert.True(t, client.creates[0].dryRun)
+				return
+			}
+			require.NotNil(t, ce)
+			var env struct {
+				Kind string `json:"kind"`
+				Data struct {
+					Error clierr.Error `json:"error"`
+				} `json:"data"`
+			}
+			decodeEnvelope(t, "json", errOut.Bytes(), &env)
+			assert.Equal(t, "Error", env.Kind)
+			assert.Equal(t, clierr.CodeValidation, env.Data.Error.Code)
+			assert.Equal(t, tc.wantMsg, env.Data.Error.Message)
+			assert.Equal(t, tc.wantHint, env.Data.Error.Hint)
+			assert.Empty(t, out.String(), "nothing is previewed")
+
+			assert.Empty(t, fac.resolveCalls, "no cluster resolution")
+			assert.Empty(t, fac.clusterCalls, "no cluster client")
+			assert.Zero(t, checker.calls, "no capability check")
+			assert.Zero(t, projects.calls, "no project lookup")
+			assert.Empty(t, client.creates, "no dry-run create")
+		})
+	}
 }
 
 func (*createClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {

@@ -11,7 +11,7 @@ import (
 // literal) so every package that resolves a downstream cluster - resources'
 // generated routing and the projects package's bespoke commands - shares one
 // constant instead of drifting copies.
-const FlagCluster = "cluster"
+const FlagCluster = runtime.FlagCluster
 
 // ClusterRequiredMessage and ClusterRequiredHint are the one refusal for an
 // absent --cluster, whether the pipeline rejects it as a missing required
@@ -21,7 +21,7 @@ const FlagCluster = "cluster"
 // so and names the value, the hint lists the clusters to choose from.
 const (
 	ClusterRequiredMessage = "--cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local"
-	ClusterRequiredHint    = clierr.Rancher + " get cluster"
+	ClusterRequiredHint    = clierr.Rancher + " access clusters"
 )
 
 // ResolveDownstreamCluster resolves --cluster for a command that always
@@ -35,6 +35,9 @@ const (
 func ResolveDownstreamCluster(ctx context.Context, clients ClusterClientFactory, in runtime.Input) (string, error) {
 	target := in.String(FlagCluster)
 	if target == "" {
+		if err := runtime.MissingClusterError(ctx); err != nil {
+			return "", err
+		}
 		return "", clierr.New(clierr.CodeValidation, ClusterRequiredMessage).WithHint(ClusterRequiredHint)
 	}
 	return clients.ResolveCluster(ctx, target)

@@ -22,13 +22,13 @@ func mustKind(t *testing.T, key string) kinds.Kind {
 
 // TestRequirements asserts the declaration per kind class: downstream kinds
 // need the typed cluster resolved and accept any credential; management
-// kinds need a management token, and only a cluster-namespaced kind needs
-// the cluster resolved; a kind that does not complete declares nothing.
+// kinds need a management token; a kind that does not complete declares
+// nothing, and neither does a cluster-namespaced kind (project), which its
+// own source serves.
 func TestRequirements(t *testing.T) {
 	t.Parallel()
 	downstream := completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialAny, Allowance: completion.AllowanceOne}
 	management := completion.Requirements{Cluster: completion.ClusterNone, Credential: completion.CredentialManagement, Allowance: completion.AllowanceOne}
-	inCluster := completion.Requirements{Cluster: completion.ClusterResolved, Credential: completion.CredentialManagement, Allowance: completion.AllowanceOne}
 	tests := []struct {
 		key  string
 		want completion.Requirements
@@ -43,7 +43,7 @@ func TestRequirements(t *testing.T) {
 		{key: "user", want: management, ok: true},
 		{key: "managementcluster", want: management, ok: true},
 		{key: "provisioningcluster", want: management, ok: true},
-		{key: "project", want: inCluster, ok: true},
+		{key: "project"}, // its own source lists the projects the caller can read
 		{key: "secret"},
 		{key: "capicluster"},
 	}
@@ -97,7 +97,6 @@ func TestKindSourceCompletePaths(t *testing.T) {
 		{name: "oidcclient", key: "oidcclient", req: completion.Request{}, path: "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients"},
 		{name: "provisioning cluster in the default namespace", key: "provisioningcluster", req: completion.Request{}, path: "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"},
 		{name: "provisioning cluster in a typed namespace", key: "provisioningcluster", req: completion.Request{Tail: []string{"--namespace", "team-a"}}, path: "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters"},
-		{name: "project in the resolved cluster", key: "project", req: completion.Request{Cluster: "prod", ClusterID: "c-x"}, path: "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-x/projects"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,6 +130,7 @@ func TestKindSourceCompleteAnswersNothing(t *testing.T) {
 		{name: "namespaces of an unusable cluster id", key: "namespace", req: completion.Request{ClusterID: "prod cluster"}},
 		{name: "provisioning cluster with a slash in the namespace", key: "provisioningcluster", req: completion.Request{Tail: []string{"--namespace", "a/b"}}},
 		{name: "unknown key", key: "no-such-kind", req: completion.Request{ClusterID: "c-x"}},
+		{name: "project, which its own source serves", key: "project", req: completion.Request{Cluster: "prod", ClusterID: "c-x"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

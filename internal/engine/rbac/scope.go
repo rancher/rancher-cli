@@ -30,14 +30,14 @@ type Scope struct {
 }
 
 // ResolveScope maps the --project/--cluster/--global flags to a Scope.
-// Exactly one scope must be selected; --project may be qualified by
-// --cluster (or the context cluster). Cluster scope requires the EXPLICIT
-// --cluster flag - the context-cluster fallback applies only inside
-// project resolution - so an unscoped invocation errors instead of
-// silently granting cluster-wide.
+// Exactly one scope must be selected; --project names a project on the
+// cluster --cluster names, and without --cluster it is refused naming the
+// clusters the project is on. Cluster scope requires the EXPLICIT --cluster
+// flag, so an unscoped invocation errors instead of silently granting
+// cluster-wide.
 func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (Scope, error) {
 	global := in.Bool("global")
-	project := in.String("project")
+	project := in.String(runtime.FlagProject)
 	clusterFlag := in.String(engine.FlagCluster)
 
 	if global && (project != "" || clusterFlag != "") {
@@ -52,10 +52,11 @@ func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in r
 		if err != nil {
 			return Scope{}, err
 		}
-		projectID, err := projects.ResolveProject(ctx, clients, cluster, project)
+		p, _, err := runtime.TypedProjectOn(ctx, in, cluster)
 		if err != nil {
 			return Scope{}, err
 		}
+		projectID := p.ID
 		ns, _, err := projects.BackingNamespace(ctx, clients, cluster, projectID)
 		if err != nil {
 			return Scope{}, err
@@ -72,7 +73,7 @@ func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in r
 			KindKey: "clusterroletemplatebinding", RoleField: "roleTemplateName"}, nil
 	}
 	return Scope{}, clierr.New(clierr.CodeValidation,
-		"a scope is required: --project (optionally with --cluster), --cluster, or --global")
+		"a scope is required: --project with --cluster, --cluster, or --global")
 }
 
 // Flags renders the scope as the --project/--cluster/--global flags an

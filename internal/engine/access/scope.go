@@ -9,7 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
-	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
 // ScopeMode says how the question's namespaces were chosen.
@@ -74,10 +74,18 @@ func (r ResourceRef) rejectSelectors(f scopeFlags) error {
 	return nil
 }
 
+// typedProject reads the project a typed --project names on clusterID; the
+// zero Project when none was typed.
+func typedProject(ctx context.Context, in runtime.Input, clusterID string) (runtime.Project, error) {
+	p, _, err := runtime.TypedProjectOn(ctx, in, clusterID)
+	return p, err
+}
+
 // resolveScope turns the validated selector into targets on the already
 // resolved cluster. It existence-checks only a user-supplied namespace;
-// names returned by a successful LIST are targets as listed.
-func resolveScope(ctx context.Context, client engine.ClusterClient, clusterID string, f scopeFlags) (Scope, error) {
+// names returned by a successful LIST are targets as listed. p is the
+// project typedProject read, the zero Project when none was typed.
+func resolveScope(ctx context.Context, client engine.ClusterClient, clusterID string, f scopeFlags, p runtime.Project) (Scope, error) {
 	sc := Scope{Cluster: clusterID}
 	nsKind, _ := kinds.Lookup("namespace")
 	switch {
@@ -90,12 +98,12 @@ func resolveScope(ctx context.Context, client engine.ClusterClient, clusterID st
 			return Scope{}, err
 		}
 		sc.mode, sc.Namespace, sc.targets = scopeNamespace, f.namespace, []string{f.namespace}
-	case f.project != "":
-		members, err := projects.ProjectNamespaces(ctx, client, f.project)
+	case p.ID != "":
+		members, err := p.Namespaces(ctx)
 		if err != nil {
 			return Scope{}, err
 		}
-		sc.mode, sc.Project = scopeProject, f.project
+		sc.mode, sc.Project = scopeProject, p.ID
 		sc.targets = make([]string, 0, len(members))
 		for n := range members {
 			sc.targets = append(sc.targets, n)

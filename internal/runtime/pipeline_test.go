@@ -1515,14 +1515,14 @@ func TestValidateInputMissingRequiredFlagUsesDeclaredMessage(t *testing.T) {
 	d := Descriptor{Name: "x", Flags: []ArgSpec{
 		{Name: "cluster", Type: "string", Required: true, MissingMessage: "--cluster is required; pass --cluster local", MissingHint: "rancher get cluster"},
 	}}
-	ce := validateInput(d, mapInput{})
+	ce := validateInput(d, mapInput{}, false)
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, "--cluster is required; pass --cluster local", ce.Message)
 	assert.Equal(t, "rancher get cluster", ce.Hint)
 
 	plain := Descriptor{Name: "x", Flags: []ArgSpec{{Name: "mode", Type: "string", Required: true}}}
-	ce = validateInput(plain, mapInput{})
+	ce = validateInput(plain, mapInput{}, false)
 	require.NotNil(t, ce)
 	assert.Equal(t, "--mode is required", ce.Message)
 	assert.Empty(t, ce.Hint)
@@ -1542,7 +1542,7 @@ func TestValidateInputStringSlicePerEntry(t *testing.T) {
 
 	t.Run("required with zero occurrences fails", func(t *testing.T) {
 		t.Parallel()
-		ce := validateInput(d, mapInput{})
+		ce := validateInput(d, mapInput{}, false)
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		assert.Contains(t, ce.Message, "--mode is required")
@@ -1550,7 +1550,7 @@ func TestValidateInputStringSlicePerEntry(t *testing.T) {
 
 	t.Run("enum checked per entry", func(t *testing.T) {
 		t.Parallel()
-		ce := validateInput(d, mapInput{sl: map[string][]string{"mode": {"a", "c"}}})
+		ce := validateInput(d, mapInput{sl: map[string][]string{"mode": {"a", "c"}}}, false)
 		require.NotNil(t, ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 		assert.Contains(t, ce.Message, `"c"`)
@@ -1558,7 +1558,7 @@ func TestValidateInputStringSlicePerEntry(t *testing.T) {
 
 	t.Run("all entries valid passes", func(t *testing.T) {
 		t.Parallel()
-		assert.Nil(t, validateInput(d, mapInput{sl: map[string][]string{"mode": {"a", "b"}}}))
+		assert.Nil(t, validateInput(d, mapInput{sl: map[string][]string{"mode": {"a", "b"}}}, false))
 	})
 }
 

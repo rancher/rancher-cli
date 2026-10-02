@@ -98,7 +98,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "--color", Type: "enum", Enum: ColorModes, AppliesTo: "all", Desc: "when table/default/wide text is styled: auto (default) styles only a real terminal, always/never override detection; NO_COLOR turns styling off, CLICOLOR_FORCE/FORCE_COLOR turn it on, under auto", Env: []string{"NO_COLOR", "CLICOLOR_FORCE", "FORCE_COLOR"}},
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
 		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "accepted; currently no effect"},
-		{Name: "--project", Type: "string", AppliesTo: "all", Desc: "scope operations to project namespaces (downstream namespaced resources only); rejected with an error where it does not apply"},
+		{Name: "--project", Type: "string", AppliesTo: "declared", Desc: "the project, by id or display name, on the cluster --cluster names; only the commands that take --project accept it, every other command refuses it before sending a request"},
 		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)", Env: []string{"RANCHER_CLI_READONLY"}},
 	}
 }
@@ -155,7 +155,6 @@ type SchemaCommand struct {
 	Auth             bool        `json:"auth"`
 	Contract         string      `json:"contract,omitempty"`
 	Stability        string      `json:"stability,omitempty"`
-	ProjectScope     bool        `json:"projectScope,omitempty"`
 	SuccessExitCodes []int       `json:"successExitCodes,omitempty"`
 	// Prime is a projection of Descriptor.Capability: true when the command
 	// carries the Rancher Prime capability classification (a product-tier
@@ -410,6 +409,9 @@ func (reg *Registry) Validate() error {
 				return fmt.Errorf("command %q: delivery %q is permitted only on Mutating commands", d.Name, d.Delivery)
 			}
 		}
+		if err := validateProjectFlag(c, d); err != nil {
+			return err
+		}
 		if codes := d.SuccessExitCodes; len(codes) > 0 {
 			errExits := map[int]bool{}
 			for _, e := range clierr.CodeExits() {
@@ -437,6 +439,43 @@ func (reg *Registry) Validate() error {
 		}
 	}
 	return nil
+}
+
+// validateProjectFlag checks how d takes the global --project flag: only as
+// ProjectFlag's entry, never beside a refusal hint for it, and no other flag
+// of d may reuse a global flag's name, which a value typed before the
+// command name would not reach.
+func validateProjectFlag(c Command, d Descriptor) error {
+	globals := globalFlagNames()
+	for _, f := range d.Flags {
+		if f.Name == FlagProject {
+			if f.Type != "string" || len(f.Aliases) > 0 || len(f.Enum) > 0 || len(f.Env) > 0 {
+				return fmt.Errorf("command %q: the project flag must be runtime.ProjectFlag's entry (type string, no alias, enum or env)", d.Name)
+			}
+			continue
+		}
+		for _, n := range append([]string{f.Name}, f.Aliases...) {
+			if globals[n] {
+				return fmt.Errorf("command %q: flag %q reuses the name of a global flag", d.Name, n)
+			}
+		}
+	}
+	if _, ok := c.(ProjectRefusalHinter); ok && TakesProject(d) {
+		return fmt.Errorf("command %q: takes --project and also hints at what to run instead of it", d.Name)
+	}
+	return nil
+}
+
+// globalFlagNames is every name and short form of GlobalFlags ("-o/--output"
+// gives "o" and "output").
+func globalFlagNames() map[string]bool {
+	names := map[string]bool{}
+	for _, g := range GlobalFlags() {
+		for n := range strings.SplitSeq(g.Name, "/") {
+			names[strings.TrimLeft(n, "-")] = true
+		}
+	}
+	return names
 }
 
 // Schema assembles the manifest, merging each Descriptor with the resolver
@@ -480,7 +519,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 			Name: d.Name, Aliases: d.Aliases, Usage: d.Usage, Desc: d.Desc, Args: d.Args, Flags: d.Flags,
 			Examples: d.Examples, CommandType: d.CommandType,
 			Destructive: d.Destructive, Toolset: toolset, Network: d.Network, Auth: d.Auth,
-			ProjectScope: d.ProjectScope, Group: groupOf[d.Name],
+			Group:            groupOf[d.Name],
 			SuccessExitCodes: d.SuccessExitCodes,
 			Prime:            d.Capability.Tier == CapabilityPrime,
 			OutputPolicy:     d.OutputPolicy.AllowedFormats,

@@ -112,6 +112,7 @@ func typedPositionals(site CompletionSite, tail []string, leafFlags []runtime.Ar
 // latency.
 func tracedConnection(hc *http.Client, cap TokenCapability, limit int) *completion.Connection {
 	conn := completion.NewConnection(hc, cap.Token, cap.ServerURL, cap.IDOnly, limit)
+	conn.SetProjectLister(listProjects)
 	conn.SetTrace(func(path string, status, size int, elapsed time.Duration, err error) {
 		if err != nil {
 			completionDebugf("GET %s: %v (%s)", path, err, elapsed.Round(time.Millisecond))
@@ -128,9 +129,16 @@ func tracedConnection(hc *http.Client, cap TokenCapability, limit int) *completi
 // positionalKinds for a bespoke command or by the last word of a generated
 // get, patch or delete, served by its kindSources entry or else by the
 // generic kinds source. A source owns the site only when its Claim says
-// so; the generic source declines a kind that does not complete.
+// so; the generic source declines a kind that does not complete. A
+// --project value site is claimed only on a command that takes --project:
+// every other command refuses the flag, and at the root or a group the
+// command is not known yet.
 func claimLiveSource(req completion.Request, d runtime.Descriptor, lc completion.Completer,
 	flags map[string]completion.Source, kindTable map[string]completion.Source, positional map[string]string) (completion.Source, completion.Requirements, bool) {
+	if req.Flag == runtime.FlagProject && !runtime.TakesProject(d) {
+		completionDebugf("source: %s does not take --project", d.Name)
+		return completion.Source{}, completion.Requirements{}, false
+	}
 	if lc != nil {
 		if src := lc.LiveSource(); src.Claim != nil {
 			if reqs, ok := src.Claim(req); ok {

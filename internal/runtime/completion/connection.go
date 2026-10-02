@@ -33,6 +33,7 @@ type Connection struct {
 	idOnly    bool
 	limit     int
 	trace     TraceFunc
+	projects  ProjectLister
 
 	mu       sync.Mutex
 	used     int

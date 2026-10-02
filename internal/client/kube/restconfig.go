@@ -25,21 +25,17 @@ func BaseURL(serverURL string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-// RESTConfig builds a client-go rest.Config aimed at the Rancher k8s proxy
-// for the EXPLICITLY named cluster ("local" for the management plane). The
-// cluster is a required parameter, never inherited from stored state: callers pass
-// engine.LocalCluster or the invocation's own --cluster value.
-func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
-	if cluster == "" {
-		return nil, clierr.New(clierr.CodeValidation,
-			`cluster id must not be empty; pass an explicit cluster id ("local" for the management plane)`)
-	}
+// RequireLogin is the refusal of a command that needs the server when the
+// invocation has no server URL or no token: every client built for the
+// server - a cluster client or the root client - answers it the same way,
+// whichever reaches the server first. nil when both are present.
+func RequireLogin(eff config.Effective) error {
 	if eff.URL == "" {
 		// Config-aware when the inventory is present: after a logout the
 		// server entries survive, and every command routed through this
 		// factory should answer with the re-login shortcut, not the
 		// blank-machine wording (falls back to it when truly blank).
-		return nil, config.ErrNotLoggedInFor(eff.KnownServers)
+		return config.ErrNotLoggedInFor(eff.KnownServers)
 	}
 	if eff.Token == "" {
 		// eff.URL is resolved (a current server or RANCHER_CLI_URL exists) but
@@ -53,12 +49,27 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 		// or never had one on a blank machine), so it stays AUTH with body
 		// guidance naming RANCHER_CLI_TOKEN and no machine hint.
 		if eff.ServerName != "" {
-			return nil, eff.UnfinishedChange().Apply(clierr.New(clierr.CodeNotLoggedIn,
+			return eff.UnfinishedChange().Apply(clierr.New(clierr.CodeNotLoggedIn,
 				fmt.Sprintf("not logged in to %q", eff.ServerName)).
 				WithHint(config.LoginHintFor(eff.ServerName)))
 		}
-		return nil, clierr.New(clierr.CodeAuth,
+		return clierr.New(clierr.CodeAuth,
 			"no token for server; set "+config.EnvToken+", or unset "+config.EnvURL+" and use a configured server")
+	}
+	return nil
+}
+
+// RESTConfig builds a client-go rest.Config aimed at the Rancher k8s proxy
+// for the EXPLICITLY named cluster ("local" for the management plane). The
+// cluster is a required parameter, never inherited from stored state: callers pass
+// engine.LocalCluster or the invocation's own --cluster value.
+func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
+	if cluster == "" {
+		return nil, clierr.New(clierr.CodeValidation,
+			`cluster id must not be empty; pass an explicit cluster id ("local" for the management plane)`)
+	}
+	if err := RequireLogin(eff); err != nil {
+		return nil, err
 	}
 	host := fmt.Sprintf("%s/k8s/clusters/%s", BaseURL(eff.URL), cluster)
 

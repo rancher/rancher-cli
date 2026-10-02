@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
 // scripted is one PostReview answer: either a response or a transport
@@ -225,4 +229,58 @@ func http403(body string) engine.ReviewResponse {
 func saNotFound500(tail string) engine.ReviewResponse {
 	body := "unable to create token for impersonated ServiceAccount: can't create token: " + tail
 	return engine.ReviewResponse{Status: 500, Body: []byte(body), Mapped: clierr.Retryable(clierr.CodeGeneric, body)}
+}
+
+// clientProject is the project a typed --project resolved to on cluster
+// c-phmj7. Its namespaces are the namespace LIST through c filtered by the
+// project label, the request the resolver sends first, so the fake's
+// lists, errors and Before hook decide them.
+func clientProject(c *fakeClient, id, display string) runtime.Project {
+	return runtime.Project{Cluster: "c-phmj7", ID: id, DisplayName: display,
+		Namespaces: func(ctx context.Context) (map[string]bool, error) {
+			nsKind, _ := kinds.Lookup("namespace")
+			list, err := c.List(ctx, nsKind.GVR, "", "field.cattle.io/projectId="+id)
+			if err != nil {
+				return nil, err
+			}
+			members := make(map[string]bool, len(list.Items))
+			for i := range list.Items {
+				members[list.Items[i].GetName()] = true
+			}
+			return members, nil
+		}}
+}
+
+// projectContext is t.Context() carrying clientProject(c, id, display) as
+// the project the pipeline resolved.
+func projectContext(t *testing.T, c *fakeClient, id, display string) context.Context {
+	t.Helper()
+	return runtime.WithProject(t.Context(), clientProject(c, id, display))
+}
+
+// unreadProjectContext is t.Context() carrying a project lookup that fails
+// the test when the command reads it.
+func unreadProjectContext(t *testing.T) context.Context {
+	t.Helper()
+	return runtime.WithProjectLookup(t.Context(), func(context.Context) (runtime.Project, error) {
+		t.Error("the project was read")
+		return runtime.Project{}, errors.New("the project was read")
+	})
+}
+
+// blockingProjectContext is t.Context() carrying a project lookup that
+// blocks until the context it is called with ends, standing in for a slow
+// lookup so a test can spend a budget in it. A context that does not end
+// within two seconds fails the test: the lookup ran outside any budget.
+func blockingProjectContext(t *testing.T) context.Context {
+	t.Helper()
+	return runtime.WithProjectLookup(t.Context(), func(ctx context.Context) (runtime.Project, error) {
+		select {
+		case <-ctx.Done():
+			return runtime.Project{}, ctx.Err()
+		case <-time.After(2 * time.Second):
+			t.Error("no budget bounded the project lookup")
+			return runtime.Project{}, errors.New("no budget bounded the project lookup")
+		}
+	})
 }

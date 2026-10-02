@@ -316,25 +316,23 @@ func (m *memberClient) Logs(context.Context, string, string, engine.LogOptions) 
 	return "", nil
 }
 
-// memberIn is a runtime.Input fake supporting bool flags. The shared in type
-// hardcodes Bool to false; secret_test.go needs a working --project-scoped flag.
+// memberIn is the runtime.Input fake of the create secret tests.
 type memberIn struct {
 	s map[string]string
-	b map[string]bool
 	a []string
 }
 
 func (i memberIn) String(k string) string  { return i.s[k] }
-func (i memberIn) Bool(k string) bool      { return i.b[k] }
+func (i memberIn) Bool(string) bool        { return false }
 func (i memberIn) Strings(string) []string { return nil }
 func (i memberIn) IsSet(string) bool       { return false }
 func (i memberIn) Args() []string          { return i.a }
 
-func planMember(t *testing.T, cmd runtime.Command, input runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+func planMember(t *testing.T, ctx context.Context, cmd runtime.Command, input runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	t.Helper()
 	mc, ok := cmd.(runtime.MutatingCommand)
 	require.True(t, ok, "member commands must be MutatingCommand")
-	return mc.Plan(t.Context(), input)
+	return mc.Plan(ctx, input)
 }
 
 func (*recClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {

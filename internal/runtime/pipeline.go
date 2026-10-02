@@ -84,6 +84,10 @@ type IO struct {
 	// notices - write it after the word rancher in every remedy command
 	// (clierr.RemedyMarker); it is never a process-wide value.
 	RemedyDir string
+
+	// Projects resolves a typed --project for a command that takes it,
+	// wired by adaptEntry's non-bare branch.
+	Projects ProjectResolver
 }
 
 // NoticeSource drains buffered operator-facing notices in the order they
@@ -111,6 +115,12 @@ func drainNotices(streams IO) []string {
 // internal Binding drives the --allow-deprecated gate.
 func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	d := cmd.Describe()
+
+	for _, g := range []string{"output", "color"} {
+		if in.IsSet(g) && blank(in.String(g)) {
+			return 0, renderErr(streams, EmptyValueError(g))
+		}
+	}
 
 	if ce := validateFormat(streams.Format); ce != nil {
 		return 0, renderErr(streams, ce)
@@ -141,7 +151,13 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 			fmt.Sprintf("%s is a %s command; re-run without --dry-run", d.Name, d.CommandType)))
 	}
 
-	if ce := validateInput(d, in); ce != nil {
+	if ce := checkProjectFlag(cmd, d, in); ce != nil {
+		return 0, renderErr(streams, ce)
+	}
+
+	// With --project typed, a missing --cluster is the project stage's
+	// refusal, which names the clusters the project is on.
+	if ce := validateInput(d, in, in.IsSet(FlagProject)); ce != nil {
 		return 0, renderErr(streams, ce)
 	}
 
@@ -175,6 +191,13 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 	}
 	if req.IsSet() {
 		if ce := checkCapability(ctx, d, req, streams); ce != nil {
+			return 0, renderErr(streams, ce)
+		}
+	}
+
+	if in.IsSet(FlagProject) {
+		var ce *clierr.Error
+		if ctx, streams, ce = withProject(ctx, cmd, in, streams); ce != nil {
 			return 0, renderErr(streams, ce)
 		}
 	}
@@ -332,7 +355,7 @@ func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
 // VALIDATION error (nil if valid). Commands wanting custom missing-input UX
 // (e.g. a candidate list) mark the field Required:false and validate it
 // themselves in Execute.
-func validateInput(d Descriptor, in Input) *clierr.Error {
+func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 	args := in.Args()
 	for i, a := range d.Args {
 		if a.Required && (i >= len(args) || args[i] == "") {
@@ -348,6 +371,9 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 		}
 	}
 	for _, f := range d.Flags {
+		if ce := emptyValueError(f, in); ce != nil {
+			return ce
+		}
 		if f.Type == "stringSlice" {
 			entries := in.Strings(f.Name)
 			if f.Required && len(entries) == 0 {
@@ -368,7 +394,7 @@ func validateInput(d Descriptor, in Input) *clierr.Error {
 			continue
 		}
 		v := in.String(f.Name)
-		if f.Required && v == "" {
+		if f.Required && v == "" && (!deferCluster || f.Name != FlagCluster) {
 			return missingFlagError(f)
 		}
 		if len(f.Enum) > 0 && v != "" {
@@ -1077,3 +1103,36 @@ func interrupted(err error) *clierr.Error {
 	}
 	return out
 }
+
+// emptyValueError refuses a value-taking flag typed with an empty value,
+// which would otherwise act as if the flag were omitted: a list across
+// every namespace, a default, a filter dropped. A flag whose empty value
+// means something omission does not sets AllowEmpty.
+func emptyValueError(f ArgSpec, in Input) *clierr.Error {
+	if f.Type == "bool" || f.AllowEmpty || !in.IsSet(f.Name) {
+		return nil
+	}
+	empty := blank(in.String(f.Name))
+	if f.Type == "stringSlice" {
+		entries := in.Strings(f.Name)
+		empty = len(entries) == 0 || slices.ContainsFunc(entries, blank)
+	}
+	switch {
+	case !empty:
+		return nil
+	case f.Required:
+		return clierr.New(clierr.CodeValidation, fmt.Sprintf("--%s is empty; pass a value", f.Name))
+	default:
+		return EmptyValueError(f.Name)
+	}
+}
+
+// EmptyValueError is the refusal of a typed empty value of the flag name
+// that may be omitted.
+func EmptyValueError(name string) *clierr.Error {
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("--%s is empty; pass a value or omit --%s", name, name))
+}
+
+// blank reports a value that names nothing: empty, or spaces only.
+func blank(v string) bool { return strings.TrimSpace(v) == "" }

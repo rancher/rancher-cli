@@ -22,9 +22,15 @@ import (
 func completionServer(t *testing.T, network bool) *atomic.Int32 {
 	t.Helper()
 	var hits atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
+		// The project completion reads the steve collection of the
+		// cluster's projects; every other request gets a plain list.
+		if r.URL.Path == "/v1/management.cattle.io.projects/c-abc" {
+			_, _ = w.Write([]byte(`{"count":1,"revision":"1","data":[{"id":"c-abc/p-xyz","metadata":{"name":"p-xyz"},"spec":{"clusterName":"c-abc","displayName":"prod"}}]}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"p-xyz"},"spec":{"displayName":"prod"}}]}`))
 	}))
 	t.Cleanup(srv.Close)

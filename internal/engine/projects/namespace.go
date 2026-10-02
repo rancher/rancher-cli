@@ -31,7 +31,7 @@ func (createNamespaceCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Desc: "add the namespace to this project when it is created"},
+			runtime.ProjectFlag(false, "add the namespace to this project when it is created"),
 			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
 		},
 		Examples:    []string{"rancher create namespace team-a --project p-x --cluster c-x --apply"},
@@ -59,12 +59,12 @@ func (c createNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 		"kind":       "Namespace",
 		"metadata":   map[string]any{"name": name},
 	}}
-	if projectFlag := in.String("project"); projectFlag != "" {
-		projectID, perr := ResolveProject(ctx, c.clients, cluster, projectFlag)
-		if perr != nil {
-			return safety.Effect{}, nil, perr
-		}
-		SetMembership(obj, cluster, projectID)
+	p, scoped, err := runtime.TypedProjectOn(ctx, in, cluster)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	if scoped {
+		SetMembership(obj, cluster, p.ID)
 	}
 
 	client, err := c.clients.Cluster(ctx, cluster)

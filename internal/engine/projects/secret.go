@@ -33,9 +33,9 @@ type createSecretCmd struct {
 }
 
 // NewCreateSecret builds `create secret <name> [--from-literal k=v[,k=v...]]
-// [--type <t>]` (mutating) with two routing modes: bare (--namespace
-// required, ordinary namespaced Secret on the target cluster) and
-// project-scoped (--project + --project-scoped, written on the management
+// [--type <t>]` (mutating) with two routing modes, exactly one of which the
+// flags select: --namespace (an ordinary namespaced Secret on the target
+// cluster) and --project (a project-scoped Secret, written on the management
 // cluster into the project's backing namespace - Rancher's own
 // GetProjectBackingNamespace fallback semantics).
 func NewCreateSecret(clients engine.ClusterClientFactory) runtime.Command {
@@ -51,14 +51,13 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: "namespace", Type: "string", Desc: "`namespace` for the secret"},
 			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
-			{Name: "project", Type: "string", Desc: "project `id|name` to scope the secret to"},
-			{Name: "project-scoped", Type: "bool", Desc: "create a project-scoped secret"},
+			runtime.ProjectFlag(false, "create a project-scoped secret in this project's backing namespace; Rancher copies it into every namespace of the project (not with --namespace)"),
 			{Name: "from-literal", Type: "string", Desc: "secret data as `key=value` pairs (comma-separated)"},
 			{Name: "type", Type: "string", Desc: "secret `type` (default Opaque)"},
 		},
 		Examples: []string{
 			"rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply",
-			"rancher create secret shared-cred --project p-x --project-scoped --cluster c-x --from-literal token=abc --apply",
+			"rancher create secret shared-cred --project p-x --cluster c-x --from-literal token=abc --apply",
 		},
 		Destructive: "true",
 		Network:     true,
@@ -74,15 +73,19 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	}
 	name := args[0]
 
-	projectScoped := in.Bool("project-scoped")
-	projectFlag := in.String("project")
+	projectScoped := in.String(runtime.FlagProject) != ""
 	nsFlag := in.String("namespace")
-	if projectScoped && projectFlag == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "--project is required with --project-scoped")
-	}
-	if projectScoped && nsFlag != "" {
+	switch {
+	case projectScoped && nsFlag != "":
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			"--namespace cannot be combined with --project-scoped; project-scoped secrets are written into the project's backing namespace")
+			"--project and --namespace cannot be combined: --project creates a project-scoped secret in the project's backing namespace, --namespace an ordinary secret in that namespace")
+	case !projectScoped && nsFlag == "":
+		ce := clierr.New(clierr.CodeValidation,
+			"pass --namespace <namespace> for an ordinary secret, or --project <project> for a project-scoped secret")
+		if cluster := in.String(engine.FlagCluster); cluster != "" {
+			ce = ce.WithHint(clierr.Rancher + " access projects --cluster " + clierr.ShellQuote(cluster))
+		}
+		return safety.Effect{}, nil, ce
 	}
 
 	var stringData map[string]any
@@ -105,10 +108,13 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
-		projectID, err := ResolveProject(ctx, c.clients, cluster, projectFlag)
+		// The project is resolved on the downstream cluster it belongs to;
+		// the secret itself is written through the local cluster.
+		p, _, err := runtime.TypedProjectOn(ctx, in, cluster)
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
+		projectID := p.ID
 		backingNS, statusEmpty, err := BackingNamespace(ctx, c.clients, cluster, projectID)
 		if err != nil {
 			return safety.Effect{}, nil, err
@@ -153,10 +159,6 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		return eff, engine.RedactMutationResult(exec, secretKind.RedactPaths, secretKind.Sensitive), nil
 	}
 
-	if nsFlag == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			"--namespace is required, or pass --project with --project-scoped for a project-scoped secret")
-	}
 	cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
 		return safety.Effect{}, nil, err

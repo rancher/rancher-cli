@@ -14,7 +14,7 @@ import (
 // added here is added for every table that lists the collection.
 const (
 	mgmtClustersPath   = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
-	mgmtProjectsPath   = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-aaa11/projects"
+	steveProjectsPath  = "/v1/management.cattle.io.projects/c-aaa11"
 	mgmtUsersPath      = "/k8s/clusters/local/apis/management.cattle.io/v3/users"
 	roleTemplatesPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates"
 	globalRolesPath    = "/k8s/clusters/local/apis/management.cattle.io/v3/globalroles"
@@ -64,10 +64,11 @@ const clustersBody = `{"items":[
 	{"metadata":{"name":"c-ddd44"},"spec":{"displayName":"prod cluster"}}
 ]}`
 
-// projectsBody carries two projects with unique display names.
-const projectsBody = `{"items":[
-	{"metadata":{"name":"p-1"},"spec":{"displayName":"Default"}},
-	{"metadata":{"name":"p-2"},"spec":{"displayName":"System"}}
+// projectsBody is the steve project collection of c-aaa11: two projects
+// with unique display names.
+const projectsBody = `{"count":2,"revision":"1","data":[
+	{"id":"c-aaa11/p-1","metadata":{"name":"p-1"},"spec":{"clusterName":"c-aaa11","displayName":"Default"}},
+	{"id":"c-aaa11/p-2","metadata":{"name":"p-2"},"spec":{"clusterName":"c-aaa11","displayName":"System"}}
 ]}`
 
 // steveFixturePage is one page of a steve collection as a fixture serves

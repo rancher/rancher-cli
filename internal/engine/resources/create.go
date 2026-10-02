@@ -64,6 +64,7 @@ func (*createCmd) Describe() runtime.Descriptor {
 			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}, Desc: "manifest `file`, or - for stdin"},
 			createClusterFlag(),
 			namespaceFlag(),
+			runtime.ProjectFlag(false, "the manifest's namespace must be in this project (namespaced kinds; refused for a Namespace)"),
 		},
 		Examples:    []string{"rancher create resource -f deploy.yaml --cluster prod --dry-run", "rancher create resource -f - --apply"},
 		Destructive: "dependsOnInput", // depends on the manifest's kind (a Sensitive kind is destructive)
@@ -111,7 +112,25 @@ func (c *createCmd) ResolveCapability(_ context.Context, in runtime.Input) (runt
 	if k.NoCreateViaManifest != "" {
 		return runtime.CapabilityRequirement{}, nil
 	}
+	if err := c.projectRefusal(in); err != nil {
+		return runtime.CapabilityRequirement{}, err
+	}
 	return k.Capability, nil
+}
+
+// projectRefusal refuses a typed --project the manifest's kind or a
+// create does not take, from the parsed manifest alone: it runs before the
+// capability stage's requests and before reconcile resolves a cluster.
+func (c *createCmd) projectRefusal(in runtime.Input) error {
+	typed := in.String(FlagProject)
+	if typed == "" {
+		return nil
+	}
+	obj, k, err := c.parseManifest(in)
+	if err != nil {
+		return err
+	}
+	return ProjectRefusal(k, OpCreate, obj.GetName(), in.String(FlagCluster), typed)
 }
 
 func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
@@ -129,7 +148,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 		return safety.Effect{}, nil, err
 	}
 
-	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, k, overrideInput{Input: in, overrides: overrides}, true)
+	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, k, overrideInput{Input: in, overrides: overrides}, OpCreate, obj.GetName())
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

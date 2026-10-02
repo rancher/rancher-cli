@@ -16,9 +16,9 @@ import (
 func newGrantRevokeServer(t *testing.T) *pathCountingServer {
 	t.Helper()
 	return newPathCountingServer(t, map[string]string{
-		mgmtUsersPath:    usersBody,
-		mgmtClustersPath: clustersBody,
-		mgmtProjectsPath: projectsBody,
+		mgmtUsersPath:     usersBody,
+		mgmtClustersPath:  clustersBody,
+		steveProjectsPath: projectsBody,
 		roleTemplatesPath: items(
 			`{"metadata":{"name":"project-owner"},"context":"project"}`,
 			`{"metadata":{"name":"project-member"},"context":"project"}`,
@@ -122,11 +122,11 @@ func TestGrantRevokeSitesFullCallback(t *testing.T) {
 		{name: "--type static enum", tail: []string{"jane", "--type"}, want: []string{"group", "user"}, hits: map[string]int{}},
 		{name: "--cluster value", tail: []string{"jane", "--cluster"}, want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
 		{name: "--cluster= equals form", tail: []string{"jane"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{mgmtClustersPath: 1}},
-		{name: "--project value with a cluster id", tail: []string{"jane", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{mgmtProjectsPath: 1}},
-		{name: "--project value with a cluster display name resolves it first", tail: []string{"jane", "--cluster", "prod", "--project"}, want: projects, hits: map[string]int{mgmtClustersPath: 1, mgmtProjectsPath: 1}},
-		{name: "--project= equals form", tail: []string{"jane", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1", "--project=p-2"}, hits: map[string]int{mgmtProjectsPath: 1}},
+		{name: "--project value with a cluster id", tail: []string{"jane", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
+		{name: "--project value with a cluster display name resolves it first", tail: []string{"jane", "--cluster", "prod", "--project"}, want: projects, hits: map[string]int{mgmtClustersPath: 1, steveProjectsPath: 1}},
+		{name: "--project= equals form", tail: []string{"jane", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1", "--project=p-2"}, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "--project value without a cluster", tail: []string{"jane", "--project"}, hits: map[string]int{}},
-		{name: "--project value with a spaced display name resolves it first", tail: []string{"jane", "--cluster", "prod cluster", "--project"}, hits: map[string]int{mgmtClustersPath: 1, "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-ddd44/projects": 1}},
+		{name: "--project value with a spaced display name resolves it first", tail: []string{"jane", "--cluster", "prod cluster", "--project"}, hits: map[string]int{mgmtClustersPath: 1, "/v1/management.cattle.io.projects/c-ddd44": 1}},
 		{name: "--project value with a display name nothing carries", tail: []string{"jane", "--cluster", "nope", "--project"}, hits: map[string]int{mgmtClustersPath: 1}},
 	}
 	for _, cmd := range []string{"grant", "revoke"} {

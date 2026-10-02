@@ -87,6 +87,10 @@ type ArgSpec struct {
 	// command. Go-only; the manifest carries neither.
 	MissingMessage string `json:"-"`
 	MissingHint    string `json:"-"`
+	// AllowEmpty exempts the flag from the empty-value refusal. Set it only
+	// where a typed empty value means something omission does not, and say
+	// what in a comment at the declaration. Go-only.
+	AllowEmpty bool `json:"-"`
 }
 
 // OutputShape is a command's declared success-result shape: the closed-world
@@ -140,10 +144,6 @@ type Descriptor struct {
 	Toolset     string      `json:"toolset,omitempty"`     // MCP toolset filter ("core" today)
 	Network     bool        `json:"network"`               // performs network I/O
 	Auth        bool        `json:"auth"`                  // requires credentials
-	// ProjectScope reports whether --project applies to this command:
-	// true for generated per-kind commands whose kind is
-	// kinds.ProjectScopable; false (the zero value) for every fixed command.
-	ProjectScope bool `json:"projectScope,omitempty"`
 	// Capability is the command's capability requirement, if any (the zero
 	// value means none). Generated verbs copy this from their kind row; a
 	// bespoke command declares it here directly. Registry.Validate rejects a

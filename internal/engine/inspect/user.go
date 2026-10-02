@@ -81,9 +81,6 @@ func (c *userCmd) Describe() runtime.Descriptor {
 }
 
 func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	if err := rejectProject(in, "inspect user"); err != nil {
-		return runtime.Result{}, err
-	}
 	rs, err := rbac.ResolveInspectUser(ctx, c.clients, in.Args()[0])
 	if err != nil {
 		return runtime.Result{}, err

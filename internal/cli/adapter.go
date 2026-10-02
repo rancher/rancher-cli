@@ -34,7 +34,7 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.BoolFlag{Name: "no-input", Usage: "never prompt; ambiguity becomes an error"},
 		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template=<tpl>"},
 		&ucli.StringFlag{Name: "color", Usage: "auto|always|never"},
-		&ucli.StringFlag{Name: "project", Usage: "scope operations to project namespaces (downstream namespaced resources only)"},
+		&ucli.StringFlag{Name: "project", Usage: "the project, by id or display name (only commands that take --project)"},
 		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes this session (one-way)"},
 	}
 }
@@ -77,6 +77,9 @@ func groupName(fullName string) string {
 func flagsFor(d runtime.Descriptor) []ucli.Flag {
 	var out []ucli.Flag
 	for _, f := range d.Flags {
+		if f.Name == runtime.FlagProject {
+			continue // the global --project flag; listing it declares that the command takes it
+		}
 		switch f.Type {
 		case "bool":
 			out = append(out, &ucli.BoolFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
@@ -203,7 +206,7 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 		Aliases:     d.Aliases,
 		Usage:       d.Usage,
 		Description: primeDescription(d),
-		Metadata:    primeMetadata(d),
+		Metadata:    leafMetadata(d),
 		ArgsUsage:   argsUsage(d.Args),
 		Flags:       flagsFor(d),
 		// Slice flags receive one entry per occurrence: urfave's default
@@ -269,6 +272,35 @@ func primeMetadata(d runtime.Descriptor) map[string]any {
 		return nil
 	}
 	return map[string]any{primeMetadataKey: true}
+}
+
+// projectMetadataKey is the Metadata map key holding the description of a
+// command's own --project entry: --project is parsed once, as the global
+// flag, so the help and flag-name completion of a command that takes it
+// show it from here, with what it does for that command.
+const projectMetadataKey = "project"
+
+// leafMetadata is primeMetadata plus the command's --project description
+// when it takes --project; nil for an ordinary command that takes none.
+func leafMetadata(d runtime.Descriptor) map[string]any {
+	md := primeMetadata(d)
+	for _, f := range d.Flags {
+		if f.Name != runtime.FlagProject {
+			continue
+		}
+		if md == nil {
+			md = map[string]any{}
+		}
+		md[projectMetadataKey] = f.Desc
+	}
+	return md
+}
+
+// commandProject returns the description of cmd's own --project entry and
+// whether cmd takes --project.
+func commandProject(cmd *ucli.Command) (string, bool) {
+	desc, ok := cmd.Metadata[projectMetadataKey].(string)
+	return desc, ok
 }
 
 // commandIsPrime reports whether cmd carries the Prime metadata flag.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -54,7 +55,10 @@ func prtbListItem(user, roleTemplate string) unstructured.Unstructured {
 	}}
 }
 
-func setUpProjectFixture(t *testing.T, backingNamespace string) (*fakeFactory, *fakeClient, *fakeClient) {
+// setUpProjectFixture is project p-1 ("web") on cluster c-test: steve lists
+// it through the root, the local client serves its GET and bindings, and
+// the downstream client its namespaces and workloads.
+func setUpProjectFixture(t *testing.T, backingNamespace string) (*fakeFactory, *steveRoot, *fakeClient, *fakeClient) {
 	t.Helper()
 	projectKind := mustKind(t, "project")
 	nsKind := mustKind(t, "namespace")
@@ -62,10 +66,8 @@ func setUpProjectFixture(t *testing.T, backingNamespace string) (*fakeFactory, *
 	depKind := mustKind(t, "deployment")
 	prtbKind := mustKind(t, "projectroletemplatebinding")
 
+	root := projectsRoot(t, "c-test", steveProjectItem("c-test", "p-1", "web"))
 	mgmt := newFakeClient()
-	mgmt.withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
-		Items: []unstructured.Unstructured{*projectFixtureObj("p-1", "web", backingNamespace)},
-	})
 	mgmt.withObject(projectKind.GVR, "c-test", "p-1", projectFixtureObj("p-1", "web", backingNamespace))
 	prtbNS := backingNamespace
 	if prtbNS == "" {
@@ -92,13 +94,13 @@ func setUpProjectFixture(t *testing.T, backingNamespace string) (*fakeFactory, *
 		engine.LocalCluster: mgmt,
 		"c-test":            downstream,
 	}}
-	return fac, mgmt, downstream
+	return fac, root, mgmt, downstream
 }
 
 func TestInspectProjectAssemblesFullDocument(t *testing.T) {
 	t.Parallel()
-	fac, _, _ := setUpProjectFixture(t, "")
-	cmd := NewInspectProject(fac)
+	fac, root, _, _ := setUpProjectFixture(t, "")
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -135,14 +137,16 @@ func TestInspectProjectAssemblesFullDocument(t *testing.T) {
 
 	require.NotNil(t, data.ResourceQuota)
 	require.NotNil(t, data.Usage)
+	assert.Equal(t, []string{steveProjectsPath("c-test")}, root.requests(),
+		"the positional resolves through the cluster's steve projects collection, read once")
 }
 
 func TestInspectProjectFallsBackToProjectIDNamespaceForMembers(t *testing.T) {
 	t.Parallel()
 	// backingNamespace absent → the prtb list must fall back to the
 	// project-id namespace (fixture seeds prtbs there when passed "").
-	fac, _, _ := setUpProjectFixture(t, "")
-	cmd := NewInspectProject(fac)
+	fac, root, _, _ := setUpProjectFixture(t, "")
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -152,10 +156,10 @@ func TestInspectProjectFallsBackToProjectIDNamespaceForMembers(t *testing.T) {
 
 func TestInspectProjectDegradesForbiddenMemberListToWarning(t *testing.T) {
 	t.Parallel()
-	fac, mgmt, _ := setUpProjectFixture(t, "")
+	fac, root, mgmt, _ := setUpProjectFixture(t, "")
 	prtbKind := mustKind(t, "projectroletemplatebinding")
 	mgmt.withListErr(prtbKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -172,17 +176,43 @@ func TestInspectProjectDegradesForbiddenMemberListToWarning(t *testing.T) {
 	require.NotNil(t, data.Usage)
 }
 
+// TestInspectProjectIDWinsWarningComesFirst asserts a positional that is one
+// project's id and another's display name resolves to the id, and the
+// warning naming the other project, worded for a positional (no flag),
+// leads the command's warnings.
+func TestInspectProjectIDWinsWarningComesFirst(t *testing.T) {
+	t.Parallel()
+	fac, root, mgmt, _ := setUpProjectFixture(t, "")
+	root.answer(steveProjectsPath("c-test"), stevePage(
+		steveProjectItem("c-test", "p-1", "web"), steveProjectItem("c-test", "p-2", "p-1")))
+	userKind := mustKind(t, "user")
+	mgmt.withListErr(userKind.GVR, errors.New("users is forbidden"))
+	cmd := NewInspectProject(fac, root.roots())
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+	assert.Equal(t, "p-1", data.ID)
+	assert.Equal(t, []string{
+		"'p-1' is the id of project 'p-1'; project 'p-2' also has the display name 'p-1' - pass 'p-2' for that one",
+		"users unavailable: users is forbidden",
+	}, res.Warnings)
+	assert.NotContains(t, res.Warnings[0], "--project")
+}
+
 // TestInspectProjectMemberShapedAccess is the anchor case: a project member
-// passes the project GET and the PRTB list but cannot list namespaces. The
-// command succeeds with the readable sections and annotates the rest.
+// passes the project GET and the PRTB list but can read namespaces neither
+// through the downstream LIST nor through steve. The command succeeds with
+// the readable sections and annotates the rest.
 func TestInspectProjectMemberShapedAccess(t *testing.T) {
 	t.Parallel()
-	fac, _, downstream := setUpProjectFixture(t, "")
+	fac, root, _, downstream := setUpProjectFixture(t, "")
 	nsKind := mustKind(t, "namespace")
 	podKind := mustKind(t, "pod")
 	depKind := mustKind(t, "deployment")
 	downstream.withListErr(nsKind.GVR, clierr.New(clierr.CodeRBAC, "namespaces is forbidden"))
-	cmd := NewInspectProject(fac)
+	root.answer(steveNamespacesPath("c-test"), steveAnswer{status: http.StatusUnauthorized})
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -198,9 +228,10 @@ func TestInspectProjectMemberShapedAccess(t *testing.T) {
 		{Section: sectionNamespaces, State: stateUnavailable, Code: clierr.CodeRBAC},
 		{Section: sectionUsage, State: stateUnavailable, Code: clierr.CodeRBAC},
 	}, data.Degraded)
+	refused := "Rancher refused access to cluster 'c-test' (401 with no body, its answer to a user with no role on that cluster)"
 	assert.Equal(t, []string{
-		"namespaces unavailable: namespaces is forbidden",
-		"usage unavailable: namespaces unknown (namespaces is forbidden)",
+		"namespaces unavailable: " + refused,
+		"usage unavailable: namespaces unknown (" + refused + ")",
 	}, res.Warnings)
 
 	// A lost membership set makes the workload lists meaningless; they are
@@ -230,14 +261,42 @@ func TestInspectProjectMemberShapedAccess(t *testing.T) {
 	assert.Contains(t, res.Text, "USAGE\n  usage: unavailable\n")
 }
 
+// TestInspectProjectMemberReadsItsNamespacesFromSteve asserts a project
+// member, whom the downstream namespace LIST refuses, still gets the
+// project's namespaces: the ones steve lists for the caller that carry the
+// project label, and the workload sections built on them.
+func TestInspectProjectMemberReadsItsNamespacesFromSteve(t *testing.T) {
+	t.Parallel()
+	fac, root, _, downstream := setUpProjectFixture(t, "")
+	nsKind := mustKind(t, "namespace")
+	downstream.withListErr(nsKind.GVR, clierr.New(clierr.CodeRBAC, "namespaces is forbidden"))
+	labelled := func(name, project string) map[string]any {
+		return map[string]any{"id": name, "metadata": map[string]any{"name": name, "labels": map[string]any{"field.cattle.io/projectId": project}}}
+	}
+	root.answer(steveNamespacesPath("c-test"), stevePage(labelled("ns-a", "p-1"), labelled("ns-b", "p-1"), labelled("ns-other", "p-2")))
+	cmd := NewInspectProject(fac, root.roots())
+
+	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	data := res.Data.(projectResult)
+	assert.Empty(t, data.Degraded)
+	names := make([]string, 0, len(data.Namespaces))
+	for _, ns := range data.Namespaces {
+		names = append(names, ns.Name)
+	}
+	assert.ElementsMatch(t, []string{"ns-a", "ns-b"}, names)
+	require.NotNil(t, data.Usage)
+}
+
 func TestInspectProjectMembershipAndMembersBothDenied(t *testing.T) {
 	t.Parallel()
-	fac, mgmt, downstream := setUpProjectFixture(t, "")
+	fac, root, mgmt, downstream := setUpProjectFixture(t, "")
 	nsKind := mustKind(t, "namespace")
 	prtbKind := mustKind(t, "projectroletemplatebinding")
 	downstream.withListErr(nsKind.GVR, clierr.New(clierr.CodeRBAC, "namespaces is forbidden"))
+	root.answer(steveNamespacesPath("c-test"), steveAnswer{status: http.StatusUnauthorized})
 	mgmt.withListErr(prtbKind.GVR, clierr.New(clierr.CodeRBAC, "prtbs is forbidden"))
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -256,9 +315,9 @@ func TestInspectProjectMembershipAndMembersBothDenied(t *testing.T) {
 
 func TestInspectProjectDownstreamClientFailureMatchesMembershipFailure(t *testing.T) {
 	t.Parallel()
-	fac, _, _ := setUpProjectFixture(t, "")
+	fac, root, _, _ := setUpProjectFixture(t, "")
 	fac.perClusterErr = map[string]error{"c-test": clierr.New(clierr.CodeGeneric, "no kubeconfig for c-test")}
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -275,11 +334,11 @@ func TestInspectProjectDownstreamClientFailureMatchesMembershipFailure(t *testin
 
 func TestInspectProjectPodListDeniedBlocksUsage(t *testing.T) {
 	t.Parallel()
-	fac, _, downstream := setUpProjectFixture(t, "")
+	fac, root, _, downstream := setUpProjectFixture(t, "")
 	podKind := mustKind(t, "pod")
 	depKind := mustKind(t, "deployment")
 	downstream.withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "pods is forbidden"))
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -301,10 +360,10 @@ func TestInspectProjectPodListDeniedBlocksUsage(t *testing.T) {
 
 func TestInspectProjectDeploymentListDeniedKeepsUsage(t *testing.T) {
 	t.Parallel()
-	fac, _, downstream := setUpProjectFixture(t, "")
+	fac, root, _, downstream := setUpProjectFixture(t, "")
 	depKind := mustKind(t, "deployment")
 	downstream.withListErr(depKind.GVR, clierr.New(clierr.CodeRBAC, "deployments is forbidden"))
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -321,9 +380,9 @@ func TestInspectProjectDeploymentListDeniedKeepsUsage(t *testing.T) {
 
 func TestInspectProjectMetricsOnlyFailureKeepsUsage(t *testing.T) {
 	t.Parallel()
-	fac, _, downstream := setUpProjectFixture(t, "")
+	fac, root, _, downstream := setUpProjectFixture(t, "")
 	downstream.withListErr(podMetricsGVR, errors.New("no metrics server"))
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -345,7 +404,7 @@ func TestInspectProjectMetricsOnlyFailureKeepsUsage(t *testing.T) {
 // denial on them must not turn a verified-empty project into a failure.
 func TestInspectProjectZeroMembersSkipsWorkloadLists(t *testing.T) {
 	t.Parallel()
-	fac, _, downstream := setUpProjectFixture(t, "")
+	fac, root, _, downstream := setUpProjectFixture(t, "")
 	nsKind := mustKind(t, "namespace")
 	podKind := mustKind(t, "pod")
 	depKind := mustKind(t, "deployment")
@@ -353,7 +412,7 @@ func TestInspectProjectZeroMembersSkipsWorkloadLists(t *testing.T) {
 	downstream.withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "pods is forbidden"))
 	downstream.withListErr(depKind.GVR, clierr.New(clierr.CodeRBAC, "deployments is forbidden"))
 	downstream.withListErr(podMetricsGVR, errors.New("no metrics server"))
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
@@ -395,17 +454,33 @@ func TestInspectProjectCancellationStaysHard(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			fac, mgmt, downstream := setUpProjectFixture(t, "")
+			fac, root, mgmt, downstream := setUpProjectFixture(t, "")
 			tc.set(mgmt, downstream)
 			ctx, cancel := context.WithCancel(t.Context())
-			cancel()
+			defer cancel()
 
-			rc := NewInspectProject(fac).(runtime.ReadCommand)
+			// The interrupt lands once the positional resolved, so the
+			// section reads run under a canceled context.
+			roots := fakeRoots{rc: cancelAfterRoot{RootClient: root, cancel: cancel}}
+			rc := NewInspectProject(fac, roots).(runtime.ReadCommand)
 			_, err := rc.Execute(ctx, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}}, nil)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, context.Canceled)
 		})
 	}
+}
+
+// cancelAfterRoot cancels the caller's context once a root read has
+// answered.
+type cancelAfterRoot struct {
+	engine.RootClient
+	cancel context.CancelFunc
+}
+
+func (r cancelAfterRoot) GetJSON(ctx context.Context, path string) ([]byte, error) {
+	body, err := r.RootClient.GetJSON(ctx, path)
+	r.cancel()
+	return body, err
 }
 
 func TestRenderProjectTextSections(t *testing.T) {
@@ -487,10 +562,8 @@ func TestInspectProjectZeroPodsVerifiedZero(t *testing.T) {
 	depKind := mustKind(t, "deployment")
 	prtbKind := mustKind(t, "projectroletemplatebinding")
 
+	root := projectsRoot(t, "c-test", steveProjectItem("c-test", "p-empty", "Empty"))
 	mgmt := newFakeClient()
-	mgmt.withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
-		Items: []unstructured.Unstructured{*projectFixtureObj("p-empty", "Empty", "")},
-	})
 	mgmt.withObject(projectKind.GVR, "c-test", "p-empty", projectFixtureObj("p-empty", "Empty", ""))
 	mgmt.withListNS(prtbKind.GVR, "p-empty", &unstructured.UnstructuredList{})
 
@@ -506,7 +579,7 @@ func TestInspectProjectZeroPodsVerifiedZero(t *testing.T) {
 		"c-test":            downstream,
 	}}
 
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 	res, err := execRead(t, cmd, input{args: []string{"p-empty"}, s: map[string]string{"cluster": "c-test"}})
 	require.NoError(t, err)
 	data := res.Data.(projectResult)
@@ -599,17 +672,16 @@ func TestProjectMemberSystemJSONContract(t *testing.T) {
 	assert.False(t, has, "zero System must omit the key")
 }
 
-// TestInspectProjectNotFoundCurated asserts that the post-Resolve project Get
-// returns a hint-less NOT_FOUND; it must be curated to "project not found:
-// <id>" with a list hint - the same shape inspect cluster uses.
+// TestInspectProjectNotFoundCurated asserts the command's NOT_FOUND for a
+// project steve does not list on the cluster, whose GET by id also answers
+// NOT_FOUND: the message names the value and the cluster, and the hint
+// lists the projects the caller can read there.
 func TestInspectProjectNotFoundCurated(t *testing.T) {
 	t.Parallel()
 	projectKind := mustKind(t, "project")
 	nsKind := mustKind(t, "namespace")
+	root := projectsRoot(t, "c-test", steveProjectItem("c-test", "p-1", "web"))
 	mgmt := newFakeClient().
-		withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
-			Items: []unstructured.Unstructured{*projectFixtureObj("p-gone", "Gone", "")},
-		}).
 		withGetErr(projectKind.GVR, "c-test", "p-gone", kinds.NotFoundCurated(projectKind, "p-gone", ""))
 	downstream := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{})
@@ -618,14 +690,16 @@ func TestInspectProjectNotFoundCurated(t *testing.T) {
 		"c-test":            downstream,
 	}}
 
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 	_, err := execRead(t, cmd, input{args: []string{"p-gone"}, s: map[string]string{"cluster": "c-test"}})
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Equal(t, "project not found: p-gone", ce.Message)
-	assert.NotEmpty(t, ce.Hint, "curated project error must carry a list hint")
+	assert.Equal(t, "project not found: 'p-gone'; it is not among the projects you can read on cluster 'c-test'; pass a project id or display name", ce.Message)
+	assert.Equal(t, clierr.Rancher+" access projects --cluster 'c-test'", ce.Hint)
+	assert.Equal(t, []objKey{{gvr: projectKind.GVR, ns: "c-test", name: "p-gone"}}, mgmt.getCalls,
+		"one GET by id, and no project GET after the failed resolution")
 }
 
 // TestInspectProjectGetDeniedIsHardRBAC verifies the first required
@@ -636,10 +710,8 @@ func TestInspectProjectGetDeniedIsHardRBAC(t *testing.T) {
 	projectKind := mustKind(t, "project")
 	nsKind := mustKind(t, "namespace")
 	denied := clierr.New(clierr.CodeRBAC, "projects.management.cattle.io \"p-test\" is forbidden")
+	root := projectsRoot(t, "c-test", steveProjectItem("c-test", "p-test", "Test"))
 	mgmt := newFakeClient().
-		withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
-			Items: []unstructured.Unstructured{*projectFixtureObj("p-test", "Test", "")},
-		}).
 		withGetErr(projectKind.GVR, "c-test", "p-test", denied)
 	downstream := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{})
@@ -648,7 +720,7 @@ func TestInspectProjectGetDeniedIsHardRBAC(t *testing.T) {
 		"c-test":            downstream,
 	}}
 
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 	res, err := execRead(t, cmd, input{args: []string{"p-test"}, s: map[string]string{"cluster": "c-test"}})
 	require.Error(t, err)
 	var ce *clierr.Error
@@ -667,10 +739,8 @@ func TestInspectProjectNotFoundWithHintPassesThrough(t *testing.T) {
 	nsKind := mustKind(t, "namespace")
 	alreadyCurated := clierr.New(clierr.CodeNotFound, "project not found: p-gone").
 		WithHint("list with: rancher get projects")
+	root := projectsRoot(t, "c-test", steveProjectItem("c-test", "p-gone", "Gone"))
 	mgmt := newFakeClient().
-		withListNS(projectKind.GVR, "c-test", &unstructured.UnstructuredList{
-			Items: []unstructured.Unstructured{*projectFixtureObj("p-gone", "Gone", "")},
-		}).
 		withGetErr(projectKind.GVR, "c-test", "p-gone", alreadyCurated)
 	downstream := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{})
@@ -679,7 +749,7 @@ func TestInspectProjectNotFoundWithHintPassesThrough(t *testing.T) {
 		"c-test":            downstream,
 	}}
 
-	cmd := NewInspectProject(fac)
+	cmd := NewInspectProject(fac, root.roots())
 	_, err := execRead(t, cmd, input{args: []string{"p-gone"}, s: map[string]string{"cluster": "c-test"}})
 	require.Error(t, err)
 	assert.Equal(t, alreadyCurated, err, "already-curated error must pass through unchanged")

@@ -7,6 +7,7 @@ package testrancher
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -66,9 +67,14 @@ const (
 	// the CLI reads for the clusters a caller can see. The facade serves it
 	// only when Options.ClusterVisibility says what each bearer sees.
 	ClustersCollectionPath = "/v1/management.cattle.io.clusters"
-	// ProjectsCollectionPath is the steve collection of management Projects,
-	// served only when Options.ProjectVisibility says what each bearer sees.
+	// ProjectsCollectionPath is the steve collection of management Projects
+	// on every cluster; ProjectsCollectionPath/<cluster> is the collection of
+	// one cluster's projects.
 	ProjectsCollectionPath = "/v1/management.cattle.io.projects"
+	// LocalProjectsPath is the Kubernetes path of the local cluster's
+	// management Projects behind the local-cluster proxy; the facade answers
+	// a GET by id under it for its built-in projects.
+	LocalProjectsPath = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/local/projects"
 
 	// rke2ReleasePath/k3sReleasePath are the channel-server release routes.
 	// Must match internal/engine/provisioning's own
@@ -171,10 +177,14 @@ type Options struct {
 	// (clusters, projects, a cluster's namespaces) with steve's continue
 	// token (an offset); 0 serves one page.
 	ClustersPageSize int
-	// ProjectVisibility says which management Projects a bearer sees on the
-	// steve projects collection; a bearer it does not know is answered 401.
-	// nil leaves the collection unserved (404).
-	ProjectVisibility func(bearer string) ([]ProjectFixture, bool)
+	// ProjectVisibility says which management Projects a bearer sees on a
+	// steve projects collection: cluster is "" for the collection of every
+	// cluster and the cluster id for ProjectsCollectionPath/<cluster>, where
+	// the facade keeps only the projects on that cluster. ok=false answers
+	// 401 (a bearer it does not know); an error answers 500. nil serves the
+	// built-in projects (the local cluster's Default and System) to every
+	// authorized bearer, and their GET by id under LocalProjectsPath.
+	ProjectVisibility func(ctx context.Context, bearer, cluster string) (projects []ProjectFixture, ok bool, err error)
 	// NamespaceVisibility says which namespaces a bearer sees on one
 	// cluster's steve namespace collection (/k8s/clusters/<id>/v1/namespaces);
 	// a bearer it does not know is answered 401. nil leaves the collection
@@ -540,8 +550,10 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleCRTCollection(w, r)
 	case f.opts.ClusterVisibility != nil && r.Method == http.MethodGet && r.URL.Path == ClustersCollectionPath:
 		f.handleClustersCollection(w, r)
-	case f.opts.ProjectVisibility != nil && r.Method == http.MethodGet && r.URL.Path == ProjectsCollectionPath:
-		f.handleProjectsCollection(w, r)
+	case r.Method == http.MethodGet && isProjectsCollection(r.URL.Path):
+		f.handleProjectsCollection(w, r, projectsCollectionCluster(r.URL.Path))
+	case f.opts.ProjectVisibility == nil && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, LocalProjectsPath+"/"):
+		f.handleLocalProjectGet(w, r, strings.TrimPrefix(r.URL.Path, LocalProjectsPath+"/"))
 	case f.opts.NamespaceVisibility != nil && r.Method == http.MethodGet && steveNamespacesCluster(r.URL.Path) != "":
 		f.handleNamespacesCollection(w, r, steveNamespacesCluster(r.URL.Path))
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, CRTCollectionPath+"/"):
@@ -1493,13 +1505,59 @@ type NamespaceFixture struct {
 	Project string
 }
 
-func (f *Facade) handleProjectsCollection(w http.ResponseWriter, r *http.Request) {
-	visible, ok := f.opts.ProjectVisibility(bearerFromHeader(r))
+// builtinProjects are the projects Rancher creates on the local cluster,
+// served when Options.ProjectVisibility is nil. Rancher generates the ids;
+// these are fixed.
+var builtinProjects = []ProjectFixture{
+	{Cluster: "local", ID: "p-default", DisplayName: "Default"},
+	{Cluster: "local", ID: "p-system", DisplayName: "System"},
+}
+
+// isProjectsCollection reports whether path is the projects collection of
+// every cluster or of one cluster (ProjectsCollectionPath/<cluster>).
+func isProjectsCollection(path string) bool {
+	return path == ProjectsCollectionPath || projectsCollectionCluster(path) != ""
+}
+
+// projectsCollectionCluster returns the cluster id of a one-cluster
+// projects collection path, or "" for any other path.
+func projectsCollectionCluster(path string) string {
+	cluster, ok := strings.CutPrefix(path, ProjectsCollectionPath+"/")
+	if !ok || strings.Contains(cluster, "/") {
+		return ""
+	}
+	return cluster
+}
+
+// visibleProjects is the projects the caller sees on the collection of
+// cluster ("" for every cluster), through Options.ProjectVisibility or the
+// built-in projects.
+func (f *Facade) visibleProjects(r *http.Request, cluster string) ([]ProjectFixture, bool, error) {
+	if f.opts.ProjectVisibility != nil {
+		return f.opts.ProjectVisibility(r.Context(), bearerFromHeader(r), cluster)
+	}
+	if !f.authorizedBearer(r) {
+		return nil, false, nil
+	}
+	return builtinProjects, true, nil
+}
+
+// handleProjectsCollection serves the projects collection of every cluster
+// (cluster "") or of one cluster, with steve's item shape: id
+// <cluster>/<project>, metadata.namespace the cluster.
+func (f *Facade) handleProjectsCollection(w http.ResponseWriter, r *http.Request, cluster string) {
+	visible, ok, err := f.visibleProjects(r, cluster)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	if !ok {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	visible = slices.Clone(visible)
+	visible = slices.DeleteFunc(slices.Clone(visible), func(p ProjectFixture) bool {
+		return cluster != "" && p.Cluster != cluster
+	})
 	sort.Slice(visible, func(i, j int) bool {
 		if visible[i].Cluster != visible[j].Cluster {
 			return visible[i].Cluster < visible[j].Cluster
@@ -1509,13 +1567,46 @@ func (f *Facade) handleProjectsCollection(w http.ResponseWriter, r *http.Request
 	items := make([]map[string]any, 0, len(visible))
 	for _, p := range visible {
 		items = append(items, map[string]any{
-			"id":       p.Cluster + "/" + p.ID,
-			"type":     "management.cattle.io.project",
-			"metadata": map[string]any{"name": p.ID, "namespace": p.Cluster},
-			"spec":     map[string]any{"clusterName": p.Cluster, "displayName": p.DisplayName},
+			"id":         p.Cluster + "/" + p.ID,
+			"type":       "management.cattle.io.project",
+			"apiVersion": "management.cattle.io/v3",
+			"kind":       "Project",
+			"metadata":   map[string]any{"name": p.ID, "namespace": p.Cluster},
+			"spec":       map[string]any{"clusterName": p.Cluster, "displayName": p.DisplayName},
 		})
 	}
 	f.serveSteveCollection(w, r, "management.cattle.io.project", items)
+}
+
+// handleLocalProjectGet answers the Kubernetes GET of one built-in project
+// by id: the Project object, or the apiserver's 404 Status for an id it
+// does not hold.
+func (f *Facade) handleLocalProjectGet(w http.ResponseWriter, r *http.Request, id string) {
+	if !f.authorizedBearer(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	for _, p := range builtinProjects {
+		if p.ID == id {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"apiVersion": "management.cattle.io/v3",
+				"kind":       "Project",
+				"metadata":   map[string]any{"name": p.ID, "namespace": p.Cluster},
+				"spec":       map[string]any{"clusterName": p.Cluster, "displayName": p.DisplayName},
+			})
+			return
+		}
+	}
+	writeJSON(w, http.StatusNotFound, map[string]any{
+		"kind":       "Status",
+		"apiVersion": "v1",
+		"metadata":   map[string]any{},
+		"status":     "Failure",
+		"message":    fmt.Sprintf("projects.management.cattle.io %q not found", id),
+		"reason":     "NotFound",
+		"details":    map[string]any{"name": id, "group": "management.cattle.io", "kind": "projects"},
+		"code":       http.StatusNotFound,
+	})
 }
 
 // steveNamespacesCluster returns the cluster id of a steve namespace
@@ -1557,8 +1648,9 @@ func (f *Facade) handleNamespacesCollection(w http.ResponseWriter, r *http.Reque
 }
 
 // serveSteveCollection writes one page of a steve collection: count is the
-// whole collection, continue an offset token when ClustersPageSize cuts the
-// page, revision fixed.
+// whole collection and left out when it is zero, as steve answers an empty
+// collection; continue an offset token when ClustersPageSize cuts the page;
+// revision fixed.
 func (f *Facade) serveSteveCollection(w http.ResponseWriter, r *http.Request, resourceType string, items []map[string]any) {
 	offset := 0
 	if c := r.URL.Query().Get("continue"); c != "" {
@@ -1576,9 +1668,11 @@ func (f *Facade) serveSteveCollection(w http.ResponseWriter, r *http.Request, re
 	body := map[string]any{
 		"type":         "collection",
 		"resourceType": resourceType,
-		"count":        len(items),
 		"revision":     "1",
 		"data":         items[offset:end],
+	}
+	if len(items) > 0 {
+		body["count"] = len(items)
 	}
 	if end < len(items) {
 		body["continue"] = strconv.Itoa(end)

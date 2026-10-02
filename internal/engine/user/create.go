@@ -87,10 +87,10 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 		return safety.Effect{}, nil, err
 	}
 
-	// IsSet distinguishes an omitted --display-name (default to the
-	// username) from an explicitly empty one, which is kept empty.
+	// An omitted --display-name defaults to the username; the pipeline
+	// refuses a typed empty one.
 	displayName := in.String("display-name")
-	if !in.IsSet("display-name") {
+	if displayName == "" {
 		displayName = username
 	}
 

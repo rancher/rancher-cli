@@ -11,7 +11,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -49,6 +48,7 @@ func (c *whoCanCmd) Describe() runtime.Descriptor {
 			{Name: "cluster", Type: "string", Required: true, Desc: "cluster name or id the question is about",
 				MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint},
 			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace the question is about"},
+			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "all-namespaces", Type: "bool", Aliases: []string{"A"}, Desc: "ask in every namespace you can list, one row per subject per namespace"},
 			{Name: "group", Type: "string", Desc: "API group when the resource name exists in several groups"},
 			{Name: "subresource", Type: "string", Desc: "subresource such as status or log"},
@@ -131,7 +131,7 @@ type rowSpec struct {
 }
 
 func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	p, err := parseQuestion(in, true)
+	p, err := parseQuestion(in, true, true)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -179,14 +179,11 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 			return runtime.Result{}, err
 		}
 	}
-	if p.scope.project != "" {
-		id, err := projects.ResolveProject(ctx, c.clients, clusterID, p.scope.project)
-		if err != nil {
-			return runtime.Result{}, budgetError(ctx, err, "project resolution")
-		}
-		p.scope.project = id
+	project, err := typedProject(ctx, in, clusterID)
+	if err != nil {
+		return runtime.Result{}, budgetError(ctx, err, "project resolution")
 	}
-	scope, err := resolveScope(ctx, callerClient, clusterID, p.scope)
+	scope, err := resolveScope(ctx, callerClient, clusterID, p.scope, project)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "namespace discovery")
 	}

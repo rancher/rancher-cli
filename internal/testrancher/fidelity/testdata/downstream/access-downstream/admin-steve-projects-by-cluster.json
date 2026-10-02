@@ -1,0 +1,55 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "projects",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 2,
+        "data": [
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "id": "\u003cid\u003e",
+            "kind": "Project",
+            "metadata": {
+              "name": "\u003cname\u003e",
+              "namespace": "{downstream}"
+            },
+            "spec": {
+              "clusterName": "{downstream}",
+              "displayName": "Default"
+            },
+            "type": "management.cattle.io.project"
+          },
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "id": "\u003cid\u003e",
+            "kind": "Project",
+            "metadata": {
+              "name": "\u003cname\u003e",
+              "namespace": "{downstream}"
+            },
+            "spec": {
+              "clusterName": "{downstream}",
+              "displayName": "System"
+            },
+            "type": "management.cattle.io.project"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "unknown-cluster",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "data": [],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    }
+  ]
+}

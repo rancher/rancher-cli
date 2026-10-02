@@ -6,9 +6,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/rancher/rancher-cli/internal/engine/access"
 	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	"github.com/rancher/rancher-cli/internal/engine/rbac/complete"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/stretchr/testify/assert"
@@ -27,8 +27,11 @@ func TestAllowanceLimit(t *testing.T) {
 	assert.Equal(t, 2+2*(1+completion.DiscoveryGroupLimit), n, "two roots, and per root a plain document plus one per group")
 	n, ok = allowanceLimit(completion.AllowanceSteveClusterPages)
 	require.True(t, ok)
-	assert.Equal(t, access.SteveMaxPages, n)
-	for _, a := range []completion.Allowance{0, -1, completion.AllowanceSteveClusterPages + 1, 100} {
+	assert.Equal(t, steve.MaxPages, n)
+	n, ok = allowanceLimit(completion.AllowanceSteveProjectPages)
+	require.True(t, ok)
+	assert.Equal(t, steve.MaxPages, n)
+	for _, a := range []completion.Allowance{0, -1, completion.AllowanceSteveProjectPages + 1, 100} {
 		_, ok := allowanceLimit(a)
 		assert.False(t, ok, "allowance %d", a)
 	}
@@ -146,9 +149,9 @@ func TestValidateLiveWiring(t *testing.T) {
 // package, access projects and the three access questions through the
 // access one, create cluster and the three cluster-family verbs that
 // take a pool through the provisioning one, the two oidc-client secret
-// verbs through the oidcclient one, logs through the observe one, every
-// other entry's probe implements nothing, and BuildRoot accepts the
-// wiring.
+// verbs through the oidcclient one, logs through the observe one, inspect
+// project's positional through the projects one, every other entry's
+// probe implements nothing, and BuildRoot accepts the wiring.
 func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	t.Parallel()
 	var owners []string
@@ -167,16 +170,17 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		"create cluster", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",
-		"logs",
+		"logs", "inspect project",
 	}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)
 }
 
 // TestPositionalKindsMatchTheWiringTables is a golden of the wiring on purpose:
-// the bespoke first-positional table names exactly the twelve commands that get
-// a kind (the three inspect leaves, the five cluster-family verbs, the three
-// oidc-client secret verbs and create password-change-request), and the
+// the bespoke first-positional table names exactly the eleven commands that get
+// a kind (inspect cluster and inspect user, the five cluster-family verbs, the
+// three oidc-client secret verbs and create password-change-request; inspect
+// project completes through its own source), and the
 // flag-source and kind-source tables carry exactly the keys listed in the
 // assertions. An intended change to the wiring edits this test in the same
 // commit.
@@ -184,7 +188,6 @@ func TestPositionalKindsMatchTheWiringTables(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
 		"inspect cluster":                "managementcluster",
-		"inspect project":                "project",
 		"inspect user":                   "user",
 		"cluster scale":                  "provisioningcluster",
 		"cluster set-autoscaling":        "provisioningcluster",

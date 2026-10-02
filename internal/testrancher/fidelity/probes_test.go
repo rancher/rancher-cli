@@ -46,6 +46,8 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access-downstream/member-steve-clusters", "access-downstream/member-proxy-whoami",
 		"access-downstream/member-management-refusals",
 		"access-downstream/member-steve-projects-and-namespaces",
+		"access-downstream/member-steve-projects-by-cluster", "access-downstream/admin-steve-projects-by-cluster",
+		"project-lookup/admin-local-projects",
 		"access/whoami-through-proxy", "access/impersonate-user-dropped-on-local",
 		"access/rules-review-standard-user-default", "access/self-access-review-with-version",
 		"access/subject-access-review-right-and-anonymous",

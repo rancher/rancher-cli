@@ -9,17 +9,20 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
-	"github.com/rancher/rancher-cli/internal/engine/projects"
+	projectscomplete "github.com/rancher/rancher-cli/internal/engine/projects/complete"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type projectCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 }
 
 // NewInspectProject builds `inspect project <name-or-id> --cluster <c>`: the
@@ -28,9 +31,10 @@ type projectCmd struct {
 // document. Only the project itself is required: every other collector
 // degrades to a `degraded` entry and its warning rather than failing the
 // command. resourceQuota absence is not a failure - null is enough, no
-// warning.
-func NewInspectProject(clients engine.ClusterClientFactory) runtime.Command {
-	return &projectCmd{clients: clients}
+// warning. The positional resolves through the projects steve lists for
+// the caller (roots), by id or display name.
+func NewInspectProject(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
+	return &projectCmd{clients: clients, roots: roots}
 }
 
 func (c *projectCmd) Describe() runtime.Descriptor {
@@ -57,6 +61,11 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 	}
 }
 
+// LiveSource hands the surface the command's positional source: project
+// ids and unique display names, which the command resolves; the generated
+// project verbs take ids only.
+func (*projectCmd) LiveSource() completion.Source { return projectscomplete.ProjectPositionalSource() }
+
 func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
 	if err != nil {
@@ -66,10 +75,16 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	projectID, err := projects.ResolveProject(ctx, c.clients, clusterID, in.Args()[0])
+	root, err := c.roots.Root()
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	get := steve.RootGetter(root)
+	resolved, matchWarning, err := steve.ResolveProjectArgument(ctx, get, mgmtClient, clusterID, in.Args()[0])
+	if err != nil {
+		return runtime.Result{}, err
+	}
+	projectID := resolved.ID
 	projectKind, _ := kinds.Lookup("project")
 	project, err := mgmtClient.Get(ctx, projectKind.GVR, clusterID, projectID)
 	if err != nil {
@@ -98,7 +113,7 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		}
 	} else {
 		var derr error
-		nsRows, usage, derr = c.downstreamSections(ctx, client, projectID, sec)
+		nsRows, usage, derr = c.downstreamSections(ctx, client, get, clusterID, projectID, sec)
 		if derr != nil {
 			return runtime.Result{}, derr
 		}
@@ -107,6 +122,9 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	memberRows, warnings, merr := projectMembers(ctx, mgmtClient, project, sec)
 	if merr != nil {
 		return runtime.Result{}, merr
+	}
+	if matchWarning != "" {
+		warnings = append([]string{matchWarning}, warnings...)
 	}
 
 	quota, _, _ := unstructured.NestedMap(project.Object, "spec", "resourceQuota")
@@ -140,8 +158,8 @@ func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 // the caller established the scope, and reads that could not have
 // contributed rows must not turn a verified-empty project into an RBAC
 // failure.
-func (c *projectCmd) downstreamSections(ctx context.Context, client engine.ClusterClient, projectID string, sec *sections) ([]projectNamespace, *resourceTotals, error) {
-	members, err := projects.ProjectNamespaces(ctx, client, projectID)
+func (c *projectCmd) downstreamSections(ctx context.Context, client engine.ClusterClient, get steve.Getter, clusterID, projectID string, sec *sections) ([]projectNamespace, *resourceTotals, error) {
+	members, err := steve.ProjectNamespaces(ctx, client, get, clusterID, projectID)
 	if err != nil {
 		if herr := sec.Unavailable(sectionNamespaces, err); herr != nil {
 			return nil, nil, herr

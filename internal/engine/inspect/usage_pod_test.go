@@ -24,7 +24,7 @@ func TestUsageByPodOneRowPerPod(t *testing.T) {
 		withList(podKind.GVR, pods).
 		withList(podMetricsGVR, metrics)
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "pod"}})
 	require.NoError(t, err)
 
@@ -51,7 +51,7 @@ func TestUsageByPodNodeFilter(t *testing.T) {
 		withList(podKind.GVR, pods).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{})
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "pod", "node": "n1"}})
 	require.NoError(t, err)
 
@@ -73,7 +73,7 @@ func TestUsageByPodNamespaceFilter(t *testing.T) {
 		withListNS(podKind.GVR, "ns1", pods).
 		withListNS(podMetricsGVR, "ns1", &unstructured.UnstructuredList{})
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "pod", "namespace": "ns1"}})
 	require.NoError(t, err)
 

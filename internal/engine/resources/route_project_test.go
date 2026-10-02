@@ -3,11 +3,13 @@ package resources
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -15,9 +17,8 @@ import (
 )
 
 // routeProjectClient is a List-only ClusterClient fake keyed by GVR resource
-// name, so a single fake serves both the management "projects" list
-// (ResolveProject) and the downstream "namespaces" list (ProjectNamespaces)
-// with independent seeded data. It records every List call for assertion.
+// name. It records every List call, so a test can tell the requests Route
+// sends from the ones the command sends after it.
 type routeProjectClient struct {
 	lists map[string]*unstructured.UnstructuredList
 
@@ -55,13 +56,6 @@ func (c *routeProjectClient) Logs(context.Context, string, string, engine.LogOpt
 	return "", nil
 }
 
-func projectItem(id, displayName string) unstructured.Unstructured {
-	return unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": id},
-		"spec":     map[string]any{"displayName": displayName},
-	}}
-}
-
 func namespaceItem(name string) unstructured.Unstructured {
 	return unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name}}}
 }
@@ -74,49 +68,83 @@ func namespaceKindDownstream() kinds.Kind {
 	return kinds.Kind{Name: "namespace", Scope: kinds.Downstream, Policy: kinds.NSNone}
 }
 
-// newRouteProjectFixture seeds a project "p-1" and a single member namespace
-// "ns-a"; the fake namespace list already represents what a real server
-// would return after applying the membership label selector.
+// newRouteProjectFixture serves one namespace "ns-a" on cluster "prod"
+// (id c-abc); the namespace list stands for what a server returns after
+// applying a label selector.
 func newRouteProjectFixture() (*routeProjectClient, *recFactory) {
 	client := &routeProjectClient{lists: map[string]*unstructured.UnstructuredList{
-		"projects":   {Items: []unstructured.Unstructured{projectItem("p-1", "web")}},
 		"namespaces": {Items: []unstructured.Unstructured{namespaceItem("ns-a")}},
 	}}
 	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
 	return client, fac
 }
 
+// projectContext is the context the pipeline gives a command whose typed
+// --project resolved to project p-1 ("web") on cluster c-abc, with the
+// member namespaces given. The returned counter counts the member reads.
+func projectContext(t *testing.T, members ...string) (context.Context, *atomic.Int32) {
+	t.Helper()
+	reads := &atomic.Int32{}
+	set := map[string]bool{}
+	for _, m := range members {
+		set[m] = true
+	}
+	ctx := runtime.WithProject(t.Context(), runtime.Project{
+		Cluster: "c-abc", ID: "p-1", DisplayName: "web",
+		Namespaces: func(context.Context) (map[string]bool, error) {
+			reads.Add(1)
+			return set, nil
+		},
+	})
+	return ctx, reads
+}
+
+// unreadProjectContext is a context whose project lookup fails the test
+// when called: a command that refuses before reading the project never
+// calls it.
+func unreadProjectContext(t *testing.T) context.Context {
+	t.Helper()
+	return runtime.WithProjectLookup(t.Context(), func(context.Context) (runtime.Project, error) {
+		t.Error("the project was read")
+		return runtime.Project{}, errors.New("unexpected project read")
+	})
+}
+
 func TestRouteDownstreamNSPlainNamedOpMemberNamespacePasses(t *testing.T) {
 	t.Parallel()
-	_, fac := newRouteProjectFixture()
-	clusterID, ns, effCluster, scope, err := Route(t.Context(), fac, podKindDownstream(),
-		input{s: map[string]string{"cluster": "prod", "namespace": "ns-a", "project": "p-1"}}, true)
+	client, fac := newRouteProjectFixture()
+	ctx, reads := projectContext(t, "ns-a")
+	clusterID, ns, effCluster, scope, err := Route(ctx, fac, podKindDownstream(),
+		input{s: map[string]string{"cluster": "prod", "namespace": "ns-a", "project": "web"}}, OpNamed, "web-0")
 	require.NoError(t, err)
 	assert.Equal(t, "c-abc", clusterID)
 	assert.Equal(t, "ns-a", ns)
 	assert.Equal(t, "c-abc", effCluster)
 	require.NotNil(t, scope)
-	assert.NotNil(t, scope.Members)
+	assert.Equal(t, map[string]bool{"ns-a": true}, scope.Members)
+	assert.Equal(t, int32(1), reads.Load(), "the member set is the project's own read")
+	assert.Empty(t, client.listCalls, "Route sends no request of its own for the project")
 }
 
 func TestRouteDownstreamNSPlainNamedOpNonMemberNamespaceRejected(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()
-	_, _, _, _, err := Route(t.Context(), fac, podKindDownstream(),
-		input{s: map[string]string{"cluster": "prod", "namespace": "ns-z", "project": "p-1"}}, true)
-	require.Error(t, err)
+	ctx, _ := projectContext(t, "ns-a")
+	_, _, _, _, err := Route(ctx, fac, podKindDownstream(),
+		input{s: map[string]string{"cluster": "prod", "namespace": "ns-z", "project": "web"}}, OpNamed, "web-0")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "ns-z")
-	assert.Contains(t, ce.Message, "p-1")
+	assert.Contains(t, ce.Message, "p-1", "the refusal names the resolved project id")
 }
 
 func TestRouteNamespacePlusProjectWithMemberNamespacePasses(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()
-	_, ns, _, scope, err := Route(t.Context(), fac, podKindDownstream(),
-		input{s: map[string]string{"cluster": "prod", "namespace": "ns-a", "project": "p-1"}}, false)
+	ctx, _ := projectContext(t, "ns-a")
+	_, ns, _, scope, err := Route(ctx, fac, podKindDownstream(),
+		input{s: map[string]string{"cluster": "prod", "namespace": "ns-a", "project": "web"}}, OpList, "")
 	require.NoError(t, err)
 	assert.Equal(t, "ns-a", ns)
 	require.NotNil(t, scope)
@@ -124,72 +152,178 @@ func TestRouteNamespacePlusProjectWithMemberNamespacePasses(t *testing.T) {
 
 func TestRouteDownstreamNSPlainListWithoutNamespaceCarriesMemberSet(t *testing.T) {
 	t.Parallel()
-	_, fac := newRouteProjectFixture()
-	_, ns, _, scope, err := Route(t.Context(), fac, podKindDownstream(),
-		input{s: map[string]string{"cluster": "prod", "project": "p-1"}}, false)
+	client, fac := newRouteProjectFixture()
+	ctx, _ := projectContext(t, "ns-a", "ns-b")
+	_, ns, _, scope, err := Route(ctx, fac, podKindDownstream(),
+		input{s: map[string]string{"cluster": "prod", "project": "web"}}, OpList, "")
 	require.NoError(t, err)
 	assert.Equal(t, "", ns)
 	require.NotNil(t, scope)
-	assert.NotNil(t, scope.Members)
-	assert.Equal(t, map[string]bool{"ns-a": true}, scope.Members)
+	assert.Equal(t, map[string]bool{"ns-a": true, "ns-b": true}, scope.Members)
+	assert.Empty(t, scope.Selector)
+	assert.Empty(t, client.listCalls, "Route sends no request of its own for the project")
 }
 
-func TestRouteTypedProjectScopesMemberFetch(t *testing.T) {
-	t.Parallel()
-	client := &routeProjectClient{lists: map[string]*unstructured.UnstructuredList{
-		"projects":   {Items: []unstructured.Unstructured{projectItem("p-1", "web"), projectItem("p-2", "db")}},
-		"namespaces": {Items: []unstructured.Unstructured{namespaceItem("ns-a")}},
-	}}
-	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
-	_, _, _, scope, err := Route(t.Context(), fac, podKindDownstream(),
-		input{s: map[string]string{"cluster": "prod", "project": "p-1"}}, false)
-	require.NoError(t, err)
-	require.NotNil(t, scope)
-	require.NotNil(t, scope.Members)
-	// The typed flag is observable in the member-set fetch: the namespaces
-	// list must be scoped by the --project value (p-1).
-	var nsSelectors []string
-	for _, call := range client.listCalls {
-		if call.resource == "namespaces" {
-			nsSelectors = append(nsSelectors, call.selector)
-		}
-	}
-	assert.Equal(t, []string{"field.cattle.io/projectId=p-1"}, nsSelectors,
-		"the typed --project scopes the member fetch")
-}
-
-func TestRouteNamespaceKindWithProjectIsNotRejected(t *testing.T) {
+// TestRouteReadsTheProjectOnTheClientCluster asserts Route reads the
+// project with the cluster it resolved from --cluster: a project resolved
+// on another cluster is refused as a command bug, never used.
+func TestRouteReadsTheProjectOnTheClientCluster(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()
-	clusterID, ns, _, scope, err := Route(t.Context(), fac, namespaceKindDownstream(),
-		input{s: map[string]string{"cluster": "prod", "project": "p-1"}}, false)
+	ctx := runtime.WithProject(t.Context(), runtime.Project{Cluster: "c-other", ID: "p-1",
+		Namespaces: func(context.Context) (map[string]bool, error) { return map[string]bool{"ns-a": true}, nil }})
+	for _, tc := range []struct {
+		name string
+		kind kinds.Kind
+	}{
+		{"namespaced kind", podKindDownstream()},
+		{"namespace kind", namespaceKindDownstream()},
+	} {
+		_, _, _, _, err := Route(ctx, fac, tc.kind,
+			input{s: map[string]string{"cluster": "prod", "project": "web"}}, OpList, "")
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce, tc.name)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code, tc.name)
+		require.ErrorContains(t, err, "c-abc", tc.name)
+	}
+}
+
+func TestRouteNamespaceKindListWithProjectIsALabelSelector(t *testing.T) {
+	t.Parallel()
+	client, fac := newRouteProjectFixture()
+	ctx, reads := projectContext(t, "ns-a")
+	clusterID, ns, effCluster, scope, err := Route(ctx, fac, namespaceKindDownstream(),
+		input{s: map[string]string{"cluster": "prod", "project": "web"}}, OpList, "")
 	require.NoError(t, err)
 	assert.Equal(t, "c-abc", clusterID)
 	assert.Equal(t, "", ns)
-	require.NotNil(t, scope, "the namespace kind + project is a label-selector special case, not a rejection")
-	assert.Equal(t, "field.cattle.io/projectId=p-1", scope.Selector)
+	assert.Equal(t, "c-abc", effCluster)
+	require.NotNil(t, scope, "the namespace kind under --project lists by label selector")
+	assert.Equal(t, "field.cattle.io/projectId=p-1", scope.Selector, "the selector carries the resolved project id")
+	assert.Nil(t, scope.Members)
+	assert.Zero(t, reads.Load(), "a list reads no member set: the selector does the filtering")
+	assert.Empty(t, client.listCalls)
+}
+
+func TestRouteNamespaceKindNamedChecksMembership(t *testing.T) {
+	t.Parallel()
+	_, fac := newRouteProjectFixture()
+	ctx, reads := projectContext(t, "ns-a")
+	in := input{s: map[string]string{"cluster": "prod", "project": "web"}}
+
+	clusterID, _, _, scope, err := Route(ctx, fac, namespaceKindDownstream(), in, OpNamed, "ns-a")
+	require.NoError(t, err)
+	assert.Equal(t, "c-abc", clusterID)
+	assert.Nil(t, scope, "a named namespace is checked, not filtered")
+	assert.Equal(t, int32(1), reads.Load())
+
+	_, _, _, _, err = Route(ctx, fac, namespaceKindDownstream(), in, OpNamed, "ns-z")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "ns-z")
+	assert.Contains(t, ce.Message, "p-1")
+}
+
+// TestRouteNamedBranchReadsTheNameArgument asserts the namespace kind's
+// membership check uses the name the caller passes, never the input's
+// positional arguments: a command whose positional is not the object name
+// (create resource has none) must still be checked against the right
+// namespace.
+func TestRouteNamedBranchReadsTheNameArgument(t *testing.T) {
+	t.Parallel()
+	_, fac := newRouteProjectFixture()
+	ctx, _ := projectContext(t, "ns-a")
+
+	_, _, _, _, err := Route(ctx, fac, namespaceKindDownstream(),
+		input{args: []string{"ns-z"}, s: map[string]string{"cluster": "prod", "project": "web"}}, OpNamed, "ns-a")
+	require.NoError(t, err, "the member name passed to Route is checked, not the non-member positional")
+
+	_, _, _, _, err = Route(ctx, fac, namespaceKindDownstream(),
+		input{args: []string{"ns-a"}, s: map[string]string{"cluster": "prod", "project": "web"}}, OpNamed, "ns-z")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce, "the non-member name passed to Route is refused despite the member positional")
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Contains(t, ce.Message, "ns-z")
+}
+
+// TestRouteCreateNamespaceWithProjectIsRefused asserts creating a namespace
+// with --project is refused before the project is read or a cluster is
+// resolved, with a hint naming create namespace only when the name and
+// --cluster were both typed: the hint never names a value nobody typed.
+func TestRouteCreateNamespaceWithProjectIsRefused(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		objName  string
+		cluster  string
+		wantHint string
+	}{
+		{"name and cluster", "ns1", "prod", clierr.Rancher + " create namespace 'ns1' --cluster 'prod' --project 'web' --dry-run"},
+		{"no name", "", "prod", ""},
+		{"no cluster", "ns1", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client, fac := newRouteProjectFixture()
+			flags := map[string]string{"project": "web"}
+			if tc.cluster != "" {
+				flags["cluster"] = tc.cluster
+			}
+			_, _, _, _, err := Route(unreadProjectContext(t), fac, namespaceKindDownstream(), input{s: flags}, OpCreate, tc.objName)
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, "--project does not place a namespace created from a manifest in a project; create it with create namespace --project", ce.Message)
+			assert.Equal(t, tc.wantHint, ce.Hint)
+			assert.Empty(t, fac.clusterCalls)
+			assert.Empty(t, client.listCalls)
+		})
+	}
+}
+
+// TestRouteCreateNamespacedKindWithProjectChecksMembership asserts a
+// create of a project scopable namespaced kind takes --project: its
+// namespace must be one of the project's.
+func TestRouteCreateNamespacedKindWithProjectChecksMembership(t *testing.T) {
+	t.Parallel()
+	_, fac := newRouteProjectFixture()
+	ctx, _ := projectContext(t, "ns-a")
+	_, ns, _, scope, err := Route(ctx, fac, podKindDownstream(),
+		input{s: map[string]string{"cluster": "prod", "namespace": "ns-a", "project": "web"}}, OpCreate, "web-0")
+	require.NoError(t, err)
+	assert.Equal(t, "ns-a", ns)
+	require.NotNil(t, scope)
+
+	_, _, _, _, err = Route(ctx, fac, podKindDownstream(),
+		input{s: map[string]string{"cluster": "prod", "namespace": "ns-z", "project": "web"}}, OpCreate, "web-0")
+	requireValidation(t, err)
+}
+
+// TestRouteWithoutProjectReadsNoProject asserts an invocation with no
+// --project typed carries no project scope, for both project scopable
+// families.
+func TestRouteWithoutProjectReadsNoProject(t *testing.T) {
+	t.Parallel()
+	_, fac := newRouteProjectFixture()
+	for _, k := range []kinds.Kind{podKindDownstream(), namespaceKindDownstream()} {
+		_, _, _, scope, err := Route(t.Context(), fac, k, input{s: map[string]string{"cluster": "prod"}}, OpList, "")
+		require.NoError(t, err, k.Name)
+		assert.Nil(t, scope, k.Name)
+	}
 }
 
 func TestGetNamespacesWithProjectListsUsingLabelSelector(t *testing.T) {
 	t.Parallel()
-	client := &routeProjectClient{lists: map[string]*unstructured.UnstructuredList{
-		"projects":   {Items: []unstructured.Unstructured{projectItem("p-1", "web")}},
-		"namespaces": {Items: []unstructured.Unstructured{namespaceItem("ns-a")}},
-	}}
-	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	client, fac := newRouteProjectFixture()
 	nsKind, ok := kinds.Lookup("namespace")
 	require.True(t, ok)
+	ctx, _ := projectContext(t, "ns-a")
 
-	res := execGet(t, NewGet(nsKind, fac), input{s: map[string]string{"cluster": "prod", "project": "p-1"}})
+	res, err := NewGet(nsKind, fac).(runtime.ReadCommand).Execute(ctx, input{s: map[string]string{"cluster": "prod", "project": "web"}}, nil)
+	require.NoError(t, err)
 	assert.Equal(t, "NamespaceList", res.Kind)
-
-	var sawSelector bool
-	for _, call := range client.listCalls {
-		if call.resource == "namespaces" && call.selector == "field.cattle.io/projectId=p-1" {
-			sawSelector = true
-		}
-	}
-	assert.True(t, sawSelector, "expected a namespaces List call carrying the project label selector, got %+v", client.listCalls)
+	assert.Equal(t, []routeListCall{{resource: "namespaces", selector: "field.cattle.io/projectId=p-1"}}, client.listCalls)
 }
 
 var _ engine.ClusterClient = (*routeProjectClient)(nil)

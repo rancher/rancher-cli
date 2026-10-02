@@ -1,6 +1,9 @@
 package inspect
 
 import (
+	"maps"
+	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -13,13 +16,9 @@ func TestUsageByProjectGroupsByProject(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
 	nsKind := mustKind(t, "namespace")
-	projectKind := mustKind(t, "project")
 
+	root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"), steveProjectItem("c-abc", "p-y", "api"))
 	client := newFakeClient().
-		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			*projectFixtureObj("p-x", "web", ""),
-			*projectFixtureObj("p-y", "api", ""),
-		}}).
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
 			namespaceObj("ns2", map[string]any{"field.cattle.io/projectId": "p-y"}),
@@ -32,7 +31,7 @@ func TestUsageByProjectGroupsByProject(t *testing.T) {
 			*podWithResources("ns3", "p3", "10m", "10Mi", "20m", "20Mi"),
 		}})
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, root.roots())
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project"}})
 	require.NoError(t, err)
 
@@ -76,12 +75,8 @@ func TestUsageByProjectWithProjectFlagSingleBucket(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
 	nsKind := mustKind(t, "namespace")
-	projectKind := mustKind(t, "project")
 
 	client := newFakeClient().
-		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			*projectFixtureObj("p-x", "web", ""),
-		}}).
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
 		}}).
@@ -90,8 +85,9 @@ func TestUsageByProjectWithProjectFlagSingleBucket(t *testing.T) {
 			*podWithResources("ns1", "p1", "100m", "128Mi", "200m", "256Mi"),
 		}})
 
-	cmd := NewUsage(&fakeFactory{client: client})
-	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "project": "p-x"}})
+	cmd := NewUsage(&fakeFactory{client: client}, newSteveRoot(t, nil).roots())
+	ctx := withProject(t, "c-abc", "p-x", "web", "ns1")
+	res, err := execReadCtx(t, ctx, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "project": "p-x"}})
 	require.NoError(t, err)
 
 	env, ok := res.Data.(usageEnvelope)
@@ -104,10 +100,9 @@ func TestUsageByProjectUnownedPodsInNoneRow(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
 	nsKind := mustKind(t, "namespace")
-	projectKind := mustKind(t, "project")
 
+	root := projectsRoot(t, "c-abc")
 	client := newFakeClient().
-		withList(projectKind.GVR, &unstructured.UnstructuredList{}).
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			namespaceObj("kube-system", nil),
 		}}).
@@ -116,7 +111,7 @@ func TestUsageByProjectUnownedPodsInNoneRow(t *testing.T) {
 			*podWithResources("kube-system", "coredns", "100m", "70Mi", "200m", "140Mi"),
 		}})
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, root.roots())
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project"}})
 	require.NoError(t, err)
 
@@ -132,12 +127,9 @@ func TestUsageByProjectNamespaceFilter(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
 	nsKind := mustKind(t, "namespace")
-	projectKind := mustKind(t, "project")
 
+	root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
 	client := newFakeClient().
-		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			*projectFixtureObj("p-x", "web", ""),
-		}}).
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
 			namespaceObj("ns2", map[string]any{"field.cattle.io/projectId": "p-x"}),
@@ -147,7 +139,7 @@ func TestUsageByProjectNamespaceFilter(t *testing.T) {
 			*podWithResources("ns1", "p1", "100m", "128Mi", "200m", "256Mi"),
 		}})
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, root.roots())
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "namespace": "ns1"}})
 	require.NoError(t, err)
 
@@ -160,18 +152,14 @@ func TestUsageByProjectNamespaceFilter(t *testing.T) {
 func TestUsageByProjectNamespaceMustBeMember(t *testing.T) {
 	t.Parallel()
 	nsKind := mustKind(t, "namespace")
-	projectKind := mustKind(t, "project")
 
 	client := newFakeClient().
-		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			*projectFixtureObj("p-x", "web", ""),
-		}}).
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			namespaceObj("ns-other", map[string]any{"field.cattle.io/projectId": "p-y"}),
 		}})
 
-	cmd := NewUsage(&fakeFactory{client: client})
-	_, err := execRead(t, cmd, input{s: map[string]string{
+	cmd := NewUsage(&fakeFactory{client: client}, newSteveRoot(t, nil).roots())
+	_, err := execReadCtx(t, withProject(t, "c-abc", "p-x", "web"), cmd, input{s: map[string]string{
 		"cluster": "c-abc", "by": "project", "project": "p-x", "namespace": "ns-other",
 	}})
 	require.Error(t, err, "--namespace outside --project must be NotMemberError under --by project too")
@@ -186,12 +174,9 @@ func TestUsageByProjectNodeFilter(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
 	nsKind := mustKind(t, "namespace")
-	projectKind := mustKind(t, "project")
 
+	root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
 	client := newFakeClient().
-		withList(projectKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			*projectFixtureObj("p-x", "web", ""),
-		}}).
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
 		}}).
@@ -201,7 +186,7 @@ func TestUsageByProjectNodeFilter(t *testing.T) {
 			*podOnNode("ns1", "p2", "n2", "50m", "64Mi", "100m", "128Mi"),
 		}})
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client}, root.roots())
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "node": "n1"}})
 	require.NoError(t, err)
 
@@ -211,51 +196,123 @@ func TestUsageByProjectNodeFilter(t *testing.T) {
 	assert.Equal(t, "100m", env.Data["p-x"].CPURequest, "only n1's pods count under --node n1")
 }
 
-// TestUsageByProjectMemberFallbackWithProjectFlag asserts the member path: a
-// forbidden projects List with --project set falls back to a direct get of the
-// named project - a member's per-project usage stays reachable even though they
-// cannot list the collection.
-func TestUsageByProjectMemberFallbackWithProjectFlag(t *testing.T) {
+// TestUsageByProjectWithProjectReadsNoProjectCollection asserts --by project
+// --project builds its one bucket from the project the pipeline resolved:
+// no projects collection read, and the bucket is named by the project's
+// display name, or by its id when the display name is empty.
+func TestUsageByProjectWithProjectReadsNoProjectCollection(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, display, scope string }{
+		{"display name", "web", "web"},
+		{"no display name", "", "p-x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			podKind := mustKind(t, "pod")
+			nsKind := mustKind(t, "namespace")
+			client := newFakeClient().
+				withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+					namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+				}}).
+				withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+				withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+					*podWithResources("ns1", "p1", "100m", "128Mi", "200m", "256Mi"),
+				}})
+			root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "other"))
+
+			cmd := NewUsage(&fakeFactory{client: client}, root.roots())
+			ctx := withProject(t, "c-abc", "p-x", tc.display, "ns1")
+			res, err := execReadCtx(t, ctx, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "project": "p-x"}})
+			require.NoError(t, err)
+
+			assert.Empty(t, root.requests(), "no projects collection read with --project")
+			env, ok := res.Data.(usageEnvelope)
+			require.True(t, ok)
+			require.Equal(t, []string{"p-x"}, slices.Collect(maps.Keys(env.Data)))
+			tabular, ok := res.Data.(interface{ Rows() [][]string })
+			require.True(t, ok)
+			require.Len(t, tabular.Rows(), 1)
+			assert.Equal(t, tc.scope, tabular.Rows()[0][0])
+		})
+	}
+}
+
+// TestUsageByProjectWithProjectSumsOnlyItsPods asserts the one bucket of
+// --by project --project holds the sum of that project's pods only: pods of
+// another project's namespace stay out of it and get no row.
+func TestUsageByProjectWithProjectSumsOnlyItsPods(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
 	nsKind := mustKind(t, "namespace")
-	projectKind := mustKind(t, "project")
-
 	client := newFakeClient().
-		withListErr(projectKind.GVR, clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list")).
-		withObject(projectKind.GVR, "c-abc", "p-x", projectFixtureObj("p-x", "web", "")).
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			namespaceObj("ns2", map[string]any{"field.cattle.io/projectId": "p-y"}),
 		}}).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			*podWithResources("ns1", "p1", "100m", "128Mi", "200m", "256Mi"),
+			*podWithResources("ns1", "p2", "50m", "64Mi", "100m", "128Mi"),
+			*podWithResources("ns2", "p3", "300m", "512Mi", "600m", "1Gi"),
 		}})
-
-	cmd := NewUsage(&fakeFactory{client: client})
-	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "project": "p-x"}})
+	root := projectsRoot(t, "c-abc")
+	cmd := NewUsage(&fakeFactory{client: client}, root.roots())
+	ctx := withProject(t, "c-abc", "p-x", "web", "ns1")
+	res, err := execReadCtx(t, ctx, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project", "project": "web"}})
 	require.NoError(t, err)
-
 	env, ok := res.Data.(usageEnvelope)
 	require.True(t, ok)
-	require.Contains(t, env.Data, "p-x")
-	assert.Equal(t, "100m", env.Data["p-x"].CPURequest)
+	require.Equal(t, []string{"p-x"}, slices.Collect(maps.Keys(env.Data)))
+	assert.Equal(t, "150m", env.Data["p-x"].CPURequest)
+	assert.Equal(t, "300m", env.Data["p-x"].CPULimit)
+	assert.Equal(t, "192Mi", env.Data["p-x"].MemoryRequest)
+	assert.Equal(t, "384Mi", env.Data["p-x"].MemoryLimit)
 }
 
-// TestUsageByProjectForbiddenListWithoutFlagKeepsRBAC makes sure the
-// no-flag member case stays an honest RBAC error - usage across ALL
-// projects genuinely requires list - with a hint naming the --project form
-// that works for a member.
-func TestUsageByProjectForbiddenListWithoutFlagKeepsRBAC(t *testing.T) {
+// TestUsageByProjectReadsTheClustersProjectsOnce asserts --by project
+// without --project names its buckets from one read of the resolved
+// cluster's steve projects collection.
+func TestUsageByProjectReadsTheClustersProjectsOnce(t *testing.T) {
 	t.Parallel()
-	projectKind := mustKind(t, "project")
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
 	client := newFakeClient().
-		withListErr(projectKind.GVR, clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"))
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+		}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{})
+	root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"), steveProjectItem("c-abc", "p-y", "api"))
 
-	cmd := NewUsage(&fakeFactory{client: client})
+	cmd := NewUsage(&fakeFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}, root.roots())
+	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "prod", "by": "project"}})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{steveProjectsPath("c-abc")}, root.requests())
+	tabular, ok := res.Data.(interface{ Rows() [][]string })
+	require.True(t, ok)
+	scopes := make([]string, 0, len(tabular.Rows()))
+	for _, row := range tabular.Rows() {
+		scopes = append(scopes, row[0])
+	}
+	assert.Equal(t, []string{"api", "web"}, scopes, "every listed project gets a row named by its display name")
+}
+
+// TestUsageByProjectProjectsCollection403IsRBAC asserts a refused projects
+// collection read is the command's error, worded as the steve read's
+// refusal.
+func TestUsageByProjectProjectsCollection403IsRBAC(t *testing.T) {
+	t.Parallel()
+	nsKind := mustKind(t, "namespace")
+	client := newFakeClient().
+		withList(nsKind.GVR, &unstructured.UnstructuredList{})
+	root := newSteveRoot(t, map[string]steveAnswer{steveProjectsPath("c-abc"): {status: http.StatusForbidden}})
+
+	cmd := NewUsage(&fakeFactory{client: client}, root.roots())
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc", "by": "project"}})
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
-	assert.Contains(t, cerr.Message, "--project")
+	assert.Equal(t, "the server refused GET /v1/management.cattle.io.projects/c-abc (403); Rancher answers this request with 200 for every signed-in user, so a proxy in front of Rancher or an unsupported Rancher refused it", cerr.Message)
+	assert.False(t, client.listed(nsKind.GVR), "no namespace read after the refusal")
 }

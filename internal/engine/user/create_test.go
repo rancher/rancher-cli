@@ -259,24 +259,6 @@ func (c *notFoundOnSecretDryRunClient) Create(ctx context.Context, gvr schema.Gr
 	return c.fakeUserClient.Create(ctx, gvr, ns, obj, dryRun)
 }
 
-// TestCreateExplicitEmptyDisplayNameIsKept proves an explicitly empty
-// --display-name stays empty: only an OMITTED flag defaults to the
-// username.
-func TestCreateExplicitEmptyDisplayNameIsKept(t *testing.T) {
-	t.Parallel()
-	client := &fakeUserClient{userPreviewName: "u-preview1", userRealName: "u-real2"}
-	in := planInput("alice")
-	in.flags["display-name"] = ""
-	_, exec, err := plan(t, client, fakeSrc{body: []byte("correctHorseBattery1\n")}, in)
-	require.NoError(t, err)
-
-	res, err := exec(t.Context())
-	require.NoError(t, err)
-	userInfo, ok := res.Data.(map[string]any)["user"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "", userInfo["displayName"], "an explicitly empty display name must not be replaced with the username")
-}
-
 func (*fakeUserClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
 	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
 }

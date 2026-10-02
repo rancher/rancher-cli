@@ -259,7 +259,7 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 	clusterItems := `{"items":[{"metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`
 	nsItems := `{"items":[{"metadata":{"name":"default"}},{"metadata":{"name":"kube-system"}}]}`
 	nodeItems := `{"items":[{"metadata":{"name":"node-1"}}]}`
-	projectItems := `{"items":[{"metadata":{"name":"p-abc"}}]}`
+	projectItems := `{"count":1,"revision":"1","data":[{"id":"c-abc/p-abc","metadata":{"name":"p-abc"},"spec":{"clusterName":"c-abc"}}]}`
 
 	newSrv := func(t *testing.T) *httptest.Server {
 		t.Helper()
@@ -270,7 +270,7 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 				_, _ = w.Write([]byte(nsItems))
 			case strings.Contains(r.URL.Path, "/api/v1/nodes"):
 				_, _ = w.Write([]byte(nodeItems))
-			case strings.Contains(r.URL.Path, "/namespaces/c-abc/projects"):
+			case r.URL.Path == "/v1/management.cattle.io.projects/c-abc":
 				_, _ = w.Write([]byte(projectItems))
 			default:
 				_, _ = w.Write([]byte(clusterItems))
@@ -506,14 +506,14 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 	keyring.MockInit()
 
 	clusterItems := `{"items":[{"metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`
-	projectItems := `{"items":[{"metadata":{"name":"p-xyz"}}]}`
+	projectItems := `{"count":1,"revision":"1","data":[{"id":"c-abc/p-xyz","metadata":{"name":"p-xyz"},"spec":{"clusterName":"c-abc"}}]}`
 
 	newCountingSrv := func(t *testing.T, hits *atomic.Int32) *httptest.Server {
 		t.Helper()
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			hits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
-			if strings.Contains(r.URL.Path, "/projects") {
+			if r.URL.Path == "/v1/management.cattle.io.projects/c-abc" {
 				_, _ = w.Write([]byte(projectItems))
 			} else {
 				_, _ = w.Write([]byte(clusterItems))
@@ -551,6 +551,27 @@ func TestGroupLiveFlagValueCandidates(t *testing.T) {
 		got := runNameLikeCompletion(t, []string{"get", "pods", "--cluster", "c-abc", "--project"}, "")
 		assert.Contains(t, got, "p-xyz", "get pods --project <TAB> network-on: project candidate must appear")
 		assert.Greater(t, hits.Load(), int32(0), "get pods --project <TAB> network-on: must issue at least one HTTP request")
+	})
+
+	t.Run("get --project space-form group level", func(t *testing.T) {
+		// At the group level no command is chosen yet, so nothing says the
+		// command will take --project: no candidates and no request, even
+		// with --cluster in the tail and a server that would answer.
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"get", "--cluster", "c-abc", "--project"}, "")
+		assert.NotContains(t, got, "p-xyz", "get --project <TAB>: no project before the command is known")
+		assert.Equal(t, int32(0), hits.Load(), "get --project <TAB>: zero HTTP requests at the group level")
+	})
+
+	t.Run("root --project space-form network-on", func(t *testing.T) {
+		var hits atomic.Int32
+		srv := newCountingSrv(t, &hits)
+		setupDir(t, srv.URL, true)
+		got := runNameLikeCompletion(t, []string{"--cluster", "c-abc", "--project"}, "")
+		assert.NotContains(t, got, "p-xyz", "rancher --project <TAB>: no project before the command is known")
+		assert.Equal(t, int32(0), hits.Load(), "rancher --project <TAB>: zero HTTP requests at the root")
 	})
 
 	t.Run("get --config space-form no-candidates", func(t *testing.T) {

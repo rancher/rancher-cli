@@ -113,6 +113,8 @@ func printStyledHelp(w io.Writer, templ string, data any) {
 		"colonOffsetCommands": colonOffsetCommands,
 		"sortedCommands":      sortedCommands,
 		"sortedFlags":         sortedFlags,
+		"leafFlags":           leafFlags,
+		"leafGlobalFlags":     leafGlobalFlags,
 		"primeMark":           primeMark,
 		"colorPrimeMark":      func(cmd *ucli.Command, wrapped string) string { return colorPrimeMark(s, cmd, wrapped) },
 		"colorPrimeDescription": func(cmd *ucli.Command, wrapped string) string {
@@ -218,6 +220,25 @@ func sortedFlags(flags []ucli.Flag) []ucli.Flag {
 	return out
 }
 
+// leafFlags is a leaf's OPTIONS: its own flags, plus --project with what it
+// does for this command when the command takes it. --project is parsed as
+// the global flag, so it is never one of the leaf's own urfave flags.
+func leafFlags(cmd *ucli.Command) []ucli.Flag {
+	flags := cmd.VisibleFlags()
+	if desc, ok := commandProject(cmd); ok {
+		flags = append(flags, &ucli.StringFlag{Name: runtime.FlagProject, Usage: desc})
+	}
+	return flags
+}
+
+// leafGlobalFlags is a leaf's GLOBAL OPTIONS without --project: a command
+// that takes it lists it under OPTIONS, and every other command refuses it.
+func leafGlobalFlags(cmd *ucli.Command) []ucli.Flag {
+	return slices.DeleteFunc(slices.Clone(cmd.VisiblePersistentFlags()), func(f ucli.Flag) bool {
+		return f.Names()[0] == runtime.FlagProject
+	})
+}
+
 // commandsBlock is the colon-aligned, alphabetical COMMANDS list shared by
 // rootCommandHelpTemplate and subcommandHelpTemplate - the two shapes that
 // ever show one. It replaces urfave's own comma-joined, colon-less
@@ -234,6 +255,12 @@ const flagsBlock = `{{range $i, $e := sortedFlags .VisibleFlags}}
    {{wrap $e.String 6}}{{end}}`
 
 const persistentFlagsBlock = `{{range $i, $e := sortedFlags .VisiblePersistentFlags}}
+   {{wrap $e.String 6}}{{end}}`
+
+const leafFlagsBlock = `{{range $i, $e := sortedFlags (leafFlags .)}}
+   {{wrap $e.String 6}}{{end}}`
+
+const leafGlobalFlagsBlock = `{{range $i, $e := sortedFlags (leafGlobalFlags .)}}
    {{wrap $e.String 6}}{{end}}`
 
 // rootCommandHelpTemplate is urfave's RootCommandHelpTemplate with bold
@@ -265,8 +292,9 @@ var rootCommandHelpTemplate = `{{bold "NAME:"}}
 `
 
 // commandHelpTemplate is urfave's CommandHelpTemplate (a leaf with no
-// visible subcommands) with bold section headers and the DESCRIPTION block
-// moved above USAGE.
+// visible subcommands) with bold section headers, the DESCRIPTION block
+// moved above USAGE, and --project listed under OPTIONS by the commands
+// that take it and nowhere by the rest.
 var commandHelpTemplate = `{{bold "NAME:"}}
    {{template "helpNameTemplate" .}}{{if .Description}}
 
@@ -279,11 +307,11 @@ var commandHelpTemplate = `{{bold "NAME:"}}
 {{bold "CATEGORY:"}}
    {{.Category}}{{end}}{{if .VisibleFlagCategories}}
 
-{{bold "OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if .VisibleFlags}}
+{{bold "OPTIONS:"}}{{template "visibleFlagCategoryTemplate" .}}{{else if leafFlags .}}
 
-{{bold "OPTIONS:"}}` + flagsBlock + `{{end}}{{if .VisiblePersistentFlags}}
+{{bold "OPTIONS:"}}` + leafFlagsBlock + `{{end}}{{if leafGlobalFlags .}}
 
-{{bold "GLOBAL OPTIONS:"}}` + persistentFlagsBlock + `{{end}}
+{{bold "GLOBAL OPTIONS:"}}` + leafGlobalFlagsBlock + `{{end}}
 `
 
 // subcommandHelpTemplate is urfave's SubcommandHelpTemplate (a group - has

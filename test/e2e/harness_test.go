@@ -79,9 +79,11 @@ var shimClusters = []testrancher.ClusterFixture{
 	{ID: "local", DisplayName: "local"},
 }
 
-// shimProjects are the management Projects the facade's steve collection
-// lists: two on the envtest fixture cluster and one on the management
-// cluster, whose projects a named user's run leaves not applicable.
+// shimProjects are the management Projects the facade's steve collection of
+// every cluster lists: two on the envtest fixture cluster and one on the
+// management cluster, whose projects a named user's run leaves not
+// applicable. One cluster's collection lists these and the envtest Projects
+// on that cluster.
 var shimProjects = []testrancher.ProjectFixture{
 	{Cluster: "c-test", ID: "p-e2e", DisplayName: "E2E"},
 	{Cluster: "c-test", ID: "p-explain", DisplayName: "Explain"},
@@ -107,22 +109,55 @@ func (id shimIdentity) seesProject(cluster, project string) bool {
 	return id.projects == nil || slices.Contains(id.projects, cluster+"/"+project)
 }
 
-// projectVisibility answers the facade's steve projects collection with the
-// projects the identity sees.
-func projectVisibility(resolve shimIdentityResolver) func(string) ([]testrancher.ProjectFixture, bool) {
-	return func(bearer string) ([]testrancher.ProjectFixture, bool) {
+// projectVisibility answers the facade's steve projects collections with the
+// projects the identity sees. The collection of every cluster lists
+// shimProjects only, so access projects' output does not depend on the
+// projects other scripts sharing this apiserver have created. One cluster's
+// collection adds the envtest Projects in that cluster's namespace, read per
+// request, so a project a script creates resolves by id or display name the
+// way it does on Rancher.
+func projectVisibility(resolve shimIdentityResolver) func(context.Context, string, string) ([]testrancher.ProjectFixture, bool, error) {
+	return func(ctx context.Context, bearer, cluster string) ([]testrancher.ProjectFixture, bool, error) {
 		id, ok := resolve(bearer)
 		if !ok {
-			return nil, false
+			return nil, false, nil
+		}
+		all := slices.Clone(shimProjects)
+		if cluster != "" {
+			created, err := envtestProjects(ctx, cluster)
+			if err != nil {
+				return nil, true, err
+			}
+			for _, p := range created {
+				if !slices.ContainsFunc(all, func(q testrancher.ProjectFixture) bool { return q.Cluster == p.Cluster && q.ID == p.ID }) {
+					all = append(all, p)
+				}
+			}
 		}
 		out := []testrancher.ProjectFixture{}
-		for _, p := range shimProjects {
-			if id.seesProject(p.Cluster, p.ID) {
+		for _, p := range all {
+			if (cluster == "" || p.Cluster == cluster) && id.seesProject(p.Cluster, p.ID) {
 				out = append(out, p)
 			}
 		}
-		return out, true
+		return out, true, nil
 	}
+}
+
+// envtestProjects lists the management Projects envtest holds in the
+// namespace of cluster.
+func envtestProjects(ctx context.Context, cluster string) ([]testrancher.ProjectFixture, error) {
+	gvr := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
+	list, err := dynCli.Resource(gvr).Namespace(cluster).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing envtest projects on %s: %w", cluster, err)
+	}
+	out := make([]testrancher.ProjectFixture, 0, len(list.Items))
+	for _, item := range list.Items {
+		display, _, _ := unstructured.NestedString(item.Object, "spec", "displayName")
+		out = append(out, testrancher.ProjectFixture{Cluster: cluster, ID: item.GetName(), DisplayName: display})
+	}
+	return out, nil
 }
 
 // namespaceVisibility answers a cluster's steve namespace collection: an

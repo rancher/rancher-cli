@@ -30,7 +30,7 @@ func TestInspectProjectAliasesMatchKindsTable(t *testing.T) {
 	t.Parallel()
 	k, ok := kinds.Lookup("project")
 	assert.True(t, ok)
-	d := inspect.NewInspectProject(nil).Describe()
+	d := inspect.NewInspectProject(nil, nil).Describe()
 	assert.Equal(t, k.Aliases, d.Aliases,
 		"inspect project Aliases must equal the kinds table project aliases")
 }

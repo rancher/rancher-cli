@@ -2,7 +2,6 @@ package projects
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -19,7 +18,7 @@ import (
 const projectLabel = "field.cattle.io/projectId"
 
 // MatchByIDOrDisplay implements the shared id-or-display-name collision
-// algorithm ResolveProject and resolveUser both need, mirroring
+// algorithm resolveUser and MatchOneOrError both need, mirroring
 // ResolveCluster's collision semantics exactly (internal/cli's
 // clientFactory.ResolveCluster): an id match and any display-name matches
 // are collected as a union of candidate ids, not an id-wins short-circuit -
@@ -48,8 +47,8 @@ func MatchByIDOrDisplay(nameOrID string, ids []string, displayOf func(id string)
 }
 
 // MatchOneOrError is the shared List-derived-candidates -> MatchByIDOrDisplay
-// -> switch assembly ResolveProject, provisioning.resolveCredentialObj, and
-// clientFactory.ResolveCluster all use: given the ids/displayOf/candidates
+// -> switch assembly provisioning.resolveCredentialObj, the exec plugin's
+// cluster lookup, and clientFactory.ResolveCluster all use: given the ids/displayOf/candidates
 // already built from a List call, it runs MatchByIDOrDisplay and turns the
 // result into either the single matched id, or a clierr NOT_FOUND /
 // AMBIGUOUS_SELECTION error. Message wording stays entirely the caller's:
@@ -84,84 +83,6 @@ func MatchOneOrError(nameOrID string, ids []string, displayOf func(id string) st
 		return "", clierr.New(clierr.CodeAmbiguousSelection, ambiguousMsg(idFound, displayMatchCount)).
 			WithCandidates(narrowed).
 			WithHint(ambiguousHint)
-	}
-}
-
-// ResolveProject maps a project display name or id to its metadata.name.
-// The list is the primary path: it resolves display names and enforces the
-// id-vs-display ambiguity guard. A project MEMBER cannot list the
-// collection - member grants are get-on-the-named-object, never
-// list-on-the-collection - so a forbidden list falls back to a direct get
-// by nameOrID: exact id only, no display-name resolution (impossible
-// without the list). Without the fallback, `inspect project <id>` turned a
-// question the member is allowed to ask into an RBAC error.
-func ResolveProject(ctx context.Context, clients engine.ClusterClientFactory, clusterID, nameOrID string) (string, error) {
-	client, err := clients.Cluster(ctx, engine.LocalCluster)
-	if err != nil {
-		return "", err
-	}
-	projectKind, _ := kinds.Lookup("project")
-	list, err := client.List(ctx, projectKind.GVR, clusterID, "")
-	if err != nil {
-		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeRBAC {
-			if _, gerr := ResolveByGet(ctx, client, clusterID, nameOrID, ce); gerr != nil {
-				return "", gerr
-			}
-			return nameOrID, nil
-		}
-		return "", err
-	}
-
-	var ids []string
-	displayByID := map[string]string{}
-	var cands []clierr.Candidate
-	for i := range list.Items {
-		id := list.Items[i].GetName()
-		display, _, _ := unstructured.NestedString(list.Items[i].Object, "spec", "displayName")
-		ids = append(ids, id)
-		displayByID[id] = display
-		cands = append(cands, clierr.Candidate{ID: id, Name: display})
-	}
-
-	return MatchOneOrError(nameOrID, ids, func(id string) string { return displayByID[id] }, cands,
-		"project not found: "+nameOrID,
-		fmt.Sprintf(clierr.Rancher+" get projects --cluster %s", clierr.ShellQuote(clusterID)),
-		func(idFound bool, displayMatchCount int) string {
-			if idFound {
-				return fmt.Sprintf("%q matches both a project id and a different project's display name; pass the project id", nameOrID)
-			}
-			return fmt.Sprintf("%d projects have display name %q; pass the project id", displayMatchCount, nameOrID)
-		},
-		"")
-}
-
-// ResolveByGet is the forbidden-list fallback shared by ResolveProject and
-// usage's collectByProject: when a caller cannot LIST the projects
-// collection (member grants are get-on-object, never list-on-collection),
-// it fetches nameOrID directly. Returns the object on success. On failure:
-// a NOT_FOUND when the id does not exist (a typo, or a display name -
-// unresolvable without a list; exit 4, never masked as RBAC); listErr
-// augmented with the exact-id hint when the get is also forbidden; the
-// get's own error verbatim for anything else, so a transient failure keeps
-// its code and retryability.
-func ResolveByGet(ctx context.Context, client engine.ClusterClient, clusterID, nameOrID string, listErr *clierr.Error) (*unstructured.Unstructured, error) {
-	projectKind, _ := kinds.Lookup("project")
-	obj, gerr := client.Get(ctx, projectKind.GVR, clusterID, nameOrID)
-	if gerr == nil {
-		return obj, nil
-	}
-	ge, isClassified := errors.AsType[*clierr.Error](gerr)
-	switch {
-	case isClassified && ge.Code == clierr.CodeNotFound:
-		return nil, clierr.New(clierr.CodeNotFound, "project not found: "+nameOrID+
-			"; you cannot list projects, so display names cannot be resolved - "+
-			"pass the exact project id (metadata.name)")
-	case isClassified && ge.Code == clierr.CodeRBAC:
-		return nil, listErr.WithMessage(listErr.Message +
-			"; you cannot list projects; pass the exact project id " +
-			"(metadata.name) of a project you have access to")
-	default:
-		return nil, gerr
 	}
 }
 
@@ -230,27 +151,4 @@ func ProjectSelector(projectID string) (string, error) {
 			fmt.Sprintf("invalid project id %q: %v; pass a valid label value", projectID, err))
 	}
 	return labels.NewSelector().Add(*req).String(), nil
-}
-
-// ProjectNamespaces returns the set of namespace names carrying the
-// projectID membership label on the downstream cluster. An empty result is
-// not an error - callers decide whether that means "no members" or
-// "unknown project".
-func ProjectNamespaces(ctx context.Context, client engine.ClusterClient, projectID string) (map[string]bool, error) {
-	selector, err := ProjectSelector(projectID)
-	if err != nil {
-		return nil, err
-	}
-
-	nsKind, _ := kinds.Lookup("namespace")
-	list, err := client.List(ctx, nsKind.GVR, "", selector)
-	if err != nil {
-		return nil, err
-	}
-
-	members := map[string]bool{}
-	for i := range list.Items {
-		members[list.Items[i].GetName()] = true
-	}
-	return members, nil
 }

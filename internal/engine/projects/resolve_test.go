@@ -15,22 +15,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// listClient is a minimal engine.ClusterClient fake that only supports List,
-// recording the ns/selector it was called with and returning a seeded list
-// keyed by GVR resource.
+// listClient is a minimal engine.ClusterClient fake that answers Get by
+// "namespace/name" key; List always returns an empty list.
 type listClient struct {
-	lists map[string]*unstructured.UnstructuredList
-	// gets, when set, answers Get by "namespace/name" key; unset keys fall
-	// through to a nil, nil no-op (existing List-only tests are unaffected).
+	// gets answers Get by "namespace/name" key; unset keys fall through to
+	// a nil, nil no-op.
 	gets map[string]*unstructured.Unstructured
 	// getErrs, when set, returns the error for "namespace/name" key.
 	getErrs map[string]error
-	// listErr, when set, fails every List with it (RBAC-fallback tests).
-	listErr error
-
-	lastNS       string
-	lastSelector string
-	lastResource string
 }
 
 func (l *listClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
@@ -44,14 +36,7 @@ func (l *listClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, n
 	return nil, nil
 }
 
-func (l *listClient) List(_ context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
-	l.lastNS, l.lastSelector, l.lastResource = ns, selector, gvr.Resource
-	if l.listErr != nil {
-		return nil, l.listErr
-	}
-	if list, ok := l.lists[gvr.Resource]; ok {
-		return list, nil
-	}
+func (l *listClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
 	return &unstructured.UnstructuredList{}, nil
 }
 
@@ -71,18 +56,12 @@ func (l *listClient) Logs(context.Context, string, string, engine.LogOptions) (s
 	return "", nil
 }
 
-func project(id, displayName string) unstructured.Unstructured {
-	return unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": id},
-		"spec":     map[string]any{"displayName": displayName},
-	}}
-}
-
 // TestMatchOneOrError exercises the shared List->match->switch assembly in
 // isolation from any particular caller's List/display shape, asserting the
 // three outcomes (single match, NOT_FOUND, AMBIGUOUS_SELECTION) plus the
-// idFound-vs-displayMatchCount wording split each of ResolveProject and
-// provisioning.resolveCredentialObj relies on.
+// idFound-vs-displayMatchCount wording split each caller (the CLI cluster
+// resolver, the token cluster lookup and provisioning.resolveCredentialObj)
+// relies on.
 func TestMatchOneOrError(t *testing.T) {
 	t.Parallel()
 	ids := []string{"a-1", "a-2"}
@@ -171,181 +150,6 @@ func TestMatchOneOrError(t *testing.T) {
 	})
 }
 
-func TestResolveProjectByExactID(t *testing.T) {
-	t.Parallel()
-	client := &listClient{lists: map[string]*unstructured.UnstructuredList{
-		"projects": {Items: []unstructured.Unstructured{project("p-1", "web"), project("p-2", "db")}},
-	}}
-	factory := stubFactory{c: client}
-
-	id, err := ResolveProject(t.Context(), factory, "c-x", "p-1")
-	require.NoError(t, err)
-	assert.Equal(t, "p-1", id)
-}
-
-// TestResolveProjectForbiddenListFallsBackToGet asserts the member path: a
-// project member cannot LIST the collection (grants are get-on-object), so
-// a forbidden list must fall back to a direct get of nameOrID instead of
-// turning an allowed question into an RBAC error. Regression:
-// `inspect project demo-web` failed RBAC for a member fully entitled to
-// that project.
-func TestResolveProjectForbiddenListFallsBackToGet(t *testing.T) {
-	t.Parallel()
-	obj := project("demo-web", "demo-web")
-	client := &listClient{
-		listErr: clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"),
-		gets:    map[string]*unstructured.Unstructured{"local/demo-web": &obj},
-	}
-	factory := stubFactory{c: client}
-
-	id, err := ResolveProject(t.Context(), factory, "local", "demo-web")
-	require.NoError(t, err)
-	assert.Equal(t, "demo-web", id)
-}
-
-// TestResolveProjectForbiddenListAndGetSurfacesRBACWithHint makes sure the
-// both-denied shape keeps the original RBAC error, augmented with the
-// exact-id hint.
-func TestResolveProjectForbiddenListAndGetSurfacesRBACWithHint(t *testing.T) {
-	t.Parallel()
-	client := &listClient{
-		listErr: clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"),
-		getErrs: map[string]error{"local/other": clierr.New(clierr.CodeRBAC, "cannot get")},
-	}
-	factory := stubFactory{c: client}
-
-	_, err := ResolveProject(t.Context(), factory, "local", "other")
-	var cerr *clierr.Error
-	require.ErrorAs(t, err, &cerr)
-	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
-	assert.Contains(t, cerr.Message, "exact project id")
-}
-
-// TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound asserts that
-// when the fallback get says the id does not exist,
-// NOT_FOUND (exit 4) is the answer - a typo must not masquerade as an
-// RBAC denial (exit 6), and scripts branch on that difference.
-func TestResolveProjectForbiddenListGetNotFoundSurfacesNotFound(t *testing.T) {
-	t.Parallel()
-	client := &listClient{
-		listErr: clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"),
-		getErrs: map[string]error{"local/typo-web": clierr.New(clierr.CodeNotFound, "not found")},
-	}
-	factory := stubFactory{c: client}
-
-	_, err := ResolveProject(t.Context(), factory, "local", "typo-web")
-	var cerr *clierr.Error
-	require.ErrorAs(t, err, &cerr)
-	assert.Equal(t, clierr.CodeNotFound, cerr.Code)
-	assert.Contains(t, cerr.Message, "typo-web")
-	assert.Contains(t, cerr.Message, "display names cannot be resolved")
-}
-
-// TestResolveProjectNonRBACListErrorPropagates verifies that only a
-// forbidden list triggers the get fallback - any other list failure
-// surfaces as-is.
-func TestResolveProjectNonRBACListErrorPropagates(t *testing.T) {
-	t.Parallel()
-	obj := project("p-1", "web")
-	client := &listClient{
-		listErr: clierr.New(clierr.CodeGeneric, "boom"),
-		gets:    map[string]*unstructured.Unstructured{"local/p-1": &obj},
-	}
-	factory := stubFactory{c: client}
-
-	_, err := ResolveProject(t.Context(), factory, "local", "p-1")
-	var cerr *clierr.Error
-	require.ErrorAs(t, err, &cerr)
-	assert.Equal(t, clierr.CodeGeneric, cerr.Code, "no fallback on non-RBAC failures")
-}
-
-func TestResolveProjectByUniqueDisplayName(t *testing.T) {
-	t.Parallel()
-	client := &listClient{lists: map[string]*unstructured.UnstructuredList{
-		"projects": {Items: []unstructured.Unstructured{project("p-1", "web"), project("p-2", "db")}},
-	}}
-	factory := stubFactory{c: client}
-
-	id, err := ResolveProject(t.Context(), factory, "c-x", "web")
-	require.NoError(t, err)
-	assert.Equal(t, "p-1", id)
-	assert.Equal(t, "c-x", client.lastNS, "projects are listed in the cluster-id namespace")
-}
-
-func TestResolveProjectAmbiguousDisplayName(t *testing.T) {
-	t.Parallel()
-	client := &listClient{lists: map[string]*unstructured.UnstructuredList{
-		"projects": {Items: []unstructured.Unstructured{project("p-1", "web"), project("p-2", "web")}},
-	}}
-	factory := stubFactory{c: client}
-
-	_, err := ResolveProject(t.Context(), factory, "c-x", "web")
-	require.Error(t, err)
-	cerr, ok := err.(*clierr.Error)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeAmbiguousSelection, cerr.Code)
-	require.Len(t, cerr.Candidates, 2)
-}
-
-func TestResolveProjectIDCollidesWithDifferentProjectsDisplayName(t *testing.T) {
-	t.Parallel()
-	// project A's id equals project B's display name - an id-wins
-	// short-circuit would silently resolve to A; ResolveCluster's collision
-	// semantics say this is ambiguous instead.
-	client := &listClient{lists: map[string]*unstructured.UnstructuredList{
-		"projects": {Items: []unstructured.Unstructured{project("web", "A"), project("p-2", "web")}},
-	}}
-	factory := stubFactory{c: client}
-
-	_, err := ResolveProject(t.Context(), factory, "c-x", "web")
-	require.Error(t, err)
-	cerr, ok := err.(*clierr.Error)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeAmbiguousSelection, cerr.Code)
-	require.Len(t, cerr.Candidates, 2)
-	assert.Contains(t, cerr.Message, "web")
-}
-
-func TestResolveProjectNotFound(t *testing.T) {
-	t.Parallel()
-	client := &listClient{lists: map[string]*unstructured.UnstructuredList{
-		"projects": {Items: []unstructured.Unstructured{project("p-1", "web")}},
-	}}
-	factory := stubFactory{c: client}
-
-	_, err := ResolveProject(t.Context(), factory, "c-x", "unknown")
-	require.Error(t, err)
-	cerr, ok := err.(*clierr.Error)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeNotFound, cerr.Code)
-	assert.Contains(t, cerr.Hint, "rancher get projects --cluster")
-}
-
-func TestProjectNamespacesListsWithLabelSelector(t *testing.T) {
-	t.Parallel()
-	client := &listClient{lists: map[string]*unstructured.UnstructuredList{
-		"namespaces": {Items: []unstructured.Unstructured{
-			{Object: map[string]any{"metadata": map[string]any{"name": "ns-a"}}},
-			{Object: map[string]any{"metadata": map[string]any{"name": "ns-b"}}},
-		}},
-	}}
-
-	members, err := ProjectNamespaces(t.Context(), client, "p-1")
-	require.NoError(t, err)
-	assert.Equal(t, map[string]bool{"ns-a": true, "ns-b": true}, members)
-	assert.Equal(t, "field.cattle.io/projectId=p-1", client.lastSelector)
-	assert.Equal(t, "", client.lastNS, "namespaces are cluster-scoped")
-}
-
-func TestProjectNamespacesEmptySetIsNotAnError(t *testing.T) {
-	t.Parallel()
-	client := &listClient{lists: map[string]*unstructured.UnstructuredList{}}
-
-	members, err := ProjectNamespaces(t.Context(), client, "p-1")
-	require.NoError(t, err)
-	assert.Empty(t, members)
-}
-
 func projectWithBackingNS(id, backingNS string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": id}}}
 	if backingNS != "" {
@@ -409,26 +213,6 @@ func TestBackingNamespaceNotFoundWithHintPassesThrough(t *testing.T) {
 }
 
 var _ engine.ClusterClient = (*listClient)(nil)
-
-// TestResolveProjectForbiddenListGetTransientErrorPropagates verifies the
-// fallback get's own error survives verbatim when it is neither NOT_FOUND
-// nor RBAC: a transient failure (timeout, 5xx) must keep its code and
-// Retryable flag - mislabeling it as the list's RBAC denial would stop a
-// caller from retrying.
-func TestResolveProjectForbiddenListGetTransientErrorPropagates(t *testing.T) {
-	t.Parallel()
-	client := &listClient{
-		listErr: clierr.New(clierr.CodeRBAC, "projects is forbidden: cannot list"),
-		getErrs: map[string]error{"local/p-1": clierr.Retryable(clierr.CodeGeneric, "request timed out")},
-	}
-	factory := stubFactory{c: client}
-
-	_, err := ResolveProject(t.Context(), factory, "local", "p-1")
-	var cerr *clierr.Error
-	require.ErrorAs(t, err, &cerr)
-	assert.Equal(t, clierr.CodeGeneric, cerr.Code, "the get's own code survives")
-	assert.True(t, cerr.Retryable, "retryability survives - callers branch on it")
-}
 
 func (*listClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
 	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")

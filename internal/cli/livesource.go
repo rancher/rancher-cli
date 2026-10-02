@@ -8,12 +8,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/rancher/rancher-cli/internal/engine/access"
 	accesscomplete "github.com/rancher/rancher-cli/internal/engine/access/complete"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	projectscomplete "github.com/rancher/rancher-cli/internal/engine/projects/complete"
 	rbaccomplete "github.com/rancher/rancher-cli/internal/engine/rbac/complete"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	usercomplete "github.com/rancher/rancher-cli/internal/engine/user/complete"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -70,7 +70,7 @@ var flagSources = map[string]completion.Source{
 // among them - completes through the generic kinds source.
 var kindSources = map[string]completion.Source{
 	"managementcluster": accesscomplete.ClusterSource(),
-	"project":           projectscomplete.ProjectSource(),
+	"project":           projectscomplete.ProjectIDSource(),
 	"user":              usercomplete.UserIDSource(),
 }
 
@@ -82,7 +82,6 @@ var kindSources = map[string]completion.Source{
 // positional is a new username, never an existing one.
 var positionalKinds = map[string]string{
 	"inspect cluster":                "managementcluster",
-	"inspect project":                "project",
 	"inspect user":                   "user",
 	"cluster scale":                  "provisioningcluster",
 	"cluster set-autoscaling":        "provisioningcluster",
@@ -108,7 +107,9 @@ func allowanceLimit(a completion.Allowance) (int, bool) {
 	case completion.AllowanceDiscovery:
 		return 2 + 2*(1+completion.DiscoveryGroupLimit), true
 	case completion.AllowanceSteveClusterPages:
-		return access.SteveMaxPages, true
+		return steve.MaxPages, true
+	case completion.AllowanceSteveProjectPages:
+		return steve.MaxPages, true
 	}
 	return 0, false
 }

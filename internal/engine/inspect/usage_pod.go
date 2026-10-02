@@ -20,18 +20,17 @@ import (
 func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient, clusterID string, sec *sections, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
-	projectFlag := resources.TypedProject(in)
 	podKind, _ := kinds.Lookup("pod")
 
+	p, scoped, err := runtime.TypedProjectOn(ctx, in, clusterID)
+	if err != nil {
+		return runtime.Result{}, err
+	}
 	var projectID string
 	var members map[string]bool
-	if projectFlag != "" {
-		var err error
-		projectID, err = projects.ResolveProject(ctx, c.clients, clusterID, projectFlag)
-		if err != nil {
-			return runtime.Result{}, err
-		}
-		members, err = projects.ProjectNamespaces(ctx, client, projectID)
+	if scoped {
+		projectID = p.ID
+		members, err = p.Namespaces(ctx)
 		if err != nil {
 			return runtime.Result{}, err
 		}

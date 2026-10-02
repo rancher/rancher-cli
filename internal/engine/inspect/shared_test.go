@@ -7,42 +7,11 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
-
-// TestCompositesRejectProjectScope asserts the composite-rejection rule: the
-// non-project inspect composites bypass Route, so without an explicit check
-// the global --project flag would reach them and be silently ignored, so a
-// typed --project that does nothing is rejected instead.
-func TestCompositesRejectProjectScope(t *testing.T) {
-	tests := []struct {
-		name string
-		cmd  runtime.Command
-		in   runtime.Input
-	}{
-		{"inspect pod", NewPod(&fakeFactory{}),
-			input{args: []string{"web"}, s: map[string]string{"cluster": "c-abc", "namespace": "default", "project": "p-x"}}},
-		{"inspect deployment", NewDeployment(&fakeFactory{}),
-			input{args: []string{"web"}, s: map[string]string{"cluster": "c-abc", "namespace": "default", "project": "p-x"}}},
-		{"images", NewImages(&fakeFactory{}),
-			input{s: map[string]string{"cluster": "c-abc", "project": "p-x"}}},
-		{"inspect user", NewInspectUser(&fakeFactory{}),
-			input{args: []string{"u-abc"}, s: map[string]string{"project": "p-x"}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := execRead(t, tt.cmd, tt.in)
-			var ce *clierr.Error
-			require.ErrorAs(t, err, &ce)
-			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Contains(t, ce.Message, tt.name)
-		})
-	}
-}
 
 // ownerChainWith walks the chain with its own accumulator and returns what a
 // caller would publish: the owners plus the finalized warnings.

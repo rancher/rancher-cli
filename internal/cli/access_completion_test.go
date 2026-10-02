@@ -16,6 +16,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/access"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 )
@@ -268,7 +269,7 @@ func TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader(t *testi
 	renamed := steveCluster("c-aaa11", "a")
 	renamed["metadata"] = map[string]any{"name": "c-other"}
 	looping := map[string]any{}
-	for i := range access.SteveMaxPages + 5 {
+	for i := range steve.MaxPages + 5 {
 		key := base
 		if i > 0 {
 			key = base + "?continue=t" + strconv.Itoa(i)

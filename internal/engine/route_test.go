@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,5 +33,17 @@ func TestResolveDownstreamClusterMissingFlagNamesLocalAndHintsClusterList(t *tes
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "--cluster local")
 	assert.Contains(t, ce.Message, "cattle-tokens")
-	assert.Equal(t, clierr.Rancher+" get cluster", ce.Hint)
+	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+}
+
+// TestResolveDownstreamClusterMissingFlagWithProjectIsTheLookupsRefusal
+// asserts that with --project typed, an empty --cluster is answered by the
+// project lookup's refusal, which names the clusters the project is on,
+// in place of the fixed local-cluster advice.
+func TestResolveDownstreamClusterMissingFlagWithProjectIsTheLookupsRefusal(t *testing.T) {
+	t.Parallel()
+	refusal := clierr.New(clierr.CodeValidation, "--cluster is required with --project; candidates")
+	ctx := runtime.WithProjectLookup(t.Context(), func(context.Context) (runtime.Project, error) { return runtime.Project{}, refusal })
+	_, err := ResolveDownstreamCluster(ctx, nil, flagInput{})
+	require.ErrorIs(t, err, refusal)
 }

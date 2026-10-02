@@ -16,7 +16,11 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
+
+// steveClustersPath is the cluster collection the access commands read.
+var steveClustersPath = steve.Request{Type: steve.ClustersType}.Path()
 
 // fakeRootClient answers engine.RootClient over a real httptest server with
 // the production root client's status contract, so the reader's decode and
@@ -220,14 +224,23 @@ func TestListClustersNotJSONIsTerminal(t *testing.T) {
 	require.ErrorContains(t, err, "not a steve collection")
 }
 
-func TestListClustersPassesTheRootErrorThrough(t *testing.T) {
+// TestListClustersRefusalKeepsTheCredentialError asserts a 401 on the
+// cluster collection keeps the root client's AUTH error, and a 403, which
+// Rancher never answers a signed-in user's collection read with, is RBAC
+// naming the refused request.
+func TestListClustersRefusalKeepsTheCredentialError(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }))
-	t.Cleanup(srv.Close)
-	_, err := listClusters(t.Context(), fakeRootClient{srv})
-	ce, ok := errors.AsType[*clierr.Error](err)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeAuth, ce.Code)
+	for status, want := range map[int]string{http.StatusUnauthorized: clierr.CodeAuth, http.StatusForbidden: clierr.CodeRBAC} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+		t.Cleanup(srv.Close)
+		_, err := listClusters(t.Context(), fakeRootClient{srv})
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok)
+		assert.Equal(t, want, ce.Code, "status %d", status)
+		if status == http.StatusForbidden {
+			require.ErrorContains(t, err, "the server refused GET /v1/management.cattle.io.clusters (403)")
+		}
+	}
 }
 
 func TestListClustersCountMustAgreeAcrossPages(t *testing.T) {
@@ -258,7 +271,7 @@ func TestListClustersPageBoundIsTerminal(t *testing.T) {
 	require.True(t, ok)
 	assert.False(t, ce.Retryable)
 	require.ErrorContains(t, err, "more than 100 pages")
-	assert.Equal(t, int32(SteveMaxPages), n.Load())
+	assert.Equal(t, int32(steve.MaxPages), n.Load())
 }
 
 // TestListClustersOnceReadsOnePassAndNeverRetries asserts the exported

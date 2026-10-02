@@ -37,20 +37,20 @@ conformance test (`internal/cli/migrating_test.go` +
 | `clusters list-roles` | → `rancher get roletemplates` - filter the `context` field (`cluster`/`project`, and empty is admitted by the webhook): `-o json` + `data.#(context=="cluster")#`, or read the CONTEXT table column |
 | `clusters list-members` | → `rancher get clusterroletemplatebindings --cluster <id>` (MEMBER/ROLE/CLUSTER table; add `-o json` for full objects) |
 | `machines ls` | → `rancher get machines` |
-| `namespaces ls` | → `rancher get namespaces` (`--project <p>` lists a project's project namespaces) |
-| `namespaces create` | → `rancher create namespace <name> [--project <p>]` |
-| `namespaces delete` (alias `rm`) | → `rancher delete namespace <name>` |
-| `namespaces move` | → `rancher project remove-namespace <ns> --project <old>` then `rancher project add-namespace <ns> --project <new>` - an explicit two-step, never an implicit move |
-| `nodes ls` | → `rancher get nodes` |
+| `namespaces ls` | → `rancher get namespaces --cluster <c>` (`--project <p>` lists a project's project namespaces) |
+| `namespaces create` | → `rancher create namespace <name> --cluster <c> [--project <p>]` |
+| `namespaces delete` (alias `rm`) | → `rancher delete namespace <name> --cluster <c>` |
+| `namespaces move` | → `rancher project remove-namespace <ns> --cluster <c>` then `rancher project add-namespace <ns> --project <new> --cluster <c>` - an explicit two-step, never an implicit move |
+| `nodes ls` | → `rancher get nodes --cluster <c>` |
 | `nodes delete` (alias `rm`) | DROPPED - the `node` kind is `Deletable: false`; use `kubectl delete node` via `rancher kubeconfig --cluster <id>` + kubectl, or the Rancher UI |
 | `projects ls` | → `rancher get projects` |
 | `projects create` | → `rancher create project <name> --cluster <id> [--description] [--quota-limit ...] [--namespace-default-quota ...]` |
-| `projects delete` (alias `rm`) | → `rancher delete project <id>` |
+| `projects delete` (alias `rm`) | → `rancher delete project <id> --cluster <c>` |
 | `projects add-member-role` | → `rancher grant <subject> --role <r> --project <p> --cluster <c> --apply --yes` |
 | `projects delete-member-role` | → `rancher revoke <subject> [--role <r>] --project <p> --cluster <c> --apply --yes` |
 | `projects list-roles` | → `rancher get roletemplates` - filter the `context` field: `-o json` + `data.#(context=="project")#`, or read the CONTEXT table column |
-| `projects list-members` | → `rancher inspect project <name-or-id>` (MEMBERS section, display names resolved); raw objects: `rancher get projectroletemplatebindings --namespace <backing-namespace> -o json` |
-| `ps` | → `rancher get deployments` / `rancher get pods` (+ `rancher inspect deployment`) |
+| `projects list-members` | → `rancher inspect project <name-or-id> --cluster <c>` (MEMBERS section, display names resolved); raw objects: `rancher get projectroletemplatebindings --namespace <backing-namespace> -o json` |
+| `ps` | → `rancher get deployments --cluster <c>` / `rancher get pods --cluster <c>` (+ `rancher inspect deployment <name> --cluster <c> --namespace <ns>`) |
 | `inspect <type> <id>` | → `rancher get <kind> <name> -o json` (+ `rancher inspect pod/deployment/project` composites) |
 | `kubectl …` | → one-time `rancher kubeconfig --cluster <id>` + native `kubectl` (merge recipe below); `auth get-token` handles credentials transparently |
 | `server current` | → `rancher config status` / `rancher config list-servers` (active marked with *) |
@@ -61,10 +61,20 @@ conformance test (`internal/cli/migrating_test.go` +
 | `settings get` | → `rancher get setting <name>` |
 | `settings set` | → `rancher patch setting <name> --patch '<RFC 6902 JSON patch>' --apply` |
 | `ssh <node>` | DROPPED - RKE1/node-driver only, Norman-only; keep the legacy binary for this |
-| `token` | Existing Rancher-generated kubeconfigs that call `rancher token` keep working after a binary swap - the shim delegates to `auth get-token` machinery and takes `--server <url>`, `--user <user-id>`, and `--cacerts <path>`. Regenerate kubeconfigs (`rancher kubeconfig --cluster <id>`) to move them to `auth get-token` directly. Server-side token management: `rancher get tokens` / `create token` / `delete token`. Local exec-credential cache: `auth list-tokens` / `auth delete-token`. |
+| `token` | Existing Rancher-generated kubeconfigs that call `rancher token --server <url> --user <user-id>` keep working after a binary swap - the shim delegates to `auth get-token` machinery and also takes `--cacerts <path>`. Regenerate kubeconfigs (`rancher kubeconfig --cluster <id>`) to move them to `auth get-token` directly. Server-side token management: `rancher get tokens` / `create token` / `delete token`. Local exec-credential cache: `auth list-tokens` / `auth delete-token`. |
 | `token delete` | → `rancher auth delete-token` |
 | `up -f compose.yml` | DROPPED - compose-era, no replacement |
 | `wait <type> <id>` | → `rancher get <kind> <name> --wait` |
+
+## Changed in this CLI
+
+| Before | Now |
+|---|---|
+| `rancher create secret <name> --project <p> --project-scoped --cluster <c>` | `rancher create secret <name> --project <p> --cluster <c>` - `--project-scoped` is gone; `--project` alone creates the project-scoped secret, and `--project` with `--namespace` is refused |
+| `rancher project remove-namespace <ns> --project <p> --cluster <c>` | `rancher project remove-namespace <ns> --cluster <c>` - the namespace's own label names its project; a typed `--project` is refused, and when the namespace and `--cluster` are typed the refusal names this command |
+| `--project <p>` on any command: used by the commands that scope by project, refused by many others (a few only after sending a request), and ignored by the rest | `rancher schema` lists `project` among the flags of each command that takes it; every other command refuses `--project` (VALIDATION, exit 2) before sending a request, whether it is typed before or after the command name |
+| a flag typed with an empty or blank value, such as `--namespace ""` from an unset variable, acted on most flags as if it were omitted (`get pods --namespace ""` listed every namespace, `revoke --role ""` revoked every role); a few flags already refused it | refused (VALIDATION, exit 2) before any request; pass the flag only with a value - `rancher get pods --cluster <c>` lists every namespace |
+| `rancher create resource -f <namespace manifest> --cluster <c> --project <p>` created the namespace outside the project | refused (VALIDATION, exit 2); `rancher create namespace <name> --cluster <c> --project <p>` creates it in the project |
 
 ## `rancher kubeconfig`
 

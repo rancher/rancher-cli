@@ -41,6 +41,11 @@
           "type": "string"
         },
         {
+          "desc": "ask about the project's namespaces",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "subject to ask about: user name, id, or principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you",
           "name": "as",
           "type": "string"
@@ -243,6 +248,11 @@
           "type": "string"
         },
         {
+          "desc": "ask about the project's namespaces",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "A"
           ],
@@ -366,6 +376,11 @@
           ],
           "desc": "namespace the question is about",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "ask about the project's namespaces",
+          "name": "project",
           "type": "string"
         },
         {
@@ -1543,6 +1558,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
+        },
+        {
+          "desc": "the manifest's namespace must be in this project (namespaced kinds; refused for a Namespace)",
+          "name": "project",
+          "type": "string"
         }
       ],
       "gates": [
@@ -1570,7 +1590,7 @@
       "destructive": "true",
       "examples": [
         "rancher create secret app-secret --namespace team-a --cluster c-x --from-literal key=v1,other=v2 --apply",
-        "rancher create secret shared-cred --project p-x --project-scoped --cluster c-x --from-literal token=abc --apply"
+        "rancher create secret shared-cred --project p-x --cluster c-x --from-literal token=abc --apply"
       ],
       "flags": [
         {
@@ -1585,14 +1605,9 @@
           "type": "string"
         },
         {
-          "desc": "project `id|name` to scope the secret to",
+          "desc": "create a project-scoped secret in this project's backing namespace; Rancher copies it into every namespace of the project (not with --namespace)",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "create a project-scoped secret",
-          "name": "project-scoped",
-          "type": "bool"
         },
         {
           "desc": "secret data as `key=value` pairs (comma-separated)",
@@ -1891,6 +1906,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -1913,7 +1933,6 @@
       "group": "delete",
       "name": "delete configmap",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -1948,6 +1967,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -1970,7 +1994,6 @@
       "group": "delete",
       "name": "delete cronjob",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2006,6 +2029,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2028,7 +2056,6 @@
       "group": "delete",
       "name": "delete daemonset",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2064,6 +2091,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2086,7 +2118,6 @@
       "group": "delete",
       "name": "delete deployment",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2313,6 +2344,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2335,7 +2371,6 @@
       "group": "delete",
       "name": "delete ingress",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2370,6 +2405,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2392,7 +2432,6 @@
       "group": "delete",
       "name": "delete job",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2428,6 +2467,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2450,7 +2494,6 @@
       "group": "delete",
       "name": "delete k3k-cluster",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2572,6 +2615,11 @@
           "type": "string"
         },
         {
+          "desc": "the namespace must be one of the project's",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2594,7 +2642,6 @@
       "group": "delete",
       "name": "delete namespace",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2676,6 +2723,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2698,7 +2750,6 @@
       "group": "delete",
       "name": "delete persistentvolumeclaim",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2734,6 +2785,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2756,7 +2812,6 @@
       "group": "delete",
       "name": "delete pod",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -2943,6 +2998,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -2965,7 +3025,6 @@
       "group": "delete",
       "name": "delete replicaset",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -3000,6 +3059,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3022,7 +3086,6 @@
       "group": "delete",
       "name": "delete secret",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -3058,6 +3121,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3080,7 +3148,6 @@
       "group": "delete",
       "name": "delete service",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -3116,6 +3183,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3138,7 +3210,6 @@
       "group": "delete",
       "name": "delete serviceaccount",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -3174,6 +3245,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -3196,7 +3272,6 @@
       "group": "delete",
       "name": "delete statefulset",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -3841,6 +3916,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -3867,7 +3947,6 @@
       "group": "get",
       "name": "get configmap",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -3899,6 +3978,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -3925,7 +4009,6 @@
       "group": "get",
       "name": "get cronjob",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -3958,6 +4041,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -3984,7 +4072,6 @@
       "group": "get",
       "name": "get daemonset",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -4017,6 +4104,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -4043,7 +4135,6 @@
       "group": "get",
       "name": "get deployment",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -4127,6 +4218,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -4153,7 +4249,6 @@
       "group": "get",
       "name": "get event",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -4478,6 +4573,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -4504,7 +4604,6 @@
       "group": "get",
       "name": "get ingress",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -4536,6 +4635,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -4562,7 +4666,6 @@
       "group": "get",
       "name": "get job",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -4595,6 +4698,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -4621,7 +4729,6 @@
       "group": "get",
       "name": "get k3k-cluster",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -4910,6 +5017,11 @@
           "type": "string"
         },
         {
+          "desc": "list the project's namespaces; a named namespace must be one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -4936,7 +5048,6 @@
       "group": "get",
       "name": "get namespace",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -5168,6 +5279,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -5194,7 +5310,6 @@
       "group": "get",
       "name": "get persistentvolumeclaim",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -5227,6 +5342,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -5253,7 +5373,6 @@
       "group": "get",
       "name": "get pod",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -5441,6 +5560,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -5467,7 +5591,6 @@
       "group": "get",
       "name": "get replicaset",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -5545,6 +5668,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -5571,7 +5699,6 @@
       "group": "get",
       "name": "get secret",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -5604,6 +5731,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -5630,7 +5762,6 @@
       "group": "get",
       "name": "get service",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -5663,6 +5794,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -5689,7 +5825,6 @@
       "group": "get",
       "name": "get serviceaccount",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -5768,6 +5903,11 @@
           "type": "string"
         },
         {
+          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "aliases": [
             "l"
           ],
@@ -5794,7 +5934,6 @@
       "group": "get",
       "name": "get statefulset",
       "network": true,
-      "projectScope": true,
       "shape": "tabular",
       "stability": "beta",
       "toolset": "core",
@@ -7038,6 +7177,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -7072,7 +7216,6 @@
       "group": "patch",
       "name": "patch configmap",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -7104,6 +7247,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
           "type": "string"
         },
         {
@@ -7141,7 +7289,6 @@
       "group": "patch",
       "name": "patch cronjob",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -7174,6 +7321,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
           "type": "string"
         },
         {
@@ -7211,7 +7363,6 @@
       "group": "patch",
       "name": "patch daemonset",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -7244,6 +7395,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
           "type": "string"
         },
         {
@@ -7281,7 +7437,6 @@
       "group": "patch",
       "name": "patch deployment",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -7378,6 +7533,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -7412,7 +7572,6 @@
       "group": "patch",
       "name": "patch event",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -7804,6 +7963,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -7838,7 +8002,6 @@
       "group": "patch",
       "name": "patch ingress",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -7870,6 +8033,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
           "type": "string"
         },
         {
@@ -7907,7 +8075,6 @@
       "group": "patch",
       "name": "patch job",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -7940,6 +8107,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
           "type": "string"
         },
         {
@@ -7977,7 +8149,6 @@
       "group": "patch",
       "name": "patch k3k-cluster",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -8308,6 +8479,11 @@
           "type": "string"
         },
         {
+          "desc": "the namespace must be one of the project's",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -8342,7 +8518,6 @@
       "group": "patch",
       "name": "patch namespace",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -8619,6 +8794,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -8653,7 +8833,6 @@
       "group": "patch",
       "name": "patch persistentvolumeclaim",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -8686,6 +8865,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
           "type": "string"
         },
         {
@@ -8723,7 +8907,6 @@
       "group": "patch",
       "name": "patch pod",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -8948,6 +9131,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -8982,7 +9170,6 @@
       "group": "patch",
       "name": "patch replicaset",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -9074,6 +9261,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -9109,7 +9301,6 @@
       "group": "patch",
       "name": "patch secret",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -9142,6 +9333,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
           "type": "string"
         },
         {
@@ -9179,7 +9375,6 @@
       "group": "patch",
       "name": "patch service",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -9212,6 +9407,11 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "required": true,
+          "type": "string"
+        },
+        {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
           "type": "string"
         },
         {
@@ -9249,7 +9449,6 @@
       "group": "patch",
       "name": "patch serviceaccount",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -9342,6 +9541,11 @@
           "type": "string"
         },
         {
+          "desc": "the object's namespace must be in this project",
+          "name": "project",
+          "type": "string"
+        },
+        {
           "desc": "wait for the resource to reach --for before returning",
           "name": "wait",
           "type": "bool"
@@ -9376,7 +9580,6 @@
       "group": "patch",
       "name": "patch statefulset",
       "network": true,
-      "projectScope": true,
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
@@ -9610,17 +9813,11 @@
       "contract": "internal",
       "destructive": "false",
       "examples": [
-        "rancher project remove-namespace team-a --project p-x --cluster c-x --apply"
+        "rancher project remove-namespace team-a --cluster c-x --apply"
       ],
       "flags": [
         {
-          "desc": "target project `id|name`",
-          "name": "project",
-          "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "cluster `id|name` of the project",
+          "desc": "cluster `id|name` of the namespace",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -10022,7 +10219,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a project namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns project-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket. Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Required collectors hard-error: cluster resolution and the pod list always; project resolution and the membership list with --project; the project and namespace maps with --by project; the node list with --by node, or the named node GET with --by node --node N. Degradable section: metrics (unavailable - requests and limits stay). A scope that resolves to zero namespaces is verified empty: no pod or metrics read is issued.",
+      "desc": "Groups results by --by (namespace|project|node|pod). --namespace, --project, and --node are filters that narrow every grouping: --node keeps only pods scheduled on that node; --namespace with --project requires a project namespace. --by node accepts only --node; combining --by node with --namespace or --project is a validation error. --project without --by returns project-namespace rows (namespace grouping filtered to the project). --by project --project X returns a single project bucket. Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Required collectors hard-error: cluster resolution and the pod list always; project resolution and the membership list with --project; the namespace map with --by project, and the project map with --by project and no --project; the node list with --by node, or the named node GET with --by node --node N. Degradable section: metrics (unavailable - requests and limits stay). A scope that resolves to zero namespaces is verified empty: no pod or metrics read is issued.",
       "flags": [
         {
           "desc": "target cluster `id|name`",
@@ -10033,6 +10230,11 @@
         {
           "desc": "`namespace` to operate in",
           "name": "namespace",
+          "type": "string"
+        },
+        {
+          "desc": "keep only the project's namespaces (not with --by node)",
+          "name": "project",
           "type": "string"
         },
         {
@@ -10384,8 +10586,8 @@
       "type": "bool"
     },
     {
-      "appliesTo": "all",
-      "desc": "scope operations to project namespaces (downstream namespaced resources only); rejected with an error where it does not apply",
+      "appliesTo": "declared",
+      "desc": "the project, by id or display name, on the cluster --cluster names; only the commands that take --project accept it, every other command refuses it before sending a request",
       "name": "--project",
       "type": "string"
     },

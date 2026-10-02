@@ -31,16 +31,15 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 		// "Delete the <kind>" (a single named resource). "a/an" can't be computed
 		// for kind names (ingress -> "an", user -> "a"), and get pluralizes
 		// instead because it lists (see plural in get.go); patch matches this.
-		Usage:        "Delete the " + c.k.Name,
-		CommandType:  runtime.Mutating,
-		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
-		Flags:        deleteFlags(c.k),
-		Destructive:  "true",
-		Network:      true,
-		Auth:         true,
-		ProjectScope: kinds.ProjectScopable(c.k),
-		Capability:   c.k.Capability,
-		Shape:        runtime.ShapeText,
+		Usage:       "Delete the " + c.k.Name,
+		CommandType: runtime.Mutating,
+		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Flags:       deleteFlags(c.k),
+		Destructive: "true",
+		Network:     true,
+		Auth:        true,
+		Capability:  c.k.Capability,
+		Shape:       runtime.ShapeText,
 	}
 }
 
@@ -51,7 +50,8 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 //   - an NSPlain kind's --namespace (an empty value would 404 opaquely).
 //
 // NSWorkspace deletes need nothing marked Required - the kind's
-// DefaultNamespace satisfies the named-op rule.
+// DefaultNamespace satisfies the named-op rule. --project describes the
+// named object, never a list.
 func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := getFlags(k)
 	for i := range flags {
@@ -60,6 +60,10 @@ func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 			flags[i].Required = true
 		case k.Policy == kinds.NSPlain && flags[i].Name == FlagNamespace:
 			flags[i].Required = true
+		case flags[i].Name == FlagProject && k.Policy == kinds.NSNone:
+			flags[i].Desc = "the namespace must be one of the project's"
+		case flags[i].Name == FlagProject:
+			flags[i].Desc = "the object's namespace must be in this project"
 		}
 	}
 	return flags
@@ -74,7 +78,7 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 
 	// delete always addresses a resource by name; Route enforces the
 	// Management+Namespaced --cluster requirement independently of the flag.
-	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, c.k, in, true)
+	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, c.k, in, OpNamed, in.Args()[0])
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

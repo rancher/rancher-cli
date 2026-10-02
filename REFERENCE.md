@@ -211,8 +211,8 @@ precedence is flag > environment > file.
 | `RANCHER_CLI_COMPLETION_DEBUG` | when non-empty, traces each phase of a shell completion request to stderr; stdout is unchanged |
 
 Scope is per-invocation: `--cluster` routes to a downstream cluster; `--project`
-filters namespaced kinds. No scope is persisted or implied - see
-[Project scope](#project-scope---project).
+names a project on it, for the commands that take it. No scope is persisted
+or implied - see [Project scope](#project-scope---project).
 
 ## Install internals
 
@@ -427,19 +427,37 @@ command.
 
 ## Project scope (--project)
 
-The global `--project <id-or-name>` flag scopes Downstream namespaced kinds
-(`get`/`delete`/`patch`, plus `usage`) to one project's project namespaces:
-a bare list is filtered to project namespaces; a named op or mutation
-validates the target namespace's membership before touching the server.
-`get namespaces --project <p>` is the one special case - it lists namespaces
-by the membership label server-side rather than filtering client-side.
-Every other command family (cluster-scoped kinds, management-plane kinds,
-and the composites `inspect pod`/`inspect deployment`/`inspect cluster`/`images`) rejects
-a non-empty `--project` with `VALIDATION` rather than silently ignoring
-it. `usage` rejects `--project` only in combination with `--by node`
-(a node row mixing project-scoped requests with whole-node metrics would
-be misleading); all other `usage` groupings accept `--project`.
-Precedence: `--project` flag > unscoped.
+`--project <id-or-name>` names a project on the cluster `--cluster` names.
+Only the commands that take it accept it: the generated `get`/`delete`/`patch`
+of Downstream namespaced kinds and of namespaces, `create resource`,
+`create namespace`, `create secret`, `project add-namespace`, `grant`,
+`revoke`, `usage`, and `access can`/`list`/`who-can`; `rancher schema` lists
+`project` among each such command's flags. Every other command refuses a
+typed `--project` with `VALIDATION` before it sends a request, whether the
+flag is typed before or after the command name.
+
+The project is looked up once per command, as you: among the projects
+Rancher lists for you on that cluster, by id or display name. An id wins
+over another project's display name, with a warning naming that project;
+two projects with the same display name are `AMBIGUOUS_SELECTION` (pass the
+id). A project created moments ago that the list does not show yet is
+found by one read of its id. Without `--cluster` the command refuses and
+names the clusters a project with that id or display name is on; it never
+picks one.
+
+What the project does: a list is filtered to the project's namespaces, and
+a named object or a mutation must be in one of them. `get namespaces
+--project <p>` lists the project's namespaces by their label, server-side.
+`create resource` refuses `--project` for a Namespace manifest (use `create
+namespace --project`). `create secret --project <p>` writes a project-scoped
+secret into the project's backing namespace and cannot be combined with
+`--namespace`. `usage` refuses `--project` with `--by node` (a node row
+mixing project-scoped requests with whole-node metrics would be misleading).
+
+A flag typed with an empty or blank value (`--project ''`, `--namespace=`,
+`-o ' '`) is refused with `VALIDATION` before any request instead of acting
+as if it were omitted; in a script, pass `--flag "$VAR"` only when `VAR` is
+set.
 
 ## Kinds & verbs
 
@@ -704,10 +722,11 @@ discovery, identity reads and every review share it, at most five
 reviews in flight at once. The default is 60 s; `--timeout <duration>`
 (for example `--timeout 5m`) sets it for that call. Running out of budget
 is a terminal error naming the budget and the stage it ended in, and the
-clusters or namespaces that had already answered are not reported; a
-fleet-wide `access clusters` or `access projects` on a large installation
-either gets a longer `--timeout` or a narrower question (`--cluster`,
-`--project`).
+clusters or namespaces that had already answered are not reported. A
+fleet-wide `access clusters` on a large installation needs a longer
+`--timeout`; `access projects` can also be narrowed to one cluster with
+`--cluster`, and `access can|list|who-can` to one namespace (`-n`) or
+project (`--project`).
 
 Resource names resolve against the cluster's discovery, asked for in
 aggregated form (two requests) and read group by group where a server

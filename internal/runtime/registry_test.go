@@ -449,3 +449,47 @@ func TestSchemaCommandGates(t *testing.T) {
 		"dependsOnInput signals the conditional --yes via the destructive field, not gates")
 	assert.Equal(t, []string{"--apply", "--yes", "--allow-deprecated"}, byName["rm old"].Gates)
 }
+
+type hintingRead struct{ fakeRead }
+
+func (hintingRead) ProjectRefusalHint(Input) string { return "" }
+
+// TestValidateProjectFlagRules asserts the three rules on how a command
+// takes the global --project flag: only as ProjectFlag's entry, never
+// beside a refusal hint for it, and no other flag reuses a global flag's
+// name or short form.
+func TestValidateProjectFlagRules(t *testing.T) {
+	t.Parallel()
+	read := func(flags ...ArgSpec) Descriptor {
+		return Descriptor{Name: "get widget", CommandType: ReadOnly, Shape: ShapeText, Flags: flags}
+	}
+	for _, tc := range []struct {
+		name string
+		cmd  Command
+		want string // "" = valid
+	}{
+		{"the ProjectFlag entry", fakeRead{d: read(ProjectFlag(false, "d"))}, ""},
+		{"a required ProjectFlag entry", fakeRead{d: read(ProjectFlag(true, "d"))}, ""},
+		{"a bool project flag", fakeRead{d: read(ArgSpec{Name: FlagProject, Type: "bool"})}, "must be runtime.ProjectFlag's entry"},
+		{"a project flag with an alias", fakeRead{d: read(ArgSpec{Name: FlagProject, Type: "string", Aliases: []string{"p"}})}, "must be runtime.ProjectFlag's entry"},
+		{"a project flag with an enum", fakeRead{d: read(ArgSpec{Name: FlagProject, Type: "string", Enum: []string{"a"}})}, "must be runtime.ProjectFlag's entry"},
+		{"a project flag with an env var", fakeRead{d: read(ArgSpec{Name: FlagProject, Type: "string", Env: []string{"X"}})}, "must be runtime.ProjectFlag's entry"},
+		{"a refusal hint without the flag", hintingRead{fakeRead{d: read()}}, ""},
+		{"a refusal hint beside the flag", hintingRead{fakeRead{d: read(ProjectFlag(false, "d"))}}, "also hints at what to run instead"},
+		{"a flag named like a global flag", fakeRead{d: read(ArgSpec{Name: "output", Type: "string"})}, `flag "output" reuses the name of a global flag`},
+		{"a flag aliased like a global short form", fakeRead{d: read(ArgSpec{Name: "context", Type: "string", Aliases: []string{"c"}})}, `flag "c" reuses the name of a global flag`},
+		{"a bool flag named like a global flag", fakeRead{d: read(ArgSpec{Name: "dry-run", Type: "bool"})}, `flag "dry-run" reuses the name of a global flag`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := NewRegistry(stubResolver{})
+			reg.Register(tc.cmd)
+			err := reg.Validate()
+			if tc.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}

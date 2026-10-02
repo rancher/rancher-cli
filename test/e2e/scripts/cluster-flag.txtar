@@ -16,7 +16,7 @@ jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.code VALIDATION
 stderr 'cluster is required'
 stderr 'cluster local'
-jsonquery stderr data.error.hint 'rancher get cluster'
+jsonquery stderr data.error.hint 'rancher access clusters'
 
 -- cm.yaml --
 apiVersion: v1

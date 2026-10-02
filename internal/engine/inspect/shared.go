@@ -17,8 +17,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
-	"github.com/rancher/rancher-cli/internal/engine/resources"
-	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -353,17 +351,6 @@ func splitOwnerTarget(target string) (ownerTargetParts, bool) {
 	default:
 		return ownerTargetParts{}, false
 	}
-}
-
-// rejectProject rejects --project for the composites that bypass Route (inspect
-// pod/deployment, images): a TYPED --project flag would otherwise reach them
-// and be silently ignored; a typed flag that does nothing is rejected instead.
-// cmd is the command name for the message ("inspect pod", "images", ...).
-func rejectProject(in runtime.Input, cmd string) error {
-	if resources.TypedProject(in) == "" {
-		return nil
-	}
-	return clierr.New(clierr.CodeValidation, "--project does not apply to "+cmd)
 }
 
 // podMetricsGVR is a metrics GVR constant - deliberately not a kind-table

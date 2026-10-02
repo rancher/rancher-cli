@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/access/complete"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,7 @@ func TestCompletionWalksTheSamePagesAsTheCommand(t *testing.T) {
 	commandPaths := append([]string(nil), *paths...)
 	*paths = nil
 
-	conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, SteveMaxPages)
+	conn := completion.NewConnection(srv.Client(), "tok", srv.URL, false, steve.MaxPages)
 	got := complete.ProjectsClusterSource().Complete(t.Context(), conn, completion.Request{Flag: "cluster"})
 
 	var want []string
@@ -53,6 +54,6 @@ func TestCompletionRefusesWhatTheCommandRefuses(t *testing.T) {
 	})
 	_, err := ListClustersOnce(t.Context(), fakeRootClient{srv})
 	require.Error(t, err)
-	got := complete.ProjectsClusterSource().Complete(t.Context(), completion.NewConnection(srv.Client(), "tok", srv.URL, false, SteveMaxPages), completion.Request{Flag: "cluster"})
+	got := complete.ProjectsClusterSource().Complete(t.Context(), completion.NewConnection(srv.Client(), "tok", srv.URL, false, steve.MaxPages), completion.Request{Flag: "cluster"})
 	assert.Empty(t, got.Names)
 }

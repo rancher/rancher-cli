@@ -1,0 +1,85 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "projects",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 2,
+        "data": [
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "id": "\u003cid\u003e",
+            "kind": "Project",
+            "metadata": {
+              "name": "\u003cname\u003e",
+              "namespace": "local"
+            },
+            "spec": {
+              "clusterName": "local",
+              "displayName": "Default"
+            },
+            "type": "management.cattle.io.project"
+          },
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "id": "\u003cid\u003e",
+            "kind": "Project",
+            "metadata": {
+              "name": "\u003cname\u003e",
+              "namespace": "local"
+            },
+            "spec": {
+              "clusterName": "local",
+              "displayName": "System"
+            },
+            "type": "management.cattle.io.project"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "get-project",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "kind": "Project",
+        "metadata": {
+          "name": "{project}",
+          "namespace": "local"
+        },
+        "spec": {
+          "clusterName": "local",
+          "displayName": "\u003cdisplay-name\u003e"
+        }
+      }
+    },
+    {
+      "name": "get-missing-project",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 404,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "metadata": {},
+        "reason": "NotFound"
+      }
+    },
+    {
+      "name": "unknown-cluster",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "data": [],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    }
+  ]
+}

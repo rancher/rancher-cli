@@ -780,16 +780,6 @@ func TestInspectClusterMgmtGetErrorIsCommandError(t *testing.T) {
 	assert.Equal(t, "", root.path, "no registration read after the hard failure")
 }
 
-func TestInspectClusterRejectsProject(t *testing.T) {
-	t.Parallel()
-	cmd := NewInspectCluster(&fakeFactory{client: newFakeClient()}, fakeRoots{rc: &fakeRoot{}})
-	_, err := execRead(t, cmd, input{args: []string{"c-abc"}, s: map[string]string{"project": "p-abc"}})
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "--project does not apply to inspect cluster")
-}
-
 // TestInspectClusterTextSections asserts the multi-section text view
 // section by section: order, content, the trouble-first condition
 // ordering, sane message truncation, and the NEVER-truncated join

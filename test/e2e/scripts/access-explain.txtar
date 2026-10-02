@@ -105,10 +105,10 @@ stdout '  bindingRead RoleBinding team-c/e2e-explain-rb: RBAC - '
 stdout '\+-- HeldBindings - Bindings held by the subject'
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# explain answers one place: --project (a global flag) is refused before any
-# request, and -A is not a flag of explain at all
+# access explain does not take --project: the pipeline refuses it before
+# any request; -A is not a flag of explain at all
 ! exec rancher access explain delete pods --cluster testcluster --project p-e2e
-stderr 'explain answers one namespace'
+stderr '--project does not apply to access explain'
 ! exec rancher access explain delete pods --cluster testcluster -A
 stderr 'flag provided but not defined'
 ! exec rancher access explain delete pods --cluster testcluster

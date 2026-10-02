@@ -40,21 +40,15 @@ func canInput(strs map[string]string, args ...string) fakeInput {
 	return fakeInput{strs: strs, args: args}
 }
 
-func projectObj(cluster, id, display string) unstructured.Unstructured {
-	return unstructured.Unstructured{Object: map[string]any{"apiVersion": "management.cattle.io/v3", "kind": "Project",
-		"metadata": map[string]any{"name": id, "namespace": cluster}, "spec": map[string]any{"displayName": display}}}
-}
-
 // canFactory: the caller client doubles as the management cluster client
-// in these tests, so it also serves the Project objects ResolveProject
-// lists in the cluster's namespace.
+// in these tests; its filtered namespace LIST is what clientProject reads
+// as the project's namespaces.
 func canFactory(callerUser string, script ...scripted) *fakeFactory {
 	full := append([]scripted{{resp: whoamiResp(callerUser, "system:authenticated")}}, script...)
 	c := &fakeClient{script: full, Resources: discovery(), Objects: map[string]*unstructured.Unstructured{
 		"team-a": new(nsObj("team-a", nil)), "team-b": new(nsObj("team-b", nil)),
 	}, Lists: map[string]*unstructured.UnstructuredList{
 		"namespaces||field.cattle.io/projectId=p-cvrp4": {Items: []unstructured.Unstructured{nsObj("team-a", nil), nsObj("team-b", nil)}},
-		"projects|c-phmj7|":                             {Items: []unstructured.Unstructured{projectObj("c-phmj7", "p-cvrp4", "Team"), projectObj("c-phmj7", "p-empty", "Empty")}},
 	}}
 	return &fakeFactory{caller: c, resolve: map[string]string{"prod": "c-phmj7"}}
 }
@@ -176,13 +170,11 @@ func TestCanLocalConflictsMakeNoRequest(t *testing.T) {
 
 // TestCanClusterScopedResourceRejectsProjectBeforeLookup asserts the
 // discovery-decidable rule fires before the project is looked up: the
-// project list is absent from the fake, so a lookup would have failed
-// with a different error.
+// lookup fails the test when it is called.
 func TestCanClusterScopedResourceRejectsProjectBeforeLookup(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j")
-	delete(f.caller.Lists, "projects|c-phmj7|")
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4"}, "get", "nodes"), nil)
+	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(unreadProjectContext(t), canInput(map[string]string{"project": "p-cvrp4"}, "get", "nodes"), nil)
 	require.ErrorContains(t, err, "resource nodes is cluster-scoped")
 	assert.Len(t, f.caller.Reviews, 1, "preflight only")
 }
@@ -301,7 +293,7 @@ func TestCanProjectRollup(t *testing.T) {
 		scripted{resp: sar(true, "RBAC: allowed by RoleBinding \"a\" of ClusterRole \"b\" to User \"c\"")},
 		scripted{resp: engine.ReviewResponse{Status: 503, Mapped: clierr.Retryable(clierr.CodeGeneric, "POST selfsubjectaccessreviews: 503 Service Unavailable")}},
 	)
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
+	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	require.Len(t, out.Namespaces, 2)
@@ -324,7 +316,7 @@ func TestCanEmptyProjectIsUnknown(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j")
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
-	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-empty"}, "get", "pods"), nil)
+	res, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionUnknown, out.Decision)
@@ -346,7 +338,7 @@ func TestCanEmptyProjectWithProxyDeniedSubjectIsUnknown(t *testing.T) {
 	local := localWith("u-abc12")
 	local.Lists["clusterroletemplatebindings|c-phmj7|"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{}
-	res, err := NewCan(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-empty", "as": "u-abc12"}, "get", "pods"), nil)
+	res, err := NewCan(f, local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty", "as": "u-abc12"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionUnknown, out.Decision)
@@ -381,7 +373,7 @@ func TestCanBudgetCoversTargetDiscovery(t *testing.T) {
 		}
 		return blockUntilDone(ctx)
 	}
-	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
+	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during")
 	assert.Len(t, f.caller.Reviews, 1, "the preflight ran; no question was asked")
 }
@@ -395,9 +387,23 @@ func TestCanBudgetCoversSubjectResolution(t *testing.T) {
 	f := canFactory("user-vwq4j")
 	local := localWith("u-abc12")
 	local.Before = blockUntilDone
-	_, err := NewCan(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
+	_, err := NewCan(f, local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
 	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during subject resolution")
 	assert.Empty(t, f.Impersonated, "nothing was impersonated")
+}
+
+// TestCanBudgetCoversProjectRead asserts --timeout is already running
+// when the project is read: a lookup that waits for its context ends as
+// the staged budget error, and no question is asked.
+func TestCanBudgetCoversProjectRead(t *testing.T) {
+	t.Parallel()
+	f := canFactory("user-vwq4j")
+	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(blockingProjectContext(t), canInput(map[string]string{"project": "Team", flagTimeout: "20ms"}, "get", "pods"), nil)
+	require.ErrorContains(t, err, "fan-out budget of 20ms exhausted during project resolution")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.False(t, ce.Retryable)
+	assert.Len(t, f.caller.Reviews, 1, "the preflight ran; no question was asked")
 }
 
 // TestCanProjectSARClusterAccessLostMidRun asserts a mid-run
@@ -412,7 +418,7 @@ func TestCanProjectSARClusterAccessLostMidRun(t *testing.T) {
 		scripted{resp: http403("")},
 	)
 	f.impersonated = map[string]*fakeClient{"u-abc12": {script: []scripted{{resp: http403(`{"message":"not allowed to impersonate user"}`)}}}}
-	res, err := NewCan(f, localWith("u-abc12")).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
+	res, err := NewCan(f, localWith("u-abc12")).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "cluster access changed during the run; evaluated 1 of 2")
 	assert.NotContains(t, err.Error(), "impersonate")
@@ -432,7 +438,7 @@ func TestCanProjectSARRefusedIsRBACRefusal(t *testing.T) {
 		scripted{resp: http403(`{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Forbidden","code":403,"message":"subjectaccessreviews.authorization.k8s.io is forbidden"}`)},
 	)
 	f.impersonated = map[string]*fakeClient{"u-abc12": {script: []scripted{{resp: http403(`{"message":"not allowed to impersonate user"}`)}}}}
-	_, err := NewCan(f, localWith("u-abc12")).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
+	_, err := NewCan(f, localWith("u-abc12")).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
@@ -515,7 +521,7 @@ func TestCanSubjectWithoutClusterAccessIsOneDenial(t *testing.T) {
 	local := localWith("u-abc12")
 	local.Lists["clusterroletemplatebindings|c-phmj7|"] = &unstructured.UnstructuredList{}
 	local.Lists["projectroletemplatebindings||"] = &unstructured.UnstructuredList{}
-	res, err := NewCan(f, local).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
+	res, err := NewCan(f, local).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-cvrp4", "Team"), canInput(map[string]string{"project": "p-cvrp4", "as": "u-abc12"}, "get", "pods"), nil)
 	require.NoError(t, err)
 	out := decodeCan(t, res)
 	assert.Equal(t, DecisionDenied, out.Decision)
@@ -550,7 +556,7 @@ func TestCanIncompleteDiscoveryWarns(t *testing.T) {
 	f = canFactory("user-vwq4j")
 	f.caller.ResourcesErr = incompleteFor("dead.example")
 	f.caller.Lists["namespaces||field.cattle.io/projectId=p-empty"] = &unstructured.UnstructuredList{}
-	res, err = NewCan(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"project": "p-empty"}, "get", "deployments"), nil)
+	res, err = NewCan(f, f.caller).(runtime.ReadCommand).Execute(projectContext(t, f.caller, "p-empty", "Empty"), canInput(map[string]string{"project": "p-empty"}, "get", "deployments"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, DecisionUnknown, decodeCan(t, res).Decision)
 	require.Len(t, res.Warnings, 1)

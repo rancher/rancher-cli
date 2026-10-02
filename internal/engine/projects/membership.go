@@ -18,7 +18,7 @@ type addNamespaceCmd struct {
 }
 
 // NewAddNamespace builds `project add-namespace <namespace> --project <p>
-// [--cluster <c>]` (mutating): sets the membership label and annotation on an
+// --cluster <c>` (mutating): sets the membership label and annotation on an
 // existing namespace.
 func NewAddNamespace(clients engine.ClusterClientFactory) runtime.Command {
 	return &addNamespaceCmd{clients: clients}
@@ -31,7 +31,7 @@ func (addNamespaceCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "namespace", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Required: true, Desc: "target project `id|name`"},
+			runtime.ProjectFlag(true, "target project `id|name`"),
 			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` of the project"},
 		},
 		Examples:    []string{"rancher project add-namespace team-a --project p-x --cluster c-x --apply"},
@@ -43,11 +43,23 @@ func (addNamespaceCmd) Describe() runtime.Descriptor {
 }
 
 func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	nsName, projectFlag, err := membershipArgs(in)
+	nsName, err := membershipArgs(in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	cluster, client, projectID, before, err := loadMembershipTarget(ctx, c.clients, in, nsName, projectFlag)
+	cluster, client, err := membershipCluster(ctx, c.clients, in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	p, ok, err := runtime.TypedProjectOn(ctx, in, cluster)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	if !ok {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "command bug: project add-namespace runs without the required --project")
+	}
+	projectID := p.ID
+	before, err := getNamespace(ctx, client, nsName)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -56,8 +68,8 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	if current != "" && current != projectID {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("namespace %q belongs to project %q; remove it from that project first", nsName, current)).
-			WithHint(fmt.Sprintf(clierr.Rancher+" project remove-namespace %s --project %s --cluster %s",
-				clierr.ShellQuote(nsName), clierr.ShellQuote(current), clierr.ShellQuote(cluster)))
+			WithHint(fmt.Sprintf(clierr.Rancher+" project remove-namespace %s --cluster %s",
+				clierr.ShellQuote(nsName), clierr.ShellQuote(cluster)))
 	}
 
 	after := before.DeepCopy()
@@ -70,9 +82,10 @@ type removeNamespaceCmd struct {
 	clients engine.ClusterClientFactory
 }
 
-// NewRemoveNamespace builds `project remove-namespace <namespace> --project
-// <p> [--cluster <c>]` (mutating): clears the membership label and
-// annotation from an existing namespace.
+// NewRemoveNamespace builds `project remove-namespace <namespace> --cluster
+// <c>` (mutating): clears the membership label and annotation from an
+// existing namespace. The namespace's own project label names the project
+// it leaves, so the command takes no --project.
 func NewRemoveNamespace(clients engine.ClusterClientFactory) runtime.Command {
 	return &removeNamespaceCmd{clients: clients}
 }
@@ -84,10 +97,9 @@ func (removeNamespaceCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "namespace", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "project", Type: "string", Required: true, Desc: "target project `id|name`"},
-			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` of the project"},
+			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` of the namespace"},
 		},
-		Examples:    []string{"rancher project remove-namespace team-a --project p-x --cluster c-x --apply"},
+		Examples:    []string{"rancher project remove-namespace team-a --cluster c-x --apply"},
 		Destructive: "false",
 		Network:     true,
 		Auth:        true,
@@ -95,62 +107,74 @@ func (removeNamespaceCmd) Describe() runtime.Descriptor {
 	}
 }
 
+// ProjectRefusalHint is the command to run instead of a typed --project:
+// the same removal without it, previewed, when the namespace and --cluster
+// are typed.
+func (removeNamespaceCmd) ProjectRefusalHint(in runtime.Input) string {
+	args := in.Args()
+	cluster := in.String(engine.FlagCluster)
+	if len(args) == 0 || args[0] == "" || cluster == "" {
+		return ""
+	}
+	return clierr.Rancher + " project remove-namespace " + clierr.ShellQuote(args[0]) +
+		" --cluster " + clierr.ShellQuote(cluster) + " --dry-run"
+}
+
 func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	nsName, projectFlag, err := membershipArgs(in)
+	nsName, err := membershipArgs(in)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	cluster, client, projectID, before, err := loadMembershipTarget(ctx, c.clients, in, nsName, projectFlag)
+	cluster, client, err := membershipCluster(ctx, c.clients, in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	before, err := getNamespace(ctx, client, nsName)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
 
 	current, _, _ := unstructured.NestedString(before.Object, "metadata", "labels", projectLabel)
-	if current != projectID {
-		return safety.Effect{}, nil, NotMemberError(nsName, projectID, "check the namespace's current project")
+	if current == "" {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("namespace %s is in no project; there is nothing to remove", clierr.ShellQuote(nsName)))
 	}
 
 	after := before.DeepCopy()
 	ClearMembership(after)
 
-	return planMembershipUpdate(ctx, client, before, after, cluster, fmt.Sprintf("removed from project %s", projectID))
+	return planMembershipUpdate(ctx, client, before, after, cluster, fmt.Sprintf("removed from project %s", current))
 }
 
 // membershipArgs validates the shared add/remove-namespace input shape: a
-// required positional namespace name and a required --project flag.
-func membershipArgs(in runtime.Input) (nsName, projectFlag string, err error) {
+// required positional namespace name.
+func membershipArgs(in runtime.Input) (nsName string, err error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return "", "", clierr.New(clierr.CodeValidation, "argument <namespace> is required")
+		return "", clierr.New(clierr.CodeValidation, "argument <namespace> is required")
 	}
-	projectFlag = in.String("project")
-	if projectFlag == "" {
-		return "", "", clierr.New(clierr.CodeValidation, "--project is required")
-	}
-	return args[0], projectFlag, nil
+	return args[0], nil
 }
 
-// loadMembershipTarget resolves the cluster and project, and fetches the live
-// namespace object both add/remove-namespace mutate.
-func loadMembershipTarget(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input, nsName, projectFlag string) (cluster string, client engine.ClusterClient, projectID string, before *unstructured.Unstructured, err error) {
-	cluster, err = engine.ResolveDownstreamCluster(ctx, clients, in)
+// membershipCluster resolves the cluster add/remove-namespace act on and its
+// client.
+func membershipCluster(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (string, engine.ClusterClient, error) {
+	cluster, err := engine.ResolveDownstreamCluster(ctx, clients, in)
 	if err != nil {
-		return "", nil, "", nil, err
+		return "", nil, err
 	}
-	client, err = clients.Cluster(ctx, cluster)
+	client, err := clients.Cluster(ctx, cluster)
 	if err != nil {
-		return "", nil, "", nil, err
+		return "", nil, err
 	}
-	projectID, err = ResolveProject(ctx, clients, cluster, projectFlag)
-	if err != nil {
-		return "", nil, "", nil, err
-	}
+	return cluster, client, nil
+}
+
+// getNamespace fetches the live namespace object add/remove-namespace
+// mutate.
+func getNamespace(ctx context.Context, client engine.ClusterClient, nsName string) (*unstructured.Unstructured, error) {
 	nsKind, _ := kinds.Lookup("namespace")
-	before, err = client.Get(ctx, nsKind.GVR, "", nsName)
-	if err != nil {
-		return "", nil, "", nil, err
-	}
-	return cluster, client, projectID, before, nil
+	return client.Get(ctx, nsKind.GVR, "", nsName)
 }
 
 // planMembershipUpdate diffs before/after and previews the update through the

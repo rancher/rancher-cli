@@ -16,6 +16,7 @@ import (
 
 type usageCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 }
 
 const (
@@ -28,9 +29,10 @@ const (
 // NewUsage builds `usage --cluster [--namespace] [--project] [--by] [--node]`:
 // CPU/memory requests and limits from pod specs, plus usage from pod metrics,
 // grouped by the --by discriminator. A missing metrics server degrades every
-// usage field to empty plus one warning.
-func NewUsage(clients engine.ClusterClientFactory) runtime.Command {
-	return &usageCmd{clients: clients}
+// usage field to empty plus one warning. roots reads the cluster's projects
+// for --by project.
+func NewUsage(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
+	return &usageCmd{clients: clients, roots: roots}
 }
 
 func (c *usageCmd) Describe() runtime.Descriptor {
@@ -45,14 +47,15 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"--by project --project X returns a single project bucket. " +
 			degradedContractDesc +
 			"Required collectors hard-error: cluster resolution and the pod list always; project " +
-			"resolution and the membership list with --project; the project and namespace maps with " +
-			"--by project; the node list with --by node, or the named node GET with --by node --node N. " +
+			"resolution and the membership list with --project; the namespace map with --by project, " +
+			"and the project map with --by project and no --project; the node list with --by node, or the named node GET with --by node --node N. " +
 			"Degradable section: metrics (unavailable - requests and limits stay). A scope that resolves " +
 			"to zero namespaces is verified empty: no pod or metrics read is issued.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			resources.ClusterFlag(true),
 			{Name: resources.FlagNamespace, Type: "string", Desc: "`namespace` to operate in"},
+			runtime.ProjectFlag(false, "keep only the project's namespaces (not with --by node)"),
 			{Name: "by", Type: "string", Enum: []string{byNamespace, byProject, byNode, byPod},
 				Desc: "Group results by namespace, project, node, or pod (default: namespace)"},
 			{Name: "node", Type: "string",
@@ -76,7 +79,7 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
 				"--namespace does not apply to --by node; use --by pod --node <node> to see per-pod usage on a specific node")
 		}
-		if resources.TypedProject(in) != "" {
+		if in.String(runtime.FlagProject) != "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
 				"--project does not apply to --by node; use --by pod --project <project> to see where a project's pods are scheduled")
 		}
@@ -121,18 +124,17 @@ func usageResult(by string, rows usageRows, names map[string]string, sec *sectio
 func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.ClusterClient, clusterID string, sec *sections, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
-	projectFlag := resources.TypedProject(in)
 	podKind, _ := kinds.Lookup("pod")
 
+	p, scoped, err := runtime.TypedProjectOn(ctx, in, clusterID)
+	if err != nil {
+		return runtime.Result{}, err
+	}
 	var projectID string
 	var members map[string]bool
-	if projectFlag != "" {
-		var err error
-		projectID, err = projects.ResolveProject(ctx, c.clients, clusterID, projectFlag)
-		if err != nil {
-			return runtime.Result{}, err
-		}
-		members, err = projects.ProjectNamespaces(ctx, client, projectID)
+	if scoped {
+		projectID = p.ID
+		members, err = p.Namespaces(ctx)
 		if err != nil {
 			return runtime.Result{}, err
 		}

@@ -487,81 +487,94 @@ func TestRoutePolicyMatrix(t *testing.T) {
 		name        string
 		kind        kinds.Kind
 		flags       map[string]string
-		named       bool // operation targets a single name
+		op          Operation
 		wantCluster string
 		wantNS      string
 		wantErrCode string // "" = success
 	}{
 		{name: "NSNone downstream routes to resolved cluster, no ns",
 			kind:  kinds.Kind{Name: "node", Scope: kinds.Downstream, Policy: kinds.NSNone},
-			flags: map[string]string{"cluster": "prod"}, named: true,
+			flags: map[string]string{"cluster": "prod"}, op: OpNamed,
 			wantCluster: "c-abc", wantNS: ""},
 		{name: "NSNone management routes to local, no ns",
 			kind:  kinds.Kind{Name: "cluster", Scope: kinds.Management, Policy: kinds.NSNone},
-			flags: map[string]string{}, named: true,
+			flags: map[string]string{}, op: OpNamed,
 			wantCluster: engine.LocalCluster, wantNS: ""},
 		{name: "NSCluster named op requires cluster",
 			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
-			flags: map[string]string{}, named: true,
+			flags: map[string]string{}, op: OpNamed,
 			wantErrCode: clierr.CodeValidation},
 		{name: "NSCluster resolves cluster into namespace, client is management",
 			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
-			flags: map[string]string{"cluster": "prod"}, named: true,
+			flags: map[string]string{"cluster": "prod"}, op: OpNamed,
 			wantCluster: engine.LocalCluster, wantNS: "c-abc"},
 		{name: "NSCluster list may omit cluster",
 			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
-			flags: map[string]string{}, named: false,
+			flags: map[string]string{}, op: OpList,
 			wantCluster: engine.LocalCluster, wantNS: ""},
 		{name: "NSWorkspace defaults namespace, management client, no cluster flag consulted",
 			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
-			flags: map[string]string{}, named: true,
+			flags: map[string]string{}, op: OpNamed,
 			wantCluster: engine.LocalCluster, wantNS: "fleet-default"},
 		{name: "NSWorkspace namespace override",
 			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
-			flags: map[string]string{"namespace": "team-a"}, named: true,
+			flags: map[string]string{"namespace": "team-a"}, op: OpNamed,
 			wantCluster: engine.LocalCluster, wantNS: "team-a"},
 		{name: "NSPlain named op requires namespace",
 			kind:  kinds.Kind{Name: "pod", Scope: kinds.Downstream, Policy: kinds.NSPlain},
-			flags: map[string]string{"cluster": "prod"}, named: true,
+			flags: map[string]string{"cluster": "prod"}, op: OpNamed,
 			wantErrCode: clierr.CodeValidation},
 		{name: "NSPlain list may omit namespace",
 			kind:  kinds.Kind{Name: "pod", Scope: kinds.Downstream, Policy: kinds.NSPlain},
-			flags: map[string]string{"cluster": "prod"}, named: false,
+			flags: map[string]string{"cluster": "prod"}, op: OpList,
 			wantCluster: "c-abc", wantNS: ""},
 		{name: "NSPlain management client routes to local (projectroletemplatebinding)",
 			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
-			flags: map[string]string{"namespace": "p-1"}, named: true,
+			flags: map[string]string{"namespace": "p-1"}, op: OpNamed,
 			wantCluster: engine.LocalCluster, wantNS: "p-1"},
 		{name: "NSCluster kind rejects a project scope",
 			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
-			flags: map[string]string{"cluster": "prod", "project": "p-1"}, named: false,
+			flags: map[string]string{"cluster": "prod", "project": "p-1"}, op: OpList,
 			wantErrCode: clierr.CodeValidation},
 		{name: "NSWorkspace kind rejects a project scope",
 			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
-			flags: map[string]string{"project": "p-1"}, named: true,
+			flags: map[string]string{"project": "p-1"}, op: OpNamed,
 			wantErrCode: clierr.CodeValidation},
 		{name: "Management-scope NSPlain kind rejects a project scope",
 			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
-			flags: map[string]string{"namespace": "p-1", "project": "p-1"}, named: true,
+			flags: map[string]string{"namespace": "p-1", "project": "p-1"}, op: OpNamed,
 			wantErrCode: clierr.CodeValidation},
 		{name: "Management-scope NSNone kind rejects a project scope",
 			kind:  kinds.Kind{Name: "cluster", Scope: kinds.Management, Policy: kinds.NSNone},
-			flags: map[string]string{"project": "p-1"}, named: true,
+			flags: map[string]string{"project": "p-1"}, op: OpNamed,
 			wantErrCode: clierr.CodeValidation},
 		{name: "Downstream NSNone kind (other than namespace) rejects a project scope",
 			kind:  kinds.Kind{Name: "node", Scope: kinds.Downstream, Policy: kinds.NSNone},
-			flags: map[string]string{"cluster": "prod", "project": "p-1"}, named: true,
+			flags: map[string]string{"cluster": "prod", "project": "p-1"}, op: OpNamed,
 			wantErrCode: clierr.CodeValidation},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
-			gotCluster, gotNS, _, _, err := Route(t.Context(), fac, tt.kind, input{s: tt.flags}, tt.named)
+			ctx := t.Context()
+			if tt.flags["project"] != "" {
+				ctx = unreadProjectContext(t)
+			}
+			gotCluster, gotNS, _, _, err := Route(ctx, fac, tt.kind, input{s: tt.flags}, tt.op, "obj")
 			if tt.wantErrCode != "" {
 				var ce *clierr.Error
 				require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
 				assert.Equal(t, tt.wantErrCode, ce.Code)
+				if tt.flags["project"] != "" {
+					// The refusal is ProjectRefusal's for the kind, the
+					// rule the pipeline's command checks share.
+					want := ProjectRefusal(tt.kind, tt.op, "obj", tt.flags["cluster"], tt.flags["project"])
+					require.Error(t, want, "ProjectRefusal must refuse --project for %s", tt.kind.Name)
+					assert.Equal(t, "--project does not apply to "+tt.kind.Name, ce.Message)
+					assert.Equal(t, want.Error(), err.Error())
+					assert.Empty(t, fac.clusterCalls, "the refusal sends no request")
+				}
 				return
 			}
 			require.NoError(t, err)
@@ -581,29 +594,29 @@ func TestRouteIgnoresUntypedProjectOnNonScopableKinds(t *testing.T) {
 		name  string
 		kind  kinds.Kind
 		flags map[string]string
-		named bool
+		op    Operation
 	}{
 		{name: "NSCluster (project itself)",
 			kind:  kinds.Kind{Name: "project", Scope: kinds.Management, Policy: kinds.NSCluster},
-			flags: map[string]string{"cluster": "prod"}, named: true},
+			flags: map[string]string{"cluster": "prod"}, op: OpNamed},
 		{name: "NSWorkspace (gitrepo)",
 			kind:  kinds.Kind{Name: "gitrepo", Scope: kinds.Management, Policy: kinds.NSWorkspace, DefaultNamespace: "fleet-default"},
-			flags: map[string]string{}, named: true},
+			flags: map[string]string{}, op: OpNamed},
 		{name: "Management NSPlain (projectroletemplatebinding)",
 			kind:  kinds.Kind{Name: "projectroletemplatebinding", Scope: kinds.Management, Policy: kinds.NSPlain},
-			flags: map[string]string{"namespace": "p-1"}, named: true},
+			flags: map[string]string{"namespace": "p-1"}, op: OpNamed},
 		{name: "Management NSNone (cluster)",
 			kind:  kinds.Kind{Name: "cluster", Scope: kinds.Management, Policy: kinds.NSNone},
-			flags: map[string]string{}, named: true},
+			flags: map[string]string{}, op: OpNamed},
 		{name: "Downstream NSNone (node)",
 			kind:  kinds.Kind{Name: "node", Scope: kinds.Downstream, Policy: kinds.NSNone},
-			flags: map[string]string{"cluster": "prod"}, named: true},
+			flags: map[string]string{"cluster": "prod"}, op: OpNamed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fac := &recFactory{resolve: map[string]string{"prod": "c-abc"}}
-			_, _, _, _, err := Route(t.Context(), fac, tt.kind, input{s: tt.flags}, tt.named)
+			_, _, _, _, err := Route(t.Context(), fac, tt.kind, input{s: tt.flags}, tt.op, "obj")
 			require.NoError(t, err, "no --project flag must not reject a non-scopable kind")
 		})
 	}
@@ -1184,9 +1197,10 @@ func TestGetSelectorReachesTheListRequest(t *testing.T) {
 func TestGetSelectorJoinsTheProjectScopeSelector(t *testing.T) {
 	t.Parallel()
 	client, fac := newRouteProjectFixture()
+	ctx, _ := projectContext(t, "ns-a")
 	cmd := NewGet(mustKind(t, "namespace"), fac)
-	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(),
-		input{s: map[string]string{"cluster": "prod", "project": "p-1", "selector": "app=web"}}, nil)
+	_, err := cmd.(runtime.ReadCommand).Execute(ctx,
+		input{s: map[string]string{"cluster": "prod", "project": "web", "selector": "app=web"}}, nil)
 	require.NoError(t, err)
 	var got []string
 	for _, call := range client.listCalls {
@@ -1261,9 +1275,10 @@ func TestGetSelectorIsDeclaredOnGetOnly(t *testing.T) {
 func TestGetSelectorReachesTheListUnderProjectMemberFilter(t *testing.T) {
 	t.Parallel()
 	client, fac := newRouteProjectFixture()
+	ctx, _ := projectContext(t, "ns-a")
 	cmd := NewGet(mustKind(t, "pod"), fac)
-	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(),
-		input{s: map[string]string{"cluster": "prod", "project": "p-1", "selector": "app=web"}}, nil)
+	_, err := cmd.(runtime.ReadCommand).Execute(ctx,
+		input{s: map[string]string{"cluster": "prod", "project": "web", "selector": "app=web"}}, nil)
 	require.NoError(t, err)
 	var got []string
 	for _, call := range client.listCalls {

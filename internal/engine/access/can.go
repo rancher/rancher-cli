@@ -8,7 +8,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -58,6 +57,7 @@ func (c *canCmd) Describe() runtime.Descriptor {
 			{Name: "cluster", Type: "string", Required: true, Desc: "cluster name or id the question is about",
 				MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint},
 			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace the question is about"},
+			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "as", Type: "string", Desc: "subject to ask about: user name, id, or principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you"},
 			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "kind of a bare --as value when ambiguous"},
 			{Name: "group", Type: "string", Desc: "API group when the resource name exists in several groups"},
@@ -124,12 +124,13 @@ type parsedCan struct {
 
 // parseCan validates the access can command line: a question that never
 // accepts --all-namespaces.
-func parseCan(in runtime.Input) (parsedCan, error) { return parseQuestion(in, false) }
+func parseCan(in runtime.Input) (parsedCan, error) { return parseQuestion(in, false, true) }
 
 // parseQuestion validates a question command line (access can, access
-// who-can). Every rule here fires before the first request; allowAll says
-// whether --all-namespaces is accepted.
-func parseQuestion(in runtime.Input, allowAll bool) (parsedCan, error) {
+// who-can, access explain). Every rule here fires before the first request;
+// allowAll says whether --all-namespaces is accepted, takesProject whether
+// the command takes --project (access explain does not, and never reads it).
+func parseQuestion(in runtime.Input, allowAll, takesProject bool) (parsedCan, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
 		return parsedCan{}, clierr.New(clierr.CodeValidation, "a verb is required")
@@ -140,7 +141,11 @@ func parseQuestion(in runtime.Input, allowAll bool) (parsedCan, error) {
 		if len(args) > 1 {
 			return parsedCan{}, clierr.New(clierr.CodeValidation, "--non-resource-url replaces the resource argument; pass the verb only")
 		}
-		for _, f := range []string{flagGroup, flagSubresource, flagNamespace, flagProject} {
+		scoping := []string{flagGroup, flagSubresource, flagNamespace}
+		if takesProject {
+			scoping = append(scoping, flagProject)
+		}
+		for _, f := range scoping {
 			if in.String(f) != "" {
 				return parsedCan{}, clierr.New(clierr.CodeValidation, "--non-resource-url cannot be combined with --"+f)
 			}
@@ -176,7 +181,10 @@ func parseQuestion(in runtime.Input, allowAll bool) (parsedCan, error) {
 		return parsedCan{}, err
 	}
 	p.as = as
-	p.scope = scopeFlags{namespace: in.String(flagNamespace), project: in.String(flagProject), allNamespaces: in.Bool(flagAllNamespaces), allowAll: allowAll}
+	p.scope = scopeFlags{namespace: in.String(flagNamespace), allNamespaces: in.Bool(flagAllNamespaces), allowAll: allowAll}
+	if takesProject {
+		p.scope.project = in.String(flagProject)
+	}
 	if err := validateSelectors(p.scope); err != nil {
 		return parsedCan{}, err
 	}
@@ -237,14 +245,11 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 			return runtime.Result{}, err
 		}
 	}
-	if p.scope.project != "" {
-		id, err := projects.ResolveProject(ctx, c.clients, clusterID, p.scope.project)
-		if err != nil {
-			return runtime.Result{}, budgetError(ctx, err, "project resolution")
-		}
-		p.scope.project = id
+	project, err := typedProject(ctx, in, clusterID)
+	if err != nil {
+		return runtime.Result{}, budgetError(ctx, err, "project resolution")
 	}
-	scope, err := resolveScope(ctx, callerClient, clusterID, p.scope)
+	scope, err := resolveScope(ctx, callerClient, clusterID, p.scope, project)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "namespace discovery")
 	}

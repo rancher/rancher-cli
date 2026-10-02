@@ -1,10 +1,14 @@
 package projects
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,7 +20,7 @@ func TestCreateSecretBareFormObjectShape(t *testing.T) {
 	client := &memberClient{}
 	cmd := NewCreateSecret(stubFactory{c: client})
 
-	eff, exec, err := planMember(t, cmd, memberIn{
+	eff, exec, err := planMember(t, t.Context(), cmd, memberIn{
 		s: map[string]string{"namespace": "team-a", "cluster": "c-x", "from-literal": "k=v1,other=v2"},
 		a: []string{"app-secret"},
 	})
@@ -39,7 +43,7 @@ func TestCreateSecretBareFormCustomType(t *testing.T) {
 	client := &memberClient{}
 	cmd := NewCreateSecret(stubFactory{c: client})
 
-	_, _, err := planMember(t, cmd, memberIn{
+	_, _, err := planMember(t, t.Context(), cmd, memberIn{
 		s: map[string]string{"namespace": "team-a", "cluster": "c-x", "type": "kubernetes.io/tls"},
 		a: []string{"tls-secret"},
 	})
@@ -48,29 +52,89 @@ func TestCreateSecretBareFormCustomType(t *testing.T) {
 	assert.Equal(t, "kubernetes.io/tls", typ)
 }
 
-func TestCreateSecretBareWithoutNamespaceIsValidation(t *testing.T) {
-	t.Parallel()
-	client := &memberClient{}
-	cmd := NewCreateSecret(stubFactory{c: client})
+// webProjectCtx carries project p-1 (display name web) on cluster c-x, as
+// the pipeline resolves a typed --project web.
+func webProjectCtx(t *testing.T) context.Context {
+	t.Helper()
+	return runtime.WithProject(t.Context(), runtime.Project{Cluster: "c-x", ID: "p-1", DisplayName: "web"})
+}
 
-	_, _, err := planMember(t, cmd, memberIn{s: map[string]string{"cluster": "c-x"}, a: []string{"app-secret"}})
-	require.Error(t, err)
+// noProjectCtx carries no project, as for an invocation with no --project.
+func noProjectCtx(t *testing.T) context.Context {
+	t.Helper()
+	return t.Context()
+}
+
+// noProjectReadCtx fails the test when the command reads the project.
+func noProjectReadCtx(t *testing.T) context.Context {
+	t.Helper()
+	return runtime.WithProjectLookup(t.Context(), func(context.Context) (runtime.Project, error) {
+		t.Error("the project was read")
+		return runtime.Project{}, errors.New("unexpected project read")
+	})
+}
+
+// noRequestFactory fails the test on any cluster resolution or client
+// request.
+type noRequestFactory struct{ t *testing.T }
+
+func (f noRequestFactory) Cluster(context.Context, string) (engine.ClusterClient, error) {
+	f.t.Error("a cluster client was requested")
+	return nil, errors.New("unexpected request")
+}
+
+func (f noRequestFactory) ImpersonatedCluster(context.Context, string, engine.Impersonation) (engine.ClusterClient, error) {
+	f.t.Error("an impersonated cluster client was requested")
+	return nil, errors.New("unexpected request")
+}
+
+func (f noRequestFactory) ResolveCluster(context.Context, string) (string, error) {
+	f.t.Error("the cluster was resolved")
+	return "", errors.New("unexpected request")
+}
+
+// TestCreateSecretWithoutNamespaceOrProjectIsValidation asserts that with
+// neither --namespace nor --project the refusal names both flags, points
+// at the caller's projects on the typed cluster, and comes before any
+// request.
+func TestCreateSecretWithoutNamespaceOrProjectIsValidation(t *testing.T) {
+	t.Parallel()
+	cmd := NewCreateSecret(noRequestFactory{t: t})
+
+	_, _, err := planMember(t, t.Context(), cmd, memberIn{s: map[string]string{"cluster": "c-x"}, a: []string{"app-secret"}})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, "pass --namespace <namespace> for an ordinary secret, or --project <project> for a project-scoped secret", ce.Message)
+	assert.Equal(t, clierr.Rancher+" access projects --cluster 'c-x'", ce.Hint)
+}
+
+// TestCreateSecretProjectWithNamespaceIsValidationBeforeReadingTheProject
+// asserts --project with --namespace is refused before the project is read
+// and before any request.
+func TestCreateSecretProjectWithNamespaceIsValidationBeforeReadingTheProject(t *testing.T) {
+	t.Parallel()
+	cmd := NewCreateSecret(noRequestFactory{t: t})
+
+	_, _, err := planMember(t, noProjectReadCtx(t), cmd, memberIn{
+		s: map[string]string{"project": "web", "namespace": "team-a", "cluster": "c-x"},
+		a: []string{"shared-cred"},
+	})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, "--project and --namespace cannot be combined: --project creates a project-scoped secret in the project's backing namespace, --namespace an ordinary secret in that namespace", ce.Message)
 }
 
 func TestCreateSecretProjectScopedWithBackingNamespaceSet(t *testing.T) {
 	t.Parallel()
 	client := &memberClient{
-		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
-		gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-backing-ns")},
+		gets: map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-backing-ns")},
 	}
 	cmd := NewCreateSecret(stubFactory{c: client})
 
-	_, exec, err := planMember(t, cmd, memberIn{
-		s: map[string]string{"project": "p-1", "cluster": "c-x", "from-literal": "token=abc"},
-		b: map[string]bool{"project-scoped": true},
+	_, exec, err := planMember(t, webProjectCtx(t), cmd, memberIn{
+		s: map[string]string{"project": "web", "cluster": "c-x", "from-literal": "token=abc"},
 		a: []string{"shared-cred"},
 	})
 	require.NoError(t, err)
@@ -86,14 +150,12 @@ func TestCreateSecretProjectScopedWithBackingNamespaceSet(t *testing.T) {
 func TestCreateSecretProjectScopedEmptyBackingNamespaceWarns(t *testing.T) {
 	t.Parallel()
 	client := &memberClient{
-		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
-		gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "")},
+		gets: map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "")},
 	}
 	cmd := NewCreateSecret(stubFactory{c: client})
 
-	_, exec, err := planMember(t, cmd, memberIn{
-		s: map[string]string{"project": "p-1", "cluster": "c-x"},
-		b: map[string]bool{"project-scoped": true},
+	_, exec, err := planMember(t, webProjectCtx(t), cmd, memberIn{
+		s: map[string]string{"project": "web", "cluster": "c-x"},
 		a: []string{"shared-cred"},
 	})
 	require.NoError(t, err)
@@ -105,44 +167,12 @@ func TestCreateSecretProjectScopedEmptyBackingNamespaceWarns(t *testing.T) {
 	assert.Contains(t, res.Warnings[0], "requires Rancher >= 2.14, the supported minimum")
 }
 
-func TestCreateSecretProjectScopedWithoutProjectIsValidation(t *testing.T) {
-	t.Parallel()
-	client := &memberClient{}
-	cmd := NewCreateSecret(stubFactory{c: client})
-
-	_, _, err := planMember(t, cmd, memberIn{
-		s: map[string]string{"cluster": "c-x"},
-		b: map[string]bool{"project-scoped": true},
-		a: []string{"shared-cred"},
-	})
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-}
-
-func TestCreateSecretProjectScopedWithNamespaceIsValidation(t *testing.T) {
-	t.Parallel()
-	client := &memberClient{}
-	cmd := NewCreateSecret(stubFactory{c: client})
-
-	_, _, err := planMember(t, cmd, memberIn{
-		s: map[string]string{"project": "p-1", "namespace": "team-a", "cluster": "c-x"},
-		b: map[string]bool{"project-scoped": true},
-		a: []string{"shared-cred"},
-	})
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-}
-
 func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {
 	t.Parallel()
 	client := &memberClient{}
 	cmd := NewCreateSecret(stubFactory{c: client})
 
-	_, _, err := planMember(t, cmd, memberIn{
+	_, _, err := planMember(t, t.Context(), cmd, memberIn{
 		s: map[string]string{"namespace": "team-a", "cluster": "c-x", "from-literal": "notapair"},
 		a: []string{"app-secret"},
 	})
@@ -162,7 +192,7 @@ func TestCreateSecretDryRunEffectNeverLeaksLiteralValue(t *testing.T) {
 	client := &memberClient{}
 	cmd := NewCreateSecret(stubFactory{c: client})
 
-	eff, _, err := planMember(t, cmd, memberIn{
+	eff, _, err := planMember(t, t.Context(), cmd, memberIn{
 		s: map[string]string{"namespace": "team-a", "cluster": "c-x", "from-literal": "password=" + literal},
 		a: []string{"app-secret"},
 	})
@@ -183,7 +213,7 @@ func TestCreateSecretIsDestructive(t *testing.T) {
 		t.Parallel()
 		client := &memberClient{}
 		cmd := NewCreateSecret(stubFactory{c: client})
-		eff, _, err := planMember(t, cmd, memberIn{s: map[string]string{"namespace": "team-a", "cluster": "c-x"}, a: []string{"app-secret"}})
+		eff, _, err := planMember(t, t.Context(), cmd, memberIn{s: map[string]string{"namespace": "team-a", "cluster": "c-x"}, a: []string{"app-secret"}})
 		require.NoError(t, err)
 		assert.True(t, eff.Destructive)
 	})
@@ -191,13 +221,11 @@ func TestCreateSecretIsDestructive(t *testing.T) {
 	t.Run("project-scoped", func(t *testing.T) {
 		t.Parallel()
 		client := &memberClient{
-			projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
-			gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-backing-ns")},
+			gets: map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-backing-ns")},
 		}
 		cmd := NewCreateSecret(stubFactory{c: client})
-		eff, _, err := planMember(t, cmd, memberIn{
-			s: map[string]string{"project": "p-1", "cluster": "c-x"},
-			b: map[string]bool{"project-scoped": true},
+		eff, _, err := planMember(t, webProjectCtx(t), cmd, memberIn{
+			s: map[string]string{"project": "web", "cluster": "c-x"},
 			a: []string{"shared-cred"},
 		})
 		require.NoError(t, err)
@@ -213,14 +241,12 @@ func TestCreateSecretIsDestructive(t *testing.T) {
 func TestCreateSecretProjectScopedExplicitBackingNamespaceEqualToProjectIDDoesNotWarn(t *testing.T) {
 	t.Parallel()
 	client := &memberClient{
-		projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
-		gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-1")},
+		gets: map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-1")},
 	}
 	cmd := NewCreateSecret(stubFactory{c: client})
 
-	_, exec, err := planMember(t, cmd, memberIn{
-		s: map[string]string{"project": "p-1", "cluster": "c-x"},
-		b: map[string]bool{"project-scoped": true},
+	_, exec, err := planMember(t, webProjectCtx(t), cmd, memberIn{
+		s: map[string]string{"project": "web", "cluster": "c-x"},
 		a: []string{"shared-cred"},
 	})
 	require.NoError(t, err)
@@ -234,11 +260,13 @@ func TestCreateSecretResultRedactsPayload(t *testing.T) {
 	tests := []struct {
 		name   string
 		client *memberClient
+		ctx    func(t *testing.T) context.Context
 		in     memberIn
 	}{
 		{
 			name:   "bare namespace form",
 			client: &memberClient{},
+			ctx:    noProjectCtx,
 			in: memberIn{
 				s: map[string]string{"namespace": "team-a", "cluster": "c-x", "from-literal": "token=abc"},
 				a: []string{"app-secret"},
@@ -247,12 +275,11 @@ func TestCreateSecretResultRedactsPayload(t *testing.T) {
 		{
 			name: "project-scoped form",
 			client: &memberClient{
-				projects: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{project("p-1", "web")}},
-				gets:     map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-backing-ns")},
+				gets: map[string]*unstructured.Unstructured{"c-x/p-1": projectWithBackingNS("p-1", "p-backing-ns")},
 			},
+			ctx: webProjectCtx,
 			in: memberIn{
-				s: map[string]string{"project": "p-1", "cluster": "c-x", "from-literal": "token=abc"},
-				b: map[string]bool{"project-scoped": true},
+				s: map[string]string{"project": "web", "cluster": "c-x", "from-literal": "token=abc"},
 				a: []string{"shared-cred"},
 			},
 		},
@@ -261,7 +288,7 @@ func TestCreateSecretResultRedactsPayload(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cmd := NewCreateSecret(stubFactory{c: tt.client})
-			_, exec, err := planMember(t, cmd, tt.in)
+			_, exec, err := planMember(t, tt.ctx(t), cmd, tt.in)
 			require.NoError(t, err)
 
 			res, err := exec(t.Context())

@@ -572,17 +572,19 @@ permission; a `null` `data.memberOf` means the binding read failed, not
 Every `access` command runs under one 60 s budget for the whole call; on
 "fan-out budget ... exhausted" (a terminal error, nothing partial is
 reported) rerun with `--timeout <duration>` (for example `--timeout 5m`)
-or narrow the question with `--cluster` or `--project`.
+or narrow the question: `access projects --cluster <c>`, or `-n <ns>` /
+`--project <p>` on `access can|list|who-can` (`access clusters` takes
+neither).
 Never present a role list as permissions.
 
-- `rancher grant <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) --role <r>` -
+- `rancher grant <subject> (--project <p> --cluster <c> | --cluster <c> | --global) --role <r>` -
   grant a role at project, cluster, or global scope. Subject is a user/group
   name, id, or fully qualified principal. Groups must be passed as a fully
   qualified group principal id (e.g. `okta_group://<id>`); `--type` only
   disambiguates principals whose provider prefix cannot be inferred.
   Principals with no matching user trigger a provisioning warning;
   Rancher auto-creates the user when the binding applies. Dry-run/apply --yes.
-- `rancher revoke <subject> (--project <p> [--cluster <c>] | --cluster <c> | --global) [--role <r>]` -
+- `rancher revoke <subject> (--project <p> --cluster <c> | --cluster <c> | --global) [--role <r>]` -
   revoke role binding(s). Omitting --role revokes every role at the scope
   (destructive, needs `--yes`). Partial failures leave already-removed
   bindings gone. Revoke removes the binding only; an auto-provisioned user
@@ -607,7 +609,7 @@ Never present a role list as permissions.
   candidate list and rely on the shell's client-side prefix filtering.
 - `rancher create secret <name> --namespace <ns> --cluster <c> --from-literal k=v[,k=v...]` -
   an ordinary namespaced secret without hand-rolling base64.
-- `rancher create secret <name> --project <p> --project-scoped --from-literal k=v` -
+- `rancher create secret <name> --project <p> --cluster <c> --from-literal k=v` -
   writes into the project's backing namespace for Rancher to propagate into
   every project namespace; a `warnings` entry means propagation isn't
   guaranteed on this server (requires Rancher >= 2.14, the supported
@@ -658,14 +660,20 @@ rancher oidc-client rotate-secret my-app --apply --yes
   `--namespace` scopes namespaced kinds. Scope is per-invocation only - no
   cluster or project is persisted or implied. Fleet kinds default to the
   `fleet-default` workspace.
-- **Project scope (`--project`):** `--project <id-or-name>` scopes Downstream
-  namespaced kinds (`get`/`delete`/`patch`, plus `usage`) to a project's
-  project namespaces - a list filters to members, a named op or mutation
-  validates membership first. `get namespaces --project <p>` is the membership listing
-  (server-side label selector). Every other kind family and the non-project
-  composites (`inspect pod`/`deployment`, `top node`, `images`) reject a
-  non-empty `--project` with `VALIDATION` - it is never a silent no-op.
-  Precedence: `--project` flag > unscoped.
+- **Project scope (`--project`):** `--project <id-or-name>` names a project on
+  the cluster `--cluster` names; pass both. Only the commands whose `rancher
+  schema` entry lists a `project` flag take it (generated `get`/`delete`/`patch`
+  of Downstream namespaced kinds and namespaces, `create resource|namespace|secret`,
+  `project add-namespace`, `grant`, `revoke`, `usage`, `access can|list|who-can`);
+  every other command refuses it with `VALIDATION` before any request. A list
+  filters to the project's namespaces, a named op or mutation must be in one.
+  `get namespaces --project <p>` is the membership listing (server-side label
+  selector). An id wins over another project's display name, with a warning in
+  `warnings`; duplicate display names are `AMBIGUOUS_SELECTION` - pass the id.
+  Without `--cluster` the refusal names the clusters the project is on.
+- **Empty values:** a flag typed with an empty or blank value (`--flag ''`,
+  `--flag=`) is refused with `VALIDATION` before any request, never treated as
+  omitted; build `--flag "$VAR"` only when `VAR` is set.
 - **Isolation for scripted sessions:** point `RANCHER_CLI_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CLI_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain. A kubeconfig written
