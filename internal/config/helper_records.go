@@ -104,7 +104,7 @@ func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecor
 	defer release()
 
 	st := &helperRecords{}
-	b, rerr := os.ReadFile(filepath.Join(dir, helperRecordsFileName))
+	b, rerr := readFile(filepath.Join(dir, helperRecordsFileName))
 	switch {
 	case rerr == nil:
 		if uerr := yaml.Unmarshal(b, st); uerr != nil {

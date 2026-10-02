@@ -303,7 +303,7 @@ func warnLoosePermFI(path string, fi os.FileInfo) string {
 func (f *fileStore) read() (map[string]string, error) {
 	observeIdentity("credentialsread")
 	m := map[string]string{}
-	b, err := os.ReadFile(f.path)
+	b, err := readFile(f.path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return m, nil
@@ -400,7 +400,7 @@ func (f *fileStore) DeleteToken(ref ServerRef) error {
 
 func (f *fileStore) readCache() (map[string]cachedCred, error) {
 	m := map[string]cachedCred{}
-	b, err := os.ReadFile(f.cachePath)
+	b, err := readFile(f.cachePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return m, nil
@@ -557,7 +557,7 @@ func (f *fileStore) DeleteAllCachedCreds() error {
 	// flock exists to close. The lock file is separate from the data file,
 	// so removing the data file under the lock is safe.
 	return f.withCacheLock(func() error {
-		err := os.Remove(f.cachePath)
+		err := removeFile(f.cachePath)
 		if os.IsNotExist(err) {
 			return nil
 		}

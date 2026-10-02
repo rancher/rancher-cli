@@ -26,7 +26,7 @@ func ReadOnlyCachedCreds(dir string) ([]CachedCredInfo, error) {
 // no expiry pruning (documented on ReadOnlyCachedCred), no cross-process
 // flock (read-only; atomic-rename writes keep reads consistent).
 func loadCacheMap(path string) (map[string]cachedCred, error) {
-	b, err := os.ReadFile(path)
+	b, err := readFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -109,7 +109,7 @@ func ReadOnlyCachedCred(dir, key string, anchor *CacheAnchor) (token string, exp
 	// Open once and use handle.Stat() for the permission warning so this
 	// fast path - a fresh OS process on every kubectl exec-credential
 	// refresh - pays a single syscall instead of two (os.ReadFile + os.Stat).
-	f, err := os.Open(path)
+	f, err := openFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", time.Time{}, "", ErrNoToken
@@ -151,7 +151,7 @@ func ReadOnlyCachedCred(dir, key string, anchor *CacheAnchor) (token string, exp
 // WITHOUT calling warnLoosePerm. Used only on completion paths
 // where any stderr output would appear as a TAB candidate.
 func ReadFileTokenSilent(dir, serverName string) string {
-	b, err := os.ReadFile(filepath.Join(dir, "credentials.yaml"))
+	b, err := readFile(filepath.Join(dir, "credentials.yaml"))
 	if err != nil {
 		return ""
 	}

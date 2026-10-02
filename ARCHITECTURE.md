@@ -978,7 +978,16 @@ its generic verbs.
 
 **Config-directory write locking.** Every config-dir mutation is a load-modify-write
 cycle. `atomicWriteFile`'s temp-and-rename keeps any single file from being torn or
-half-written, but it does not make the surrounding read-modify-write atomic. The lock
+half-written, but it does not make the surrounding read-modify-write atomic. On
+Windows the rename (`MoveFileEx`) fails with `ERROR_ACCESS_DENIED` while any other
+handle holds the target open without `FILE_SHARE_DELETE`, which Go's `os.Open` never
+sets, so a lock-free reader can block a write; a removal (`DeleteFile`) is blocked the
+same way. The rename, the removals, and the package's reads of the files it writes
+retry `ERROR_ACCESS_DENIED` and `ERROR_SHARING_VIOLATION` for up to 2 s (a source scan
+in `test/conformance` keeps every such call in `internal/config` on the retrying
+helpers). Windows also returns `ERROR_ACCESS_DENIED` for a real permission failure,
+which cannot be told apart, so on Windows such a failure surfaces after the full 2 s,
+as the same error. Other platforms replace or remove an open file and do not retry. The lock
 inventory above closes that window: `config.WithLock` takes an exclusive `flock` on
 `<dir>/config.lock` plus a process-level semaphore (a channel, so the wait is cancellable), so the read that decides is the read
 that wins, both within a process and across processes. kubectl's earlier attempt at

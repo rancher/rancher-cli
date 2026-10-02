@@ -351,7 +351,7 @@ func Load(path string) (*Config, error) {
 		Servers: map[string]Server{},
 		path:    path,
 	}
-	b, err := os.ReadFile(path)
+	b, err := readFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// A missing file has a known prior lookup - the empty one -

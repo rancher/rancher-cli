@@ -6,6 +6,14 @@ import (
 	"path/filepath"
 )
 
+// ReadRawConfig reads config YAML bytes verbatim from path - `config
+// edit`'s read of the real file before the editor opens. It retries on
+// Windows while another process holds the file or replaces it, as every
+// read of the config directory's files in this package does.
+func ReadRawConfig(path string) ([]byte, error) {
+	return readFile(path)
+}
+
 // WriteRawConfig atomically writes already-validated config YAML bytes
 // verbatim to path (0600) - `config edit`'s write-back path. It writes the
 // user's edited buffer byte-for-byte rather than re-marshaling through a
@@ -77,7 +85,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	// silently leaks the temp file there.
 	closeAndRemove := func() {
 		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
+		_ = removeFile(tmpPath)
 	}
 
 	if err := tmp.Chmod(perm); err != nil {
@@ -101,12 +109,12 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	}
 
 	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
+		_ = removeFile(tmpPath)
 		return err
 	}
 
-	if err := os.Rename(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
+	if err := renameFile(tmpPath, path); err != nil {
+		_ = removeFile(tmpPath)
 		return err
 	}
 	afterWrite(filepath.Base(path))

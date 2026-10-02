@@ -111,6 +111,11 @@ jobs:
       # differing only in case are two directories to a record, which is
       # a miss and not a wrong hit.
       - run: go test -race -count=1 ./internal/config/
+      # The rename, removal and read retry tests log what Windows
+      # returns: errors by errno with the retry off, and what plain reads
+      # hit while a file is replaced. -v prints those lines when the
+      # tests pass.
+      - run: go test -race -count=1 -v -run 'TestRenameOverAnOpenTarget|TestRemoveOfAnOpenFile|TestReadsRetryASharingViolation|TestShareRetryLeavesOtherErrorsAlone|TestConcurrentWritersOfOneFile|TestReadsDuringReplace|TestRootReadsDuringRootReplace' ./internal/config/
       # The exec plugin's remedies carry a shell-quoted Windows path, and
       # the lookup and the no-terminal login run on it too.
       - run: go test -race -count=1 -run 'TestOneRelativeSpelling|TestOneDirectoryReachedBy|TestCopiedDirectory|TestHotPathOperationCounts|TestACrashBetweenTheTwoHalves|TestEveryExecPluginRemedyIsWrittenForTheInvocation|TestLookupStoredLoginOutcomes|TestNoTerminalLoginNamesTheEntryTheKubeconfigIdentifies|TestGetTokenStoreConflictNamesTheRegenerateSteps|TestTheExecPluginNamesTheRemediesWithoutATerminal' ./internal/token/

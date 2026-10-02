@@ -377,7 +377,7 @@ func writeTransition(dir string, m transitionManifest) error {
 // removeTransition deletes the manifest; an absent one is not an error.
 // Callers hold the transition lock.
 func removeTransition(dir string) error {
-	switch err := os.Remove(TransitionPath(dir)); {
+	switch err := removeFile(TransitionPath(dir)); {
 	case err == nil:
 		afterWrite(transitionFileName + " removed")
 	case !errors.Is(err, fs.ErrNotExist):

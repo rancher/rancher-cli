@@ -228,7 +228,7 @@ func newTempCopy(realPath string) (tmpPath string, baseline []byte, existed bool
 		return "", nil, false, err
 	}
 
-	content, readErr := os.ReadFile(realPath)
+	content, readErr := config.ReadRawConfig(realPath)
 	switch {
 	case readErr == nil:
 		baseline = content

@@ -64,7 +64,7 @@ func PlatformKeychainLabel() string {
 // directory has stored then answers, as it does for a missing one).
 func ReadPin(dir string) string {
 	observeIdentity("pinread")
-	b, err := os.ReadFile(PinPath(dir))
+	b, err := readFile(PinPath(dir))
 	if err != nil {
 		return ""
 	}

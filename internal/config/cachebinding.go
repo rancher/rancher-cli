@@ -82,7 +82,7 @@ func AdvanceCacheBinding(e *Server) error {
 // stamp either. Readers never create it.
 func readBindingStamp(dir string) (stamp string, ok bool) {
 	observeIdentity("stampread")
-	b, err := os.ReadFile(BindingStampPath(dir))
+	b, err := readFile(BindingStampPath(dir))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", true
@@ -114,7 +114,7 @@ func ReadBindingStamp(dir string) (string, bool) { return readBindingStamp(dir) 
 func writeBindingStamp(dir, stamp string) error {
 	path := BindingStampPath(dir)
 	if fi, err := os.Lstat(path); err == nil && !fi.Mode().IsRegular() {
-		if rerr := os.RemoveAll(path); rerr != nil {
+		if rerr := removeAll(path); rerr != nil {
 			return fmt.Errorf("replacing the cache binding stamp %s: %w", path, rerr)
 		}
 	}
