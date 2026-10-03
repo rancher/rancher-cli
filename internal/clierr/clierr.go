@@ -19,6 +19,7 @@ const (
 	CodeCredentialReplaced             = "CREDENTIAL_REPLACED"
 	CodeLoginIncomplete                = "LOGIN_INCOMPLETE"
 	CodeCredentialTransitionIncomplete = "CREDENTIAL_TRANSITION_INCOMPLETE"
+	CodeCredentialStoreUnavailable     = "CREDENTIAL_STORE_UNAVAILABLE"
 	CodeNotFound                       = "NOT_FOUND"
 	CodeRBAC                           = "RBAC"
 	CodeValidation                     = "VALIDATION"
@@ -132,6 +133,9 @@ var exitCodes = map[string]int{
 	CodePrimeRequired:         9,
 	CodeTLSTrust:              10,
 	CodeCapabilityUnsupported: 11,
+	// 12 and 13 are `access can`'s success statuses (denied, unknown), so
+	// the next error exit is 14.
+	CodeCredentialStoreUnavailable: 14,
 	// 128 plus SIGINT's number, the shell convention for a process ended
 	// by an interrupt. INTERRUPTED exits 130 for either signal the command
 	// listens for; only the forced exit on a second signal carries that
@@ -250,7 +254,7 @@ func AllCodes() []string {
 		CodeNotLoggedIn, CodeConfirmationRequired, CodeDryRunNotApplicable,
 		CodeAmbiguousSelection, CodeConflict, CodeLockTimeout,
 		CodeAuth, CodeCredentialReplaced, CodeLoginIncomplete,
-		CodeCredentialTransitionIncomplete,
+		CodeCredentialTransitionIncomplete, CodeCredentialStoreUnavailable,
 		CodeNotFound, CodeRBAC, CodeValidation, CodePrimeRequired, CodeTLSTrust,
 		CodeCapabilityUnsupported, CodeInterrupted, CodeGeneric,
 	}
@@ -279,6 +283,7 @@ var codeDescs = map[string]string{
 	CodeCredentialReplaced:             "the stored credential for the server entry was replaced by another config directory that shares this one's identity, or by a login in progress",
 	CodeLoginIncomplete:                "a login for the server entry is in progress, or ended before it recorded its credential identity",
 	CodeCredentialTransitionIncomplete: "a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet, so a second store change is refused until it is; other commands proceed",
+	CodeCredentialStoreUnavailable:     "the credential store this directory uses cannot be read or written right now: a locked keychain, a keychain prompt that was cancelled, a keychain that cannot be reached, or a credential helper that is missing, timed out or failed; the message names the store, the entry, the cause as far as it is known, and the remedy",
 	CodeNotFound:                       "no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data",
 	CodeRBAC:                           "the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token",
 	CodeValidation:                     "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422)",

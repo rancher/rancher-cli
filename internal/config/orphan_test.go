@@ -20,7 +20,7 @@ func orphanFixture(t *testing.T) string {
 	keyring.MockInit()
 	dir := t.TempDir()
 	orig := keyringUsable
-	keyringUsable = func() bool { return true }
+	keyringUsable = func() error { return nil }
 	resetKeyringUsableCache()
 	t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 	cfg := &Config{CredentialStore: "auto", Servers: map[string]Server{"staging": {URL: "https://staging.ex"}}}
@@ -83,10 +83,9 @@ func TestALoginCreatingAnEntryRefusesAnOrphanInAnUnreachableKeychain(t *testing.
 		},
 	} {
 		err := run()
-		ce, ok := errorsAsClierr(err)
-		require.True(t, ok, "%s: %v", name, err)
-		assert.Equal(t, clierr.CodeValidation, ce.Code, name)
-		require.ErrorContains(t, err, "make the keychain reachable, or use a different --config", name)
+		assertStoreUnavailable(t, err)
+		require.ErrorContains(t, err, "a credential stored under 'prod' that no entry names is in the keychain and has to be removed before this command writes the entry: the keychain could not", name)
+		require.ErrorContains(t, err, keychainRemedy()+", then run this command again, or use a different --config", name)
 		require.ErrorIs(t, err, errUnreachableKeyring, name)
 	}
 	after, err := Load(FilePath(dir))

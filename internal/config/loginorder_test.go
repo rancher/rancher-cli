@@ -25,7 +25,7 @@ func repinFixture(t *testing.T) string {
 	keyring.MockInit()
 	dir := t.TempDir()
 	orig := keyringUsable
-	keyringUsable = func() bool { return true }
+	keyringUsable = func() error { return nil }
 	resetKeyringUsableCache()
 	t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
@@ -802,7 +802,7 @@ func TestTheFilePrePinStatesWhatIsAlreadyTrue(t *testing.T) {
 			keyring.MockInit()
 			dir := t.TempDir()
 			orig := keyringUsable
-			keyringUsable = func() bool { return true }
+			keyringUsable = func() error { return nil }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
@@ -1062,7 +1062,7 @@ func TestAnOldCopyThatCannotBeReadFlipsThePinInstead(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	orig := keyringUsable
-	keyringUsable = func() bool { return true }
+	keyringUsable = func() error { return nil }
 	resetKeyringUsableCache()
 	t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
@@ -1242,7 +1242,7 @@ func TestAPinNamingAThirdStoreIsWrittenBeforeTheCommit(t *testing.T) {
 			keyring.MockInit()
 			dir := t.TempDir()
 			orig := keyringUsable
-			keyringUsable = func() bool { return true }
+			keyringUsable = func() error { return nil }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
@@ -1264,9 +1264,9 @@ func TestAPinNamingAThirdStoreIsWrittenBeforeTheCommit(t *testing.T) {
 			seen := map[string]string{}
 			t.Cleanup(SetPersistWriteHookForTest(func(step string) error {
 				if tc.readerProbeFails {
-					keyringUsable = func() bool { return false }
+					keyringUsable = func() error { return errNoKeychainSession }
 					resetKeyringUsableCache()
-					defer func() { keyringUsable = func() bool { return true }; resetKeyringUsableCache() }()
+					defer func() { keyringUsable = func() error { return nil }; resetKeyringUsableCache() }()
 				}
 				seen[step] = readerResolves(t, dir, "prod", "https://r.ex")
 				return nil

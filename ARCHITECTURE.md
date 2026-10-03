@@ -588,7 +588,11 @@ Under the default `auto` policy **only a login writes the pin**: its first login
 the keychain and its pin step writes the result (`keychain` or `file`) to a machine-local
 `credstore-pin` file (0600) - never into `config.yaml`, which is a portable user
 declaration that must not carry machine-specific probe state - and the step's notice
-reaches `res.Warnings`. A read never probes and never pins. With no pin, every reader of
+reaches `res.Warnings`. On macOS a first login whose probe finds the keychain locked
+(security's status 128 for a cancelled prompt, or no answer within the probe's limit)
+is refused with `CREDENTIAL_STORE_UNAVAILABLE` instead, storing no credential and
+pinning nothing; elsewhere, and for any other probe failure, the pin is `file`. A read
+never probes and never pins. With no pin, every reader of
 "`auto` with no pin" - the store a command opens, the login's own backend set, the
 plugin-created login's disclosure, logout, completion, `config status`, `auth status`,
 `config set-completion` - asks one function, `UnpinnedStoreOf`, which answers from the

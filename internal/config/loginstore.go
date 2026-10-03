@@ -114,22 +114,35 @@ func loginBackendsOf(dir string, cfg *Config, entry, policy, declaration string)
 		b.ReadsNow = u.Backend()
 	}
 
+	var probeErr error
 	b.CommitsTo = physicalBackend(resolved, b.Pin)
 	switch {
 	case resolved != "auto":
 		// An explicit policy is already the answer and never asks the pin.
 	case b.CommitsTo == "":
-		if keyringUsableOnce() {
+		probeErr = keyringUsableOnce()
+		switch {
+		case probeErr == nil:
 			b.CommitsTo = backendKeychain
-			break
+		case b.ReadsNow == "" && keychainAwaitsUnlock(probeErr):
+			// Nothing is stored yet, so this probe decides the store, and
+			// the keychain is there and locked: pinning the file store
+			// would move the directory to plaintext because a prompt was
+			// dismissed or not answered in time. A directory that already
+			// reads the file store keeps it, as a file pin does; one that
+			// reads the keychain is refused below.
+			return b, keychainUnusableAtFirstLogin(entry, probeErr, fileStoreAlternative(cfg, entry))
+		default:
+			b.CommitsTo = backendFile
+			b.Notice = plaintextStoreNotice(dir)
 		}
-		b.CommitsTo = backendFile
-		b.Notice = plaintextStoreNotice(dir)
-	case b.CommitsTo == backendFile && keyringUsableOnce():
+	case b.CommitsTo == backendFile:
 		// Upgrade only: a keychain pin is never re-probed, so a keychain
 		// that hiccups can never move a directory to plaintext behind the
 		// operator's back.
-		b.CommitsTo = backendKeychain
+		if probeErr = keyringUsableOnce(); probeErr == nil {
+			b.CommitsTo = backendKeychain
+		}
 	}
 	if resolved == "auto" && b.ReadsNow == backendFile && b.CommitsTo == backendKeychain {
 		// The upgrade takes this entry's credential only. While another
@@ -159,10 +172,27 @@ func loginBackendsOf(dir string, cfg *Config, entry, policy, declaration string)
 		// to the plaintext file here would move all of them out on a
 		// probe - a locked keychain, a session over SSH - which is the
 		// silent downgrade a credential store must never make. Plaintext
-		// is something a login is asked for by name.
-		return b, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"the keychain cannot be used right now, and a login that asks for auto never moves this directory's credentials out of %s into the plaintext file %s; unlock or fix the keychain and run this command again, or log in with --credential-store file to keep this entry's credential in plaintext on purpose",
-			b.ReadsNow, CredentialsFilePath(dir)))
+		// is something a login is asked for by name, offered only where
+		// that store change can run: no other entry holds a credential in
+		// the keychain, and no other entry at all for a helper.
+		alt := fileStoreAlternative(cfg, entry)
+		if alt != "" {
+			switch b.ReadsNow {
+			case backendKeychain:
+				others, oerr := otherKeychainRecords(dir, cfg, entry)
+				if oerr != nil {
+					return b, oerr
+				}
+				if len(others) > 0 {
+					alt = ""
+				}
+			default:
+				if hasOtherEntry(cfg, entry) {
+					alt = ""
+				}
+			}
+		}
+		return b, keychainUnusableForKeychainDirectory(b.ReadsNow, CredentialsFilePath(dir), probeErr, alt)
 	}
 
 	after := cfg.CredentialStore

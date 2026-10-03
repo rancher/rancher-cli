@@ -84,9 +84,8 @@ func (s *execStore) invoke(verb string, req credhelper.Request) (*credhelper.Res
 	req.ProtocolVersion = credhelper.ProtocolVersion
 	path, err := exec.LookPath(s.binary())
 	if err != nil {
-		return nil, fmt.Errorf(
-			"credential helper %q not found in PATH; install it or change credentialStore (see CREDENTIAL_HELPERS.md)",
-			s.binary())
+		return nil, helperUnavailable(s.binary(), verb, req.Name,
+			"it is not installed in PATH; install it or change credentialStore (see CREDENTIAL_HELPERS.md)")
 	}
 	in, err := json.Marshal(req)
 	if err != nil {
@@ -100,14 +99,15 @@ func (s *execStore) invoke(verb string, req credhelper.Request) (*credhelper.Res
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	runErr := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		return nil, fmt.Errorf("credential helper %s %s timed out after %s", s.binary(), verb, execHelperTimeout)
+		return nil, helperUnavailable(s.binary(), verb, req.Name,
+			fmt.Sprintf("it did not answer within %s; check the helper, then run this command again", execHelperTimeout))
 	}
 	if runErr != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = runErr.Error()
 		}
-		return nil, fmt.Errorf("credential helper %s %s: %s", s.binary(), verb, msg)
+		return nil, helperUnavailable(s.binary(), verb, req.Name, msg)
 	}
 	out := bytes.TrimSpace(stdout.Bytes())
 	if len(out) == 0 {

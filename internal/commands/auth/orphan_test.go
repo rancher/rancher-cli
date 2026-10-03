@@ -77,8 +77,9 @@ func TestALoginRegisteringANewNameRemovesACredentialLeftUnderIt(t *testing.T) {
 
 // TestALoginRegisteringANewNameRefusesAnOrphanInAnUnreachableKeychain
 // asserts the one case the removal cannot make: an orphan under the name in
-// a keychain this process cannot reach. The login is refused before the
-// sign-in and before the entry is written, with the way out.
+// a keychain this process cannot reach. The login is refused as
+// CREDENTIAL_STORE_UNAVAILABLE before the sign-in and before the entry is
+// written, with the way out.
 func TestALoginRegisteringANewNameRefusesAnOrphanInAnUnreachableKeychain(t *testing.T) {
 	dir := orphanDir(t)
 	ks, _, err := config.OpenResolvedStore("keychain", dir)
@@ -91,8 +92,8 @@ func TestALoginRegisteringANewNameRefusesAnOrphanInAnUnreachableKeychain(t *test
 	_, _, err = loginWithURL(t, dir, &reached)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "%v", err)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	require.ErrorContains(t, err, "make the keychain reachable, or use a different --config")
+	assert.Equal(t, clierr.CodeCredentialStoreUnavailable, ce.Code)
+	require.ErrorContains(t, err, "then run this command again, or use a different --config")
 	assert.False(t, reached, "refused before the sign-in")
 	cfg, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)

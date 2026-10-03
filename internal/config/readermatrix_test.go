@@ -273,11 +273,11 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 	reading := false
 	var violations []string
 	orig := keyringUsable
-	keyringUsable = func() bool {
+	keyringUsable = func() error {
 		if reading {
 			violations = append(violations, "a reader probed the keychain")
 		}
-		return row.probe
+		return probeAnswer(row.probe)
 	}
 	resetKeyringUsableCache()
 	t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })

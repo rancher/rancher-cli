@@ -62,7 +62,7 @@ func RemoveOrphanCredentials(ctx context.Context, dir string, cfg *Config, name 
 		return notices, err
 	}
 	if rec != nil {
-		deleted, ns, derr := deleteKeychainCredential(ctx, dir, ServerRef{Name: name}, true, "")
+		deleted, ns, derr := deleteKeychainCredential(ctx, dir, ServerRef{Name: name}, true, orAnotherConfig)
 		notices = append(notices, ns...)
 		if derr != nil {
 			return notices, orphanKeychainError(name, derr)
@@ -101,15 +101,21 @@ func CheckOrphanCredentials(dir string, cfg *Config, name string) error {
 		return err
 	}
 	if _, gerr := keyringGet(rec.Account()); gerr != nil && !errors.Is(gerr, keyring.ErrNotFound) {
-		return orphanKeychainError(name, gerr)
+		return orphanKeychainError(name, keychainError("get", name, gerr, orAnotherConfig))
 	}
 	return nil
 }
 
 // orphanKeychainError refuses a command creating an entry whose name has an
 // orphan credential in a keychain the process cannot reach: the orphan has
-// to go before the entry is written, and it cannot.
+// to go before the entry is written, and it cannot. A keychain that is
+// unavailable keeps its own code and remedy.
 func orphanKeychainError(name string, err error) error {
+	if ce := asStoreUnavailable(err); ce != nil {
+		return ce.WithMessage(fmt.Sprintf(
+			"a credential stored under %s that no entry names is in the keychain and has to be removed before this command writes the entry: %s",
+			clierr.ShellQuote(name), ce.Message))
+	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"a credential stored under %s that no entry names is in the keychain, which cannot be reached to remove it before this command writes the entry: %v; make the keychain reachable, or use a different --config, then run this command again",
 		clierr.ShellQuote(name), err)).
@@ -119,7 +125,13 @@ func orphanKeychainError(name string, err error) error {
 // orphanHelperError refuses a command creating an entry whose name has an
 // orphan credential a helper the directory reads from will not erase: left
 // in place, it would be served to a reader of the entry the command writes.
+// A helper that is unavailable keeps its own code and remedy.
 func orphanHelperError(name, helper string, err error) error {
+	if ce := asStoreUnavailable(err); ce != nil {
+		return ce.WithMessage(fmt.Sprintf(
+			"a credential stored under %s that no entry names is held by the credential helper %s and has to be erased before this command writes the entry: %s",
+			clierr.ShellQuote(name), helper, ce.Message))
+	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"a credential stored under %s that no entry names is held by the credential helper %s, which could not erase it before this command writes the entry: %v; fix the helper, or use a different --config, then run this command again",
 		clierr.ShellQuote(name), helper, err)).

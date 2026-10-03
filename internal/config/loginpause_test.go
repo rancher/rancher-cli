@@ -200,7 +200,7 @@ func TestALoginLeavesThePauseEachWayItCanEnd(t *testing.T) {
 		require.NoError(t, cfg.Write())
 		require.NoError(t, os.Remove(CredentialsFilePath(dir)))
 		orig := keyringUsable
-		keyringUsable = func() bool { return true }
+		keyringUsable = func() error { return nil }
 		resetKeyringUsableCache()
 		t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 		require.NoError(t, os.Mkdir(PinPath(dir), 0o700), "no pin can be written")

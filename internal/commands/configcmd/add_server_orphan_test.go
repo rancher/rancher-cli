@@ -87,8 +87,8 @@ func TestAddServerRefusesAnOrphanInAnUnreachableKeychain(t *testing.T) {
 
 	_, err = (&configAddServerCmd{dir: dir}).Execute(t.Context(),
 		cmdtest.Input{Pos: []string{"qa"}, Str: map[string]string{"url": "https://b.example.com"}}, ui.Discard())
-	require.ErrorContains(t, err, "cannot be reached to remove it before this command writes the entry")
-	require.ErrorContains(t, err, "make the keychain reachable, or use a different --config")
+	require.ErrorContains(t, err, "has to be removed before this command writes the entry: the keychain could not read the credential for 'qa'")
+	require.ErrorContains(t, err, "then run this command again, or use a different --config")
 	cfg, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)
 	assert.NotContains(t, cfg.Servers, "qa", "the entry was not written")

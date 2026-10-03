@@ -28,7 +28,14 @@ Invocation: `rancher-credential-<name> <verb>` with verb `get`, `store`, or
 `erase`. One JSON request on stdin; one JSON response on stdout. Exit 0 on
 success; on failure exit nonzero with a plain-language message on stderr
 (stdout is ignored then). Unknown verbs and unsupported protocol versions
-MUST exit nonzero.
+MUST exit nonzero. A helper that exits nonzero, is not on `PATH`, or does
+not answer within the timeout fails the command with
+`CREDENTIAL_STORE_UNAVAILABLE` (exit 14), and a nonzero exit's stderr is
+that error's message, so put the remedy there: say what to do, such as
+which vault to unlock or which command signs in again. The error is
+marked retryable whatever the cause, so when a retry cannot help (an
+unknown verb, an unsupported protocol version, a broken installation),
+say so in that message.
 
 ### Request
 

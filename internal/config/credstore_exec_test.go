@@ -66,8 +66,9 @@ func TestExecStoreMissingBinary(t *testing.T) {
 	require.NoError(t, err, "construction is lazy; failure surfaces on use")
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	require.ErrorContains(t, err, `credential helper "rancher-credential-nosuch" not found in PATH`)
-	assert.ErrorContains(t, err, "CREDENTIAL_HELPERS.md")
+	require.ErrorContains(t, err, "credential helper rancher-credential-nosuch could not read the credential for 'prod': it is not installed in PATH")
+	require.ErrorContains(t, err, "CREDENTIAL_HELPERS.md")
+	assertStoreUnavailable(t, err)
 }
 
 func TestExecStoreTimeout(t *testing.T) {
@@ -78,8 +79,9 @@ func TestExecStoreTimeout(t *testing.T) {
 	require.NoError(t, err)
 	_, err = st.GetToken(execRef())
 	require.Error(t, err)
-	require.ErrorContains(t, err, "timed out")
-	assert.ErrorContains(t, err, "rancher-credential-fake")
+	require.ErrorContains(t, err, "it did not answer within 200ms")
+	require.ErrorContains(t, err, "rancher-credential-fake")
+	assertStoreUnavailable(t, err)
 }
 
 func TestExecStoreCanonicalWireIdentity(t *testing.T) {

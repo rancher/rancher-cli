@@ -158,7 +158,7 @@ func TestLoginSequenceFreshAutoUsableKeychain(t *testing.T) {
 	resetKeyringUsableCache()
 	probes := 0
 	origUsable := keyringUsable
-	keyringUsable = func() bool { probes++; return true }
+	keyringUsable = func() error { probes++; return nil }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
 	b, err := loginBackendsOf(dir, &Config{}, "prod", "", "auto")
@@ -199,7 +199,7 @@ func TestLoginSequenceFreshAutoUnusableKeychain(t *testing.T) {
 	resetKeyringUsableCache()
 	probes := 0
 	origUsable := keyringUsable
-	keyringUsable = func() bool { probes++; return false }
+	keyringUsable = func() error { probes++; return errNoKeychainSession }
 	t.Cleanup(func() { keyringUsable = origUsable; resetKeyringUsableCache() })
 
 	b, err := loginBackendsOf(dir, &Config{}, "prod", "", "auto")

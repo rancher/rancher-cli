@@ -10456,6 +10456,11 @@
       "exit": 3
     },
     {
+      "code": "CREDENTIAL_STORE_UNAVAILABLE",
+      "desc": "the credential store this directory uses cannot be read or written right now: a locked keychain, a keychain prompt that was cancelled, a keychain that cannot be reached, or a credential helper that is missing, timed out or failed; the message names the store, the entry, the cause as far as it is known, and the remedy",
+      "exit": 14
+    },
+    {
       "code": "NOT_FOUND",
       "desc": "no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data",
       "exit": 4
@@ -10503,6 +10508,7 @@
     "CONFIRMATION_REQUIRED": 2,
     "CONFLICT": 5,
     "CREDENTIAL_REPLACED": 3,
+    "CREDENTIAL_STORE_UNAVAILABLE": 14,
     "CREDENTIAL_TRANSITION_INCOMPLETE": 3,
     "DRY_RUN_NOT_APPLICABLE": 2,
     "GENERIC": 1,

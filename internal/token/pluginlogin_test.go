@@ -699,8 +699,9 @@ func TestPluginLoginDecidesForTheEntryItWillWrite(t *testing.T) {
 // TestPluginLoginRefusesAnOrphanInAnUnreachableKeychainBeforeTheSignIn
 // asserts the plugin-created login's check before the sign-in covers the
 // credential it would remove under the lock: one stored under the entry it
-// creates, in a keychain this process cannot reach, refuses with the way
-// out before anyone is asked to sign in.
+// creates, in a keychain this process cannot reach, refuses as
+// CREDENTIAL_STORE_UNAVAILABLE with the way out before anyone is asked to
+// sign in.
 func TestPluginLoginRefusesAnOrphanInAnUnreachableKeychainBeforeTheSignIn(t *testing.T) {
 	keyring.MockInit()
 	config.ResetKeyringUsableCacheForTest(t)
@@ -715,8 +716,8 @@ func TestPluginLoginRefusesAnOrphanInAnUnreachableKeychainBeforeTheSignIn(t *tes
 	_, err = x.getToken(t, "c-test", "n", localPrompter())
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "%v", err)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	require.ErrorContains(t, err, "make the keychain reachable, or use a different --config")
+	assert.Equal(t, clierr.CodeCredentialStoreUnavailable, ce.Code)
+	require.ErrorContains(t, err, "then run this command again, or use a different --config")
 	assert.Zero(t, x.f.LoginCount(), "nobody was asked to sign in")
 }
 

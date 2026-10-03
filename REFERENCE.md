@@ -46,7 +46,20 @@ silent override: two processes on one directory reading different
 backends is how a command ends up serving a credential nobody asked for.
 Unset the variable, or use a different `--config`. An undeclared
 directory defaults to `auto`: its first login probes the keychain and
-pins the answer.
+pins the answer. On macOS, a keychain that is locked - its prompt was
+cancelled, or not answered within the probe's 5 seconds - refuses the
+login with `CREDENTIAL_STORE_UNAVAILABLE`; the login stores no
+credential and pins nothing: unlock the keychain with `security
+unlock-keychain` or approve the prompt and run the command again, or run
+`rancher auth login <name> --credential-store file` to choose the file
+store on purpose (the kubectl plugin's own login names only the first,
+since neither it nor `auth login` on its entry takes that flag). On other
+systems, and for any other failure such as no keychain session on a
+headless machine or in CI, the first login pins the file store. A
+directory that already holds credentials is not decided by the probe:
+one whose credentials are in the file store keeps it, and one whose
+credentials are in the keychain or a helper is refused with
+`CREDENTIAL_STORE_UNAVAILABLE` while the keychain cannot be used.
 
 Changing a directory's store is `rancher auth login <name>
 --credential-store keychain|file|auto|exec:<name>`. The flag names the
@@ -70,9 +83,10 @@ directory has any other entry, since the helper may answer for any of
 them with a credential it created: keep the directory where it is and
 use a different `--config` for the helper, or remove those entries with
 `rancher config delete-server`.
-A store that cannot be read at that moment refuses too, and its remedy is
-to make it reachable or use a different `--config`, since a logout would
-have to reach the same store. A credential helper can answer for any
+A store that cannot be read at that moment refuses too - a keychain that
+cannot be read fails as `CREDENTIAL_STORE_UNAVAILABLE` - and its remedy
+is to make it reachable or use a different `--config`, since a logout
+would have to reach the same store. A credential helper can answer for any
 entry, so leaving a helper is refused while the directory has any other
 entry: keep the directory on the helper and use a different `--config`
 for the new store, or remove those entries with `rancher config
@@ -155,7 +169,11 @@ store a command on a directory that has not made one reads and a login
 writes, and disagreeing with one that has is an error rather than an
 override. Under `auto` the value resolves through a machine-local
 `credstore-pin` file, and only a login writes it: the directory's first
-login probes the keychain and pins the answer, and a later login
+login probes the keychain and pins the answer - the file store when the
+probe fails, except that on macOS a locked keychain (its prompt cancelled
+or not answered within the probe's 5 seconds) refuses the login with
+`CREDENTIAL_STORE_UNAVAILABLE`, which stores no credential and pins
+nothing - and a later login
 re-probes only to upgrade file to keychain - and only while no other
 entry's credential is in the file store. No other command probes or pins.
 With no pin, a command reads where the entries' stored credentials are:
@@ -952,6 +970,7 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 | `CREDENTIAL_REPLACED` | 3 | the stored credential for the server entry was replaced by another config directory that shares this one's identity, or by a login in progress |
 | `LOGIN_INCOMPLETE` | 3 | a login for the server entry is in progress, or ended before it recorded its credential identity |
 | `CREDENTIAL_TRANSITION_INCOMPLETE` | 3 | a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet, so a second store change is refused until it is; other commands proceed |
+| `CREDENTIAL_STORE_UNAVAILABLE` | 14 | the credential store this directory uses cannot be read or written right now: a locked keychain, a keychain prompt that was cancelled, a keychain that cannot be reached, or a credential helper that is missing, timed out or failed; the message names the store, the entry, the cause as far as it is known, and the remedy |
 | `NOT_FOUND` | 4 | no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data |
 | `RBAC` | 6 | the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token |
 | `VALIDATION` | 2 | the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422) |

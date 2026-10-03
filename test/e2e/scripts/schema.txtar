@@ -21,8 +21,9 @@ jsonquery schema.json 'data.commands.#' 192
 jsonquery schema.json data.effectSchema.actions.0 create
 jsonquery schema.json 'data.commands.#(name="delete project").destructive' true
 jsonquery schema.json 'data.commands.#(name="get pod").aliases.0' pods
-jsonquery schema.json 'data.errorCodes.#' 18
+jsonquery schema.json 'data.errorCodes.#' 19
 jsonquery schema.json 'data.errorCodes.#(code="AUTH").exit' 3
+jsonquery schema.json 'data.errorCodes.#(code="CREDENTIAL_STORE_UNAVAILABLE").exit' 14
 
 # --all conflicts with narrowing
 ! exec rancher schema get pod --all -o json

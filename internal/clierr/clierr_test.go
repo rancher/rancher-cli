@@ -83,11 +83,11 @@ func TestCodesDescribeEveryCode(t *testing.T) {
 // permanently-dead branch (no construction site ever advertises it), is absent
 // from the enum. The count asserts the full enum: 10 originals plus
 // LOCK_TIMEOUT, PRIME_REQUIRED, TLS_TRUST, CAPABILITY_UNSUPPORTED,
-// INTERRUPTED, CREDENTIAL_REPLACED, LOGIN_INCOMPLETE and
-// CREDENTIAL_TRANSITION_INCOMPLETE.
+// INTERRUPTED, CREDENTIAL_REPLACED, LOGIN_INCOMPLETE,
+// CREDENTIAL_TRANSITION_INCOMPLETE and CREDENTIAL_STORE_UNAVAILABLE.
 func TestAllCodesDropsNotImplemented(t *testing.T) {
 	codes := AllCodes()
-	assert.Len(t, codes, 18)
+	assert.Len(t, codes, 19)
 	assert.NotContains(t, codes, "NOT_IMPLEMENTED")
 	assert.Contains(t, codes, CodeLockTimeout)
 	assert.Contains(t, codes, CodePrimeRequired)
@@ -96,6 +96,7 @@ func TestAllCodesDropsNotImplemented(t *testing.T) {
 	assert.Contains(t, codes, CodeCredentialReplaced)
 	assert.Contains(t, codes, CodeLoginIncomplete)
 	assert.Contains(t, codes, CodeCredentialTransitionIncomplete)
+	assert.Contains(t, codes, CodeCredentialStoreUnavailable)
 }
 
 // TestCredentialCodesRetryability asserts the pair a caller branches on: a
@@ -143,6 +144,7 @@ func TestExitCodeTableUnaffectedByTextRendering(t *testing.T) {
 		CodePrimeRequired:                  9,
 		CodeTLSTrust:                       10,
 		CodeCapabilityUnsupported:          11,
+		CodeCredentialStoreUnavailable:     14,
 		CodeInterrupted:                    130,
 		CodeGeneric:                        1,
 	}

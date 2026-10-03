@@ -219,7 +219,7 @@ func TestALoginResolvesOneBackendSetAndOpensIt(t *testing.T) {
 			}
 			probes := 0
 			orig := keyringUsable
-			keyringUsable = func() bool { probes++; return tc.keychain }
+			keyringUsable = func() error { probes++; return probeAnswer(tc.keychain) }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
@@ -330,7 +330,8 @@ func TestLoginPolicyPrefersTheFlagAndRefusesADisagreeingVariable(t *testing.T) {
 // `auto` on a directory whose credentials are in the keychain or a helper,
 // on a machine whose keychain cannot be used right now, would otherwise
 // put every one of them in the plaintext file on the strength of one
-// probe. It is refused before the sign-in instead, with the two ways out
+// probe. It is refused before the sign-in instead, as
+// CREDENTIAL_STORE_UNAVAILABLE with the probe's cause and the two ways out
 // in the message. A fresh directory, which has nothing to move, still
 // falls back to the file store and says so.
 func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
@@ -348,7 +349,7 @@ func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
 				require.NoError(t, WritePin(dir, tc.pin))
 			}
 			orig := keyringUsable
-			keyringUsable = func() bool { return false }
+			keyringUsable = func() error { return errNoKeychainSession }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
@@ -361,11 +362,10 @@ func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
 				loginRefusal(dir, cfg, "prod", "auto", "auto"),
 			} {
 				require.Error(t, err)
-				ce, ok := errorsAsClierr(err)
-				require.True(t, ok)
-				assert.Equal(t, clierr.CodeValidation, ce.Code)
+				assertStoreUnavailable(t, err)
+				require.ErrorContains(t, err, "the keychain cannot be used right now (no keychain session)")
 				require.ErrorContains(t, err, "never moves this directory's credentials out of "+tc.from+" into the plaintext file")
-				require.ErrorContains(t, err, "--credential-store file")
+				assert.Contains(t, clierr.ExpandRemedies(err.Error(), ""), keychainRemedy()+", then run this command again, or run rancher auth login 'prod' --credential-store file")
 			}
 			assert.Equal(t, tc.pin, ReadPin(dir), "the refusal writes nothing")
 		})
@@ -375,7 +375,7 @@ func TestAnAutoLoginNeverMovesADirectoryIntoPlaintext(t *testing.T) {
 		t.Setenv(EnvCredentialStore, "")
 		dir := t.TempDir()
 		orig := keyringUsable
-		keyringUsable = func() bool { return false }
+		keyringUsable = func() error { return errNoKeychainSession }
 		resetKeyringUsableCache()
 		t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
@@ -396,7 +396,7 @@ func TestAnUpgradeOnAOneEntryDirectoryLooksUpNoOtherEntry(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, WritePin(dir, backendFile))
 	orig := keyringUsable
-	keyringUsable = func() bool { return true }
+	keyringUsable = func() error { return nil }
 	resetKeyringUsableCache()
 	t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 	ops := map[string]int{}

@@ -125,7 +125,8 @@ func TestAStoreChangeRefusesWhileAnotherEntryHoldsAKeychainCredential(t *testing
 // TestAStoreChangeRefusesWhenTheStoreBeingLeftCannotBeRead asserts the
 // refusal for a store that cannot answer at all. Logging the entry out
 // cannot clear it - the logout has to reach the same store - so the
-// remedy is the store itself or another directory, and no logout is
+// remedy is the store itself (for a keychain, its own remedy under
+// CREDENTIAL_STORE_UNAVAILABLE) or another directory, and no logout is
 // offered as a hint.
 func TestAStoreChangeRefusesWhenTheStoreBeingLeftCannotBeRead(t *testing.T) {
 	t.Run("an unreachable keychain", func(t *testing.T) {
@@ -135,12 +136,9 @@ func TestAStoreChangeRefusesWhenTheStoreBeingLeftCannotBeRead(t *testing.T) {
 		defer restore()
 
 		err := CheckTransitionSources(dir, cfg, "prod", backendKeychain, backendFile)
-		ce, ok := errorsAsClierr(err)
-		require.True(t, ok)
-		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		require.ErrorContains(t, err, "staging")
-		require.ErrorContains(t, err, "make that store reachable, or use a different --config")
-		assert.Empty(t, ce.Hint, "a logout cannot reach the store either")
+		assertStoreUnavailable(t, err)
+		require.ErrorContains(t, err, "the credential store cannot be changed while the stored credential for staging cannot be read: the keychain could not read the credential for 'staging'")
+		require.ErrorContains(t, err, keychainRemedy()+", then run this command again, or use a different --config")
 		assert.ErrorIs(t, err, errUnreachableKeyring, "the backend's own error is the cause")
 	})
 

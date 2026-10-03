@@ -89,6 +89,9 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	if perr != nil {
 		return runtime.Result{}, perr
 	}
+	if config.IsExecLoginEntryName(name) && canonicalResultURL != existing.URL {
+		return runtime.Result{}, execLoginURLChangeRefused(name)
+	}
 	probe, perr := register.Prepare(ctx, c.tlsPreflight, canonicalResultURL, resultCA)
 	if perr != nil {
 		return runtime.Result{}, perr
@@ -221,6 +224,18 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	}
 	res.Text, res.StyledText = tr.Text, tr.StyledText
 	return res, nil
+}
+
+// execLoginURLChangeRefused refuses a URL change on one of the exec
+// plugin's own login entries. The change clears the entry's login and
+// with it the record that the plugin made the entry, which leaves an
+// ordinary entry under a name auth login refuses: no command could log it
+// in again. The plugin makes a new entry for a new URL by itself.
+func execLoginURLChangeRefused(name string) error {
+	q := clierr.ShellQuote(name)
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"%s is one of the exec plugin's own login entries, so its URL cannot change; remove it with %s auth logout %s if it holds a login, then %s config delete-server %s, and the exec plugin creates a new entry for the new URL",
+		q, clierr.Rancher, q, clierr.Rancher, q))
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `config update-server

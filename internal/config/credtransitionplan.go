@@ -56,8 +56,13 @@ type transitionRefusalReason struct {
 // unreachable keychain, an unreadable credentials file. Logging that entry
 // out cannot clear it, because the logout has to reach the same store, so
 // the remedy is the store itself or another directory, and there is no
-// hint.
+// hint. A store that is unavailable keeps its own code and remedy.
 func transitionSourceError(entry string, err error) error {
+	if ce := asStoreUnavailable(err); ce != nil {
+		return ce.WithMessage(fmt.Sprintf(
+			"the credential store cannot be changed while the stored credential for %s cannot be read: %s",
+			entry, ce.Message))
+	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
 		"the credential store cannot be changed while the stored credential for %s cannot be read: %v; make that store reachable, or use a different --config, then run this command again",
 		entry, err)).
@@ -263,7 +268,7 @@ func credentialsHeldIn(dir, from string, entries []string) ([]transitionRefusalR
 			case errors.Is(gerr, keyring.ErrNotFound):
 				continue
 			case gerr != nil:
-				return nil, transitionSourceError(entry, gerr)
+				return nil, transitionSourceError(entry, keychainError("get", entry, gerr, orAnotherConfig))
 			case credentialFingerprint(rec.ID, tok) != rec.Fingerprint:
 				// Another config directory sharing this identity owns the
 				// slot now; the logout removes this directory's claim on

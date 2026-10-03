@@ -705,8 +705,8 @@ func (k *keyringStore) ResolvedBackend() (string, bool) { return backendKeychain
 // failure (keyring.ErrSetDataTooBig - wincred rejects a Set over 2560
 // bytes, macOS's security CLI over 4096 - a data-size problem, not a
 // connectivity one). go-keyring exposes no typed transport errors, so any
-// other non-miss failure is treated as unreachable; for reads that errs
-// toward resilience, and the write path hard-fails either way.
+// other non-miss failure is treated as unreachable. keychainError reports
+// such a failure as CREDENTIAL_STORE_UNAVAILABLE.
 func keyringUnreachable(err error) bool {
 	return err != nil && !errors.Is(err, keyring.ErrNotFound) && !errors.Is(err, keyring.ErrSetDataTooBig)
 }
@@ -770,7 +770,7 @@ func loginIncompleteError(entry string) error {
 // store: a second source is exactly how a directory ends up serving a
 // credential it did not store.
 func (k *keyringStore) getError(entry string, err error) error {
-	return fmt.Errorf("keyring get %q: %w%s", entry, err, k.pinHint)
+	return keychainError("get", entry, err, k.pinHint)
 }
 
 // GetToken reads the entry's identity record first: with no record nothing
@@ -882,14 +882,9 @@ func (k *keyringStore) SetTokenWithOutcome(ref ServerRef, token string, prior Pr
 // setError renders a failed keychain write. NEVER silently
 // degrade a login write to the plaintext file - the pin's guarantee is that
 // a transient keychain failure cannot downgrade the machine's storage.
-// Refuse with the explicit opt-in remedy instead.
+// Refuse with the keychain's own remedy instead.
 func (k *keyringStore) setError(ref ServerRef, err error) error {
-	if keyringUnreachable(err) {
-		return fmt.Errorf(
-			"keyring set %q: %w - credential keychain is unreachable (locked keychain? no D-Bus session?); the token was NOT stored; set %s=file to store credentials in a permission-restricted file instead, or restore keychain access%s",
-			ref.Name, err, EnvCredentialStore, k.pinHint)
-	}
-	return fmt.Errorf("keyring set %q: %w%s", ref.Name, err, k.pinHint)
+	return keychainError("set", ref.Name, err, k.pinHint)
 }
 
 // DeleteToken removes the entry's credential from the keychain and then its
@@ -1404,36 +1399,44 @@ func readerBackend(dir string, cfg *Config) (string, error) {
 // Package var so tests can shrink it.
 var keyringProbeTimeout = 5 * time.Second
 
-// keyringProbe does the harmless set/delete of a marker key. Package var so
-// tests can stub it with a never-returning body to exercise the timeout.
-var keyringProbe = func() bool {
+// keyringProbe does the harmless set/delete of a marker key and returns the
+// set's error, nil when the keychain took the write. Package var so tests
+// can stub it with a never-returning body to exercise the timeout.
+var keyringProbe = func() error {
 	const probe = "__rancher_cli_probe__"
 	if err := keyringBackend.Set(keyringService, probe, "1"); err != nil {
-		return false
+		return err
 	}
 	_ = keyringBackend.Delete(keyringService, probe)
-	return true
+	return nil
 }
 
-// keyringUsable runs keyringProbe bounded to keyringProbeTimeout, treating a
-// timeout as unusable. The probe goroutine may outlive the timeout (the exec
-// is not cancellable) - acceptable for a once-per-login probe. probe/timeout
-// are snapshotted before the goroutine starts so a test restoring the package
-// vars right after the timeout fires never races with the leaked goroutine's
-// read of them. Package var so tests can count/stub probes.
-var keyringUsable = func() bool {
+// errKeyringProbeTimedOut is keyringUsable's answer for a probe that did
+// not return within keyringProbeTimeout: the keychain is unusable, as it
+// is for any failure that is not a locked keychain.
+var errKeyringProbeTimedOut = errors.New("the keychain did not answer within the probe's time limit")
+
+// keyringUsable runs keyringProbe bounded to keyringProbeTimeout and returns
+// nil when the keychain is usable, the probe's own error when it failed, or
+// errKeyringProbeTimedOut. The probe goroutine may outlive the timeout (the
+// exec is not cancellable) - acceptable for a once-per-login probe.
+// probe/timeout are snapshotted before the goroutine starts so a test
+// restoring the package vars right after the timeout fires never races with
+// the leaked goroutine's read of them. Package var so tests can count/stub
+// probes.
+var keyringUsable = func() error {
 	probe, timeout := keyringProbe, keyringProbeTimeout
-	done := make(chan bool, 1)
+	done := make(chan error, 1)
 	go func() { done <- probe() }()
 	select {
-	case ok := <-done:
-		return ok
+	case err := <-done:
+		return err
 	case <-time.After(timeout):
-		return false
+		return errKeyringProbeTimedOut
 	}
 }
 
-var keyringUsableOnceFn = sync.OnceValue(func() bool { return keyringUsable() })
+var keyringUsableOnceFn = sync.OnceValue(func() error { return keyringUsable() })
 
 // keyringUsableOnce runs keyringUsable at most once per process and caches
 // the result. A CLI invocation is one process: a login's check before its
@@ -1442,7 +1445,7 @@ var keyringUsableOnceFn = sync.OnceValue(func() bool { return keyringUsable() })
 // sequentially on an unusable keychain. keyringUsable itself stays the
 // swappable seam for tests that exercise it directly (the timeout test);
 // every other caller observes the memoized result.
-func keyringUsableOnce() bool {
+func keyringUsableOnce() error {
 	return keyringUsableOnceFn()
 }
 
@@ -1452,7 +1455,7 @@ func keyringUsableOnce() bool {
 // own stub is actually invoked rather than a cached result left over from
 // an earlier test in the same process.
 func resetKeyringUsableCache() {
-	keyringUsableOnceFn = sync.OnceValue(func() bool { return keyringUsable() })
+	keyringUsableOnceFn = sync.OnceValue(func() error { return keyringUsable() })
 }
 
 // ResetKeyringUsableCacheForTest resets the memoized keyring-usability probe

@@ -91,6 +91,9 @@ func TestNoLoginRemedyNamesAPluginLoginEntry(t *testing.T) {
 		"identityError":           func(*testing.T) []string { return textOf(identityError(dir, name, "unreadable")) },
 		"identityListError":       func(*testing.T) []string { return textOf(identityListError(dir, name, "is unreadable")) },
 		"identityDirError":        func(*testing.T) []string { return textOf(identityDirError(dir, "unreadable")) },
+		"fileStoreAlternative": func(*testing.T) []string {
+			return []string{fileStoreAlternative(&Config{Servers: map[string]Server{name: {URL: "https://r.ex"}}}, name)}
+		},
 		"TextLines": func(*testing.T) []string {
 			// Prose naming the command, with no entry name in it.
 			var out []string

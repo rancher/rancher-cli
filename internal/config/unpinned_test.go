@@ -147,7 +147,7 @@ func TestAnUnpinnedReadCountsItsOperations(t *testing.T) {
 			}
 			probes := 0
 			orig := keyringUsable
-			keyringUsable = func() bool { probes++; return true }
+			keyringUsable = func() error { probes++; return nil }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 

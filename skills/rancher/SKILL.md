@@ -367,6 +367,7 @@ a separate line to skip past.
 
 Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 `4` not-found · `5` conflict/precondition · `6` RBAC · `9` Prime required ·
+`14` credential store unavailable ·
 `130` interrupted (the operator ended the command; not a failure to retry) ·
 `1` generic.
 
@@ -379,6 +380,14 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   not repeat the identical call.
 - `AMBIGUOUS_SELECTION` returns a `candidates` list - pick with the user, don't
   guess.
+- `CREDENTIAL_STORE_UNAVAILABLE` (exit `14`, retryable) means the keychain
+  or credential helper this directory uses cannot be read or written right
+  now: a locked keychain, a cancelled keychain prompt, a helper that is
+  missing or failing. The message names the store, the entry, the cause and
+  the remedy (on macOS: unlock the keychain with `security unlock-keychain`,
+  or approve the prompt). That remedy needs the person at the keyboard: tell
+  the user, and run the command again only after they have acted. It is
+  never a reason to try another server entry, store or `--config`.
 - `PRIME_REQUIRED` (exit `9`) means the command needs a capability this
   server's edition does not have - Rancher Prime. Do not retry and do not
   look for a workaround; tell the user what was refused and pass along the

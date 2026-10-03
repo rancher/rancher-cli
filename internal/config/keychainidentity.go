@@ -248,7 +248,7 @@ func deleteKeychainCredential(ctx context.Context, dir string, ref ServerRef, de
 			continue
 		case gerr != nil:
 			if declared {
-				return deleted, notices, fmt.Errorf("keyring get %q: %w%s", ref.Name, gerr, pinHint)
+				return deleted, notices, keychainError("get", ref.Name, gerr, pinHint)
 			}
 			// A directory that does not declare the keychain still has to
 			// try, because the record says something is there; it must not
@@ -264,7 +264,7 @@ func deleteKeychainCredential(ctx context.Context, dir string, ref ServerRef, de
 			// The record stays: the credential is still there and the next
 			// attempt must still reach it.
 			if declared {
-				return deleted, notices, fmt.Errorf("keyring delete %q: %w%s", ref.Name, derr, pinHint)
+				return deleted, notices, keychainError("delete", ref.Name, derr, pinHint)
 			}
 			notices = append(notices, fmt.Sprintf("keyring delete %q: %v - the credential identity record was kept", ref.Name, derr))
 			return deleted, notices, nil

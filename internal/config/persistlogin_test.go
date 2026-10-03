@@ -480,7 +480,7 @@ func TestPersistRevalidationAbortsBeforeAnyWrite(t *testing.T) {
 			// The login's own answer is what is checked, and under a file
 			// pin it would probe; an unusable keychain keeps the pin.
 			old := keyringUsable
-			keyringUsable = func() bool { return false }
+			keyringUsable = func() error { return errNoKeychainSession }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = old; resetKeyringUsableCache() })
 			cfg, _ := Load(path)
@@ -511,7 +511,7 @@ func TestPersistRevalidationAbortsBeforeAnyWrite(t *testing.T) {
 		// The login probes the keychain under an auto file pin; the
 		// probe is stubbed unusable so the file pin stands.
 		old := keyringUsable
-		keyringUsable = func() bool { return false }
+		keyringUsable = func() error { return errNoKeychainSession }
 		resetKeyringUsableCache()
 		t.Cleanup(func() { keyringUsable = old; resetKeyringUsableCache() })
 		in := pluginInput(dir, "exec-login-r.ex", NewFileStore(dir))
@@ -1095,7 +1095,7 @@ func TestAnUndisclosedPlaintextCommitIsAbortedOnABareDirectory(t *testing.T) {
 			t.Setenv(EnvCredentialStore, "")
 			dir := t.TempDir()
 			old := keyringUsable
-			keyringUsable = func() bool { return false }
+			keyringUsable = func() error { return errNoKeychainSession }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = old; resetKeyringUsableCache() })
 			cfg := &Config{Servers: map[string]Server{}, TokenReuse: true}

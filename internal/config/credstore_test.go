@@ -85,7 +85,7 @@ func TestTheReadPathNeverProbesAndNeverPins(t *testing.T) {
 			}
 			probes := 0
 			orig := keyringUsable
-			keyringUsable = func() bool { probes++; return true }
+			keyringUsable = func() error { probes++; return nil }
 			resetKeyringUsableCache()
 			t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
 
@@ -118,27 +118,27 @@ func TestTheReadPathNeverProbesAndNeverPins(t *testing.T) {
 func TestKeyringUsableOnceMemoizesPerProcess(t *testing.T) {
 	probes := 0
 	orig := keyringUsable
-	keyringUsable = func() bool { probes++; return true }
+	keyringUsable = func() error { probes++; return nil }
 	resetKeyringUsableCache()
 	defer func() { keyringUsable = orig; resetKeyringUsableCache() }()
 
-	assert.True(t, keyringUsableOnce())
-	assert.True(t, keyringUsableOnce())
+	require.NoError(t, keyringUsableOnce())
+	require.NoError(t, keyringUsableOnce())
 	assert.Equal(t, 1, probes, "the second answer is the first one's")
 }
 
 func TestKeyringUsableDegradesOnHungProbe(t *testing.T) {
 	origProbe, origTimeout := keyringProbe, keyringProbeTimeout
-	keyringProbe = func() bool { select {} } // never returns
+	keyringProbe = func() error { select {} } // never returns
 	keyringProbeTimeout = 50 * time.Millisecond
 	defer func() { keyringProbe, keyringProbeTimeout = origProbe, origTimeout }()
 
-	done := make(chan bool, 1)
+	done := make(chan error, 1)
 	go func() { done <- keyringUsable() }()
 
 	select {
-	case ok := <-done:
-		assert.False(t, ok, "a hung probe must degrade to unusable")
+	case err := <-done:
+		require.ErrorIs(t, err, errKeyringProbeTimedOut, "a hung probe must degrade to unusable")
 	case <-time.After(time.Second):
 		t.Fatal("keyringUsable did not honor keyringProbeTimeout")
 	}
@@ -784,9 +784,10 @@ func TestKeyringSetDataTooBigIsNotMisdiagnosedAsUnreachable(t *testing.T) {
 }
 
 // TestKeyringUnreachableSetRefusesWithRemedy: a login write under an
-// unreachable keychain must hard-fail with the env-var remedy and must
-// NOT create a plaintext credentials file - the anti-silent-downgrade
-// guarantee.
+// unreachable keychain must hard-fail as CREDENTIAL_STORE_UNAVAILABLE with
+// the keychain's own remedy, must not name another store as a way out,
+// and must NOT create a plaintext credentials file - the
+// anti-silent-downgrade guarantee.
 func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
 	dir := t.TempDir()
 	keyring.MockInitWithError(errors.New("dbus: no session bus"))
@@ -795,8 +796,9 @@ func TestKeyringUnreachableSetRefusesWithRemedy(t *testing.T) {
 	s := newPinnedKeyringStore(dir, true)
 	err := s.SetToken(ServerRef{Name: "prod"}, "new-token")
 	require.Error(t, err)
-	require.ErrorContains(t, err, "unreachable")
-	require.ErrorContains(t, err, EnvCredentialStore+"=file")
+	assertStoreUnavailable(t, err)
+	require.ErrorContains(t, err, "the keychain could not store the credential for 'prod': dbus: no session bus; "+keychainRemedy())
+	assert.NotContains(t, err.Error(), EnvCredentialStore)
 	_, statErr := os.Stat(filepath.Join(dir, "credentials.yaml"))
 	assert.True(t, os.IsNotExist(statErr), "plaintext credentials.yaml must not be created")
 }
