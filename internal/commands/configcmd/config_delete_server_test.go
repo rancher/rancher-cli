@@ -198,7 +198,7 @@ func TestConfigDeleteServerFailedEraseBlocksRemoval(t *testing.T) {
 func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()
 	view := cmdtest.View{Servers: []string{"acme"}}
-	got := configDeleteServerCmd{}.CompleteArgs(t.Context(), view)
+	got := configDeleteServerCmd{}.CompleteArgs(t.Context(), view, nil)
 	assert.Equal(t, []string{"acme"}, got)
 }
 

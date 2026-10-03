@@ -505,7 +505,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 	// sits between the command path and the word being completed: the
 	// command rejects the line whatever is completed next (a command name,
 	// a flag or a flag's value), so offer nothing.
-	if lineRejected(cmd, stripRoutingPrefixByCmd(rawArgv, cmd), true) {
+	if lineRejected(cmd, stripRoutingPrefixByCmd(rawArgv, cmd), 0) {
 		return
 	}
 	w := cmd.Root().Writer
@@ -557,14 +557,26 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 
 // lineRejected reports whether the words typed before the current one make
 // a line the command rejects whatever is completed next: a flag cmd does not
-// accept (urfave fails with "flag provided but not defined"), or, when
-// wordsReject is set, a word that is neither a flag nor a flag's value (at
-// the root or a group urfave enters a subcommand that word names, so it
-// names none). A rejected line is offered nothing, and no request is made
-// for it.
-func lineRejected(cmd *ucli.Command, tail []string, wordsReject bool) bool {
-	words, _, undefined := tailWords(tail, levelFlags(cmd))
-	return undefined || (wordsReject && len(words) > 0)
+// accept (urfave fails with "flag provided but not defined"), more than
+// maxWords words that are neither a flag nor a flag's value, or a word
+// typed after a bool flag that accepts it as its value (the command
+// pipeline refuses it in any position). maxWords is 0 at the root or a
+// group (urfave enters a subcommand that word names, so it names none) and
+// the number of positional arguments a leaf declares. A rejected line is
+// offered nothing, and no request is made for it.
+func lineRejected(cmd *ucli.Command, tail []string, maxWords int) bool {
+	flags := levelFlags(cmd)
+	words, _, undefined := tailWords(tail, flags)
+	if undefined || len(words) > maxWords {
+		return true
+	}
+	typed := scanTail(tail, flags)
+	for i := range typed {
+		if isBoolValue(typed, i) {
+			return true
+		}
+	}
+	return false
 }
 
 // printCompletionCandidate writes one completion candidate line using
@@ -893,7 +905,14 @@ func BuildRoot(version string) (*ucli.Command, error) {
 	if err != nil {
 		return nil, err
 	}
+	return wr.root(version), nil
+}
 
+// root assembles the root command around the wired commands. Each call
+// returns new root and group commands over the same leaves: urfave keeps
+// the state of a run in the commands it ran, so a run needs a root no
+// earlier run has used, and a leaf no earlier run has reached.
+func (wr wiredRegistry) root(version string) *ucli.Command {
 	commandsList := assembleCommands(wr.fixed, wr.order, wr.groups)
 
 	// Install aliasAwareGroupComplete on every verb group (any command that
@@ -927,7 +946,7 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		ucli.DefaultCompleteWithFlags(ctx, c)
 	}
 
-	root := &ucli.Command{
+	return &ucli.Command{
 		Name:          "rancher",
 		ShellComplete: rootShellComplete,
 		Usage:         "Rancher CLI",
@@ -962,5 +981,4 @@ func BuildRoot(version string) (*ucli.Command, error) {
 		},
 		Commands: commandsList,
 	}
-	return root, nil
 }

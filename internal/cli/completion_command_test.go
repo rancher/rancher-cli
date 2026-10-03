@@ -63,6 +63,6 @@ func TestCompletionUnknownShellIsValidation(t *testing.T) {
 
 func TestCompletionCompleteArgsListsShells(t *testing.T) {
 	t.Parallel()
-	got := newCompletion().(completionCommand).CompleteArgs(t.Context(), cmdtest.View{})
+	got := newCompletion().(completionCommand).CompleteArgs(t.Context(), cmdtest.View{}, nil)
 	assert.Equal(t, runtime.ShellCompletionShells(), got)
 }

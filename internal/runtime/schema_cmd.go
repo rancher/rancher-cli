@@ -37,7 +37,10 @@ func (s *schemaCmd) Describe() Descriptor {
 		Name:  "schema",
 		Usage: "Print the capability manifest, optionally filtered to one command",
 		Desc:  "Multi-word command names (\"get pod\") work as a single selector - pass them unquoted or as a single quoted token. Use --search <substr> to scan the whole surface by name, alias, usage, or description.",
-		Args:  []ArgSpec{{Name: "command", Type: "string"}},
+		Args: []ArgSpec{
+			{Name: "command", Type: "string"},
+			{Name: "subcommand", Type: "string", Desc: "the second word of a two-word command name"},
+		},
 		Flags: []ArgSpec{
 			{Name: "all", Type: "bool",
 				Desc: "print the complete capability manifest in structured output (the table view stays the table of contents)"},
@@ -80,7 +83,27 @@ func (s *schemaCmd) Describe() Descriptor {
 // like kubeconfig yields one candidate) and deterministically sorted. Every
 // candidate resolves through Execute's own selection logic - a command match
 // wins a collision, a kind identifier falls through to the kind view.
-func (s *schemaCmd) CompleteArgs(_ context.Context, _ ConfigView) []string {
+// `schema <word> <TAB>` offers the second words of the two-word selectors
+// that begin with word, so the two arguments, joined, are one of them.
+func (s *schemaCmd) CompleteArgs(_ context.Context, _ ConfigView, args []string) []string {
+	switch len(args) {
+	case 0:
+		return s.selectors()
+	case 1:
+		var out []string
+		for _, sel := range s.selectors() {
+			if rest, ok := strings.CutPrefix(sel, args[0]+" "); ok {
+				out = append(out, rest)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// selectors returns every schema selector, deduplicated and sorted.
+func (s *schemaCmd) selectors() []string {
 	m := s.reg.Schema(s.cliVersion, s.minRancherVersion)
 	seen := map[string]bool{}
 	var out []string
@@ -425,17 +448,6 @@ const kindsArrayCmd = "rancher schema -o json"
 // (kindOnly) the selector could only ever be a kind, so the message and the
 // candidate set are restricted to kinds.
 func unknownSelection(m Manifest, want string, kindOnly bool) error {
-	// "schema get <command>" reads as a request for a command's schema
-	// through the kind-view spelling: `schema get <kind>` is the kind view,
-	// `schema <command>` the command view. When the words after "get" name a
-	// command, say so and hint the command form; the generic "unknown
-	// command" tiers below never explain the two forms.
-	if fields := strings.Fields(want); !kindOnly && len(fields) > 1 && fields[0] == "get" {
-		if rest := strings.Join(fields[1:], " "); commandNamed(m, rest) {
-			return clierr.New(clierr.CodeValidation, fmt.Sprintf("%q is not a command: rancher schema <command> shows a command (rancher schema %s), rancher schema <kind> the kind view", want, rest)).
-				WithHint("rancher schema " + rest)
-		}
-	}
 	// Three ambiguity tiers: --kind fixes the kind interpretation; a
 	// multi-token selector is command-shaped (kinds are single tokens,
 	// always) so the kind half of the dual guidance is noise; only a bare
@@ -470,18 +482,6 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 		cands[i] = clierr.Candidate{ID: name, Name: name}
 	}
 	return ce.WithCandidates(cands)
-}
-
-// commandNamed reports whether name is exactly a command's name. Alias
-// forms are not resolved here on purpose: the explanation is for a
-// command spelled out in full behind a stray "get".
-func commandNamed(m Manifest, name string) bool {
-	for _, c := range m.Commands {
-		if c.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 // nearestSelectors finds the nearest matches: a case-insensitive substring

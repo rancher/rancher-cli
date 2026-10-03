@@ -241,6 +241,6 @@ func execLoginURLChangeRefused(name string) error {
 // CompleteArgs implements runtime.ShellCompleter: `config update-server
 // <TAB>` completes server names, the same candidate set as
 // use-server/delete-server.
-func (configUpdateServerCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+func (configUpdateServerCmd) CompleteArgs(_ context.Context, view runtime.ConfigView, _ []string) []string {
 	return view.ServerNames()
 }

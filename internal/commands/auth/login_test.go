@@ -121,7 +121,7 @@ func newPlainLoginCmd(dir string, store config.CredStore) *loginCmd {
 // the value-taking argument).
 func TestLoginCompletesServerNames(t *testing.T) {
 	view := cmdtest.View{Servers: []string{"prod", "qa"}}
-	assert.Equal(t, []string{"prod", "qa"}, loginCmd{}.CompleteArgs(context.Background(), view))
+	assert.Equal(t, []string{"prod", "qa"}, loginCmd{}.CompleteArgs(t.Context(), view, nil))
 }
 
 func TestLoginReadOnlyHelperWarnsAndWritesConfig(t *testing.T) {

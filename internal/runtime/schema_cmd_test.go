@@ -578,16 +578,14 @@ func TestSchemaUnknownSelectionNearestMatch(t *testing.T) {
 		assert.Empty(t, ce.Hint, "the dual tier's guidance already names both commands in the message")
 	})
 
-	t.Run("get before a command name explains the two forms and hints the command view", func(t *testing.T) {
+	t.Run("get before a command name is an unknown command", func(t *testing.T) {
 		t.Parallel()
-		_, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get", "get", "pod"}}, nil)
+		_, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{"get get pod"}}, nil)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		assert.Contains(t, ce.Message, `"get get pod" is not a command`)
-		assert.Contains(t, ce.Message, "rancher schema <kind> the kind view")
-		assert.Equal(t, "rancher schema get pod", ce.Hint)
-		assert.Empty(t, ce.Candidates, "the hint is the answer; no nearest-match list")
+		assert.Equal(t, `unknown command "get get pod"; see the full command list: rancher schema -o name`, ce.Message)
+		assert.Equal(t, "rancher schema -o name", ce.Hint)
 	})
 
 	t.Run("multi-token miss is command-shaped: single -o name hint, no kinds noise", func(t *testing.T) {
@@ -1089,7 +1087,7 @@ func TestSchemaPositionalCompletionCandidatesResolve(t *testing.T) {
 			cmd := NewSchemaCommand(reg, "test", "2.14", nil)
 			sc, ok := cmd.(ShellCompleter)
 			require.True(t, ok, "schema must implement ShellCompleter")
-			cands := sc.CompleteArgs(t.Context(), nil)
+			cands := sc.CompleteArgs(t.Context(), nil, nil)
 			require.NotEmpty(t, cands)
 			for _, cand := range cands {
 				res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: strings.Fields(cand)}, nil)
@@ -1224,6 +1222,58 @@ func TestSchemaResultStyledTextWiring(t *testing.T) {
 	})
 }
 
+// TestSchemaSecondArgumentCompletionCandidatesResolve asserts the second
+// argument's completion: for every first word a candidate starts with, each
+// second word offered, typed after it, resolves through Execute to the
+// command whose name or alias is the two words; a first word that begins
+// no two-word selector gets nothing, and nothing is offered after two
+// words. Run against every registry fixture.
+func TestSchemaSecondArgumentCompletionCandidatesResolve(t *testing.T) {
+	t.Parallel()
+	regs := map[string]*Registry{
+		"commands only":         cardRegistry(),
+		"kinds plus collision":  kindRegistry(),
+		"aliased verb commands": completionRegistry(),
+		"groups":                groupCardRegistry(),
+	}
+	for name, reg := range regs {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewSchemaCommand(reg, "test", "2.14", nil)
+			sc := cmd.(ShellCompleter)
+			first := map[string]bool{}
+			twoWord := map[string]bool{}
+			for _, cand := range sc.CompleteArgs(t.Context(), nil, nil) {
+				w, _, two := strings.Cut(cand, " ")
+				first[w] = true
+				if two {
+					twoWord[w] = true
+				}
+			}
+			offered := 0
+			for w := range first {
+				cands := sc.CompleteArgs(t.Context(), nil, []string{w})
+				if !twoWord[w] {
+					assert.Empty(t, cands, "%q begins no two-word selector", w)
+					continue
+				}
+				require.NotEmpty(t, cands, "%q begins a two-word selector", w)
+				for _, cand := range cands {
+					offered++
+					res, err := cmd.(ReadCommand).Execute(t.Context(), tin{a: []string{w, cand}}, nil)
+					require.NoError(t, err, "schema %s %s must resolve", w, cand)
+					cv, ok := res.Data.(cardView)
+					require.True(t, ok, "schema %s %s must resolve to a command, got %T", w, cand, res.Data)
+					assert.True(t, cv.cmd.Name == w+" "+cand || matchesAlias(cv.cmd, w+" "+cand),
+						"schema %s %s resolved to %q", w, cand, cv.cmd.Name)
+				}
+				assert.Empty(t, sc.CompleteArgs(t.Context(), nil, []string{w, cands[0]}), "nothing after two words")
+			}
+			assert.Positive(t, offered, "the fixture has a two-word selector")
+		})
+	}
+}
+
 // TestSchemaPositionalCompletionShape asserts the candidate shape: command
 // aliases appear only in their full typed form ("get pods", never a bare
 // "projects"), kind names/keys/aliases appear as bare tokens, the
@@ -1234,7 +1284,7 @@ func TestSchemaPositionalCompletionShape(t *testing.T) {
 	cmd := NewSchemaCommand(completionRegistry(), "test", "2.14", nil)
 	sc, ok := cmd.(ShellCompleter)
 	require.True(t, ok, "schema must implement ShellCompleter")
-	cands := sc.CompleteArgs(t.Context(), nil)
+	cands := sc.CompleteArgs(t.Context(), nil, nil)
 
 	assert.True(t, sort.StringsAreSorted(cands), "candidates are deterministically sorted: %v", cands)
 	counts := map[string]int{}
@@ -1594,7 +1644,7 @@ func TestSchemaGroupCompletionCandidates(t *testing.T) {
 	sc, ok := cmd.(ShellCompleter)
 	require.True(t, ok)
 
-	cands := sc.CompleteArgs(t.Context(), nil)
+	cands := sc.CompleteArgs(t.Context(), nil, nil)
 	assert.Contains(t, cands, "create", "named group is a completion candidate")
 	assert.Contains(t, cands, "auth", "named group is a completion candidate")
 

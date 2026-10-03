@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -76,25 +77,28 @@ func completionLevels(t *testing.T) (root *ucli.Command, groups, leaves [][]stri
 
 // TestCompletionRejectedAndAcceptedLinesAtEveryLevel asserts, end to end
 // through urfave, for the root, every group and every leaf of the built tree,
-// that a line with a flag the level does not accept (`--bogus`) offers
-// nothing, and that lines made only of flags the level accepts (a global flag
-// with a value, --help) keep the candidates of the line without them. The
-// candidates compared are the flag names of the level (`<TAB>` after `--`),
-// which every level lists with network completion off, so a comparison is
-// never empty against empty. The decision for every spelling of a rejected
-// or accepted line is asserted on the tree in TestLineRejectedAtEveryLevel;
-// here the rows that prove the decision reaches urfave's completion at each
-// level are run, and the version flag (accepted at the root only) and the
-// words a bare `-` and `-1` (a leaf keeps its candidates, the root and
-// groups offer nothing) are run for the root, every group and the first leaf
-// of each group. NOT parallel: mutates rawArgv and env.
+// that a line with a flag the level does not accept (`--bogus`) or a word
+// typed after a bool flag that accepts it as its value (`--dry-run true`)
+// offers nothing, and that lines made only of flags the level accepts (a
+// global flag with a value, --help) keep the candidates of the line
+// without them. The candidates compared are the flag names of the level
+// (`<TAB>` after `--`), which every level lists with network completion
+// off, so a comparison is never empty against empty. The decision for
+// every spelling of a rejected or accepted line is asserted on the tree in
+// TestLineRejectedAtEveryLevel; here the rows that prove the decision
+// reaches urfave's completion at each level are run, and the version flag
+// (accepted at the root only), the bool flag with a joined value, and the
+// words a bare `-` and `-1` (a leaf that declares a positional argument
+// keeps its candidates; the root, groups and a leaf that declares none
+// offer nothing) are run for the root, every group and the first leaf of
+// each group. NOT parallel: mutates rawArgv and env.
 func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 	completionServer(t, false)
 	// A word that names no command reaches urfave's exit function.
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	t.Cleanup(func() { ucli.OsExiter = origExiter })
-	_, groups, leaves := completionLevels(t)
+	root, groups, leaves := completionLevels(t)
 	require.NotEmpty(t, groups)
 	require.NotEmpty(t, leaves)
 	levels := append(append([][]string{nil}, groups...), leaves...)
@@ -117,6 +121,8 @@ func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 	for _, path := range levels {
 		line := append(slices.Clone(path), "--bogus")
 		assert.Empty(t, extractTokens(runNameLikeCompletion(t, line, "")), "rancher %v <TAB>: an undefined flag rejects the line", line)
+		boolLine := append(slices.Clone(path), "--dry-run", "true")
+		assert.Empty(t, flagNames(boolLine), "rancher %v --<TAB>: a bool value typed after its flag rejects the line", boolLine)
 		want := flagNames(path)
 		require.NotEmpty(t, want, "rancher %v --<TAB> lists the flags of the level", path)
 		for _, typed := range [][]string{{"-o", "json"}, {"--help"}} {
@@ -125,15 +131,29 @@ func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 		}
 	}
 
+	var takesArgs, takesNone int
 	for _, path := range sampled {
 		atRoot := len(path) == 0
 		isLeaf := slices.ContainsFunc(sampleLeaves, func(l []string) bool { return slices.Equal(l, path) })
 		want := flagNames(path)
+		joined := append(slices.Clone(path), "--dry-run=true")
+		assert.Equal(t, want, flagNames(joined), "rancher %v --<TAB>: a bool value joined to its flag keeps the candidates", joined)
+		// A leaf's ArgsUsage names each positional argument it declares
+		// in one word.
+		declares := isLeaf && len(strings.Fields(commandAt(root, path).ArgsUsage)) > 0
+		if isLeaf && declares {
+			takesArgs++
+		} else if isLeaf {
+			takesNone++
+		}
 		for _, typed := range [][]string{{"-"}, {"-1"}} {
 			line := append(slices.Clone(path), typed...)
-			if isLeaf {
-				assert.Equal(t, want, flagNames(line), "rancher %v --<TAB>: a word at a leaf keeps its candidates", line)
-			} else {
+			switch {
+			case declares:
+				assert.Equal(t, want, flagNames(line), "rancher %v --<TAB>: a word at a leaf that takes an argument keeps its candidates", line)
+			case isLeaf:
+				assert.Empty(t, flagNames(line), "rancher %v --<TAB>: the leaf takes no argument", line)
+			default:
 				assert.Empty(t, flagNames(line), "rancher %v --<TAB>: a word names no command", line)
 			}
 		}
@@ -147,6 +167,17 @@ func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 			}
 		}
 	}
+	assert.Positive(t, takesArgs, "the sampled leaves include one that takes an argument")
+	assert.Positive(t, takesNone, "the sampled leaves include one that takes none")
+}
+
+// commandAt returns the command at path below root.
+func commandAt(root *ucli.Command, path []string) *ucli.Command {
+	c := root
+	for _, name := range path {
+		c = c.Command(name)
+	}
+	return c
 }
 
 // TestCompletionV1ProtocolLeafKeepsPartialFlagNames asserts that under the v1

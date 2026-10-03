@@ -48,6 +48,12 @@ func (i cmdInput) Strings(name string) []string { return i.c.StringSlice(name) }
 func (i cmdInput) IsSet(name string) bool       { return i.c.IsSet(name) }
 func (i cmdInput) Args() []string               { return i.c.Args().Slice() }
 
+// BoolValueArgs implements runtime.BoolValueArgs from the captured command
+// line.
+func (i cmdInput) BoolValueArgs() ([]runtime.BoolValue, string, bool) {
+	return boolValueArgs(rawArgv, i.c)
+}
+
 // leafName returns the last space-separated token of a command name
 // ("auth status" -> "status") for use as the urfave leaf/subcommand name.
 func leafName(fullName string) string {

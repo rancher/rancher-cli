@@ -40,14 +40,14 @@ func TestParseArgTail(t *testing.T) {
 			args:        []string{"prod"},
 			currentWord: "",
 			hasMarker:   true,
-			want:        CompletionSite{Kind: SitePositional, Index: 1},
+			want:        CompletionSite{Kind: SitePositional, Index: 1, Args: []string{"prod"}},
 		},
 		{
 			name:        "v2: string flag value consumed (non-final) → positional 1",
 			args:        []string{"--cluster", "prod", "foo"},
 			currentWord: "",
 			hasMarker:   true,
-			want:        CompletionSite{Kind: SitePositional, Index: 1},
+			want:        CompletionSite{Kind: SitePositional, Index: 1, Args: []string{"foo"}},
 		},
 		{
 			name:        "v2: bool flag → positional 0",
@@ -91,7 +91,7 @@ func TestParseArgTail(t *testing.T) {
 			want:        CompletionSite{Kind: SitePositional, Index: 0, Partial: "mypod"},
 		},
 		{
-			// v2 both-sides test A: flag + completed-value token + currentWord="" → positional.
+			// v2 both-sides test A: flag + completed-value word + currentWord="" → positional.
 			// "--cluster c-test " TAB: rawArgv=["--cluster","c-test"], currentWord=""
 			name:        "v2: flag+value in args, currentWord empty → next positional (disambiguates space-after-value)",
 			args:        []string{"--cluster", "c-test"},
@@ -108,7 +108,7 @@ func TestParseArgTail(t *testing.T) {
 			hasMarker:   true,
 			want:        CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster", EqualsForm: false, Partial: "c-"},
 		},
-		// v1 protocol cases (hasMarker=false) - last-token-as-partial heuristic.
+		// v1 protocol cases (hasMarker=false) - last-word-as-partial heuristic.
 		{
 			name:      "v1: empty args → positional 0",
 			args:      []string{},
@@ -203,7 +203,7 @@ func TestCaptureArgvV2ProtoMarkerExtractsCurField(t *testing.T) {
 	orig := rawArgv
 	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
 	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
-	// --rancher-completion-cur=c- carries the partial; all other tokens go to rawArgv.
+	// --rancher-completion-cur=c- carries the partial; all other words go to rawArgv.
 	CaptureArgv([]string{"--rancher-completion-proto=2", "get", "pod", "--cluster", "--rancher-completion-cur=c-", "--generate-shell-completion"})
 	assert.Equal(t, []string{"get", "pod", "--cluster"}, rawArgv)
 	assert.Equal(t, "c-", rawCurrentWord)
@@ -314,7 +314,7 @@ func TestScanOutputFormat(t *testing.T) {
 		{"repeated flag: last wins", []string{"-o", "json", "get", "pod", "-o", "yaml"}, "yaml"},
 		{"repeated flag: trailing valueless wins", []string{"-o", "json", "get", "pod", "-o"}, ""},
 		{"unrecognized value passes through untrusted", []string{"get", "pod", "-o", "csv"}, "csv"},
-		{"non-flag tokens ignored", []string{"get", "pod", "positional-o"}, ""},
+		{"non-flag words ignored", []string{"get", "pod", "positional-o"}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

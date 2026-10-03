@@ -157,7 +157,7 @@ func (d configDeleteServerCmd) Execute(cmdCtx context.Context, in runtime.Input,
 
 // CompleteArgs implements runtime.ShellCompleter: `config delete-server <TAB>`
 // completes server names from the already-loaded config snapshot.
-func (configDeleteServerCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+func (configDeleteServerCmd) CompleteArgs(_ context.Context, view runtime.ConfigView, _ []string) []string {
 	return view.ServerNames()
 }
 

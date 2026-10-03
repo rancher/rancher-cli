@@ -229,7 +229,7 @@ func TestUpdateServerCompletesServerNames(t *testing.T) {
 	addServerForUpdateTests(t, dir, "qa1", "https://qa1.example.com")
 	view := cmdtest.View{Dir: dir, Servers: []string{"qa1"}}
 	c := newUpdateServerCmd(dir)
-	assert.Equal(t, []string{"qa1"}, c.CompleteArgs(context.Background(), view))
+	assert.Equal(t, []string{"qa1"}, c.CompleteArgs(t.Context(), view, nil))
 }
 
 // TestUpdateServerBindingWriteFailureClearsNothing asserts the order the

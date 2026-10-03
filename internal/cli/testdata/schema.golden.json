@@ -9906,6 +9906,11 @@
         {
           "name": "command",
           "type": "string"
+        },
+        {
+          "desc": "the second word of a two-word command name",
+          "name": "subcommand",
+          "type": "string"
         }
       ],
       "auth": false,

@@ -223,6 +223,26 @@ type Input interface {
 	Args() []string
 }
 
+// BoolValueArgs is implemented by an Input that knows the command line as
+// typed; the CLI's Input does, a test's need not. A bool flag takes its
+// value only joined with "=", so `--force false` is the flag (true) and a
+// positional argument "false".
+type BoolValueArgs interface {
+	// BoolValueArgs reports the positional arguments typed as their own
+	// word directly after a bool flag that accepts them as its value, in
+	// order, and the command as typed with each of those values joined to
+	// its flag (`--force=false`), values shell-quoted. ok is false when no
+	// argument was typed that way, or the line read is not the one parsed.
+	BoolValueArgs() (vals []BoolValue, line string, ok bool)
+}
+
+// BoolValue is a positional argument typed after a bool flag: its index
+// among the positional arguments and the flag as typed.
+type BoolValue struct {
+	Index int
+	Flag  string
+}
+
 // Result is a command's success payload, rendered into the output envelope.
 // Raw=true tells the pipeline to emit Data as bare JSON with NO envelope - used
 // only by the `auth get-token` exec-credential plugin, whose stdout kubectl parses as a
@@ -347,7 +367,10 @@ type ConfigView interface {
 // fixed shell lists). Installed at adapter-wiring time; runs synchronously
 // inside a shell TAB keystroke. view is an immutable snapshot of the config
 // loaded by the root Before hook (one load total per TAB invocation).
-// CompleteArgs must never prompt, write, or touch the network.
+// CompleteArgs must never prompt, write, or touch the network. args holds
+// the positional arguments typed before the one being completed; the
+// caller offers nothing past the arguments the command declares, so a
+// command that declares one can ignore args.
 type ShellCompleter interface {
-	CompleteArgs(ctx context.Context, view ConfigView) []string
+	CompleteArgs(ctx context.Context, view ConfigView, args []string) []string
 }

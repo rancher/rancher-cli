@@ -84,6 +84,6 @@ func TestServerSwitchSetsCurrentAndRendersText(t *testing.T) {
 func TestServerSwitchCompleteArgsDelegatesToServerNames(t *testing.T) {
 	t.Parallel()
 	view := cmdtest.View{Servers: []string{"acme", "beta"}}
-	got := serverSwitchCmd{}.CompleteArgs(t.Context(), view)
+	got := serverSwitchCmd{}.CompleteArgs(t.Context(), view, nil)
 	assert.Equal(t, []string{"acme", "beta"}, got)
 }

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -29,11 +30,12 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 		// This handles leading global flags (--output json get pod) and alias
 		// invocations (inspect po → depth 2) correctly.
 		tail := stripRoutingPrefixByCmd(rawArgv, c)
-		// A flag the command does not accept makes the line one it rejects:
-		// offer nothing, and make no request for it. Under the v1 protocol
-		// the argv still holds the partial word being completed, which would
-		// read as an undefined flag, so the check is v2 only.
-		if rawProtoV2 && lineRejected(c, tail, false) {
+		// A flag the command does not accept, or more positional arguments
+		// than it declares, makes the line one it rejects: offer nothing,
+		// and make no request for it. Under the v1 protocol the argv still
+		// holds the partial word being completed, which would read as an
+		// undefined flag, so the check is v2 only.
+		if rawProtoV2 && lineRejected(c, tail, len(d.Args)) {
 			return
 		}
 		site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, d, globalArgSpecs)
@@ -264,6 +266,11 @@ func dispatchSite(
 		}
 	}
 	if site.Kind == SitePositional {
+		// The command refuses a positional argument past the ones it
+		// declares, so no layer offers one.
+		if site.Index >= len(d.Args) {
+			return nil
+		}
 		// Ownership, not first-match: an enum-carrying positional is fully
 		// static, so even an empty (unmatched-partial) result terminates
 		// the dispatch here.
@@ -273,12 +280,15 @@ func dispatchSite(
 		if cands, owned := accessVerbCandidates(site, d, tail); owned {
 			return cands
 		}
+		if cands, owned := schemaKindCandidates(site, d, tail); owned {
+			return cands
+		}
 	}
 
 	// Layer 2: config-local (ShellCompleter delegation) for positionals.
 	if site.Kind == SitePositional && sc != nil {
 		view, _ := loadedConfigView()
-		cands := sc.CompleteArgs(ctx, view)
+		cands := sc.CompleteArgs(ctx, view, site.Args)
 		if len(cands) > 0 {
 			return sanitizeCandidates(cands)
 		}
@@ -397,6 +407,62 @@ func positionalEnumCandidates(site CompletionSite, d runtime.Descriptor) ([]stri
 	}
 	sort.Strings(out)
 	return out, true
+}
+
+// schemaKindCandidates owns schema's positional sites when --kind is on
+// the line: the selector must then name a kind, so the first word offers
+// the names, keys and aliases of the manifest's kinds (the rows the
+// schema command resolves a kind from) and a second word nothing, a kind
+// being one word. Compiled-in rows, served before the network gate.
+func schemaKindCandidates(site CompletionSite, d runtime.Descriptor, tail []string) ([]string, bool) {
+	if d.Name != "schema" || !boolFlagOn(tail, d, "kind") {
+		return nil, false
+	}
+	if site.Index > 0 {
+		return nil, true
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, k := range schemaKinds(kinds.All(), kindOverrides()) {
+		for _, w := range append([]string{k.Name, k.Key}, k.Aliases...) {
+			if !seen[w] && strings.HasPrefix(w, site.Partial) {
+				seen[w] = true
+				out = append(out, w)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out, true
+}
+
+// boolFlagOn reports whether the bool flag name, one of d's or a global
+// one, is on in the typed words: given alone or joined with a value
+// strconv.ParseBool reads as true, the last spelling winning, and only
+// before a "--".
+func boolFlagOn(tail []string, d runtime.Descriptor, name string) bool {
+	flags := map[string]bool{}
+	for _, f := range append(slices.Clone(d.Flags), globalArgSpecs...) {
+		takesValue := f.Type != "bool"
+		flags[f.Name] = takesValue
+		for _, a := range f.Aliases {
+			flags[a] = takesValue
+		}
+	}
+	on := false
+	for _, w := range scanTail(tail, flags) {
+		if w.kind != flagWord {
+			continue
+		}
+		flag, value, joined := strings.Cut(strings.TrimLeft(w.text, "-"), "=")
+		if flag != name {
+			continue
+		}
+		on = true
+		if joined {
+			on, _ = strconv.ParseBool(value)
+		}
+	}
+	return on
 }
 
 // accessQuestionCommand reports whether a command asks an authorization

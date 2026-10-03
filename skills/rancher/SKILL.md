@@ -699,6 +699,11 @@ rancher oidc-client rotate-secret my-app --apply --yes
 - **Empty values:** a flag typed with an empty or blank value (`--flag ''`,
   `--flag=`) is refused with `VALIDATION` before any request, never treated as
   omitted; build `--flag "$VAR"` only when `VAR` is set.
+- **Arguments and bool flags:** extra positional arguments are refused with
+  `VALIDATION`; a bool flag takes its value joined with `=`
+  (`--dry-run=false`), and a separate word the flag reads as a bool
+  (`true`, `false`, `1`, `0`, ...) after it is refused - put an argument
+  that reads as a bool before the flags or after `--`.
 - **Isolation for scripted sessions:** point `RANCHER_CLI_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CLI_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain. A kubeconfig written

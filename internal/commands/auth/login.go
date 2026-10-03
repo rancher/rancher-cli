@@ -124,7 +124,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 
 // CompleteArgs implements runtime.ShellCompleter: `auth login <TAB>`
 // completes server names from the already-loaded config snapshot.
-func (loginCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+func (loginCmd) CompleteArgs(_ context.Context, view runtime.ConfigView, _ []string) []string {
 	return view.ServerNames()
 }
 

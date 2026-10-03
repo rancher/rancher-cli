@@ -49,6 +49,6 @@ func (completionCommand) Execute(_ context.Context, in runtime.Input, _ runtime.
 
 // CompleteArgs implements runtime.ShellCompleter: the completion command
 // completes its own shell argument. view is unused - the shell list is fixed.
-func (completionCommand) CompleteArgs(_ context.Context, _ runtime.ConfigView) []string {
+func (completionCommand) CompleteArgs(_ context.Context, _ runtime.ConfigView, _ []string) []string {
 	return runtime.ShellCompletionShells()
 }

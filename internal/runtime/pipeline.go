@@ -349,14 +349,24 @@ func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
 			d.Name, shown, strings.Join(d.OutputPolicy.AllowedFormats, ", ")))
 }
 
-// validateInput checks the Descriptor's Args and Flags against the parsed Input:
-// required positional args must be present and non-empty; enum args/flags must
-// hold a listed value; required flags must be non-empty. Returns a structured
-// VALIDATION error (nil if valid). Commands wanting custom missing-input UX
-// (e.g. a candidate list) mark the field Required:false and validate it
-// themselves in Execute.
+// validateInput checks the Descriptor's Args and Flags against the parsed
+// Input: no positional arg typed as the separate value of a bool flag
+// (when the Input can tell); no more positional args than the Descriptor
+// declares; required positional args must be present and non-empty; enum
+// args/flags must hold a listed value; required flags must be non-empty.
+// Returns a structured VALIDATION error (nil if valid). Commands wanting
+// custom missing-input UX (e.g. a candidate list) mark the field
+// Required:false and validate it themselves in Execute.
 func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 	args := in.Args()
+	if bv, ok := in.(BoolValueArgs); ok {
+		if vals, line, ok := bv.BoolValueArgs(); ok {
+			return boolValueError(d, args, vals, line)
+		}
+	}
+	if len(args) > len(d.Args) {
+		return clierr.New(clierr.CodeValidation, extraArgsMessage(d, args[len(d.Args):])).WithHint(helpHint(d))
+	}
 	for i, a := range d.Args {
 		if a.Required && (i >= len(args) || args[i] == "") {
 			return clierr.New(clierr.CodeValidation,
@@ -406,6 +416,97 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 		}
 	}
 	return nil
+}
+
+// boolValueError is the refusal for positional arguments typed as the
+// separate value of a bool flag (vals, indexes into args): the flag is on
+// and the word is an argument, whatever was meant. The hint is the command
+// with each value joined to its flag when the arguments left fill every
+// positional argument d declares, required or optional, and the command's
+// help otherwise, so the hint never names a line refused for a bool value,
+// a missing argument or an extra argument. An optional argument counts too:
+// a flag can need it (get refuses --wait without a name).
+func boolValueError(d Descriptor, args []string, vals []BoolValue, line string) *clierr.Error {
+	named := make([]string, len(vals))
+	isValue := map[int]bool{}
+	for i, v := range vals {
+		named[i] = clierr.ShellQuote(args[v.Index]) + " after the bool flag " + v.Flag
+		isValue[v.Index] = true
+	}
+	msg := fmt.Sprintf("%s: %s; a bool flag takes its value joined with =, and an argument that reads as a bool goes before the flags or after --",
+		d.Name, firstWords(named, ", "))
+	var rest []string
+	for i, a := range args {
+		if !isValue[i] {
+			rest = append(rest, a)
+		}
+	}
+	if len(rest) > len(d.Args) {
+		return clierr.New(clierr.CodeValidation, msg+"; "+extraArgsMessage(d, rest[len(d.Args):])).WithHint(helpHint(d))
+	}
+	if len(rest) < len(d.Args) || slices.Contains(rest, "") {
+		return clierr.New(clierr.CodeValidation, msg).WithHint(helpHint(d))
+	}
+	return clierr.New(clierr.CodeValidation, msg).WithHint(line)
+}
+
+// extraArgsMessage states what d takes and the positional arguments
+// beyond it, extra.
+func extraArgsMessage(d Descriptor, extra []string) string {
+	quoted := make([]string, len(extra))
+	for i, a := range extra {
+		quoted[i] = clierr.ShellQuote(a)
+	}
+	noun := "argument"
+	if len(extra) > 1 {
+		noun = "arguments"
+	}
+	return fmt.Sprintf("%s %s; unexpected %s %s", d.Name, declaredArgs(d.Args), noun, firstWords(quoted, " "))
+}
+
+// maxNamedWords is how many words a refusal names before it counts the
+// rest, so a glob that expands to thousands of words stays one line.
+const maxNamedWords = 5
+
+// firstWords joins the first maxNamedWords of words with sep and counts
+// the rest: "'a' 'b' 'c' 'd' 'e' and 2 more".
+func firstWords(words []string, sep string) string {
+	if len(words) <= maxNamedWords {
+		return strings.Join(words, sep)
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(words[:maxNamedWords], sep), len(words)-maxNamedWords)
+}
+
+// helpHint is the hint that points at d's help.
+func helpHint(d Descriptor) string {
+	return "rancher " + d.Name + " --help"
+}
+
+// declaredArgs states how many positional arguments args allows, with
+// their names as help shows them: "takes no arguments", "takes 1 argument
+// (<name>)", "takes at most 2 arguments (<verb> [resource])".
+func declaredArgs(args []ArgSpec) string {
+	if len(args) == 0 {
+		return "takes no arguments"
+	}
+	names := make([]string, len(args))
+	optional := false
+	for i, a := range args {
+		if a.Required {
+			names[i] = "<" + a.Name + ">"
+		} else {
+			names[i] = "[" + a.Name + "]"
+			optional = true
+		}
+	}
+	count := fmt.Sprintf("%d argument", len(args))
+	if len(args) > 1 {
+		count += "s"
+	}
+	if optional {
+		count = "at most " + count
+	}
+	return fmt.Sprintf("takes %s (%s)", count, strings.Join(names, " "))
 }
 
 // missingFlagError is the refusal for a required flag that was not passed:

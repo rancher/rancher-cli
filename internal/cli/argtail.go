@@ -2,15 +2,17 @@ package cli
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
 )
 
-// The --rancher-completion-* token namespace is reserved for the v2 completion
-// protocol. Both CaptureArgv and SanitizedArgs strip these tokens so they never
+// The --rancher-completion-* flag namespace is reserved for the v2 completion
+// protocol. Both CaptureArgv and SanitizedArgs strip these words so they never
 // reach urfave as unknown flags, regardless of where they appear in argv.
 const (
 	protoSentinel = "--rancher-completion-proto=2"
@@ -41,11 +43,11 @@ func GetCurrentWord() string { return rawCurrentWord }
 
 // CaptureArgv processes os.Args[1:] before urfave parses:
 //  1. Detects the v2 proto sentinel and strips it.
-//  2. Scans remaining tokens: strips --generate-shell-completion; extracts
-//     rawCurrentWord from --rancher-completion-cur=<word> and drops that token;
-//     all other tokens go into rawArgv. (The argv urfave actually receives is
+//  2. Scans remaining words: strips --generate-shell-completion; extracts
+//     rawCurrentWord from --rancher-completion-cur=<word> and drops that word;
+//     all other words go into rawArgv. (The argv urfave actually receives is
 //     produced separately by SanitizedArgs.)
-//  3. When v1 (sentinel absent): rawCurrentWord = ""; rawArgv = remaining tokens.
+//  3. When v1 (sentinel absent): rawCurrentWord = ""; rawArgv = remaining words.
 func CaptureArgv(args []string) {
 	proto2 := len(args) > 0 && args[0] == protoSentinel
 	if proto2 {
@@ -72,10 +74,10 @@ func CaptureArgv(args []string) {
 	rawArgv = out
 }
 
-// SanitizedArgs strips ALL --rancher-completion-* tokens from os.Args so
+// SanitizedArgs strips ALL --rancher-completion-* words from os.Args so
 // urfave never sees unknown flags. It strips both the proto sentinel and any
-// --rancher-completion-cur=... token wherever they appear - not just at
-// position 0 - as a deliberate defense-in-depth measure: if either token
+// --rancher-completion-cur=... word wherever they appear - not just at
+// position 0 - as a deliberate defense-in-depth measure: if either word
 // appears at an unexpected position (e.g. due to a future shell-script change
 // or caller error), it is still suppressed rather than forwarded to urfave.
 // Call as root.Run(ctx, SanitizedArgs(os.Args)).
@@ -109,6 +111,10 @@ type CompletionSite struct {
 	// and for SitePositional when hasMarker is true (the currentWord the user typed).
 	Partial string
 	Index   int
+	// Args holds the positional arguments typed before a SitePositional
+	// site, in order (its length is Index), for a completer whose
+	// candidates depend on them.
+	Args []string
 }
 
 // ParseArgTail determines the TAB completion site from the leaf's arg tail.
@@ -119,10 +125,10 @@ type CompletionSite struct {
 //   - contains '=' with '-' prefix  → equals-form SiteFlagValue
 //   - starts with '-' without '='   → SiteNameLike (partial flag name)
 //   - otherwise (non-flag or empty) → parse args to find if the last meaningful
-//     token is a value-taking flag; if so → space-form SiteFlagValue with
+//     word is a value-taking flag; if so → space-form SiteFlagValue with
 //     Partial=currentWord; else → SitePositional with Partial=currentWord.
 //
-// When hasMarker is false (v1 protocol): old last-token-as-partial heuristic runs.
+// When hasMarker is false (v1 protocol): old last-word-as-partial heuristic runs.
 func ParseArgTail(args []string, currentWord string, hasMarker bool, leaf runtime.Descriptor, globals []runtime.ArgSpec) CompletionSite {
 	all := append(append([]runtime.ArgSpec{}, leaf.Flags...), globals...)
 
@@ -130,8 +136,9 @@ func ParseArgTail(args []string, currentWord string, hasMarker bool, leaf runtim
 		return classifyCurrentWordV2(args, currentWord, all)
 	}
 
-	// v1 fallback: last-token-as-partial heuristic (old installed scripts).
+	// v1 fallback: last-word-as-partial heuristic (old installed scripts).
 	positional := 0
+	var typed []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if eq := strings.Index(arg, "="); strings.HasPrefix(arg, "-") && eq > 0 {
@@ -152,7 +159,7 @@ func ParseArgTail(args []string, currentWord string, hasMarker bool, leaf runtim
 			canonical := resolveFlagCanonical(arg, all)
 			if flagTakesValue(canonical, all) {
 				if i+1 < len(args) {
-					// v1: if next token is the last, treat it as the partial.
+					// v1: if next word is the last, treat it as the partial.
 					if i+1 == len(args)-1 {
 						return CompletionSite{
 							Kind:         SiteFlagValue,
@@ -172,11 +179,12 @@ func ParseArgTail(args []string, currentWord string, hasMarker bool, leaf runtim
 			continue
 		}
 		if i == len(args)-1 {
-			return CompletionSite{Kind: SitePositional, Index: positional}
+			return CompletionSite{Kind: SitePositional, Index: positional, Args: typed}
 		}
 		positional++
+		typed = append(typed, arg)
 	}
-	return CompletionSite{Kind: SitePositional, Index: positional}
+	return CompletionSite{Kind: SitePositional, Index: positional, Args: typed}
 }
 
 // classifyCurrentWordV2 implements the v2 current-word-first classification.
@@ -200,8 +208,9 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 	}
 
 	// Non-flag currentWord (or empty): scan args to determine context.
-	// Track the last value-taking flag token in args (if any is the last meaningful token).
+	// Track the last value-taking flag word in args (if any is the last meaningful word).
 	positional := 0
+	var typed []string
 	lastFlagSpelling := ""
 	lastFlagCanonical := ""
 	for i := 0; i < len(args); i++ {
@@ -216,12 +225,12 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 			canonical := resolveFlagCanonical(arg, all)
 			if flagTakesValue(canonical, all) {
 				if i+1 < len(args) {
-					// Consume the next token as the flag's complete value.
+					// Consume the next word as the flag's complete value.
 					i++
 					lastFlagSpelling = ""
 					lastFlagCanonical = ""
 				} else {
-					// Flag is the last token in args - currentWord is the partial value.
+					// Flag is the last word in args - currentWord is the partial value.
 					lastFlagSpelling = arg
 					lastFlagCanonical = canonical
 				}
@@ -231,6 +240,7 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 			}
 		} else {
 			positional++
+			typed = append(typed, arg)
 			lastFlagSpelling = ""
 			lastFlagCanonical = ""
 		}
@@ -245,7 +255,7 @@ func classifyCurrentWordV2(args []string, currentWord string, all []runtime.ArgS
 			Partial:      currentWord,
 		}
 	}
-	return CompletionSite{Kind: SitePositional, Index: positional, Partial: currentWord}
+	return CompletionSite{Kind: SitePositional, Index: positional, Partial: currentWord, Args: typed}
 }
 
 // levelFlags returns the flags cmd accepts, as name (and alias) to whether
@@ -290,33 +300,143 @@ func levelFlags(cmd *ucli.Command) map[string]bool {
 // after a mistyped `help`.
 func tailWords(tail []string, flags map[string]bool) (words []string, beforeUndefined int, undefined bool) {
 	beforeUndefined = -1
-	for i := 0; i < len(tail); i++ {
-		word := tail[i]
-		if word == "--" {
-			words = append(words, tail[i+1:]...)
-			break
-		}
-		if len(word) < 2 || word[0] != '-' {
-			words = append(words, word)
-			continue
-		}
-		if b := word[1]; b != '-' && !unicode.IsLetter(rune(b)) {
-			words = append(words, tail[i:]...)
-			break
-		}
-		name, _, hasValue := strings.Cut(strings.TrimLeft(word, "-"), "=")
-		takesValue, defined := flags[name]
-		if !defined && beforeUndefined < 0 {
-			beforeUndefined = len(words)
-		}
-		if takesValue && !hasValue {
-			i++
+	for _, w := range scanTail(tail, flags) {
+		switch w.kind {
+		case plainWord:
+			words = append(words, w.text)
+		case flagWord:
+			if !w.defined && beforeUndefined < 0 {
+				beforeUndefined = len(words)
+			}
 		}
 	}
 	if beforeUndefined < 0 {
 		return words, len(words), false
 	}
 	return words, beforeUndefined, true
+}
+
+// wordKind classifies one word of a tail.
+type wordKind int
+
+const (
+	plainWord wordKind = iota // neither a flag nor a flag's value
+	flagWord                  // a flag, with its value when joined by "="
+	valueWord                 // the separate value of the flag before it
+	endWord                   // the "--" that ends the flags
+)
+
+// tailWord is one word of a tail as scanTail reads it.
+type tailWord struct {
+	text string
+	kind wordKind
+	// For a flagWord: whether flags holds it, whether it takes a value,
+	// and whether its value is joined to it by "=".
+	defined, takesValue, joined bool
+}
+
+// scanTail classifies every word of tail under flags, by the rules
+// tailWords states; tailWords and boolValueArgs read its result.
+func scanTail(tail []string, flags map[string]bool) []tailWord {
+	out := make([]tailWord, 0, len(tail))
+	plain := func(rest []string) {
+		for _, w := range rest {
+			out = append(out, tailWord{text: w, kind: plainWord})
+		}
+	}
+	for i := 0; i < len(tail); i++ {
+		word := tail[i]
+		if word == "--" {
+			out = append(out, tailWord{text: word, kind: endWord})
+			plain(tail[i+1:])
+			break
+		}
+		if len(word) < 2 || word[0] != '-' {
+			plain(tail[i : i+1])
+			continue
+		}
+		if b := word[1]; b != '-' && !unicode.IsLetter(rune(b)) {
+			plain(tail[i:])
+			break
+		}
+		name, _, joined := strings.Cut(strings.TrimLeft(word, "-"), "=")
+		takesValue, defined := flags[name]
+		out = append(out, tailWord{text: word, kind: flagWord, defined: defined, takesValue: takesValue, joined: joined})
+		if takesValue && !joined {
+			i++
+			if i < len(tail) {
+				out = append(out, tailWord{text: tail[i], kind: valueWord})
+			}
+		}
+	}
+	return out
+}
+
+// boolValueArgs is runtime.BoolValueArgs for leaf c run as argv (the
+// command line after the program name). It reads argv with the flags c
+// accepts and offers nothing unless the positional arguments it finds are
+// the ones urfave parsed, so the line it returns is the command typed.
+func boolValueArgs(argv []string, c *ucli.Command) (vals []runtime.BoolValue, line string, ok bool) {
+	tail := stripRoutingPrefixByCmd(argv, c)
+	levels := levelFlags(c)
+	typed := scanTail(tail, levels)
+	var args []string
+	parts := []string{"rancher"}
+	// The routing words and global flags ahead of the tail: command names
+	// as typed, flag values quoted.
+	for _, w := range scanTail(argv[:len(argv)-len(tail)], levels) {
+		parts = append(parts, quoteWord(w, w.kind == plainWord))
+	}
+	for i, w := range typed {
+		if w.kind != plainWord {
+			parts = append(parts, quoteWord(w, false))
+			continue
+		}
+		args = append(args, w.text)
+		if !isBoolValue(typed, i) {
+			parts = append(parts, quoteWord(w, false))
+			continue
+		}
+		vals = append(vals, runtime.BoolValue{Index: len(args) - 1, Flag: typed[i-1].text})
+		parts[len(parts)-1] += "=" + clierr.ShellQuote(w.text)
+	}
+	if len(vals) == 0 || !slices.Equal(args, c.Args().Slice()) {
+		return nil, "", false
+	}
+	return vals, strings.Join(parts, " "), true
+}
+
+// isBoolValue reports whether typed[i] is a positional word typed as its
+// own word directly after a bool flag that accepts it as its value: the
+// word the command pipeline refuses, and a line holding one is one
+// completion offers nothing on.
+func isBoolValue(typed []tailWord, i int) bool {
+	if typed[i].kind != plainWord || i == 0 || !isSeparateBoolFlag(typed[i-1]) {
+		return false
+	}
+	_, err := strconv.ParseBool(typed[i].text)
+	return err == nil
+}
+
+// isSeparateBoolFlag reports whether w is a bool flag the command accepts,
+// typed without a joined value.
+func isSeparateBoolFlag(w tailWord) bool {
+	return w.kind == flagWord && w.defined && !w.takesValue && !w.joined
+}
+
+// quoteWord writes w for a command line: a flag as typed with a joined
+// value quoted, "--" as typed, a word bare when bare is set (a command
+// name) and quoted otherwise, like a flag's value.
+func quoteWord(w tailWord, bare bool) string {
+	switch {
+	case w.kind == flagWord && w.joined:
+		name, value, _ := strings.Cut(w.text, "=")
+		return name + "=" + clierr.ShellQuote(value)
+	case w.kind == flagWord, w.kind == endWord, bare:
+		return w.text
+	default:
+		return clierr.ShellQuote(w.text)
+	}
 }
 
 // scanOutputFormat performs a raw-argv scan for an -o/--output value when no
@@ -326,7 +446,7 @@ func tailWords(tail []string, flags map[string]bool) (words []string, beforeUnde
 // v, --output=v) via the same canonical-name/arity primitives ParseArgTail
 // and checkFlagValues already use - no second flag grammar - stops at the
 // first "--" (positionals after the delimiter never select an error's
-// rendering), and a trailing output flag with no following token selects no
+// rendering), and a trailing output flag with no following word selects no
 // format (an empty result, same as never having typed one). A later
 // occurrence overrides an earlier one, matching urfave's own last-flag-wins
 // semantics for a repeated flag.
@@ -341,7 +461,7 @@ func scanColorFlag(argv []string) string {
 }
 
 // scanGlobalFlag is the shared raw-argv scan behind scanOutputFormat and
-// scanColorFlag: it resolves each flag token against the global specs'
+// scanColorFlag: it resolves each flag word against the global specs'
 // canonical names, honors the separate and equals value spellings for every
 // alias the flag's spec defines (four spellings for --output with its -o
 // short form, two for --color, which has none) with last-flag-wins, stops
@@ -349,20 +469,20 @@ func scanColorFlag(argv []string) string {
 func scanGlobalFlag(argv []string, canonical string) string {
 	value := ""
 	for i := 0; i < len(argv); i++ {
-		token := argv[i]
-		if token == "--" {
+		word := argv[i]
+		if word == "--" {
 			break
 		}
-		if !strings.HasPrefix(token, "-") {
+		if !strings.HasPrefix(word, "-") {
 			continue
 		}
-		if eq := strings.Index(token, "="); eq > 0 {
-			if resolveFlagCanonical(token[:eq], globalArgSpecs) == canonical {
-				value = token[eq+1:]
+		if eq := strings.Index(word, "="); eq > 0 {
+			if resolveFlagCanonical(word[:eq], globalArgSpecs) == canonical {
+				value = word[eq+1:]
 			}
 			continue
 		}
-		if resolveFlagCanonical(token, globalArgSpecs) != canonical {
+		if resolveFlagCanonical(word, globalArgSpecs) != canonical {
 			continue
 		}
 		if i+1 < len(argv) && argv[i+1] != "--" {

@@ -76,7 +76,7 @@ func TestPositionalEnumCandidatesStatic(t *testing.T) {
 // NOT run when the static layer owns the site).
 type recordingCompleter struct{ calls atomic.Int32 }
 
-func (r *recordingCompleter) CompleteArgs(context.Context, runtime.ConfigView) []string {
+func (r *recordingCompleter) CompleteArgs(context.Context, runtime.ConfigView, []string) []string {
 	r.calls.Add(1)
 	return []string{"from-completer"}
 }
@@ -85,7 +85,8 @@ func (r *recordingCompleter) CompleteArgs(context.Context, runtime.ConfigView) [
 // through dispatchSite: an unmatched partial on an enum-carrying positional
 // terminates with zero candidates and ZERO lower-layer activity - no
 // CompleteArgs delegation, no live fetch - while an enum-less positional
-// still delegates.
+// still delegates, and a positional past the declared args reaches no
+// layer at all.
 func TestPositionalEnumOwnershipStopsLowerLayers(t *testing.T) {
 	// NOT parallel: mutates storedConfig.
 	var hits atomic.Int32
@@ -104,6 +105,7 @@ func TestPositionalEnumOwnershipStopsLowerLayers(t *testing.T) {
 		Name: "completion",
 		Args: []runtime.ArgSpec{
 			{Name: "shell", Type: "string", Required: true, Enum: runtime.ShellCompletionShells()},
+			{Name: "name", Type: "string"},
 		},
 	}
 	sc := &recordingCompleter{}
@@ -118,6 +120,11 @@ func TestPositionalEnumOwnershipStopsLowerLayers(t *testing.T) {
 	got = dispatchSite(ctx, CompletionSite{Kind: SitePositional, Index: 1}, d, sc, nil, nil)
 	assert.Equal(t, []string{"from-completer"}, got, "enum-less positional still delegates")
 	assert.Equal(t, int32(1), sc.calls.Load())
+
+	got = dispatchSite(ctx, CompletionSite{Kind: SitePositional, Index: 2}, d, sc, nil, nil)
+	assert.Empty(t, got, "past the declared args: zero candidates")
+	assert.Equal(t, int32(1), sc.calls.Load(), "CompleteArgs must not run past the declared args")
+	assert.Zero(t, hits.Load(), "no live fetch past the declared args")
 }
 
 // TestCompletionShellPositionalParity asserts that the

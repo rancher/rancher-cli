@@ -18,6 +18,6 @@ func TestLogoutCompleteArgsReturnsServerNames(t *testing.T) {
 	cmd := NewLogout(dir)
 	sc, ok := cmd.(runtime.ShellCompleter)
 	require.True(t, ok, "logoutCmd must implement ShellCompleter")
-	got := sc.CompleteArgs(t.Context(), cmdtest.View{Servers: []string{"acme", "prod"}})
+	got := sc.CompleteArgs(t.Context(), cmdtest.View{Servers: []string{"acme", "prod"}}, nil)
 	assert.Equal(t, []string{"acme", "prod"}, got)
 }

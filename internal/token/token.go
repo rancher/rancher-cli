@@ -790,10 +790,10 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 
 func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	all := in.Bool("all")
-	keys := in.Args()
-	if all && len(keys) > 0 {
+	args := in.Args()
+	if all && len(args) > 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"specify either credential name(s) or --all, not both (e.g. rancher auth delete-token prod, or rancher auth delete-token --all)")
+			"specify either a credential name or --all, not both (e.g. rancher auth delete-token prod, or rancher auth delete-token --all)")
 	}
 	if all {
 		if err := d.store.DeleteAllCachedCreds(); err != nil {
@@ -804,11 +804,12 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 		res.Data = map[string]any{"deleted": "all"}
 		return res, nil
 	}
-	if len(keys) == 0 {
+	if len(args) == 0 {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			"provide a cached-credential name or --all")
 	}
-	// Resolve each argument against the cached record set: a bare display name
+	name := args[0]
+	// Resolve the argument against the cached record set: a bare display name
 	// matches EVERY entry with that name (a legacy bare entry and a scoped entry
 	// sharing the name are the same logical credential - deleting cached tokens
 	// is always safe, they re-auth), and the full composite key matches one.
@@ -818,18 +819,16 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	deleted := make([]string, 0, len(keys))
-	for _, arg := range keys {
-		for _, info := range infos {
-			if info.Name != arg && info.Key != arg {
-				continue
-			}
-			if derr := d.store.DeleteCachedCred(info.Key); derr != nil {
-				return runtime.Result{}, clierr.Wrap(derr,
-					fmt.Sprintf("failed to delete %q: %v (already deleted: %v)", arg, derr, deleted))
-			}
-			deleted = append(deleted, info.Key)
+	deleted := []string{}
+	for _, info := range infos {
+		if info.Name != name && info.Key != name {
+			continue
 		}
+		if derr := d.store.DeleteCachedCred(info.Key); derr != nil {
+			return runtime.Result{}, clierr.Wrap(derr,
+				fmt.Sprintf("failed to delete %q: %v (already deleted: %v)", name, derr, deleted))
+		}
+		deleted = append(deleted, info.Key)
 	}
 	var b strings.Builder
 	for _, key := range deleted {
@@ -848,7 +847,7 @@ func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.P
 // CompleteArgs implements runtime.ShellCompleter: `auth delete-token <TAB>`
 // completes cached exec-credential entry display names from a strictly
 // read-only cache scan. Composite keys are not offered.
-func (d deleteTokenCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+func (d deleteTokenCmd) CompleteArgs(_ context.Context, view runtime.ConfigView, _ []string) []string {
 	dir := view.ConfigDir()
 	if dir == "" {
 		return nil

@@ -105,7 +105,7 @@ func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ run
 
 // CompleteArgs implements runtime.ShellCompleter: `config use-server <TAB>`
 // completes server names from the already-loaded config snapshot.
-func (serverSwitchCmd) CompleteArgs(_ context.Context, view runtime.ConfigView) []string {
+func (serverSwitchCmd) CompleteArgs(_ context.Context, view runtime.ConfigView, _ []string) []string {
 	return view.ServerNames()
 }
 
