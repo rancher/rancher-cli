@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Record mode: re-runs scripts/rancher-api-fields so it writes the golden
+# instead of comparing. The golden's diff is review material, like the
+# schema golden.
+RANCHER_API_FIELDS_UPDATE=1 exec "$(dirname "$0")/rancher-api-fields"

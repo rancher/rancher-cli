@@ -161,6 +161,20 @@ func TestBashCompletionCandidateBoundaries(t *testing.T) {
 			want:       []string{"template="},
 		},
 		{
+			name:       "unique key= token after a typed pair gets no trailing space",
+			words:      []string{"rancher", "create", "project", "web", "--container-default-resource-limit", "limitsCpu=1,requestsM"},
+			cword:      5,
+			candidates: []string{"limitsCpu=1,requestsMemory="},
+			want:       []string{"limitsCpu=1,requestsMemory="},
+		},
+		{
+			name:       "multiple key= tokens stay bare",
+			words:      []string{"rancher", "create", "project", "web", "--container-default-resource-limit", "lim"},
+			cword:      5,
+			candidates: []string{"limitsCpu=", "limitsMemory="},
+			want:       []string{"limitsCpu=", "limitsMemory="},
+		},
+		{
 			name:       "unique finished argument carries its trailing space",
 			words:      []string{"rancher", "get", "-o", "js"},
 			cword:      3,

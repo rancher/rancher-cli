@@ -48,6 +48,18 @@ stdin new-password.txt
 exec rancher create password-change-request $USERID --password-stdin --apply --yes -o json
 jsonquery stdout data.userID $USERID
 
+# --description and --must-change-password write the User's own fields.
+stdin password.txt
+exec rancher create user e2e-flags-user --password-stdin --description 'build robot' --must-change-password --apply --yes -o json
+jsonquery stdout data.user.description 'build robot'
+jsonquery stdout data.user.mustChangePassword true
+cp stdout create-flags-user.json
+jsonget create-flags-user.json data.user.name flags-user-id.txt
+setenvfrom FLAGSUSERID flags-user-id.txt
+exec rancher get user $FLAGSUSERID -o json
+jsonquery stdout data.description 'build robot'
+jsonquery stdout data.mustChangePassword true
+
 -- password.txt --
 Sup3rSecretPassw0rd!
 -- new-password.txt --

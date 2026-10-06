@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Reads the top-level fields of the Rancher API types the bespoke create
+# commands build - the direct fields of each resource's spec, and of the
+# User itself, which has no spec - from github.com/rancher/rancher/pkg/apis
+# at the commits of the two oracle images pinned in scripts/e2e-fidelity,
+# and compares them with internal/cli/testdata/rancher-api-fields.golden.json.
+# RANCHER_API_FIELDS_UPDATE=1 (make rancher-api-fields-update) writes the
+# golden instead; review its diff like the schema golden. The golden lists
+# the union of both versions, each field with the versions that have it.
+#
+# The module is required in a throwaway module in a temporary directory,
+# removed on exit, never in this repository: a go.mod or go.sum here that
+# named it would make manifest scanners (trivy fs, osv-scanner, Dependabot)
+# report every advisory of its dependency tree against this repository.
+# Needs network access to the Go module proxy on a cold module cache.
+
+# COMMUNITY_TAG and PRIME_TAG must match the tags of ORACLE_IMAGE and
+# PRIME_ORACLE_IMAGE in scripts/e2e-fidelity, and the golden records them;
+# TestRancherAPIFieldsPinsMatchOracles (internal/cli) checks both, so
+# bumping an oracle image fails until this script and the golden follow.
+# The tags are the only input: each is resolved on RANCHER_REPO to its
+# commit, and the module proxy names that commit's pkg/apis
+# pseudo-version, which the golden records (needs network access to the
+# repository as well).
+COMMUNITY_TAG="v2.15.1"
+PRIME_TAG="v2.14.5"
+RANCHER_REPO="https://github.com/rancher/rancher"
+module="github.com/rancher/rancher/pkg/apis"
+
+cd "$(dirname "$0")/.."
+GOLDEN="internal/cli/testdata/rancher-api-fields.golden.json"
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+# run runs a command with its output kept aside, and on failure prints what
+# it was doing, the command and its output, then exits.
+run() {
+  local what=$1 log
+  shift
+  log="$work/run.log"
+  if ! "$@" >"$log" 2>&1; then
+    echo "error: $what failed: $*" >&2
+    cat "$log" >&2
+    exit 1
+  fi
+}
+
+# resolve_version sets the variable named by its second argument to the
+# pkg/apis pseudo-version of the commit tag points at on RANCHER_REPO,
+# peeled when the tag is annotated. It runs in the script's own shell, not
+# in a command substitution, where bash would ignore set -e; every step
+# that can fail is checked and stops the script with a message.
+resolve_version() {
+  local tag=$1 refs commit info version
+  if ! refs=$(git ls-remote "$RANCHER_REPO" "refs/tags/$tag" "refs/tags/$tag^{}" 2>&1); then
+    echo "error: cannot read tag $tag from $RANCHER_REPO:" >&2
+    echo "$refs" >&2
+    exit 1
+  fi
+  commit=$(awk -v tag="refs/tags/$tag" '$2 == tag "^{}" { peeled = $1 } $2 == tag { plain = $1 } END { print (peeled != "" ? peeled : plain) }' <<<"$refs")
+  if [ -z "$commit" ]; then
+    echo "error: $RANCHER_REPO has no tag $tag" >&2
+    exit 1
+  fi
+  if [ ! -f "$work/resolve/go.mod" ]; then
+    mkdir -p "$work/resolve"
+    (cd "$work/resolve" && run "creating the module that resolves versions" go mod init rancherapifieldsresolve)
+  fi
+  if ! info=$(cd "$work/resolve" && go list -m -json "$module@$commit" 2>&1); then
+    echo "error: cannot resolve $module at commit $commit (tag $tag):" >&2
+    echo "$info" >&2
+    exit 1
+  fi
+  version=$(sed -n 's/^[[:space:]]*"Version": "\(.*\)",$/\1/p' <<<"$info")
+  if [ -z "$version" ] || [ "${version##*-}" != "${commit:0:12}" ]; then
+    echo "error: the module proxy named \"$version\" for $module at commit $commit (tag $tag):" >&2
+    echo "$info" >&2
+    exit 1
+  fi
+  printf -v "$2" '%s' "$version"
+}
+# The temporary modules must never see this repository's go.work or a
+# vendor directory, and may update their own go.mod freely.
+export GOWORK=off GOFLAGS=-mod=mod
+
+mkdir -p "$work/extract" "$work/merge"
+cat >"$work/extract/main.go" <<'EOF'
+// Command extract prints, as JSON, the top-level fields of the Rancher API
+// types the bespoke create commands build: one level only, the json names
+// of a resource's spec fields, or of the object itself when it has no spec.
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"reflect"
+	"sort"
+	"strings"
+
+	extv1 "github.com/rancher/rancher/pkg/apis/ext.cattle.io/v1"
+	mgmtv3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
+	provv1 "github.com/rancher/rancher/pkg/apis/provisioning.cattle.io/v1"
+)
+
+type resource struct {
+	Resource string   `json:"resource"`
+	Path     string   `json:"path"`
+	Fields   []string `json:"fields"`
+}
+
+// objectFields are present on every object and set by the server or the
+// command's own framing, never by a field flag.
+var objectFields = map[string]bool{"apiVersion": true, "kind": true, "metadata": true, "status": true}
+
+func main() {
+	out := []resource{
+		spec("ext.cattle.io/v1 Kubeconfig", extv1.Kubeconfig{}),
+		spec("ext.cattle.io/v1 PasswordChangeRequest", extv1.PasswordChangeRequest{}),
+		spec("ext.cattle.io/v1 Token", extv1.Token{}),
+		spec("management.cattle.io/v3 OIDCClient", mgmtv3.OIDCClient{}),
+		spec("management.cattle.io/v3 Project", mgmtv3.Project{}),
+		top("management.cattle.io/v3 User", mgmtv3.User{}),
+		spec("provisioning.cattle.io/v1 Cluster", provv1.Cluster{}),
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		panic(err)
+	}
+}
+
+func spec(name string, obj any) resource {
+	for _, f := range fields(reflect.TypeOf(obj)) {
+		if f.name == "spec" {
+			return resource{Resource: name, Path: "spec", Fields: names(fields(f.typ), nil)}
+		}
+	}
+	panic(name + " has no spec field")
+}
+
+func top(name string, obj any) resource {
+	return resource{Resource: name, Path: "", Fields: names(fields(reflect.TypeOf(obj)), objectFields)}
+}
+
+type field struct {
+	name string
+	typ  reflect.Type
+}
+
+// fields returns t's json fields the way encoding/json sees them: embedded
+// structs without a json name are flattened into the parent.
+func fields(t reflect.Type) []field {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	var out []field
+	for i := range t.NumField() {
+		sf := t.Field(i)
+		tag := sf.Tag.Get("json")
+		if tag == "-" {
+			continue
+		}
+		name, _, _ := strings.Cut(tag, ",")
+		if sf.Anonymous && name == "" {
+			out = append(out, fields(sf.Type)...)
+			continue
+		}
+		if !sf.IsExported() {
+			continue
+		}
+		if name == "" {
+			name = sf.Name
+		}
+		out = append(out, field{name: name, typ: sf.Type})
+	}
+	return out
+}
+
+func names(fs []field, skip map[string]bool) []string {
+	var out []string
+	for _, f := range fs {
+		if !skip[f.name] {
+			out = append(out, f.name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+EOF
+
+cat >"$work/merge/main.go" <<'EOF'
+// Command merge writes the golden: the union of the per-version field
+// lists, each field with the oracle tags whose types have it.
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"sort"
+)
+
+type resource struct {
+	Resource string   `json:"resource"`
+	Path     string   `json:"path"`
+	Fields   []string `json:"fields"`
+}
+
+type oracle struct {
+	Tag           string `json:"tag"`
+	PseudoVersion string `json:"pseudoVersion"`
+}
+
+type goldenResource struct {
+	Resource string              `json:"resource"`
+	Path     string              `json:"path"`
+	Fields   map[string][]string `json:"fields"`
+}
+
+type golden struct {
+	Module    string            `json:"module"`
+	Oracles   map[string]oracle `json:"oracles"`
+	Resources []goldenResource  `json:"resources"`
+}
+
+// Arguments: module, then edition tag pseudo-version extract-output, once
+// per oracle.
+func main() {
+	args := os.Args[1:]
+	g := golden{Module: args[0], Oracles: map[string]oracle{}}
+	byName := map[string]*goldenResource{}
+	var order []string
+	if (len(args)-1)%4 != 0 {
+		panic("want the module, then four arguments per oracle")
+	}
+	for i := 1; i < len(args); i += 4 {
+		edition, tag, version, path := args[i], args[i+1], args[i+2], args[i+3]
+		g.Oracles[edition] = oracle{Tag: tag, PseudoVersion: version}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			panic(err)
+		}
+		var rs []resource
+		if err := json.Unmarshal(raw, &rs); err != nil {
+			panic(err)
+		}
+		for _, r := range rs {
+			gr, ok := byName[r.Resource]
+			if !ok {
+				gr = &goldenResource{Resource: r.Resource, Path: r.Path, Fields: map[string][]string{}}
+				byName[r.Resource] = gr
+				order = append(order, r.Resource)
+			}
+			if gr.Path != r.Path {
+				panic(r.Resource + ": the versions disagree on the path of its fields")
+			}
+			for _, f := range r.Fields {
+				gr.Fields[f] = append(gr.Fields[f], tag)
+			}
+		}
+	}
+	sort.Strings(order)
+	for _, name := range order {
+		gr := byName[name]
+		for _, tags := range gr.Fields {
+			sort.Strings(tags)
+		}
+		g.Resources = append(g.Resources, *gr)
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(g); err != nil {
+		panic(err)
+	}
+}
+EOF
+
+extract() {
+  local version=$1 out=$2 info modfile replace
+  (
+    cd "$work/extract"
+    rm -f go.mod go.sum
+    run "creating the temporary module" go mod init rancherapifields
+    run "requiring $module@$version" go mod edit -require="$module@$version"
+    # pkg/apis builds only with the k8s.io versions its own go.mod
+    # replaces to, and replace directives apply to the main module alone,
+    # so they are copied here; a replacement by a local path is skipped.
+    if ! info=$(go mod download -json "$module@$version" 2>&1); then
+      echo "error: cannot download $module@$version:" >&2
+      echo "$info" >&2
+      exit 1
+    fi
+    modfile=$(sed -n 's/^[[:space:]]*"GoMod": "\(.*\)",$/\1/p' <<<"$info")
+    if [ ! -f "$modfile" ]; then
+      echo "error: go mod download reported no go.mod for $module@$version:" >&2
+      echo "$info" >&2
+      exit 1
+    fi
+    while read -r replace; do
+      run "copying the replace directive $replace of $module@$version" go mod edit -replace="$replace"
+    done < <(awk '
+      /^replace \(/ { block = 1; next }
+      block && /^\)/ { block = 0; next }
+      /^replace / { sub(/^replace /, ""); line = 1 }
+      (block || line) && $2 == "=>" && NF == 4 { print $1 "=" $3 "@" $4 }
+      (block || line) && $3 == "=>" && NF == 5 { print $1 "@" $2 "=" $4 "@" $5 }
+      { line = 0 }
+    ' "$modfile")
+    run "resolving the dependencies of $module@$version" go mod tidy
+    if ! go run . >"$out" 2>"$work/extract.log"; then
+      echo "error: reading the fields of $module@$version failed:" >&2
+      cat "$work/extract.log" >&2
+      exit 1
+    fi
+  )
+}
+resolve_version "$COMMUNITY_TAG" COMMUNITY_VERSION
+resolve_version "$PRIME_TAG" PRIME_VERSION
+extract "$COMMUNITY_VERSION" "$work/community.json"
+extract "$PRIME_VERSION" "$work/prime.json"
+
+(
+  cd "$work/merge"
+  run "creating the merge module" go mod init rancherapifieldsmerge
+  if ! go run . "$module" \
+    community "$COMMUNITY_TAG" "$COMMUNITY_VERSION" "$work/community.json" \
+    prime "$PRIME_TAG" "$PRIME_VERSION" "$work/prime.json" >"$work/golden.json" 2>"$work/merge.log"; then
+    echo "error: merging the field lists failed:" >&2
+    cat "$work/merge.log" >&2
+    exit 1
+  fi
+)
+
+if [ "${RANCHER_API_FIELDS_UPDATE:-}" = "1" ]; then
+  cp "$work/golden.json" "$GOLDEN"
+  echo "wrote $GOLDEN"
+  exit 0
+fi
+if ! diff -u "$GOLDEN" "$work/golden.json"; then
+  echo "error: $GOLDEN differs from the pinned Rancher API types; run make rancher-api-fields-update and review the diff" >&2
+  exit 1
+fi

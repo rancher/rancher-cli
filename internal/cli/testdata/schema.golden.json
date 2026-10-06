@@ -1497,6 +1497,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
+      "desc": "--container-default-resource-limit sets spec.containerDefaultResourceLimit, the default CPU and memory requests and limits for each container in the project's namespaces, as comma-separated key=value pairs; keys: limitsCpu, limitsMemory, requestsCpu, requestsMemory; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once.",
       "destructive": "false",
       "examples": [
         "rancher create project web --cluster c-x --dry-run",
@@ -1522,6 +1523,11 @@
         {
           "desc": "per-namespace default quota as `key=value` pairs (same keys as --quota-limit)",
           "name": "namespace-default-quota",
+          "type": "string"
+        },
+        {
+          "desc": "default container requests and limits as `key=value`",
+          "name": "container-default-resource-limit",
           "type": "string"
         }
       ],
@@ -1719,6 +1725,16 @@
           ],
           "name": "enabled",
           "type": "string"
+        },
+        {
+          "desc": "short `description` of the user",
+          "name": "description",
+          "type": "string"
+        },
+        {
+          "desc": "require the user to set a new password at their next Rancher UI login",
+          "name": "must-change-password",
+          "type": "bool"
         }
       ],
       "gates": [

@@ -3,6 +3,8 @@ package projects
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -36,28 +38,50 @@ func quotaKeysText() string {
 	return "allowed keys: " + strings.Join(keys, ", ")
 }
 
+// containerLimitKeys is ContainerResourceLimit's four fields (rancher/rancher
+// resource_quota_types.go), the type of spec.containerDefaultResourceLimit.
+// Like quotaKeys, any other key would be pruned silently by the structural
+// CRD, so it is refused instead.
+var containerLimitKeys = map[string]bool{
+	"requestsCpu": true, "requestsMemory": true,
+	"limitsCpu": true, "limitsMemory": true,
+}
+
+// ContainerDefaultResourceLimitKeys returns the keys
+// --container-default-resource-limit accepts, sorted; shell completion
+// offers exactly these.
+func ContainerDefaultResourceLimitKeys() []string {
+	return slices.Sorted(maps.Keys(containerLimitKeys))
+}
+
 // parsePairs is the shared comma-separated k=v parser behind --quota-limit,
-// --namespace-default-quota, and --from-literal: split on ",", then split
-// each pair on the first "=". allowEmptyValue distinguishes quota pairs
-// (v="" is malformed) from literal pairs (v="" is a legitimate blank
-// entry); malformed builds the caller-specific error for a pair missing "="
-// or with an empty key.
-func parsePairs(s string, allowEmptyValue bool, malformed func(pair string) error) (map[string]any, error) {
+// --namespace-default-quota, --container-default-resource-limit and
+// --from-literal: split on ",", then split each pair on the first "=".
+// allowEmptyValue distinguishes quota pairs (v="" is malformed) from
+// literal pairs (v="" is a legitimate blank entry); malformed builds the
+// caller-specific error for a pair missing "=" or with an empty key. A key
+// given twice is refused, naming flag: only one of its values could be
+// kept, and keeping either silently would hide a typo.
+func parsePairs(s, flag string, allowEmptyValue bool, malformed func(pair string) error) (map[string]any, error) {
 	data := map[string]any{}
 	for pair := range strings.SplitSeq(s, ",") {
 		k, v, ok := strings.Cut(pair, "=")
 		if !ok || k == "" || (!allowEmptyValue && v == "") {
 			return nil, malformed(pair)
 		}
+		if _, seen := data[k]; seen {
+			return nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("--%s names the key %q more than once; give each key once", flag, k))
+		}
 		data[k] = v
 	}
 	return data, nil
 }
 
-// parseQuotaPairs parses a comma-separated k=v list into a quota limit map,
-// validating each pair against quotaKeys.
-func parseQuotaPairs(s string) (map[string]any, error) {
-	limit, err := parsePairs(s, false, func(pair string) error {
+// parseQuotaPairs parses flag's comma-separated k=v list into a quota limit
+// map, validating each pair against quotaKeys.
+func parseQuotaPairs(s, flag string) (map[string]any, error) {
+	limit, err := parsePairs(s, flag, false, func(pair string) error {
 		return clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("malformed quota pair %q; pass key=value pairs, e.g. limitsCpu=2,limitsMemory=4Gi", pair))
 	})
@@ -68,6 +92,27 @@ func parseQuotaPairs(s string) (map[string]any, error) {
 		if !quotaKeys[k] {
 			return nil, clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("unknown quota key %q; %s", k, quotaKeysText()))
+		}
+	}
+	return limit, nil
+}
+
+// parseContainerLimitPairs parses --container-default-resource-limit into
+// the ContainerResourceLimit map, validating each key against
+// containerLimitKeys. The values are Kubernetes quantities the server
+// validates.
+func parseContainerLimitPairs(s string) (map[string]any, error) {
+	limit, err := parsePairs(s, "container-default-resource-limit", false, func(pair string) error {
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("malformed --container-default-resource-limit pair %q; pass key=value pairs, e.g. limitsCpu=500m,limitsMemory=512Mi", pair))
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, k := range slices.Sorted(maps.Keys(limit)) {
+		if !containerLimitKeys[k] {
+			return nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("unknown --container-default-resource-limit key %q; allowed keys: %s", k, strings.Join(ContainerDefaultResourceLimitKeys(), ", ")))
 		}
 	}
 	return limit, nil
@@ -105,11 +150,11 @@ func buildQuotaSpecs(in runtime.Input) (limit, nsDefault map[string]any, err err
 		return nil, nil, clierr.New(clierr.CodeValidation,
 			"--quota-limit and --namespace-default-quota must be given together with matching keys")
 	}
-	limit, err = parseQuotaPairs(limitStr)
+	limit, err = parseQuotaPairs(limitStr, "quota-limit")
 	if err != nil {
 		return nil, nil, err
 	}
-	nsDefault, err = parseQuotaPairs(nsDefaultStr)
+	nsDefault, err = parseQuotaPairs(nsDefaultStr, "namespace-default-quota")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -136,15 +181,20 @@ func NewCreate(clients engine.ClusterClientFactory) runtime.Command {
 
 func (createCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "create project",
-		Usage:       "Create a project in a cluster",
+		Name:  "create project",
+		Usage: "Create a project in a cluster",
+		Desc: "--container-default-resource-limit sets spec.containerDefaultResourceLimit, the default " +
+			"CPU and memory requests and limits for each container in the project's namespaces, as " +
+			"comma-separated key=value pairs; keys: " + strings.Join(ContainerDefaultResourceLimitKeys(), ", ") +
+			"; e.g. limitsCpu=500m,limitsMemory=512Mi. Each key may appear once.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
 			{Name: "description", Type: "string", Desc: "short `description` for the project"},
-			{Name: "quota-limit", Type: "string", Desc: "project quota as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi"},
-			{Name: "namespace-default-quota", Type: "string", Desc: "per-namespace default quota as `key=value` pairs (same keys as --quota-limit)"},
+			{Name: "quota-limit", Type: "string", Once: true, Desc: "project quota as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi"},
+			{Name: "namespace-default-quota", Type: "string", Once: true, Desc: "per-namespace default quota as `key=value` pairs (same keys as --quota-limit)"},
+			{Name: "container-default-resource-limit", Type: "string", Once: true, Desc: "default container requests and limits as `key=value`"},
 		},
 		Examples:    []string{"rancher create project web --cluster c-x --dry-run", "rancher create project web --cluster c-x --apply"},
 		Destructive: "false",
@@ -181,6 +231,13 @@ func (createCmd) build(in runtime.Input) (*unstructured.Unstructured, string, er
 	if limit != nil {
 		_ = unstructured.SetNestedMap(obj.Object, limit, "spec", "resourceQuota", "limit")
 		_ = unstructured.SetNestedMap(obj.Object, nsDefault, "spec", "namespaceDefaultResourceQuota", "limit")
+	}
+	if raw := in.String("container-default-resource-limit"); raw != "" {
+		containerLimit, err := parseContainerLimitPairs(raw)
+		if err != nil {
+			return nil, "", err
+		}
+		_ = unstructured.SetNestedMap(obj.Object, containerLimit, "spec", "containerDefaultResourceLimit")
 	}
 	return obj, cluster, nil
 }

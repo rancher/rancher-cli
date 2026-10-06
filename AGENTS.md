@@ -22,6 +22,8 @@ Go 1.27.1+. Automation is `make`, dispatching to `scripts/`:
 | `make e2e-fidelity-update` | re-record the fidelity oracle goldens, downstream family included (review the diff like the schema golden) |
 | `make e2e-fidelity-downstream` | compare a Rancher you run yourself, with its own downstream cluster, against the downstream goldens (never on PRs) |
 | `make e2e-fidelity-downstream-update` | re-record the downstream fidelity goldens from that server instead of the pinned oracle |
+| `make rancher-api-fields` | compare `internal/cli/testdata/rancher-api-fields.golden.json` with the Rancher API types at the commits the oracle tags point at, pseudo-versions included (needs the Go module proxy and GitHub; runs weekly in e2e-fidelity.yaml) |
+| `make rancher-api-fields-update` | rewrite that golden after an oracle image bump (review the diff like the schema golden) |
 | `make dev` | run the binary hermetically (temp config dir, file credential store) |
 
 `make` with no target runs `ci` (the full pipeline).

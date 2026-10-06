@@ -62,18 +62,36 @@ func (l completionLine) dashesAreTheWord() bool {
 	return l.v1 && l.current == "" && l.typed[len(l.typed)-1] == "--"
 }
 
+// onceFlagLines are, for a leaf with a flag that may be given once, that
+// flag typed with a value: once before a "--" and once after it (where it is
+// an argument), and twice before it (a line the command refuses).
+var onceFlagLines = map[string][2]string{
+	"create secret":  {"--from-literal", "a=1"},
+	"create project": {"--container-default-resource-limit", "limitsCpu=1"},
+}
+
 // doubleDashLines are the lines typed after a "--" on the leaf at path, in both
 // protocols, with the word being completed empty, partial and flag-like, and a
-// line that opens with the v2 marker and does not end with the flag.
+// line that opens with the v2 marker and does not end with the flag. A leaf in
+// onceFlagLines also gets its flag that may be given once before and after the
+// "--".
 func doubleDashLines(path []string) []completionLine {
 	var lines []completionLine
-	for _, typed := range [][]string{
+	typedLines := [][]string{
 		append(slices.Clone(path), "--"),
 		append(slices.Clone(path), "--", "x"),
 		append(slices.Clone(path), "--", "x", "y"),
 		append(slices.Clone(path), "--apply", "--yes", "--"),
 		append(slices.Clone(path), "--apply", "--yes", "--", "x"),
-	} {
+	}
+	if once, ok := onceFlagLines[strings.Join(path, " ")]; ok {
+		typedLines = append(typedLines,
+			append(slices.Clone(path), once[0], once[1], "--"),
+			append(slices.Clone(path), once[0], once[1], "--", once[0], once[1]),
+			append(slices.Clone(path), once[0], once[1], once[0], once[1], "--"),
+		)
+	}
+	for _, typed := range typedLines {
 		for _, current := range []string{"", "x", "--a"} {
 			lines = append(lines, completionLine{name: "v2", typed: typed, current: current})
 		}
@@ -201,6 +219,9 @@ func TestCompletionAfterDoubleDashRunsNothing(t *testing.T) {
 	slices.Sort(surface)
 	slices.Sort(leaves)
 	require.Equal(t, surface, leaves, "the sweep must cover exactly the leaves the schema manifest lists, and urfave's hidden command")
+	for name := range onceFlagLines {
+		require.Contains(t, leaves, name, "onceFlagLines names a leaf of the tree")
+	}
 
 	for _, path := range paths {
 		t.Run(strings.Join(path, " "), func(t *testing.T) {

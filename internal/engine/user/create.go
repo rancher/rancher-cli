@@ -44,10 +44,11 @@ type createCmd struct {
 }
 
 // NewCreate builds `create user <username> --password-stdin
-// [--display-name] [--enabled]` (mutating): the composite that creates a
-// local Rancher user through the sanctioned two-resource public-API
-// workflow, in the oidc-client-create mold - both resources' server-side
-// dry-run previews run at Plan time, through the ONE safety pipeline.
+// [--display-name] [--enabled] [--description] [--must-change-password]`
+// (mutating): the composite that creates a local Rancher user through the
+// sanctioned two-resource public-API workflow, in the oidc-client-create
+// mold - both resources' server-side dry-run previews run at Plan time,
+// through the ONE safety pipeline.
 func NewCreate(clients engine.ClusterClientFactory, src engine.FileSource) runtime.Command {
 	return &createCmd{clients: clients, src: src}
 }
@@ -68,6 +69,11 @@ func (createCmd) Describe() runtime.Descriptor {
 			{Name: "password-stdin", Type: "bool", Desc: "read the new password from stdin (required; there is no --password flag - a flag value would land in shell history; the server enforces a minimum length, 12 by default)"},
 			{Name: "display-name", Type: "string", Desc: "display name (default: the username)"},
 			{Name: "enabled", Type: "string", Enum: []string{"true", "false"}, Desc: "account enabled state (server default true)"},
+			{Name: "description", Type: "string", Desc: "short `description` of the user"},
+			// A bool suffices, unlike --enabled: the server default is false
+			// and the field is omitted when false, so omitting the flag and
+			// passing false produce the same User.
+			{Name: "must-change-password", Type: "bool", Desc: "require the user to set a new password at their next Rancher UI login"},
 		},
 		Examples: []string{
 			`echo -n "$PASSWORD" | rancher create user alice --password-stdin --apply --yes`,
@@ -106,6 +112,12 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 		userObj.Object["enabled"] = true
 	case "false":
 		userObj.Object["enabled"] = false
+	}
+	if desc := in.String("description"); desc != "" {
+		userObj.Object["description"] = desc
+	}
+	if in.Bool("must-change-password") {
+		userObj.Object["mustChangePassword"] = true
 	}
 
 	k := userKind()
@@ -190,13 +202,22 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	if v, ok := createdUser.Object["enabled"].(bool); ok {
 		enabled = v
 	}
+	userData := map[string]any{
+		"name":        name,
+		"username":    username,
+		"displayName": displayName,
+		"enabled":     enabled,
+	}
+	// The two optional fields are reported when the created User carries
+	// them, so the result shows what the server stored.
+	if desc, _ := createdUser.Object["description"].(string); desc != "" {
+		userData["description"] = desc
+	}
+	if must, _ := createdUser.Object["mustChangePassword"].(bool); must {
+		userData["mustChangePassword"] = true
+	}
 	data := map[string]any{
-		"user": map[string]any{
-			"name":        name,
-			"username":    username,
-			"displayName": displayName,
-			"enabled":     enabled,
-		},
+		"user": userData,
 		// The server's create response echoes the hashed payload
 		// (data/salt); none of it belongs in output, so the map is built
 		// from identity fields only and never copies the Secret's

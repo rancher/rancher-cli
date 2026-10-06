@@ -1,0 +1,243 @@
+{
+  "module": "github.com/rancher/rancher/pkg/apis",
+  "oracles": {
+    "community": {
+      "tag": "v2.15.1",
+      "pseudoVersion": "v0.0.0-20260827224206-8c257d748d23"
+    },
+    "prime": {
+      "tag": "v2.14.5",
+      "pseudoVersion": "v0.0.0-20260826145222-63d8501ec849"
+    }
+  },
+  "resources": [
+    {
+      "resource": "ext.cattle.io/v1 Kubeconfig",
+      "path": "spec",
+      "fields": {
+        "clusters": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "currentContext": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "description": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "includeDefaultEntry": [
+          "v2.15.1"
+        ],
+        "ttl": [
+          "v2.14.5",
+          "v2.15.1"
+        ]
+      }
+    },
+    {
+      "resource": "ext.cattle.io/v1 PasswordChangeRequest",
+      "path": "spec",
+      "fields": {
+        "currentPassword": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "newPassword": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "userID": [
+          "v2.14.5",
+          "v2.15.1"
+        ]
+      }
+    },
+    {
+      "resource": "ext.cattle.io/v1 Token",
+      "path": "spec",
+      "fields": {
+        "clusterName": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "description": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "enabled": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "kind": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "ttl": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "userID": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "userPrincipal": [
+          "v2.14.5",
+          "v2.15.1"
+        ]
+      }
+    },
+    {
+      "resource": "management.cattle.io/v3 OIDCClient",
+      "path": "spec",
+      "fields": {
+        "description": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "redirectURIs": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "refreshTokenExpirationSeconds": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "scopes": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "tokenExpirationSeconds": [
+          "v2.14.5",
+          "v2.15.1"
+        ]
+      }
+    },
+    {
+      "resource": "management.cattle.io/v3 Project",
+      "path": "spec",
+      "fields": {
+        "clusterName": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "containerDefaultResourceLimit": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "description": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "displayName": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "namespaceDefaultResourceQuota": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "resourceQuota": [
+          "v2.14.5",
+          "v2.15.1"
+        ]
+      }
+    },
+    {
+      "resource": "management.cattle.io/v3 User",
+      "path": "",
+      "fields": {
+        "description": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "displayName": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "enabled": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "me": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "mustChangePassword": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "password": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "principalIds": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "username": [
+          "v2.14.5",
+          "v2.15.1"
+        ]
+      }
+    },
+    {
+      "resource": "provisioning.cattle.io/v1 Cluster",
+      "path": "spec",
+      "fields": {
+        "agentEnvVars": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "cloudCredentialSecretName": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "clusterAPIConfig": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "clusterAgentDeploymentCustomization": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "defaultClusterRoleForProjectMembers": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "defaultPodSecurityAdmissionConfigurationTemplateName": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "enableNetworkPolicy": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "fleetAgentDeploymentCustomization": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "kubernetesVersion": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "localClusterAuthEndpoint": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "redeploySystemAgentGeneration": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "rkeConfig": [
+          "v2.14.5",
+          "v2.15.1"
+        ],
+        "webhookDeploymentCustomization": [
+          "v2.15.1"
+        ]
+      }
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -94,11 +95,11 @@ func flagsFor(d runtime.Descriptor) []ucli.Flag {
 		}
 		switch f.Type {
 		case "bool":
-			out = append(out, &ucli.BoolFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
+			out = append(out, &ucli.BoolFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, OnlyOnce: f.Once})
 		case "stringSlice":
-			out = append(out, &ucli.StringSliceFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
+			out = append(out, &ucli.StringSliceFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, OnlyOnce: f.Once})
 		default:
-			out = append(out, &ucli.StringFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc})
+			out = append(out, &ucli.StringFlag{Name: f.Name, Aliases: f.Aliases, Usage: f.Desc, OnlyOnce: f.Once})
 		}
 	}
 	return out
@@ -574,11 +575,26 @@ var allNamespacesEntry = hintEntry[usageErrorInput]{
 	},
 }
 
+// onceFlagRE reads the flag name from urfave's error for a second instance
+// of a flag declared runtime.ArgSpec.Once ("invalid value ... for flag
+// -name: can't duplicate this flag"; urfave prints one leading dash).
+var onceFlagRE = regexp.MustCompile(`for flag -+([^:\s]+): can't duplicate this flag$`)
+
+// onceFlagEntry names the remedy for a flag declared Once given twice: one
+// instance carrying every entry.
+var onceFlagEntry = hintEntry[usageErrorInput]{
+	match: func(in usageErrorInput) bool { return in.err != nil && onceFlagRE.MatchString(in.err.Error()) },
+	detail: func(in usageErrorInput) string {
+		name := onceFlagRE.FindStringSubmatch(in.err.Error())[1]
+		return fmt.Sprintf("--%s may be given once; give all its entries in one comma-separated value", name)
+	},
+}
+
 // usageErrorHints is the registration table for targeted flag-parse
 // guidance: the first matching entry's detail is appended to the message;
 // callers fall back to just the base message plus the generic schema hint
 // when nothing matches. Register new targeted entries here, not in the seam.
-var usageErrorHints = []hintEntry[usageErrorInput]{allNamespacesEntry}
+var usageErrorHints = []hintEntry[usageErrorInput]{allNamespacesEntry, onceFlagEntry}
 
 // usageErrorGuidance returns onUsageError's message detail (possibly "")
 // and hint for err.

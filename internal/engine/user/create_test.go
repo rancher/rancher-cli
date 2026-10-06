@@ -28,12 +28,18 @@ type fakeUserClient struct {
 	userCreateCalls   int
 	secretCreateCalls int
 	lastSecretObj     *unstructured.Unstructured
+	// userObjs records every User sent, dry-run and real, in order.
+	userObjs []*unstructured.Unstructured
+	// editCreatedUser, when set, edits the User the real create returns,
+	// standing in for what the server stored.
+	editCreatedUser func(*unstructured.Unstructured)
 }
 
 func (f *fakeUserClient) Create(_ context.Context, gvr schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
 	switch gvr.Resource {
 	case "users":
 		f.userCreateCalls++
+		f.userObjs = append(f.userObjs, obj.DeepCopy())
 		if dryRun {
 			out := obj.DeepCopy()
 			out.SetName(f.userPreviewName)
@@ -48,6 +54,9 @@ func (f *fakeUserClient) Create(_ context.Context, gvr schema.GroupVersionResour
 			name = f.userPreviewName
 		}
 		out.SetName(name)
+		if f.editCreatedUser != nil {
+			f.editCreatedUser(out)
+		}
 		return out, nil
 	case "secrets":
 		f.secretCreateCalls++
@@ -269,4 +278,74 @@ func (*fakeUserClient) ServerResources(context.Context) ([]engine.APIResource, e
 
 func (f stubUserFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
 	return f.Cluster(ctx, id)
+}
+
+// TestCreateDescriptionAndMustChangePasswordReachTheUser asserts both flags
+// write their top-level User fields into the dry-run and the real create.
+func TestCreateDescriptionAndMustChangePasswordReachTheUser(t *testing.T) {
+	t.Parallel()
+	client := &fakeUserClient{userPreviewName: "u-preview1", userRealName: "u-real2"}
+	in := planInput("alice")
+	in.flags["description"] = "build robot"
+	in.bools["must-change-password"] = true
+	_, exec, err := plan(t, client, fakeSrc{body: []byte("correctHorseBattery1\n")}, in)
+	require.NoError(t, err)
+	_, err = exec(t.Context())
+	require.NoError(t, err)
+
+	require.Len(t, client.userObjs, 2, "one dry-run and one real User create")
+	for i, obj := range client.userObjs {
+		assert.Equal(t, "build robot", obj.Object["description"], "User create %d", i)
+		assert.Equal(t, true, obj.Object["mustChangePassword"], "User create %d", i)
+	}
+}
+
+// TestCreateWithoutDescriptionOrMustChangePasswordOmitsThem asserts the
+// omitted flags leave both fields out, so the server defaults apply.
+func TestCreateWithoutDescriptionOrMustChangePasswordOmitsThem(t *testing.T) {
+	t.Parallel()
+	client := &fakeUserClient{userPreviewName: "u-preview1"}
+	_, _, err := plan(t, client, fakeSrc{body: []byte("correctHorseBattery1\n")}, planInput("alice"))
+	require.NoError(t, err)
+
+	require.Len(t, client.userObjs, 1)
+	assert.NotContains(t, client.userObjs[0].Object, "description")
+	assert.NotContains(t, client.userObjs[0].Object, "mustChangePassword")
+}
+
+// TestCreateResultReportsDescriptionAndMustChangePasswordFromTheServer
+// asserts the UserCreated result carries both optional fields as the
+// created User holds them, and leaves out what the server did not store.
+func TestCreateResultReportsDescriptionAndMustChangePasswordFromTheServer(t *testing.T) {
+	t.Parallel()
+	run := func(t *testing.T, edit func(*unstructured.Unstructured)) map[string]any {
+		t.Helper()
+		client := &fakeUserClient{userPreviewName: "u-preview1", userRealName: "u-real2", editCreatedUser: edit}
+		in := planInput("alice")
+		in.flags["description"] = "build robot"
+		in.bools["must-change-password"] = true
+		_, exec, err := plan(t, client, fakeSrc{body: []byte("correctHorseBattery1\n")}, in)
+		require.NoError(t, err)
+		res, err := exec(t.Context())
+		require.NoError(t, err)
+		userInfo, ok := res.Data.(map[string]any)["user"].(map[string]any)
+		require.True(t, ok)
+		return userInfo
+	}
+
+	t.Run("stored", func(t *testing.T) {
+		t.Parallel()
+		userInfo := run(t, func(u *unstructured.Unstructured) { u.Object["description"] = "stored by the server" })
+		assert.Equal(t, "stored by the server", userInfo["description"], "read from the created User, not the flag")
+		assert.Equal(t, true, userInfo["mustChangePassword"])
+	})
+	t.Run("not stored", func(t *testing.T) {
+		t.Parallel()
+		userInfo := run(t, func(u *unstructured.Unstructured) {
+			delete(u.Object, "description")
+			delete(u.Object, "mustChangePassword")
+		})
+		assert.NotContains(t, userInfo, "description")
+		assert.NotContains(t, userInfo, "mustChangePassword")
+	})
 }

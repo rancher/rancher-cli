@@ -13,6 +13,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	ucli "github.com/urfave/cli/v3"
@@ -34,10 +35,9 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 		// than it declares, makes the line one it rejects: offer nothing,
 		// and make no request for it. Under the v1 protocol the argv still
 		// holds the partial word being completed, which would read as an
-		// undefined flag, so the check is v2 only.
-		if rawProtoV2 && lineRejected(c, rawArgv, len(d.Args)) {
-			return
-		}
+		// undefined flag, so the check is v2 only. A current word holding a
+		// flag that may be given once with "=" is one more instance of that
+		// flag, so the check reads it with the words before it.
 		var site CompletionSite
 		if delimiter := doubleDashAt(tail, levelFlags(c)); delimiter >= 0 {
 			// After a "--" the typed flags all precede it: the sources read the
@@ -47,6 +47,13 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 			tail = tail[:delimiter]
 		} else {
 			site = ParseArgTail(tail, rawCurrentWord, rawProtoV2, d, globalArgSpecs)
+		}
+		checked := rawArgv
+		if _, once := onceFlagNames(c)[site.FlagName]; once && site.Kind == SiteFlagValue && site.EqualsForm {
+			checked = append(slices.Clone(rawArgv), rawCurrentWord)
+		}
+		if rawProtoV2 && lineRejected(c, checked, len(d.Args)) {
+			return
 		}
 
 		if site.Kind == SiteNameLike {
@@ -61,7 +68,7 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 			// DefaultCompleteWithFlags reads it correctly from cmd.Args().Slice().
 			if rawProtoV2 {
 				w := c.Root().Writer
-				for _, cand := range nameLikeCandidates(c, rawCurrentWord) {
+				for _, cand := range withoutGivenOnceFlags(nameLikeCandidates(c, rawCurrentWord), d.Flags, tail) {
 					if candidateToken(cand) == "--"+runtime.FlagProject {
 						// The global flag: offered by a command that takes it,
 						// with what it does there, and by no other.
@@ -106,6 +113,52 @@ func nameLikeCandidates(c *ucli.Command, currentWord string) []string {
 func candidateToken(line string) string {
 	token, _, _ := strings.Cut(line, ":")
 	return token
+}
+
+// flagInstances counts the instances of flag f in tail, in every spelling
+// the parser accepts: one or two leading dashes, any name or alias, with
+// the value in the next word or after "=".
+func flagInstances(tail []string, f runtime.ArgSpec) int {
+	n := 0
+	for _, tok := range tail {
+		if tok == "--" {
+			break
+		}
+		name, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(tok, "-"), "-"), "=")
+		if !strings.HasPrefix(tok, "-") || name == "" {
+			continue
+		}
+		if name == f.Name || slices.Contains(f.Aliases, name) {
+			n++
+		}
+	}
+	return n
+}
+
+// withoutGivenOnceFlags drops the name candidates of every flag declared
+// runtime.ArgSpec.Once that tail already holds: the command refuses a
+// second instance, so offering the name again would offer a line it
+// rejects. A candidate line is "token" or "token:usage".
+func withoutGivenOnceFlags(cands []string, flags []runtime.ArgSpec, tail []string) []string {
+	drop := map[string]bool{}
+	for _, f := range flags {
+		if !f.Once || flagInstances(tail, f) == 0 {
+			continue
+		}
+		for _, name := range append([]string{f.Name}, f.Aliases...) {
+			drop["-"+name], drop["--"+name] = true, true
+		}
+	}
+	if len(drop) == 0 {
+		return cands
+	}
+	var out []string
+	for _, cand := range cands {
+		if !drop[candidateToken(cand)] {
+			out = append(out, cand)
+		}
+	}
+	return out
 }
 
 // formatCandidate returns the "name:usage" or bare "name" completion line,
@@ -271,6 +324,11 @@ func dispatchSite(
 		// first-match: the site is fully static, so even an empty result
 		// terminates the dispatch here - no delegation, no live layer.
 		if cands, owned := machineConfigSetKeyCandidates(site, d, tail); owned {
+			return cands
+		}
+		// create project's --container-default-resource-limit keys:
+		// compiled-in, and owned like --set.
+		if cands, owned := containerLimitKeyCandidates(site, d, tail); owned {
 			return cands
 		}
 	}
@@ -681,6 +739,62 @@ func machineConfigSetKeyCandidates(site CompletionSite, d runtime.Descriptor, ta
 		out = append(out, tok)
 	}
 	sort.Strings(out)
+	return out, true
+}
+
+// containerLimitKeyCandidates serves `key=` tokens for create project's
+// --container-default-resource-limit, whose value is a comma-separated
+// key=value list: the pairs already typed are kept as the token's prefix,
+// and only keys not yet used are offered for the pair being typed.
+//
+// OWNERSHIP: the returned bool is true for every value site of the flag;
+// the site is fully static, so a value in progress (the last pair carries
+// "="), an unmatched partial or a list that already names every key ends
+// the dispatch with zero candidates, as does a typed pair the command
+// would reject (an unknown or repeated key, a missing value) and a second
+// instance of the flag, which the command refuses (runtime.ArgSpec.Once).
+// The keys are compiled-in literals, so the shell-safe charset does not
+// gate them (the "=" and "," must survive) and no network gate applies.
+func containerLimitKeyCandidates(site CompletionSite, d runtime.Descriptor, tail []string) ([]string, bool) {
+	if d.Name != "create project" || site.FlagName != "container-default-resource-limit" {
+		return nil, false
+	}
+	instances := flagInstances(tail, runtime.ArgSpec{Name: site.FlagName})
+	if !site.EqualsForm {
+		instances-- // the space form's own flag word ends the tail
+	}
+	if instances > 0 {
+		return nil, true
+	}
+	done, current := "", site.Partial
+	if i := strings.LastIndex(site.Partial, ","); i >= 0 {
+		done, current = site.Partial[:i+1], site.Partial[i+1:]
+	}
+	if strings.Contains(current, "=") {
+		return nil, true
+	}
+	keys := projects.ContainerDefaultResourceLimitKeys()
+	used := map[string]bool{}
+	if done != "" {
+		for pair := range strings.SplitSeq(strings.TrimSuffix(done, ","), ",") {
+			key, value, ok := strings.Cut(pair, "=")
+			if !ok || value == "" || !slices.Contains(keys, key) || used[key] {
+				return nil, true // the command rejects the list already typed
+			}
+			used[key] = true
+		}
+	}
+	var out []string
+	for _, key := range keys {
+		if used[key] || !strings.HasPrefix(key, current) {
+			continue
+		}
+		tok := done + key + "="
+		if site.EqualsForm {
+			tok = site.FlagSpelling + "=" + tok
+		}
+		out = append(out, tok)
+	}
 	return out, true
 }
 

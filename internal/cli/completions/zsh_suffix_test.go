@@ -83,6 +83,7 @@ func TestZshContinuationCandidatesGetEmptySuffix(t *testing.T) {
 	candidates := []string{
 		"amazonec2config/",
 		"template=",
+		"limitsCpu=1,requestsMemory=",
 		"pod:a pod",
 	}
 	got := zshDescribeGroups(t, []string{"rancher", "create", "cluster", "--machine-config", ""}, candidates)
@@ -90,6 +91,7 @@ func TestZshContinuationCandidatesGetEmptySuffix(t *testing.T) {
 	want := []string{
 		"GROUP:empty:amazonec2config/",
 		"GROUP:empty:template=",
+		"GROUP:empty:limitsCpu=1,requestsMemory=",
 		"GROUP:default:pod:a pod",
 	}
 	for _, w := range want {
@@ -100,6 +102,7 @@ func TestZshContinuationCandidatesGetEmptySuffix(t *testing.T) {
 	for _, unwanted := range []string{
 		"GROUP:default:amazonec2config/",
 		"GROUP:default:template=",
+		"GROUP:default:limitsCpu=1,requestsMemory=",
 		"GROUP:empty:pod:a pod",
 	} {
 		if containsExact(got, unwanted) {

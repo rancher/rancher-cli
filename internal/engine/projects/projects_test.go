@@ -3,6 +3,8 @@ package projects
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -247,6 +249,143 @@ func TestCreateProjectQuotaMalformedPairIsValidation(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	}
+}
+
+// TestCreateProjectContainerDefaultResourceLimitWritesSpec asserts the flag
+// writes all four keys flat under spec.containerDefaultResourceLimit (no
+// "limit" wrapper, unlike the quota specs) and needs no quota flag.
+func TestCreateProjectContainerDefaultResourceLimitWritesSpec(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := projectCmdFor(t, client)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{
+		"cluster":                          "c-x",
+		"container-default-resource-limit": "limitsCpu=100m,limitsMemory=64Mi,requestsCpu=50m,requestsMemory=32Mi",
+	}, a: []string{"web"}})
+	require.NoError(t, err)
+	assert.Equal(t, []bool{true}, client.dryRuns, "the field reaches the server-side dry-run")
+
+	got, found, err := unstructured.NestedStringMap(client.created.Object, "spec", "containerDefaultResourceLimit")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, map[string]string{
+		"limitsCpu": "100m", "limitsMemory": "64Mi", "requestsCpu": "50m", "requestsMemory": "32Mi",
+	}, got)
+	_, found, _ = unstructured.NestedMap(client.created.Object, "spec", "resourceQuota")
+	assert.False(t, found, "the container limit does not imply a quota")
+}
+
+func TestCreateProjectWithoutContainerLimitFlagHasNoContainerLimit(t *testing.T) {
+	t.Parallel()
+	client := &recClient{}
+	cmd := projectCmdFor(t, client)
+
+	_, _, err := planProject(t, cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{"web"}})
+	require.NoError(t, err)
+	_, found, _ := unstructured.NestedFieldNoCopy(client.created.Object, "spec", "containerDefaultResourceLimit")
+	assert.False(t, found, "no flag means no empty container limit")
+}
+
+// TestCreateProjectContainerLimitBadInputIsValidation asserts an unknown or
+// malformed pair fails before any request, and an unknown key's message
+// names the valid keys.
+func TestCreateProjectContainerLimitBadInputIsValidation(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, value string
+		wantInMsg   []string
+	}{
+		{"unknown key, wrong case", "limitsCPU=1", []string{`"limitsCPU"`, "limitsCpu, limitsMemory, requestsCpu, requestsMemory"}},
+		{"quota-only key", "pods=10", []string{`"pods"`, "allowed keys"}},
+		{"unknown after a valid key", "limitsCpu=1,storage=1Gi", []string{`"storage"`}},
+		{"missing equals", "limitsCpu", []string{"malformed", `"limitsCpu"`}},
+		{"empty key", "=1", []string{"malformed"}},
+		{"empty value", "limitsCpu=", []string{"malformed"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := &recClient{}
+			cmd := projectCmdFor(t, client)
+			_, _, err := planProject(t, cmd, in{s: map[string]string{
+				"cluster":                          "c-x",
+				"container-default-resource-limit": tc.value,
+			}, a: []string{"web"}})
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			for _, want := range tc.wantInMsg {
+				require.ErrorContains(t, err, want)
+			}
+			assert.Empty(t, client.dryRuns, "validation fails before any request")
+		})
+	}
+}
+
+// TestCreateProjectContainerLimitDocs asserts the flag's help line stays
+// short while the schema-only command desc names every accepted key.
+func TestCreateProjectContainerLimitDocs(t *testing.T) {
+	t.Parallel()
+	d := NewCreate(stubFactory{}).Describe()
+	i := slices.IndexFunc(d.Flags, func(a runtime.ArgSpec) bool { return a.Name == "container-default-resource-limit" })
+	require.GreaterOrEqual(t, i, 0)
+	assert.Equal(t, "default container requests and limits as `key=value`", d.Flags[i].Desc)
+	for _, k := range ContainerDefaultResourceLimitKeys() {
+		assert.Contains(t, d.Desc, k, "the schema desc names every key")
+	}
+	assert.Contains(t, d.Desc, "--container-default-resource-limit")
+}
+
+// TestKeyValueFlagsRefuseARepeatedKey asserts every flag on the shared
+// key=value parser refuses a key given twice, naming the flag and the key,
+// before any request.
+func TestKeyValueFlagsRefuseARepeatedKey(t *testing.T) {
+	t.Parallel()
+	projectCases := []struct {
+		flag  string
+		flags map[string]string
+	}{
+		{"quota-limit", map[string]string{
+			"quota-limit":             "limitsCpu=1,limitsCpu=2",
+			"namespace-default-quota": "limitsCpu=1",
+		}},
+		{"namespace-default-quota", map[string]string{
+			"quota-limit":             "limitsCpu=2",
+			"namespace-default-quota": "limitsCpu=1,limitsMemory=1Gi,limitsCpu=2",
+		}},
+		{"container-default-resource-limit", map[string]string{
+			"container-default-resource-limit": "limitsCpu=1,limitsCpu=2",
+		}},
+	}
+	for _, tc := range projectCases {
+		t.Run("create project --"+tc.flag, func(t *testing.T) {
+			t.Parallel()
+			client := &recClient{}
+			flags := map[string]string{"cluster": "c-x"}
+			maps.Copy(flags, tc.flags)
+			_, _, err := planProject(t, projectCmdFor(t, client), in{s: flags, a: []string{"web"}})
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			require.ErrorContains(t, err, "--"+tc.flag+` names the key "limitsCpu" more than once`)
+			assert.Empty(t, client.dryRuns, "refused before any request")
+		})
+	}
+
+	t.Run("create secret --from-literal", func(t *testing.T) {
+		t.Parallel()
+		client := &memberClient{}
+		_, _, err := planMember(t, t.Context(), NewCreateSecret(stubFactory{c: client}), memberIn{
+			s: map[string]string{"namespace": "team-a", "cluster": "c-x", "from-literal": "token=a,other=,token=b"},
+			a: []string{"app-secret"},
+		})
+		var ce *clierr.Error
+		require.ErrorAs(t, err, &ce)
+		assert.Equal(t, clierr.CodeValidation, ce.Code)
+		require.ErrorContains(t, err, `--from-literal names the key "token" more than once`)
+		assert.Nil(t, client.created, "refused before any request")
+	})
 }
 
 // memberClient fakes the pieces create-secret exercises: List (projects,

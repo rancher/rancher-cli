@@ -389,6 +389,33 @@ func levelFlags(cmd *ucli.Command) map[string]bool {
 	return flags
 }
 
+// onceFlagNames maps every name and alias of a flag cmd itself declares
+// with urfave's OnlyOnce to the flag's name. urfave refuses a second
+// instance of such a flag while parsing, before the command runs. The
+// adapter sets OnlyOnce only on a leaf's own flags (runtime.ArgSpec.Once),
+// from the three flag types it builds.
+func onceFlagNames(cmd *ucli.Command) map[string]string {
+	names := map[string]string{}
+	for _, f := range cmd.Flags {
+		var once bool
+		switch f := f.(type) {
+		case *ucli.StringFlag:
+			once = f.OnlyOnce
+		case *ucli.BoolFlag:
+			once = f.OnlyOnce
+		case *ucli.StringSliceFlag:
+			once = f.OnlyOnce
+		}
+		if !once {
+			continue
+		}
+		for _, name := range f.Names() {
+			names[name] = f.Names()[0]
+		}
+	}
+	return names
+}
+
 // tailWords scans tail, the words typed after a command path, under flags
 // (see levelFlags). It returns the words that are neither flags nor the
 // value of a flag that takes one, how many of those words precede the first
@@ -439,8 +466,10 @@ type tailWord struct {
 	// takes as typed.
 	text string
 	kind wordKind
-	// For a flagWord: whether flags holds it, whether it takes a value,
-	// and whether its value is joined to it by "=".
+	// For a flagWord: the name typed (dashes and any joined value cut),
+	// whether flags holds it, whether it takes a value, and whether its
+	// value is joined to it by "=".
+	name                        string
 	defined, takesValue, joined bool
 }
 
@@ -476,7 +505,7 @@ func scanTail(tail []string, flags map[string]bool) []tailWord {
 		}
 		name, _, joined := strings.Cut(strings.TrimLeft(word, "-"), "=")
 		takesValue, defined := flags[name]
-		out = append(out, tailWord{text: word, kind: flagWord, defined: defined, takesValue: takesValue, joined: joined})
+		out = append(out, tailWord{text: word, kind: flagWord, name: name, defined: defined, takesValue: takesValue, joined: joined})
 		if takesValue && !joined {
 			i++
 			if i < len(tail) {

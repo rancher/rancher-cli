@@ -81,6 +81,12 @@ type ArgSpec struct {
 	Aliases  []string `json:"aliases,omitempty"` // short flag forms (e.g. "f" for --filename)
 	Desc     string   `json:"desc,omitempty"`    // schema-manifest documentation; optional
 	Env      []string `json:"env,omitempty"`     // env vars that back this flag, if any
+	// Once refuses the flag given more than once, as a VALIDATION error
+	// before Plan, instead of keeping only the last value: for a flag whose
+	// one value carries several entries (key=value pairs), a second instance
+	// would otherwise drop the first silently. Go-only; the manifest does
+	// not carry it.
+	Once bool `json:"-"`
 	// MissingMessage and MissingHint replace the generic "--<name> is
 	// required" refusal when a required flag is absent: the message says
 	// what the value is and where to find it, the hint is one paste-valid

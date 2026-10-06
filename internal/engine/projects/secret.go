@@ -22,7 +22,7 @@ const projectScopedSecretLabel = "management.cattle.io/project-scoped-secret"
 // secret entry). Values containing a comma can't be expressed this way -
 // the VALIDATION message points at create resource -f instead.
 func parseLiteralPairs(s string) (map[string]any, error) {
-	return parsePairs(s, true, func(pair string) error {
+	return parsePairs(s, "from-literal", true, func(pair string) error {
 		return clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("malformed --from-literal pair %q; pass key=value pairs, or for values containing a comma use `create resource -f` instead", pair))
 	})
@@ -52,7 +52,7 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 			{Name: "namespace", Type: "string", Desc: "`namespace` for the secret"},
 			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
 			runtime.ProjectFlag(false, "create a project-scoped secret in this project's backing namespace; Rancher copies it into every namespace of the project (not with --namespace)"),
-			{Name: "from-literal", Type: "string", Desc: "secret data as `key=value` pairs (comma-separated)"},
+			{Name: "from-literal", Type: "string", Once: true, Desc: "secret data as `key=value` pairs (comma-separated)"},
 			{Name: "type", Type: "string", Desc: "secret `type` (default Opaque)"},
 		},
 		Examples: []string{

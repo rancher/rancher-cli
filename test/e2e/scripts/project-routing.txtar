@@ -83,6 +83,14 @@ jsonquery stdout data.spec.resourceQuota.limit.limitsMemory 4Gi
 jsonquery stdout data.spec.namespaceDefaultResourceQuota.limit.limitsCpu 1
 jsonquery stdout data.spec.namespaceDefaultResourceQuota.limit.limitsMemory 2Gi
 
+# --container-default-resource-limit writes the flat ContainerResourceLimit.
+exec rancher create project web-limit --cluster testcluster --container-default-resource-limit limitsCpu=100m,limitsMemory=64Mi,requestsCpu=50m,requestsMemory=32Mi --apply
+exec rancher get project web-limit --cluster testcluster -o json
+jsonquery stdout data.spec.containerDefaultResourceLimit.limitsCpu 100m
+jsonquery stdout data.spec.containerDefaultResourceLimit.limitsMemory 64Mi
+jsonquery stdout data.spec.containerDefaultResourceLimit.requestsCpu 50m
+jsonquery stdout data.spec.containerDefaultResourceLimit.requestsMemory 32Mi
+
 -- cm-member.yaml --
 apiVersion: v1
 kind: ConfigMap
