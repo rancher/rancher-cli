@@ -455,8 +455,8 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 	schemaNames := make([]string, 0)
 	for _, gf := range runtime.GlobalFlags() {
 		name := gf.Name
-		if idx := strings.LastIndex(name, "--"); idx >= 0 {
-			schemaNames = append(schemaNames, name[idx+2:])
+		if _, after, found := strings.CutLast(name, "--"); found {
+			schemaNames = append(schemaNames, after)
 		}
 	}
 	sort.Strings(schemaNames)

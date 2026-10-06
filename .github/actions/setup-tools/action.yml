@@ -38,3 +38,14 @@ runs:
         tar -xJf /tmp/shellcheck.tar.xz -C /tmp
         install -m 0755 "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "$(go env GOPATH)/bin/shellcheck"
         shellcheck --version
+    - name: Show completion shell versions
+      shell: bash
+      # The completion tests need bash, zsh, fish and pwsh and fail, not
+      # skip, when CI is set and one is missing. zsh and fish come from apt
+      # above; the runner image ships bash and pwsh, so this step prints
+      # their versions and fails here, by name, if an image drops one.
+      run: |
+        bash --version | head -n 1
+        zsh --version
+        fish --version
+        pwsh --version

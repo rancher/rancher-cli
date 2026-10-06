@@ -25,6 +25,33 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: ./.github/actions/setup-tools
+      # The completion script tests run each script under its real shell
+      # (bash, zsh, fish, pwsh). With CI set a missing shell fails its
+      # test, so this step asserts the other half: no test skipped, and
+      # every one of the four shells used by at least one test. It prints
+      # which shell binary each test used.
+      - name: Completion shell tests
+        run: |
+          log="${RUNNER_TEMP}/completions.log"
+          if ! go test -count=1 -v ./internal/cli/completions/ > "$log" 2>&1; then
+            cat "$log"
+            exit 1
+          fi
+          grep -E '^(--- |ok)' "$log"
+          echo "shells used:"
+          grep -ho 'shell [a-z]*: .*' "$log" | sort | uniq -c
+          status=0
+          for shell in bash zsh fish pwsh; do
+            if ! grep -q "shell ${shell}: " "$log"; then
+              echo "no completion test used ${shell}" >&2
+              status=1
+            fi
+          done
+          if grep -E '^\s*--- SKIP' "$log"; then
+            echo "a completion shell test skipped" >&2
+            status=1
+          fi
+          exit "$status"
       # The shell gate (syntax + shellcheck over install.sh and scripts/*)
       # lives inside make validate, so the hook and CI share one definition.
       - run: make validate
@@ -150,3 +177,8 @@ jobs:
           key: envtest-${{ runner.os }}-${{ hashFiles('scripts/e2e') }}
       - run: bash scripts/e2e
         timeout-minutes: 25
+      # The pwsh completion script runs under the runner's own PowerShell.
+      # No -race: the tests build cmd/rancher themselves, and without it the
+      # compile reuses the Go build cache the e2e step above filled.
+      - run: go test -count=1 -v -run TestPwsh ./internal/cli/completions/
+        timeout-minutes: 10

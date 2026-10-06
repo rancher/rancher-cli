@@ -28,14 +28,12 @@ import (
 // payload verbatim as a single element. A minimal _get_comp_words_by_ref stub
 // stands in for the bash-completion package a bare environment need not have;
 // it only resolves cur/prev/words/cword and cannot touch the injection
-// surface. Skips only where bash itself is absent.
+// surface. Skips only where bash itself is absent
+// (fails instead when CI is set).
 func TestBashCompletionScriptExecutesSafely(t *testing.T) {
 	t.Parallel()
 
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash not found on PATH; skipping live bash completion execution test")
-	}
+	bash := requireShell(t, "bash")
 
 	scriptPath := filepath.Join(t.TempDir(), "bash.sh")
 	if err := os.WriteFile(scriptPath, bashScript, 0o644); err != nil {
@@ -126,14 +124,11 @@ func containsExact(xs []string, want string) bool {
 // __rancher_bash_autocomplete against a fake `rancher` that emits a $(...)
 // candidate, with a minimal _get_comp_words_by_ref stub so no bash-completion
 // package is required, and asserts the candidate is offered literally without
-// executing. Skips only where bash is absent.
+// executing. Skips only where bash is absent (fails instead when CI is set).
 func TestBashCompletionDoesNotExecuteServerCandidates(t *testing.T) {
 	t.Parallel()
 
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash not found on PATH; skipping live bash completion execution test")
-	}
+	bash := requireShell(t, "bash")
 
 	scriptPath := filepath.Join(t.TempDir(), "bash.sh")
 	if err := os.WriteFile(scriptPath, bashScript, 0o644); err != nil {

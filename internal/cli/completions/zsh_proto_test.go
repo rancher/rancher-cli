@@ -12,13 +12,11 @@ import (
 )
 
 // zshProtoArgv runs the v2 zsh script with the given words array and returns
-// the argv the recorder binary received. Skips if zsh is not on PATH.
+// the argv the recorder binary received. Skips if zsh is not on PATH
+// (fails instead when CI is set).
 func zshProtoArgv(t *testing.T, words []string) []string {
 	t.Helper()
-	zsh, err := exec.LookPath("zsh")
-	if err != nil {
-		t.Skip("zsh not found on PATH; skipping zsh request-shape test")
-	}
+	zsh := requireShell(t, "zsh")
 
 	scriptPath := filepath.Join(t.TempDir(), "zsh.sh")
 	if err := os.WriteFile(scriptPath, zshScript, 0o644); err != nil {
@@ -65,10 +63,7 @@ _rancher
 // command line being edited.
 func TestZshStderrNotLeakedToTerminal(t *testing.T) {
 	t.Parallel()
-	zsh, err := exec.LookPath("zsh")
-	if err != nil {
-		t.Skip("zsh not found on PATH; skipping zsh stderr test")
-	}
+	zsh := requireShell(t, "zsh")
 
 	scriptPath := filepath.Join(t.TempDir(), "zsh.sh")
 	if err := os.WriteFile(scriptPath, zshScript, 0o644); err != nil {

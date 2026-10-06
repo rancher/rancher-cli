@@ -18,12 +18,10 @@ import (
 // executables that begin with it, every candidate beginning with the word,
 // so bash's own filter keeps them and it never falls back to file names;
 // a path word gets no candidate, so bash's -o default runs its file
-// completion instead. Skips where bash is absent.
+// completion instead. Skips where bash is absent
+// (fails instead when CI is set).
 func TestBashExecCommandCompletion(t *testing.T) {
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash not found on PATH")
-	}
+	bash := requireShell(t, "bash")
 	binDir := t.TempDir()
 	build := exec.CommandContext(t.Context(), "go", "build", "-o", filepath.Join(binDir, "rancher"), "github.com/rancher/rancher-cli/cmd/rancher")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")

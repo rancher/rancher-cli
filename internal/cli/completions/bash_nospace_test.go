@@ -22,12 +22,11 @@ import (
 func nospaceBashes(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	if p, err := exec.LookPath("bash"); err == nil {
-		if resolved, err := filepath.EvalSymlinks(p); err == nil {
-			p = resolved
-		}
-		out = append(out, p)
+	p := requireShell(t, "bash")
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		p = resolved
 	}
+	out = append(out, p)
 	const stock = "/bin/bash"
 	if fi, err := os.Stat(stock); err == nil && fi.Mode()&0o111 != 0 {
 		dup := false
@@ -39,9 +38,6 @@ func nospaceBashes(t *testing.T) []string {
 		if !dup {
 			out = append(out, stock)
 		}
-	}
-	if len(out) == 0 {
-		t.Skip("no bash found; skipping live bash completion test")
 	}
 	return out
 }
@@ -322,7 +318,8 @@ func TestBash3FallbackGeneratesFileCandidates(t *testing.T) {
 // available the script must NOT take the self-generated path - COMPREPLY
 // stays empty so readline's own -o default filename completion (with its
 // native quoting, tilde handling, and the compopt-restored space) owns the
-// fallback exactly as before. Skips when no harness bash has compopt.
+// fallback exactly as before. Skips when no harness bash has compopt
+// (fails instead when CI is set).
 func TestModernBashKeepsNativeFallback(t *testing.T) {
 	t.Parallel()
 
@@ -344,6 +341,6 @@ func TestModernBashKeepsNativeFallback(t *testing.T) {
 		})
 	}
 	if !ran {
-		t.Skip("no bash with compopt available; modern-fallback side not exercisable")
+		shellMissing(t, "no bash with compopt available; modern-fallback side not exercisable")
 	}
 }

@@ -133,17 +133,6 @@ type tabLine struct {
 	current string
 }
 
-// shellOrSkip returns the path of the shell, or skips the test when the
-// machine has none. It runs before anything is built.
-func shellOrSkip(t *testing.T, name string) string {
-	t.Helper()
-	path, err := exec.LookPath(name)
-	if err != nil {
-		t.Skipf("%s not found on PATH", name)
-	}
-	return path
-}
-
 // tabAfterDoubleDash presses TAB on the lines a completion script must
 // handle after a "--", through tabs, the shell driver for the script under
 // test, which returns the candidates for each line in order. A line that would
@@ -326,7 +315,7 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
 // binary, on lines typed after a "--": completion never runs the command.
 func TestBashTabAfterDoubleDashRunsNothing(t *testing.T) {
 	t.Parallel()
-	bash := shellOrSkip(t, "bash")
+	bash := requireShell(t, "bash")
 	tabAfterDoubleDash(t, eachLine(bashTab(bash)))
 }
 
@@ -334,7 +323,7 @@ func TestBashTabAfterDoubleDashRunsNothing(t *testing.T) {
 // TestBashTabAfterDoubleDashRunsNothing.
 func TestZshTabAfterDoubleDashRunsNothing(t *testing.T) {
 	t.Parallel()
-	zsh := shellOrSkip(t, "zsh")
+	zsh := requireShell(t, "zsh")
 	tabAfterDoubleDash(t, eachLine(zshTab(zsh)))
 }
 
@@ -342,7 +331,7 @@ func TestZshTabAfterDoubleDashRunsNothing(t *testing.T) {
 // TestBashTabAfterDoubleDashRunsNothing.
 func TestFishTabAfterDoubleDashRunsNothing(t *testing.T) {
 	t.Parallel()
-	fish := shellOrSkip(t, "fish")
+	fish := requireShell(t, "fish")
 	tabAfterDoubleDash(t, eachLine(fishTab(fish)))
 }
 
@@ -350,9 +339,6 @@ func TestFishTabAfterDoubleDashRunsNothing(t *testing.T) {
 // TestBashTabAfterDoubleDashRunsNothing.
 func TestPwshTabAfterDoubleDashRunsNothing(t *testing.T) {
 	t.Parallel()
-	shell, ok := findPowerShell(t)
-	if !ok {
-		t.Skip("neither pwsh nor powershell found on PATH")
-	}
+	shell := requireShell(t, "pwsh", "powershell")
 	tabAfterDoubleDash(t, pwshTabs(shell))
 }

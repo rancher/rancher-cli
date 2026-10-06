@@ -13,13 +13,10 @@ import (
 
 // bashProtoArgv runs the v2 bash script with the given COMP_WORDS and COMP_CWORD
 // and returns the argv vector the recorder binary received (excluding the binary
-// name itself). Skips if bash is not on PATH.
+// name itself). Skips if bash is not on PATH (fails instead when CI is set).
 func bashProtoArgv(t *testing.T, compWords []string, compCword int) []string {
 	t.Helper()
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash not found on PATH; skipping bash request-shape test")
-	}
+	bash := requireShell(t, "bash")
 
 	scriptPath := filepath.Join(t.TempDir(), "bash.sh")
 	if err := os.WriteFile(scriptPath, bashScript, 0o644); err != nil {

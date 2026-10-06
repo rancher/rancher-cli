@@ -13,12 +13,10 @@ import (
 // TestPwshCompletesFilesForAnExecCommandPath asserts PowerShell answers
 // rancher kubeconfig --exec-command ./ with files from the working
 // directory: the binary returns nothing for a path word, and PowerShell
-// falls back to its own path completion. Skips without PowerShell.
+// falls back to its own path completion. Skips without PowerShell
+// (fails instead when CI is set).
 func TestPwshCompletesFilesForAnExecCommandPath(t *testing.T) {
-	shell, ok := findPowerShell(t)
-	if !ok {
-		t.Skip("neither pwsh nor powershell found on PATH")
-	}
+	shell := requireShell(t, "pwsh", "powershell")
 	binDir := t.TempDir()
 	binName := "rancher"
 	if runtime.GOOS == "windows" {

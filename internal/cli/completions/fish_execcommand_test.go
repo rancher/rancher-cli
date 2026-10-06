@@ -14,12 +14,10 @@ import (
 // TestFishOffersFilesOnlyForAnExecCommandPath asserts the fish script's
 // one file rule fires for a path word after --exec-command - one with a /
 // or a leading ~, in either the space or the = form - and for nothing
-// else, so a bare word keeps the binary's PATH names. Skips without fish.
+// else, so a bare word keeps the binary's PATH names. Skips without fish
+// (fails instead when CI is set).
 func TestFishOffersFilesOnlyForAnExecCommandPath(t *testing.T) {
-	fish, err := exec.LookPath("fish")
-	if err != nil {
-		t.Skip("fish not found on PATH")
-	}
+	fish := requireShell(t, "fish")
 	scriptPath := filepath.Join(t.TempDir(), "fish.sh")
 	if err := os.WriteFile(scriptPath, fishScript, 0o644); err != nil {
 		t.Fatal(err)

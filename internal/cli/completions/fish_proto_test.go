@@ -12,13 +12,11 @@ import (
 )
 
 // fishProtoArgv runs the v2 fish script with the given simulated commandline
-// (opc words = allButLast, ct = currentWord). Skips if fish is not on PATH.
+// (opc words = allButLast, ct = currentWord). Skips if fish is not on PATH
+// (fails instead when CI is set).
 func fishProtoArgv(t *testing.T, opcWords []string, ctWord string) []string {
 	t.Helper()
-	fish, err := exec.LookPath("fish")
-	if err != nil {
-		t.Skip("fish not found on PATH; skipping fish request-shape test")
-	}
+	fish := requireShell(t, "fish")
 
 	scriptPath := filepath.Join(t.TempDir(), "fish.sh")
 	if err := os.WriteFile(scriptPath, fishScript, 0o644); err != nil {
@@ -146,13 +144,10 @@ func TestFishProtoV2RequestShape(t *testing.T) {
 
 // fishScriptOutput runs __rancher_perform_completion and returns the lines it
 // prints to stdout. The fake rancher binary emits candidateLines verbatim.
-// Skips if fish is not on PATH.
+// Skips if fish is not on PATH (fails instead when CI is set).
 func fishScriptOutput(t *testing.T, opcWords []string, ctWord string, candidateLines []string) []string {
 	t.Helper()
-	fish, err := exec.LookPath("fish")
-	if err != nil {
-		t.Skip("fish not found on PATH; skipping fish candidate-output test")
-	}
+	fish := requireShell(t, "fish")
 
 	scriptPath := filepath.Join(t.TempDir(), "fish.sh")
 	if err := os.WriteFile(scriptPath, fishScript, 0o644); err != nil {

@@ -19,13 +19,10 @@ import (
 // _describe call carried the trailing compadd empty-suffix options (-S with
 // an empty string), "default" otherwise. The fake rancher emits
 // candidateLines verbatim. Returns "GROUP:<suffix>:<candidate>" lines.
-// Skips if zsh is not on PATH.
+// Skips if zsh is not on PATH (fails instead when CI is set).
 func zshDescribeGroups(t *testing.T, words []string, candidateLines []string) []string {
 	t.Helper()
-	zsh, err := exec.LookPath("zsh")
-	if err != nil {
-		t.Skip("zsh not found on PATH; skipping zsh suffix-group test")
-	}
+	zsh := requireShell(t, "zsh")
 
 	scriptPath := filepath.Join(t.TempDir(), "zsh.sh")
 	if err := os.WriteFile(scriptPath, zshScript, 0o644); err != nil {

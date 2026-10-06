@@ -15,18 +15,6 @@ import (
 	"testing"
 )
 
-// findPowerShell prefers pwsh (PowerShell 7+, cross-platform); Windows PowerShell
-// 5.1 (powershell.exe) is the fallback so this still runs on older Windows images.
-func findPowerShell(t *testing.T) (string, bool) {
-	t.Helper()
-	for _, name := range []string{"pwsh", "powershell"} {
-		if path, err := exec.LookPath(name); err == nil {
-			return path, true
-		}
-	}
-	return "", false
-}
-
 func psSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
@@ -37,15 +25,11 @@ func psSingleQuote(s string) string {
 // a real TAB keypress invokes). It is the durable regression guard for the
 // command-injection fix - a unit test alone can't prove the fix holds
 // through PowerShell's own completer dispatch, only a live shell can. Skips
-// only where neither pwsh nor powershell is reachable at all (a minimal
-// container or self-hosted runner without either installed) - GitHub's
-// hosted ubuntu-latest image ships pwsh by default, so this is expected to
-// run rather than skip on this repo's own CI.
+// only where neither pwsh nor powershell is on PATH; with CI set it fails
+// instead. pwsh (PowerShell 7+, cross-platform) is preferred over Windows
+// PowerShell 5.1 (powershell.exe).
 func TestPwshCompletionScriptExecutesSafely(t *testing.T) {
-	shell, ok := findPowerShell(t)
-	if !ok {
-		t.Skip("neither pwsh nor powershell found on PATH; skipping live PowerShell completion execution test")
-	}
+	shell := requireShell(t, "pwsh", "powershell")
 
 	binDir := t.TempDir()
 	binName := "rancher"
@@ -127,10 +111,7 @@ Write-Output ('MARKER:' + (Test-Path %s))
 // correct argv vector: proto sentinel, words before cursor,
 // --rancher-completion-cur=<word>, --generate-shell-completion.
 func TestPwshProtoV2RequestShape(t *testing.T) {
-	shell, ok := findPowerShell(t)
-	if !ok {
-		t.Skip("neither pwsh nor powershell found on PATH; skipping pwsh request-shape test")
-	}
+	shell := requireShell(t, "pwsh", "powershell")
 	binDir := buildRancherRecorder(t)
 	scriptPath := filepath.Join(t.TempDir(), "pwsh.ps1")
 	if err := os.WriteFile(scriptPath, pwshScript, 0o644); err != nil {
@@ -281,10 +262,7 @@ func buildRancherRecorder(t *testing.T) string {
 // [--rancher-completion-proto=2, get, <payload>,
 // --rancher-completion-cur=po, --generate-shell-completion].
 func TestPwshCompletionDeliversPayloadAsLiteralArgument(t *testing.T) {
-	shell, ok := findPowerShell(t)
-	if !ok {
-		t.Skip("neither pwsh nor powershell found on PATH")
-	}
+	shell := requireShell(t, "pwsh", "powershell")
 	binDir := buildRancherRecorder(t)
 	scriptPath := filepath.Join(t.TempDir(), "pwsh.ps1")
 	if err := os.WriteFile(scriptPath, pwshScript, 0o644); err != nil {
@@ -339,10 +317,7 @@ $null = TabExpansion2 -inputScript $line -cursorColumn $line.Length
 // literal-wildcard prefix matching (a '*' in the typed word must not act as a
 // glob).
 func TestPwshCompletionRespectsCursorAndLiteralWildcards(t *testing.T) {
-	shell, ok := findPowerShell(t)
-	if !ok {
-		t.Skip("neither pwsh nor powershell found on PATH")
-	}
+	shell := requireShell(t, "pwsh", "powershell")
 	binDir := t.TempDir()
 	binName := "rancher"
 	if runtime.GOOS == "windows" {
