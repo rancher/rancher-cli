@@ -50,16 +50,19 @@ func levelCommands(t *testing.T) map[string]*ucli.Command {
 // (`-ojson`), followed by a global flag, or followed by a flag that waits for
 // its value); flags the level accepts do not (a global flag with a value in
 // either spelling, --help and -h); --version and -v are accepted at the root
-// only; a bare `-` and a number like `-1` are words, which reject the line
-// once there are more of them than the level takes positional arguments:
+// only; a bare `-` rejects the line at every level, alone or after other
+// flags, since no word after it is read; a number like `-1` is a word,
+// which rejects the line once there are more words than the level takes
+// positional arguments:
 // none at the root and groups, the declared Args at a leaf (as many plain
 // words as a leaf declares are accepted, one more is rejected). A word
 // typed after a bool flag that accepts it as its value rejects the line at
 // every level, also when the level takes a positional argument; the same
 // word joined (`--debug=true`), a word the flag does not accept, and a
-// word after `--` are counted as words. A bool flag typed with "=" and an
-// empty value (`--debug=`) rejects the line at every level, after the
-// command path or ahead of it; after `--` it is a word. The decision is
+// word after `--` (a `-` there too) are counted as words; a `-` as a
+// flag's value is a value. A bool flag typed with "=" and an empty value
+// (`--debug=`) and a bare `-` reject the line at every level, after the
+// command path or ahead of it; after `--` each is a word. The decision is
 // made on the tree without running a completion, so every level is covered
 // cheaply; the end-to-end sweep in completion_levelflags_test.go runs a few
 // rows per level through urfave.
@@ -76,6 +79,8 @@ func TestLineRejectedAtEveryLevel(t *testing.T) {
 		"undefined flag then a pending value": {"--bogus", "-o"},
 		"global flag then an undefined flag":  {"-o", "json", "--bogus"},
 		"bare dash then an undefined flag":    {"-", "--bogus"},
+		"bare dash":                           {"-"},
+		"a global flag then a bare dash":      {"-o", "json", "-"},
 		"bool flag then a value it accepts":   {"--debug", "true"},
 		"bool flag then a numeric bool value": {"--debug", "0"},
 		"bool flag with an empty value":       {"--debug="},
@@ -89,9 +94,9 @@ func TestLineRejectedAtEveryLevel(t *testing.T) {
 		"bool flag joined with false":      {"--debug=false"},
 		"help flag":                        {"--help"},
 		"short help flag":                  {"-h"},
+		"a dash as a flag's value":         {"--project", "-"},
 	}
 	words := map[string][]string{
-		"bare dash":            {"-"},
 		"number":               {"-1"},
 		"words after a number": {"-1", "--bogus"},
 	}
@@ -131,10 +136,12 @@ func TestLineRejectedAtEveryLevel(t *testing.T) {
 		// An empty bool value typed ahead of the command path rejects the
 		// line too.
 		assert.True(t, lineRejected(node, append([]string{"--debug="}, line(nil)...), maxWords), "rancher --debug= %s is rejected", path)
+		// So does a bare dash, after which the command path is not read.
+		assert.True(t, lineRejected(node, append([]string{"-"}, line(nil)...), maxWords), "rancher - %s is rejected", path)
 		// One word each: a bool value joined to its flag, a word the bool
 		// flag does not accept, and a bool value or an empty bool value
 		// after "--".
-		for _, typed := range [][]string{{"--debug=true", "x"}, {"--debug", "maybe"}, {"--debug", "--", "true"}, {"--", "--debug="}} {
+		for _, typed := range [][]string{{"--debug=true", "x"}, {"--debug", "maybe"}, {"--debug", "--", "true"}, {"--", "--debug="}, {"--", "-"}} {
 			assert.Equal(t, maxWords < 1, lineRejected(node, line(typed), maxWords),
 				"rancher %s %v: one word, rejected only past the %d positional arguments the level takes", path, typed, maxWords)
 		}

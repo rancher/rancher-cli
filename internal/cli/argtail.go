@@ -425,8 +425,9 @@ func onceFlagNames(cmd *ucli.Command) map[string]string {
 // words after it are all words. So does a word whose byte after the dash
 // is not a letter (`-1`, or a dash before a multi-byte character), which
 // urfave reads as a value, with the words after it; the test is on that
-// one byte, as urfave makes it. Each word is classified with the
-// whitespace around it trimmed, as urfave reads it (` --apply=` is a
+// one byte, as urfave makes it. A bare "-" is a word, and urfave reads
+// no word after it, so none of those counts. Each word is classified with
+// the whitespace around it trimmed, as urfave reads it (` --apply=` is a
 // flag, `--yes= ` has an empty value). It is the one scan of a tail, for the
 // check that a line is rejected and for the hint built from the words typed
 // after a mistyped `help`.
@@ -452,18 +453,19 @@ func tailWords(tail []string, flags map[string]bool) (words []string, beforeUnde
 type wordKind int
 
 const (
-	plainWord wordKind = iota // neither a flag nor a flag's value
-	flagWord                  // a flag, with its value when joined by "="
-	valueWord                 // the separate value of the flag before it
-	endWord                   // the "--" that ends the flags
+	plainWord   wordKind = iota // neither a flag nor a flag's value
+	flagWord                    // a flag, with its value when joined by "="
+	valueWord                   // the separate value of the flag before it
+	endWord                     // the "--" that ends the flags
+	droppedWord                 // a word after a bare "-", which urfave never reads
 )
 
 // tailWord is one word of a tail as scanTail reads it.
 type tailWord struct {
 	// text is the word as urfave reads it: trimmed of the whitespace
 	// around it, except a word that is only whitespace, the separate value
-	// of a flag, and the words after the end of the flags, which urfave
-	// takes as typed.
+	// of a flag, the words after the end of the flags, which urfave takes
+	// as typed, and a droppedWord, kept as typed.
 	text string
 	kind wordKind
 	// For a flagWord: the name typed (dashes and any joined value cut),
@@ -471,6 +473,9 @@ type tailWord struct {
 	// value is joined to it by "=".
 	name                        string
 	defined, takesValue, joined bool
+	// For a plainWord: whether it is a bare "-", where urfave stops
+	// reading the line. urfave keeps it as a positional argument.
+	dash bool
 }
 
 // scanTail classifies every word of tail under flags, by the rules
@@ -493,6 +498,13 @@ func scanTail(tail []string, flags map[string]bool) []tailWord {
 		if word == "--" {
 			out = append(out, tailWord{text: word, kind: endWord})
 			plain(tail[i+1:])
+			break
+		}
+		if word == "-" {
+			out = append(out, tailWord{text: word, kind: plainWord, dash: true})
+			for _, w := range tail[i+1:] {
+				out = append(out, tailWord{text: w, kind: droppedWord})
+			}
 			break
 		}
 		if len(word) < 2 || word[0] != '-' {
@@ -588,6 +600,35 @@ func emptyBoolFlags(argv []string, c *ucli.Command) (flags []string, ok bool) {
 		return nil, false
 	}
 	return flags, true
+}
+
+// droppedWords is runtime.DroppedWords for c run as argv (the command line
+// after the program name): the words typed after a bare "-", which urfave
+// never reads, as typed. c is the command urfave stopped at: a leaf, or a
+// root or group reached with no command name read. It offers nothing
+// unless the positional arguments it finds for c are the ones urfave
+// parsed, so the words it reports are the ones dropped from the command
+// that runs.
+func droppedWords(argv []string, c *ucli.Command) (words []string, ok bool) {
+	_, typed := scanLine(argv, c)
+	var args []string
+	for _, w := range typed {
+		switch w.kind {
+		case plainWord:
+			args = append(args, w.text)
+		case droppedWord:
+			words = append(words, w.text)
+		}
+	}
+	if len(words) == 0 || !slices.Equal(args, c.Args().Slice()) {
+		return nil, false
+	}
+	return words, true
+}
+
+// hasBareDash reports whether words, read by scanTail, hold a bare "-".
+func hasBareDash(words []tailWord) bool {
+	return slices.ContainsFunc(words, func(w tailWord) bool { return w.dash })
 }
 
 // isEmptyBool reports whether w is a bool flag the command accepts, typed

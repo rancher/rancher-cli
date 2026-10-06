@@ -564,12 +564,14 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 // neither a flag nor a flag's value, or a word typed after a bool flag
 // that accepts it as its value (the command pipeline refuses it in any
 // position). Anywhere on the line: a bool flag typed with "=" and an empty
-// value (`--dry-run=`), which the command pipeline refuses, and a second
+// value (`--dry-run=`), which the command pipeline refuses, a second
 // instance of a flag that may be given once (urfave fails with "can't
-// duplicate this flag"). maxWords is 0 at the root or a group (urfave
-// enters a subcommand that word names, so it names none) and the number
-// of positional arguments a leaf declares. A rejected line is offered
-// nothing, and no request is made for it.
+// duplicate this flag"), and a bare "-": urfave reads no word after it,
+// so the word being completed would be dropped, and a line with a word
+// after a bare "-" is refused. maxWords is 0 at the root or a group
+// (urfave enters a subcommand that word names, so it names none) and the
+// number of positional arguments a leaf declares. A rejected line is
+// offered nothing, and no request is made for it.
 func lineRejected(cmd *ucli.Command, argv []string, maxWords int) bool {
 	words, _, undefined := tailWords(stripRoutingPrefixByCmd(argv, cmd), levelFlags(cmd))
 	if undefined || len(words) > maxWords {
@@ -577,6 +579,9 @@ func lineRejected(cmd *ucli.Command, argv []string, maxWords int) bool {
 	}
 	head, typed := scanLine(argv, cmd)
 	if slices.ContainsFunc(head, isEmptyBool) || slices.ContainsFunc(typed, isEmptyBool) {
+		return true
+	}
+	if hasBareDash(head) || hasBareDash(typed) {
 		return true
 	}
 	once := onceFlagNames(cmd)

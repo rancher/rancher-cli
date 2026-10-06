@@ -485,6 +485,11 @@ command takes (`rancher schema <command>` lists them) are refused the same
 way, and so is a separate word after a bool flag that the flag accepts as
 its value: a bool flag takes its value joined with `=` (`--dry-run=false`),
 and an argument that reads as a bool goes before the flags or after `--`.
+A `-` on its own ends the command line, so a line with any word after it
+(`rancher get pods - --cluster c1`) is refused the same way, before or
+after the command name; a `-` as a flag's value (`-f -`) or after `--` is
+not affected, and `--help` typed after a command's name, or `--version`
+at the root, before the `-` still shows the help or the version.
 
 ## Kinds & verbs
 

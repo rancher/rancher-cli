@@ -156,3 +156,22 @@ func TestCheckFlagValuesBeforeHookRendersPerParsedFormat(t *testing.T) {
 		assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 	})
 }
+
+// TestCheckFlagValuesStopsAtABareDash asserts that the scan reads no word
+// after a bare "-", padded or not, as urfave reads none, and that a "-"
+// typed as a flag's value is a value, after which the scan goes on.
+func TestCheckFlagValuesStopsAtABareDash(t *testing.T) {
+	t.Parallel()
+	flags := []runtime.ArgSpec{
+		{Name: "cloud-credential", Type: "string"},
+		{Name: "k8s-version", Type: "string"},
+	}
+	for _, dash := range []string{"-", " - ", "\t-"} {
+		argv := []string{"create", "cluster", dash, "--cloud-credential", "--k8s-version", "v1"}
+		assert.Nil(t, checkFlagValues(flags, argv, false), "%q", argv)
+	}
+	argv := []string{"create", "cluster", "--cloud-credential", "-", "--k8s-version", "--dry-run"}
+	ce := checkFlagValues(flags, argv, false)
+	require.NotNil(t, ce, "%q", argv)
+	assert.Contains(t, ce.Message, "flag --k8s-version got flag --dry-run as its value")
+}

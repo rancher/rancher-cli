@@ -261,6 +261,20 @@ type EmptyBoolFlags interface {
 	EmptyBoolFlags() (flags []string, ok bool)
 }
 
+// DroppedWords is implemented by an Input that knows the command line as
+// typed; the CLI's Input does, a test's need not. The parser stops reading
+// a command line at a bare "-" (a word that is only "-"): it keeps the "-"
+// as a positional argument and never reads a word after it, so a flag
+// typed there (`- --dry-run`) would be ignored.
+type DroppedWords interface {
+	// DroppedWords reports the words typed after a bare "-", as typed, in
+	// order, and the output format and --color value the whole typed line
+	// selects, those words included, for the refusal ("" for none). ok is
+	// false when no word follows one, or the line read is not the one
+	// parsed.
+	DroppedWords() (words []string, format, color string, ok bool)
+}
+
 // Result is a command's success payload, rendered into the output envelope.
 // Raw=true tells the pipeline to emit Data as bare JSON with NO envelope - used
 // only by the `auth get-token` exec-credential plugin, whose stdout kubectl parses as a

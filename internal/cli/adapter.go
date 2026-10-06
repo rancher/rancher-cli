@@ -61,6 +61,15 @@ func (i cmdInput) EmptyBoolFlags() ([]string, bool) {
 	return emptyBoolFlags(rawArgv, i.c)
 }
 
+// DroppedWords implements runtime.DroppedWords from the captured command
+// line. The format and color come from the raw scans the root and group
+// refusals render with (scanOutputFormat, scanColorFlag), so a refusal
+// renders alike at every level.
+func (i cmdInput) DroppedWords() ([]string, string, string, bool) {
+	words, ok := droppedWords(rawArgv, i.c)
+	return words, scanOutputFormat(rawArgv), scanColorFlag(rawArgv), ok
+}
+
 // leafName returns the last space-separated token of a command name
 // ("auth status" -> "status") for use as the urfave leaf/subcommand name.
 func leafName(fullName string) string {
@@ -611,8 +620,18 @@ func usageErrorGuidance(c *ucli.Command, err error) (detail, hint string) {
 // process exit both happen here directly, mirroring how urfave's own
 // ShowRootCommandHelpAndExit calls OsExiter. No flag has parsed successfully
 // yet at this point, so the rendering format comes from a raw-argv scan
-// (scanOutputFormat), not a parsed --output value.
+// (scanOutputFormat), not a parsed --output value. A bare "-" typed where
+// a command name goes (name is "-") stops urfave at c, and the words
+// after it, which can hold the command name, are never read: that line
+// is refused the way the command pipeline refuses one, naming those
+// words. Any other name is an unknown command first, whatever follows it.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
+	if words, ok := droppedWords(rawArgv, c); ok && name == "-" {
+		ce := runtime.DroppedWordsError(words)
+		renderRawArgvError(c, ce)
+		ucli.OsExiter(ce.ExitCode())
+		return
+	}
 	reportUnknownCommand(c, name, c.Args().Tail())
 }
 

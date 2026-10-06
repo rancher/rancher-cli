@@ -116,6 +116,15 @@ func drainNotices(streams IO) []string {
 func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	d := cmd.Describe()
 
+	// First of all: every other check reads the parsed line, which lacks
+	// the words after a bare "-". Those words can hold the -o or --color
+	// typed, so the refusal renders as the whole line selects.
+	if ce, format, color := droppedWordsError(in); ce != nil {
+		typed := streams
+		typed.Format, typed.Color = format, color
+		return 0, renderErr(typed, ce)
+	}
+
 	for _, g := range []string{"output", "color"} {
 		if in.IsSet(g) && blank(in.String(g)) {
 			return 0, renderErr(streams, EmptyValueError(g))
@@ -1266,6 +1275,52 @@ func emptyBoolError(in Input) *clierr.Error {
 		fmt.Sprintf("%s %s an empty value; a bool flag typed with = takes true or false", strings.Join(named, ", "), verb)).
 		WithHint("write " + strings.Join(fixes, "; "))
 }
+
+// droppedWordsError refuses a command line with words after a bare "-"
+// (when the Input can tell, see DroppedWords): none of them was read, so
+// a flag among them (`--dry-run`, `--cluster c1`) would be ignored. format
+// and color are the output format and --color value the whole typed line
+// selects, for the refusal.
+func droppedWordsError(in Input) (ce *clierr.Error, format, color string) {
+	dw, ok := in.(DroppedWords)
+	if !ok {
+		return nil, "", ""
+	}
+	words, format, color, ok := dw.DroppedWords()
+	if !ok {
+		return nil, "", ""
+	}
+	return DroppedWordsError(words), format, color
+}
+
+// DroppedWordsError is the refusal of a command line with words, as
+// typed, after a bare "-", which the parser never reads. It names the
+// first maxNamedWords of them and counts the rest, except that a word
+// starting with "-" named last is named with the word after it unless
+// that word starts with "-" too, so a flag is never named without the
+// value that may follow it (`'-o' 'json'`, never `'-o' and 1 more`).
+// Which flags take a value is not known for words never parsed.
+func DroppedWordsError(words []string) *clierr.Error {
+	named := min(len(words), maxNamedWords)
+	if named < len(words) && startsWithDash(words[named-1]) && !startsWithDash(words[named]) {
+		named++
+	}
+	quoted := make([]string, named)
+	for i, w := range words[:named] {
+		quoted[i] = clierr.ShellQuote(w)
+	}
+	text := strings.Join(quoted, " ")
+	if rest := len(words) - named; rest > 0 {
+		text += fmt.Sprintf(" and %d more", rest)
+	}
+	return clierr.New(clierr.CodeValidation,
+		"a - on its own ends the command line, so the words after it would be ignored: "+text).
+		WithHint("put - last, or after -- when it is meant as an argument")
+}
+
+// startsWithDash reports whether w, trimmed as the parser reads a word,
+// starts with "-".
+func startsWithDash(w string) bool { return strings.HasPrefix(strings.TrimSpace(w), "-") }
 
 // EmptyValueError is the refusal of a typed empty value of the flag name
 // that may be omitted.

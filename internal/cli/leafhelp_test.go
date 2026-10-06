@@ -462,9 +462,9 @@ func TestLevelFlagsOwnFlagWinsOverAncestors(t *testing.T) {
 
 // TestTailWords asserts how a tail of words is read under a set of flags:
 // words and flag values apart, the cut at the first undefined flag, a bare
-// dash as a word, "--" and a number as the start of the words. The last two
-// follow urfave's own parsing (a "--" and a word that starts with a dash and
-// a non-letter end the flags).
+// dash as the last word, "--" and a number as the start of the words. The
+// last three follow urfave's own parsing (a bare dash ends the line, and a
+// "--" and a word that starts with a dash and a non-letter end the flags).
 func TestTailWords(t *testing.T) {
 	t.Parallel()
 	flags := map[string]bool{"output": true, "o": true, "debug": false}
@@ -479,8 +479,8 @@ func TestTailWords(t *testing.T) {
 		{"equals value takes no next word", []string{"--output=json", "a"}, []string{"a"}, 1, false},
 		{"bool flag", []string{"--debug", "a"}, []string{"a"}, 1, false},
 		{"cut at the first undefined flag", []string{"a", "--x", "b", "--y", "c"}, []string{"a", "b", "c"}, 1, true},
-		{"bare dash is a word", []string{"-", "a"}, []string{"-", "a"}, 2, false},
-		{"bare dash does not end the flags", []string{"-", "--x"}, []string{"-"}, 1, true},
+		{"bare dash is the last word", []string{"a", "-", "b"}, []string{"a", "-"}, 2, false},
+		{"no flag is read after a bare dash", []string{"-", "--x"}, []string{"-"}, 1, false},
 		{"double dash starts the words", []string{"a", "--", "--x", "-o"}, []string{"a", "--x", "-o"}, 3, false},
 		{"number starts the words", []string{"a", "-1", "--x", "-o"}, []string{"a", "-1", "--x", "-o"}, 4, false},
 		{"multi-byte character after the dash starts the words", []string{"a", "-\u05d0", "--x"}, []string{"a", "-\u05d0", "--x"}, 3, false},

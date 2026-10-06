@@ -705,7 +705,11 @@ rancher oidc-client rotate-secret my-app --apply --yes
   `VALIDATION`; a bool flag takes its value joined with `=`
   (`--dry-run=false`), and a separate word the flag reads as a bool
   (`true`, `false`, `1`, `0`, ...) after it is refused - put an argument
-  that reads as a bool before the flags or after `--`.
+  that reads as a bool before the flags or after `--`. A `-` on its own
+  ends the command line: a word after it is refused (`--help` after a
+  command's name, or `--version` at the root, before the `-` still shows
+  the help or the version), so keep
+  `-` last or as a flag's value (`-f -`).
 - **Isolation for scripted sessions:** point `RANCHER_CLI_CONFIG_DIR` at a
   temporary directory and set `RANCHER_CLI_CREDENTIAL_STORE=file` so a scripted run
   never touches the operator's real config or OS keychain. A kubeconfig written

@@ -87,10 +87,11 @@ func completionLevels(t *testing.T) (root *ucli.Command, groups, leaves [][]stri
 // every spelling of a rejected or accepted line is asserted on the tree in
 // TestLineRejectedAtEveryLevel; here the rows that prove the decision
 // reaches urfave's completion at each level are run, and the version flag
-// (accepted at the root only), the bool flag with a joined value, and the
-// words a bare `-` and `-1` (a leaf that declares a positional argument
-// keeps its candidates; the root, groups and a leaf that declares none
-// offer nothing) are run for the root, every group and the first leaf of
+// (accepted at the root only), the bool flag with a joined value, the
+// word `-1` (a leaf that declares a positional argument keeps its
+// candidates; the root, groups and a leaf that declares none offer
+// nothing) and a bare `-`, after which no word is read (every level
+// offers nothing) are run for the root, every group and the first leaf of
 // each group. NOT parallel: mutates rawArgv and env.
 func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 	completionServer(t, false)
@@ -146,16 +147,16 @@ func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 		} else if isLeaf {
 			takesNone++
 		}
-		for _, typed := range [][]string{{"-"}, {"-1"}} {
-			line := append(slices.Clone(path), typed...)
-			switch {
-			case declares:
-				assert.Equal(t, want, flagNames(line), "rancher %v --<TAB>: a word at a leaf that takes an argument keeps its candidates", line)
-			case isLeaf:
-				assert.Empty(t, flagNames(line), "rancher %v --<TAB>: the leaf takes no argument", line)
-			default:
-				assert.Empty(t, flagNames(line), "rancher %v --<TAB>: a word names no command", line)
-			}
+		dash := append(slices.Clone(path), "-")
+		assert.Empty(t, flagNames(dash), "rancher %v --<TAB>: no word after a bare - is read", dash)
+		number := append(slices.Clone(path), "-1")
+		switch {
+		case declares:
+			assert.Equal(t, want, flagNames(number), "rancher %v --<TAB>: a word at a leaf that takes an argument keeps its candidates", number)
+		case isLeaf:
+			assert.Empty(t, flagNames(number), "rancher %v --<TAB>: the leaf takes no argument", number)
+		default:
+			assert.Empty(t, flagNames(number), "rancher %v --<TAB>: a word names no command", number)
 		}
 		for _, local := range [][]string{{"--version"}, {"-v"}} {
 			line := append(slices.Clone(path), local...)

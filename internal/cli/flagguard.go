@@ -24,6 +24,9 @@ import (
 //   - arbitrary strings starting with "-" (e.g. "-1.5") pass when they do not
 //     match any registered flag name or alias.
 //   - tokens after "--" are positional; scanning stops there.
+//   - urfave reads no word after a bare "-" (only "-" once trimmed), so
+//     scanning stops there too, and the command pipeline refuses the words
+//     after it.
 func checkFlagValues(descriptorFlags []runtime.ArgSpec, argv []string, inCompletion bool) *clierr.Error {
 	if inCompletion {
 		return nil
@@ -31,7 +34,7 @@ func checkFlagValues(descriptorFlags []runtime.ArgSpec, argv []string, inComplet
 	all := append(append([]runtime.ArgSpec{}, descriptorFlags...), globalArgSpecs...)
 	for i := 0; i+1 < len(argv); i++ {
 		token := argv[i]
-		if token == "--" {
+		if token == "--" || strings.TrimSpace(token) == "-" {
 			break
 		}
 		// Skip non-flag tokens and equals-form flags (already value-bound).
