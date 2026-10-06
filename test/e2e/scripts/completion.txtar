@@ -66,6 +66,21 @@ exec rancher get pod --generate-shell-completion
 ! stdout '(?m)^mypod$'
 ! stdout '(?m)^pod:'
 
+# A completion request never runs the command, wherever a "--" sits: v2 as the
+# shipped scripts send it, v1 as earlier scripts sent it. add-server with
+# --apply would write config.yaml; neither line may.
+exec rancher --rancher-completion-proto=2 config add-server --url https://example.invalid --apply -- myserver --rancher-completion-cur= --generate-shell-completion
+! stdout 'added'
+! grep myserver $RANCHER_CLI_CONFIG_DIR/config.yaml
+exec rancher config add-server --url https://example.invalid --apply -- myserver --generate-shell-completion
+! stdout 'added'
+! grep myserver $RANCHER_CLI_CONFIG_DIR/config.yaml
+
+# After a "--" a leaf offers what it accepts at that argument slot.
+exec rancher --rancher-completion-proto=2 completion -- --rancher-completion-cur=z --generate-shell-completion
+stdout '(?m)^zsh$'
+! stdout '(?m)^bash$'
+
 # Enable live completion and point at the per-script facade for the remaining
 # tests.
 exec rancher config set-completion --network=true

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,8 +16,9 @@ import (
 // protocol. Both CaptureArgv and SanitizedArgs strip these words so they never
 // reach urfave as unknown flags, regardless of where they appear in argv.
 const (
-	protoSentinel = "--rancher-completion-proto=2"
-	curPrefix     = "--rancher-completion-cur="
+	protoSentinel  = "--rancher-completion-proto=2"
+	curPrefix      = "--rancher-completion-cur="
+	completionFlag = "--generate-shell-completion"
 )
 
 var (
@@ -41,26 +43,38 @@ func SetCurrentWord(w string) { rawCurrentWord = w }
 // GetCurrentWord returns the captured current word (v2 protocol).
 func GetCurrentWord() string { return rawCurrentWord }
 
+// completionRequest is the one place that decides an invocation is a
+// completion request. args are the command-line words after the program name.
+// A line is a request when it opens with the v2 protocol marker, or ends with
+// the --generate-shell-completion flag that every installed script, in every
+// version, puts last. Where a "--" sits on the line does not matter: the
+// answer comes from the markers alone, and every later layer reads it from
+// rawProtoV2 and rawV1Completion or from the argv SanitizedArgs hands urfave.
+func completionRequest(args []string) (proto2, request bool) {
+	proto2 = len(args) > 0 && args[0] == protoSentinel
+	return proto2, proto2 || (len(args) > 0 && args[len(args)-1] == completionFlag)
+}
+
 // CaptureArgv processes os.Args[1:] before urfave parses:
 //  1. Detects the v2 proto sentinel and strips it.
-//  2. Scans remaining words: strips --generate-shell-completion; extracts
-//     rawCurrentWord from --rancher-completion-cur=<word> and drops that word;
-//     all other words go into rawArgv. (The argv urfave actually receives is
-//     produced separately by SanitizedArgs.)
+//  2. Scans remaining words: strips --generate-shell-completion when the line
+//     is a completion request (anywhere else it is an ordinary word, such as a
+//     flag's value); extracts rawCurrentWord from --rancher-completion-cur=<word>
+//     and drops that word; all other words go into rawArgv. (The argv urfave
+//     actually receives is produced separately by SanitizedArgs.)
 //  3. When v1 (sentinel absent): rawCurrentWord = ""; rawArgv = remaining words.
 func CaptureArgv(args []string) {
-	proto2 := len(args) > 0 && args[0] == protoSentinel
+	proto2, request := completionRequest(args)
 	if proto2 {
 		args = args[1:]
 	}
 	rawProtoV2 = proto2
-	rawV1Completion = false
+	rawV1Completion = request && !proto2
 	rawCurrentWord = ""
 
 	out := make([]string, 0, len(args))
 	for _, a := range args {
-		if a == "--generate-shell-completion" {
-			rawV1Completion = true
+		if a == completionFlag && request {
 			continue
 		}
 		if strings.HasPrefix(a, curPrefix) {
@@ -80,6 +94,22 @@ func CaptureArgv(args []string) {
 // position 0 - as a deliberate defense-in-depth measure: if either word
 // appears at an unexpected position (e.g. due to a future shell-script change
 // or caller error), it is still suppressed rather than forwarded to urfave.
+//
+// A completion request must reach urfave as one it completes, never one it
+// runs. urfave completes only when the flag is last and no "--" precedes the
+// last word; after one it reads the flag as one more argument and runs the
+// command. So for a request the words from the first "--" on are dropped
+// (rawArgv keeps them, and the completion callbacks read the line from there)
+// and the flag is put last. The exception is a "--" that is the last word of a
+// v1 request: an older script sends the word being completed last, and urfave
+// completes `--` itself as it always has.
+//
+// The cut is at the first literal "--", as urfave's own check is, even when
+// that "--" is the value of a flag typed before the command name
+// (`rancher -c -- completion <TAB>`): urfave then stops at the root, the
+// callbacks read the line with that "--" as a value, and nothing is offered.
+// Nothing runs.
+//
 // Call as root.Run(ctx, SanitizedArgs(os.Args)).
 func SanitizedArgs(args []string) []string {
 	out := make([]string, 0, len(args))
@@ -89,7 +119,23 @@ func SanitizedArgs(args []string) []string {
 		}
 		out = append(out, a)
 	}
-	return out
+	if len(args) == 0 {
+		return out
+	}
+	proto2, request := completionRequest(args[1:])
+	if !request {
+		return out
+	}
+	out = slices.DeleteFunc(out, func(a string) bool { return a == completionFlag })
+	if len(out) > 0 {
+		for i, a := range out[1:] {
+			if a == "--" && (proto2 || i < len(out)-2) {
+				out = out[:i+1]
+				break
+			}
+		}
+	}
+	return append(out, completionFlag)
 }
 
 // CompletionSiteKind discriminates the three site classifications.
@@ -115,6 +161,11 @@ type CompletionSite struct {
 	// site, in order (its length is Index), for a completer whose
 	// candidates depend on them.
 	Args []string
+	// DoubleDash marks a SitePositional site typed after a "--", where every
+	// word is an argument. After holds the words typed there before the one
+	// being completed; Index counts them with the positionals before the "--".
+	DoubleDash bool
+	After      []string
 }
 
 // ParseArgTail determines the TAB completion site from the leaf's arg tail.
@@ -185,6 +236,52 @@ func ParseArgTail(args []string, currentWord string, hasMarker bool, leaf runtim
 		typed = append(typed, arg)
 	}
 	return CompletionSite{Kind: SitePositional, Index: positional, Args: typed}
+}
+
+// doubleDashAt returns the index in tail of the "--" after which the line holds
+// only arguments (see tailWords), or -1. Under v1 a "--" that is the last word is
+// the word being completed, not the end of the flags: an older script sends that
+// word last, and `--<TAB>` has always offered flag names.
+func doubleDashAt(tail []string, flags map[string]bool) int {
+	delimiter := slices.IndexFunc(scanTail(tail, flags), func(w tailWord) bool { return w.kind == endWord })
+	if delimiter == len(tail)-1 && !rawProtoV2 {
+		return -1
+	}
+	return delimiter
+}
+
+// doubleDashSite classifies the TAB position on a line whose flags a "--" has
+// ended. tail is the leaf's arg tail and delimiter the index of that "--" (see
+// doubleDashAt). Every word after it is an argument, so the site is always a
+// positional one, even when the word being completed starts with a dash.
+func doubleDashSite(tail []string, delimiter int, flags map[string]bool) CompletionSite {
+	before, after := tail[:delimiter], tail[delimiter+1:]
+	partial := rawCurrentWord
+	if !rawProtoV2 {
+		// An older script sends the word being completed last.
+		partial, after = after[len(after)-1], after[:len(after)-1]
+	}
+	typed, _, _ := tailWords(before, flags)
+	return CompletionSite{
+		Kind:       SitePositional,
+		Index:      len(typed) + len(after),
+		Args:       append(slices.Clone(typed), after...),
+		Partial:    partial,
+		DoubleDash: true,
+		After:      after,
+	}
+}
+
+// noCompletionAfterDoubleDash wraps the completion of a command that has
+// subcommands. After a "--" every word is an argument, so none names a command
+// or a flag, and such a command offers nothing.
+func noCompletionAfterDoubleDash(next ucli.ShellCompleteFunc) ucli.ShellCompleteFunc {
+	return func(ctx context.Context, c *ucli.Command) {
+		if doubleDashAt(stripRoutingPrefixByCmd(rawArgv, c), levelFlags(c)) >= 0 {
+			return
+		}
+		next(ctx, c)
+	}
 }
 
 // classifyCurrentWordV2 implements the v2 current-word-first classification.

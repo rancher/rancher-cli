@@ -38,7 +38,16 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 		if rawProtoV2 && lineRejected(c, tail, len(d.Args)) {
 			return
 		}
-		site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, d, globalArgSpecs)
+		var site CompletionSite
+		if delimiter := doubleDashAt(tail, levelFlags(c)); delimiter >= 0 {
+			// After a "--" the typed flags all precede it: the sources read the
+			// flags from that part alone, and the words after it only count as
+			// arguments.
+			site = doubleDashSite(tail, delimiter, levelFlags(c))
+			tail = tail[:delimiter]
+		} else {
+			site = ParseArgTail(tail, rawCurrentWord, rawProtoV2, d, globalArgSpecs)
+		}
 
 		if site.Kind == SiteNameLike {
 			// v2 protocol: rawCurrentWord holds the real current word (stripped

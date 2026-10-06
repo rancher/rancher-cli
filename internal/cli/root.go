@@ -923,7 +923,7 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 	// `config --<TAB>` and `get --<TAB>` both yield flag candidates under v2).
 	for _, cmd := range commandsList {
 		if len(cmd.Commands) > 0 {
-			cmd.ShellComplete = aliasAwareGroupComplete
+			cmd.ShellComplete = noCompletionAfterDoubleDash(aliasAwareGroupComplete)
 		}
 	}
 
@@ -948,7 +948,7 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 
 	return &ucli.Command{
 		Name:          "rancher",
-		ShellComplete: rootShellComplete,
+		ShellComplete: noCompletionAfterDoubleDash(rootShellComplete),
 		Usage:         "Rancher CLI",
 		Version:       version,
 		Flags: append([]ucli.Flag{

@@ -99,6 +99,9 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 // positional site is the last positional and is dropped here.
 func typedPositionals(site CompletionSite, tail []string, leafFlags []runtime.ArgSpec) []string {
 	pos := positionals(tail, leafFlags)
+	if site.DoubleDash {
+		return append(pos, site.After...)
+	}
 	if !rawProtoV2 && site.Kind == SitePositional && len(pos) > 0 {
 		pos = pos[:len(pos)-1]
 	}

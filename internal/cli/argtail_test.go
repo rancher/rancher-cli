@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testLeaf is a minimal descriptor used across ParseArgTail tests.
@@ -322,4 +324,204 @@ func TestScanOutputFormat(t *testing.T) {
 			assert.Equal(t, tc.want, scanOutputFormat(tc.argv))
 		})
 	}
+}
+
+// TestCompletionRequestIsDecidedByTheMarkersAlone asserts the one decision
+// that a line is a completion request: it opens with the v2 marker, or ends
+// with the flag every script puts last, wherever a "--" sits on the line. A line
+// that only holds the flag mid-line is an ordinary command line.
+func TestCompletionRequestIsDecidedByTheMarkersAlone(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		args    []string
+		proto2  bool
+		request bool
+	}{
+		{"v2", []string{"--rancher-completion-proto=2", "get", "--rancher-completion-cur=", "--generate-shell-completion"}, true, true},
+		{"v2 after a double dash", []string{"--rancher-completion-proto=2", "get", "--", "x", "--rancher-completion-cur=", "--generate-shell-completion"}, true, true},
+		{"v2 without the flag", []string{"--rancher-completion-proto=2", "get", "--rancher-completion-cur="}, true, true},
+		{"v1", []string{"get", "--generate-shell-completion"}, false, true},
+		{"v1 after a double dash", []string{"get", "--", "x", "--generate-shell-completion"}, false, true},
+		{"the flag mid-line", []string{"get", "--generate-shell-completion", "x"}, false, false},
+		{"ordinary line", []string{"config", "add-server", "--", "x"}, false, false},
+		{"no words", nil, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			proto2, request := completionRequest(tt.args)
+			assert.Equal(t, tt.proto2, proto2)
+			assert.Equal(t, tt.request, request)
+		})
+	}
+}
+
+// TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash asserts that urfave
+// receives a completion request as one it completes: the words from the first
+// "--" on are dropped (it reads the flag after one as an argument and runs the
+// command) and the flag is last. Under v1 a "--" that is the last word is the
+// word being completed and stays. A line that is not a request is passed on
+// unchanged, "--" included.
+func TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{
+			"v2",
+			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--apply", "--", "myserver", "--rancher-completion-cur=", "--generate-shell-completion"},
+			[]string{"rancher", "config", "add-server", "--apply", "--generate-shell-completion"},
+		},
+		{
+			"v1",
+			[]string{"rancher", "config", "add-server", "--apply", "--", "myserver", "--generate-shell-completion"},
+			[]string{"rancher", "config", "add-server", "--apply", "--generate-shell-completion"},
+		},
+		{
+			"the double dash is the word being completed under v2",
+			[]string{"rancher", "--rancher-completion-proto=2", "config", "--rancher-completion-cur=--", "--generate-shell-completion"},
+			[]string{"rancher", "config", "--generate-shell-completion"},
+		},
+		{
+			"the double dash is the last word under v2",
+			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--", "--rancher-completion-cur=", "--generate-shell-completion"},
+			[]string{"rancher", "config", "add-server", "--generate-shell-completion"},
+		},
+		{
+			"the double dash is the word being completed under v1",
+			[]string{"rancher", "usage", "--", "--generate-shell-completion"},
+			[]string{"rancher", "usage", "--", "--generate-shell-completion"},
+		},
+		{
+			"a second double dash under v1",
+			[]string{"rancher", "usage", "--", "--", "--generate-shell-completion"},
+			[]string{"rancher", "usage", "--generate-shell-completion"},
+		},
+		{
+			"v2 without the flag",
+			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--", "myserver", "--rancher-completion-cur="},
+			[]string{"rancher", "config", "add-server", "--generate-shell-completion"},
+		},
+		{
+			"v2 with the flag mid-line",
+			[]string{"rancher", "--rancher-completion-proto=2", "config", "--generate-shell-completion", "--", "x", "--rancher-completion-cur="},
+			[]string{"rancher", "config", "--generate-shell-completion"},
+		},
+		{
+			"a double dash first",
+			[]string{"rancher", "--", "config", "--generate-shell-completion"},
+			[]string{"rancher", "--generate-shell-completion"},
+		},
+		{
+			"an ordinary line",
+			[]string{"rancher", "config", "add-server", "--apply", "--", "myserver"},
+			[]string{"rancher", "config", "add-server", "--apply", "--", "myserver"},
+		},
+		{
+			"an ordinary line holding the flag mid-line",
+			[]string{"rancher", "get", "--generate-shell-completion", "--", "x"},
+			[]string{"rancher", "get", "--generate-shell-completion", "--", "x"},
+		},
+		{"no program name", nil, []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, SanitizedArgs(tt.in))
+		})
+	}
+}
+
+// TestCaptureArgvKeepsTheWordsAfterADoubleDash asserts that the completion
+// callbacks read the whole typed line, the words after a "--" included, from
+// rawArgv.
+func TestCaptureArgvKeepsTheWordsAfterADoubleDash(t *testing.T) {
+	// NOT parallel: mutates package globals.
+	orig := rawArgv
+	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+
+	CaptureArgv([]string{"--rancher-completion-proto=2", "get", "pod", "--", "x", "--rancher-completion-cur=y", "--generate-shell-completion"})
+	assert.Equal(t, []string{"get", "pod", "--", "x"}, rawArgv)
+	assert.Equal(t, "y", rawCurrentWord)
+	assert.True(t, rawProtoV2)
+
+	CaptureArgv([]string{"get", "pod", "--", "x", "--generate-shell-completion"})
+	assert.Equal(t, []string{"get", "pod", "--", "x"}, rawArgv)
+	assert.False(t, rawProtoV2)
+	assert.True(t, rawV1Completion)
+
+	CaptureArgv([]string{"get", "pod", "--", "x"})
+	assert.False(t, completionActive())
+
+	// Not a request: the word is an ordinary one, a flag's value, and stays.
+	CaptureArgv([]string{"get", "pod", "--cluster", "--generate-shell-completion", "--namespace", "x"})
+	assert.Equal(t, []string{"get", "pod", "--cluster", "--generate-shell-completion", "--namespace", "x"}, rawArgv)
+	assert.False(t, completionActive())
+}
+
+// TestScanTailDelimiter asserts which "--" ends the flags of a tail: the first
+// one that is not a flag's value and does not follow a word urfave reads as a
+// value, with its index in the tail.
+func TestScanTailDelimiter(t *testing.T) {
+	t.Parallel()
+	flags := map[string]bool{"output": true, "o": true, "debug": false}
+	tests := []struct {
+		name string
+		tail []string
+		want int
+	}{
+		{"none", []string{"a", "--debug"}, -1},
+		{"first word", []string{"--", "a"}, 0},
+		{"after a word and a flag", []string{"a", "--debug", "--", "b"}, 2},
+		{"the value of a flag", []string{"-o", "--", "a"}, -1},
+		{"after the value of a flag", []string{"-o", "json", "--", "a"}, 2},
+		{"after an equals value", []string{"--output=json", "--"}, 1},
+		{"a second double dash is a word", []string{"--", "--", "a"}, 0},
+		{"after a word read as a value", []string{"-1", "--"}, -1},
+		{"at the end", []string{"a", "--"}, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := slices.IndexFunc(scanTail(tt.tail, flags), func(w tailWord) bool { return w.kind == endWord })
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestDoubleDashSiteCountsTheWordsAfterIt asserts the argument slot after a
+// "--" and the positionals a live source reads: the words before the "--" that
+// are not flags or flag values, then the words after it, with the word being
+// completed left out under v2 (a separate field) and under v1 (the last word).
+// A v1 line that ends at the "--" ends no flags: the "--" is the word being
+// completed. NOT parallel: sets rawProtoV2 and rawCurrentWord.
+func TestDoubleDashSiteCountsTheWordsAfterIt(t *testing.T) {
+	origW, origP := rawCurrentWord, rawProtoV2
+	t.Cleanup(func() { rawCurrentWord = origW; rawProtoV2 = origP })
+	flags := map[string]bool{"cluster": true}
+	leafFlags := []runtime.ArgSpec{{Name: "cluster", Type: "string"}}
+
+	rawProtoV2, rawCurrentWord = true, "z"
+	tail := []string{"--cluster", "c1", "first", "--", "second", "--cluster"}
+	delimiter := doubleDashAt(tail, flags)
+	require.Equal(t, 3, delimiter)
+	site := doubleDashSite(tail, delimiter, flags)
+	assert.Equal(t, CompletionSite{Kind: SitePositional, Index: 3, Args: []string{"first", "second", "--cluster"}, Partial: "z", DoubleDash: true, After: []string{"second", "--cluster"}}, site)
+	assert.Equal(t, []string{"first", "second", "--cluster"}, typedPositionals(site, tail[:delimiter], leafFlags))
+
+	rawProtoV2, rawCurrentWord = false, ""
+	tail = []string{"--cluster", "c1", "first", "--", "second", "z"}
+	delimiter = doubleDashAt(tail, flags)
+	require.Equal(t, 3, delimiter)
+	site = doubleDashSite(tail, delimiter, flags)
+	assert.Equal(t, CompletionSite{Kind: SitePositional, Index: 2, Args: []string{"first", "second"}, Partial: "z", DoubleDash: true, After: []string{"second"}}, site)
+	assert.Equal(t, []string{"first", "second"}, typedPositionals(site, tail[:delimiter], leafFlags))
+
+	assert.Equal(t, -1, doubleDashAt([]string{"first", "--"}, flags))
+	rawProtoV2 = true
+	assert.Equal(t, 1, doubleDashAt([]string{"first", "--"}, flags))
 }

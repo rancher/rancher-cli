@@ -416,6 +416,9 @@ whole tree); `get`/`patch`/`delete` additionally complete each kind's plural
 and short aliases (`po<TAB>` → `po`/`pod`/`pods`); `config use-server` and
 `config delete-server` complete from the local config file. It never touches the network, prompts, or writes anything -
 a missing or unreadable config degrades to no candidates, never an error.
+That holds on a line with a `--` too, where every word is an argument:
+completion offers the values the command accepts at that position, never a
+flag, and never runs the command.
 
 ### Live completion (opt-in)
 

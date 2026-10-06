@@ -28,3 +28,5 @@ func GetRawProtoV2ForTest() bool                    { return rawProtoV2 }
 func GetRawV1CompletionForTest() bool               { return rawV1Completion }
 func SetRawV1CompletionForTest(v bool)              { rawV1Completion = v }
 func GlobalArgSpecsForTest() []runtime.ArgSpec      { return globalArgSpecs }
+
+func BuildManifestForTest(version string) (runtime.Manifest, error) { return buildManifest(version) }
