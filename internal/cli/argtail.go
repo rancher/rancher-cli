@@ -57,7 +57,8 @@ func completionRequest(args []string) (proto2, request bool) {
 
 // CaptureArgv processes os.Args[1:] before urfave parses:
 //  1. Detects the v2 proto sentinel and strips it.
-//  2. Scans remaining words: strips --generate-shell-completion when the line
+//  2. Scans remaining words: strips the proto sentinel wherever else it sits,
+//     as SanitizedArgs does; strips --generate-shell-completion when the line
 //     is a completion request (anywhere else it is an ordinary word, such as a
 //     flag's value); extracts rawCurrentWord from --rancher-completion-cur=<word>
 //     and drops that word; all other words go into rawArgv. (The argv urfave
@@ -75,6 +76,11 @@ func CaptureArgv(args []string) {
 	out := make([]string, 0, len(args))
 	for _, a := range args {
 		if a == completionFlag && request {
+			continue
+		}
+		// SanitizedArgs drops the marker wherever it sits, so the line read
+		// here holds the words urfave parses.
+		if a == protoSentinel {
 			continue
 		}
 		if strings.HasPrefix(a, curPrefix) {
@@ -392,7 +398,9 @@ func levelFlags(cmd *ucli.Command) map[string]bool {
 // words after it are all words. So does a word whose byte after the dash
 // is not a letter (`-1`, or a dash before a multi-byte character), which
 // urfave reads as a value, with the words after it; the test is on that
-// one byte, as urfave makes it. It is the one scan of a tail, for the
+// one byte, as urfave makes it. Each word is classified with the
+// whitespace around it trimmed, as urfave reads it (` --apply=` is a
+// flag, `--yes= ` has an empty value). It is the one scan of a tail, for the
 // check that a line is rejected and for the hint built from the words typed
 // after a mistyped `help`.
 func tailWords(tail []string, flags map[string]bool) (words []string, beforeUndefined int, undefined bool) {
@@ -425,6 +433,10 @@ const (
 
 // tailWord is one word of a tail as scanTail reads it.
 type tailWord struct {
+	// text is the word as urfave reads it: trimmed of the whitespace
+	// around it, except a word that is only whitespace, the separate value
+	// of a flag, and the words after the end of the flags, which urfave
+	// takes as typed.
 	text string
 	kind wordKind
 	// For a flagWord: whether flags holds it, whether it takes a value,
@@ -433,7 +445,7 @@ type tailWord struct {
 }
 
 // scanTail classifies every word of tail under flags, by the rules
-// tailWords states; tailWords and boolValueArgs read its result.
+// tailWords states; tailWords and scanLine read its result.
 func scanTail(tail []string, flags map[string]bool) []tailWord {
 	out := make([]tailWord, 0, len(tail))
 	plain := func(rest []string) {
@@ -442,14 +454,20 @@ func scanTail(tail []string, flags map[string]bool) []tailWord {
 		}
 	}
 	for i := 0; i < len(tail); i++ {
-		word := tail[i]
+		// urfave reads every word with the whitespace around it trimmed,
+		// and keeps a word that is only whitespace as typed.
+		word := strings.TrimSpace(tail[i])
+		if word == "" {
+			plain(tail[i : i+1])
+			continue
+		}
 		if word == "--" {
 			out = append(out, tailWord{text: word, kind: endWord})
 			plain(tail[i+1:])
 			break
 		}
 		if len(word) < 2 || word[0] != '-' {
-			plain(tail[i : i+1])
+			out = append(out, tailWord{text: word, kind: plainWord})
 			continue
 		}
 		if b := word[1]; b != '-' && !unicode.IsLetter(rune(b)) {
@@ -469,19 +487,29 @@ func scanTail(tail []string, flags map[string]bool) []tailWord {
 	return out
 }
 
+// scanLine reads argv, the command line after the program name, for c:
+// the words ahead of c's tail (the command names and the flags typed
+// between them) and the tail, each read by scanTail under the flags c
+// accepts. It is the one reading of a line for the checks the command
+// pipeline makes on it and for completion's decision that the line is
+// rejected.
+func scanLine(argv []string, c *ucli.Command) (head, tail []tailWord) {
+	rest := stripRoutingPrefixByCmd(argv, c)
+	levels := levelFlags(c)
+	return scanTail(argv[:len(argv)-len(rest)], levels), scanTail(rest, levels)
+}
+
 // boolValueArgs is runtime.BoolValueArgs for leaf c run as argv (the
 // command line after the program name). It reads argv with the flags c
 // accepts and offers nothing unless the positional arguments it finds are
 // the ones urfave parsed, so the line it returns is the command typed.
 func boolValueArgs(argv []string, c *ucli.Command) (vals []runtime.BoolValue, line string, ok bool) {
-	tail := stripRoutingPrefixByCmd(argv, c)
-	levels := levelFlags(c)
-	typed := scanTail(tail, levels)
+	head, typed := scanLine(argv, c)
 	var args []string
 	parts := []string{"rancher"}
 	// The routing words and global flags ahead of the tail: command names
 	// as typed, flag values quoted.
-	for _, w := range scanTail(argv[:len(argv)-len(tail)], levels) {
+	for _, w := range head {
 		parts = append(parts, quoteWord(w, w.kind == plainWord))
 	}
 	for i, w := range typed {
@@ -501,6 +529,48 @@ func boolValueArgs(argv []string, c *ucli.Command) (vals []runtime.BoolValue, li
 		return nil, "", false
 	}
 	return vals, strings.Join(parts, " "), true
+}
+
+// emptyBoolFlags is runtime.EmptyBoolFlags for leaf c run as argv (the
+// command line after the program name): the bool flags typed with "=" and
+// an empty value, before or after the command name, each as typed without
+// the "=". It offers nothing unless the positional arguments it finds are
+// the ones urfave parsed and urfave parsed each flag it finds as set, so
+// a flag it reports is one typed on the command that runs.
+func emptyBoolFlags(argv []string, c *ucli.Command) (flags []string, ok bool) {
+	head, typed := scanLine(argv, c)
+	for _, w := range slices.Concat(head, typed) {
+		if !isEmptyBool(w) {
+			continue
+		}
+		spelling, _, _ := strings.Cut(w.text, "=")
+		if !c.IsSet(strings.TrimLeft(spelling, "-")) {
+			return nil, false
+		}
+		flags = append(flags, spelling)
+	}
+	var args []string
+	for _, w := range typed {
+		if w.kind == plainWord {
+			args = append(args, w.text)
+		}
+	}
+	if len(flags) == 0 || !slices.Equal(args, c.Args().Slice()) {
+		return nil, false
+	}
+	return flags, true
+}
+
+// isEmptyBool reports whether w is a bool flag the command accepts, typed
+// with "=" and an empty value (`--apply=`), which urfave parses as true:
+// the word the command pipeline refuses, and a line holding one is one
+// completion offers nothing on.
+func isEmptyBool(w tailWord) bool {
+	if w.kind != flagWord || !w.defined || w.takesValue || !w.joined {
+		return false
+	}
+	_, value, _ := strings.Cut(w.text, "=")
+	return value == ""
 }
 
 // isBoolValue reports whether typed[i] is a positional word typed as its

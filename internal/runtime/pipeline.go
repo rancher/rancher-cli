@@ -122,6 +122,13 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 		}
 	}
 
+	// Ahead of every gate a bool flag decides (read-only, dry-run, apply,
+	// confirmation), so the flag an empty value would have turned on decides
+	// nothing.
+	if ce := emptyBoolError(in); ce != nil {
+		return 0, renderErr(streams, ce)
+	}
+
 	if ce := validateFormat(streams.Format); ce != nil {
 		return 0, renderErr(streams, ce)
 	}
@@ -1208,7 +1215,8 @@ func interrupted(err error) *clierr.Error {
 // emptyValueError refuses a value-taking flag typed with an empty value,
 // which would otherwise act as if the flag were omitted: a list across
 // every namespace, a default, a filter dropped. A flag whose empty value
-// means something omission does not sets AllowEmpty.
+// means something omission does not sets AllowEmpty. A bool flag typed
+// empty is emptyBoolError's: the parsed value cannot show it.
 func emptyValueError(f ArgSpec, in Input) *clierr.Error {
 	if f.Type == "bool" || f.AllowEmpty || !in.IsSet(f.Name) {
 		return nil
@@ -1226,6 +1234,37 @@ func emptyValueError(f ArgSpec, in Input) *clierr.Error {
 	default:
 		return EmptyValueError(f.Name)
 	}
+}
+
+// emptyBoolError refuses the bool flags typed with "=" and an empty value
+// (when the Input can tell, see EmptyBoolFlags), which parse as true: the
+// value meant is unknown, so neither on nor off is assumed. Each flag is
+// named once, as typed; a line names a bounded number of distinct bool
+// flags, so every one is named.
+func emptyBoolError(in Input) *clierr.Error {
+	eb, ok := in.(EmptyBoolFlags)
+	if !ok {
+		return nil
+	}
+	flags, ok := eb.EmptyBoolFlags()
+	if !ok {
+		return nil
+	}
+	var named, fixes []string
+	for _, f := range flags {
+		if slices.Contains(named, f+"=") {
+			continue
+		}
+		named = append(named, f+"=")
+		fixes = append(fixes, f+" or "+f+"=true|false")
+	}
+	verb := "has"
+	if len(named) > 1 {
+		verb = "have"
+	}
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("%s %s an empty value; a bool flag typed with = takes true or false", strings.Join(named, ", "), verb)).
+		WithHint("write " + strings.Join(fixes, "; "))
 }
 
 // EmptyValueError is the refusal of a typed empty value of the flag name

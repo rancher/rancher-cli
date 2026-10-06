@@ -54,6 +54,12 @@ func (i cmdInput) BoolValueArgs() ([]runtime.BoolValue, string, bool) {
 	return boolValueArgs(rawArgv, i.c)
 }
 
+// EmptyBoolFlags implements runtime.EmptyBoolFlags from the captured
+// command line.
+func (i cmdInput) EmptyBoolFlags() ([]string, bool) {
+	return emptyBoolFlags(rawArgv, i.c)
+}
+
 // leafName returns the last space-separated token of a command name
 // ("auth status" -> "status") for use as the urfave leaf/subcommand name.
 func leafName(fullName string) string {

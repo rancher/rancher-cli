@@ -57,10 +57,12 @@ func levelCommands(t *testing.T) map[string]*ucli.Command {
 // typed after a bool flag that accepts it as its value rejects the line at
 // every level, also when the level takes a positional argument; the same
 // word joined (`--debug=true`), a word the flag does not accept, and a
-// word after `--` are counted as words. The decision is made on the tree
-// without running a completion, so every level is covered cheaply; the
-// end-to-end sweep in completion_levelflags_test.go runs a few rows per
-// level through urfave.
+// word after `--` are counted as words. A bool flag typed with "=" and an
+// empty value (`--debug=`) rejects the line at every level, after the
+// command path or ahead of it; after `--` it is a word. The decision is
+// made on the tree without running a completion, so every level is covered
+// cheaply; the end-to-end sweep in completion_levelflags_test.go runs a few
+// rows per level through urfave.
 func TestLineRejectedAtEveryLevel(t *testing.T) {
 	t.Parallel()
 	nodes := levelCommands(t)
@@ -76,12 +78,15 @@ func TestLineRejectedAtEveryLevel(t *testing.T) {
 		"bare dash then an undefined flag":    {"-", "--bogus"},
 		"bool flag then a value it accepts":   {"--debug", "true"},
 		"bool flag then a numeric bool value": {"--debug", "0"},
+		"bool flag with an empty value":       {"--debug="},
+		"empty bool value after other flags":  {"-o", "json", "--debug="},
 	}
 	accepted := map[string][]string{
 		"global flag with a value":         {"-o", "json"},
 		"global flag with an equals value": {"--output=json"},
 		"bool flag":                        {"--debug"},
 		"bool flag with a joined value":    {"--debug=true"},
+		"bool flag joined with false":      {"--debug=false"},
 		"help flag":                        {"--help"},
 		"short help flag":                  {"-h"},
 	}
@@ -99,6 +104,9 @@ func TestLineRejectedAtEveryLevel(t *testing.T) {
 	}
 
 	for path, node := range nodes {
+		// The command line lineRejected reads: the command path, then the
+		// words typed after it.
+		line := func(typed []string) []string { return append(strings.Fields(path), typed...) }
 		atRoot := path == ""
 		nonLeaf := atRoot || len(node.VisibleCommands()) > 0
 		maxWords := 0
@@ -108,26 +116,30 @@ func TestLineRejectedAtEveryLevel(t *testing.T) {
 			maxWords = n
 		}
 		for name, typed := range rejected {
-			assert.True(t, lineRejected(node, typed, maxWords), "rancher %s %v (%s) is rejected", path, typed, name)
+			assert.True(t, lineRejected(node, line(typed), maxWords), "rancher %s %v (%s) is rejected", path, typed, name)
 		}
 		for name, typed := range accepted {
-			assert.False(t, lineRejected(node, typed, maxWords), "rancher %s %v (%s) is accepted", path, typed, name)
+			assert.False(t, lineRejected(node, line(typed), maxWords), "rancher %s %v (%s) is accepted", path, typed, name)
 		}
 		for name, typed := range words {
-			assert.Equal(t, len(typed) > maxWords, lineRejected(node, typed, maxWords),
+			assert.Equal(t, len(typed) > maxWords, lineRejected(node, line(typed), maxWords),
 				"rancher %s %v (%s): words reject the line past the %d positional arguments the level takes", path, typed, name, maxWords)
 		}
 		for _, local := range [][]string{{"--version"}, {"-v"}} {
-			assert.Equal(t, !atRoot, lineRejected(node, local, maxWords), "rancher %s %v: only the root accepts the version flag", path, local)
+			assert.Equal(t, !atRoot, lineRejected(node, line(local), maxWords), "rancher %s %v: only the root accepts the version flag", path, local)
 		}
+		// An empty bool value typed ahead of the command path rejects the
+		// line too.
+		assert.True(t, lineRejected(node, append([]string{"--debug="}, line(nil)...), maxWords), "rancher --debug= %s is rejected", path)
 		// One word each: a bool value joined to its flag, a word the bool
-		// flag does not accept, and a bool value after "--".
-		for _, typed := range [][]string{{"--debug=true", "x"}, {"--debug", "maybe"}, {"--debug", "--", "true"}} {
-			assert.Equal(t, maxWords < 1, lineRejected(node, typed, maxWords),
+		// flag does not accept, and a bool value or an empty bool value
+		// after "--".
+		for _, typed := range [][]string{{"--debug=true", "x"}, {"--debug", "maybe"}, {"--debug", "--", "true"}, {"--", "--debug="}} {
+			assert.Equal(t, maxWords < 1, lineRejected(node, line(typed), maxWords),
 				"rancher %s %v: one word, rejected only past the %d positional arguments the level takes", path, typed, maxWords)
 		}
 		plain := slices.Repeat([]string{"x"}, maxWords)
-		assert.False(t, lineRejected(node, plain, maxWords), "rancher %s %v: the declared positional arguments are accepted", path, plain)
-		assert.True(t, lineRejected(node, append(plain, "x"), maxWords), "rancher %s %v: one more positional argument is rejected", path, append(plain, "x"))
+		assert.False(t, lineRejected(node, line(plain), maxWords), "rancher %s %v: the declared positional arguments are accepted", path, plain)
+		assert.True(t, lineRejected(node, line(append(plain, "x")), maxWords), "rancher %s %v: one more positional argument is rejected", path, append(plain, "x"))
 	}
 }

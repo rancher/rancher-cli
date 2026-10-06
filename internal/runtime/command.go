@@ -243,6 +243,18 @@ type BoolValue struct {
 	Flag  string
 }
 
+// EmptyBoolFlags is implemented by an Input that knows the command line as
+// typed; the CLI's Input does, a test's need not. A bool flag typed with
+// "=" and an empty value (`--apply=`) parses as true, so an empty or unset
+// shell variable (`--apply="$APPLY"`) would turn the flag on.
+type EmptyBoolFlags interface {
+	// EmptyBoolFlags reports the bool flags typed with "=" and an empty
+	// value, before or after the command name, each as typed without the
+	// "=" (`--apply`, `-A`), in order. ok is false when no flag was typed
+	// that way, or the line read is not the one parsed.
+	EmptyBoolFlags() (flags []string, ok bool)
+}
+
 // Result is a command's success payload, rendered into the output envelope.
 // Raw=true tells the pipeline to emit Data as bare JSON with NO envelope - used
 // only by the `auth get-token` exec-credential plugin, whose stdout kubectl parses as a

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	ucli "github.com/urfave/cli/v3"
@@ -505,7 +506,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 	// sits between the command path and the word being completed: the
 	// command rejects the line whatever is completed next (a command name,
 	// a flag or a flag's value), so offer nothing.
-	if lineRejected(cmd, stripRoutingPrefixByCmd(rawArgv, cmd), 0) {
+	if lineRejected(cmd, rawArgv, 0) {
 		return
 	}
 	w := cmd.Root().Writer
@@ -556,21 +557,26 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 }
 
 // lineRejected reports whether the words typed before the current one make
-// a line the command rejects whatever is completed next: a flag cmd does not
-// accept (urfave fails with "flag provided but not defined"), more than
-// maxWords words that are neither a flag nor a flag's value, or a word
-// typed after a bool flag that accepts it as its value (the command
-// pipeline refuses it in any position). maxWords is 0 at the root or a
-// group (urfave enters a subcommand that word names, so it names none) and
-// the number of positional arguments a leaf declares. A rejected line is
-// offered nothing, and no request is made for it.
-func lineRejected(cmd *ucli.Command, tail []string, maxWords int) bool {
-	flags := levelFlags(cmd)
-	words, _, undefined := tailWords(tail, flags)
+// a line the command rejects whatever is completed next. argv is the
+// command line after the program name, and cmd the command it reaches. In
+// the words after cmd's path: a flag cmd does not accept (urfave fails
+// with "flag provided but not defined"), more than maxWords words that are
+// neither a flag nor a flag's value, or a word typed after a bool flag
+// that accepts it as its value (the command pipeline refuses it in any
+// position). Anywhere on the line: a bool flag typed with "=" and an empty
+// value (`--dry-run=`), which the command pipeline refuses. maxWords is 0
+// at the root or a group (urfave enters a subcommand that word names, so
+// it names none) and the number of positional arguments a leaf declares.
+// A rejected line is offered nothing, and no request is made for it.
+func lineRejected(cmd *ucli.Command, argv []string, maxWords int) bool {
+	words, _, undefined := tailWords(stripRoutingPrefixByCmd(argv, cmd), levelFlags(cmd))
 	if undefined || len(words) > maxWords {
 		return true
 	}
-	typed := scanTail(tail, flags)
+	head, typed := scanLine(argv, cmd)
+	if slices.ContainsFunc(head, isEmptyBool) || slices.ContainsFunc(typed, isEmptyBool) {
+		return true
+	}
 	for i := range typed {
 		if isBoolValue(typed, i) {
 			return true

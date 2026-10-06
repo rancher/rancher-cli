@@ -478,11 +478,13 @@ mixing project-scoped requests with whole-node metrics would be misleading).
 A flag typed with an empty or blank value (`--project ''`, `--namespace=`,
 `-o ' '`) is refused with `VALIDATION` before any request instead of acting
 as if it were omitted; in a script, pass `--flag "$VAR"` only when `VAR` is
-set. Positional arguments beyond the ones a command takes (`rancher schema
-<command>` lists them) are refused the same way, and so is a separate word
-after a bool flag that the flag accepts as its value: a bool flag takes its
-value joined with `=` (`--dry-run=false`), and an argument that reads as a
-bool goes before the flags or after `--`.
+set. A bool flag typed with `=` and an empty or blank value
+(`--apply="$APPLY"` with `APPLY` unset) is refused the same way; write
+`--apply` or `--apply=true|false`. Positional arguments beyond the ones a
+command takes (`rancher schema <command>` lists them) are refused the same
+way, and so is a separate word after a bool flag that the flag accepts as
+its value: a bool flag takes its value joined with `=` (`--dry-run=false`),
+and an argument that reads as a bool goes before the flags or after `--`.
 
 ## Kinds & verbs
 

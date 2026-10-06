@@ -35,7 +35,7 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 		// and make no request for it. Under the v1 protocol the argv still
 		// holds the partial word being completed, which would read as an
 		// undefined flag, so the check is v2 only.
-		if rawProtoV2 && lineRejected(c, tail, len(d.Args)) {
+		if rawProtoV2 && lineRejected(c, rawArgv, len(d.Args)) {
 			return
 		}
 		var site CompletionSite
@@ -766,7 +766,8 @@ func stripRoutingPrefixByDepth(argv []string, depth int) []string {
 	count := 0
 	i := 0
 	for i < len(argv) && count < depth {
-		arg := argv[i]
+		// urfave reads each word with the whitespace around it trimmed.
+		arg := strings.TrimSpace(argv[i])
 		if strings.HasPrefix(arg, "-") {
 			// Flag token: skip it plus its value if it takes one.
 			if eq := strings.Index(arg, "="); eq > 0 {

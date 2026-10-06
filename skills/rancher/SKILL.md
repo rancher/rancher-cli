@@ -698,7 +698,9 @@ rancher oidc-client rotate-secret my-app --apply --yes
   Without `--cluster` the refusal names the clusters the project is on.
 - **Empty values:** a flag typed with an empty or blank value (`--flag ''`,
   `--flag=`) is refused with `VALIDATION` before any request, never treated as
-  omitted; build `--flag "$VAR"` only when `VAR` is set.
+  omitted; build `--flag "$VAR"` only when `VAR` is set. A bool flag typed with
+  `=` and an empty or blank value (`--apply="$APPLY"` with `APPLY` unset) is
+  refused too; write `--apply` or `--apply=true|false`.
 - **Arguments and bool flags:** extra positional arguments are refused with
   `VALIDATION`; a bool flag takes its value joined with `=`
   (`--dry-run=false`), and a separate word the flag reads as a bool
