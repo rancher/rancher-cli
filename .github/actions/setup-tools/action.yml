@@ -4,31 +4,45 @@ description: >-
   pinned shellcheck (checksum-verified binary; the runner image's own copy
   is older and disagrees with current versions on trap-invoked functions),
   and the shells the completion tests exercise, and expose GOPATH/bin to
-  later steps. Shared by ci and release so the two pipelines cannot drift.
+  later steps. The lint tools and the shells are each optional, so a job
+  installs only what it uses. Shared by ci and release so the two pipelines
+  cannot drift.
+
+inputs:
+  lint-tools:
+    description: Install golangci-lint and shellcheck ("true" or "false").
+    default: "true"
+  shells:
+    description: Install fish and zsh for the completion tests ("true" or "false").
+    default: "true"
 
 runs:
   using: composite
   steps:
-    - name: Install golangci-lint and completion shells
+    - name: Install golangci-lint
+      if: inputs.lint-tools == 'true'
+      shell: bash
+      # The version call fails the job here, loudly, if the install
+      # produced nothing. The full path: GOPATH/bin is put on PATH by the
+      # next step.
+      run: |
+        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+        "$(go env GOPATH)/bin/golangci-lint" version
+    - name: Put GOPATH/bin on PATH
       shell: bash
       # The GITHUB_PATH write below is the static $(go env GOPATH)/bin,
-      # derived from no untrusted input.
-      run: | # zizmor: ignore[github-env]
-        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
-        # Later steps must find the binary: GOPATH/bin being on PATH is an
-        # image detail we refuse to rely on. The version call also fails the
-        # job here, loudly, if the install produced nothing.
-        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-        "$(go env GOPATH)/bin/golangci-lint" version
-        sudo apt-get update
-        sudo apt-get install -y fish zsh
+      # derived from no untrusted input. Later steps must find what is
+      # installed there: GOPATH/bin being on PATH is an image detail we
+      # refuse to rely on.
+      run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH" # zizmor: ignore[github-env]
     - name: Install pinned shellcheck
+      if: inputs.lint-tools == 'true'
       shell: bash
       # The runner image ships an older shellcheck whose reachability
       # heuristic flags trap-invoked functions (SC2317); the gate must run
       # the same version developers run, so the shell verdict cannot depend
-      # on which machine checks it. GOPATH/bin (prepended above) shadows the
-      # image's /usr/bin/shellcheck for every later step.
+      # on which machine checks it. GOPATH/bin (put on PATH by the step
+      # above) shadows the image's /usr/bin/shellcheck for every later step.
       run: |
         SHELLCHECK_VERSION=v0.11.0
         SHELLCHECK_SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
@@ -38,7 +52,14 @@ runs:
         tar -xJf /tmp/shellcheck.tar.xz -C /tmp
         install -m 0755 "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "$(go env GOPATH)/bin/shellcheck"
         shellcheck --version
+    - name: Install completion shells
+      if: inputs.shells == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fish zsh
     - name: Show completion shell versions
+      if: inputs.shells == 'true'
       shell: bash
       # The completion tests need bash, zsh, fish and pwsh and fail, not
       # skip, when CI is set and one is missing. zsh and fish come from apt

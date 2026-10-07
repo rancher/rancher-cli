@@ -2,105 +2,137 @@
 set -e
 cd "$(dirname "$0")/.."
 
-# gofmt: fail on any unformatted file the repository carries. The files
-# come from git (tracked plus untracked-not-ignored), never from a walk of
-# the checkout: local, ignored trees must not fail the gate.
-unformatted=$(git ls-files -z --cached --others --exclude-standard -- '*.go' | xargs -0 gofmt -l)
-if [ -n "$unformatted" ]; then
-  echo "gofmt required for:" >&2
-  echo "$unformatted" >&2
-  exit 1
-fi
+# One definition of the commit gate, in two parts CI runs as parallel jobs:
+#   static  formatting, vet, module tidiness, lint, the shell and workflow
+#           gates, the local-doc reference gate
+#   tests   the unit tests and the build contract
+# With no argument both parts run, static first. Each part is a function
+# called as a plain statement: inside an if, && or ||, set -e stops
+# applying within the function.
 
-go vet ./...
-
-# go.mod/go.sum tidiness: go mod tidy -diff exits non-zero when go.mod or
-# go.sum would change - module churn belongs in its own reviewed commit,
-# never untidy leftovers riding along with an unrelated change.
-if ! tidy_diff=$(go mod tidy -diff); then
-  echo "$tidy_diff" >&2
-  echo "error: go.mod/go.sum are not tidy - run 'go mod tidy'" >&2
-  exit 1
-fi
-
-# golangci-lint if available; otherwise warn (go vet already ran). In CI the
-# soft fallback would silently weaken the commit gate, so there it is an error.
-if command -v golangci-lint >/dev/null 2>&1; then
-  golangci-lint run
-elif [ -n "${CI:-}" ]; then
-  echo "error: golangci-lint is required in CI" >&2
-  exit 1
-else
-  echo "warning: golangci-lint not installed; skipping (install for full lint)" >&2
-fi
-
-# Shell gate: every shebanged script (install.sh + scripts/*, skipping
-# archive-sha - a git export-subst stamp file, not a script) gets a
-# syntax check with the interpreter its shebang names, then shellcheck
-# with shebang-based dialect detection. Same tri-state as golangci-lint:
-# run if available, warn locally when missing, error in CI.
-shell_files=("install.sh")
-for f in scripts/*; do
-  [ -f "$f" ] || continue # directories/symlinked dirs: skip, don't let head noise-fail
-  case "$(head -c2 "$f")" in
-    '#!') shell_files+=("$f") ;;
-  esac
-done
-for f in "${shell_files[@]}"; do
-  # Explicit interpreter allowlist with a loud default: an unrecognized
-  # shebang must extend this gate deliberately, not fall through to a
-  # wrong-dialect sh -n (false pass or spurious fail).
-  case "$(head -1 "$f")" in
-    '#!/bin/bash'* | '#!/usr/bin/env bash'*) bash -n "$f" ;;
-    '#!/bin/sh'* | '#!/usr/bin/env sh'*) sh -n "$f" ;;
-    *)
-      echo "error: $f has a shebang the shell gate does not handle - extend scripts/validate" >&2
-      exit 1
-      ;;
-  esac
-done
-if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck "${shell_files[@]}"
-elif [ -n "${CI:-}" ]; then
-  echo "error: shellcheck is required in CI" >&2
-  exit 1
-else
-  echo "warning: shellcheck not installed; skipping (install for the shell gate)" >&2
-fi
-
-# Workflow lint: static analysis over .github/workflows. Best-effort - CI
-# proves the workflows by running them, so a machine without actionlint
-# only loses the early local signal.
-if command -v actionlint >/dev/null 2>&1; then
-  actionlint
-else
-  echo "warning: actionlint not installed; skipping (install for the workflow gate)" >&2
-fi
-
-# Local-doc reference gate: docs/ is gitignored (local-only), so no tracked
-# file - shipped artifacts and source alike - may point at it. A reference
-# is a dangling path for every external reader and leaks internal layout
-# into release assets.
-# The regex is written with a group so this file's own pattern text cannot
-# match itself ("docs/(design" is not followed by a subdir name).
-if git --no-pager grep -nE 'docs/(design|handoffs|reviews|plans|backlog)' -- ':!docs' ':!graphify-out'; then
-  echo "error: tracked files must not reference local-only docs/ paths" >&2
-  exit 1
-fi
-
-# -vet=off: the full go vet ./... already ran above; go test's implicit
-# vet subset would only repeat a fraction of it. scripts/test runs every
-# package with -race except the source scans and the cache model.
-./scripts/test -vet=off
-
-# Build contract: both executables, built from current source - never
-# trusting leftovers in bin/.
-./scripts/build
-EXT=""
-if [ "$(go env GOOS)" = "windows" ]; then EXT=".exe"; fi
-for bin in "bin/rancher${EXT}" "bin/rancher-credential-vault${EXT}"; do
-  if [ ! -x "$bin" ]; then
-    echo "build contract violated: $bin missing" >&2
+static() {
+  # gofmt: fail on any unformatted file the repository carries. The files
+  # come from git (tracked plus untracked-not-ignored), never from a walk of
+  # the checkout: local, ignored trees must not fail the gate.
+  unformatted=$(git ls-files -z --cached --others --exclude-standard -- '*.go' | xargs -0 gofmt -l)
+  if [ -n "$unformatted" ]; then
+    echo "gofmt required for:" >&2
+    echo "$unformatted" >&2
     exit 1
   fi
-done
+
+  go vet ./...
+
+  # go.mod/go.sum tidiness: go mod tidy -diff exits non-zero when go.mod or
+  # go.sum would change - module churn belongs in its own reviewed commit,
+  # never untidy leftovers riding along with an unrelated change.
+  if ! tidy_diff=$(go mod tidy -diff); then
+    echo "$tidy_diff" >&2
+    echo "error: go.mod/go.sum are not tidy - run 'go mod tidy'" >&2
+    exit 1
+  fi
+
+  # golangci-lint if available; otherwise warn (go vet already ran). In CI the
+  # soft fallback would silently weaken the commit gate, so there it is an error.
+  if command -v golangci-lint >/dev/null 2>&1; then
+    ./scripts/golangci-lint-version
+    golangci-lint run
+  elif [ -n "${CI:-}" ]; then
+    echo "error: golangci-lint is required in CI" >&2
+    exit 1
+  else
+    echo "warning: golangci-lint not installed; skipping (install for full lint)" >&2
+  fi
+
+  # Shell gate: every shebanged script (install.sh + scripts/*, skipping
+  # archive-sha - a git export-subst stamp file, not a script) gets a
+  # syntax check with the interpreter its shebang names, then shellcheck
+  # with shebang-based dialect detection. Same tri-state as golangci-lint:
+  # run if available, warn locally when missing, error in CI.
+  shell_files=("install.sh")
+  for f in scripts/*; do
+    [ -f "$f" ] || continue # directories/symlinked dirs: skip, don't let head noise-fail
+    case "$(head -c2 "$f")" in
+      '#!') shell_files+=("$f") ;;
+    esac
+  done
+  for f in "${shell_files[@]}"; do
+    # Explicit interpreter allowlist with a loud default: an unrecognized
+    # shebang must extend this gate deliberately, not fall through to a
+    # wrong-dialect sh -n (false pass or spurious fail).
+    case "$(head -1 "$f")" in
+      '#!/bin/bash'* | '#!/usr/bin/env bash'*) bash -n "$f" ;;
+      '#!/bin/sh'* | '#!/usr/bin/env sh'*) sh -n "$f" ;;
+      *)
+        echo "error: $f has a shebang the shell gate does not handle - extend scripts/validate" >&2
+        exit 1
+        ;;
+    esac
+  done
+  if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck "${shell_files[@]}"
+  elif [ -n "${CI:-}" ]; then
+    echo "error: shellcheck is required in CI" >&2
+    exit 1
+  else
+    echo "warning: shellcheck not installed; skipping (install for the shell gate)" >&2
+  fi
+
+  # Workflow lint: static analysis over .github/workflows. Best-effort - CI
+  # proves the workflows by running them, so a machine without actionlint
+  # only loses the early local signal.
+  if command -v actionlint >/dev/null 2>&1; then
+    actionlint
+  else
+    echo "warning: actionlint not installed; skipping (install for the workflow gate)" >&2
+  fi
+
+  # Local-doc reference gate: docs/ is gitignored (local-only), so no tracked
+  # file - shipped artifacts and source alike - may point at it. A reference
+  # is a dangling path for every external reader and leaks internal layout
+  # into release assets.
+  # The regex is written with a group so this file's own pattern text cannot
+  # match itself ("docs/(design" is not followed by a subdir name).
+  if git --no-pager grep -nE 'docs/(design|handoffs|reviews|plans|backlog)' -- ':!docs' ':!graphify-out'; then
+    echo "error: tracked files must not reference local-only docs/ paths" >&2
+    exit 1
+  fi
+}
+
+tests() {
+  # -vet=off: go vet ./... runs in the static part (the lint job in CI);
+  # make validate runs both.
+  ./scripts/test -vet=off
+
+  # Build contract: both executables, built from current source - never
+  # trusting leftovers in bin/.
+  ./scripts/build
+  EXT=""
+  if [ "$(go env GOOS)" = "windows" ]; then EXT=".exe"; fi
+  for bin in "bin/rancher${EXT}" "bin/rancher-credential-vault${EXT}"; do
+    if [ ! -x "$bin" ]; then
+      echo "build contract violated: $bin missing" >&2
+      exit 1
+    fi
+  done
+}
+
+usage() {
+  echo "usage: scripts/validate [static|tests]" >&2
+  exit 2
+}
+
+case $# in
+  0)
+    static
+    tests
+    ;;
+  1)
+    case "$1" in
+      static) static ;;
+      tests) tests ;;
+      *) usage ;;
+    esac
+    ;;
+  *) usage ;;
+esac

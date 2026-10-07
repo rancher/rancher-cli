@@ -14,9 +14,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  validate:
+  # The two parts of scripts/validate run as parallel jobs; the commit hook
+  # and make validate run the same two parts in one process, so the hook and
+  # CI share one definition. The static part includes the shell gate (syntax
+  # and shellcheck over install.sh and scripts/*).
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,6 +29,23 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: ./.github/actions/setup-tools
+        with:
+          shells: "false"
+      - run: ./scripts/validate static
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-tools
+        with:
+          lint-tools: "false"
       # The completion script tests run each script under its real shell
       # (bash, zsh, fish, pwsh). With CI set a missing shell fails its
       # test, so this step asserts the other half: no test skipped, and
@@ -52,19 +73,17 @@ jobs:
             status=1
           fi
           exit "$status"
-      # The shell gate (syntax + shellcheck over install.sh and scripts/*)
-      # lives inside make validate, so the hook and CI share one definition.
-      - run: make validate
+      - run: ./scripts/validate tests
 
   # Compile-check every release platform so an arch-specific break (endian,
   # 32/64 assumptions) surfaces on the PR, not at tag time. The list must
-  # match the build loop in release.yaml. linux/amd64 duplicates the validate
+  # match the build loop in release.yaml. linux/amd64 duplicates the test
   # job's native build; it is kept for the 1:1 mapping with the release
   # matrix. One job, one loop: a matrix would pay checkout+setup per leg for
   # no isolation benefit.
   cross-compile:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

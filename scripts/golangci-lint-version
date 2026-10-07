@@ -1,0 +1,46 @@
+#!/bin/bash
+# Fails when the installed golangci-lint is not the version CI installs.
+# The pin lives in one place, the setup-tools action; a local binary of
+# another version lints differently from CI, so the commit gate and CI
+# would disagree. Exits 0 when golangci-lint is not installed: the caller
+# decides whether that is a warning (locally) or an error (in CI).
+set -e
+cd "$(dirname "$0")/.."
+
+if ! command -v golangci-lint >/dev/null 2>&1; then
+  exit 0
+fi
+binary=$(command -v golangci-lint)
+
+pin_file=.github/actions/setup-tools/action.yml
+pin_re='golangci-lint/v2/cmd/golangci-lint@(v[0-9]+\.[0-9]+\.[0-9]+)'
+if [ ! -r "$pin_file" ]; then
+  echo "error: cannot read $pin_file for the golangci-lint pin" >&2
+  exit 1
+fi
+pin_text=$(<"$pin_file")
+if [[ ! $pin_text =~ $pin_re ]]; then
+  echo "error: no golangci-lint install line with a vX.Y.Z version in $pin_file" >&2
+  exit 1
+fi
+pin=${BASH_REMATCH[1]}
+remedy="install the pinned version: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${pin}"
+
+# Both the release build and the go install build print
+# "golangci-lint has version X.Y.Z ..." with no leading v. The version is
+# the word after "version ", compared as a whole.
+version_re='version ([0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*)'
+version_text=$(golangci-lint version 2>&1) || true
+if [[ ! $version_text =~ $version_re ]]; then
+  echo "error: cannot find a version in the output of '$binary version' (first line: ${version_text%%$'\n'*}); $pin_file pins ${pin#v}" >&2
+  echo "$remedy" >&2
+  exit 1
+fi
+installed=${BASH_REMATCH[1]}
+
+if [ "$installed" != "${pin#v}" ]; then
+  echo "error: $binary is golangci-lint $installed, but $pin_file pins ${pin#v}" >&2
+  echo "$remedy" >&2
+  echo "the pinned binary must come first on PATH, ahead of $binary" >&2
+  exit 1
+fi
