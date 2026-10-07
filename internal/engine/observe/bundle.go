@@ -12,6 +12,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -58,6 +59,7 @@ func errorStatus(err error) string { return fmt.Sprintf("error: %s", err) }
 
 type supportBundleCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 	schema  func() any
 	now     func() time.Time
 }
@@ -68,8 +70,8 @@ type supportBundleCmd struct {
 // state, per-namespace events, and the CLI's own settings/features/schema
 // snapshot - into one tar.gz, tri-state manifested so support can tell
 // "not applicable" from "collector failed" at a glance.
-func NewSupportBundle(clients engine.ClusterClientFactory, schema func() any) runtime.Command {
-	return &supportBundleCmd{clients: clients, schema: schema, now: time.Now}
+func NewSupportBundle(clients engine.ClusterClientFactory, roots engine.RootClientFactory, schema func() any) runtime.Command {
+	return &supportBundleCmd{clients: clients, roots: roots, schema: schema, now: time.Now}
 }
 
 func (c *supportBundleCmd) Describe() runtime.Descriptor {
@@ -133,7 +135,8 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		return runtime.Result{}, err
 	}
 
-	clusters, discoveryErr, err := resolveBundleClusters(ctx, c.clients, local, in.String(flagClusters))
+	get := steve.RootFactoryGetter(c.roots)
+	clusters, discoveryErr, err := resolveBundleClusters(ctx, c.clients, get, in.String(flagClusters))
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -184,7 +187,7 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 
 	var warnings []string
 	for _, clusterID := range clusters {
-		clusterItems, namespaces, clusterWarnings := collectCluster(ctx, c.clients, local, clusterID, targets, tail, since, bw)
+		clusterItems, namespaces, clusterWarnings := collectCluster(ctx, c.clients, get, clusterID, targets, tail, since, bw)
 		items = append(items, clusterItems...)
 		warnings = append(warnings, clusterWarnings...)
 
@@ -300,9 +303,7 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 }
 
 // resolveBundleClusters resolves --clusters: "" or "*" discovers local plus
-// every management Cluster the caller can list (via the already-fetched
-// local client - the caller has no separate local-client failure mode to
-// worry about, since it needed local before calling this anyway); an
+// every management Cluster the caller can read, as steve lists them; an
 // explicit comma-separated list is resolved token by token (the "local"
 // literal short-circuits).
 //
@@ -314,15 +315,15 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 // while claiming fleet coverage. err is fatal - an explicit --clusters
 // token that fails to resolve aborts the whole command, same as any other
 // VALIDATION-class failure.
-func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, raw string) (clusters []string, discoveryErr error, err error) {
+func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFactory, get steve.Getter, raw string) (clusters []string, discoveryErr error, err error) {
 	if raw == "" || raw == "*" {
 		ids := map[string]bool{engine.LocalCluster: true}
-		list, lerr := local.List(ctx, clusterKind.GVR, "", "")
+		list, lerr := steve.Clusters(ctx, get)
 		if lerr != nil {
 			return []string{engine.LocalCluster}, lerr, nil
 		}
-		for i := range list.Items {
-			ids[list.Items[i].GetName()] = true
+		for _, c := range list {
+			ids[c.ID] = true
 		}
 		out := make([]string, 0, len(ids))
 		for id := range ids {
@@ -341,7 +342,7 @@ func resolveBundleClusters(ctx context.Context, clients engine.ClusterClientFact
 			out = append(out, engine.LocalCluster)
 			continue
 		}
-		id, rerr := clients.ResolveCluster(ctx, tok)
+		id, rerr := engine.ResolveClusterArgument(ctx, clients, tok)
 		if rerr != nil {
 			return nil, nil, rerr
 		}
@@ -406,12 +407,12 @@ func collectFeatures(ctx context.Context, local engine.ClusterClient) ([]byte, e
 // returns the manifest items and the set of namespaces any attempted
 // target resolved to (for the caller's per-namespace events collection) -
 // cattle-system is always included.
-func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, local engine.ClusterClient, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string, []string) {
+func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, get steve.Getter, clusterID string, targets []Target, tail *int64, since *int64, bw *ArchiveWriter) ([]manifestItem, []string, []string) {
 	var items []manifestItem
 	var warnings []string
 	namespaces := map[string]bool{"cattle-system": true}
 
-	if obj, err := local.Get(ctx, clusterKind.GVR, "", clusterID); err != nil {
+	if obj, err := steve.GetCluster(ctx, get, clusterID); err != nil {
 		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: errorStatus(err)})
 	} else {
 		clusterState, _, _ := unstructured.NestedString(obj.Object, "status", "state")
@@ -449,7 +450,7 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, lo
 			items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: statusSkippedNotApplicable})
 			continue
 		}
-		resolved, err := ResolveOnCluster(ctx, clients, t, clusterID)
+		resolved, err := ResolveOnCluster(ctx, clients, get, t, clusterID)
 		if err != nil {
 			if nf := clierr.AsNotFound(err); nf != nil && nf.Message == nonACEHint {
 				items = append(items, manifestItem{Name: t.Name, Cluster: clusterID, Status: fmt.Sprintf("skipped: not applicable - %s", nonACEHint)})

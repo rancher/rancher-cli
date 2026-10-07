@@ -186,6 +186,16 @@ type Options struct {
 	// steve clusters collection; a bearer it does not know is answered 401.
 	// nil leaves the collection unserved (404).
 	ClusterVisibility func(bearer string) ([]ClusterFixture, bool)
+	// LocalManagementGate, when set, answers Rancher's local-cluster proxy
+	// rule: a request under /k8s/clusters/local/api(s)/ for a
+	// management.cattle.io resource outside Rancher's allow list
+	// (localManagementAllowAll) is answered 403 with no body and no
+	// Content-Type unless the gate says the bearer may get cluster local.
+	LocalManagementGate func(bearer string) (canGetLocal bool)
+	// ClusterObject, when set, is the stored management Cluster the steve
+	// GET by id answers for a cluster ClusterVisibility shows the bearer;
+	// ok=false serves the fixture row's object.
+	ClusterObject func(id string) (obj map[string]any, ok bool)
 	// ClustersPageSize pages every steve collection the facade serves
 	// (clusters, projects, a cluster's namespaces) with steve's continue
 	// token (an offset); 0 serves one page.
@@ -545,6 +555,8 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.opts.RequestHook(r)
 	}
 	switch {
+	case f.opts.LocalManagementGate != nil && localManagementGated(r.URL.Path) && !f.opts.LocalManagementGate(bearerFromHeader(r)):
+		w.WriteHeader(http.StatusForbidden)
 	case r.Method == http.MethodPost && r.URL.Path == normanTokensPath:
 		f.handleNormanTokensPOST(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == authProvidersPath:
@@ -571,6 +583,8 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleCRTCollection(w, r)
 	case f.opts.ClusterVisibility != nil && r.Method == http.MethodGet && r.URL.Path == ClustersCollectionPath:
 		f.handleClustersCollection(w, r)
+	case f.opts.ClusterVisibility != nil && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, ClustersCollectionPath+"/"):
+		f.handleClusterGet(w, r, strings.TrimPrefix(r.URL.Path, ClustersCollectionPath+"/"))
 	case r.Method == http.MethodGet && isProjectsCollection(r.URL.Path):
 		f.handleProjectsCollection(w, r, projectsCollectionCluster(r.URL.Path))
 	case f.opts.ProjectVisibility == nil && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, LocalProjectsPath+"/"):
@@ -1515,14 +1529,78 @@ func (f *Facade) handleClustersCollection(w http.ResponseWriter, r *http.Request
 	sort.Slice(visible, func(i, j int) bool { return visible[i].ID < visible[j].ID })
 	items := make([]map[string]any, 0, len(visible))
 	for _, c := range visible {
-		items = append(items, map[string]any{
-			"id":       c.ID,
-			"type":     "management.cattle.io.cluster",
-			"metadata": map[string]any{"name": c.ID},
-			"spec":     map[string]any{"displayName": c.DisplayName},
-		})
+		items = append(items, steveClusterObject(c))
 	}
 	f.serveSteveCollection(w, r, "management.cattle.io.cluster", items)
+}
+
+// handleClusterGet serves one cluster of the steve collection by id: the
+// object when the bearer sees it, 403 otherwise (steve's answer for an
+// object the caller may not get), 401 for a bearer it does not know.
+func (f *Facade) handleClusterGet(w http.ResponseWriter, r *http.Request, id string) {
+	visible, ok := f.opts.ClusterVisibility(bearerFromHeader(r))
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	i := slices.IndexFunc(visible, func(c ClusterFixture) bool { return c.ID == id })
+	if i < 0 {
+		writeJSON(w, http.StatusForbidden, map[string]any{"type": "error", "status": http.StatusForbidden, "code": "Forbidden",
+			"message": "clusters.management.cattle.io \"" + id + "\" is forbidden"})
+		return
+	}
+	if f.opts.ClusterObject != nil {
+		if obj, ok := f.opts.ClusterObject(id); ok {
+			obj["id"], obj["type"] = id, "management.cattle.io.cluster"
+			writeJSON(w, http.StatusOK, obj)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, steveClusterObject(visible[i]))
+}
+
+func steveClusterObject(c ClusterFixture) map[string]any {
+	return map[string]any{
+		"id":       c.ID,
+		"type":     "management.cattle.io.cluster",
+		"metadata": map[string]any{"name": c.ID},
+		"spec":     map[string]any{"displayName": c.DisplayName},
+	}
+}
+
+// localManagementAllowAll is Rancher's list of management.cattle.io
+// resources its local-cluster proxy serves without access to cluster
+// local (rancher v2.15.1 pkg/api/steve/disallow/disallow.go, AllowAll).
+var localManagementAllowAll = map[string]bool{
+	"clusterproxyconfigs":                        true,
+	"clusterroletemplatebindings":                true,
+	"globalrolebindings":                         true,
+	"globalroles":                                true,
+	"podsecurityadmissionconfigurationtemplates": true,
+	"projects":                                   true,
+	"projectroletemplatebindings":                true,
+	"proxyendpoints":                             true,
+	"oidcclients":                                true,
+	"users":                                      true,
+}
+
+// localManagementGated reports whether path is a local-cluster proxy
+// request for a management.cattle.io resource outside
+// localManagementAllowAll.
+func localManagementGated(path string) bool {
+	rest, ok := strings.CutPrefix(path, "/k8s/clusters/local/apis/management.cattle.io/")
+	if !ok {
+		return false
+	}
+	parts := strings.Split(rest, "/")
+	if len(parts) < 2 || parts[1] == "" {
+		return false // the group or version discovery document
+	}
+	resource := parts[1]
+	if resource == "namespaces" && len(parts) >= 4 {
+		resource = parts[3]
+	}
+	return !localManagementAllowAll[resource]
 }
 
 // ProjectFixture is one management Project the facade's steve collection

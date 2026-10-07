@@ -55,14 +55,14 @@ func TestCloudCredentialCompletionOffersWhatTheCommandResolves(t *testing.T) {
 		if ids[display] {
 			continue
 		}
-		if ref, err := ResolveCloudCredential(t.Context(), factory, display); err == nil {
+		if ref, _, err := ResolveCloudCredential(t.Context(), factory, display); err == nil {
 			assert.Equal(t, obj.GetName(), ref.SecretName)
 			want = append(want, display)
 		}
 	}
 	assert.ElementsMatch(t, want, got.Names)
 	for _, name := range got.Names {
-		_, err := ResolveCloudCredential(t.Context(), factory, name)
+		_, _, err := ResolveCloudCredential(t.Context(), factory, name)
 		assert.NoError(t, err, "%s is offered, so the command must resolve it", name)
 	}
 }

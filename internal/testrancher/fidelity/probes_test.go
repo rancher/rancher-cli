@@ -58,6 +58,10 @@ func TestExpectedProbeSet(t *testing.T) {
 		"discovery/dead-group-legacy-document",
 		"owner/local-creates-name-the-creator", "owner/login-body-names-no-owner",
 		"owner-downstream/scoped-creates-and-reviews", "owner-downstream/cluster-login-and-review",
+		"access-downstream/owner-management-gate", "access-downstream/owner-steve",
+		"access-downstream/member-steve-by-id", "access-downstream/member-cluster-token",
+		"access-downstream/admin-steve-cluster-shape", "access-downstream/standard-steve-empty",
+		"access/standard-cloud-credential-by-name",
 	}
 	var got []string
 	for _, p := range All() {

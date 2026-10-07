@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"math/big"
@@ -27,15 +28,18 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
-// stubFactory is a minimal engine.ClusterClientFactory for kubeconfig tests:
-// ResolveCluster answers from resolved, and Cluster hands out a stub local
-// client whose management objects are objects (a cluster with the endpoint
-// off is synthesized for any id not present, so the proxy-only tests need
-// no fixtures).
+// stubFactory is a minimal engine.ClusterClientFactory and
+// engine.RootClientFactory for kubeconfig tests: ResolveCluster answers from
+// resolved, Cluster hands out a stub local client whose management objects
+// are objects, and Root hands out a stub root client that serves the
+// management cluster from objects too (a cluster with the endpoint off is
+// synthesized for any id not present, so the proxy-only tests need no
+// fixtures).
 type stubFactory struct {
 	resolved   map[string]string
 	resolveErr error
@@ -43,6 +47,40 @@ type stubFactory struct {
 	lists      map[string]*unstructured.UnstructuredList
 	// getErrs fails the GET of the named object with its error.
 	getErrs map[string]error
+	// rootErrs fails the root read of the named management cluster with its
+	// error.
+	rootErrs map[string]error
+}
+
+// newTestCommand builds the kubeconfig command with f serving both the
+// local cluster client and the root client.
+func newTestCommand(dir string, store config.CredStore, f stubFactory) runtime.Command {
+	return NewCommand(dir, store, f, f)
+}
+
+func (f stubFactory) Root() (engine.RootClient, error) { return stubRoot{f: f}, nil }
+
+var _ engine.RootClientFactory = stubFactory{}
+
+// stubRoot is the root client of a stubFactory: GetJSON answers the steve
+// read of one management cluster, /v1/management.cattle.io.clusters/<id>,
+// from objects (a cluster absent from objects is synthesized with the
+// endpoint off) and fails it with rootErrs.
+type stubRoot struct{ f stubFactory }
+
+func (r stubRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
+	id, ok := strings.CutPrefix(path, "/v1/"+steve.ClustersType+"/")
+	if !ok {
+		return nil, errors.New("unexpected root path " + path)
+	}
+	if err, ok := r.f.rootErrs[id]; ok {
+		return nil, err
+	}
+	obj, ok := r.f.objects[id]
+	if !ok {
+		obj = &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": id}, "spec": map[string]any{}}}
+	}
+	return json.Marshal(obj.Object)
 }
 
 func (f stubFactory) Cluster(context.Context, string) (engine.ClusterClient, error) {
@@ -61,15 +99,14 @@ func (f stubFactory) ResolveCluster(_ context.Context, nameOrID string) (string,
 var _ engine.ClusterClientFactory = stubFactory{}
 
 // stubClusterClient answers GET from objects ("name" or "ns/name") and LIST
-// from lists ("resource|ns"); a management cluster absent from objects is
-// synthesized with the endpoint off.
+// from lists ("resource|ns").
 type stubClusterClient struct {
 	objects map[string]*unstructured.Unstructured
 	lists   map[string]*unstructured.UnstructuredList
 	getErrs map[string]error
 }
 
-func (c *stubClusterClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+func (c *stubClusterClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	key := name
 	if ns != "" {
 		key = ns + "/" + name
@@ -79,9 +116,6 @@ func (c *stubClusterClient) Get(_ context.Context, gvr schema.GroupVersionResour
 	}
 	if obj, ok := c.objects[key]; ok {
 		return obj, nil
-	}
-	if gvr.Resource == "clusters" {
-		return &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name}, "spec": map[string]any{}}}, nil
 	}
 	return nil, clierr.New(clierr.CodeNotFound, key+" not found")
 }
@@ -213,7 +247,7 @@ func TestKubeconfigEmitsExecSection(t *testing.T) {
 	t.Parallel()
 	caPEM := "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
 	dir := writeTestConfig(t, caPEM)
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"webprod": "c-abc"}})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"webprod": "c-abc"}})
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "webprod"}}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, res.RawBytes)
@@ -246,7 +280,7 @@ func TestKubeconfigEmitsExecSection(t *testing.T) {
 func TestKubeconfigExecArgsOmitCacertWhenNoCA(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, nil)
 	require.NoError(t, err)
 	cfg, err := clientcmd.Load(res.RawBytes)
@@ -260,7 +294,7 @@ func TestKubeconfigExecArgsOmitCacertWhenNoCA(t *testing.T) {
 func TestKubeconfigRequiresClusterFlag(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{}, nil)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -278,7 +312,7 @@ func TestKubeconfigEnvURLOverrideDropsStoredCAAndName(t *testing.T) {
 	dir := writeTestConfig(t, prodCA) // stored "prod" -> https://r.example.com, CA=prodCA
 	t.Setenv("RANCHER_CLI_URL", "https://staging.example.com")
 
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, nil)
 	require.NoError(t, err)
 
@@ -298,7 +332,7 @@ func TestKubeconfigEnvURLMatchingStoredServerKeepsStoredCAAndName(t *testing.T) 
 	dir := writeTestConfig(t, prodCA) // stored "prod" -> https://r.example.com, CA=prodCA
 	t.Setenv("RANCHER_CLI_URL", "https://r.example.com")
 
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, nil)
 	require.NoError(t, err)
 
@@ -319,7 +353,7 @@ func TestKubeconfigEnvOnlySession(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CACERT", caPEM)
 	dir := t.TempDir() // no config.yaml at all - no stored context, no stored server
 
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	var notices bytes.Buffer
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-env"}}, ui.New(&notices, nil, true, false))
 	require.NoError(t, err)
@@ -348,7 +382,7 @@ func TestKubeconfigWarnsOnHTTPServer(t *testing.T) {
 
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, p)
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "not https",
@@ -375,7 +409,7 @@ func TestKubeconfigWarnsOnMalformedUppercaseHTTPServer(t *testing.T) {
 
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, p)
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "not https")
@@ -387,7 +421,7 @@ func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {
 	writeLoggedIn(t, dir)
 	var errBuf bytes.Buffer
 	p := ui.New(&errBuf, strings.NewReader(""), true, false)
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	_, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, p)
 	require.NoError(t, err)
 	assertOnlyMachineNotice(t, errBuf.String(), dir)
@@ -396,7 +430,7 @@ func TestKubeconfigNoWarningOnHTTPSServer(t *testing.T) {
 func TestKubeconfigOmitsCADataWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-ctx"}}, nil)
 	require.NoError(t, err)
 	cfg, err := clientcmd.Load(res.RawBytes)
@@ -420,7 +454,7 @@ func TestKubeconfigDirectFQDNContextIsCurrent(t *testing.T) {
 	writeLoggedIn(t, dir)
 	ca := testCAPEM(t)
 	objects, lists := aceObjects("c-abc", "ace.example.test", ca)
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"webprod": "c-abc"}, objects: objects, lists: lists})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"webprod": "c-abc"}, objects: objects, lists: lists})
 	var notices bytes.Buffer
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "webprod"}}, ui.New(&notices, nil, true, false))
 	require.NoError(t, err)
@@ -448,7 +482,7 @@ func TestKubeconfigDirectNodeContexts(t *testing.T) {
 		objects, lists := aceObjects("c-abc", "", ca,
 			controlPlaneNode("m-1", "c-abc-cp1", "10.0.0.1", false),
 			controlPlaneNode("m-2", "c-abc-cp2", "10.0.0.2", true))
-		cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
+		cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
 		res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-abc"}}, ui.New(&bytes.Buffer{}, nil, true, false))
 		require.NoError(t, err)
 		kc := loadKubeconfig(t, res)
@@ -465,7 +499,7 @@ func TestKubeconfigDirectNodeContexts(t *testing.T) {
 		t.Parallel()
 		dir := writeTestConfig(t, "")
 		objects, lists := aceObjects("c-abc", "", ca, controlPlaneNode("m-1", "c-abc-cp1", "10.0.0.1", false))
-		cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
+		cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
 		res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-abc"}}, ui.New(&bytes.Buffer{}, nil, true, false))
 		require.NoError(t, err)
 		kc := loadKubeconfig(t, res)
@@ -488,7 +522,7 @@ func TestKubeconfigDirectOmittedIsOneNotice(t *testing.T) {
 	noAddress := controlPlaneNode("m-\x1b[31mred", "c-abc-cp2", "", true)
 	noAddress.Object["status"].(map[string]any)["internalNodeStatus"].(map[string]any)["addresses"] = []any{}
 	objects, lists := aceObjects("c-abc", "", ca, worker, noAddress)
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists})
 	var notices bytes.Buffer
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-abc"}}, ui.New(&notices, nil, true, false))
 	require.NoError(t, err)
@@ -502,6 +536,27 @@ func TestKubeconfigDirectOmittedIsOneNotice(t *testing.T) {
 	assert.NotContains(t, out, "\x1b", "control characters never reach the terminal")
 }
 
+// TestKubeconfigDirectClusterReadRefusedIsOneNotice asserts a refused read
+// of the management cluster through the root client keeps the proxy-only
+// file and puts one notice with the reason on stderr, without failing the
+// command.
+func TestKubeconfigDirectClusterReadRefusedIsOneNotice(t *testing.T) {
+	t.Parallel()
+	dir := writeTestConfig(t, "")
+	forbidden := clierr.New(clierr.CodeAuth, "forbidden").WithCause(&engine.RootStatusError{Status: 403})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{rootErrs: map[string]error{"c-abc": forbidden}})
+	var notices bytes.Buffer
+	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-abc"}}, ui.New(&notices, nil, true, false))
+	require.NoError(t, err)
+	kc := loadKubeconfig(t, res)
+	require.Len(t, kc.Contexts, 1)
+	assert.False(t, kc.AuthInfos["prod-c-abc"].Exec.ProvideClusterInfo)
+	out := notices.String()
+	assert.Equal(t, 1, strings.Count(out, "direct endpoint contexts omitted"), out)
+	assert.Contains(t, out, "management cluster c-abc not readable")
+	assert.Contains(t, out, "you cannot read cluster 'c-abc'")
+}
+
 // TestKubeconfigDirectEndpointOffIsUnchanged asserts a cluster without the
 // endpoint yields today's file: one context, no provideClusterInfo, no
 // notice but the one naming what the file records of this machine.
@@ -509,7 +564,7 @@ func TestKubeconfigDirectEndpointOffIsUnchanged(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
 	writeLoggedIn(t, dir)
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{})
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{})
 	var notices bytes.Buffer
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-abc"}}, ui.New(&notices, nil, true, false))
 	require.NoError(t, err)

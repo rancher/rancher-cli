@@ -773,9 +773,9 @@ func TestPluginLogin401RefreshesExactlyOnceAsAnUpdate(t *testing.T) {
 	})
 
 	t.Run("a fresh credential rejected on the cluster list is a hard error", func(t *testing.T) {
-		// A fallthrough that rejects every bearer makes the fresh
+		// A clusters collection that rejects every bearer makes the fresh
 		// credential's cluster resolution answer 401.
-		z := newPluginFixture(t, true, testrancher.Options{Fallthrough: clustersFallthrough(func(string) bool { return false })})
+		z := newPluginFixture(t, true, testrancher.Options{ClusterVisibility: facadeClusters(func(string) bool { return false })})
 		_, err := z.getToken(t, "testcluster", "n", localPrompter())
 		require.Error(t, err)
 		assert.Equal(t, 1, z.f.LoginCount())

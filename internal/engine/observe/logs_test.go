@@ -14,9 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func execLogs(t *testing.T, clients engine.ClusterClientFactory, in input) (runtime.Result, error) {
+func execLogs(t *testing.T, clients *fakeFactory, in input) (runtime.Result, error) {
 	t.Helper()
-	cmd := NewLogs(clients).(runtime.ReadCommand)
+	cmd := NewLogs(clients, clients).(runtime.ReadCommand)
 	return cmd.Execute(t.Context(), in, nil)
 }
 
@@ -46,7 +46,7 @@ func TestLogsRendersByteIdenticalUnderColor(t *testing.T) {
 		withListNS(podKind.GVR, "cattle-system", podList("agent-1")).
 		withLog("main", "hello\n")
 	factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
-	cmd := NewLogs(factory)
+	cmd := NewLogs(factory, factory)
 	in := input{args: []string{"agent"}, s: map[string]string{engine.FlagCluster: "c-1"}}
 
 	var plain, colored bytes.Buffer
@@ -267,4 +267,56 @@ func TestLogsExecuteTailFlag(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
 	})
+}
+
+// ownerFactory is the factory of a cluster owner: the local cluster client
+// refuses every management Cluster read, and steve serves prod as c-abc
+// with an authorized cluster endpoint and state active.
+func ownerFactory(downstream *fakeClient) (*fakeFactory, *fakeClient) {
+	local := newFakeClient().withDeniedKind(clusterKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
+	root := (&fakeRoot{}).withCluster(&unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "c-abc"},
+		"spec": map[string]any{
+			"displayName":              "prod",
+			"localClusterAuthEndpoint": map[string]any{"enabled": true},
+		},
+		"status": map[string]any{"state": "active"},
+	}})
+	return &fakeFactory{
+		local:      local,
+		root:       root,
+		perCluster: map[string]engine.ClusterClient{"c-abc": downstream},
+		resolve:    map[string]string{"prod": "c-abc"},
+	}, local
+}
+
+// TestLogsKubeAPIAuthAsClusterOwner asserts that a caller who cannot read
+// management Clusters on the local cluster still resolves kube-api-auth on
+// a cluster they own: the Cluster object comes from steve, and no read of
+// the management Cluster kind reaches the local client.
+func TestLogsKubeAPIAuthAsClusterOwner(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().
+		withListNS(podKind.GVR, "cattle-system", podList("kaa-1")).
+		withLog("main", "ready\n")
+	factory, local := ownerFactory(downstream)
+
+	res, err := execLogs(t, factory, input{args: []string{"kube-api-auth"}, s: map[string]string{engine.FlagCluster: "prod"}})
+	require.NoError(t, err)
+	assert.Contains(t, res.Text, "[kaa-1/main] ready\n")
+	assert.NotContains(t, local.kindReads, clusterKind.GVR, "no management Cluster read may reach the local client")
+	assert.Equal(t, []string{clusterPath("c-abc")}, factory.root.paths)
+}
+
+// TestLogsKubeAPIAuthPropagatesSteveError asserts that a failed steve read
+// of the Cluster object fails logs for kube-api-auth, not reported as a
+// cluster without an authorized cluster endpoint.
+func TestLogsKubeAPIAuthPropagatesSteveError(t *testing.T) {
+	t.Parallel()
+	factory, _ := ownerFactory(newFakeClient())
+	factory.root.withError(clusterPath("c-abc"), rootStatusError(500))
+
+	_, err := execLogs(t, factory, input{args: []string{"kube-api-auth"}, s: map[string]string{engine.FlagCluster: "prod"}})
+	require.ErrorContains(t, err, "http status 500")
+	assert.NotEqual(t, clierr.CodeNotFound, clierrCode(t, err))
 }

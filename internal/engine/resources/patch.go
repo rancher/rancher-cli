@@ -85,7 +85,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	}
 	name := args[0]
 	if c.k.Key == "managementcluster" {
-		resolved, rerr := c.clients.ResolveCluster(ctx, name)
+		resolved, rerr := engine.ResolveClusterArgument(ctx, c.clients, name)
 		if rerr != nil {
 			return safety.Effect{}, nil, rerr
 		}

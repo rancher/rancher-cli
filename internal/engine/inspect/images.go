@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/resources"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"golang.org/x/sync/errgroup"
@@ -83,15 +84,17 @@ func (r imagesResult) Rows() [][]string {
 
 type imagesCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 }
 
 // NewImages builds `images [--cluster X | --all-clusters]`: every
 // container+init-container image across a cluster's pods, deduplicated and
 // counted. --all-clusters fans out per management cluster and degrades a
 // single cluster's failure to a warning - partial results beat none for a
-// fleet-wide scan.
-func NewImages(clients engine.ClusterClientFactory) runtime.Command {
-	return &imagesCmd{clients: clients}
+// fleet-wide scan. The clusters are the ones the caller can read, as steve
+// lists them.
+func NewImages(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
+	return &imagesCmd{clients: clients, roots: roots}
 }
 
 func (c *imagesCmd) Describe() runtime.Descriptor {
@@ -178,18 +181,13 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 }
 
 func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string) (runtime.Result, error) {
-	mgmt, err := c.clients.Cluster(ctx, engine.LocalCluster)
+	list, err := steve.Clusters(ctx, steve.RootFactoryGetter(c.roots))
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	clusterKind, _ := kinds.Lookup("cluster")
-	list, err := mgmt.List(ctx, clusterKind.GVR, "", "")
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	ids := make([]string, 0, len(list.Items))
-	for i := range list.Items {
-		ids = append(ids, list.Items[i].GetName())
+	ids := make([]string, 0, len(list))
+	for _, cl := range list {
+		ids = append(ids, cl.ID)
 	}
 
 	sec := newSections(ctx, sectionClusters, sectionOwnerResolution)

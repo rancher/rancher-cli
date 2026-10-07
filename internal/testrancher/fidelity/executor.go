@@ -191,6 +191,12 @@ func attempt(ctx context.Context, tgt Target, o Observation, captured map[string
 		case IdentityNone:
 		case IdentityGarbage:
 			req.Header.Set("Authorization", "Bearer "+garbageBearer)
+		case IdentityClusterOwner:
+			tok := captured[clusterOwnerBearer]
+			if tok == "" {
+				return nil, fmt.Errorf("no %s bearer: the probe's setup must create the cluster owner", IdentityClusterOwner)
+			}
+			req.Header.Set("Authorization", "Bearer "+tok)
 		default:
 			tok, berr := tgt.Bearer(ctx, o.Request.Identity)
 			if berr != nil {

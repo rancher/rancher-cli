@@ -12,6 +12,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
@@ -32,14 +33,15 @@ var systemPrincipalPrefix = func() string {
 
 type userCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 }
 
 // NewInspectUser builds `inspect user <user>`: one document answering who a
 // user is and what roles they hold everywhere - never what they can
 // actually do (that is a permissions question, answered only by the server,
 // out of scope here and everywhere else in this CLI today).
-func NewInspectUser(clients engine.ClusterClientFactory) runtime.Command {
-	return &userCmd{clients: clients}
+func NewInspectUser(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
+	return &userCmd{clients: clients, roots: roots}
 }
 
 func (c *userCmd) Describe() runtime.Descriptor {
@@ -108,7 +110,7 @@ func (c *userCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	var extraWarnings []string
 	if !blocked {
 		var roleWarnings []string
-		roles, roleWarnings, err = collectRoles(ctx, mgmt, sec, rs.UserID, rs.PrincipalIDs, groupPrincipals,
+		roles, roleWarnings, err = collectRoles(ctx, mgmt, steve.RootFactoryGetter(c.roots), sec, rs.UserID, rs.PrincipalIDs, groupPrincipals,
 			roleDisplayNames(identity, rs.UserID, rs.PrincipalIDs, identity.Groups))
 		if err != nil {
 			return runtime.Result{}, err
@@ -288,7 +290,7 @@ func roleDisplayNames(identity userIdentity, userID string, principalIDs []strin
 // (same enrichment) - so a caller cancellation during either enrichment
 // aborts before the next collector issues a single request. Each collector
 // degrades independently on its own list failure.
-func collectRoles(ctx context.Context, mgmt engine.ClusterClient, sec *sections, userID string, principalIDs, groupPrincipals []string, displayNames map[string]string) (rolesResult, []string, error) {
+func collectRoles(ctx context.Context, mgmt engine.ClusterClient, get steve.Getter, sec *sections, userID string, principalIDs, groupPrincipals []string, displayNames map[string]string) (rolesResult, []string, error) {
 	var roles rolesResult
 	var warnings []string
 
@@ -312,7 +314,7 @@ func collectRoles(ctx context.Context, mgmt engine.ClusterClient, sec *sections,
 	default:
 		entries := make([]rolesCluster, 0, len(clusterGroups))
 		for _, g := range clusterGroups {
-			displayName, derr := clusterDisplayName(ctx, mgmt, g.ID)
+			displayName, derr := clusterDisplayName(ctx, get, g.ID)
 			if derr != nil {
 				return rolesResult{}, nil, derr
 			}
@@ -344,14 +346,13 @@ func collectRoles(ctx context.Context, mgmt engine.ClusterClient, sec *sections,
 	return roles, warnings, nil
 }
 
-// clusterDisplayName is a best-effort per-entry GET: an id is never
+// clusterDisplayName is a best-effort per-entry steve GET: an id is never
 // replaced by a display name, so an unreadable cluster silently omits
 // DisplayName rather than failing the section. Caller cancellation
 // propagates - enrichment never swallows ctx.Err() or keeps issuing
 // requests after cancellation.
-func clusterDisplayName(ctx context.Context, mgmt engine.ClusterClient, clusterID string) (string, error) {
-	clusterKind, _ := kinds.Lookup("cluster")
-	obj, err := mgmt.Get(ctx, clusterKind.GVR, "", clusterID)
+func clusterDisplayName(ctx context.Context, get steve.Getter, clusterID string) (string, error) {
+	obj, err := steve.GetCluster(ctx, get, clusterID)
 	if err != nil {
 		if lookupCanceled(ctx, err) {
 			return "", err

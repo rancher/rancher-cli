@@ -122,6 +122,12 @@ func SteveCollectionPath(resource string) (Path, error) {
 	return build([]string{"v1", resource})
 }
 
+// SteveObjectPath is one object of a steve collection at the server root:
+// /v1/<resource>/<name>. Both segments go through ValidSegment.
+func SteveObjectPath(resource, name string) (Path, error) {
+	return build([]string{"v1", resource, name})
+}
+
 // WithQuery returns p with key=value appended to its query, both
 // URL-encoded, so a value can never reach the path. A zero Path stays
 // zero.

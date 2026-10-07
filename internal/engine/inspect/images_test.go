@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
 	"sort"
 	"testing"
 
@@ -46,12 +47,6 @@ func podWithPhase(name, phase string, image string) unstructured.Unstructured {
 	}}
 }
 
-func managementClusterObj(id string) unstructured.Unstructured {
-	return unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": id},
-	}}
-}
-
 func TestImagesSingleClusterDedupes(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
@@ -61,7 +56,7 @@ func TestImagesSingleClusterDedupes(t *testing.T) {
 	}}
 	client := newFakeClient().withList(podKind.GVR, pods)
 
-	cmd := NewImages(&fakeFactory{client: client})
+	cmd := NewImages(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}})
 	require.NoError(t, err)
 
@@ -79,11 +74,8 @@ func TestImagesSingleClusterDedupes(t *testing.T) {
 func TestImagesAllClustersFansOut(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
-	clusterKind := mustKind(t, "cluster")
 
-	mgmt := newFakeClient().withList(clusterKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-		managementClusterObj("c-a"), managementClusterObj("c-b"),
-	}})
+	roots := clustersRoot(t, "c-a", "c-b").roots()
 	clientA := newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		*podWithImages("ns1", "p1", []string{"nginx:1"}, nil),
 	}})
@@ -92,14 +84,13 @@ func TestImagesAllClustersFansOut(t *testing.T) {
 	}})
 
 	factory := &fakeFactory{
-		client: mgmt,
 		perCluster: map[string]engine.ClusterClient{
 			"c-a": clientA,
 			"c-b": clientB,
 		},
 	}
 
-	cmd := NewImages(factory)
+	cmd := NewImages(factory, roots)
 	res, err := execRead(t, cmd, input{b: map[string]bool{"all-clusters": true}})
 	require.NoError(t, err)
 
@@ -119,25 +110,21 @@ func TestImagesAllClustersFansOut(t *testing.T) {
 func TestImagesOneClusterFailingDegrades(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
-	clusterKind := mustKind(t, "cluster")
 
-	mgmt := newFakeClient().withList(clusterKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-		managementClusterObj("c-a"), managementClusterObj("c-b"),
-	}})
+	roots := clustersRoot(t, "c-a", "c-b").roots()
 	clientA := newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		*podWithImages("ns1", "p1", []string{"nginx:1"}, nil),
 	}})
 	clientB := newFakeClient().withListErr(podKind.GVR, errors.New("connection refused"))
 
 	factory := &fakeFactory{
-		client: mgmt,
 		perCluster: map[string]engine.ClusterClient{
 			"c-a": clientA,
 			"c-b": clientB,
 		},
 	}
 
-	cmd := NewImages(factory)
+	cmd := NewImages(factory, roots)
 	res, err := execRead(t, cmd, input{b: map[string]bool{"all-clusters": true}})
 	require.NoError(t, err)
 
@@ -162,7 +149,7 @@ func TestImagesSingleClusterPodListDeniedIsHardRBAC(t *testing.T) {
 	podKind := mustKind(t, "pod")
 	client := newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "pods is forbidden"))
 
-	cmd := NewImages(&fakeFactory{client: client})
+	cmd := NewImages(&fakeFactory{client: client}, nil)
 	res, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}})
 	require.Error(t, err)
 	var ce *clierr.Error
@@ -174,7 +161,7 @@ func TestImagesSingleClusterPodListDeniedIsHardRBAC(t *testing.T) {
 
 func TestImagesClusterAndAllClustersConflict(t *testing.T) {
 	t.Parallel()
-	cmd := NewImages(&fakeFactory{client: newFakeClient()})
+	cmd := NewImages(&fakeFactory{client: newFakeClient()}, nil)
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}, b: map[string]bool{"all-clusters": true}})
 	require.Error(t, err)
 }
@@ -263,7 +250,7 @@ func TestImagesMatchFiltersAndORs(t *testing.T) {
 
 func TestImagesEmptyMatchRejected(t *testing.T) {
 	t.Parallel()
-	cmd := NewImages(&fakeFactory{client: newFakeClient()})
+	cmd := NewImages(&fakeFactory{client: newFakeClient()}, nil)
 	_, err := execRead(t, cmd, input{
 		s:  map[string]string{},
 		ss: map[string][]string{"match": {""}},
@@ -284,7 +271,7 @@ func TestImagesByWorkloadDispatch(t *testing.T) {
 		withObject(rsGVR, "web", "rs", replicaSet("web", "rs", "rs-1", "web", "dep-1"))
 	factory := &fakeFactory{client: client}
 
-	cmd := NewImages(factory)
+	cmd := NewImages(factory, nil)
 	res, err := execRead(t, cmd, input{
 		s: map[string]string{"by": "workload", "cluster": "c-test"},
 	})
@@ -301,7 +288,7 @@ func TestImagesByWorkloadDispatch(t *testing.T) {
 
 func TestImagesDescriptorDeclaresByEnumAndMatchSlice(t *testing.T) {
 	t.Parallel()
-	d := NewImages(&fakeFactory{}).Describe()
+	d := NewImages(&fakeFactory{}, nil).Describe()
 	flags := map[string]runtime.ArgSpec{}
 	for _, f := range d.Flags {
 		flags[f.Name] = f
@@ -364,41 +351,99 @@ func TestImagesResultZeroValueNilSafe(t *testing.T) {
 func TestImagesInvalidByRejectedByPipeline(t *testing.T) {
 	t.Parallel()
 	var out, errBuf bytes.Buffer
-	_, ce := runtime.Run(t.Context(), NewImages(&fakeFactory{client: newFakeClient()}),
+	_, ce := runtime.Run(t.Context(), NewImages(&fakeFactory{client: newFakeClient()}, nil),
 		input{s: map[string]string{"by": "bogus"}},
 		runtime.IO{Out: &out, Err: &errBuf, Format: "json"}, safety.Binding{})
 	require.NotNil(t, ce, "the pipeline must reject a non-enum --by before Execute")
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// allClustersFactory builds the --all-clusters fixture: a management client
-// listing ids, and one downstream client per id.
-func allClustersFactory(t *testing.T, downstream map[string]engine.ClusterClient) *fakeFactory {
+// allClustersFactory builds the --all-clusters fixture: the steve cluster
+// collection listing the ids, and one downstream client per id.
+func allClustersFactory(t *testing.T, downstream map[string]engine.ClusterClient) (*fakeFactory, engine.RootClientFactory) {
 	t.Helper()
-	clusterKind := mustKind(t, "cluster")
 	ids := make([]string, 0, len(downstream))
 	for id := range downstream {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	items := make([]unstructured.Unstructured, 0, len(ids))
-	for _, id := range ids {
-		items = append(items, managementClusterObj(id))
-	}
-	mgmt := newFakeClient().withList(clusterKind.GVR, &unstructured.UnstructuredList{Items: items})
-	return &fakeFactory{client: mgmt, perCluster: downstream}
+	return &fakeFactory{perCluster: downstream}, clustersRoot(t, ids...).roots()
 }
 
-// TestImagesAllClustersZeroClustersIsVerifiedEmpty asserts a management list
-// the caller was authorized to read, returning no cluster, is an empty scan
-// rather than a failure: no downstream client is built at all.
+// TestImagesAllClustersListsClustersThroughSteve asserts the cluster ids come
+// from the steve collection: a local client whose management cluster LIST is
+// refused still gets the fan-out, and the only root read is the collection.
+func TestImagesAllClustersListsClustersThroughSteve(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	clusterKind := mustKind(t, "cluster")
+	local := newFakeClient().withListErr(clusterKind.GVR, clierr.New(clierr.CodeRBAC, "clusters is forbidden"))
+	factory := &fakeFactory{
+		client: local,
+		perCluster: map[string]engine.ClusterClient{
+			"c-a": newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+				*podWithImages("ns1", "p1", []string{"nginx:1"}, nil),
+			}}),
+			"c-b": newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+				*podWithImages("ns1", "p1", []string{"redis:7"}, nil),
+			}}),
+		},
+	}
+	root := clustersRoot(t, "c-a", "c-b")
+
+	res, err := execRead(t, NewImages(factory, root.roots()), input{b: map[string]bool{"all-clusters": true}})
+	require.NoError(t, err)
+
+	assert.Empty(t, res.Warnings)
+	env, ok := res.Data.(imagesResult)
+	require.True(t, ok)
+	perCluster, ok := env.Clusters.(clusterImages)
+	require.True(t, ok)
+	assert.Equal(t, imageRows{{Image: "nginx:1", Count: 1}}, perCluster["c-a"])
+	assert.Equal(t, imageRows{{Image: "redis:7", Count: 1}}, perCluster["c-b"])
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters"}, root.requests())
+	assert.False(t, local.listed(clusterKind.GVR), "the clusters are never listed through the local client")
+	assert.NotContains(t, factory.clusterCalls, engine.LocalCluster)
+}
+
+// TestImagesAllClustersCollectionReadErrorIsReturned asserts a failed read of
+// the steve cluster collection fails the command before any cluster client
+// is built.
+func TestImagesAllClustersCollectionReadErrorIsReturned(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		status   int
+		wantCode string
+		wantText string
+	}{
+		{name: "forbidden", status: http.StatusForbidden, wantCode: clierr.CodeRBAC, wantText: "the server refused GET /v1/management.cattle.io.clusters (403)"},
+		{name: "server error", status: http.StatusInternalServerError, wantCode: clierr.CodeGeneric, wantText: "GET /v1/management.cattle.io.clusters answered 500"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			factory := &fakeFactory{client: newFakeClient()}
+			root := newSteveRoot(t, map[string]steveAnswer{steveClusterPath(""): {status: tc.status}})
+
+			_, err := execRead(t, NewImages(factory, root.roots()), input{b: map[string]bool{"all-clusters": true}})
+			require.ErrorContains(t, err, tc.wantText)
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, tc.wantCode, ce.Code)
+			assert.Empty(t, factory.clusterCalls, "no cluster client is built after a failed collection read")
+		})
+	}
+}
+
+// TestImagesAllClustersZeroClustersIsVerifiedEmpty asserts a steve cluster
+// collection the caller was authorized to read, returning no cluster, is an
+// empty scan rather than a failure: no cluster client is built at all.
 func TestImagesAllClustersZeroClustersIsVerifiedEmpty(t *testing.T) {
 	t.Parallel()
-	clusterKind := mustKind(t, "cluster")
-	mgmt := newFakeClient().withList(clusterKind.GVR, &unstructured.UnstructuredList{})
-	factory := &fakeFactory{client: mgmt}
+	factory := &fakeFactory{}
 
-	res, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
+	res, err := execRead(t, NewImages(factory, clustersRoot(t).roots()), input{b: map[string]bool{"all-clusters": true}})
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings)
 	env, ok := res.Data.(imagesResult)
@@ -407,8 +452,7 @@ func TestImagesAllClustersZeroClustersIsVerifiedEmpty(t *testing.T) {
 	perCluster, ok := env.Clusters.(clusterImages)
 	require.True(t, ok)
 	assert.Empty(t, perCluster)
-	assert.Equal(t, []string{engine.LocalCluster}, factory.clusterCalls,
-		"an empty scan domain must not build a downstream client")
+	assert.Empty(t, factory.clusterCalls, "an empty scan domain must not build a cluster client")
 }
 
 // TestImagesAllClustersEveryScanFailedIsHardError asserts a fleet-wide scan
@@ -417,12 +461,12 @@ func TestImagesAllClustersZeroClustersIsVerifiedEmpty(t *testing.T) {
 func TestImagesAllClustersEveryScanFailedIsHardError(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
-	factory := allClustersFactory(t, map[string]engine.ClusterClient{
+	factory, roots := allClustersFactory(t, map[string]engine.ClusterClient{
 		"c-b": newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden on b")),
 		"c-a": newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden on a")),
 	})
 
-	_, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
+	_, err := execRead(t, NewImages(factory, roots), input{b: map[string]bool{"all-clusters": true}})
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -435,12 +479,12 @@ func TestImagesAllClustersEveryScanFailedIsHardError(t *testing.T) {
 func TestImagesAllClustersEveryScanFailedDifferentlyIsGeneric(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
-	factory := allClustersFactory(t, map[string]engine.ClusterClient{
+	factory, roots := allClustersFactory(t, map[string]engine.ClusterClient{
 		"c-a": newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")),
 		"c-b": newFakeClient().withListErr(podKind.GVR, errors.New("connection refused")),
 	})
 
-	_, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
+	_, err := execRead(t, NewImages(factory, roots), input{b: map[string]bool{"all-clusters": true}})
 	require.Error(t, err)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -459,9 +503,9 @@ func TestImagesAllClustersOwnerWalkFailureIsNotAScanFailure(t *testing.T) {
 			ownedPod("p1", "web", "nginx:1.25", "rs", "rs-1"),
 		}}).
 		withGetErr(rsGVR, "web", "rs", clierr.New(clierr.CodeRBAC, "forbidden"))
-	factory := allClustersFactory(t, map[string]engine.ClusterClient{"c-a": client})
+	factory, roots := allClustersFactory(t, map[string]engine.ClusterClient{"c-a": client})
 
-	res, err := execRead(t, NewImages(factory), input{
+	res, err := execRead(t, NewImages(factory, roots), input{
 		s: map[string]string{"by": "workload"},
 		b: map[string]bool{"all-clusters": true},
 	})
@@ -480,16 +524,19 @@ func TestImagesAllClustersOwnerWalkFailureIsNotAScanFailure(t *testing.T) {
 func TestImagesAllClustersScanCancellationStaysHard(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
-	factory := allClustersFactory(t, map[string]engine.ClusterClient{
+	factory, _ := allClustersFactory(t, map[string]engine.ClusterClient{
 		"c-a": newFakeClient().withListErr(podKind.GVR, context.Canceled),
 		"c-b": newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			*podWithImages("ns1", "p1", []string{"nginx:1"}, nil),
 		}}),
 	})
 
+	// The interrupt lands once the cluster collection has answered, so the
+	// scans run under a canceled context.
 	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	rc := NewImages(factory).(runtime.ReadCommand)
+	defer cancel()
+	roots := fakeRoots{rc: cancelAfterRoot{RootClient: clustersRoot(t, "c-a", "c-b"), cancel: cancel}}
+	rc := NewImages(factory, roots).(runtime.ReadCommand)
 	_, err := rc.Execute(ctx, input{b: map[string]bool{"all-clusters": true}}, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
@@ -502,7 +549,7 @@ func TestImagesAllClustersDegradedEntriesAreDeterministic(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
 	for range 20 {
-		factory := allClustersFactory(t, map[string]engine.ClusterClient{
+		factory, roots := allClustersFactory(t, map[string]engine.ClusterClient{
 			"c-c": newFakeClient().withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")),
 			"c-b": newFakeClient().withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 				*podWithImages("ns1", "p1", []string{"nginx:1"}, nil),
@@ -510,7 +557,7 @@ func TestImagesAllClustersDegradedEntriesAreDeterministic(t *testing.T) {
 			"c-a": newFakeClient().withListErr(podKind.GVR, errors.New("connection refused")),
 		})
 
-		res, err := execRead(t, NewImages(factory), input{b: map[string]bool{"all-clusters": true}})
+		res, err := execRead(t, NewImages(factory, roots), input{b: map[string]bool{"all-clusters": true}})
 		require.NoError(t, err)
 		env, ok := res.Data.(imagesResult)
 		require.True(t, ok)

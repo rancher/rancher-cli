@@ -96,33 +96,6 @@ func discoveredClusters(list []steve.Cluster) []discoveredCluster {
 	return withLocal(rows)
 }
 
-// SteveCluster is one cluster of the caller's set as steve lists it, for a
-// caller outside the package (shell completion of --cluster).
-type SteveCluster struct {
-	ID          string
-	DisplayName string
-}
-
-// ListClustersOnce is listClusters in one pass: the same steve protocol
-// (count and revision required and stable, agreeing ids and duplicates, no
-// repeated continue token, the page bound), the same local row and the
-// same order by id, but a collection that moves under the read is an error
-// at once, never retried.
-// Shell completion reads through it so a value it offers is one the command
-// resolves, and a TAB costs at most one walk of the collection.
-func ListClustersOnce(ctx context.Context, root engine.RootClient) ([]SteveCluster, error) {
-	list, err := steve.ClustersOnce(ctx, steve.RootGetter(root))
-	if err != nil {
-		return nil, err
-	}
-	rows := discoveredClusters(list)
-	out := make([]SteveCluster, 0, len(rows))
-	for _, c := range rows {
-		out = append(out, SteveCluster{ID: c.ID, DisplayName: c.DisplayName})
-	}
-	return out, nil
-}
-
 // listProjects reads the caller's projects from steve, ordered by cluster
 // then project.
 func listProjects(ctx context.Context, root engine.RootClient) ([]discoveredProject, error) {

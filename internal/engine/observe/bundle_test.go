@@ -11,15 +11,16 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func execBundle(t *testing.T, clients engine.ClusterClientFactory, in input, opts ...func(*supportBundleCmd)) (runtime.Result, error) {
+func execBundle(t *testing.T, clients *fakeFactory, in input, opts ...func(*supportBundleCmd)) (runtime.Result, error) {
 	t.Helper()
-	cmd := NewSupportBundle(clients, func() any { return map[string]string{"cliVersion": "v9.9.9"} }).(*supportBundleCmd)
+	cmd := NewSupportBundle(clients, clients, func() any { return map[string]string{"cliVersion": "v9.9.9"} }).(*supportBundleCmd)
 	for _, opt := range opts {
 		opt(cmd)
 	}
@@ -124,9 +125,9 @@ func TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError(t *testing.T) {
 		"metadata": map[string]any{"name": "c-1"},
 		"spec":     map[string]any{},
 	}}
-	local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", nonACECluster)
+	root := (&fakeRoot{}).withCluster(nonACECluster)
 	downstream := newFakeClient()
-	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	factory := &fakeFactory{local: newFakeClient(), root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
 	res, err := execBundle(t, factory, input{s: map[string]string{
@@ -150,11 +151,11 @@ func TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError(t *testing.T) {
 func TestSupportBundleRBACFailingCollectorStillShipsBundle(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", &unstructured.Unstructured{Object: map[string]any{
+	root := (&fakeRoot{}).withCluster(&unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "c-1"},
 	}})
 	downstream := newFakeClient().withListErr(podKind.GVR, "cattle-system", errors.New("rbac denied"))
-	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	factory := &fakeFactory{local: newFakeClient(), root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
 	res, err := execBundle(t, factory, input{s: map[string]string{
@@ -219,7 +220,6 @@ func TestSupportBundleEventsPerNamespace(t *testing.T) {
 		"spec":     map[string]any{"agentNamespace": "custom-ns"},
 	}}
 	local := newFakeClient().
-		withObject(clusterKind.GVR, "", "c-1", mgmtCluster).
 		withListNS(provKind.GVR, "fleet-default", provList).
 		withObject(fleetKind.GVR, "fleet-default", "p-1", fleetCluster)
 	downstream := newFakeClient().
@@ -228,7 +228,7 @@ func TestSupportBundleEventsPerNamespace(t *testing.T) {
 		withListNS(eventKind.GVR, "custom-ns", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			{Object: map[string]any{"metadata": map[string]any{"name": "ev-1"}, "message": "crashlooping"}},
 		}})
-	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	factory := &fakeFactory{local: local, root: (&fakeRoot{}).withCluster(mgmtCluster), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
 	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "fleet-agent", flagClusters: "c-1"}})
@@ -265,8 +265,8 @@ func TestCollectFeaturesSerializesFalseValues(t *testing.T) {
 func TestSupportBundleClusterDiscoveryFailureIsSignaled(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	local := newFakeClient().withListErr(clusterKind.GVR, "", errors.New("rbac denied listing clusters"))
-	factory := &fakeFactory{local: local}
+	root := (&fakeRoot{}).withError(steve.Request{Type: steve.ClustersType}.Path(), errors.New("rbac denied listing clusters"))
+	factory := &fakeFactory{local: newFakeClient(), root: root}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
 	res, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "webhook"}})
@@ -304,11 +304,11 @@ func TestSupportBundleEventsAreCappedNewestFirst(t *testing.T) {
 		}})
 	}
 
-	local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", &unstructured.Unstructured{Object: map[string]any{
+	root := (&fakeRoot{}).withCluster(&unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "c-1"},
 	}})
 	downstream := newFakeClient().withListNS(eventKind.GVR, "cattle-system", &unstructured.UnstructuredList{Items: items})
-	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	factory := &fakeFactory{local: newFakeClient(), root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
 	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "", flagClusters: "c-1"}})
@@ -349,11 +349,11 @@ func TestSupportBundleDefaultFilenameUsesClock(t *testing.T) {
 // the result plus the archive path.
 func bundleWithAgentPod(t *testing.T, downstream *fakeClient) (runtime.Result, string) {
 	t.Helper()
-	local := newFakeClient().withObject(clusterKind.GVR, "", "c-1", &unstructured.Unstructured{Object: map[string]any{
+	root := (&fakeRoot{}).withCluster(&unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "c-1"},
 	}})
 	downstream.withListNS(podKind.GVR, "cattle-system", podList("agent-1"))
-	factory := &fakeFactory{local: local, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+	factory := &fakeFactory{local: newFakeClient(), root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
 	res, err := execBundle(t, factory, input{s: map[string]string{
 		flagFilename: path,
@@ -419,4 +419,53 @@ func TestSupportBundlePreviousLogRefusedIsAWarning(t *testing.T) {
 	assert.Equal(t, 0, res.Data.(bundleResult).Errors)
 	require.Len(t, res.Warnings, 1)
 	assert.Equal(t, "support-bundle: c-1/agent: previous container log refused: agent-1/main: pods/log is forbidden", res.Warnings[0])
+}
+
+// TestSupportBundleClusterOwnerCollectsClusterJSON asserts that
+// cluster.json for a cluster the caller owns is built from the steve
+// object while the local client refuses every management Cluster read.
+func TestSupportBundleClusterOwnerCollectsClusterJSON(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().withListNS(podKind.GVR, "cattle-system", podList("agent-1"))
+	factory, local := ownerFactory(downstream)
+
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "agent", flagClusters: "prod"}})
+	require.NoError(t, err)
+
+	assert.Equal(t, statusCollected, findItem(t, manifestFrom(t, path), "cluster.json", "c-abc").Status)
+	assert.JSONEq(t, `{"state":"active","conditions":null}`, readArchive(t, path)["clusters/c-abc/cluster.json"])
+	assert.NotContains(t, local.kindReads, clusterKind.GVR, "no management Cluster read may reach the local client")
+}
+
+// TestSupportBundleClusterJSONSteveFailureIsManifestError asserts that a
+// failed steve read of the Cluster object writes an error entry for
+// cluster.json and the bundle still ships.
+func TestSupportBundleClusterJSONSteveFailureIsManifestError(t *testing.T) {
+	t.Parallel()
+	factory, _ := ownerFactory(newFakeClient())
+	factory.root.withError(clusterPath("c-abc"), rootStatusError(500))
+
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "agent", flagClusters: "prod"}})
+	require.NoError(t, err)
+
+	assert.Contains(t, findItem(t, manifestFrom(t, path), "cluster.json", "c-abc").Status, "error: ")
+	assert.NotContains(t, readArchive(t, path), "clusters/c-abc/cluster.json")
+}
+
+// TestSupportBundleDiscoveryListsSteveClusters asserts that default
+// discovery collects local plus every cluster steve lists, with no
+// management Cluster read on the local client.
+func TestSupportBundleDiscoveryListsSteveClusters(t *testing.T) {
+	t.Parallel()
+	factory, local := ownerFactory(newFakeClient())
+
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "agent"}})
+	require.NoError(t, err)
+
+	m := manifestFrom(t, path)
+	assert.Equal(t, statusCollected, findItem(t, m, "cluster.json", "c-abc").Status)
+	assert.NotContains(t, local.kindReads, clusterKind.GVR)
 }

@@ -25,6 +25,12 @@ const (
 	// (project-member) on the downstream cluster's Default project and no
 	// other role: what the access commands call a member.
 	IdentityMember Identity = "member"
+	// IdentityClusterOwner is a local user holding the baseline user
+	// GlobalRole and one cluster-owner ClusterRoleTemplateBinding on the
+	// downstream cluster, and no access to the local cluster. A probe's
+	// setup creates it (clusterOwnerFixture) and records its bearer as the
+	// clusterOwnerBearer capture; the executor sends that bearer.
+	IdentityClusterOwner Identity = "clusterowner"
 )
 
 // Target is one server a probe executes against: the real Rancher oracle or
@@ -92,10 +98,21 @@ type NormalizeRule struct {
 	Replace    string
 	KeepPrefix string
 	// SortBy, when set, sorts the array at Path by the string at this
-	// dot-separated sub-path of each element (stable, ascending). Server
-	// list order follows generated names, so a recorded list with names
+	// dot-separated sub-path of each element (stable, ascending); "."
+	// sorts an array of strings by the strings themselves. Server list
+	// order follows generated names, so a recorded list with names
 	// normalized away needs an order of its own.
 	SortBy string
+	// DropPrefix, when set, removes from the array at Path every element
+	// whose string at the DropBy sub-path ("." for the element itself)
+	// starts with it, keeping the order of the rest; when CountKey is set
+	// and the object holding the array has that key, it becomes the number
+	// of elements kept, or is deleted when none is kept, as steve omits
+	// count on an empty collection. A collection read while another
+	// probe's fixtures exist then records only what no probe creates.
+	DropPrefix string
+	DropBy     string
+	CountKey   string
 }
 
 // Step is a fixture action run before or after a probe's observations.
@@ -179,6 +196,12 @@ func (p Probe) Validate() error {
 		}
 		if r.SortBy != "" && (r.Replace != "" || r.KeepPrefix != "") {
 			return fmt.Errorf("probe %s: normalize rule %s: SortBy is exclusive with Replace and KeepPrefix", p.Name, r.Path)
+		}
+		if r.DropPrefix != "" && r.DropBy == "" {
+			return fmt.Errorf("probe %s: normalize rule %s: DropPrefix needs DropBy", p.Name, r.Path)
+		}
+		if r.DropPrefix != "" && (r.Replace != "" || r.KeepPrefix != "" || r.SortBy != "") {
+			return fmt.Errorf("probe %s: normalize rule %s: DropPrefix is exclusive with Replace, KeepPrefix and SortBy", p.Name, r.Path)
 		}
 	}
 	return nil

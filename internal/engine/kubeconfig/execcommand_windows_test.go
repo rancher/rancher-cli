@@ -63,7 +63,7 @@ func TestKubeconfigRecordsAWindowsDirectoryAsSpelled(t *testing.T) {
 	var notices bytes.Buffer
 	io := runtime.IO{RemedyDir: dir}
 	p := ui.New(&notices, nil, true, false).WithNoticeRewrite(io.ExpandText)
-	res, err := NewCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
+	res, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
 		Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1"}}, p)
 	require.NoError(t, err)
 	v, _ := envValue(loadKubeconfig(t, res).AuthInfos["prod-c-1"].Exec, config.EnvConfigDir)

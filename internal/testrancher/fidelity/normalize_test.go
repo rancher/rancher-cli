@@ -147,3 +147,37 @@ func TestNormalizeSortByOrdersAnArrayByAField(t *testing.T) {
 	assert.Equal(t, "edit", items[0].(map[string]any)["roleRef"].(map[string]any)["name"])
 	assert.Equal(t, "<name>", items[0].(map[string]any)["metadata"].(map[string]any)["name"])
 }
+
+// TestNormalizeSortByDotOrdersAnArrayOfStrings asserts SortBy "." orders
+// an array of strings by value.
+func TestNormalizeSortByDotOrdersAnArrayOfStrings(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{"metadata": map[string]any{"finalizers": []any{"b.cattle.io", "a.cattle.io", "c.cattle.io"}}}
+	Normalize(body, []NormalizeRule{{Path: "metadata.finalizers", SortBy: "."}})
+	assert.Equal(t, []any{"a.cattle.io", "b.cattle.io", "c.cattle.io"}, body["metadata"].(map[string]any)["finalizers"])
+}
+
+// TestNormalizeDropPrefixFiltersAnArrayAndItsCount asserts DropPrefix
+// removes the elements whose string at DropBy starts with the prefix,
+// keeps the order of the rest, and sets CountKey to the number kept,
+// deleting it when none is kept; an object with no CountKey key gains
+// none.
+func TestNormalizeDropPrefixFiltersAnArrayAndItsCount(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{"count": float64(3), "data": []any{
+		map[string]any{"id": "kube-system"}, map[string]any{"id": "e2e-fid-explain"}, map[string]any{"id": "default"},
+	}}
+	Normalize(body, []NormalizeRule{{Path: "data", DropBy: "id", DropPrefix: "e2e-fid-", CountKey: "count"}})
+	assert.Equal(t, []any{map[string]any{"id": "kube-system"}, map[string]any{"id": "default"}}, body["data"])
+	assert.Equal(t, float64(2), body["count"])
+
+	body = map[string]any{"data": []any{"e2e-fid-a", "b"}}
+	Normalize(body, []NormalizeRule{{Path: "data", DropBy: ".", DropPrefix: "e2e-fid-", CountKey: "count"}})
+	assert.Equal(t, []any{"b"}, body["data"])
+	assert.NotContains(t, body, "count")
+
+	body = map[string]any{"count": float64(1), "data": []any{map[string]any{"id": "e2e-fid-explain"}}}
+	Normalize(body, []NormalizeRule{{Path: "data", DropBy: "id", DropPrefix: "e2e-fid-", CountKey: "count"}})
+	assert.Equal(t, []any{}, body["data"])
+	assert.NotContains(t, body, "count", "steve omits count on an empty collection")
+}

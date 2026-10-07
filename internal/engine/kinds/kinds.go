@@ -273,6 +273,26 @@ func NotFoundCurated(k Kind, name, clusterID string) error {
 		WithHint(hint)
 }
 
+// ForbiddenHint is the caller-scoped command for an RBAC refusal of a
+// kind verb, or "" when there is none: the generated verbs keep kubectl's
+// semantics on the local cluster's proxy, where Rancher answers some
+// management kinds only for users with access to the local cluster, and
+// the access and inspect commands answer from what the caller can read.
+// namespace and name are the values the request carried.
+func ForbiddenHint(k Kind, verb, namespace, name string) string {
+	switch {
+	case k.Key == "managementcluster" && verb == "list":
+		return clierr.Rancher + " access clusters"
+	case k.Key == "managementcluster" && verb == "get" && name != "":
+		return clierr.Rancher + " inspect cluster " + clierr.ShellQuote(name)
+	case k.Key == "project" && verb == "list" && namespace != "":
+		return clierr.Rancher + " access projects --cluster " + clierr.ShellQuote(namespace)
+	case k.Key == "project" && verb == "list":
+		return clierr.Rancher + " access projects"
+	}
+	return ""
+}
+
 // groupResource is the (Group, Resource) pair used as a map key for O(1)
 // kind lookups in kindsByGR and in validateKinds' uniqueness check.
 type groupResource struct{ group, resource string }

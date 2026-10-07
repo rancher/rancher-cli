@@ -21,6 +21,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
@@ -30,20 +31,63 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// fakeRoot is a canned engine.RootClient: one body or one error, and the
-// requested path recorded for assertion.
+// fakeRoot is a canned engine.RootClient. A GET of one management Cluster
+// through steve is answered from cluster (or clusterErr when set); every
+// other path gets the one body or the one error, and path records the last
+// such path for assertion. clusterPaths records every cluster GET.
 type fakeRoot struct {
 	body []byte
 	err  error
 	path string
+
+	cluster      *unstructured.Unstructured
+	clusterErr   error
+	clusterPaths []string
 }
 
 func (f *fakeRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
+	if id, ok := strings.CutPrefix(path, steveClusterPath("")+"/"); ok && !strings.Contains(id, "/") {
+		f.clusterPaths = append(f.clusterPaths, path)
+		return f.clusterAnswer(path, id)
+	}
 	f.path = path
 	if f.err != nil {
 		return nil, f.err
 	}
 	return f.body, nil
+}
+
+// clusterAnswer is the steve answer for the management Cluster id: the
+// seeded object, clusterErr, or a 404 for any other id.
+func (f *fakeRoot) clusterAnswer(path, id string) ([]byte, error) {
+	if f.clusterErr != nil {
+		return nil, f.clusterErr
+	}
+	if f.cluster == nil || f.cluster.GetName() != id {
+		return nil, rootStatusErr(http.StatusNotFound, path)
+	}
+	obj := maps.Clone(f.cluster.Object)
+	obj["id"] = id
+	obj["type"] = "management.cattle.io.cluster"
+	return json.Marshal(obj)
+}
+
+// steveClusterPath is the path of one management Cluster through steve.
+func steveClusterPath(id string) string {
+	return steve.Request{Type: steve.ClustersType, Name: id}.Path()
+}
+
+// rootStatusErr is the error the production root client returns for a
+// non-2xx answer.
+func rootStatusErr(status int, path string) error {
+	cause := &engine.RootStatusError{Status: status}
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %d", path, status)).WithCause(cause)
+	case http.StatusNotFound:
+		return clierr.New(clierr.CodeNotFound, fmt.Sprintf("rancher root GET %s: not found", path)).WithCause(cause)
+	}
+	return clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %d", path, status)).WithCause(cause)
 }
 
 var _ engine.RootClient = (*fakeRoot)(nil)
@@ -56,6 +100,25 @@ type fakeRoots struct {
 func (f fakeRoots) Root() (engine.RootClient, error) { return f.rc, f.err }
 
 var _ engine.RootClientFactory = (fakeRoots{})
+
+// rootsFailingAfter hands out rc for the first ok calls to Root and err
+// after that.
+type rootsFailingAfter struct {
+	rc    engine.RootClient
+	ok    int
+	err   error
+	calls int
+}
+
+func (f *rootsFailingAfter) Root() (engine.RootClient, error) {
+	f.calls++
+	if f.calls > f.ok {
+		return nil, f.err
+	}
+	return f.rc, nil
+}
+
+var _ engine.RootClientFactory = (*rootsFailingAfter)(nil)
 
 func mgmtClusterFixture(id, display, state, gitVersion string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{Object: map[string]any{
@@ -124,7 +187,6 @@ func marshaledDoc(t *testing.T, data any) (map[string]any, string) {
 
 func inspectClusterFixture(t *testing.T) (*fakeClient, *fakeRoot) {
 	t.Helper()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 
 	prov := provClusterFixture("my-cluster", "c-abc")
@@ -146,9 +208,8 @@ func inspectClusterFixture(t *testing.T) (*fakeClient, *fakeRoot) {
 	}, "spec", "rkeConfig", "machinePools")
 
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
-	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+	root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1"), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 	return client, root
 }
 
@@ -214,16 +275,14 @@ func TestInspectClusterHappyPathEnvelope(t *testing.T) {
 // via status.clusterName, and a non-matching sibling CR is ignored.
 func TestInspectClusterCorrelatesRenamedClusterByStatusClusterName(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 
 	match := provClusterFixture("totally-different-name", "c-abc")
 	other := provClusterFixture("other-cluster", "c-zzz")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*other, *match}})
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "")}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 
@@ -248,7 +307,6 @@ func TestInspectClusterCorrelatesRenamedClusterByStatusClusterName(t *testing.T)
 
 func TestInspectClusterVersionPrecedence(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 
 	run := func(t *testing.T, mgmtVersion, provVersion string) string {
@@ -258,9 +316,8 @@ func TestInspectClusterVersionPrecedence(t *testing.T) {
 			_ = unstructured.SetNestedField(prov.Object, provVersion, "spec", "kubernetesVersion")
 		}
 		client := newFakeClient().
-			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "provisioning", mgmtVersion)).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
-		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "provisioning", mgmtVersion)}})
 		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 		require.NoError(t, err)
 		doc, _ := marshaledDoc(t, res.Data)
@@ -291,13 +348,11 @@ func TestInspectClusterVersionPrecedence(t *testing.T) {
 // for it (the note is the signal).
 func TestInspectClusterProvisioningAbsent(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1"), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
 	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings, "confirmed absence is the note's job, never a warning")
@@ -317,13 +372,11 @@ func TestInspectClusterProvisioningAbsent(t *testing.T) {
 // "definitely none" - no note, a warning naming the cause, NOT an error.
 func TestInspectClusterProvisioningUnavailable(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListErr(provKind.GVR, errors.New("clusters.provisioning.cattle.io is forbidden"))
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "")}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err, "a failed provisioning lookup degrades, never errors")
 
@@ -345,15 +398,13 @@ func TestInspectClusterProvisioningUnavailable(t *testing.T) {
 // server-side anomaly - treated as unavailable, never as a pick-one.
 func TestInspectClusterProvisioningAmbiguous(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	a := provClusterFixture("prov-a", "c-abc")
 	b := provClusterFixture("prov-b", "c-abc")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*a, *b}})
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "")}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 
@@ -375,12 +426,10 @@ func TestInspectClusterProvisioningAmbiguous(t *testing.T) {
 func TestInspectClusterRegistrationUnavailable(t *testing.T) {
 	t.Parallel()
 
-	assertDegraded := func(t *testing.T, roots fakeRoots) {
+	assertDegraded := func(t *testing.T, roots engine.RootClientFactory) {
 		t.Helper()
-		mgmtKind := mustKind(t, "cluster")
 		provKind := mustKind(t, "provisioning-cluster")
 		client := newFakeClient().
-			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
 		cmd := NewInspectCluster(&fakeFactory{client: client}, roots)
 		res, err := execRead(t, cmd, registrationInput("c-abc"))
@@ -396,11 +445,11 @@ func TestInspectClusterRegistrationUnavailable(t *testing.T) {
 
 	t.Run("fetch failure", func(t *testing.T) {
 		t.Parallel()
-		assertDegraded(t, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token not found")}})
+		assertDegraded(t, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), err: clierr.New(clierr.CodeNotFound, "default-token not found")}})
 	})
 	t.Run("root factory failure", func(t *testing.T) {
 		t.Parallel()
-		assertDegraded(t, fakeRoots{err: errors.New("no server configured")})
+		assertDegraded(t, &rootsFailingAfter{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "")}, ok: 1, err: errors.New("no server configured")})
 	})
 }
 
@@ -417,12 +466,10 @@ func TestInspectClusterContextCancellationPropagates(t *testing.T) {
 	t.Run("provisioning list", func(t *testing.T) {
 		t.Parallel()
 		for _, ctxErr := range ctxErrs {
-			mgmtKind := mustKind(t, "cluster")
 			provKind := mustKind(t, "provisioning-cluster")
 			client := newFakeClient().
-				withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 				withListErr(provKind.GVR, fmt.Errorf("list provisioning clusters: %w", ctxErr))
-			root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+			root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 
 			cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 			// Pass --registration so root.path="" proves the cancellation stopped
@@ -438,12 +485,10 @@ func TestInspectClusterContextCancellationPropagates(t *testing.T) {
 	t.Run("registration fetch", func(t *testing.T) {
 		t.Parallel()
 		for _, ctxErr := range ctxErrs {
-			mgmtKind := mustKind(t, "cluster")
 			provKind := mustKind(t, "provisioning-cluster")
 			client := newFakeClient().
-				withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 				withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
-			root := &fakeRoot{err: fmt.Errorf("fetch default-token: %w", ctxErr)}
+			root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), err: fmt.Errorf("fetch default-token: %w", ctxErr)}
 
 			cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 			res, err := execRead(t, cmd, registrationInput("c-abc"))
@@ -466,7 +511,6 @@ func TestInspectClusterContextCancellationPropagates(t *testing.T) {
 func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 	t.Parallel()
 	const (
-		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/c-abc"
 		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
 	)
 	ctx, cancel := context.WithCancel(t.Context())
@@ -474,8 +518,6 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case mgmtGetPath:
-			_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"},"status":{"state":"active"}}`))
 		case provListPath:
 			// Abort the caller mid-LIST; the client tears the request down,
 			// which unblocks the handler via the server-side request context.
@@ -498,7 +540,7 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 	realClient, err := provider.NewClusterClient(rc, engine.LocalCluster)
 	require.NoError(t, err)
 
-	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+	root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 	cmd := NewInspectCluster(&fakeFactory{client: realClient}, fakeRoots{rc: root})
 	rcmd, ok := cmd.(runtime.ReadCommand)
 	require.True(t, ok, "command must be a ReadCommand")
@@ -524,7 +566,6 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const (
-			mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/c-abc"
 			provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
 			crtbListPath = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-abc/clusterroletemplatebindings"
 		)
@@ -532,8 +573,6 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 		srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			switch r.URL.Path {
-			case mgmtGetPath:
-				_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"},"status":{"state":"active"}}`))
 			case provListPath:
 				// Never answer: the provider's (shrunk) child deadline must be
 				// the only way this request ends. Returning on the request
@@ -564,7 +603,7 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 		realClient, err := provider.NewClusterClient(rc, engine.LocalCluster)
 		require.NoError(t, err)
 
-		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+		root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 		cmd := NewInspectCluster(&fakeFactory{client: realClient}, fakeRoots{rc: root})
 		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
@@ -602,12 +641,10 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 // output as data.
 func TestInspectClusterRegistrationPlaceholderFieldDropped(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
-	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", map[string]any{"command": "{token}"})}
+	root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", map[string]any{"command": "{token}"})}
 
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 	res, err := execRead(t, cmd, registrationInput("c-abc"))
@@ -638,12 +675,10 @@ func TestInspectClusterRegistrationNothingUsableOmitsSection(t *testing.T) {
 
 	run := func(t *testing.T, overrides map[string]any) (runtime.Result, map[string]any, string) {
 		t.Helper()
-		mgmtKind := mustKind(t, "cluster")
 		provKind := mustKind(t, "provisioning-cluster")
 		client := newFakeClient().
-			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
-		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", overrides)}
+		root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", overrides)}
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err)
@@ -694,12 +729,10 @@ func TestInspectClusterRegistrationNothingUsableOmitsSection(t *testing.T) {
 // five surfaced fields present.
 func TestInspectClusterRegistrationWindowsPlaceholderSuppressed(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
-	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", map[string]any{
+	root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", map[string]any{
 		"windowsNodeCommand":         "{token}",
 		"insecureWindowsNodeCommand": "{token}",
 	})}
@@ -721,8 +754,8 @@ func TestInspectClusterRegistrationWindowsPlaceholderSuppressed(t *testing.T) {
 
 // TestInspectClusterResolutionErrors asserts the argument failures
 // through the provider's REAL error vocabulary (clientFactory.ResolveCluster
-// delegates to projects.MatchOneOrError - the same contract get cluster's
-// named path uses): an unknown name-or-id is the structured NOT_FOUND
+// matches with steve.ResolveCluster, as every --cluster lookup does): an
+// unknown name-or-id is the structured NOT_FOUND
 // ("cluster not found: ..."), an ambiguous display name is the structured
 // AMBIGUOUS_SELECTION carrying candidates. Both fail BEFORE any read -
 // zero management Gets, zero provisioning LISTs, zero CRT fetches.
@@ -767,10 +800,8 @@ func TestInspectClusterResolutionErrors(t *testing.T) {
 // command's error, and no further read is attempted.
 func TestInspectClusterMgmtGetErrorIsCommandError(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
-	client := newFakeClient().
-		withGetErr(mgmtKind.GVR, "", "c-gone", clierr.New(clierr.CodeNotFound, "c-gone not found"))
-	root := &fakeRoot{body: crtBodyFixture(t, "c-gone", "tok", nil)}
+	client := newFakeClient()
+	root := &fakeRoot{body: crtBodyFixture(t, "c-gone", "tok", nil), clusterErr: clierr.New(clierr.CodeNotFound, "c-gone not found")}
 
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 	_, err := execRead(t, cmd, input{args: []string{"c-gone"}})
@@ -786,7 +817,6 @@ func TestInspectClusterMgmtGetErrorIsCommandError(t *testing.T) {
 // commands.
 func TestInspectClusterTextSections(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 
 	longMessage := strings.Repeat("m", 200)
@@ -808,10 +838,9 @@ func TestInspectClusterTextSections(t *testing.T) {
 	}, "spec", "rkeConfig", "machinePools")
 
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
 	longToken := "tok-" + strings.Repeat("x", 160)
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", longToken, nil)}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1"), body: crtBodyFixture(t, "c-abc", longToken, nil)}})
 
 	res, err := execRead(t, cmd, registrationInput("c-abc"))
 	require.NoError(t, err)
@@ -852,15 +881,13 @@ func TestInspectClusterTextSections(t *testing.T) {
 // detailed cause ONLY in Warnings.
 func TestInspectClusterTextAvailabilityMarkers(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 
 	t.Run("confirmed absence renders the note text in place", func(t *testing.T) {
 		t.Parallel()
 		client := newFakeClient().
-			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
-		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "no token")}})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), err: clierr.New(clierr.CodeNotFound, "no token")}})
 		// Pass --registration so the unavailable path is reachable (otherwise the
 		// gate withholds the section before any fetch is attempted).
 		res, err := execRead(t, cmd, registrationInput("c-abc"))
@@ -873,9 +900,8 @@ func TestInspectClusterTextAvailabilityMarkers(t *testing.T) {
 	t.Run("unavailable renders the concise marker, never the cause", func(t *testing.T) {
 		t.Parallel()
 		client := newFakeClient().
-			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 			withListErr(provKind.GVR, errors.New("forbidden"))
-		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
 		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 		require.NoError(t, err)
 		assert.Contains(t, res.Text, "status: unavailable")
@@ -1077,7 +1103,6 @@ func TestClusterMachinesLookupTriState(t *testing.T) {
 // and JSON - the DO 422 that was otherwise invisible to every rancher command.
 func TestClusterMachinesWithCreateError(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	machineKind, _ := kinds.Lookup("capimachine")
 
@@ -1097,10 +1122,9 @@ func TestClusterMachinesWithCreateError(t *testing.T) {
 	machineList := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*machine}}
 
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}}).
 		withListNS(machineKind.GVR, "fleet-default", machineList)
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1"), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 	assert.Empty(t, res.Warnings)
@@ -1166,7 +1190,6 @@ func TestRenderClusterTextMachinesSection(t *testing.T) {
 // condition left Unknown.
 func TestReadyConditionOverridesStatusReady(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 
 	prov := provClusterFixture("my-cluster", "c-abc")
@@ -1177,9 +1200,8 @@ func TestReadyConditionOverridesStatusReady(t *testing.T) {
 	}, "status", "conditions")
 
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 
@@ -1211,15 +1233,13 @@ func TestMachineConditionMessageSanitized(t *testing.T) {
 // stderr, no duplication of the same text across the two streams.
 func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
 
 	t.Run("withheld default: marker on stdout, no registration warning on stderr", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
 		var out, errBuf bytes.Buffer
 		_, ce := runtime.Run(t.Context(), cmd, input{args: []string{"c-abc"}},
 			runtime.IO{Out: &out, Err: &errBuf, Format: ""}, safety.Binding{})
@@ -1234,7 +1254,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 
 	t.Run("withheld default: token absent from stdout when root serves live data", func(t *testing.T) {
 		t.Parallel()
-		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+		root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 		var out, errBuf bytes.Buffer
 		_, ce := runtime.Run(t.Context(), cmd, input{args: []string{"c-abc"}},
@@ -1248,7 +1268,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 
 	t.Run("with --registration: unavailable marker on stdout, cause on stderr", func(t *testing.T) {
 		t.Parallel()
-		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
+		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", ""), err: clierr.New(clierr.CodeNotFound, "default-token vanished")}})
 		var out, errBuf bytes.Buffer
 		_, ce := runtime.Run(t.Context(), cmd,
 			registrationInput("c-abc"),
@@ -1335,7 +1355,6 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 	// provisioning CR: spec.rkeConfig omitted entirely (nil, not {}).
 	importedFixture := func(t *testing.T) (*fakeClient, *fakeRoot) {
 		t.Helper()
-		mgmtKind := mustKind(t, "cluster")
 		provKind := mustKind(t, "provisioning-cluster")
 		prov := provClusterFixture("my-import", "c-abc")
 		// provClusterFixture includes rkeConfig:{} by default; remove it to
@@ -1343,9 +1362,8 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 		unstructured.RemoveNestedField(prov.Object, "spec", "rkeConfig")
 		_ = unstructured.SetNestedField(prov.Object, true, "status", "ready")
 		client := newFakeClient().
-			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "imp", "active", "v1.30.4+k3s1")).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
-		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+		root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "imp", "active", "v1.30.4+k3s1"), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 		return client, root
 	}
 
@@ -1386,14 +1404,12 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 
 	t.Run("empty rkeConfig object stays unannotated", func(t *testing.T) {
 		t.Parallel()
-		mgmtKind := mustKind(t, "cluster")
 		provKind := mustKind(t, "provisioning-cluster")
 		prov := provClusterFixture("my-cluster", "c-abc")
 		_ = unstructured.SetNestedField(prov.Object, true, "status", "ready")
 		client := newFakeClient().
-			withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
 			withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
-		root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+		root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1"), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err)
@@ -1413,10 +1429,9 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 	withMgmtConditions := func(t *testing.T, conds []any) (*fakeClient, *fakeRoot) {
 		t.Helper()
 		client, root := inspectClusterFixture(t)
-		mgmtKind := mustKind(t, "cluster")
 		mgmt := mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")
 		_ = unstructured.SetNestedSlice(mgmt.Object, conds, "status", "conditions")
-		client.withObject(mgmtKind.GVR, "", "c-abc", mgmt)
+		root.cluster = mgmt
 		return client, root
 	}
 
@@ -1550,36 +1565,107 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 	})
 }
 
-func TestInspectClusterNotFoundCurated(t *testing.T) {
+// TestInspectClusterReadsManagementClusterThroughSteve asserts the
+// management Cluster is the steve GET by id: the one request the root sees
+// is that path, the identity and state in the answer reach the output, and
+// the local client is never asked for the management cluster kind.
+func TestInspectClusterReadsManagementClusterThroughSteve(t *testing.T) {
 	t.Parallel()
 	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	client := newFakeClient().
-		withGetErr(mgmtKind.GVR, "", "c-gone", kinds.NotFoundCurated(mgmtKind, "c-gone", "")).
-		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
+		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*provClusterFixture("my-cluster", "c-abc")}})
+	body := mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1").Object
+	body["id"] = "c-abc"
+	body["type"] = "management.cattle.io.cluster"
+	root := newSteveRoot(t, map[string]steveAnswer{
+		steveClusterPath("c-abc"): {status: http.StatusOK, body: body},
+	})
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, root.roots())
+	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters/c-abc"}, root.requests())
+	doc, _ := marshaledDoc(t, res.Data)
+	cluster, ok := doc["cluster"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "c-abc", cluster["id"])
+	assert.Equal(t, "prod", cluster["name"])
+	assert.Equal(t, "active", cluster["state"])
+	assert.Equal(t, "v1.30.4+rke2r1", cluster["kubernetesVersion"])
+	for _, k := range client.getCalls {
+		assert.NotEqual(t, mgmtKind.GVR, k.gvr, "the management Cluster is never read through the local client")
+	}
+	for _, gvr := range client.listGVRs {
+		assert.NotEqual(t, mgmtKind.GVR, gvr, "the management Cluster is never listed through the local client")
+	}
+}
+
+// TestInspectClusterForbiddenClusterReadIsRBAC asserts a 403 on the steve
+// cluster GET is the command's RBAC error naming the request, and that no
+// further read follows.
+func TestInspectClusterForbiddenClusterReadIsRBAC(t *testing.T) {
+	t.Parallel()
+	client := newFakeClient()
+	root := newSteveRoot(t, map[string]steveAnswer{steveClusterPath("c-abc"): {status: http.StatusForbidden}})
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, root.roots())
+	_, err := execRead(t, cmd, registrationInput("c-abc"))
+	require.Error(t, err)
+
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Equal(t, "you cannot read cluster 'c-abc' (GET /v1/management.cattle.io.clusters/c-abc answered 403)", ce.Message)
+	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters/c-abc"}, root.requests(), "no registration read after the refusal")
+	assert.Empty(t, client.listSelectors, "no LIST after the refusal")
+}
+
+// TestInspectClusterRootFactoryFailureIsCommandError asserts that a root
+// client that cannot be built fails the command at the cluster read, since
+// that read goes through the root client.
+func TestInspectClusterRootFactoryFailureIsCommandError(t *testing.T) {
+	t.Parallel()
+	client := newFakeClient()
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{err: errors.New("no server configured")})
+	_, err := execRead(t, cmd, input{args: []string{"c-abc"}})
+	require.ErrorContains(t, err, "no server configured")
+	assert.Empty(t, client.listSelectors, "no LIST after the failed cluster read")
+}
+
+// TestInspectClusterNotFound asserts that a cluster whose steve GET
+// answers 404 after the lookup is NOT_FOUND naming the cluster, with the
+// access clusters hint.
+func TestInspectClusterNotFound(t *testing.T) {
+	t.Parallel()
+	provKind := mustKind(t, "provisioning-cluster")
+	client := newFakeClient().
+		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
+	root := &fakeRoot{}
+
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 	_, err := execRead(t, cmd, input{args: []string{"c-gone"}})
 	require.Error(t, err)
 
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Equal(t, "cluster not found: c-gone", ce.Message)
-	assert.NotEmpty(t, ce.Hint, "curated error must carry a hint")
+	assert.Equal(t, "cluster not found: 'c-gone'", ce.Message)
+	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters/c-gone"}, root.clusterPaths)
 }
 
 func TestInspectClusterNotFoundWithHintPassesThrough(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	alreadyCurated := clierr.New(clierr.CodeNotFound, "cluster not found: c-gone").
 		WithHint("list with: rancher get clusters")
 	client := newFakeClient().
-		withGetErr(mgmtKind.GVR, "", "c-gone", alreadyCurated).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{})
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{clusterErr: alreadyCurated}})
 	_, err := execRead(t, cmd, input{args: []string{"c-gone"}})
 	require.Error(t, err)
 	assert.Equal(t, alreadyCurated, err, "already-curated error must pass through unchanged")
@@ -1668,13 +1754,11 @@ func TestInspectClusterRegistrationFlagRestoresSection(t *testing.T) {
 // of their own.
 func TestInspectClusterProvisioningFailureIsOneEntry(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
 		withListErr(provKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 
@@ -1705,15 +1789,13 @@ func TestInspectClusterProvisioningFailureIsOneEntry(t *testing.T) {
 // server-side anomaly keeps its own code rather than collapsing to GENERIC.
 func TestInspectClusterAmbiguousCorrelationIsAmbiguousSelection(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	a := provClusterFixture("prov-a", "c-abc")
 	b := provClusterFixture("prov-b", "c-abc")
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*a, *b}})
 
-	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{}})
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "")}})
 	res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 	require.NoError(t, err)
 
@@ -1775,8 +1857,8 @@ func TestInspectClusterMembersFailureIsItsOwnEntry(t *testing.T) {
 // records a registration entry carrying the read's own code.
 func TestInspectClusterRegistrationFailureIsItsOwnEntry(t *testing.T) {
 	t.Parallel()
-	client, _ := inspectClusterFixture(t)
-	roots := fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}}
+	client, fixtureRoot := inspectClusterFixture(t)
+	roots := fakeRoots{rc: &fakeRoot{cluster: fixtureRoot.cluster, err: clierr.New(clierr.CodeNotFound, "default-token vanished")}}
 
 	cmd := NewInspectCluster(&fakeFactory{client: client}, roots)
 	res, err := execRead(t, cmd, registrationInput("c-abc"))
@@ -1796,7 +1878,6 @@ func TestInspectClusterRegistrationFailureIsItsOwnEntry(t *testing.T) {
 // warning stays outside that pairing.
 func TestInspectClusterDegradedParity(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 	crtbKind := mustKind(t, "clusterroletemplatebinding")
 
@@ -1805,10 +1886,9 @@ func TestInspectClusterDegradedParity(t *testing.T) {
 		map[string]any{"type": "Connected", "status": "False", "reason": "Disconnected", "message": "agent gone"},
 	}, "status", "conditions"))
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmt).
 		withListErr(provKind.GVR, clierr.New(clierr.CodeRBAC, "provisioning forbidden")).
 		withListErr(crtbKind.GVR, clierr.New(clierr.CodeRBAC, "bindings forbidden"))
-	roots := fakeRoots{rc: &fakeRoot{err: clierr.New(clierr.CodeNotFound, "default-token vanished")}}
+	roots := fakeRoots{rc: &fakeRoot{cluster: mgmt, err: clierr.New(clierr.CodeNotFound, "default-token vanished")}}
 
 	cmd := NewInspectCluster(&fakeFactory{client: client}, roots)
 	res, err := execRead(t, cmd, registrationInput("c-abc"))
@@ -1859,7 +1939,6 @@ func TestStyleClusterTextStripInvariant(t *testing.T) {
 // generic condition walk with no allowlist to bypass.
 func TestInspectClusterAutoscaledPoolReportsMinMax(t *testing.T) {
 	t.Parallel()
-	mgmtKind := mustKind(t, "cluster")
 	provKind := mustKind(t, "provisioning-cluster")
 
 	prov := provClusterFixture("my-cluster", "c-abc")
@@ -1882,9 +1961,8 @@ func TestInspectClusterAutoscaledPoolReportsMinMax(t *testing.T) {
 	}, "spec", "rkeConfig", "machinePools")
 
 	client := newFakeClient().
-		withObject(mgmtKind.GVR, "", "c-abc", mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1")).
 		withListNS(provKind.GVR, "fleet-default", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*prov}})
-	root := &fakeRoot{body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
+	root := &fakeRoot{cluster: mgmtClusterFixture("c-abc", "prod", "active", "v1.30.4+rke2r1"), body: crtBodyFixture(t, "c-abc", "tok-abc", nil)}
 	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
 
 	res, err := execRead(t, cmd, registrationInput("c-abc"))

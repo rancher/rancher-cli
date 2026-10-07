@@ -161,8 +161,9 @@ func (i argsInput) Args() []string          { return i.args }
 
 // TestInspectClusterCancellationThroughProductionAdapters drives inspect
 // cluster's Execute through the REAL per-invocation clientFactory - the real
-// provider client for the management Get and provisioning LIST, and the real
-// rootClient for the registration fetch - against one httptest server. Both
+// rootClient for the steve management Cluster GET and the registration
+// fetch, and the real provider client for the provisioning LIST - against
+// one httptest server. Both
 // production adapters rebuild their errors from strings (provider.mapErr;
 // rootClient.GetJSON's clierr formatting), so the context sentinel never
 // survives the chain: this asserts that a canceled optional lookup still
@@ -170,11 +171,11 @@ func (i argsInput) Args() []string          { return i.args }
 // issues no follow-on request (counted server-side).
 func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 	const (
-		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/local"
+		mgmtGetPath  = "/v1/management.cattle.io.clusters/local"
 		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
 		regPath      = "/v1/management.cattle.io.clusterregistrationtokens/local/default-token"
 	)
-	const mgmtBody = `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"local"},"spec":{"displayName":"local"},"status":{"state":"active"}}`
+	const mgmtBody = `{"id":"local","type":"management.cattle.io.cluster","metadata":{"name":"local"},"spec":{"displayName":"local"},"status":{"state":"active"}}`
 	const provListBody = `{"apiVersion":"provisioning.cattle.io/v1","kind":"ClusterList","metadata":{"resourceVersion":"1"},"items":[]}`
 
 	t.Run("canceled provisioning LIST propagates and no registration request follows", func(t *testing.T) {
@@ -254,14 +255,14 @@ func TestInspectClusterCancellationThroughProductionAdapters(t *testing.T) {
 // rootTimeout package var via setRootTimeoutForTest.
 func TestInspectClusterRootTimeoutDegradesRegistration(t *testing.T) {
 	const (
-		mgmtGetPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/local"
+		mgmtGetPath  = "/v1/management.cattle.io.clusters/local"
 		provListPath = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
 		regPath      = "/v1/management.cattle.io.clusterregistrationtokens/local/default-token"
 		crtbListPath = "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/local/clusterroletemplatebindings"
 		apisDiscPath = "/k8s/clusters/local/apis"
 		machListPath = "/k8s/clusters/local/apis/cluster.x-k8s.io/v1beta1/namespaces/fleet-default/machines"
 	)
-	const mgmtBody = `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"local"},"spec":{"displayName":"local"},"status":{"state":"active"}}`
+	const mgmtBody = `{"id":"local","type":"management.cattle.io.cluster","metadata":{"name":"local"},"spec":{"displayName":"local"},"status":{"state":"active"}}`
 	const provListBody = `{"apiVersion":"provisioning.cattle.io/v1","kind":"ClusterList","metadata":{"resourceVersion":"1"},"items":[{"apiVersion":"provisioning.cattle.io/v1","kind":"Cluster","metadata":{"name":"local-prov","namespace":"fleet-default"},"spec":{},"status":{"clusterName":"local","ready":true}}]}`
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

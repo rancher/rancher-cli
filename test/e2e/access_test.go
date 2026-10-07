@@ -106,10 +106,12 @@ func newAccessRunner(t *testing.T) *accessRunner {
 	t.Helper()
 	rec := &shimRecorder{}
 	var facade *testrancher.Facade
-	router := newRecordingRouter(facadeIdentityResolver(shimIdentities, func(tok string) bool {
+	resolve := facadeIdentityResolver(shimIdentities, func(tok string) bool {
 		return facade != nil && facade.ValidBearer(tok)
-	}), rec)
-	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken})
+	})
+	router := newRecordingRouter(resolve, rec)
+	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken,
+		ClusterVisibility: clusterVisibility(resolve), LocalManagementGate: localManagementGate(resolve), ClusterObject: storedCluster})
 	srv := httptest.NewTLSServer(facade)
 	t.Cleanup(srv.Close)
 	caPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))

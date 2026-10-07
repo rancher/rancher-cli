@@ -60,6 +60,19 @@ func RootGetter(c engine.RootClient) Getter {
 	}
 }
 
+// RootFactoryGetter is RootGetter over the root client roots hands out,
+// asked for at each request (the factory memoizes it), so a command that
+// reads no steve object never needs one.
+func RootFactoryGetter(roots engine.RootClientFactory) Getter {
+	return func(ctx context.Context, r Request) ([]byte, error) {
+		root, err := roots.Root()
+		if err != nil {
+			return nil, err
+		}
+		return RootGetter(root)(ctx, r)
+	}
+}
+
 // statusError is a getter's error: the transport's own error, with the
 // status beside it in the chain.
 type statusError struct {

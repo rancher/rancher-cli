@@ -104,7 +104,7 @@ func runRecords(t *testing.T, s recordsSetup) (*clientcmdapi.ExecConfig, []strin
 	var notices bytes.Buffer
 	io := runtime.IO{RemedyDir: config.CanonicalDir(dir)}
 	p := ui.New(&notices, nil, true, false).WithNoticeRewrite(io.ExpandText)
-	res, err := NewCommand(dir, store, stubFactory{}).(runtime.ReadCommand).Execute(t.Context(), execInput{s: in}, p)
+	res, err := newTestCommand(dir, store, stubFactory{}).(runtime.ReadCommand).Execute(t.Context(), execInput{s: in}, p)
 	var lines []string
 	if out := strings.TrimSuffix(notices.String(), "\n"); out != "" {
 		lines = strings.Split(out, "\n")
@@ -198,7 +198,7 @@ func TestKubeconfigRecordsARelativeDirectoryAbsolute(t *testing.T) {
 	require.NoError(t, cfg.Write())
 	want := filepath.Join(realWD, "acct")
 	for _, spelling := range []string{"acct", "./acct", "x/../acct", "acct" + string(os.PathSeparator)} {
-		res, err := NewCommand(spelling, config.NewFileStore(spelling), stubFactory{}).(runtime.ReadCommand).
+		res, err := newTestCommand(spelling, config.NewFileStore(spelling), stubFactory{}).(runtime.ReadCommand).
 			Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1"}}, nil)
 		require.NoError(t, err, spelling)
 		v, _ := envValue(loadKubeconfig(t, res).AuthInfos["prod-c-1"].Exec, config.EnvConfigDir)
@@ -323,7 +323,7 @@ func TestKubeconfigReusesTheCredentialEffectiveRead(t *testing.T) {
 			writeLoggedIn(t, dir)
 			var reads atomic.Int32
 			store := countingStore{CredStore: config.NewFileStore(dir), reads: &reads}
-			_, err := NewCommand(dir, store, stubFactory{}).(runtime.ReadCommand).Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1"}}, ui.Discard())
+			_, err := newTestCommand(dir, store, stubFactory{}).(runtime.ReadCommand).Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1"}}, ui.Discard())
 			require.NoError(t, err)
 			assert.Equal(t, tc.reads, reads.Load())
 		})
@@ -414,7 +414,7 @@ func TestKubeconfigHostileCharacters(t *testing.T) {
 	var notices bytes.Buffer
 	io := runtime.IO{RemedyDir: dir}
 	p := ui.New(&notices, nil, true, false).WithNoticeRewrite(io.ExpandText)
-	res, err := NewCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
+	res, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
 		Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1", "exec-command": cmdPath}}, p)
 	require.NoError(t, err)
 	e := loadKubeconfig(t, res).AuthInfos["prod-c-1"].Exec
@@ -466,7 +466,7 @@ func TestKubeconfigOmittedNoticeRelaysRemediesForTheDirectory(t *testing.T) {
 	var notices bytes.Buffer
 	io := runtime.IO{RemedyDir: config.CanonicalDir(dir)}
 	p := ui.New(&notices, nil, true, false).WithNoticeRewrite(io.ExpandText)
-	_, err := NewCommand(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists,
+	_, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{objects: objects, lists: lists,
 		getErrs: map[string]error{"multi-cluster-management": timedOut}}).(runtime.ReadCommand).
 		Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-abc"}}, p)
 	require.NoError(t, err)
@@ -501,7 +501,7 @@ func TestKubeconfigInstallHintForAnEnvironmentOnlySession(t *testing.T) {
 			t.Setenv(config.EnvCACert, tc.ca)
 			t.Setenv(config.EnvCredentialStore, "")
 			dir := t.TempDir()
-			res, err := NewCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
+			res, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
 				Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1", "exec-command": "rancher-dev"}}, nil)
 			require.NoError(t, err)
 			e := loadKubeconfig(t, res).AuthInfos["env.example.com-c-1"].Exec
@@ -520,7 +520,7 @@ func TestKubeconfigInstallHintIsPrintable(t *testing.T) {
 	t.Setenv(config.EnvCredentialStore, "")
 	dir := writeTestConfig(t, "")
 	writeLoggedIn(t, dir)
-	res, err := NewCommand(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"web": "c\x1b[31m-1\u202e"}}).(runtime.ReadCommand).
+	res, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{resolved: map[string]string{"web": "c\x1b[31m-1\u202e"}}).(runtime.ReadCommand).
 		Execute(t.Context(), execInput{s: map[string]string{"cluster": "web", "exec-command": "rancher-dev"}}, nil)
 	require.NoError(t, err)
 	kc := loadKubeconfig(t, res)
@@ -541,7 +541,7 @@ func TestKubeconfigRefusesADirectoryItCannotMakeAbsolute(t *testing.T) {
 	prev := canonicalDir
 	canonicalDir = func(string) string { return "" }
 	t.Cleanup(func() { canonicalDir = prev })
-	res, err := NewCommand(dir, config.NewFileStore(dir), stubFactory{resolveErr: errors.New("no request may be made")}).(runtime.ReadCommand).
+	res, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{resolveErr: errors.New("no request may be made")}).(runtime.ReadCommand).
 		Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1"}}, nil)
 	require.ErrorContains(t, err, "the config directory "+clierr.ShellQuote(dir)+" cannot be made absolute")
 	ce, ok := errors.AsType[*clierr.Error](err)

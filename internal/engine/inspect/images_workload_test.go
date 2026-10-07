@@ -448,28 +448,21 @@ func TestWorkloadImagesSkipsInactivePods(t *testing.T) {
 func TestAllClustersWorkloadDegradationTargetedAndSorted(t *testing.T) {
 	t.Parallel()
 	podKind, _ := kinds.Lookup("pod")
-	clusterKind, _ := kinds.Lookup("cluster")
-	mgmtList := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-		{Object: map[string]any{"metadata": map[string]any{"name": "c-bbb"}}},
-		{Object: map[string]any{"metadata": map[string]any{"name": "c-aaa"}}},
-	}}
+	roots := clustersRoot(t, "c-bbb", "c-aaa").roots()
 	// c-aaa: owner walk fails -> per-cluster warning. c-bbb: whole-cluster failure.
 	aClient := newFakeClient().
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 			ownedPod("p", "web", "app:1", "gone-rs", "rs-gone"),
 		}}).
 		withGetErr(rsGVR, "web", "gone-rs", fmt.Errorf("boom"))
-	mgmt := newFakeClient().withList(clusterKind.GVR, mgmtList)
 	factory := &fakeFactory{
-		client: mgmt,
 		perCluster: map[string]engine.ClusterClient{
-			"local": mgmt,
 			"c-aaa": aClient,
 		},
 		perClusterErr: map[string]error{"c-bbb": fmt.Errorf("unreachable")},
 	}
 
-	cmd := NewImages(factory).(*imagesCmd)
+	cmd := NewImages(factory, roots).(*imagesCmd)
 	res, err := cmd.allClusters(t.Context(), byWorkload, nil)
 	require.NoError(t, err)
 	require.Equal(t, []string{

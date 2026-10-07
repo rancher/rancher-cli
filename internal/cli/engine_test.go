@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,8 +22,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // writeTestConfig writes a minimal config.yaml (one server, current server)
@@ -154,55 +154,60 @@ func TestFactoryConcurrentAccess(t *testing.T) {
 	wg.Wait() // -race is the assertion
 }
 
-// listCountClient serves canned management-cluster objects for List and counts
-// the List calls so the memoization test can assert a single hit to the server.
-type listCountClient struct {
-	items     []unstructured.Unstructured
-	listCalls int
+// steveClustersRoot is an engine.RootClient that serves a steve clusters
+// collection in one page, answers a GET by id from byID (404 otherwise),
+// and records every path.
+type steveClustersRoot struct {
+	items []map[string]any
+	byID  map[string]int // status per cluster id; 200 serves the object
+	mu    sync.Mutex
+	paths []string
 }
 
-func (c *listCountClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
-	return nil, nil
-}
-func (c *listCountClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
-	c.listCalls++
-	return &unstructured.UnstructuredList{Items: c.items}, nil
-}
-func (c *listCountClient) Logs(context.Context, string, string, engine.LogOptions) (string, error) {
-	return "", nil
-}
-func (c *listCountClient) Create(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
-	return nil, nil
-}
-func (c *listCountClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
-	return nil, nil
-}
-func (c *listCountClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
-	return nil
+func steveClusterItem(id, display string) map[string]any {
+	return map[string]any{"id": id, "type": "management.cattle.io.cluster",
+		"metadata": map[string]any{"name": id}, "spec": map[string]any{"displayName": display}}
 }
 
-func mgmtClusterObj(name, display string) unstructured.Unstructured {
-	return unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": name},
-		"spec":     map[string]any{"displayName": display},
-	}}
+func (r *steveClustersRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
+	r.mu.Lock()
+	r.paths = append(r.paths, path)
+	r.mu.Unlock()
+	const collection = "/v1/management.cattle.io.clusters"
+	if path == collection {
+		return json.Marshal(map[string]any{"data": r.items, "count": len(r.items), "revision": "1"})
+	}
+	id, ok := strings.CutPrefix(path, collection+"/")
+	status := r.byID[id]
+	switch {
+	case ok && status == http.StatusOK:
+		return json.Marshal(steveClusterItem(id, ""))
+	case status == 0:
+		status = http.StatusNotFound
+	}
+	return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %d", path, status)).
+		WithCause(&engine.RootStatusError{Status: status})
 }
 
-// resolveFactory seeds the factory's "local" client with a fake so ResolveCluster
-// lists against it without a real network call.
-func resolveFactory(t *testing.T, c engine.ClusterClient) *clientFactory {
+func (r *steveClustersRoot) requests() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.paths)
+}
+
+// resolveFactory seeds the factory's root client with a fake so
+// ResolveCluster reads steve without a real network call.
+func resolveFactory(t *testing.T, root *steveClustersRoot) *clientFactory {
 	t.Helper()
 	f := newClientFactory(writeTestConfig(t), &countingStore{token: "id:secret"})
-	f.cache[engine.LocalCluster] = c
+	f.rootOnce.Do(func() { f.root = root })
 	return f
 }
 
 func TestResolveClusterByIDNameAndLocal(t *testing.T) {
 	t.Parallel()
-	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
-		mgmtClusterObj("c-abc", "prod"),
-		mgmtClusterObj("c-def", "dev"),
-	}})
+	root := &steveClustersRoot{items: []map[string]any{steveClusterItem("c-abc", "prod"), steveClusterItem("c-def", "dev")}}
+	f := resolveFactory(t, root)
 	for _, tc := range []struct{ in, want string }{
 		{"local", "local"},
 		{"", "local"},
@@ -213,23 +218,35 @@ func TestResolveClusterByIDNameAndLocal(t *testing.T) {
 		require.NoError(t, err, "ResolveCluster(%q)", tc.in)
 		assert.Equal(t, tc.want, got, "ResolveCluster(%q)", tc.in)
 	}
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters"}, root.requests(), "local and \"\" send no request")
+	assert.Empty(t, f.DrainNotices())
 }
 
+// TestResolveClusterUnknownIsNotFound asserts the NOT_FOUND text, hint and
+// candidates, after the one GET by id a cluster-shaped miss sends.
 func TestResolveClusterUnknownIsNotFound(t *testing.T) {
 	t.Parallel()
-	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
-		mgmtClusterObj("c-abc", "prod"),
-		mgmtClusterObj("c-def", "dev"),
-	}})
+	root := &steveClustersRoot{items: []map[string]any{steveClusterItem("c-abc", "prod"), steveClusterItem("c-def", "dev")}}
+	f := resolveFactory(t, root)
 	_, err := f.ResolveCluster(t.Context(), "staging")
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	var names []string
-	for _, c := range ce.Candidates {
-		names = append(names, c.Name)
-	}
-	assert.ElementsMatch(t, []string{"prod", "dev"}, names, "candidates list every cluster")
+	assert.Equal(t, "cluster not found: 'staging'; it is not among the clusters you can read; pass a cluster id or display name", ce.Message)
+	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+	assert.Equal(t, []clierr.Candidate{{ID: "c-abc", Name: "prod"}, {ID: "c-def", Name: "dev"}}, ce.Candidates)
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters", "/v1/management.cattle.io.clusters/staging"}, root.requests())
+}
+
+// TestResolveClusterMissResolvesThroughTheGetByID asserts a cluster steve's
+// cache has not listed yet resolves through one GET by id.
+func TestResolveClusterMissResolvesThroughTheGetByID(t *testing.T) {
+	t.Parallel()
+	root := &steveClustersRoot{items: []map[string]any{steveClusterItem("c-abc", "prod")}, byID: map[string]int{"c-new": http.StatusOK}}
+	f := resolveFactory(t, root)
+	got, err := f.ResolveCluster(t.Context(), "c-new")
+	require.NoError(t, err)
+	assert.Equal(t, "c-new", got)
 }
 
 func TestResolveClusterAmbiguousDisplayName(t *testing.T) {
@@ -237,61 +254,56 @@ func TestResolveClusterAmbiguousDisplayName(t *testing.T) {
 	// The non-colliding third cluster exercises the shared match helper's
 	// candidate narrowing THROUGH this call site: the error's candidates
 	// must list only the two colliders.
-	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
-		mgmtClusterObj("c-abc", "dup"),
-		mgmtClusterObj("c-def", "dup"),
-		mgmtClusterObj("c-solo", "unique"),
+	f := resolveFactory(t, &steveClustersRoot{items: []map[string]any{
+		steveClusterItem("c-abc", "dup"), steveClusterItem("c-def", "dup"), steveClusterItem("c-solo", "unique"),
 	}})
 	_, err := f.ResolveCluster(t.Context(), "dup")
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
-	require.Len(t, ce.Candidates, 2, "candidates must narrow to the colliders")
-	ids := []string{ce.Candidates[0].ID, ce.Candidates[1].ID}
-	assert.ElementsMatch(t, []string{"c-abc", "c-def"}, ids)
+	assert.Equal(t, []clierr.Candidate{{ID: "c-abc", Name: "dup"}, {ID: "c-def", Name: "dup"}}, ce.Candidates)
 }
 
-func TestResolveClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
+// TestResolveClusterIDWinsWithOneNotice asserts an id that is also another
+// cluster's display name resolves to the id, and the factory hands the
+// warning to the pipeline once, however often the value resolves.
+func TestResolveClusterIDWinsWithOneNotice(t *testing.T) {
 	t.Parallel()
-	// A's display name equals B's id: an exact-id match on "foo" (B) must not
-	// silently shadow the display match on "foo" (A).
-	f := resolveFactory(t, &listCountClient{items: []unstructured.Unstructured{
-		mgmtClusterObj("c-abc", "foo"),
-		mgmtClusterObj("foo", "bar"),
+	f := resolveFactory(t, &steveClustersRoot{items: []map[string]any{
+		steveClusterItem("c-abc", "foo"), steveClusterItem("foo", "bar"),
 	}})
-	_, err := f.ResolveCluster(t.Context(), "foo")
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce, "want a clierr.Error, got %v", err)
-	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	for range 2 {
+		got, err := f.ResolveCluster(t.Context(), "foo")
+		require.NoError(t, err)
+		assert.Equal(t, "foo", got)
+	}
+	assert.Equal(t, []string{"--cluster 'foo' is the id of cluster 'foo'; cluster 'c-abc' also has the display name 'foo' - pass --cluster 'c-abc' for that one"},
+		f.DrainNotices())
+	assert.Empty(t, f.DrainNotices(), "drained once")
 }
 
 func TestResolveClusterMemoizes(t *testing.T) {
 	t.Parallel()
-	client := &listCountClient{items: []unstructured.Unstructured{
-		mgmtClusterObj("c-abc", "prod"),
-		mgmtClusterObj("c-def", "dev"),
-	}}
-	f := resolveFactory(t, client)
+	root := &steveClustersRoot{items: []map[string]any{steveClusterItem("c-abc", "prod"), steveClusterItem("c-def", "dev")}}
+	f := resolveFactory(t, root)
 	for range 2 {
 		got, err := f.ResolveCluster(t.Context(), "prod")
 		require.NoError(t, err)
 		assert.Equal(t, "c-abc", got)
 	}
-	assert.Equal(t, 1, client.listCalls, "second resolve served from the memo")
+	assert.Len(t, root.requests(), 1, "second resolve served from the memo")
 }
 
-// TestResolveClusterDistinctNamesShareOneList asserts the fan-out fix: the
-// name→id memo only helps a REPEATED name (TestResolveClusterMemoizes above);
-// resolving several DISTINCT names used to List once per name. They now share
-// one cached list for the whole invocation.
+// TestResolveClusterDistinctNamesShareOneList asserts the name→id memo only
+// helps a REPEATED name (TestResolveClusterMemoizes above); resolving
+// several DISTINCT names shares one collection read for the whole
+// invocation.
 func TestResolveClusterDistinctNamesShareOneList(t *testing.T) {
 	t.Parallel()
-	client := &listCountClient{items: []unstructured.Unstructured{
-		mgmtClusterObj("c-abc", "prod"),
-		mgmtClusterObj("c-def", "dev"),
-		mgmtClusterObj("c-ghi", "staging"),
+	root := &steveClustersRoot{items: []map[string]any{
+		steveClusterItem("c-abc", "prod"), steveClusterItem("c-def", "dev"), steveClusterItem("c-ghi", "staging"),
 	}}
-	f := resolveFactory(t, client)
+	f := resolveFactory(t, root)
 	for _, tc := range []struct{ in, want string }{
 		{"prod", "c-abc"},
 		{"dev", "c-def"},
@@ -301,8 +313,25 @@ func TestResolveClusterDistinctNamesShareOneList(t *testing.T) {
 		require.NoError(t, err, "ResolveCluster(%q)", tc.in)
 		assert.Equal(t, tc.want, got, "ResolveCluster(%q)", tc.in)
 	}
-	assert.Equal(t, 1, client.listCalls, "three distinct names must still cost one List")
+	assert.Len(t, root.requests(), 1, "three distinct names must still cost one collection read")
 }
+
+// TestNoticeSourcesDrainsInOrder asserts the factory's notices come ahead
+// of the next source's.
+func TestNoticeSourcesDrainsInOrder(t *testing.T) {
+	t.Parallel()
+	f := resolveFactory(t, &steveClustersRoot{items: []map[string]any{steveClusterItem("c-abc", "foo"), steveClusterItem("foo", "")}})
+	_, err := f.ResolveCluster(t.Context(), "foo")
+	require.NoError(t, err)
+	got := noticeSources{f, fixedNotices{"from the store"}}.DrainNotices()
+	require.Len(t, got, 2)
+	assert.Contains(t, got[0], "--cluster 'foo' is the id of cluster 'foo'")
+	assert.Equal(t, "from the store", got[1])
+}
+
+type fixedNotices []string
+
+func (n fixedNotices) DrainNotices() []string { return n }
 
 func TestRegistryBindingLookup(t *testing.T) {
 	t.Parallel()
@@ -391,12 +420,4 @@ func TestActiveTokenIDIDSecret(t *testing.T) {
 	id, err := f.ActiveTokenID()
 	require.NoError(t, err)
 	assert.Equal(t, "mytoken", id)
-}
-
-func (*listCountClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {
-	return engine.ReviewResponse{}, errors.New("PostReview not scripted in this fake")
-}
-
-func (*listCountClient) ServerResources(context.Context) ([]engine.APIResource, error) {
-	return nil, errors.New("ServerResources not scripted in this fake")
 }

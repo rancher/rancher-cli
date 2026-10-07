@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/access/complete"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
@@ -182,38 +183,26 @@ type projectsResult struct {
 	ResultSource      ResultSource         `json:"resultSource"`
 }
 
-// resolveClusterArg picks one cluster of the caller's steve set by exact id
-// or unique display name. The shared proxy-backed resolution is not used:
-// a member caller cannot read what it lists.
-func resolveClusterArg(clusters []discoveredCluster, arg string) (discoveredCluster, error) {
-	for _, c := range clusters {
-		if c.ID == arg {
-			return c, nil
+// resolveClusterArg picks one cluster of the caller's steve set, the set
+// the command reports, with the shared match rule: an id wins over another
+// cluster's display name, and warning names the others. "local" is always
+// the management cluster's row. It sends no request: a cluster the set does
+// not carry is not one the command can report.
+func resolveClusterArg(clusters []discoveredCluster, arg string) (discoveredCluster, string, error) {
+	if arg == engine.LocalCluster {
+		if i := slices.IndexFunc(clusters, func(c discoveredCluster) bool { return c.ID == engine.LocalCluster }); i >= 0 {
+			return clusters[i], "", nil
 		}
 	}
-	var byName []discoveredCluster
-	for _, c := range clusters {
-		if c.DisplayName == arg {
-			byName = append(byName, c)
-		}
+	list := make([]steve.Cluster, len(clusters))
+	for i, c := range clusters {
+		list[i] = steve.Cluster{ID: c.ID, DisplayName: c.DisplayName}
 	}
-	candidates := make([]clierr.Candidate, 0, len(clusters))
-	switch len(byName) {
-	case 1:
-		return byName[0], nil
-	case 0:
-		for _, c := range clusters {
-			candidates = append(candidates, clierr.Candidate{ID: c.ID, Name: c.DisplayName})
-		}
-		return discoveredCluster{}, clierr.New(clierr.CodeNotFound,
-			fmt.Sprintf("cluster %q is not among the clusters you can list", arg)).WithCandidates(candidates)
-	default:
-		for _, c := range byName {
-			candidates = append(candidates, clierr.Candidate{ID: c.ID, Name: c.DisplayName})
-		}
-		return discoveredCluster{}, clierr.New(clierr.CodeAmbiguousSelection,
-			fmt.Sprintf("%d clusters are named %q; pass the id", len(byName), arg)).WithCandidates(candidates)
+	id, warning, err := steve.MatchCluster(list, arg, steve.ClusterText(arg))
+	if err != nil {
+		return discoveredCluster{}, "", err
 	}
+	return clusters[slices.IndexFunc(clusters, func(c discoveredCluster) bool { return c.ID == id })], warning, nil
 }
 
 func (c *projectsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
@@ -265,11 +254,13 @@ func (c *projectsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 		return runtime.Result{}, err
 	}
 	clusterArg := in.String("cluster")
+	var warning string
 	if clusterArg != "" {
-		chosen, err := resolveClusterArg(clusters, clusterArg)
+		chosen, w, err := resolveClusterArg(clusters, clusterArg)
 		if err != nil {
 			return runtime.Result{}, err
 		}
+		warning = w
 		clusters = []discoveredCluster{chosen}
 		projects = slices.DeleteFunc(slices.Clone(projects), func(p discoveredProject) bool { return p.Cluster != chosen.ID })
 		clusterArg = chosen.ID
@@ -347,8 +338,12 @@ func (c *projectsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 	if !out.Rollup.Complete {
 		exit = exitUnknown
 	}
-	return runtime.Result{Kind: "AccessProjects", Data: out, ExitStatus: exit,
-		Text: projectsText(out, false), WideText: projectsText(out, true)}, nil
+	res := runtime.Result{Kind: "AccessProjects", Data: out, ExitStatus: exit,
+		Text: projectsText(out, false), WideText: projectsText(out, true)}
+	if warning != "" {
+		res.Warnings = []string{warning}
+	}
+	return res, nil
 }
 
 // reviewCluster reads the cluster's namespaces as the caller and asks the

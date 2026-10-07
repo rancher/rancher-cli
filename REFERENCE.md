@@ -446,6 +446,27 @@ shell would receive:
 PowerShell: `$env:RANCHER_CLI_COMPLETION_DEBUG = "1"` first, then the same
 command.
 
+## Cluster scope (--cluster)
+
+`--cluster <id-or-name>` is looked up once per command, as you: among the
+clusters Rancher's steve API lists for you (`rancher access clusters` shows
+them), by id or display name, so a cluster owner or project member who
+cannot read the local cluster resolves it like an administrator. An id wins
+over another cluster's display name, with a warning naming that cluster;
+two clusters with the same display name are `AMBIGUOUS_SELECTION` (pass the
+id). A cluster created moments ago that the list does not show yet is found
+by one read of its id. `local` is always the local cluster, and an omitted
+`--cluster` means it where the command allows it. kubectl's exec plugin
+resolves its `--cluster` the same way on a cache miss, with the warning on
+stderr; its `NOT_FOUND` lists the clusters you can read.
+
+`get` and `patch` of the `cluster` kind and `get projects` keep kubectl's
+semantics: they go through the local cluster's Kubernetes API, where
+Rancher answers clusters only for users with access to the local cluster,
+and projects by your own permissions. A refusal names the request and the
+caller-scoped command to use instead (`rancher access clusters`, `rancher
+inspect cluster <id>`, `rancher access projects --cluster <id>`).
+
 ## Project scope (--project)
 
 `--project <id-or-name>` names a project on the cluster `--cluster` names.
@@ -851,7 +872,8 @@ service account is refused.
 subject can see into and which of them it is a Rancher member of, and keeps
 the two apart. The projects are what steve lists for you, grouped by
 cluster, each cluster carrying its `access clusters` row; `--cluster`
-restricts the run to one cluster of that set, by id or unique display name.
+restricts the run to one cluster of that set, by id or display name (an id
+wins over another cluster's display name, with a warning).
 For every reachable cluster the command reads the namespaces you see
 through steve (a project member cannot LIST namespaces through the
 Kubernetes API, and steve answers every caller with exactly the namespaces

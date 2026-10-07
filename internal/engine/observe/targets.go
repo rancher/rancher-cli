@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/observe/complete"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -84,12 +85,12 @@ const (
 // degradation chain: the server selector
 // fallback ending in the Docker-install message, the kube-api-auth ACE
 // precheck, and the fleet-agent namespace resolution chain.
-func Resolve(ctx context.Context, clients engine.ClusterClientFactory, t Target, in runtime.Input) (Resolved, error) {
+func Resolve(ctx context.Context, clients engine.ClusterClientFactory, get steve.Getter, t Target, in runtime.Input) (Resolved, error) {
 	clusterID, err := resolveTargetCluster(ctx, clients, t, in)
 	if err != nil {
 		return Resolved{}, err
 	}
-	return ResolveOnCluster(ctx, clients, t, clusterID)
+	return ResolveOnCluster(ctx, clients, get, t, clusterID)
 }
 
 // Applicable reports whether t can run against clusterID at all - a
@@ -115,18 +116,15 @@ func Applicable(t Target, clusterID string) bool {
 // command, which reads --cluster from one Input) and support-bundle (which
 // iterates its own target × cluster matrix, checking Applicable first) both
 // funnel through this.
-func ResolveOnCluster(ctx context.Context, clients engine.ClusterClientFactory, t Target, clusterID string) (Resolved, error) {
+// get reads the management Cluster object through steve, as the caller.
+func ResolveOnCluster(ctx context.Context, clients engine.ClusterClientFactory, get steve.Getter, t Target, clusterID string) (Resolved, error) {
 	client, err := clients.Cluster(ctx, clusterID)
 	if err != nil {
 		return Resolved{}, err
 	}
 
 	if t.Name == "kube-api-auth" {
-		local, err := clients.Cluster(ctx, engine.LocalCluster)
-		if err != nil {
-			return Resolved{}, err
-		}
-		ok, err := hasACE(ctx, local, clusterID)
+		ok, err := hasACE(ctx, get, clusterID)
 		if err != nil {
 			return Resolved{}, err
 		}
@@ -147,7 +145,7 @@ func ResolveOnCluster(ctx context.Context, clients engine.ClusterClientFactory, 
 		if err != nil {
 			return Resolved{}, err
 		}
-		ns, pods, err := resolveFleetAgentPods(ctx, local, client, clusterID)
+		ns, pods, err := resolveFleetAgentPods(ctx, local, client, get, clusterID)
 		if err != nil {
 			return Resolved{}, err
 		}
@@ -200,8 +198,8 @@ func resolveTargetCluster(ctx context.Context, clients engine.ClusterClientFacto
 // hasACE reports whether clusterID's management Cluster object has an
 // authorized cluster endpoint enabled (spec.localClusterAuthEndpoint.enabled;
 // false or absent is non-ACE).
-func hasACE(ctx context.Context, local engine.ClusterClient, clusterID string) (bool, error) {
-	obj, err := local.Get(ctx, clusterKind.GVR, "", clusterID)
+func hasACE(ctx context.Context, get steve.Getter, clusterID string) (bool, error) {
+	obj, err := steve.GetCluster(ctx, get, clusterID)
 	if err != nil {
 		return false, err
 	}
@@ -239,14 +237,14 @@ func resolveServerPods(ctx context.Context, client engine.ClusterClient) (string
 // finally the legacy fleet-system namespace when no pods match. Every read
 // in the chain degrades silently to the next default on error/absence -
 // "no-permission" is a fall-through, not a failure.
-func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClient, clusterID string) (string, []unstructured.Unstructured, error) {
+func resolveFleetAgentPods(ctx context.Context, local, client engine.ClusterClient, get steve.Getter, clusterID string) (string, []unstructured.Unstructured, error) {
 	isLocal := clusterID == engine.LocalCluster
 
 	workspace := fleetWorkspaceDownstream
 	if isLocal {
 		workspace = fleetWorkspaceLocal
 	}
-	if obj, err := local.Get(ctx, clusterKind.GVR, "", clusterID); err == nil {
+	if obj, err := steve.GetCluster(ctx, get, clusterID); err == nil {
 		if ws, found, _ := unstructured.NestedString(obj.Object, "spec", "fleetWorkspaceName"); found && ws != "" {
 			workspace = ws
 		}

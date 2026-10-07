@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -13,20 +12,64 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// deniedFallbackMessage substitutes for a Forbidden/Unauthorized error
-// whose message is empty - Rancher's proxy paths reject an
-// invalid/insufficient token with an empty-body 403 (and a direct k8s
-// endpoint may do the same with a 401), and apierrors' err.Error() passes
-// that through verbatim, so the envelope would otherwise carry a code
-// without any explanation. One template parameterized by the actual HTTP
-// status, so the 401 and 403 wording can never drift out of sync.
-func deniedFallbackMessage(status int) string {
-	return fmt.Sprintf("server denied the request (%d): the credential may be invalid or lack permission", status)
+// request describes the call an error answers, so a refusal that carries
+// no reason can name what was refused. cluster is the --cluster value the
+// client targets.
+type request struct {
+	verb, group, resource, namespace, name, cluster string
+}
+
+// what is "<verb> <resource>.<group>", the group left out for the core
+// group.
+func (q *request) what() string {
+	gr := q.resource
+	if q.group != "" {
+		gr += "." + q.group
+	}
+	return q.verb + " " + gr
+}
+
+// localManagementRefusal is why a management.cattle.io request through the
+// local cluster's proxy can be refused with no reason.
+const localManagementRefusal = "; through the local cluster's proxy, Rancher answers some management.cattle.io resources, clusters among them, only for users with access to the local cluster"
+
+// unauthorizedDefault is apimachinery's message for a 401 whose body
+// carried none.
+const unauthorizedDefault = "the server has asked for the client to provide credentials"
+
+// forbiddenText words a 403 that gave no reason: client-go leaves the
+// message empty for the dynamic client's AbsPath requests, and Rancher's
+// proxy answers a user without access with an empty body.
+func forbiddenText(q *request) string {
+	if q == nil {
+		return "the server refused the request (403) and gave no reason"
+	}
+	name := ""
+	if q.name != "" {
+		name = " " + clierr.ShellQuote(q.name)
+	}
+	msg := "the server refused " + q.what() + name + " (403) and gave no reason"
+	if q.cluster == "local" && q.group == "management.cattle.io" {
+		msg += localManagementRefusal
+	}
+	return msg
+}
+
+// unauthorizedText words a 401 by its status alone.
+func unauthorizedText(q *request) string {
+	if q == nil {
+		return "the server rejected the credential (401)"
+	}
+	return "the server rejected the credential (401) for " + q.what()
 }
 
 // mapErr translates a Kubernetes API error into a structured *clierr.Error so the
 // pipeline renders it with the right exit code. Returns nil for nil.
-func mapErr(err error) error {
+func mapErr(err error) error { return mapRequestErr(err, nil) }
+
+// mapRequestErr is mapErr for the call q describes; q is nil when there is
+// no request to name.
+func mapRequestErr(err error, q *request) error {
 	if err == nil {
 		return nil
 	}
@@ -41,9 +84,9 @@ func mapErr(err error) error {
 	case apierrors.IsNotFound(err):
 		return clierr.New(clierr.CodeNotFound, err.Error())
 	case apierrors.IsForbidden(err):
-		return withDeniedFallback(clierr.New(clierr.CodeRBAC, err.Error()), http.StatusForbidden)
+		return withDeniedFallback(clierr.New(clierr.CodeRBAC, err.Error()), http.StatusForbidden, q)
 	case apierrors.IsUnauthorized(err):
-		return withDeniedFallback(clierr.New(clierr.CodeAuth, err.Error()), http.StatusUnauthorized)
+		return withDeniedFallback(clierr.New(clierr.CodeAuth, err.Error()), http.StatusUnauthorized, q)
 	case apierrors.IsConflict(err):
 		// A resourceVersion precondition race: some other writer (e.g. a
 		// reconciling controller) updated the object between the read and
@@ -95,15 +138,20 @@ const (
 	AuthStatusRemedy     = clierr.Rancher + " auth status"
 )
 
-// withDeniedFallback substitutes deniedFallbackMessage(status) and a hint
-// pointing at `rancher auth status` when ce's message is empty or
-// whitespace-only, otherwise returns ce untouched.
-func withDeniedFallback(ce *clierr.Error, status int) *clierr.Error {
-	if strings.TrimSpace(ce.Message) != "" {
-		return ce
+// withDeniedFallback words a 403 or 401 that gave no reason: an empty or
+// whitespace-only message, and for a 401 also apimachinery's default one.
+// A 401 names `rancher auth status`; a 403's hint, when there is one, is
+// the caller's (kinds.ForbiddenHint). Any other message is kept.
+func withDeniedFallback(ce *clierr.Error, status int, q *request) *clierr.Error {
+	msg := strings.TrimSpace(ce.Message)
+	switch {
+	case status == http.StatusUnauthorized && (msg == "" || msg == unauthorizedDefault):
+		ce.Message = unauthorizedText(q)
+		return ce.WithHint(AuthStatusRemedy)
+	case status == http.StatusForbidden && msg == "":
+		ce.Message = forbiddenText(q)
 	}
-	ce.Message = deniedFallbackMessage(status)
-	return ce.WithHint(AuthStatusRemedy)
+	return ce
 }
 
 // isGatewayError reports a 502 or 504 StatusError; both are retryable

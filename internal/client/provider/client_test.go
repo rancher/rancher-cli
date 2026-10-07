@@ -574,3 +574,61 @@ func TestLogsServerErrorRetryabilityFollowsTheBody(t *testing.T) {
 		})
 	}
 }
+
+// bodylessServer answers every request with status and no body or
+// Content-Type, as Rancher's local-cluster proxy refuses a user without
+// access to cluster local.
+func bodylessServer(t *testing.T, status int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestDynamicClientBodylessRefusalsNameTheRequest asserts, through the real
+// dynamic client, the texts and hints of a bodyless 403 and 401: a get,
+// list or update of a management kind is named with the local proxy's
+// reason and the caller-scoped command kinds.ForbiddenHint names, and a
+// 401 names the call with `rancher auth status`.
+func TestDynamicClientBodylessRefusalsNameTheRequest(t *testing.T) {
+	t.Parallel()
+	clusters := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
+	projects := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
+	c, err := NewClusterClient(&rest.Config{Host: bodylessServer(t, http.StatusForbidden).URL, BearerToken: "t"}, "local")
+	require.NoError(t, err)
+
+	rbac := func(err error) *clierr.Error {
+		t.Helper()
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "got %v", err)
+		assert.Equal(t, clierr.CodeRBAC, ce.Code)
+		return ce
+	}
+	_, err = c.List(t.Context(), clusters, "", "")
+	ce := rbac(err)
+	assert.Equal(t, "the server refused list clusters.management.cattle.io (403) and gave no reason"+localManagementRefusal, ce.Message)
+	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+
+	_, err = c.Get(t.Context(), clusters, "", "c-abc")
+	ce = rbac(err)
+	assert.Equal(t, "the server refused get clusters.management.cattle.io 'c-abc' (403) and gave no reason"+localManagementRefusal, ce.Message)
+	assert.Equal(t, clierr.Rancher+" inspect cluster 'c-abc'", ce.Hint)
+
+	obj := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "management.cattle.io/v3", "kind": "Cluster", "metadata": map[string]any{"name": "c-abc"}}}
+	_, err = c.Update(t.Context(), clusters, "", obj, true)
+	ce = rbac(err)
+	assert.Empty(t, ce.Hint, "no caller-scoped write exists")
+
+	_, err = c.List(t.Context(), projects, "c-abc", "")
+	ce = rbac(err)
+	assert.Equal(t, clierr.Rancher+" access projects --cluster 'c-abc'", ce.Hint)
+
+	u, err := NewClusterClient(&rest.Config{Host: bodylessServer(t, http.StatusUnauthorized).URL, BearerToken: "t"}, "local")
+	require.NoError(t, err)
+	_, err = u.List(t.Context(), clusters, "", "")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, clierr.CodeAuth, ce.Code)
+	assert.Equal(t, "the server rejected the credential (401) for list clusters.management.cattle.io", ce.Message)
+	assert.Equal(t, AuthStatusRemedy, ce.Hint)
+}

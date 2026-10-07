@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/access"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	ucli "github.com/urfave/cli/v3"
@@ -602,44 +603,24 @@ func isClusterIDShaped(s string) bool {
 	return s == "local" || strings.HasPrefix(s, "c-")
 }
 
-// resolveDisplayNameToClusterID issues the surface's one request of its
-// own: the management cluster list, read through the seam under an
-// allowance of one, to map a typed display name to a cluster id. Returns
-// "" when no cluster or more than one carries the name, or the request
-// fails. hc is the single per-dispatch client.
+// resolveDisplayNameToClusterID issues the surface's requests of its own
+// to map a typed --cluster to a cluster id as the command resolves it: one
+// walk of the steve clusters collection and, when nothing there matches,
+// one GET by id, under an allowance of steve.MaxPages plus one. Returns ""
+// when the value names no cluster or more than one, or a request fails.
+// hc is the single per-dispatch client.
 func resolveDisplayNameToClusterID(ctx context.Context, hc *http.Client, cap TokenCapability, displayName string) string {
-	k, ok := kinds.ByKey("managementcluster")
-	if !ok {
-		return ""
-	}
-	p, err := completion.ManagementPath(k.GVR.Group, k.GVR.Version, k.GVR.Resource)
+	conn := tracedConnection(hc, cap, steve.MaxPages+1)
+	get := completionGetter(conn)
+	list, err := steve.ClustersOnce(ctx, get)
 	if err != nil {
 		return ""
 	}
-	var col completion.ItemList
-	if err := tracedConnection(hc, cap, 1).GetJSON(ctx, p, "", &col); err != nil {
-		return ""
+	id, _, err := steve.ResolveCluster(ctx, get, list, displayName, steve.ClusterText(displayName))
+	if err != nil || conn.Exceeded() {
+		return "" // not found, ambiguous, or the read failed
 	}
-	var matches []string
-	for _, item := range col.Items {
-		meta, _ := item["metadata"].(map[string]any)
-		if meta == nil {
-			continue
-		}
-		id, _ := meta["name"].(string)
-		spec, _ := item["spec"].(map[string]any)
-		var name string
-		if spec != nil {
-			name, _ = spec["displayName"].(string)
-		}
-		if name == displayName {
-			matches = append(matches, id)
-		}
-	}
-	if len(matches) == 1 {
-		return matches[0]
-	}
-	return "" // not found or ambiguous
+	return id
 }
 
 // machineConfigPrefixCandidates serves the `<kind>/` prefixes for create

@@ -200,7 +200,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	if named {
 		name := in.Args()[0]
 		if c.k.Key == "managementcluster" {
-			resolved, rerr := c.clients.ResolveCluster(ctx, name)
+			resolved, rerr := engine.ResolveClusterArgument(ctx, c.clients, name)
 			if rerr != nil {
 				return runtime.Result{}, rerr
 			}

@@ -51,12 +51,12 @@ var liveSourcePackages = map[string]bool{
 var sharedCompletionFlags = map[string]bool{"cluster": true, "project": true, "namespace": true, "node": true, "as": true}
 
 // flagSources maps a shared flag name to its live source. A command's own
-// source takes precedence for the same flag: `access projects` keeps its
-// steve cluster walk while every other command lists the management
-// clusters. --as is the subject projection grant and revoke use for
-// their subject positional, declared once in the rbac complete package.
+// source takes precedence for the same flag: `access projects` adds the
+// management cluster's row to the clusters every other command offers.
+// --as is the subject projection grant and revoke use for their subject
+// positional, declared once in the rbac complete package.
 var flagSources = map[string]completion.Source{
-	"cluster":   accesscomplete.ClusterSource(),
+	"cluster":   accesscomplete.SteveClusterSource(),
 	"project":   projectscomplete.ProjectSource(),
 	"namespace": kindscomplete.NamespaceSource(),
 	"node":      kindscomplete.NodeSource(),
@@ -75,13 +75,12 @@ var kindSources = map[string]completion.Source{
 }
 
 // positionalKinds maps a bespoke command's name to the Key of the kind its
-// first positional completes as: the three inspect leaves whose positional
-// is a management object, the cluster-family verbs' provisioning cluster,
+// first positional completes as: the inspect leaf whose positional is a
+// management user, the cluster-family verbs' provisioning cluster,
 // the oidc-client secret verbs' client, and the existing user
 // create password-change-request addresses. create user is absent: its
 // positional is a new username, never an existing one.
 var positionalKinds = map[string]string{
-	"inspect cluster":                "managementcluster",
 	"inspect user":                   "user",
 	"cluster scale":                  "provisioningcluster",
 	"cluster set-autoscaling":        "provisioningcluster",

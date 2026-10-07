@@ -5,10 +5,15 @@ package observe
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"sync"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -51,6 +56,11 @@ type fakeClient struct {
 	listSelectors   []string
 	listNamespaces  []string
 
+	// denied fails every Get and List of a kind with its error;
+	// kindReads is the kind of every Get and List, in order.
+	denied    map[schema.GroupVersionResource]error
+	kindReads []schema.GroupVersionResource
+
 	logs         map[string]string
 	logErrs      map[string]error
 	prevLogErrs  map[string]error
@@ -64,6 +74,7 @@ func newFakeClient() *fakeClient {
 		listsByNS:       map[objKey]*unstructured.UnstructuredList{},
 		listsBySelector: map[selKey]*unstructured.UnstructuredList{},
 		listErrs:        map[objKey]error{},
+		denied:          map[schema.GroupVersionResource]error{},
 		logs:            map[string]string{},
 		logErrs:         map[string]error{},
 		prevLogErrs:     map[string]error{},
@@ -72,11 +83,6 @@ func newFakeClient() *fakeClient {
 
 func (f *fakeClient) withObject(gvr schema.GroupVersionResource, ns, name string, obj *unstructured.Unstructured) *fakeClient {
 	f.objects[objKey{gvr, ns, name}] = obj
-	return f
-}
-
-func (f *fakeClient) withGetErr(gvr schema.GroupVersionResource, ns, name string, err error) *fakeClient {
-	f.getErrs[objKey{gvr, ns, name}] = err
 	return f
 }
 
@@ -99,6 +105,12 @@ func (f *fakeClient) withListErr(gvr schema.GroupVersionResource, ns string, err
 	return f
 }
 
+// withDeniedKind makes every Get and List of gvr fail with err.
+func (f *fakeClient) withDeniedKind(gvr schema.GroupVersionResource, err error) *fakeClient {
+	f.denied[gvr] = err
+	return f
+}
+
 func (f *fakeClient) withLog(container, out string) *fakeClient {
 	f.logs[container] = out
 	return f
@@ -115,6 +127,10 @@ func (f *fakeClient) withLogErr(container string, err error) *fakeClient {
 }
 
 func (f *fakeClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	f.kindReads = append(f.kindReads, gvr)
+	if err, ok := f.denied[gvr]; ok {
+		return nil, err
+	}
 	k := objKey{gvr, ns, name}
 	if err, ok := f.getErrs[k]; ok {
 		return nil, err
@@ -126,6 +142,10 @@ func (f *fakeClient) Get(_ context.Context, gvr schema.GroupVersionResource, ns,
 }
 
 func (f *fakeClient) List(_ context.Context, gvr schema.GroupVersionResource, ns string, selector string) (*unstructured.UnstructuredList, error) {
+	f.kindReads = append(f.kindReads, gvr)
+	if err, ok := f.denied[gvr]; ok {
+		return nil, err
+	}
 	f.listSelectors = append(f.listSelectors, selector)
 	f.listNamespaces = append(f.listNamespaces, ns)
 	k := objKey{gvr, ns, ""}
@@ -178,9 +198,22 @@ type fakeFactory struct {
 	ctxClusterErr error
 	resolve       map[string]string
 	resolveErr    error
+	root          *fakeRoot // the steve root; nil answers 404 to every path
 
 	clusterCalls []string
 }
+
+// Root hands out the steve root fake, so the factory also serves as the
+// engine.RootClientFactory of the commands under test.
+func (f *fakeFactory) Root() (engine.RootClient, error) {
+	if f.root == nil {
+		return &fakeRoot{}, nil
+	}
+	return f.root, nil
+}
+
+// getter is the steve getter the resolve functions take, over Root.
+func (f *fakeFactory) getter() steve.Getter { return steve.RootFactoryGetter(f) }
 
 func (f *fakeFactory) Cluster(_ context.Context, id string) (engine.ClusterClient, error) {
 	f.clusterCalls = append(f.clusterCalls, id)
@@ -208,7 +241,97 @@ func (f *fakeFactory) ResolveCluster(_ context.Context, nameOrID string) (string
 	return nameOrID, nil
 }
 
-var _ engine.ClusterClientFactory = (*fakeFactory)(nil)
+var (
+	_ engine.ClusterClientFactory = (*fakeFactory)(nil)
+	_ engine.RootClientFactory    = (*fakeFactory)(nil)
+)
+
+// fakeRoot is an engine.RootClient serving management Clusters the way
+// steve does: the collection at /v1/management.cattle.io.clusters and one
+// object per id. A path in errs answers its error; any other unknown path
+// answers 404 as the real root client does.
+type fakeRoot struct {
+	mu       sync.Mutex
+	clusters map[string]*unstructured.Unstructured
+	errs     map[string]error
+	paths    []string
+}
+
+// withCluster serves obj, a management Cluster named by metadata.name.
+func (r *fakeRoot) withCluster(obj *unstructured.Unstructured) *fakeRoot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.clusters == nil {
+		r.clusters = map[string]*unstructured.Unstructured{}
+	}
+	obj = obj.DeepCopy()
+	obj.Object["id"] = obj.GetName()
+	obj.Object["type"] = steve.ClustersType
+	r.clusters[obj.GetName()] = obj
+	return r
+}
+
+// withError makes a GET of path fail with err.
+func (r *fakeRoot) withError(path string, err error) *fakeRoot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.errs == nil {
+		r.errs = map[string]error{}
+	}
+	r.errs[path] = err
+	return r
+}
+
+// rootStatusError is the error the real root client returns for a non-2xx
+// answer of status.
+func rootStatusError(status int) error {
+	code := clierr.CodeGeneric
+	switch status {
+	case 401, 403:
+		code = clierr.CodeAuth
+	case 404:
+		code = clierr.CodeNotFound
+	}
+	return clierr.New(code, fmt.Sprintf("http status %d", status)).WithCause(&engine.RootStatusError{Status: status})
+}
+
+func (r *fakeRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.paths = append(r.paths, path)
+	if err, ok := r.errs[path]; ok {
+		return nil, err
+	}
+	if path == (steve.Request{Type: steve.ClustersType}).Path() {
+		ids := make([]string, 0, len(r.clusters))
+		for id := range r.clusters {
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		data := make([]any, 0, len(ids))
+		for _, id := range ids {
+			data = append(data, r.clusters[id].Object)
+		}
+		page := map[string]any{"data": data, "revision": "1"}
+		if len(data) > 0 {
+			page["count"] = len(data)
+		}
+		return json.Marshal(page)
+	}
+	for id, obj := range r.clusters {
+		if path == (steve.Request{Type: steve.ClustersType, Name: id}).Path() {
+			return json.Marshal(obj.Object)
+		}
+	}
+	return nil, rootStatusError(404)
+}
+
+// clusterPath is the steve path of one management Cluster.
+func clusterPath(id string) string {
+	return steve.Request{Type: steve.ClustersType, Name: id}.Path()
+}
+
+var _ engine.RootClient = (*fakeRoot)(nil)
 
 func unstructuredPod(name string) unstructured.Unstructured {
 	return unstructuredPodWithContainers(name, "main")

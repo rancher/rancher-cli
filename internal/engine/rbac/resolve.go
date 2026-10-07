@@ -147,8 +147,8 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		}
 	}
 
-	// Bare name/id: exact-id Get wins outright (deliberate precedence
-	// change from MatchOneOrError's ambiguity detection).
+	// Bare name/id: exact-id Get wins outright, with no warning naming a
+	// user whose display name or username is the same value.
 	// On Get miss, list scan matches exact equality on displayName OR
 	// username; a single user matching both fields counts once;
 	// >1 match → AMBIGUOUS_SELECTION; 0 → NOT_FOUND.

@@ -215,6 +215,39 @@ func TestProjectsClusterFlagUnknownAndAmbiguous(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Len(t, ce.Candidates, 3, "every listed cluster, local included")
+	assert.Equal(t, "cluster not found: 'nope'; it is not among the clusters you can read; pass a cluster id or display name", ce.Message)
+	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+}
+
+// TestProjectsClusterFlagIDWinsWithAWarning asserts an id that is also
+// another cluster's display name selects the id, and the warning naming
+// the other cluster is in the result.
+func TestProjectsClusterFlagIDWinsWithAWarning(t *testing.T) {
+	// Not parallel: the fixture shrinks the package-level fan-out limit.
+	pages := projectsPages()
+	pages[steveClustersPath] = page(steveItem("c-1", "prod"), steveItem("c-2", "c-1"))
+	cmd, _ := projectsFixture(t, pages)
+	res, err := cmd.Execute(t.Context(), projectsInput("c-1", "", ""), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "c-1", decodeProjects(t, res).Cluster)
+	assert.Equal(t, []string{"--cluster 'c-1' is the id of cluster 'c-1'; cluster 'c-2' also has the display name 'c-1' - pass --cluster 'c-2' for that one"}, res.Warnings)
+}
+
+// TestResolveClusterArgLocalIsTheManagementRow asserts "local" selects the
+// management cluster's row before any match, even when a downstream
+// cluster's display name is "local", with no warning; and a match returns
+// the row the set holds.
+func TestResolveClusterArgLocalIsTheManagementRow(t *testing.T) {
+	t.Parallel()
+	rows := withLocal([]discoveredCluster{{ID: "c-1", DisplayName: "local", Returned: true}})
+	got, warning, err := resolveClusterArg(rows, "local")
+	require.NoError(t, err)
+	assert.Equal(t, discoveredCluster{ID: "local", DisplayName: "local"}, got)
+	assert.Empty(t, warning)
+
+	got, _, err = resolveClusterArg(rows, "c-1")
+	require.NoError(t, err)
+	assert.Equal(t, discoveredCluster{ID: "c-1", DisplayName: "local", Returned: true}, got)
 }
 
 func TestProjectsNamespaceDiscoveryFailureIsTheClustersIssue(t *testing.T) {

@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,9 +27,9 @@ import (
 // the remedies the same run prints name that one directory.
 func TestKubeconfigRecordsTheDirectoryTheCommandOpened(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/management.cattle.io/v3/clusters/local") {
+		if r.URL.Path == "/v1/management.cattle.io.clusters/local" {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"local"},"spec":{}}`))
+			_, _ = w.Write([]byte(`{"id":"local","type":"management.cattle.io.cluster","metadata":{"name":"local"},"spec":{}}`))
 			return
 		}
 		http.NotFound(w, r)

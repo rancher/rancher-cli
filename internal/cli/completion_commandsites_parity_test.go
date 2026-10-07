@@ -29,7 +29,7 @@ func newCommandSitesServer(t *testing.T) *pathCountingServer {
 		provProdPath:       `{"metadata":{"name":"prod"},"spec":{"rkeConfig":{"machinePools":[{"name":"pool-b"},{"name":"pool-a"}]}}}`,
 		provTeamProdPath:   `{"metadata":{"name":"prod"},"spec":{"rkeConfig":{"machinePools":[{"name":"team-pool"}]}}}`,
 		oidcClientPath:     `{"metadata":{"name":"my-client"},"status":{"clientSecrets":{"secret-2":{},"secret-1":{}}}}`,
-	}, nil)
+	}, steveClustersPages)
 }
 
 // machineConfigPrefixes returns the `<kind>/` tokens of every
@@ -98,7 +98,7 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "--cloud-credential with the network off", words: []string{"create", "cluster", "node-1", "--cloud-credential"}, noNet: true, hits: map[string]int{}},
 		// the access questions' resource positional
 		{name: "access can resource with a cluster id", words: []string{"access", "can", "get", "--cluster", "c-aaa11"}, want: resources, hits: discovery},
-		{name: "access can resource with a cluster display name resolves it first", words: []string{"access", "can", "get", "--cluster", "prod"}, want: resources, hits: map[string]int{mgmtClustersPath: 1, discoveryCorePath: 1, discoveryGroupPath: 1}},
+		{name: "access can resource with a cluster display name resolves it first", words: []string{"access", "can", "get", "--cluster", "prod"}, want: resources, hits: map[string]int{steveClustersPath: 2, discoveryCorePath: 1, discoveryGroupPath: 1}},
 		{name: "access can resource with a partial", words: []string{"access", "can", "get", "--cluster", "c-aaa11"}, cur: "po", want: resources, hits: discovery},
 		{name: "access can resource without a cluster", words: []string{"access", "can", "get"}, hits: map[string]int{}},
 		{name: "access can resource beside --non-resource-url", words: []string{"access", "can", "get", "--cluster", "c-aaa11", "--non-resource-url", "/healthz"}, hits: map[string]int{}},
@@ -108,7 +108,7 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		// the access questions' --group
 		{name: "access can --group", words: []string{"access", "can", "get", "pods", "--cluster", "c-aaa11", "--group"}, want: groups, hits: discovery},
 		{name: "access can --group= equals form", words: []string{"access", "can", "get", "pods", "--cluster", "c-aaa11"}, cur: "--group=", want: []string{"--group=apps", "--group=gateway.example.io", "--group=metrics.example.io", "--group=networking.k8s.io"}, hits: discovery},
-		{name: "access can --group with a display name resolves it first", words: []string{"access", "can", "get", "pods", "--cluster", "prod", "--group"}, want: groups, hits: map[string]int{mgmtClustersPath: 1, discoveryCorePath: 1, discoveryGroupPath: 1}},
+		{name: "access can --group with a display name resolves it first", words: []string{"access", "can", "get", "pods", "--cluster", "prod", "--group"}, want: groups, hits: map[string]int{steveClustersPath: 2, discoveryCorePath: 1, discoveryGroupPath: 1}},
 		{name: "access can --group without a cluster", words: []string{"access", "can", "get", "pods", "--group"}, hits: map[string]int{}},
 		// The question source declines --group and --subresource beside
 		// --non-resource-url, a combination the command rejects; the
@@ -136,7 +136,7 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		// the question source does; the surface's own path resolved the
 		// whole token and found nothing.
 		{name: "access can --subresource of a resource with a name", words: []string{"access", "can", "get", "pods/web", "--cluster", "c-aaa11", "--subresource"}, want: podSubresources, hits: discovery},
-		{name: "access can --subresource with a display name resolves it first", words: []string{"access", "can", "get", "pods", "--cluster", "prod", "--subresource"}, want: podSubresources, hits: map[string]int{mgmtClustersPath: 1, discoveryCorePath: 1, discoveryGroupPath: 1}},
+		{name: "access can --subresource with a display name resolves it first", words: []string{"access", "can", "get", "pods", "--cluster", "prod", "--subresource"}, want: podSubresources, hits: map[string]int{steveClustersPath: 2, discoveryCorePath: 1, discoveryGroupPath: 1}},
 		{name: "access who-can --subresource", words: []string{"access", "who-can", "get", "pods", "--cluster", "c-aaa11", "--subresource"}, want: podSubresources, hits: discovery},
 		{name: "access explain --subresource", words: []string{"access", "explain", "get", "pods", "--cluster", "c-aaa11", "--subresource"}, want: podSubresources, hits: discovery},
 		// --as on the access commands that declare it
@@ -177,8 +177,8 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		// listing (the surface's own path resolved every downstream cluster
 		// and listed under the unresolved name).
 		{name: "logs --pod of a downstream-only target with a cluster id", words: []string{"logs", "agent", "--cluster", "c-aaa11", "--pod"}, want: agentPods, hits: map[string]int{downCattlePods: 1}},
-		{name: "logs --pod of a downstream-only target with a display name resolves it first", words: []string{"logs", "agent", "--cluster", "prod", "--pod"}, want: agentPods, hits: map[string]int{mgmtClustersPath: 1, downCattlePods: 1}},
-		{name: "logs --pod of a downstream-only target with a display name nothing carries", words: []string{"logs", "agent", "--cluster", "nope", "--pod"}, hits: map[string]int{mgmtClustersPath: 1}},
+		{name: "logs --pod of a downstream-only target with a display name resolves it first", words: []string{"logs", "agent", "--cluster", "prod", "--pod"}, want: agentPods, hits: map[string]int{steveClustersPath: 2, downCattlePods: 1}},
+		{name: "logs --pod of a downstream-only target with a display name nothing carries", words: []string{"logs", "agent", "--cluster", "nope", "--pod"}, hits: map[string]int{steveClustersPath: 2, steveClusterNopePath: 1}},
 		{name: "logs --pod of a downstream-only target without a cluster", words: []string{"logs", "agent", "--pod"}, hits: map[string]int{}},
 		{name: "logs --pod of a target without a static namespace", words: []string{"logs", "fleet-agent", "--pod"}, hits: map[string]int{}},
 		{name: "logs --pod of an unknown target", words: []string{"logs", "nope", "--pod"}, hits: map[string]int{}},

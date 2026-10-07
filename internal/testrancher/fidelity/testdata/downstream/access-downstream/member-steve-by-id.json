@@ -1,0 +1,85 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "projects",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 1,
+        "data": [
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "id": "{downstream}/{project}",
+            "kind": "Project",
+            "spec": "\u003cspec\u003e",
+            "type": "management.cattle.io.project"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "own-cluster-by-id",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "id": "{downstream}",
+        "kind": "Cluster",
+        "spec": "\u003cspec\u003e",
+        "status": "\u003cstatus\u003e",
+        "type": "management.cattle.io.cluster"
+      }
+    },
+    {
+      "name": "local-cluster-by-id",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "code": "Forbidden",
+        "message": "\u003cmessage\u003e",
+        "status": "\u003cstatus\u003e",
+        "type": "error"
+      }
+    },
+    {
+      "name": "own-project-by-id",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "id": "{downstream}/{project}",
+        "kind": "Project",
+        "spec": "\u003cspec\u003e",
+        "status": "\u003cstatus\u003e",
+        "type": "management.cattle.io.project"
+      }
+    },
+    {
+      "name": "missing-project-by-id",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "code": "Forbidden",
+        "message": "\u003cmessage\u003e",
+        "status": "\u003cstatus\u003e",
+        "type": "error"
+      }
+    },
+    {
+      "name": "list-projects-through-local",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "\u003cmessage\u003e",
+        "reason": "Forbidden",
+        "status": "\u003cstatus\u003e"
+      }
+    }
+  ]
+}

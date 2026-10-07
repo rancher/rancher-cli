@@ -653,3 +653,29 @@ func TestPrefixFilterMatches(t *testing.T) {
 	var none *PrefixFilter
 	assert.False(t, none.Matches(map[string]any{"principalIds": []any{"system://x"}}))
 }
+
+// TestForbiddenHint asserts the caller-scoped command for each kind verb
+// the generated commands send through the local cluster's proxy, and none
+// for every other kind and verb.
+func TestForbiddenHint(t *testing.T) {
+	t.Parallel()
+	cluster, _ := ByKey("managementcluster")
+	project, _ := ByKey("project")
+	user, _ := ByKey("user")
+	for _, tc := range []struct {
+		k                     Kind
+		verb, namespace, name string
+		want                  string
+	}{
+		{cluster, "list", "", "", clierr.Rancher + " access clusters"},
+		{cluster, "get", "", "c-abc", clierr.Rancher + " inspect cluster 'c-abc'"},
+		{cluster, "get", "", "it's", clierr.Rancher + ` inspect cluster 'it'\''s'`},
+		{cluster, "update", "", "c-abc", ""},
+		{project, "list", "c-abc", "", clierr.Rancher + " access projects --cluster 'c-abc'"},
+		{project, "list", "", "", clierr.Rancher + " access projects"},
+		{project, "get", "c-abc", "p-1", ""},
+		{user, "list", "", "", ""},
+	} {
+		assert.Equal(t, tc.want, ForbiddenHint(tc.k, tc.verb, tc.namespace, tc.name), "%s %s", tc.k.Key, tc.verb)
+	}
+}

@@ -60,15 +60,16 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// resolveClusterToken resolves one --clusters/--current-context entry: the
-// literal passthroughs "*" (all accessible) and "local" are never sent
-// through ResolveCluster, since neither is a real cluster name/id.
+// resolveClusterToken resolves one --clusters/--current-context entry
+// through engine.ResolveClusterArgument, so an id-wins warning names no
+// flag; the literal passthroughs "*" (all accessible) and "local" are
+// never resolved, since neither is a real cluster name/id.
 func resolveClusterToken(ctx context.Context, clients engine.ClusterClientFactory, tok string) (string, error) {
 	switch tok {
 	case "*", "local":
 		return tok, nil
 	default:
-		return clients.ResolveCluster(ctx, tok)
+		return engine.ResolveClusterArgument(ctx, clients, tok)
 	}
 }
 

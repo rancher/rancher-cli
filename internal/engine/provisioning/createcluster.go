@@ -384,11 +384,13 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 		return safety.Effect{}, nil, err
 	}
 
+	var credWarning string
 	if mode == modeNodeDriver {
-		ref, rerr := ResolveCloudCredential(ctx, c.clients, in.String("cloud-credential"))
+		ref, warning, rerr := ResolveCloudCredential(ctx, c.clients, in.String("cloud-credential"))
 		if rerr != nil {
 			return safety.Effect{}, nil, rerr
 		}
+		credWarning = warning
 		_ = unstructured.SetNestedField(obj.Object, ref.ID, "spec", "cloudCredentialSecretName")
 	}
 
@@ -452,6 +454,9 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 	}
 
 	eff.Warnings = c.versionWarnings(ctx, in.String("k8s-version"))
+	if credWarning != "" {
+		eff.Warnings = append(eff.Warnings, credWarning)
+	}
 	if stampWarning != "" {
 		eff.Warnings = append(eff.Warnings, stampWarning)
 	}

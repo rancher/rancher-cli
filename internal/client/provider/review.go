@@ -203,9 +203,9 @@ func mapStatusBody(status int, body []byte) *clierr.Error {
 	text := strings.TrimSpace(string(body))
 	switch {
 	case status == http.StatusUnauthorized:
-		return withDeniedFallback(clierr.New(clierr.CodeAuth, text), status)
+		return withDeniedFallback(clierr.New(clierr.CodeAuth, text), status, nil)
 	case status == http.StatusForbidden:
-		return withDeniedFallback(clierr.New(clierr.CodeRBAC, text), status)
+		return withDeniedFallback(clierr.New(clierr.CodeRBAC, text), status, nil)
 	case status == http.StatusNotFound:
 		return clierr.New(clierr.CodeNotFound, nonEmpty(text, "not found"))
 	case status == http.StatusBadGateway, status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout:

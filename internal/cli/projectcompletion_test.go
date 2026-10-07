@@ -73,10 +73,11 @@ func TestListProjectsReadsTheSteveCollectionThroughTheConnection(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestCompletionGetterServesRootCollectionsOnly asserts the completion
-// getter maps a non-2xx answer to steve's status error and refuses a
-// request for one object or through a cluster's proxy without sending it.
-func TestCompletionGetterServesRootCollectionsOnly(t *testing.T) {
+// TestCompletionGetterServesRootCollectionsAndObjects asserts the
+// completion getter reads a root collection and one object by name, maps a
+// non-2xx answer to steve's status error, and refuses a request through a
+// cluster's proxy or for one namespaced object without sending it.
+func TestCompletionGetterServesRootCollectionsAndObjects(t *testing.T) {
 	t.Parallel()
 	srv, requested := projectPagesServer(t, http.StatusNotFound)
 	get := completionGetter(completion.NewConnection(srv.Client(), "tok", srv.URL, false, 5))
@@ -84,9 +85,20 @@ func TestCompletionGetterServesRootCollectionsOnly(t *testing.T) {
 	se, ok := errors.AsType[*steve.StatusError](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, http.StatusNotFound, se.Status)
-	for _, r := range []steve.Request{{Cluster: "c-aaa11", Type: "namespaces"}, {Type: steve.ProjectsType, Namespace: "c-aaa11", Name: "p-1"}} {
+
+	_, err = get(t.Context(), steve.Request{Type: steve.ClustersType, Name: "c-abc"})
+	se, ok = errors.AsType[*steve.StatusError](err)
+	require.True(t, ok, "a 404 for one object is a status error too: %v", err)
+	assert.Equal(t, http.StatusNotFound, se.Status)
+
+	for _, r := range []steve.Request{
+		{Cluster: "c-aaa11", Type: "namespaces"},
+		{Cluster: "c-aaa11", Type: "namespaces", Name: "default"},
+		{Type: steve.ProjectsType, Namespace: "c-aaa11", Name: "p-1"},
+		{Type: steve.ClustersType, Name: "prod cluster"},
+	} {
 		_, err := get(t.Context(), r)
 		require.Error(t, err, "%+v", r)
 	}
-	assert.Len(t, requested(), 1)
+	assert.Equal(t, []string{"/v1/management.cattle.io.projects/c-aaa11", "/v1/management.cattle.io.clusters/c-abc"}, requested())
 }

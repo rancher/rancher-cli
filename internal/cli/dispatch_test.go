@@ -331,9 +331,10 @@ func TestPathInjectionNamespaceDotsReturnsNil(t *testing.T) {
 
 // TestPathInjectionClusterDotsReturnsNil asserts a bare-dot cluster value
 // ".." never reaches a path: it is not id-shaped, so it is looked up as a
-// display name with the one resolution request the surface makes against
-// the fixed management cluster list, matches nothing, and the dispatch
-// answers nil; no request carries the value in its path.
+// display name with the resolution request the surface makes against the
+// fixed steve clusters collection, matches nothing, cannot be a cluster
+// name (so no GET by id), and the dispatch answers nil; no request
+// carries the value in its path.
 func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 	// NOT parallel: mutates storedConfig and RANCHER_CLI_TOKEN env globals.
 	var hits atomic.Int32
@@ -341,7 +342,7 @@ func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		paths = append(paths, r.URL.Path)
-		_, _ = w.Write([]byte(`{"items":[]}`))
+		_, _ = w.Write([]byte(`{"revision":"1","data":[]}`))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -362,7 +363,7 @@ func TestPathInjectionClusterDotsReturnsNil(t *testing.T) {
 	got := liveCandidates(ctx, site, d, nil, tail)
 	assert.Nil(t, got, "a bare-dot cluster value must yield nil")
 	assert.Equal(t, int32(1), hits.Load(), "one resolution request against the fixed cluster list, nothing else")
-	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/clusters"}, paths, "the value never enters a path")
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters"}, paths, "the value never enters a path")
 }
 
 // A non-completable downstream kind (e.g. "get service") must not trigger

@@ -72,11 +72,11 @@ func TestNoTerminalRemedyForAPluginLoginEntryNameWorks(t *testing.T) {
 			case "/rancherversion":
 				_, _ = w.Write([]byte(`{"Version":"v2.15.1"}`))
 				return
-			case "/k8s/clusters/local/apis/management.cattle.io/v3/clusters/local":
+			case "/v1/management.cattle.io.clusters/local":
 				// The cluster rancher kubeconfig reads for its direct
 				// endpoints; it has none.
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(`{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"local"},"spec":{}}`))
+				_, _ = w.Write([]byte(`{"id":"local","type":"management.cattle.io.cluster","metadata":{"name":"local"},"spec":{}}`))
 				return
 			}
 			http.NotFound(w, r)

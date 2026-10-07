@@ -95,7 +95,7 @@ jsonquery byid.json data.rollup.clustersNotApplicable 0
 
 # an unknown cluster names the clusters the caller can list
 ! exec rancher access projects --cluster nowhere -o json
-stderr 'not among the clusters you can list'
+stderr 'not among the clusters you can read'
 stderr 'c-test'
 
 # a group has no projects to list

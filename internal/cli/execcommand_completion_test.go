@@ -55,7 +55,7 @@ func TestExecCommandCompletionOffersOnlyWhatTheWordMeans(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(bin, "rancher-dir"), 0o755))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+other)
 	setStoredConfigForTest(t, &config.Config{Completion: config.CompletionConfig{Network: true}}, t.TempDir())
-	d := kubeconfig.NewCommand("", nil, nil).Describe()
+	d := kubeconfig.NewCommand("", nil, nil, nil).Describe()
 
 	for _, tc := range []struct {
 		word string

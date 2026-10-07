@@ -3,9 +3,11 @@ package cli
 import (
 	"context"
 	"maps"
+	"reflect"
 	"slices"
 	"testing"
 
+	accesscomplete "github.com/rancher/rancher-cli/internal/engine/access/complete"
 	kindscomplete "github.com/rancher/rancher-cli/internal/engine/kinds/complete"
 	"github.com/rancher/rancher-cli/internal/engine/rbac/complete"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
@@ -150,8 +152,9 @@ func TestValidateLiveWiring(t *testing.T) {
 // access one, create cluster and the three cluster-family verbs that
 // take a pool through the provisioning one, the two oidc-client secret
 // verbs through the oidcclient one, logs through the observe one, inspect
-// project's positional through the projects one, every other entry's
-// probe implements nothing, and BuildRoot accepts the wiring.
+// project's positional through the projects one, inspect cluster's
+// through the access one, every other entry's probe implements nothing,
+// and BuildRoot accepts the wiring.
 func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	t.Parallel()
 	var owners []string
@@ -170,24 +173,23 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		"create cluster", "cluster scale", "cluster set-autoscaling", "cluster clear-autoscaling",
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",
-		"logs", "inspect project",
+		"logs", "inspect project", "inspect cluster",
 	}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)
 }
 
 // TestPositionalKindsMatchTheWiringTables is a golden of the wiring on purpose:
-// the bespoke first-positional table names exactly the eleven commands that get
-// a kind (inspect cluster and inspect user, the five cluster-family verbs, the
-// three oidc-client secret verbs and create password-change-request; inspect
-// project completes through its own source), and the
+// the bespoke first-positional table names exactly the ten commands that get
+// a kind (inspect user, the five cluster-family verbs, the three oidc-client
+// secret verbs and create password-change-request; inspect project and
+// inspect cluster complete through their own sources), and the
 // flag-source and kind-source tables carry exactly the keys listed in the
 // assertions. An intended change to the wiring edits this test in the same
 // commit.
 func TestPositionalKindsMatchTheWiringTables(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
-		"inspect cluster":                "managementcluster",
 		"inspect user":                   "user",
 		"cluster scale":                  "provisioningcluster",
 		"cluster set-autoscaling":        "provisioningcluster",
@@ -202,4 +204,28 @@ func TestPositionalKindsMatchTheWiringTables(t *testing.T) {
 	assert.Equal(t, want, positionalKinds)
 	assert.ElementsMatch(t, []string{"cluster", "project", "namespace", "node", "as"}, slices.Collect(maps.Keys(flagSources)))
 	assert.ElementsMatch(t, []string{"managementcluster", "project", "user"}, slices.Collect(maps.Keys(kindSources)))
+}
+
+// TestClusterSourcesAreTheCallerScopedOnes asserts which cluster source
+// serves each site: a --cluster value and inspect cluster's positional
+// complete with the clusters the caller can read (the set the commands
+// resolve against), and the generated verbs' managementcluster positional
+// with the management API's list, the set get, patch and delete act on.
+func TestClusterSourcesAreTheCallerScopedOnes(t *testing.T) {
+	t.Parallel()
+	same := func(a, b completion.Source) bool {
+		return reflect.ValueOf(a.Claim).Pointer() == reflect.ValueOf(b.Claim).Pointer() &&
+			reflect.ValueOf(a.Complete).Pointer() == reflect.ValueOf(b.Complete).Pointer()
+	}
+	assert.True(t, same(flagSources["cluster"], accesscomplete.SteveClusterSource()), "--cluster")
+	assert.True(t, same(kindSources["managementcluster"], accesscomplete.ClusterSource()), "managementcluster")
+	var inspect completion.Completer
+	for _, e := range buildEntries() {
+		if probe := e.make(runDeps{}); probe.Describe().Name == "inspect cluster" {
+			inspect, _ = probe.(completion.Completer)
+		}
+	}
+	require.NotNil(t, inspect, "inspect cluster has its own source")
+	assert.True(t, same(inspect.LiveSource(), accesscomplete.SteveClusterSource()), "inspect cluster")
+	assert.False(t, same(accesscomplete.SteveClusterSource(), accesscomplete.ClusterSource()))
 }

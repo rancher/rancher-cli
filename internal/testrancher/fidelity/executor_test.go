@@ -639,3 +639,29 @@ func TestRunProbeSetupRecordsValuesForRequestsAndTeardown(t *testing.T) {
 	assert.Equal(t, "{fixtureid}", results[0].Body["owner"])
 	assert.Equal(t, "u-fixture1", tornDownWith)
 }
+
+// TestRunProbeSendsTheClusterOwnerBearerItsSetupRecorded asserts the
+// executor sends the bearer a setup step recorded for the cluster-owner
+// identity, and fails the observation when no step recorded one.
+func TestRunProbeSendsTheClusterOwnerBearerItsSetupRecorded(t *testing.T) {
+	t.Parallel()
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	tgt := &fakeTarget{srv: srv}
+	obs := []Observation{{Name: "read", Request: RequestSpec{Method: http.MethodGet, Path: "/x", Identity: IdentityClusterOwner}}}
+
+	p := Probe{Name: "fam/owner", Observations: obs, Setup: []Step{{Name: "owner", Do: func(_ context.Context, _ Target, c map[string]string) error {
+		c[clusterOwnerBearer] = "owner-token"
+		return nil
+	}}}}
+	_, err := RunProbe(t.Context(), tgt, p)
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer owner-token", got)
+
+	_, err = RunProbe(t.Context(), tgt, Probe{Name: "fam/no-owner", Observations: obs})
+	require.ErrorContains(t, err, "the probe's setup must create the cluster owner")
+}

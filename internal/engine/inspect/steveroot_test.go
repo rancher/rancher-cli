@@ -133,6 +133,24 @@ func steveProjectItem(clusterID, id, display string) map[string]any {
 		"spec":     map[string]any{"clusterName": clusterID, "displayName": display}}
 }
 
+// steveClusterItem is one item of the steve management clusters collection.
+func steveClusterItem(id, display string) map[string]any {
+	return map[string]any{"id": id, "type": "management.cattle.io.cluster",
+		"metadata": map[string]any{"name": id},
+		"spec":     map[string]any{"displayName": display}}
+}
+
+// clustersRoot is a root serving the steve management clusters collection
+// with one cluster per id.
+func clustersRoot(t *testing.T, ids ...string) *steveRoot {
+	t.Helper()
+	items := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		items = append(items, steveClusterItem(id, id+"-name"))
+	}
+	return newSteveRoot(t, map[string]steveAnswer{steveClusterPath(""): stevePage(items...)})
+}
+
 // projectsRoot is a root serving clusterID's projects collection with the
 // given items.
 func projectsRoot(t *testing.T, clusterID string, items ...map[string]any) *steveRoot {

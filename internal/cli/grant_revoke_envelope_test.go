@@ -206,11 +206,12 @@ func grHandler(opts *serverOpts) http.Handler {
 		})
 	})
 
-	// Cluster list (for ResolveCluster("c-x")).
-	mux.HandleFunc("/k8s/clusters/local/apis/management.cattle.io/v3/clusters", func(w http.ResponseWriter, r *http.Request) {
-		grWriteJSON(w, grKubeList([]map[string]any{
-			grClusterItem("c-x", "test-cluster"),
-		}))
+	// The clusters as steve lists them for the caller (for
+	// ResolveCluster("c-x")).
+	mux.HandleFunc("/v1/management.cattle.io.clusters", func(w http.ResponseWriter, r *http.Request) {
+		item := grClusterItem("c-x", "test-cluster")
+		item["id"] = "c-x"
+		grWriteJSON(w, map[string]any{"count": 1, "revision": "1", "data": []map[string]any{item}})
 	})
 
 	// User GET - u-abc found, provisioned hash 404.

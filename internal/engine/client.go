@@ -87,6 +87,24 @@ type ClusterClientFactory interface {
 	ResolveCluster(ctx context.Context, nameOrID string) (string, error)
 }
 
+// ClusterArgumentResolver is implemented by a ClusterClientFactory whose
+// ResolveCluster warning names the --cluster flag: ResolveClusterArgument
+// is the same lookup for a value given as a positional argument or as one
+// entry of a list flag such as --clusters, worded without a flag.
+type ClusterArgumentResolver interface {
+	ResolveClusterArgument(ctx context.Context, nameOrID string) (string, error)
+}
+
+// ResolveClusterArgument resolves a cluster a command names by positional
+// argument or list entry: clients' ResolveClusterArgument when it has one,
+// else its ResolveCluster.
+func ResolveClusterArgument(ctx context.Context, clients ClusterClientFactory, nameOrID string) (string, error) {
+	if r, ok := clients.(ClusterArgumentResolver); ok {
+		return r.ResolveClusterArgument(ctx, nameOrID)
+	}
+	return clients.ResolveCluster(ctx, nameOrID)
+}
+
 // RootStatusError is the cause a RootClient attaches to the error of a
 // non-2xx answer, so a caller can tell a 401 (the credential is refused)
 // from a 403 (the caller may not read this path) when both map to the same

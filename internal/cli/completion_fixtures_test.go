@@ -13,30 +13,33 @@ import (
 // management collection a shared flag or a kind positional reads. A row
 // added here is added for every table that lists the collection.
 const (
-	mgmtClustersPath   = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
-	steveProjectsPath  = "/v1/management.cattle.io.projects/c-aaa11"
-	mgmtUsersPath      = "/k8s/clusters/local/apis/management.cattle.io/v3/users"
-	roleTemplatesPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates"
-	globalRolesPath    = "/k8s/clusters/local/apis/management.cattle.io/v3/globalroles"
-	steveClustersPath  = "/v1/management.cattle.io.clusters"
-	nodeDriversPath    = "/k8s/clusters/local/apis/management.cattle.io/v3/nodedrivers"
-	oidcClientsPath    = "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients"
-	oidcClientPath     = "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients/my-client"
-	provDefaultPath    = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
-	provTeamPath       = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters"
-	provProdPath       = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters/prod"
-	downNamespacesPath = "/k8s/clusters/c-aaa11/api/v1/namespaces"
-	downTeamNamespaces = "/k8s/clusters/c-ddd44/api/v1/namespaces"
-	downNodesPath      = "/k8s/clusters/c-aaa11/api/v1/nodes"
-	downPodsPath       = "/k8s/clusters/c-aaa11/api/v1/namespaces/default/pods"
-	downDeploysPath    = "/k8s/clusters/c-aaa11/apis/apps/v1/namespaces/default/deployments"
-	machineConfigsPath = "/k8s/clusters/local/apis/rke-machine-config.cattle.io/v1/namespaces/fleet-default/amazonec2configs"
-	cloudCredsPath     = "/k8s/clusters/local/api/v1/namespaces/cattle-global-data/secrets"
-	discoveryCorePath  = "/k8s/clusters/c-aaa11/api"
-	discoveryGroupPath = "/k8s/clusters/c-aaa11/apis"
-	localCattlePods    = "/k8s/clusters/local/api/v1/namespaces/cattle-system/pods"
-	downCattlePods     = "/k8s/clusters/c-aaa11/api/v1/namespaces/cattle-system/pods"
-	provTeamProdPath   = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters/prod"
+	mgmtClustersPath  = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
+	steveProjectsPath = "/v1/management.cattle.io.projects/c-aaa11"
+	mgmtUsersPath     = "/k8s/clusters/local/apis/management.cattle.io/v3/users"
+	roleTemplatesPath = "/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates"
+	globalRolesPath   = "/k8s/clusters/local/apis/management.cattle.io/v3/globalroles"
+	steveClustersPath = "/v1/management.cattle.io.clusters"
+	// steveClusterNopePath is the GET by id a --cluster value no listed
+	// cluster carries sends.
+	steveClusterNopePath = steveClustersPath + "/nope"
+	nodeDriversPath      = "/k8s/clusters/local/apis/management.cattle.io/v3/nodedrivers"
+	oidcClientsPath      = "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients"
+	oidcClientPath       = "/k8s/clusters/local/apis/management.cattle.io/v3/oidcclients/my-client"
+	provDefaultPath      = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters"
+	provTeamPath         = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters"
+	provProdPath         = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters/prod"
+	downNamespacesPath   = "/k8s/clusters/c-aaa11/api/v1/namespaces"
+	downTeamNamespaces   = "/k8s/clusters/c-ddd44/api/v1/namespaces"
+	downNodesPath        = "/k8s/clusters/c-aaa11/api/v1/nodes"
+	downPodsPath         = "/k8s/clusters/c-aaa11/api/v1/namespaces/default/pods"
+	downDeploysPath      = "/k8s/clusters/c-aaa11/apis/apps/v1/namespaces/default/deployments"
+	machineConfigsPath   = "/k8s/clusters/local/apis/rke-machine-config.cattle.io/v1/namespaces/fleet-default/amazonec2configs"
+	cloudCredsPath       = "/k8s/clusters/local/api/v1/namespaces/cattle-global-data/secrets"
+	discoveryCorePath    = "/k8s/clusters/c-aaa11/api"
+	discoveryGroupPath   = "/k8s/clusters/c-aaa11/apis"
+	localCattlePods      = "/k8s/clusters/local/api/v1/namespaces/cattle-system/pods"
+	downCattlePods       = "/k8s/clusters/c-aaa11/api/v1/namespaces/cattle-system/pods"
+	provTeamProdPath     = "/k8s/clusters/local/apis/provisioning.cattle.io/v1/namespaces/team-a/clusters/prod"
 )
 
 // usersBody carries one of every user shape the projections must handle:
@@ -72,12 +75,21 @@ const projectsBody = `{"count":2,"revision":"1","data":[
 ]}`
 
 // steveFixturePage is one page of a steve collection as a fixture serves
-// it, keyed by the continue token the previous page announced.
+// it, keyed by the continue token the previous page announced; a nil
+// Count is a page with no count.
 type steveFixturePage struct {
 	Data     []map[string]any `json:"data"`
-	Count    int              `json:"count"`
+	Count    *int             `json:"count,omitempty"`
 	Continue string           `json:"continue,omitempty"`
 	Revision string           `json:"revision"`
+}
+
+// steveClustersPages is clustersBody as steve lists it, in two pages, so
+// every shared --cluster read walks the continue token.
+var steveClustersPages = map[string]steveFixturePage{
+	"": {Data: []map[string]any{steveFixtureItem("c-aaa11", "prod"), steveFixtureItem("local", "local"), steveFixtureItem("c-bbb22", "dup")},
+		Count: new(5), Continue: "n", Revision: "9"},
+	"n": {Data: []map[string]any{steveFixtureItem("c-ccc33", "dup"), steveFixtureItem("c-ddd44", "prod cluster")}, Count: new(5), Revision: "9"},
 }
 
 func steveFixtureItem(id, display string) map[string]any {

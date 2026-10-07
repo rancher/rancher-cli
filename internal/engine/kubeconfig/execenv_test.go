@@ -36,7 +36,7 @@ func TestExecEntryEnvWinsOverKubectlsEnvironment(t *testing.T) {
 		`echo '{"apiVersion":"client.authentication.k8s.io/v1beta1","kind":"ExecCredential","status":{"token":"t"}}'` + "\n"
 	require.NoError(t, os.WriteFile(plugin, []byte(script), 0o755))
 
-	res, err := NewCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
+	res, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
 		Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1", "exec-command": plugin}}, nil)
 	require.NoError(t, err)
 	kc := loadKubeconfig(t, res)

@@ -128,7 +128,7 @@ func TestKubeconfigWritesTheOwnerWithoutAPrompter(t *testing.T) {
 	t.Setenv(config.EnvCredentialStore, "")
 	dir := writeTestConfig(t, "")
 	writeLoggedIn(t, dir)
-	res, err := NewCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
+	res, err := newTestCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand).
 		Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1"}}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, loggedInOwner, userIDArg(t, loadKubeconfig(t, res).AuthInfos["prod-c-1"].Exec.Args))

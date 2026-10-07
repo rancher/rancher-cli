@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
@@ -25,13 +26,14 @@ type kubeconfigCmd struct {
 	dir     string
 	store   config.CredStore
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 }
 
 // NewKubeconfig builds the top-level `kubeconfig` command (local): it emits an
 // exec-credential kubeconfig on stdout, delegating token creation to `auth
 // get-token` rather than embedding a long-lived credential.
-func NewCommand(dir string, store config.CredStore, clients engine.ClusterClientFactory) runtime.Command {
-	return &kubeconfigCmd{dir: dir, store: store, clients: clients}
+func NewCommand(dir string, store config.CredStore, clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
+	return &kubeconfigCmd{dir: dir, store: store, clients: clients, roots: roots}
 }
 
 func (kubeconfigCmd) Describe() runtime.Descriptor {
@@ -174,7 +176,7 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	direct, err := DirectEndpoints(ctx, mgmt, id)
+	direct, err := DirectEndpoints(ctx, mgmt, steve.RootFactoryGetter(c.roots), id)
 	if err != nil {
 		return runtime.Result{}, err
 	}

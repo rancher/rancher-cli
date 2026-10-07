@@ -295,7 +295,7 @@ func TestLiveSourceCandidatesPolicy(t *testing.T) {
 	})
 
 	t.Run("a spaced display name resolves and the id reaches the source", func(t *testing.T) {
-		srv, hits := countingServer(t, `{"items":[{"metadata":{"name":"c-ddd44"},"spec":{"displayName":"prod cluster"}}]}`)
+		srv, hits := countingServer(t, `{"count":1,"revision":"1","data":[{"id":"c-ddd44","metadata":{"name":"c-ddd44"},"spec":{"displayName":"prod cluster"}}]}`)
 		liveFixture(t, srv)
 		var saw completion.Request
 		lc := fakeCompleter{claiming(completion.Requirements{Cluster: completion.ClusterResolved, Allowance: completion.AllowanceOne}, []string{"a"}, &saw)}
@@ -312,7 +312,7 @@ func TestLiveSourceCandidatesPolicy(t *testing.T) {
 	})
 
 	t.Run("cluster id passes through, display name resolves first", func(t *testing.T) {
-		srv, hits := countingServer(t, `{"items":[{"metadata":{"name":"c-aaa11"},"spec":{"displayName":"prod"}}]}`)
+		srv, hits := countingServer(t, `{"count":1,"revision":"1","data":[{"id":"c-aaa11","metadata":{"name":"c-aaa11"},"spec":{"displayName":"prod"}}]}`)
 		liveFixture(t, srv)
 		var saw completion.Request
 		lc := fakeCompleter{claiming(completion.Requirements{Cluster: completion.ClusterResolved, Allowance: completion.AllowanceOne}, []string{"a"}, &saw)}

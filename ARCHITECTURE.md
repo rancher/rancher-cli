@@ -64,7 +64,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
 | `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), the project membership commands, plus the membership label helpers and the backing-namespace lookup. |
 | `internal/engine/projects/complete` | The projects' live completion sources over the completion connection's project lister: `ProjectSource` (the shared `--project` value: every id plus each unique display name), `ProjectIDSource` (the project kind's name for the generated verbs: ids only) and `ProjectPositionalSource` (`inspect project`'s positional). A restricted `complete` package under the import and declaration fences. |
-| `internal/engine/steve` | Rancher's steve API read as the caller: one request type and getter, the collection page protocol (`ReadCollection`), the project and cluster collections, and the `--project` lookup (`ResolveProjectFlag`: the per-cluster project collection matched by id or display name, then one GET by id; without `--cluster`, the refusal naming the clusters the project is on). |
+| `internal/engine/steve` | Rancher's steve API read as the caller: one request type and getter, the collection page protocol (`ReadCollection`), the project and cluster collections, the cluster lookup every `--cluster` uses (`MatchCluster`, `ResolveCluster`: id or display name, then one GET by id) and the one-cluster read (`GetCluster`), and the `--project` lookup (`ResolveProjectFlag`: the per-cluster project collection matched by id or display name, then one GET by id; without `--cluster`, the refusal naming the clusters the project is on). |
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing - reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
 | `internal/engine/provisioning/complete` | The provisioning commands' live completion sources: `CreateClusterSource` (create cluster's `--machine-config` live half, the typed kind's configs answered behind its `<kind>/` prefix, and `--cloud-credential`, the cattle-global-data credential Secrets by id and unique display name) and `PoolSource` (the cluster-family verbs' `--pool`, the machine pools of the cluster typed as the first positional). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/extres` | The fixed mutating commands for the aggregated `ext.cattle.io/v1` API: `create token` (server-derived tokens) and `create kubeconfig` (server-created kubeconfigs), plus the shared `--ttl` duration parser. |
@@ -77,9 +77,9 @@ what drifted the previous revision of this doc).
 | `internal/engine/observe/complete` | The logs command's live completion source, `PodSource` (`--pod`: the pods of the typed target in its namespace under its selector, on the local cluster or the resolved downstream cluster as the target's row says), and the curated target table itself, which `observe` imports back. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/rbac` | Subject parsing, type inference, and scope resolution for grant/revoke commands, plus a delete-user override that guards against self-deletion: closed principal-type inference from fully qualified principals (user/group detection), bare-name handling, deterministic user-id hashing matching Rancher's EnsureUser, and binding-kind resolution (cluster/project/global). |
 | `internal/engine/rbac/complete` | The rbac commands' live completion sources: `RoleSource` (grant's and revoke's `--role` values, listed from the collection the typed scope selects), `SubjectSource` (the shared `--as` value of the access commands: the non-system management Users by id and unambiguous username), `GrantRevokeSource` (grant's and revoke's own: `--role` and the subject positional together) and the role vocabulary rule `RoleKind` the commands import back. A restricted `complete` package: its imports are an exact allowlist enforced by a conformance test. |
-| `internal/engine/kubeconfig` | `rancher kubeconfig`'s exec entry records the config directory and the store variable in its `env`, and the command decides its notices with the exec plugin's own lookup (`token.LookupStoredLogin`). The direct endpoint entries of a cluster's Authorized Cluster Endpoint for `rancher kubeconfig`: reads the management Cluster (`spec.localClusterAuthEndpoint`, `status.caCert`), the multi-cluster-management Feature and the management Nodes through the local cluster client, validates every entry (an https URL without a path, a parsable CA) and returns the entries to emit with the reasons for anything omitted; the command folds them into the kubeconfig and the exec plugin (`internal/token`) waits for a fresh token to be accepted at the endpoint kubectl is about to use. Provides the `rancher kubeconfig` command (`NewCommand`). |
-| `internal/engine/access` | Authorization questions answered by the server's reviews (`access can`, `access list`, `access who-can`): posts SubjectAccessReview, SelfSubjectAccessReview, SelfSubjectRulesReview, and SelfSubjectReview through the Rancher proxy, classifies each answer per the review outcome matrix, and resolves the subject, resource, and scope a question needs. Nothing here evaluates a Role's rules client-side. `who-can` reads the cluster's RBAC binding subjects as candidates and asks one SubjectAccessReview each. `explain` parses the authorizer's reason into the one binding it names and walks the Rancher chain behind that binding (owner labels, GlobalRole annotations, RoleTemplate inheritance) with a bounded, request-counted traversal; `internal/engine/rbac` carries the copy of wrangler's `SafeConcatName` the aggregation-grammar labels need. `clusters` reads the caller's clusters from the steve collection through the root client (the one steve read in the suite), probes each with a SelfSubjectReview under one fan-out semaphore, and reads the management bindings that grant them with their own completeness. `projects` adds the steve project collection and, per reachable cluster, the caller's steve namespace collection, asks one SelfSubjectAccessReview per project namespace (get the namespace: the grant Rancher gives a project's members), rolls the answers up into a visibility per project, and keeps Rancher membership (a ProjectRoleTemplateBinding naming the subject) apart from it. |
-| `internal/engine/access/complete` | The access commands' live completion sources: `ClusterSource` (the shared `--cluster` value and the management cluster kind: every id plus each unique display name) and `ProjectsClusterSource` (`access projects`' own `--cluster`: the steve cluster collection walked under the command's page protocol), and `QuestionSource` (`access can`, `who-can` and `explain`'s resource positional, `--group` and `--subresource`, read from the typed cluster's two aggregated discovery roots and resolved by the commands' own rules). A restricted `complete` package under the import and declaration fences. |
+| `internal/engine/kubeconfig` | `rancher kubeconfig`'s exec entry records the config directory and the store variable in its `env`, and the command decides its notices with the exec plugin's own lookup (`token.LookupStoredLogin`). The direct endpoint entries of a cluster's Authorized Cluster Endpoint for `rancher kubeconfig`: reads the management Cluster (`spec.localClusterAuthEndpoint`, `status.caCert`) through steve as the caller (`steve.GetCluster`), and the multi-cluster-management Feature and the management Nodes through the local cluster client; validates every entry (an https URL without a path, a parsable CA) and returns the entries to emit with the reasons for anything omitted; the command folds them into the kubeconfig and the exec plugin (`internal/token`) waits for a fresh token to be accepted at the endpoint kubectl is about to use. Provides the `rancher kubeconfig` command (`NewCommand`). |
+| `internal/engine/access` | Authorization questions answered by the server's reviews (`access can`, `access list`, `access who-can`): posts SubjectAccessReview, SelfSubjectAccessReview, SelfSubjectRulesReview, and SelfSubjectReview through the Rancher proxy, classifies each answer per the review outcome matrix, and resolves the subject, resource, and scope a question needs. Nothing here evaluates a Role's rules client-side. `who-can` reads the cluster's RBAC binding subjects as candidates and asks one SubjectAccessReview each. `explain` parses the authorizer's reason into the one binding it names and walks the Rancher chain behind that binding (owner labels, GlobalRole annotations, RoleTemplate inheritance) with a bounded, request-counted traversal; `internal/engine/rbac` carries the copy of wrangler's `SafeConcatName` the aggregation-grammar labels need. `clusters` reads the caller's clusters from the steve collection through the root client (`steve.Clusters`, the read every `--cluster` lookup also sends), probes each with a SelfSubjectReview under one fan-out semaphore, and reads the management bindings that grant them with their own completeness. `projects` adds the steve project collection and, per reachable cluster, the caller's steve namespace collection, asks one SelfSubjectAccessReview per project namespace (get the namespace: the grant Rancher gives a project's members), rolls the answers up into a visibility per project, and keeps Rancher membership (a ProjectRoleTemplateBinding naming the subject) apart from it. |
+| `internal/engine/access/complete` | The access commands' live completion sources: `SteveClusterSource` (the shared `--cluster` value and `inspect cluster`'s positional: the clusters the caller can read, from the completion connection's cluster lister, every id plus each unique display name), `ClusterSource` (the management cluster kind's name for the generated verbs: the management API's list), `ProjectsClusterSource` (`access projects`' own `--cluster`: the cluster lister's set plus the management cluster's row), and `QuestionSource` (`access can`, `who-can` and `explain`'s resource positional, `--group` and `--subresource`, read from the typed cluster's two aggregated discovery roots and resolved by the commands' own rules). A restricted `complete` package under the import and declaration fences. |
 | `internal/config` | On-disk kubeconfig-shaped config plus credential store: load/write, effective resolution, env-override merge, store selection/pinning. |
 | `internal/client/selfuser` | Shared GVR, object constructor, and userID extractor for the ext.cattle.io/v1 SelfUser identity probe - used by the auth status identity check (`internal/client/provider`) and the create cluster creatorId stamper (`internal/engine/provisioning`). |
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→contract `Resolver`, connectivity `Preflight`, and k8s→`clierr` error mapping. Discovery: `ServerResources` asks for aggregated discovery (two context-bound requests) and falls back to its own legacy walk where a server does not serve it (Rancher's local cluster through the proxy): the plain root documents, then each group's preferred version document, every request context-bound, subresource entries kept; a partial answer is returned as the partial list together with `engine.DiscoveryIncomplete` naming the groups the server could not describe, never as a silently smaller inventory. |
@@ -205,7 +205,8 @@ graph TD
     token --> kube
     token --> ui
     token --> clierr
-    token --> projects
+    token --> engine
+    token --> steve
     token --> tlstrust
 
     runtime --> safety
@@ -246,6 +247,7 @@ graph TD
     inspect --> clierr
     inspect --> steve
     inspect --> projectscomplete
+    inspect --> accesscomplete
     inspect --> completion
     inspect --> outputstyle
 
@@ -263,7 +265,6 @@ graph TD
 
     provisioning --> engine
     provisioning --> kinds
-    provisioning --> projects
     provisioning --> resources
     provisioning --> runtime
     provisioning --> safety
@@ -313,6 +314,7 @@ graph TD
     observe --> extres
     observe --> runtime
     observe --> clierr
+    observe --> steve
     observe --> observecomplete
     observe --> completion
 
@@ -377,6 +379,7 @@ graph TD
     cmdtest --> ui
 
     kubeconfigengine --> engine
+    kubeconfigengine --> steve
     kubeconfigengine --> kinds
     kubeconfigengine --> clierr
     kubeconfigengine --> kube
@@ -895,11 +898,14 @@ interactive sign-in, one `SelfSubjectReview` the plugin posts over the same
 id is part of the cache key (`config.CacheKeyFor`). `auth login` checks a
 pasted token with `provider.Owner`, the same review on the local cluster,
 and records the owner it names.
-`get-token`'s stored-credential fast path resolves a `--cluster` display
-name to its id the same way `get`/`patch` do, sharing
-`internal/engine/projects.MatchByIDOrDisplay`'s id-or-display collision
-algorithm rather than carrying its own copy - hence the `token -->
-projects` edge above.
+On a cache miss, `get-token` resolves a `--cluster` display name to its id
+the way every `--cluster` command does: `steve.ResolveCluster` over the
+steve clusters collection the credential's user can read (a getter that
+keeps the plugin's 401 sign-in rule), so a user without access to the
+local cluster still gets a cluster token - hence the `token --> steve`
+and `token --> engine` edges above. An id that is also another
+cluster's display name wins, with the warning on stderr; `""` and
+`local` send no request.
 
 **Environment overrides.** Applied over the file-based context, env always wins:
 
@@ -929,7 +935,11 @@ is a port; the concrete `clientFactory` (in `internal/cli`) loads config and com
 effective connection **once per invocation** under a `sync.Once`. `Cluster(id)` builds
 and memoizes a `ClusterClient` per cluster ID under a mutex (safe under future concurrent
 fan-out); `""` is rejected. `ResolveCluster(nameOrID)` maps a display name or ID to a
-cluster ID (matching `metadata.name` or `spec.displayName`), memoized per invocation.
+cluster ID among the clusters the caller can read: one read of steve's
+`/v1/management.cattle.io.clusters` per invocation, matched by `steve.ResolveCluster`
+(an id wins over another cluster's display name, with a warning the factory hands
+the pipeline as a notice; one GET by id on a miss), memoized per value. `""` and
+`local` are the local cluster and send no request.
 Server identity is deliberately **not** on the port interface - it lives on the concrete
 factory and the adapter reads it to stamp `Effect.Server`, so a `Plan`/`Execute` pair can
 never see two different servers.

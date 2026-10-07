@@ -75,6 +75,8 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	// continue token and validates the count across pages.
 	"access-clusters": func(o *testrancher.Options) { o.ClustersPageSize = 1 },
 	"access-projects": func(o *testrancher.Options) { o.ClustersPageSize = 1 },
+	// The scenario creates the management Clusters it inspects.
+	"inspect-cluster": func(o *testrancher.Options) { o.ClusterVisibility = withStoredClusters(o.ClusterVisibility) },
 }
 
 // shimClusters are the management Clusters the facade's steve collection
@@ -215,6 +217,60 @@ func clusterVisibility(resolve shimIdentityResolver) func(string) ([]testrancher
 		}
 		return out, true
 	}
+}
+
+// localManagementGate is Rancher's local-cluster rule for every scenario:
+// only the harness administrator (the seed token's owner, and every bearer
+// the facade creates) may get cluster local, so every other identity's
+// management reads outside Rancher's allow list are refused as Rancher
+// refuses them. A bearer no identity holds passes, so the router answers
+// its 401: Rancher authenticates a request before it authorizes it.
+func localManagementGate(resolve shimIdentityResolver) func(string) bool {
+	return func(bearer string) bool {
+		id, ok := resolve(bearer)
+		return !ok || id.user == testrancher.SeedOwner
+	}
+}
+
+// withStoredClusters adds to visible every other management Cluster
+// envtest holds, as Rancher's steve lists a Cluster created moments ago, for
+// a scenario whose commands read the Clusters it creates. Other scenarios
+// keep shimClusters alone: the direct-endpoint fixtures have no proxy
+// behind them, and a command probing every listed cluster would reach
+// them.
+func withStoredClusters(visible func(string) ([]testrancher.ClusterFixture, bool)) func(string) ([]testrancher.ClusterFixture, bool) {
+	return func(bearer string) ([]testrancher.ClusterFixture, bool) {
+		rows, ok := visible(bearer)
+		if !ok {
+			return nil, false
+		}
+		list, err := dynCli.Resource(mgmtClustersGVR).List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			return rows, true
+		}
+		for i := range list.Items {
+			name := list.Items[i].GetName()
+			if slices.ContainsFunc(rows, func(c testrancher.ClusterFixture) bool { return c.ID == name }) {
+				continue
+			}
+			display, _, _ := unstructured.NestedString(list.Items[i].Object, "spec", "displayName")
+			rows = append(rows, testrancher.ClusterFixture{ID: name, DisplayName: display})
+		}
+		return rows, true
+	}
+}
+
+// mgmtClustersGVR is the management Cluster resource envtest serves.
+var mgmtClustersGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
+
+// storedCluster is the management Cluster envtest holds as id, the object
+// steve's GET by id answers with.
+func storedCluster(id string) (map[string]any, bool) {
+	obj, err := dynCli.Resource(mgmtClustersGVR).Get(context.Background(), id, metav1.GetOptions{})
+	if err != nil {
+		return nil, false
+	}
+	return obj.Object, true
 }
 
 // scriptChecks run after their script, with the facade it ran against, for
@@ -926,6 +982,8 @@ func TestScenarios(t *testing.T) {
 				EnableIdP:           true,
 				IdPURL:              idpSrv.URL,
 				ClusterVisibility:   clusterVisibility(resolve),
+				LocalManagementGate: localManagementGate(resolve),
+				ClusterObject:       storedCluster,
 				ProjectVisibility:   projectVisibility(resolve),
 				NamespaceVisibility: namespaceVisibility(resolve),
 			}

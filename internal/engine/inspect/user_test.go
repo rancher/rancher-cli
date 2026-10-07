@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -42,8 +43,14 @@ func testUserObj(id, display, username string, principals ...string) *unstructur
 	return &unstructured.Unstructured{Object: obj}
 }
 
+// newUserCmdFake is the command over c and a root that answers every steve
+// cluster GET with 404.
 func newUserCmdFake(c *fakeClient) *userCmd {
-	return &userCmd{clients: &fakeFactory{client: c}}
+	return newUserCmdFakeRoot(c, &fakeRoot{})
+}
+
+func newUserCmdFakeRoot(c *fakeClient, root *fakeRoot) *userCmd {
+	return &userCmd{clients: &fakeFactory{client: c}, roots: fakeRoots{rc: root}}
 }
 
 func TestInspectUserNeverLoggedInVerifiedEmpty(t *testing.T) {
@@ -87,14 +94,12 @@ func TestInspectUserUnreadableErrors(t *testing.T) {
 
 func TestInspectUserProjectListForbiddenDegradesOnlyThatSection(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
-	cluster, _ := kinds.Lookup("cluster")
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
 		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "u-abc", "local://u-abc", "", "cluster-owner"))).
-		withListErr(prtbKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")).
-		withGetErr(cluster.GVR, "", "c-1", clierr.New(clierr.CodeNotFound, "no display"))
+		withListErr(prtbKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
 
 	cmd := newUserCmdFake(c)
 	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
@@ -107,6 +112,86 @@ func TestInspectUserProjectListForbiddenDegradesOnlyThatSection(t *testing.T) {
 	assert.Equal(t, "rolesProjects", r.Degraded[0].Section)
 	assert.NotEmpty(t, res.Warnings)
 	assert.Contains(t, res.Text, "PROJECT: unavailable")
+}
+
+// userWithClusterRoleClient is a client for u-abc holding one cluster role
+// on c-1 and nothing else.
+func userWithClusterRoleClient() *fakeClient {
+	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
+	return newFakeClient().
+		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
+		withGetErr(rbac.UserAttrGVR, "", "u-abc", clierr.New(clierr.CodeNotFound, "not found")).
+		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
+		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "u-abc", "local://u-abc", "", "cluster-owner"))).
+		withList(prtbKind.GVR, &unstructured.UnstructuredList{})
+}
+
+// TestInspectUserClusterDisplayNameFromSteve asserts the display name of a
+// cluster in the roles section is read with the steve GET by id, and never
+// through the local client.
+func TestInspectUserClusterDisplayNameFromSteve(t *testing.T) {
+	_, _, _, _, clusterKind := userGVR()
+	c := userWithClusterRoleClient()
+	root := &fakeRoot{cluster: mgmtClusterFixture("c-1", "prod", "active", "")}
+
+	cmd := newUserCmdFakeRoot(c, root)
+	res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+	require.NoError(t, err)
+
+	r, ok := res.Data.(userResult)
+	require.True(t, ok)
+	require.NotNil(t, r.Roles.Clusters)
+	require.Len(t, *r.Roles.Clusters, 1)
+	assert.Equal(t, "c-1", (*r.Roles.Clusters)[0].Cluster)
+	assert.Equal(t, "prod", (*r.Roles.Clusters)[0].DisplayName)
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters/c-1"}, root.clusterPaths)
+	for _, k := range c.getCalls {
+		assert.NotEqual(t, clusterKind.GVR, k.gvr, "the display name is never read through the local client")
+	}
+}
+
+// TestInspectUserClusterDisplayNameUnreadableIsOmitted asserts a 403 or 404
+// on the steve cluster GET leaves the display name out without failing the
+// command or degrading the section.
+func TestInspectUserClusterDisplayNameUnreadableIsOmitted(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusNotFound} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			c := userWithClusterRoleClient()
+			root := &fakeRoot{clusterErr: rootStatusErr(status, steveClusterPath("c-1"))}
+
+			cmd := newUserCmdFakeRoot(c, root)
+			res, err := cmd.Execute(t.Context(), input{args: []string{"u-abc"}}, nil)
+			require.NoError(t, err)
+
+			r, ok := res.Data.(userResult)
+			require.True(t, ok)
+			require.NotNil(t, r.Roles.Clusters)
+			require.Len(t, *r.Roles.Clusters, 1)
+			assert.Equal(t, "c-1", (*r.Roles.Clusters)[0].Cluster)
+			assert.Empty(t, (*r.Roles.Clusters)[0].DisplayName)
+			assert.Empty(t, r.Degraded)
+			assert.Empty(t, res.Warnings)
+			assert.Equal(t, []string{"/v1/management.cattle.io.clusters/c-1"}, root.clusterPaths)
+		})
+	}
+}
+
+// TestInspectUserCanceledContextPropagatesFromClusterRead asserts that a
+// context canceled during the steve cluster GET fails the command even
+// though the GET's own error carries no cancellation sentinel, and that the
+// project reads never start.
+func TestInspectUserCanceledContextPropagatesFromClusterRead(t *testing.T) {
+	_, _, _, prtbKind, _ := userGVR()
+	c := userWithClusterRoleClient()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	root := newSteveRoot(t, nil)
+	cmd := &userCmd{clients: &fakeFactory{client: c}, roots: fakeRoots{rc: cancelAfterRoot{RootClient: root, cancel: cancel}}}
+
+	_, err := cmd.Execute(ctx, input{args: []string{"u-abc"}}, nil)
+	require.Error(t, err)
+	assert.Equal(t, []string{"/v1/management.cattle.io.clusters/c-1"}, root.requests())
+	assert.False(t, c.listed(prtbKind.GVR), "project reads never start once the cluster read was canceled")
 }
 
 func TestInspectUserGroupsForbiddenBlocksAllThreeHeldSections(t *testing.T) {
@@ -317,7 +402,6 @@ func TestInspectUserAttributesAbsentStayAbsent(t *testing.T) {
 
 func TestInspectUserCancellationDuringClusterEnrichmentAbortsBeforeProjects(t *testing.T) {
 	userKind, grbKind, crtbKind, prtbKind, _ := userGVR()
-	cluster, _ := kinds.Lookup("cluster")
 	ctx, cancel := context.WithCancel(t.Context())
 	c := newFakeClient().
 		withObject(userKind.GVR, "", "u-abc", testUserObj("u-abc", "Jane", "jane", "local://u-abc")).
@@ -325,10 +409,9 @@ func TestInspectUserCancellationDuringClusterEnrichmentAbortsBeforeProjects(t *t
 		withList(grbKind.GVR, &unstructured.UnstructuredList{}).
 		withList(crtbKind.GVR, listOfCRTB(crtbObjForTest("crtb-1", "c-1", "u-abc", "local://u-abc", "", "cluster-owner"))).
 		withList(prtbKind.GVR, listOfPRTB(prtbObjForTest("prtb-1", "p-1", "c-1:p-1", "u-abc", "local://u-abc", "", "project-owner")))
-	c.getErrs[objKey{cluster.GVR, "", "c-1"}] = context.Canceled
 	cancel()
 
-	cmd := newUserCmdFake(c)
+	cmd := newUserCmdFakeRoot(c, &fakeRoot{clusterErr: context.Canceled})
 	_, err := cmd.Execute(ctx, input{args: []string{"u-abc"}}, nil)
 	require.Error(t, err)
 	assert.False(t, c.listed(prtbKind.GVR), "project enrichment/list must never run once cluster enrichment aborted")

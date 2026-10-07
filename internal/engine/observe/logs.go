@@ -9,6 +9,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/extres"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -26,14 +27,15 @@ const defaultTailLines = 200
 
 type logsCmd struct {
 	clients engine.ClusterClientFactory
+	roots   engine.RootClientFactory
 }
 
 // NewLogs builds `logs <target> [--cluster] [--tail N=200] [--since <dur>]
 // [--previous] [--container] [--timestamps] [--pod]`: curated,
 // verified-location logs for a Rancher component, merging every matched
 // pod/container into one prefixed body, or narrowing to one pod with --pod.
-func NewLogs(clients engine.ClusterClientFactory) runtime.Command {
-	return &logsCmd{clients: clients}
+func NewLogs(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
+	return &logsCmd{clients: clients, roots: roots}
 }
 
 func (c *logsCmd) Describe() runtime.Descriptor {
@@ -83,7 +85,7 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 		return runtime.Result{}, err
 	}
 
-	resolved, err := Resolve(ctx, c.clients, target, in)
+	resolved, err := Resolve(ctx, c.clients, steve.RootFactoryGetter(c.roots), target, in)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -215,7 +217,7 @@ type logsResult struct {
 // selectPod narrows a target's resolved pods to the one named pod, for
 // per-replica log attribution (the HA-triage case: grep one replica's logs,
 // not the merged stream). An unknown name is a NOT_FOUND naming the target's
-// actual pod names as candidates, the projects.MatchOneOrError convention.
+// actual pod names as candidates, as engine.MatchOne's NOT_FOUND does.
 func selectPod(pods []unstructured.Unstructured, name string) (unstructured.Unstructured, error) {
 	for i := range pods {
 		if pods[i].GetName() == name {

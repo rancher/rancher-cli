@@ -901,3 +901,27 @@ func TestCreateClusterDeniedDryRunBlocksApplyToo(t *testing.T) {
 	assert.Nil(t, client.created, "no real create reached the client")
 	assert.Empty(t, client.dryRuns, "the fake records only creates it accepted; none was")
 }
+
+// TestCreateClusterCredentialIDWinsWarningIsInThePreview asserts a
+// --cloud-credential that is one credential's id and another's display
+// name resolves to the id, and the warning naming the other credential is
+// in the preview's warnings, before any confirmation.
+func TestCreateClusterCredentialIDWinsWarningIsInThePreview(t *testing.T) {
+	t.Parallel()
+	client := &ccRecClient{list: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		*secretObj("cc-abc12", map[string]string{displayNameAnnotation: "AWS Prod"}, nil),
+		*secretObj("cc-zzz99", map[string]string{displayNameAnnotation: "cc-abc12"}, nil),
+	}}}
+	// errRootFactory: --k8s-version is set, so Plan reaches versionWarnings;
+	// its warning is not this test's subject.
+	cmd := NewCreateCluster(fakeFactory{c: client}, errRootFactory{})
+	eff, _, err := planCluster(t, cmd, ccInput{
+		a: []string{"node-1"},
+		s: map[string]string{"machine-config": "amazonec2config/mycfg", "cloud-credential": "cc-abc12", "k8s-version": "v1.30.5+rke2r1"},
+		b: map[string]bool{"worker": true},
+	})
+	require.NoError(t, err)
+	credSecretName, _, _ := unstructured.NestedString(client.created.Object, "spec", "cloudCredentialSecretName")
+	assert.Equal(t, "cattle-global-data:cc-abc12", credSecretName)
+	assert.Contains(t, eff.Warnings, "--cloud-credential 'cc-abc12' is the id of cloud credential 'cc-abc12'; cloud credential 'cc-zzz99' also has the display name 'cc-abc12' - pass --cloud-credential 'cc-zzz99' for that one")
+}

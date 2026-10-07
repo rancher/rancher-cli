@@ -9,18 +9,18 @@ package provisioning
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/duration"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
@@ -53,53 +53,51 @@ type CloudCredRef struct {
 	Driver      string `json:"driver"`      // derived from the <driver>credentialConfig- data-key prefix; "" if unidentifiable
 }
 
-// ResolveCloudCredential resolves nameOrID to exactly one credential.
-// Exact IDs ("cattle-global-data:cc-x" or bare "cc-x") are verified and
-// returned; anything else matches against display names. 0 matches →
-// NOT_FOUND with candidates; >1 → AMBIGUOUS_SELECTION requiring the ID.
-// Reads Secret objects but retains ONLY key names + metadata - never a
-// data value.
-func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (CloudCredRef, error) {
-	obj, err := resolveCredentialObj(ctx, clients, nameOrID)
+// ResolveCloudCredential resolves nameOrID, a credential id (with or
+// without the "cattle-global-data:" prefix) or display name, to exactly one
+// credential with the shared match rule: an id wins over another
+// credential's display name, and warning names the others; two display-name
+// matches are AMBIGUOUS_SELECTION; no match is NOT_FOUND with candidates,
+// after one GET by id for a credential the List did not carry. When the List
+// is refused with RBAC, a value that is a Secret name resolves through that
+// GET alone, with no warning. Reads Secret objects but retains ONLY key
+// names + metadata - never a data value.
+func ResolveCloudCredential(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (CloudCredRef, string, error) {
+	obj, warning, err := resolveCredentialObj(ctx, clients, nameOrID, "--cloud-credential")
 	if err != nil {
-		return CloudCredRef{}, err
+		return CloudCredRef{}, "", err
 	}
-	return refFrom(obj), nil
+	return refFrom(obj), warning, nil
 }
 
 // resolveCredentialObj is ResolveCloudCredential's shared innards, returning
 // the raw Secret so the read command can also derive Age from
-// creationTimestamp without a second resolve pass. Never inspects `data`
-// values - see the package doc.
-func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFactory, nameOrID string) (*unstructured.Unstructured, error) {
+// creationTimestamp without a second resolve pass; flag is "" for a
+// positional value. Every value pays one List: an id carries no type
+// signal, and the id-wins warning needs every credential's display name.
+// Rancher grants a credential's creator its own Secret by name only, so a
+// List refused with RBAC falls back to the GET by id when the value is a
+// Secret name: a credential is the result, with no warning (the caller can
+// read no other credential to warn about); a 404 or a Secret that is not a
+// credential is NOT_FOUND with no candidates; any other GET error is
+// returned. Never inspects `data` values - see the package doc.
+func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFactory, nameOrID, flag string) (*unstructured.Unstructured, string, error) {
 	client, err := clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-
-	// Exact-ID fast path: strip the namespaced prefix if present, then
-	// verify a bare cc-* name directly rather than paying for a List.
+	// The namespaced id form names the same Secret.
 	name := strings.TrimPrefix(nameOrID, cloudCredNamespace+":")
-	if strings.HasPrefix(name, cloudCredPrefix) {
-		obj, err := client.Get(ctx, secretsGVR, cloudCredNamespace, name)
-		if err == nil {
-			return obj, nil
-		}
-		if !clierr.IsNotFound(err) {
-			// Non-NOT_FOUND errors (auth, network, etc.) propagate immediately.
-			return nil, err
-		}
-		// NOT_FOUND from the fast-path Get falls through to the list-based
-		// resolution below: the client curates 404s by literal kind name,
-		// which would surface "secret not found" - leaking the Secret
-		// implementation detail this resolver exists to hide. The list path's
-		// MatchOneOrError yields the domain-specific shape ("cloud credential
-		// not found") with proper candidates.
-	}
+	t := engine.MatchText{Noun: "cloud credential", Plural: "cloud credentials", Flag: flag,
+		NotFound: "cloud credential not found: " + nameOrID, NotFoundHint: "rancher get cloud-credential"}
 
 	list, err := client.List(ctx, secretsGVR, cloudCredNamespace, "")
 	if err != nil {
-		return nil, err
+		if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeRBAC || len(validation.IsDNS1123Subdomain(name)) > 0 {
+			return nil, "", err
+		}
+		obj, gerr := getCredential(ctx, client, name, clierr.New(clierr.CodeNotFound, t.NotFound).WithHint(t.NotFoundHint))
+		return obj, "", gerr
 	}
 	candidates := credentialObjects(list)
 
@@ -116,20 +114,32 @@ func resolveCredentialObj(ctx context.Context, clients engine.ClusterClientFacto
 		cands = append(cands, clierr.Candidate{ID: id, Name: display})
 	}
 
-	id, err := projects.MatchOneOrError(name, ids, func(id string) string { return displayByID[id] }, cands,
-		"cloud credential not found: "+nameOrID,
-		"rancher get cloud-credential",
-		func(idFound bool, displayMatchCount int) string {
-			if idFound {
-				return fmt.Sprintf("%q matches both a cloud credential id and a different credential's display name; pass the credential id", nameOrID)
-			}
-			return fmt.Sprintf("%d cloud credentials have display name %q; pass the credential id", displayMatchCount, nameOrID)
-		},
-		"")
-	if err != nil {
-		return nil, err
+	id, warning, err := engine.MatchOne(name, ids, func(id string) string { return displayByID[id] }, cands, t)
+	if err == nil {
+		return objByID[id], warning, nil
 	}
-	return objByID[id], nil
+	if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeNotFound || len(validation.IsDNS1123Subdomain(name)) > 0 {
+		return nil, "", err
+	}
+	// A credential the List did not carry yet: one GET by id.
+	obj, gerr := getCredential(ctx, client, name, err)
+	return obj, "", gerr
+}
+
+// getCredential reads the Secret name by id. A missing Secret, or one that
+// is not a credential, is notFound, which never names the Secret behind the
+// credential; any other GET error is returned as is.
+func getCredential(ctx context.Context, client engine.ClusterClient, name string, notFound error) (*unstructured.Unstructured, error) {
+	obj, err := client.Get(ctx, secretsGVR, cloudCredNamespace, name)
+	switch {
+	case clierr.IsNotFound(err):
+		return nil, notFound
+	case err != nil:
+		return nil, err
+	case len(credentialObjects(&unstructured.UnstructuredList{Items: []unstructured.Unstructured{*obj}})) == 0:
+		return nil, notFound
+	}
+	return obj, nil
 }
 
 // credentialObjects filters list to credential-shaped secrets: named cc-*,
@@ -267,11 +277,15 @@ func (c *getCloudCredCmd) Describe() runtime.Descriptor {
 
 func (c *getCloudCredCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
 	if len(in.Args()) > 0 && in.Args()[0] != "" {
-		obj, err := resolveCredentialObj(ctx, c.clients, in.Args()[0])
+		obj, warning, err := resolveCredentialObj(ctx, c.clients, in.Args()[0], "")
 		if err != nil {
 			return runtime.Result{}, err
 		}
-		return runtime.Result{Kind: "CloudCredential", Data: cloudCredRows{rowFrom(obj)}}, nil
+		res := runtime.Result{Kind: "CloudCredential", Data: cloudCredRows{rowFrom(obj)}}
+		if warning != "" {
+			res.Warnings = []string{warning}
+		}
+		return res, nil
 	}
 
 	client, err := c.clients.Cluster(ctx, engine.LocalCluster)

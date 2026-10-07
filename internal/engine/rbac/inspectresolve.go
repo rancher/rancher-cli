@@ -95,12 +95,11 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 }
 
 // resolveInspectUserBare resolves a user id, username, or displayName.
-// Exact-id Get wins outright (ResolveSubject's precedence, a documented
-// divergence from inspect project/cluster's MatchOneOrError union
-// semantics, which match displayName only and never let an exact id beat a
-// collision); on a Get miss, username/displayName collisions become
-// AMBIGUOUS_SELECTION. System users resolve at every step - never excluded,
-// never terminal.
+// Exact-id Get wins outright (ResolveSubject's precedence; unlike the
+// project and cluster lookups of engine.MatchOne, it matches username as
+// well as displayName and names no other user in a warning); on a Get
+// miss, username/displayName collisions become AMBIGUOUS_SELECTION. System
+// users resolve at every step - never excluded, never terminal.
 func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, userGVR schema.GroupVersionResource, bare string) (ResolvedSubject, error) {
 	obj, err := client.Get(ctx, userGVR, "", bare)
 	if err == nil {

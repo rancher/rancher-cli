@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -203,6 +204,26 @@ func (r *dynamicClient) curateNotFound(gvr schema.GroupVersionResource, name str
 	return err
 }
 
+// request describes one call of this client for the error mapping.
+func (r *dynamicClient) request(verb string, gvr schema.GroupVersionResource, ns, name string) *request {
+	return &request{verb: verb, group: gvr.Group, resource: gvr.Resource, namespace: ns, name: name, cluster: r.clusterID}
+}
+
+// forbiddenHint adds the caller-scoped command kinds.ForbiddenHint names
+// for an RBAC refusal of a kind verb that carries no hint yet.
+func (r *dynamicClient) forbiddenHint(gvr schema.GroupVersionResource, verb, ns, name string, err error) error {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok || ce.Code != clierr.CodeRBAC || ce.Hint != "" {
+		return err
+	}
+	if k, ok := kinds.ByGVR(gvr); ok {
+		if h := kinds.ForbiddenHint(k, verb, ns, name); h != "" {
+			ce.Hint = h
+		}
+	}
+	return err
+}
+
 func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
 	gvr, err := r.resolveVersion(ctx, gvr)
 	if err != nil {
@@ -211,7 +232,7 @@ func (r *dynamicClient) Get(ctx context.Context, gvr schema.GroupVersionResource
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
 	out, err := r.ri(gvr, ns).Get(ctx, name, metav1.GetOptions{})
-	return out, r.curateNotFound(gvr, name, mapErr(err))
+	return out, r.forbiddenHint(gvr, "get", ns, name, r.curateNotFound(gvr, name, mapRequestErr(err, r.request("get", gvr, ns, name))))
 }
 
 func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
@@ -222,7 +243,7 @@ func (r *dynamicClient) List(ctx context.Context, gvr schema.GroupVersionResourc
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
 	out, err := r.ri(gvr, ns).List(ctx, metav1.ListOptions{LabelSelector: selector})
-	return out, mapErr(err)
+	return out, r.forbiddenHint(gvr, "list", ns, "", mapRequestErr(err, r.request("list", gvr, ns, "")))
 }
 
 // Logs fetches a container's log via the typed clientset (pod logs have no
@@ -239,7 +260,7 @@ func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.Lo
 	})
 	b, err := req.DoRaw(ctx)
 	if err != nil {
-		return "", mapErr(restoreStatus(err, b))
+		return "", mapRequestErr(restoreStatus(err, b), &request{verb: "get", resource: "pods/log", namespace: ns, name: pod, cluster: r.clusterID})
 	}
 	return string(b), nil
 }
@@ -256,7 +277,7 @@ func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResou
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
 	out, err := r.ri(gvr, ns).Create(ctx, obj, opts)
-	return out, mapErr(err)
+	return out, mapRequestErr(err, r.request("create", gvr, ns, obj.GetName()))
 }
 
 func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
@@ -271,7 +292,8 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
 	out, err := r.ri(gvr, ns).Update(ctx, obj, opts)
-	return out, r.curateNotFound(gvr, obj.GetName(), mapErr(err))
+	return out, r.forbiddenHint(gvr, "update", ns, obj.GetName(),
+		r.curateNotFound(gvr, obj.GetName(), mapRequestErr(err, r.request("update", gvr, ns, obj.GetName()))))
 }
 
 func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResource, ns, name, resourceVersion string, dryRun bool) error {
@@ -288,5 +310,5 @@ func (r *dynamicClient) Delete(ctx context.Context, gvr schema.GroupVersionResou
 	if resourceVersion != "" {
 		opts.Preconditions = &metav1.Preconditions{ResourceVersion: &resourceVersion}
 	}
-	return r.curateNotFound(gvr, name, mapErr(r.ri(gvr, ns).Delete(ctx, name, opts)))
+	return r.curateNotFound(gvr, name, mapRequestErr(r.ri(gvr, ns).Delete(ctx, name, opts), r.request("delete", gvr, ns, name)))
 }

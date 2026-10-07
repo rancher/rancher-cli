@@ -1,0 +1,445 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "steve",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "actions": "\u003cactions\u003e",
+        "apiVersion": "management.cattle.io/v3",
+        "id": "{downstream}",
+        "kind": "Cluster",
+        "links": "\u003clinks\u003e",
+        "metadata": {
+          "annotations": "\u003cannotations\u003e",
+          "creationTimestamp": "\u003cts\u003e",
+          "fields": "\u003cfields\u003e",
+          "finalizers": [
+            "controller.cattle.io/cluster-agent-controller-cleanup",
+            "controller.cattle.io/cluster-provisioner-controller",
+            "controller.cattle.io/cluster-scoped-gc",
+            "controller.cattle.io/mgmt-cluster-rbac-remove",
+            "wrangler.cattle.io/mgmt-cluster-remove"
+          ],
+          "generation": "\u003cgeneration\u003e",
+          "labels": {
+            "objectset.rio.cattle.io/hash": "\u003clabel\u003e",
+            "provider.cattle.io": "\u003clabel\u003e"
+          },
+          "name": "{downstream}",
+          "relationships": "\u003crelationships\u003e",
+          "resourceVersion": "\u003crv\u003e",
+          "state": {
+            "error": false,
+            "message": "Resource is Ready",
+            "name": "active",
+            "transitioning": false
+          },
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "agentImageOverride": "\u003cvalue\u003e",
+          "clusterSecrets": {},
+          "description": "\u003cvalue\u003e",
+          "desiredAgentImage": "\u003cvalue\u003e",
+          "desiredAuthImage": "\u003cvalue\u003e",
+          "displayName": "\u003cvalue\u003e",
+          "enableNetworkPolicy": "\u003cvalue\u003e",
+          "fleetWorkspaceName": "\u003cvalue\u003e",
+          "importedConfig": {
+            "kubeConfig": "\u003cvalue\u003e"
+          },
+          "internal": "\u003cvalue\u003e",
+          "k3sConfig": {
+            "k3supgradeStrategy": "\u003cvalue\u003e",
+            "kubernetesVersion": "\u003cvalue\u003e"
+          },
+          "localClusterAuthEndpoint": {
+            "enabled": false
+          },
+          "windowsPreferedCluster": "\u003cvalue\u003e"
+        },
+        "status": {
+          "agentFeatures": {
+            "fleet": "\u003cvalue\u003e",
+            "managed-system-upgrade-controller": "\u003cvalue\u003e",
+            "multi-cluster-management": "\u003cvalue\u003e",
+            "multi-cluster-management-agent": "\u003cvalue\u003e",
+            "provisioningprebootstrap": "\u003cvalue\u003e",
+            "provisioningv2": "\u003cvalue\u003e",
+            "rke2": "\u003cvalue\u003e",
+            "turtles": "\u003cvalue\u003e",
+            "ui-sql-cache": "\u003cvalue\u003e"
+          },
+          "agentImage": "\u003cvalue\u003e",
+          "aksStatus": "\u003cvalue\u003e",
+          "aliStatus": "\u003cvalue\u003e",
+          "allocatable": {
+            "cpu": "\u003cvalue\u003e",
+            "memory": "\u003cvalue\u003e",
+            "pods": "\u003cvalue\u003e"
+          },
+          "apiEndpoint": "\u003cvalue\u003e",
+          "appliedAgentEnvVars": "\u003cvalue\u003e",
+          "appliedEnableNetworkPolicy": "\u003cvalue\u003e",
+          "appliedSpec": {
+            "agentImageOverride": "\u003cvalue\u003e",
+            "clusterSecrets": {},
+            "description": "\u003cvalue\u003e",
+            "desiredAgentImage": "\u003cvalue\u003e",
+            "desiredAuthImage": "\u003cvalue\u003e",
+            "displayName": "\u003cvalue\u003e",
+            "enableNetworkPolicy": "\u003cvalue\u003e",
+            "internal": "\u003cvalue\u003e",
+            "localClusterAuthEndpoint": {
+              "enabled": false
+            },
+            "windowsPreferedCluster": "\u003cvalue\u003e"
+          },
+          "authImage": "\u003cvalue\u003e",
+          "caCert": "\u003cvalue\u003e",
+          "capabilities": {
+            "loadBalancerCapabilities": "\u003cvalue\u003e"
+          },
+          "capacity": {
+            "cpu": "\u003cvalue\u003e",
+            "memory": "\u003cvalue\u003e",
+            "pods": "\u003cvalue\u003e"
+          },
+          "conditions": [
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "AgentDeployed"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "AgentTlsStrictCheck"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "BackingNamespaceCreated"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "Connected"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "CreatorMadeOwner"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "DefaultProjectCreated"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "GlobalAdminsSynced"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "InitialRolesPopulated"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "NoDiskPressure"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "NoMemoryPressure"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "Pending"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "Provisioned"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "Ready"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "ServiceAccountSecretsMigrated"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "SystemAccountCreated"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "SystemProjectCreated"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "Updated"
+            },
+            {
+              "error": false,
+              "status": "True",
+              "transitioning": false,
+              "type": "Waiting"
+            }
+          ],
+          "driver": "\u003cvalue\u003e",
+          "eksStatus": "\u003cvalue\u003e",
+          "gkeStatus": "\u003cvalue\u003e",
+          "info": "\u003cvalue\u003e",
+          "limits": "\u003cvalue\u003e",
+          "nodeCount": "\u003cvalue\u003e",
+          "provider": "\u003cvalue\u003e",
+          "requested": "\u003cvalue\u003e",
+          "serviceAccountTokenSecret": "\u003cvalue\u003e",
+          "version": {
+            "buildDate": "\u003cvalue\u003e",
+            "compiler": "\u003cvalue\u003e",
+            "emulationMajor": "\u003cvalue\u003e",
+            "emulationMinor": "\u003cvalue\u003e",
+            "gitCommit": "\u003cvalue\u003e",
+            "gitTreeState": "\u003cvalue\u003e",
+            "gitVersion": "\u003cvalue\u003e",
+            "goVersion": "\u003cvalue\u003e",
+            "major": "\u003cvalue\u003e",
+            "minCompatibilityMajor": "\u003cvalue\u003e",
+            "minCompatibilityMinor": "\u003cvalue\u003e",
+            "minor": "\u003cvalue\u003e",
+            "platform": "\u003cvalue\u003e"
+          }
+        },
+        "type": "management.cattle.io.cluster"
+      }
+    },
+    {
+      "name": "local",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "kind": "Cluster",
+        "metadata": {
+          "annotations": "\u003cannotations\u003e",
+          "creationTimestamp": "\u003cts\u003e",
+          "finalizers": [
+            "controller.cattle.io/cluster-agent-controller-cleanup",
+            "controller.cattle.io/cluster-provisioner-controller",
+            "controller.cattle.io/cluster-scoped-gc",
+            "controller.cattle.io/mgmt-cluster-rbac-remove",
+            "wrangler.cattle.io/mgmt-cluster-remove"
+          ],
+          "generation": "\u003cgeneration\u003e",
+          "labels": {
+            "objectset.rio.cattle.io/hash": "\u003clabel\u003e",
+            "provider.cattle.io": "\u003clabel\u003e"
+          },
+          "name": "{downstream}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "agentImageOverride": "\u003cvalue\u003e",
+          "clusterSecrets": {},
+          "description": "\u003cvalue\u003e",
+          "desiredAgentImage": "\u003cvalue\u003e",
+          "desiredAuthImage": "\u003cvalue\u003e",
+          "displayName": "\u003cvalue\u003e",
+          "enableNetworkPolicy": "\u003cvalue\u003e",
+          "fleetWorkspaceName": "\u003cvalue\u003e",
+          "importedConfig": {
+            "kubeConfig": "\u003cvalue\u003e"
+          },
+          "internal": "\u003cvalue\u003e",
+          "k3sConfig": {
+            "k3supgradeStrategy": "\u003cvalue\u003e",
+            "kubernetesVersion": "\u003cvalue\u003e"
+          },
+          "localClusterAuthEndpoint": {
+            "enabled": false
+          },
+          "windowsPreferedCluster": "\u003cvalue\u003e"
+        },
+        "status": {
+          "agentFeatures": {
+            "fleet": "\u003cvalue\u003e",
+            "managed-system-upgrade-controller": "\u003cvalue\u003e",
+            "multi-cluster-management": "\u003cvalue\u003e",
+            "multi-cluster-management-agent": "\u003cvalue\u003e",
+            "provisioningprebootstrap": "\u003cvalue\u003e",
+            "provisioningv2": "\u003cvalue\u003e",
+            "rke2": "\u003cvalue\u003e",
+            "turtles": "\u003cvalue\u003e",
+            "ui-sql-cache": "\u003cvalue\u003e"
+          },
+          "agentImage": "\u003cvalue\u003e",
+          "aksStatus": "\u003cvalue\u003e",
+          "aliStatus": "\u003cvalue\u003e",
+          "allocatable": {
+            "cpu": "\u003cvalue\u003e",
+            "memory": "\u003cvalue\u003e",
+            "pods": "\u003cvalue\u003e"
+          },
+          "apiEndpoint": "\u003cvalue\u003e",
+          "appliedAgentEnvVars": "\u003cvalue\u003e",
+          "appliedEnableNetworkPolicy": "\u003cvalue\u003e",
+          "appliedSpec": {
+            "agentImageOverride": "\u003cvalue\u003e",
+            "clusterSecrets": {},
+            "description": "\u003cvalue\u003e",
+            "desiredAgentImage": "\u003cvalue\u003e",
+            "desiredAuthImage": "\u003cvalue\u003e",
+            "displayName": "\u003cvalue\u003e",
+            "enableNetworkPolicy": "\u003cvalue\u003e",
+            "internal": "\u003cvalue\u003e",
+            "localClusterAuthEndpoint": {
+              "enabled": false
+            },
+            "windowsPreferedCluster": "\u003cvalue\u003e"
+          },
+          "authImage": "\u003cvalue\u003e",
+          "caCert": "\u003cvalue\u003e",
+          "capabilities": {
+            "loadBalancerCapabilities": "\u003cvalue\u003e"
+          },
+          "capacity": {
+            "cpu": "\u003cvalue\u003e",
+            "memory": "\u003cvalue\u003e",
+            "pods": "\u003cvalue\u003e"
+          },
+          "conditions": [
+            {
+              "status": "True",
+              "type": "AgentDeployed"
+            },
+            {
+              "status": "True",
+              "type": "AgentTlsStrictCheck"
+            },
+            {
+              "status": "True",
+              "type": "BackingNamespaceCreated"
+            },
+            {
+              "status": "True",
+              "type": "Connected"
+            },
+            {
+              "status": "True",
+              "type": "CreatorMadeOwner"
+            },
+            {
+              "status": "True",
+              "type": "DefaultProjectCreated"
+            },
+            {
+              "status": "True",
+              "type": "GlobalAdminsSynced"
+            },
+            {
+              "status": "True",
+              "type": "InitialRolesPopulated"
+            },
+            {
+              "status": "True",
+              "type": "NoDiskPressure"
+            },
+            {
+              "status": "True",
+              "type": "NoMemoryPressure"
+            },
+            {
+              "status": "True",
+              "type": "Pending"
+            },
+            {
+              "status": "True",
+              "type": "Provisioned"
+            },
+            {
+              "status": "True",
+              "type": "Ready"
+            },
+            {
+              "status": "True",
+              "type": "ServiceAccountSecretsMigrated"
+            },
+            {
+              "status": "True",
+              "type": "SystemAccountCreated"
+            },
+            {
+              "status": "True",
+              "type": "SystemProjectCreated"
+            },
+            {
+              "status": "True",
+              "type": "Updated"
+            },
+            {
+              "status": "True",
+              "type": "Waiting"
+            }
+          ],
+          "driver": "\u003cvalue\u003e",
+          "eksStatus": "\u003cvalue\u003e",
+          "gkeStatus": "\u003cvalue\u003e",
+          "info": "\u003cvalue\u003e",
+          "limits": "\u003cvalue\u003e",
+          "nodeCount": "\u003cvalue\u003e",
+          "provider": "\u003cvalue\u003e",
+          "requested": "\u003cvalue\u003e",
+          "serviceAccountTokenSecret": "\u003cvalue\u003e",
+          "version": {
+            "buildDate": "\u003cvalue\u003e",
+            "compiler": "\u003cvalue\u003e",
+            "emulationMajor": "\u003cvalue\u003e",
+            "emulationMinor": "\u003cvalue\u003e",
+            "gitCommit": "\u003cvalue\u003e",
+            "gitTreeState": "\u003cvalue\u003e",
+            "gitVersion": "\u003cvalue\u003e",
+            "goVersion": "\u003cvalue\u003e",
+            "major": "\u003cvalue\u003e",
+            "minCompatibilityMajor": "\u003cvalue\u003e",
+            "minCompatibilityMinor": "\u003cvalue\u003e",
+            "minor": "\u003cvalue\u003e",
+            "platform": "\u003cvalue\u003e"
+          }
+        }
+      }
+    }
+  ]
+}

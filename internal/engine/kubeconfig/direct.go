@@ -22,6 +22,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 // Endpoint is one direct entry to emit.
@@ -59,16 +60,16 @@ const externalIPAnnotation = "rke.cattle.io/external-ip"
 
 var nodeGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "nodes"}
 
-// DirectEndpoints reads the management cluster and, when the endpoint is
-// enabled, the multi-cluster-management Feature and the cluster's nodes.
+// DirectEndpoints reads the management cluster through steve with get and,
+// when the endpoint is enabled, the multi-cluster-management Feature and
+// the cluster's nodes through mgmt.
 // A nil error with no Endpoints and no Omitted means the endpoint is off.
 // Errors are returned only for a cancelled or expired context and for a
 // management cluster that is not found; every completed refusal or failure
 // lands in Omitted.
-func DirectEndpoints(ctx context.Context, mgmt engine.ClusterClient, clusterID string) (Direct, error) {
+func DirectEndpoints(ctx context.Context, mgmt engine.ClusterClient, get steve.Getter, clusterID string) (Direct, error) {
 	var d Direct
-	clusterKind, _ := kinds.Lookup("cluster")
-	cluster, err := mgmt.Get(ctx, clusterKind.GVR, "", clusterID)
+	cluster, err := steve.GetCluster(ctx, get, clusterID)
 	if err != nil {
 		if ctx.Err() != nil {
 			return Direct{}, ctx.Err()

@@ -165,3 +165,58 @@ func TestSteveNamespacedCollectionPath(t *testing.T) {
 		assert.Empty(t, p.String())
 	}
 }
+
+// TestConnectionClustersWithoutAListerFailsClosed asserts a Connection
+// with no cluster lister returns ErrNoLister and sends nothing; an
+// installed lister receives the Connection and its answer or error is
+// returned as it is, and nil removes it.
+func TestConnectionClustersWithoutAListerFailsClosed(t *testing.T) {
+	t.Parallel()
+	bs := newBodyServer(t, http.StatusOK, `{}`)
+	conn := NewConnection(bs.srv.Client(), "tok", bs.srv.URL, false, 5)
+	items, err := conn.Clusters(t.Context())
+	require.ErrorIs(t, err, ErrNoLister)
+	assert.Nil(t, items)
+	assert.Zero(t, bs.hits.Load())
+	assert.Zero(t, conn.Used())
+
+	var gotConn *Connection
+	want := []ClusterItem{{ID: "c-abc", DisplayName: "prod"}}
+	conn.SetClusterLister(func(_ context.Context, c *Connection) ([]ClusterItem, error) {
+		gotConn = c
+		return want, nil
+	})
+	items, err = conn.Clusters(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, want, items)
+	assert.Same(t, conn, gotConn)
+
+	boom := errors.New("boom")
+	conn.SetClusterLister(func(context.Context, *Connection) ([]ClusterItem, error) { return nil, boom })
+	_, err = conn.Clusters(t.Context())
+	require.ErrorIs(t, err, boom)
+
+	conn.SetClusterLister(nil)
+	_, err = conn.Clusters(t.Context())
+	require.ErrorIs(t, err, ErrNoLister)
+}
+
+// TestSteveObjectPath asserts the /v1/<resource>/<name> shape and that a
+// segment ValidSegment refuses is refused with no path.
+func TestSteveObjectPath(t *testing.T) {
+	t.Parallel()
+	p, err := SteveObjectPath("management.cattle.io.clusters", "c-abc")
+	require.NoError(t, err)
+	assert.Equal(t, "/v1/management.cattle.io.clusters/c-abc", p.String())
+	for _, tc := range []struct{ resource, name string }{
+		{"management.cattle.io.clusters", ""},
+		{"management.cattle.io.clusters", ".."},
+		{"management.cattle.io.clusters", "a/b"},
+		{"management.cattle.io.clusters", "prod cluster"},
+		{"", "c-abc"},
+	} {
+		p, err := SteveObjectPath(tc.resource, tc.name)
+		require.ErrorIs(t, err, ErrInvalidSegment, "%q %q", tc.resource, tc.name)
+		assert.Empty(t, p.String())
+	}
+}

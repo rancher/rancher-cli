@@ -30,16 +30,13 @@ func newKindSitesServer(t *testing.T) *pathCountingServer {
 		downNodesPath:      items(plain("node-2"), plain("node-1")),
 		downPodsPath:       items(plain("web-2"), plain("web-1")),
 		downDeploysPath:    items(plain("web")),
-	}, map[string]steveFixturePage{
-		"":  {Data: []map[string]any{steveFixtureItem("c-m-b", "b")}, Count: 2, Continue: "n", Revision: "9"},
-		"n": {Data: []map[string]any{steveFixtureItem("c-m-a", "a")}, Count: 2, Revision: "9"},
-	})
+	}, steveClustersPages)
 }
 
 // TestKindSitesFullCallback asserts, through the real TAB callback, the
 // candidates and the requests of every site the shared flag and kind
 // sources serve: the --cluster value on a generated command and on
-// `access projects` (the steve collection, two pages), the --namespace
+// `access projects` (both the steve collection, two pages), the --namespace
 // and --node values with the cluster typed by id, by display name, not
 // at all, under a typed --project and with an unusable value; the name
 // positional of every Completable kind on the generated verbs (management
@@ -58,7 +55,6 @@ func newKindSitesServer(t *testing.T) *pathCountingServer {
 func TestKindSitesFullCallback(t *testing.T) {
 	s := newKindSitesServer(t)
 	clusters := []string{"c-aaa11", "c-bbb22", "c-ccc33", "c-ddd44", "local", "prod"}
-	steveClusters := []string{"a", "b", "c-m-a", "c-m-b", "local"}
 	projects := []string{"Default", "System", "p-1", "p-2"}
 	projectIDs := []string{"p-1", "p-2"}
 	users := []string{"sameid", "u-alice", "u-badname", "u-bob", "u-nopids"}
@@ -73,33 +69,33 @@ func TestKindSitesFullCallback(t *testing.T) {
 		noNet bool
 	}{
 		// the shared --cluster value
-		{name: "--cluster on a generated command", words: []string{"get", "pod", "--cluster"}, want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
-		{name: "--cluster= equals form", words: []string{"get", "pod"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{mgmtClustersPath: 1}},
-		{name: "--cluster on another command", words: []string{"get", "namespace", "--cluster"}, want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
-		{name: "--cluster with a typed partial offers every cluster", words: []string{"get", "pod", "--cluster"}, cur: "c-", want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
-		{name: "--cluster= with a typed partial offers every cluster", words: []string{"get", "pod"}, cur: "--cluster=c-", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{mgmtClustersPath: 1}},
+		{name: "--cluster on a generated command", words: []string{"get", "pod", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster= equals form", words: []string{"get", "pod"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster on another command", words: []string{"get", "namespace", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster with a typed partial offers every cluster", words: []string{"get", "pod", "--cluster"}, cur: "c-", want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster= with a typed partial offers every cluster", words: []string{"get", "pod"}, cur: "--cluster=c-", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
 		{name: "--project with a cluster id", words: []string{"get", "pod", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "--project= equals form on a command that takes it", words: []string{"usage", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1", "--project=p-2"}, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "--project on a command that does not take it", words: []string{"get", "node", "--cluster", "c-aaa11", "--project"}, hits: map[string]int{}},
 		{name: "--project= on a command that does not take it", words: []string{"inspect", "pod", "--cluster", "c-aaa11"}, cur: "--project=", hits: map[string]int{}},
 		{name: "--project on project remove-namespace", words: []string{"project", "remove-namespace", "--cluster", "c-aaa11", "--project"}, hits: map[string]int{}},
-		{name: "--cluster on access projects walks steve", words: []string{"access", "projects", "--cluster"}, want: steveClusters, hits: map[string]int{steveClustersPath: 2}},
-		{name: "--cluster= on access projects", words: []string{"access", "projects"}, cur: "--cluster=", want: []string{"--cluster=a", "--cluster=b", "--cluster=c-m-a", "--cluster=c-m-b", "--cluster=local"}, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster on access projects walks steve", words: []string{"access", "projects", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster= on access projects", words: []string{"access", "projects"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
 		// the shared --namespace and --node values
 		{name: "--namespace with a cluster id", words: []string{"get", "pod", "--cluster", "c-aaa11", "--namespace"}, want: namespaces, hits: map[string]int{downNamespacesPath: 1}},
-		{name: "--namespace with a cluster display name resolves it first", words: []string{"get", "pod", "--cluster", "prod", "--namespace"}, want: namespaces, hits: map[string]int{mgmtClustersPath: 1, downNamespacesPath: 1}},
+		{name: "--namespace with a cluster display name resolves it first", words: []string{"get", "pod", "--cluster", "prod", "--namespace"}, want: namespaces, hits: map[string]int{steveClustersPath: 2, downNamespacesPath: 1}},
 		{name: "--namespace= equals form", words: []string{"get", "pod", "--cluster", "c-aaa11"}, cur: "--namespace=", want: []string{"--namespace=default", "--namespace=kube-system"}, hits: map[string]int{downNamespacesPath: 1}},
 		{name: "--namespace without a cluster", words: []string{"get", "pod", "--namespace"}, hits: map[string]int{}},
 		{name: "--namespace under a typed project", words: []string{"get", "pod", "--cluster", "c-aaa11", "--project", "p-1", "--namespace"}, hits: map[string]int{}},
-		{name: "--namespace with a display name nothing carries", words: []string{"get", "pod", "--cluster", "nope", "--namespace"}, hits: map[string]int{mgmtClustersPath: 1}},
-		{name: "--namespace with a spaced display name resolves it first", words: []string{"get", "pod", "--cluster", "prod cluster", "--namespace"}, want: []string{"team"}, hits: map[string]int{mgmtClustersPath: 1, downTeamNamespaces: 1}},
+		{name: "--namespace with a display name nothing carries", words: []string{"get", "pod", "--cluster", "nope", "--namespace"}, hits: map[string]int{steveClustersPath: 2, steveClusterNopePath: 1}},
+		{name: "--namespace with a spaced display name resolves it first", words: []string{"get", "pod", "--cluster", "prod cluster", "--namespace"}, want: []string{"team"}, hits: map[string]int{steveClustersPath: 2, downTeamNamespaces: 1}},
 		{name: "--node with a cluster id", words: []string{"usage", "--cluster", "c-aaa11", "--node"}, want: []string{"node-1", "node-2"}, hits: map[string]int{downNodesPath: 1}},
 		{name: "--node without a cluster", words: []string{"usage", "--node"}, hits: map[string]int{}},
 		// management kinds on the generated verbs
 		{name: "get cluster", words: []string{"get", "cluster"}, want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
 		// The generated project verbs address a project by id only.
 		{name: "get project with a cluster id", words: []string{"get", "project", "--cluster", "c-aaa11"}, want: projectIDs, hits: map[string]int{steveProjectsPath: 1}},
-		{name: "get project with a cluster display name", words: []string{"get", "project", "--cluster", "prod"}, want: projectIDs, hits: map[string]int{mgmtClustersPath: 1, steveProjectsPath: 1}},
+		{name: "get project with a cluster display name", words: []string{"get", "project", "--cluster", "prod"}, want: projectIDs, hits: map[string]int{steveClustersPath: 2, steveProjectsPath: 1}},
 		{name: "delete project with a cluster id", words: []string{"delete", "project", "--cluster", "c-aaa11"}, want: projectIDs, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "get project without a cluster", words: []string{"get", "project"}, hits: map[string]int{}},
 		{name: "get user", words: []string{"get", "user"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
@@ -121,7 +117,7 @@ func TestKindSitesFullCallback(t *testing.T) {
 		{name: "get secret does not complete", words: []string{"get", "secret", "--cluster", "c-aaa11", "--namespace", "default"}, hits: map[string]int{}},
 		{name: "a second positional completes nothing", words: []string{"get", "pod", "--cluster", "c-aaa11", "--namespace", "default", "web-1"}, hits: map[string]int{}},
 		// bespoke first positionals
-		{name: "inspect cluster", words: []string{"inspect", "cluster"}, want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
+		{name: "inspect cluster", words: []string{"inspect", "cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
 		{name: "inspect project with a cluster id", words: []string{"inspect", "project", "--cluster", "c-aaa11"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "inspect user", words: []string{"inspect", "user"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "inspect pod does not complete", words: []string{"inspect", "pod", "--cluster", "c-aaa11", "--namespace", "default"}, hits: map[string]int{}},

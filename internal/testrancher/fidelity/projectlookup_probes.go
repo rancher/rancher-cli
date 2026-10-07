@@ -64,6 +64,9 @@ func projectLookupProbes() []Probe {
 	// An admin's ids are generated per cluster; the display names and the
 	// cluster stay, sorted by display name.
 	adminRules := append([]NormalizeRule{
+		// A project another probe created, still being deleted, is not
+		// recorded.
+		probeFixtures("metadata.name", "p-"+fixturePrefix),
 		{Path: "data.id", Replace: "<id>"},
 		{Path: "data.metadata.name", Replace: "<name>"},
 		{Path: "data", SortBy: "spec.displayName"},

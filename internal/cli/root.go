@@ -104,7 +104,7 @@ func buildEntries() []entry {
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewPod(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewDeployment(d.clients) }},
 		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectProject(d.clients, d.roots) }},
-		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectUser(d.clients) }},
+		{group: "inspect", make: func(d runDeps) runtime.Command { return inspect.NewInspectUser(d.clients, d.roots) }},
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewCan(d.clients, nil) }},
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewList(d.clients, nil) }},
 		{group: "access", make: func(d runDeps) runtime.Command { return access.NewWhoCan(d.clients, nil) }},
@@ -119,10 +119,10 @@ func buildEntries() []entry {
 		// resolveDeps for them), so dir/store are passed explicitly zero here:
 		// the shim resolves both lazily in Execute.
 		{group: "", bare: true, make: func(runDeps) runtime.Command { return token.NewLegacyTokenCommand("", nil, nil) }},
-		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewImages(d.clients, d.roots) }},
 		{group: "", make: func(d runDeps) runtime.Command { return inspect.NewUsage(d.clients, d.roots) }},
-		{group: "", make: func(d runDeps) runtime.Command { return kubeconfig.NewCommand(d.dir, d.store, d.clients) }},
-		{group: "", make: func(d runDeps) runtime.Command { return observe.NewLogs(d.clients) }},
+		{group: "", make: func(d runDeps) runtime.Command { return kubeconfig.NewCommand(d.dir, d.store, d.clients, d.roots) }},
+		{group: "", make: func(d runDeps) runtime.Command { return observe.NewLogs(d.clients, d.roots) }},
 	}
 	ov := kindOverrides()
 	for _, k := range kinds.All() {
@@ -778,7 +778,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	// than in buildEntries - the same reason schema.go's fixed command is
 	// built inline below instead of through the declarative table.
 	entries := append(buildEntries(), entry{group: "", make: func(d runDeps) runtime.Command {
-		return observe.NewSupportBundle(d.clients, func() any { return reg.Schema(version, config.MinRancherVersion) })
+		return observe.NewSupportBundle(d.clients, d.roots, func() any { return reg.Schema(version, config.MinRancherVersion) })
 	}})
 
 	groups := map[string][]*ucli.Command{}

@@ -116,8 +116,9 @@ env RANCHER_CLI_TOKEN=e2e-std:secret
 ! exec rancher access who-can get pods --cluster testcluster -n team-a
 stderr 'who-can needs list on rolebindings and clusterrolebindings on cluster c-test'
 
-# a caller without cluster access is refused before any binding is read
+# a caller without cluster access is refused before any binding is read:
+# the cluster is not among the clusters it can read
 env RANCHER_CLI_TOKEN=e2e-nocluster:secret
 ! exec rancher access who-can get pods --cluster testcluster -n team-a
-stderr 'you have no access to cluster c-test'
+stderr 'cluster not found: ''testcluster''; it is not among the clusters you can read'
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN

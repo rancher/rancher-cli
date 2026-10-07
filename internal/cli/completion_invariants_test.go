@@ -158,11 +158,12 @@ func TestCompletionNoStderr(t *testing.T) {
 	assert.Empty(t, stderr.String(), "no stderr on any failure path (unreadable creds or unreachable server)")
 }
 
-// At most two HTTP requests per full TAB dispatch.
-// Drives the actual two-request path: display-name cluster at a --namespace site.
+// At most two HTTP requests per full TAB dispatch when the clusters
+// collection is one page. Drives the actual two-request path: display-name
+// cluster at a --namespace site.
 // rawArgv=["get","pod","--cluster","prod","--namespace","kube-"] → dispatch:
 //
-//	request 1: cluster list to resolve display name "prod" → "c-abc"
+//	request 1: the steve clusters collection to resolve display name "prod" → "c-abc"
 //	request 2: namespace list for /k8s/clusters/c-abc/api/v1/namespaces
 //
 // Assert exactly 2 hits (not vacuous 0 <= 2).
@@ -177,8 +178,8 @@ func TestCompletionAtMostTwoRequestsPerTab(t *testing.T) {
 		if strings.Contains(r.URL.Path, "/api/v1/namespaces") {
 			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"default"}},{"metadata":{"name":"kube-system"}}]}`))
 		} else {
-			// Cluster list: returns one cluster with displayName "prod".
-			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`))
+			// The steve clusters collection: one cluster with displayName "prod".
+			_, _ = w.Write([]byte(`{"count":1,"revision":"1","data":[{"id":"c-abc","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`))
 		}
 	}))
 	t.Cleanup(srv.Close)
@@ -254,7 +255,7 @@ func TestCompletableAllowlistIsExactlyTenKinds(t *testing.T) {
 // <currentWord> is the partial being typed. This is what the updated shell
 // scripts send. NOT parallel: t.Setenv mutates env globals.
 func TestFullCallbackFlagValueSites(t *testing.T) {
-	clusterItems := `{"items":[{"metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`
+	clusterItems := `{"count":1,"revision":"1","data":[{"id":"c-abc","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`
 	nsItems := `{"items":[{"metadata":{"name":"default"}},{"metadata":{"name":"kube-system"}}]}`
 	nodeItems := `{"items":[{"metadata":{"name":"node-1"}}]}`
 	projectItems := `{"count":1,"revision":"1","data":[{"id":"c-abc/p-abc","metadata":{"name":"p-abc"},"spec":{"clusterName":"c-abc"}}]}`
@@ -499,7 +500,7 @@ func TestGlobalFlagSetsAgree(t *testing.T) {
 func TestGroupLiveFlagValueCandidates(t *testing.T) {
 	keyring.MockInit()
 
-	clusterItems := `{"items":[{"metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`
+	clusterItems := `{"count":1,"revision":"1","data":[{"id":"c-abc","metadata":{"name":"c-abc"},"spec":{"displayName":"prod"}}]}`
 	projectItems := `{"count":1,"revision":"1","data":[{"id":"c-abc/p-xyz","metadata":{"name":"p-xyz"},"spec":{"clusterName":"c-abc"}}]}`
 
 	newCountingSrv := func(t *testing.T, hits *atomic.Int32) *httptest.Server {

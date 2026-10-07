@@ -75,12 +75,34 @@ func setOrDelete(m map[string]any, key string, r NormalizeRule) {
 	if !present {
 		return
 	}
+	if r.DropPrefix != "" {
+		// DropPrefix filters the addressed array; a value that is not an
+		// array is left as it is (the golden's shape shows the misuse).
+		if items, ok := v.([]any); ok {
+			kept := []any{}
+			for _, el := range items {
+				if !strings.HasPrefix(sortKey(el, r.DropBy), r.DropPrefix) {
+					kept = append(kept, el)
+				}
+			}
+			m[key] = kept
+			// Steve omits count on an empty collection.
+			if _, ok := m[r.CountKey]; ok && r.CountKey != "" {
+				if len(kept) == 0 {
+					delete(m, r.CountKey)
+				} else {
+					m[r.CountKey] = float64(len(kept))
+				}
+			}
+		}
+		return
+	}
 	if r.SortBy != "" {
 		// SortBy orders the addressed array in place; a value that is not
 		// an array is left as it is (the golden's shape shows the misuse).
 		if items, ok := v.([]any); ok {
 			sort.SliceStable(items, func(i, j int) bool {
-				return nestedString(items[i], r.SortBy) < nestedString(items[j], r.SortBy)
+				return sortKey(items[i], r.SortBy) < sortKey(items[j], r.SortBy)
 			})
 		}
 		return
@@ -126,6 +148,16 @@ func keepPrefix(arr any, prefix string) ([]any, error) {
 		}
 	}
 	return out, nil
+}
+
+// sortKey is the string an array element sorts by: the element itself
+// for ".", else the string at the sub-path.
+func sortKey(v any, path string) string {
+	if path == "." {
+		s, _ := v.(string)
+		return s
+	}
+	return nestedString(v, path)
 }
 
 // nestedString reads a dot-separated path of string keys from a decoded

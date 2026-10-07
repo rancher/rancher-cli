@@ -95,7 +95,13 @@ func TestUserIDPluginCreatedLoginRechecksTheOwnerUnderTheFlock(t *testing.T) {
 				_, err := x.callAside("prod-c-test", "", other, &otherNotices)
 				otherDone <- err
 			}()
-			<-other.reached // the other call holds the flock, at its sign-in prompt
+			// A call that ends before its prompt fails the test at once
+			// instead of leaving it waiting for a prompt that never comes.
+			select {
+			case <-other.reached: // the other call holds the flock, at its sign-in prompt
+			case err := <-otherDone:
+				require.FailNow(t, "the other call ended before its sign-in prompt", "%v", err)
+			}
 
 			waiting := waitingOnTheFlock(t)
 			mine := newGateReader("carol")
@@ -110,7 +116,12 @@ func TestUserIDPluginCreatedLoginRechecksTheOwnerUnderTheFlock(t *testing.T) {
 				owner, err := x.callAside("prod-c-test", "user-carol", mine, &notices)
 				done <- result{owner, err}
 			}()
-			<-waiting
+			select {
+			case <-waiting:
+			case got := <-done:
+				close(other.released)
+				require.FailNow(t, "the call ended without waiting for the flock", "%v", got.err)
+			}
 			close(other.released)
 			require.NoError(t, <-otherDone)
 

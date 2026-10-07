@@ -27,7 +27,7 @@ func newGrantRevokeServer(t *testing.T) *pathCountingServer {
 			`{"metadata":{"name":"bad name!"},"context":"project"}`,
 			`{"metadata":{"name":"no-context-role"}}`),
 		globalRolesPath: items(plain("admin"), plain("user")),
-	}, nil)
+	}, steveClustersPages)
 }
 
 // completionFixture points a hermetic config directory at srvURL with the
@@ -119,14 +119,14 @@ func TestGrantRevokeSitesFullCallback(t *testing.T) {
 		{name: "subject positional network off", tail: nil, noNet: true, hits: map[string]int{}},
 		{name: "second positional completes nothing", tail: []string{"jane"}, hits: map[string]int{}},
 		{name: "--type static enum", tail: []string{"jane", "--type"}, want: []string{"group", "user"}, hits: map[string]int{}},
-		{name: "--cluster value", tail: []string{"jane", "--cluster"}, want: clusters, hits: map[string]int{mgmtClustersPath: 1}},
-		{name: "--cluster= equals form", tail: []string{"jane"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{mgmtClustersPath: 1}},
+		{name: "--cluster value", tail: []string{"jane", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster= equals form", tail: []string{"jane"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
 		{name: "--project value with a cluster id", tail: []string{"jane", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
-		{name: "--project value with a cluster display name resolves it first", tail: []string{"jane", "--cluster", "prod", "--project"}, want: projects, hits: map[string]int{mgmtClustersPath: 1, steveProjectsPath: 1}},
+		{name: "--project value with a cluster display name resolves it first", tail: []string{"jane", "--cluster", "prod", "--project"}, want: projects, hits: map[string]int{steveClustersPath: 2, steveProjectsPath: 1}},
 		{name: "--project= equals form", tail: []string{"jane", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1", "--project=p-2"}, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "--project value without a cluster", tail: []string{"jane", "--project"}, hits: map[string]int{}},
-		{name: "--project value with a spaced display name resolves it first", tail: []string{"jane", "--cluster", "prod cluster", "--project"}, hits: map[string]int{mgmtClustersPath: 1, "/v1/management.cattle.io.projects/c-ddd44": 1}},
-		{name: "--project value with a display name nothing carries", tail: []string{"jane", "--cluster", "nope", "--project"}, hits: map[string]int{mgmtClustersPath: 1}},
+		{name: "--project value with a spaced display name resolves it first", tail: []string{"jane", "--cluster", "prod cluster", "--project"}, hits: map[string]int{steveClustersPath: 2, "/v1/management.cattle.io.projects/c-ddd44": 1}},
+		{name: "--project value with a display name nothing carries", tail: []string{"jane", "--cluster", "nope", "--project"}, hits: map[string]int{steveClustersPath: 2, steveClusterNopePath: 1}},
 	}
 	for _, cmd := range []string{"grant", "revoke"} {
 		for _, tt := range tests {

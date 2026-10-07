@@ -81,7 +81,9 @@ jsonquery denied.json 'data.tree.children.#(name=="e2e-cluster-lister").note' 'n
 
 # a non-admin explaining its own access: the decision and the binding and
 # role nodes come from the reason, every downstream RBAC read is refused,
-# the chain is partial, the management plane still lists what it holds,
+# the chain is partial, the management plane still lists the bindings it
+# holds, its RoleTemplates are refused through the local cluster's proxy
+# (Rancher answers them only to users with access to the local cluster),
 # and the exit stays 0
 env RANCHER_CLI_TOKEN=e2e-std:secret
 exec rancher access explain delete pods --cluster testcluster -n team-c -o json
@@ -89,18 +91,21 @@ cp stdout partial.json
 jsonquery partial.json data.decision allowed
 jsonquery partial.json data.identity caller
 jsonquery partial.json data.chain partial
-jsonquery partial.json 'data.chainIssues.#' 3
+jsonquery partial.json 'data.chainIssues.#' 5
 jsonquery partial.json 'data.chainIssues.0.stage' bindingRead
 jsonquery partial.json 'data.chainIssues.0.code' RBAC
 jsonquery partial.json 'data.chainIssues.1.stage' roleRead
 jsonquery partial.json 'data.chainIssues.2.stage' labelTraversal
+jsonquery partial.json 'data.chainIssues.3.stage' managementRead
+jsonquery partial.json 'data.chainIssues.3.code' RBAC
+jsonquery partial.json 'data.chainIssues.4.stage' managementRead
 jsonquery partial.json data.tree.name e2e-explain-rb
 jsonquery partial.json 'data.tree.children.0.note' 'rules not readable by the caller'
 jsonquery partial.json 'data.tree.children.1.kind' HeldBindings
 jsonquery partial.json 'data.tree.children.1.children.#(name=="e2e-explain-crtb").kind' ClusterRoleTemplateBinding
 jsonquery partial.json 'data.tree.children.1.children.#(name=="e2e-explain-prtb").kind' ProjectRoleTemplateBinding
 exec rancher access explain delete pods --cluster testcluster -n team-c
-stdout 'chain: partial \(3 issues\)'
+stdout 'chain: partial \(5 issues\)'
 stdout '  bindingRead RoleBinding team-c/e2e-explain-rb: RBAC - '
 stdout '\+-- HeldBindings - Bindings held by the subject'
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN

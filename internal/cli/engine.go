@@ -17,14 +17,10 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
-	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
-
-var clustersGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
 
 // rootTimeout bounds the rootClient's HTTP requests. A package var (rather
 // than a constant) so tests can shrink it - mirrors keyringProbeTimeout's
@@ -43,19 +39,17 @@ type clientFactory struct {
 	eff        config.Effective
 	resolveErr error
 
-	// clustersOnce fetches the management cluster LIST at most once per
-	// invocation: ResolveCluster used to List on every unmemoized name, so
-	// resolving N distinct display names (create kubeconfig --clusters a,b,c)
-	// cost N network round trips - the name→id memo below only helped repeat
-	// names. Every ResolveCluster call now matches against this one cached
-	// list instead.
+	// clustersOnce reads the clusters the caller can read at most once per
+	// invocation, so resolving N distinct display names (create kubeconfig
+	// --clusters a,b,c) costs one collection read, not N.
 	clustersOnce sync.Once
-	clusterList  *unstructured.UnstructuredList
+	clusterList  []steve.Cluster
 	clustersErr  error
 
 	mu       sync.Mutex
 	cache    map[string]engine.ClusterClient
 	resolved map[string]string // ResolveCluster memo: nameOrID → cluster id
+	notices  []string          // ResolveCluster warnings, each recorded once
 
 	// rootOnce memoizes the root client (and its underlying httpx-built
 	// http.Client) exactly once per invocation, same rationale as the
@@ -323,31 +317,40 @@ func jwtTokenID(bearer string) string {
 	return claims.Token
 }
 
-// clusters returns the management cluster LIST, fetched at most once per
-// invocation regardless of how many distinct names ResolveCluster is asked
-// to resolve. Concurrent callers block on the same sync.Once rather than
-// racing duplicate Lists - unlike the per-name memo below, there is no
-// per-name work to save by racing, so there is nothing "benign" to gain by
-// not locking here.
-func (f *clientFactory) clusters(ctx context.Context) (*unstructured.UnstructuredList, error) {
+// clusters returns the clusters the caller can read, read through steve at
+// most once per invocation regardless of how many distinct names
+// ResolveCluster is asked to resolve. Concurrent callers block on the same
+// sync.Once rather than racing duplicate reads.
+func (f *clientFactory) clusters(ctx context.Context) (steve.Getter, []steve.Cluster, error) {
+	root, err := f.Root()
+	if err != nil {
+		return nil, nil, err
+	}
+	get := steve.RootGetter(root)
 	f.clustersOnce.Do(func() {
-		mgmt, err := f.Cluster(ctx, engine.LocalCluster)
-		if err != nil {
-			f.clustersErr = err
-			return
-		}
-		f.clusterList, f.clustersErr = mgmt.List(ctx, clustersGVR, "", "")
+		f.clusterList, f.clustersErr = steve.Clusters(ctx, get)
 	})
-	return f.clusterList, f.clustersErr
+	return get, f.clusterList, f.clustersErr
 }
 
-// ResolveCluster accepts a cluster id or display name (agents pass names;
-// rancher-ai-mcp accepts both - keep the semantics aligned). The matching now
-// delegates to projects.MatchOneOrError - the same match/error-construction
-// contract ResolveProject and resolveUser already share (this was one of the
-// last two unmigrated copies; see MatchOneOrError's doc comment for the one
-// caller that deliberately still diverges).
+// ResolveCluster accepts a cluster id or display name among the clusters
+// the caller can read (agents pass names; rancher-ai-mcp accepts both -
+// keep the semantics aligned). "" and "local" are the local cluster and
+// send no request. An id that is also another cluster's display name wins,
+// with a warning the factory hands to the pipeline as a notice.
 func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (string, error) {
+	return f.resolveCluster(ctx, nameOrID, "--cluster")
+}
+
+// ResolveClusterArgument implements engine.ClusterArgumentResolver: the
+// warning of a positional value or a list entry names no flag.
+func (f *clientFactory) ResolveClusterArgument(ctx context.Context, nameOrID string) (string, error) {
+	return f.resolveCluster(ctx, nameOrID, "")
+}
+
+// resolveCluster is ResolveCluster with its warning naming flag, "" for a
+// positional value or a list entry.
+func (f *clientFactory) resolveCluster(ctx context.Context, nameOrID, flag string) (string, error) {
 	if nameOrID == "" || nameOrID == engine.LocalCluster {
 		return engine.LocalCluster, nil
 	}
@@ -357,37 +360,46 @@ func (f *clientFactory) ResolveCluster(ctx context.Context, nameOrID string) (st
 		return id, nil
 	}
 	f.mu.Unlock()
-	list, err := f.clusters(ctx)
+	get, list, err := f.clusters(ctx)
 	if err != nil {
 		return "", err
 	}
-	var ids []string
-	displayByID := map[string]string{}
-	var cands []clierr.Candidate
-	for i := range list.Items {
-		id := list.Items[i].GetName()
-		display, _, _ := unstructured.NestedString(list.Items[i].Object, "spec", "displayName")
-		ids = append(ids, id)
-		displayByID[id] = display
-		cands = append(cands, clierr.Candidate{ID: id, Name: display})
-	}
-	id, err := projects.MatchOneOrError(nameOrID, ids, func(id string) string { return displayByID[id] }, cands,
-		"cluster not found: "+nameOrID+"; pass a cluster id or display name",
-		"",
-		func(idFound bool, displayMatchCount int) string {
-			if idFound {
-				return fmt.Sprintf("%q matches both a cluster id and a different cluster's display name; pass the cluster id", nameOrID)
-			}
-			return fmt.Sprintf("%d clusters have display name %q; pass the cluster id", displayMatchCount, nameOrID)
-		},
-		"")
+	t := steve.ClusterText(nameOrID)
+	t.Flag = flag
+	id, warning, err := steve.ResolveCluster(ctx, get, list, nameOrID, t)
 	if err != nil {
 		return "", err
 	}
 	f.mu.Lock()
-	f.resolved[nameOrID] = id
+	if _, ok := f.resolved[nameOrID]; !ok {
+		f.resolved[nameOrID] = id
+		if warning != "" {
+			f.notices = append(f.notices, warning)
+		}
+	}
 	f.mu.Unlock()
 	return id, nil
+}
+
+// DrainNotices implements runtime.NoticeSource: the warnings of the
+// cluster lookups so far, each once.
+func (f *clientFactory) DrainNotices() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := f.notices
+	f.notices = nil
+	return out
+}
+
+// noticeSources drains each source in order.
+type noticeSources []runtime.NoticeSource
+
+func (s noticeSources) DrainNotices() []string {
+	var out []string
+	for _, src := range s {
+		out = append(out, src.DrainNotices()...)
+	}
+	return out
 }
 
 // runDeps bundles everything a command constructor might need for one run: the
@@ -479,14 +491,17 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				if err != nil {
 					return renderDepsError(c, io, err)
 				}
-				// The store is the drain handle for every notice recorded
-				// outside a Result (a loose-permission finding, a keychain
-				// degrade) - wired here so renderErr/renderResult can drain
-				// it ahead of rendering.
-				if ns, ok := store.(runtime.NoticeSource); ok {
-					io.Notices = ns
-				}
+				// The factory (a cluster lookup's warning) and the store (a
+				// loose-permission finding, a keychain degrade) are the drain
+				// handles for every notice recorded outside a Result, in that
+				// order - wired here so renderErr/renderResult can drain them
+				// ahead of rendering.
 				f := newClientFactory(dir, store)
+				sources := noticeSources{f}
+				if ns, ok := store.(runtime.NoticeSource); ok {
+					sources = append(sources, ns)
+				}
+				io.Notices = sources
 				io.ServerIdentity = f.Identity
 				io.Capability = newCapabilityChecker(f)
 				io.Projects = projectResolver{f}

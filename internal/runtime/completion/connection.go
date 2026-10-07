@@ -34,6 +34,7 @@ type Connection struct {
 	limit     int
 	trace     TraceFunc
 	projects  ProjectLister
+	clusters  ClusterLister
 
 	mu       sync.Mutex
 	used     int

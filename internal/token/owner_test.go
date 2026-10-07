@@ -543,6 +543,11 @@ func TestUserIDPluginCreatedLoginChecksBothCreates(t *testing.T) {
 		for _, c := range x.f.CreateRequests() {
 			assert.NotEqual(t, "cluster", c.Role, "no cluster token is created from another user's login")
 		}
+		x.mu.Lock()
+		defer x.mu.Unlock()
+		for _, r := range x.requests {
+			assert.NotEqual(t, testrancher.ClustersCollectionPath, r.path, "the owner refusal comes before any cluster read")
+		}
 	})
 	for _, tc := range []struct {
 		name            string

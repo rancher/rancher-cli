@@ -147,9 +147,12 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if t.user.otherOwner(cred.UserID) {
 			return FailLogin(t.user.pluginSignInRefused(cred.UserID), clierr.StageAuthentication, st, cred, entry)
 		}
-		resolved, err := resolveClusterIDForCreate(ctx, in.client, base, cred.Token, in.clusterID)
+		resolved, warning, err := resolveClusterIDForCreate(ctx, in.client, base, cred.Token, in.clusterID)
 		if err != nil {
 			return FailLogin(freshCredentialError(err), clierr.StageClusterToken, st, cred, entry)
+		}
+		if warning != "" {
+			p.Notice(warning)
 		}
 		ct, err := createClusterToken(ctx, in.client, base, cred.Token, resolved, TokenDescription(hostname(), cred.Marker))
 		if err != nil {

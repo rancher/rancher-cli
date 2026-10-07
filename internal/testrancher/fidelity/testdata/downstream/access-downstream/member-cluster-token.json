@@ -1,0 +1,52 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "whoami",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "status": "\u003cstatus\u003e"
+      }
+    },
+    {
+      "name": "downstream-read-with-the-cluster-token",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "spec": "\u003cspec\u003e",
+        "status": "\u003cstatus\u003e"
+      }
+    },
+    {
+      "name": "create-for-local",
+      "status": 403,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 403,
+        "kind": "Status",
+        "message": "tokens.ext.cattle.io is forbidden: user {userid} is not allowed to access cluster local",
+        "reason": "Forbidden",
+        "status": "\u003cstatus\u003e"
+      }
+    },
+    {
+      "name": "create-for-a-missing-cluster",
+      "status": 400,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 400,
+        "kind": "Status",
+        "message": "cluster c-nosuchcluster not found",
+        "reason": "BadRequest",
+        "status": "\u003cstatus\u003e"
+      }
+    }
+  ]
+}

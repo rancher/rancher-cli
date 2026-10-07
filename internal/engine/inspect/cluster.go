@@ -9,12 +9,15 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	accesscomplete "github.com/rancher/rancher-cli/internal/engine/access/complete"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/provisioning"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -67,8 +70,12 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 	}
 }
 
+// LiveSource completes the positional with the clusters the caller can
+// read, the set the command resolves it against.
+func (*clusterCmd) LiveSource() completion.Source { return accesscomplete.SteveClusterSource() }
+
 func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	clusterID, err := c.clients.ResolveCluster(ctx, in.Args()[0])
+	clusterID, err := engine.ResolveClusterArgument(ctx, c.clients, in.Args()[0])
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -76,8 +83,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	mgmtKind, _ := kinds.Lookup("cluster")
-	obj, err := mgmt.Get(ctx, mgmtKind.GVR, "", clusterID)
+	obj, err := steve.GetCluster(ctx, steve.RootFactoryGetter(c.roots), clusterID)
 	if err != nil {
 		return runtime.Result{}, err
 	}

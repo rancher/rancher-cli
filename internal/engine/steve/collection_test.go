@@ -441,3 +441,33 @@ func TestClustersOnceWalksOnceAndNeverRetries(t *testing.T) {
 	require.Error(t, err)
 	assert.Len(t, twice.requests(), 4, "the retrying read walks twice")
 }
+
+type fakeRootFactory struct {
+	rc    engine.RootClient
+	err   error
+	calls *atomic.Int32
+}
+
+func (f fakeRootFactory) Root() (engine.RootClient, error) {
+	f.calls.Add(1)
+	return f.rc, f.err
+}
+
+// TestRootFactoryGetterAsksForTheRootAtTheRequest asserts the getter asks
+// the factory for the root client only when it sends a request, reads
+// through it as RootGetter does, and returns the factory's error.
+func TestRootFactoryGetterAsksForTheRootAtTheRequest(t *testing.T) {
+	t.Parallel()
+	srv := newHandlerServer(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{"a":1}`)) })
+	calls := &atomic.Int32{}
+	get := RootFactoryGetter(fakeRootFactory{rc: fakeRootClient{srv.srv}, calls: calls})
+	assert.Zero(t, calls.Load(), "building the getter asks for nothing")
+	body, err := get(t.Context(), Request{Type: "x"})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"a":1}`, string(body))
+	assert.Equal(t, int32(1), calls.Load())
+
+	boom := errors.New("no server configured")
+	_, err = RootFactoryGetter(fakeRootFactory{err: boom, calls: calls})(t.Context(), Request{Type: "x"})
+	require.ErrorIs(t, err, boom)
+}

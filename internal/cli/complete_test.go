@@ -4,15 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/stretchr/testify/assert"
@@ -41,52 +46,131 @@ func makeListServer(t *testing.T, path string, items []map[string]any) (*httptes
 	return srv, &hits
 }
 
-// The surface's one request of its own: resolving a typed display name
-// to a cluster id before a source lists under it.
-
-func TestResolveDisplayNameToClusterIDNotFound(t *testing.T) {
-	t.Parallel()
-	items := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "prod"}},
+// makeSteveClustersServer serves items as the steve clusters collection
+// in one page, and a GET by id of each id in byID (404 otherwise),
+// recording every request URI.
+func makeSteveClustersServer(t *testing.T, items []map[string]any, byID ...string) (*httptest.Server, func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = append(got, r.URL.RequestURI())
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == steveClustersPath {
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": items, "count": len(items), "revision": "1"})
+			return
+		}
+		if id, ok := strings.CutPrefix(r.URL.Path, steveClustersPath+"/"); ok && slices.Contains(byID, id) {
+			_ = json.NewEncoder(w).Encode(steveFixtureItem(id, ""))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(got)
 	}
-	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	hc := &http.Client{}
+}
+
+// The surface's requests of its own: resolving a typed --cluster to a
+// cluster id, as the command does, before a source lists under it.
+
+func resolveForTest(t *testing.T, srvURL, v string) string {
+	t.Helper()
+	cap := TokenCapability{Token: "tok", ServerURL: srvURL}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	got := resolveDisplayNameToClusterID(ctx, hc, cap, "nonexistent")
-	assert.Equal(t, "", got, "not-found must return empty string")
+	return resolveDisplayNameToClusterID(ctx, &http.Client{}, cap, v)
+}
+
+// TestResolveDisplayNameToClusterIDNotFound asserts a value no listed
+// cluster carries sends the one GET by id and, on its 404, resolves to
+// nothing.
+func TestResolveDisplayNameToClusterIDNotFound(t *testing.T) {
+	t.Parallel()
+	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod")})
+	assert.Empty(t, resolveForTest(t, srv.URL, "nonexistent"), "not-found must return empty string")
+	assert.Equal(t, []string{steveClustersPath, steveClustersPath + "/nonexistent"}, reqs())
 }
 
 func TestResolveDisplayNameToClusterIDAmbiguous(t *testing.T) {
 	t.Parallel()
 	// Two clusters with the same display name: ambiguous → return "".
-	items := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "prod"}},
-		{"metadata": map[string]any{"name": "c-def"}, "spec": map[string]any{"displayName": "prod"}},
-	}
-	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := resolveDisplayNameToClusterID(ctx, hc, cap, "prod")
-	assert.Equal(t, "", got, "ambiguous match must return empty string")
+	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod"), steveFixtureItem("c-def", "prod")})
+	assert.Empty(t, resolveForTest(t, srv.URL, "prod"), "ambiguous match must return empty string")
+	assert.Equal(t, []string{steveClustersPath}, reqs(), "an ambiguous name sends no GET by id")
 }
 
 func TestResolveDisplayNameToClusterIDUnambiguous(t *testing.T) {
 	t.Parallel()
-	items := []map[string]any{
-		{"metadata": map[string]any{"name": "c-abc"}, "spec": map[string]any{"displayName": "prod"}},
-		{"metadata": map[string]any{"name": "c-def"}, "spec": map[string]any{"displayName": "staging"}},
+	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod"), steveFixtureItem("c-def", "staging")})
+	assert.Equal(t, "c-abc", resolveForTest(t, srv.URL, "prod"), "single match must return the cluster ID")
+	assert.Equal(t, []string{steveClustersPath}, reqs())
+}
+
+// TestResolveDisplayNameToClusterIDIDWins asserts a value that is one
+// cluster's id and another's display name resolves to the id, as the
+// command resolves it.
+func TestResolveDisplayNameToClusterIDIDWins(t *testing.T) {
+	t.Parallel()
+	srv, _ := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("prod", "c-abc"), steveFixtureItem("c-abc", "prod")})
+	assert.Equal(t, "prod", resolveForTest(t, srv.URL, "prod"))
+}
+
+// TestResolveDisplayNameToClusterIDNotListedYet asserts a cluster steve's
+// cache has not listed yet resolves through the GET by id.
+func TestResolveDisplayNameToClusterIDNotListedYet(t *testing.T) {
+	t.Parallel()
+	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod")}, "fresh")
+	assert.Equal(t, "fresh", resolveForTest(t, srv.URL, "fresh"))
+	assert.Equal(t, []string{steveClustersPath, steveClustersPath + "/fresh"}, reqs())
+}
+
+// TestResolveDisplayNameToClusterIDStaysWithinItsAllowance asserts the
+// step walks every page of the collection and its GET by id within
+// steve.MaxPages plus one requests, and a walk past the page bound
+// resolves to nothing.
+func TestResolveDisplayNameToClusterIDStaysWithinItsAllowance(t *testing.T) {
+	t.Parallel()
+	pages := func(n int) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.URL.Path != steveClustersPath {
+				http.NotFound(w, r)
+				return
+			}
+			i, _ := strconv.Atoi(r.URL.Query().Get("continue"))
+			page := map[string]any{"data": []map[string]any{steveFixtureItem(fmt.Sprintf("c-%03d", i), fmt.Sprintf("name-%d", i))}, "count": n, "revision": "1"}
+			if i+1 < n {
+				page["continue"] = strconv.Itoa(i + 1)
+			}
+			_ = json.NewEncoder(w).Encode(page)
+		}
 	}
-	srv, _ := makeListServer(t, "/k8s/clusters/local/apis/management.cattle.io/v3/clusters", items)
-	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
-	hc := &http.Client{}
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	got := resolveDisplayNameToClusterID(ctx, hc, cap, "prod")
-	assert.Equal(t, "c-abc", got, "single match must return the cluster ID")
+	var hits atomic.Int32
+	count := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) { hits.Add(1); h(w, r) }
+	}
+	full := httptest.NewServer(count(pages(steve.MaxPages)))
+	t.Cleanup(full.Close)
+	assert.Equal(t, fmt.Sprintf("c-%03d", steve.MaxPages-1), resolveForTest(t, full.URL, fmt.Sprintf("name-%d", steve.MaxPages-1)))
+	assert.Equal(t, int32(steve.MaxPages), hits.Load())
+
+	hits.Store(0)
+	miss := httptest.NewServer(count(pages(steve.MaxPages)))
+	t.Cleanup(miss.Close)
+	assert.Empty(t, resolveForTest(t, miss.URL, "absent"))
+	assert.Equal(t, int32(steve.MaxPages+1), hits.Load(), "every page, then the GET by id")
+
+	hits.Store(0)
+	over := httptest.NewServer(count(pages(steve.MaxPages + 1)))
+	t.Cleanup(over.Close)
+	assert.Empty(t, resolveForTest(t, over.URL, "name-0"))
+	assert.LessOrEqual(t, hits.Load(), int32(steve.MaxPages+1))
 }
 
 func TestSanitizeCandidatesDropsHostileNames(t *testing.T) {

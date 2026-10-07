@@ -26,7 +26,8 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/engine/projects"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/tidwall/gjson"
@@ -1735,64 +1736,86 @@ func rankedCredential(cfg *config.Config, store CredentialReader, server, cluste
 	return storedCredential{}, false, firstHardErr
 }
 
-// clustersPath is the management Cluster collection/object path, reached
-// through the same local-cluster proxy ExtTokensPath uses.
-const clustersPath = "/k8s/clusters/local/apis/management.cattle.io/v3/clusters"
-
-// resolveClusterIDForCreate resolves clusterID (an id, a display name, "", or
-// "local") to its Cluster id before creating, using the stored login
-// credential as bearer. It shares projects.MatchOneOrError - the same
-// collision-and-narrowing helper get/patch's ResolveCluster and the
-// cloud-credential resolver use - so an id match never short-circuits
-// ahead of checking every cluster's spec.displayName (id/display
-// collisions are ambiguous, never a silent id-wins create), and ambiguous
-// errors list only the colliding candidates. One list call serves both
-// checks.
-func resolveClusterIDForCreate(ctx context.Context, client *http.Client, base, bearerToken, clusterID string) (string, error) {
+// resolveClusterIDForCreate resolves clusterID (an id, a display name, "",
+// or "local") to its Cluster id before creating, reading the clusters the
+// bearer's user can read from steve. "" and "local" send no request: an
+// omitted --cluster creates an unscoped token, and "local" always means the
+// local cluster. An id that is also another cluster's display name wins;
+// warning names the others.
+func resolveClusterIDForCreate(ctx context.Context, client *http.Client, base, bearerToken, clusterID string) (id, warning string, err error) {
 	if clusterID == "" || clusterID == "local" {
-		return clusterID, nil
+		return clusterID, "", nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+clustersPath, nil)
+	get := pluginGetter(client, base, bearerToken)
+	list, err := steve.Clusters(ctx, get)
 	if err != nil {
-		return "", clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
+		return "", "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+bearerToken)
-	resp, body, err := httpx.Do(client, req)
-	if err != nil {
-		return "", clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
-	}
-	switch resp.StatusCode {
-	case http.StatusOK:
-	case http.StatusUnauthorized:
-		return "", fmt.Errorf("resolving --cluster: %w", errCredentialUnauthorized)
-	case http.StatusForbidden:
-		return "", fmt.Errorf("resolving --cluster: %w", errCredentialForbidden)
-	default:
-		return "", clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("resolving --cluster: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
-	}
-
-	var ids []string
-	displayByID := map[string]string{}
-	var candidates []clierr.Candidate
-	for _, item := range gjson.GetBytes(body, "items").Array() {
-		id := item.Get("metadata.name").String()
-		display := item.Get("spec.displayName").String()
-		ids = append(ids, id)
-		displayByID[id] = display
-		candidates = append(candidates, clierr.Candidate{ID: id, Name: display})
-	}
-
-	return projects.MatchOneOrError(clusterID, ids,
-		func(id string) string { return displayByID[id] }, candidates,
-		fmt.Sprintf("cluster not found: %q", clusterID), "",
-		func(idFound bool, displayMatchCount int) string {
-			if idFound {
-				return fmt.Sprintf("%q matches both a cluster id and a different cluster's display name; pass the cluster id", clusterID)
-			}
-			return fmt.Sprintf("%d clusters have display name %q; pass the cluster id", displayMatchCount, clusterID)
-		}, "")
+	return steve.ResolveCluster(ctx, get, list, clusterID, pluginClusterText(clusterID, list))
 }
+
+// pluginClusterListMax bounds the clusters a plugin NOT_FOUND names.
+const pluginClusterListMax = 10
+
+// pluginClusterText words the plugin's cluster lookup of v. Its NOT_FOUND
+// lists the clusters the user can read and names no command: the plugin's
+// remedies add only --config, no global flag selects a server entry, and
+// after a failed sign-in the directory holds no login.
+func pluginClusterText(v string, list []steve.Cluster) engine.MatchText {
+	names := make([]string, 0, min(len(list), pluginClusterListMax)+1)
+	for _, c := range list[:min(len(list), pluginClusterListMax)] {
+		n := clierr.ShellQuote(c.ID)
+		if c.DisplayName != "" {
+			n += " (" + c.DisplayName + ")"
+		}
+		names = append(names, n)
+	}
+	if more := len(list) - pluginClusterListMax; more > 0 {
+		names = append(names, fmt.Sprintf("and %d more", more))
+	}
+	return engine.MatchText{Noun: "cluster", Plural: "clusters", Flag: "--cluster",
+		NotFound: "cluster not found: " + clierr.ShellQuote(v) +
+			"; it is not among the clusters you can read; pass a cluster id or display name; the clusters you can read: " +
+			strings.Join(names, ", ")}
+}
+
+// pluginGetter sends steve GETs with bearer through client. Every non-2xx
+// answer's error holds *steve.StatusError, which the steve readers word; a
+// 401's also matches errCredentialUnauthorized, so classifyRejection keeps
+// its sign-in rule.
+func pluginGetter(client *http.Client, base, bearer string) steve.Getter {
+	return func(ctx context.Context, r steve.Request) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+r.Path(), nil)
+		if err != nil {
+			return nil, clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
+		}
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		req.Header.Set("Accept", "application/json")
+		resp, body, err := httpx.Do(client, req)
+		if err != nil {
+			return nil, clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
+		}
+		status := &steve.StatusError{Status: resp.StatusCode}
+		switch {
+		case resp.StatusCode >= 200 && resp.StatusCode < 300:
+			return body, nil
+		case resp.StatusCode == http.StatusUnauthorized:
+			return nil, pluginStatusError{cause: fmt.Errorf("resolving --cluster: %w", errCredentialUnauthorized), status: status}
+		default:
+			return nil, pluginStatusError{cause: clierr.New(clierr.CodeGeneric,
+				fmt.Sprintf("resolving --cluster: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))), status: status}
+		}
+	}
+}
+
+// pluginStatusError carries the plugin's error and the status together.
+type pluginStatusError struct {
+	cause  error
+	status *steve.StatusError
+}
+
+func (e pluginStatusError) Error() string   { return e.cause.Error() }
+func (e pluginStatusError) Unwrap() []error { return []error{e.cause, e.status} }
 
 // legacyTokenTTL is the bounded staleness a legacy (pre-ext.cattle.io)
 // Rancher's stored-credential fallback caches under, since the raw stored
@@ -1865,9 +1888,12 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	binding = config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, sc.name, ignoreCurrentContext).ReadFrom(t.store)
 	stored, ref := sc.token, sc.ref
 	base := kube.BaseURL(server)
-	resolvedCluster, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
+	resolvedCluster, warning, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
 	if rerr != nil {
 		return Token{}, cfg.TokenReuse, binding, t.classifyRejection(rerr, sc, p)
+	}
+	if warning != "" {
+		p.Notice(warning)
 	}
 	isPlugin := sc.entry.Provenance == clierr.ProvenanceExecLogin
 	var created CreateResult

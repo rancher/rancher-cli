@@ -9,10 +9,9 @@ import (
 	"time"
 )
 
-// ErrNoLister is returned by a lister read (Projects) on a Connection the
-// surface set no lister on: the read fails closed, like the zero
-// Connection. A cluster lister added beside the project one returns it
-// too.
+// ErrNoLister is returned by a lister read (Projects, Clusters) on a
+// Connection the surface set no lister on: the read fails closed, like the
+// zero Connection.
 var ErrNoLister = errors.New("completion: no lister")
 
 // StatusError is a non-2xx answer to GetBody.
@@ -39,6 +38,26 @@ func (c *Connection) Projects(ctx context.Context, clusterID string) ([]ProjectI
 		return nil, ErrNoLister
 	}
 	return c.projects(ctx, c, clusterID)
+}
+
+// ClusterItem is one cluster a lister read: the id and the display name.
+type ClusterItem struct{ ID, DisplayName string }
+
+// ClusterLister reads the clusters the caller can read through c, so every
+// page counts against c's allowance. The surface sets it; a source only
+// calls Connection.Clusters.
+type ClusterLister func(ctx context.Context, c *Connection) ([]ClusterItem, error)
+
+// SetClusterLister installs the surface's cluster lister; nil removes it.
+func (c *Connection) SetClusterLister(fn ClusterLister) { c.clusters = fn }
+
+// Clusters returns the clusters the caller can read as the surface's
+// lister reads them, or ErrNoLister when none is set.
+func (c *Connection) Clusters(ctx context.Context) ([]ClusterItem, error) {
+	if c.clusters == nil {
+		return nil, ErrNoLister
+	}
+	return c.clusters(ctx, c)
 }
 
 // GetBody issues one authenticated GET for p and returns the body. It

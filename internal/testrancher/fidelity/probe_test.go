@@ -51,6 +51,18 @@ func TestValidateRejectsInvalidProbes(t *testing.T) {
 		{"normalize rule with both replace and keep-prefix", func(p *Probe) {
 			p.Normalize = []NormalizeRule{{Path: "status.userInfo.groups", Replace: "x", KeepPrefix: "system:"}}
 		}, "mutually exclusive"},
+		{"drop rule without drop-by", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "data", DropPrefix: "e2e-fid-"}}
+		}, "DropPrefix needs DropBy"},
+		{"drop rule with replace", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "data", DropBy: "id", DropPrefix: "e2e-fid-", Replace: "x"}}
+		}, "DropPrefix is exclusive"},
+		{"drop rule with keep-prefix", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "data", DropBy: "id", DropPrefix: "e2e-fid-", KeepPrefix: "system:"}}
+		}, "DropPrefix is exclusive"},
+		{"drop rule with sort-by", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "data", DropBy: "id", DropPrefix: "e2e-fid-", SortBy: "id"}}
+		}, "DropPrefix is exclusive"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

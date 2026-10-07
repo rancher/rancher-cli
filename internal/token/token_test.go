@@ -29,6 +29,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -624,9 +625,9 @@ func TestGetTokenCreateScopesToCluster(t *testing.T) {
 	var gotClusters []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == clustersPath:
+		case r.URL.Path == steveClustersPath:
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-a"}},{"metadata":{"name":"c-b"}}]}`))
+			_, _ = w.Write(steveClustersBody([2]string{"c-a", ""}, [2]string{"c-b", ""}))
 		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
 			gotClusters = append(gotClusters, gjson.GetBytes(body, "spec.clusterName").String())
@@ -668,11 +669,11 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 	var listHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == clustersPath:
+		case r.URL.Path == steveClustersPath:
 			listHits.Add(1)
 			gotAuth = r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-m-abc"},"spec":{"displayName":"prod"}}]}`))
+			_, _ = w.Write(steveClustersBody([2]string{"c-m-abc", "prod"}))
 		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
 			gotCluster = gjson.GetBytes(body, "spec.clusterName").String()
@@ -708,9 +709,9 @@ func TestGetTokenClusterMissErrorsWithoutCreating(t *testing.T) {
 	var derivedCreateHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case clustersPath:
+		case steveClustersPath:
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"items":[]}`))
+			_, _ = w.Write(steveClustersBody())
 		case ExtTokensPath:
 			derivedCreateHits.Add(1)
 			w.WriteHeader(http.StatusCreated)
@@ -737,31 +738,24 @@ func TestGetTokenClusterMissErrorsWithoutCreating(t *testing.T) {
 	assert.Equal(t, int32(0), derivedCreateHits.Load(), "an unresolvable cluster must never reach the derived token create call")
 }
 
-// TestGetTokenClusterIDDisplayCollisionIsAmbiguous asserts that
-// resolveClusterIDForCreate must not let an id-based match short-circuit ahead
-// of checking every cluster's spec.displayName too. A string that matches
-// one cluster's id AND a different cluster's display name is ambiguous -
-// silently creating a token scoped to the id match would produce a token
-// for the wrong cluster whenever an admin names a cluster's display name
-// after another cluster's raw id.
-func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
-	var listHits, derivedCreateHits atomic.Int32
+// TestGetTokenClusterIDWinsOverAnotherClustersDisplayName asserts a
+// --cluster value that is one cluster's id and another cluster's display
+// name creates the token for the id, and the warning naming the other
+// cluster goes to stderr, never into the ExecCredential.
+func TestGetTokenClusterIDWinsOverAnotherClustersDisplayName(t *testing.T) {
+	var listHits atomic.Int32
+	var gotCluster string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case clustersPath:
+		switch {
+		case r.URL.Path == steveClustersPath:
 			listHits.Add(1)
 			w.Header().Set("Content-Type", "application/json")
-			// "c-1" is both a real cluster's id AND a different cluster's
-			// display name. "c-xyz" is a non-collider (distinct id AND
-			// display name): it must not appear in the narrowed candidates.
-			_, _ = w.Write([]byte(`{"items":[
-				{"metadata":{"name":"c-1"},"spec":{"displayName":"prod"}},
-				{"metadata":{"name":"c-2"},"spec":{"displayName":"c-1"}},
-				{"metadata":{"name":"c-xyz"},"spec":{"displayName":"staging"}}
-			]}`))
-		case ExtTokensPath:
-			derivedCreateHits.Add(1)
+			_, _ = w.Write(steveClustersBody([2]string{"c-1", "prod"}, [2]string{"c-2", "c-1"}, [2]string{"c-xyz", "staging"}))
+		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
+			body, _ := io.ReadAll(r.Body)
+			gotCluster = gjson.GetBytes(body, "spec.clusterName").String()
 			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -775,18 +769,16 @@ func TestGetTokenClusterIDDisplayCollisionIsAmbiguous(t *testing.T) {
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
+	var stderr bytes.Buffer
 	cmd := newTokenCommandForTest(t, dir, store).(runtime.ReadCommand)
-	_, err := cmd.Execute(t.Context(),
+	res, err := cmd.Execute(t.Context(),
 		tin{s: map[string]string{"server": srv.URL, "cluster": "c-1"}},
-		ui.Discard())
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
-	assert.ElementsMatch(t, []string{"c-1", "c-2"}, candidateIDsToken(ce.Candidates))
-	assert.NotContains(t, candidateIDsToken(ce.Candidates), "c-xyz",
-		"non-collider must be excluded from narrowed candidates")
-	assert.Equal(t, int32(1), listHits.Load(), "no list scan beyond the collision check")
-	assert.Equal(t, int32(0), derivedCreateHits.Load(), "an ambiguous cluster must never reach the derived token create call")
+		ui.New(&stderr, strings.NewReader(""), true, false))
+	require.NoError(t, err)
+	assert.Equal(t, "c-1", gotCluster, "the id wins")
+	assert.Equal(t, int32(1), listHits.Load())
+	assert.Contains(t, stderr.String(), "--cluster 'c-1' is the id of cluster 'c-1'; cluster 'c-2' also has the display name 'c-1' - pass --cluster 'c-2' for that one")
+	assert.Empty(t, res.Warnings, "the ExecCredential result carries no warning")
 }
 
 // TestGetTokenRejectsLegacyPrefixName asserts that the native
@@ -2509,49 +2501,142 @@ func TestCreateDerivedTokenSplits401And403(t *testing.T) {
 	}
 }
 
-// TestResolveClusterIDForCreateClassifiesRejections asserts the cluster
-// list request's 401 and 403 are the same sentinels the create uses, and
-// every other non-200 stays a generic error.
+// TestResolveClusterIDForCreateClassifiesRejections asserts the steve
+// read's 401 is the sentinel the create uses, so the sign-in rule holds; a
+// 403 is the collection refusal's RBAC error, never the create's "cannot
+// create tokens" sentinel; and every other non-200 stays a generic error.
+// Each also holds the status for the steve readers.
 func TestResolveClusterIDForCreateClassifiesRejections(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		status int
-		want   error
-	}{{http.StatusUnauthorized, errCredentialUnauthorized}, {http.StatusForbidden, errCredentialForbidden}} {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(tc.status) }))
-		_, err := resolveClusterIDForCreate(t.Context(), srv.Client(), srv.URL, "b", "testcluster")
-		require.ErrorIs(t, err, tc.want)
-		srv.Close()
+	answer := func(status int) string {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+		t.Cleanup(srv.Close)
+		return srv.URL
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
-	t.Cleanup(srv.Close)
-	_, err := resolveClusterIDForCreate(t.Context(), srv.Client(), srv.URL, "b", "testcluster")
+
+	url := answer(http.StatusUnauthorized)
+	_, _, err := resolveClusterIDForCreate(t.Context(), http.DefaultClient, url, "b", "testcluster")
+	require.ErrorIs(t, err, errCredentialUnauthorized)
+	se, ok := errors.AsType[*steve.StatusError](err)
+	require.True(t, ok)
+	assert.Equal(t, http.StatusUnauthorized, se.Status)
+
+	url = answer(http.StatusForbidden)
+	_, _, err = resolveClusterIDForCreate(t.Context(), http.DefaultClient, url, "b", "testcluster")
+	require.NotErrorIs(t, err, errCredentialForbidden)
 	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
+	assert.Equal(t, "the server refused GET /v1/management.cattle.io.clusters (403); Rancher answers this request with 200 for every signed-in user, so a proxy in front of Rancher or an unsupported Rancher refused it", ce.Message)
+
+	url = answer(http.StatusBadGateway)
+	_, _, err = resolveClusterIDForCreate(t.Context(), http.DefaultClient, url, "b", "testcluster")
+	ce, ok = errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	require.NotErrorIs(t, err, errCredentialUnauthorized)
+	se, ok = errors.AsType[*steve.StatusError](err)
+	require.True(t, ok)
+	assert.Equal(t, http.StatusBadGateway, se.Status)
 }
 
-// clustersFallthrough answers the management cluster list for a bearer
-// the facade recognizes, 401 otherwise, so resolveClusterIDForCreate can
-// be exercised against the facade in this package.
-func clustersFallthrough(valid func(string) bool) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !valid(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")) {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
+// TestPluginGetterErrors asserts every non-2xx answer holds
+// *steve.StatusError beside the plugin's own error: a 401 also matches
+// errCredentialUnauthorized, any other status is the generic "resolving
+// --cluster" error, and a transport failure holds no status.
+func TestPluginGetterErrors(t *testing.T) {
+	t.Parallel()
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+		_, err := pluginGetter(srv.Client(), srv.URL, "b")(t.Context(), steve.Request{Type: steve.ClustersType})
+		srv.Close()
+		se, ok := errors.AsType[*steve.StatusError](err)
+		require.True(t, ok, "status %d", status)
+		assert.Equal(t, status, se.Status)
+		if status == http.StatusUnauthorized {
+			require.ErrorIs(t, err, errCredentialUnauthorized)
+			continue
 		}
-		if r.URL.Path != clustersPath {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"c-test"},"spec":{"displayName":"testcluster"}}]}`))
-	})
+		require.NotErrorIs(t, err, errCredentialUnauthorized)
+		require.NotErrorIs(t, err, errCredentialForbidden)
+		assert.Equal(t, fmt.Sprintf("resolving --cluster: %d %s", status, http.StatusText(status)), err.Error())
+	}
+
+	var auth, accept string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth, accept = r.Header.Get("Authorization"), r.Header.Get("Accept")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+	body, err := pluginGetter(srv.Client(), srv.URL, "b")(t.Context(), steve.Request{Type: steve.ClustersType})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{}`, string(body))
+	assert.Equal(t, "Bearer b", auth)
+	assert.Equal(t, "application/json", accept)
+
+	srv.Close()
+	_, err = pluginGetter(srv.Client(), srv.URL, "b")(t.Context(), steve.Request{Type: steve.ClustersType})
+	require.ErrorContains(t, err, "resolving --cluster: ")
+	_, ok := errors.AsType[*steve.StatusError](err)
+	assert.False(t, ok, "a transport failure has no status")
 }
 
-// newTokenFacade builds a facade with the clusters fallthrough wired to its
-// own ValidBearer.
+// TestPluginClusterTextListsAtMostTen asserts the plugin NOT_FOUND names
+// the clusters the user can read, ten at most, then how many more, and no
+// command.
+func TestPluginClusterTextListsAtMostTen(t *testing.T) {
+	t.Parallel()
+	list := []steve.Cluster{{ID: "c-abc", DisplayName: "prod"}, {ID: "c-def"}}
+	_, _, err := steve.MatchCluster(list, "web", pluginClusterText("web", list))
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, "cluster not found: 'web'; it is not among the clusters you can read; pass a cluster id or display name; the clusters you can read: 'c-abc' (prod), 'c-def'", ce.Message)
+	assert.Empty(t, ce.Hint)
+	assert.NotContains(t, ce.Message, clierr.Rancher)
+
+	list = nil
+	for i := range 12 {
+		list = append(list, steve.Cluster{ID: fmt.Sprintf("c-%02d", i)})
+	}
+	text := pluginClusterText("web", list)
+	assert.True(t, strings.HasSuffix(text.NotFound, "'c-08', 'c-09', and 2 more"), text.NotFound)
+	assert.NotContains(t, text.NotFound, "'c-10'")
+}
+
+// steveClustersPath is the steve collection of the clusters a bearer can
+// read, the plugin's cluster lookup.
+const steveClustersPath = "/v1/management.cattle.io.clusters"
+
+// steveClustersBody is one page of the steve clusters collection holding
+// the given id and display name pairs.
+func steveClustersBody(pairs ...[2]string) []byte {
+	items := make([]map[string]any, 0, len(pairs))
+	for _, p := range pairs {
+		items = append(items, map[string]any{"id": p[0], "type": "management.cattle.io.cluster",
+			"metadata": map[string]any{"name": p[0]}, "spec": map[string]any{"displayName": p[1]}})
+	}
+	page := map[string]any{"revision": "1", "data": items}
+	if len(items) > 0 {
+		page["count"] = len(items)
+	}
+	b, _ := json.Marshal(page)
+	return b
+}
+
+// facadeClusters is the steve clusters collection for a bearer the facade
+// recognizes, unknown (401) otherwise, so resolveClusterIDForCreate can be
+// exercised against the facade in this package.
+func facadeClusters(valid func(string) bool) func(string) ([]testrancher.ClusterFixture, bool) {
+	return func(bearer string) ([]testrancher.ClusterFixture, bool) {
+		if !valid(bearer) {
+			return nil, false
+		}
+		return []testrancher.ClusterFixture{{ID: "c-test", DisplayName: "testcluster"}}, true
+	}
+}
+
+// newTokenFacade builds a facade with the steve clusters collection wired
+// to its own ValidBearer.
 func newTokenFacade(t *testing.T, opts testrancher.Options) (*testrancher.Facade, *httptest.Server) {
 	t.Helper()
 	f := newFacadeWithClusters(&opts)
@@ -2570,12 +2655,12 @@ func newInMemoryTokenFacade(t *testing.T, opts testrancher.Options) (*testranche
 	return f, hostTransport{hostOf(rancherOrigin): srv.Client().Transport}
 }
 
-// newFacadeWithClusters builds the facade with the cluster fallthrough
-// that validates bearers against the facade itself.
+// newFacadeWithClusters builds the facade with the steve clusters
+// collection, which validates bearers against the facade itself.
 func newFacadeWithClusters(opts *testrancher.Options) *testrancher.Facade {
 	var f *testrancher.Facade
-	if opts.Fallthrough == nil {
-		opts.Fallthrough = clustersFallthrough(func(b string) bool { return f != nil && f.ValidBearer(b) })
+	if opts.ClusterVisibility == nil {
+		opts.ClusterVisibility = facadeClusters(func(b string) bool { return f != nil && f.ValidBearer(b) })
 	}
 	f = testrancher.New(*opts)
 	return f

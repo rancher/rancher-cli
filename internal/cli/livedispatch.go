@@ -110,6 +110,7 @@ func typedPositionals(site CompletionSite, tail []string, leafFlags []runtime.Ar
 func tracedConnection(hc *http.Client, cap TokenCapability, limit int) *completion.Connection {
 	conn := completion.NewConnection(hc, cap.Token, cap.ServerURL, cap.IDOnly, limit)
 	conn.SetProjectLister(listProjects)
+	conn.SetClusterLister(listClusters)
 	conn.SetTrace(func(path string, status, size int, elapsed time.Duration, err error) {
 		if err != nil {
 			completionDebugf("GET %s: %v (%s)", path, err, elapsed.Round(time.Millisecond))

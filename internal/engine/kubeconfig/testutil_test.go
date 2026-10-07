@@ -8,9 +8,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 // fakeClient answers GET and LIST from maps keyed "name" (cluster scope)
@@ -31,9 +34,12 @@ type fakeClient struct {
 	GetErrFor map[string]error
 	ListErr   error
 	Before    func(ctx context.Context) error
+	// Gets records the resource of every Get, in order.
+	Gets []string
 }
 
-func (f *fakeClient) Get(ctx context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+func (f *fakeClient) Get(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	f.Gets = append(f.Gets, gvr.Resource)
 	if f.Before != nil {
 		if err := f.Before(ctx); err != nil {
 			return nil, err
@@ -88,6 +94,51 @@ func (f *fakeClient) ServerResources(context.Context) ([]engine.APIResource, err
 }
 
 var _ engine.ClusterClient = (*fakeClient)(nil)
+
+// clusterGetter is a steve.Getter that serves management clusters by name
+// as the JSON object steve returns. A name it does not hold is a not-found
+// answer shaped like the root client's 404; a name in errs fails with its
+// error; before, when set, runs first and may fail the read. Every request
+// is recorded under mu; read requests only after the reads finished.
+type clusterGetter struct {
+	objs     map[string]*unstructured.Unstructured
+	errs     map[string]error
+	before   func(ctx context.Context) error
+	mu       sync.Mutex
+	requests []steve.Request
+}
+
+func newClusterGetter(clusters ...*unstructured.Unstructured) *clusterGetter {
+	g := &clusterGetter{objs: map[string]*unstructured.Unstructured{}}
+	for _, c := range clusters {
+		g.objs[c.GetName()] = c
+	}
+	return g
+}
+
+func (g *clusterGetter) Get(ctx context.Context, r steve.Request) ([]byte, error) {
+	g.mu.Lock()
+	g.requests = append(g.requests, r)
+	g.mu.Unlock()
+	if g.before != nil {
+		if err := g.before(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if err, ok := g.errs[r.Name]; ok {
+		return nil, err
+	}
+	obj, ok := g.objs[r.Name]
+	if r.Type != steve.ClustersType || !ok {
+		return nil, clierr.New(clierr.CodeNotFound, r.Path()+" not found").WithCause(&engine.RootStatusError{Status: 404})
+	}
+	return json.Marshal(obj.Object)
+}
+
+// failingRoot is an engine.RootClient whose every read fails with err.
+type failingRoot struct{ err error }
+
+func (r failingRoot) GetJSON(context.Context, string) ([]byte, error) { return nil, r.err }
 
 // testPEM is a self-signed certificate in PEM, the shape every CA field
 // carries.

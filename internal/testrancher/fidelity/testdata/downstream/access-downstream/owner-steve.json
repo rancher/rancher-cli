@@ -1,0 +1,105 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "clusters",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 1,
+        "data": [
+          {
+            "apiVersion": "management.cattle.io/v3",
+            "id": "{downstream}",
+            "kind": "Cluster",
+            "spec": "\u003cspec\u003e",
+            "type": "management.cattle.io.cluster"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    },
+    {
+      "name": "own-cluster-by-id",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "id": "{downstream}",
+        "kind": "Cluster",
+        "spec": "\u003cspec\u003e",
+        "status": "\u003cstatus\u003e",
+        "type": "management.cattle.io.cluster"
+      }
+    },
+    {
+      "name": "own-cluster-namespaces",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "count": 8,
+        "data": [
+          {
+            "apiVersion": "v1",
+            "id": "cattle-fleet-system",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          },
+          {
+            "apiVersion": "v1",
+            "id": "cattle-impersonation-system",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          },
+          {
+            "apiVersion": "v1",
+            "id": "cattle-system",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          },
+          {
+            "apiVersion": "v1",
+            "id": "default",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          },
+          {
+            "apiVersion": "v1",
+            "id": "kube-node-lease",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          },
+          {
+            "apiVersion": "v1",
+            "id": "kube-public",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          },
+          {
+            "apiVersion": "v1",
+            "id": "kube-system",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          },
+          {
+            "apiVersion": "v1",
+            "id": "local",
+            "kind": "Namespace",
+            "spec": "\u003cspec\u003e",
+            "type": "namespace"
+          }
+        ],
+        "revision": "\u003crevision\u003e",
+        "type": "collection"
+      }
+    }
+  ]
+}

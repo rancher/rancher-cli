@@ -9,6 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
 // TestDirectEndpointsOffIsSilent asserts a cluster without the endpoint
@@ -21,7 +23,7 @@ func TestDirectEndpointsOffIsSilent(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			d, err := DirectEndpoints(t.Context(), &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": obj}}, "c-1")
+			d, err := DirectEndpoints(t.Context(), &fakeClient{}, newClusterGetter(obj).Get, "c-1")
 			require.NoError(t, err)
 			assert.Empty(t, d.Endpoints)
 			assert.Empty(t, d.Omitted)
@@ -36,8 +38,9 @@ func TestDirectEndpointsFQDN(t *testing.T) {
 	pem := testPEM(t)
 	t.Run("with ca", func(t *testing.T) {
 		t.Parallel()
-		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "ace.example.test", string(pem), ""), mcmFeature: feature(true)}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)}}
+		get := newClusterGetter(mgmtCluster("c-1", true, "ace.example.test", string(pem), "")).Get
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		require.Len(t, d.Endpoints, 1)
 		assert.Equal(t, Endpoint{Name: "fqdn", Server: "https://ace.example.test", CAData: pem, Ready: true}, d.Endpoints[0])
@@ -45,16 +48,18 @@ func TestDirectEndpointsFQDN(t *testing.T) {
 	})
 	t.Run("without ca", func(t *testing.T) {
 		t.Parallel()
-		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "ace.example.test", "", ""), mcmFeature: feature(true)}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)}}
+		get := newClusterGetter(mgmtCluster("c-1", true, "ace.example.test", "", "")).Get
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		require.Len(t, d.Endpoints, 1)
 		assert.Nil(t, d.Endpoints[0].CAData)
 	})
 	t.Run("bad ca", func(t *testing.T) {
 		t.Parallel()
-		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "ace.example.test", "not a pem", ""), mcmFeature: feature(true)}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)}}
+		get := newClusterGetter(mgmtCluster("c-1", true, "ace.example.test", "not a pem", "")).Get
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		assert.Empty(t, d.Endpoints)
 		require.Len(t, d.Omitted, 1)
@@ -62,8 +67,9 @@ func TestDirectEndpointsFQDN(t *testing.T) {
 	})
 	t.Run("fqdn with a path", func(t *testing.T) {
 		t.Parallel()
-		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "ace.example.test/k8s/clusters/local", "", ""), mcmFeature: feature(true)}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)}}
+		get := newClusterGetter(mgmtCluster("c-1", true, "ace.example.test/k8s/clusters/local", "", "")).Get
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		assert.Empty(t, d.Endpoints)
 		require.Len(t, d.Omitted, 1)
@@ -86,10 +92,11 @@ func TestDirectEndpointsNodes(t *testing.T) {
 		mgmtNode("m-w", "c-1-w1", false, true, true, "", [2]string{"InternalIP", "10.0.0.9"}),
 	}}
 	c := &fakeClient{
-		Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "", "", b64(pem)), mcmFeature: feature(true)},
+		Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)},
 		Lists:   map[string]*unstructured.UnstructuredList{"nodes|c-1": nodes},
 	}
-	d, err := DirectEndpoints(t.Context(), c, "c-1")
+	get := newClusterGetter(mgmtCluster("c-1", true, "", "", b64(pem))).Get
+	d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 	require.NoError(t, err)
 	assert.Empty(t, d.Omitted)
 	require.Len(t, d.Endpoints, 4)
@@ -106,8 +113,9 @@ func TestDirectEndpointsNodeDefects(t *testing.T) {
 	t.Parallel()
 	pem := testPEM(t)
 	base := func() *fakeClient {
-		return &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "", "", b64(pem)), mcmFeature: feature(true)}}
+		return &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)}}
 	}
+	get := newClusterGetter(mgmtCluster("c-1", true, "", "", b64(pem))).Get
 	t.Run("skipped nodes", func(t *testing.T) {
 		t.Parallel()
 		c := base()
@@ -117,7 +125,7 @@ func TestDirectEndpointsNodeDefects(t *testing.T) {
 			mgmtNode("m-c", "c-1-cp1", true, true, true, "", [2]string{"InternalIP", "10.0.0.3"}),
 			mgmtNode("m-d", "c-1-cp4", true, true, true, ""),
 		}}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		require.Len(t, d.Endpoints, 1)
 		assert.Equal(t, "cp1", d.Endpoints[0].Name)
@@ -130,7 +138,7 @@ func TestDirectEndpointsNodeDefects(t *testing.T) {
 		t.Parallel()
 		c := base()
 		c.Lists = map[string]*unstructured.UnstructuredList{"nodes|c-1": {Items: []unstructured.Unstructured{mgmtNode("m-w", "c-1-w1", false, true, true, "", [2]string{"InternalIP", "10.0.0.9"})}}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		assert.Empty(t, d.Endpoints)
 		require.Len(t, d.Omitted, 1)
@@ -138,8 +146,9 @@ func TestDirectEndpointsNodeDefects(t *testing.T) {
 	})
 	t.Run("bad status ca", func(t *testing.T) {
 		t.Parallel()
-		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "", "", "%%%not-base64"), mcmFeature: feature(true)}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)}}
+		get := newClusterGetter(mgmtCluster("c-1", true, "", "", "%%%not-base64")).Get
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		assert.Empty(t, d.Endpoints)
 		require.Len(t, d.Omitted, 1)
@@ -149,7 +158,7 @@ func TestDirectEndpointsNodeDefects(t *testing.T) {
 		t.Parallel()
 		c := base()
 		c.ListErr = clierr.New(clierr.CodeRBAC, "nodes is forbidden")
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		assert.Empty(t, d.Endpoints)
 		require.Len(t, d.Omitted, 1)
@@ -186,10 +195,11 @@ func TestDirectEndpointsMalformedNodeFields(t *testing.T) {
 	badMetaAnnotations := mgmtNode("m-h", "c-1-h", true, true, true, "", [2]string{"InternalIP", "10.0.0.8"})
 	badMetaAnnotations.Object["metadata"].(map[string]any)["annotations"] = map[string]any{"a": int64(1)}
 	c := &fakeClient{
-		Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "", "", b64(pem)), mcmFeature: feature(true)},
+		Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)},
 		Lists:   map[string]*unstructured.UnstructuredList{"nodes|c-1": {Items: []unstructured.Unstructured{good, scalarAddress, badAddressField, badAnnotations, badCondition, badStatus, lateAddress, lateCondition, badMetaAnnotations}}},
 	}
-	d, err := DirectEndpoints(t.Context(), c, "c-1")
+	get := newClusterGetter(mgmtCluster("c-1", true, "", "", b64(pem))).Get
+	d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 	require.NoError(t, err)
 	require.Len(t, d.Endpoints, 1)
 	assert.Equal(t, "ok", d.Endpoints[0].Name)
@@ -212,13 +222,14 @@ func TestDirectEndpointsOrderFollowsNodeName(t *testing.T) {
 	t.Parallel()
 	pem := testPEM(t)
 	c := &fakeClient{
-		Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "", "", b64(pem)), mcmFeature: feature(true)},
+		Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)},
 		Lists: map[string]*unstructured.UnstructuredList{"nodes|c-1": {Items: []unstructured.Unstructured{
 			mgmtNode("m-b", "c-1-cp2", true, true, true, "", [2]string{"InternalIP", "10.0.0.2"}),
 			mgmtNode("m-a", "c-1-cp1", true, true, true, "", [2]string{"InternalIP", "10.0.0.1"}),
 		}}},
 	}
-	d, err := DirectEndpoints(t.Context(), c, "c-1")
+	get := newClusterGetter(mgmtCluster("c-1", true, "", "", b64(pem))).Get
+	d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 	require.NoError(t, err)
 	require.Len(t, d.Endpoints, 2)
 	assert.Equal(t, "cp1", d.Endpoints[0].Name, "the first Ready entry by node name, not by list order")
@@ -234,8 +245,9 @@ func TestDirectEndpointsFeatureAndClusterReads(t *testing.T) {
 	pem := testPEM(t)
 	t.Run("feature off", func(t *testing.T) {
 		t.Parallel()
-		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "ace.example.test", string(pem), ""), mcmFeature: feature(false)}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(false)}}
+		get := newClusterGetter(mgmtCluster("c-1", true, "ace.example.test", string(pem), "")).Get
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		assert.Empty(t, d.Endpoints)
 		require.Len(t, d.Omitted, 1)
@@ -243,23 +255,25 @@ func TestDirectEndpointsFeatureAndClusterReads(t *testing.T) {
 	})
 	t.Run("feature unreadable", func(t *testing.T) {
 		t.Parallel()
-		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "ace.example.test", string(pem), "")}, GetErrFor: map[string]error{mcmFeature: clierr.New(clierr.CodeRBAC, "features is forbidden")}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		c := &fakeClient{GetErrFor: map[string]error{mcmFeature: clierr.New(clierr.CodeRBAC, "features is forbidden")}}
+		get := newClusterGetter(mgmtCluster("c-1", true, "ace.example.test", string(pem), "")).Get
+		d, err := DirectEndpoints(t.Context(), c, get, "c-1")
 		require.NoError(t, err)
 		require.Len(t, d.Omitted, 1)
 		assert.Contains(t, d.Omitted[0], "feature is not readable")
 	})
 	t.Run("cluster get refused", func(t *testing.T) {
 		t.Parallel()
-		c := &fakeClient{GetErrFor: map[string]error{"c-1": clierr.New(clierr.CodeRBAC, "clusters is forbidden")}}
-		d, err := DirectEndpoints(t.Context(), c, "c-1")
+		get := newClusterGetter()
+		get.errs = map[string]error{"c-1": clierr.New(clierr.CodeRBAC, "clusters is forbidden")}
+		d, err := DirectEndpoints(t.Context(), &fakeClient{}, get.Get, "c-1")
 		require.NoError(t, err)
 		require.Len(t, d.Omitted, 1)
 		assert.Contains(t, d.Omitted[0], "not readable")
 	})
 	t.Run("cluster not found", func(t *testing.T) {
 		t.Parallel()
-		_, err := DirectEndpoints(t.Context(), &fakeClient{}, "c-1")
+		_, err := DirectEndpoints(t.Context(), &fakeClient{}, newClusterGetter().Get, "c-1")
 		require.Error(t, err)
 		assert.True(t, clierr.IsNotFound(err))
 	})
@@ -267,19 +281,95 @@ func TestDirectEndpointsFeatureAndClusterReads(t *testing.T) {
 		t.Parallel()
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": mgmtCluster("c-1", true, "ace.example.test", "", ""), mcmFeature: feature(true)}, Before: func(ctx context.Context) error { return ctx.Err() }}
-		_, err := DirectEndpoints(ctx, c, "c-1")
+		get := newClusterGetter(mgmtCluster("c-1", true, "ace.example.test", "", ""))
+		get.before = func(ctx context.Context) error { return ctx.Err() }
+		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)}}
+		_, err := DirectEndpoints(ctx, c, get.Get, "c-1")
 		require.ErrorIs(t, err, context.Canceled)
 	})
 	t.Run("wrong field type", func(t *testing.T) {
 		t.Parallel()
 		obj := mgmtCluster("c-1", true, "", "", "")
 		obj.Object["spec"].(map[string]any)["localClusterAuthEndpoint"].(map[string]any)["enabled"] = "yes"
-		d, err := DirectEndpoints(t.Context(), &fakeClient{Objects: map[string]*unstructured.Unstructured{"c-1": obj}}, "c-1")
+		d, err := DirectEndpoints(t.Context(), &fakeClient{}, newClusterGetter(obj).Get, "c-1")
 		require.NoError(t, err)
 		require.Len(t, d.Omitted, 1)
 		assert.Contains(t, d.Omitted[0], "enabled is not a bool")
 	})
+}
+
+// TestDirectEndpointsReadsTheClusterOnlyThroughTheGetter asserts the
+// management cluster is read once, as the steve request for that cluster,
+// through the getter, and never through the management client: the client
+// holds a decoy cluster that would change the answer, and records no Get of
+// the clusters resource on either the fqdn or the node path.
+func TestDirectEndpointsReadsTheClusterOnlyThroughTheGetter(t *testing.T) {
+	t.Parallel()
+	pem := testPEM(t)
+	decoy := mgmtCluster("c-1", false, "", "", "")
+	for name, tc := range map[string]struct {
+		cluster *unstructured.Unstructured
+		want    Endpoint
+	}{
+		"fqdn": {mgmtCluster("c-1", true, "ace.example.test", string(pem), ""), Endpoint{Name: "fqdn", Server: "https://ace.example.test", CAData: pem, Ready: true}},
+		"node": {mgmtCluster("c-1", true, "", "", b64(pem)), Endpoint{Name: "cp1", Server: "https://10.0.0.1:6443", CAData: pem, Ready: true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := &fakeClient{
+				Objects: map[string]*unstructured.Unstructured{"c-1": decoy, mcmFeature: feature(true)},
+				Lists: map[string]*unstructured.UnstructuredList{"nodes|c-1": {Items: []unstructured.Unstructured{
+					mgmtNode("m-a", "c-1-cp1", true, true, true, "", [2]string{"InternalIP", "10.0.0.1"}),
+				}}},
+			}
+			get := newClusterGetter(tc.cluster)
+			d, err := DirectEndpoints(t.Context(), c, get.Get, "c-1")
+			require.NoError(t, err)
+			assert.Empty(t, d.Omitted)
+			assert.Equal(t, []Endpoint{tc.want}, d.Endpoints)
+			assert.Equal(t, []steve.Request{{Type: steve.ClustersType, Name: "c-1"}}, get.requests)
+			assert.NotContains(t, c.Gets, "clusters")
+			assert.Equal(t, []string{"features"}, c.Gets, "the Feature is still read through the management client")
+		})
+	}
+}
+
+// TestDirectEndpointsForbiddenClusterIsOmitted asserts a 403 from the
+// getter lands in Omitted naming the cluster and the refused request, reads
+// nothing through the management client, and returns no error: first with a
+// getter that fails with a *steve.StatusError, then through the root client
+// getter with the root client's own 403 error.
+func TestDirectEndpointsForbiddenClusterIsOmitted(t *testing.T) {
+	t.Parallel()
+	forbiddenRoot := clierr.New(clierr.CodeAuth, "forbidden").WithCause(&engine.RootStatusError{Status: 403})
+	for name, get := range map[string]steve.Getter{
+		"status error": func(context.Context, steve.Request) ([]byte, error) { return nil, &steve.StatusError{Status: 403} },
+		"root client":  steve.RootGetter(failingRoot{err: forbiddenRoot}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := &fakeClient{}
+			d, err := DirectEndpoints(t.Context(), c, get, "c-1")
+			require.NoError(t, err)
+			assert.Empty(t, d.Endpoints)
+			require.Len(t, d.Omitted, 1)
+			assert.Contains(t, d.Omitted[0], "management cluster c-1 not readable")
+			assert.Contains(t, d.Omitted[0], "you cannot read cluster 'c-1'")
+			assert.Contains(t, d.Omitted[0], "/v1/management.cattle.io.clusters/c-1 answered 403")
+			assert.Empty(t, c.Gets)
+		})
+	}
+}
+
+// TestDirectEndpointsRootNotFoundIsAnError asserts a 404 through the root
+// client getter is returned as a not-found error, not an omission.
+func TestDirectEndpointsRootNotFoundIsAnError(t *testing.T) {
+	t.Parallel()
+	notFound := clierr.New(clierr.CodeNotFound, "not found").WithCause(&engine.RootStatusError{Status: 404})
+	d, err := DirectEndpoints(t.Context(), &fakeClient{}, steve.RootGetter(failingRoot{err: notFound}), "c-1")
+	require.Error(t, err)
+	assert.True(t, clierr.IsNotFound(err))
+	assert.Empty(t, d.Omitted)
 }
 
 // TestValidEndpointURL asserts the accepted and rejected shapes.

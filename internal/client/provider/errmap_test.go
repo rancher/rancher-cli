@@ -117,10 +117,11 @@ func TestMapErrConflictRetryable(t *testing.T) {
 	})
 }
 
-// TestMapErrDeniedFallback covers the case where Rancher's proxy paths
-// reject an invalid/insufficient token with an empty-body 403, which
-// apierrors passes through as an empty Error() string. mapErr must never
-// hand the pipeline an empty message for a denied request.
+// TestMapErrDeniedFallback covers a 403 or 401 that gave no reason: Rancher's
+// proxy answers a user without access with an empty body, which apierrors
+// passes through as an empty Error() string, and a bodyless 401 carries
+// apimachinery's default message. mapErr never hands the pipeline an empty
+// message, and with no request to name it says so.
 func TestMapErrDeniedFallback(t *testing.T) {
 	emptyForbidden := &apierrors.StatusError{ErrStatus: metav1.Status{
 		Status: metav1.StatusFailure, Reason: metav1.StatusReasonForbidden, Code: 403,
@@ -132,49 +133,82 @@ func TestMapErrDeniedFallback(t *testing.T) {
 		Status: metav1.StatusFailure, Reason: metav1.StatusReasonForbidden, Code: 403, Message: "   ",
 	}}
 
-	t.Run("empty forbidden message gets a substituted message and hint", func(t *testing.T) {
-		got := mapErr(emptyForbidden)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
+	t.Run("empty forbidden message says the server gave no reason, with no hint", func(t *testing.T) {
+		ce, ok := errors.AsType[*clierr.Error](mapErr(emptyForbidden))
+		require.True(t, ok)
 		assert.Equal(t, clierr.CodeRBAC, ce.Code)
-		assert.Equal(t, deniedFallbackMessage(403), ce.Message)
-		assert.Equal(t, clierr.Rancher+" auth status", ce.Hint)
+		assert.Equal(t, "the server refused the request (403) and gave no reason", ce.Message)
+		assert.Empty(t, ce.Hint)
+		assert.NotContains(t, ce.Message, "may be invalid")
 	})
 
-	t.Run("empty unauthorized message gets a substituted message and hint naming 401, not 403", func(t *testing.T) {
-		got := mapErr(emptyUnauthorized)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, deniedFallbackMessage(401), ce.Message)
-		assert.Contains(t, ce.Message, "(401)")
-		assert.NotContains(t, ce.Message, "(403)")
-		assert.Equal(t, clierr.Rancher+" auth status", ce.Hint)
+	t.Run("empty and default unauthorized messages are chosen by the status", func(t *testing.T) {
+		defaultUnauthorized := &apierrors.StatusError{ErrStatus: metav1.Status{
+			Status: metav1.StatusFailure, Reason: metav1.StatusReasonUnauthorized, Code: 401, Message: unauthorizedDefault,
+		}}
+		for _, err := range []error{emptyUnauthorized, defaultUnauthorized} {
+			ce, ok := errors.AsType[*clierr.Error](mapErr(err))
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeAuth, ce.Code)
+			assert.Equal(t, "the server rejected the credential (401)", ce.Message)
+			assert.Equal(t, clierr.Rancher+" auth status", ce.Hint)
+		}
 	})
 
 	t.Run("whitespace-only forbidden message counts as empty", func(t *testing.T) {
-		got := mapErr(whitespaceForbidden)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, deniedFallbackMessage(403), ce.Message)
+		ce, ok := errors.AsType[*clierr.Error](mapErr(whitespaceForbidden))
+		require.True(t, ok)
+		assert.Equal(t, "the server refused the request (403) and gave no reason", ce.Message)
 	})
 
 	t.Run("a populated forbidden message passes through untouched", func(t *testing.T) {
 		gr := schema.GroupResource{Group: "management.cattle.io", Resource: "projects"}
-		got := mapErr(apierrors.NewForbidden(gr, "p-x", errors.New("nope")))
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.NotEqual(t, deniedFallbackMessage(403), ce.Message)
-		assert.Empty(t, ce.Hint, "an already-populated message must not gain the denied-fallback hint")
+		ce, ok := errors.AsType[*clierr.Error](mapErr(apierrors.NewForbidden(gr, "p-x", errors.New("nope"))))
+		require.True(t, ok)
+		assert.Contains(t, ce.Message, "nope")
+		assert.Empty(t, ce.Hint, "an already-populated message gains no hint")
 	})
 
 	t.Run("a populated unauthorized message passes through untouched", func(t *testing.T) {
-		got := mapErr(apierrors.NewUnauthorized("bad token"))
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
+		ce, ok := errors.AsType[*clierr.Error](mapErr(apierrors.NewUnauthorized("bad token")))
+		require.True(t, ok)
 		assert.Equal(t, "bad token", ce.Message)
 		assert.Empty(t, ce.Hint)
 	})
+}
+
+// TestMapRequestErrNamesTheRefusedRequest asserts a refusal that gave no
+// reason names the call: the verb, resource.group (the core group left
+// out) and the name; a management.cattle.io request through the local
+// cluster's proxy adds why Rancher refuses it; a 401 names the call.
+func TestMapRequestErrNamesTheRefusedRequest(t *testing.T) {
+	t.Parallel()
+	forbidden := &apierrors.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Reason: metav1.StatusReasonForbidden, Code: 403}}
+	for _, tc := range []struct {
+		q    request
+		want string
+	}{
+		{request{verb: "list", group: "management.cattle.io", resource: "clusters", cluster: "local"},
+			"the server refused list clusters.management.cattle.io (403) and gave no reason" + localManagementRefusal},
+		{request{verb: "get", group: "management.cattle.io", resource: "clusters", name: "c-abc", cluster: "local"},
+			"the server refused get clusters.management.cattle.io 'c-abc' (403) and gave no reason" + localManagementRefusal},
+		{request{verb: "get", group: "management.cattle.io", resource: "clusters", name: "c-abc", cluster: "c-abc"},
+			"the server refused get clusters.management.cattle.io 'c-abc' (403) and gave no reason"},
+		{request{verb: "list", resource: "namespaces", cluster: "local"},
+			"the server refused list namespaces (403) and gave no reason"},
+	} {
+		ce, ok := errors.AsType[*clierr.Error](mapRequestErr(forbidden, &tc.q))
+		require.True(t, ok)
+		assert.Equal(t, clierr.CodeRBAC, ce.Code)
+		assert.Equal(t, tc.want, ce.Message)
+		assert.Empty(t, ce.Hint)
+	}
+	unauthorized := &apierrors.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Reason: metav1.StatusReasonUnauthorized, Code: 401}}
+	ce, ok := errors.AsType[*clierr.Error](mapRequestErr(unauthorized,
+		&request{verb: "list", group: "management.cattle.io", resource: "clusters", cluster: "local"}))
+	require.True(t, ok)
+	assert.Equal(t, "the server rejected the credential (401) for list clusters.management.cattle.io", ce.Message)
+	assert.Equal(t, clierr.Rancher+" auth status", ce.Hint)
 }
 
 // TestMapErrAgentDisconnected covers the Rancher proxy's post-registration

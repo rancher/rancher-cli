@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,9 +26,15 @@ type fakeClient struct {
 	getErr  error
 	list    *unstructured.UnstructuredList
 	listErr error
+	mu      sync.Mutex
+	gets    []string // the name of every Get
+	lists   int
 }
 
 func (f *fakeClient) Get(_ context.Context, _ schema.GroupVersionResource, _ string, name string) (*unstructured.Unstructured, error) {
+	f.mu.Lock()
+	f.gets = append(f.gets, name)
+	f.mu.Unlock()
 	if f.getErr != nil {
 		return nil, f.getErr
 	}
@@ -42,6 +49,9 @@ func (f *fakeClient) Get(_ context.Context, _ schema.GroupVersionResource, _ str
 }
 
 func (f *fakeClient) List(context.Context, schema.GroupVersionResource, string, string) (*unstructured.UnstructuredList, error) {
+	f.mu.Lock()
+	f.lists++
+	f.mu.Unlock()
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
@@ -125,28 +135,105 @@ func secretObj(name string, annotations map[string]string, data map[string]any) 
 	return obj
 }
 
+// listOf is a list holding objs.
+func listOf(objs ...*unstructured.Unstructured) *unstructured.UnstructuredList {
+	l := &unstructured.UnstructuredList{}
+	for _, o := range objs {
+		l.Items = append(l.Items, *o)
+	}
+	return l
+}
+
+// TestResolveCloudCredentialByExactNamespacedID asserts the namespaced id
+// form resolves from the one List, with no Get.
 func TestResolveCloudCredentialByExactNamespacedID(t *testing.T) {
 	t.Parallel()
 	obj := secretObj("cc-abc12", map[string]string{displayNameAnnotation: "AWS Prod"}, nil)
-	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-abc12": obj}}
+	client := &fakeClient{list: listOf(obj)}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(t.Context(), factory, "cattle-global-data:cc-abc12")
+	ref, warning, err := ResolveCloudCredential(t.Context(), factory, "cattle-global-data:cc-abc12")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:cc-abc12", ref.ID)
 	assert.Equal(t, "cc-abc12", ref.SecretName)
 	assert.Equal(t, "AWS Prod", ref.DisplayName)
+	assert.Empty(t, warning)
+	assert.Equal(t, 1, client.lists)
+	assert.Empty(t, client.gets)
 }
 
+// TestResolveCloudCredentialByBareID asserts an id-typed value pays one
+// List, where it once paid one GET, and sends no Get.
 func TestResolveCloudCredentialByBareID(t *testing.T) {
 	t.Parallel()
 	obj := secretObj("cc-abc12", map[string]string{displayNameAnnotation: "AWS Prod"}, nil)
-	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-abc12": obj}}
+	client := &fakeClient{list: listOf(obj)}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(t.Context(), factory, "cc-abc12")
+	ref, _, err := ResolveCloudCredential(t.Context(), factory, "cc-abc12")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:cc-abc12", ref.ID, "bare cc- ids normalize to the namespaced form")
+	assert.Equal(t, 1, client.lists)
+	assert.Empty(t, client.gets)
+}
+
+// TestResolveCloudCredentialIDWinsWithAWarning asserts an id that is also
+// another credential's display name resolves to the id, with the warning
+// naming the other credential, for the flag and for the positional.
+func TestResolveCloudCredentialIDWinsWithAWarning(t *testing.T) {
+	t.Parallel()
+	abc := secretObj("cc-abc12", map[string]string{displayNameAnnotation: "AWS Prod"}, nil)
+	// The id is also readable by a GET, so a lookup that read it by id
+	// first would resolve it without the warning.
+	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-abc12": abc}, list: listOf(
+		abc, secretObj("cc-zzz99", map[string]string{displayNameAnnotation: "cc-abc12"}, nil),
+	)}
+	factory := fakeFactory{c: client}
+	ref, warning, err := ResolveCloudCredential(t.Context(), factory, "cc-abc12")
+	require.NoError(t, err)
+	assert.Equal(t, "cc-abc12", ref.SecretName)
+	assert.Equal(t, "--cloud-credential 'cc-abc12' is the id of cloud credential 'cc-abc12'; cloud credential 'cc-zzz99' also has the display name 'cc-abc12' - pass --cloud-credential 'cc-zzz99' for that one", warning)
+
+	cmd, ok := NewGetCloudCredential(factory).(runtime.ReadCommand)
+	require.True(t, ok)
+	res, err := cmd.Execute(t.Context(), in{args: []string{"cc-abc12"}}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"'cc-abc12' is the id of cloud credential 'cc-abc12'; cloud credential 'cc-zzz99' also has the display name 'cc-abc12' - pass 'cc-zzz99' for that one"}, res.Warnings)
+}
+
+// TestResolveCloudCredentialMissResolvesThroughOneGet asserts a credential
+// the List did not carry yet resolves through one GET by id, a Secret that
+// GET returns that is not a credential stays NOT_FOUND, any other GET
+// failure is returned, and a value that cannot be a Secret name sends no
+// GET.
+func TestResolveCloudCredentialMissResolvesThroughOneGet(t *testing.T) {
+	t.Parallel()
+	fresh := secretObj("cc-fresh1", map[string]string{displayNameAnnotation: "New"}, nil)
+	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-fresh1": fresh}}
+	ref, _, err := ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cc-fresh1")
+	require.NoError(t, err)
+	assert.Equal(t, "cattle-global-data:cc-fresh1", ref.ID)
+	assert.Equal(t, []string{"cc-fresh1"}, client.gets)
+
+	plain := secretObj("db-password", nil, map[string]any{"password": []byte("x")})
+	client = &fakeClient{objects: map[string]*unstructured.Unstructured{"db-password": plain}}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "db-password")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "cloud credential not found: db-password", ce.Message)
+	assert.Equal(t, []string{"db-password"}, client.gets)
+
+	client = &fakeClient{getErr: clierr.New(clierr.CodeRBAC, "forbidden")}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cc-fresh1")
+	ce, ok = errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code, "a GET failure other than NOT_FOUND is returned")
+
+	client = &fakeClient{}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "AWS Prod")
+	require.Error(t, err)
+	assert.Empty(t, client.gets, "a value that cannot be a Secret name sends no GET")
 }
 
 func TestResolveCloudCredentialByDisplayName(t *testing.T) {
@@ -158,7 +245,7 @@ func TestResolveCloudCredentialByDisplayName(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(t.Context(), factory, "AWS Prod")
+	ref, _, err := ResolveCloudCredential(t.Context(), factory, "AWS Prod")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:cc-abc12", ref.ID)
 }
@@ -166,10 +253,10 @@ func TestResolveCloudCredentialByDisplayName(t *testing.T) {
 func TestResolveCloudCredentialDisplayNameBackfillFromObjectName(t *testing.T) {
 	t.Parallel()
 	obj := secretObj("cc-noannotation", nil, nil)
-	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-noannotation": obj}}
+	client := &fakeClient{list: listOf(obj)}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(t.Context(), factory, "cc-noannotation")
+	ref, _, err := ResolveCloudCredential(t.Context(), factory, "cc-noannotation")
 	require.NoError(t, err)
 	assert.Equal(t, "cc-noannotation", ref.DisplayName, "display name backfills from the object name when the annotation is absent")
 }
@@ -182,7 +269,7 @@ func TestResolveCloudCredentialNotFound(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	_, err := ResolveCloudCredential(t.Context(), factory, "unknown")
+	_, _, err := ResolveCloudCredential(t.Context(), factory, "unknown")
 	require.Error(t, err)
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
@@ -192,28 +279,30 @@ func TestResolveCloudCredentialNotFound(t *testing.T) {
 	assert.Equal(t, "AWS Prod", cerr.Candidates[0].Name)
 }
 
-// TestResolveCloudCredentialExactIDMissFallsThroughToListPath asserts that when
-// a cc-* exact-id Get returns the curated "secret not found" shape (the dynamic
-// client curates 404s by literal kind name), the resolver must fall through to
-// the list-based path and return the domain-specific "cloud credential not found"
+// TestResolveCloudCredentialMissGetNotFoundKeepsTheDomainError asserts
+// that when the GET by id after a List miss returns the curated "secret
+// not found" shape (the dynamic client curates 404s by literal kind name),
+// the resolver returns the domain-specific "cloud credential not found"
 // shape - NOT "secret not found". Candidates come from the list.
-func TestResolveCloudCredentialExactIDMissFallsThroughToListPath(t *testing.T) {
+func TestResolveCloudCredentialMissGetNotFoundKeepsTheDomainError(t *testing.T) {
 	t.Parallel()
 	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 		*secretObj("cc-abc12", map[string]string{displayNameAnnotation: "AWS Prod"}, nil),
 	}}
-	// objects is empty: Get("cc-missing") returns the curated clierr NOT_FOUND shape.
+	// objects is empty: the GET by id of "cc-missing" returns the curated
+	// clierr NOT_FOUND shape.
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	_, err := ResolveCloudCredential(t.Context(), factory, "cc-missing")
+	_, _, err := ResolveCloudCredential(t.Context(), factory, "cc-missing")
 	require.Error(t, err)
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
 	assert.Equal(t, clierr.CodeNotFound, cerr.Code)
-	assert.Contains(t, cerr.Message, "cloud credential", "fast-path miss must yield the domain error, not 'secret not found'")
-	assert.NotContains(t, cerr.Message, "secret", "fast-path miss must not leak the Secret kind implementation detail")
-	require.NotEmpty(t, cerr.Candidates, "fast-path miss must yield candidates from the list")
+	assert.Contains(t, cerr.Message, "cloud credential", "a miss must yield the domain error, not 'secret not found'")
+	assert.NotContains(t, cerr.Message, "secret", "a miss must not leak the Secret kind implementation detail")
+	require.NotEmpty(t, cerr.Candidates, "a miss must yield candidates from the list")
+	assert.Equal(t, []string{"cc-missing"}, client.gets, "one GET by id")
 	assert.Equal(t, "rancher get cloud-credential", cerr.Hint)
 }
 
@@ -231,11 +320,11 @@ func TestResolveCloudCredentialLegacyNoPrefixResolvesByBareAndNamespacedID(t *te
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	bare, err := ResolveCloudCredential(t.Context(), factory, "my-legacy-cred")
+	bare, _, err := ResolveCloudCredential(t.Context(), factory, "my-legacy-cred")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:my-legacy-cred", bare.ID)
 
-	namespaced, err := ResolveCloudCredential(t.Context(), factory, "cattle-global-data:my-legacy-cred")
+	namespaced, _, err := ResolveCloudCredential(t.Context(), factory, "cattle-global-data:my-legacy-cred")
 	require.NoError(t, err)
 	assert.Equal(t, "cattle-global-data:my-legacy-cred", namespaced.ID)
 
@@ -251,7 +340,7 @@ func TestResolveCloudCredentialAmbiguousDisplayName(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	_, err := ResolveCloudCredential(t.Context(), factory, "Shared")
+	_, _, err := ResolveCloudCredential(t.Context(), factory, "Shared")
 	require.Error(t, err)
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
@@ -274,7 +363,7 @@ func TestResolveCloudCredentialAmbiguousCandidatesNarrowed(t *testing.T) {
 	client := &fakeClient{list: list}
 	factory := fakeFactory{c: client}
 
-	_, err := ResolveCloudCredential(t.Context(), factory, "Shared")
+	_, _, err := ResolveCloudCredential(t.Context(), factory, "Shared")
 	require.Error(t, err)
 	var cerr *clierr.Error
 	require.ErrorAs(t, err, &cerr)
@@ -301,10 +390,10 @@ func TestResolveCloudCredentialDriverFromDataKeyPrefix(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			obj := secretObj("cc-drv1", nil, tc.data)
-			client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-drv1": obj}}
+			client := &fakeClient{list: listOf(obj)}
 			factory := fakeFactory{c: client}
 
-			ref, err := ResolveCloudCredential(t.Context(), factory, "cc-drv1")
+			ref, _, err := ResolveCloudCredential(t.Context(), factory, "cc-drv1")
 			require.NoError(t, err)
 			assert.Equal(t, tc.driver, ref.Driver)
 		})
@@ -362,7 +451,7 @@ func TestGetCloudCredentialListsOnlyCredentialShapedSecrets(t *testing.T) {
 func TestGetCloudCredentialByNameResolvesOne(t *testing.T) {
 	t.Parallel()
 	obj := secretObj("cc-abc12", map[string]string{displayNameAnnotation: "AWS Prod"}, nil)
-	client := &fakeClient{objects: map[string]*unstructured.Unstructured{"cc-abc12": obj}}
+	client := &fakeClient{list: listOf(obj)}
 	factory := fakeFactory{c: client}
 	cmd, ok := NewGetCloudCredential(factory).(runtime.ReadCommand)
 	require.True(t, ok)
@@ -391,7 +480,7 @@ func TestResolveCloudCredentialNeverLeaksSecretValue(t *testing.T) {
 	}
 	factory := fakeFactory{c: client}
 
-	ref, err := ResolveCloudCredential(t.Context(), factory, "cc-secret1")
+	ref, _, err := ResolveCloudCredential(t.Context(), factory, "cc-secret1")
 	require.NoError(t, err)
 	assert.NotContains(t, fmt.Sprintf("%v", ref), sentinel)
 	assert.NotContains(t, fmt.Sprintf("%+v", ref), sentinel)
@@ -411,7 +500,7 @@ func TestResolveCloudCredentialNeverLeaksSecretValue(t *testing.T) {
 
 	// An ambiguous/not-found error path also builds candidates from these
 	// same secrets - assert its rendering is clean too.
-	_, err = ResolveCloudCredential(t.Context(), factory, "no-such-credential")
+	_, _, err = ResolveCloudCredential(t.Context(), factory, "no-such-credential")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), sentinel)
 }
@@ -426,4 +515,77 @@ func (*fakeClient) ServerResources(context.Context) ([]engine.APIResource, error
 
 func (f fakeFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
 	return f.Cluster(ctx, id)
+}
+
+// TestResolveCloudCredentialListRefusedFallsBackToOneGet asserts that a
+// List refused with RBAC, for a value that is a Secret name, resolves
+// through one GET by id with no warning, for the flag and the positional;
+// a GET 404 is the cloud credential NOT_FOUND with no candidates; a GET
+// refusal is returned as the GET's error; and a value that cannot be a
+// Secret name, or a List failure other than RBAC, returns the List's error
+// with no GET.
+func TestResolveCloudCredentialListRefusedFallsBackToOneGet(t *testing.T) {
+	t.Parallel()
+	listErr := clierr.New(clierr.CodeRBAC, "secrets is forbidden: cannot list resource \"secrets\"")
+	own := secretObj("cc-own12", map[string]string{displayNameAnnotation: "Mine"}, nil)
+
+	client := &fakeClient{listErr: listErr, objects: map[string]*unstructured.Unstructured{"cc-own12": own}}
+	ref, warning, err := ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cattle-global-data:cc-own12")
+	require.NoError(t, err)
+	assert.Equal(t, CloudCredRef{ID: "cattle-global-data:cc-own12", SecretName: "cc-own12", DisplayName: "Mine"}, ref)
+	assert.Empty(t, warning)
+	assert.Equal(t, []string{"cc-own12"}, client.gets)
+
+	client = &fakeClient{listErr: listErr, objects: map[string]*unstructured.Unstructured{"cc-own12": own}}
+	cmd, ok := NewGetCloudCredential(fakeFactory{c: client}).(runtime.ReadCommand)
+	require.True(t, ok)
+	result, err := cmd.Execute(t.Context(), in{args: []string{"cc-own12"}}, nil)
+	require.NoError(t, err)
+	rows, ok := result.Data.(cloudCredRows)
+	require.True(t, ok)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "cc-own12", rows[0].SecretName)
+	assert.Empty(t, result.Warnings)
+	assert.Equal(t, []string{"cc-own12"}, client.gets)
+
+	client = &fakeClient{listErr: listErr}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cc-gone1")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "cloud credential not found: cc-gone1", ce.Message)
+	assert.Equal(t, "rancher get cloud-credential", ce.Hint)
+	assert.Empty(t, ce.Candidates)
+	assert.Equal(t, []string{"cc-gone1"}, client.gets)
+
+	client = &fakeClient{listErr: listErr}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cattle-global-data:cc-gone1")
+	ce, ok = errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, "cloud credential not found: cattle-global-data:cc-gone1", ce.Message, "the value as given")
+	assert.Equal(t, []string{"cc-gone1"}, client.gets)
+
+	plain := secretObj("db-password", nil, map[string]any{"password": []byte("x")})
+	client = &fakeClient{listErr: listErr, objects: map[string]*unstructured.Unstructured{"db-password": plain}}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "db-password")
+	ce, ok = errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code, "a Secret that is not a credential is NOT_FOUND")
+	assert.Equal(t, "cloud credential not found: db-password", ce.Message)
+
+	getErr := clierr.New(clierr.CodeRBAC, "secrets \"cc-other\" is forbidden")
+	client = &fakeClient{listErr: listErr, getErr: getErr}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cc-other")
+	assert.Same(t, getErr, err, "a refused GET is returned as the GET's error")
+
+	client = &fakeClient{listErr: listErr}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "AWS Prod")
+	assert.Same(t, listErr, err, "a value that cannot be a Secret name returns the List's error")
+	assert.Empty(t, client.gets)
+
+	serverErr := clierr.New(clierr.CodeGeneric, "the server is unavailable")
+	client = &fakeClient{listErr: serverErr, objects: map[string]*unstructured.Unstructured{"cc-own12": own}}
+	_, _, err = ResolveCloudCredential(t.Context(), fakeFactory{c: client}, "cc-own12")
+	assert.Same(t, serverErr, err, "a List failure other than RBAC is returned")
+	assert.Empty(t, client.gets)
 }

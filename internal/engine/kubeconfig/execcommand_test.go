@@ -85,7 +85,7 @@ func TestKubeconfigWritesTheExecCommandExactly(t *testing.T) {
 	t.Chdir(wd)
 	realWD, err := os.Getwd()
 	require.NoError(t, err)
-	cmd := NewCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand)
+	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{}).(runtime.ReadCommand)
 
 	res, err := cmd.Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1", "exec-command": "tools/my rancher"}}, nil)
 	require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestKubeconfigWritesTheExecCommandExactly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "rancher", loadKubeconfig(t, res).AuthInfos["prod-c-1"].Exec.Command)
 
-	refusing := NewCommand(dir, config.NewFileStore(dir), stubFactory{resolveErr: errors.New("no request may be made")}).(runtime.ReadCommand)
+	refusing := newTestCommand(dir, config.NewFileStore(dir), stubFactory{resolveErr: errors.New("no request may be made")}).(runtime.ReadCommand)
 	res, err = refusing.Execute(t.Context(), execInput{s: map[string]string{"cluster": "c-1", "exec-command": ""}}, nil)
 	require.ErrorContains(t, err, "--exec-command needs a command name or path")
 	assert.Nil(t, res.RawBytes)
