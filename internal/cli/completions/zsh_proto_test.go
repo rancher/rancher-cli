@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// zshProtoArgv runs the v2 zsh script with the given words array and returns
+// zshProtoArgv runs the zsh script with the given words array and returns
 // the argv the recorder binary received. Skips if zsh is not on PATH
 // (fails instead when CI is set).
 func zshProtoArgv(t *testing.T, words []string) []string {
@@ -59,7 +59,7 @@ _rancher
 // TestZshStderrNotLeakedToTerminal verifies the zsh script suppresses the
 // binary's stderr the way fish.sh, bash.sh, and pwsh.ps1 already do - a
 // binary that rejects the request (e.g. a stale install that predates the
-// v2 protocol) must degrade to "no candidates", not splat errors onto the
+// protocol marker) must degrade to "no candidates", not splat errors onto the
 // command line being edited.
 func TestZshStderrNotLeakedToTerminal(t *testing.T) {
 	t.Parallel()
@@ -94,8 +94,8 @@ _rancher
 	}
 }
 
-// TestZshProtoV2RequestShape verifies the v2 zsh script request shape.
-func TestZshProtoV2RequestShape(t *testing.T) {
+// TestZshRequestShape verifies the zsh script request shape.
+func TestZshRequestShape(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {

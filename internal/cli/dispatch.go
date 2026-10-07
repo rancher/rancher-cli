@@ -33,11 +33,9 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 		tail := stripRoutingPrefixByCmd(rawArgv, c)
 		// A flag the command does not accept, or more positional arguments
 		// than it declares, makes the line one it rejects: offer nothing,
-		// and make no request for it. Under the v1 protocol the argv still
-		// holds the partial word being completed, which would read as an
-		// undefined flag, so the check is v2 only. A current word holding a
-		// flag that may be given once with "=" is one more instance of that
-		// flag, so the check reads it with the words before it.
+		// and make no request for it. A current word holding a flag that may
+		// be given once with "=" is one more instance of that flag, so the
+		// check reads it with the words before it.
 		var site CompletionSite
 		if delimiter := doubleDashAt(tail, levelFlags(c)); delimiter >= 0 {
 			// After a "--" the typed flags all precede it: the sources read the
@@ -46,42 +44,34 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 			site = doubleDashSite(tail, delimiter, levelFlags(c))
 			tail = tail[:delimiter]
 		} else {
-			site = ParseArgTail(tail, rawCurrentWord, rawProtoV2, d, globalArgSpecs)
+			site = ParseArgTail(tail, rawCurrentWord, d, globalArgSpecs)
 		}
 		checked := rawArgv
 		if _, once := onceFlagNames(c)[site.FlagName]; once && site.Kind == SiteFlagValue && site.EqualsForm {
 			checked = append(slices.Clone(rawArgv), rawCurrentWord)
 		}
-		if rawProtoV2 && lineRejected(c, checked, len(d.Args)) {
+		if lineRejected(c, checked, len(d.Args)) {
 			return
 		}
 
 		if site.Kind == SiteNameLike {
-			// v2 protocol: rawCurrentWord holds the real current word (stripped
-			// from argv by CaptureArgv). urfave's DefaultCompleteWithFlags reads
-			// from cmd.Args().Slice(), which never sees the stripped word, so it
-			// always falls into the subcommand branch and emits nothing for leaves.
-			// Handle it ourselves when rawProtoV2 is set.
-			//
-			// v1 protocol (rawProtoV2=false): urfave preserves the partial word in
-			// parsedArgs (shellCompletion mode in command_parse.go), so
-			// DefaultCompleteWithFlags reads it correctly from cmd.Args().Slice().
-			if rawProtoV2 {
-				w := c.Root().Writer
-				for _, cand := range withoutGivenOnceFlags(nameLikeCandidates(c, rawCurrentWord), d.Flags, tail) {
-					if candidateToken(cand) == "--"+runtime.FlagProject {
-						// The global flag: offered by a command that takes it,
-						// with what it does there, and by no other.
-						desc, takes := commandProject(c)
-						if !takes {
-							continue
-						}
-						cand = formatCandidate(candidateToken(cand), desc)
+			// rawCurrentWord holds the real current word (stripped from argv by
+			// CaptureArgv). urfave's DefaultCompleteWithFlags reads from
+			// cmd.Args().Slice(), which never sees the stripped word, so it
+			// always falls into the subcommand branch and emits nothing for
+			// leaves. Handle it here.
+			w := c.Root().Writer
+			for _, cand := range withoutGivenOnceFlags(nameLikeCandidates(c, rawCurrentWord), d.Flags, tail) {
+				if candidateToken(cand) == "--"+runtime.FlagProject {
+					// The global flag: offered by a command that takes it,
+					// with what it does there, and by no other.
+					desc, takes := commandProject(c)
+					if !takes {
+						continue
 					}
-					_, _ = fmt.Fprintln(w, cand)
+					cand = formatCandidate(candidateToken(cand), desc)
 				}
-			} else {
-				ucli.DefaultCompleteWithFlags(ctx, c)
+				_, _ = fmt.Fprintln(w, cand)
 			}
 			return
 		}

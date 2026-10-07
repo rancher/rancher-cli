@@ -72,7 +72,7 @@ func TestCompletionArgsUsageRendersEnumValues(t *testing.T) {
 }
 
 // TestCompletionSelfCompletesShellArgument asserts self-completion:
-// `completion`'s own --generate-shell-completion lists the same
+// a completion request for `completion`'s argument lists the same
 // shells the command accepts, via the same Adapt-level ShellCompleter wiring
 // that adaptEntry uses.
 func TestCompletionSelfCompletesShellArgument(t *testing.T) {
@@ -83,6 +83,6 @@ func TestCompletionSelfCompletesShellArgument(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "completion", "--generate-shell-completion"}))
+	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "completion"}, ""))
 	assert.Equal(t, "bash\nfish\npwsh\nzsh\n", out.String())
 }

@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// bashProtoArgv runs the v2 bash script with the given COMP_WORDS and COMP_CWORD
+// bashProtoArgv runs the bash script with the given COMP_WORDS and COMP_CWORD
 // and returns the argv vector the recorder binary received (excluding the binary
 // name itself). Skips if bash is not on PATH (fails instead when CI is set).
 func bashProtoArgv(t *testing.T, compWords []string, compCword int) []string {
@@ -92,10 +92,10 @@ __rancher_bash_autocomplete
 	return splitLines(strings.TrimRight(string(data), "\n"))
 }
 
-// TestBashProtoV2RequestShape verifies that the v2 bash script constructs the
+// TestBashRequestShape verifies that the bash script constructs the
 // correct argv for the binary: proto sentinel, words before cursor, then the
 // --rancher-completion-cur= field, then --generate-shell-completion.
-func TestBashProtoV2RequestShape(t *testing.T) {
+func TestBashRequestShape(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {

@@ -539,7 +539,7 @@ func TestEveryLeafCompletesNothingPastItsArguments(t *testing.T) {
 }
 
 // TestSchemaSecondWordCompletesThroughTheBuiltRoot asserts, through the
-// built root and the v2 protocol the shipped scripts send, that `schema
+// built root and the lines the shipped scripts send, that `schema
 // auth <TAB>` offers exactly the second words of the selectors that begin
 // with auth: the words typed before the one completed reach the schema
 // command's completer. Not parallel: it sets the process environment and
@@ -575,7 +575,7 @@ func TestSchemaSecondWordCompletesThroughTheBuiltRoot(t *testing.T) {
 }
 
 // TestSchemaKindCompletesKindsOnly asserts, through the built root and
-// the v2 protocol, that with --kind on the line (alone or joined with a
+// a marked line, that with --kind on the line (alone or joined with a
 // true value) schema's first word offers exactly the names, keys and
 // aliases of the manifest's kinds, each of which resolves through the
 // schema command as a kind, and a second word nothing; without --kind, or

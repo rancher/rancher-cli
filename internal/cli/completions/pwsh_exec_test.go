@@ -107,10 +107,10 @@ Write-Output ('MARKER:' + (Test-Path %s))
 	}
 }
 
-// TestPwshProtoV2RequestShape verifies that the v2 pwsh script constructs the
+// TestPwshRequestShape verifies that the pwsh script constructs the
 // correct argv vector: proto sentinel, words before cursor,
 // --rancher-completion-cur=<word>, --generate-shell-completion.
-func TestPwshProtoV2RequestShape(t *testing.T) {
+func TestPwshRequestShape(t *testing.T) {
 	shell := requireShell(t, "pwsh", "powershell")
 	binDir := buildRancherRecorder(t)
 	scriptPath := filepath.Join(t.TempDir(), "pwsh.ps1")
@@ -258,7 +258,7 @@ func buildRancherRecorder(t *testing.T) string {
 // order - not just that some element matches. That catches whitespace
 // splitting, a duplicated or retained token, or any other surrounding-argv
 // corruption. The in-progress word "po" moves into the
-// --rancher-completion-cur field, leaving exactly the v2 vector
+// --rancher-completion-cur field, leaving exactly the request vector
 // [--rancher-completion-proto=2, get, <payload>,
 // --rancher-completion-cur=po, --generate-shell-completion].
 func TestPwshCompletionDeliversPayloadAsLiteralArgument(t *testing.T) {

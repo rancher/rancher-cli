@@ -24,42 +24,24 @@ import (
 )
 
 // completionLine is one request a shell script sends: the words typed before
-// the cursor and the word being completed. v1 is the form older installed
-// scripts send, with no protocol marker and no current-word field; the word
-// being completed is then the last word, when one was typed.
+// the cursor and the word being completed.
 type completionLine struct {
 	name    string
 	typed   []string
 	current string
-	v1      bool
-	// bare is a v2 line that opens with the protocol marker and carries
+	// bare is a line that opens with the protocol marker and carries
 	// neither the current-word field nor the trailing flag.
 	bare bool
 }
 
 // argv is the command line the binary receives for the line: what the shipped
-// scripts build under v2, and what the scripts of earlier releases built under
-// v1.
+// scripts build.
 func (l completionLine) argv() []string {
 	if l.bare {
 		return append([]string{"--rancher-completion-proto=2"}, l.typed...)
 	}
-	if l.v1 {
-		words := slices.Clone(l.typed)
-		if l.current != "" {
-			words = append(words, l.current)
-		}
-		return append(words, "--generate-shell-completion")
-	}
 	args := append([]string{"--rancher-completion-proto=2"}, l.typed...)
 	return append(args, "--rancher-completion-cur="+l.current, "--generate-shell-completion")
-}
-
-// dashesAreTheWord reports whether the line, sent by an older script, ends at
-// the "--": that script sends the word being completed last, so the "--" is that
-// word, and flag names are offered as `--<TAB>` has always offered them.
-func (l completionLine) dashesAreTheWord() bool {
-	return l.v1 && l.current == "" && l.typed[len(l.typed)-1] == "--"
 }
 
 // onceFlagLines are, for a leaf with a flag that may be given once, that
@@ -70,9 +52,9 @@ var onceFlagLines = map[string][2]string{
 	"create project": {"--container-default-resource-limit", "limitsCpu=1"},
 }
 
-// doubleDashLines are the lines typed after a "--" on the leaf at path, in both
-// protocols, with the word being completed empty, partial and flag-like, and a
-// line that opens with the v2 marker and does not end with the flag. A leaf in
+// doubleDashLines are the lines typed after a "--" on the leaf at path, with
+// the word being completed empty, partial and flag-like, and a line that opens
+// with the protocol marker and does not end with the flag. A leaf in
 // onceFlagLines also gets its flag that may be given once before and after the
 // "--".
 func doubleDashLines(path []string) []completionLine {
@@ -93,12 +75,8 @@ func doubleDashLines(path []string) []completionLine {
 	}
 	for _, typed := range typedLines {
 		for _, current := range []string{"", "x", "--a"} {
-			lines = append(lines, completionLine{name: "v2", typed: typed, current: current})
+			lines = append(lines, completionLine{name: "request", typed: typed, current: current})
 		}
-		lines = append(lines,
-			completionLine{name: "v1", typed: typed, v1: true},
-			completionLine{name: "v1 partial", typed: typed, current: "x", v1: true},
-		)
 	}
 	return append(lines, completionLine{name: "bare", typed: append(slices.Clone(path), "--apply", "--yes", "x"), bare: true})
 }
@@ -125,6 +103,34 @@ func leafPaths(root *ucli.Command, ran *[]string) [][]string {
 	for _, c := range root.Commands {
 		walk(c, []string{c.Name})
 	}
+	return paths
+}
+
+// everyLeaf returns the command path of every leaf of root, with a recorder
+// installed on each (see leafPaths), and asserts they are exactly the leaves
+// the schema manifest lists plus the hidden __completion command urfave adds,
+// so a command added to the surface is covered.
+func everyLeaf(t *testing.T, root *ucli.Command, ran *[]string) [][]string {
+	t.Helper()
+	// urfave adds its hidden __completion command to the tree on the first
+	// run, so run a line once before the leaves get their recorders.
+	_, err := runCompletionLine(t, root, completionLine{typed: []string{"completion"}})
+	require.NoError(t, err)
+	paths := leafPaths(root, ran)
+
+	m, err := cli.BuildManifestForTest("test")
+	require.NoError(t, err)
+	var surface, leaves []string
+	for _, c := range m.Commands {
+		surface = append(surface, c.Name)
+	}
+	for _, p := range paths {
+		leaves = append(leaves, strings.Join(p, " "))
+	}
+	surface = append(surface, "__completion")
+	slices.Sort(surface)
+	slices.Sort(leaves)
+	require.Equal(t, surface, leaves, "the sweep must cover exactly the leaves the schema manifest lists, and urfave's hidden command")
 	return paths
 }
 
@@ -175,12 +181,11 @@ func runCompletionLine(t *testing.T, root *ucli.Command, l completionLine) (stri
 // runs the command: the leaf's action is not reached, no request is sent to
 // the server the environment names, no file appears in the config directory
 // or the working directory, and no candidate is a flag, because every word
-// after a "--" is an argument. Both protocols are driven with the word being
-// completed empty, partial and flag-like. The leaves are checked against the
-// schema manifest so a command added to the surface is covered; the hidden
-// __completion command urfave adds is covered too. The tree is built once.
-// NOT parallel: mutates the argv globals, env and the working
-// directory.
+// after a "--" is an argument. The word being completed is empty, partial and
+// flag-like. The leaves are checked against the schema manifest so a command
+// added to the surface is covered; the hidden __completion command urfave adds
+// is covered too. The tree is built once. NOT parallel: mutates the argv
+// globals, env and the working directory.
 func TestCompletionAfterDoubleDashRunsNothing(t *testing.T) {
 	keyring.MockInit()
 	t.Cleanup(func() { cli.CaptureArgvForTest(nil) })
@@ -199,26 +204,12 @@ func TestCompletionAfterDoubleDashRunsNothing(t *testing.T) {
 	t.Chdir(workDir)
 
 	root := buildRoot(t)
-	// urfave adds its hidden __completion command to the tree on the first
-	// run, so run a line once before the leaves get their recorders.
-	_, err := runCompletionLine(t, root, completionLine{typed: []string{"completion"}})
-	require.NoError(t, err)
 	var ran []string
-	paths := leafPaths(root, &ran)
-
-	m, err := cli.BuildManifestForTest("test")
-	require.NoError(t, err)
-	var surface, leaves []string
-	for _, c := range m.Commands {
-		surface = append(surface, c.Name)
-	}
+	paths := everyLeaf(t, root, &ran)
+	var leaves []string
 	for _, p := range paths {
 		leaves = append(leaves, strings.Join(p, " "))
 	}
-	surface = append(surface, "__completion")
-	slices.Sort(surface)
-	slices.Sort(leaves)
-	require.Equal(t, surface, leaves, "the sweep must cover exactly the leaves the schema manifest lists, and urfave's hidden command")
 	for name := range onceFlagLines {
 		require.Contains(t, leaves, name, "onceFlagLines names a leaf of the tree")
 	}
@@ -231,9 +222,6 @@ func TestCompletionAfterDoubleDashRunsNothing(t *testing.T) {
 				require.NoError(t, runErr, desc)
 				assert.Empty(t, ran, "the command ran: %s", desc)
 				ran = nil
-				if l.dashesAreTheWord() {
-					continue
-				}
 				for _, candidate := range extractTokens(out) {
 					assert.False(t, strings.HasPrefix(candidate, "-"), "offered the flag %q after --: %s", candidate, desc)
 				}
@@ -288,7 +276,6 @@ func TestCompletionAfterDoubleDashOffersTheArgumentSlot(t *testing.T) {
 		{"a flag with a value before the dashes", completionLine{typed: []string{"completion", "-o", "json", "--"}}, shells},
 		{"a flag name is an argument", completionLine{typed: []string{"completion", "--"}, current: "--apply"}, nil},
 		{"a dash is an argument", completionLine{typed: []string{"completion", "--"}, current: "-"}, nil},
-		{"v1 partial word", completionLine{typed: []string{"completion", "--"}, current: "z", v1: true}, []string{"zsh"}},
 		{"the dashes are a flag value", completionLine{typed: []string{"access", "can", "--subresource", "--"}}, slices.Sorted(slices.Values(access.ResourceVerbs))},
 		{"a word typed after the dashes is an argument", completionLine{typed: []string{"access", "can", "--", "get"}}, nil},
 	}
@@ -325,33 +312,12 @@ func TestCompletionAfterDoubleDashOffersNothingAtGroups(t *testing.T) {
 			out, runErr := runCompletionLine(t, root, l)
 			desc := strings.Join(l.argv(), " ")
 			require.NoError(t, runErr, desc)
-			if !l.dashesAreTheWord() {
-				assert.Empty(t, extractTokens(out), desc)
-			}
+			assert.Empty(t, extractTokens(out), desc)
 		}
 		before := completionLine{typed: append([]string{"--"}, path...), current: ""}
 		out, runErr := runCompletionLine(t, root, before)
 		require.NoError(t, runErr)
 		assert.Empty(t, extractTokens(out), strings.Join(before.argv(), " "))
-	}
-}
-
-// TestCompletionV1DashesLastAreTheWordBeingCompleted asserts that a line an
-// older script sends, which ends at the "--", still completes the "--" as a flag
-// name, at a leaf and at a group, as `--<TAB>` always has: that script sends the
-// word being completed last, so the line cannot tell `x --<TAB>` from `x -- <TAB>`.
-// NOT parallel: mutates the argv globals and env.
-func TestCompletionV1DashesLastAreTheWordBeingCompleted(t *testing.T) {
-	keyring.MockInit()
-	t.Cleanup(func() { cli.CaptureArgvForTest(nil) })
-	t.Setenv(config.EnvCredentialStore, "file")
-	t.Setenv(config.EnvConfigDir, t.TempDir())
-	root := buildRoot(t)
-
-	for _, path := range [][]string{{"usage"}, {"get"}} {
-		out, runErr := runCompletionLine(t, root, completionLine{typed: append(slices.Clone(path), "--"), v1: true})
-		require.NoError(t, runErr)
-		assert.Contains(t, extractTokens(out), "--help", strings.Join(path, " "))
 	}
 }
 
@@ -405,8 +371,8 @@ func TestCompletionAfterDoubleDashReadsFlagsFromBeforeIt(t *testing.T) {
 // TestCompletionFlagAsAFlagValueIsAnOrdinaryLine asserts that the word
 // --generate-shell-completion typed as a flag's value in the middle of a line
 // leaves the line an ordinary command: the flag guard and the command see the
-// word where it was typed, so the exit code and the message are the ones the
-// command gave before completion requests were recognized by their last word.
+// word where it was typed, so the exit code and the message are the command's
+// own.
 // The first line reaches the server, which answers 401; the second fails
 // validation on its URL. NOT parallel: mutates the argv globals and env.
 func TestCompletionFlagAsAFlagValueIsAnOrdinaryLine(t *testing.T) {

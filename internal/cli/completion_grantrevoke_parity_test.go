@@ -49,17 +49,16 @@ func completionFixture(t *testing.T, srvURL string, networkOn bool) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 }
 
-// runCompletion runs one v2-protocol TAB for words with the current word
+// runCompletion runs one TAB for words with the current word
 // through the real root and returns the emitted candidates, one per
 // line. The argv globals CaptureArgv mutates are restored afterwards.
 func runCompletion(t *testing.T, words []string, currentWord string) []string {
 	t.Helper()
-	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 	t.Cleanup(func() {
 		rawArgv = origArgv
 		rawCurrentWord = origWord
-		rawProtoV2 = origProto
-		rawV1Completion = origV1
+		rawCompleting = origProto
 	})
 	scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 	scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")

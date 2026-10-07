@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// fishProtoArgv runs the v2 fish script with the given simulated commandline
+// fishProtoArgv runs the fish script with the given simulated commandline
 // (opc words = allButLast, ct = currentWord). Skips if fish is not on PATH
 // (fails instead when CI is set).
 func fishProtoArgv(t *testing.T, opcWords []string, ctWord string) []string {
@@ -64,8 +64,8 @@ __rancher_perform_completion
 	return splitLines(strings.TrimRight(string(data), "\n"))
 }
 
-// TestFishProtoV2RequestShape verifies the v2 fish script request shape.
-func TestFishProtoV2RequestShape(t *testing.T) {
+// TestFishRequestShape verifies the fish script request shape.
+func TestFishRequestShape(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {

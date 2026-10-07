@@ -8,12 +8,12 @@ stdout 'urfave/cli'
 ! exec rancher completion nope-shell
 stderr 'error \(VALIDATION\):'
 
-# Callback driving: --generate-shell-completion must be LAST (checkShellCompleteFlag
-# looks only at the final argument). Default urfave suggestions and our
-# alias-aware override both arrive as "name:usage" lines - anchor on the name
-# prefix, never a whole line (urfave-owned ordering/usage text is not ours to
-# assert exactly).
-exec rancher get --generate-shell-completion
+# Callback driving: a request opens with the protocol marker and ends with the
+# current-word field and --generate-shell-completion, as the scripts send it.
+# Default urfave suggestions and our alias-aware override both arrive as
+# "name:usage" lines - anchor on the name prefix, never a whole line
+# (urfave-owned ordering/usage text is not ours to assert exactly).
+exec rancher --rancher-completion-proto=2 get --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^pod:'
 stdout '(?m)^po:'
 stdout '(?m)^pods:'
@@ -28,18 +28,18 @@ stdout '(?m)^v3tokens:'
 mkdir $RANCHER_CLI_CONFIG_DIR
 cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 
-exec rancher config use-server --generate-shell-completion
+exec rancher --rancher-completion-proto=2 config use-server --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^acme$'
 
 # config set-completion appears in completion output.
-exec rancher config --generate-shell-completion
+exec rancher --rancher-completion-proto=2 config --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^set-completion:'
 
 # Equals-form site - --by=n emits ALL four --by=<candidate> full tokens.
 # The binary emits all enum candidates; the shell prefix-filters them.
 # Assert all four values appear (the enum emits all four, not
 # just those matching the typed prefix).
-# v2 protocol: equals-form current word in --rancher-completion-cur= field; argv
+# The equals-form current word is in the --rancher-completion-cur= field; argv
 # does NOT include the partial token (the field IS the current word, not an argv token).
 exec rancher --rancher-completion-proto=2 usage --rancher-completion-cur=--by=n --generate-shell-completion
 stdout '(?m)^--by=namespace$'
@@ -48,7 +48,7 @@ stdout '(?m)^--by=project$'
 stdout '(?m)^--by=pod$'
 
 # Inspect alias suggestion - po and deploy appear in inspect group.
-exec rancher inspect --generate-shell-completion
+exec rancher --rancher-completion-proto=2 inspect --rancher-completion-cur= --generate-shell-completion
 stdout '(?m)^po:'
 stdout '(?m)^deploy:'
 
@@ -62,18 +62,21 @@ cp seed-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 # get pod is already at the leaf; positional completion without live network
 # yields no candidates. pod: is a subcommand suggestion from the group level,
 # not what a leaf callback emits.
-exec rancher get pod --generate-shell-completion
+exec rancher --rancher-completion-proto=2 get pod --rancher-completion-cur= --generate-shell-completion
 ! stdout '(?m)^mypod$'
 ! stdout '(?m)^pod:'
 
-# A completion request never runs the command, wherever a "--" sits: v2 as the
-# shipped scripts send it, v1 as earlier scripts sent it. add-server with
-# --apply would write config.yaml; neither line may.
+# A completion request never runs the command, wherever a "--" sits, and
+# neither does a line from an outdated script (no protocol marker): it writes
+# one line to stderr pointing to `rancher completion --help`, nothing to
+# stdout, and exits 0. add-server with --apply would write config.yaml;
+# neither line may.
 exec rancher --rancher-completion-proto=2 config add-server --url https://example.invalid --apply -- myserver --rancher-completion-cur= --generate-shell-completion
 ! stdout 'added'
 ! grep myserver $RANCHER_CLI_CONFIG_DIR/config.yaml
 exec rancher config add-server --url https://example.invalid --apply -- myserver --generate-shell-completion
-! stdout 'added'
+stderr '^The rancher completion script in this shell is out of date\. To regenerate it, see: rancher completion --help$'
+! stdout .
 ! grep myserver $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 # After a "--" a leaf offers what it accepts at that argument slot.
@@ -89,7 +92,7 @@ env RANCHER_CLI_CACERT=$TEST_RANCHER_CACERT
 
 # exec-cred-only + display-name cluster → cluster flag-value site returns empty.
 # seedexeccache provides exec-cred capability only (no management token in store).
-# v2 protocol: proto sentinel + words (--cluster flag last, no value in argv) +
+# Proto sentinel + words (--cluster flag last, no value in argv) +
 # --rancher-completion-cur=testcluster → ParseArgTail sees --cluster as last flag
 # → SiteFlagValue(cluster). The management cluster list is refused under an exec-credential-only token.
 seedexeccache default-ctx c-test
@@ -97,7 +100,7 @@ exec rancher --rancher-completion-proto=2 get namespace --cluster --rancher-comp
 ! stdout .
 
 # exec-cred-only + completed cluster ID + empty currentWord → namespace
-# positional site. v2 protocol: proto sentinel + words (--cluster c-test
+# positional site. Proto sentinel + words (--cluster c-test
 # consumed in argv) + --rancher-completion-cur=def → ParseArgTail consumes
 # --cluster+c-test → SitePositional(0). Single exec-cred entry for c-test
 # authorises /k8s/clusters/c-test/api/v1/namespaces; facade proxies to envtest
@@ -161,7 +164,7 @@ env RANCHER_CLI_TOKEN=
 # offered as a shell candidate).
 cp garbage-config.yaml $RANCHER_CLI_CONFIG_DIR/config.yaml
 
-exec rancher config use-server --generate-shell-completion
+exec rancher --rancher-completion-proto=2 config use-server --rancher-completion-cur= --generate-shell-completion
 ! stdout .
 
 -- seed-config.yaml --

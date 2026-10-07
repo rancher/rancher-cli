@@ -16,6 +16,9 @@ var VERSION = "dev"
 func main() {
 	skillinstall.SetSource(skills.Rancher())
 
+	if cli.OutdatedCompletionScript(os.Args[1:], os.Stderr) {
+		return
+	}
 	cli.CaptureArgv(os.Args[1:])
 	root, err := cli.BuildRoot(VERSION)
 	if err != nil {

@@ -17,7 +17,7 @@ function __rancher_perform_completion
     # Extract the last arg (partial input / current word)
     set -l lastArg (commandline -ct)
 
-    # Protocol v2: self-prefixed current-word field.
+    # The request opens with the protocol marker and carries the current word in a self-prefixed field.
     # "--rancher-completion-cur=$lastArg" is one token even when lastArg is "".
     set results ($args[1] --rancher-completion-proto=2 $args[2..-1] "--rancher-completion-cur=$lastArg" --generate-shell-completion 2> /dev/null)
 

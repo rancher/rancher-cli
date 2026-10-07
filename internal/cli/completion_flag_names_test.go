@@ -12,14 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// runNameLikeCompletion drives a v2-protocol completion request through
+// runNameLikeCompletion drives a completion request through
 // BuildRoot + root.Run. The caller must have configured env vars
 // (RANCHER_CLI_CREDENTIAL_STORE, RANCHER_CLI_CONFIG_DIR) before calling.
 // NOT parallel: mutates package-level rawArgv / rawCurrentWord globals.
 func runNameLikeCompletion(t *testing.T, words []string, currentWord string) string {
 	t.Helper()
-	origV1 := cli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
 	scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 	scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
 	cli.CaptureArgvForTest(scriptArgs)
@@ -47,11 +45,11 @@ func extractTokens(output string) []string {
 }
 
 // TestFlagNameCompletionDoubleDash is the primary regression test for the
-// SiteNameLike v2 bug: `usage --<TAB>` must emit long-form flag candidates
+// SiteNameLike bug: `usage --<TAB>` must emit long-form flag candidates
 // for both the leaf's own flags (--cluster, --by, --namespace, --node) AND
 // the global flags inherited from root (--output, --help). Before the fix,
 // delegation to urfave's DefaultCompleteWithFlags produced no output because
-// the "--" current word was stripped from argv (v2 protocol) and urfave
+// the "--" current word was stripped from argv and urfave
 // always took the subcommand branch.
 func TestFlagNameCompletionDoubleDash(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -211,38 +209,8 @@ func TestFlagNameCompletionFormatColonSeparated(t *testing.T) {
 	assert.True(t, foundSubColon, "subcommand output must contain a 'name:usage' colon-form line")
 }
 
-// TestFlagNameCompletionV1ProtocolLeaf verifies that the v1 protocol path is
-// preserved: when no proto sentinel is present (rawProtoV2=false), the
-// SiteNameLike branch delegates to urfave's DefaultCompleteWithFlags, which
-// reads the partial word ("--") from cmd.Args().Slice() - urfave preserves
-// "--" in parsedArgs in shellCompletion mode (command_parse.go) - and emits
-// leaf flag names via printFlagSuggestions.
-func TestFlagNameCompletionV1ProtocolLeaf(t *testing.T) {
-	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
-	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	t.Setenv(config.EnvConfigDir, dir)
-
-	// v1 shape: no proto sentinel; "--" is a trailing argv token urfave sees.
-	// CaptureArgvForTest without proto sentinel → rawProtoV2=false, rawCurrentWord="".
-	origV1 := cli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
-	cli.CaptureArgvForTest([]string{"usage", "--", "--generate-shell-completion"})
-	root, err := cli.BuildRoot("test")
-	require.NoError(t, err)
-	var out bytes.Buffer
-	root.Writer = &out
-	root.ErrWriter = io.Discard
-	_ = root.Run(t.Context(), []string{"rancher", "usage", "--", "--generate-shell-completion"})
-	got := out.String()
-
-	// urfave's DefaultCompleteWithFlags (v1 path) reads "--" from parsedArgs and
-	// calls printFlagSuggestions, which emits the leaf's own primary flag names.
-	assert.Contains(t, got, "--cluster", "v1 leaf: --cluster must appear via urfave flag path")
-}
-
-// TestGroupFlagNameCompletionConfigDoubleDash: `config --<TAB>` under v2
-// protocol must emit flag candidates. Before the fix, aliasAwareGroupComplete
+// TestGroupFlagNameCompletionConfigDoubleDash: `config --<TAB>` must emit
+// flag candidates. Before the fix, aliasAwareGroupComplete
 // read an empty lastArg from cmd.Args() (current word stripped), fell into
 // the subcommand branch, and listed config subcommands instead of flags.
 func TestGroupFlagNameCompletionConfigDoubleDash(t *testing.T) {
@@ -257,8 +225,7 @@ func TestGroupFlagNameCompletionConfigDoubleDash(t *testing.T) {
 	assert.Contains(t, tokens, "--help", "config --<TAB> must include --help")
 }
 
-// TestGroupFlagNameCompletionGetDoubleDash: `get --<TAB>` under v2 protocol
-// must emit flag candidates (global flags visible at the get group level).
+// TestGroupFlagNameCompletionGetDoubleDash: `get --<TAB>` must emit flag candidates (global flags visible at the get group level).
 func TestGroupFlagNameCompletionGetDoubleDash(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -274,7 +241,7 @@ func TestGroupFlagNameCompletionGetDoubleDash(t *testing.T) {
 
 // TestGroupSubcommandCompletionGetKindNamesRegression guards that `get <TAB>`
 // still lists kind names (and aliases) after the group-completion twin fix.
-// This confirms the v2-gated flag branch does NOT overwrite the existing
+// This confirms the flag branch does NOT overwrite the existing
 // alias-aware subcommand listing for non-flag currentWords.
 func TestGroupSubcommandCompletionGetKindNamesRegression(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
@@ -287,10 +254,9 @@ func TestGroupSubcommandCompletionGetKindNamesRegression(t *testing.T) {
 	assert.Contains(t, got, "po:", "get <TAB> must still list kind aliases (regression guard)")
 }
 
-// TestGroupSubcommandCompletionGetPrefixFiltered: `get po<TAB>` under v2
-// must return only the kind name "pod" and its alias "po", NOT the full 60+
+// TestGroupSubcommandCompletionGetPrefixFiltered: `get po<TAB>` must return only the kind name "pod" and its alias "po", NOT the full 60+
 // unfiltered kind list. The regression this guards: aliasAwareGroupComplete
-// fell through to the unfiltered v1 branch for non-flag currentWords.
+// listed every kind, unfiltered, for a non-flag current word.
 func TestGroupSubcommandCompletionGetPrefixFiltered(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -311,8 +277,7 @@ func TestGroupSubcommandCompletionGetPrefixFiltered(t *testing.T) {
 	assert.NotContains(t, tokens, "help", "get po<TAB> must not include help")
 }
 
-// TestGroupEqualsFormFlagValueCompletion: `get --output=<TAB>` under v2
-// must return the --output= enum candidates, NOT empty output. Before the fix,
+// TestGroupEqualsFormFlagValueCompletion: `get --output=<TAB>` must return the --output= enum candidates, NOT empty output. Before the fix,
 // aliasAwareGroupComplete routed --output= into flagNameCandidates, which
 // trimmed to "output=" and never matched any flag name.
 func TestGroupEqualsFormFlagValueCompletion(t *testing.T) {
@@ -331,8 +296,7 @@ func TestGroupEqualsFormFlagValueCompletion(t *testing.T) {
 }
 
 // TestLeafEqualsFormFlagValueCompletion asserts that `usage --output=<TAB>`
-// under v2 offers the --output values on a leaf command, as the group path
-// does.
+// offers the --output values on a leaf command, as the group path does.
 func TestLeafEqualsFormFlagValueCompletion(t *testing.T) {
 	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")

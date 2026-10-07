@@ -40,7 +40,7 @@ Register-ArgumentCompleter -Native -CommandName rancher -ScriptBlock {
         $lastInRangeText = $null
     }
 
-    # Protocol v2: self-prefixed current-word field.
+    # The request opens with the protocol marker and carries the current word in a self-prefixed field.
     # $tokens[0] = binary; $tokens[1..Count-2] = words before cursor (middle);
     # $wordToComplete = current word (may be empty string).
     $exe = $tokens[0]

@@ -17,8 +17,8 @@ import (
 // help command) and `nosuch`, at the root and after every top-level group
 // in the built tree. The word after `--help` or `-h` is a word too. Global
 // flags and their values before the word do not count as a word, so `-o json
-// <TAB>` and `<group> -o json <TAB>` still list commands. This covers the v2
-// protocol the shipped shell scripts send. NOT parallel: mutates
+// <TAB>` and `<group> -o json <TAB>` still list commands. This covers the
+// lines the shipped shell scripts send. NOT parallel: mutates
 // rawArgv/rawCurrentWord globals and env.
 func TestCompletionAfterUnknownWordOffersNothing(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")

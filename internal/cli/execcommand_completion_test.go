@@ -88,9 +88,9 @@ func TestExecCommandCompletionOffersOnlyWhatTheWordMeans(t *testing.T) {
 	}
 
 	t.Run("through the command tree", func(t *testing.T) {
-		origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+		origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 		t.Cleanup(func() {
-			rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion = origArgv, origWord, origProto, origV1
+			rawArgv, rawCurrentWord, rawCompleting = origArgv, origWord, origProto
 		})
 		t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 		t.Setenv(config.EnvConfigDir, t.TempDir())

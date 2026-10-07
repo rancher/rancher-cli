@@ -143,22 +143,21 @@ func TestNoNetworkOnStaticSite(t *testing.T) {
 
 // TestSchemaVerbFlagValueCompletionSurfaces drives `schema --verb <TAB>`
 // through the real Adapt-installed ShellComplete callback (BuildRoot +
-// root.Run, v2 protocol): the flag-value site must surface the descriptor's
+// root.Run, a marked line): the flag-value site must surface the descriptor's
 // --verb enum via the layer-1 enumCandidates path - offline, sorted, exactly
 // the enum set. Hermetic: no config file, network gate off, file credential
 // store; a network or keyring touch would fail the empty-config run.
 func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
-	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawProtoV2 globals.
+	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawCompleting globals.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 
-	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 	t.Cleanup(func() {
 		rawArgv = origArgv
 		rawCurrentWord = origWord
-		rawProtoV2 = origProto
-		rawV1Completion = origV1
+		rawCompleting = origProto
 	})
 	scriptArgs := []string{"--rancher-completion-proto=2", "schema", "--verb",
 		"--rancher-completion-cur=", "--generate-shell-completion"}
@@ -190,17 +189,16 @@ func TestSchemaVerbFlagValueCompletionSurfaces(t *testing.T) {
 // must surface the descriptor's --auth-flow enum offline, sorted, exactly the
 // enum set. Hermetic: no config file, network gate off, file credential store.
 func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
-	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawProtoV2 globals.
+	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawCompleting globals.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 
-	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 	t.Cleanup(func() {
 		rawArgv = origArgv
 		rawCurrentWord = origWord
-		rawProtoV2 = origProto
-		rawV1Completion = origV1
+		rawCompleting = origProto
 	})
 	scriptArgs := []string{"--rancher-completion-proto=2", "auth", "get-token", "--auth-flow",
 		"--rancher-completion-cur=", "--generate-shell-completion"}
@@ -229,17 +227,16 @@ func TestAuthGetTokenAuthFlowCompletionSurfaces(t *testing.T) {
 // must surface the shim descriptor's --auth-flow enum offline, sorted, exactly
 // the enum set. Hermetic: no config file, network gate off, file credential store.
 func TestTokenShimAuthFlowCompletionSurfaces(t *testing.T) {
-	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawProtoV2 globals.
+	// NOT parallel: CaptureArgv mutates rawArgv/rawCurrentWord/rawCompleting globals.
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
 	t.Setenv(config.EnvConfigDir, dir)
 
-	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 	t.Cleanup(func() {
 		rawArgv = origArgv
 		rawCurrentWord = origWord
-		rawProtoV2 = origProto
-		rawV1Completion = origV1
+		rawCompleting = origProto
 	})
 	scriptArgs := []string{"--rancher-completion-proto=2", "token", "--auth-flow",
 		"--rancher-completion-cur=", "--generate-shell-completion"}
@@ -280,9 +277,7 @@ func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(t.Context(), []string{
-		"rancher", "--config", dir, "schema", "--generate-shell-completion",
-	}))
+	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "schema"}, ""))
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 	require.NotEmpty(t, lines)
 

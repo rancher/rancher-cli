@@ -15,9 +15,8 @@ import (
 // VALIDATION error naming both flags on the first match; nil when clean.
 //
 // inCompletion must be completionActive() at the call site: when true, the
-// user is mid-typing (v2 proto) or urfave's own --generate-shell-completion
-// (v1 proto) is present and dangling flags are expected, so the guard never
-// fires on either path.
+// user is mid-typing and dangling flags are expected, so the guard never
+// fires.
 //
 // False-positive discipline:
 //   - equals-form tokens (--flag=value) are a single argv token; never examined.

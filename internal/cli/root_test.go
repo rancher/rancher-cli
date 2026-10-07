@@ -936,8 +936,8 @@ func TestSchemaReportsConfigSourcedReadOnly(t *testing.T) {
 // exit code).
 func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	origExiter := ucli.OsExiter
 	var gotCode int
 	ucli.OsExiter = func(code int) { gotCode = code }
@@ -973,8 +973,8 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 // envelope - the deterministic "scan miss falls back to text" rule.
 func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	defer func() { ucli.OsExiter = origExiter }()
@@ -1052,8 +1052,8 @@ func TestUsageErrorStyledWithColorAlways(t *testing.T) {
 // command line renders as text.
 func TestUnknownFlagRendersTextWithoutOutputFlag(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	var out, errOut bytes.Buffer
@@ -1074,8 +1074,8 @@ func TestUnknownFlagRendersTextWithoutOutputFlag(t *testing.T) {
 // serialized as YAML.
 func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	defer func() { ucli.OsExiter = origExiter }()
@@ -1098,8 +1098,8 @@ func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
 // --version, not the generic `rancher schema` hint.
 func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	defer func() { ucli.OsExiter = origExiter }()
@@ -1134,8 +1134,8 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 // targeted hint; other unknown tokens under delete keep the generic hint.
 func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	origExiter := ucli.OsExiter
 	ucli.OsExiter = func(int) {}
 	defer func() { ucli.OsExiter = origExiter }()
@@ -1179,8 +1179,8 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 // envelope at exit 2, not urfave's own unhinted "Incorrect Usage" text.
 func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	var out, errOut bytes.Buffer
@@ -1205,8 +1205,8 @@ func TestUnknownFlagIsValidationEnvelope(t *testing.T) {
 // Mirrors TestDeleteClusterHintsAtProvisioningCluster one seam over.
 func TestAllNamespacesHintTargeted(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	t.Run("-A shorthand", func(t *testing.T) {
 		root, err := BuildRoot("v-test")
 		require.NoError(t, err)
@@ -1425,9 +1425,7 @@ func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	assert.False(t, env.Data.ReadOnly, "a corrupt config must degrade to not-read-only, not fail schema")
 
 	out.Reset()
-	require.NoError(t, root.Run(t.Context(), []string{
-		"rancher", "--config", dir, "get", "--generate-shell-completion",
-	}))
+	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, ""))
 	assert.NotEmpty(t, out.String(), "the completion callback must still emit candidates on a corrupt config, not fail")
 }
 
@@ -1443,16 +1441,7 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	// urfave's DefaultCompleteWithFlags reads the real os.Args (not the argv
-	// passed to Run) when invoked at the root command - it always assumes the
-	// shell appended the completion flag last on the actual process args. Mirror
-	// that so the test drives the same code path a real TAB keystroke does.
-	argv := []string{"rancher", "--config", dir, "--generate-shell-completion"}
-	origArgs := os.Args
-	os.Args = argv
-	t.Cleanup(func() { os.Args = origArgs })
-
-	require.NoError(t, root.Run(t.Context(), argv))
+	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir}, ""))
 	assert.Contains(t, out.String(), "get")
 	assert.Contains(t, out.String(), "auth")
 }
@@ -1470,8 +1459,8 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 // internal machinery, not part of the command surface).
 func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	origExiter := ucli.OsExiter
 	var gotCode int
 	ucli.OsExiter = func(code int) { gotCode = code }

@@ -1,8 +1,6 @@
 package cli_test
 
 import (
-	"bytes"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -179,33 +177,6 @@ func commandAt(root *ucli.Command, path []string) *ucli.Command {
 		c = c.Command(name)
 	}
 	return c
-}
-
-// TestCompletionV1ProtocolLeafKeepsPartialFlagNames asserts that under the v1
-// protocol (no sentinel, so the argv still holds the partial word being
-// completed) a leaf still completes a partial flag name: the partial word
-// must not read as an undefined flag. NOT parallel: mutates rawArgv and env.
-func TestCompletionV1ProtocolLeafKeepsPartialFlagNames(t *testing.T) {
-	completionServer(t, false)
-	for _, tc := range []struct {
-		words []string
-		want  string
-	}{
-		{[]string{"get", "pods", "--clu"}, "--cluster"},
-		{[]string{"get", "pods", "--cluster", "c1", "--na"}, "--namespace"},
-	} {
-		argv := append(slices.Clone(tc.words), "--generate-shell-completion")
-		origV1 := cli.GetRawV1CompletionForTest()
-		t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
-		cli.CaptureArgvForTest(argv)
-		root, err := cli.BuildRoot("test")
-		require.NoError(t, err)
-		var out bytes.Buffer
-		root.Writer = &out
-		root.ErrWriter = io.Discard
-		_ = root.Run(t.Context(), append([]string{"rancher"}, argv...))
-		assert.Contains(t, out.String(), tc.want, "rancher %v <TAB> under the v1 protocol", tc.words)
-	}
 }
 
 // TestCompletionRejectedLineMakesNoRequest asserts that a line with a flag

@@ -20,7 +20,7 @@ func TestGetGroupCompletionListsAliases(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "get", "--generate-shell-completion"}))
+	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, ""))
 	assert.Contains(t, out.String(), "pod:")
 	assert.Contains(t, out.String(), "pods:")
 	assert.Contains(t, out.String(), "po:")
@@ -28,11 +28,8 @@ func TestGetGroupCompletionListsAliases(t *testing.T) {
 
 // TestGetGroupCompletionFlagBranchPreserved asserts that the alias override
 // only replaces the subcommand-listing branch: a "-"-prefixed current word
-// still defers to urfave's own flag-suggestion behavior, not the alias
-// listing. The `get` group command owns no flags itself (they live on each
-// kind leaf), so upstream's own default already produces empty output here -
-// the same empty result before and after this override is what "preserved"
-// means; the regression this guards against is the override always
+// gets flag names - the global flags the `get` group accepts - never the
+// alias listing. The regression this guards against is the override always
 // printing aliases regardless of branch.
 func TestGetGroupCompletionFlagBranchPreserved(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -42,8 +39,9 @@ func TestGetGroupCompletionFlagBranchPreserved(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "get", "--dr", "--generate-shell-completion"}))
-	assert.Empty(t, out.String(), "a flag-prefixed current word must not fall through to alias listing")
+	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, "--dr"))
+	assert.Contains(t, out.String(), "--dry-run")
+	assert.NotContains(t, out.String(), "pod:", "a flag-prefixed current word must not fall through to alias listing")
 }
 
 // TestInspectGroupCompletionHasAliasOverride asserts that inspect/pod,
@@ -70,7 +68,7 @@ func TestInspectGroupCompletionListsAliases(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "inspect", "--generate-shell-completion"}))
+	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "inspect"}, ""))
 	assert.Contains(t, out.String(), "pod:")
 	assert.Contains(t, out.String(), "po:")
 	assert.Contains(t, out.String(), "deploy:")

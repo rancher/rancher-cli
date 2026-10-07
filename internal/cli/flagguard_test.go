@@ -89,9 +89,9 @@ func TestCheckFlagValuesBoolFlagAdjacency(t *testing.T) {
 	assert.Nil(t, ce, "bool flag adjacent to value-taking flag must not fire")
 }
 
-func TestCheckFlagValuesV1DanglingFlagNoFire(t *testing.T) {
+func TestCheckFlagValuesDanglingFlagNoFire(t *testing.T) {
 	t.Parallel()
-	// v1-shaped rawArgv ending in a dangling value-taking flag: the i+1 <
+	// rawArgv ending in a dangling value-taking flag: the i+1 <
 	// len(argv) guard means there is no next token to examine - no fire.
 	flags := []runtime.ArgSpec{{Name: "cloud-credential", Type: "string"}}
 	argv := []string{"create", "cluster", "--cloud-credential"}
@@ -99,19 +99,20 @@ func TestCheckFlagValuesV1DanglingFlagNoFire(t *testing.T) {
 	assert.Nil(t, ce, "dangling last flag with no next token must not fire")
 }
 
-func TestCheckFlagValuesV1CompletionSuppressed(t *testing.T) {
-	// NOT parallel: writes rawV1Completion (process-global).
-	// v1 completion path: rawV1Completion set, inCompletion=completionActive()=true.
-	// Even a genuine --flag --flag pattern must not fire during completion.
-	rawV1Completion = true
-	t.Cleanup(func() { rawV1Completion = false })
+func TestCheckFlagValuesCompletionRequestSuppressed(t *testing.T) {
+	// NOT parallel: writes the argv globals (process-global).
+	// A completion request: CaptureArgv sets rawCompleting, so
+	// inCompletion=completionActive()=true. Even a genuine --flag --flag
+	// pattern must not fire during completion.
+	t.Cleanup(func() { CaptureArgv(nil) })
+	CaptureArgv([]string{protoSentinel, "create", "cluster", "--cloud-credential", "--k8s-version", curPrefix, completionFlag})
 	flags := []runtime.ArgSpec{
 		{Name: "cloud-credential", Type: "string"},
 		{Name: "k8s-version", Type: "string"},
 	}
 	argv := []string{"create", "cluster", "--cloud-credential", "--k8s-version"}
 	ce := checkFlagValues(flags, argv, completionActive())
-	assert.Nil(t, ce, "guard must not fire during v1 completion")
+	assert.Nil(t, ce, "guard must not fire during completion")
 }
 
 // TestCheckFlagValuesBeforeHookRendersPerParsedFormat asserts the Before hook's

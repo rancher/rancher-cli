@@ -136,11 +136,11 @@ func TestFlagInstances(t *testing.T) {
 	}
 }
 
-// runCompletionV2 drives one v2-protocol completion request through
+// runCreateFieldCompletion drives one completion request through
 // BuildRoot and root.Run, with live completion off and a server URL on a
 // closed port, and returns the candidate output. NOT parallel: it mutates
 // the package's argv globals, the stored config and the environment.
-func runCompletionV2(t *testing.T, words []string, currentWord string) string {
+func runCreateFieldCompletion(t *testing.T, words []string, currentWord string) string {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := &config.Config{
@@ -154,12 +154,11 @@ func runCompletionV2(t *testing.T, words []string, currentWord string) string {
 	t.Setenv(config.EnvConfigDir, dir)
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 
-	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 	t.Cleanup(func() {
 		rawArgv = origArgv
 		rawCurrentWord = origWord
-		rawProtoV2 = origProto
-		rawV1Completion = origV1
+		rawCompleting = origProto
 	})
 	scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 	scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
@@ -178,15 +177,15 @@ func runCompletionV2(t *testing.T, words []string, currentWord string) string {
 // value suggestions for the free-text --description.
 func TestCreateFieldFlagsFullCallback(t *testing.T) {
 	t.Run("container limit keys, space form", func(t *testing.T) {
-		got := runCompletionV2(t, []string{"create", "project", "web", "--cluster", "c-x", "--container-default-resource-limit"}, "lim")
+		got := runCreateFieldCompletion(t, []string{"create", "project", "web", "--cluster", "c-x", "--container-default-resource-limit"}, "lim")
 		assert.Equal(t, "limitsCpu=\nlimitsMemory=\n", got)
 	})
 	t.Run("container limit keys, equals form", func(t *testing.T) {
-		got := runCompletionV2(t, []string{"create", "project", "web", "--cluster", "c-x"}, "--container-default-resource-limit=limitsCpu=1,requestsM")
+		got := runCreateFieldCompletion(t, []string{"create", "project", "web", "--cluster", "c-x"}, "--container-default-resource-limit=limitsCpu=1,requestsM")
 		assert.Equal(t, "--container-default-resource-limit=limitsCpu=1,requestsMemory=\n", got)
 	})
 	t.Run("second instance offers nothing", func(t *testing.T) {
-		got := runCompletionV2(t, []string{"create", "project", "web", "--container-default-resource-limit", "limitsCpu=1", "--container-default-resource-limit"}, "")
+		got := runCreateFieldCompletion(t, []string{"create", "project", "web", "--container-default-resource-limit", "limitsCpu=1", "--container-default-resource-limit"}, "")
 		assert.Empty(t, got)
 	})
 	t.Run("a flag given once is not offered again", func(t *testing.T) {
@@ -200,25 +199,25 @@ func TestCreateFieldFlagsFullCallback(t *testing.T) {
 			{[]string{"create", "project", "web", "-namespace-default-quota", "limitsCpu=1"}, "--names"},
 			{[]string{"create", "secret", "s", "--from-literal", "a=1"}, "--from"},
 		} {
-			got := runCompletionV2(t, tc.words, tc.cur)
+			got := runCreateFieldCompletion(t, tc.words, tc.cur)
 			assert.Empty(t, got, "%q then %q", tc.words, tc.cur)
 		}
-		got := runCompletionV2(t, []string{"create", "project", "web", "--quota-limit", "limitsCpu=1"}, "--names")
+		got := runCreateFieldCompletion(t, []string{"create", "project", "web", "--quota-limit", "limitsCpu=1"}, "--names")
 		assert.Contains(t, got, "--namespace-default-quota", "an unused Once flag is still offered")
-		got = runCompletionV2(t, []string{"create", "oidc-client", "app", "--redirect-uri", "https://a.invalid/cb"}, "--redir")
+		got = runCreateFieldCompletion(t, []string{"create", "oidc-client", "app", "--redirect-uri", "https://a.invalid/cb"}, "--redir")
 		assert.Contains(t, got, "--redirect-uri", "a repeatable flag is still offered after it was given")
 	})
 	t.Run("create project offers the flag name", func(t *testing.T) {
-		got := runCompletionV2(t, []string{"create", "project", "web"}, "--container")
+		got := runCreateFieldCompletion(t, []string{"create", "project", "web"}, "--container")
 		assert.Contains(t, got, "--container-default-resource-limit")
 	})
 	t.Run("create user offers the new flag names", func(t *testing.T) {
-		got := runCompletionV2(t, []string{"create", "user", "alice"}, "--")
+		got := runCreateFieldCompletion(t, []string{"create", "user", "alice"}, "--")
 		assert.Contains(t, got, "--description:")
 		assert.Contains(t, got, "--must-change-password:")
 	})
 	t.Run("create user --description takes free text", func(t *testing.T) {
-		got := runCompletionV2(t, []string{"create", "user", "alice", "--description"}, "")
+		got := runCreateFieldCompletion(t, []string{"create", "user", "alice", "--description"}, "")
 		assert.Empty(t, got)
 	})
 }
@@ -333,7 +332,7 @@ func TestCreateFieldFlagsRefuseEmptyAndSeparateBoolValues(t *testing.T) {
 }
 
 // TestCompletionOffersNothingOnALineWithAOnceFlagTwice asserts, through the
-// built root and the v2 protocol with network completion on and a
+// built root and a marked line with network completion on and a
 // request-recording server, that completing --cluster on a create secret
 // line that holds --from-literal twice, in either dash spelling and either
 // value form, offers nothing and sends no request: the command refuses

@@ -422,86 +422,51 @@ var groupUsages = map[string]string{
 	"access":      "Where a subject can go, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
 }
 
-// aliasAwareGroupComplete reproduces urfave's DefaultCompleteWithFlags for a
-// verb group's own ShellComplete (the two branches: flag names when the
-// current word starts with "-", subcommand suggestions otherwise) but
-// additionally lists each leaf's Aliases: urfave's own default lists only
-// each leaf's canonical Name (printCommandSuggestions), so `po<TAB>` under
-// `get` would complete only toward the canonical "pod" form otherwise. The
-// lastArg computation mirrors DefaultCompleteWithFlags' own (unexported)
-// logic exactly, for the non-root case (cmd.parent != nil, cmd.Args().Slice()).
+// aliasAwareGroupComplete is a verb group's own ShellComplete. urfave's
+// DefaultCompleteWithFlags lists only each leaf's canonical Name
+// (printCommandSuggestions), so `po<TAB>` under `get` would complete only
+// toward the canonical "pod" form; this lists each leaf's Aliases as well.
 //
-// Under v2, rawCurrentWord is classified the same way the leaf path does it
-// (ParseArgTail/classifyCurrentWordV2): equals-form flag values, partial flag
-// names, and bare words are each routed to the appropriate candidate
-// generator. The classification lives in completeCurrentWordV2, shared with
-// the root command's own ShellComplete; only the bare-word branch - the
-// alias-aware subcommand listing - is supplied here.
+// rawCurrentWord is classified the same way the leaf path does it
+// (ParseArgTail): equals-form flag values, partial flag names, and bare words
+// are each routed to the appropriate candidate generator. The classification
+// lives in completeCurrentWord, shared with the root command's own
+// ShellComplete; only the bare-word branch - the alias-aware subcommand
+// listing - is supplied here.
 func aliasAwareGroupComplete(ctx context.Context, cmd *ucli.Command) {
-	if rawProtoV2 {
-		completeCurrentWordV2(ctx, cmd, func(w io.Writer) {
-			// Bare word (or empty): prefix-filter subcommand names and aliases
-			// by rawCurrentWord independently. An empty rawCurrentWord matches
-			// everything (strings.HasPrefix(s, "") is always true), preserving the
-			// "list all kinds + aliases" behavior for `get <TAB>`. Name and each
-			// alias are tested independently so an alias-only prefix (e.g. "ns" for
-			// namespace) is not gated on the canonical name matching first.
-			for _, leaf := range cmd.Commands {
-				if leaf.Hidden {
-					continue
-				}
-				if strings.HasPrefix(leaf.Name, rawCurrentWord) {
-					printCompletionCandidate(w, leaf.Name, leaf.Usage)
-				}
-				for _, alias := range leaf.Aliases {
-					if strings.HasPrefix(alias, rawCurrentWord) {
-						printCompletionCandidate(w, alias, leaf.Usage)
-					}
+	completeCurrentWord(ctx, cmd, func(w io.Writer) {
+		// Bare word (or empty): prefix-filter subcommand names and aliases
+		// by rawCurrentWord independently. An empty rawCurrentWord matches
+		// everything (strings.HasPrefix(s, "") is always true), preserving the
+		// "list all kinds + aliases" behavior for `get <TAB>`. Name and each
+		// alias are tested independently so an alias-only prefix (e.g. "ns" for
+		// namespace) is not gated on the canonical name matching first.
+		for _, leaf := range cmd.Commands {
+			if leaf.Hidden {
+				continue
+			}
+			if strings.HasPrefix(leaf.Name, rawCurrentWord) {
+				printCompletionCandidate(w, leaf.Name, leaf.Usage)
+			}
+			for _, alias := range leaf.Aliases {
+				if strings.HasPrefix(alias, rawCurrentWord) {
+					printCompletionCandidate(w, alias, leaf.Usage)
 				}
 			}
-		})
-		return
-	}
-	// v1 / subcommand path: derive lastArg from cmd.Args(), which in v1
-	// shellCompletion mode still holds the partial word (preserved by urfave's
-	// parseFlags when it sees "--" and shellCompletion is true). The subcommand
-	// alias listing is also handled here for any non-flag currentWord.
-	args := cmd.Args().Slice()
-	lastArg := ""
-	if n := len(args); n > 1 {
-		lastArg = args[n-2]
-	} else if n == 1 {
-		lastArg = args[0]
-	}
-	if lastArg == "--generate-shell-completion" {
-		lastArg = ""
-	}
-	if strings.HasPrefix(lastArg, "-") {
-		ucli.DefaultCompleteWithFlags(ctx, cmd)
-		return
-	}
-	w := cmd.Root().Writer
-	for _, leaf := range cmd.Commands {
-		if leaf.Hidden {
-			continue
 		}
-		printCompletionCandidate(w, leaf.Name, leaf.Usage)
-		for _, alias := range leaf.Aliases {
-			printCompletionCandidate(w, alias, leaf.Usage)
-		}
-	}
+	})
 }
 
-// completeCurrentWordV2 is the single v2-protocol classification of the
-// current word for non-leaf ShellComplete callbacks (verb groups and the root
-// command): equals-form flag value, space-form flag value, partial flag name,
-// or bare word. Flag-value sites get the static enum values of the global
-// flags (no request: a live source for a global flag, such as the project
-// list, needs a cluster, and the only way to name one is a leaf flag that a
-// root or group rejects), partial flag names get flag-name candidates; only the
-// bare-word branch differs per level, so the caller supplies it (a group
-// lists its leaves with aliases, the root lists top-level commands).
-func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func(w io.Writer)) {
+// completeCurrentWord is the single classification of the current word for
+// non-leaf ShellComplete callbacks (verb groups and the root command):
+// equals-form flag value, space-form flag value, partial flag name, or bare
+// word. Flag-value sites get the static enum values of the global flags (no
+// request: a live source for a global flag, such as the project list, needs a
+// cluster, and the only way to name one is a leaf flag that a root or group
+// rejects), partial flag names get flag-name candidates; only the bare-word
+// branch differs per level, so the caller supplies it (a group lists its
+// leaves with aliases, the root lists top-level commands).
+func completeCurrentWord(ctx context.Context, cmd *ucli.Command, bareWord func(w io.Writer)) {
 	// A flag this level does not accept, or a word that names no command,
 	// sits between the command path and the word being completed: the
 	// command rejects the line whatever is completed next (a command name,
@@ -547,7 +512,7 @@ func completeCurrentWordV2(ctx context.Context, cmd *ucli.Command, bareWord func
 	// the leaf path does, and skip the bare-word branch. An empty Descriptor
 	// is sufficient; the enum falls back to globalArgSpecs for global flags.
 	tail := stripRoutingPrefixByCmd(rawArgv, cmd)
-	if site := ParseArgTail(tail, rawCurrentWord, rawProtoV2, runtime.Descriptor{}, globalArgSpecs); site.Kind == SiteFlagValue {
+	if site := ParseArgTail(tail, rawCurrentWord, runtime.Descriptor{}, globalArgSpecs); site.Kind == SiteFlagValue {
 		for _, cand := range enumCandidates(site, runtime.Descriptor{}) {
 			_, _ = fmt.Fprintln(w, cand)
 		}
@@ -942,8 +907,9 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 	// has subcommands). For groups whose leaves carry Aliases this lists
 	// canonical name + aliases; for others (config, auth, etc.) it lists
 	// canonical names only - same as urfave's default, but with the
-	// v2-protocol flag-name branch that DefaultCompleteWithFlags lacks (so
-	// `config --<TAB>` and `get --<TAB>` both yield flag candidates under v2).
+	// flag-name branch that DefaultCompleteWithFlags lacks for the stripped
+	// current word (so `config --<TAB>` and `get --<TAB>` both yield flag
+	// candidates).
 	for _, cmd := range commandsList {
 		if len(cmd.Commands) > 0 {
 			cmd.ShellComplete = noCompletionAfterDoubleDash(aliasAwareGroupComplete)
@@ -951,22 +917,16 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 	}
 
 	rootShellComplete := func(ctx context.Context, c *ucli.Command) {
-		// v2 protocol: use rawCurrentWord (stripped from argv), classified by
-		// the same shared routing the verb groups use - so root-level flag-value
-		// sites (`rancher -o <TAB>`, `rancher --output=<TAB>`) reach the dispatch
+		// rawCurrentWord (stripped from argv) is classified by the same shared
+		// routing the verb groups use - so root-level flag-value sites
+		// (`rancher -o <TAB>`, `rancher --output=<TAB>`) reach the dispatch
 		// pipeline instead of the command listing. The bare-word branch keeps
-		// the top-level command listing. For v1, fall back to
-		// DefaultCompleteWithFlags which reads os.Args directly for the root
-		// command (cmd.parent == nil path in DefaultCompleteWithFlags).
-		if rawProtoV2 {
-			completeCurrentWordV2(ctx, c, func(w io.Writer) {
-				for _, cand := range nameLikeCandidates(c, rawCurrentWord) {
-					_, _ = fmt.Fprintln(w, cand)
-				}
-			})
-			return
-		}
-		ucli.DefaultCompleteWithFlags(ctx, c)
+		// the top-level command listing.
+		completeCurrentWord(ctx, c, func(w io.Writer) {
+			for _, cand := range nameLikeCandidates(c, rawCurrentWord) {
+				_, _ = fmt.Fprintln(w, cand)
+			}
+		})
 	}
 
 	return &ucli.Command{

@@ -284,23 +284,14 @@ func TestLiveSourceCandidatesPolicy(t *testing.T) {
 		assert.Zero(t, hits.Load())
 	})
 
-	t.Run("under the v1 protocol a positional site's last positional is the word being completed", func(t *testing.T) {
+	t.Run("a positional site's positionals are every positional in the tail", func(t *testing.T) {
 		srv, _ := countingServer(t, `{"items":[]}`)
 		liveFixture(t, srv)
-		orig := rawProtoV2
-		t.Cleanup(func() { rawProtoV2 = orig })
 		var saw completion.Request
 		lc := fakeCompleter{claiming(oneListing, []string{"a"}, &saw)}
 		positional := CompletionSite{Kind: SitePositional, Index: 1, Partial: "sec"}
-		rawProtoV2 = true
 		liveSourceCandidates(t.Context(), positional, d, lc, []string{"my-client"}, none, none, noPositional)
-		assert.Equal(t, []string{"my-client"}, saw.Positionals, "v2: the current word is not in the tail")
-		rawProtoV2 = false
-		liveSourceCandidates(t.Context(), positional, d, lc, []string{"my-client", "sec"}, none, none, noPositional)
-		assert.Equal(t, []string{"my-client"}, saw.Positionals, "v1: the tail's last token is the current word and is dropped")
-		flagged := runtime.Descriptor{Name: "x", Flags: []runtime.ArgSpec{{Name: "x", Type: "string"}}}
-		liveSourceCandidates(t.Context(), site, flagged, lc, []string{"my-client", "--x", "sec"}, none, none, noPositional)
-		assert.Equal(t, []string{"my-client"}, saw.Positionals, "v1 flag-value site: the current word is the flag's value, consumed by arity")
+		assert.Equal(t, []string{"my-client"}, saw.Positionals, "the current word is not in the tail, so no positional is dropped")
 	})
 
 	t.Run("a spaced display name resolves and the id reaches the source", func(t *testing.T) {

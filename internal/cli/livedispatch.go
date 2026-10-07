@@ -93,17 +93,11 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 }
 
 // typedPositionals fills Request.Positionals: the tail's positionals with
-// flag arity applied, the word being completed excluded. Under the v2
-// protocol the current word never reaches the tail; under v1 an old
-// installed script leaves it as the tail's last token, which on a
-// positional site is the last positional and is dropped here.
+// flag arity applied. The word being completed never reaches the tail.
 func typedPositionals(site CompletionSite, tail []string, leafFlags []runtime.ArgSpec) []string {
 	pos := positionals(tail, leafFlags)
 	if site.DoubleDash {
 		return append(pos, site.After...)
-	}
-	if !rawProtoV2 && site.Kind == SitePositional && len(pos) > 0 {
-		pos = pos[:len(pos)-1]
 	}
 	return pos
 }

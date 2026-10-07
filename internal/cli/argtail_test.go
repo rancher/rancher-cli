@@ -7,7 +7,20 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	ucli "github.com/urfave/cli/v3"
 )
+
+// runCompletionRequest runs on root the completion request the shipped
+// scripts send for typed, the words before the cursor, and current, the word
+// being completed: CaptureArgv, then Run on the argv SanitizedArgs hands
+// urfave, as main does. The argv globals are restored when the test ends.
+func runCompletionRequest(t *testing.T, root *ucli.Command, typed []string, current string) error {
+	t.Helper()
+	restoreRawArgv(t)
+	argv := append(append([]string{protoSentinel}, typed...), curPrefix+current, completionFlag)
+	CaptureArgv(argv)
+	return root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, argv...)))
+}
 
 // testLeaf is a minimal descriptor used across ParseArgTail tests.
 var testLeaf = runtime.Descriptor{
@@ -26,127 +39,85 @@ func TestParseArgTail(t *testing.T) {
 		name        string
 		args        []string
 		currentWord string
-		hasMarker   bool
 		want        CompletionSite
 	}{
-		// v2 protocol cases (hasMarker=true) - currentWord classified first.
+		// currentWord is classified first.
 		{
-			name:        "v2: empty currentWord, no args → positional 0",
+			name:        "empty currentWord, no args → positional 0",
 			args:        []string{},
 			currentWord: "",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SitePositional, Index: 0},
 		},
 		{
-			name:        "v2: empty currentWord, one positional in args → positional 1",
+			name:        "empty currentWord, one positional in args → positional 1",
 			args:        []string{"prod"},
 			currentWord: "",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SitePositional, Index: 1, Args: []string{"prod"}},
 		},
 		{
-			name:        "v2: string flag value consumed (non-final) → positional 1",
+			name:        "string flag value consumed (non-final) → positional 1",
 			args:        []string{"--cluster", "prod", "foo"},
 			currentWord: "",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SitePositional, Index: 1, Args: []string{"foo"}},
 		},
 		{
-			name:        "v2: bool flag → positional 0",
+			name:        "bool flag → positional 0",
 			args:        []string{"--verbose"},
 			currentWord: "",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SitePositional, Index: 0},
 		},
 		// Equals-form currentWord classifies as an equals-form SiteFlagValue.
 		{
-			name:        "v2: equals-form currentWord → flagValue equals (currentWord classified first)",
+			name:        "equals-form currentWord → flagValue equals (currentWord classified first)",
 			args:        []string{},
 			currentWord: "--by=n",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SiteFlagValue, FlagName: "by", FlagSpelling: "--by", EqualsForm: true, Partial: "n"},
 		},
 		{
 			// A partial flag in currentWord classifies as SiteNameLike.
-			name:        "v2: partial flag currentWord → SiteNameLike (urfave default completer)",
+			name:        "partial flag currentWord → SiteNameLike (urfave default completer)",
 			args:        []string{},
 			currentWord: "--cl",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SiteNameLike},
 		},
 		{
 			// A non-flag currentWord after a value-taking flag classifies as
 			// → space-form SiteFlagValue with Partial=currentWord.
-			name:        "v2: non-flag currentWord, flag-last in args → SiteFlagValue space-form",
+			name:        "non-flag currentWord, flag-last in args → SiteFlagValue space-form",
 			args:        []string{"--cluster"},
 			currentWord: "c-abc",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster", EqualsForm: false, Partial: "c-abc"},
 		},
 		{
 			// A non-flag currentWord with no trailing flag classifies as
 			// SitePositional.
-			name:        "v2: non-flag currentWord, no trailing flag → SitePositional",
+			name:        "non-flag currentWord, no trailing flag → SitePositional",
 			args:        []string{"--cluster", "c-abc"},
 			currentWord: "mypod",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SitePositional, Index: 0, Partial: "mypod"},
 		},
 		{
-			// v2 both-sides test A: flag + completed-value word + currentWord="" → positional.
+			// Both-sides test A: flag + completed-value word + currentWord="" → positional.
 			// "--cluster c-test " TAB: rawArgv=["--cluster","c-test"], currentWord=""
-			name:        "v2: flag+value in args, currentWord empty → next positional (disambiguates space-after-value)",
+			name:        "flag+value in args, currentWord empty → next positional (disambiguates space-after-value)",
 			args:        []string{"--cluster", "c-test"},
 			currentWord: "",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SitePositional, Index: 0},
 		},
 		{
-			// v2 both-sides test B: flag only in args + non-empty currentWord → flagValue partial.
+			// Both-sides test B: flag only in args + non-empty currentWord → flagValue partial.
 			// "--cluster c-" TAB: rawArgv=["--cluster"], currentWord="c-"
-			name:        "v2: flag-only in args, currentWord non-empty → flagValue with Partial (disambiguates partial-value)",
+			name:        "flag-only in args, currentWord non-empty → flagValue with Partial (disambiguates partial-value)",
 			args:        []string{"--cluster"},
 			currentWord: "c-",
-			hasMarker:   true,
 			want:        CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster", EqualsForm: false, Partial: "c-"},
-		},
-		// v1 protocol cases (hasMarker=false) - last-word-as-partial heuristic.
-		{
-			name:      "v1: empty args → positional 0",
-			args:      []string{},
-			hasMarker: false,
-			want:      CompletionSite{Kind: SitePositional, Index: 0},
-		},
-		{
-			name:      "v1: flag last, takes value → SiteFlagValue",
-			args:      []string{"--cluster"},
-			hasMarker: false,
-			want:      CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"},
-		},
-		{
-			name:      "v1: flag + partial value → SiteFlagValue space-form with Partial",
-			args:      []string{"--cluster", "c-"},
-			hasMarker: false,
-			want:      CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster", EqualsForm: false, Partial: "c-"},
-		},
-		{
-			name:      "v1: equals-form flag last → SiteFlagValue equals-form",
-			args:      []string{"--cluster=prod"},
-			hasMarker: false,
-			want:      CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster", EqualsForm: true, Partial: "prod"},
-		},
-		{
-			name:      "v1: unknown flag last → SiteNameLike",
-			args:      []string{"--unknown-flag"},
-			hasMarker: false,
-			want:      CompletionSite{Kind: SiteNameLike},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := ParseArgTail(tc.args, tc.currentWord, tc.hasMarker, testLeaf, globalArgSpecs)
+			got := ParseArgTail(tc.args, tc.currentWord, testLeaf, globalArgSpecs)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -191,7 +162,7 @@ func TestParseArgTailFlagValueCases(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := ParseArgTail([]string{tc.flagArg}, "", true, tc.leaf, globalArgSpecs)
+			got := ParseArgTail([]string{tc.flagArg}, "", tc.leaf, globalArgSpecs)
 			assert.Equal(t, tc.wantKind, got.Kind)
 			if tc.wantKind == SiteFlagValue {
 				assert.Equal(t, tc.wantName, got.FlagName)
@@ -200,51 +171,40 @@ func TestParseArgTailFlagValueCases(t *testing.T) {
 	}
 }
 
-func TestCaptureArgvV2ProtoMarkerExtractsCurField(t *testing.T) {
-	// NOT parallel: mutates rawArgv/rawCurrentWord/rawProtoV2 package globals.
+func TestCaptureArgvProtoMarkerExtractsCurField(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord/rawCompleting package globals.
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	// --rancher-completion-cur=c- carries the partial; all other words go to rawArgv.
 	CaptureArgv([]string{"--rancher-completion-proto=2", "get", "pod", "--cluster", "--rancher-completion-cur=c-", "--generate-shell-completion"})
 	assert.Equal(t, []string{"get", "pod", "--cluster"}, rawArgv)
 	assert.Equal(t, "c-", rawCurrentWord)
-	assert.True(t, rawProtoV2)
+	assert.True(t, rawCompleting)
 }
 
-func TestCaptureArgvV2EmptyCurrentWord(t *testing.T) {
+func TestCaptureArgvEmptyCurrentWord(t *testing.T) {
 	// NOT parallel: mutates package globals.
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	// --rancher-completion-cur= (empty value) → cursor after space, no partial typed.
 	CaptureArgv([]string{"--rancher-completion-proto=2", "get", "pod", "--cluster", "c-test", "--rancher-completion-cur=", "--generate-shell-completion"})
 	assert.Equal(t, []string{"get", "pod", "--cluster", "c-test"}, rawArgv)
 	assert.Equal(t, "", rawCurrentWord)
-	assert.True(t, rawProtoV2)
+	assert.True(t, rawCompleting)
 }
 
-func TestCaptureArgvV2EqualsFormCurrentWord(t *testing.T) {
+func TestCaptureArgvEqualsFormCurrentWord(t *testing.T) {
 	// NOT parallel: mutates package globals.
 	// --rancher-completion-cur=--by=n carries an equals-form current word.
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 	CaptureArgv([]string{"--rancher-completion-proto=2", "usage", "--rancher-completion-cur=--by=n", "--generate-shell-completion"})
 	assert.Equal(t, []string{"usage"}, rawArgv)
 	assert.Equal(t, "--by=n", rawCurrentWord)
-	assert.True(t, rawProtoV2)
-}
-
-func TestCaptureArgvV1NoSentinelNoCurrentWord(t *testing.T) {
-	// NOT parallel: mutates package globals.
-	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
-	CaptureArgv([]string{"get", "pod", "--cluster", "prod", "--generate-shell-completion"})
-	assert.Equal(t, []string{"get", "pod", "--cluster", "prod"}, rawArgv)
-	assert.Equal(t, "", rawCurrentWord)
-	assert.False(t, rawProtoV2)
+	assert.True(t, rawCompleting)
 }
 
 func TestSanitizedArgsStripsBothProtocolFields(t *testing.T) {
@@ -280,7 +240,7 @@ func TestParseArgTailRepeatableFlagArity(t *testing.T) {
 	t.Run("second occurrence is a value site", func(t *testing.T) {
 		t.Parallel()
 		site := ParseArgTail([]string{"digitaloceanconfig", "cfg", "--set", "region=nyc3", "--set"},
-			"", true, leaf, globalArgSpecs)
+			"", leaf, globalArgSpecs)
 		assert.Equal(t, SiteFlagValue, site.Kind)
 		assert.Equal(t, "set", site.FlagName)
 	})
@@ -288,7 +248,7 @@ func TestParseArgTailRepeatableFlagArity(t *testing.T) {
 	t.Run("completed occurrences do not shift positional index", func(t *testing.T) {
 		t.Parallel()
 		site := ParseArgTail([]string{"digitaloceanconfig", "--set", "region=nyc3"},
-			"", true, leaf, globalArgSpecs)
+			"", leaf, globalArgSpecs)
 		assert.Equal(t, SitePositional, site.Kind)
 		assert.Equal(t, 1, site.Index)
 	})
@@ -326,33 +286,30 @@ func TestScanOutputFormat(t *testing.T) {
 	}
 }
 
-// TestCompletionRequestIsDecidedByTheMarkersAlone asserts the one decision
-// that a line is a completion request: it opens with the v2 marker, or ends
-// with the flag every script puts last, wherever a "--" sits on the line. A line
-// that only holds the flag mid-line is an ordinary command line.
-func TestCompletionRequestIsDecidedByTheMarkersAlone(t *testing.T) {
+// TestCompletionRequestIsDecidedByTheMarkerAlone asserts the one decision
+// that a line is a completion request: it opens with the protocol marker,
+// wherever a "--" sits on the line. A line without the marker is an ordinary
+// command line, wherever it holds the flag.
+func TestCompletionRequestIsDecidedByTheMarkerAlone(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name    string
 		args    []string
-		proto2  bool
 		request bool
 	}{
-		{"v2", []string{"--rancher-completion-proto=2", "get", "--rancher-completion-cur=", "--generate-shell-completion"}, true, true},
-		{"v2 after a double dash", []string{"--rancher-completion-proto=2", "get", "--", "x", "--rancher-completion-cur=", "--generate-shell-completion"}, true, true},
-		{"v2 without the flag", []string{"--rancher-completion-proto=2", "get", "--rancher-completion-cur="}, true, true},
-		{"v1", []string{"get", "--generate-shell-completion"}, false, true},
-		{"v1 after a double dash", []string{"get", "--", "x", "--generate-shell-completion"}, false, true},
-		{"the flag mid-line", []string{"get", "--generate-shell-completion", "x"}, false, false},
-		{"ordinary line", []string{"config", "add-server", "--", "x"}, false, false},
-		{"no words", nil, false, false},
+		{"a request", []string{"--rancher-completion-proto=2", "get", "--rancher-completion-cur=", "--generate-shell-completion"}, true},
+		{"after a double dash", []string{"--rancher-completion-proto=2", "get", "--", "x", "--rancher-completion-cur=", "--generate-shell-completion"}, true},
+		{"without the flag", []string{"--rancher-completion-proto=2", "get", "--rancher-completion-cur="}, true},
+		{"the marker after the first word", []string{"get", "--rancher-completion-proto=2", "--rancher-completion-cur=", "--generate-shell-completion"}, false},
+		{"the flag last without the marker", []string{"get", "--generate-shell-completion"}, false},
+		{"the flag mid-line", []string{"get", "--generate-shell-completion", "x"}, false},
+		{"ordinary line", []string{"config", "add-server", "--", "x"}, false},
+		{"no words", nil, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			proto2, request := completionRequest(tt.args)
-			assert.Equal(t, tt.proto2, proto2)
-			assert.Equal(t, tt.request, request)
+			assert.Equal(t, tt.request, completionRequest(tt.args))
 		})
 	}
 }
@@ -360,8 +317,7 @@ func TestCompletionRequestIsDecidedByTheMarkersAlone(t *testing.T) {
 // TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash asserts that urfave
 // receives a completion request as one it completes: the words from the first
 // "--" on are dropped (it reads the flag after one as an argument and runs the
-// command) and the flag is last. Under v1 a "--" that is the last word is the
-// word being completed and stays. A line that is not a request is passed on
+// command) and the flag is last. A line that is not a request is passed on
 // unchanged, "--" included.
 func TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash(t *testing.T) {
 	t.Parallel()
@@ -371,48 +327,38 @@ func TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash(t *testing.T) {
 		want []string
 	}{
 		{
-			"v2",
+			"a request",
 			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--apply", "--", "myserver", "--rancher-completion-cur=", "--generate-shell-completion"},
 			[]string{"rancher", "config", "add-server", "--apply", "--generate-shell-completion"},
 		},
 		{
-			"v1",
-			[]string{"rancher", "config", "add-server", "--apply", "--", "myserver", "--generate-shell-completion"},
-			[]string{"rancher", "config", "add-server", "--apply", "--generate-shell-completion"},
-		},
-		{
-			"the double dash is the word being completed under v2",
+			"the double dash is the word being completed",
 			[]string{"rancher", "--rancher-completion-proto=2", "config", "--rancher-completion-cur=--", "--generate-shell-completion"},
 			[]string{"rancher", "config", "--generate-shell-completion"},
 		},
 		{
-			"the double dash is the last word under v2",
+			"the double dash is the last word",
 			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--", "--rancher-completion-cur=", "--generate-shell-completion"},
 			[]string{"rancher", "config", "add-server", "--generate-shell-completion"},
 		},
 		{
-			"the double dash is the word being completed under v1",
-			[]string{"rancher", "usage", "--", "--generate-shell-completion"},
-			[]string{"rancher", "usage", "--", "--generate-shell-completion"},
-		},
-		{
-			"a second double dash under v1",
-			[]string{"rancher", "usage", "--", "--", "--generate-shell-completion"},
+			"a second double dash",
+			[]string{"rancher", "--rancher-completion-proto=2", "usage", "--", "--", "--rancher-completion-cur=", "--generate-shell-completion"},
 			[]string{"rancher", "usage", "--generate-shell-completion"},
 		},
 		{
-			"v2 without the flag",
+			"without the flag",
 			[]string{"rancher", "--rancher-completion-proto=2", "config", "add-server", "--", "myserver", "--rancher-completion-cur="},
 			[]string{"rancher", "config", "add-server", "--generate-shell-completion"},
 		},
 		{
-			"v2 with the flag mid-line",
+			"the flag mid-line",
 			[]string{"rancher", "--rancher-completion-proto=2", "config", "--generate-shell-completion", "--", "x", "--rancher-completion-cur="},
 			[]string{"rancher", "config", "--generate-shell-completion"},
 		},
 		{
 			"a double dash first",
-			[]string{"rancher", "--", "config", "--generate-shell-completion"},
+			[]string{"rancher", "--rancher-completion-proto=2", "--", "config", "--rancher-completion-cur=", "--generate-shell-completion"},
 			[]string{"rancher", "--generate-shell-completion"},
 		},
 		{
@@ -441,18 +387,13 @@ func TestSanitizedArgsCutsACompletionRequestAtTheDoubleDash(t *testing.T) {
 func TestCaptureArgvKeepsTheWordsAfterADoubleDash(t *testing.T) {
 	// NOT parallel: mutates package globals.
 	orig := rawArgv
-	origW, origP, origV1 := rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawProtoV2 = origP; rawV1Completion = origV1 })
+	origW, origP := rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
 
 	CaptureArgv([]string{"--rancher-completion-proto=2", "get", "pod", "--", "x", "--rancher-completion-cur=y", "--generate-shell-completion"})
 	assert.Equal(t, []string{"get", "pod", "--", "x"}, rawArgv)
 	assert.Equal(t, "y", rawCurrentWord)
-	assert.True(t, rawProtoV2)
-
-	CaptureArgv([]string{"get", "pod", "--", "x", "--generate-shell-completion"})
-	assert.Equal(t, []string{"get", "pod", "--", "x"}, rawArgv)
-	assert.False(t, rawProtoV2)
-	assert.True(t, rawV1Completion)
+	assert.True(t, rawCompleting)
 
 	CaptureArgv([]string{"get", "pod", "--", "x"})
 	assert.False(t, completionActive())
@@ -496,16 +437,15 @@ func TestScanTailDelimiter(t *testing.T) {
 // TestDoubleDashSiteCountsTheWordsAfterIt asserts the argument slot after a
 // "--" and the positionals a live source reads: the words before the "--" that
 // are not flags or flag values, then the words after it, with the word being
-// completed left out under v2 (a separate field) and under v1 (the last word).
-// A v1 line that ends at the "--" ends no flags: the "--" is the word being
-// completed. NOT parallel: sets rawProtoV2 and rawCurrentWord.
+// completed (a separate field) left out. A "--" that is the last word ends the
+// flags. NOT parallel: sets rawCurrentWord.
 func TestDoubleDashSiteCountsTheWordsAfterIt(t *testing.T) {
-	origW, origP := rawCurrentWord, rawProtoV2
-	t.Cleanup(func() { rawCurrentWord = origW; rawProtoV2 = origP })
+	origW := rawCurrentWord
+	t.Cleanup(func() { rawCurrentWord = origW })
 	flags := map[string]bool{"cluster": true}
 	leafFlags := []runtime.ArgSpec{{Name: "cluster", Type: "string"}}
 
-	rawProtoV2, rawCurrentWord = true, "z"
+	rawCurrentWord = "z"
 	tail := []string{"--cluster", "c1", "first", "--", "second", "--cluster"}
 	delimiter := doubleDashAt(tail, flags)
 	require.Equal(t, 3, delimiter)
@@ -513,15 +453,5 @@ func TestDoubleDashSiteCountsTheWordsAfterIt(t *testing.T) {
 	assert.Equal(t, CompletionSite{Kind: SitePositional, Index: 3, Args: []string{"first", "second", "--cluster"}, Partial: "z", DoubleDash: true, After: []string{"second", "--cluster"}}, site)
 	assert.Equal(t, []string{"first", "second", "--cluster"}, typedPositionals(site, tail[:delimiter], leafFlags))
 
-	rawProtoV2, rawCurrentWord = false, ""
-	tail = []string{"--cluster", "c1", "first", "--", "second", "z"}
-	delimiter = doubleDashAt(tail, flags)
-	require.Equal(t, 3, delimiter)
-	site = doubleDashSite(tail, delimiter, flags)
-	assert.Equal(t, CompletionSite{Kind: SitePositional, Index: 2, Args: []string{"first", "second"}, Partial: "z", DoubleDash: true, After: []string{"second"}}, site)
-	assert.Equal(t, []string{"first", "second"}, typedPositionals(site, tail[:delimiter], leafFlags))
-
-	assert.Equal(t, -1, doubleDashAt([]string{"first", "--"}, flags))
-	rawProtoV2 = true
 	assert.Equal(t, 1, doubleDashAt([]string{"first", "--"}, flags))
 }

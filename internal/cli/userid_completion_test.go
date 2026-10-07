@@ -67,9 +67,9 @@ func TestUserIDCompletionOffersTheIdentifiedEntrysOwner(t *testing.T) {
 // protocol reaches the owner for a typed --name, read from the directory
 // --config names.
 func TestUserIDCompletionThroughTheCommandTree(t *testing.T) {
-	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 	t.Cleanup(func() {
-		rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion = origArgv, origWord, origProto, origV1
+		rawArgv, rawCurrentWord, rawCompleting = origArgv, origWord, origProto
 	})
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()

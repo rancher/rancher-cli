@@ -40,13 +40,13 @@ func commandPaths(cmd *ucli.Command, prefix []string) (leaves, groups [][]string
 }
 
 // restoreRawArgv restores the captured-argv globals (rawArgv, the current
-// word and the completion protocol flags) when the test ends. Every test
+// word and the completion protocol flag) when the test ends. Every test
 // that calls CaptureArgv or sets them uses it, and none of them is
 // parallel.
 func restoreRawArgv(t *testing.T) {
 	t.Helper()
-	orig, origW, origP, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
-	t.Cleanup(func() { rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion = orig, origW, origP, origV1 })
+	orig, origW, origP := rawArgv, rawCurrentWord, rawCompleting
+	t.Cleanup(func() { rawArgv, rawCurrentWord, rawCompleting = orig, origW, origP })
 }
 
 // stubExit replaces urfave's exit function, which unknown-command errors

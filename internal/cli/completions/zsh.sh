@@ -17,7 +17,7 @@ _rancher() {
 	local -a opts
 	local current
 	current=${words[-1]}
-	# Protocol v2: self-prefixed current-word field.
+	# The request opens with the protocol marker and carries the current word in a self-prefixed field.
 	# "--rancher-completion-cur=${current}" is quoted so it is one token even when current is "".
 	opts=("${(@f)$(${words[1]} --rancher-completion-proto=2 ${words[2,-2]} "--rancher-completion-cur=${current}" --generate-shell-completion 2> /dev/null)}")
 

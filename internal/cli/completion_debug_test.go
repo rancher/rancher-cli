@@ -11,20 +11,19 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// runCompletionTraced runs one v2-protocol completion request through the
+// runCompletionTraced runs one completion request through the
 // real root and returns stdout and the captured trace. The trace sink is
 // swapped for the call so nothing reaches the test process's stderr.
 func runCompletionTraced(t *testing.T, words []string) (stdout, trace string) {
 	t.Helper()
-	origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+	origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 	origOut := completionDebugOut
 	var traceBuf bytes.Buffer
 	completionDebugOut = &traceBuf
 	t.Cleanup(func() {
 		rawArgv = origArgv
 		rawCurrentWord = origWord
-		rawProtoV2 = origProto
-		rawV1Completion = origV1
+		rawCompleting = origProto
 		completionDebugOut = origOut
 	})
 	scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
@@ -123,19 +122,19 @@ func TestCompletionDebugTrace(t *testing.T) {
 // a completion request: with the variable set but no completion protocol
 // active, the helper writes nothing.
 func TestCompletionDebugSilentOutsideCompletion(t *testing.T) {
-	origProto, origV1, origOut := rawProtoV2, rawV1Completion, completionDebugOut
+	origProto, origOut := rawCompleting, completionDebugOut
 	var traceBuf bytes.Buffer
 	completionDebugOut = &traceBuf
-	rawProtoV2, rawV1Completion = false, false
+	rawCompleting = false
 	t.Cleanup(func() {
-		rawProtoV2, rawV1Completion = origProto, origV1
+		rawCompleting = origProto
 		completionDebugOut = origOut
 	})
 	t.Setenv(config.EnvCompletionDebug, "1")
 	completionDebugf("must not appear")
 	assert.Empty(t, traceBuf.String())
 
-	rawProtoV2 = true
+	rawCompleting = true
 	completionDebugf("phase %d", 7)
 	assert.True(t, strings.HasPrefix(traceBuf.String(), "completion +"))
 	assert.True(t, strings.HasSuffix(traceBuf.String(), " phase 7\n"))

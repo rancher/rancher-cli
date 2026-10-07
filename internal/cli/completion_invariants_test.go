@@ -89,14 +89,16 @@ func TestCompletionNeverTouchesKeyring(t *testing.T) {
 	cli.SetStoredConfigForTest(t, cfg, dir)
 	// Drive a cluster-dependent site with a cluster value present so dispatch
 	// reaches token resolution. No env token → resolveCompletionToken returns empty.
-	cli.SetRawArgvForTest([]string{"usage", "--cluster", "my-cluster"})
+	line := []string{"--rancher-completion-proto=2", "usage", "--cluster", "my-cluster", "--namespace", "--rancher-completion-cur=", "--generate-shell-completion"}
+	cli.CaptureArgvForTest(line)
+	t.Cleanup(func() { cli.CaptureArgvForTest(nil) })
 
 	root, err := cli.BuildRoot("test")
 	require.NoError(t, err)
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
 	root.Writer = io.Discard
-	runErr := root.Run(t.Context(), []string{"rancher", "usage", "--cluster", "my-cluster", "--generate-shell-completion"})
+	runErr := root.Run(t.Context(), cli.SanitizedArgsForTest(append([]string{"rancher"}, line...)))
 	require.NoError(t, runErr, "completion must not fail when keyring is unavailable")
 	assert.Empty(t, stderr.String(), "completion must not write to stderr")
 	assert.Equal(t, int32(0), keyringOps.Load(), "completion must not contact the keyring")
@@ -134,10 +136,8 @@ func TestCompletionNoStderr(t *testing.T) {
 	t.Setenv(config.EnvConfigDir, dir)
 	cli.SetStoredConfigForTest(t, cfg, dir)
 
-	// v2 protocol: proto sentinel + words + self-prefixed empty cur field.
+	// Proto sentinel + words + self-prefixed empty cur field.
 	// --rancher-completion-cur= (no value after =) → cursor after space, no partial typed.
-	origV1 := cli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
 	cli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc",
 		"--rancher-completion-cur=",
@@ -196,11 +196,9 @@ func TestCompletionAtMostTwoRequestsPerTab(t *testing.T) {
 	cli.SetStoredConfigForTest(t, cfg, dir)
 	t.Setenv(config.EnvToken, "test-token")
 	// Display-name cluster "prod" at --namespace site → two requests.
-	// v2 protocol: proto sentinel + words (--namespace flag last in argv,
+	// Proto sentinel + words (--namespace flag last in argv,
 	// no value in args) + self-prefixed cur field for partial "kube-".
 	// ParseArgTail: currentWord="kube-" non-flag, --namespace is last in args → SiteFlagValue(namespace).
-	origV1b := cli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1b) })
 	cli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "pod", "--cluster", "prod", "--namespace",
 		"--rancher-completion-cur=kube-",
@@ -248,7 +246,7 @@ func TestCompletableAllowlistIsExactlyTenKinds(t *testing.T) {
 }
 
 // Full-callback tests for the five live-completion flag-value sites. Each
-// sub-test runs the real root.Run callback using the REAL v2 script shape:
+// sub-test runs the real root.Run callback using the REAL script shape:
 //
 //	rancher --rancher-completion-proto=2 <words-before-flag-value> <currentWord> --generate-shell-completion
 //
@@ -297,14 +295,12 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 		return dir, srv
 	}
 
-	// run simulates the v2 script: proto sentinel + words (flag last, no value) +
+	// run simulates the script: proto sentinel + words (flag last, no value) +
 	// --rancher-completion-cur=<currentWord> + --generate-shell-completion.
 	// CaptureArgvForTest processes the full script-shaped slice; SanitizedArgsForTest
 	// strips both protocol fields for urfave.
 	run := func(t *testing.T, words []string, currentWord string) string {
 		t.Helper()
-		origV1 := cli.GetRawV1CompletionForTest()
-		t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1) })
 		// Script-shaped request: proto sentinel + words + cur field + completion trigger.
 		scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 		scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
@@ -320,7 +316,7 @@ func TestFullCallbackFlagValueSites(t *testing.T) {
 		return out.String()
 	}
 
-	// v2 test: words contain flag only (no partial value); currentWord is the partial.
+	// Words contain flag only (no partial value); currentWord is the partial.
 	// The shell does prefix-filtering on the binary's full output; the test asserts
 	// the expected candidate is present in stdout (binary returns all candidates).
 
@@ -416,9 +412,7 @@ func TestCompletionWritesNothingToDisk(t *testing.T) {
 	// Snapshot AFTER seeding but BEFORE dispatch.
 	before := hashDir(t, dir)
 
-	// v2 protocol: proto sentinel + words + empty currentWord (completing namespace positional).
-	origV1c := cli.GetRawV1CompletionForTest()
-	t.Cleanup(func() { cli.SetRawV1CompletionForTest(origV1c) })
+	// Proto sentinel + words + empty currentWord (completing namespace positional).
 	cli.CaptureArgvForTest([]string{
 		"--rancher-completion-proto=2", "get", "namespace", "--cluster", "c-abc", "--rancher-completion-cur=",
 		"--generate-shell-completion",

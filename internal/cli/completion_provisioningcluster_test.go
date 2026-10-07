@@ -44,7 +44,7 @@ func provisioningClusterServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 }
 
 // TestProvisioningClusterPositionalSiteFullCallback drives the real adaptEntry
-// callback through BuildRoot/root.Run under the v2 protocol, mirroring
+// callback through BuildRoot/root.Run with a marked line, mirroring
 // TestNodeDriverPositionalSiteFullCallback: network on → live provisioning-cluster
 // names; network off → empty.
 // NOT parallel: t.Setenv mutates env globals, setStoredConfig mutates storedConfig.
@@ -69,12 +69,11 @@ func TestProvisioningClusterPositionalSiteFullCallback(t *testing.T) {
 
 	run := func(t *testing.T, words []string, currentWord string) string {
 		t.Helper()
-		origArgv, origWord, origProto, origV1 := rawArgv, rawCurrentWord, rawProtoV2, rawV1Completion
+		origArgv, origWord, origProto := rawArgv, rawCurrentWord, rawCompleting
 		t.Cleanup(func() {
 			rawArgv = origArgv
 			rawCurrentWord = origWord
-			rawProtoV2 = origProto
-			rawV1Completion = origV1
+			rawCompleting = origProto
 		})
 		scriptArgs := append([]string{"--rancher-completion-proto=2"}, words...)
 		scriptArgs = append(scriptArgs, "--rancher-completion-cur="+currentWord, "--generate-shell-completion")
