@@ -3,6 +3,7 @@ package oidcclient
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -97,17 +98,25 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 		if annotationPresent(obj, annotationSecretCreate) {
 			return waitOutcome{} // not yet consumed
 		}
-		current := secretKeySet(obj.Object)
-		newKeys, missing := setDelta(baseline, current)
-		if len(missing) > 0 || len(newKeys) != 1 {
-			return waitOutcome{terminal: addSecretAmbiguousShape(clientName, baseline, current)}
+		newKeys, missing := setDelta(baseline, secretKeySet(obj.Object))
+		switch {
+		case len(newKeys) == 0 && len(missing) == 0:
+			// Rancher's controller removes the annotation in one write and
+			// updates status in a later one, so a consumed request with an
+			// unchanged key set is the state between the two.
+			return waitOutcome{}
+		case len(newKeys) != 1 || len(missing) > 0:
+			return waitOutcome{terminal: addSecretConcurrentChange(clientName, newKeys, missing)}
 		}
 		return waitOutcome{done: true, value: newKeys[0]}
 	}
 	secretName, err := waitForOIDCClient(ctx, client, k.GVR, clientName, timeout, check,
 		func(last *unstructured.Unstructured) *clierr.Error {
-			return clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("timed out waiting for oidc-client %s to add a secret", clientName)).
+			msg := fmt.Sprintf("timed out waiting for oidc-client %s to add a secret", clientName)
+			if last != nil && !annotationPresent(last, annotationSecretCreate) {
+				msg += ": the create request was consumed but no new client secret appeared"
+			}
+			return clierr.New(clierr.CodeGeneric, msg).
 				WithDetails(clierr.CommittedContextDetails{
 					Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName,
 					Recovery: "check " + getRecovery + "; if a new key landed its value was never shown - rotate that key by name",
@@ -136,16 +145,23 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 	return res, nil
 }
 
-// addSecretAmbiguousShape builds add-secret's terminal, non-retryable error
-// for any key-set transition other than exactly-baseline-plus-one-new-key -
-// a bare "one new key" check would bless a concurrent removal
-// (baseline {1} -> observed {2} has exactly one new key too), so a missing
-// baseline key, a second new key, or any other shape must all fail
-// immediately rather than be misread as success.
-func addSecretAmbiguousShape(clientName string, baseline, current map[string]bool) *clierr.Error {
+// addSecretConcurrentChange builds add-secret's terminal, non-retryable
+// error for a key-set change other than exactly one new key - a bare "one
+// new key" check would bless a concurrent removal (baseline {1} -> observed
+// {2} has exactly one new key too), so a missing baseline key or a second
+// new key must fail immediately rather than be misread as success. The
+// message names the keys that appeared and the keys that disappeared.
+func addSecretConcurrentChange(clientName string, newKeys, missing []string) *clierr.Error {
+	var change []string
+	if len(newKeys) > 0 {
+		change = append(change, fmt.Sprintf("added %v", newKeys))
+	}
+	if len(missing) > 0 {
+		change = append(change, fmt.Sprintf("removed %v", missing))
+	}
 	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("oidc-client %s: observed an unexpected secret-set change while adding a secret (baseline %v, observed %v) - a concurrent actor changed this client while add-secret was waiting",
-			clientName, sortedKeysOf(baseline), sortedKeysOf(current))).
+		fmt.Sprintf("oidc-client %s: its client secrets changed other than by the one new key add-secret asked for (%s); another change to this client, or Rancher's controller handling the request twice, can do this",
+			clientName, strings.Join(change, ", "))).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName,
 			Recovery: recoveryHint(clientName),

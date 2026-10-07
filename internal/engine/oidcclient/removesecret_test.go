@@ -75,6 +75,36 @@ func TestRemoveSecretExecSuccess(t *testing.T) {
 		"  secret client-secret-2 removed - anything using it stops working\n", res.Text)
 }
 
+// TestRemoveSecretExecWaitsBetweenTheControllersWrites asserts that a
+// consumed removal request whose status still lists the key keeps the wait
+// going: Rancher's controller removes the annotation before it updates
+// status, so polls can see that state before the key leaves status.
+func TestRemoveSecretExecWaitsBetweenTheControllersWrites(t *testing.T) {
+	withFastPoll(t)
+	planObj := oidcClientObj("my-app", "client-abc", map[string]any{
+		"client-secret-1": map[string]any{}, "client-secret-2": map[string]any{},
+	})
+	stillAnnotated := oidcClientObj("my-app", "client-abc", map[string]any{
+		"client-secret-1": map[string]any{}, "client-secret-2": map[string]any{},
+	})
+	_ = unstructured.SetNestedField(stillAnnotated.Object, "client-secret-2", "metadata", "annotations", annotationSecretRemove)
+	consumedWithKey := oidcClientObj("my-app", "client-abc", map[string]any{
+		"client-secret-1": map[string]any{}, "client-secret-2": map[string]any{},
+	})
+	consumed := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
+
+	client := &fakeOIDCClient{pollResponses: []*unstructured.Unstructured{
+		planObj, stillAnnotated, consumedWithKey, consumedWithKey, consumed,
+	}}
+	cmd := NewRemoveSecret(stubOIDCFactory{c: client})
+	_, exec, err := planRemoveSecret(t, cmd, oidcInput{args: []string{"my-app", "client-secret-2"}})
+	require.NoError(t, err)
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "OIDCClientSecretRemoved", res.Kind)
+	assert.Equal(t, 5, client.pollCalls, "the wait ran through both in-between polls")
+}
+
 // TestRemoveSecretExecTimeoutIsNonRetryable asserts remove's contract: the
 // timeout recovery is a read-first, never "re-run to confirm" (strict
 // Plan-time validation would fail a re-run whose first attempt landed

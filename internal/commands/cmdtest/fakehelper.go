@@ -1,6 +1,7 @@
 package cmdtest
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/zalando/go-keyring"
@@ -21,7 +23,14 @@ var (
 	cmdFakeHelperOnce sync.Once
 	cmdFakeHelperDir  string
 	cmdFakeHelperErr  error
+	// cmdFakeHelperRoot is the directory BuildFakeHelper created, kept even
+	// when the build fails so IsolateConfigDir's cleanup removes it.
+	cmdFakeHelperRoot string
 )
+
+// firstRunLimit bounds the fake helper's first run, so a hung helper fails
+// the package with a message.
+const firstRunLimit = 5 * time.Minute
 
 // BuildFakeHelper compiles the config package's fake credential helper
 // once per test binary and returns the directory holding
@@ -34,6 +43,7 @@ func BuildFakeHelper(t *testing.T) string {
 			cmdFakeHelperErr = err
 			return
 		}
+		cmdFakeHelperRoot = dir
 		bin := filepath.Join(dir, "rancher-credential-fake")
 		if runtime.GOOS == "windows" {
 			bin += ".exe"
@@ -44,6 +54,18 @@ func BuildFakeHelper(t *testing.T) string {
 			cmdFakeHelperErr = err
 			_ = out // surfaced via require below with the message
 			cmdFakeHelperDir = string(out)
+			return
+		}
+		// A new binary's first run can take many seconds under load; run it
+		// here, outside any helper time limit.
+		ctx, cancel := context.WithTimeout(t.Context(), firstRunLimit)
+		defer cancel()
+		if out, err := exec.CommandContext(ctx, bin, "noop").CombinedOutput(); err != nil {
+			if ctx.Err() != nil {
+				err = errors.New("did not finish within " + firstRunLimit.String())
+			}
+			cmdFakeHelperErr = err
+			cmdFakeHelperDir = "first run of " + bin + ": " + string(out)
 			return
 		}
 		cmdFakeHelperDir = dir

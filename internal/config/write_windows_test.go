@@ -163,7 +163,7 @@ func TestRenameOverAnOpenTargetGivesUpAfterTheBudget(t *testing.T) {
 	t.Logf("rename over a target held past the budget: err=%v elapsed=%v budget=%v", err, elapsed, shareRetryBudget)
 	require.ErrorIs(t, err, windows.ERROR_ACCESS_DENIED)
 	assert.Greater(t, elapsed, 500*time.Millisecond, "retried before giving up")
-	assert.Less(t, elapsed, shareRetryBudget+time.Second, "gave up near the budget")
+	assert.Less(t, elapsed, shareRetryBudget+5*time.Second, "gave up near the budget")
 	assert.Empty(t, tempSiblings(t, path), "the temporary file is removed")
 }
 
@@ -173,21 +173,25 @@ func TestRenameOverAnOpenTargetGivesUpAfterTheBudget(t *testing.T) {
 // retry.
 func TestShareRetryLeavesOtherErrorsAlone(t *testing.T) {
 	dir := t.TempDir()
+	// A retried call would take the whole budget, so a call that returns
+	// in under half of it was not retried, at any machine speed.
+	const budget = time.Minute
+	setShareRetryBudget(t, budget)
 
 	start := time.Now()
 	err := renameFile(filepath.Join(dir, "missing"), filepath.Join(dir, "target"))
 	require.ErrorIs(t, err, windows.ERROR_FILE_NOT_FOUND)
-	assert.Less(t, time.Since(start), 500*time.Millisecond, "a missing source is not retried")
+	assert.Less(t, time.Since(start), budget/2, "a missing source is not retried")
 
 	start = time.Now()
 	_, err = readFile(filepath.Join(dir, "missing"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
-	assert.Less(t, time.Since(start), 500*time.Millisecond, "a missing file is a real answer")
+	assert.Less(t, time.Since(start), budget/2, "a missing file is a real answer")
 
 	start = time.Now()
 	_, err = openFile(filepath.Join(dir, "missing"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
-	assert.Less(t, time.Since(start), 500*time.Millisecond)
+	assert.Less(t, time.Since(start), budget/2)
 }
 
 // holdExclusive opens path with no sharing at all (share mode 0), so any

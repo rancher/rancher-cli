@@ -1,6 +1,8 @@
 package token
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +23,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// firstRunLimit bounds the fake helper's first run, so a hung helper fails
+// the package with a message.
+const firstRunLimit = 5 * time.Minute
+
 // buildTokenFakeHelper compiles the config package's fake credential helper by
 // module path (testdata is not reachable by relative path from this package)
 // into a shared temp dir as rancher-credential-fake, once per test binary,
@@ -39,6 +45,7 @@ func buildTokenFakeHelper(t *testing.T) string {
 			fakeHelperErr = err
 			return
 		}
+		fakeHelperDir = dir // set before the build, so TestMain removes it on a failure too
 		bin := filepath.Join(dir, "rancher-credential-fake")
 		if runtime.GOOS == "windows" {
 			bin += ".exe"
@@ -48,7 +55,17 @@ func buildTokenFakeHelper(t *testing.T) string {
 			fakeHelperErr = fmt.Errorf("building fake helper: %w: %s", err, out)
 			return
 		}
-		fakeHelperDir = dir
+		// A new binary's first run can take many seconds under load; run it
+		// here, outside any helper time limit.
+		ctx, cancel := context.WithTimeout(t.Context(), firstRunLimit)
+		defer cancel()
+		if out, err := exec.CommandContext(ctx, bin, "noop").CombinedOutput(); err != nil {
+			if ctx.Err() != nil {
+				err = errors.New("did not finish within " + firstRunLimit.String())
+			}
+			fakeHelperErr = fmt.Errorf("first run of the fake helper: %w: %s", err, out)
+			return
+		}
 	})
 	require.NoError(t, fakeHelperErr)
 	return fakeHelperDir

@@ -94,11 +94,6 @@ func secretKeySet(obj map[string]any) map[string]bool {
 	return out
 }
 
-// sortedKeysOf returns m's keys, sorted - for stable error messages.
-func sortedKeysOf(m map[string]bool) []string {
-	return slices.Sorted(maps.Keys(m))
-}
-
 // setDelta compares two secret key sets: newKeys are present in current but
 // not baseline, missing are present in baseline but not current. Both
 // results are sorted for stable error messages.

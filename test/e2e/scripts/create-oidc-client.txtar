@@ -15,14 +15,18 @@ exec rancher create namespace cattle-oidc-client-secrets --cluster local --apply
 
 # --- create oidc-client ---
 #
-# Background create; no controller runs in this harness, so the
-# provisioning wait is satisfied the same way wait-success.txtar satisfies
-# a GitRepo wait: flip status directly, then seed the backing Secret the
-# post-wait delivery read GETs.
+# Background create; no controller runs in this harness, so the scenario
+# applies the controller's writes itself once the create has landed, in
+# the order Rancher's oidc-client controller makes them (onChange in
+# pkg/controllers/management/oidcprovider/controller.go): the backing
+# Secret, status.clientID, then status.clientSecrets
+# (updateStatusIfNeeded). Each is a separate request, so a poll of the
+# CLI's wait may land between any two of them.
 exec rancher create oidc-client create-test --description e2e-test --redirect-uri https://example.invalid/callback --scope openid --token-ttl 1h --refresh-ttl 24h --apply --yes -o json &createcmd&
-exec sleep 1
-flipstatus local management.cattle.io/v3/oidcclients . create-test {"clientID":"client-e2e-1","clientSecrets":{"client-secret-1":{"createdAt":"1700000000","lastFiveCharacters":"vXyZ1"}}}
+waitobj management.cattle.io/v3/oidcclients . create-test metadata.uid
 seedobj core/v1/secrets cattle-oidc-client-secrets secret.yaml
+flipstatus local management.cattle.io/v3/oidcclients . create-test {"clientID":"client-e2e-1"}
+flipstatus local management.cattle.io/v3/oidcclients . create-test {"clientSecrets":{"client-secret-1":{"createdAt":"1700000000","lastFiveCharacters":"vXyZ1"}}}
 wait createcmd
 
 jsonquery stdout data.name create-test
@@ -48,9 +52,10 @@ stderr 'error \(VALIDATION\):'
 # shown-once line present. Run without --color=always so there is nothing
 # to strip.
 exec rancher create oidc-client create-test-text --description e2e-test --redirect-uri https://example.invalid/callback --scope openid --token-ttl 1h --refresh-ttl 24h --apply --yes &createtextcmd&
-exec sleep 1
-flipstatus local management.cattle.io/v3/oidcclients . create-test-text {"clientID":"client-e2e-2","clientSecrets":{"client-secret-1":{"createdAt":"1700000000","lastFiveCharacters":"vXyZ2"}}}
+waitobj management.cattle.io/v3/oidcclients . create-test-text metadata.uid
 seedobj core/v1/secrets cattle-oidc-client-secrets secret2.yaml
+flipstatus local management.cattle.io/v3/oidcclients . create-test-text {"clientID":"client-e2e-2"}
+flipstatus local management.cattle.io/v3/oidcclients . create-test-text {"clientSecrets":{"client-secret-1":{"createdAt":"1700000000","lastFiveCharacters":"vXyZ2"}}}
 wait createtextcmd
 
 stdout 'oidcclient/create-test-text created'
@@ -68,17 +73,17 @@ flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"client
 seedobj core/v1/secrets cattle-oidc-client-secrets lifecycle-secret.yaml
 
 # add-secret: baseline {client-secret-1} -> {client-secret-1, client-secret-2}.
-# The controller's half (consuming the annotation, updating status, generating
-# the backing value) is simulated the same way wait-success.txtar simulates
-# Fleet: a short pause for the real annotation write to land, then the
-# generic `patch` verb (the deliberately kept power-user escape hatch)
-# removes the annotation and `patch secret`/
-# flipstatus apply the controller's effect - all well inside the bespoke
-# verb's 2s poll tick.
+# The controller's half is applied by the scenario once add-secret's
+# annotation is on the client, in the order Rancher's controller writes it
+# (onChange in controller.go): the new value into the backing Secret, the
+# annotation removed, then status from the Secret's data. The generic
+# `patch` verb (the deliberately kept power-user escape hatch) makes the
+# first two writes; add-secret must keep waiting while the annotation is
+# gone and status still lists only the old key.
 exec rancher oidc-client add-secret lifecycle-client --apply --yes -o json &addcmd&
-exec sleep 1
-exec rancher patch oidcclient lifecycle-client --patch '[{"op":"remove","path":"/metadata/annotations/cattle.io~1oidc-client-secret-create"}]' --apply --yes
+waitobj management.cattle.io/v3/oidcclients . lifecycle-client 'metadata.annotations.cattle\.io/oidc-client-secret-create'
 exec rancher patch secret client-lc-1 --namespace cattle-oidc-client-secrets --cluster local --patch '[{"op":"add","path":"/data/client-secret-2","value":"bmV3LXNlY3JldC0yLXZhbHVl"}]' --apply --yes
+exec rancher patch oidcclient lifecycle-client --patch '[{"op":"remove","path":"/metadata/annotations/cattle.io~1oidc-client-secret-create"}]' --apply --yes
 flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"clientSecrets":{"client-secret-2":{"createdAt":"1700000100","lastFiveCharacters":"bbbbb"}}}
 wait addcmd
 jsonquery stdout data.clientID client-lc-1
@@ -87,12 +92,15 @@ jsonquery stdout data.clientSecret new-secret-2-value
 jsonquery stdout 'warnings.0' 'creates a new client secret on lifecycle-client'
 jsonquery stdout 'warnings.1' 'this client secret is shown exactly once - store it now'
 
-# rotate-secret: client-secret-1's BACKING VALUE changes; its status entry
-# (createdAt, key set) does not.
+# rotate-secret: client-secret-1's BACKING VALUE changes; its createdAt
+# and the key set do not. Rancher's order (onChange in controller.go): the
+# new value into the Secret, the annotation removed, then status, whose
+# lastFiveCharacters follows the new value.
 exec rancher oidc-client rotate-secret lifecycle-client client-secret-1 --apply --yes -o json &rotatecmd&
-exec sleep 1
-exec rancher patch oidcclient lifecycle-client --patch '[{"op":"remove","path":"/metadata/annotations/cattle.io~1oidc-client-secret-regenerate"}]' --apply --yes
+waitobj management.cattle.io/v3/oidcclients . lifecycle-client 'metadata.annotations.cattle\.io/oidc-client-secret-regenerate'
 exec rancher patch secret client-lc-1 --namespace cattle-oidc-client-secrets --cluster local --patch '[{"op":"replace","path":"/data/client-secret-1","value":"cm90YXRlZC12YWx1ZS0x"}]' --apply --yes
+exec rancher patch oidcclient lifecycle-client --patch '[{"op":"remove","path":"/metadata/annotations/cattle.io~1oidc-client-secret-regenerate"}]' --apply --yes
+flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"clientSecrets":{"client-secret-1":{"lastFiveCharacters":"lue-1"}}}
 wait rotatecmd
 jsonquery stdout data.clientID client-lc-1
 jsonquery stdout data.secretName client-secret-1
@@ -110,9 +118,11 @@ jsonquery stderr data.error.code VALIDATION
 jsonquery stderr 'data.error.candidates.#(id=="client-secret-1").id' client-secret-1
 
 # remove-secret: client-secret-2 leaves the status key set; client-secret-1
-# remains untouched.
+# remains untouched. Rancher's order (onChange in controller.go): the key
+# removed from the Secret, the annotation removed, then status.
 exec rancher oidc-client remove-secret lifecycle-client client-secret-2 --apply --yes -o json &removecmd&
-exec sleep 1
+waitobj management.cattle.io/v3/oidcclients . lifecycle-client 'metadata.annotations.cattle\.io/oidc-client-secret-remove'
+exec rancher patch secret client-lc-1 --namespace cattle-oidc-client-secrets --cluster local --patch '[{"op":"remove","path":"/data/client-secret-2"}]' --apply --yes
 exec rancher patch oidcclient lifecycle-client --patch '[{"op":"remove","path":"/metadata/annotations/cattle.io~1oidc-client-secret-remove"}]' --apply --yes
 flipstatus local management.cattle.io/v3/oidcclients . lifecycle-client {"clientSecrets":{"client-secret-2":null}}
 wait removecmd
@@ -120,7 +130,7 @@ jsonquery stdout data.clientID client-lc-1
 jsonquery stdout data.secretName client-secret-2
 
 exec rancher get oidcclient lifecycle-client -o json
-jsonquery stdout 'data.status.clientSecrets.client-secret-1.lastFiveCharacters' aaaaa
+jsonquery stdout 'data.status.clientSecrets.client-secret-1.lastFiveCharacters' lue-1
 jsonquery stdout 'data.status.clientSecrets.client-secret-2' ''
 
 -- oidc-feature.yaml --

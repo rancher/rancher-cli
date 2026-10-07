@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rogpeppe/go-internal/testscript"
@@ -53,6 +54,10 @@ var (
 // testToken must satisfy BOTH the shim bearer check AND auth login's
 // id:secret format (the auth-login scenario stores and replays it).
 const testToken = "e2e:secret"
+
+// firstRunLimit bounds the fake helper's first run, so a hung helper fails
+// the package with a message.
+const firstRunLimit = 5 * time.Minute
 
 // legacyScripts marks per-script facade instances that must run in legacy
 // mode (the ext.cattle.io create route 404s), keyed by txtar base name
@@ -590,6 +595,16 @@ func TestMain(m *testing.M) {
 			"github.com/rancher/rancher-cli/internal/config/testdata/fakehelper").CombinedOutput(); err != nil {
 			return fmt.Errorf("building fake credential helper: %v\n%s", err, out)
 		}
+		// A new binary's first run can take many seconds under load; run it
+		// here, outside any helper time limit.
+		ctx, cancel := context.WithTimeout(context.Background(), firstRunLimit)
+		defer cancel()
+		if out, err := exec.CommandContext(ctx, fakeBin, "noop").CombinedOutput(); err != nil {
+			if ctx.Err() != nil {
+				return errors.New("first run of the fake credential helper did not finish within " + firstRunLimit.String())
+			}
+			return fmt.Errorf("first run of the fake credential helper: %v\n%s", err, out)
+		}
 		return nil
 	}
 	startEnv := func() error {
@@ -980,6 +995,7 @@ func TestScenarios(t *testing.T) {
 			"seedobj":       cmdSeedObj,
 			"jsonget":       cmdJSONGet,
 			"setenvfrom":    cmdSetenvFrom,
+			"waitobj":       cmdWaitObj,
 		},
 	})
 }

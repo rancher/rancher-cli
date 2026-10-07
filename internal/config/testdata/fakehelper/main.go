@@ -4,7 +4,10 @@
 // badexpiry (get returns a token with a non-RFC3339 expiresAt), silent
 // (store/erase exit 0 with NO stdout - protocol-compliant empty success;
 // get behaves like ok), commit-fail / commit-garbage / commit-hang (store
-// persists the credential and only then fails, answers garbage, or hangs).
+// persists the credential and only then fails, answers garbage, or hangs),
+// slow-ok (behaves like ok, but every call first waits FAKEHELPER_DELAY, a
+// Go duration, so a test can tell an answer that is late from one that
+// never comes).
 // FAKEHELPER_STATE points at a JSON state file.
 package main
 
@@ -42,6 +45,13 @@ func envVal(suffix string) string {
 }
 
 func main() {
+	// noop: exit 0 at once with no side effects. Build sites run it once
+	// right after building, so the binary's first run happens outside any
+	// helper time limit.
+	if len(os.Args) == 2 && os.Args[1] == "noop" {
+		os.Exit(0)
+	}
+
 	// lockhold <lockpath> <duration>: acquire the flock at lockpath, announce
 	// it on stdout AFTER acquisition, hold for the duration. Used by the
 	// cross-process lock tests (contention, bounded wait, death). The caller
@@ -146,6 +156,13 @@ func main() {
 		os.Exit(0)
 	case "hang":
 		time.Sleep(10 * time.Minute)
+	case "slow-ok":
+		d, err := time.ParseDuration(os.Getenv("FAKEHELPER_DELAY"))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "fakehelper: slow-ok needs FAKEHELPER_DELAY:", err)
+			os.Exit(1)
+		}
+		time.Sleep(d)
 	case "badexpiry":
 		// Bypass the kit (it formats valid RFC 3339): emit raw JSON.
 		fmt.Print(`{"protocolVersion":1,"token":"t","expiresAt":"not-a-timestamp"}`)

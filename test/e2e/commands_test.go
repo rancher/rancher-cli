@@ -11,6 +11,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -173,6 +174,7 @@ func runInlineScript(t *testing.T, script string) (string, bool) {
 			Cmds: map[string]func(*testscript.TestScript, bool, []string){
 				"jsonget":    cmdJSONGet,
 				"setenvfrom": cmdSetenvFrom,
+				"waitobj":    cmdWaitObj,
 			},
 		})
 	}()
@@ -312,6 +314,99 @@ fac-token-1
 	}
 }
 
+// TestWaitObj asserts waitobj's outcomes: it returns once the object has
+// the path, fails naming the path and the timeout when the path never
+// appears or the object never exists, and refuses the ! prefix and a
+// malformed call.
+func TestWaitObj(t *testing.T) {
+	t.Parallel()
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
+	cm := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{
+			"name": "waitobj-cm", "namespace": "default",
+			"annotations": map[string]any{"example.io/request": "true"},
+		},
+	}}
+	_, err := dynCli.Resource(gvr).Namespace("default").Create(t.Context(), cm, metav1.CreateOptions{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = dynCli.Resource(gvr).Namespace("default").Delete(context.Background(), "waitobj-cm", metav1.DeleteOptions{}) //nolint:usetesting // t.Context() is canceled before cleanups run
+	})
+
+	for _, tc := range []struct {
+		name, script, want string
+		fails              bool
+	}{
+		{name: "the path is present", script: `waitobj core/v1/configmaps default waitobj-cm 'metadata.annotations.example\.io/request'`},
+		{name: "the path never appears", fails: true,
+			script: `waitobj -timeout 200ms core/v1/configmaps default waitobj-cm 'metadata.annotations.example\.io/other'`,
+			want:   `metadata.annotations.example\.io/other is not present after 200ms`},
+		{name: "the object never exists", fails: true,
+			script: `waitobj -timeout 200ms core/v1/configmaps default waitobj-missing metadata.name`,
+			want:   "metadata.name is not present after 200ms"},
+		{name: "the ! prefix", fails: true, script: `! waitobj core/v1/configmaps default waitobj-cm metadata.name`,
+			want: "waitobj does not support the ! prefix"},
+		{name: "a missing argument", fails: true, script: `waitobj core/v1/configmaps default waitobj-cm`,
+			want: "usage: waitobj"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			log, failed := runInlineScript(t, tc.script+"\n")
+			assert.Equal(t, tc.fails, failed, log)
+			assert.Contains(t, log, tc.want)
+		})
+	}
+}
+
+// TestPollObjPath asserts pollObjPath's handling of GET errors: a transient
+// error of any kind is retried until the path appears, the timeout error
+// names the last error, and each GET runs under a deadline.
+func TestPollObjPath(t *testing.T) {
+	t.Parallel()
+	withPath := &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "x"}}}
+
+	t.Run("a transient error is retried", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		err := pollObjPath(func(context.Context) (*unstructured.Unstructured, error) {
+			calls++
+			if calls < 3 {
+				return nil, errors.New("connection reset")
+			}
+			return withPath, nil
+		}, "metadata.name", 10*time.Second)
+		require.NoError(t, err)
+		assert.Equal(t, 3, calls)
+	})
+
+	t.Run("the timeout error names the last error", func(t *testing.T) {
+		t.Parallel()
+		err := pollObjPath(func(context.Context) (*unstructured.Unstructured, error) {
+			return nil, errors.New("connection reset")
+		}, "metadata.name", 100*time.Millisecond)
+		require.ErrorContains(t, err, "metadata.name is not present after 100ms")
+		assert.ErrorContains(t, err, "last error: connection reset")
+	})
+
+	t.Run("each GET runs under a deadline", func(t *testing.T) {
+		t.Parallel()
+		start := time.Now()
+		var deadlines []time.Time
+		err := pollObjPath(func(ctx context.Context) (*unstructured.Unstructured, error) {
+			d, ok := ctx.Deadline()
+			require.True(t, ok, "a GET without a deadline can outlive the timeout")
+			deadlines = append(deadlines, d)
+			return nil, errors.New("slow")
+		}, "metadata.name", 100*time.Millisecond)
+		require.Error(t, err)
+		require.NotEmpty(t, deadlines)
+		for _, d := range deadlines {
+			assert.Less(t, d.Sub(start), 100*time.Millisecond+10*time.Second, "a GET may run at most a few seconds past the timeout")
+		}
+	})
+}
+
 // cmdPathmatch asserts the named output stream contains a file path:
 // pathmatch <stdout|stderr> <path>. The path argument is compared with its
 // separators converted to the native form - the stdout/stderr assertions
@@ -395,6 +490,94 @@ func cmdRawGet(ts *testscript.TestScript, neg bool, args []string) {
 	}
 	if err := os.WriteFile(ts.MkAbs(args[3]), b, 0o644); err != nil {
 		ts.Fatalf("rawget: write %s: %v", args[3], err)
+	}
+}
+
+// cmdWaitObj waits until an object exists and a gjson path in its JSON is
+// present: waitobj [-timeout <duration>] <group>/<version>/<resource> <ns>
+// <name> <path>. "core" is the empty-group sentinel and "." the
+// cluster-scoped <ns>, as in seedobj. A scenario uses it instead of a fixed
+// sleep when a background command must reach a state before the scenario
+// acts. It keeps polling through any GET error and fails when the path is
+// still absent after the timeout (default one minute, a bound on a correct
+// wait, never the wait itself), naming the last error.
+func cmdWaitObj(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("waitobj does not support the ! prefix")
+	}
+	timeout := time.Minute
+	if len(args) >= 2 && args[0] == "-timeout" {
+		d, err := time.ParseDuration(args[1])
+		if err != nil {
+			ts.Fatalf("waitobj: -timeout: %v", err)
+		}
+		timeout, args = d, args[2:]
+	}
+	if len(args) != 4 {
+		ts.Fatalf("usage: waitobj [-timeout <duration>] <group>/<version>/<resource> <ns> <name> <path>")
+	}
+	parts := strings.SplitN(args[0], "/", 3)
+	if len(parts) != 3 {
+		ts.Fatalf("waitobj: malformed gvr %q, want group/version/resource", args[0])
+	}
+	group, version, resource := parts[0], parts[1], parts[2]
+	if group == "core" {
+		group = ""
+	}
+	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
+	ns, name, path := args[1], args[2], args[3]
+	if ns == "." {
+		ns = ""
+	}
+	get := func(ctx context.Context) (*unstructured.Unstructured, error) {
+		return dynCli.Resource(gvr).Namespace(ns).Get(ctx, name, metav1.GetOptions{})
+	}
+	if err := pollObjPath(get, path, timeout); err != nil {
+		ts.Fatalf("waitobj %s %s/%s: %v", args[0], args[1], name, err)
+	}
+}
+
+// getSlack is how long a single GET of pollObjPath may run past the
+// timeout. A GET bound exactly to the deadline fails with the client's own
+// rate-limiter error near the deadline instead of the timeout message; the
+// slack leaves that to the loop and still bounds a stalled request.
+const getSlack = 5 * time.Second
+
+// pollObjPath calls get every 25 ms until the object it returns has path,
+// or the timeout passes. Every error from get, including a transient one,
+// is retried; the last one is named in the timeout error.
+func pollObjPath(get func(context.Context) (*unstructured.Unstructured, error), path string, timeout time.Duration) error {
+	end := time.Now().Add(timeout)
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	tick := time.NewTicker(25 * time.Millisecond)
+	defer tick.Stop()
+	var lastErr error
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Until(end)+getSlack) // testscript command callback: no *testing.T in scope
+		obj, err := get(ctx)
+		cancel()
+		if err == nil {
+			b, merr := json.Marshal(obj.Object)
+			if merr != nil {
+				return fmt.Errorf("marshal: %w", merr)
+			}
+			if gjson.GetBytes(b, path).Exists() {
+				return nil
+			}
+			lastErr = nil
+		} else {
+			lastErr = err
+		}
+		select {
+		case <-deadline.C:
+			msg := fmt.Sprintf("%s is not present after %s", path, timeout)
+			if lastErr != nil {
+				msg += fmt.Sprintf(" (last error: %v)", lastErr)
+			}
+			return errors.New(msg)
+		case <-tick.C:
+		}
 	}
 }
 

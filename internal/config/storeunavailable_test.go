@@ -345,7 +345,7 @@ func probeAnswer(usable bool) error {
 // store with the plaintext notice; a probe that succeeds chooses the
 // keychain.
 func TestAutoFirstLoginProbe(t *testing.T) {
-	locked := securityExit(t, 128)
+	locked, other := securityExit(t, 128), securityExit(t, 36)
 	const remedy = "; unlock the keychain with security unlock-keychain, or approve the macOS prompt, then run this command again"
 	const alt = ", or run rancher auth login 'prod' --credential-store file to keep its credential in a plaintext file on purpose"
 	registered := &Config{Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
@@ -355,6 +355,7 @@ func TestAutoFirstLoginProbe(t *testing.T) {
 		cfg   *Config
 		entry string
 		probe func() error
+		hangs bool   // the probe never returns, so the probe's time limit decides
 		want  string // the refusal's message, or the store chosen
 	}{
 		{name: "a locked keychain, a registered entry", goos: "darwin", cfg: registered, entry: "prod",
@@ -368,12 +369,14 @@ func TestAutoFirstLoginProbe(t *testing.T) {
 			entry: "exec-login-r.ex", probe: func() error { return locked },
 			want: "the keychain could not store the credential for 'exec-login-r.ex': the keychain is locked or its prompt was cancelled (security exited with status 128)" + remedy},
 		{name: "a probe that times out on macOS", goos: "darwin", cfg: registered, entry: "prod",
-			probe: func() error { select {} },
-			want:  "the keychain could not store the credential for 'prod': the keychain did not answer within 50ms, as when its unlock prompt is not answered in time" + remedy + alt},
+			probe: func() error { select {} }, hangs: true,
+			want: "the keychain could not store the credential for 'prod': the keychain did not answer within 50ms, as when its unlock prompt is not answered in time" + remedy + alt},
 		{name: "a probe that times out elsewhere", goos: "linux", cfg: registered, entry: "prod",
-			probe: func() error { select {} }, want: backendFile},
+			probe: func() error { select {} }, hangs: true, want: backendFile},
 		{name: "another failure", goos: "darwin", cfg: registered, entry: "prod",
-			probe: func() error { return securityExit(t, 36) }, want: backendFile},
+			probe: func() error { return other }, want: backendFile},
+		{name: "another failure after longer than the short limit", goos: "darwin", cfg: registered, entry: "prod",
+			probe: func() error { time.Sleep(200 * time.Millisecond); return other }, want: backendFile},
 		{name: "status 128 on another operating system", goos: "linux", cfg: registered, entry: "prod",
 			probe: func() error { return locked }, want: backendFile},
 		{name: "a usable keychain", goos: "darwin", cfg: registered, entry: "prod",
@@ -381,8 +384,15 @@ func TestAutoFirstLoginProbe(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			withKeychainOS(t, tc.goos)
+			// A probe that answers gets a limit it never reaches, so the
+			// answer decides however slowly the machine runs; only a probe
+			// that never returns meets the short limit.
+			timeout := time.Minute
+			if tc.hangs {
+				timeout = 50 * time.Millisecond
+			}
 			origProbe, origTimeout := keyringProbe, keyringProbeTimeout
-			keyringProbe, keyringProbeTimeout = tc.probe, 50*time.Millisecond
+			keyringProbe, keyringProbeTimeout = tc.probe, timeout
 			resetKeyringUsableCache()
 			t.Cleanup(func() {
 				keyringProbe, keyringProbeTimeout = origProbe, origTimeout

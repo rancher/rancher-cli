@@ -183,10 +183,8 @@ func TestFileSetTokenWithOutcomeUnreadablePriorIsNotWritten(t *testing.T) {
 // file, which is what tells a commit-then-fail apart from a fail-before-
 // store even though the protocol classifies both as possiblyCommitted.
 func TestExecSetTokenWithOutcomeBoundaries(t *testing.T) {
-	warmFakeHelper(t)
-	restoreTimeout := SetExecHelperTimeoutForTest(500 * time.Millisecond)
-	defer restoreTimeout()
 	ref := execRef()
+	const shortLimit = 2 * time.Second
 	cases := []struct {
 		name          string
 		mode          string
@@ -202,10 +200,22 @@ func TestExecSetTokenWithOutcomeBoundaries(t *testing.T) {
 		{"helper exits non-zero before storing", "fail", clierr.CredentialPossiblyCommitted, true, true, false, false},
 		{"helper reports unsupported", "unsupported", clierr.CredentialNotWritten, false, true, true, false},
 		{"helper success", "ok", clierr.CredentialHelperNonAtomic, true, false, false, true},
+		{"helper answers later than the short limit", "slow-ok", clierr.CredentialHelperNonAtomic, true, false, false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			statePath := useFakeHelper(t, tc.mode)
+			// Only the helper that never answers meets a short limit; one
+			// that answers keeps the default, so its answer decides
+			// however slowly the machine runs. The slow-ok helper answers
+			// after the short limit, so it fails if that limit is applied
+			// to it.
+			if tc.mode == "commit-hang" {
+				t.Cleanup(SetExecHelperTimeoutForTest(shortLimit))
+			}
+			if tc.mode == "slow-ok" {
+				t.Setenv("FAKEHELPER_DELAY", (shortLimit + 500*time.Millisecond).String())
+			}
 			dir := t.TempDir()
 			st, err := OpenStore("exec:fake", dir)
 			require.NoError(t, err)
@@ -228,19 +238,6 @@ func TestExecSetTokenWithOutcomeBoundaries(t *testing.T) {
 			assert.Equal(t, tc.wantStored, fakeHelperHolds(t, statePath, ref), "helper state file")
 		})
 	}
-}
-
-// warmFakeHelper runs the freshly built helper binary once at the default
-// timeout. The operating system's first exec of a new binary (loader,
-// signature check) costs far more than a warm one, and a test that shrinks
-// the timeout to sub-second must measure the helper's behavior rather than
-// that cold start.
-func warmFakeHelper(t *testing.T) {
-	t.Helper()
-	useFakeHelper(t, "notfound")
-	st, err := OpenStore("exec:fake", t.TempDir())
-	require.NoError(t, err)
-	_, _ = st.GetToken(execRef())
 }
 
 // fakeHelperHolds reports whether the fake helper's JSON state file holds

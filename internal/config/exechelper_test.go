@@ -2,7 +2,9 @@ package config
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +25,9 @@ var (
 	fakeHelperOnce sync.Once
 	fakeHelperDir  string
 	fakeHelperErr  error
+	// fakeHelperRoot is the directory buildFakeHelper created, kept even when
+	// the build fails so TestMain removes it.
+	fakeHelperRoot string
 )
 
 func buildFakeHelper(t *testing.T) string {
@@ -33,6 +38,7 @@ func buildFakeHelper(t *testing.T) string {
 			fakeHelperErr = err
 			return
 		}
+		fakeHelperRoot = dir
 		ext := ""
 		if runtime.GOOS == "windows" {
 			ext = ".exe"
@@ -47,7 +53,12 @@ func buildFakeHelper(t *testing.T) string {
 			fakeHelperErr = err
 			return
 		}
-		if err := os.WriteFile(filepath.Join(dir, "rancher-credential-fake2"+ext), src, 0o755); err != nil {
+		bin2 := filepath.Join(dir, "rancher-credential-fake2"+ext)
+		if err := os.WriteFile(bin2, src, 0o755); err != nil {
+			fakeHelperErr = err
+			return
+		}
+		if err := firstRun(t.Context(), bin, bin2); err != nil {
 			fakeHelperErr = err
 			return
 		}
@@ -56,6 +67,30 @@ func buildFakeHelper(t *testing.T) string {
 	require.NoError(t, fakeHelperErr)
 	return fakeHelperDir
 }
+
+// firstRun runs each helper binary once with the noop verb and a time limit
+// of firstRunLimit. macOS checks every newly written executable on its first
+// run, one at a time across the whole system: while many new binaries start
+// at once (a full test run) that first run can take many seconds, and a
+// test's helper call would spend it inside execHelperTimeout. The limit is
+// far above the longest first run measured (8 s under load) and only turns a
+// hung helper into a clear failure.
+func firstRun(ctx context.Context, bins ...string) error {
+	ctx, cancel := context.WithTimeout(ctx, firstRunLimit)
+	defer cancel()
+	for _, bin := range bins {
+		out, err := exec.CommandContext(ctx, bin, "noop").CombinedOutput()
+		if ctx.Err() != nil {
+			return fmt.Errorf("first run of %s did not finish within %s", bin, firstRunLimit)
+		}
+		if err != nil {
+			return fmt.Errorf("first run of %s: %w: %s", bin, err, out)
+		}
+	}
+	return nil
+}
+
+const firstRunLimit = 5 * time.Minute
 
 type buildError struct {
 	out string

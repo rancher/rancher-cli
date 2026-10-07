@@ -600,7 +600,6 @@ func TestPersistPendingTrustWriteFailureCompensatesAndRestores(t *testing.T) {
 // rollback or a recovery component.
 func TestPersistSuccessStatesAreSuccessForEveryBackend(t *testing.T) {
 	t.Run("exec helperNonAtomic", func(t *testing.T) {
-		warmFakeHelper(t)
 		useFakeHelper(t, "ok")
 		dir, _ := persistFixture(t, derivedEntry())
 		in := pluginInput(dir, "prod", nil)
