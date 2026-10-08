@@ -25,11 +25,11 @@ in detail.
 | Command | Purpose |
 |---|---|
 | `auth login [<name>] [--url <url>]` | Log in with a token (interactive prompt or `--token-stdin`, secrets never on the command line); `--url` adds the entry first when `<name>` is new, and refuses when `<name>` is already registered at a different URL. Omitting `<name>` with `--url` derives it from the URL's hostname, with the same refuse-on-collision rule. Verifies a pasted/piped token against the server before storing it, with one `SelfSubjectReview` that also names the token's owner, which the login records (`--no-verify` skips this and records no owner; not available with the provider sign-in flow, which is already authenticated). Never switches the current server - only a fresh add can bootstrap it when unset. `--credential-store` changes where the directory keeps its credentials, after the new credential is stored: a change takes only this entry's credential, and refuses before the sign-in while another entry still has one in the store being left. |
-| `auth logout [<name>]` | Clear the stored login token for the current server, `<name>`, or every server with `--all`; keeps server config; deletes the matching exec-credential cache entries; records the logout on the entry so `config status` can list its token |
+| `auth logout [<name>]` | Clear the stored login token for the current server, `<name>`, or every server with `--all`; keeps server config; deletes the exec-credential cache entries its login made, then revokes on the server the tokens the CLI created and recorded (`revoked`, `notRevoked`); records the logout on the entry |
 | `auth status` | Connectivity + credential preflight (calls the cluster's Kubernetes API); an unfinished credential store change and what it has left |
 | `auth get-token` | exec-credential plugin (invoked by kubeconfigs, not by hand); with `--user-id` it hands kubectl only tokens Rancher reports as that user's |
-| `auth list-tokens` | List cached exec-credential entries (name, server, cluster, expiry) |
-| `auth delete-token [<name>]` | Clear cached exec-credential token(s); idempotent (no match = success) |
+| `auth list-tokens` | List cached exec-credential entries (name, server, cluster, token, expiry); the TOKEN column names the token the entry holds |
+| `auth delete-token [<name>]` | Clear cached exec-credential token(s), then revoke on the server the cluster tokens the CLI created and recorded; idempotent (no match = success) |
 
 ## Servers & configuration
 
@@ -38,8 +38,8 @@ in detail.
 | `config list-servers` | List configured servers |
 | `config use-server [name]` | Switch the current server |
 | `config add-server <name> --url <url>` | Add a server entry (establishes trust); bootstraps the current server if unset - never an upsert (a different URL/CA under an existing name is a conflict); a credential still stored under a name no entry had is removed first, with a warning |
-| `config update-server <name>` | Change a server's URL or CA without the credential purge `delete-server` forces; a URL change clears the stored token and exec-credential cache, a CA-only change keeps them |
-| `config delete-server <name>` | Remove a server and its stored credentials; returns the recovery sequence for the tokens the entry still names; does NOT revoke the server-side token |
+| `config update-server <name>` | Change a server's URL or CA without the credential purge `delete-server` forces; a URL change clears the stored token and exec-credential cache and sends nothing to the old address (the tokens left there are listed under `notRevoked`: on the moved entry `otherServer`, `manual`, never retired by its logins; on another entry still naming the old server, retired by that entry's next login), a CA-only change keeps them |
+| `config delete-server <name>` | Remove a server and its stored credentials, after revoking on the server the tokens the CLI created and recorded; `revoked` and `notRevoked` report each token, with a `recovery` for one left on the removed entry |
 | `config path` | Print the resolved config file path (whether or not the file exists yet) |
 | `config status` | Print config diagnostics: file path, current server, effective credential store and its source, completion settings; token reuse and every entry whose CLI-created tokens are still live, with the commands that revoke them; every entry whose exec-credential cache writes are paused while a change of its credential finishes, with the reason; an unfinished credential store change and what it has left; first stop when tab completion shows no candidates |
 | `config edit` | Edit the config in `$VISUAL`/`$EDITOR` on a validated temp copy - never in place; a change to `credentialStore` is refused (a login with `--credential-store` changes it) |

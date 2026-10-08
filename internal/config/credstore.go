@@ -104,9 +104,16 @@ type CredStore interface {
 	// record still holds token, under the cache lock, and reports whether
 	// it did; a record replaced or deleted by another process is left alone.
 	MarkCachedCredReady(key, token, fingerprint string) (bool, error)
-	DeleteCachedCred(key string) error
 	DeleteAllCachedCreds() error
 	ListCachedCreds() ([]CachedCredInfo, error)
+	// HoldCachedCreds runs fn under the cache lock with every record,
+	// deleting nothing; fn calls no store method.
+	HoldCachedCreds(fn func([]CachedRecord) error) error
+	// DeleteCachedCredsIfUnchanged deletes each record of want that still
+	// holds want's token, under the cache lock, and reports what it
+	// deleted and which records now hold another token, each list in key
+	// order.
+	DeleteCachedCredsIfUnchanged(want map[string]string) (deleted, changed []string, err error)
 	// ResolvedBackend names the physical store login credentials are read
 	// from - file, keychain or exec:<name> - and reports whether one has
 	// been fixed: false only for a lazy store before its first credential
@@ -152,6 +159,12 @@ type cachedCred struct {
 	// have accepted this token; an endpoint absent here is re-probed by
 	// the exec plugin before the token is handed to kubectl for it.
 	ReadyEndpoints []string `json:"readyEndpoints,omitempty"`
+	// TokenRef and TokenUserID name the cached token and its owner as the
+	// create response reported them, written only when the exec plugin
+	// created the token in the call that cached it. A record without
+	// TokenRef is never revoked: nothing proves the CLI created its token.
+	TokenRef    *clierr.TokenRef `json:"tokenRef,omitempty"`
+	TokenUserID string           `json:"tokenUserId,omitempty"`
 }
 
 // cachedEntry is one entry of a cache record's list: its name and the
@@ -179,6 +192,10 @@ type CachedCredInfo struct {
 	// A zero Expiry (an entry with no expiry) is omitted from the payload
 	// rather than rendered as the zero timestamp.
 	Expiry time.Time `json:"expiry,omitzero"`
+	// TokenRef and TokenUserID name the cached token and its owner when
+	// the exec plugin created it in the call that cached it.
+	TokenRef    *clierr.TokenRef `json:"tokenRef,omitempty"`
+	TokenUserID string           `json:"tokenUserId,omitempty"`
 }
 
 // CacheKey scopes an exec-credential cache entry by server identity and
@@ -268,18 +285,34 @@ var setCachedLock func()
 // production.
 var getCachedPruneHook func()
 
+// cacheLockWait bounds how long withCacheLock waits for another process to
+// release the token-cache lock. A var so tests shorten it.
+var cacheLockWait = 30 * time.Second
+
+// SetCacheLockWaitForTest shortens the token-cache lock wait for the
+// current test run; call the returned restore in cleanup. Exported for the
+// command packages' tests, which assert what a contended cache lock does
+// to a delete. Not for production.
+func SetCacheLockWaitForTest(d time.Duration) (restore func()) {
+	old := cacheLockWait
+	cacheLockWait = d
+	return func() { cacheLockWait = old }
+}
+
 // withCacheLock acquires the cross-process lock for token-cache.yaml, runs fn
 // holding it, then releases. The caller must hold f.mu over the entire call so
 // that same-process goroutines never contend on the flock; the flock then
 // serializes across different fileStore instances (separate processes).
 // Plain reads stay lock-free - atomic-rename writes keep them consistent. The
 // lock is required for every read-modify-write, which covers SetCachedCred,
-// DeleteCachedCred, and the prune branches of GetCachedCred and ListCachedCreds.
+// MarkCachedCredReady, DeleteCachedCredsIfUnchanged, DeleteAllCachedCreds,
+// the prune branches of GetCachedCred and ListCachedCreds, and the local
+// delete's read hold (HoldCachedCreds).
 func (f *fileStore) withCacheLock(fn func() error) error {
 	if err := os.MkdirAll(filepath.Dir(f.cacheLockPath), 0o700); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cacheLockWait)
 	defer cancel()
 	release, err := waitForFlock(ctx, f.cacheLockPath, 50*time.Millisecond)
 	if err != nil {
@@ -562,19 +595,6 @@ func (f *fileStore) SetCachedCred(key, token string, expiry time.Time, name, ser
 	})
 }
 
-func (f *fileStore) DeleteCachedCred(key string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.withCacheLock(func() error {
-		m, err := f.readCache()
-		if err != nil {
-			return err
-		}
-		delete(m, key)
-		return f.writeCache(m)
-	})
-}
-
 func (f *fileStore) DeleteAllCachedCreds() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -610,11 +630,13 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 			continue
 		}
 		info := CachedCredInfo{
-			Key:     key,
-			Name:    cred.Name,
-			Server:  cred.Server,
-			Cluster: cred.Cluster,
-			Expiry:  cred.Expiry,
+			Key:         key,
+			Name:        cred.Name,
+			Server:      cred.Server,
+			Cluster:     cred.Cluster,
+			Expiry:      cred.Expiry,
+			TokenRef:    cred.TokenRef,
+			TokenUserID: cred.TokenUserID,
 		}
 		if info.Name == "" {
 			// Legacy bare entry: no record fields - surface the raw key as the name.
@@ -913,60 +935,21 @@ func (k *keyringStore) SetCachedCred(key, token string, expiry time.Time, name, 
 func (k *keyringStore) MarkCachedCredReady(key, token, fingerprint string) (bool, error) {
 	return k.cache.MarkCachedCredReady(key, token, fingerprint)
 }
-func (k *keyringStore) DeleteCachedCred(key string) error          { return k.cache.DeleteCachedCred(key) }
 func (k *keyringStore) DeleteAllCachedCreds() error                { return k.cache.DeleteAllCachedCreds() }
 func (k *keyringStore) ListCachedCreds() ([]CachedCredInfo, error) { return k.cache.ListCachedCreds() }
-
-// DeleteTokenEverywhere is single-server logout's delete point (ARCHITECTURE.md): it
-// deletes a server's login token from BOTH backends, unconditionally and
-// independently of policy - the two stores hold separate credentials and a
-// directory's store may have changed between the login and the logout, so
-// either may still hold one - AND
-// deletes every exec-credential cache entry cached against serverURL's host
-// (the cache is file-backed regardless of policy). No backend's
-// failure short-circuits another; per-backend errors are joined so a live
-// token/cache entry is never left behind unreported. fromBackends lists the
-// login-token backends actually deleted; deletedCache lists the cache keys
-// actually removed.
-//
-// Deleting the WHOLE host's cache (not just entries matching server's own
-// name) is deliberate fail-safe behavior, not an oversight: a cache entry
-// embeds the config-entry name only by kubeconfig naming convention, so
-// matching by name is structurally unreliable, while over-deleting a
-// neighbor account on the same host costs it one silent re-auth on next use
-// (the exec plugin re-creates transparently) - under-deleting leaves a live
-// credential behind after the user asked to log out, the exact failure this
-// function exists to prevent.
-//
-// `logout --all` does NOT loop this per server: deleting N servers' worth of
-// host-scoped cache entries one at a time costs O(servers × cache entries)
-// of the same file, and - unlike a single-server logout, which has no other
-// way to reach a cache entry cached against a server no longer configured -
-// still misses orphaned/bare entries that match no configured server. See
-// DeleteAllExecCache, which `--all` calls once instead.
-func DeleteTokenEverywhere(ctx context.Context, dir string, ref ServerRef, policy string) (fromBackends, deletedCache, notices []string, err error) {
-	fromBackends, notices, err = DeleteLoginToken(ctx, dir, ref, policy)
-	// cacheStore is a throwaway *fileStore never exposed to any caller as a
-	// NoticeSource - the same reasoning DeleteLoginToken's own throwaway fs
-	// documents below: a loose-permission notice on token-cache.yaml would
-	// otherwise be drained by no one and silently lost.
-	cacheStore := newFileStore(dir, &noticeBuffer{})
-	deletedCache, cerr := DeleteExecCacheForServer(cacheStore, ref.URL)
-	if cerr != nil {
-		err = errors.Join(err, fmt.Errorf("exec-credential cache: %w", cerr))
-	}
-	notices = append(notices, cacheStore.DrainNotices()...)
-	return fromBackends, deletedCache, notices, err
-}
 
 // DeleteLoginToken deletes a server's login token from the keychain, file
 // store, and every helper the records file says was asked to store a
 // credential for the server. The exec union covers: the current policy's
 // helper (with the current identity) and every older record - so a policy
-// change between login and logout never strands a helper credential. Used directly by
-// DeleteTokenEverywhere (single-server logout) and by `logout --all` (which deletes
-// every configured server's token this way, then wipes the exec-credential
-// cache once via DeleteAllExecCache instead of per server).
+// change between login and logout never strands a helper credential. It is
+// the login delete of auth logout, config delete-server and config
+// update-server, through DeleteAndRecord in internal/token. The keychain and
+// file store are deleted unconditionally and independently of policy: the two
+// stores hold separate credentials and a directory's store may have changed
+// between the login and the logout. No backend's failure short-circuits
+// another; per-backend errors are joined so a live token is never left behind
+// unreported.
 func DeleteLoginToken(ctx context.Context, dir string, ref ServerRef, policy string) (from, notices []string, err error) {
 	var errs []error
 	// The keychain step runs when this directory has an identity record for
@@ -1109,93 +1092,6 @@ func eraseHelperCredential(dir string, e HelperRecord) (deleted bool, err error)
 	return newExecStore(e.Helper, dir).eraseCredential(credhelper.Request{ServerURL: e.CanonicalURL, Name: e.Name})
 }
 
-// DeleteAllExecCache wipes the ENTIRE exec-credential cache file in one
-// operation and returns the keys it removed - the cheap, complete
-// counterpart to DeleteTokenEverywhere's per-server host-scoped delete, used by `logout
-// --all`. A single full-file wipe, rather than N per-server host-scoped
-// deletes, is both cheaper (one read-and-truncate instead of
-// O(servers × cache entries)) and more complete: it also catches orphaned
-// entries (a legacy bare entry with no Server field, or one cached against a
-// server later removed from config.yaml) that no per-server delete - keyed to
-// a currently-configured server's host - could ever reach.
-//
-// notices carries any notice the throwaway *fileStore this function
-// constructs records on its own buffer (a loose-permission finding on
-// token-cache.yaml, say) - that buffer is never exposed to any caller as a
-// NoticeSource, so it must be drained and returned here instead of left to
-// go out of scope unread, on every return path including the error ones.
-func DeleteAllExecCache(dir string) (keys, notices []string, err error) {
-	fs := newFileStore(dir, &noticeBuffer{})
-	cached, err := fs.ListCachedCreds()
-	if err != nil {
-		return nil, fs.DrainNotices(), err
-	}
-	if err := fs.DeleteAllCachedCreds(); err != nil {
-		return nil, fs.DrainNotices(), err
-	}
-	keys = make([]string, 0, len(cached))
-	for _, c := range cached {
-		keys = append(keys, c.Key)
-	}
-	return keys, fs.DrainNotices(), nil
-}
-
-// DeleteExecCacheForServer deletes every exec-credential cache entry whose
-// Server matches serverURL's canonical identity and returns the deleted
-// entries' keys. Entries cached against a different server are left alone.
-//
-// The target identity is computed via CanonicalServerIdentity (full canonical
-// URL, scheme included). For current-format records whose Server carries a
-// full URL (contains "://"), the comparison is a byte-for-byte equality
-// check against the target identity - http://host and https://host are
-// therefore distinct. For legacy records whose Server carries only a host
-// (no scheme), the record is normalized using the target's scheme and
-// compared by canonical host; HOST:80 deletes for http://host and HOST:443
-// deletes for https://host. A legacy record matches either scheme's delete
-// for the same host (unavoidable - the record carries no scheme; failing
-// to delete is worse than over-deleting).
-func DeleteExecCacheForServer(store CredStore, serverURL string) ([]string, error) {
-	identity := CanonicalServerIdentity(serverURL)
-	if identity == "" {
-		return nil, nil
-	}
-	// Derive the target scheme and canonical host for normalizing legacy
-	// records whose Server field carries no scheme. Default to https to
-	// preserve previous behavior for malformed target URLs.
-	scheme := "https"
-	if u, err := url.Parse(identity); err == nil && u.Scheme != "" {
-		scheme = strings.ToLower(u.Scheme)
-	}
-	targetHost := canonicalServerHost(identity)
-	creds, err := store.ListCachedCreds()
-	if err != nil {
-		return nil, err
-	}
-	var deleted []string
-	for _, c := range creds {
-		if c.Server == "" {
-			continue
-		}
-		var match bool
-		if strings.Contains(c.Server, "://") {
-			// Current format: Server carries a full canonical URL; byte compare.
-			match = c.Server == identity
-		} else {
-			// Legacy format: Server carries only a host (no scheme). Normalize
-			// using the target's scheme so default-port suffixes strip correctly.
-			match = canonicalServerHost(scheme+"://"+c.Server) == targetHost
-		}
-		if !match {
-			continue
-		}
-		if err := store.DeleteCachedCred(c.Key); err != nil {
-			return deleted, err
-		}
-		deleted = append(deleted, c.Key)
-	}
-	return deleted, nil
-}
-
 // CanonicalServerIdentity derives the full canonical cache identity from a
 // server URL: the canonical URL output of credhelper.CanonicalServerURL
 // (scheme://host with the scheme lowercased and the default port for that
@@ -1214,8 +1110,8 @@ func CanonicalServerIdentity(rawURL string) string {
 // server URL: the host lowercased and stripped of its scheme's default port
 // (443 for https, 80 for http). Falls back to a lowercased ServerHost when
 // the URL cannot be canonicalized, so callers always get a non-empty string
-// for a non-empty URL. Used internally by DeleteExecCacheForServer for legacy
-// record normalization; use ServerHost for non-cache identity (e.g. kubeconfig
+// for a non-empty URL. Used by CacheRecordForServer for legacy record
+// normalization; use ServerHost for non-cache identity (e.g. kubeconfig
 // entry names).
 func canonicalServerHost(rawURL string) string {
 	if cu, err := credhelper.CanonicalServerURL(rawURL); err == nil {

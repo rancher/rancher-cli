@@ -51,7 +51,6 @@ func (c *listCmd) Describe() runtime.Descriptor {
 			"rancher access list --cluster prod -A -o json",
 		},
 		CommandType:      runtime.ReadOnly,
-		Network:          true,
 		Auth:             true,
 		SuccessExitCodes: []int{0, 13},
 		Shape:            runtime.ShapeText,

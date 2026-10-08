@@ -18,6 +18,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Error codes](#error-codes)
 - [Read-only mode](#read-only-mode)
 - [Supported server version](#supported-server-version)
+- [Revoking the CLI's tokens](#revoking-the-clis-tokens)
 - [kubectl integration](#kubectl-integration)
 - [TLS & proxy](#tls--proxy)
 
@@ -969,6 +970,14 @@ kubectl's exec-credential plugin protocol requires. `rancher schema
 -o json`'s per-command `outputPolicy` field is the authoritative
 machine-readable source for which formats any given command accepts.
 
+Each command in `rancher schema -o json` also carries `serverAccess`, the
+most it may do on the Rancher server: `none` (never contacts it), `read`
+(reads server state only) or `write` (may create or delete server objects;
+the command's `desc` names which). A mutating command is always `write`;
+`auth logout`, `auth delete-token` and `config delete-server` are `write`
+because they delete the tokens the CLI created. A command card's contract
+line shows it as `server=read` or `server=write`.
+
 ## Color
 
 `--color`: `auto` (default) · `always` · `never` - controls whether
@@ -1055,6 +1064,10 @@ the CLI's managed-resource surface. `auth login`, `auth status`, and local
 `config` commands stay usable; otherwise a read-only session couldn't even
 establish itself.
 
+The CLI still revokes its own tokens in read-only mode: `auth logout`,
+`auth delete-token` and `config delete-server` delete the tokens the CLI
+created and recorded (see [Revoking the CLI's tokens](#revoking-the-clis-tokens)).
+
 > [!WARNING]
 > Read-only mode is a CLI-side courtesy layer, not a security boundary.
 > Real enforcement is a Rancher token bound to read-only RBAC - pair them.
@@ -1114,6 +1127,8 @@ reports the outcome in the error's `details`:
   directory whose path holds characters a terminal line cannot show, both
   recovery `command` fields are empty and the message says why: no command
   can name that directory.
+  Each superseded token in `prior.supersededTokens` carries `server`, the
+  canonical URL of the server it lives on.
 - `operationMarker`: the tokens a password or device-code sign-in creates
   carry `[op:<marker>]` in their description, so a leftover can be found
   by listing the collection its `kind` names and revoked with the
@@ -1139,6 +1154,133 @@ can complete later), and, when the server declared one, the request expiry
 `rancher get management-tokens -o json` or the UI's Account & API Keys
 page; they cannot identify the token.
 
+## Revoking the CLI's tokens
+
+`rancher auth logout`, `rancher auth logout --all`, `rancher auth
+delete-token` and `rancher config delete-server` delete the CLI's local
+copies - the login token in every backend and the exec-credential cache
+records - then delete on the server ("revoke") the tokens among them the CLI
+created and recorded:
+
+- a cached cluster token whose cache record carries `tokenRef`, revoked with
+  the token itself as bearer;
+- a superseded token of the same server and the same owner, revoked with the
+  stored login;
+- the login token itself, last, with itself.
+
+Every revoke runs after the local delete, outside the config lock, one at a
+time, under one 10 s budget. A request goes only to a server a current config
+entry names, with that entry's CA: a bearer is never sent anywhere else.
+Read-only mode does not stop these revokes. The command exits 0 when every
+local delete succeeds, whatever the server answered; a Ctrl-C or termination
+signal that stops the local delete, or leaves a token unreached, ends it
+with `INTERRUPTED` (exit 130), both lists in the error's details (`config
+delete-server` then leaves the entry for a rerun to remove, and when its
+login token was deleted the tokens recorded on it are `manual`). A signal
+during the wait for the first config lock stops the command before anything
+changes. A signal after the local delete that leaves no token unsent does
+not stop the command: it ends normally, and `config delete-server` still removes the
+entry - though if that last step then fails (a `CONFLICT`, say), the error
+is reported as `INTERRUPTED`, its message and details kept. A process killed after
+the local delete loses the report of the tokens it had neither revoked nor
+recorded; none of them were revoked.
+
+A login token delete that fails is the command's failure (a non-zero exit;
+`INTERRUPTED` for a signal), with both lists in the error's details, and
+the deletes of the other targets' login tokens stop there. When the store
+the CLI reads no longer holds the token after the failure (the keychain
+item was deleted, then removing its identity record or deleting another
+backend's copy failed), the login still counts as deleted: it is revoked
+and reported by its outcome, the entry stays logged out, and `deletedFrom`
+names the backends it was deleted from. `auth logout` does not list the
+target in `loggedOut`. A copy the failed step left (a plaintext token in an
+unreadable `credentials.yaml`, say) stays; the error names the step, and a
+rerun deletes the copy once that step can succeed.
+
+`rancher config update-server --url` deletes the entry's credentials and its
+own cache records but sends nothing to the old address. The tokens the CLI
+created there stay recorded with `server` set to the old server. On the moved
+entry they are `otherServer`, `manual`: no login of the new address retires
+them, so run their `recovery`. On another entry that still names the old
+server they are `notAttempted`, and that entry's next login retires them. Its
+data adds only `notRevoked`.
+
+The data of each command gains two lists, `[]` when empty, never null:
+
+- `revoked`: `{ref, source, server}` for each token the server confirmed
+  deleted (200 or 204, or 404 to another token of the same owner).
+  `source` is `cache`, `superseded` or `login`.
+- `notRevoked`: `{ref?, source, server, entry?, reason, error?, retry,
+  recovery?}` for each token that may still be live. `entry` is the entry the
+  token is recorded on, `error` the answer or transport error behind `failed`,
+  `recovery` a command sequence.
+
+The text output lists one line per token under `tokens on <server>:`, for
+example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
+(unconfirmed; recorded on prod: the next login of prod as u-1 revokes it)`.
+
+| `reason` | Meaning |
+|---|---|
+| `failed` | any other answer, or a transport error (`error` holds it) |
+| `unconfirmed` | 401 or 404 to the token's own bearer |
+| `forbidden` | 403 to the token's own bearer; the record is removed |
+| `budget` | the 10 s budget ran out before this token |
+| `cancelled` | a Ctrl-C or termination signal |
+| `noBearer` | no readable bearer matches the token's `ref` |
+| `v3` | v3 tokens are never deleted; an administrator can run `rancher delete management-token <name> --apply --yes --allow-deprecated`, or it expires |
+| `unproven` | no `tokenRef`: nothing proves the CLI created it; find it with `rancher get tokens` |
+| `noEntry` | its parent entry no longer exists, or no current entry names its server; nothing is sent |
+| `otherServer` | a token of a server the entry no longer names |
+| `notAttempted` | `update-server`: recorded on another entry that still names its server |
+| `notDeleted` | its local copy was not deleted and it stays in use; run the command again |
+| `otherOwner`, `unknownOwner` | the token's owner is not the entry's user, or is not known |
+| `noCliBearer` | a superseded record under a pasted login |
+| `userSupplied` | the pasted login token itself; not the CLI's to revoke |
+
+`retry` says what revokes the token later:
+
+| `retry` | Meaning |
+|---|---|
+| `nextLogin` | the next login the CLI creates for `entry` revokes it: `rancher auth login <entry>` without a pasted token, or the kubectl sign-in through a plugin login entry. Given only when the token's owner equals the entry's `tokenUserId` (both known) and its server is the entry's current one |
+| `manual` | run `recovery`, or the reason's remedy |
+| `none` | a pasted token |
+
+A command warns once per `manual` token, and once per entry for its
+`nextLogin` tokens.
+
+`rancher auth logout <entry>` deletes only the cache records its login made:
+records naming that entry, and records of removed entries. A record another
+entry still reads stays. It clears the entry's `tokenRef` and stamps
+`loggedOutAt` on every target. When a logout fails, the error's details carry
+both lists.
+
+`rancher auth delete-token` takes the config lock and refuses an unparseable
+`config.yaml` before it deletes anything. `data.deleted` lists the deleted
+cache keys, with `--all` too. `data.kept` lists records the exec plugin
+rewrote meanwhile; they stay, with a warning. `--all` prints `deleted N
+cached credentials`. Under `--all` a cache file that cannot be read is
+removed, and its tokens can be neither revoked nor recorded.
+
+`rancher config delete-server` removes the entry after the revokes only while
+it still carries the `loggedOutAt` stamp. A login or a URL change in between
+makes it refuse with `CONFLICT` and keep the entry. `revoked` and
+`notRevoked` report each token; one left on the removed entry is `manual`,
+with its `recovery`.
+
+`rancher auth list-tokens` has a `TOKEN` column: the kind and name from the
+record's `tokenRef`, or `-`. In JSON a record adds `tokenRef` (`{kind, name}`)
+and `tokenUserId` when present. The exec plugin records them only for a token
+it created in the same call, never for the stored login it hands out as is on
+a Rancher without `ext.cattle.io` tokens.
+
+A superseded record carries `server`, the canonical URL of the server the
+token lives on. `rancher config status` shows it, gives a record whose server
+the entry no longer names the state `otherServer`, and prints its recovery
+sequence against that server. The retirement pass, at the next `rancher auth
+login` or plugin login, skips records of another server, leaves v3 records
+unattempted, drops records whose `expiresAt` passed more than an hour ago,
+and attempts nothing under a pasted login.
+
 ## kubectl integration
 
 `rancher auth get-token` is a `client.authentication.k8s.io/v1beta1`
@@ -1154,12 +1296,14 @@ caching), `--user-id` (the Rancher user every token must belong to; needs
 omitted, they fall back to the current server in config. It supports SAML,
 OAuth (device-code / auth-code), and basic auth flows; long-poll flows can
 be canceled with Ctrl-C. List cached credentials with `rancher auth list-tokens`.
-Clear them with `rancher auth delete-token [<name>]`. That clears the local
-cache only: the cluster token the plugin created stays valid on the server
-until it expires; `rancher get tokens` lists it and `rancher delete token
-<name>` revokes it (on a server without `ext.cattle.io` tokens the plugin
-creates a v3 token instead: `rancher get management-tokens` and `rancher
-delete management-token <name>`). On a cache miss the plugin first
+Clear them with `rancher auth delete-token [<name>]`. That deletes the
+cache records, then revokes the cluster tokens the plugin created and
+recorded in them (see [Revoking the CLI's tokens](#revoking-the-clis-tokens));
+a token it could not revoke stays valid on the server until it expires, and
+`rancher get tokens` lists it (on a server without `ext.cattle.io` tokens the
+plugin creates a v3 token instead: v3 tokens are never deleted by the CLI;
+an administrator can run `rancher delete management-token <name> --apply
+--yes --allow-deprecated`, or it expires). On a cache miss the plugin first
 tries to create a token from a stored `auth login` credential; when that
 credential lives in the OS keychain, this can trigger a keychain-unlock
 prompt - CI and other non-interactive runs should run `rancher kubeconfig`
@@ -1292,11 +1436,14 @@ tokens are still live on a server: its provenance, the token's owner and
 expiry, and, for the entry's current token and for each superseded record
 it still names, a four-command recovery sequence that logs in as a
 throwaway entry, selects it, revokes the token by name, and logs out again.
+A superseded record whose server the entry no longer names has the state
+`otherServer`, and its sequence runs against that server.
 Every text rendering of the sequence ends with what it assumes:
 `RANCHER_CLI_URL` and `RANCHER_CLI_TOKEN` are unset, and either would
 override the current server the sequence selects. `rancher config delete-server`
-returns the same account under `recovery` in the invocation that removes the
-entry, so the last reference to a live token is not lost with it.
+reports a token it could not revoke under `notRevoked`, with the same sequence
+as its `recovery`, in the invocation that removes the entry, so the last
+reference to a live token is not lost with it.
 
 Two `rancher` processes cannot log in to one server at once: the plugin
 login holds a per-server lock across the whole interactive wait. A

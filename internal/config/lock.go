@@ -22,9 +22,12 @@ func LockPath(dir string) string { return filepath.Join(dir, configLockName) }
 //
 // 60 s exceeds the worst expected single hold: a credential-helper call inside
 // a locked span is bounded at execHelperTimeout (30 s), but logout --all
-// multiplies helper calls by server count, so a waiter may still time out in
-// that pathological case. RANCHER_CLI_CONFIG_NO_LOCK is the escape hatch when
-// that occurs.
+// multiplies helper calls by server count, and auth logout and config
+// delete-server read each CLI-created target's login before deleting it -
+// two helper calls per such target, and a keychain read that raises an
+// unlock dialog holds the lock while a person answers it - so a waiter may
+// still time out in those cases. RANCHER_CLI_CONFIG_NO_LOCK is the escape
+// hatch when that occurs.
 var lockWaitTimeout = 60 * time.Second
 
 // configLockSem serializes same-process WithLock callers (so goroutines in

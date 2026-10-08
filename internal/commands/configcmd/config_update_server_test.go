@@ -110,12 +110,14 @@ func TestUpdateServerURLChangeClearsCredentials(t *testing.T) {
 	assert.Equal(t, []string{"url"}, data["changed"])
 	assert.Equal(t, true, data["credentialsCleared"])
 	// Same single-server shape as config delete-server (map keyed
-	// "backend"), not a flat list - both report DeleteTokenEverywhere's
+	// "backend"), not a flat list - both report the local login delete's
 	// output and should look alike on the wire.
 	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"])
 	assert.Equal(t, "server qa1 updated\n"+
 		"  url: https://new.example.com (changed)\n"+
-		"  credentials cleared - log in again: rancher auth login 'qa1'\n", res.Text)
+		"  credentials cleared - log in again: rancher auth login 'qa1'\n"+
+		"  tokens on https://old.example.com:\n"+
+		"    not revoked: the pasted login token, which is not the CLI's to revoke\n", res.Text)
 
 	_, gerr := store.GetToken(config.ServerRef{Name: "qa1", URL: "https://new.example.com"})
 	require.ErrorIs(t, gerr, config.ErrNoToken)

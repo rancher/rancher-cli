@@ -111,14 +111,16 @@ func TestServerChangesValidateBeforeThePrelude(t *testing.T) {
 
 // TestServerChangesWithNoChangeRecordTakeNoTransitionLock asserts what the
 // prelude costs them on a directory with no change: one stat of the
-// record's path and no lock beyond the ones they already took.
+// record's path and no lock beyond the ones they already took. delete-server
+// loads the config a second time in its last span, which removes the entry
+// after the revokes.
 func TestServerChangesWithNoChangeRecordTakeNoTransitionLock(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		run  func(t *testing.T, dir string) ([]string, error)
 		want map[string]int
 	}{
-		{"delete-server", deleteServerRun, map[string]int{"configload": 1, "credentialsread": 2, "dirstat": 1, "manifeststat": 2}},
+		{"delete-server", deleteServerRun, map[string]int{"configload": 2, "credentialsread": 2, "dirstat": 1, "manifeststat": 2}},
 		{"update-server --url", updateServerURLRun, map[string]int{"configload": 2, "credentialsread": 2, "dirstat": 1, "manifeststat": 2}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

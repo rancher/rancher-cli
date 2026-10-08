@@ -203,9 +203,14 @@ type Server struct {
 	// entry left live; each is retired when a same-owner login replaces the
 	// credential, or listed until then.
 	SupersededTokens []SupersededToken `json:"supersededTokens,omitempty"`
-	// LoggedOutAt is stamped by auth logout: the entry's own TokenRef then
-	// names a live token with no local credential to retire it, and config
-	// status lists it like a superseded record without reading the store.
+	// LoggedOutAt is stamped by auth logout and config delete-server, which
+	// clear TokenRef in the same write: the entry then holds no login, and
+	// the token the logout deleted, when the CLI created and named it, is
+	// one of SupersededTokens until it is revoked. Every login clears the
+	// stamp, and so does a URL change. An entry an earlier version logged
+	// out keeps its TokenRef beside the stamp: that names a live token with
+	// no local credential, which config status lists like a superseded
+	// record without reading the store.
 	LoggedOutAt string `json:"loggedOutAt,omitempty"`
 	// CacheBindingID says which exec-credential cache records belong to
 	// this entry's current credential. It is a random value, advanced by
@@ -248,11 +253,17 @@ func (s Server) CLICreated() bool {
 // CLI and is named: a TokenRef is present to revoke it by.
 func (s Server) CLIOwned() bool { return s.CLICreated() && s.TokenRef != nil }
 
-// HoldsCLITokens reports whether the durable surfaces list this entry: the
-// CLI created the current token (named or not: a missing TokenRef is
-// reported as "cannot revoke by name", never hidden), or the entry carries
-// superseded records.
-func (s Server) HoldsCLITokens() bool { return s.CLICreated() || len(s.SupersededTokens) > 0 }
+// HoldsCLITokens reports whether the durable surfaces list this entry: it
+// names a CLI-created token (an earlier version's logout leaves one beside
+// its LoggedOutAt stamp), it holds a login the CLI created without naming
+// its token (reported as "cannot revoke by name", never hidden), or it
+// carries superseded records. An entry logged out with its TokenRef
+// cleared is listed for its records only; a SAML legacy entry, whose token
+// was never named, is not listed once logged out - the logout reported
+// that token once.
+func (s Server) HoldsCLITokens() bool {
+	return s.CLIOwned() || (s.CLICreated() && s.LoggedOutAt == "") || len(s.SupersededTokens) > 0
+}
 
 // Clone returns a copy sharing no storage with s, for snapshots.
 func (s Server) Clone() Server {

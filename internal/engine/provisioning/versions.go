@@ -533,7 +533,6 @@ func (c *getKubernetesVersionsCmd) Describe() runtime.Descriptor {
 		Usage:       "List available Kubernetes versions (rke2/k3s)",
 		Desc:        "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting is absent for a distro, no default is marked and a warning is emitted.",
 		CommandType: runtime.ReadOnly,
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeTabular,
 	}

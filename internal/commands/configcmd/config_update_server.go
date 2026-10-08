@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/register"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/token"
 )
 
 type configUpdateServerCmd struct {
@@ -29,11 +30,15 @@ func NewConfigUpdateServer(dir string) runtime.Command {
 
 func (configUpdateServerCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "config update-server",
-		Usage:       "Change a configured server's URL or CA",
-		CommandType: runtime.Local,
-		Network:     true,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Name:  "config update-server",
+		Usage: "Change a configured server's URL or CA",
+		Desc: "A URL change deletes the entry's stored credentials and the exec-credential cache records made from its " +
+			"login, and sends nothing to the old address: the tokens the CLI created there stay recorded on the entry " +
+			"with the old server named, or on another entry that still names it, and data.notRevoked lists each with " +
+			"its recovery. A CA-only change keeps the credentials.",
+		CommandType:  runtime.Local,
+		ServerAccess: runtime.ServerAccessRead,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			{Name: "url", Type: "string", Desc: "new Rancher server `url` (scheme required)"},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM"},
@@ -101,6 +106,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		out                       register.UpdateOutcome
 		deletedFrom, deletedCache []string
 		notices                   []string
+		del                       *token.Deletion
 	)
 	if err := config.WithLock(ctx, c.dir, func() error {
 		cfg, err := config.Load(config.FilePath(c.dir))
@@ -115,14 +121,17 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			// Delete-first ordering, as delete-server: a purge failure must
 			// leave config.yaml untouched but for the change's first write,
 			// never a half-migrated entry pointed at the new address with
-			// the old token still live. That first write moves two fields
-			// ahead of the purge: the entry's cache binding id advances and
-			// its cache writes pause. A get-token that read the old id and
-			// the old credential a moment earlier would otherwise write a
-			// record the purge cannot see and the entry would still
-			// accept, and one that loads after it and reads the credential
-			// before the delete writes nothing. The address and every other
-			// field stay behind the contract; the entry write resumes.
+			// the old token still live. That first write (token.DeleteAndRecord)
+			// moves the entry's cache binding id ahead of the purge and
+			// pauses its cache writes, and records the old server's tokens:
+			// on the moved entry with that server named, so no login of the
+			// new address tries them, or on another entry that still names
+			// it. A get-token that read the old id and the old credential a
+			// moment earlier would otherwise write a record the purge cannot
+			// see and the entry would still accept, and one that loads after
+			// it and reads the credential before the delete writes nothing.
+			// Nothing is sent to the old address. The address and every
+			// other field stay behind the contract; the entry write resumes.
 			policy, perr := config.EffectivePolicy(cfg.CredentialStore)
 			if perr != nil {
 				return perr
@@ -133,23 +142,31 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 			if perr != nil {
 				return perr
 			}
-			entry := cfg.Servers[name]
-			if berr := config.StartCredentialChange(&entry); berr != nil {
-				return config.WithNotices(berr, prelude)
+			cache := config.NewFileStore(c.dir)
+			var lerr error
+			del, lerr = token.DeleteAndRecord(ctx, cfg, token.LocalDelete{
+				Dir: c.dir, Command: token.DeleteForUpdateServer, Targets: []string{name}, Cache: cache,
+				Rerun: clierr.Rancher + " config update-server " + clierr.ShellQuote(name) + " --url " + clierr.ShellQuote(canonicalResultURL),
+				DeleteLogin: func(ctx context.Context, ref config.ServerRef) ([]string, []string, error) {
+					return config.DeleteLoginToken(ctx, c.dir, ref, policy)
+				},
+			})
+			notices = slices.Clone(prelude)
+			if ns, ok := cache.(config.NoticeSource); ok {
+				notices = append(notices, ns.DrainNotices()...)
 			}
-			cfg.Servers[name] = entry
-			if werr := config.WriteStep("cachebinding", cfg); werr != nil {
-				return config.WithNotices(werr, prelude)
+			if del == nil {
+				return config.WithNotices(lerr, notices)
 			}
-			ref := config.ServerRef{Name: name, URL: src.CanonicalURL}
-			var deleted []string
-			deletedFrom, deletedCache, deleted, err = config.DeleteTokenEverywhere(ctx, c.dir, ref, policy)
-			notices = slices.Concat(prelude, deleted)
-			if err != nil {
-				return clierr.WrapUnlessCanceled(err, func(err error) error {
+			notices = append(notices, del.Notices...)
+			deletedFrom, deletedCache = del.DeletedFrom[name], del.DeletedCache
+			if lerr != nil {
+				rep := del.Report()
+				return clierr.WrapUnlessCanceled(lerr, func(err error) error {
 					return clierr.Wrap(err,
 						fmt.Sprintf("failed to clear credentials for %q; the server address is unchanged, though its cache binding id has already been advanced and its cache writes paused: %v", name, err)).
-						WithWarnings(notices...)
+						WithDetails(rep).
+						WithWarnings(append(notices, del.Warnings()...)...)
 				})
 			}
 			// The entry write that follows is the change's last.
@@ -176,6 +193,13 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	if changed == nil {
 		changed = []string{}
 	}
+	notRevoked := []token.NotRevokedToken{}
+	var revocationLines []string
+	if del != nil {
+		notRevoked = del.Report().NotRevoked
+		notices = append(notices, del.Warnings()...)
+		revocationLines = del.TextLines()
+	}
 	sort.Strings(deletedFrom)
 	sort.Strings(deletedCache)
 	res := runtime.Result{Kind: "ServerUpdated", Data: map[string]any{
@@ -184,8 +208,9 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 		"changed": changed, "credentialsCleared": out.CredentialsCleared,
 		// Same single-server deletedFrom shape as config delete-server
 		// (map keyed "backend") - this and delete-server report the same
-		// DeleteTokenEverywhere primitive's output and should look alike.
+		// local delete's output and should look alike.
 		"deletedFrom": map[string][]string{"backend": deletedFrom}, "deletedCache": deletedCache,
+		"notRevoked": notRevoked,
 	}}
 	if probe.VersionWarning != "" {
 		res.Warnings = append(res.Warnings, probe.VersionWarning)
@@ -218,6 +243,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	if out.PointerRepaired {
 		lines = append(lines, "current server set to "+out.Name)
 	}
+	lines = append(lines, revocationLines...)
 	tr := runtime.TextLines("server "+out.Name+" updated", lines...)
 	if credentialsClearedLine != "" {
 		tr = runtime.AccentLine(tr, credentialsClearedLine)

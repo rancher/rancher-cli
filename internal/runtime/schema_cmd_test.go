@@ -142,17 +142,17 @@ func cardRegistry() *Registry {
 	reg.Register(fakeRead{d: Descriptor{
 		Name: "get pod", Aliases: []string{"pods", "po"}, Usage: "List pods or show one",
 		Args: []ArgSpec{{Name: "name", Type: "string"}}, CommandType: ReadOnly,
-		Network: true, Auth: true,
+		Auth: true,
 	}})
 	reg.Register(fakeRead{d: Descriptor{
 		Name: "get project", Usage: "List projects", CommandType: ReadOnly,
-		Desc:    "Reads management projects across all clusters.",
-		Network: true, Auth: true,
+		Desc: "Reads management projects across all clusters.",
+		Auth: true,
 	}})
 	reg.Register(fakeMutating{d: Descriptor{
 		Name: "delete project", Usage: "Delete a project",
 		Args:        []ArgSpec{{Name: "name", Type: "string", Required: true}},
-		CommandType: Mutating, Destructive: "true", Network: true, Auth: true,
+		CommandType: Mutating, Destructive: "true", Auth: true,
 	}})
 	reg.SetGroups([]SchemaGroup{
 		{Name: "", Commands: []string{"schema"}},
@@ -186,7 +186,7 @@ func TestSchemaSelectionSetsCardText(t *testing.T) {
 		require.NoError(t, err)
 		lines := strings.Split(res.Text, "\n")
 		assert.Equal(t, "rancher delete project <name>", lines[0])
-		assert.Contains(t, lines, "contract: mutating · internal · deprecated · destructive=true · network · auth")
+		assert.Contains(t, lines, "contract: mutating · internal · deprecated · destructive=true · server=write · auth")
 		assert.Contains(t, lines, "gates: --apply --yes --allow-deprecated")
 	})
 

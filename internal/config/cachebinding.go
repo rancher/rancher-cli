@@ -211,6 +211,10 @@ type CacheBinding struct {
 	load    *Config
 	from    CredStore
 	source  string
+	// tokenRef and tokenUserID name the token the record caches when the
+	// call created it; neither takes part in judging a hit.
+	tokenRef    *clierr.TokenRef
+	tokenUserID string
 }
 
 // The kinds of cache record, one per rule above, which a record names so
@@ -387,6 +391,19 @@ func CacheBindingForSeed(dir string, cfg *Config, name, server, cluster string) 
 	return CacheBindingForLookup(dir, cfg, server, identified, identified, legacyShim)
 }
 
+// WithCreatedToken is b with the token its record caches named: the ref
+// and owner the create response reported, for a token the call created.
+// The record carries both so a later delete of the record can revoke the
+// token; nothing a hit judges changes.
+func (b CacheBinding) WithCreatedToken(ref *clierr.TokenRef, userID string) CacheBinding {
+	if ref != nil {
+		r := *ref
+		b.tokenRef = &r
+	}
+	b.tokenUserID = userID
+	return b
+}
+
 // ReadFrom records the store the binding's credential is read from, for
 // CheckStore. The store is asked which backend it reads at the check,
 // not here: a lazy store fixes its backend at its first credential call,
@@ -559,7 +576,8 @@ func (b CacheBinding) writable() error {
 // record is the cache record b writes for a credential.
 func (b CacheBinding) record(token string, expiry time.Time, name, server, cluster string) cachedCred {
 	rec := cachedCred{Token: token, Expiry: expiry, Name: name, Server: server, Cluster: cluster,
-		Version: cacheRecordVersion, Dir: b.dir, Kind: b.kind, Identified: b.identified, Entry: b.entry.name, BindingID: b.entry.id}
+		Version: cacheRecordVersion, Dir: b.dir, Kind: b.kind, Identified: b.identified, Entry: b.entry.name, BindingID: b.entry.id,
+		TokenRef: b.tokenRef, TokenUserID: b.tokenUserID}
 	if b.listed {
 		entries := make([]cachedEntry, len(b.list))
 		for i, e := range b.list {

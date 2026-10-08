@@ -135,7 +135,33 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		"keptWarning": func() []string {
 			return []string{keptWarning(config.SupersededToken{Ref: *ref, UserID: "u-abc12"}, url, "the server refused")}
 		},
-		"namedEntryRoute":    func() []string { return []string{namedEntryRoute(name, clierr.ShellQuote(name), "'c-1'", "prod")} },
+		"namedEntryRoute": func() []string { return []string{namedEntryRoute(name, clierr.ShellQuote(name), "'c-1'", "prod")} },
+		"Deletion.manualWarning": func() []string {
+			d := &Deletion{cfg: cfg, view: cfg, req: LocalDelete{Rerun: clierr.Rancher + " auth logout " + clierr.ShellQuote(name)}}
+			var out []string
+			for _, it := range []*revocationItem{
+				{source: sourceCache, ref: ref, server: url, owner: "u-abc12", entry: name, reason: reasonFailed},
+				{source: sourceLogin, ref: ref, server: url, entry: name, reason: reasonNotDeleted},
+				{source: sourceCache, server: url, reason: reasonUnproven},
+				{source: sourceSuperseded, ref: &TokenRef{Kind: TokenKindV3, Name: "t"}, server: url, reason: reasonV3},
+			} {
+				out = append(out, d.manualWarning(it))
+			}
+			return out
+		},
+		"deleteTokenCmd.Execute": func() []string {
+			res, err := deleteTokenCmd{dir: dir, store: config.NewFileStore(dir)}.Execute(t.Context(), tin{a: []string{name}}, ui.Discard())
+			require.NoError(t, err)
+			return append([]string{res.Text}, res.Warnings...)
+		},
+		"Deletion.nextLoginText": func() []string {
+			named := &config.Config{Servers: map[string]config.Server{name: userNamed}}
+			d := &Deletion{cfg: named, view: named}
+			return []string{d.nextLoginText(name, true), (&Deletion{cfg: cfg, view: cfg}).nextLoginText(name, true)}
+		},
+		"v3Remedy": func() []string {
+			return []string{v3Remedy(TokenRef{Kind: TokenKindV3, Name: "token-v3"}, "2026-10-06T00:00:00Z")}
+		},
 		"pluginEntriesError": func() []string { return errText(pluginEntriesError(url, []string{name, name + "-2"}, cfg)) },
 		"reLogin":            func() []string { a, b := reLogin(name); return []string{a, b} },
 		"readUserID": func() []string {

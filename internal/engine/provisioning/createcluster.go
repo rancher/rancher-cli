@@ -194,7 +194,6 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 				"--k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply",
 		},
 		Destructive: "false",
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

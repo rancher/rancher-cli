@@ -65,7 +65,7 @@ var remedyLiteralAllowed = []struct {
 }{
 	{"internal/token/entry.go", "the legacy rancher token command cannot name one",
 		"names the command whose kubeconfig this is; it runs nothing"},
-	{"internal/token/token.go", "(e.g. rancher auth delete-token prod, or rancher auth delete-token --all)",
+	{"internal/token/deletetoken.go", "(e.g. rancher auth delete-token prod, or rancher auth delete-token --all)",
 		"auth delete-token's own usage error, printed by neither command"},
 	{"internal/clierr/loginfailure.go", "rancher get management-tokens",
 		"RecoveryCommands also fills result data of other commands; the exec plugin marks it where it prints it (clierr.MarkRemedy)"},

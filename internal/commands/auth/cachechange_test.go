@@ -81,13 +81,12 @@ func TestALogoutRacingACacheWriterLeavesNoRecordValid(t *testing.T) {
 }
 
 // TestALogoutPausesInItsFirstWriteAndResumesInItsLast asserts the logout's
-// writes one at a time: its first write advances each target's id and
-// pauses its cache writes while the credential is still there; a stop
-// after it leaves the pause for the exec plugin's next miss; the last
-// write - the logout stamps, or a write of the pauses alone when nothing
-// was stamped - resumes them, and a failure of it is a notice; for
-// `--all` that write comes before the cache wipe, so a failed wipe
-// leaves no pause.
+// writes one at a time: its first write advances each target's id, pauses
+// its cache writes and stamps it, while the credential is still there; a
+// failed login delete restores the stamp and leaves the pause for the exec
+// plugin's next miss; the last write resumes the pause, and a failure of
+// it is a notice; for `--all` a cache that cannot be read still gets that
+// write, so the failure leaves no pause.
 func TestALogoutPausesInItsFirstWriteAndResumesInItsLast(t *testing.T) {
 	fail := func(want string) func(string) error {
 		return func(step string) error {
@@ -112,19 +111,17 @@ func TestALogoutPausesInItsFirstWriteAndResumesInItsLast(t *testing.T) {
 	}{
 		{name: "nothing stamped", steps: []string{"cachebinding", "resume"}, advanced: true},
 		{name: "without the lock, the logout clears the pause it made", noLock: true, steps: []string{"cachebinding", "resume"}, advanced: true},
-		{name: "stamped", tokenRef: true, steps: []string{"cachebinding", "logout"}, advanced: true},
+		{name: "a CLI-created and named login", tokenRef: true, steps: []string{"cachebinding", "resume"}, advanced: true},
 		{name: "the first write fails", hook: fail("cachebinding"), steps: []string{"cachebinding"}, fails: true},
-		{name: "the delete fails", steps: []string{"cachebinding"}, fails: true, paused: true, advanced: true,
+		{name: "the delete fails", steps: []string{"cachebinding", "restore"}, fails: true, paused: true, advanced: true,
 			setup: func(t *testing.T, dir string) {
 				t.Helper()
 				require.NoError(t, os.Remove(config.CredentialsFilePath(dir)))
 				require.NoError(t, os.Mkdir(config.CredentialsFilePath(dir), 0o700))
 			}},
-		{name: "the stamp write fails", tokenRef: true, hook: fail("logout"), steps: []string{"cachebinding", "logout"},
-			paused: true, advanced: true, notice: "could not record the logout on the server entry"},
 		{name: "the write that resumes fails", hook: fail("resume"), steps: []string{"cachebinding", "resume"},
 			paused: true, advanced: true, notice: "cache writes for prod stay paused (config directory is full)"},
-		{name: "--all, and the cache wipe fails after the last write", all: true, steps: []string{"cachebinding", "resume"},
+		{name: "--all, and the cache cannot be read", all: true, steps: []string{"cachebinding", "resume"},
 			fails: true, advanced: true, setup: func(t *testing.T, dir string) {
 				t.Helper()
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "token-cache.yaml"), []byte("\t: not yaml ["), 0o600))

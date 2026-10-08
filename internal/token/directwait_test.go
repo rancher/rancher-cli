@@ -613,9 +613,10 @@ type markRefusingStore struct {
 	refused atomic.Int32
 }
 
-func (s *markRefusingStore) MarkCachedCredReady(key, _, _ string) (bool, error) {
+func (s *markRefusingStore) MarkCachedCredReady(key, token, _ string) (bool, error) {
 	s.refused.Add(1)
-	return false, s.DeleteCachedCred(key)
+	_, _, err := s.DeleteCachedCredsIfUnchanged(map[string]string{key: token})
+	return false, err
 }
 
 // TestGetTokenRefusedReadinessMarkIsAMiss asserts a cache hit whose

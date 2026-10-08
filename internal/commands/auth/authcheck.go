@@ -58,11 +58,11 @@ func (authCheckCmd) Describe() runtime.Descriptor {
 		Desc: "Checks the current server's connectivity and stored credential and reports the server and Rancher versions, the identity, the token and the credential store. " +
 			"Also reports credentialStoreChange when the directory has a credential store change record, the same report config status gives. " +
 			"A failure before the report keeps its own hint and names an unfinished change in its message; while the change record cannot be read, rancher config status is the hint and the failure's own remedy stays in its message.",
-		CommandType: runtime.Local,
-		Examples:    []string{"rancher auth status -o json"},
-		Network:     true,
-		Auth:        true,
-		Shape:       runtime.ShapeText,
+		CommandType:  runtime.Local,
+		Examples:     []string{"rancher auth status -o json"},
+		ServerAccess: runtime.ServerAccessRead,
+		Auth:         true,
+		Shape:        runtime.ShapeText,
 	}
 }
 

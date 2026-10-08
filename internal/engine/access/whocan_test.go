@@ -622,7 +622,7 @@ func TestWhoCanDescriptor(t *testing.T) {
 	d := NewWhoCan(nil, nil).Describe()
 	assert.Equal(t, "access who-can", d.Name)
 	assert.Equal(t, runtime.ReadOnly, d.CommandType)
-	assert.True(t, d.Network)
+	assert.Equal(t, runtime.ServerAccessRead, d.EffectiveServerAccess())
 	assert.True(t, d.Auth)
 	assert.Equal(t, []int{0, 13}, d.SuccessExitCodes)
 	assert.Equal(t, runtime.ShapeText, d.Shape)

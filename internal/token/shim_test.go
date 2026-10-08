@@ -29,7 +29,7 @@ func TestLegacyTokenDescriptor(t *testing.T) {
 	d := NewLegacyTokenCommand(t.TempDir(), nil, nil).Describe()
 	assert.Equal(t, "token", d.Name)
 	assert.Equal(t, runtime.Local, d.CommandType)
-	assert.True(t, d.Network)
+	assert.Equal(t, runtime.ServerAccessWrite, d.EffectiveServerAccess())
 	assert.True(t, d.Auth)
 	var names []string
 	for _, f := range d.Flags {

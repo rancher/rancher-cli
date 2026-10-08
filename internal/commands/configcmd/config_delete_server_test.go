@@ -21,6 +21,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
@@ -53,8 +54,8 @@ func TestConfigDeleteServerDeleteFailureChangesOnlyTheIdAndThePause(t *testing.T
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
 	deleteErr := errors.New("keychain locked")
-	cmd.delete = func(_ context.Context, dir string, ref config.ServerRef, policy string) ([]string, []string, []string, error) {
-		return nil, nil, nil, deleteErr
+	cmd.delete = func(_ context.Context, dir string, ref config.ServerRef, policy string) ([]string, []string, error) {
+		return nil, nil, deleteErr
 	}
 
 	_, err = cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
@@ -89,7 +90,9 @@ func TestConfigDeleteServerClearsCurrentServerWhenDeletedServerWasCurrent(t *tes
 	assert.Equal(t, map[string][]string{"backend": {"file"}}, data["deletedFrom"])
 	assert.Equal(t, "server acme deleted\n"+
 		"  was current - pointer cleared\n"+
-		"  credentials removed (file)\n", res.Text)
+		"  credentials removed (file)\n"+
+		"  tokens on https://acme.ex:\n"+
+		"    not revoked: the pasted login token, which is not the CLI's to revoke\n", res.Text)
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -112,7 +115,9 @@ func TestConfigDeleteServerDoesNotClearCurrentServerWhenDifferentServerDeleted(t
 	require.NoError(t, err)
 	data := res.Data.(map[string]any)
 	assert.False(t, data["currentServerCleared"].(bool), "current server (\"other\") is untouched when a different server is deleted")
-	assert.Equal(t, "server acme deleted\n  credentials removed (file)\n", res.Text)
+	assert.Equal(t, "server acme deleted\n  credentials removed (file)\n"+
+		"  tokens on https://acme.ex:\n"+
+		"    not revoked: the pasted login token, which is not the CLI's to revoke\n", res.Text)
 
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -143,7 +148,11 @@ func TestConfigDeleteServerDeletesExecCredentialCache(t *testing.T) {
 	assert.Equal(t, []string{config.CacheKey("kubeuser", "acme.ex", "c-1")}, data["deletedCache"])
 	assert.Equal(t, "server acme deleted\n"+
 		"  credentials removed (file)\n"+
-		"  1 cached kubectl credentials removed\n", res.Text)
+		"  1 cached kubectl credentials removed\n"+
+		"  tokens on acme.ex:\n"+
+		"    not revoked cluster token with no name recorded (unproven)\n"+
+		"  tokens on https://acme.ex:\n"+
+		"    not revoked: the pasted login token, which is not the CLI's to revoke\n", res.Text)
 
 	_, _, err = store.GetCachedCred(config.CacheKey("kubeuser", "acme.ex", "c-1"), cmdtest.CacheAnchor(t, dir))
 	assert.ErrorIs(t, err, config.ErrNoToken)
@@ -202,22 +211,23 @@ func TestConfigDeleteServerCompleteArgsDelegatesToServerNames(t *testing.T) {
 	assert.Equal(t, []string{"acme"}, got)
 }
 
-// TestDeleteServerCancellationPassesThrough asserts, for
-// config delete-server, that a cancellation surfacing from the delete must pass
-// through unchanged, not be rewrapped as a generic delete failure.
-func TestDeleteServerCancellationPassesThrough(t *testing.T) {
+// TestDeleteServerCancellationIsReportedAsInterrupted asserts, for
+// config delete-server, that a cancellation surfacing from the delete is
+// reported as INTERRUPTED, not rewrapped as a generic delete failure.
+func TestDeleteServerCancellationIsReportedAsInterrupted(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{Servers: map[string]config.Server{"acme": {URL: "https://acme.ex"}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
-	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, []string, error) {
-		return nil, nil, nil, fmt.Errorf("records lock: %w", context.Canceled)
+	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
+		return nil, nil, fmt.Errorf("records lock: %w", context.Canceled)
 	}}
 	_, err := cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
-	require.Error(t, err)
-	require.ErrorIs(t, err, context.Canceled)
-	assert.NotContains(t, err.Error(), "the server entry is left in place")
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeInterrupted, ce.Code)
+	assert.NotContains(t, err.Error(), "failed to delete credentials")
 
 	cfgAfter, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)
@@ -228,13 +238,13 @@ func TestDeleteServerCancellationPassesThrough(t *testing.T) {
 // TestConfigDeleteServerDeleteLockTimeoutSurvives asserts that
 // a classified LOCK_TIMEOUT from the delete
 // keeps its code, retryability, and exit status through the
-// "the server entry is left in place" wrap.
+// "the entry is kept" wrap.
 func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 	dir, _ := seedDeleteServer(t, "acme", []string{"acme"})
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
-	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, []string, error) {
-		return nil, nil, nil, clierr.Retryable(clierr.CodeLockTimeout,
+	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
+		return nil, nil, clierr.Retryable(clierr.CodeLockTimeout,
 			"locking the credential-helper records (another rancher process may be logging in/out): context deadline exceeded")
 	}
 
@@ -244,15 +254,14 @@ func TestConfigDeleteServerDeleteLockTimeoutSurvives(t *testing.T) {
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
 	assert.True(t, ce.Retryable)
 	assert.Equal(t, 8, ce.ExitCode())
-	assert.Contains(t, ce.Message, "the server entry is left in place")
+	assert.Contains(t, ce.Message, "the entry is kept")
 }
 
 // TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure asserts the
-// merge-order-under-failure scenario: a notice recorded by an earlier,
-// successful step (a keychain-unreachable degrade during the token delete)
-// rides the error produced when a LATER step (the exec-credential cache
-// delete) fails - the pipeline discards the command's Result on error, so
-// WithWarnings is the notice's only ride. Default format prints the warning
+// merge-order-under-failure scenario: a notice recorded by a step that went
+// on (a keychain-unreachable degrade during the token delete) rides the
+// error produced when the delete then fails - the pipeline discards the
+// command's Result on error, so WithWarnings is the notice's only ride. Default format prints the warning
 // ahead of the error text; json/yaml carry it in the same error envelope's
 // top-level warnings field, never inside data.error.
 func TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure(t *testing.T) {
@@ -260,8 +269,8 @@ func TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure(t *testing.T) {
 
 	cmd := NewConfigDeleteServer(dir).(*configDeleteServerCmd)
 	cacheErr := errors.New("exec-credential cache: read token-cache.yaml: disk full")
-	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, []string, error) {
-		return []string{"file"}, nil,
+	cmd.delete = func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
+		return []string{"file"},
 			[]string{"keychain unreachable, deleted the file store only"},
 			cacheErr
 	}
@@ -278,7 +287,8 @@ func TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure(t *testing.T) {
 
 	assert.Equal(t,
 		"# warning: keychain unreachable, deleted the file store only\n"+
-			"error (GENERIC): failed to delete credentials for \"acme\"; the server entry is left in place, with only its cache binding id advanced and its cache writes paused: "+cacheErr.Error()+"\n",
+			"error (GENERIC): failed to delete credentials for \"acme\"; the entry is kept with its cache writes paused, and logged out if its login token was deleted: "+cacheErr.Error()+"\n"+
+			"  not revoked: login token on https://acme.ex (userSupplied, retry none)\n",
 		textBuf.String(), "the warning must print ahead of the error text on the default format")
 
 	var jsonEnv struct {
@@ -298,51 +308,49 @@ func TestConfigDeleteServerCarriesNoticeAheadOfLaterStepFailure(t *testing.T) {
 	assert.Equal(t, []string{"keychain unreachable, deleted the file store only"}, yamlEnv.Warnings)
 }
 
-// TestConfigDeleteServerReturnsRecoveryForCLIOwnedTokensThenRemoves asserts
-// the result names the recovery sequence for the current token and every
-// record, in the same invocation that removes the entry; an entry without
-// CLI-owned tokens carries no recovery key; a failed credential delete
-// still leaves the entry (today's rule).
-func TestConfigDeleteServerReturnsRecoveryForCLIOwnedTokensThenRemoves(t *testing.T) {
+// TestConfigDeleteServerReportsTheTokensItLeavesThenRemoves asserts the
+// report for an entry whose tokens cannot be revoked here - the current
+// token with no stored login to bear it, a record of another owner -
+// returned in the same invocation that removes the entry: each listed
+// notRevoked, manual, with no entry and its recovery sequence, and a
+// warning carrying the commands; no recovery field.
+func TestConfigDeleteServerReportsTheTokensItLeavesThenRemoves(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := &config.Config{Servers: map[string]config.Server{
 		"exec-login-r.ex": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin,
 			TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live"}, TokenUserID: "user-a",
 			SupersededTokens: []config.SupersededToken{{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-old"}, UserID: "user-b", SupersededAt: "2026-09-01T00:00:00Z"}}},
-		"plain": {URL: "https://p.ex"},
-		"noref": {URL: "https://n.ex", Provenance: clierr.ProvenanceDerived},
 	}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
-	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, []string, error) {
-		return []string{"file"}, nil, nil, nil
+	cmd := &configDeleteServerCmd{dir: dir, delete: func(context.Context, string, config.ServerRef, string) ([]string, []string, error) {
+		return []string{"file"}, nil, nil
 	}}
 	res, err := cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"exec-login-r.ex"}}, ui.Discard())
 	require.NoError(t, err)
-	rec := res.Data.(map[string]any)["recovery"].(map[string]any)
-	cur := rec["current"].(map[string]any)
-	assert.Equal(t, "token-live", cur["ref"].(map[string]any)["name"])
-	assert.Equal(t, "user-a", cur["userId"])
-	assert.Equal(t, "rancher delete token token-live --apply --yes", cur["recovery"].([]string)[2])
-	sup := rec["superseded"].([]map[string]any)
-	require.Len(t, sup, 1)
-	assert.Equal(t, "token-old", sup[0]["ref"].(map[string]any)["name"])
-	assert.Contains(t, res.Text, "rancher auth login 'recover-r.ex' --url 'https://r.ex'   # log in as user 'user-b'")
-	assert.Contains(t, res.Text, clierr.RecoverySequenceAssumption)
+	data := res.Data.(map[string]any)
+	assert.NotContains(t, data, "recovery")
+	assert.Empty(t, data["revoked"])
+	nr := data["notRevoked"].([]token.NotRevokedToken)
+	require.Len(t, nr, 2)
+	byName := map[string]token.NotRevokedToken{}
+	for _, n := range nr {
+		byName[n.Ref.Name] = n
+	}
+	assert.Equal(t, "noBearer", byName["token-live"].Reason)
+	assert.Equal(t, "otherOwner", byName["token-old"].Reason)
+	for _, n := range nr {
+		assert.Empty(t, n.Entry, "the entry the tokens were recorded on is gone")
+		assert.Equal(t, "manual", n.Retry)
+	}
+	assert.Equal(t, "rancher delete token token-live --apply --yes", byName["token-live"].Recovery[2])
+	assert.Equal(t, "rancher auth login 'recover-r.ex' --url 'https://r.ex'   # log in as user 'user-b'", byName["token-old"].Recovery[0])
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), clierr.RecoverySequenceAssumption)
+	assert.NotContains(t, res.Text, "stays live")
 	cfg, _ = config.Load(config.FilePath(dir))
 	_, present := cfg.Servers["exec-login-r.ex"]
 	assert.False(t, present, "the entry is removed in the same invocation")
-
-	res, err = cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"plain"}}, ui.Discard())
-	require.NoError(t, err)
-	_, has := res.Data.(map[string]any)["recovery"]
-	assert.False(t, has)
-
-	res, err = cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"noref"}}, ui.Discard())
-	require.NoError(t, err)
-	_, has = res.Data.(map[string]any)["recovery"]
-	assert.False(t, has, "an entry that names no token has nothing to recover")
 }
 
 // TestConfigDeleteServerRunsFromConfigRecoveryCommandAndNamesAnUnwritableDir

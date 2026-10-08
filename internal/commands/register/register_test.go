@@ -280,6 +280,23 @@ func TestCommitUpdateURLChangeClearsCredentialsAndWrites(t *testing.T) {
 	assert.Equal(t, config.Server{URL: "https://new.example.com"}, cfg.Servers["qa1"])
 }
 
+// TestCommitUpdateURLChangeKeepsTheOldServersRecords asserts that a URL
+// change keeps the entry's superseded records as they are: naming the old
+// server on each is the first write's, before the update.
+func TestCommitUpdateURLChangeKeepsTheOldServersRecords(t *testing.T) {
+	existing := config.Server{URL: "https://old.example.com", Provenance: clierr.ProvenanceDerived, SupersededTokens: []config.SupersededToken{
+		{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-a"}, SupersededAt: "2026-10-06T00:00:00Z"},
+		{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-b"}, SupersededAt: "2026-10-06T00:00:00Z", Server: "https://older.example.com"},
+	}}
+	cfg := writableCfg(t, map[string]config.Server{"qa1": existing}, "qa1")
+	_, err := commitUpdate(cfg, "qa1", srcOf(existing), Probe{CanonicalURL: "https://new.example.com"})
+	require.NoError(t, err)
+	recs := cfg.Servers["qa1"].SupersededTokens
+	require.Len(t, recs, 2)
+	assert.Equal(t, existing.SupersededTokens, recs)
+	assert.Empty(t, cfg.Servers["qa1"].Provenance, "the credential's fields go")
+}
+
 func TestCommitUpdateCAOnlyChangeKeepsCredentials(t *testing.T) {
 	existing := config.Server{URL: "https://qa1.example.com"}
 	cfg := writableCfg(t, map[string]config.Server{"qa1": existing}, "qa1")

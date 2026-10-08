@@ -169,24 +169,28 @@ func TestRetireFailedDeleteKeepsTheRecordStamped(t *testing.T) {
 	assert.Contains(t, rep.Warnings[0], "could not be revoked")
 }
 
-// TestRetireV3ForbiddenKeepsTheRecord asserts the unproven v3 rule ships
-// conservatively: a standard user's delete of their own v3 token through
-// V3TokensPath answering 403 is failed, the record is kept and stamped,
-// and the warning carries the management-token recovery sequence.
-func TestRetireV3ForbiddenKeepsTheRecord(t *testing.T) {
-	x := newRetireFixture(t, testrancher.Options{Legacy: true, LegacyLoginBodyUserID: true, V3DeleteForbiddenForNonAdmin: true})
+// TestRetireKeepsAV3RecordUnattempted asserts that a v3 record is never
+// deleted: no request is sent, the record is kept unstamped, and the
+// warning names the administrator's delete and the expiry as the ways it
+// ends.
+func TestRetireKeepsAV3RecordUnattempted(t *testing.T) {
+	x := newRetireFixture(t, testrancher.Options{Legacy: true, LegacyLoginBodyUserID: true})
 	old, fresh := x.credAs(t, "a"), x.credAs(t, "a") // legacy: both are v3 session tokens with owner user-a
 	require.Equal(t, TokenKindV3, old.Ref.Kind)
 	x.seedRecords(t, []config.SupersededToken{record(old, "2026-09-02T00:00:00Z")})
+	before := len(x.f.DeleteRequests())
 	rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, fresh, x.records(t))
-	assert.Equal(t, []TokenRef{*old.Ref}, rep.Failed)
+	assert.Empty(t, rep.Failed)
+	assert.Empty(t, rep.Retired)
+	assert.Len(t, rep.Kept, 1)
+	assert.Len(t, x.f.DeleteRequests(), before, "no delete is sent for a v3 token")
 	recs := x.records(t)
 	require.Len(t, recs, 1)
-	require.NotNil(t, recs[0].LastAttempt)
-	assert.Equal(t, clierr.ResultFailed, recs[0].LastAttempt.Result)
-	assert.Contains(t, recs[0].LastAttempt.Error, "403")
+	assert.Nil(t, recs[0].LastAttempt)
 	require.Len(t, rep.Warnings, 1)
-	assert.Contains(t, rep.Warnings[0], "--allow-deprecated")
+	assert.Contains(t, rep.Warnings[0], "the CLI never deletes v3 tokens")
+	assert.Contains(t, rep.Warnings[0], "an administrator can delete it with: "+clierr.MarkRemedy("rancher delete management-token "+old.Ref.Name+" --apply --yes --allow-deprecated"))
+	assert.Contains(t, rep.Warnings[0], "or it expires")
 	_, alive := x.f.TokenOwner(old.Ref.Name)
 	assert.True(t, alive)
 }

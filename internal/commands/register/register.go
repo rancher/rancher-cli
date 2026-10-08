@@ -404,11 +404,13 @@ func ApplyUpdate(cfg *config.Config, plan UpdatePlan) (UpdateOutcome, error) {
 		e := cfg.Servers[plan.Name]
 		if plan.CredentialsCleared {
 			// A URL change clears the entry's credentials, so the entry
-			// keeps only its address, its trust, and what its change's
-			// first write gave it: the advanced cache binding id and the
-			// pause, which the caller has cleared when it may.
+			// keeps only its address, its trust and what its change's first
+			// write gave it: the advanced cache binding id, the pause, which
+			// the caller has cleared when it may, and the records of the
+			// tokens it left on the old server, each naming that server so
+			// no login of the new address tries them.
 			e = config.Server{URL: plan.CanonicalURL, CA: plan.CASelector,
-				CacheBindingID: e.CacheBindingID, CacheWritesPaused: e.CacheWritesPaused}
+				CacheBindingID: e.CacheBindingID, CacheWritesPaused: e.CacheWritesPaused, SupersededTokens: e.SupersededTokens}
 		} else {
 			// A CA-only update changes no credential: every other field
 			// is kept, a pause a change left included. The fingerprint

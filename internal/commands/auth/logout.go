@@ -7,35 +7,45 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/register"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/token"
 )
 
 type logoutCmd struct {
 	dir string
 }
 
-// NewLogout builds `auth logout` (local): clear the stored login token for a
-// server and delete matching exec-credential cache entries via
-// config.DeleteTokenEverywhere - the single delete point (ARCHITECTURE.md). Keeps the
-// server config entries; `auth delete-token` remains for clearing
-// cache entries outside a logout.
+// NewLogout builds `auth logout` (local): delete the stored login token
+// for a server and the exec-credential cache records its login made, then
+// revoke on the server the tokens among them the CLI created and can prove
+// it created (token.DeleteAndRecord). Keeps the server config entries;
+// `auth delete-token` remains for clearing cache entries outside a logout.
 func NewLogout(dir string) runtime.Command {
 	return &logoutCmd{dir: dir}
 }
 
 func (logoutCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "auth logout",
-		Usage:       "Clear stored login credentials for a server",
-		CommandType: runtime.Local,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Flags:       []runtime.ArgSpec{{Name: "all", Type: "bool", Desc: "log out of all configured servers"}},
+		Name:  "auth logout",
+		Usage: "Clear stored login credentials for a server",
+		Desc: "Deletes the server entry's stored login token in every backend and the exec-credential cache records " +
+			"made from its login, then deletes on the server the tokens among them the CLI created and recorded: " +
+			"the login token, its superseded tokens and the cached cluster tokens. Read-only mode does not stop " +
+			"those deletes. data.revoked lists the tokens the server confirmed deleted; data.notRevoked lists the " +
+			"rest with a reason and a retry: nextLogin (the next login the CLI creates for the entry deletes it), " +
+			"manual (recovery holds the commands) or none (a pasted token, not the CLI's). Exits 0 when every " +
+			"local delete succeeds, whatever the server answered. A Ctrl-C or termination signal that stops the " +
+			"local delete, or leaves a token unreached, ends it with INTERRUPTED (exit 130), with both lists in " +
+			"the error's details; a signal after the local delete that leaves no token unsent does not stop it.",
+		CommandType:  runtime.Local,
+		ServerAccess: runtime.ServerAccessWrite,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
+		Flags:        []runtime.ArgSpec{{Name: "all", Type: "bool", Desc: "log out of all configured servers"}},
 		Examples: []string{
 			"rancher auth logout",
 			"rancher auth logout prod",
@@ -57,11 +67,11 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 	}
 
 	var (
-		targets      []string
-		deletedFrom  map[string][]string
-		deletedCache []string
-		notices      []string
-		urlByName    = map[string]string{}
+		targets   []string
+		d         *token.Deletion
+		notices   []string
+		localErr  error
+		urlByName = map[string]string{}
 	)
 	if err := config.WithLock(cmdCtx, l.dir, func() error {
 		cfg, err := config.Load(config.FilePath(l.dir))
@@ -85,43 +95,150 @@ func (l logoutCmd) Execute(cmdCtx context.Context, in runtime.Input, _ runtime.P
 		if perr != nil {
 			return perr
 		}
-		if rerr := startCredentialChanges(cfg, targets); rerr != nil {
-			return config.WithNotices(rerr, prelude)
-		}
-		// Each delete path appends to its own copy of the prelude's notices.
-		if all {
-			deletedFrom, deletedCache, notices, err = l.deleteAll(cmdCtx, cfg, targets, policy, slices.Clone(prelude))
-		} else {
-			deletedFrom, deletedCache, notices, err = l.deleteTargets(cmdCtx, cfg, targets, policy, slices.Clone(prelude))
-		}
+		d, notices, localErr, err = l.deleteLocally(cmdCtx, cfg, targets, all, policy, slices.Clone(prelude))
 		return err
 	}); err != nil {
 		return runtime.Result{}, err
 	}
 
-	sort.Strings(targets)
-	sort.Strings(deletedCache)
-	text := renderLogoutText(urlByName, deletedFrom, len(deletedCache))
+	// The revokes run outside every lock, from what the delete read.
+	d.RevokeTokens(cmdCtx)
+	notices = append(notices, d.Settle(cmdCtx)...)
+	rep := d.Report()
+	notices = append(notices, d.Warnings()...)
+	if localErr != nil {
+		return runtime.Result{}, l.localFailure(localErr, d, rep, logoutRerun(targets, all), notices)
+	}
+	if d.Cancelled() {
+		return runtime.Result{}, clierr.New(clierr.CodeInterrupted,
+			"stopped before every token was revoked; the logout itself completed, and the details list each token").
+			WithDetails(LogoutAllPartialFailure{LoggedOut: d.DeletedTargets(), DeletedFrom: d.DeletedFrom, DeletedCache: d.DeletedCache,
+				Revoked: rep.Revoked, NotRevoked: rep.NotRevoked}).
+			WithWarnings(notices...)
+	}
+
+	slices.Sort(targets)
+	deletedCache := d.DeletedCache
+	text := renderLogoutText(urlByName, d.DeletedFrom, len(deletedCache), d.TextLines())
 	return runtime.Result{Kind: "LogoutResult", Data: map[string]any{
-		"loggedOut": targets, "deletedFrom": deletedFrom, "deletedCache": deletedCache,
+		"loggedOut": targets, "deletedFrom": d.DeletedFrom, "deletedCache": deletedCache,
+		"revoked": rep.Revoked, "notRevoked": rep.NotRevoked,
 	},
 		Text:       text,
-		StyledText: func(s style.Style) string { return styleLogoutText(text, len(deletedFrom), s) },
+		StyledText: func(s style.Style) string { return styleLogoutText(text, len(d.DeletedFrom), s) },
 		Warnings:   notices,
 	}, nil
 }
 
+// deleteLocally is the logout's lock span after the prelude: the local
+// delete (token.DeleteAndRecord) with every backend's login delete, then
+// the last write, which resumes the targets' cache writes, and under --all
+// the orphaned-helper sweep. err is a failure before anything was deleted;
+// localErr one after, which the revokes still follow.
+func (l logoutCmd) deleteLocally(ctx context.Context, cfg *config.Config, targets []string, all bool, policy string, notices []string) (d *token.Deletion, out []string, localErr, err error) {
+	cmd := token.DeleteForLogout
+	if all {
+		cmd = token.DeleteForLogoutAll
+	}
+	cache := config.NewFileStore(l.dir)
+	d, localErr = token.DeleteAndRecord(ctx, cfg, token.LocalDelete{
+		Dir: l.dir, Command: cmd, Targets: targets, Cache: cache, Rerun: logoutRerun(targets, all),
+		DeleteLogin: func(ctx context.Context, ref config.ServerRef) ([]string, []string, error) {
+			return config.DeleteLoginToken(ctx, l.dir, ref, policy)
+		},
+	})
+	if ns, ok := cache.(config.NoticeSource); ok {
+		notices = append(notices, ns.DrainNotices()...)
+	}
+	if d == nil {
+		return nil, nil, nil, config.WithNotices(localErr, notices)
+	}
+	notices = append(notices, d.Notices...)
+	if d.LoginErr != nil {
+		// The entries whose login delete failed hold their login again,
+		// unless the token was gone after the failure; every target's pause
+		// stays for the next exec-credential cache miss.
+		return d, notices, localErr, nil
+	}
+	notices = l.writeLast(cfg, targets, notices)
+	if all {
+		// The sweep runs whatever the cache delete did: it reaches helper
+		// credentials whose server name never made it into config.yaml (a
+		// crash or failed config write between a successful helper store
+		// and cfg.Write), which nothing above can see, and the command's
+		// promise is to erase every credential it can still reach. Each
+		// deleted record is merged into DeletedFrom under its server name
+		// and reported unproven: nothing names its token.
+		orphans, sweepErr := config.DeleteOrphanedHelperCredentials(ctx, l.dir)
+		for _, e := range orphans {
+			d.DeletedFrom[e.Name] = append(d.DeletedFrom[e.Name], "helper:"+e.Helper)
+			d.AddUnproven(e.CanonicalURL)
+		}
+		if sweepErr != nil {
+			localErr = &sweepFailure{cache: d.CacheErr, sweep: sweepErr}
+		}
+	}
+	return d, notices, localErr, nil
+}
+
+// logoutRerun is the logout that finishes one whose local delete did not
+// complete: the same entry, or --all.
+func logoutRerun(targets []string, all bool) string {
+	if all {
+		return clierr.Rancher + " auth logout --all"
+	}
+	return clierr.Rancher + " auth logout " + clierr.ShellQuote(strings.Join(targets, " "))
+}
+
+// sweepFailure is a logout --all whose orphaned-helper sweep failed, with
+// the cache delete's own failure when it failed too.
+type sweepFailure struct{ cache, sweep error }
+
+func (e *sweepFailure) Error() string { return e.sweep.Error() }
+
+// Unwrap lets errors.Is reach both causes.
+func (e *sweepFailure) Unwrap() []error { return []error{e.cache, e.sweep} }
+
+// localFailure shapes a local delete that failed after it began deleting:
+// the step that failed, what was already deleted, and both revocation
+// lists, and the logout to run again. A signal that stopped a step is
+// reported as INTERRUPTED with the same details: records may already be
+// written and tokens deleted, and the bare cancellation would carry
+// neither list. Every other failure reaches the helpers below, which
+// therefore never see a cancellation.
+func (l logoutCmd) localFailure(err error, d *token.Deletion, rep token.RevocationReport, rerun string, notices []string) error {
+	details := LogoutAllPartialFailure{LoggedOut: d.DeletedTargets(), DeletedFrom: d.DeletedFrom, DeletedCache: d.DeletedCache,
+		Revoked: rep.Revoked, NotRevoked: rep.NotRevoked, rerun: rerun}
+	sweep, swept := errors.AsType[*sweepFailure](err)
+	if errors.Is(err, context.Canceled) {
+		return clierr.New(clierr.CodeInterrupted,
+			"stopped before the logout completed; run it again to finish, and the details list what was logged out and each token").
+			WithDetails(details).
+			WithWarnings(notices...)
+	}
+	switch {
+	case d.LoginErr != nil:
+		return deleteFailure(fmt.Sprintf("failed to log out %q", d.LoginErr.Target), err, details, notices)
+	case swept && sweep.cache != nil:
+		return deleteBothFailure(sweep.cache, sweep.sweep, details, notices)
+	case swept:
+		return deleteFailure("failed to delete orphaned helper credentials", sweep.sweep, details, notices)
+	}
+	return deleteFailure("failed to delete exec-credential cache", d.CacheErr, details, notices)
+}
+
 // renderLogoutText is the TTY view of a logout: which servers, which
-// credential backends were touched, and how many cached exec credentials
-// went. Silent success is for scripts (exit code + JSON envelope); a person
-// deserves the confirmation. It renders every deletedFrom entry, not just
-// the requested targets: logout --all's orphaned-helper sweep reports
-// records whose server name never made it into config (no URL known) - the
-// text must not diverge from the JSON envelope for exactly the
-// crash-recovery case that sweep exists to catch. Logout never clears the
-// current-server pointer (including --all): the entry survives,
-// credential-less, and the pointer keeps naming it.
-func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]string, cacheCount int) string {
+// credential backends were touched, how many cached exec credentials
+// went, and what the server did with each token. Silent success is for
+// scripts (exit code + JSON envelope); a person deserves the
+// confirmation. It renders every deletedFrom entry, not just the requested
+// targets: logout --all's orphaned-helper sweep reports records whose
+// server name never made it into config (no URL known) - the text must not
+// diverge from the JSON envelope for exactly the crash-recovery case that
+// sweep exists to catch. Logout never clears the current-server pointer
+// (including --all): the entry survives, credential-less, and the pointer
+// keeps naming it.
+func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]string, cacheCount int, revocation []string) string {
 	names := make([]string, 0, len(deletedFrom))
 	for s := range deletedFrom {
 		names = append(names, s)
@@ -144,6 +261,9 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 	if cacheCount > 0 {
 		fmt.Fprintf(&b, "exec-credential cache entries removed: %d\n", cacheCount)
 	}
+	for _, line := range revocation {
+		b.WriteString(line + "\n")
+	}
 	if b.Len() == 0 {
 		// The only way names and cacheCount are both empty is --all against a
 		// config with zero servers and no cache: ShapeText requires non-empty
@@ -160,9 +280,8 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 // stays plain. openers is renderLogoutText's own per-server block count
 // (len(deletedFrom), the same map it iterates), so the opener lines are the
 // even-indexed lines up to openers*2 - a structural position, not a scan
-// for the "logged out of" text - leaving the optional trailing
-// exec-credential cache-count line (which lands at that same index range's
-// end) untouched.
+// for the "logged out of" text - leaving the cache-count line and the
+// revocation lines after that range untouched.
 func styleLogoutText(text string, openers int, s style.Style) string {
 	return runtime.StyleLines(text, s, func(i int, body string) (string, bool) {
 		if i%2 != 0 || i >= openers*2 {
@@ -176,36 +295,6 @@ func styleLogoutText(text string, openers int, s style.Style) string {
 // completes server names from the already-loaded config snapshot.
 func (logoutCmd) CompleteArgs(_ context.Context, view runtime.ConfigView, _ []string) []string {
 	return view.ServerNames()
-}
-
-// startCredentialChanges is the logout's first write, BEFORE any credential
-// is deleted: every target entry gets a fresh cache binding id and its
-// cache writes pause. A get-token that read the old id and the old
-// credential a moment earlier writes its record under an id that no
-// longer matches, and one that loads after this write and reads the
-// credential before the delete writes nothing, so neither the purge nor
-// the delete can race a record into existence behind it. The pause is
-// cleared by the logout's last write, or, when the logout stops before
-// it, by the next exec-credential cache miss. A target whose entry is no
-// longer in the config has no id to advance - `logout --all` reaches
-// identity records whose entry was removed by hand - and is skipped.
-func startCredentialChanges(cfg *config.Config, targets []string) error {
-	var changed bool
-	for _, name := range targets {
-		entry, ok := cfg.Servers[name]
-		if !ok {
-			continue
-		}
-		if err := config.StartCredentialChange(&entry); err != nil {
-			return err
-		}
-		cfg.Servers[name] = entry
-		changed = true
-	}
-	if !changed {
-		return nil
-	}
-	return config.WriteStep("cachebinding", cfg)
 }
 
 // logoutTargets resolves which servers a logout request applies to. --all
@@ -247,145 +336,42 @@ func logoutTargets(dir string, cfg *config.Config, all bool, name string) ([]str
 	}
 }
 
-// deleteTargets removes each target's login token from both backends AND its
-// exec-credential cache entries via config.DeleteTokenEverywhere (the single delete
-// point), reporting the token backends touched per server so a partial
-// failure names what was already deleted, plus every cache key removed
-// across all targets. notices starts with the prelude's, so a failure
-// carries them too.
-func (l logoutCmd) deleteTargets(ctx context.Context, cfg *config.Config, targets []string, policy string, notices []string) (map[string][]string, []string, []string, error) {
-	deletedFrom := make(map[string][]string, len(targets))
-	var deletedCache []string
-	done := make([]string, 0, len(targets))
-	var stamped bool
-	for _, s := range targets {
-		from, cache, ns, derr := config.DeleteTokenEverywhere(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
-		notices = append(notices, ns...)
-		if derr != nil {
-			return nil, nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done, deletedFrom, deletedCache, notices)
-		}
-		deletedFrom[s] = from
-		deletedCache = append(deletedCache, cache...)
-		done = append(done, s)
-		stamped = stampLoggedOut(cfg, s) || stamped
+// writeLast is the logout's last write: every pause a resumer may clear,
+// the targets' own included. A failed write is a notice, never a failure:
+// the tokens are already deleted, and the pause stays for the next
+// exec-credential cache miss or credential change.
+func (l logoutCmd) writeLast(cfg *config.Config, targets []string, notices []string) []string {
+	if !config.ResumeCacheWrites(l.dir, cfg, targets...) {
+		return notices
 	}
-	notices = l.writeLast(cfg, targets, stamped, notices)
-	return deletedFrom, deletedCache, notices, nil
-}
-
-// stampLoggedOut records the logout time on an entry that held a token,
-// reporting whether it changed anything.
-func stampLoggedOut(cfg *config.Config, name string) bool {
-	e := cfg.Servers[name]
-	if e.TokenRef == nil {
-		return false
-	}
-	e.LoggedOutAt = time.Now().UTC().Format(time.RFC3339)
-	cfg.Servers[name] = e
-	return true
-}
-
-// writeLast is the logout's last write: the stamped entries, and every
-// pause a resumer may clear - the targets' own included - in one write,
-// or a write of the pauses alone when nothing was stamped. A failed write
-// is a notice, never a failure: the tokens are already deleted, and the
-// pause stays for the next exec-credential cache miss or credential
-// change. After a failed stamp write nothing more is tried.
-func (l logoutCmd) writeLast(cfg *config.Config, targets []string, stamped bool, notices []string) []string {
-	resumed := config.ResumeCacheWrites(l.dir, cfg, targets...)
-	switch {
-	case stamped:
-		if err := config.WriteStep("logout", cfg); err != nil {
-			return append(notices, fmt.Sprintf("could not record the logout on the server entry (%v); config status will still show a stored credential", err))
-		}
-	case resumed:
-		if err := config.WriteStep("resume", cfg); err != nil {
-			return append(notices, fmt.Sprintf("cache writes for %s stay paused (%v); the next exec-credential cache miss or credential change resumes them", strings.Join(targets, ", "), err))
-		}
+	if err := config.WriteStep("resume", cfg); err != nil {
+		return append(notices, fmt.Sprintf("cache writes for %s stay paused (%v); the next exec-credential cache miss or credential change resumes them", strings.Join(targets, ", "), err))
 	}
 	return notices
 }
 
-// deleteAll is `logout --all`'s delete path: it deletes every target's login
-// token (both backends, same as deleteTargets) but wipes the WHOLE
-// exec-credential cache once via config.DeleteAllExecCache rather than
-// looping a per-server host-scoped delete - cheaper, and it also catches
-// orphaned/bare cache entries that match no configured server (which no
-// per-server delete, keyed to a currently-configured server's host, could
-// ever reach). See DeleteAllExecCache's doc for why.
-//
-// The two cleanups after the per-target loop - the cache wipe and the
-// orphaned-helper sweep - are best effort and independent: both run, and
-// a failure in one never stops the other, because each is the only path
-// to credentials the other cannot see. A run where both fail reports both
-// causes; whatever any step did delete stays in the payload. notices
-// starts with the prelude's, as in deleteTargets.
-func (l logoutCmd) deleteAll(ctx context.Context, cfg *config.Config, targets []string, policy string, notices []string) (map[string][]string, []string, []string, error) {
-	deletedFrom := make(map[string][]string, len(targets))
-	done := make([]string, 0, len(targets))
-	var stamped bool
-	for _, s := range targets {
-		from, ns, derr := config.DeleteLoginToken(ctx, l.dir, config.ServerRef{Name: s, URL: cfg.Servers[s].URL}, policy)
-		notices = append(notices, ns...)
-		if derr != nil {
-			return nil, nil, nil, deleteFailure(fmt.Sprintf("failed to log out %q", s), derr, done, deletedFrom, nil, notices)
-		}
-		deletedFrom[s] = from
-		done = append(done, s)
-		stamped = stampLoggedOut(cfg, s) || stamped
-	}
-	// The last config write comes before the wipe and the sweep: every
-	// target's credential is already gone, so a writer that loads after
-	// it reads none, and a wipe or sweep failure below leaves no pause.
-	notices = l.writeLast(cfg, targets, stamped, notices)
-	deletedCache, cacheNotices, cacheErr := config.DeleteAllExecCache(l.dir)
-	notices = append(notices, cacheNotices...)
-
-	// The sweep runs whatever the cache wipe did. The two reach different
-	// credentials - the cache holds short-lived kubectl tokens, the sweep
-	// reaches helper credentials whose server name never made it into
-	// config.yaml (a crash or failed config write between a successful
-	// helper store and cfg.Write), which no per-server delete above can
-	// see - and the command's promise is to erase every credential it can
-	// still reach. Skipping the sweep because an unrelated
-	// token-cache.yaml could not be read leaves a live credential behind
-	// for a reason that has nothing to do with it. Each deleted record is
-	// merged into deletedFrom under its server name so the envelope stays
-	// stable.
-	orphans, sweepErr := config.DeleteOrphanedHelperCredentials(ctx, l.dir)
-	for _, e := range orphans {
-		deletedFrom[e.Name] = append(deletedFrom[e.Name], "helper:"+e.Helper)
-	}
-
-	// DeleteAllExecCache reports no keys when it fails, so deletedCache
-	// carries a wipe that succeeded and nothing otherwise.
-	switch {
-	case cacheErr != nil && sweepErr != nil:
-		return nil, nil, nil, deleteBothFailure(cacheErr, sweepErr, done, deletedFrom, deletedCache, notices)
-	case cacheErr != nil:
-		return nil, nil, nil, deleteFailure("failed to delete exec-credential cache", cacheErr, done, deletedFrom, deletedCache, notices)
-	case sweepErr != nil:
-		return nil, nil, nil, deleteFailure("failed to delete orphaned helper credentials", sweepErr, done, deletedFrom, deletedCache, notices)
-	}
-	return deletedFrom, deletedCache, notices, nil
-}
-
-// LogoutAllPartialFailure is deleteAll's structured payload for a
+// LogoutAllPartialFailure is a logout's structured payload for a
 // mid-sequence failure: everything already deleted before the failing step,
 // so a caller decoding the error sees exactly what succeeded rather than a
 // bare failure that looks like nothing happened - the credentials for
 // LoggedOut/DeletedFrom/DeletedCache are already gone regardless of which
-// later step failed.
+// later step failed - and what the server did with each token.
 type LogoutAllPartialFailure struct {
-	LoggedOut    []string            `json:"loggedOut"`
-	DeletedFrom  map[string][]string `json:"deletedFrom,omitempty"`
-	DeletedCache []string            `json:"deletedCache,omitempty"`
+	LoggedOut    []string                `json:"loggedOut"`
+	DeletedFrom  map[string][]string     `json:"deletedFrom,omitempty"`
+	DeletedCache []string                `json:"deletedCache,omitempty"`
+	Revoked      []token.RevokedToken    `json:"revoked"`
+	NotRevoked   []token.NotRevokedToken `json:"notRevoked"`
+	// rerun is the logout to run again when the local delete did not
+	// complete, empty when it did.
+	rerun string
 }
 
 // TextDetails projects which servers were already logged out, which
-// credential backends were already removed per server, and how many cached
-// kubectl credentials went, closing with the standing recovery note: a
-// failed --all run never undoes what it already deleted.
+// credential backends were already removed per server, how many cached
+// kubectl credentials went and what the server did with each token,
+// closing, when the local delete did not complete, with the logout to run
+// again: a failed run never undoes what it already deleted.
 func (p LogoutAllPartialFailure) TextDetails() []string {
 	lines := []string{"already logged out: " + strings.Join(p.LoggedOut, ", ")}
 	servers := make([]string, 0, len(p.DeletedFrom))
@@ -399,16 +385,22 @@ func (p LogoutAllPartialFailure) TextDetails() []string {
 	if len(p.DeletedCache) > 0 {
 		lines = append(lines, "cached kubectl credentials removed: "+strings.Join(p.DeletedCache, ", "))
 	}
-	lines = append(lines, "those credentials are gone regardless of this failure - re-run auth logout --all to finish")
+	for _, r := range p.Revoked {
+		lines = append(lines, "revoked: "+r.Ref.String()+" on "+r.Server)
+	}
+	for _, n := range p.NotRevoked {
+		lines = append(lines, n.TextLine())
+	}
+	if p.rerun != "" {
+		lines = append(lines, "those credentials are gone regardless of this failure - run "+p.rerun+" to finish")
+	}
 	return lines
 }
 
-// deleteFailure shapes a delete-step failure: the caller's own cancellation
-// (Ctrl-C during a contended lock wait inside the delete) passes through
-// unchanged so errors.Is(err, context.Canceled) keeps working - dressing it
-// as a delete failure would send the user diagnosing helper problems.
-// Anything else keeps its classification (a lock timeout stays LOCK_TIMEOUT
-// and retryable) under the step-prefixed message, plus the
+// deleteFailure shapes a delete-step failure other than a cancellation,
+// which localFailure reports as INTERRUPTED. The failure keeps its
+// classification (a lock timeout stays LOCK_TIMEOUT and retryable) under
+// the step-prefixed message, plus the
 // LogoutAllPartialFailure details so nothing already deleted is vaporized
 // just because a later step in the same --all run failed - its TextDetails
 // projection's first line already names what was already logged out, so no
@@ -416,12 +408,10 @@ func (p LogoutAllPartialFailure) TextDetails() []string {
 // (keychain-unreachable degrades, say) already recorded by a step that ran
 // successfully before this one failed - the pipeline discards Result on an
 // error return, so this is their only ride back to the operator.
-func deleteFailure(step string, err error, done []string, deletedFrom map[string][]string, deletedCache []string, notices []string) error {
-	return clierr.WrapUnlessCanceled(err, func(err error) error {
-		return clierr.Wrap(err, fmt.Sprintf("%s: %v", step, err)).
-			WithDetails(LogoutAllPartialFailure{LoggedOut: done, DeletedFrom: deletedFrom, DeletedCache: deletedCache}).
-			WithWarnings(notices...)
-	})
+func deleteFailure(step string, err error, details LogoutAllPartialFailure, notices []string) error {
+	return clierr.Wrap(err, fmt.Sprintf("%s: %v", step, err)).
+		WithDetails(details).
+		WithWarnings(notices...)
 }
 
 // deleteBothFailure reports a run where both final cleanups failed. The
@@ -431,19 +421,11 @@ func deleteFailure(step string, err error, done []string, deletedFrom map[string
 // retry flag and drop the other from the chain, and a joined error
 // spells itself with a newline between its causes, which the text
 // renderer strips and which would run the two messages together. A
-// cancelled step is reported as the cancellation it is, by the same
-// passthrough every other step here uses, rather than as a cleanup
-// failure that happens to contain one.
-func deleteBothFailure(cacheErr, sweepErr error, done []string, deletedFrom map[string][]string, deletedCache, notices []string) error {
-	if errors.Is(cacheErr, context.Canceled) {
-		return deleteFailure("failed to delete exec-credential cache", cacheErr, done, deletedFrom, deletedCache, notices)
-	}
-	if errors.Is(sweepErr, context.Canceled) {
-		return deleteFailure("failed to delete orphaned helper credentials", sweepErr, done, deletedFrom, deletedCache, notices)
-	}
+// cancelled step never reaches it: localFailure reports it as INTERRUPTED.
+func deleteBothFailure(cacheErr, sweepErr error, details LogoutAllPartialFailure, notices []string) error {
 	return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
 		"failed to delete exec-credential cache (%v) and orphaned helper credentials (%v)", cacheErr, sweepErr)).
 		WithCause(errors.Join(cacheErr, sweepErr)).
-		WithDetails(LogoutAllPartialFailure{LoggedOut: done, DeletedFrom: deletedFrom, DeletedCache: deletedCache}).
+		WithDetails(details).
 		WithWarnings(notices...)
 }

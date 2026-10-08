@@ -62,6 +62,8 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access-downstream/member-steve-by-id", "access-downstream/member-cluster-token",
 		"access-downstream/admin-steve-cluster-shape", "access-downstream/standard-steve-empty",
 		"access/standard-cloud-credential-by-name",
+		"revoke/unscoped-ext-token-deletes-itself", "revoke/ext-token-deleted-by-another-token-of-its-user",
+		"revoke/standard-user-v3-self-delete-forbidden", "revoke-downstream/cluster-scoped-ext-token-deletes-itself",
 	}
 	var got []string
 	for _, p := range All() {

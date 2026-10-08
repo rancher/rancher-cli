@@ -50,7 +50,6 @@ func (scaleCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher cluster scale my-cluster --pool pool1 --nodes 3 --apply --yes"},
 		Destructive: "true",
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

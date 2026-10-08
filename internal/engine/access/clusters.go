@@ -78,7 +78,6 @@ func (c *clustersCmd) Describe() runtime.Descriptor {
 			"rancher access clusters --as alice -o json",
 		},
 		CommandType:      runtime.ReadOnly,
-		Network:          true,
 		Auth:             true,
 		SuccessExitCodes: []int{0, exitUnknown},
 		Shape:            runtime.ShapeText,

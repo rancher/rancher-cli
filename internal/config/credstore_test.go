@@ -412,18 +412,18 @@ func TestKeyringGetTokenMatchingCredential(t *testing.T) {
 	assert.Equal(t, "ours", tok)
 }
 
-// TestDeleteTokenEverywhereRemovesFromBothBackends asserts that a
+// TestDeleteLoginTokenRemovesFromBothBackends asserts that a
 // directory holding a credential in each store loses both, and that a
 // lingering identity record is reached even though the directory's own
 // policy names the file store.
-func TestDeleteTokenEverywhereRemovesFromBothBackends(t *testing.T) {
+func TestDeleteLoginTokenRemovesFromBothBackends(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	account := storeIdentity(t, dir, "prod", "in-keychain")
 	require.NoError(t, keyring.Set(keyringService, account, "in-keychain"))
 	require.NoError(t, NewFileStore(dir).SetToken(ServerRef{Name: "prod"}, "in-file"))
 
-	from, _, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	from, _, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"keychain", "file"}, from)
 
@@ -531,7 +531,7 @@ func TestFilePolicyNeverTouchesTheKeychain(t *testing.T) {
 	tok, err := store.GetToken(ref)
 	require.NoError(t, err)
 	assert.Equal(t, "in-file", tok)
-	_, _, _, err = DeleteTokenEverywhere(t.Context(), dir, ref, "file")
+	_, _, err = DeleteLoginToken(t.Context(), dir, ref, "file")
 	require.NoError(t, err)
 
 	assert.Empty(t, ops, "a file-policy directory makes no keychain call")
@@ -562,132 +562,63 @@ func TestDeleteLoginTokenSkipsAReplacedCredential(t *testing.T) {
 	assert.Nil(t, rec, "this directory's record goes either way")
 }
 
-func TestDeleteTokenEverywhereAlsoDeletesExecCache(t *testing.T) {
-	keyring.MockInit()
-	dir := t.TempDir()
-	store := NewFileStore(dir)
-	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1", testCacheBinding(dir)))
-
-	_, deletedCache, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
-	require.NoError(t, err)
-	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, deletedCache)
-
-	_, _, gerr := store.GetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), testAnchor(t, dir))
-	assert.ErrorIs(t, gerr, ErrNoToken, "logout's single delete point must also delete the exec-credential cache")
-}
-
-// TestDeleteTokenEverywhereSurfacesExecCacheLoosePermissionNotice asserts
-// that DeleteTokenEverywhere's exec-credential-cache delete drains its
-// throwaway *fileStore's own notice buffer: a loose-permission notice on
-// token-cache.yaml must reach the function's returned notices, not go out
-// of scope with the throwaway store. TestDeleteTokenEverywhereAlsoDeletesExecCache
-// never chmods the cache file loose, so it would not catch a regression here.
-func TestDeleteTokenEverywhereSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
-	}
-	keyring.MockInit()
-	dir := t.TempDir()
-	store := NewFileStore(dir)
-	require.NoError(t, store.SetToken(ServerRef{Name: "prod"}, "in-file"))
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1", testCacheBinding(dir)))
-	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
-
-	_, deletedCache, notices, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
-	require.NoError(t, err)
-	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, deletedCache)
-	require.Len(t, notices, 1, "the throwaway exec-cache store's loose-permission notice must reach the caller")
-	assert.Contains(t, notices[0], "group/world-readable")
-}
-
-// TestDeleteAllExecCacheSurfacesLoosePermissionNotice asserts the same fix for
-// DeleteAllExecCache (logout --all's single-wipe path): its own throwaway
-// *fileStore's notice buffer must be drained and returned, not dropped.
-func TestDeleteAllExecCacheSurfacesLoosePermissionNotice(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
-	}
-	dir := t.TempDir()
-	store := NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "prod.ex", "c-1"), "cached-tok", time.Time{}, "kubeuser", "prod.ex", "c-1", testCacheBinding(dir)))
-	require.NoError(t, os.Chmod(filepath.Join(dir, "token-cache.yaml"), 0o644))
-
-	keys, notices, err := DeleteAllExecCache(dir)
-	require.NoError(t, err)
-	assert.Equal(t, []string{CacheKey("kubeuser", "prod.ex", "c-1")}, keys)
-	require.Len(t, notices, 1, "the throwaway store's loose-permission notice must reach the caller")
-	assert.Contains(t, notices[0], "group/world-readable")
-}
-
-func TestDeleteTokenEverywhereFailsOnUnreadableFileStore(t *testing.T) {
+func TestDeleteLoginTokenFailsOnUnreadableFileStore(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
 	// corrupt credentials.yaml: GetToken returns a non-ErrNoToken error
 	if err := os.WriteFile(filepath.Join(dir, "credentials.yaml"), []byte("\t: not yaml ["), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
+	_, _, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://prod.ex"}, "file")
 	if err == nil {
-		t.Fatal("DeleteTokenEverywhere must fail, not report success, when the file store is unreadable (a live token may remain)")
+		t.Fatal("DeleteLoginToken must fail, not report success, when the file store is unreadable (a live token may remain)")
 	}
 }
 
-func TestDeleteExecCacheForServerRemovesMatchingHostOnly(t *testing.T) {
-	dir := t.TempDir()
-	store := NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"), "tok-acme", time.Time{}, "kubeuser", "acme.ex", "c-1", testCacheBinding(dir)))
-	require.NoError(t, store.SetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"), "tok-other", time.Time{}, "kubeuser", "other.ex", "c-1", testCacheBinding(dir)))
-	require.NoError(t, store.SetCachedCred("legacy-bare", "tok-legacy", time.Time{}, "", "", "", testCacheBinding(dir)))
-
-	deleted, err := DeleteExecCacheForServer(store, "https://acme.ex")
-	require.NoError(t, err)
-	assert.Equal(t, []string{CacheKey("kubeuser", "acme.ex", "c-1")}, deleted)
-
-	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "acme.ex", "c-1"), testAnchor(t, dir))
-	require.ErrorIs(t, err, ErrNoToken, "matching entry must be deleted")
-	_, _, err = store.GetCachedCred(CacheKey("kubeuser", "other.ex", "c-1"), testAnchor(t, dir))
-	require.NoError(t, err, "non-matching entry must be kept")
-	_, _, err = store.GetCachedCred("legacy-bare", testAnchor(t, dir))
-	assert.NoError(t, err, "legacy bare entry (no Server) must be kept")
+// TestCacheRecordForServerMatchesTargetHostOnly asserts that a record
+// matches only the server it was cached against: another host and a record
+// with no server (a legacy bare entry) do not match.
+func TestCacheRecordForServerMatchesTargetHostOnly(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		recordServer string
+		want         bool
+	}{
+		{name: "same host as a bare host", recordServer: "acme.ex", want: true},
+		{name: "same host as a full URL", recordServer: "https://acme.ex", want: true},
+		{name: "another host", recordServer: "other.ex", want: false},
+		{name: "another host as a full URL", recordServer: "https://other.ex", want: false},
+		{name: "no server", recordServer: "", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, CacheRecordForServer(tc.recordServer, "https://acme.ex"))
+		})
+	}
 }
 
-// Two config entries with different --name values ("acme-admin",
-// "acme-viewer") that both point at the same host each cache their own
-// exec-credential entry. Logging out one deletes BOTH - deliberately, not a
-// bug: matching by config-entry name is structurally unreliable (a cache
-// entry embeds the name only by kubeconfig naming convention), so
-// host-wide delete is the safe direction. See DeleteTokenEverywhere's doc comment.
-func TestDeleteExecCacheForServerDeletesAllNamesSharingOneHost(t *testing.T) {
-	dir := t.TempDir()
-	store := NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"), "tok-admin", time.Time{}, "acme-admin", "acme.ex", "c-1", testCacheBinding(dir)))
-	require.NoError(t, store.SetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"), "tok-viewer", time.Time{}, "acme-viewer", "acme.ex", "c-1", testCacheBinding(dir)))
-
-	deleted, err := DeleteExecCacheForServer(store, "https://acme.ex")
-	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{
-		CacheKey("acme-admin", "acme.ex", "c-1"),
-		CacheKey("acme-viewer", "acme.ex", "c-1"),
-	}, deleted, "both names sharing one host must be deleted together")
-
-	_, _, err = store.GetCachedCred(CacheKey("acme-admin", "acme.ex", "c-1"), testAnchor(t, dir))
-	require.ErrorIs(t, err, ErrNoToken)
-	_, _, err = store.GetCachedCred(CacheKey("acme-viewer", "acme.ex", "c-1"), testAnchor(t, dir))
-	assert.ErrorIs(t, err, ErrNoToken)
+// TestCacheRecordForServerIgnoresEntryName asserts that the match depends on
+// the server alone: two config entries with different --name values
+// ("acme-admin", "acme-viewer") pointing at the same host cache records that
+// both match that host. Matching by config-entry name is structurally
+// unreliable (a cache entry embeds the name only by kubeconfig naming
+// convention), so a host-wide match is the safe direction.
+func TestCacheRecordForServerIgnoresEntryName(t *testing.T) {
+	t.Parallel()
+	server := CanonicalServerIdentity("https://acme.ex")
+	require.NotEqual(t, CacheKey("acme-admin", server, "c-1"), CacheKey("acme-viewer", server, "c-1"),
+		"the two entries cache under different keys")
+	assert.True(t, CacheRecordForServer(server, "https://acme.ex"), "both entries' records carry the same server and match it")
 }
 
-func TestDeleteExecCacheForServerEmptyHostIsNoop(t *testing.T) {
-	dir := t.TempDir()
-	store := NewFileStore(dir)
-	require.NoError(t, store.SetCachedCred("legacy-bare", "tok", time.Time{}, "", "", "", testCacheBinding(dir)))
-
-	deleted, err := DeleteExecCacheForServer(store, "")
-	require.NoError(t, err)
-	assert.Nil(t, deleted)
-
-	_, _, err = store.GetCachedCred("legacy-bare", testAnchor(t, dir))
-	assert.NoError(t, err, "empty host must not touch the cache")
+// TestCacheRecordForServerEmptyTargetMatchesNothing asserts that an empty
+// target server matches no record, bare or full-URL.
+func TestCacheRecordForServerEmptyTargetMatchesNothing(t *testing.T) {
+	t.Parallel()
+	for _, recordServer := range []string{"", "acme.ex", "https://acme.ex"} {
+		assert.False(t, CacheRecordForServer(recordServer, ""), "record server %q", recordServer)
+	}
 }
 
 // TestKeyringDeleteTokenLeavesTheFileStore asserts the keychain store
@@ -1330,7 +1261,8 @@ func TestMarkCachedCredReadyIsConditional(t *testing.T) {
 	assert.Empty(t, d.ReadyEndpoints, "a replacing write starts with no readiness")
 
 	// Deleted: nothing is resurrected.
-	require.NoError(t, s.DeleteCachedCred("k"))
+	_, _, err = s.DeleteCachedCredsIfUnchanged(map[string]string{"k": "tok-2"})
+	require.NoError(t, err)
 	marked, err = s.MarkCachedCredReady("k", "tok-2", "fp-a")
 	require.NoError(t, err)
 	assert.False(t, marked)

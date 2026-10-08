@@ -485,10 +485,31 @@ entry it did not use and why. A notice says
 when the login records no owner (log in again without `--no-verify`, then
 regenerate the kubeconfig). `--name` values starting with `user-id:` are
 reserved.
-Cached credentials: `rancher auth list-tokens` /
-`rancher auth delete-token` (local cache only; the server-side token
-stays valid until `rancher delete token <name>`, or `delete
-management-token` on a server without ext tokens, or expiry).
+Cached credentials: `rancher auth list-tokens` (a TOKEN column names each
+record's token) / `rancher auth delete-token` (deletes the cache records,
+then revokes the cluster tokens the plugin created and recorded; one that
+could not be revoked stays valid until `rancher delete token <name>`, or
+expiry; on a server without ext tokens it is a v3 token, which only an
+administrator deletes: `rancher delete management-token <name> --apply
+--yes --allow-deprecated`).
+`rancher auth logout`, `auth logout --all` and `config delete-server` revoke
+the tokens the CLI created and recorded the same way. Their data carries
+`revoked` and `notRevoked`; the exit code is 0 whenever the local deletes
+succeed, so read `notRevoked`. A Ctrl-C or termination signal that stops
+the local delete, or leaves a token unreached, ends the command with
+`INTERRUPTED` (exit 130) and both lists in the error's details
+(`config delete-server` keeps the entry; run it again to remove it); a
+signal after the local delete that leaves no token unsent does not stop
+it. A failed login-token delete fails the command with both lists in the
+details, even when the login token was already gone from the store the CLI
+reads (it is then revoked like any deleted login): another backend may
+still hold a copy, so fix the step the error names and run the command
+again. Each entry has a `reason` and a `retry`:
+`nextLogin` needs nothing beyond the next login of its `entry`
+(`rancher auth login <entry>`, or the kubectl sign-in); `manual` means run
+its `recovery` (or the reason's remedy, as `unproven` says: find the token
+with `rancher get tokens`); `none` is a pasted token, nothing to do. Revokes
+run in read-only mode too.
 
 ### 9. Observability & support
 
@@ -767,13 +788,15 @@ rancher oidc-client rotate-secret my-app --apply --yes
 
   | Command | Scope | Manages |
   |---|---|---|
-  | `auth list-tokens` / `auth delete-token` | local | the exec-credential cache (`token-cache.yaml`) |
+  | `auth list-tokens` / `auth delete-token` | local | the exec-credential cache (`token-cache.yaml`); `delete-token` also revokes the tokens the CLI created in it |
   | `get tokens` / `get token <name>` | server | `ext.Token` objects |
   | `create token` | server | creates a derived `ext.Token` |
   | `delete token <name>` | server | revokes an `ext.Token` |
 
-  They are not interchangeable - deleting a cache entry does not revoke the
-  server-side token, and vice versa.
+  They are not interchangeable - `auth delete-token`, `auth logout` and
+  `config delete-server` revoke only the tokens the CLI created and recorded,
+  never one you made with `create token`, and `delete token` does not touch
+  the cache.
 - **`kubeconfig` vs. `create kubeconfig`:** `kubeconfig` renders a LOCAL
   exec-credential kubeconfig from config alone (no server call, no embedded
   secret) - the interactive default. `create kubeconfig` generates a

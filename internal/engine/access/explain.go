@@ -60,7 +60,6 @@ func (c *explainCmd) Describe() runtime.Descriptor {
 			"rancher access explain get --non-resource-url /healthz --cluster prod",
 		},
 		CommandType:      runtime.ReadOnly,
-		Network:          true,
 		Auth:             true,
 		SuccessExitCodes: []int{0, exitDenied, exitUnknown},
 		Shape:            runtime.ShapeText,

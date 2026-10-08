@@ -93,9 +93,9 @@ func flagLine(f ArgSpec) string {
 }
 
 // contractLine renders the command's contract facts in this order -
-// commandType · contract · stability · destructive · network · auth - omitting
+// commandType · contract · stability · destructive · server · auth - omitting
 // segments with no value (contract/stability unresolved, destructive unset,
-// network/auth false).
+// server access none, auth false).
 func contractLine(c SchemaCommand) string {
 	parts := []string{string(c.CommandType)}
 	if c.Contract != "" {
@@ -107,8 +107,8 @@ func contractLine(c SchemaCommand) string {
 	if c.Destructive != "" {
 		parts = append(parts, "destructive="+c.Destructive)
 	}
-	if c.Network {
-		parts = append(parts, "network")
+	if c.ServerAccess == ServerAccessRead || c.ServerAccess == ServerAccessWrite {
+		parts = append(parts, "server="+string(c.ServerAccess))
 	}
 	if c.Auth {
 		parts = append(parts, "auth")

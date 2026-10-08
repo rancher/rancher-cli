@@ -141,21 +141,21 @@ func EnvVars() []EnvVar {
 
 // SchemaCommand is one command entry in the manifest (Descriptor + contract).
 type SchemaCommand struct {
-	Name             string      `json:"name"`
-	Aliases          []string    `json:"aliases,omitempty"`
-	Usage            string      `json:"usage,omitempty"`
-	Desc             string      `json:"desc,omitempty"`
-	Args             []ArgSpec   `json:"args,omitempty"`
-	Flags            []ArgSpec   `json:"flags,omitempty"`
-	Examples         []string    `json:"examples,omitempty"`
-	CommandType      CommandType `json:"commandType"`
-	Destructive      string      `json:"destructive,omitempty"`
-	Toolset          string      `json:"toolset,omitempty"`
-	Network          bool        `json:"network"`
-	Auth             bool        `json:"auth"`
-	Contract         string      `json:"contract,omitempty"`
-	Stability        string      `json:"stability,omitempty"`
-	SuccessExitCodes []int       `json:"successExitCodes,omitempty"`
+	Name             string       `json:"name"`
+	Aliases          []string     `json:"aliases,omitempty"`
+	Usage            string       `json:"usage,omitempty"`
+	Desc             string       `json:"desc,omitempty"`
+	Args             []ArgSpec    `json:"args,omitempty"`
+	Flags            []ArgSpec    `json:"flags,omitempty"`
+	Examples         []string     `json:"examples,omitempty"`
+	CommandType      CommandType  `json:"commandType"`
+	Destructive      string       `json:"destructive,omitempty"`
+	Toolset          string       `json:"toolset,omitempty"`
+	ServerAccess     ServerAccess `json:"serverAccess"`
+	Auth             bool         `json:"auth"`
+	Contract         string       `json:"contract,omitempty"`
+	Stability        string       `json:"stability,omitempty"`
+	SuccessExitCodes []int        `json:"successExitCodes,omitempty"`
 	// Prime is a projection of Descriptor.Capability: true when the command
 	// carries the Rancher Prime capability classification (a product-tier
 	// marker; whether the connected server gates it is decided at run
@@ -377,6 +377,9 @@ func (reg *Registry) Validate() error {
 		if isMut != (d.CommandType == Mutating) {
 			return fmt.Errorf("command %q commandType %q does not match implemented interface", d.Name, d.CommandType)
 		}
+		if err := validServerAccess(d); err != nil {
+			return err
+		}
 		if isMut {
 			if _, ok := reg.resolver.Resolve(d.Name); !ok {
 				return fmt.Errorf("mutating command %q has no resolver binding", d.Name)
@@ -437,6 +440,21 @@ func (reg *Registry) Validate() error {
 				return fmt.Errorf("command %q: successExitCodes must contain 0 exactly once", d.Name)
 			}
 		}
+	}
+	return nil
+}
+
+// validServerAccess checks the declared server access against the command
+// type: a mutating command only writes, a read-only command reads or never
+// contacts the server, a local command declares any of the three.
+func validServerAccess(d Descriptor) error {
+	switch a := d.EffectiveServerAccess(); {
+	case a != ServerAccessNone && a != ServerAccessRead && a != ServerAccessWrite:
+		return fmt.Errorf("command %q: unknown serverAccess %q", d.Name, a)
+	case d.CommandType == Mutating && a != ServerAccessWrite:
+		return fmt.Errorf("command %q: a mutating command's serverAccess must be %q, not %q", d.Name, ServerAccessWrite, a)
+	case d.CommandType == ReadOnly && a == ServerAccessWrite:
+		return fmt.Errorf("command %q: a read-only command's serverAccess must be %q or %q, not %q", d.Name, ServerAccessRead, ServerAccessNone, a)
 	}
 	return nil
 }
@@ -518,7 +536,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 		sc := SchemaCommand{
 			Name: d.Name, Aliases: d.Aliases, Usage: d.Usage, Desc: d.Desc, Args: d.Args, Flags: d.Flags,
 			Examples: d.Examples, CommandType: d.CommandType,
-			Destructive: d.Destructive, Toolset: toolset, Network: d.Network, Auth: d.Auth,
+			Destructive: d.Destructive, Toolset: toolset, ServerAccess: d.EffectiveServerAccess(), Auth: d.Auth,
 			Group:            groupOf[d.Name],
 			SuccessExitCodes: d.SuccessExitCodes,
 			Prime:            d.Capability.Tier == CapabilityPrime,

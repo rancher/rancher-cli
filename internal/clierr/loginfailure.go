@@ -51,6 +51,10 @@ type RevokeOutcome struct {
 	Ref    *TokenRef    `json:"ref,omitempty"`
 	Result RevokeResult `json:"result"`
 	Error  string       `json:"error,omitempty"`
+	// Status is the HTTP status the server answered, 0 when no answer
+	// came; never serialized. A revoke with the token as its own bearer
+	// reads 401, 403 and 404 differently from one with another bearer.
+	Status int `json:"-"`
 }
 
 // Provenance says who created a login credential and therefore who may
@@ -222,6 +226,10 @@ type SupersededToken struct {
 	UserID       string   `json:"userId,omitempty"`
 	ExpiresAt    string   `json:"expiresAt,omitempty"`
 	SupersededAt string   `json:"supersededAt"`
+	// Server is the canonical identity of the server the token lives on.
+	// A record without one belongs to its entry's current server; a record
+	// whose server is not that is never retired by the entry's logins.
+	Server string `json:"server,omitempty"`
 	// LastAttempt is the most recent failed retirement, carried without
 	// its Ref (the record's own Ref is the token); nil until a delete has
 	// failed. A successful retirement removes the record instead.

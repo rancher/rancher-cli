@@ -40,7 +40,6 @@ func (addSecretCmd) Describe() runtime.Descriptor {
 		},
 		Examples:     []string{"rancher oidc-client add-secret my-app --apply --yes"},
 		Destructive:  "true",
-		Network:      true,
 		Auth:         true,
 		Capability:   capability(),
 		OutputPolicy: runtime.OnceOnlyOutputPolicy(),

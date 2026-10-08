@@ -1,6 +1,7 @@
 package token
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -25,24 +26,67 @@ type RetirementReport struct {
 	Warnings []string
 }
 
+// expiryMargin is how long past its recorded expiry a token is treated as
+// expired: an expired token authenticates nothing, and the margin absorbs
+// a local clock that runs ahead of the server's.
+const expiryMargin = time.Hour
+
+// expiredPastMargin reports whether expiresAt passed more than the margin
+// before now. An empty or unreadable expiry never expires: records written
+// without one carry none.
+func expiredPastMargin(expiresAt string, now time.Time) bool {
+	if expiresAt == "" {
+		return false
+	}
+	at, err := time.Parse(time.RFC3339, expiresAt)
+	return err == nil && now.Sub(at) > expiryMargin
+}
+
 // RetireSuperseded retires the entry's superseded tokens the new credential
 // owns: each same-owner record is revoked with cred as bearer, oldest
 // first, under one total budget; a revoked or already-gone token drops its
 // record, a failed delete keeps it stamped, and a record whose owner
-// differs or is unknown is never attempted. The deletes run outside both
-// locks; one config-lock hold then updates the records, and a failure
-// there leaves them in place, redundant, never lost. Nothing here fails
-// the caller: every leftover is a warning with its recovery sequence.
+// differs or is unknown is never attempted. A record expired past the
+// margin is dropped without a request; one of another server than the
+// entry's (serverURL) and a v3 record are kept without one. A pasted
+// credential attempts and stamps nothing: its records wait for a login the
+// CLI creates. The deletes run outside both locks; one config-lock hold
+// then updates the records, and a failure there leaves them in place,
+// redundant, never lost. Nothing here fails the caller: every leftover is
+// a warning with its recovery sequence.
 func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred LoginCredential, records []config.SupersededToken) RetirementReport {
 	var rep RetirementReport
 	recs := slices.Clone(records)
 	slices.SortStableFunc(recs, func(a, b config.SupersededToken) int { return strings.Compare(a.SupersededAt, b.SupersededAt) })
+	if cred.Provenance == ProvenanceUserSupplied {
+		for _, rec := range recs {
+			rep.Kept = append(rep.Kept, rec)
+			rep.Warnings = append(rep.Warnings, keptWarning(rec, cmp.Or(rec.Server, serverURL), "it waits for a login the CLI creates, and this login's token was pasted"))
+		}
+		return rep
+	}
+	server := config.CanonicalServerIdentity(serverURL)
 	budget, cancel := context.WithTimeout(context.WithoutCancel(ctx), retirementBudget)
 	defer cancel()
 	deadline, _ := budget.Deadline()
 
 	stamps := map[TokenRef]clierr.RevokeOutcome{}
+	var expired []TokenRef
+	now := time.Now()
 	for _, rec := range recs {
+		switch {
+		case expiredPastMargin(rec.ExpiresAt, now):
+			expired = append(expired, rec.Ref)
+			continue
+		case rec.Server != "" && rec.Server != server:
+			rep.Kept = append(rep.Kept, rec)
+			rep.Warnings = append(rep.Warnings, keptWarning(rec, rec.Server, "it is a token of "+rec.Server+", which this entry no longer names"))
+			continue
+		case rec.Ref.Kind == TokenKindV3:
+			rep.Kept = append(rep.Kept, rec)
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("the superseded token %s was not retired: %s", rec.Ref.String(), v3Remedy(rec.Ref, rec.ExpiresAt)))
+			continue
+		}
 		switch config.RecordOwnerState(rec, cred.UserID) {
 		case config.OwnerDifferent:
 			rep.Kept = append(rep.Kept, rec)
@@ -72,7 +116,7 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 			rep.Warnings = append(rep.Warnings, keptWarning(rec, serverURL, "it could not be revoked ("+out.Error+")"))
 		}
 	}
-	if len(rep.Retired) == 0 && len(stamps) == 0 {
+	if len(rep.Retired) == 0 && len(stamps) == 0 && len(expired) == 0 {
 		return rep
 	}
 	if err := config.UpdateServerEntry(ctx, dir, entry, func(s *config.Server) bool {
@@ -84,7 +128,7 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 			}
 		}
 		kept := slices.DeleteFunc(s.SupersededTokens, func(r config.SupersededToken) bool {
-			return slices.Contains(rep.Retired, r.Ref)
+			return slices.Contains(rep.Retired, r.Ref) || slices.Contains(expired, r.Ref)
 		})
 		changed = changed || len(kept) != len(s.SupersededTokens)
 		s.SupersededTokens = kept
@@ -96,6 +140,17 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 		rep.Warnings = append(rep.Warnings, fmt.Sprintf("could not update the superseded-token records of %s (%v); they are listed by: "+config.StatusCommand, entry, err))
 	}
 	return rep
+}
+
+// v3Remedy says how a v3 token the CLI never deletes ends: an
+// administrator's delete, or its expiry.
+func v3Remedy(ref TokenRef, expiresAt string) string {
+	_, revoke := clierr.RecoveryCommands(ref)
+	expiry := "or it expires"
+	if expiresAt != "" {
+		expiry += " at " + expiresAt
+	}
+	return "the CLI never deletes v3 tokens; an administrator can delete it with: " + clierr.MarkRemedy(revoke) + ", " + expiry
 }
 
 // keptWarning names one unretired token, why, and the sequence that

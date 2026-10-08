@@ -46,7 +46,6 @@ func (createKubeconfigCmd) Describe() runtime.Descriptor {
 			"rancher create kubeconfig --clusters prod,staging --ttl 30d --apply > ci.yaml",
 		},
 		Destructive: "true", // the kubeconfig kind is Sensitive
-		Network:     true,
 		Auth:        true,
 		// RawBytes writes verbatim regardless of -o (renderResult never
 		// looks at the format for a RawBytes payload), so every format

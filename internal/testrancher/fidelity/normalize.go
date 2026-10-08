@@ -14,7 +14,8 @@ import (
 // live secrets and must never reach a golden. status.hash is the token's stored
 // verification digest - secret-adjacent and per-token unique - and is scrubbed
 // too. status.lastUpdateTime is a per-create timestamp, the same volatile class as
-// status.expiresAt.
+// status.expiresAt, and status.lastUsedAt is set each time the token's own
+// bearer authenticates.
 func DefaultNormalizeRules() []NormalizeRule {
 	return []NormalizeRule{
 		{Path: "metadata.uid", Replace: "<uid>"},
@@ -23,6 +24,7 @@ func DefaultNormalizeRules() []NormalizeRule {
 		{Path: "metadata.managedFields"},
 		{Path: "status.expiresAt", Replace: "<ts>"},
 		{Path: "status.lastUpdateTime", Replace: "<ts>"},
+		{Path: "status.lastUsedAt", Replace: "<ts>"},
 		{Path: "status.bearerToken", Replace: "<secret>"},
 		{Path: "status.value", Replace: "<secret>"},
 		{Path: "status.hash", Replace: "<secret>"},

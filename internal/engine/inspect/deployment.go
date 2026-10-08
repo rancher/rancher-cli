@@ -37,9 +37,8 @@ func (c *deploymentCmd) Describe() runtime.Descriptor {
 			resources.ClusterFlag(true),
 			{Name: resources.FlagNamespace, Type: "string", Required: true, Desc: "`namespace` to operate in"},
 		},
-		Network: true,
-		Auth:    true,
-		Shape:   runtime.ShapeText,
+		Auth:  true,
+		Shape: runtime.ShapeText,
 	}
 }
 

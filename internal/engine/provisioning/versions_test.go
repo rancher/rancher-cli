@@ -311,7 +311,7 @@ func TestNewGetKubernetesVersionsDescribe(t *testing.T) {
 	d := NewGetKubernetesVersions(fakeRootFactory{}, fakeFactory{}).Describe()
 	assert.Equal(t, "get kubernetes-versions", d.Name)
 	assert.Equal(t, runtime.ReadOnly, d.CommandType)
-	assert.True(t, d.Network)
+	assert.Equal(t, runtime.ServerAccessRead, d.EffectiveServerAccess())
 	assert.True(t, d.Auth)
 }
 

@@ -9,11 +9,13 @@ import (
 )
 
 // credList renders cached exec-credential entries as a NAME SERVER CLUSTER
-// EXPIRY table. The composite Key is deliberately not a column - it stays in
-// the JSON/YAML payload but never surfaces raw in the table.
+// TOKEN EXPIRY table. The composite Key is deliberately not a column - it
+// stays in the JSON/YAML payload but never surfaces raw in the table. TOKEN
+// is the token the record names, as kind/name, or "-" for a record that
+// names none; it is never derived from the cached bearer.
 type credList []config.CachedCredInfo
 
-func (credList) Columns() []string { return []string{"NAME", "SERVER", "CLUSTER", "EXPIRY"} }
+func (credList) Columns() []string { return []string{"NAME", "SERVER", "CLUSTER", "TOKEN", "EXPIRY"} }
 
 func (l credList) Rows() [][]string {
 	rows := make([][]string, 0, len(l))
@@ -22,7 +24,11 @@ func (l credList) Rows() [][]string {
 		if !c.Expiry.IsZero() {
 			exp = c.Expiry.Format(time.RFC3339)
 		}
-		rows = append(rows, []string{c.Name, c.Server, c.Cluster, exp})
+		tok := "-"
+		if c.TokenRef != nil {
+			tok = c.TokenRef.String()
+		}
+		rows = append(rows, []string{c.Name, c.Server, c.Cluster, tok, exp})
 	}
 	return rows
 }

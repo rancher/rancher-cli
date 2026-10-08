@@ -53,7 +53,6 @@ func (createPasswordChangeRequestCmd) Describe() runtime.Descriptor {
 			`echo -n "$NEWPASSWORD" | rancher create password-change-request u-abc123 --password-stdin --apply --yes`,
 		},
 		Destructive: "true",
-		Network:     true,
 		Auth:        true,
 		Capability:  engine.UserPasswordWorkflowCapability(),
 		Shape:       runtime.ShapeText,

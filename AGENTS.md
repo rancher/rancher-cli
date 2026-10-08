@@ -66,6 +66,13 @@ Two gotchas:
   explicit gates (`--apply`, `--yes` for destructive, `--allow-deprecated`) →
   execute, bound to the preview by a resourceVersion precondition. A command
   cannot weaken its own gates.
+- **A Local command writes to the server only objects the CLI created for its
+  own use and can prove it created.** Anything else is a resource mutation and
+  goes through the gated pipeline (`rancher delete token <name> --apply --yes`).
+  Proof is the provenance plus `tokenRef` the CLI recorded at creation, and a
+  bearer `usableBearer` binds to that ref. The revoke entry points are called
+  only from the files `TestTokenRevokesOnlyFromTheFilesThatMayDeleteTokens`
+  (test/conformance/revokecallers_test.go) lists.
 - **A resource is a reviewed table row.** Add a kind to `internal/engine/kinds`;
   get/patch/delete are generated from it. Reach for bespoke code only when a row
   cannot express it.

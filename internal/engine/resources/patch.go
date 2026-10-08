@@ -59,7 +59,6 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:       patchFlags(c.k),
 		Destructive: destructive,
-		Network:     true,
 		Auth:        true,
 		Capability:  c.k.Capability,
 		Shape:       runtime.ShapeText,

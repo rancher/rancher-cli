@@ -48,7 +48,7 @@ func TestDeleteServerRefusesAStoreConflict(t *testing.T) {
 	dir := seedDeclaredServer(t, "file")
 	t.Setenv(config.EnvCredentialStore, "keychain")
 
-	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
+	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteLoginToken}
 	_, err := cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
 	assertStoreConflict(t, err)
 
@@ -153,7 +153,7 @@ func TestDeleteServerAdvancesTheBindingStamp(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, before.BindingStamp)
 
-	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
+	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteLoginToken}
 	_, derr := cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{"acme"}}, ui.Discard())
 	require.NoError(t, derr)
 

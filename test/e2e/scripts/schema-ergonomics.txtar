@@ -5,7 +5,7 @@
 # A destructive mutating command's card renders the contract line
 # and the --apply --yes gate line
 exec rancher schema patch setting
-stdout '(?m)^contract: mutating · internal · beta · destructive=true · network · auth$'
+stdout '(?m)^contract: mutating · internal · beta · destructive=true · server=write · auth$'
 stdout '(?m)^gates: --apply --yes$'
 
 # The kind card shows the effective verb surface, including the CRT

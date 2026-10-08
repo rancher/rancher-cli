@@ -72,7 +72,6 @@ func (c *canCmd) Describe() runtime.Descriptor {
 			"rancher access can list pods --cluster prod --project p-cvrp4 -o json",
 		},
 		CommandType:      runtime.ReadOnly,
-		Network:          true,
 		Auth:             true,
 		SuccessExitCodes: []int{0, 12, 13},
 		Shape:            runtime.ShapeText,

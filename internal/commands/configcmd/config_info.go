@@ -1,6 +1,7 @@
 package configcmd
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -264,7 +265,7 @@ func entrySection(s config.Server) []field {
 	switch {
 	case s.CLIOwned():
 		out = append(out, field{"currentToken", tokenSection(s.URL, *s.TokenRef, s.TokenUserID, s.CredentialExpiresAt)})
-	case s.CLICreated():
+	case s.CLICreated() && s.LoggedOutAt == "":
 		// The CLI created the token but never recorded its name: nothing
 		// can be revoked by name, and the surface says so rather than
 		// hiding the entry.
@@ -279,14 +280,17 @@ func entrySection(s config.Server) []field {
 			if r.UserID != "" {
 				sec = append(sec, field{"userId", r.UserID})
 			}
+			if r.Server != "" {
+				sec = append(sec, field{"server", r.Server})
+			}
 			if r.ExpiresAt != "" {
 				sec = append(sec, field{"expiresAt", r.ExpiresAt})
 			}
-			sec = append(sec, field{"supersededAt", r.SupersededAt}, field{"state", string(config.RecordOwnerState(r, s.TokenUserID))})
+			sec = append(sec, field{"supersededAt", r.SupersededAt}, field{"state", recordState(s, r)})
 			if r.LastAttempt != nil {
 				sec = append(sec, field{"lastAttempt", string(r.LastAttempt.Result) + " (" + r.LastAttempt.Error + ")"})
 			}
-			sec = append(sec, recoveryField(s.URL, r.UserID, r.Ref))
+			sec = append(sec, recoveryField(cmp.Or(r.Server, s.URL), r.UserID, r.Ref))
 			recs = append(recs, field{r.Ref.String(), sec})
 		}
 		out = append(out, field{"supersededTokens", recs})

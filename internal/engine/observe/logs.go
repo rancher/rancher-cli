@@ -58,9 +58,8 @@ func (c *logsCmd) Describe() runtime.Descriptor {
 			"rancher logs server --since 1h",
 			"rancher logs server --pod rancher-7f58899d95-r87tk --timestamps",
 		},
-		Network: true,
-		Auth:    true,
-		Shape:   runtime.ShapeText,
+		Auth:  true,
+		Shape: runtime.ShapeText,
 	}
 }
 

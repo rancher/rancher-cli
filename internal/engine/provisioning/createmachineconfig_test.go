@@ -75,7 +75,7 @@ func TestCreateMachineConfigDescribe(t *testing.T) {
 	assert.Equal(t, "create machine-config", d.Name)
 	assert.Equal(t, runtime.Mutating, d.CommandType)
 	assert.Equal(t, "false", d.Destructive)
-	assert.True(t, d.Network)
+	assert.Equal(t, runtime.ServerAccessWrite, d.EffectiveServerAccess())
 	assert.True(t, d.Auth)
 
 	require.Len(t, d.Args, 2)

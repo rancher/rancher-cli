@@ -1176,6 +1176,12 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 	case "fail":
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	case "forbidden":
+		w.WriteHeader(http.StatusForbidden)
+		return
+	case "unauthorized":
+		w.WriteHeader(http.StatusUnauthorized)
+		return
 	case "hang":
 		<-r.Context().Done()
 		return
@@ -1197,7 +1203,8 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 }
 
 // SetDeleteMode makes DELETE of one token answer a fault mode: "gone"
-// (404), "fail" (500), "hang" (until the request ends). The name is the
+// (404), "fail" (500), "forbidden" (403), "unauthorized" (401), "hang"
+// (until the request ends). The name is the
 // one the create answered, so a caller faults the very token it holds
 // instead of guessing what the facade numbered it.
 func (f *Facade) SetDeleteMode(name, mode string) {

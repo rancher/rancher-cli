@@ -733,7 +733,7 @@ func newEntry(in PersistLoginInput, snap *Server, now time.Time) Server {
 		if snap.CLIOwned() {
 			e.SupersededTokens = append(e.SupersededTokens, SupersededToken{
 				Ref: *snap.TokenRef, UserID: snap.TokenUserID, ExpiresAt: snap.CredentialExpiresAt,
-				SupersededAt: now.UTC().Format(time.RFC3339),
+				SupersededAt: now.UTC().Format(time.RFC3339), Server: CanonicalServerIdentity(snap.URL),
 			})
 		}
 	}

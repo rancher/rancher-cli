@@ -36,7 +36,6 @@ func (createNamespaceCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher create namespace team-a --project p-x --cluster c-x --apply"},
 		Destructive: "false",
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

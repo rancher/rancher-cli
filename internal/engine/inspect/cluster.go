@@ -64,9 +64,8 @@ func (c *clusterCmd) Describe() runtime.Descriptor {
 			Type: "bool",
 			Desc: "show registration section (contains join credentials; withheld by default); also available via: rancher get clusterregistrationtoken default-token --namespace <cluster-id>",
 		}},
-		Network: true,
-		Auth:    true,
-		Shape:   runtime.ShapeText,
+		Auth:  true,
+		Shape: runtime.ShapeText,
 	}
 }
 

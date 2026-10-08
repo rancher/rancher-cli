@@ -225,8 +225,8 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM", Env: []string{"RANCHER_CLI_CACERT"}},
 			{Name: userIDFlag, Type: "string", Desc: "Rancher user `id` the token must belong to; needs --name"},
 		},
-		Network: true,
-		Auth:    true,
+		ServerAccess: runtime.ServerAccessWrite,
+		Auth:         true,
 		Examples: []string{
 			"rancher auth get-token --server https://rancher.example.com --cluster c-1 --name prod",
 			"rancher auth get-token --server https://rancher.example.com --cluster c-1 --name prod-c-1 --user-id u-abc12",
@@ -543,7 +543,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 // lookup refuses, which writes nothing and says nothing; the credential is
 // returned either way.
 func (t tokenCmd) writeCacheRecord(key string, tok Token, expiry time.Time, name, serverID, clusterID string, p runtime.Prompter) bool {
-	b := tok.binding
+	b := tok.recordBinding()
 	if b.Refused() {
 		// The call's lookup refuses the call as the directory now stands,
 		// so nothing is cached; the next call's refusal names the remedy.
@@ -776,73 +776,25 @@ func NewDeleteTokenCommand(dir string, store config.CredStore) runtime.Command {
 
 func (deleteTokenCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "auth delete-token",
-		Usage:       "Delete cached exec-credential token(s)",
-		CommandType: runtime.Local,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
-		Flags:       []runtime.ArgSpec{{Name: "all", Type: "bool", Desc: "delete all cached credentials"}},
+		Name:  "auth delete-token",
+		Usage: "Delete cached exec-credential token(s)",
+		Desc: "Deletes the exec-credential cache records whose name or key is the argument, or every record with --all, " +
+			"then deletes on the server each cached token the exec plugin created and recorded, with the token itself " +
+			"as the bearer. Read-only mode does not stop those deletes. data.deleted lists the deleted keys; data.kept " +
+			"the keys the exec plugin rewrote meanwhile, left in place; data.revoked and data.notRevoked report each " +
+			"token as auth logout does. Exits 0 when every local delete succeeds, whatever the server answered, " +
+			"unless a Ctrl-C or termination signal left a token unreached: then INTERRUPTED (exit 130), with both " +
+			"lists in the error's details.",
+		CommandType:  runtime.Local,
+		ServerAccess: runtime.ServerAccessWrite,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string"}},
+		Flags:        []runtime.ArgSpec{{Name: "all", Type: "bool", Desc: "delete all cached credentials"}},
 		Examples: []string{
 			"rancher auth delete-token --all",
 			"rancher auth delete-token prod",
 		},
 		Shape: runtime.ShapeText,
 	}
-}
-
-func (d deleteTokenCmd) Execute(_ context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	all := in.Bool("all")
-	args := in.Args()
-	if all && len(args) > 0 {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"specify either a credential name or --all, not both (e.g. rancher auth delete-token prod, or rancher auth delete-token --all)")
-	}
-	if all {
-		if err := d.store.DeleteAllCachedCreds(); err != nil {
-			return runtime.Result{}, err
-		}
-		res := runtime.TextLines("all cached credentials deleted")
-		res.Kind = "TokenDelete"
-		res.Data = map[string]any{"deleted": "all"}
-		return res, nil
-	}
-	if len(args) == 0 {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"provide a cached-credential name or --all")
-	}
-	name := args[0]
-	// Resolve the argument against the cached record set: a bare display name
-	// matches EVERY entry with that name (a legacy bare entry and a scoped entry
-	// sharing the name are the same logical credential - deleting cached tokens
-	// is always safe, they re-auth), and the full composite key matches one.
-	// Deletion is idempotent: an unknown or already-deleted name is a success
-	// with nothing removed, so teardown scripts can call it unconditionally.
-	infos, err := d.store.ListCachedCreds()
-	if err != nil {
-		return runtime.Result{}, err
-	}
-	deleted := []string{}
-	for _, info := range infos {
-		if info.Name != name && info.Key != name {
-			continue
-		}
-		if derr := d.store.DeleteCachedCred(info.Key); derr != nil {
-			return runtime.Result{}, clierr.Wrap(derr,
-				fmt.Sprintf("failed to delete %q: %v (already deleted: %v)", name, derr, deleted))
-		}
-		deleted = append(deleted, info.Key)
-	}
-	var b strings.Builder
-	for _, key := range deleted {
-		b.WriteString("cached credential " + key + " deleted\n")
-	}
-	if len(deleted) == 0 {
-		// Deletion is idempotent (an unknown or already-deleted name is a
-		// no-op success, per the doc above); ShapeText requires non-empty
-		// Text on every default-format success, so the zero-deleted case
-		// needs its own line too.
-		b.WriteString("no matching cached credential\n")
-	}
-	return runtime.Result{Kind: "TokenDelete", Data: map[string]any{"deleted": deleted}, Text: b.String()}, nil
 }
 
 // CompleteArgs implements runtime.ShellCompleter: `auth delete-token <TAB>`

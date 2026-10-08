@@ -99,11 +99,11 @@ func pinnedTrustFailure(err error, name string) error {
 
 func (loginCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "auth login",
-		Usage:       "Login to a Rancher server",
-		CommandType: runtime.Local,
-		Network:     true,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Desc: "server entry `name`"}},
+		Name:         "auth login",
+		Usage:        "Login to a Rancher server",
+		CommandType:  runtime.Local,
+		ServerAccess: runtime.ServerAccessWrite,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Desc: "server entry `name`"}},
 		Flags: []runtime.ArgSpec{
 			{Name: "url", Type: "string", Desc: "Rancher server `url` to add and log into; when name is omitted, the server's hostname becomes the entry name"},
 			{Name: "token-stdin", Type: "bool", Desc: "read the API token (id:secret) from stdin"},

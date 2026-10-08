@@ -68,9 +68,10 @@ func (s *schemaCmd) Describe() Descriptor {
 			{Name: "search", Type: "string",
 				Desc: "case-insensitive substring search over command names, aliases, usage, and descriptions"},
 		},
-		CommandType: ReadOnly,
-		Examples:    []string{"rancher schema -o json", "rancher schema get pod -o json"},
-		Shape:       ShapeText,
+		CommandType:  ReadOnly,
+		ServerAccess: ServerAccessNone,
+		Examples:     []string{"rancher schema -o json", "rancher schema get pod -o json"},
+		Shape:        ShapeText,
 	}
 }
 

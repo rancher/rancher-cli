@@ -60,9 +60,9 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 			"rancher kubeconfig --cluster prod > prod.yaml",
 			"rancher kubeconfig --cluster prod --exec-command ~/bin/rancher > prod.yaml",
 		},
-		CommandType: runtime.Local,
-		Network:     true,
-		Auth:        true,
+		CommandType:  runtime.Local,
+		ServerAccess: runtime.ServerAccessRead,
+		Auth:         true,
 		// RawBytes is a bare kubeconfig YAML document - it never varies with
 		// -o, so every format but the default table would silently accept
 		// and then ignore it (the create kubeconfig precedent).

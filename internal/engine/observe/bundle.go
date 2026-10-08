@@ -90,9 +90,8 @@ func (c *supportBundleCmd) Describe() runtime.Descriptor {
 			"rancher support-bundle -f bundle.tar.gz",
 			"rancher support-bundle --targets agent,fleet-agent --clusters prod,staging",
 		},
-		Network: true,
-		Auth:    true,
-		Shape:   runtime.ShapeText,
+		Auth:  true,
+		Shape: runtime.ShapeText,
 	}
 }
 

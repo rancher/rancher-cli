@@ -40,7 +40,6 @@ func (removeSecretCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher oidc-client remove-secret my-app client-secret-2 --apply --yes"},
 		Destructive: "true",
-		Network:     true,
 		Auth:        true,
 		Capability:  capability(),
 		Shape:       runtime.ShapeText,

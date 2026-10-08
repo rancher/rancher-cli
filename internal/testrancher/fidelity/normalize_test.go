@@ -21,6 +21,7 @@ func TestNormalizeScrubsAndDeletes(t *testing.T) {
 			"value":          "raw-secret",
 			"hash":           "$3:1:salt:digest",
 			"lastUpdateTime": "2026-07-25T02:00:00Z",
+			"lastUsedAt":     "2026-07-25T02:00:01Z",
 		},
 	}
 	Normalize(body, DefaultNormalizeRules())
@@ -34,6 +35,7 @@ func TestNormalizeScrubsAndDeletes(t *testing.T) {
 	assert.Equal(t, "<secret>", status["value"], "the bare token value is a live secret too")
 	assert.Equal(t, "<secret>", status["hash"], "the stored token digest is scrubbed too")
 	assert.Equal(t, "<ts>", status["lastUpdateTime"], "the per-create timestamp is volatile")
+	assert.Equal(t, "<ts>", status["lastUsedAt"], "the last-use timestamp is volatile")
 }
 
 func TestNormalizeTraversesArraysAndWildcards(t *testing.T) {

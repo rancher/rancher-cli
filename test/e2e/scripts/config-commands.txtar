@@ -32,11 +32,13 @@ jsonquery stderr data.error.candidates.0.id acme
 
 # config delete-server end-to-end: removes the server, clears the
 # current-server pointer that named it, and reports the delete (file
-# backend; no stored token here, so deletedFrom is empty) - does NOT revoke
-# the server-side token.
+# backend; no stored token here, so deletedFrom is empty and there is no
+# token to revoke).
 exec rancher config delete-server acme -o json
 jsonquery stdout data.server acme
 jsonquery stdout data.currentServerCleared true
+jsonquery stdout 'data.revoked.#' 0
+jsonquery stdout 'data.notRevoked.#' 0
 
 exec rancher config list-servers -o json
 jsonquery stdout 'data.#' 0

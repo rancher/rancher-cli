@@ -2,6 +2,7 @@ package token
 
 import (
 	"context"
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	gotoken "go/token"
@@ -172,4 +173,30 @@ func TestRevokeCreatedUsesTheCredentialAsBearerAndBoundsItself(t *testing.T) {
 
 		assert.Equal(t, ResultNotApplicable, UserSupplied("x").RevokeCreated(t.Context(), TokenRef{Kind: TokenKindExt, Name: "n"}).Result)
 	})
+}
+
+// TestRevokeOutcomeCarriesTheStatus asserts that a revoke reports the HTTP
+// status the server answered, 0 when no answer came, and that the status
+// never reaches JSON.
+func TestRevokeOutcomeCarriesTheStatus(t *testing.T) {
+	t.Parallel()
+	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+			defer srv.Close()
+			out := revokeToken(t.Context(), srv.Client(), srv.URL, TokenRef{Kind: TokenKindExt, Name: "t"}, "ext/t:s")
+			assert.Equal(t, status, out.Status)
+			raw, err := json.Marshal(out)
+			require.NoError(t, err)
+			var decoded map[string]any
+			require.NoError(t, json.Unmarshal(raw, &decoded))
+			assert.NotContains(t, decoded, "status")
+		})
+	}
+	srv := httptest.NewServer(http.NotFoundHandler())
+	srv.Close()
+	out := revokeToken(t.Context(), srv.Client(), srv.URL, TokenRef{Kind: TokenKindExt, Name: "t"}, "ext/t:s")
+	assert.Equal(t, 0, out.Status)
+	assert.Equal(t, ResultFailed, out.Result)
 }

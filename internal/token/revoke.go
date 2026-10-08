@@ -43,6 +43,7 @@ func revokeToken(ctx context.Context, client *http.Client, base string, ref Toke
 		out.Result, out.Error = ResultFailed, err.Error()
 		return out
 	}
+	out.Status = resp.StatusCode
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusNoContent:
 		out.Result = ResultRevoked

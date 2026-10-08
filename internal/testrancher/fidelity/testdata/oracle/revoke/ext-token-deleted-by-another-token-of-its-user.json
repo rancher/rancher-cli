@@ -1,0 +1,174 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "whoami",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e"
+        },
+        "status": {
+          "userInfo": {
+            "extra": "\u003cextra\u003e",
+            "groups": [
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "{userid}"
+          }
+        }
+      }
+    },
+    {
+      "name": "create-target",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e",
+          "generateName": "token-",
+          "labels": {
+            "authn.management.cattle.io/kind": "",
+            "cattle.io/user-id": "{userid}"
+          },
+          "name": "{target}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "description": "e2e-fid-revoke",
+          "enabled": true,
+          "kind": "",
+          "ttl": 7776000000,
+          "userID": "{userid}",
+          "userPrincipal": {
+            "displayName": "e2e-fid-standard",
+            "loginName": "e2e-fid-standard",
+            "me": true,
+            "name": "local://{userid}",
+            "principalType": "user",
+            "provider": "local"
+          }
+        },
+        "status": {
+          "bearerToken": "\u003csecret\u003e",
+          "current": false,
+          "expired": false,
+          "expiresAt": "\u003cts\u003e",
+          "lastUpdateTime": "\u003cts\u003e",
+          "value": "\u003csecret\u003e"
+        }
+      }
+    },
+    {
+      "name": "create-other",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e",
+          "generateName": "token-",
+          "labels": {
+            "authn.management.cattle.io/kind": "",
+            "cattle.io/user-id": "{userid}"
+          },
+          "name": "{other}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "description": "e2e-fid-revoke",
+          "enabled": true,
+          "kind": "",
+          "ttl": 7776000000,
+          "userID": "{userid}",
+          "userPrincipal": {
+            "displayName": "e2e-fid-standard",
+            "loginName": "e2e-fid-standard",
+            "me": true,
+            "name": "local://{userid}",
+            "principalType": "user",
+            "provider": "local"
+          }
+        },
+        "status": {
+          "bearerToken": "\u003csecret\u003e",
+          "current": false,
+          "expired": false,
+          "expiresAt": "\u003cts\u003e",
+          "lastUpdateTime": "\u003cts\u003e",
+          "value": "\u003csecret\u003e"
+        }
+      }
+    },
+    {
+      "name": "delete-with-the-other-token",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "ext.cattle.io/v1",
+        "kind": "Token",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e",
+          "generateName": "token-",
+          "labels": {
+            "authn.management.cattle.io/kind": "",
+            "cattle.io/user-id": "{userid}"
+          },
+          "name": "{target}",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "description": "e2e-fid-revoke",
+          "enabled": true,
+          "kind": "",
+          "ttl": 7776000000,
+          "userID": "{userid}",
+          "userPrincipal": {
+            "displayName": "e2e-fid-standard",
+            "loginName": "e2e-fid-standard",
+            "me": true,
+            "name": "local://{userid}",
+            "principalType": "user",
+            "provider": "local"
+          }
+        },
+        "status": {
+          "current": false,
+          "expired": false,
+          "expiresAt": "\u003cts\u003e",
+          "hash": "\u003csecret\u003e",
+          "lastUpdateTime": "\u003cts\u003e"
+        }
+      }
+    },
+    {
+      "name": "second-delete-with-the-other-token",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 404,
+        "details": {
+          "group": "ext.cattle.io",
+          "kind": "tokens",
+          "name": "{target}"
+        },
+        "kind": "Status",
+        "message": "tokens.ext.cattle.io \"{target}\" not found",
+        "metadata": {},
+        "reason": "NotFound",
+        "status": "Failure"
+      }
+    }
+  ]
+}

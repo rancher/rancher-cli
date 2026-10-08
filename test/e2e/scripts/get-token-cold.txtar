@@ -10,7 +10,7 @@ exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACER
 exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 
 exec rancher auth delete-token --all -o json
-jsonquery stdout data.deleted all
+jsonquery stdout 'data.deleted.#' 0
 
 exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name ex
 cp stdout execcred.json

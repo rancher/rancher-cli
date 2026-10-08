@@ -611,7 +611,7 @@ func TestNewCreateClusterDescribe(t *testing.T) {
 	d := NewCreateCluster(fakeFactory{}, fakeRootFactory{}).Describe()
 	assert.Equal(t, "create cluster", d.Name)
 	assert.Equal(t, runtime.Mutating, d.CommandType)
-	assert.True(t, d.Network)
+	assert.Equal(t, runtime.ServerAccessWrite, d.EffectiveServerAccess())
 	assert.True(t, d.Auth)
 	require.Len(t, d.Args, 1)
 	assert.True(t, d.Args[0].Required)

@@ -61,9 +61,8 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			{Name: "node", Type: "string",
 				Desc: "Limit results to one node"},
 		},
-		Network: true,
-		Auth:    true,
-		Shape:   runtime.ShapeTabular,
+		Auth:  true,
+		Shape: runtime.ShapeTabular,
 	}
 }
 

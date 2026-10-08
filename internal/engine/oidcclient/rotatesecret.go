@@ -43,7 +43,6 @@ func (rotateSecretCmd) Describe() runtime.Descriptor {
 		},
 		Examples:     []string{"rancher oidc-client rotate-secret my-app client-secret-1 --apply --yes"},
 		Destructive:  "true",
-		Network:      true,
 		Auth:         true,
 		Capability:   capability(),
 		OutputPolicy: runtime.OnceOnlyOutputPolicy(),

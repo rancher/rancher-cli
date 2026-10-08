@@ -56,10 +56,13 @@ func (s stubStore) MarkCachedCredReady(string, string, string) (bool, error) { r
 func (s stubStore) SetCachedCred(string, string, time.Time, string, string, string, CacheBinding) error {
 	return nil
 }
-func (s stubStore) DeleteCachedCred(string) error              { return nil }
-func (s stubStore) DeleteAllCachedCreds() error                { return nil }
-func (s stubStore) ListCachedCreds() ([]CachedCredInfo, error) { return nil, nil }
-func (s stubStore) ResolvedBackend() (string, bool)            { return "", true }
+func (s stubStore) DeleteAllCachedCreds() error                      { return nil }
+func (s stubStore) ListCachedCreds() ([]CachedCredInfo, error)       { return nil, nil }
+func (s stubStore) HoldCachedCreds(func([]CachedRecord) error) error { return nil }
+func (s stubStore) DeleteCachedCredsIfUnchanged(map[string]string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+func (s stubStore) ResolvedBackend() (string, bool) { return "", true }
 
 func TestEffectiveSurfacesStoreError(t *testing.T) {
 	t.Parallel()

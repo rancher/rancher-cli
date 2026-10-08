@@ -269,7 +269,8 @@ func TestUserIDSlotsAreSeparateOnBothPaths(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, "plain-tok", plain, "a call without --user-id reads only its own slot")
 
-			require.NoError(t, r.store.DeleteCachedCred(plainKey))
+			_, _, derr := r.store.DeleteCachedCredsIfUnchanged(map[string]string{plainKey: "plain-tok"})
+			require.NoError(t, derr)
 			again, err := r.callWithUserID("prod", "")
 			require.NoError(t, err)
 			assert.NotEqual(t, first, again, "a call without --user-id never serves the user id's slot")

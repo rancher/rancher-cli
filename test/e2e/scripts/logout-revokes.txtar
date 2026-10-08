@@ -1,0 +1,42 @@
+# auth logout deletes on the server the tokens the CLI created: the
+# cluster token the exec plugin cached from the stored login, with its own
+# bearer, then the login token itself. Prompts need a real pty; see
+# auth-login-local.txtar.
+[!unix] skip 'ttyin (real pty) is unix-only'
+env RANCHER_CLI_CREDENTIAL_STORE=file
+
+ttyin -stdin creds.txt
+exec rancher auth login prod --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --auth-provider localProvider
+exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name prod
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout 'data.0.tokenRef.kind' ext
+jsonget stdout data.0.tokenRef.name cached.txt
+setenvfrom CACHED cached.txt
+
+exec rancher auth logout prod -o json
+jsonquery stdout 'data.revoked.#' 2
+jsonquery stdout data.revoked.0.source cache
+jsonquery stdout data.revoked.0.ref.name $CACHED
+jsonquery stdout data.revoked.1.source login
+jsonquery stdout 'data.notRevoked.#' 0
+jsonquery stdout 'data.deletedCache.#' 1
+
+# The server no longer has the cached token: deleting it by name finds
+# nothing to delete.
+stdin token.txt
+exec rancher auth login admin --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --token-stdin
+exec rancher config use-server admin
+! exec rancher delete token $CACHED --apply --yes -o json
+jsonquery stderr data.error.code NOT_FOUND
+
+# A rerun finds nothing left to revoke.
+exec rancher auth logout prod -o json
+jsonquery stdout 'data.revoked.#' 0
+jsonquery stdout 'data.notRevoked.#' 0
+
+-- creds.txt --
+e2e-user
+e2e-pass
+-- token.txt --
+e2e:secret

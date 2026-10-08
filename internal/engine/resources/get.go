@@ -94,7 +94,6 @@ func (c getCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
 		Flags:       flags,
-		Network:     true,
 		Auth:        true,
 		Capability:  c.k.Capability,
 		Shape:       runtime.ShapeTabular,

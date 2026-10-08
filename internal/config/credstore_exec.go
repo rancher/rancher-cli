@@ -366,6 +366,5 @@ func (s *execStore) SetCachedCred(key, token string, expiry time.Time, name, ser
 func (s *execStore) MarkCachedCredReady(key, token, fingerprint string) (bool, error) {
 	return s.cache.MarkCachedCredReady(key, token, fingerprint)
 }
-func (s *execStore) DeleteCachedCred(key string) error          { return s.cache.DeleteCachedCred(key) }
 func (s *execStore) DeleteAllCachedCreds() error                { return s.cache.DeleteAllCachedCreds() }
 func (s *execStore) ListCachedCreds() ([]CachedCredInfo, error) { return s.cache.ListCachedCreds() }

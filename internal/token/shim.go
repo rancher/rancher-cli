@@ -71,8 +71,8 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 			{Name: "cacerts", Type: "string", Desc: "PEM CA bundle `path` (legacy spelling of --cacert)"},
 			{Name: "skip-verify", Type: "bool", Desc: "skip TLS verification (insecure)"},
 		},
-		Network: true,
-		Auth:    true,
+		ServerAccess: runtime.ServerAccessWrite,
+		Auth:         true,
 		Examples: []string{
 			"rancher token --server https://rancher.example.com --user my-cluster",
 		},

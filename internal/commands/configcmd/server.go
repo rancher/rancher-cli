@@ -111,8 +111,7 @@ func (serverSwitchCmd) CompleteArgs(_ context.Context, view runtime.ConfigView, 
 
 // cachedCredsRemovedLine renders the "<n> cached kubectl credentials
 // removed" summary line delete-server and update-server both print - the
-// two commands report the same DeleteTokenEverywhere output and must read
-// alike.
+// two commands report the same local delete's output and must read alike.
 func cachedCredsRemovedLine(n int) string {
 	return fmt.Sprintf("%d cached kubectl credentials removed", n)
 }

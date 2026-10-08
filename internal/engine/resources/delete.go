@@ -36,7 +36,6 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:       deleteFlags(c.k),
 		Destructive: "true",
-		Network:     true,
 		Auth:        true,
 		Capability:  c.k.Capability,
 		Shape:       runtime.ShapeText,

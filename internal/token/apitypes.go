@@ -35,6 +35,18 @@ type Token struct {
 	binding config.CacheBinding
 }
 
+// recordBinding is the binding the token's cache record is written under:
+// the token's own binding, naming the token and its owner when this
+// invocation created it, so a later delete of the record can revoke it. A
+// token the invocation did not create - the stored login served as is -
+// is never named.
+func (t Token) recordBinding() config.CacheBinding {
+	if t.fresh == nil || t.fresh.create.Outcome != CreateKnown || t.fresh.create.Ref == nil {
+		return t.binding
+	}
+	return t.binding.WithCreatedToken(t.fresh.create.Ref, t.fresh.create.UserID)
+}
+
 // AuthProvider is the base provider type; GetType satisfies the typedProvider interface.
 type AuthProvider struct {
 	Type string `json:"type"`

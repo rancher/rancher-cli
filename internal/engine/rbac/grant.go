@@ -55,7 +55,6 @@ func (grantCmd) Describe() runtime.Descriptor {
 			"rancher grant okta_group://gid --global --role admin --apply --yes",
 		},
 		Destructive: "true",
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

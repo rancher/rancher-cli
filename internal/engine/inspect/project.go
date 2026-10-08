@@ -55,7 +55,6 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:       []runtime.ArgSpec{resources.ClusterFlag(true)},
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

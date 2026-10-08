@@ -61,10 +61,13 @@ func (c *countingStore) MarkCachedCredReady(string, string, string) (bool, error
 func (c *countingStore) SetCachedCred(string, string, time.Time, string, string, string, config.CacheBinding) error {
 	return nil
 }
-func (c *countingStore) DeleteCachedCred(string) error                     { return nil }
-func (c *countingStore) DeleteAllCachedCreds() error                       { return nil }
-func (c *countingStore) ListCachedCreds() ([]config.CachedCredInfo, error) { return nil, nil }
-func (c *countingStore) ResolvedBackend() (string, bool)                   { return "", true }
+func (c *countingStore) DeleteAllCachedCreds() error                             { return nil }
+func (c *countingStore) ListCachedCreds() ([]config.CachedCredInfo, error)       { return nil, nil }
+func (c *countingStore) HoldCachedCreds(func([]config.CachedRecord) error) error { return nil }
+func (c *countingStore) DeleteCachedCredsIfUnchanged(map[string]string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+func (c *countingStore) ResolvedBackend() (string, bool) { return "", true }
 
 func TestFactoryResolvesEffectiveOnce(t *testing.T) {
 	t.Parallel()

@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -20,6 +19,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/token"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
@@ -27,7 +27,7 @@ import (
 // tokens. Returns dir + store.
 func seedLogout(t *testing.T, current string, servers ...string) (string, config.CredStore) {
 	t.Helper()
-	keyring.MockInit() // in-memory keychain: DeleteTokenEverywhere now deletes both backends unconditionally
+	keyring.MockInit() // in-memory keychain: the login delete covers both backends unconditionally
 	dir := t.TempDir()
 	store := config.NewFileStore(dir)
 	cfg := &config.Config{
@@ -181,11 +181,9 @@ func TestLogoutAllDeletesWholeExecCache(t *testing.T) {
 	assert.Empty(t, creds, "--all clears the whole cache")
 }
 
-// TestLogoutAllSurfacesExecCacheLoosePermissionNotice asserts the same drain
-// end to end: `auth logout --all` deletes its exec-credential cache via
-// config.DeleteAllExecCache, whose own throwaway *fileStore must drain its
-// notice buffer so a loose-permission notice on token-cache.yaml reaches
-// Result.Warnings instead of going out of scope with the throwaway store.
+// TestLogoutAllSurfacesExecCacheLoosePermissionNotice asserts that `auth
+// logout --all` deletes the exec-credential cache and that a loose-permission
+// notice on token-cache.yaml reaches Result.Warnings.
 func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("loose-permission notice is intentionally disabled on Windows; ACL enforcement is the guarantee there")
@@ -196,8 +194,7 @@ func TestLogoutAllSurfacesExecCacheLoosePermissionNotice(t *testing.T) {
 
 	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
-	require.Len(t, res.Warnings, 1, "the exec-cache store's loose-permission notice must reach Result.Warnings")
-	assert.Contains(t, res.Warnings[0], "group/world-readable")
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), "group/world-readable", "the exec-cache store's loose-permission notice must reach Result.Warnings")
 }
 
 // --all's per-server host-scoped delete would miss a
@@ -322,6 +319,15 @@ func TestLogoutAllDeletesOrphanedHelperCredential(t *testing.T) {
 	df := res.Data.(map[string]any)["deletedFrom"].(map[string][]string)
 	assert.Contains(t, df["ghost"], "helper:fake", "logout --all must report the deleted orphan under its server name")
 	assert.Empty(t, cmdtest.HelperCreds(t, statePath), "the orphaned helper credential must be erased")
+	var unproven []token.NotRevokedToken
+	for _, n := range res.Data.(map[string]any)["notRevoked"].([]token.NotRevokedToken) {
+		if n.Reason == "unproven" {
+			unproven = append(unproven, n)
+		}
+	}
+	require.Len(t, unproven, 1, "the swept orphan's token is reported, never revoked")
+	assert.Equal(t, "https://ghost.ex", unproven[0].Server)
+	assert.Equal(t, "manual", unproven[0].Retry)
 
 	leftovers, err := config.DeleteOrphanedHelperCredentials(t.Context(), dir)
 	require.NoError(t, err)
@@ -460,8 +466,8 @@ func TestDeleteBothFailureKeepsBothCauses(t *testing.T) {
 	cacheErr := clierr.Retryable(clierr.CodeLockTimeout, "token-cache.lock is held by another process")
 	sweepErr := errors.New("credential-helper records file is corrupt")
 
-	err := deleteBothFailure(cacheErr, sweepErr, []string{"acme"},
-		map[string][]string{"acme": {"file"}}, nil, []string{"a notice"})
+	err := deleteBothFailure(cacheErr, sweepErr, LogoutAllPartialFailure{LoggedOut: []string{"acme"},
+		DeletedFrom: map[string][]string{"acme": {"file"}}}, []string{"a notice"})
 
 	require.ErrorIs(t, err, cacheErr)
 	require.ErrorIs(t, err, sweepErr)
@@ -478,34 +484,6 @@ func TestDeleteBothFailureKeepsBothCauses(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, []string{"acme"}, details.LoggedOut)
 	assert.Equal(t, []string{"a notice"}, ce.Warnings())
-}
-
-// TestDeleteBothFailureReportsACancellationAsOne asserts that a cancelled
-// step is reported as the cancellation it is, whichever of the two
-// cleanups was cancelled, rather than as a cleanup failure that happens
-// to contain one: the command was interrupted, and that is what the
-// caller has to see.
-func TestDeleteBothFailureReportsACancellationAsOne(t *testing.T) {
-	t.Parallel()
-	other := errors.New("token-cache.yaml is corrupt")
-
-	for _, tc := range []struct {
-		name               string
-		cacheErr, sweepErr error
-	}{
-		{"the cache wipe was cancelled", context.Canceled, other},
-		{"the sweep was cancelled", other, context.Canceled},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			err := deleteBothFailure(tc.cacheErr, tc.sweepErr, nil, nil, nil, nil)
-			require.ErrorIs(t, err, context.Canceled)
-
-			_, dressed := errors.AsType[*clierr.Error](err)
-			assert.False(t, dressed,
-				"a cancellation passes through undressed, as it does from every other step here")
-		})
-	}
 }
 
 // TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded asserts that a
@@ -562,6 +540,7 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 	_, err = NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(),
 		cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
 	require.Error(t, err, "the orphan sweep's persist write must fail (symlink refusal)")
+	require.ErrorContains(t, err, "failed to delete orphaned helper credentials", "the failure names the step that failed")
 
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -575,8 +554,8 @@ func TestLogoutAllOrphanSweepFailureReportsWhatAlreadySucceeded(t *testing.T) {
 	require.NotEmpty(t, lines)
 	assert.Equal(t, "already logged out: acme", lines[0])
 	assert.Contains(t, lines, "credentials removed: acme: file")
-	assert.Equal(t, "those credentials are gone regardless of this failure - re-run auth logout --all to finish",
-		lines[len(lines)-1])
+	assert.Equal(t, "those credentials are gone regardless of this failure - run "+clierr.Rancher+" auth logout --all to finish",
+		lines[len(lines)-1], "--all names --all to finish")
 
 	_, gerr := fileStore.GetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"})
 	require.ErrorIs(t, gerr, config.ErrNoToken, "acme's credential deletion is not undone by the later failure")
@@ -651,20 +630,13 @@ func TestLogoutAllNeverRepairsADanglingCurrentServer(t *testing.T) {
 	assert.Equal(t, "ghost", cfgAfter.CurrentServer, "the dangling pointer is left exactly as it was")
 }
 
-// TestDeleteFailureCancellationPassesThrough asserts that a
-// delete interrupted by the caller's own cancellation must surface as
-// context.Canceled through logout's failure shaping - never rewrapped into
-// the generic "failed to log out" clierr, which severs the errors.Is chain
-// and reads as a helper fault.
-func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
+// TestDeleteFailureKeepsWhatWasDeleted asserts that a delete-step failure
+// carries the LogoutAllPartialFailure details, whose first text line names
+// what was already logged out.
+func TestDeleteFailureKeepsWhatWasDeleted(t *testing.T) {
 	t.Parallel()
-	wrapped := fmt.Errorf("locking the credential-helper records: %w", context.Canceled)
-	err := deleteFailure("failed to log out \"prod\"", wrapped, []string{"a"}, nil, nil, nil)
-	require.ErrorIs(t, err, context.Canceled)
 	var ce *clierr.Error
-	assert.NotErrorAs(t, err, &ce, "cancellation must not be dressed as a clierr delete failure")
-
-	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"}, nil, nil, nil)
+	real := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), LogoutAllPartialFailure{LoggedOut: []string{"a"}}, nil)
 	require.ErrorAs(t, real, &ce)
 	details, ok := ce.Details.(LogoutAllPartialFailure)
 	require.True(t, ok)
@@ -678,26 +650,24 @@ func TestDeleteFailureCancellationPassesThrough(t *testing.T) {
 // the Result the pipeline never gets to build.
 func TestDeleteFailureCarriesNoticesFromASuccessfulEarlierStep(t *testing.T) {
 	t.Parallel()
-	err := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), []string{"a"}, nil, nil,
+	err := deleteFailure("failed to log out \"prod\"", fmt.Errorf("helper exploded"), LogoutAllPartialFailure{LoggedOut: []string{"a"}},
 		[]string{"keychain unreachable, deleted the file store only"})
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, []string{"keychain unreachable, deleted the file store only"}, ce.Warnings())
 }
 
-// TestLogoutAllPartialFailureTextDetailsBracketedLines asserts the two
+// TestLogoutAllPartialFailureTextDetailsBracketedLines asserts the
 // conditional lines: a deletedFrom entry prints one "credentials removed:"
 // line per server, sorted by name; "cached kubectl credentials removed"
-// prints only when non-empty.
+// prints only when non-empty; the closing line names the rerun only when
+// there is one.
 func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 	t.Parallel()
 	t.Run("no deletedFrom entries and no cache", func(t *testing.T) {
 		t.Parallel()
 		pf := LogoutAllPartialFailure{LoggedOut: []string{"prod"}}
-		assert.Equal(t, []string{
-			"already logged out: prod",
-			"those credentials are gone regardless of this failure - re-run auth logout --all to finish",
-		}, pf.TextDetails())
+		assert.Equal(t, []string{"already logged out: prod"}, pf.TextDetails())
 	})
 
 	t.Run("multiple servers sorted, and non-empty cache", func(t *testing.T) {
@@ -706,13 +676,14 @@ func TestLogoutAllPartialFailureTextDetailsBracketedLines(t *testing.T) {
 			LoggedOut:    []string{"prod", "staging"},
 			DeletedFrom:  map[string][]string{"staging": {"keychain"}, "prod": {"keychain", "file"}},
 			DeletedCache: []string{"k1", "k2"},
+			rerun:        "rancher auth logout --all",
 		}
 		assert.Equal(t, []string{
 			"already logged out: prod, staging",
 			"credentials removed: prod: keychain, file",
 			"credentials removed: staging: keychain",
 			"cached kubectl credentials removed: k1, k2",
-			"those credentials are gone regardless of this failure - re-run auth logout --all to finish",
+			"those credentials are gone regardless of this failure - run rancher auth logout --all to finish",
 		}, pf.TextDetails())
 	})
 }
@@ -726,7 +697,7 @@ func TestDeleteFailurePreservesLockTimeout(t *testing.T) {
 	t.Parallel()
 	inner := clierr.Retryable(clierr.CodeLockTimeout,
 		"locking token-cache.yaml (another rancher process may be writing): context deadline exceeded")
-	err := deleteFailure("failed to log out \"prod\"", inner, []string{"a"}, nil, nil, nil)
+	err := deleteFailure("failed to log out \"prod\"", inner, LogoutAllPartialFailure{LoggedOut: []string{"a"}}, nil)
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeLockTimeout, ce.Code)
@@ -788,7 +759,7 @@ func TestStyleLogoutTextStripInvariant(t *testing.T) {
 	t.Parallel()
 	urlByName := map[string]string{"acme": "https://acme.ex", "other": "https://other.ex"}
 	deletedFrom := map[string][]string{"acme": {"keychain"}, "other": nil}
-	text := renderLogoutText(urlByName, deletedFrom, 3)
+	text := renderLogoutText(urlByName, deletedFrom, 3, nil)
 	enabled := style.Style{Enabled: true}
 
 	styled := styleLogoutText(text, len(deletedFrom), enabled)
@@ -803,10 +774,10 @@ func TestStyleLogoutTextStripInvariant(t *testing.T) {
 	assert.NotContains(t, styled, "\x1b[1mexec-credential cache entries removed", "the cache-count line must not be styled")
 }
 
-// TestLogoutStampsLoggedOutAtOnCLIOwnedEntries asserts logout records the
-// time on an entry whose token is CLI-owned, leaves a pre-provenance entry
-// untouched, and turns a failed stamp write into a warning.
-func TestLogoutStampsLoggedOutAtOnCLIOwnedEntries(t *testing.T) {
+// TestLogoutStampsLoggedOutAtOnEveryTarget asserts logout records the time
+// and clears TokenRef on every target, CLI-owned or not, keeping the
+// provenance and the current-server pointer.
+func TestLogoutStampsLoggedOutAtOnEveryTarget(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(config.EnvCredentialStore, "file")
 	cfg := &config.Config{CurrentServer: "prod", Servers: map[string]config.Server{
@@ -818,20 +789,11 @@ func TestLogoutStampsLoggedOutAtOnCLIOwnedEntries(t *testing.T) {
 	_, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Flag: map[string]bool{"all": true}}, ui.Discard())
 	require.NoError(t, err)
 	cfg, _ = config.Load(config.FilePath(dir))
-	assert.NotEmpty(t, cfg.Servers["prod"].LoggedOutAt)
-	_, perr := time.Parse(time.RFC3339, cfg.Servers["prod"].LoggedOutAt)
-	require.NoError(t, perr)
-	assert.Empty(t, cfg.Servers["plain"].LoggedOutAt)
+	for _, name := range []string{"prod", "plain"} {
+		_, perr := time.Parse(time.RFC3339, cfg.Servers[name].LoggedOutAt)
+		require.NoError(t, perr, name)
+		assert.Nil(t, cfg.Servers[name].TokenRef, name)
+	}
+	assert.Equal(t, clierr.ProvenanceDerived, cfg.Servers["prod"].Provenance)
 	assert.Equal(t, "prod", cfg.CurrentServer, "logout still never clears the pointer")
-
-	restore := config.SetPersistWriteHookForTest(func(step string) error {
-		if step == "logout" {
-			return errors.New("read-only")
-		}
-		return nil
-	})
-	t.Cleanup(restore)
-	res, err := NewLogout(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Pos: []string{"prod"}}, ui.Discard())
-	require.NoError(t, err)
-	assert.Contains(t, strings.Join(res.Warnings, "\n"), "could not record the logout")
 }

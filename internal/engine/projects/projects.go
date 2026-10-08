@@ -198,7 +198,6 @@ func (createCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher create project web --cluster c-x --dry-run", "rancher create project web --cluster c-x --apply"},
 		Destructive: "false",
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

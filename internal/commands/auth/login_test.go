@@ -1657,10 +1657,13 @@ func (unsupportedStore) MarkCachedCredReady(string, string, string) (bool, error
 func (unsupportedStore) SetCachedCred(string, string, time.Time, string, string, string, config.CacheBinding) error {
 	return nil
 }
-func (unsupportedStore) DeleteCachedCred(string) error                     { return nil }
-func (unsupportedStore) DeleteAllCachedCreds() error                       { return nil }
-func (unsupportedStore) ListCachedCreds() ([]config.CachedCredInfo, error) { return nil, nil }
-func (unsupportedStore) ResolvedBackend() (string, bool)                   { return "exec:unsupported", true }
+func (unsupportedStore) DeleteAllCachedCreds() error                             { return nil }
+func (unsupportedStore) ListCachedCreds() ([]config.CachedCredInfo, error)       { return nil, nil }
+func (unsupportedStore) HoldCachedCreds(func([]config.CachedRecord) error) error { return nil }
+func (unsupportedStore) DeleteCachedCredsIfUnchanged(map[string]string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+func (unsupportedStore) ResolvedBackend() (string, bool) { return "exec:unsupported", true }
 
 // commitThenErrorKeyring is a keyring seam whose Set stores the value and
 // then reports an error: the write committed, the transport did not say so.
@@ -2841,8 +2844,8 @@ func TestLoginReadOnlyHelperKeepsWarnAndSucceed(t *testing.T) {
 }
 
 // TestLoginUpdateRecordsThePriorDerivedToken asserts a re-login over a
-// derived entry appends the prior token with its owner to supersededTokens
-// (retirement is exercised separately).
+// derived entry appends the prior token with its owner and its server to
+// supersededTokens (retirement is exercised separately).
 func TestLoginUpdateRecordsThePriorDerivedToken(t *testing.T) {
 	t.Parallel()
 	f := testrancher.New(testrancher.Options{})
@@ -2864,6 +2867,7 @@ func TestLoginUpdateRecordsThePriorDerivedToken(t *testing.T) {
 	require.Len(t, cfg.Servers["prod"].SupersededTokens, 1)
 	assert.Equal(t, "token-prior", cfg.Servers["prod"].SupersededTokens[0].Ref.Name)
 	assert.Equal(t, "user-someone-else", cfg.Servers["prod"].SupersededTokens[0].UserID)
+	assert.Equal(t, config.CanonicalServerIdentity(fake.URL), cfg.Servers["prod"].SupersededTokens[0].Server, "the record names the server its token lives on")
 }
 
 // TestLoginNamelessURLBesideAPluginEntryCreatesANormalEntry asserts login

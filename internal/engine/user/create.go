@@ -79,7 +79,6 @@ func (createCmd) Describe() runtime.Descriptor {
 			`echo -n "$PASSWORD" | rancher create user alice --password-stdin --apply --yes`,
 		},
 		Destructive: "true",
-		Network:     true,
 		Auth:        true,
 		Capability:  engine.UserPasswordWorkflowCapability(),
 		Shape:       runtime.ShapeText,

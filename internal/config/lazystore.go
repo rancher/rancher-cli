@@ -176,14 +176,6 @@ func (l *lazyStore) MarkCachedCredReady(key, token, fingerprint string) (bool, e
 	return s.MarkCachedCredReady(key, token, fingerprint)
 }
 
-func (l *lazyStore) DeleteCachedCred(key string) error {
-	s, err := l.backend()
-	if err != nil {
-		return err
-	}
-	return s.DeleteCachedCred(key)
-}
-
 func (l *lazyStore) DeleteAllCachedCreds() error {
 	s, err := l.backend()
 	if err != nil {

@@ -95,7 +95,6 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 			"rancher create machine-config amazonec2config web-pool --set region=us-east-1 --set instanceType=t3a.medium --apply",
 		},
 		Destructive: "false",
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

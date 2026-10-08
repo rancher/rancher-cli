@@ -16,6 +16,22 @@ const (
 	Local    CommandType = "local"    // local config/creds; may call server; no Plan/gates
 )
 
+// ServerAccess is the most a command may do on the Rancher server. A
+// descriptor that declares none gets its command type's default
+// (EffectiveServerAccess); Registry.Validate refuses a value the type does
+// not allow.
+type ServerAccess string
+
+const (
+	// ServerAccessNone never contacts the server.
+	ServerAccessNone ServerAccess = "none"
+	// ServerAccessRead may read server state only.
+	ServerAccessRead ServerAccess = "read"
+	// ServerAccessWrite may create or delete server objects; a Local
+	// command's schema desc names which.
+	ServerAccessWrite ServerAccess = "write"
+)
+
 // CapabilityTier is the enum of gated capability tiers a command or kind may
 // require. A future tier is added here, never as a second boolean. The enum
 // is an extension POINT, not a claim of shared machinery: each tier brings
@@ -148,8 +164,11 @@ type Descriptor struct {
 	CommandType CommandType `json:"commandType"`
 	Destructive string      `json:"destructive,omitempty"` // "true"|"false"|"dependsOnInput"; empty for readOnly
 	Toolset     string      `json:"toolset,omitempty"`     // MCP toolset filter ("core" today)
-	Network     bool        `json:"network"`               // performs network I/O
-	Auth        bool        `json:"auth"`                  // requires credentials
+	// ServerAccess is the most the command may do on the server; empty
+	// takes the command type's default. A Local command that contacts the
+	// server declares it.
+	ServerAccess ServerAccess `json:"serverAccess,omitempty"`
+	Auth         bool         `json:"auth"` // requires credentials
 	// Capability is the command's capability requirement, if any (the zero
 	// value means none). Generated verbs copy this from their kind row; a
 	// bespoke command declares it here directly. Registry.Validate rejects a
@@ -189,6 +208,22 @@ type Descriptor struct {
 	// shell that runs the remedy does not carry. Go-only; the manifest
 	// does not carry it.
 	RemedyConfigDir bool `json:"-"`
+}
+
+// EffectiveServerAccess is the server access the command runs with: the
+// declared value, else write for a mutating command, read for a read-only
+// one and none for a local one.
+func (d Descriptor) EffectiveServerAccess() ServerAccess {
+	if d.ServerAccess != "" {
+		return d.ServerAccess
+	}
+	switch d.CommandType {
+	case Mutating:
+		return ServerAccessWrite
+	case ReadOnly:
+		return ServerAccessRead
+	}
+	return ServerAccessNone
 }
 
 // Delivery classifies how a command's successful Result must be delivered.

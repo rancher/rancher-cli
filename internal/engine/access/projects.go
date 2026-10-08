@@ -62,7 +62,6 @@ func (c *projectsCmd) Describe() runtime.Descriptor {
 			"rancher access projects --as alice -o json",
 		},
 		CommandType:      runtime.ReadOnly,
-		Network:          true,
 		Auth:             true,
 		SuccessExitCodes: []int{0, exitUnknown},
 		Shape:            runtime.ShapeText,

@@ -90,12 +90,12 @@ func TestSchemaCommandCardReadOnly(t *testing.T) {
 			{Name: "cluster", Type: "string", Desc: "target cluster `id|name`"},
 			{Name: "wait", Type: "bool", Desc: "wait for the resource"},
 		},
-		Examples:    []string{"rancher get pod -o json"},
-		CommandType: ReadOnly,
-		Network:     true,
-		Auth:        true,
-		Contract:    "internal",
-		Stability:   "beta",
+		Examples:     []string{"rancher get pod -o json"},
+		CommandType:  ReadOnly,
+		ServerAccess: ServerAccessRead,
+		Auth:         true,
+		Contract:     "internal",
+		Stability:    "beta",
 	}
 	card := renderCommandCard(cardManifest(), c)
 	lines := strings.Split(card, "\n")
@@ -106,7 +106,7 @@ func TestSchemaCommandCardReadOnly(t *testing.T) {
 	assert.Contains(t, lines, "flags:")
 	assert.Contains(t, lines, "  --cluster string  target cluster `id|name`")
 	assert.Contains(t, lines, "  --wait bool  wait for the resource")
-	assert.Contains(t, lines, "contract: readOnly · internal · beta · network · auth")
+	assert.Contains(t, lines, "contract: readOnly · internal · beta · server=read · auth")
 	assert.Contains(t, lines, "gates: none (read-only)")
 	assert.Contains(t, lines, "Reads pods on the downstream cluster via the management proxy.")
 	assert.Contains(t, lines, "examples:")
@@ -140,12 +140,12 @@ func TestSchemaCommandCardDestructiveMutating(t *testing.T) {
 				Desc: "manifest file", Env: []string{"RANCHER_FILE"}},
 			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type"},
 		},
-		CommandType: Mutating,
-		Destructive: "true",
-		Network:     true,
-		Auth:        true,
-		Contract:    "internal",
-		Stability:   "deprecated",
+		CommandType:  Mutating,
+		Destructive:  "true",
+		ServerAccess: ServerAccessWrite,
+		Auth:         true,
+		Contract:     "internal",
+		Stability:    "deprecated",
 	}
 	card := renderCommandCard(cardManifest(), c)
 	lines := strings.Split(card, "\n")
@@ -154,7 +154,7 @@ func TestSchemaCommandCardDestructiveMutating(t *testing.T) {
 	assert.Equal(t, "rancher delete project <name>", lines[0], "required arg renders in angle brackets")
 	assert.Contains(t, lines, "  --filename/-f string (required)  manifest file  [env: RANCHER_FILE]")
 	assert.Contains(t, lines, "  --type user|group  subject type")
-	assert.Contains(t, lines, "contract: mutating · internal · deprecated · destructive=true · network · auth")
+	assert.Contains(t, lines, "contract: mutating · internal · deprecated · destructive=true · server=write · auth")
 	assert.Contains(t, lines, "gates: --apply --yes --allow-deprecated")
 }
 
@@ -185,14 +185,14 @@ func TestSchemaCommandCardOmitsEmptySections(t *testing.T) {
 func TestSchemaCommandCardDependsOnInput(t *testing.T) {
 	t.Parallel()
 	c := SchemaCommand{
-		Name:        "apply",
-		Usage:       "Apply a manifest",
-		CommandType: Mutating,
-		Destructive: "dependsOnInput",
-		Network:     true,
-		Auth:        true,
-		Contract:    "public",
-		Stability:   "stable",
+		Name:         "apply",
+		Usage:        "Apply a manifest",
+		CommandType:  Mutating,
+		Destructive:  "dependsOnInput",
+		ServerAccess: ServerAccessWrite,
+		Auth:         true,
+		Contract:     "public",
+		Stability:    "stable",
 	}
 	card := renderCommandCard(cardManifest(), c)
 	assert.Contains(t, strings.Split(card, "\n"),

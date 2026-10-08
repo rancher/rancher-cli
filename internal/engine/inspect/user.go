@@ -76,7 +76,6 @@ func (c *userCmd) Describe() runtime.Descriptor {
 			"alongside groups.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "user", Type: "string", Required: true, Desc: "id|username|displayName|principal"}},
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

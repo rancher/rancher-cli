@@ -36,7 +36,6 @@ func (addNamespaceCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher project add-namespace team-a --project p-x --cluster c-x --apply"},
 		Destructive: "false",
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}
@@ -101,7 +100,6 @@ func (removeNamespaceCmd) Describe() runtime.Descriptor {
 		},
 		Examples:    []string{"rancher project remove-namespace team-a --cluster c-x --apply"},
 		Destructive: "false",
-		Network:     true,
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}

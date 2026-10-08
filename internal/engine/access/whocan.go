@@ -63,7 +63,6 @@ func (c *whoCanCmd) Describe() runtime.Descriptor {
 			"rancher access who-can post --non-resource-url /healthz --cluster prod",
 		},
 		CommandType:      runtime.ReadOnly,
-		Network:          true,
 		Auth:             true,
 		SuccessExitCodes: []int{0, 13},
 		Shape:            runtime.ShapeText,

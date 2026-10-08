@@ -15,7 +15,7 @@ import (
 // Errors are reported via assert.
 func runDeleteServer(t *testing.T, dir, name string) {
 	t.Helper()
-	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteTokenEverywhere}
+	cmd := &configDeleteServerCmd{dir: dir, delete: config.DeleteLoginToken}
 	_, err := cmd.Execute(t.Context(), cmdtest.Input{Pos: []string{name}}, ui.Discard())
 	assert.NoError(t, err)
 }

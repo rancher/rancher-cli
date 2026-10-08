@@ -17,19 +17,11 @@ import (
 // fully isolated.
 //
 // (a) CanonicalServerIdentity produces two distinct values.
-// (b) The two entries are stored under different keys.
-// (c) Deleting http://host removes only its entry; deleting https://host
-//
-//	removes only its entry.
-//
-// (d) A legacy host-only record (no scheme) still deletes when either scheme
-//
-//	is targeted.
+// (b) The two entries get different cache keys.
+// (c) A record carrying a full URL matches only its own scheme's target.
+// (d) A legacy host-only record (no scheme) matches either scheme's target.
 func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	fs := NewFileStore(dir)
-
 	httpID := CanonicalServerIdentity("http://samehost")
 	httpsID := CanonicalServerIdentity("https://samehost")
 
@@ -38,79 +30,50 @@ func TestHTTPAndHTTPSServersHaveDistinctCacheIdentity(t *testing.T) {
 		t.Fatalf("http and https identity must differ: both returned %q", httpID)
 	}
 
+	// (b) Distinct cache keys.
 	httpKey := CacheKey("prod", httpID, "c-1")
 	httpsKey := CacheKey("prod", httpsID, "c-1")
-
-	// (b) Distinct cache keys.
 	if httpKey == httpsKey {
 		t.Fatalf("http and https cache keys must differ: both are %q", httpKey)
 	}
 
-	require.NoError(t, fs.SetCachedCred(httpKey, "tok-http", time.Now().Add(time.Hour), "prod", httpID, "c-1", testCacheBinding(dir)))
-	require.NoError(t, fs.SetCachedCred(httpsKey, "tok-https", time.Now().Add(time.Hour), "prod", httpsID, "c-1", testCacheBinding(dir)))
+	// (c) A full-URL record matches only its own scheme.
+	assert.True(t, CacheRecordForServer(httpID, "http://samehost"))
+	assert.False(t, CacheRecordForServer(httpID, "https://samehost"), "an http record must not match an https target")
+	assert.True(t, CacheRecordForServer(httpsID, "https://samehost"))
+	assert.False(t, CacheRecordForServer(httpsID, "http://samehost"), "an https record must not match an http target")
 
-	// (d) Pre-seed a legacy host-only record (no scheme) to verify it deletes.
-	legacyKey := CacheKey("prod", "SAMEHOST:80", "c-1")
-	require.NoError(t, fs.SetCachedCred(legacyKey, "tok-legacy", time.Now().Add(time.Hour), "prod", "SAMEHOST:80", "c-1", testCacheBinding(dir)))
-
-	// (c) Deleting http://samehost removes only the HTTP entry (and the legacy).
-	deleted, err := DeleteExecCacheForServer(fs, "http://samehost")
-	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{httpKey, legacyKey}, deleted,
-		"http delete must remove the http entry and the legacy record")
-
-	_, _, err = fs.GetCachedCred(httpKey, testAnchor(t, dir))
-	require.ErrorIs(t, err, ErrNoToken, "http entry must be gone after http delete")
-
-	tok, _, err := fs.GetCachedCred(httpsKey, testAnchor(t, dir))
-	require.NoError(t, err)
-	assert.Equal(t, "tok-https", tok, "https entry must survive the http delete")
-
-	// (c) Deleting https://samehost now removes only the HTTPS entry.
-	deleted, err = DeleteExecCacheForServer(fs, "https://samehost")
-	require.NoError(t, err)
-	assert.Equal(t, []string{httpsKey}, deleted,
-		"https delete must remove only the https entry")
-
-	_, _, err = fs.GetCachedCred(httpsKey, testAnchor(t, dir))
-	assert.ErrorIs(t, err, ErrNoToken, "https entry must be gone after https delete")
+	// (d) A legacy host-only record matches either scheme's target.
+	assert.True(t, CacheRecordForServer("SAMEHOST:80", "http://samehost"))
+	assert.True(t, CacheRecordForServer("SAMEHOST:443", "https://samehost"))
+	assert.True(t, CacheRecordForServer("samehost", "http://samehost"))
+	assert.True(t, CacheRecordForServer("samehost", "https://samehost"))
 }
 
-// TestDeleteExecCacheForServerHTTPLegacyHostDeletes verifies that a legacy
-// cache record stored with an HTTP host:port spelling (HOST:80) is deleted when
-// the logout target is http://host. The delete must interpret the stored host
-// using the TARGET's scheme to strip its default port, not always https.
-func TestDeleteExecCacheForServerHTTPLegacyHostDeletes(t *testing.T) {
-	dir := t.TempDir()
-	fs := NewFileStore(dir)
-	legacyKey := CacheKey("kubeuser", "HOST:80", "c-1")
-	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:80", "c-1", testCacheBinding(dir)))
-
-	deleted, err := DeleteExecCacheForServer(fs, "http://host")
-	require.NoError(t, err)
-	assert.Equal(t, []string{legacyKey}, deleted, "HOST:80 record must delete for http://host target")
-
-	_, _, gerr := fs.GetCachedCred(legacyKey, testAnchor(t, dir))
-	assert.ErrorIs(t, gerr, ErrNoToken, "the HOST:80 cache entry must be gone")
-}
-
-// TestDeleteExecCacheForServerNormalizesLegacyHostSpelling asserts that a cache
-// record whose Server host was stored with a different-but-equivalent spelling
-// (uppercase, explicit default port) is still deleted on logout, since the
-// delete compares canonical hosts rather than raw bytes.
-func TestDeleteExecCacheForServerNormalizesLegacyHostSpelling(t *testing.T) {
-	dir := t.TempDir()
-	fs := NewFileStore(dir)
-	// Pre-seed a legacy-cased/ported record: Server field spelled "HOST:443".
-	legacyKey := CacheKey("kubeuser", "HOST:443", "c-1")
-	require.NoError(t, fs.SetCachedCred(legacyKey, "tok", time.Now().Add(time.Hour), "kubeuser", "HOST:443", "c-1", testCacheBinding(dir)))
-
-	deleted, err := DeleteExecCacheForServer(fs, "https://host")
-	require.NoError(t, err)
-	assert.Equal(t, []string{legacyKey}, deleted, "an equivalent host spelling must still delete the legacy record")
-
-	_, _, gerr := fs.GetCachedCred(legacyKey, testAnchor(t, dir))
-	assert.ErrorIs(t, gerr, ErrNoToken, "the legacy-cased cache entry must be gone")
+// TestCacheRecordForServerLegacyHostSpelling asserts that a record whose
+// server is a bare host, in any spelling that canonicalizes to the target's
+// host (case, the target scheme's default port), matches the target, and that
+// the default port of the other scheme does not.
+func TestCacheRecordForServerLegacyHostSpelling(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		recordServer string
+		serverURL    string
+		want         bool
+	}{
+		{name: "port 80 under an http target", recordServer: "HOST:80", serverURL: "http://host", want: true},
+		{name: "port 443 under an https target", recordServer: "HOST:443", serverURL: "https://host", want: true},
+		{name: "uppercase host", recordServer: "HOST", serverURL: "https://host", want: true},
+		{name: "port 80 under an https target", recordServer: "HOST:80", serverURL: "https://host", want: false},
+		{name: "port 443 under an http target", recordServer: "HOST:443", serverURL: "http://host", want: false},
+		{name: "another host", recordServer: "other:443", serverURL: "https://host", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, CacheRecordForServer(tc.recordServer, tc.serverURL))
+		})
+	}
 }
 
 func TestDeleteLoginTokenErasesThroughRecordedHelpers(t *testing.T) {

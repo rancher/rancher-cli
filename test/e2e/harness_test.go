@@ -69,7 +69,12 @@ var legacyScripts = map[string]bool{
 // scriptOptions adjusts a script's own facade options before the facade is
 // built, keyed the way legacyScripts is.
 var scriptOptions = map[string]func(*testrancher.Options){
-	"login-recovery":       func(o *testrancher.Options) { o.DropDerivedCreateResponseOnce = true },
+	"login-recovery": func(o *testrancher.Options) { o.DropDerivedCreateResponseOnce = true },
+	// A second local user, whose login over e2e-user's leaves a token of
+	// another owner on the entry.
+	"exec-token-reuse": func(o *testrancher.Options) {
+		o.Users = []testrancher.User{{Name: "e2e-user", Password: "e2e-pass", UserID: "user-e2e"}, {Name: "e2e-other", Password: "pw-other", UserID: "user-other"}}
+	},
 	"auth-login-providers": func(o *testrancher.Options) { o.ExtraProviders = []string{"githubProvider"} },
 	// One cluster per page, so the collection reader follows steve's
 	// continue token and validates the count across pages.
@@ -352,9 +357,10 @@ func checkExecTokenReuse(t testscript.T, f *testrancher.Facade) {
 			unmarked = append(unmarked, c)
 		}
 	}
-	// Two derived creates: the plugin login's D and the recovery login's D.
-	if len(derived) != 2 {
-		t.Fatal(fmt.Sprintf("expected two derived creates, got %d: %+v", len(derived), derived))
+	// Four derived creates: the plugin login's D, prod's two logins (as
+	// e2e-user, then e2e-other) and the recovery login's D.
+	if len(derived) != 4 {
+		t.Fatal(fmt.Sprintf("expected four derived creates, got %d: %+v", len(derived), derived))
 	}
 	if len(marked) != 1 || marked[0].Bearer == "" {
 		t.Fatal(fmt.Sprintf("expected one marked cluster create with the plugin login as bearer, got %+v", marked))

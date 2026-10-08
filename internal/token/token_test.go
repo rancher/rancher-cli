@@ -110,7 +110,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 		require.NoError(t, seedCache(t, dir, store, "acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 		res, err := cmd.Execute(t.Context(), tin{b: map[string]bool{"all": true}}, ui.Discard())
 		require.NoError(t, err)
-		assert.Equal(t, "all cached credentials deleted\n", res.Text)
+		assert.Equal(t, "deleted 1 cached credentials\ntokens with no server recorded:\n  not revoked cluster token with no name recorded (unproven)\n", res.Text)
 		_, _, gerr := store.GetCachedCred("acme/u/c", anchorFor(dir))
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
@@ -119,7 +119,7 @@ func TestDeleteTokenCommand(t *testing.T) {
 		require.NoError(t, seedCache(t, dir, store, "acme/u/c", "tok", time.Now().Add(time.Hour), "", "", ""))
 		res, err := cmd.Execute(t.Context(), tin{a: []string{"acme/u/c"}}, ui.Discard())
 		require.NoError(t, err)
-		assert.Equal(t, "cached credential acme/u/c deleted\n", res.Text)
+		assert.Equal(t, "cached credential acme/u/c deleted\ntokens with no server recorded:\n  not revoked cluster token with no name recorded (unproven)\n", res.Text)
 		_, _, gerr := store.GetCachedCred("acme/u/c", anchorFor(dir))
 		assert.ErrorIs(t, gerr, config.ErrNoToken)
 	})
@@ -2455,19 +2455,23 @@ func TestResolveConnIgnoreCurrentContextRequiresServer(t *testing.T) {
 	assert.ErrorContains(t, ce, "--server is required")
 }
 
-// errDeleteCacheStore wraps a CredStore but fails DeleteCachedCred with a
-// fixed error, for asserting delete-token's error classification pass-through.
+// errDeleteCacheStore wraps a CredStore but fails DeleteCachedCredsIfUnchanged
+// with a fixed error, for asserting delete-token's error classification
+// pass-through.
 type errDeleteCacheStore struct {
 	config.CredStore
 	delErr error
 }
 
-func (s *errDeleteCacheStore) DeleteCachedCred(string) error { return s.delErr }
+func (s *errDeleteCacheStore) DeleteCachedCredsIfUnchanged(map[string]string) ([]string, []string, error) {
+	return nil, nil, s.delErr
+}
 
 // TestDeleteTokenNamedPreservesLockTimeout asserts that
 // a named delete whose store delete times out on the
 // token-cache lock must surface LOCK_TIMEOUT (exit 8, retryable), matching
-// the --all path's pass-through, not the GENERIC catch-all.
+// the --all path's pass-through, not the GENERIC catch-all, and names the
+// command to run again.
 func TestDeleteTokenNamedPreservesLockTimeout(t *testing.T) {
 	dir := t.TempDir()
 	base := config.NewFileStore(dir)
@@ -2483,7 +2487,7 @@ func TestDeleteTokenNamedPreservesLockTimeout(t *testing.T) {
 	assert.True(t, ce.Retryable)
 	assert.Equal(t, 8, ce.ExitCode())
 	assert.Contains(t, ce.Message, `failed to delete "acme/u/c"`)
-	assert.Contains(t, ce.Message, "already deleted")
+	assert.Contains(t, ce.Message, "; run "+clierr.Rancher+" auth delete-token 'acme/u/c' again")
 }
 
 // TestCreateDerivedTokenSplits401And403 asserts the two rejections are

@@ -363,6 +363,7 @@ graph TD
     configcmd --> config
     configcmd --> outputstyle
     configcmd --> runtime
+    configcmd --> token
     register --> credhelper
     register --> httpx
     register --> provider
@@ -511,9 +512,12 @@ exclusive with `RawBytes`.
 
 **`CommandType: local` does not mean offline.** `auth status` and `auth get-token` are
 `local` (they own their own I/O rather than going through the cluster-client factory) yet
-both do network + auth. The manifest's per-command `network` and `auth` booleans are the
-authoritative "does this touch the network / need credentials" signal - not
-`commandType`.
+both do network + auth. The manifest's per-command `serverAccess` (`none`, `read`,
+`write`: the most the command may do on the server) and `auth` boolean are the
+authoritative "does this touch the server / need credentials" signal - not
+`commandType`. A mutating command is always `write`, a read-only one `read` (or `none`
+for `schema`), and a local one declares its own; the contract line shows it as
+`server=read` or `server=write`.
 
 ## Generic verbs & registration
 
@@ -750,25 +754,54 @@ reporting which backends were deleted. `logout --all` enumerates the directory's
 records as well as its configured servers, so an entry removed from `config.yaml` by hand
 is still logged out.
 
-Logout has two paths, not one, because they need different completeness/cost tradeoffs:
-- **Single-server** (`auth logout <name>`) calls `config.DeleteTokenEverywhere`, which wraps
-  `DeleteLoginToken` and additionally deletes every exec-credential cache entry whose
-  `Server` matches THAT server's host (reported as `deletedCache`). Deleting by HOST
-  rather than by config-entry name is deliberate fail-safe behavior, not an oversight: a
-  cache entry embeds the entry name only by kubeconfig naming convention (structurally
-  unreliable to match on), while over-deleting a neighbor account on the same host costs
-  it one silent re-auth on next use (the exec plugin re-creates transparently) -
-  under-deleting leaves a live credential behind after the user asked to log out.
-- **`--all`** calls `DeleteLoginToken` per configured server (never `DeleteTokenEverywhere` - a
-  per-server host-scoped cache delete, looped over every server, would cost
-  O(servers × cache entries) of the same file) and then `config.DeleteAllExecCache`
-  **once**, which wipes the whole cache file in one operation. This is not merely
-  cheaper: it is the only path that reaches an orphaned cache entry - a legacy bare
-  entry with no `Server` field, or one cached against a server since removed from
-  `config.yaml` - that no per-server, host-scoped delete could ever match. Both fixes
-  are required for the "no orphaned live tokens" guarantee to hold for `--all`; keep
-  both. `auth delete-token` remains available for clearing cache entries outside a
-  logout.
+`auth logout`, `auth logout --all`, `auth delete-token` and `config delete-server` run one
+local delete, `token.DeleteAndRecord`, and then revoke on the server the tokens among the
+deleted copies that the CLI created and recorded (`internal/token/revocation.go`,
+`revocationplan.go`). The order carries the guarantee that no live token is left without a
+record of it:
+
+1. Under the config lock, read each target's login token, but only a login the CLI created
+   and recorded; a pasted login is never read.
+2. One token-cache lock hold reads every cache record and covers one config write: the
+   cache binding advance and its pause, a superseded record (with its `server`) for every
+   token a revoke may need, and, for a logout, the entry's `tokenRef` cleared and
+   `loggedOutAt` stamped.
+3. The login tokens are deleted from every backend.
+4. A second cache-lock hold deletes each planned record that still holds the token the first
+   hold read; a record the exec plugin rewrote meanwhile stays.
+5. A login delete that failed restores, for each target whose login was not deleted, its
+   `tokenRef`, `loggedOutAt` and the superseded record written for its login, and the
+   logout skips its last write: the restored entries keep the cache pause for the exec
+   plugin's next miss. Otherwise the last config write resumes the pause
+   (`config delete-server` does so in its final span).
+6. The revokes run outside every lock, one at a time, under one 10 s budget, each sent to
+   the server a current entry names with that entry's CA and trust. A settle span follows,
+   under the config lock again: it reloads the config and removes each superseded record
+   whose token is confirmed gone or whose own bearer was refused, and stamps the others with
+   the attempt. It runs detached from Ctrl-C, so a cancelled command still settles the
+   revokes it finished.
+7. `config delete-server` ends with its own span, which removes the entry only while it
+   still carries `loggedOutAt`, since every login and URL change clears it.
+
+Every delete follows the write that records its token, so a process killed between steps
+loses a report, never a record. `config update-server --url` runs steps 2-5 without
+reading a login, sends nothing, and records the tokens left at the old server on the moved
+entry, naming that server, or on another entry that still names it.
+
+The cache scope narrowed with this: `auth logout <name>` deletes only the records its login
+made (`Config.InDeleteScope`: records naming that entry and records of removed entries),
+not every record at the same host: a record another entry still reads stays. `--all` still
+deletes the whole cache, which is the only path that reaches an orphaned record - a legacy bare record with no `Server`, or one cached against a server
+since removed from `config.yaml`. `auth delete-token` deletes the records its argument
+selects.
+
+**A Local command writes to the server only objects the CLI created for its own use and can
+prove it created.** The revoke entry points are called only from the files that may delete a
+token; `TestTokenRevokesOnlyFromTheFilesThatMayDeleteTokens`
+(`test/conformance/revokecallers_test.go`) scans the repository for any other caller. Proof
+is the entry's provenance, a `tokenRef` the CLI recorded when it created the token, and,
+for a revoke with a stored login, the owner both records name. A token with no such proof
+is reported as `unproven` and never sent.
 
 **Exec-credential cache.** `auth get-token` caches short-lived bearer tokens as records
 (`{Name, Server, Cluster, Token, Expiry}` plus the binding above) keyed
@@ -810,8 +843,9 @@ respective files via `flock` (released by the OS on process exit):
 - `<dir>/config.lock` - guards `config.yaml` and `credentials.yaml` writes; taken at
   command level via `config.WithLock`.
 - `<dir>/token-cache.lock` - guards every cache write: `SetCachedCred`,
-  `DeleteCachedCred`, `DeleteAllCachedCreds`, and the prune paths of
-  `GetCachedCred` and `ListCachedCreds`; taken by `withCacheLock`. Plain
+  `MarkCachedCredReady`, `DeleteCachedCredsIfUnchanged`, `DeleteAllCachedCreds`,
+  and the prune paths of `GetCachedCred` and `ListCachedCreds`, plus the local
+  delete's read hold (`HoldCachedCreds`); taken by `withCacheLock`. Plain
   reads stay lock-free. The credstore pin file (`credstore-pin`) has no
   lock of its own: only a login writes it, under the login's config lock,
   and every read takes no lock (see `pin.go`).
@@ -980,7 +1014,7 @@ reporting); both layers run the one safety pipeline. The RBAC binding kinds
 
 **Schema manifest as the discovery contract.** `rancher schema` emits a golden-tested
 manifest: per-command args/flags, `commandType`, `destructive`
-(`true`/`false`/`dependsOnInput`), `toolset` (`core` today), `network`, `auth`, `contract`,
+(`true`/`false`/`dependsOnInput`), `toolset` (`core` today), `serverAccess`, `auth`, `contract`,
 `stability`, and aliases, plus the global flags, error-code enum, and an `effectSchema`
 (the `Effect` field names and the closed `Action` enum) so agents can parse `--dry-run`
 output from the manifest alone. `contract` and `stability` are NOT serialized in Effect
@@ -1046,7 +1080,12 @@ files that must change together atomically - `config.yaml` and `credentials.yaml
 share `config.lock` because login/logout must keep the server registration and its
 credential in agreement, while the exec-credential cache and the helper records
 evolve independently and each get their own lock. Cancellation (Ctrl-C) covers
-lock acquisition end to end and the deletes' helper-records waits; the
+lock acquisition end to end and the deletes' helper-records waits, except two
+spans that run after a deleting command's revokes and do not honour the first
+signal: the span that records the revoke results, and `config delete-server`'s
+span that removes the entry. The first waits at most 15 s for the config lock,
+the second up to the 60 s config-lock wait, and a second signal ends the
+process; the
 store-interface paths reachable inside a locked span - credential-helper
 subprocess calls and cache-lock waits - remain bounded by their own timeouts but
 are not interruptible, because `CredStore` carries no context parameter.

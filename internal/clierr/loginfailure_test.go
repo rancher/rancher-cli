@@ -253,3 +253,25 @@ func TestPriorEntryTextShapes(t *testing.T) {
 	assert.Equal(t, "path /etc/ca.pem", (&PriorEntry{CA: "/etc/ca.pem"}).caShape())
 	assert.Equal(t, "inline PEM (8 bytes)", (&PriorEntry{CA: "-----BEG"}).caShape())
 }
+
+// TestSupersededRecordServerTravelsInTheFailureDetails asserts the
+// record's server in the failure details' JSON: present when the record
+// names one, absent otherwise.
+func TestSupersededRecordServerTravelsInTheFailureDetails(t *testing.T) {
+	t.Parallel()
+	prior := PriorEntry{URL: "https://new.ex", SupersededTokens: []SupersededToken{
+		{Ref: TokenRef{Kind: TokenKindExt, Name: "token-a"}, SupersededAt: "2026-10-06T00:00:00Z", Server: "https://old.ex"},
+		{Ref: TokenRef{Kind: TokenKindExt, Name: "token-b"}, SupersededAt: "2026-10-06T00:00:00Z"},
+	}}
+	raw, err := json.Marshal(ConfigRecovery{Entry: "prod", Prior: &prior, Command: "c"})
+	require.NoError(t, err)
+	var got struct {
+		Prior struct {
+			SupersededTokens []map[string]any `json:"supersededTokens"`
+		} `json:"prior"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &got))
+	require.Len(t, got.Prior.SupersededTokens, 2)
+	assert.Equal(t, "https://old.ex", got.Prior.SupersededTokens[0]["server"])
+	assert.NotContains(t, got.Prior.SupersededTokens[1], "server")
+}

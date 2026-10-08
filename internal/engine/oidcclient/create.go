@@ -65,7 +65,6 @@ func (createCmd) Describe() runtime.Descriptor {
 			"rancher create oidc-client my-app --redirect-uri https://example.invalid/callback --apply --yes",
 		},
 		Destructive:  "true",
-		Network:      true,
 		Auth:         true,
 		Capability:   capability(),
 		OutputPolicy: runtime.OnceOnlyOutputPolicy(),

@@ -25,11 +25,11 @@ func NewConfigAddServer(dir string) runtime.Command {
 
 func (configAddServerCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
-		Name:        "config add-server",
-		Usage:       "Add a Rancher server entry",
-		CommandType: runtime.Local,
-		Network:     true,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Name:         "config add-server",
+		Usage:        "Add a Rancher server entry",
+		CommandType:  runtime.Local,
+		ServerAccess: runtime.ServerAccessRead,
+		Args:         []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			{Name: "url", Type: "string", Required: true, Desc: "Rancher server `url` (scheme required)"},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM"},

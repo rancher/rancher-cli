@@ -179,53 +179,36 @@ func TestALoginThatEndsAfterItsChangeRecordLeavesWorkThatNeverStarted(t *testing
 // and the command's own delete, which reads the entry's identity record
 // and compares before it deletes, leaves the slot alone too.
 func TestACommandsOwnDeleteNeverDeletesByAStepsAccount(t *testing.T) {
-	for _, del := range []struct {
-		name string
-		run  func(t *testing.T, dir string)
-	}{
-		{name: "a logout's or a server change's delete", run: func(t *testing.T, dir string) {
-			t.Helper()
-			_, _, _, err := DeleteTokenEverywhere(t.Context(), dir, ServerRef{Name: "prod", URL: "https://r.ex"}, "file")
-			require.NoError(t, err)
-		}},
-		{name: "logout --all's delete", run: func(t *testing.T, dir string) {
-			t.Helper()
-			_, _, err := DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://r.ex"}, "file")
-			require.NoError(t, err)
-		}},
-	} {
-		t.Run(del.name, func(t *testing.T) {
-			keyring.MockInit()
-			dir := t.TempDir()
-			// prod's old copy was in the keychain, and its identity record
-			// still names that slot with the old copy's fingerprint.
-			seedKeychainCredential(t, dir, "prod", "prod-old")
-			rec, err := readIdentityRecord(dir, "prod")
-			require.NoError(t, err)
-			require.NotNil(t, rec)
-			vid := mustAccount(t)
-			id, err := newTransitionID()
-			require.NoError(t, err)
-			require.NoError(t, writeTransition(dir, transitionManifest{Version: transitionVersion, ID: id, Steps: []transitionStep{{
-				Kind: transitionDelete, Entry: "prod", Source: backendKeychain,
-				VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "prod-old"),
-				SourceAccountID: rec.ID,
-			}}}))
-			cfg := &Config{CredentialStore: "file", CredentialTransitionID: id, Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
-			cfg.SetPath(FilePath(dir))
-			require.NoError(t, cfg.Write())
-			// Another directory sharing this keychain has since put its
-			// own credential in that slot.
-			require.NoError(t, keyringSet(rec.Account(), "theirs"))
+	keyring.MockInit()
+	dir := t.TempDir()
+	// prod's old copy was in the keychain, and its identity record
+	// still names that slot with the old copy's fingerprint.
+	seedKeychainCredential(t, dir, "prod", "prod-old")
+	rec, err := readIdentityRecord(dir, "prod")
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	vid := mustAccount(t)
+	id, err := newTransitionID()
+	require.NoError(t, err)
+	require.NoError(t, writeTransition(dir, transitionManifest{Version: transitionVersion, ID: id, Steps: []transitionStep{{
+		Kind: transitionDelete, Entry: "prod", Source: backendKeychain,
+		VerificationID: vid, CredentialDigest: credentialFingerprint(vid, "prod-old"),
+		SourceAccountID: rec.ID,
+	}}}))
+	cfg := &Config{CredentialStore: "file", CredentialTransitionID: id, Servers: map[string]Server{"prod": {URL: "https://r.ex"}}}
+	cfg.SetPath(FilePath(dir))
+	require.NoError(t, cfg.Write())
+	// Another directory sharing this keychain has since put its
+	// own credential in that slot.
+	require.NoError(t, keyringSet(rec.Account(), "theirs"))
 
-			notices, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{})
-			require.NoError(t, err)
-			assert.Contains(t, strings.Join(notices, "\n"), "was replaced since the change started; it was left alone")
-			del.run(t, dir)
+	notices, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{})
+	require.NoError(t, err)
+	assert.Contains(t, strings.Join(notices, "\n"), "was replaced since the change started; it was left alone")
+	_, _, err = DeleteLoginToken(t.Context(), dir, ServerRef{Name: "prod", URL: "https://r.ex"}, "file")
+	require.NoError(t, err)
 
-			got, gerr := keyringGet(rec.Account())
-			require.NoError(t, gerr)
-			assert.Equal(t, "theirs", got, "the other directory's credential is still there")
-		})
-	}
+	got, gerr := keyringGet(rec.Account())
+	require.NoError(t, gerr)
+	assert.Equal(t, "theirs", got, "the other directory's credential is still there")
 }
