@@ -272,15 +272,7 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 
 	reading := false
 	var violations []string
-	orig := keyringUsable
-	keyringUsable = func() error {
-		if reading {
-			violations = append(violations, "a reader probed the keychain")
-		}
-		return probeAnswer(row.probe)
-	}
-	resetKeyringUsableCache()
-	t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
+	stubMatrixProbe(t, row.probe, &reading, &violations)
 
 	urls := map[string]string{"prod": "https://r.ex", "staging": "https://staging.ex"}
 	cfg := &Config{CredentialStore: row.declared, CurrentServer: "prod", Servers: map[string]Server{
@@ -296,18 +288,8 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 		require.NoError(t, WritePin(dir, row.pin))
 	}
 	seed := func(entry string, s matrixSeed) {
-		if s.store == "" {
-			return
-		}
-		ref := ServerRef{Name: entry, URL: urls[entry]}
-		switch s.store {
-		case backendFile:
-			require.NoError(t, NewFileStore(dir).SetToken(ref, s.token))
-		case backendKeychain:
-			seedKeychainCredential(t, dir, entry, s.token)
-		default:
-			name, _ := execHelperName(s.store)
-			require.NoError(t, newExecStore(name, dir).SetToken(ref, s.token))
+		if s.store != "" {
+			seedMatrixCopy(t, dir, entry, urls[entry], s.store, s.token)
 		}
 	}
 	seed("prod", row.prod)
@@ -322,17 +304,7 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 	read := func(entry string) (string, error) {
 		reading = true
 		defer func() { reading = false }()
-		resetKeyringUsableCache()
-		c, store, err := LoadAndStore(dir)
-		if err != nil {
-			return "", err
-		}
-		if _, ok := c.Servers[entry]; !ok {
-			// No command reads a credential for an entry config.yaml
-			// does not have.
-			return "", errMatrixNotConfigured
-		}
-		return store.GetToken(ServerRef{Name: entry, URL: c.Servers[entry].URL})
+		return readMatrixEntry(dir, entry)
 	}
 	if row.prodNew {
 		c, lerr := Load(FilePath(dir))
@@ -457,6 +429,59 @@ func runReaderMatrixRow(t *testing.T, row readerMatrixRow) {
 		_, err := read("staging")
 		require.ErrorIs(t, err, ErrNoToken, "an entry that was logged out still reads as not logged in")
 	}
+}
+
+// stubMatrixProbe makes the keychain probe answer usable or unusable, as
+// usable says, for the rest of the test, and records a violation for a
+// probe made while *reading is set: a process that only reads never
+// probes.
+func stubMatrixProbe(t *testing.T, usable bool, reading *bool, violations *[]string) {
+	t.Helper()
+	orig := keyringUsable
+	keyringUsable = func() error {
+		if *reading {
+			*violations = append(*violations, "a reader probed the keychain")
+		}
+		return probeAnswer(usable)
+	}
+	resetKeyringUsableCache()
+	t.Cleanup(func() { keyringUsable = orig; resetKeyringUsableCache() })
+}
+
+// seedMatrixCopy stores one entry's credential in one store the way a
+// login would have left it there, and returns the keychain account id of a
+// keychain copy.
+func seedMatrixCopy(t *testing.T, dir, entry, url, store, token string) (keychainID string) {
+	t.Helper()
+	ref := ServerRef{Name: entry, URL: url}
+	switch store {
+	case backendFile:
+		require.NoError(t, NewFileStore(dir).SetToken(ref, token))
+	case backendKeychain:
+		return seedKeychainCredential(t, dir, entry, token)
+	default:
+		name, _ := execHelperName(store)
+		require.NoError(t, newExecStore(name, dir).SetToken(ref, token))
+	}
+	return ""
+}
+
+// readMatrixEntry is what a process that takes no lock reads for entry:
+// config.yaml, the store it resolves to, and the entry's credential there.
+// The probe memo is cleared first, so a reader that probed would reach the
+// test's probe rather than an answer an earlier call left.
+func readMatrixEntry(dir, entry string) (string, error) {
+	resetKeyringUsableCache()
+	c, store, err := LoadAndStore(dir)
+	if err != nil {
+		return "", err
+	}
+	if _, ok := c.Servers[entry]; !ok {
+		// No command reads a credential for an entry config.yaml
+		// does not have.
+		return "", errMatrixNotConfigured
+	}
+	return store.GetToken(ServerRef{Name: entry, URL: c.Servers[entry].URL})
 }
 
 // matrixStored is what one store holds for an entry, read directly rather
