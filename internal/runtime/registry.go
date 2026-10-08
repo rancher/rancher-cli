@@ -13,9 +13,14 @@ import (
 
 // GlobalFlag documents a global flag in the schema manifest.
 type GlobalFlag struct {
-	Name      string   `json:"name"`
-	Type      string   `json:"type"`
-	Enum      []string `json:"enum,omitempty"`
+	Name string   `json:"name"`
+	Type string   `json:"type"`
+	Enum []string `json:"enum,omitempty"`
+	// AppliesTo names the commands the flag applies to: "all" is every
+	// command; "mutating" is the commands that change server resources;
+	// "server" is the commands that read or change server resources, and
+	// the flag is refused on local commands; "declared" is the commands
+	// that list the flag in their own flags.
 	AppliesTo string   `json:"appliesTo"`
 	Desc      string   `json:"desc,omitempty"`
 	Env       []string `json:"env,omitempty"`
@@ -99,7 +104,7 @@ func GlobalFlags() []GlobalFlag {
 		{Name: "-c/--config", Type: "string", AppliesTo: "all", Desc: "override the config directory", Env: []string{"RANCHER_CLI_CONFIG_DIR"}},
 		{Name: "--debug", Type: "bool", AppliesTo: "all", Desc: "accepted; currently no effect"},
 		{Name: "--project", Type: "string", AppliesTo: "declared", Desc: "the project, by id or display name, on the cluster --cluster names; only the commands that take --project accept it, every other command refuses it before sending a request"},
-		{Name: "--read-only", Type: "bool", AppliesTo: "mutating", Desc: "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)", Env: []string{"RANCHER_CLI_READONLY"}},
+		{Name: "--read-only", Type: "bool", AppliesTo: "server", Desc: "refuse mutating commands for this session; one-way, no override; applies to commands that read or change server resources and is refused on local commands (config readOnly and a non-empty RANCHER_CLI_READONLY are the session-wide forms and leave local commands usable)", Env: []string{"RANCHER_CLI_READONLY"}},
 	}
 }
 
@@ -123,7 +128,7 @@ func EnvVars() []EnvVar {
 		{Name: "RANCHER_CLI_TOKEN", Desc: "API token (id:secret) for non-interactive auth"},
 		{Name: "RANCHER_CLI_CACERT", Flag: "--cacert", Desc: "PEM CA bundle, a path or the literal PEM"},
 		{Name: "RANCHER_CLI_CREDENTIAL_STORE", Desc: "credential store backend: auto, keychain, or file"},
-		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, refuse commands that make changes"},
+		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, refuse mutating commands for the session; local commands stay usable"},
 		{Name: "NO_COLOR", Flag: "--color", Desc: "when non-empty, turn off styling under --color=auto"},
 		{Name: "CLICOLOR_FORCE", Flag: "--color", Desc: "when set to a value other than \"0\", turn on styling under --color=auto"},
 		{Name: "FORCE_COLOR", Flag: "--color", Desc: "same as CLICOLOR_FORCE; when both are set and disagree, whichever is not \"0\" wins"},

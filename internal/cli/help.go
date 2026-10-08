@@ -231,11 +231,14 @@ func leafFlags(cmd *ucli.Command) []ucli.Flag {
 	return flags
 }
 
-// leafGlobalFlags is a leaf's GLOBAL OPTIONS without --project: a command
-// that takes it lists it under OPTIONS, and every other command refuses it.
+// leafGlobalFlags is a leaf's GLOBAL OPTIONS without --project (a command
+// that takes it lists it under OPTIONS, and every other command refuses it)
+// and, for a Local command, without --read-only, which it refuses.
 func leafGlobalFlags(cmd *ucli.Command) []ucli.Flag {
+	local := commandIsLocal(cmd)
 	return slices.DeleteFunc(slices.Clone(cmd.VisiblePersistentFlags()), func(f ucli.Flag) bool {
-		return f.Names()[0] == runtime.FlagProject
+		name := f.Names()[0]
+		return name == runtime.FlagProject || (local && name == runtime.FlagReadOnly)
 	})
 }
 

@@ -162,6 +162,21 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 				d.Name, strings.Join(streams.ReadOnlySources, ", "))))
 	}
 
+	// A typed --read-only on a local command is refused: the flag governs
+	// commands that read or change server resources, and a local command
+	// that ignored it would break the flag's one-way promise. IsSet, not
+	// streams.ReadOnly, so a typed --read-only=false is refused too and the
+	// environment and config sources stay usable on local commands. The
+	// refusal carries no hint: dropping the flag from the line does not
+	// always leave a valid command.
+	if d.CommandType == Local && in.IsSet(FlagReadOnly) {
+		return 0, renderErr(streams, clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("%s is a local command and --read-only does not govern it; run it without --read-only "+
+				"and any value typed with it "+
+				"(RANCHER_CLI_READONLY or config readOnly is the session-wide form and leaves local commands usable)",
+				d.Name)))
+	}
+
 	if streams.DryRun && d.CommandType != Mutating {
 		return 0, renderErr(streams, clierr.New(clierr.CodeDryRunNotApplicable,
 			fmt.Sprintf("%s is a %s command; re-run without --dry-run", d.Name, d.CommandType)))

@@ -72,6 +72,10 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 					}
 					cand = formatCandidate(candidateToken(cand), desc)
 				}
+				if candidateToken(cand) == "--"+runtime.FlagReadOnly && commandIsLocal(c) {
+					// A Local command refuses the global flag.
+					continue
+				}
 				_, _ = fmt.Fprintln(w, cand)
 			}
 			return

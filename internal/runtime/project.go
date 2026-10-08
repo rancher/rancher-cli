@@ -11,10 +11,11 @@ import (
 )
 
 // FlagProject is the global --project flag; FlagCluster names the cluster
-// a project is resolved on.
+// a project is resolved on; FlagReadOnly is the global --read-only flag.
 const (
-	FlagProject = "project"
-	FlagCluster = "cluster"
+	FlagProject  = "project"
+	FlagCluster  = "cluster"
+	FlagReadOnly = "read-only"
 )
 
 // ProjectFlag is the entry a command lists in Descriptor.Flags to take the

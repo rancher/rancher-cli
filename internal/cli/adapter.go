@@ -36,7 +36,7 @@ func GlobalFlags() []ucli.Flag {
 		&ucli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "table|json|yaml|name|template=<tpl>"},
 		&ucli.StringFlag{Name: "color", Usage: "auto|always|never"},
 		&ucli.StringFlag{Name: "project", Usage: "the project, by id or display name (only commands that take --project)"},
-		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes this session (one-way)"},
+		&ucli.BoolFlag{Name: "read-only", Usage: "refuse commands that make changes this session (one-way); not accepted by local commands"},
 	}
 }
 
@@ -302,10 +302,22 @@ func primeMetadata(d runtime.Descriptor) map[string]any {
 // show it from here, with what it does for that command.
 const projectMetadataKey = "project"
 
+// localMetadataKey is the Metadata map key marking a Local command: the
+// help and flag-name completion of a command that refuses --read-only
+// leave it out.
+const localMetadataKey = "local"
+
 // leafMetadata is primeMetadata plus the command's --project description
-// when it takes --project; nil for an ordinary command that takes none.
+// when it takes --project and the Local marker for a Local command; nil
+// for an ordinary command that takes none.
 func leafMetadata(d runtime.Descriptor) map[string]any {
 	md := primeMetadata(d)
+	if d.CommandType == runtime.Local {
+		if md == nil {
+			md = map[string]any{}
+		}
+		md[localMetadataKey] = true
+	}
 	for _, f := range d.Flags {
 		if f.Name != runtime.FlagProject {
 			continue
@@ -323,6 +335,12 @@ func leafMetadata(d runtime.Descriptor) map[string]any {
 func commandProject(cmd *ucli.Command) (string, bool) {
 	desc, ok := cmd.Metadata[projectMetadataKey].(string)
 	return desc, ok
+}
+
+// commandIsLocal reports whether cmd is a Local command.
+func commandIsLocal(cmd *ucli.Command) bool {
+	v, _ := cmd.Metadata[localMetadataKey].(bool)
+	return v
 }
 
 // commandIsPrime reports whether cmd carries the Prime metadata flag.

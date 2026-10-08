@@ -1047,7 +1047,7 @@ per-invocation override exists:
 
 - Config: `readOnly: true` (top-level config field).
 - Env: `RANCHER_CLI_READONLY`.
-- Flag: `--read-only` (global).
+- Flag: `--read-only` (global); refused on local commands (see Scoping).
 
 > [!IMPORTANT]
 > `RANCHER_CLI_READONLY` follows non-empty-means-set - the literal string
@@ -1059,14 +1059,24 @@ Refusal is `VALIDATION`, naming the command and the active source(s) (e.g.
 which knob to turn off. `rancher schema -o json` reports the resolved state
 (`readOnly`, `readOnlySources`) so an agent can check before trying.
 
-Scoping, stated honestly: read-only mode refuses `Mutating` commands only -
-the CLI's managed-resource surface. `auth login`, `auth status`, and local
-`config` commands stay usable; otherwise a read-only session couldn't even
-establish itself.
+Scoping, stated honestly: read-only mode refuses `Mutating` commands - the
+CLI's managed-resource surface - and the typed flag is also refused on local
+commands (below). Under config or environment read-only mode, local commands
+(`auth login`, `auth status`, `config *`, `kubeconfig`, `skill *`,
+`completion`) stay usable; otherwise a read-only session couldn't even
+establish itself. A typed `--read-only` on a local command is refused with
+`VALIDATION` before the command does anything (`--read-only=false` included),
+with no hint: run the command without `--read-only` and any value typed with
+it. The environment variable and the config field are the only session-wide
+forms.
+An agent that types `--read-only` on every call loses `auth status`,
+`config *` and `kubeconfig`; set `RANCHER_CLI_READONLY` for the process
+instead.
 
-The CLI still revokes its own tokens in read-only mode: `auth logout`,
-`auth delete-token` and `config delete-server` delete the tokens the CLI
-created and recorded (see [Revoking the CLI's tokens](#revoking-the-clis-tokens)).
+Under config or environment read-only mode the CLI still revokes its own
+tokens: `auth logout`, `auth delete-token` and `config delete-server` delete
+the tokens the CLI created and recorded (see
+[Revoking the CLI's tokens](#revoking-the-clis-tokens)).
 
 > [!WARNING]
 > Read-only mode is a CLI-side courtesy layer, not a security boundary.
@@ -1171,17 +1181,19 @@ created and recorded:
 Every revoke runs after the local delete, outside the config lock, one at a
 time, under one 10 s budget. A request goes only to a server a current config
 entry names, with that entry's CA: a bearer is never sent anywhere else.
-Read-only mode does not stop these revokes. The command exits 0 when every
-local delete succeeds, whatever the server answered; a Ctrl-C or termination
-signal that stops the local delete, or leaves a token unreached, ends it
-with `INTERRUPTED` (exit 130), both lists in the error's details (`config
-delete-server` then leaves the entry for a rerun to remove, and when its
-login token was deleted the tokens recorded on it are `manual`). A signal
-during the wait for the first config lock stops the command before anything
-changes. A signal after the local delete that leaves no token unsent does
-not stop the command: it ends normally, and `config delete-server` still removes the
-entry - though if that last step then fails (a `CONFLICT`, say), the error
-is reported as `INTERRUPTED`, its message and details kept. A process killed after
+Read-only mode set by config or the environment does not stop these revokes
+(a typed `--read-only` is refused on these commands). The command exits 0
+when every local delete succeeds, whatever the server answered; a Ctrl-C or
+termination signal that stops the local delete, or leaves a token
+unreached, ends it with `INTERRUPTED` (exit 130), both lists in the error's
+details (`config delete-server` then leaves the entry for a rerun to
+remove, and when its login token was deleted the tokens recorded on it are
+`manual`). A signal during the wait for the first config lock stops the
+command before anything changes. A signal after the local delete that
+leaves no token unsent does not stop the command: it ends normally, and
+`config delete-server` still removes the entry - though if that last step
+then fails (a `CONFLICT`, say), the error is reported as `INTERRUPTED`, its
+message and details kept. A process killed after
 the local delete loses the report of the tokens it had neither revoked nor
 recorded; none of them were revoked.
 

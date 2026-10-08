@@ -780,7 +780,8 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 		Usage: "Delete cached exec-credential token(s)",
 		Desc: "Deletes the exec-credential cache records whose name or key is the argument, or every record with --all, " +
 			"then deletes on the server each cached token the exec plugin created and recorded, with the token itself " +
-			"as the bearer. Read-only mode does not stop those deletes. data.deleted lists the deleted keys; data.kept " +
+			"as the bearer. Read-only mode set by config or the environment does not stop those deletes. data.deleted " +
+			"lists the deleted keys; data.kept " +
 			"the keys the exec plugin rewrote meanwhile, left in place; data.revoked and data.notRevoked report each " +
 			"token as auth logout does. Exits 0 when every local delete succeeds, whatever the server answered, " +
 			"unless a Ctrl-C or termination signal left a token unreached: then INTERRUPTED (exit 130), with both " +

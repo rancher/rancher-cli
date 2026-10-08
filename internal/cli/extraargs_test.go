@@ -330,10 +330,10 @@ func TestBoolLookingArgumentsTheRuleLeavesAlone(t *testing.T) {
 	restoreRawArgv(t)
 	extraArgsEnv(t)
 	for name, argv := range map[string][]string{
-		"before the flags":                 {"auth", "delete-token", "true", "--read-only", "-o", "json"},
-		"after --":                         {"auth", "delete-token", "--read-only", "-o", "json", "--", "true"},
+		"before the flags":                 {"auth", "delete-token", "true", "--no-input", "-o", "json"},
+		"after --":                         {"auth", "delete-token", "--no-input", "-o", "json", "--", "true"},
 		"after a joined bool value":        {"auth", "delete-token", "--yes=true", "true", "-o", "json"},
-		"a value the flag does not accept": {"auth", "delete-token", "--read-only", "maybe", "-o", "json"},
+		"a value the flag does not accept": {"auth", "delete-token", "--no-input", "maybe", "-o", "json"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
@@ -400,8 +400,8 @@ func TestJoinedFormHintRunsVerbatim(t *testing.T) {
 		argv []string
 		help bool
 	}{
-		{argv: []string{"config", "path", "--read-only", "true", "-o", "json"}},
-		{argv: []string{"auth", "delete-token", "--read-only", "true", "prod", "-o", "json"}},
+		{argv: []string{"config", "path", "--no-input", "true", "-o", "json"}},
+		{argv: []string{"auth", "delete-token", "--no-input", "true", "prod", "-o", "json"}},
 		{argv: []string{"get", "pod", "--wait", "false", "mypod", "--cluster", "c 1", "--namespace", "n", "-o", "json"}},
 		{argv: []string{"get", "pod", "--wait", "true", "mypod", "--cluster", "c1", "--namespace", "n", "-o", "json"}},
 		{argv: []string{"get", "pod", "--wait", "true", "--cluster", "c1", "--namespace", "n", "-o", "json"}, help: true},

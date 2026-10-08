@@ -424,7 +424,8 @@ graph TD
 Every command runs through `runtime.Run`, which type-switches on the command interface.
 Before that switch, every command - read or mutating - passes through stages the switch
 never sees: `validateFormat` (closes the `-o` value set) → read-only refusal for
-`Mutating` commands → `--dry-run` applicability → the **`--project` check** →
+`Mutating` commands → typed `--read-only` refusal for `Local` commands →
+`--dry-run` applicability → the **`--project` check** →
 `validateInput` → the **capability stage** → the **project stage**.
 
 **`--project` check and project stage.** A command takes the global `--project` only

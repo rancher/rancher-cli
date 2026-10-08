@@ -317,7 +317,9 @@ type Config struct {
 	CredentialStore string            `json:"credentialStore,omitempty"`
 	// ReadOnly is one of the three OR'd sources (config/env/flag) that put a
 	// session into read-only mode - see runtime.IO.ReadOnly. One-way: there
-	// is no per-invocation override to turn this back off from here.
+	// is no per-invocation override to turn this back off from here. Unlike
+	// the --read-only flag, which local commands refuse, this source leaves
+	// local commands usable.
 	ReadOnly bool `json:"readOnly,omitempty"`
 	// TokenReuse lets auth get-token create and use one plugin-created login
 	// credential per server instead of a per-cluster interactive login.

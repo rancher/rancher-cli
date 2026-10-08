@@ -35,8 +35,9 @@ func (logoutCmd) Describe() runtime.Descriptor {
 		Usage: "Clear stored login credentials for a server",
 		Desc: "Deletes the server entry's stored login token in every backend and the exec-credential cache records " +
 			"made from its login, then deletes on the server the tokens among them the CLI created and recorded: " +
-			"the login token, its superseded tokens and the cached cluster tokens. Read-only mode does not stop " +
-			"those deletes. data.revoked lists the tokens the server confirmed deleted; data.notRevoked lists the " +
+			"the login token, its superseded tokens and the cached cluster tokens. Read-only mode set by config " +
+			"or the environment does not stop those deletes. data.revoked lists the tokens the server confirmed " +
+			"deleted; data.notRevoked lists the " +
 			"rest with a reason and a retry: nextLogin (the next login the CLI creates for the entry deletes it), " +
 			"manual (recovery holds the commands) or none (a pasted token, not the CLI's). Exits 0 when every " +
 			"local delete succeeds, whatever the server answered. A Ctrl-C or termination signal that stops the " +

@@ -29,5 +29,16 @@ exec rancher --config ro-config schema -o json
 jsonquery stdout data.readOnly true
 jsonquery stdout data.readOnlySources.0 'config readOnly'
 
+# a typed --read-only on a local command is refused before the command
+# does anything; the environment source leaves the same command usable
+! exec rancher --read-only config path
+stderr 'error \(VALIDATION\):'
+stderr 'config path is a local command'
+env RANCHER_CLI_READONLY=1
+exec rancher config path
+! exec rancher --read-only config path
+stderr 'config path is a local command'
+env RANCHER_CLI_READONLY=
+
 -- ro-config/config.yaml --
 readOnly: true

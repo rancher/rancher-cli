@@ -509,7 +509,7 @@ again. Each entry has a `reason` and a `retry`:
 (`rancher auth login <entry>`, or the kubectl sign-in); `manual` means run
 its `recovery` (or the reason's remedy, as `unproven` says: find the token
 with `rancher get tokens`); `none` is a pasted token, nothing to do. Revokes
-run in read-only mode too.
+run under config or environment read-only mode too.
 
 ### 9. Observability & support
 
@@ -739,12 +739,15 @@ rancher oidc-client rotate-secret my-app --apply --yes
 - **Read-only sessions:** `--read-only` (or config `readOnly: true` / a
   non-empty `RANCHER_CLI_READONLY` - including the literal `"false"`) refuses
   every mutating command before any network call, one-way with no
-  per-invocation override. `rancher schema -o json` reports
-  `readOnly`/`readOnlySources`. For real enforcement pair it with a Rancher
-  token bound to read-only RBAC - the CLI-side gate is a courtesy, not a
-  security boundary, and a read-only RBAC token can't `--dry-run` a mutation
-  either (dry-run still needs write verbs server-side), so read-only mode
-  refuses those outright too.
+  per-invocation override. A typed `--read-only` on a local command
+  (`auth status`, `config *`, `kubeconfig`, ...) is refused with
+  `VALIDATION`; for a session that keeps local commands usable, set
+  `RANCHER_CLI_READONLY` instead of typing the flag on every call.
+  `rancher schema -o json` reports `readOnly`/`readOnlySources`. For real
+  enforcement pair it with a Rancher token bound to read-only RBAC - the
+  CLI-side gate is a courtesy, not a security boundary, and a read-only RBAC
+  token can't `--dry-run` a mutation either (dry-run still needs write verbs
+  server-side), so read-only mode refuses those outright too.
 - **`config path` / `config status` / `config edit`:** `config path` prints the
   resolved config file path - point other tooling at it. `config status` adds
   the effective credential store and its source (env > config > auto default,

@@ -438,7 +438,7 @@
       ],
       "auth": false,
       "commandType": "local",
-      "desc": "Deletes the exec-credential cache records whose name or key is the argument, or every record with --all, then deletes on the server each cached token the exec plugin created and recorded, with the token itself as the bearer. Read-only mode does not stop those deletes. data.deleted lists the deleted keys; data.kept the keys the exec plugin rewrote meanwhile, left in place; data.revoked and data.notRevoked report each token as auth logout does. Exits 0 when every local delete succeeds, whatever the server answered, unless a Ctrl-C or termination signal left a token unreached: then INTERRUPTED (exit 130), with both lists in the error's details.",
+      "desc": "Deletes the exec-credential cache records whose name or key is the argument, or every record with --all, then deletes on the server each cached token the exec plugin created and recorded, with the token itself as the bearer. Read-only mode set by config or the environment does not stop those deletes. data.deleted lists the deleted keys; data.kept the keys the exec plugin rewrote meanwhile, left in place; data.revoked and data.notRevoked report each token as auth logout does. Exits 0 when every local delete succeeds, whatever the server answered, unless a Ctrl-C or termination signal left a token unreached: then INTERRUPTED (exit 130), with both lists in the error's details.",
       "examples": [
         "rancher auth delete-token --all",
         "rancher auth delete-token prod"
@@ -620,7 +620,7 @@
       ],
       "auth": false,
       "commandType": "local",
-      "desc": "Deletes the server entry's stored login token in every backend and the exec-credential cache records made from its login, then deletes on the server the tokens among them the CLI created and recorded: the login token, its superseded tokens and the cached cluster tokens. Read-only mode does not stop those deletes. data.revoked lists the tokens the server confirmed deleted; data.notRevoked lists the rest with a reason and a retry: nextLogin (the next login the CLI creates for the entry deletes it), manual (recovery holds the commands) or none (a pasted token, not the CLI's). Exits 0 when every local delete succeeds, whatever the server answered. A Ctrl-C or termination signal that stops the local delete, or leaves a token unreached, ends it with INTERRUPTED (exit 130), with both lists in the error's details; a signal after the local delete that leaves no token unsent does not stop it.",
+      "desc": "Deletes the server entry's stored login token in every backend and the exec-credential cache records made from its login, then deletes on the server the tokens among them the CLI created and recorded: the login token, its superseded tokens and the cached cluster tokens. Read-only mode set by config or the environment does not stop those deletes. data.revoked lists the tokens the server confirmed deleted; data.notRevoked lists the rest with a reason and a retry: nextLogin (the next login the CLI creates for the entry deletes it), manual (recovery holds the commands) or none (a pasted token, not the CLI's). Exits 0 when every local delete succeeds, whatever the server answered. A Ctrl-C or termination signal that stops the local delete, or leaves a token unreached, ends it with INTERRUPTED (exit 130), with both lists in the error's details; a signal after the local delete that leaves no token unsent does not stop it.",
       "examples": [
         "rancher auth logout",
         "rancher auth logout prod",
@@ -10371,7 +10371,7 @@
       "name": "RANCHER_CLI_CREDENTIAL_STORE"
     },
     {
-      "desc": "when non-empty, refuse commands that make changes",
+      "desc": "when non-empty, refuse mutating commands for the session; local commands stay usable",
       "flag": "--read-only",
       "name": "RANCHER_CLI_READONLY"
     },
@@ -10629,8 +10629,8 @@
       "type": "string"
     },
     {
-      "appliesTo": "mutating",
-      "desc": "refuse mutating commands for this session; one-way, no override (also: config readOnly, a non-empty RANCHER_CLI_READONLY)",
+      "appliesTo": "server",
+      "desc": "refuse mutating commands for this session; one-way, no override; applies to commands that read or change server resources and is refused on local commands (config readOnly and a non-empty RANCHER_CLI_READONLY are the session-wide forms and leave local commands usable)",
       "env": [
         "RANCHER_CLI_READONLY"
       ],
