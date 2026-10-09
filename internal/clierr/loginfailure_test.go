@@ -275,3 +275,15 @@ func TestSupersededRecordServerTravelsInTheFailureDetails(t *testing.T) {
 	assert.Equal(t, "https://old.ex", got.Prior.SupersededTokens[0]["server"])
 	assert.NotContains(t, got.Prior.SupersededTokens[1], "server")
 }
+
+// TestTokenFateExpiryIsNotRendered asserts a token's expiry, carried only
+// for the recovery text, never reaches the JSON of a failure's details.
+func TestTokenFateExpiryIsNotRendered(t *testing.T) {
+	t.Parallel()
+	raw, err := json.Marshal(TokenFate{Outcome: CreateKnown, Ref: &TokenRef{Kind: TokenKindV3, Name: "t"}, ExpiresAt: "2026-10-06T00:00:00Z"})
+	require.NoError(t, err)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	assert.NotContains(t, decoded, "expiresAt")
+	assert.NotContains(t, decoded, "ExpiresAt")
+}

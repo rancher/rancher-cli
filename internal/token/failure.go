@@ -70,14 +70,14 @@ func credentialRecoveryFor(st LoginStates, server string) *clierr.CredentialReco
 }
 
 // FateOf projects one token's evidence onto the schema.
-func FateOf(outcome clierr.CreateOutcome, kind clierr.TokenKind, ref *clierr.TokenRef, marked bool, createdAt string, cleanup clierr.RevokeOutcome, search *SAMLHandoff) *clierr.TokenFate {
+func FateOf(outcome clierr.CreateOutcome, kind clierr.TokenKind, ref *clierr.TokenRef, marked bool, createdAt, expiresAt string, cleanup clierr.RevokeOutcome, search *SAMLHandoff) *clierr.TokenFate {
 	if outcome == "" || outcome == clierr.CreateNotAttempted {
 		return nil
 	}
 	if ref != nil {
 		kind = ref.Kind
 	}
-	f := &clierr.TokenFate{Outcome: outcome, Kind: kind, Ref: ref, Marked: marked, CreatedAt: createdAt}
+	f := &clierr.TokenFate{Outcome: outcome, Kind: kind, Ref: ref, Marked: marked, CreatedAt: createdAt, ExpiresAt: expiresAt}
 	if cleanup.Result != "" {
 		c := cleanup
 		f.Cleanup = &c
@@ -130,10 +130,10 @@ func compose(primary *clierr.Error, d clierr.LoginFailureDetails) *clierr.Error 
 func tokenFatesFrom(cred LoginCredential, dClean clierr.RevokeOutcome) (session, derived *clierr.TokenFate) {
 	switch cred.Provenance {
 	case ProvenanceDerived:
-		session = FateOf(clierr.CreateKnown, "", sessionRefOf(cred), !cred.SessionTokenUnmarked, cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch)
-		derived = FateOf(clierr.CreateKnown, clierr.TokenKindExt, cred.Ref, true, cred.DerivedCreatedAt, dClean, nil)
+		session = FateOf(clierr.CreateKnown, "", sessionRefOf(cred), !cred.SessionTokenUnmarked, cred.SessionCreatedAt, cred.SessionExpiresAt, cred.SessionTokenCleanup, cred.SessionTokenSearch)
+		derived = FateOf(clierr.CreateKnown, clierr.TokenKindExt, cred.Ref, true, cred.DerivedCreatedAt, "", dClean, nil)
 	case ProvenanceLegacySession:
-		session = FateOf(clierr.CreateKnown, "", cred.Ref, !cred.SessionTokenUnmarked, cred.SessionCreatedAt, dClean, cred.SessionTokenSearch)
+		session = FateOf(clierr.CreateKnown, "", cred.Ref, !cred.SessionTokenUnmarked, cred.SessionCreatedAt, cred.ExpiresAt, dClean, cred.SessionTokenSearch)
 	}
 	return session, derived
 }
@@ -188,9 +188,9 @@ func FailAcquire(ae *AcquireError, server string) error {
 	ce, pf := primaryOf(ae.Err)
 	d := clierr.LoginFailureDetails{Primary: pf, Stage: clierr.StageAuthentication, OperationMarker: ae.Marker,
 		SessionToken: FateOf(ae.SessionTokenOutcome, ae.SessionTokenKind, ae.SessionTokenRef, !ae.SessionTokenUnmarked,
-			ae.SessionCreatedAt, ae.SessionTokenCleanup, ae.SessionTokenSearch),
+			ae.SessionCreatedAt, ae.SessionExpiresAt, ae.SessionTokenCleanup, ae.SessionTokenSearch),
 		DerivedToken: FateOf(ae.DerivedCreateOutcome, clierr.TokenKindExt, ae.DerivedTokenRef, true,
-			ae.DerivedCreatedAt, ae.DerivedTokenCleanup, nil),
+			ae.DerivedCreatedAt, "", ae.DerivedTokenCleanup, nil),
 	}
 	d.Recovery = recoveryText(d, server, false)
 	out := compose(ce, d)
@@ -219,6 +219,15 @@ func reLogin(server string) (text, hint string) {
 func ResidualRecovery(f clierr.TokenFate, server, marker string, persisted bool) (text, hint string) {
 	login, _ := reLogin(server)
 	switch {
+	case f.Ref != nil && f.Ref.Kind == clierr.TokenKindV3:
+		// The delete command is admin-only (Rancher grants a standard user no
+		// rule on management.cattle.io tokens), so it is not valid verbatim
+		// for every caller and no hint is offered.
+		remedy := v3AdminRemedy(*f.Ref, f.ExpiresAt)
+		if persisted {
+			return remedy, ""
+		}
+		return "no credential was stored; " + login + ". " + strings.ToUpper(remedy[:1]) + remedy[1:], ""
 	case f.Ref != nil:
 		_, revoke := clierr.RecoveryCommands(*f.Ref)
 		revoke = clierr.MarkRemedy(revoke)

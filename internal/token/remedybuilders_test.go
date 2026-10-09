@@ -119,7 +119,8 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		"ResidualRecovery": func() []string {
 			a, b := ResidualRecovery(clierr.TokenFate{Ref: ref}, name, "m", false)
 			c, d := ResidualRecovery(clierr.TokenFate{Marked: true}, name, "m", false)
-			return []string{a, b, c, d}
+			e, f := ResidualRecovery(clierr.TokenFate{Ref: &TokenRef{Kind: TokenKindV3, Name: "token-v3"}}, name, "m", false)
+			return []string{a, b, c, d, e, f}
 		},
 		"credentialRecoveryFor": func() []string {
 			st := LoginStates{Commit: &config.CommitOutcome{Backend: clierr.BackendKeyring, State: config.CommitPossiblyCommitted}}
@@ -161,6 +162,12 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		},
 		"v3Remedy": func() []string {
 			return []string{v3Remedy(TokenRef{Kind: TokenKindV3, Name: "token-v3"}, "2026-10-06T00:00:00Z")}
+		},
+		"v3AdminRemedy": func() []string {
+			return []string{v3AdminRemedy(TokenRef{Kind: TokenKindV3, Name: "token-v3"}, "2026-10-06T00:00:00Z")}
+		},
+		"v3AdminDelete": func() []string {
+			return []string{v3AdminDelete("it", TokenRef{Kind: TokenKindV3, Name: "token-v3"}, "")}
 		},
 		"pluginEntriesError": func() []string { return errText(pluginEntriesError(url, []string{name, name + "-2"}, cfg)) },
 		"reLogin":            func() []string { a, b := reLogin(name); return []string{a, b} },

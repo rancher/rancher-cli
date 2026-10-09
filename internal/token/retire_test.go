@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -293,4 +294,32 @@ func TestRetireNoRequestUnderTheConfigLockAndReloadsBeforeWriting(t *testing.T) 
 	cfg, _ := config.Load(config.FilePath(x.dir))
 	assert.Contains(t, cfg.Servers, "sentinel", "the record write reloads under the lock, never clobbers")
 	assert.Empty(t, cfg.Servers["e"].SupersededTokens)
+}
+
+// TestV3RemedyTexts asserts the two v3 delete texts: the superseded-token
+// and revocation warnings (the CLI never deletes v3 tokens: an
+// administrator's delete, or its expiry) and the residual text of a v3
+// token a login could not delete, which names the token and offers no hint.
+func TestV3RemedyTexts(t *testing.T) {
+	t.Parallel()
+	ref := TokenRef{Kind: TokenKindV3, Name: "token-v3"}
+	cmd := clierr.MarkRemedy("rancher delete management-token token-v3 --apply --yes --allow-deprecated")
+	assert.Equal(t, "the CLI never deletes v3 tokens; an administrator can delete it with: "+cmd+", or it expires at 2026-10-06T00:00:00Z",
+		v3Remedy(ref, "2026-10-06T00:00:00Z"))
+	assert.Equal(t, "the CLI never deletes v3 tokens; an administrator can delete it with: "+cmd+", or it expires", v3Remedy(ref, ""))
+	assert.Equal(t, "an administrator can delete v3/token-v3 with: "+cmd+", or it expires at 2026-10-06T00:00:00Z",
+		v3AdminRemedy(ref, "2026-10-06T00:00:00Z"))
+	assert.Equal(t, "an administrator can delete v3/token-v3 with: "+cmd+", or it expires", v3AdminRemedy(ref, ""))
+
+	fate := clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "token-v3"}, ExpiresAt: "2026-10-06T00:00:00Z"}
+	text, hint := ResidualRecovery(fate, "prod", "m", true)
+	assert.Equal(t, v3AdminRemedy(ref, fate.ExpiresAt), text)
+	assert.Empty(t, hint, "the administrator's delete is not valid verbatim for every caller")
+	text, hint = ResidualRecovery(fate, "prod", "m", false)
+	login, _ := reLogin("prod")
+	assert.Equal(t, "no credential was stored; "+login+". A"+strings.TrimPrefix(v3AdminRemedy(ref, fate.ExpiresAt), "a"), text)
+	assert.Empty(t, hint)
+	text, hint = ResidualRecovery(clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "t"}}, "prod", "m", true)
+	assert.Contains(t, text, "revoke ext/t with: ", "an ext token keeps its revoke command")
+	assert.NotEmpty(t, hint)
 }

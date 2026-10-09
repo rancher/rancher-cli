@@ -136,6 +136,12 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	rec := config.SupersededToken{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc"}}
 	texts["a superseded token that was kept"] = keptWarning(rec, "https://r.example.com", "the server refused")
 	text, hint := ResidualRecovery(clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "token-v3"}}, "prod", "m", true)
+	require.Empty(t, hint, "the administrator's delete is not valid verbatim for every caller")
+	texts["a v3 token left behind, stored"] = text
+	text, hint = ResidualRecovery(clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "token-v3"}}, "prod", "m", false)
+	require.Empty(t, hint)
+	texts["a v3 token left behind, not stored"] = text
+	text, hint = ResidualRecovery(clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-ext"}}, "prod", "m", true)
 	texts["a token left behind, stored"], texts["a token left behind, stored, hint"] = text, hint
 	text, _ = ResidualRecovery(clierr.TokenFate{Ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "t"}}, "prod", "m", false)
 	texts["a token left behind, not stored"] = text

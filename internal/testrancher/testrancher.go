@@ -31,6 +31,7 @@ import (
 const (
 	authProvidersPath = "/v1-public/authproviders"
 	loginPath         = "/v1-public/login"
+	logoutPath        = "/v1/logout"
 
 	// extTokensPath is the ext token collection behind the local-cluster
 	// proxy. It repeats production's token.ExtTokensPath as a literal
@@ -262,9 +263,15 @@ type Options struct {
 	// on the request context so the answer cannot race the cancellation.
 	DerivedCreateHook func(r *http.Request)
 
+	// ForcedSingleLogout makes POST /v1/logout answer 500 and delete nothing,
+	// as a provider set to forced single logout does. It applies before any
+	// delete mode.
+	ForcedSingleLogout bool
+
 	// SessionDeleteMode and DerivedDeleteMode fail the revoke of a located
 	// record by its role, on either route: "" answers normally, "gone"
-	// answers 404, "fail" answers 500.
+	// answers 404 (401 from logout), "fail" answers 500. "forbidden" (403)
+	// applies to DELETE only; logout ignores it.
 	SessionDeleteMode string
 	DerivedDeleteMode string
 	// ClusterDeleteMode is the same for a cluster-scoped ext token.
@@ -311,11 +318,17 @@ type AuthTokensRequest struct {
 	Path   string
 }
 
-// DeleteRecord is one recorded DELETE against either token store, dry-run
-// and refused attempts included, so a test can prove that the preview and
-// the execution of one delete carried the same precondition.
+// RouteLogout is the DeleteRecord route of a POST /v1/logout.
+const RouteLogout = "logout"
+
+// DeleteRecord is one recorded DELETE against either token store, or one
+// POST /v1/logout, dry-run and refused attempts included, so a test can
+// prove that the preview and the execution of one delete carried the same
+// precondition.
 type DeleteRecord struct {
-	Kind         string // "ext" or "v3"
+	Kind string // "ext" or "v3"; a logout is always "v3"
+	// Route is RouteLogout for a logout and empty for a DELETE.
+	Route        string
 	Name         string
 	Bearer       string
 	DryRun       bool   // the body's dryRun contained "All"
@@ -563,6 +576,8 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleAuthProviders(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == loginPath:
 		f.handleLogin(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == logoutPath:
+		f.handleLogout(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == extTokensPath:
 		f.handleTokensPOST(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == extTokensPath:
@@ -1202,10 +1217,66 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 	writeJSON(w, http.StatusOK, tokenCRBody(rec))
 }
 
+// handleLogout serves POST /v1/logout: it deletes the token the bearer
+// names and answers 401 for any bearer that authenticates no token. A
+// request carrying a query string is refused: the CLI sends none, and a
+// query such as ?all would log the account out at the identity provider.
+// The attempt is recorded before anything can reject it.
+func (f *Facade) handleLogout(w http.ResponseWriter, r *http.Request) {
+	bearer := bearerFromHeader(r)
+	name, _, _ := strings.Cut(bearer, ":")
+	f.mu.Lock()
+	f.deletes = append(f.deletes, DeleteRecord{Kind: "v3", Route: RouteLogout, Name: name, Bearer: bearer})
+	f.mu.Unlock()
+
+	if r.URL.RawQuery != "" {
+		http.Error(w, "query string refused", http.StatusBadRequest)
+		return
+	}
+	if f.opts.ForcedSingleLogout {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	f.mu.Lock()
+	var rec *record
+	for _, candidate := range f.tokens {
+		if candidate.bearer() == bearer && time.Now().Before(candidate.expiresAt) {
+			rec = candidate
+			break
+		}
+	}
+	f.mu.Unlock()
+	if rec == nil || rec.clusterName != "" {
+		// A cluster-scoped token authenticates only on its cluster's path,
+		// and logout has none.
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	switch f.deleteMode(rec) {
+	case "gone", "unauthorized":
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	case "fail":
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	case "hang":
+		<-r.Context().Done()
+		return
+	}
+
+	f.mu.Lock()
+	delete(f.tokens, rec.name)
+	f.mu.Unlock()
+	w.WriteHeader(http.StatusOK)
+}
+
 // SetDeleteMode makes DELETE of one token answer a fault mode: "gone"
 // (404), "fail" (500), "forbidden" (403), "unauthorized" (401), "hang"
-// (until the request ends). The name is the
-// one the create answered, so a caller faults the very token it holds
+// (until the request ends). Logout answers "gone" and "unauthorized" with
+// 401, "fail" with 500, hangs on "hang", and ignores "forbidden". The name
+// is the one the create answered, so a caller faults the very token it holds
 // instead of guessing what the facade numbered it.
 func (f *Facade) SetDeleteMode(name, mode string) {
 	f.mu.Lock()

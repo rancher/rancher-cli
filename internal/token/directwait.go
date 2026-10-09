@@ -261,7 +261,8 @@ func waitDirectReady(ctx context.Context, ec *execCluster, bearer string, bound 
 // freshToken is a cluster token this invocation just created, with the
 // capability to revoke it: the child of a stored or plugin-created login
 // is deleted with its parent bearer whatever the parent's provenance, the
-// interactive cluster-scoped login token revokes itself.
+// unscoped interactive login token deletes itself, and a cluster-scoped
+// one cannot (its delete is reported failed).
 type freshToken struct {
 	create  CreateResult
 	cleanup func(ctx context.Context) RevokeOutcome

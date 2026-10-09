@@ -612,10 +612,10 @@ func (l loginCmd) authenticateAndStore(
 	verified := !noVerify || viaProvider
 
 	// A session token this login created and could not revoke outlives the
-	// login that succeeded: it is listed with the command that clears it.
+	// login that succeeded: it is listed with how it ends.
 	if persisted && cred.SessionTokenCleanup.Result == clierr.ResultFailed && cred.SessionTokenCleanup.Ref != nil {
 		if f := token.FateOf(clierr.CreateKnown, "", cred.SessionTokenCleanup.Ref, !cred.SessionTokenUnmarked,
-			cred.SessionCreatedAt, cred.SessionTokenCleanup, cred.SessionTokenSearch); f != nil {
+			cred.SessionCreatedAt, cred.SessionExpiresAt, cred.SessionTokenCleanup, cred.SessionTokenSearch); f != nil {
 			text, _ := token.ResidualRecovery(*f, name, cred.Marker, true)
 			st.Warnings = append(st.Warnings, fmt.Sprintf("the transient session token %s created by this login could not be revoked (%s); %s",
 				f.Ref.String(), f.Cleanup.Error, text))

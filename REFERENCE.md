@@ -1144,6 +1144,21 @@ reports the outcome in the error's `details`:
   by listing the collection its `kind` names and revoked with the
   `recovery` command.
 
+Login deletes the transient session token with its own bearer through
+Rancher's logout endpoint (`POST /v1/logout`, which deletes the token its
+bearer names), and sends the delete through the Rancher proxy when logout
+does not answer 200 or 204. A standard user cannot delete a
+`management-token` through the proxy, so a session token neither request
+deleted (a provider set to forced single logout fails logout) stays valid
+until it expires. It is listed in `residualTokens` (on a failed login, in
+`sessionToken`) with its `cleanup.error` naming both answers, for example
+`logout 500; delete 403 Forbidden`. The text `an administrator can delete
+<ref> with: <command>, or it expires` (with ` at <time>` when the server
+reported the expiry) is in `warnings` on a successful login and in
+`details.recovery` on a failed one (there it starts `An administrator can
+delete`); it carries no command hint, because
+only an administrator can run the command.
+
 A leftover derived token is always a `token`. A leftover session token is
 whatever kind Rancher created it as: `management-token` (a deprecated
 kind: deleting it needs `--allow-deprecated`) or, on a Rancher that has

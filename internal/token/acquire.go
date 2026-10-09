@@ -35,6 +35,7 @@ type AcquireError struct {
 	SessionTokenSearch   *SAMLHandoff
 	SessionTokenCleanup  RevokeOutcome
 	SessionCreatedAt     string
+	SessionExpiresAt     string
 	DerivedCreateOutcome CreateOutcome
 	DerivedTokenRef      *TokenRef
 	DerivedTokenCleanup  RevokeOutcome
@@ -88,7 +89,7 @@ func (st *acquireState) finishAcquireError(primary error) *AcquireError {
 		Err: primary, Marker: marker,
 		SessionTokenOutcome: st.session.Create.Outcome, SessionTokenKind: st.session.Create.Kind, SessionTokenRef: st.session.Create.Ref,
 		SessionTokenUnmarked: !st.session.Create.Marked, SessionTokenSearch: st.session.Handoff,
-		SessionTokenCleanup: st.sClean, SessionCreatedAt: st.session.Create.CreatedAt,
+		SessionTokenCleanup: st.sClean, SessionCreatedAt: st.session.Create.CreatedAt, SessionExpiresAt: st.session.Create.ExpiresAt,
 		DerivedCreateOutcome: st.derived.Outcome, DerivedTokenRef: st.derived.Ref,
 		DerivedTokenCleanup: st.dClean, DerivedCreatedAt: st.derived.CreatedAt,
 	}
@@ -161,11 +162,13 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 		// One bounded context covers both cleanups, so a slow server costs
 		// at most one cleanup timeout before the failure is reported. D
 		// goes first, by name with S as the bearer, while S is still valid;
-		// then S itself. The two are sequential by necessity. The shared
-		// bound is a deliberate trade: a D delete that consumes most of it
-		// leaves S little time and S may go unrevoked, which the failure
-		// reports; two full bounds would double the worst-case wait of an
-		// interactive login against a server that is already failing.
+		// then S itself. The two are sequential by necessity, and a v3 S
+		// takes up to two requests (logout, then the DELETE), so the bound
+		// covers up to three requests. The shared bound is a deliberate
+		// trade: a D delete that consumes most of it leaves S little time
+		// and S may go unrevoked, which the failure reports; two full
+		// bounds would double the worst-case wait of an interactive login
+		// against a server that is already failing.
 		c, cancel := cleanupContext(ctx)
 		if dr.Outcome == CreateKnown && dr.Ref != nil {
 			st.dClean = revokeToken(c, client, st.base, *dr.Ref, s.Bearer)
@@ -176,13 +179,19 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 		return LoginCredential{}, st.finishAcquireError(err)
 	}
 	st.sOwned = false
+	// A v3 S is deleted with its own bearer, which logout requires and which
+	// is still valid here; an ext S is deleted with the derived token's.
+	sBearer := dr.Bearer
+	if s.Ref.Kind == TokenKindV3 {
+		sBearer = s.Bearer
+	}
 	c, cancel := cleanupContext(ctx)
-	sClean := revokeToken(c, client, st.base, *s.Ref, dr.Bearer)
+	sClean := revokeToken(c, client, st.base, *s.Ref, sBearer)
 	cancel()
 	return LoginCredential{Token: dr.Bearer, ExpiresAt: dr.ExpiresAt, Provenance: ProvenanceDerived, Marker: marker,
 		UserID: dr.UserID,
 		Ref:    dr.Ref, SessionTokenCleanup: sClean, SessionTokenUnmarked: !s.Marked, SessionTokenSearch: st.session.Handoff,
-		SessionCreatedAt: s.CreatedAt, DerivedCreatedAt: dr.CreatedAt,
+		SessionCreatedAt: s.CreatedAt, SessionExpiresAt: s.ExpiresAt, DerivedCreatedAt: dr.CreatedAt,
 		parent: ctx, client: client, base: st.base}, nil
 }
 

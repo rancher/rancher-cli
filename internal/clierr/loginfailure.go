@@ -200,6 +200,9 @@ type TokenFate struct {
 	CreatedAt string               `json:"createdAt,omitempty"`
 	Cleanup   *RevokeOutcome       `json:"cleanup,omitempty"`
 	Search    *UnmarkedTokenSearch `json:"search,omitempty"`
+	// ExpiresAt is when the token expires, when the create response said.
+	// It feeds the recovery text only and is never rendered.
+	ExpiresAt string `json:"-"`
 }
 
 // CredentialRecovery is the local half of recovery: which backend the

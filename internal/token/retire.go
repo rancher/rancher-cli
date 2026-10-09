@@ -145,12 +145,24 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 // v3Remedy says how a v3 token the CLI never deletes ends: an
 // administrator's delete, or its expiry.
 func v3Remedy(ref TokenRef, expiresAt string) string {
+	return "the CLI never deletes v3 tokens; " + v3AdminDelete("it", ref, expiresAt)
+}
+
+// v3AdminRemedy says how a v3 token ends when the CLI could not delete it:
+// an administrator's delete, or its expiry.
+func v3AdminRemedy(ref TokenRef, expiresAt string) string {
+	return v3AdminDelete(ref.String(), ref, expiresAt)
+}
+
+// v3AdminDelete renders the administrator's delete of ref, naming it as
+// subject, and the token's expiry when known.
+func v3AdminDelete(subject string, ref TokenRef, expiresAt string) string {
 	_, revoke := clierr.RecoveryCommands(ref)
 	expiry := "or it expires"
 	if expiresAt != "" {
 		expiry += " at " + expiresAt
 	}
-	return "the CLI never deletes v3 tokens; an administrator can delete it with: " + clierr.MarkRemedy(revoke) + ", " + expiry
+	return "an administrator can delete " + subject + " with: " + clierr.MarkRemedy(revoke) + ", " + expiry
 }
 
 // keptWarning names one unretired token, why, and the sequence that

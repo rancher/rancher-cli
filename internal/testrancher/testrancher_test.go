@@ -1158,3 +1158,110 @@ func TestSelfSubjectReviewNamesTheBearersOwner(t *testing.T) {
 		})
 	}
 }
+
+// TestFacadeLogoutDeletesTheBearersToken asserts POST /v1/logout deletes
+// the token the bearer names and records a v3 logout attempt; the same
+// bearer then authenticates nothing, and a bearer that never did gets 401.
+func TestFacadeLogoutDeletesTheBearersToken(t *testing.T) {
+	t.Parallel()
+	f, srv := newFacade(t, testrancher.Options{}, &recordingHandler{})
+	login := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+	bearer := login["token"].(string)
+	name := nameOfBearer(bearer)
+	assert.Equal(t, http.StatusOK, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer))
+	assert.False(t, f.ValidBearer(bearer))
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer))
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", "nobody:secret"))
+	recs := f.DeleteRequests()
+	require.Len(t, recs, 3)
+	assert.Equal(t, testrancher.DeleteRecord{Kind: "v3", Route: testrancher.RouteLogout, Name: name, Bearer: bearer}, recs[0])
+	assert.Equal(t, testrancher.DeleteRecord{Kind: "v3", Route: testrancher.RouteLogout, Name: "nobody", Bearer: "nobody:secret"}, recs[2])
+}
+
+// TestFacadeLogoutRefusesAQueryAndDeletesNothing asserts a logout request
+// carrying a query string is refused and the token stays.
+func TestFacadeLogoutRefusesAQueryAndDeletesNothing(t *testing.T) {
+	t.Parallel()
+	f, srv := newFacade(t, testrancher.Options{}, &recordingHandler{})
+	login := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+	bearer := login["token"].(string)
+	for _, query := range []string{"?all", "?action=logoutAll"} {
+		assert.Equal(t, http.StatusBadRequest, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout"+query, bearer))
+	}
+	assert.True(t, f.ValidBearer(bearer))
+}
+
+// TestFacadeLogoutFaultModes asserts how logout answers each delete mode
+// and the forced-single-logout option: "gone" and "unauthorized" answer 401,
+// "fail" 500, "forbidden" is ignored (logout succeeds), and forced single
+// logout answers 500 before any mode applies; only a success deletes.
+func TestFacadeLogoutFaultModes(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		opts       testrancher.Options
+		mode       string
+		wantStatus int
+		wantGone   bool
+	}{
+		{"normal", testrancher.Options{}, "", http.StatusOK, true},
+		{"gone", testrancher.Options{}, "gone", http.StatusUnauthorized, false},
+		{"unauthorized", testrancher.Options{}, "unauthorized", http.StatusUnauthorized, false},
+		{"fail", testrancher.Options{}, "fail", http.StatusInternalServerError, false},
+		{"forbidden is for DELETE only", testrancher.Options{}, "forbidden", http.StatusOK, true},
+		{"forced single logout", testrancher.Options{ForcedSingleLogout: true}, "", http.StatusInternalServerError, false},
+		{"forced single logout before a mode", testrancher.Options{ForcedSingleLogout: true}, "gone", http.StatusInternalServerError, false},
+		{"v3 delete forbidden for non-admin does not apply", testrancher.Options{V3DeleteForbiddenForNonAdmin: true}, "", http.StatusOK, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f, srv := newFacade(t, tc.opts, &recordingHandler{})
+			login := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+				map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+			bearer := login["token"].(string)
+			if tc.mode != "" {
+				f.SetDeleteMode(nameOfBearer(bearer), tc.mode)
+			}
+			assert.Equal(t, tc.wantStatus, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer))
+			assert.Equal(t, !tc.wantGone, f.ValidBearer(bearer))
+		})
+	}
+}
+
+// TestFacadeLogoutHangsUntilTheRequestEnds asserts the hang mode applies to
+// logout and the token survives.
+func TestFacadeLogoutHangsUntilTheRequestEnds(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		f := testrancher.New(testrancher.Options{})
+		srv := httptest.NewTestServer(t, f)
+		client := srv.Client()
+		login := postJSON(t, client, srv.URL+"/v1-public/login", "",
+			map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+		bearer := login["token"].(string)
+		f.SetDeleteMode(nameOfBearer(bearer), "hang")
+		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/v1/logout", nil)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		_, err := client.Do(req)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.True(t, f.ValidBearer(bearer))
+	})
+}
+
+// TestFacadeLogoutRefusesAClusterScopedToken asserts logout answers 401 for
+// a cluster-scoped v3 token, which authenticates only on its cluster's
+// path, and leaves the token in place.
+func TestFacadeLogoutRefusesAClusterScopedToken(t *testing.T) {
+	t.Parallel()
+	f, srv := newFacade(t, testrancher.Options{V3TokenCreate: true}, &recordingHandler{})
+	login := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})
+	scoped := postJSON(t, srv.Client(), srv.URL+"/v3/tokens", login["token"].(string), map[string]any{"type": "token", "clusterId": "c-test"})
+	bearer := scoped["token"].(string)
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer))
+	assert.True(t, f.ValidBearer(bearer))
+}

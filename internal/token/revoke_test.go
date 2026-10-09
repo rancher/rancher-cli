@@ -6,11 +6,15 @@ import (
 	"go/ast"
 	"go/parser"
 	gotoken "go/token"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -199,4 +203,213 @@ func TestRevokeOutcomeCarriesTheStatus(t *testing.T) {
 	out := revokeToken(t.Context(), srv.Client(), srv.URL, TokenRef{Kind: TokenKindExt, Name: "t"}, "ext/t:s")
 	assert.Equal(t, 0, out.Status)
 	assert.Equal(t, ResultFailed, out.Result)
+}
+
+// logoutRecorder is a server that records every request and answers a
+// logout and a DELETE with the given statuses.
+type logoutRecorder struct {
+	mu       sync.Mutex
+	requests []recordedRequest
+}
+
+type recordedRequest struct {
+	method, path, query, auth, body string
+}
+
+func (l *logoutRecorder) handler(logoutStatus, deleteStatus int) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		l.mu.Lock()
+		l.requests = append(l.requests, recordedRequest{r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Get("Authorization"), string(body)})
+		l.mu.Unlock()
+		if r.Method == http.MethodPost && r.URL.Path == LogoutPath {
+			w.WriteHeader(logoutStatus)
+			return
+		}
+		w.WriteHeader(deleteStatus)
+	})
+}
+
+func (l *logoutRecorder) seen() []recordedRequest {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.requests)
+}
+
+func (l *logoutRecorder) logouts() []recordedRequest {
+	return slices.DeleteFunc(l.seen(), func(r recordedRequest) bool { return r.path != LogoutPath })
+}
+
+func (l *logoutRecorder) deletes() []recordedRequest {
+	return slices.DeleteFunc(l.seen(), func(r recordedRequest) bool { return r.method != http.MethodDelete })
+}
+
+// TestRevokeTokenV3OwnBearerUsesLogout asserts a v3 token deleted with its
+// own bearer takes one POST to the logout endpoint with no query string,
+// no body and that bearer, and no DELETE when logout answers 200 or 204.
+func TestRevokeTokenV3OwnBearerUsesLogout(t *testing.T) {
+	t.Parallel()
+	for _, status := range []int{http.StatusOK, http.StatusNoContent} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			t.Parallel()
+			rec := &logoutRecorder{}
+			srv := httptest.NewServer(rec.handler(status, http.StatusForbidden))
+			defer srv.Close()
+			out := revokeToken(t.Context(), srv.Client(), srv.URL, TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-1:secret")
+			assert.Equal(t, ResultRevoked, out.Result)
+			assert.Equal(t, status, out.Status)
+			assert.Empty(t, out.Error)
+			got := rec.seen()
+			require.Len(t, got, 1, "no DELETE follows a logout that answered")
+			assert.Equal(t, recordedRequest{method: http.MethodPost, path: LogoutPath, auth: "Bearer token-1:secret"}, got[0], "no query string, no body")
+		})
+	}
+}
+
+// TestRevokeTokenNeverSendsLogoutWithAnotherBearer asserts logout, which
+// deletes the bearer's own token, is never sent unless the bearer names the
+// v3 token being deleted: another token's bearer, an ext bearer, a
+// malformed bearer, and a name that is no object name all take the DELETE
+// route only.
+func TestRevokeTokenNeverSendsLogoutWithAnotherBearer(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		ref    TokenRef
+		bearer string
+	}{
+		{"another v3 token", TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-2:secret"},
+		{"an ext bearer for a v3 ref", TokenRef{Kind: TokenKindV3, Name: "token-1"}, "ext/token-1:secret"},
+		{"no colon", TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-1"},
+		{"empty secret", TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-1:"},
+		{"two colons", TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-1:a:b"},
+		{"empty name", TokenRef{Kind: TokenKindV3, Name: "token-1"}, ":secret"},
+		{"empty bearer", TokenRef{Kind: TokenKindV3, Name: "token-1"}, ""},
+		{"a ref name that is no object name", TokenRef{Kind: TokenKindV3, Name: "Token_1"}, "Token_1:secret"},
+		{"an ext ref with a v3-shaped bearer", TokenRef{Kind: TokenKindExt, Name: "token-1"}, "token-1:secret"},
+		{"an ext ref with its own bearer", TokenRef{Kind: TokenKindExt, Name: "token-1"}, "ext/token-1:secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rec := &logoutRecorder{}
+			srv := httptest.NewServer(rec.handler(http.StatusOK, http.StatusOK))
+			defer srv.Close()
+			out := revokeToken(t.Context(), srv.Client(), srv.URL, tc.ref, tc.bearer)
+			assert.Equal(t, ResultRevoked, out.Result)
+			assert.Empty(t, rec.logouts(), "logout deletes the bearer's token, so it needs the target's own bearer")
+			require.Len(t, rec.deletes(), 1)
+			wantPath := V3TokensPath + "/" + tc.ref.Name
+			if tc.ref.Kind == TokenKindExt {
+				wantPath = ExtTokensPath + "/" + tc.ref.Name
+			}
+			assert.Equal(t, wantPath, rec.deletes()[0].path)
+			assert.Equal(t, strings.TrimSpace("Bearer "+tc.bearer), rec.deletes()[0].auth)
+		})
+	}
+}
+
+// TestRevokeTokenLogoutFallsBackToDelete asserts any logout answer other
+// than 200 or 204 is followed by exactly one DELETE with the same token and
+// bearer, whose answer decides the outcome, and that the error of a failed
+// outcome names both answers. Logout is never retried.
+func TestRevokeTokenLogoutFallsBackToDelete(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name                    string
+		logoutStatus, delStatus int
+		want                    RevokeResult
+		wantError               string
+	}{
+		{"logout 401, delete 200", http.StatusUnauthorized, http.StatusOK, ResultRevoked, ""},
+		{"logout 404, delete 204", http.StatusNotFound, http.StatusNoContent, ResultRevoked, ""},
+		{"logout 500, delete 404", http.StatusInternalServerError, http.StatusNotFound, ResultAlreadyGone, ""},
+		{"logout 500, delete 403", http.StatusInternalServerError, http.StatusForbidden, ResultFailed, "logout 500; delete 403 Forbidden"},
+		{"logout 401, delete 401", http.StatusUnauthorized, http.StatusUnauthorized, ResultFailed, "logout 401; delete 401 Unauthorized"},
+		{"logout 404, delete 500", http.StatusNotFound, http.StatusInternalServerError, ResultFailed, "logout 404; delete 500 Internal Server Error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rec := &logoutRecorder{}
+			srv := httptest.NewServer(rec.handler(tc.logoutStatus, tc.delStatus))
+			defer srv.Close()
+			out := revokeToken(t.Context(), srv.Client(), srv.URL, TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-1:secret")
+			assert.Equal(t, tc.want, out.Result)
+			assert.Equal(t, tc.delStatus, out.Status, "the DELETE's answer")
+			assert.Equal(t, tc.wantError, out.Error)
+			got := rec.seen()
+			require.Len(t, got, 2, "one logout, one DELETE, no retry")
+			assert.Equal(t, http.MethodPost, got[0].method)
+			assert.Equal(t, LogoutPath, got[0].path)
+			assert.Empty(t, got[0].query)
+			assert.Empty(t, got[0].body)
+			assert.Equal(t, http.MethodDelete, got[1].method)
+			assert.Equal(t, V3TokensPath+"/token-1", got[1].path)
+			assert.Equal(t, got[0].auth, got[1].auth, "the same bearer")
+		})
+	}
+}
+
+// TestRevokeTokenLogoutTransportErrorFallsBack asserts a logout that gets
+// no answer is followed by the DELETE, and that the error names the
+// transport error and the DELETE's answer.
+func TestRevokeTokenLogoutTransportErrorFallsBack(t *testing.T) {
+	t.Parallel()
+	var deletes atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == LogoutPath {
+			panic(http.ErrAbortHandler)
+		}
+		deletes.Add(1)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	out := revokeToken(t.Context(), srv.Client(), srv.URL, TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-1:secret")
+	assert.Equal(t, ResultFailed, out.Result)
+	assert.True(t, strings.HasPrefix(out.Error, "logout "), out.Error)
+	assert.Contains(t, out.Error, "; delete 403 Forbidden")
+	assert.Equal(t, int32(1), deletes.Load())
+}
+
+// TestRevokeTokenLogoutAnswerWithUnreadableBodyIsRevoked asserts a 200 from
+// logout is revoked even when its body cannot be read, with no DELETE.
+func TestRevokeTokenLogoutAnswerWithUnreadableBodyIsRevoked(t *testing.T) {
+	t.Parallel()
+	var deletes atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deletes.Add(1)
+		}
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer srv.Close()
+	out := revokeToken(t.Context(), srv.Client(), srv.URL, TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-1:secret")
+	assert.Equal(t, ResultRevoked, out.Result)
+	assert.Equal(t, http.StatusOK, out.Status)
+	assert.Empty(t, out.Error)
+	assert.Zero(t, deletes.Load())
+}
+
+// TestRevokeTokenLogoutAndFallbackShareOneBound asserts both requests run
+// on the caller's one context: a logout that never answers ends at the
+// context's deadline and the fallback has no time left.
+func TestRevokeTokenLogoutAndFallbackShareOneBound(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		var requests atomic.Int32
+		srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests.Add(1)
+			<-r.Context().Done()
+			panic(http.ErrAbortHandler)
+		}))
+		ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+		defer cancel()
+		start := time.Now()
+		out := revokeToken(ctx, srv.Client(), srv.URL, TokenRef{Kind: TokenKindV3, Name: "token-1"}, "token-1:secret")
+		assert.Equal(t, ResultFailed, out.Result)
+		assert.Equal(t, 150*time.Millisecond, time.Since(start))
+		assert.Equal(t, int32(1), requests.Load(), "the fallback could not send after the bound passed")
+		assert.Contains(t, out.Error, "; delete ")
+	})
 }

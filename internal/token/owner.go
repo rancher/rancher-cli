@@ -119,11 +119,14 @@ func revokedClause(subject string, ref *TokenRef, out RevokeOutcome) string {
 	case ref == nil:
 		return subject + " could not be identified, so it was not revoked"
 	}
-	_, revoke := clierr.RecoveryCommands(*ref)
 	cause := ""
 	if out.Error != "" {
 		cause = " (" + out.Error + ")"
 	}
+	if ref.Kind == TokenKindV3 {
+		return subject + " could not be revoked" + cause + "; " + v3AdminRemedy(*ref, "")
+	}
+	_, revoke := clierr.RecoveryCommands(*ref)
 	return subject + " could not be revoked" + cause + "; revoke it with: " + clierr.MarkRemedy(revoke)
 }
 

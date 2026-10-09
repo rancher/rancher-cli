@@ -197,11 +197,11 @@ func (x *ownerFixture) cached(name, userID string) bool {
 }
 
 // revoked counts the deletes of tokens created after the fixture's last
-// entry was written.
+// entry was written: DELETE requests and logout requests.
 func (x *ownerFixture) revoked() int {
 	n := 0
 	for _, r := range x.seen() {
-		if r.method == http.MethodDelete {
+		if r.method == http.MethodDelete || r.path == LogoutPath {
 			n++
 		}
 	}

@@ -11,6 +11,27 @@ import (
 	"github.com/rancher/rancher-cli/internal/token"
 )
 
+// v3TokenPath is the management.cattle.io/v3 Token collection path through
+// the local proxy, with the trailing slash a name is appended to.
+const v3TokenPath = token.V3TokensPath + "/"
+
+// loginPath is the public login endpoint.
+const loginPath = "/v1-public/login"
+
+// loginRules scrub the login body: its credential and expiry vary per
+// login; its id is a capture, so it records as the template; the keys are
+// the fact.
+var loginRules = []NormalizeRule{
+	{Path: "token", Replace: "<secret>"},
+	{Path: "expiresAt", Replace: "<ts>"},
+}
+
+// ownerLogin is the login request body of the local user ownerUserFixture
+// creates, for the given response type.
+func ownerLogin(responseType string) string {
+	return `{"type":"localProvider","username":"{ownername}","password":"{ownerpw}","responseType":"` + responseType + `"}`
+}
+
 // ownerProbes record the facts the exec plugin's owner check rests on:
 // every token create names its creator as the owner (an ext Token's
 // spec.userID, unscoped and scoped to a cluster; a v3 Token's userId,
@@ -25,10 +46,8 @@ import (
 // creates is deleted by the id it recorded.
 func ownerProbes() []Probe {
 	const (
-		whoBody     = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
-		v3Create    = "/v3/tokens"
-		v3TokenPath = token.V3TokensPath + "/"
-		loginPath   = "/v1-public/login"
+		whoBody  = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
+		v3Create = "/v3/tokens"
 	)
 	// A v3 Token as /v3/tokens answers it: the instance-chosen fields are
 	// scrubbed; userId, clusterId, the kind fields and the flags stay.
@@ -44,18 +63,9 @@ func ownerProbes() []Probe {
 		{Path: "actions", Replace: ""},
 		{Path: "annotations", Replace: ""},
 	}
-	// The login body: its credential and expiry vary per login; its id is
-	// a capture, so it records as the template; the keys are the fact.
-	loginRules := []NormalizeRule{
-		{Path: "token", Replace: "<secret>"},
-		{Path: "expiresAt", Replace: "<ts>"},
-	}
 	reviewRules := []NormalizeRule{
 		{Path: "status.userInfo.extra", Replace: "<extra>"},
 		{Path: "status.userInfo.groups", KeepPrefix: "system:"},
-	}
-	login := func(responseType string) string {
-		return `{"type":"localProvider","username":"{ownername}","password":"{ownerpw}","responseType":"` + responseType + `"}`
 	}
 	bearer := func(name string) map[string]string {
 		return map[string]string{"Authorization": "Bearer {" + name + "}"}
@@ -93,9 +103,9 @@ func ownerProbes() []Probe {
 			Name: "owner/login-body-names-no-owner", OracleOnly: true, SubstituteCaptures: true,
 			Setup: []Step{ownerUserFixture(false)},
 			Observations: []Observation{
-				{Name: "login-json", Request: RequestSpec{Method: http.MethodPost, Path: loginPath, Body: login("json"), Identity: IdentityNone},
+				{Name: "login-json", Request: RequestSpec{Method: http.MethodPost, Path: loginPath, Body: ownerLogin("json"), Identity: IdentityNone},
 					Captures: map[string]Capture{"jsonid": {Path: "id"}}},
-				{Name: "login-kubeconfig", Request: RequestSpec{Method: http.MethodPost, Path: loginPath, Body: login("kubeconfig"), Identity: IdentityNone},
+				{Name: "login-kubeconfig", Request: RequestSpec{Method: http.MethodPost, Path: loginPath, Body: ownerLogin("kubeconfig"), Identity: IdentityNone},
 					Captures: map[string]Capture{"kubeconfigid": {Path: "id"}}},
 			},
 			Normalize: loginRules,
@@ -136,7 +146,7 @@ func ownerProbes() []Probe {
 			Name: "owner-downstream/cluster-login-and-review", Downstream: true, SubstituteCaptures: true,
 			Setup: []Step{ownerUserFixture(true)},
 			Observations: []Observation{
-				{Name: "login-kubeconfig-cluster", Request: RequestSpec{Method: http.MethodPost, Path: loginPath, Body: login("kubeconfig_{downstream}"), Identity: IdentityNone},
+				{Name: "login-kubeconfig-cluster", Request: RequestSpec{Method: http.MethodPost, Path: loginPath, Body: ownerLogin("kubeconfig_{downstream}"), Identity: IdentityNone},
 					Captures: map[string]Capture{"loginid": {Path: "id"}, "loginbearer": {Path: "token"}}},
 				{Name: "review-downstream-with-the-login-token", Request: RequestSpec{Method: http.MethodPost, Path: downstreamWhoami, Body: whoBody, Identity: IdentityNone, Headers: bearer("loginbearer")}},
 			},

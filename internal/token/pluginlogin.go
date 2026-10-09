@@ -274,7 +274,7 @@ func clusterTokenFate(ctx context.Context, ct CreateResult, cred LoginCredential
 	if ct.Outcome == "" || ct.Outcome == CreateNotAttempted {
 		return nil
 	}
-	f := &clierr.TokenFate{Outcome: ct.Outcome, Kind: ct.Kind, Ref: ct.Ref, Marked: ct.Marked, CreatedAt: ct.CreatedAt}
+	f := &clierr.TokenFate{Outcome: ct.Outcome, Kind: ct.Kind, Ref: ct.Ref, Marked: ct.Marked, CreatedAt: ct.CreatedAt, ExpiresAt: ct.ExpiresAt}
 	if ct.Outcome == CreateKnown && ct.Ref != nil {
 		out := cred.RevokeCreated(ctx, *ct.Ref)
 		f.Cleanup = &out

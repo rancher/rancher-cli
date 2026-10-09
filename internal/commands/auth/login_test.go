@@ -1215,7 +1215,7 @@ func TestLoginSerializedUnderConfigLock(t *testing.T) {
 type extLoginFakeOpts struct {
 	sessionToken          string // the /v1-public/login response's "token" (S)
 	derivedCreateNotFound bool   // ext group absent: derived token create POST 404s
-	revokeStatus          int    // revoke DELETE response status (0 -> 200)
+	revokeStatus          int    // revoke response status of logout and DELETE (0 -> 200)
 	createBodyCh          chan []byte
 	revokedPathCh         chan string
 	createBlock           chan struct{} // if set, the derived token create handler blocks reading this until closed
@@ -1254,6 +1254,12 @@ func newExtLoginFake(t *testing.T, opts extLoginFakeOpts) *httptest.Server {
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"metadata":{"name":"derived-1"},"status":{"bearerToken":"ext/derived-1:secretvalue"}}`))
 
+		case r.URL.Path == token.LogoutPath && r.Method == http.MethodPost:
+			if opts.revokedPathCh != nil {
+				opts.revokedPathCh <- r.URL.Path
+			}
+			w.WriteHeader(opts.revokeStatus)
+
 		case (strings.HasPrefix(r.URL.Path, token.V3TokensPath+"/") || strings.HasPrefix(r.URL.Path, token.ExtTokensPath+"/")) && r.Method == http.MethodDelete:
 			if opts.revokedPathCh != nil {
 				opts.revokedPathCh <- r.URL.Path
@@ -1287,7 +1293,7 @@ func TestLoginProviderFlowCreatesAndStoresDerivedTokenRevokesSession(t *testing.
 
 	select {
 	case revokedPath := <-revokedPathCh:
-		assert.Equal(t, token.V3TokensPath+"/token-sess1", revokedPath, "S is v3-shaped, revoked via the v3 Token CRD path")
+		assert.Equal(t, token.LogoutPath, revokedPath, "S is v3-shaped and deleted through logout with its own bearer")
 	default:
 		t.Fatal("the transient session token was never revoked")
 	}
@@ -1856,12 +1862,12 @@ func TestLoginReadOnlyHelperRevokesDerivedToken(t *testing.T) {
 	}
 }
 
-// TestLoginSuccessWithFailedSessionCleanupWarns asserts the successful login
-// whose S revoke failed: the login succeeds, the warning names the v3 token
-// with the deprecated-kind delete command, and residualTokens carries it.
-func TestLoginSuccessWithFailedSessionCleanupWarns(t *testing.T) {
+// TestLoginSuccessDeletesTheSessionTokenThroughLogout asserts a login on the
+// success path deletes S with one logout request carrying S's own bearer,
+// so nothing is left over: no residual token and no warning.
+func TestLoginSuccessDeletesTheSessionTokenThroughLogout(t *testing.T) {
 	t.Parallel()
-	f := testrancher.New(testrancher.Options{SessionDeleteMode: "fail"})
+	f := testrancher.New(testrancher.Options{})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	dir, store := cmdtest.FilePolicyDir(t)
@@ -1870,19 +1876,61 @@ func TestLoginSuccessWithFailedSessionCleanupWarns(t *testing.T) {
 	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
 	res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
 	require.NoError(t, err)
-	joined := strings.Join(res.Warnings, "\n")
-	assert.Contains(t, joined, "rancher delete management-token ")
-	assert.Contains(t, joined, "--apply --yes --allow-deprecated")
-	residual := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
-	require.Len(t, residual, 1)
-	assert.Equal(t, clierr.TokenKindV3, residual[0].Ref.Kind, "the facade answers a json request with the Norman shape by default")
+	assert.Empty(t, res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate))
+	assert.Empty(t, res.Warnings)
+	recs := f.DeleteRequests()
+	require.Len(t, recs, 1)
+	assert.Equal(t, testrancher.RouteLogout, recs[0].Route)
+	assert.Equal(t, "v3", recs[0].Kind)
+	assert.True(t, strings.HasPrefix(recs[0].Bearer, recs[0].Name+":"), "S's own bearer")
+}
+
+// TestLoginSuccessWithFailedSessionCleanupWarns asserts a login whose S
+// delete failed (logout and the DELETE fallback both answered): the login
+// succeeds, the warning names the v3 token with the administrator's delete
+// and S's expiry, no command is offered as a hint, and residualTokens
+// carries it with both answers.
+func TestLoginSuccessWithFailedSessionCleanupWarns(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		opts      testrancher.Options
+		wantError string
+	}{
+		{"both requests fail", testrancher.Options{SessionDeleteMode: "fail"}, "logout 500; delete 500 Internal Server Error"},
+		{"forced single logout, standard user", testrancher.Options{ForcedSingleLogout: true, V3DeleteForbiddenForNonAdmin: true}, "logout 500; delete 403 Forbidden"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := testrancher.New(tc.opts)
+			srv := httptest.NewServer(f)
+			t.Cleanup(srv.Close)
+			dir, store := cmdtest.FilePolicyDir(t)
+			seedServer(t, dir, "prod", srv.URL, "", false)
+			in := cmdtest.Input{Str: map[string]string{"auth-provider": "localProvider"}, Pos: []string{"prod"}}
+			p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+			res, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+			require.NoError(t, err)
+			residual := res.Data.(map[string]any)["residualTokens"].([]clierr.TokenFate)
+			require.Len(t, residual, 1)
+			assert.Equal(t, clierr.TokenKindV3, residual[0].Ref.Kind, "the facade answers a json request with the Norman shape by default")
+			assert.Equal(t, tc.wantError, residual[0].Cleanup.Error)
+			require.NotEmpty(t, residual[0].ExpiresAt)
+			require.Len(t, res.Warnings, 1)
+			assert.Contains(t, res.Warnings[0], "the transient session token "+residual[0].Ref.String()+" created by this login could not be revoked ("+tc.wantError+"); ")
+			assert.Contains(t, res.Warnings[0], "an administrator can delete "+residual[0].Ref.String()+" with: "+clierr.MarkRemedy("rancher delete management-token "+residual[0].Ref.Name+" --apply --yes --allow-deprecated"))
+			assert.Contains(t, res.Warnings[0], ", or it expires at "+residual[0].ExpiresAt)
+			assert.NotContains(t, res.Warnings[0], "revoke "+residual[0].Ref.String()+" with:")
+		})
+	}
 }
 
 // TestLoginReadOnlyHelperRecoveryMatrix asserts finishUnsupportedStore's
 // aggregate rule across credential shapes. Every residual here has a known
 // name (S's name arrives with its bearer, D's with the derived token create response), so
-// the recovery is re-login followed by the exact kind-correct command, with
-// no hint because nothing was persisted; marker search and handoff facts
+// the recovery is re-login followed by the exact kind-correct command (an
+// ext token's revoke, a v3 token's administrator delete), with no hint
+// because nothing was persisted; marker search and handoff facts
 // are never rendered for a named token, though a SAML fate still carries
 // its search data. Not parallel: the SAML cases shrink the token package's
 // poll timing.
@@ -1960,6 +2008,8 @@ func TestLoginReadOnlyHelperRecoveryMatrix(t *testing.T) {
 				assert.Less(t, login, at, "re-login is ordered before the delete")
 				if r.Ref.Kind == clierr.TokenKindV3 {
 					assert.Contains(t, revoke, "--allow-deprecated")
+					assert.Contains(t, joined, "An administrator can delete "+r.Ref.String()+" with: ", "a v3 token is the administrator's to delete")
+					assert.NotContains(t, joined, "revoke "+r.Ref.String()+" with:")
 				}
 			}
 		})
@@ -2230,7 +2280,12 @@ func TestLoginCombinedWorstCaseCarriesFourDistinctErrors(t *testing.T) {
 	assert.Equal(t, "keychain locked", got["credentialRecovery"].(map[string]any)["compensationError"])
 	assert.Contains(t, got["derivedToken"].(map[string]any)["cleanup"].(map[string]any)["error"], "500")
 	assert.Contains(t, got["sessionToken"].(map[string]any)["cleanup"].(map[string]any)["error"], "500")
-	assert.Len(t, f.DeleteRequests(), 2, "S at acquire, D at commit failure")
+	recs := f.DeleteRequests()
+	require.Len(t, recs, 3, "S at acquire (logout, then the DELETE fallback), D at commit failure")
+	assert.Equal(t, testrancher.RouteLogout, recs[0].Route)
+	assert.Equal(t, recs[0].Name, recs[1].Name)
+	assert.Empty(t, recs[1].Route)
+	assert.Equal(t, "ext", recs[2].Kind)
 }
 
 // compensationFailingStore commits through the real store and replaces

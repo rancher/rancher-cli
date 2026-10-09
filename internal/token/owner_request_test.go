@@ -97,7 +97,8 @@ func TestRequestOwnerMapsEachAnswer(t *testing.T) {
 
 // TestRevokedClauseNamesTheFate asserts what a refused token's error says
 // became of it: revoked, already gone, or not revoked with the command
-// that revokes it by kind, or not identified at all.
+// that revokes it by kind (for a v3 token, the administrator's delete), or
+// not identified at all.
 func TestRevokedClauseNamesTheFate(t *testing.T) {
 	t.Parallel()
 	ext := &TokenRef{Kind: TokenKindExt, Name: "token-abc"}
@@ -113,7 +114,7 @@ func TestRevokedClauseNamesTheFate(t *testing.T) {
 		{"failed, ext", ext, RevokeOutcome{Result: ResultFailed, Error: "500 Internal Server Error"},
 			"the token could not be revoked (500 Internal Server Error); revoke it with: rancher delete token token-abc --apply --yes"},
 		{"failed, v3, no cause", v3, RevokeOutcome{Result: ResultFailed},
-			"the token could not be revoked; revoke it with: rancher delete management-token token-v3 --apply --yes --allow-deprecated"},
+			"the token could not be revoked; an administrator can delete v3/token-v3 with: rancher delete management-token token-v3 --apply --yes --allow-deprecated, or it expires"},
 		{"not identified", nil, RevokeOutcome{Result: ResultNotAttempted}, "the token could not be identified, so it was not revoked"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

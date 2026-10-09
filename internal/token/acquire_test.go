@@ -33,9 +33,9 @@ func acquireAgainst(t *testing.T, opts testrancher.Options) (*testrancher.Facade
 }
 
 // TestAcquireDerivedSuccess asserts the happy path: S is created as a json
-// login carrying the marker, D is created carrying the same marker, S is
-// revoked with D as the bearer, and the credential is derived with D's
-// resource name and S's cleanup outcome.
+// login carrying the marker, D is created carrying the same marker, a v3 S
+// is deleted through logout with S's own bearer (never D's), and the
+// credential is derived with D's resource name and S's cleanup outcome.
 func TestAcquireDerivedSuccess(t *testing.T) {
 	t.Parallel()
 	f, _, cred, err := acquireAgainst(t, testrancher.Options{})
@@ -49,10 +49,14 @@ func TestAcquireDerivedSuccess(t *testing.T) {
 	assert.Contains(t, descs[0], "[op:"+cred.Marker+"]")
 	assert.Contains(t, descs[1], "[op:"+cred.Marker+"]")
 	assert.Equal(t, ResultRevoked, cred.SessionTokenCleanup.Result)
+	assert.NotEmpty(t, cred.SessionExpiresAt, "S's expiry is kept for the recovery text")
 	recs := f.DeleteRequests()
 	require.Len(t, recs, 1)
 	assert.Equal(t, "v3", recs[0].Kind, "S is a v3 token on the json path: the facade answers json with the Norman shape")
-	assert.Equal(t, cred.Token, recs[0].Bearer, "S is revoked with D as the bearer")
+	assert.Equal(t, testrancher.RouteLogout, recs[0].Route)
+	assert.Equal(t, cred.SessionTokenCleanup.Ref.Name, recs[0].Name)
+	assert.True(t, strings.HasPrefix(recs[0].Bearer, recs[0].Name+":"), "S is deleted with its own bearer")
+	assert.NotEqual(t, cred.Token, recs[0].Bearer, "D's bearer never goes to logout")
 	assert.False(t, cred.SessionTokenUnmarked)
 	assert.NotEmpty(t, cred.SessionCreatedAt)
 	assert.NotEmpty(t, cred.DerivedCreatedAt)
@@ -71,7 +75,7 @@ func TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn(t *testing.T) {
 		opts        testrancher.Options
 		wantD       CreateOutcome
 		wantDClean  RevokeResult
-		wantDeletes int    // total DELETEs the facade saw
+		wantDeletes int    // total delete requests (logout and DELETE) the facade saw
 		sDeleteMode string // "", "gone", "fail"
 		wantS       RevokeResult
 	}{
@@ -80,8 +84,8 @@ func TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn(t *testing.T) {
 		{"create drop response", testrancher.Options{DropDerivedCreateResponse: true}, CreateUnknown, ResultNotAttempted, 1, "", ResultRevoked},
 		{"create malformed", testrancher.Options{MalformedDerivedCreateResponse: true}, CreateUnidentified, ResultNotAttempted, 1, "", ResultRevoked},
 		{"create known, unusable bearer", testrancher.Options{DerivedBearerOverride: "garbage"}, CreateKnown, ResultRevoked, 2, "", ResultRevoked},
-		{"create 500, S already gone", testrancher.Options{DerivedCreateStatus: 500}, CreateUnknown, ResultNotAttempted, 1, "gone", ResultAlreadyGone},
-		{"create 500, S delete fails", testrancher.Options{DerivedCreateStatus: 500}, CreateUnknown, ResultNotAttempted, 1, "fail", ResultFailed},
+		{"create 500, S already gone", testrancher.Options{DerivedCreateStatus: 500}, CreateUnknown, ResultNotAttempted, 2, "gone", ResultAlreadyGone},
+		{"create 500, S delete fails", testrancher.Options{DerivedCreateStatus: 500}, CreateUnknown, ResultNotAttempted, 2, "fail", ResultFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,6 +110,17 @@ func TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn(t *testing.T) {
 				assert.Equal(t, ae.DerivedTokenRef.Name, recs[0].Name, "D is deleted by name")
 				assert.True(t, strings.HasPrefix(recs[0].Bearer, ae.SessionTokenRef.Name+":"), "with S as the bearer, before S is revoked (S is gone from the store by now, so the bearer is checked by its name prefix)")
 				assert.Equal(t, "v3", recs[1].Kind)
+				assert.Equal(t, testrancher.RouteLogout, recs[1].Route)
+			}
+			if tc.sDeleteMode != "" {
+				logout, fallback := recs[len(recs)-2], recs[len(recs)-1]
+				assert.Equal(t, testrancher.RouteLogout, logout.Route, "logout first")
+				assert.Empty(t, fallback.Route, "the DELETE fallback follows")
+				assert.Equal(t, logout.Bearer, fallback.Bearer, "with the same bearer")
+			}
+			if tc.sDeleteMode == "fail" {
+				assert.Equal(t, "logout 500; delete 500 Internal Server Error", ae.SessionTokenCleanup.Error)
+				assert.NotEmpty(t, ae.SessionExpiresAt)
 			}
 		})
 	}
@@ -224,7 +239,7 @@ func TestAcquireErrorWithPrimaryKeepsEvidence(t *testing.T) {
 	assert.Equal(t, "x509", ae.Err.Error(), "the original is untouched")
 	// Every field is copied: a field added to the struct without being
 	// checked here fails the count.
-	assert.Equal(t, 13, reflect.TypeFor[AcquireError]().NumField(), "AcquireError field set: Err, Marker, SessionTokenOutcome, SessionTokenKind, SessionTokenRef, SessionTokenUnmarked, SessionTokenSearch, SessionTokenCleanup, SessionCreatedAt, DerivedCreateOutcome, DerivedTokenRef, DerivedTokenCleanup, DerivedCreatedAt")
+	assert.Equal(t, 14, reflect.TypeFor[AcquireError]().NumField(), "AcquireError field set: Err, Marker, SessionTokenOutcome, SessionTokenKind, SessionTokenRef, SessionTokenUnmarked, SessionTokenSearch, SessionTokenCleanup, SessionCreatedAt, SessionExpiresAt, DerivedCreateOutcome, DerivedTokenRef, DerivedTokenCleanup, DerivedCreatedAt")
 }
 
 // TestAcquireSessionCreateKindKnowledge asserts what the acquisition knows

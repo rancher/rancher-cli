@@ -64,12 +64,40 @@ func TestExpectedProbeSet(t *testing.T) {
 		"access/standard-cloud-credential-by-name",
 		"revoke/unscoped-ext-token-deletes-itself", "revoke/ext-token-deleted-by-another-token-of-its-user",
 		"revoke/standard-user-v3-self-delete-forbidden", "revoke-downstream/cluster-scoped-ext-token-deletes-itself",
+		"revoke/standard-user-v3-token-logout-deletes-itself", "revoke/standard-user-v3-logout-with-a-deleted-token",
+		"revoke-downstream/cluster-scoped-v3-token-logout-401", "revoke/standard-user-login-token-logout-deletes-itself",
 	}
 	var got []string
 	for _, p := range All() {
 		got = append(got, p.Name)
 	}
 	assert.ElementsMatch(t, want, got)
+}
+
+// TestLogoutObservationsCarryOnlyTheCapturedBearer asserts every
+// observation that posts to the logout endpoint, or deletes a v3 token
+// through the proxy, is sent with no identity and a captured bearer.
+// Logout deletes the token its bearer names, so any other identity would
+// delete that identity's own token: the oracle's admin, the run's standard
+// login. A v3 DELETE is checked too because one sent with another
+// identity would use that identity's bearer.
+func TestLogoutObservationsCarryOnlyTheCapturedBearer(t *testing.T) {
+	t.Parallel()
+	logouts := 0
+	for _, p := range All() {
+		for _, o := range p.Observations {
+			deletesV3 := o.Request.Method == http.MethodDelete && strings.HasPrefix(o.Request.Path, token.V3TokensPath)
+			if o.Request.Path != token.LogoutPath && !deletesV3 {
+				continue
+			}
+			if o.Request.Path == token.LogoutPath {
+				logouts++
+			}
+			assert.Equal(t, IdentityNone, o.Request.Identity, "%s/%s", p.Name, o.Name)
+			assert.Regexp(t, `^Bearer \{[a-z0-9]+\}$`, o.Request.Headers["Authorization"], "%s/%s", p.Name, o.Name)
+		}
+	}
+	assert.NotZero(t, logouts, "the logout probes exist")
 }
 
 func TestRBACDenialProbesAreOracleOnly(t *testing.T) {

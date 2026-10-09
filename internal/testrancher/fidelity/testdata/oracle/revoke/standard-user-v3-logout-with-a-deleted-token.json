@@ -1,0 +1,72 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "observations": [
+    {
+      "name": "whoami",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "authentication.k8s.io/v1",
+        "kind": "SelfSubjectReview",
+        "metadata": {
+          "creationTimestamp": "\u003cts\u003e"
+        },
+        "status": {
+          "userInfo": {
+            "extra": "\u003cextra\u003e",
+            "groups": [
+              "system:authenticated",
+              "system:cattle:authenticated"
+            ],
+            "username": "{userid}"
+          }
+        }
+      }
+    },
+    {
+      "name": "create-v3",
+      "status": 201,
+      "contentType": "application/json",
+      "body": {
+        "authProvider": "local",
+        "baseType": "token",
+        "clusterId": null,
+        "created": "\u003cts\u003e",
+        "createdTS": "\u003cts\u003e",
+        "creatorId": null,
+        "current": false,
+        "description": "e2e-fid-revoke",
+        "enabled": true,
+        "expired": false,
+        "expiresAt": "\u003cts\u003e",
+        "id": "{v3id}",
+        "isDerived": true,
+        "labels": {
+          "authn.management.cattle.io/token-userId": "{userid}"
+        },
+        "name": "{v3id}",
+        "token": "\u003csecret\u003e",
+        "ttl": 7776000000,
+        "type": "token",
+        "userId": "{userid}",
+        "userPrincipal": "map[displayName:e2e-fid-standard loginName:e2e-fid-standard me:true metadata:map[name:local://{userid}] principalType:user provider:local]",
+        "uuid": "\u003cuid\u003e"
+      }
+    },
+    {
+      "name": "logout-with-its-own-bearer",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "name": "second-logout-with-the-same-bearer",
+      "status": 401,
+      "contentType": "application/json",
+      "body": {
+        "message": "Unauthorized 401: must authenticate",
+        "status": "401",
+        "type": "error"
+      }
+    }
+  ]
+}

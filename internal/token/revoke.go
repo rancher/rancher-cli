@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
@@ -24,24 +25,53 @@ func cleanupContext(parent context.Context) (context.Context, context.CancelFunc
 	return context.WithTimeout(context.WithoutCancel(parent), cleanupTimeout)
 }
 
+// LogoutPath is Rancher's logout endpoint: POST deletes the token the
+// request's bearer names, never any other.
+const LogoutPath = "/v1/logout"
+
 // revokeToken deletes one token by kind and name with bearer as the
 // Authorization bearer. 404 is alreadyGone: the goal state holds.
+//
+// A v3 token whose own bearer this is goes through the logout endpoint
+// first. Logout deletes the bearer's token and nothing else, so the local
+// check must pass before any request: sending it with another token's
+// bearer would delete that token instead. Any logout answer other than
+// 200 or 204 (the cluster-scoped token is refused there, a provider set to
+// forced single logout fails it) is followed by the proxy DELETE with the
+// same ref and bearer, whose answer decides the outcome.
 func revokeToken(ctx context.Context, client *http.Client, base string, ref TokenRef, bearer string) RevokeOutcome {
 	out := RevokeOutcome{Ref: &ref}
+	logout := ""
+	if deletesWithOwnBearer(ref, bearer) {
+		status, err := postLogout(ctx, client, base, bearer)
+		if status == http.StatusOK || status == http.StatusNoContent {
+			out.Status, out.Result = status, ResultRevoked
+			return out
+		}
+		logout = strconv.Itoa(status)
+		if err != nil && status == 0 {
+			logout = err.Error()
+		}
+	}
+	fail := func(answer string) RevokeOutcome {
+		out.Result, out.Error = ResultFailed, answer
+		if logout != "" {
+			out.Error = "logout " + logout + "; delete " + answer
+		}
+		return out
+	}
 	path := base + V3TokensPath + "/" + ref.Name
 	if ref.Kind == TokenKindExt {
 		path = base + ExtTokensPath + "/" + ref.Name
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		out.Result, out.Error = ResultFailed, err.Error()
-		return out
+		return fail(err.Error())
 	}
 	req.Header.Set("Authorization", "Bearer "+bearer)
 	resp, _, err := httpx.Do(client, req)
 	if err != nil {
-		out.Result, out.Error = ResultFailed, err.Error()
-		return out
+		return fail(err.Error())
 	}
 	out.Status = resp.StatusCode
 	switch resp.StatusCode {
@@ -50,9 +80,33 @@ func revokeToken(ctx context.Context, client *http.Client, base string, ref Toke
 	case http.StatusNotFound:
 		out.Result = ResultAlreadyGone
 	default:
-		out.Result, out.Error = ResultFailed, fmt.Sprintf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+		return fail(fmt.Sprintf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
 	return out
+}
+
+// deletesWithOwnBearer reports whether bearer is the v3 token ref's own
+// bearer, the only case the logout endpoint may be used for.
+func deletesWithOwnBearer(ref TokenRef, bearer string) bool {
+	return ref.Kind == TokenKindV3 && v3NameRE.MatchString(ref.Name) && usableBearer(TokenKindV3, ref.Name, bearer)
+}
+
+// postLogout sends one logout request with bearer, no query string and no
+// body: a query asking for logout of every session would end the account's
+// sessions at the identity provider. It returns the status the server
+// answered, 0 when none arrived. A response whose body cannot be read still
+// carries its status.
+func postLogout(ctx context.Context, client *http.Client, base, bearer string) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+LogoutPath, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	resp, _, err := httpx.Do(client, req)
+	if resp != nil {
+		return resp.StatusCode, err
+	}
+	return 0, err
 }
 
 // LoginCredential is a token ready to be stored, with everything the
@@ -86,6 +140,9 @@ type LoginCredential struct {
 	// still report when each token was created.
 	SessionCreatedAt string
 	DerivedCreatedAt string
+	// SessionExpiresAt is when S expires, as the create response reported
+	// it; empty when it reported none.
+	SessionExpiresAt string
 
 	parent context.Context
 	client *http.Client
