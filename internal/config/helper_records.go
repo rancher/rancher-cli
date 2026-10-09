@@ -76,6 +76,30 @@ func (s *helperRecords) forServer(name string) []HelperRecord {
 	return out
 }
 
+// readHelperRecords loads the records file without taking the lock. A
+// directory with no file has no records. A corrupt file, or a record
+// naming an invalid helper, is an error: no record is acted on from a file
+// that cannot be trusted. Writes are atomic renames, so a lock-free read
+// sees a whole file.
+func readHelperRecords(dir string) (*helperRecords, error) {
+	st := &helperRecords{}
+	b, rerr := readFile(filepath.Join(dir, helperRecordsFileName))
+	switch {
+	case rerr == nil:
+		if uerr := yaml.Unmarshal(b, st); uerr != nil {
+			return nil, fmt.Errorf("credential-helper records file %s is corrupt: %w", helperRecordsFileName, uerr)
+		}
+	case !os.IsNotExist(rerr):
+		return nil, rerr
+	}
+	for _, e := range st.Entries {
+		if !credhelper.ValidHelperName(e.Helper) {
+			return nil, fmt.Errorf("credential-helper records file names invalid helper %q; refusing to execute it", e.Helper)
+		}
+	}
+	return st, nil
+}
+
 // withHelperRecordsLock serializes a whole operation on the helper-records file
 // across processes: flock (LockFileEx on Windows; released by the OS on
 // process death) with a bounded wait, load, run fn - which may also invoke
@@ -103,20 +127,9 @@ func withHelperRecordsLock(ctx context.Context, dir string, fn func(*helperRecor
 	}
 	defer release()
 
-	st := &helperRecords{}
-	b, rerr := readFile(filepath.Join(dir, helperRecordsFileName))
-	switch {
-	case rerr == nil:
-		if uerr := yaml.Unmarshal(b, st); uerr != nil {
-			return fmt.Errorf("credential-helper records file %s is corrupt: %w", helperRecordsFileName, uerr)
-		}
-	case !os.IsNotExist(rerr):
-		return rerr
-	}
-	for _, e := range st.Entries {
-		if !credhelper.ValidHelperName(e.Helper) {
-			return fmt.Errorf("credential-helper records file names invalid helper %q; refusing to execute it", e.Helper)
-		}
+	st, lerr := readHelperRecords(dir)
+	if lerr != nil {
+		return lerr
 	}
 
 	// Run fn, then persist dirty mutations EVEN WHEN fn errored: a delete that

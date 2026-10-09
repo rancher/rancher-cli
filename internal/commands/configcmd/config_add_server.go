@@ -58,7 +58,7 @@ func (c configAddServerCmd) Execute(ctx context.Context, in runtime.Input, _ run
 		return runtime.Result{}, err
 	}
 
-	out, err := register.CommitCreateUnderLock(ctx, c.dir, name, "", probe)
+	out, err := register.CommitCreateUnderLock(ctx, c.dir, name, probe)
 	if err != nil {
 		return runtime.Result{}, err
 	}

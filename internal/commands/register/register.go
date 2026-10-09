@@ -285,13 +285,12 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 // ordering) can't drift between the two callers.
 //
 // Before a new name's entry is written, any credential left under that
-// name is removed (config.RemoveOrphanCredentials), in the same lock, and
-// each removal comes back in Notices - on an error too, carried on it.
-// Left beside the new entry it would count as the entry's credential.
-// loginPolicy is the credential-store policy a login resolved, empty for
-// add-server; a helper it names, or one the directory's readers ask, is
-// covered too.
-func CommitCreateUnderLock(ctx context.Context, dir, name, loginPolicy string, probe Probe) (CreateOutcome, error) {
+// name is removed (config.RemoveOrphanCredentials), in the same lock, from
+// the keychain, the file store and every credential helper the directory's
+// helper records name for it, and each removal comes back in Notices - on
+// an error too, carried on it. Left beside the new entry it would count as
+// the entry's credential.
+func CommitCreateUnderLock(ctx context.Context, dir, name string, probe Probe) (CreateOutcome, error) {
 	var out CreateOutcome
 	err := config.WithLock(ctx, dir, func() error {
 		cfg, err := config.Load(config.FilePath(dir))
@@ -300,7 +299,7 @@ func CommitCreateUnderLock(ctx context.Context, dir, name, loginPolicy string, p
 		}
 		var notices []string
 		out, err = commitCreateWith(cfg, name, probe, func() error {
-			ns, rerr := config.RemoveOrphanCredentials(ctx, dir, cfg, name, config.OrphanHelpers(cfg, loginPolicy))
+			ns, rerr := config.RemoveOrphanCredentials(ctx, dir, cfg, name)
 			notices = ns
 			return rerr
 		})

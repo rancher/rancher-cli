@@ -371,10 +371,7 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		return runtime.Result{}, err
 	}
 
-	// The policy was checked on the way in; it names the helper, if any,
-	// whose orphan under the new name the registration also removes.
-	policy, _, _ := config.LoginPolicy(in.String("credential-store"), cfg0.CredentialStore)
-	out, err := register.CommitCreateUnderLock(ctx, l.dir, name, policy, probe)
+	out, err := register.CommitCreateUnderLock(ctx, l.dir, name, probe)
 	if err != nil {
 		return runtime.Result{}, err
 	}

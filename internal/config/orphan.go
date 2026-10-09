@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
 
+	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/zalando/go-keyring"
 )
@@ -23,34 +27,35 @@ import (
 // RemoveOrphanCredentials removes the credentials stored under name when
 // config.yaml has no entry of that name, and returns one notice per
 // removal. It removes nothing when the entry exists. It covers the
-// keychain, the file store, and each credential helper in helpers - the
-// ones this directory's readers ask and the one the login commits to
-// (OrphanHelpers) - where that helper's records name the orphan: a helper
-// is asked directly, never through its records, so its orphan would be
-// served. A helper no reader asks is left to `auth logout --all`'s sweep.
-// A helper that cannot erase it, or a keychain that cannot be reached,
-// refuses with the error; the caller then writes nothing. The caller holds
-// the config lock and writes the entry after this returns.
-func RemoveOrphanCredentials(ctx context.Context, dir string, cfg *Config, name string, helpers []string) ([]string, error) {
+// keychain, the file store, and every credential helper this directory's
+// helper records name for that entry name - whichever helper the
+// creating process uses, and whether or not the directory declares a
+// store. A helper is asked directly, never through its records, and a
+// reader's credential store variable can name any helper, so a credential
+// left in a recorded helper would be served to a reader of the new entry.
+// A helper that cannot erase it (not on PATH, or failing), or a keychain
+// that cannot be reached, refuses with the error; erasures that finished
+// before it stay done, and the caller then writes nothing more. The caller
+// holds the config lock and writes the entry after this returns.
+func RemoveOrphanCredentials(ctx context.Context, dir string, cfg *Config, name string) ([]string, error) {
 	if _, ok := cfg.Servers[name]; ok {
 		return nil, nil
 	}
 	var notices []string
-	for _, h := range helpers {
-		helper, ok := execHelperName(h)
-		if !ok {
-			continue
-		}
+	// Every helper record is written under the config lock the caller
+	// holds, so a directory without a records file has none to erase and
+	// needs neither the records lock nor a lock file.
+	if _, serr := os.Stat(filepath.Join(dir, helperRecordsFileName)); !errors.Is(serr, fs.ErrNotExist) {
 		if err := withHelperRecordsLock(ctx, dir, func(st *helperRecords) error {
 			for _, e := range st.forServer(name) {
-				if e.Helper != helper {
-					continue
+				if err := checkRecordedHelperOnPath(dir, name, e.Helper); err != nil {
+					return err
 				}
 				if _, eerr := eraseHelperCredential(dir, e); eerr != nil {
-					return orphanHelperError(name, helper, eerr)
+					return orphanHelperError(dir, name, e.Helper, eerr)
 				}
 				st.remove(e)
-				notices = append(notices, orphanRemovedNotice(name, "the credential helper "+helper))
+				notices = append(notices, orphanRemovedNotice(name, "the credential helper "+e.Helper))
 			}
 			return nil
 		}); err != nil {
@@ -88,13 +93,25 @@ func RemoveOrphanCredentials(ctx context.Context, dir string, cfg *Config, name 
 	return notices, nil
 }
 
-// CheckOrphanCredentials is RemoveOrphanCredentials' refusal alone, for the
-// check before the sign-in: an orphan under name in a keychain this
-// process cannot reach refuses the login, since the removal under the lock
-// would. It reads the orphan's slot and writes nothing.
+// CheckOrphanCredentials is RemoveOrphanCredentials' refusals alone, for the
+// check before the sign-in: a helper this directory's records name for
+// name that is not on PATH, or an orphan in a keychain this process cannot
+// reach, refuses the login, since the removal under the lock would. It
+// reads the helper records without the lock, creating no directory and no
+// lock file, and the orphan's keychain slot, and writes nothing. A helper
+// that is on PATH but fails to erase is found only by the removal itself.
 func CheckOrphanCredentials(dir string, cfg *Config, name string) error {
 	if _, ok := cfg.Servers[name]; ok {
 		return nil
+	}
+	st, err := readHelperRecords(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range st.forServer(name) {
+		if err := checkRecordedHelperOnPath(dir, name, e.Helper); err != nil {
+			return err
+		}
 	}
 	rec, err := readIdentityRecord(dir, name)
 	if err != nil || rec == nil {
@@ -102,6 +119,17 @@ func CheckOrphanCredentials(dir string, cfg *Config, name string) error {
 	}
 	if _, gerr := keyringGet(rec.Account()); gerr != nil && !errors.Is(gerr, keyring.ErrNotFound) {
 		return orphanKeychainError(name, keychainError("get", name, gerr, orAnotherConfig))
+	}
+	return nil
+}
+
+// checkRecordedHelperOnPath refuses with orphanHelperError when helper's
+// binary is not on PATH, found the way an erase finds it.
+func checkRecordedHelperOnPath(dir, name, helper string) error {
+	binary := helperBinary(helper)
+	if _, err := exec.LookPath(binary); err != nil {
+		return orphanHelperError(dir, name, helper,
+			helperUnavailable(binary, credhelper.VerbErase, name, "it is not installed in PATH"))
 	}
 	return nil
 }
@@ -122,35 +150,27 @@ func orphanKeychainError(name string, err error) error {
 		WithCause(err)
 }
 
-// orphanHelperError refuses a command creating an entry whose name has an
-// orphan credential a helper the directory reads from will not erase: left
-// in place, it would be served to a reader of the entry the command writes.
-// A helper that is unavailable keeps its own code and remedy.
-func orphanHelperError(name, helper string, err error) error {
-	if ce := asStoreUnavailable(err); ce != nil {
-		return ce.WithMessage(fmt.Sprintf(
-			"a credential stored under %s that no entry names is held by the credential helper %s and has to be erased before this command writes the entry: %s",
-			clierr.ShellQuote(name), helper, ce.Message))
+// orphanHelperError refuses a command creating an entry whose name has a
+// leftover credential in a helper this directory's records name, when that
+// helper will not erase it: left in place, it would be served to a reader
+// of the entry the command writes. A helper that is unavailable keeps its
+// own code. The remedy is the same for every recorded helper, declared or
+// not: make the helper work, use another directory, or drop the record when
+// the helper is gone.
+func orphanHelperError(dir, name, helper string, err error) error {
+	cause := err.Error()
+	ce := asStoreUnavailable(err)
+	if ce != nil {
+		cause = ce.Message
 	}
-	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"a credential stored under %s that no entry names is held by the credential helper %s, which could not erase it before this command writes the entry: %v; fix the helper, or use a different --config, then run this command again",
-		clierr.ShellQuote(name), helper, err)).
-		WithCause(err)
-}
-
-// OrphanHelpers is the credential helpers whose orphans a login creating
-// an entry removes: the one this directory's readers ask (its effective
-// policy) and the one the login commits to (loginPolicy), when either is
-// a helper.
-func OrphanHelpers(cfg *Config, loginPolicy string) []string {
-	var out []string
-	if p, err := EffectivePolicy(cfg.CredentialStore); err == nil && isExecBackend(p) {
-		out = append(out, p)
+	msg := fmt.Sprintf(
+		"the credential helper %s holds a credential stored under %s that no entry names and could not erase it (%s); make %s available on PATH (or working) and run this command again, or use a different --config; if %s is gone for good, remove the %s record for %s from %s",
+		helper, clierr.ShellQuote(name), cause, helper, helper, clierr.ShellQuote(name), helper,
+		filepath.Join(CanonicalDir(dir), helperRecordsFileName))
+	if ce != nil {
+		return ce.WithMessage(msg)
 	}
-	if isExecBackend(loginPolicy) && !slices.Contains(out, loginPolicy) {
-		out = append(out, loginPolicy)
-	}
-	return out
+	return clierr.New(clierr.CodeValidation, msg).WithCause(err)
 }
 
 // WithNotices carries the work a command did before it failed - the

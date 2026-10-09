@@ -281,8 +281,9 @@ func storedCluster(id string) (map[string]any, bool) {
 // scriptChecks run after their script, with the facade it ran against, for
 // the assertions a script cannot make about what the server recorded.
 var scriptChecks = map[string]func(t testscript.T, f *testrancher.Facade){
-	"login-recovery":   checkLoginRecovery,
-	"exec-token-reuse": checkExecTokenReuse,
+	"login-recovery":      checkLoginRecovery,
+	"exec-token-reuse":    checkExecTokenReuse,
+	"orphan-helper-erase": checkOrphanHelperErase,
 }
 
 // scriptSkipped reports whether the script ended in a skip (a `[!unix]
@@ -334,6 +335,20 @@ func checkLoginRecovery(t testscript.T, f *testrancher.Facade) {
 	}
 	if n := len(f.TokensWithDescriptionContaining("ext", "[op:")); n != 1 {
 		t.Fatal(fmt.Sprintf("expected exactly the second login's derived token to remain, found %d marked ext tokens", n))
+	}
+}
+
+// checkOrphanHelperErase asserts what orphan-helper-erase.txtar cannot see:
+// the server saw two sign-ins, the first login's and the one a failing
+// helper refused after it - none for the login refused before its sign-in -
+// and no token is left: the first login's were revoked with its entry, the
+// refused login's by the login itself.
+func checkOrphanHelperErase(t testscript.T, f *testrancher.Facade) {
+	if n := f.LoginCount(); n != 2 {
+		t.Fatal(fmt.Sprintf("expected two sign-ins (none for the login refused before its sign-in), got %d", n))
+	}
+	if n := f.TokenCount(); n != 0 {
+		t.Fatal(fmt.Sprintf("expected no token left on the server, got %d", n))
 	}
 }
 

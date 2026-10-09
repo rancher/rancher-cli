@@ -113,14 +113,16 @@ func helperOrphanFixture(t *testing.T) (dir, statePath string) {
 	return dir, statePath
 }
 
-// TestALoginCreatingAnEntryRemovesAnOrphanFromTheHelperReadersAsk asserts
-// the removal reaches a credential helper the directory reads from. A
-// helper is asked directly, never through its records, so a credential it
-// holds under the new entry's name and URL would be served to a reader of
-// that entry from the moment the entry is written. The login erases it
-// through the helper and removes the record, before the entry write, and
-// says so; no reader of prod is ever served the orphan.
-func TestALoginCreatingAnEntryRemovesAnOrphanFromTheHelperReadersAsk(t *testing.T) {
+// TestALoginCreatingAnEntryRemovesAnOrphanFromARecordedHelper asserts the
+// removal reaches a credential helper that holds a leftover credential
+// under the new entry's name and URL when the directory's records name it,
+// here the helper the directory declares and the login commits to. A
+// helper is asked directly, never through its records, so that credential
+// would be served to a reader of the entry from the moment the entry is
+// written. The login erases it through the helper and removes the record,
+// before the entry write, and says so; no reader of prod is ever served
+// the orphan.
+func TestALoginCreatingAnEntryRemovesAnOrphanFromARecordedHelper(t *testing.T) {
 	dir, _ := helperOrphanFixture(t)
 	var served []string
 	t.Cleanup(SetAfterWriteHookForTest(func(string) {
@@ -178,7 +180,7 @@ func TestRemoveOrphanCredentialsLeavesAConfiguredEntryAlone(t *testing.T) {
 	cfg, err := Load(FilePath(dir))
 	require.NoError(t, err)
 
-	notices, err := RemoveOrphanCredentials(t.Context(), dir, cfg, "staging", nil)
+	notices, err := RemoveOrphanCredentials(t.Context(), dir, cfg, "staging")
 	require.NoError(t, err)
 	assert.Empty(t, notices)
 	assert.Equal(t, "staging-tok", keychainTokenFor(t, dir, "staging"))
@@ -209,7 +211,7 @@ func TestTheOrphanNoticeSaysWhatWasRemoved(t *testing.T) {
 			seed(t, dir)
 			cfg, err := Load(FilePath(dir))
 			require.NoError(t, err)
-			notices, err := RemoveOrphanCredentials(t.Context(), dir, cfg, "prod", nil)
+			notices, err := RemoveOrphanCredentials(t.Context(), dir, cfg, "prod")
 			require.NoError(t, err)
 			joined := joinWarnings(notices)
 			assert.Contains(t, joined, "removed the keychain identity record of a credential stored under prod that no entry named; nothing was deleted from the keychain")

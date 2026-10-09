@@ -1,6 +1,7 @@
 package configcmd
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -85,7 +86,9 @@ func TestAddServerOrphanRemovalFailsAsStoreUnavailable(t *testing.T) {
 
 		_, err = newAddServerCmd(dir).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"url": "https://orphan.ex"}, Pos: []string{"orphan"}}, nil)
 		assertUnavailableEnvelope(t, err,
-			"a credential stored under 'orphan' that no entry names is held by the credential helper fake and has to be erased before this command writes the entry: credential helper rancher-credential-fake could not erase the credential for 'orphan': fakehelper: deliberate failure")
+			"the credential helper fake holds a credential stored under 'orphan' that no entry names and could not erase it (credential helper rancher-credential-fake could not erase the credential for 'orphan': fakehelper: deliberate failure); "+
+				"make fake available on PATH (or working) and run this command again, or use a different --config; "+
+				"if fake is gone for good, remove the 'orphan' record for fake from "+filepath.Join(config.CanonicalDir(dir), "credhelper-provenance.yaml"))
 		after, lerr := config.Load(config.FilePath(dir))
 		require.NoError(t, lerr)
 		assert.NotContains(t, after.Servers, "orphan")

@@ -73,7 +73,10 @@ func newExecStore(helper, dir string) *execStore {
 	}
 }
 
-func (s *execStore) binary() string { return "rancher-credential-" + s.helper }
+func (s *execStore) binary() string { return helperBinary(s.helper) }
+
+// helperBinary is the executable a credential helper's name stands for.
+func helperBinary(helper string) string { return "rancher-credential-" + helper }
 
 // invoke runs one helper verb with req on stdin and decodes the response.
 // Decoding is verb-aware: get MUST return versioned JSON (not-found is a

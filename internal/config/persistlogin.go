@@ -294,11 +294,14 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	}
 
 	// A login that creates its entry removes any credential left under
-	// that name first: written next to it, the entry would make that
-	// orphan count, and an unpinned directory would read as keeping
-	// credentials in both stores for every entry until the login ends.
+	// that name first, from the keychain, the file store and every helper
+	// this directory's records name for it: written next to it, the entry
+	// would make that orphan count, a reader whose store variable names
+	// that helper would be served it, and an unpinned directory would read
+	// as keeping credentials in both stores for every entry until the
+	// login ends.
 	if !exists {
-		ns, oerr := RemoveOrphanCredentials(ctx, dir, cfg, name, OrphanHelpers(cfg, policy))
+		ns, oerr := RemoveOrphanCredentials(ctx, dir, cfg, name)
 		out.Warnings = append(out.Warnings, ns...)
 		if oerr != nil {
 			return oerr

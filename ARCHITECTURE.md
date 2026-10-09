@@ -611,9 +611,11 @@ wrong user. It costs one look at the names in `credstore-id/` and one read of
 `credentials.yaml`, on an unpinned directory only. A credential stored under a name no entry
 has is ignored, and a command that creates the entry - the plugin's login, `auth login
 --url`'s registration, `config add-server` - removes it first (`RemoveOrphanCredentials`),
-under the lock and before the entry write, with a notice: from the keychain, the file store, and a helper the directory's
-readers ask or the login commits to when its records name the orphan (a helper is asked
-directly, so its orphan would be served). A login that leaves the store readers
+under the lock and before the entry write, with a notice: from the keychain, the file store, and every helper
+the directory's helper records name for that entry name, whichever helper the command
+uses and whether or not the directory declares a store (a helper is asked directly, and a
+reader's store variable can name any helper, so its orphan would be served). A recorded
+helper that cannot erase refuses the command with nothing more written. A login that leaves the store readers
 find on an unpinned directory pins that store first, so no reader meets its new credential
 beside the old one with no pin to choose. Re-probe happens **only at `auth login`** and is
 **upgrade-only**: a `file` (or absent) pin may re-pin to `keychain` if the keychain is now

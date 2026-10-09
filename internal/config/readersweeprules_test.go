@@ -564,12 +564,3 @@ func expectLogin(r sweepRow, s sweepState, leftFor string) sweepOutcome {
 	}
 	return o
 }
-
-// orphanHelperErased reports whether the plugin's login creating prod
-// erases prod's orphan in the helper at this commit: only when the helper
-// is the creating process's own effective policy or its login policy
-// (OrphanHelpers). The rule is that every orphan goes; a row where this
-// is false shows a known violation in sweepKnownViolations.
-func orphanHelperErased(r sweepRow) bool {
-	return r.declared == sweepHelper || r.loginVar == sweepHelper
-}

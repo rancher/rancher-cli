@@ -1,0 +1,64 @@
+# The kubectl plugin's login refuses a credential helper this directory's
+# records name for the new entry's name when the helper cannot erase the
+# credential it holds there. A helper missing from PATH refuses before the
+# sign-in; one that is on PATH and fails refuses after it, and the tokens
+# the sign-in created are revoked. Nothing is written in either case.
+# Prompts need a real pty; see auth-login-local.txtar.
+[!unix] skip 'ttyin (real pty) is unix-only'
+env RANCHER_CLI_CREDENTIAL_STORE=file
+
+# A first login learns the plugin login entry's name; then the entry is
+# removed, so the next login creates it again.
+exec rancher config set-token-reuse on -o json
+ttyin -stdin creds.txt
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name first --auth-provider localProvider
+exec rancher config status -o json
+jsonget stdout 'data.servers|@keys|0' entry.txt
+setenvfrom ENTRY entry.txt
+exec rancher config add-server other --url https://127.0.0.1:1
+exec rancher config use-server other
+exec rancher config delete-server $ENTRY -o json
+exec rancher config list-servers -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.name other
+
+# The directory recorded storing a credential under that name through the
+# helper "gone", which is not installed: the login refuses before it asks
+# for a sign-in, with the way out, and writes no entry.
+exec sh -c 'printf "entries:\n- helper: gone\n  name: %s\n  canonicalURL: %s\n" "$1" "$2" > "$RANCHER_CLI_CONFIG_DIR/credhelper-provenance.yaml"' sh $ENTRY $TEST_RANCHER_URL
+cp $RANCHER_CLI_CONFIG_DIR/credhelper-provenance.yaml records-before.yaml
+ttyin -stdin creds.txt
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name second --auth-provider localProvider
+stderr 'error \(CREDENTIAL_STORE_UNAVAILABLE, retryable\)'
+stderr 'the credential helper gone holds a credential stored under'
+stderr 'if gone is gone for good, remove the .* record for gone from'
+! stderr 'Enter username'
+exec rancher config list-servers -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.name other
+cmp $RANCHER_CLI_CONFIG_DIR/credhelper-provenance.yaml records-before.yaml
+
+# The helper "fake" is installed and fails to erase: the login signs in,
+# the commit refuses, and the tokens the sign-in created are revoked.
+exec sh -c 'printf "entries:\n- helper: fake\n  name: %s\n  canonicalURL: %s\n" "$1" "$2" > "$RANCHER_CLI_CONFIG_DIR/credhelper-provenance.yaml"' sh $ENTRY $TEST_RANCHER_URL
+cp $RANCHER_CLI_CONFIG_DIR/credhelper-provenance.yaml records-before.yaml
+env FAKEHELPER_MODE=fail
+env FAKEHELPER_STATE=$WORK/helper-state.json
+ttyin -stdin creds.txt
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name third --auth-provider localProvider
+stderr 'error \(CREDENTIAL_STORE_UNAVAILABLE, retryable\)'
+stderr 'the credential helper fake holds a credential stored under'
+stderr 'stage: commit'
+stderr 'config: notWritten'
+stderr 'session token .*cleanup: revoked'
+stderr 'derived token .*cleanup: revoked'
+stderr 'cluster token .*cleanup: revoked'
+! stderr 'cleanup: (not|failed|unknown)'
+exec rancher config list-servers -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.name other
+cmp $RANCHER_CLI_CONFIG_DIR/credhelper-provenance.yaml records-before.yaml
+
+-- creds.txt --
+e2e-user
+e2e-pass

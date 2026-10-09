@@ -189,13 +189,16 @@ entry's logout needs the keychain reachable. Only credentials of entries
 in `config.yaml` count. A command that creates an entry - the kubectl
 plugin's login, `auth login --url` for a new name, `config add-server` -
 first removes any credential still stored under that name in the
-keychain, the file store, or a credential helper the directory reads
-from or the login writes to when that helper's records name it, with a
+keychain, the file store, or any credential helper this directory's
+records (`credhelper-provenance.yaml`) name for that entry name, with a
 warning naming each removal: from the moment the entry exists it would
 count as the entry's credential, perhaps a bearer another server issued.
-One in a keychain that cannot be reached refuses the command (a login
-before its sign-in), and one a helper cannot erase refuses it, with
-nothing written. A keychain that `auto` chose
+One in a keychain that cannot be reached, or in a recorded helper that is
+not on `PATH`, refuses the command (a login before its sign-in), and one a
+recorded helper cannot erase refuses it, with nothing more written; make
+the helper available or working and run the command again, use a
+different `--config`, or remove the helper's record for that name from
+`credhelper-provenance.yaml` when the helper is gone for good. A keychain that `auto` chose
 and the process cannot use is a hard error (never a silent downgrade to
 plaintext) whose way out is making the keychain reachable or a different
 `--config`. A login writes the pin as the last step of the change it

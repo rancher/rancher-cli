@@ -362,20 +362,6 @@ var sweepKnownViolations = []struct {
 			"while REFERENCE.md says only a second store change is refused while some of that work remains, and the login under the lock goes on",
 		applies: func(_ sweepRow, want sweepOutcome) bool { return want.knownPrecheck != "" },
 	},
-	{
-		rule: "a command that creates an entry - the plugin's login, and through the same OrphanHelpers call config add-server and " +
-			"auth login --url - erases a credential left in a credential helper under that name only when the helper is the " +
-			"creating process's own effective policy or its login policy; the credential stays, with no notice, and on a directory that " +
-			"declares no store a reader whose " + EnvCredentialStore + " names that helper is served it from the entry write until a " +
-			"declaration is written, and for good when the commit fails and the entry stays without one",
-		applies: func(r sweepRow, want sweepOutcome) bool {
-			return r.prodNew && slices.Contains(r.prod, sweepHelper) && !orphanHelperErased(r) && want.lock == ""
-		},
-		matches: func(v string) bool {
-			return strings.Contains(v, "with "+EnvCredentialStore+"="+sweepHelper+" gets credential "+sweepToken("prod", sweepHelper)) ||
-				strings.Contains(v, "the credential left under prod in "+sweepHelper+" is still there")
-		},
-	},
 }
 
 // TestEveryKnownSweepViolationHasARow asserts each known violation

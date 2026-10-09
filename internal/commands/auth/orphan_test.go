@@ -179,3 +179,40 @@ func TestAnAbandonedURLLoginKeepsAnExistingEntrysCredential(t *testing.T) {
 	require.NoError(t, gerr)
 	assert.Equal(t, "prod-tok", tok, "the logged-in entry's credential survives")
 }
+
+// TestAURLLoginErasesAnOrphanFromAHelperItDoesNotUse asserts the
+// registration `auth login --url` makes erases a leftover credential from a
+// helper this directory's records name even though the login stores
+// somewhere else: on a directory that declares no store, a reader whose
+// RANCHER_CLI_CREDENTIAL_STORE names that helper would be served the
+// credential from the entry write on, and for as long as the login stays
+// abandoned. The helper holds nothing under the name afterwards, and that
+// reader finds no stored token.
+func TestAURLLoginErasesAnOrphanFromAHelperItDoesNotUse(t *testing.T) {
+	t.Setenv("PATH", cmdtest.BuildFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKEHELPER_MODE", "ok")
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("FAKEHELPER_STATE", statePath)
+	t.Setenv(config.EnvCredentialStore, "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	cmdtest.SeedUnpinned(t, dir, map[string]string{"prod": "prod-tok"}, nil)
+	hs, _, err := config.OpenResolvedStore("exec:fake", dir)
+	require.NoError(t, err)
+	require.NoError(t, hs.SetToken(config.ServerRef{Name: "acme", URL: "https://acme.ex"}, "acme-orphan-helper"))
+
+	cmd := &loginCmd{dir: dir, newStore: config.OpenResolvedStore}
+	cmd.verify = func(context.Context, config.Effective) (string, error) { return "", errors.New("server unreachable") }
+	_, lerr := cmd.Execute(t.Context(),
+		cmdtest.Input{Str: map[string]string{"url": "https://acme.ex"}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"acme"}},
+		cmdtest.StdinPrompter("id:sec\n"))
+	require.Error(t, lerr, "the login is abandoned after its registration")
+	assert.Empty(t, cmdtest.HelperCreds(t, statePath), "the helper no longer holds the orphan")
+
+	t.Setenv(config.EnvCredentialStore, "exec:fake")
+	cfg, store, serr := config.LoadAndStore(dir)
+	require.NoError(t, serr)
+	require.Contains(t, cfg.Servers, "acme", "the registration wrote the entry")
+	_, gerr := store.GetToken(config.ServerRef{Name: "acme", URL: cfg.Servers["acme"].URL})
+	require.ErrorIs(t, gerr, config.ErrNoToken, "a reader whose variable names the helper is not served the orphan")
+}

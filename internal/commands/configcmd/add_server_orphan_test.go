@@ -2,6 +2,8 @@ package configcmd
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,6 +91,68 @@ func TestAddServerRefusesAnOrphanInAnUnreachableKeychain(t *testing.T) {
 		cmdtest.Input{Pos: []string{"qa"}, Str: map[string]string{"url": "https://b.example.com"}}, ui.Discard())
 	require.ErrorContains(t, err, "has to be removed before this command writes the entry: the keychain could not read the credential for 'qa'")
 	require.ErrorContains(t, err, "then run this command again, or use a different --config")
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.NotContains(t, cfg.Servers, "qa", "the entry was not written")
+}
+
+// helperOrphanDir is an unpinned directory that declares no store, whose
+// one entry keeps its credential in the file store, where the fake helper
+// holds a credential under "qa" that this directory recorded when it
+// stored it and config.yaml has no qa. A process that reads with
+// RANCHER_CLI_CREDENTIAL_STORE=exec:fake would be served it from the moment
+// a qa entry exists. Returns the helper's state file.
+func helperOrphanDir(t *testing.T) (dir, statePath string) {
+	t.Helper()
+	t.Setenv("PATH", cmdtest.BuildFakeHelper(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKEHELPER_MODE", "ok")
+	statePath = filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("FAKEHELPER_STATE", statePath)
+	t.Setenv(config.EnvCredentialStore, "")
+	keyring.MockInit()
+	dir = t.TempDir()
+	cmdtest.SeedUnpinned(t, dir, map[string]string{"staging": "staging-tok"}, nil)
+	hs, _, err := config.OpenResolvedStore("exec:fake", dir)
+	require.NoError(t, err)
+	require.NoError(t, hs.SetToken(config.ServerRef{Name: "qa", URL: "https://b.example.com"}, "server-a-token"))
+	return dir, statePath
+}
+
+// TestAddServerErasesAnOrphanFromAHelperItDoesNotUse asserts `config
+// add-server` erases a leftover credential from a helper this directory's
+// records name even though the command itself uses another store: on a
+// directory that declares no store, add-server declares nothing, so a
+// reader whose RANCHER_CLI_CREDENTIAL_STORE names that helper would be
+// served the credential for as long as the entry exists. The helper holds
+// nothing under the name afterwards, the command says so, and that reader
+// finds no stored token.
+func TestAddServerErasesAnOrphanFromAHelperItDoesNotUse(t *testing.T) {
+	dir, statePath := helperOrphanDir(t)
+
+	res, err := (&configAddServerCmd{dir: dir}).Execute(t.Context(),
+		cmdtest.Input{Pos: []string{"qa"}, Str: map[string]string{"url": "https://b.example.com"}}, ui.Discard())
+	require.NoError(t, err)
+	assert.Contains(t, strings.Join(res.Warnings, "\n"), "removed a credential stored under qa that no entry named, from the credential helper fake")
+	assert.Empty(t, cmdtest.HelperCreds(t, statePath), "the helper no longer holds the orphan")
+
+	t.Setenv(config.EnvCredentialStore, "exec:fake")
+	_, rerr := readEntry(t, dir, "qa")
+	require.ErrorIs(t, rerr, config.ErrNoToken, "a reader whose variable names the helper is not served it")
+}
+
+// TestAddServerRefusesACorruptHelperRecordsFile asserts the command does
+// not write an entry while the directory's helper records cannot be read:
+// it could not tell which helpers hold a leftover credential under the name.
+func TestAddServerRefusesACorruptHelperRecordsFile(t *testing.T) {
+	t.Setenv(config.EnvCredentialStore, "")
+	keyring.MockInit()
+	dir := t.TempDir()
+	cmdtest.SeedUnpinned(t, dir, map[string]string{"staging": "staging-tok"}, nil)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "credhelper-provenance.yaml"), []byte("entries: [unterminated"), 0o600))
+
+	_, err := (&configAddServerCmd{dir: dir}).Execute(t.Context(),
+		cmdtest.Input{Pos: []string{"qa"}, Str: map[string]string{"url": "https://b.example.com"}}, ui.Discard())
+	require.ErrorContains(t, err, "credential-helper records file credhelper-provenance.yaml is corrupt")
 	cfg, lerr := config.Load(config.FilePath(dir))
 	require.NoError(t, lerr)
 	assert.NotContains(t, cfg.Servers, "qa", "the entry was not written")
