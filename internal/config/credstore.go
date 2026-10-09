@@ -240,8 +240,8 @@ func NewFileStore(dir string) CredStore {
 }
 
 // CredentialsFilePath is the plaintext file the file backend writes tokens
-// to, named in the disclosure the plugin-created login gives before an
-// interactive login under that backend.
+// to, named in the disclosure the plugin-created login gives before the
+// sign-in's first prompt under that backend.
 func CredentialsFilePath(dir string) string { return filepath.Join(dir, "credentials.yaml") }
 
 // newFileStore builds a fileStore recording onto nb - the shared-buffer

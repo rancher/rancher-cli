@@ -22,7 +22,8 @@ type StoreDecision struct {
 	// Policy is the login's EffectivePolicy at decision time.
 	Policy string
 	// DisclosedPlaintextPath is the credentials file the flow warned about
-	// before the login, or empty when no plaintext warning was given.
+	// before the sign-in's first prompt, or empty when no plaintext warning
+	// was given.
 	DisclosedPlaintextPath string
 }
 
@@ -646,14 +647,14 @@ func revalidate(cfg *Config, in PersistLoginInput) string {
 }
 
 // undisclosedPlaintext is the abort reason for a login about to commit to
-// the plaintext file store without having said so before the interactive
-// sign-in, or "" to proceed. b is the login's own answer under the lock,
-// the same one its check before the sign-in gave from what it read then:
-// this catches the directory becoming a plaintext store while the sign-in
-// was open. Anything else that answer refuses - a keychain it cannot use
-// on a directory that reads the keychain, credentials in both stores -
-// was already returned as that answer's own typed error, never folded
-// into this abort.
+// the plaintext file store without having said so before the sign-in's
+// first prompt, or "" to proceed. b is the login's own answer under the
+// lock, the same one its check before the sign-in gave from what it read
+// then: this catches the directory becoming a plaintext store while the
+// sign-in was open. Anything else that answer refuses - a keychain it
+// cannot use on a directory that reads the keychain, credentials in both
+// stores - was already returned as that answer's own typed error, never
+// folded into this abort.
 func undisclosedPlaintext(dir string, in PersistLoginInput, b loginBackends) string {
 	if in.Decision == nil || in.Decision.Policy == "" {
 		return ""

@@ -78,6 +78,14 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com"}))
 	add("no terminal, no --name", nt.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
 		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com"}))
+	choice := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
+		providers: []string{"localProvider", "oktaProvider"}, noTerminal: []string{"oktaProvider"}})
+	add("no terminal, a provider choice", nt.withNoTerminalRemedies(choice,
+		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", keepsLogin: true}))
+	none := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
+		providers: []string{"localProvider", "openLdapProvider"}})
+	add("no terminal, a provider choice no provider can answer", nt.withNoTerminalRemedies(none,
+		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", keepsLogin: true}))
 
 	for name, record := range map[string]string{
 		"no terminal, a store change unfinished":        "version: 1\nid: 0123456789abcdef0123456789abcdef\nsteps:\n- kind: pin\n  target: file\n",

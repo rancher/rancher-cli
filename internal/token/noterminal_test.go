@@ -341,8 +341,8 @@ func TestEverySignInPromptSaysItNeedsATerminal(t *testing.T) {
 	})
 }
 
-// usernameOnly answers the username prompt and has no terminal for the
-// password.
+// usernameOnly can prompt and answers the username prompt, and refuses the
+// password prompt with ErrNoInput, as a terminal that closed does.
 type usernameOnly struct{}
 
 func (usernameOnly) Prompt(context.Context, string) (string, error) { return "admin", nil }
@@ -351,7 +351,7 @@ func (usernameOnly) PromptSecret(context.Context, string) (string, error) {
 }
 func (usernameOnly) ReadLine(context.Context) (string, error) { return "", ui.ErrNoInput }
 func (usernameOnly) Notice(string)                            {}
-func (usernameOnly) CanPrompt() bool                          { return false }
+func (usernameOnly) CanPrompt() bool                          { return true }
 func (usernameOnly) NoInput() bool                            { return false }
 
 // TestNoTerminalRemedyDoesNotSuggestANameRegisteredElsewhere asserts the

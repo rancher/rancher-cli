@@ -158,6 +158,7 @@ func oauthAuthCodeAuth(
 		}
 	}()
 
+	input.signInStarts()
 	p.Notice("\nOpening browser for authentication...\n")
 	if err := openBrowser(authURL); err != nil {
 		p.Notice(fmt.Sprintf("Failed to open browser automatically (%v). Please open the following URL manually:\n%s\n", err, authURL))
@@ -302,6 +303,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 		return notAttempted, idpError(err, oauthConfig.Endpoint.DeviceAuthURL, "failed to initiate device authorization")
 	}
 
+	input.signInStarts()
 	p.Notice(fmt.Sprintf(
 		"\nTo sign in, use a web browser to open the page %s and enter the code %s to authenticate.\n",
 		deviceAuthResp.VerificationURI,

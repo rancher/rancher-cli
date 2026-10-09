@@ -59,13 +59,14 @@ func (t tokenCmd) loginStoreOpener() func(backend, dir string) (config.CredStore
 }
 
 // pluginLogin runs the plugin-created login under the per-server flock:
-// re-probe (another process may have finished), the store decision and
-// its disclosure, acquisition, the cluster token that proves the new
-// credential can create, then persistence through the shared primitive.
-// Nothing durable exists until the credential commit succeeded; every
-// failure after acquisition revokes the cluster token with the credential
-// as bearer, then the credential itself. The flock is released before the
-// retirement pass, which runs outside both locks.
+// re-probe (another process may have finished), the store decision,
+// acquisition - which shows the plaintext disclosure, when the decision has
+// one, right before the sign-in's first prompt - the cluster token that
+// proves the new credential can create, then persistence through the
+// shared primitive. Nothing durable exists until the credential commit
+// succeeded; every failure after acquisition revokes the cluster token
+// with the credential as bearer, then the credential itself. The flock is
+// released before the retirement pass, which runs outside both locks.
 func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtime.Prompter) (Token, []string, error) {
 	var (
 		result   Token
@@ -130,11 +131,19 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if derr != nil {
 			return derr
 		}
-		if disclosure != "" {
-			p.Notice(disclosure)
+		req := LoginRequest{Server: in.server, AuthProvider: in.authProvider,
+			AuthFlow: in.authFlow, IdPClient: in.newIdPClient(), ResponseType: "json"}
+		if disclosure.text != "" {
+			// Said when the sign-in is about to ask someone to act, never
+			// for one refused before that. A sign-in that reaches the commit
+			// without it leaves the decision undisclosed, and the commit
+			// refuses a plaintext write.
+			req.BeforeSignIn = func() {
+				p.Notice(disclosure.text)
+				decision.DisclosedPlaintextPath = disclosure.path
+			}
 		}
-		cred, err = AcquireLoginCredential(ctx, in.client, LoginRequest{Server: in.server, AuthProvider: in.authProvider,
-			AuthFlow: in.authFlow, IdPClient: in.newIdPClient(), ResponseType: "json"}, 0, p)
+		cred, err = AcquireLoginCredential(ctx, in.client, req, 0, p)
 		if err != nil {
 			if ae, ok := errors.AsType[*AcquireError](err); ok {
 				return FailAcquire(ae, entry)
@@ -236,36 +245,45 @@ func freshCredentialError(err error) error {
 	return err
 }
 
+// plaintextDisclosure is the warning for a login that will commit to the
+// plaintext file store: the text to show and the credentials file it names.
+// Both are empty for any other store.
+type plaintextDisclosure struct{ text, path string }
+
 // storeDecision records the backend the credential will reach, decided
 // before the interactive login, and the disclosure to give when that
 // backend is the plaintext file. It is the login's own answer - the same
 // check `auth login` runs before its sign-in, with the probe the login
-// pays anyway - so a login that will commit to the file store says so
-// before anyone signs in, and one the directory's own state refuses, such
-// as a change record that cannot be read, is refused here: this login has
-// a terminal only sometimes, and a refusal after the sign-in would have
-// cost a server-issued token for a login that was never going to be
-// accepted. Steps an earlier change left are not refused here: the commit
-// replays them under the lock and decides then. The commit revalidates it.
-func storeDecision(dir string, cfg *config.Config, entry string) (config.StoreDecision, string, error) {
+// pays anyway - so a login that will commit to the file store has its
+// disclosure ready before the sign-in, and one the directory's own
+// state refuses, such as a change record that cannot be read, is refused
+// here: this login has a terminal only sometimes, and a refusal after the
+// sign-in would have cost a server-issued token for a login that was never
+// going to be accepted. Steps an earlier change left are not refused here:
+// the commit replays them under the lock and decides then. The commit
+// revalidates it. The decision does not record the disclosure as given;
+// the sign-in's hook does, when it shows the text.
+func storeDecision(dir string, cfg *config.Config, entry string) (config.StoreDecision, plaintextDisclosure, error) {
 	policy, err := config.EffectivePolicy(cfg.CredentialStore)
 	if err != nil {
-		return config.StoreDecision{}, "", err
+		return config.StoreDecision{}, plaintextDisclosure{}, err
 	}
 	if err := config.CheckOrphanCredentials(dir, cfg, entry); err != nil {
-		return config.StoreDecision{}, "", err
+		return config.StoreDecision{}, plaintextDisclosure{}, err
 	}
 	backend, err := config.LoginStoreChange(dir, cfg, entry, policy, config.DeclarationFor(cfg.CredentialStore, "", policy))
 	if err != nil {
-		return config.StoreDecision{}, "", err
+		return config.StoreDecision{}, plaintextDisclosure{}, err
 	}
 	d := config.StoreDecision{RequireSetting: true, Policy: policy}
 	if backend != "file" {
-		return d, "", nil
+		return d, plaintextDisclosure{}, nil
 	}
 	path := config.CredentialsFilePath(dir)
-	d.DisclosedPlaintextPath = path
-	return d, fmt.Sprintf("token reuse is on and the credential store is the plaintext file %s: the login credential this sign-in creates (unscoped, reusable across clusters) will be written there", path), nil
+	return d, plaintextDisclosure{
+		text: fmt.Sprintf("token reuse is on and the credential store is the plaintext file %s: the login credential this sign-in creates (unscoped, reusable across clusters) will be written there", path),
+		path: path,
+	}, nil
 }
 
 // clusterTokenFate projects the cluster token's create onto its fate and

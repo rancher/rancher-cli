@@ -17,6 +17,21 @@ type needsTerminal struct{ provider string }
 
 func (e *needsTerminal) Error() string { return "interactive login required for " + e.provider }
 
+// providerChoiceNeedsTerminal is why a sign-in was refused before any
+// provider was chosen: the server offers several, and nobody can answer the
+// menu here. providers are the supported ones in the server's order;
+// noTerminal are those among them that sign in with no terminal (SAML and
+// OAuth, and only without --no-input); note names the providers the server
+// advertises that this CLI cannot use, "" when there are none.
+type providerChoiceNeedsTerminal struct {
+	providers, noTerminal []string
+	note                  string
+}
+
+func (e *providerChoiceNeedsTerminal) Error() string {
+	return "multiple auth providers; select one"
+}
+
 // interactiveLoginRequired is the refusal a sign-in prompt gives, with the
 // remedy of a command run by someone who could answer it.
 func interactiveLoginRequired(provider, remedy string) *clierr.Error {
@@ -58,14 +73,54 @@ type noTerminalCall struct {
 //     cluster and both of its gates, only when the current server's login
 //     would serve the call (currentLoginServes).
 //
+// The refusal to choose between several auth providers with no terminal to
+// answer the menu gets the same remedies. It offers, as candidates and in
+// the message, the providers that sign in with no terminal, and is
+// AMBIGUOUS_SELECTION; when none does, or under --no-input, it is the
+// AUTH refusal of a sign-in prompt for all of them.
+//
 // While a store change is unfinished the message names it too, and while
 // its record cannot be read the status report is the hint. Every other
 // error passes through.
 func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
-	nt, ok := errors.AsType[*needsTerminal](err)
+	if nt, ok := errors.AsType[*needsTerminal](err); ok {
+		head := "interactive login required for " + nt.provider + ", and this call has no terminal to answer it"
+		return t.noTerminalError(err, call, clierr.CodeAuth, head, "", nil, "")
+	}
+	pc, ok := errors.AsType[*providerChoiceNeedsTerminal](err)
 	if !ok {
 		return err
 	}
+	if len(pc.noTerminal) == 0 {
+		head := "interactive login required for any of " + strings.Join(pc.providers, ", ") + ", and this call has no terminal to answer it"
+		return t.noTerminalError(err, call, clierr.CodeAuth, head, "", nil, pc.note)
+	}
+	flag := "--auth-provider " + pc.noTerminal[0]
+	through := pc.noTerminal[0]
+	if len(pc.noTerminal) > 1 {
+		flag = "--auth-provider with one of " + strings.Join(pc.noTerminal, ", ")
+		through = "that provider"
+	}
+	choice := "or add " + flag + " to the command (in a kubeconfig, to the exec entry's args) to sign in through " + through + " in a browser"
+	head := "multiple auth providers and this call has no terminal to choose one"
+	return t.noTerminalError(err, call, clierr.CodeAmbiguousSelection, head, choice, providerCandidates(pc.noTerminal), pc.note)
+}
+
+// providerCandidates are the candidates that name auth provider types.
+func providerCandidates(types []string) []clierr.Candidate {
+	cs := make([]clierr.Candidate, 0, len(types))
+	for _, typ := range types {
+		cs = append(cs, clierr.Candidate{ID: typ, Name: typ})
+	}
+	return cs
+}
+
+// noTerminalError builds the remedies both refusals share: head says what
+// was refused, then the login that takes a piped API token, choice (when
+// set) the provider to name, the sentence about a terminal sign-in, the
+// kubeconfig the call could use, the plugin login entry skipped, and note
+// (when set). cause is kept as the new error's cause.
+func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, choice string, candidates []clierr.Candidate, note string) error {
 	var (
 		pending config.UnfinishedChange
 		cfg     *config.Config
@@ -79,7 +134,10 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 	if call.userID != "" {
 		of, signIn = " of Rancher user "+clierr.ShellQuote(call.userID), "sign in as "+clierr.ShellQuote(call.userID)
 	}
-	msg := fmt.Sprintf("interactive login required for %s, and this call has no terminal to answer it; to log in without one, pipe an API token%s to %s", nt.provider, of, login.Text())
+	msg := fmt.Sprintf("%s; to log in without one, pipe an API token%s to %s", head, of, login.Text())
+	if choice != "" {
+		msg += "; " + choice
+	}
 	cluster := "<id>"
 	if call.clusterID != "" {
 		cluster = clierr.ShellQuote(call.clusterID)
@@ -100,7 +158,10 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 		msg += "; the exec plugin's own login entry " + clierr.ShellQuote(call.skipped) + " records Rancher user " +
 			clierr.ShellQuote(call.skippedOwner) + " as its owner, so this call does not use it"
 	}
-	out := clierr.New(clierr.CodeAuth, msg).WithCause(err)
+	if note != "" {
+		msg += "; " + note
+	}
+	out := clierr.New(code, msg).WithCause(cause).WithCandidates(candidates)
 	if h := login.Hint(); h != "" {
 		out = out.WithHint(h)
 	}

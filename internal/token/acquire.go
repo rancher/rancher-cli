@@ -109,7 +109,8 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 		responseType = "json"
 	}
 	input := &loginInput{server: req.Server, clusterID: req.ClusterID, authProvider: req.AuthProvider, authFlow: req.AuthFlow,
-		idpClient: req.IdPClient, responseType: responseType, description: TokenDescription(hostname(), marker)}
+		idpClient: req.IdPClient, responseType: responseType, description: TokenDescription(hostname(), marker),
+		beforeSignIn: req.BeforeSignIn}
 	st := &acquireState{marker: marker, client: client, base: kube.BaseURL(req.Server), ctx: ctx,
 		derived: CreateResult{Outcome: CreateNotAttempted}, dClean: RevokeOutcome{Result: ResultNotAttempted}}
 

@@ -87,6 +87,21 @@ type loginInput struct {
 	// trust must not extend to a third-party origin, and a self-signed
 	// Rancher must not break a publicly trusted provider.
 	idpClient *http.Client
+	// beforeSignIn, when set, runs once, right before the sign-in's first
+	// prompt or notice that asks someone to act (see signInStarts).
+	beforeSignIn func()
+}
+
+// signInStarts runs the hook, if there is one, at most once. Each sign-in
+// flow calls it right before the first prompt or notice that asks someone
+// to act, so the hook never runs for a sign-in that refuses first.
+func (in *loginInput) signInStarts() {
+	f := in.beforeSignIn
+	if f == nil {
+		return
+	}
+	in.beforeSignIn = nil
+	f()
 }
 
 // runParams carries the resolved flag values for a get-token invocation.
@@ -837,6 +852,10 @@ type LoginRequest struct {
 	// ResponseType is the shape asked of Rancher's login endpoint. Empty
 	// keeps get-token's kubeconfig form.
 	ResponseType string
+	// BeforeSignIn, when set, runs once, right before the first prompt or
+	// notice that asks someone to act: after the provider is chosen, and
+	// never for a sign-in that is refused before it.
+	BeforeSignIn func()
 }
 
 // loginNotAttempted is the result of a login that failed before its request
@@ -889,10 +908,14 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 
 func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (CreateResult, error) {
 	notAttempted := loginNotAttempted(input)
+	if !p.CanPrompt() {
+		return notAttempted, interactiveLoginRequired(input.authProvider, "run in a terminal, or use a cached --name")
+	}
 	label := "Enter username: "
 	if def := input.usernameDefault; def != "" {
 		label = "Enter username [" + def + "]: "
 	}
+	input.signInStarts()
 	username, err := p.Prompt(ctx, label)
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
@@ -1046,6 +1069,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	res.Create.Outcome = CreateUnknown
 	defer func() { res.Handoff.PollEndedAt = time.Now().UTC().Format(time.RFC3339) }()
 
+	input.signInStarts()
 	p.Notice(fmt.Sprintf("\nLogin Request Id: %s\n", id))
 	p.Notice(fmt.Sprintf("\nLogin to Rancher Server at %s \n", loginURL))
 
@@ -1215,11 +1239,11 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, unsuppor
 	}
 
 	cands := func() []clierr.Candidate {
-		cs := make([]clierr.Candidate, 0, len(providers))
-		for _, p := range providers {
-			cs = append(cs, clierr.Candidate{ID: p.GetType(), Name: p.GetType()})
+		types := make([]string, 0, len(providers))
+		for _, prov := range providers {
+			types = append(types, prov.GetType())
 		}
-		return cs
+		return providerCandidates(types)
 	}
 
 	if want != "" {
@@ -1265,8 +1289,21 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, unsuppor
 	if note != "" {
 		msg += "; " + note
 	}
-	return nil, clierr.New(clierr.CodeAmbiguousSelection, msg).
-		WithCandidates(cands())
+	ce := clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands())
+	if !p.CanPrompt() {
+		// Nobody could answer the menu: the exec plugin builds its remedies
+		// from this cause.
+		cause := &providerChoiceNeedsTerminal{note: note}
+		for _, prov := range providers {
+			typ := prov.GetType()
+			cause.providers = append(cause.providers, typ)
+			if !p.NoInput() && (samlProviders[typ] || oauthProviders[typ]) {
+				cause.noTerminal = append(cause.noTerminal, typ)
+			}
+		}
+		ce = ce.WithCause(cause)
+	}
+	return nil, ce
 }
 
 func generateKey() (string, error) {
