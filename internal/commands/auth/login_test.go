@@ -3053,15 +3053,15 @@ func TestLoginRefusesAStoreTheVariableDisagreesWith(t *testing.T) {
 	assert.NoFileExists(t, config.FilePath(dir), "nothing was written")
 }
 
-// TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished asserts the other
-// arm of the check before the sign-in: a change that still has work left,
-// here the delete of another entry's old copy, stops a login that would
-// start a second change, before anyone authenticates. Two changes cannot
-// stack - the second would forget the work the first still has.
-func TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T) {
+// unfinishedChangeLogin is a login of prod to the keychain on a directory
+// whose earlier store change left one step, the delete of another entry's
+// old copy, given as change record steps and named in config.yaml. The
+// returned flag records whether the login's sign-in was reached.
+func unfinishedChangeLogin(t *testing.T, steps string) (dir string, cmd *loginCmd, reached *bool, in cmdtest.Input) {
+	t.Helper()
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "")
 	keyring.MockInit()
-	dir := t.TempDir()
+	dir = t.TempDir()
 	seedServer(t, dir, "prod", "https://r.ex", "", true)
 	cfg, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)
@@ -3070,32 +3070,102 @@ func TestLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T) {
 	require.NoError(t, cfg.Write())
 
 	id := "0123456789abcdef0123456789abcdef"
-	manifest := "version: 1\nid: " + id + "\nsteps:\n" +
-		"- kind: delete\n  entry: other\n  source: file\n" +
-		"  verificationId: fedcba9876543210fedcba9876543210\n" +
-		"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+	manifest := "version: 1\nid: " + id + "\nsteps:\n" + steps
 	require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte(manifest), 0o600))
 	cfg, err = config.Load(config.FilePath(dir))
 	require.NoError(t, err)
 	cfg.CredentialTransitionID = id
 	require.NoError(t, cfg.Write())
 
-	in := cmdtest.Input{
+	in = cmdtest.Input{
 		Str:  map[string]string{"credential-store": "keychain"},
 		Flag: map[string]bool{"token-stdin": true},
 		Pos:  []string{"prod"},
 	}
-	cmd := newPlainLoginCmd(dir, nil)
+	cmd = newPlainLoginCmd(dir, nil)
 	cmd.newStore = config.OpenResolvedStore
-	reached := false
-	cmd.verify = func(context.Context, config.Effective) (string, error) { reached = true; return "", nil }
+	reached = new(bool)
+	cmd.verify = func(context.Context, config.Effective) (string, error) { *reached = true; return "", nil }
+	return dir, cmd, reached, in
+}
 
-	_, err = cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
+const (
+	otherFileDeleteStep = "- kind: delete\n  entry: other\n  source: file\n" +
+		"  verificationId: fedcba9876543210fedcba9876543210\n" +
+		"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+	otherKeychainDeleteStep = "- kind: delete\n  entry: other\n  source: keychain\n" +
+		"  verificationId: fedcba9876543210fedcba9876543210\n" +
+		"  credentialDigest: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n" +
+		"  sourceAccountId: 0123456789abcdef0123456789abcdef\n"
+)
+
+// TestLoginFinishesAnUnfinishedStoreChangeBeforeItsOwn asserts the check
+// before the sign-in leaves steps an earlier change left to the lock: the
+// delete of another entry's old copy, which the replay finishes, does not
+// stop a login that changes the store. The login signs in, the replay
+// finishes the earlier change, and the login's own change goes through.
+func TestLoginFinishesAnUnfinishedStoreChangeBeforeItsOwn(t *testing.T) {
+	dir, cmd, reached, in := unfinishedChangeLogin(t, otherFileDeleteStep)
+
+	_, err := cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
+	require.NoError(t, err)
+	assert.True(t, *reached, "the check before the sign-in did not refuse")
+	assert.NoFileExists(t, config.TransitionPath(dir), "the earlier change finished")
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Empty(t, cfg.CredentialTransitionID, "and is no longer named")
+}
+
+// TestLoginRefusesAfterTheSignInWhenTheReplayCannotFinish asserts the
+// other side of that rule: the delete of another entry's old keychain copy
+// cannot finish while the keychain cannot be reached, which the check
+// before the sign-in does not probe. The login signs in, and the lock then
+// refuses a second store change with CREDENTIAL_TRANSITION_INCOMPLETE and
+// the step's cause.
+func TestLoginRefusesAfterTheSignInWhenTheReplayCannotFinish(t *testing.T) {
+	dir, cmd, reached, in := unfinishedChangeLogin(t, otherKeychainDeleteStep)
+	defer config.SetKeyringBackendForTest(unreachableKeyring{})()
+
+	_, err := cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 	require.Error(t, err)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
-	assert.False(t, reached, "the refusal arrived before the sign-in")
+	require.ErrorContains(t, err, "the credential store change could not finish for other: the keychain is not reachable")
+	assert.True(t, ce.Retryable, "the cause may clear, so a rerun can finish the step")
+	assert.True(t, *reached, "the check before the sign-in let the login through")
+	assert.FileExists(t, config.TransitionPath(dir), "the step stays for the next command")
+}
+
+// TestLoginRefusesAnUnreadableChangeRecordBeforeTheSignIn asserts the one
+// refusal the check before the sign-in keeps for an earlier change: a
+// record that cannot be read. The lock would refuse it, and nobody is
+// asked to authenticate first.
+func TestLoginRefusesAnUnreadableChangeRecordBeforeTheSignIn(t *testing.T) {
+	dir, cmd, reached, in := unfinishedChangeLogin(t, otherFileDeleteStep)
+	require.NoError(t, os.WriteFile(config.TransitionPath(dir), []byte("not: [a, change"), 0o600))
+
+	_, err := cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
+	require.Error(t, err)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	require.ErrorContains(t, err, config.TransitionPath(dir))
+	assert.False(t, *reached, "the refusal arrived before the sign-in")
+}
+
+// unreachableKeyring is a keyring seam whose every call fails, a keychain
+// that cannot be reached.
+type unreachableKeyring struct{}
+
+func (unreachableKeyring) Set(string, string, string) error {
+	return errors.New("the keychain is not reachable")
+}
+func (unreachableKeyring) Get(string, string) (string, error) {
+	return "", errors.New("the keychain is not reachable")
+}
+func (unreachableKeyring) Delete(string, string) error {
+	return errors.New("the keychain is not reachable")
 }
 
 // TestNewLoginOpensTheBackendItResolved asserts the opener production

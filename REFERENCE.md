@@ -105,8 +105,11 @@ its message names the step that could not finish and why; resolve that,
 then run the command again. Every `auth login`, `auth logout`, `config
 delete-server` and `config update-server --url` retries what the change
 left before its own work, and only a second store change is refused while
-some of it remains. `rancher config status` shows the change as
-`credentialStoreChange`, with each piece of work left and why it stopped.
+some of it remains. With work left from an earlier change, a login that
+changes the store is not refused before its sign-in on that work or on
+the store rules; the retry under the lock decides first. `rancher config
+status` shows the change as `credentialStoreChange`, with each piece of
+work left and why it stopped.
 A change record that cannot be read refuses all of those commands, logout
 included, until it is restored or moved aside: it is the only record of
 the old copies left to delete. While a change is unfinished, an error

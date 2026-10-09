@@ -344,25 +344,17 @@ func TestAGeneratedLoginKeepsEveryReaderOnTheOldOrTheNewCredential(t *testing.T)
 	}
 }
 
-// sweepKnownViolations are rule breaks the sweep finds at this commit and
-// does not accept. A row the rules say shows one logs it rather than
-// failing, and fails if it no longer shows it, so a fix removes the entry
-// here; TestEveryKnownSweepViolationHasARow fails for an entry no row
-// shows. matches picks out the entry's violations among a row's reader
-// and after-login ones; an entry without it is a disagreement of the
-// check before the sign-in and the login under the lock.
+// sweepKnownViolations are rule breaks the sweep finds and does not
+// accept. A row the rules say shows one logs it rather than failing, and
+// fails if it no longer shows it, so a fix removes the entry here;
+// TestEveryKnownSweepViolationHasARow fails for an entry no row shows.
+// matches is required: it picks out the entry's violations among a row's
+// reader and after-login ones.
 var sweepKnownViolations = []struct {
 	rule    string
 	applies func(r sweepRow, want sweepOutcome) bool
 	matches func(violation string) bool
-}{
-	{
-		rule: "the check before the sign-in refuses a store change while an earlier change has work left that the login's own prelude finishes, " +
-			"with the retryable CREDENTIAL_TRANSITION_INCOMPLETE and \"run this command again\"; the same command is refused again on every run, " +
-			"while REFERENCE.md says only a second store change is refused while some of that work remains, and the login under the lock goes on",
-		applies: func(_ sweepRow, want sweepOutcome) bool { return want.knownPrecheck != "" },
-	},
-}
+}{}
 
 // TestEveryKnownSweepViolationHasARow asserts each known violation
 // applies to at least one generated row: a change to the axes or the
@@ -470,11 +462,7 @@ func runSweepRow(t *testing.T, r sweepRow) {
 
 	setHelperState(t, r, precheckDir)
 	pre, policy, disclosed := sweepPreCheck(t, r, precheckDir.path)
-	wantPre := want.precheck
-	if want.knownPrecheck != "" {
-		wantPre = want.knownPrecheck
-	}
-	assert.Equal(t, wantPre, pre, "the check before the sign-in")
+	assert.Equal(t, want.precheck, pre, "the check before the sign-in")
 	if pre == "" {
 		assert.Equal(t, want.disclosed, disclosed, "the check before the sign-in discloses the plaintext file when the login goes there")
 	}
@@ -588,9 +576,10 @@ func runSweepRow(t *testing.T, r sweepRow) {
 	}
 	judge("after the login")
 	for _, k := range sweepKnownViolations {
-		if k.matches == nil || !k.applies(r, want) {
+		if !k.applies(r, want) {
 			continue
 		}
+		require.NotNil(t, k.matches, "known violation %q has no matches", k.rule)
 		n := len(violations)
 		if violations = slices.DeleteFunc(violations, k.matches); len(violations) < n {
 			t.Logf("known violation, %d checks: %s", n-len(violations), k.rule)
@@ -603,27 +592,34 @@ func runSweepRow(t *testing.T, r sweepRow) {
 	compareSweepPaths(t, r, want, pre, lock)
 }
 
-// compareSweepPaths asserts the check before the sign-in and the login
-// under the lock agree. Allowed: the plugin's login aborts under the lock
-// on the plaintext file the check did not disclose, which only the lock
-// can see once its prelude has finished an earlier change.
+// compareSweepPaths asserts the one rule the check before the sign-in and
+// the login under the lock follow: the check never refuses what the lock
+// accepts. While an earlier change has work left, the lock replays it
+// before it decides and the check cannot, so the check leaves the store
+// rules and the unfinished-change refusal to the lock, and may accept what
+// the lock then refuses. Allowed, for such a row only:
+//   - the lock refuses because work the earlier change left still remains
+//     after its replay (want.stepsLeft);
+//   - the lock refuses on the store rules, judged on the directory as the
+//     replay left it.
+//
+// Also allowed: the plugin's login aborts under the lock on the plaintext
+// file the check did not disclose, which only the lock can see once its
+// prelude has finished an earlier change.
+//
+// Each case is conditioned on the lock's answer and the row's start, never
+// on the check's answer alone, so a check that missed a refusal the lock
+// gives for another reason still fails the row.
 func compareSweepPaths(t *testing.T, r sweepRow, want sweepOutcome, pre, lock string) {
 	t.Helper()
-	known := ""
-	for _, k := range sweepKnownViolations {
-		if k.matches == nil && k.applies(r, want) {
-			known = k.rule
-		}
-	}
+	afterReplay := leftoverWork(r.start) && (lock == answerStoreChange ||
+		lock == answerUnfinished && want.stepsLeft)
 	switch {
-	case known != "" && pre != lock:
-		t.Logf("known violation: %s (check before the sign-in: %q, login under the lock: %q)", known, pre, orAllowed(lock))
-	case known != "":
-		assert.Fail(t, "known violation no longer occurs; remove it from sweepKnownViolations", known)
 	case pre == lock:
+	case pre == "" && afterReplay:
 	case pre == "" && lock == answerUndisclosed:
 	default:
-		assert.Fail(t, "the check before the sign-in and the login under the lock disagree",
+		assert.Fail(t, "the check before the sign-in refuses what the login under the lock accepts, or the two refuse differently",
 			"check before the sign-in: %s; login under the lock: %s", orAllowed(pre), orAllowed(lock))
 	}
 }

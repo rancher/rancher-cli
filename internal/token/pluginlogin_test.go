@@ -1085,12 +1085,14 @@ func TestThePluginLoginOpensTheBackendItResolved(t *testing.T) {
 	assert.Equal(t, "keychain", config.ReadPin(x.dir), "the change ends with the pin it resolved")
 }
 
-// TestThePluginLoginRefusesAStoreChangeWhileAnotherIsUnfinished asserts
-// the other arm of that check on the plugin path: an `auto` directory
-// pinned to the file store on a machine whose keychain works is moved to
-// the keychain by the plugin's login, which is a change of its own, and a
-// change with work left for another entry stops it before the sign-in.
-func TestThePluginLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T) {
+// TestThePluginLoginFinishesAnUnfinishedChangeBeforeItsOwn asserts the
+// other arm of that check on the plugin path: an `auto` directory pinned to
+// the file store on a machine whose keychain works is moved to the
+// keychain by the plugin's login, which is a change of its own, and a
+// change with work left for another entry does not stop it before the
+// sign-in. The login signs in, and under the lock the replay finishes the
+// earlier change before the login's own goes through.
+func TestThePluginLoginFinishesAnUnfinishedChangeBeforeItsOwn(t *testing.T) {
 	keyring.MockInit()
 	config.ResetKeyringUsableCacheForTest(t)
 	x := newPluginFixture(t, true, testrancher.Options{})
@@ -1104,11 +1106,10 @@ func TestThePluginLoginRefusesAStoreChangeWhileAnotherIsUnfinished(t *testing.T)
 	seedUnfinishedDelete(t, x.dir, "other")
 
 	_, err = x.getToken(t, "c-test", "n", localPrompter())
-	require.Error(t, err)
-	ce, ok := errors.AsType[*clierr.Error](err)
-	require.True(t, ok)
-	assert.Equal(t, clierr.CodeCredentialTransitionIncomplete, ce.Code)
-	assert.Zero(t, x.f.LoginCount(), "nobody was asked to sign in")
+	require.NoError(t, err)
+	assert.Equal(t, 1, x.f.LoginCount(), "the sign-in was reached")
+	assert.NoFileExists(t, config.TransitionPath(x.dir), "the earlier change finished")
+	assert.Equal(t, "keychain", config.ReadPin(x.dir), "and the login's own change ended with its pin")
 }
 
 // TestThePluginLoginRefusesALeftoverMoveBeforeTheSignIn asserts what a

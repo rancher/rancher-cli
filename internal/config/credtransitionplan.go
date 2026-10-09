@@ -91,7 +91,8 @@ func newTransitionPlan() (*TransitionPlan, error) {
 //
 // A login runs it before the sign-in, so the answer arrives before the
 // operator authenticates, and again under the lock, where it is the
-// authority. It takes no lock and writes nothing.
+// authority; while an earlier change has steps left, only the lock runs
+// it, after the replay. It takes no lock and writes nothing.
 func CheckTransitionSources(dir string, cfg *Config, loginEntry, from, to string) error {
 	if !isPhysicalBackend(from) {
 		return fmt.Errorf("a credential store change needs a physical backend to leave, not %q", from)

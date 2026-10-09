@@ -146,19 +146,26 @@ func TestPrepareMutationRemovesAbandonedWork(t *testing.T) {
 	assert.NoFileExists(t, TransitionPath(dir))
 }
 
-// TestRefusedByTransitionAnswersBeforeAuthentication asserts the
-// unlocked check a login runs before the sign-in. It exists so an
-// operator is not asked to authenticate for a login that the locked
-// prelude will refuse a moment later.
-func TestRefusedByTransitionAnswersBeforeAuthentication(t *testing.T) {
+// TestTheCheckBeforeTheSignInReplaysAndWritesNothing asserts the unlocked
+// check a login runs before the sign-in only reads: a step that the
+// locked prelude would finish is reported as left, and the credential it
+// would delete and the change record are both still there afterwards.
+func TestTheCheckBeforeTheSignInReplaysAndWritesNothing(t *testing.T) {
 	dir := t.TempDir()
 	cfg := activeTransition(t, dir, fileDeleteStep(t, dir, "prod", "https://r.ex", "prod-tok"))
 
-	require.Error(t, RefusedByTransition(dir, cfg, MutationIntent{ChangesStore: true}))
-	require.NoError(t, RefusedByTransition(dir, cfg, MutationIntent{}),
-		"a login that changes no store is free to go on")
-	require.NoError(t, RefusedByTransition(dir, &Config{}, MutationIntent{ChangesStore: true}),
-		"a directory with no change recorded refuses nothing")
+	left, err := transitionStepsLeft(dir, cfg)
+	require.NoError(t, err)
+	assert.True(t, left)
+	assert.Equal(t, "prod-tok", storedFileToken(t, dir), "nothing was deleted")
+	m, rerr := readTransition(dir)
+	require.NoError(t, rerr)
+	require.NotNil(t, m)
+	assert.Len(t, m.Steps, 1, "and the record is as it was")
+
+	left, err = transitionStepsLeft(dir, &Config{})
+	require.NoError(t, err)
+	assert.False(t, left, "a directory with no change recorded has nothing left")
 }
 
 // TestUnfinishedChangeNoteNamesTheStatusCommand asserts what an error with
@@ -312,28 +319,18 @@ func TestATerminalStepDoesNotRefuseAnotherCommand(t *testing.T) {
 	assert.Contains(t, m.Steps[0].LastError, "retiring the credential identity for other", "and the cause, in its own words")
 	assert.NotContains(t, m.Steps[0].LastError, "cannot finish for", "not the sentence that wraps it")
 
-	// The same directory still refuses a second store change, with the
-	// verdict the step earned rather than a retryable relabeling of it.
-	for name, refuse := range map[string]func() error{
-		"the locked prelude": func() error {
-			_, err := PrepareMutation(t.Context(), dir, cfg, MutationIntent{ChangesStore: true})
-			return err
-		},
-		"the pre-authentication check": func() error {
-			return RefusedByTransition(dir, cfg, MutationIntent{ChangesStore: true})
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			serr := refuse()
-			require.Error(t, serr)
-			ce, ok := errorsAsClierr(serr)
-			require.True(t, ok)
-			assert.Equal(t, clierr.CodeValidation, ce.Code, "a terminal step keeps its own code")
-			assert.False(t, ce.Retryable, "no retry can change a record that cannot be read")
-			assert.Equal(t, clierr.Rancher+" config status", ce.Hint, "the report that shows the step")
-			require.ErrorContains(t, serr, "other")
-		})
-	}
+	// The same directory still refuses a second store change under the
+	// lock, with the verdict the step earned rather than a retryable
+	// relabeling of it. The check before the sign-in leaves that to the
+	// lock: a retry may clear what the last attempt found.
+	_, serr := PrepareMutation(t.Context(), dir, cfg, MutationIntent{ChangesStore: true})
+	require.Error(t, serr)
+	ce, ok := errorsAsClierr(serr)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code, "a terminal step keeps its own code")
+	assert.False(t, ce.Retryable, "no retry can change a record that cannot be read")
+	assert.Equal(t, clierr.Rancher+" config status", ce.Hint, "the report that shows the step")
+	require.ErrorContains(t, serr, "other")
 }
 
 // TestStepErrorKeepsATerminalVerdict asserts how a remaining step reports

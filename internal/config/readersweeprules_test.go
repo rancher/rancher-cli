@@ -443,6 +443,12 @@ func (s sweepState) prelude(start, leftFor string) (settled sweepState, refusal 
 	return settled, "", false
 }
 
+// leftoverWork reports whether a start leaves an earlier change with steps
+// recorded in a record config.yaml names, readable.
+func leftoverWork(start string) bool {
+	return start == startDeleteLeft || start == startDeleteBlocked || start == startPinLeft
+}
+
 // sweepOutcome is what the rules say a row's login does.
 type sweepOutcome struct {
 	// precheck and lock are the refusals of the check before the sign-in
@@ -462,10 +468,6 @@ type sweepOutcome struct {
 	stepsLeft bool
 	// commitFails is the error of a commit that cannot reach its store.
 	commitFails string
-	// knownPrecheck is what the check before the sign-in answers at this
-	// commit where that breaks the rule: a known violation in
-	// sweepKnownViolations. Empty where the check keeps the rule.
-	knownPrecheck string
 }
 
 // expectLogin applies the rules to row r on directory s, in the order
@@ -493,23 +495,20 @@ func expectLogin(r sweepRow, s sweepState, leftFor string) sweepOutcome {
 		if kind != "" {
 			return kind
 		}
-		switch {
-		case r.start == startUnreadable:
+		if r.start == startUnreadable {
 			return answerRecord
-		case b.changesStore && r.start == startDeleteBlocked:
-			// Work the prelude cannot finish refuses a second change.
-			return answerUnfinished
-		case b.changesStore && (r.start == startDeleteLeft || r.start == startPinLeft):
-			// The rule: only work still left once the prelude has run
-			// refuses a second change, so the check before the sign-in
-			// owes the answer the login under the lock gives, set below.
-			// Known violation: at this commit the check does not replay
-			// and refuses on work the prelude would finish.
-			o.knownPrecheck = answerUnfinished
-			return ""
 		}
-		if kind := s.storeChangeRefusal("prod", b); kind != "" {
-			return kind
+		// The rule: while an earlier change has work left, the check
+		// before the sign-in leaves both the second-change refusal and the
+		// store rules to the login under the lock. The lock replays the
+		// work first and judges the directory as the replay left it; the
+		// check can only see the directory before that, and would refuse
+		// what the lock accepts. The decision for the plugin's disclosure
+		// is still made on the directory as it is.
+		if !leftoverWork(r.start) {
+			if kind := s.storeChangeRefusal("prod", b); kind != "" {
+				return kind
+			}
 		}
 		o.disclosed = r.login == loginPlugin && b.commitsTo == backendFile
 		return ""
@@ -518,7 +517,7 @@ func expectLogin(r sweepRow, s sweepState, leftFor string) sweepOutcome {
 	// plaintext file it did not disclose (undisclosedPlaintext). The lock
 	// run of a row whose check refused is given the disclosure, so that
 	// abort cannot stand in for the refusal it is compared with.
-	disclosedToLock := o.disclosed || o.precheck != "" || o.knownPrecheck != ""
+	disclosedToLock := o.disclosed || o.precheck != ""
 	o.lock = func() string {
 		if refusal != "" {
 			return refusal
@@ -554,10 +553,6 @@ func expectLogin(r sweepRow, s sweepState, leftFor string) sweepOutcome {
 		}
 		return ""
 	}()
-	if o.knownPrecheck != "" {
-		o.precheck = o.lock
-		o.disclosed = r.login == loginPlugin && o.lock == "" && o.b.commitsTo == backendFile
-	}
 	if o.lock == "" && o.b.commitsTo == backendKeychain &&
 		(!s.reachable || (s.blocked == "prod" && o.settled.has("prod", backendKeychain))) {
 		o.commitFails = answerUnavailable

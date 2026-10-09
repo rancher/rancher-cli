@@ -433,8 +433,10 @@ func (l loginCmd) authenticateAndStore(
 	}
 	// What this login would do to the directory's credential store,
 	// answered before anyone is asked to authenticate: a change that
-	// cannot be made, or one that cannot start while another is
-	// unfinished, costs no server-issued token this way.
+	// cannot be made, or a change record that cannot be read, costs no
+	// server-issued token this way. Steps an earlier change left are
+	// replayed under the lock, which then decides; they are not refused
+	// here.
 	if _, serr := config.LoginStoreChange(l.dir, declCfg, name,
 		policy, config.DeclarationFor(observedDeclaration, requested, policy)); serr != nil {
 		return runtime.Result{}, config.WithNotices(serr, earlyWarnings)

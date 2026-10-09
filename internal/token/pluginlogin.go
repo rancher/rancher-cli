@@ -241,10 +241,12 @@ func freshCredentialError(err error) error {
 // backend is the plaintext file. It is the login's own answer - the same
 // check `auth login` runs before its sign-in, with the probe the login
 // pays anyway - so a login that will commit to the file store says so
-// before anyone signs in, and one that would be refused is refused here:
-// this login has a terminal only sometimes, and a refusal after the
-// sign-in would have cost a server-issued token for a login that was
-// never going to be accepted. The commit revalidates it.
+// before anyone signs in, and one the directory's own state refuses, such
+// as a change record that cannot be read, is refused here: this login has
+// a terminal only sometimes, and a refusal after the sign-in would have
+// cost a server-issued token for a login that was never going to be
+// accepted. Steps an earlier change left are not refused here: the commit
+// replays them under the lock and decides then. The commit revalidates it.
 func storeDecision(dir string, cfg *config.Config, entry string) (config.StoreDecision, string, error) {
 	policy, err := config.EffectivePolicy(cfg.CredentialStore)
 	if err != nil {

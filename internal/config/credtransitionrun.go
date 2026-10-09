@@ -190,23 +190,25 @@ func refusedBy(m *transitionManifest, intent MutationIntent) error {
 	return stepError(m.Steps[0])
 }
 
-// RefusedByTransition answers the same question PrepareMutation answers,
-// without the config lock and without replaying anything, so a login can
-// decline before it asks anyone to authenticate rather than after. The
-// locked prelude stays the authority: this only avoids a sign-in that was
-// never going to be accepted.
-func RefusedByTransition(dir string, cfg *Config, intent MutationIntent) error {
+// transitionStepsLeft is the question a login asks before the sign-in
+// about an earlier store change: does the directory have steps left that
+// the locked prelude will replay. It takes no lock, replays nothing and
+// writes nothing. Every step is the lock's to decide: the replay can finish
+// it, and only once it has run can the transition refusal or the store
+// rules be judged on the directory as the replay left it - a check made
+// before the replay sees the directory before that, and would refuse what
+// the lock then accepts. A change record that cannot be read is the one
+// answer given here, as an error: the lock refuses on it for certain, and
+// there is nothing for the replay to do.
+func transitionStepsLeft(dir string, cfg *Config) (bool, error) {
 	if !HasPendingTransition(dir, cfg) {
-		return nil
+		return false, nil
 	}
 	state, m, err := LoadTransition(dir, cfg)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if state != TransitionActive {
-		return nil
-	}
-	return refusedBy(m, intent)
+	return state == TransitionActive && m != nil && len(m.Steps) > 0, nil
 }
 
 // replayPass runs the remaining steps in order, removing each one under

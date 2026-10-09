@@ -355,22 +355,32 @@ func plaintextKeptNotice(dir string, inFile, inKeychain []string) string {
 }
 
 // LoginStoreChange reports what would stop a login before it asks anyone
-// to authenticate: a store change while another is unfinished, another
-// entry still holding a credential in the store this entry's credential
-// leaves, or a directory whose credentials are in both stores with no pin.
-// It also returns the store the login's credential would go to, the
-// answer a plaintext disclosure before the sign-in is made from. It takes
-// no lock and writes nothing, so the answer can be stale by the time the
-// login holds the config lock; the plan there runs the same rules and is
-// the authority. This exists so an operator is not asked to sign in for a
-// login that was never going to be accepted.
+// to authenticate: a change record that cannot be read, another entry
+// still holding a credential in the store this entry's credential leaves,
+// or a directory whose credentials are in both stores with no pin. It also
+// returns the store the login's credential would go to, the answer a
+// plaintext disclosure before the sign-in is made from.
+//
+// While an earlier store change has steps left, the login under the lock
+// replays them first and judges the directory as the replay left it. The
+// store rules here would judge it as it is now, and a replay can finish
+// the delete or the pin they count, so they are skipped and the lock
+// decides. The returned store is computed from the directory as it is now.
+// The answer takes no lock and writes nothing, so it can be stale by the
+// time the login holds the config lock; the plan there runs the same rules
+// and is the authority. This exists so an operator is not asked to sign in
+// for a login that was never going to be accepted.
 func LoginStoreChange(dir string, cfg *Config, entry, policy, declaration string) (commitsTo string, err error) {
 	b, err := loginBackendsOf(dir, cfg, entry, policy, declaration)
 	if err != nil {
 		return "", err
 	}
-	if err := RefusedByTransition(dir, cfg, MutationIntent{ChangesStore: b.ChangesStore()}); err != nil {
+	left, err := transitionStepsLeft(dir, cfg)
+	if err != nil {
 		return "", err
+	}
+	if left {
+		return b.CommitsTo, nil
 	}
 	if err := checkStoreChange(dir, cfg, entry, b); err != nil {
 		return "", err
