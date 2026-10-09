@@ -3,14 +3,18 @@
 package provider
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
@@ -34,16 +38,61 @@ func widgetCRD() *apiextv1.CustomResourceDefinition {
 	}
 }
 
+var (
+	sharedEnv       *envtest.Environment
+	sharedEnvConfig *rest.Config
+	sharedEnvErr    error
+)
+
+// init wires the one shared control plane into the package's TestMain. It
+// starts before m.Run so the apiserver and etcd startup never overlaps the
+// package's parallel tests, and it stops after m.Run returns. A panic or a
+// test timeout skips the stop; the process exits anyway. An envtest-tagged
+// run starts the control plane (a few seconds) even when -run selects none of
+// this file's tests.
+func init() {
+	startSharedEnvtest = func() {
+		sharedEnv = &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
+		sharedEnvConfig, sharedEnvErr = sharedEnv.Start()
+	}
+	stopSharedEnvtest = func() {
+		if sharedEnv != nil {
+			_ = sharedEnv.Stop()
+		}
+	}
+}
+
+// sharedClusterClient returns a client for the shared control plane, or fails
+// the test with the error from starting it. Every test in this file shares
+// the one apiserver and uses object names no other test uses.
+func sharedClusterClient(t *testing.T) engine.ClusterClient {
+	t.Helper()
+	require.NoError(t, sharedEnvErr, "the shared envtest control plane did not start")
+	repo, err := NewClusterClient(rest.CopyConfig(sharedEnvConfig), "test")
+	require.NoError(t, err)
+	return repo
+}
+
+// deleteWidgetOnCleanup deletes the named widget in the default namespace when
+// the test ends, so a repeated run (-count=N) against the one shared apiserver
+// finds no leftover object. A widget the test already deleted is not an error.
+func deleteWidgetOnCleanup(t *testing.T, repo engine.ClusterClient, name string) {
+	t.Helper()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 30*time.Second)
+		defer cancel()
+		if err := repo.Delete(ctx, widgetGVR, "default", name, "", false); err != nil && !clierr.IsNotFound(err) {
+			t.Errorf("delete widget %q: %v", name, err)
+		}
+	})
+}
+
 func TestRepoContractAgainstEnvtest(t *testing.T) {
 	t.Parallel()
-	env := &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
-	rc, err := env.Start()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = env.Stop() })
-
-	repo, err := NewClusterClient(rc, "test")
-	require.NoError(t, err)
+	repo := sharedClusterClient(t)
 	ctx := t.Context()
+	deleteWidgetOnCleanup(t, repo, "dry")
+	deleteWidgetOnCleanup(t, repo, "real")
 	w := func(name string) *unstructured.Unstructured {
 		return &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "test.rancher.io/v1", "kind": "Widget",
@@ -52,7 +101,7 @@ func TestRepoContractAgainstEnvtest(t *testing.T) {
 	}
 
 	// dry-run create must NOT persist.
-	_, err = repo.Create(ctx, widgetGVR, "default", w("dry"), true)
+	_, err := repo.Create(ctx, widgetGVR, "default", w("dry"), true)
 	require.NoError(t, err)
 	_, err = repo.Get(ctx, widgetGVR, "default", "dry")
 	require.Error(t, err, "dry-run create must not persist")
@@ -76,14 +125,9 @@ func TestRepoContractAgainstEnvtest(t *testing.T) {
 // on so a concurrent modification is never a lost write.
 func TestUpdateStaleResourceVersionConflicts(t *testing.T) {
 	t.Parallel()
-	env := &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
-	rc, err := env.Start()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = env.Stop() })
-
-	repo, err := NewClusterClient(rc, "test")
-	require.NoError(t, err)
+	repo := sharedClusterClient(t)
 	ctx := t.Context()
+	deleteWidgetOnCleanup(t, repo, "conflict")
 
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "test.rancher.io/v1", "kind": "Widget",
@@ -118,13 +162,9 @@ func TestUpdateStaleResourceVersionConflicts(t *testing.T) {
 // with the Update operation (the CLI never uses server-side apply).
 func TestFieldManagerIsRecordedInManagedFields(t *testing.T) {
 	t.Parallel()
-	env := &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
-	rc, err := env.Start()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = env.Stop() })
-	repo, err := NewClusterClient(rc, "test")
-	require.NoError(t, err)
+	repo := sharedClusterClient(t)
 	ctx := t.Context()
+	deleteWidgetOnCleanup(t, repo, "owned")
 
 	w := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "test.rancher.io/v1", "kind": "Widget",

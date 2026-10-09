@@ -117,6 +117,14 @@ func (p *connectProxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 var sharedConnectProxyForTests *connectProxy
 
+// startSharedEnvtest and stopSharedEnvtest are no-ops in the default build.
+// The envtest-tagged test file replaces them so TestMain starts its one
+// control plane before any test runs and stops it after the last one.
+var (
+	startSharedEnvtest = func() {}
+	stopSharedEnvtest  = func() {}
+)
+
 // TestMain starts one CONNECT proxy fixture and points HTTPS_PROXY at it for
 // the whole binary. net/http's ProxyFromEnvironment caches its environment
 // read behind a private, unresettable sync.Once, so a per-test t.Setenv
@@ -140,7 +148,10 @@ func TestMain(m *testing.M) {
 		_ = os.Unsetenv(k)
 	}
 	_ = os.Setenv("HTTPS_PROXY", sharedConnectProxyForTests.srv.URL)
-	os.Exit(m.Run())
+	startSharedEnvtest()
+	code := m.Run()
+	stopSharedEnvtest()
+	os.Exit(code)
 }
 
 // TestRancherVersionTraversesConnectProxyWithPinnedCA asserts the login
