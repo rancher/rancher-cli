@@ -56,10 +56,7 @@ const saTokenFailurePrefix = "unable to create token for impersonated ServiceAcc
 func postReview(ctx context.Context, c engine.ClusterClient, kind engine.ReviewKind, obj *unstructured.Unstructured) reviewResult {
 	resp, err := c.PostReview(ctx, engine.ReviewRequest{Kind: kind, Object: obj})
 	if err != nil {
-		ce, ok := errors.AsType[*clierr.Error](err)
-		if !ok {
-			ce = clierr.New(clierr.CodeGeneric, err.Error())
-		}
+		ce := clierr.From(err)
 		if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 			return reviewResult{kind: outcomeTerminal, err: ce}
 		}

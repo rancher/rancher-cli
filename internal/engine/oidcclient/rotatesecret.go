@@ -2,6 +2,7 @@ package oidcclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -167,7 +168,7 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 // *clierr.Error that is NOT retryable (RBAC, NOT_FOUND) is a definitive,
 // terminal failure - waiting for the deadline could never fix it.
 func isTransientSecretReadError(err error) bool {
-	ce, ok := err.(*clierr.Error)
+	ce, ok := errors.AsType[*clierr.Error](err)
 	if !ok {
 		return true
 	}

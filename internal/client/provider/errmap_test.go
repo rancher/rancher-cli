@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -31,151 +33,9 @@ func TestMapErrPassesThroughStructuredError(t *testing.T) {
 	assert.False(t, ce.Retryable)
 }
 
-func TestMapErr(t *testing.T) {
-	gr := schema.GroupResource{Group: "management.cattle.io", Resource: "projects"}
-	cases := []struct {
-		name string
-		err  error
-		code string
-	}{
-		{"nil", nil, ""},
-		{"notfound", apierrors.NewNotFound(gr, "p-x"), clierr.CodeNotFound},
-		{"forbidden", apierrors.NewForbidden(gr, "p-x", errors.New("nope")), clierr.CodeRBAC},
-		{"unauthorized", apierrors.NewUnauthorized("bad token"), clierr.CodeAuth},
-		{"conflict", apierrors.NewConflict(gr, "p-x", errors.New("rv")), clierr.CodeConflict},
-		{"exists", apierrors.NewAlreadyExists(gr, "p-x"), clierr.CodeConflict},
-		{"invalid", apierrors.NewInvalid(schema.GroupKind{Group: gr.Group, Kind: "Project"}, "p-x", nil), clierr.CodeValidation},
-		{"badrequest", apierrors.NewBadRequest("bad"), clierr.CodeValidation},
-		{"other", errors.New("boom"), clierr.CodeGeneric},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := mapErr(tc.err)
-			if tc.code == "" {
-				assert.NoError(t, got)
-				return
-			}
-			var ce *clierr.Error
-			require.ErrorAs(t, got, &ce)
-			assert.Equal(t, tc.code, ce.Code)
-		})
-	}
-}
-
-// TestMapErrServiceUnavailable covers the Rancher proxy 503: a cluster whose
-// agent is not yet registered returns a 503 ServiceUnavailable that should be
-// classified as retryable so callers know to wait and retry, not give up.
-func TestMapErrServiceUnavailable(t *testing.T) {
-	t.Run("503 maps to GENERIC+retryable+message", func(t *testing.T) {
-		err := apierrors.NewServiceUnavailable("ClusterUnavailable 503: ClusterUnavailable 503")
-		got := mapErr(err)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, clierr.CodeGeneric, ce.Code)
-		assert.True(t, ce.Retryable, "503 must be retryable")
-		assert.Contains(t, ce.Message, "its agent may not be registered yet; retry once the cluster is active")
-		assert.Empty(t, ce.Hint)
-	})
-
-	t.Run("403 still maps to RBAC (no regression)", func(t *testing.T) {
-		gr := schema.GroupResource{Group: "management.cattle.io", Resource: "nodes"}
-		err := apierrors.NewForbidden(gr, "local", errors.New("denied"))
-		got := mapErr(err)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, clierr.CodeRBAC, ce.Code)
-		assert.False(t, ce.Retryable, "403 must not be retryable")
-	})
-}
-
-// TestMapErrConflictRetryable covers the precondition-conflict race: a
-// resourceVersion mismatch from a concurrent writer (e.g. a reconciling
-// controller) is retryable with plain wording, never the raw Kubernetes
-// "the object has been modified" message. A duplicate-name AlreadyExists is
-// the other HTTP 409 predicate and stays non-retryable - retrying it without
-// changing the name never succeeds.
-func TestMapErrConflictRetryable(t *testing.T) {
-	gr := schema.GroupResource{Group: "provisioning.cattle.io", Resource: "clusters"}
-
-	t.Run("conflict is retryable with plain wording", func(t *testing.T) {
-		err := apierrors.NewConflict(gr, "c-x", errors.New("the object has been modified; please apply your changes to the latest version and try again"))
-		got := mapErr(err)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, clierr.CodeConflict, ce.Code)
-		assert.True(t, ce.Retryable, "a resourceVersion precondition conflict is retryable")
-		assert.NotContains(t, ce.Message, "the object has been modified", "the raw Kubernetes message must not reach the caller")
-	})
-
-	t.Run("already exists is not retryable", func(t *testing.T) {
-		err := apierrors.NewAlreadyExists(gr, "c-x")
-		got := mapErr(err)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, clierr.CodeConflict, ce.Code)
-		assert.False(t, ce.Retryable, "a duplicate name never succeeds on retry")
-	})
-}
-
-// TestMapErrDeniedFallback covers a 403 or 401 that gave no reason: Rancher's
-// proxy answers a user without access with an empty body, which apierrors
-// passes through as an empty Error() string, and a bodyless 401 carries
-// apimachinery's default message. mapErr never hands the pipeline an empty
-// message, and with no request to name it says so.
-func TestMapErrDeniedFallback(t *testing.T) {
-	emptyForbidden := &apierrors.StatusError{ErrStatus: metav1.Status{
-		Status: metav1.StatusFailure, Reason: metav1.StatusReasonForbidden, Code: 403,
-	}}
-	emptyUnauthorized := &apierrors.StatusError{ErrStatus: metav1.Status{
-		Status: metav1.StatusFailure, Reason: metav1.StatusReasonUnauthorized, Code: 401,
-	}}
-	whitespaceForbidden := &apierrors.StatusError{ErrStatus: metav1.Status{
-		Status: metav1.StatusFailure, Reason: metav1.StatusReasonForbidden, Code: 403, Message: "   ",
-	}}
-
-	t.Run("empty forbidden message says the server gave no reason, with no hint", func(t *testing.T) {
-		ce, ok := errors.AsType[*clierr.Error](mapErr(emptyForbidden))
-		require.True(t, ok)
-		assert.Equal(t, clierr.CodeRBAC, ce.Code)
-		assert.Equal(t, "the server refused the request (403) and gave no reason", ce.Message)
-		assert.Empty(t, ce.Hint)
-		assert.NotContains(t, ce.Message, "may be invalid")
-	})
-
-	t.Run("empty and default unauthorized messages are chosen by the status", func(t *testing.T) {
-		defaultUnauthorized := &apierrors.StatusError{ErrStatus: metav1.Status{
-			Status: metav1.StatusFailure, Reason: metav1.StatusReasonUnauthorized, Code: 401, Message: unauthorizedDefault,
-		}}
-		for _, err := range []error{emptyUnauthorized, defaultUnauthorized} {
-			ce, ok := errors.AsType[*clierr.Error](mapErr(err))
-			require.True(t, ok)
-			assert.Equal(t, clierr.CodeAuth, ce.Code)
-			assert.Equal(t, "the server rejected the credential (401)", ce.Message)
-			assert.Equal(t, clierr.Rancher+" auth status", ce.Hint)
-		}
-	})
-
-	t.Run("whitespace-only forbidden message counts as empty", func(t *testing.T) {
-		ce, ok := errors.AsType[*clierr.Error](mapErr(whitespaceForbidden))
-		require.True(t, ok)
-		assert.Equal(t, "the server refused the request (403) and gave no reason", ce.Message)
-	})
-
-	t.Run("a populated forbidden message passes through untouched", func(t *testing.T) {
-		gr := schema.GroupResource{Group: "management.cattle.io", Resource: "projects"}
-		ce, ok := errors.AsType[*clierr.Error](mapErr(apierrors.NewForbidden(gr, "p-x", errors.New("nope"))))
-		require.True(t, ok)
-		assert.Contains(t, ce.Message, "nope")
-		assert.Empty(t, ce.Hint, "an already-populated message gains no hint")
-	})
-
-	t.Run("a populated unauthorized message passes through untouched", func(t *testing.T) {
-		ce, ok := errors.AsType[*clierr.Error](mapErr(apierrors.NewUnauthorized("bad token")))
-		require.True(t, ok)
-		assert.Equal(t, "bad token", ce.Message)
-		assert.Empty(t, ce.Hint)
-	})
-}
+// localManagementRefusal is the note a management.cattle.io refusal
+// through the local cluster's proxy carries.
+const localManagementRefusal = "; through the local cluster's proxy, Rancher answers some management.cattle.io resources, clusters among them, only for users with access to the local cluster"
 
 // TestMapRequestErrNamesTheRefusedRequest asserts a refusal that gave no
 // reason names the call: the verb, resource.group (the core group left
@@ -185,16 +45,16 @@ func TestMapRequestErrNamesTheRefusedRequest(t *testing.T) {
 	t.Parallel()
 	forbidden := &apierrors.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Reason: metav1.StatusReasonForbidden, Code: 403}}
 	for _, tc := range []struct {
-		q    request
+		q    clierr.Request
 		want string
 	}{
-		{request{verb: "list", group: "management.cattle.io", resource: "clusters", cluster: "local"},
+		{clierr.Request{Verb: "list", Group: "management.cattle.io", Resource: "clusters", Cluster: "local"},
 			"the server refused list clusters.management.cattle.io (403) and gave no reason" + localManagementRefusal},
-		{request{verb: "get", group: "management.cattle.io", resource: "clusters", name: "c-abc", cluster: "local"},
+		{clierr.Request{Verb: "get", Group: "management.cattle.io", Resource: "clusters", Name: "c-abc", Cluster: "local"},
 			"the server refused get clusters.management.cattle.io 'c-abc' (403) and gave no reason" + localManagementRefusal},
-		{request{verb: "get", group: "management.cattle.io", resource: "clusters", name: "c-abc", cluster: "c-abc"},
+		{clierr.Request{Verb: "get", Group: "management.cattle.io", Resource: "clusters", Name: "c-abc", Cluster: "c-abc"},
 			"the server refused get clusters.management.cattle.io 'c-abc' (403) and gave no reason"},
-		{request{verb: "list", resource: "namespaces", cluster: "local"},
+		{clierr.Request{Verb: "list", Resource: "namespaces", Cluster: "local"},
 			"the server refused list namespaces (403) and gave no reason"},
 	} {
 		ce, ok := errors.AsType[*clierr.Error](mapRequestErr(forbidden, &tc.q))
@@ -205,61 +65,10 @@ func TestMapRequestErrNamesTheRefusedRequest(t *testing.T) {
 	}
 	unauthorized := &apierrors.StatusError{ErrStatus: metav1.Status{Status: metav1.StatusFailure, Reason: metav1.StatusReasonUnauthorized, Code: 401}}
 	ce, ok := errors.AsType[*clierr.Error](mapRequestErr(unauthorized,
-		&request{verb: "list", group: "management.cattle.io", resource: "clusters", cluster: "local"}))
+		&clierr.Request{Verb: "list", Group: "management.cattle.io", Resource: "clusters", Cluster: "local"}))
 	require.True(t, ok)
 	assert.Equal(t, "the server rejected the credential (401) for list clusters.management.cattle.io", ce.Message)
 	assert.Equal(t, clierr.Rancher+" auth status", ce.Hint)
-}
-
-// TestMapErrAgentDisconnected covers the Rancher proxy's post-registration
-// agent drop: the proxy answers with a plain-text 5xx body ("error trying
-// to reach service: cluster agent disconnected") that client-go wraps as a
-// generic InternalError StatusError with an UnexpectedServerResponse cause.
-// Same underlying condition as the pre-registration 503 - classified
-// retryable with a matching hint. A genuine k8s-Status InternalError (e.g.
-// Rancher's stale-precondition delete, fidelity/probes.go) must NOT match.
-func TestMapErrAgentDisconnected(t *testing.T) {
-	gr := schema.GroupResource{Group: "", Resource: "nodes"}
-
-	t.Run("post-registration disconnect maps to GENERIC+retryable+message", func(t *testing.T) {
-		err := apierrors.NewGenericServerResponse(http.StatusInternalServerError, "get", gr, "",
-			"error trying to reach service: cluster agent disconnected", 0, true)
-		got := mapErr(err)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, clierr.CodeGeneric, ce.Code)
-		assert.True(t, ce.Retryable, "disconnected agent must be retryable")
-		assert.Contains(t, ce.Message, "retry once the cluster reconnects")
-		assert.Empty(t, ce.Hint)
-	})
-
-	t.Run("genuine k8s InternalError stays non-retryable", func(t *testing.T) {
-		got := mapErr(apierrors.NewInternalError(errors.New("etcdserver: request timed out")))
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.Equal(t, clierr.CodeGeneric, ce.Code)
-		assert.False(t, ce.Retryable)
-		assert.Empty(t, ce.Hint)
-	})
-
-	t.Run("unexpected 500 without the disconnect text stays retryable with the proxy message", func(t *testing.T) {
-		err := apierrors.NewGenericServerResponse(http.StatusInternalServerError, "get", gr, "",
-			"upstream connect error", 0, true)
-		got := mapErr(err)
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.True(t, ce.Retryable, "unexpected 5xx via proxy must be retryable")
-		assert.Contains(t, ce.Message, "often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed")
-		assert.Empty(t, ce.Hint)
-	})
-
-	t.Run("503 keeps its registration-window classification (no regression)", func(t *testing.T) {
-		got := mapErr(apierrors.NewServiceUnavailable("ClusterUnavailable 503"))
-		var ce *clierr.Error
-		require.ErrorAs(t, got, &ce)
-		assert.True(t, ce.Retryable)
-		assert.Contains(t, ce.Message, "may not be registered yet")
-	})
 }
 
 // TestMapErrDeadlineExceeded covers the hung agent-tunnel request: client-go
@@ -288,10 +97,13 @@ func TestMapErrDeadlineExceeded(t *testing.T) {
 	})
 }
 
-// TestRestoreStatusRebuildsOnlyAKubernetesStatus asserts that a raw
-// request's error is rebuilt from an application/json Status body and left
-// alone for every other body.
-func TestRestoreStatusRebuildsOnlyAKubernetesStatus(t *testing.T) {
+// TestRestoreStatusRebuildsFromTheAnswersBody asserts that a raw request's
+// error is rebuilt from the answer's body with the one decoder the other
+// hand-read answers use: a Status body's or a JSON error object's message
+// reaches the caller, a text body is the message as client-go reads it,
+// and an empty body is rebuilt as an answer with no reason, without the
+// request suffix client-go adds; an error with no status is left as it was.
+func TestRestoreStatusRebuildsFromTheAnswersBody(t *testing.T) {
 	t.Parallel()
 	generic := apierrors.NewGenericServerResponse(http.StatusForbidden, "get", schema.GroupResource{Resource: "pods"}, "web", "unknown", 0, true)
 	status := `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"pods \"web\" is forbidden: no pods/log","reason":"Forbidden","code":403}`
@@ -300,16 +112,77 @@ func TestRestoreStatusRebuildsOnlyAKubernetesStatus(t *testing.T) {
 	require.True(t, apierrors.IsForbidden(got))
 	require.ErrorContains(t, got, `pods "web" is forbidden: no pods/log`)
 
-	for name, body := range map[string]string{
-		"empty":                "",
-		"log text":             "2026-09-08T10:00:00Z started",
-		"rancher proxy object": `{"type":"error","status":"403","message":"clusters.management.cattle.io \"c-1\" is forbidden"}`,
-		"status without code":  `{"kind":"Status","message":"x"}`,
+	for name, tc := range map[string]struct {
+		body string
+		want string
+	}{
+		"rancher proxy object": {`{"type":"error","status":"403","message":"clusters.management.cattle.io \"c-1\" is forbidden"}`, `clusters.management.cattle.io "c-1" is forbidden`},
+		"status without code":  {`{"kind":"Status","message":"x"}`, "x"},
+		"log text":             {"2026-09-08T10:00:00Z started", "2026-09-08T10:00:00Z started"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			assert.Same(t, generic, restoreStatus(generic, []byte(body)))
+			got := restoreStatus(generic, []byte(tc.body))
+			require.True(t, apierrors.IsForbidden(got))
+			code, ok := clierr.HTTPStatus(got)
+			require.True(t, ok)
+			assert.Equal(t, http.StatusForbidden, code)
+			assert.EqualError(t, got, tc.want)
 		})
 	}
+
+	t.Run("empty body", func(t *testing.T) {
+		t.Parallel()
+		got := restoreStatus(generic, nil)
+		require.True(t, apierrors.IsForbidden(got))
+		code, ok := clierr.HTTPStatus(got)
+		require.True(t, ok)
+		assert.Equal(t, http.StatusForbidden, code)
+		assert.EqualError(t, got, "")
+	})
+	t.Run("no status", func(t *testing.T) {
+		t.Parallel()
+		plain := errors.New("connection refused")
+		assert.Same(t, plain, restoreStatus(plain, []byte(status)))
+	})
 	assert.NoError(t, restoreStatus(nil, []byte(status)))
+}
+
+// TestLogsWordsAnEmptyRefusalByItsRequest asserts a 401 or 403 with no
+// body on a pod log read, the one typed request, reads as any answer with
+// no reason does: the 403 names the request and says the server gave no
+// reason, the 401 names the request and the credential with the
+// rancher auth status hint, and neither keeps the request client-go adds
+// to its own text.
+func TestLogsWordsAnEmptyRefusalByItsRequest(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		status      int
+		contentType string
+		code        string
+		message     string
+		hint        string
+	}{
+		{"403", http.StatusForbidden, "", clierr.CodeRBAC, "the server refused get pods/log 'x' (403) and gave no reason", ""},
+		{"403 application/json", http.StatusForbidden, "application/json", clierr.CodeRBAC, "the server refused get pods/log 'x' (403) and gave no reason", ""},
+		{"401", http.StatusUnauthorized, "", clierr.CodeAuth, "the server rejected the credential (401) for get pods/log", clierr.AuthStatusRemedy},
+		{"401 application/json", http.StatusUnauthorized, "application/json", clierr.CodeAuth, "the server rejected the credential (401) for get pods/log", clierr.AuthStatusRemedy},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := refusingServer(t, refusal{status: tc.status, contentType: tc.contentType})
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "local")
+			require.NoError(t, err)
+			_, err = c.Logs(t.Context(), "default", "x", engine.LogOptions{})
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, tc.code, ce.Code)
+			assert.Equal(t, tc.message, ce.Message)
+			assert.Equal(t, tc.hint, ce.Hint)
+			status, ok := clierr.HTTPStatus(err)
+			require.True(t, ok)
+			assert.Equal(t, tc.status, status)
+		})
+	}
 }

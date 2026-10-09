@@ -281,7 +281,7 @@ func TestResolveFleetAgentNamespaceChain(t *testing.T) {
 			withListNS(provKind.GVR, "fleet-default", provList).
 			withObject(fleetKind.GVR, "fleet-default", "p-1", fleetCluster)
 		downstream := newFakeClient().withListNS(podKind.GVR, "custom-fleet-ns", podList("fleet-agent-1"))
-		root := (&fakeRoot{}).withError(clusterPath("c-1"), rootStatusError(500))
+		root := (&fakeRoot{}).withError(clusterPath("c-1"), rootStatusError(500, clusterPath("c-1")))
 		factory := &fakeFactory{local: local, root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 		target, _ := Lookup("fleet-agent")
 

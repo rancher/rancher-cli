@@ -191,6 +191,71 @@ func TestLogsExecuteZeroYieldedLogsIsAnError(t *testing.T) {
 	})
 }
 
+// TestLogsExecuteEveryReadRefusedKeepsTheRefusal asserts that when no log
+// was read and every container's read was refused with AUTH, or every one
+// with RBAC, the command returns that code with the first read's message
+// and a warning per read, while a mix of the two stays NOT_FOUND.
+func TestLogsExecuteEveryReadRefusedKeepsTheRefusal(t *testing.T) {
+	t.Parallel()
+	pods := func() *unstructured.UnstructuredList {
+		return &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			unstructuredPodWithContainers("agent-1", "main"),
+			unstructuredPodWithContainers("agent-2", "side"),
+		}}
+	}
+	run := func(mainErr, sideErr error) error {
+		downstream := newFakeClient().
+			withListNS(podKind.GVR, "cattle-system", pods()).
+			withLogErr("main", mainErr).
+			withLogErr("side", sideErr)
+		factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+		_, err := execLogs(t, factory, input{args: []string{"agent"}, s: map[string]string{engine.FlagCluster: "c-1"}})
+		return err
+	}
+	auth := func(msg string) error { return clierr.New(clierr.CodeAuth, msg) }
+	rbac := func(msg string) error { return clierr.New(clierr.CodeRBAC, msg) }
+
+	for _, tc := range []struct {
+		name       string
+		main, side error
+		code       string
+		message    string
+	}{
+		{"every read AUTH", auth("main rejected"), auth("side rejected"), clierr.CodeAuth, "main rejected"},
+		{"every read RBAC", rbac("main forbidden"), rbac("side forbidden"), clierr.CodeRBAC, "main forbidden"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := run(tc.main, tc.side)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "%v", err)
+			assert.Equal(t, tc.code, ce.Code)
+			assert.Equal(t, tc.message, ce.Message)
+			assert.Equal(t, []string{
+				"agent-1/main: " + tc.main.Error(),
+				"agent-2/side: " + tc.side.Error(),
+			}, ce.Warnings())
+		})
+	}
+
+	t.Run("one AUTH and one RBAC", func(t *testing.T) {
+		t.Parallel()
+		err := run(auth("main rejected"), rbac("side forbidden"))
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "%v", err)
+		assert.Equal(t, clierr.CodeNotFound, ce.Code)
+		assert.Empty(t, ce.Warnings())
+	})
+
+	t.Run("one AUTH and one failure that is no refusal", func(t *testing.T) {
+		t.Parallel()
+		err := run(auth("main rejected"), errors.New("container is not running"))
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "%v", err)
+		assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	})
+}
+
 func TestLogsExecuteSinceWrapper(t *testing.T) {
 	t.Parallel()
 
@@ -314,9 +379,9 @@ func TestLogsKubeAPIAuthAsClusterOwner(t *testing.T) {
 func TestLogsKubeAPIAuthPropagatesSteveError(t *testing.T) {
 	t.Parallel()
 	factory, _ := ownerFactory(newFakeClient())
-	factory.root.withError(clusterPath("c-abc"), rootStatusError(500))
+	factory.root.withError(clusterPath("c-abc"), rootStatusError(500, clusterPath("c-abc")))
 
 	_, err := execLogs(t, factory, input{args: []string{"kube-api-auth"}, s: map[string]string{engine.FlagCluster: "prod"}})
-	require.ErrorContains(t, err, "http status 500")
+	require.ErrorContains(t, err, "Internal Server Error")
 	assert.NotEqual(t, clierr.CodeNotFound, clierrCode(t, err))
 }

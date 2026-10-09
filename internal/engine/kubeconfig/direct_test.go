@@ -2,6 +2,7 @@ package kubeconfig
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
-	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 )
 
@@ -337,14 +337,17 @@ func TestDirectEndpointsReadsTheClusterOnlyThroughTheGetter(t *testing.T) {
 // TestDirectEndpointsForbiddenClusterIsOmitted asserts a 403 from the
 // getter lands in Omitted naming the cluster and the refused request, reads
 // nothing through the management client, and returns no error: first with a
-// getter that fails with a *steve.StatusError, then through the root client
-// getter with the root client's own 403 error.
+// getter that fails with the status error clierr.ResponseError builds, then
+// through the root client getter with the error the root client builds for
+// a 403 (clierr.FromResponse, RBAC).
 func TestDirectEndpointsForbiddenClusterIsOmitted(t *testing.T) {
 	t.Parallel()
-	forbiddenRoot := clierr.New(clierr.CodeAuth, "forbidden").WithCause(&engine.RootStatusError{Status: 403})
+	forbiddenRoot := clierr.FromResponse("rancher root GET /v1/management.cattle.io.clusters/c-1", http.MethodGet, http.StatusForbidden, nil, &clierr.Request{})
 	for name, get := range map[string]steve.Getter{
-		"status error": func(context.Context, steve.Request) ([]byte, error) { return nil, &steve.StatusError{Status: 403} },
-		"root client":  steve.RootGetter(failingRoot{err: forbiddenRoot}),
+		"status error": func(context.Context, steve.Request) ([]byte, error) {
+			return nil, clierr.ResponseError(http.MethodGet, 403, nil)
+		},
+		"root client": steve.RootGetter(failingRoot{err: forbiddenRoot}),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -361,11 +364,58 @@ func TestDirectEndpointsForbiddenClusterIsOmitted(t *testing.T) {
 	}
 }
 
+// TestDirectEndpointsRefusedCredentialIsAnError asserts a 401 at any of the
+// three reads (the management cluster, the Feature, the nodes) is returned
+// as AUTH with the status readable and no omission, while a 403 at the same
+// read stays an omission with no error.
+func TestDirectEndpointsRefusedCredentialIsAnError(t *testing.T) {
+	t.Parallel()
+	refusal := func(status int) error {
+		return clierr.FromResponse("refused", http.MethodGet, status, nil, &clierr.Request{})
+	}
+	// run reads the cluster that has no fqdn, so the nodes are read, with
+	// the refusal placed at one of the three reads.
+	run := func(read string, err error) (Direct, error) {
+		c := &fakeClient{Objects: map[string]*unstructured.Unstructured{mcmFeature: feature(true)}}
+		var get steve.Getter = newClusterGetter(mgmtCluster("c-1", true, "", "", "")).Get
+		switch read {
+		case "cluster":
+			get = steve.RootGetter(failingRoot{err: err})
+		case "feature":
+			c.GetErrFor = map[string]error{mcmFeature: err}
+		case "nodes":
+			c.ListErr = err
+		}
+		return DirectEndpoints(t.Context(), c, get, "c-1")
+	}
+	for _, read := range []string{"cluster", "feature", "nodes"} {
+		t.Run(read+" 401", func(t *testing.T) {
+			t.Parallel()
+			d, err := run(read, refusal(http.StatusUnauthorized))
+			require.Error(t, err)
+			ce := clierr.From(err)
+			assert.Equal(t, clierr.CodeAuth, ce.Code)
+			st, ok := clierr.HTTPStatus(err)
+			assert.True(t, ok)
+			assert.Equal(t, http.StatusUnauthorized, st)
+			assert.Empty(t, d.Omitted)
+			assert.Empty(t, d.Endpoints)
+		})
+		t.Run(read+" 403", func(t *testing.T) {
+			t.Parallel()
+			d, err := run(read, refusal(http.StatusForbidden))
+			require.NoError(t, err)
+			assert.Empty(t, d.Endpoints)
+			assert.Len(t, d.Omitted, 1)
+		})
+	}
+}
+
 // TestDirectEndpointsRootNotFoundIsAnError asserts a 404 through the root
 // client getter is returned as a not-found error, not an omission.
 func TestDirectEndpointsRootNotFoundIsAnError(t *testing.T) {
 	t.Parallel()
-	notFound := clierr.New(clierr.CodeNotFound, "not found").WithCause(&engine.RootStatusError{Status: 404})
+	notFound := clierr.FromResponse("rancher root GET /v1/management.cattle.io.clusters/c-1", http.MethodGet, http.StatusNotFound, nil, &clierr.Request{})
 	d, err := DirectEndpoints(t.Context(), &fakeClient{}, steve.RootGetter(failingRoot{err: notFound}), "c-1")
 	require.Error(t, err)
 	assert.True(t, clierr.IsNotFound(err))

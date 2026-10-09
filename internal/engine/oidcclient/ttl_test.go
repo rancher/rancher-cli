@@ -1,6 +1,7 @@
 package oidcclient
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -99,4 +100,14 @@ func TestStrictTTLSecondsRewrapsFlagName(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRewrapTTLFlagNameKeepsWrapperText asserts a wrapped ParseTTL error
+// keeps the text its wrapper adds, with the flag name corrected.
+func TestRewrapTTLFlagNameKeepsWrapperText(t *testing.T) {
+	t.Parallel()
+	err := fmt.Errorf("x: %w", clierr.New(clierr.CodeValidation, "--ttl bad"))
+	got := rewrapTTLFlagName(err, "token-ttl")
+	require.Error(t, got)
+	assert.Equal(t, "x: --token-ttl bad", got.Error())
 }

@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -103,17 +104,28 @@ func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, i
 }
 
 // guardVerifyRefusal returns the retryable GENERIC error used when the
-// self-delete guard cannot be verified. The cause is embedded for diagnostics.
+// self-delete guard cannot be verified. The cause is embedded in the text
+// for diagnostics and kept as the error's cause, so clierr.HTTPStatus still
+// reads a server answer's status through it. A 429's own text does not say
+// the delete was held back, so it gets its own wording.
 func guardVerifyRefusal(cause error) *clierr.Error {
+	if status, ok := clierr.HTTPStatus(cause); ok && status == http.StatusTooManyRequests {
+		return clierr.Retryable(clierr.CodeGeneric,
+			"could not verify the target is not your own user: the server has received too many requests; retry later, or have another admin delete this user").WithCause(cause)
+	}
 	return clierr.Retryable(clierr.CodeGeneric,
-		fmt.Sprintf("could not verify the target is not your own user: %v; retry, or have another admin delete this user", cause))
+		fmt.Sprintf("could not verify the target is not your own user: %v; retry, or have another admin delete this user", cause)).WithCause(cause)
 }
 
 // passClassifiedOrRefuse returns err unchanged when it is a classified clierr
 // error - classified errors carry their own diagnosis and pass through; everything
 // else - raw errors and the error map's unclassified catch-all - refuses retryably
-// per the guard contract.
+// per the guard contract. A 429 refuses with the guard's text too: its own
+// wording does not say the delete was held back or what to do instead.
 func passClassifiedOrRefuse(err error) error {
+	if status, ok := clierr.HTTPStatus(err); ok && status == http.StatusTooManyRequests {
+		return guardVerifyRefusal(err)
+	}
 	if ce, ok := errors.AsType[*clierr.Error](err); ok && clierr.Classified(ce) {
 		return err
 	}

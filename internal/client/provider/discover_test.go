@@ -139,3 +139,43 @@ func TestServerGroupsDecodesThePreferredVersion(t *testing.T) {
 	}
 	assert.Equal(t, map[string]string{"cluster.x-k8s.io": "v1beta1", "ext.cattle.io": "v1"}, byName)
 }
+
+// TestDiscoveryAnswersWithAnEmptyBodyReadTheSameRebuilt asserts the
+// version and API group reads, whose requests name no resource, read an
+// answer with an empty body the same as the answer client-go builds for
+// it: rebuilding an empty body changes no text there.
+func TestDiscoveryAnswersWithAnEmptyBodyReadTheSameRebuilt(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		status  int
+		message string
+	}{
+		{http.StatusUnauthorized, "the server rejected the credential (401)"},
+		{http.StatusForbidden, "the server refused the request (403) and gave no reason"},
+		{http.StatusNotFound, "the server could not find the requested resource; check the server URL"},
+		{http.StatusInternalServerError, `an error on the server ("Internal Server Error") has prevented the request from succeeding - retrying may succeed`},
+		{http.StatusBadGateway, `an error on the server ("Bad Gateway") has prevented the request from succeeding - retrying may succeed`},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			t.Parallel()
+			srv := refusingServer(t, refusal{status: tc.status})
+			disc, err := kube.Discovery(discoveryConfig(&rest.Config{Host: srv.URL, BearerToken: "id:secret"}))
+			require.NoError(t, err)
+			q := &clierr.Request{Endpoint: true}
+			_, rawErr := disc.RESTClient().Get().AbsPath("/version").Do(t.Context()).Raw()
+			want := clierr.FromStatus(rawErr, q)
+			require.NotNil(t, want)
+			for name, read := range map[string]func() error{
+				"serverVersion": func() error { _, err := serverVersion(t.Context(), disc); return err },
+				"serverGroups":  func() error { _, err := serverGroups(t.Context(), disc); return err },
+			} {
+				got := clierr.FromStatus(read(), q)
+				require.NotNil(t, got, name)
+				assert.Equal(t, want.Message, got.Message, name)
+				assert.Equal(t, want.Code, got.Code, name)
+				assert.Equal(t, want.Hint, got.Hint, name)
+			}
+			assert.Equal(t, tc.message, want.Message)
+		})
+	}
+}

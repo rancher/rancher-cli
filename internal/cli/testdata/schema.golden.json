@@ -10452,7 +10452,7 @@
     },
     {
       "code": "CONFLICT",
-      "desc": "a write collided with existing state: a resource changed on the server since it was read, a name already exists, a server entry is registered with a different URL or CA, or the config directory changed while the command ran",
+      "desc": "a write collided with existing state: a resource changed on the server since it was read, a name already exists, a server entry is registered with a different URL or CA, the config directory changed while the command ran, or the server answered 409",
       "exit": 5
     },
     {
@@ -10462,7 +10462,7 @@
     },
     {
       "code": "AUTH",
-      "desc": "authentication failed: the server rejected the credential (HTTP 401), the exchange with the identity provider failed or timed out, an environment URL was set without RANCHER_CLI_TOKEN, or the credential belongs to another Rancher user than the call names",
+      "desc": "authentication failed: the server rejected the credential (HTTP 401), Rancher refused the sign-in, the exchange with the identity provider failed or timed out, an environment URL was set without RANCHER_CLI_TOKEN, or the credential belongs to another Rancher user than the call names",
       "exit": 3
     },
     {
@@ -10487,7 +10487,7 @@
     },
     {
       "code": "NOT_FOUND",
-      "desc": "no such resource, server entry, or name: the server returned HTTP 404, the config directory has no such entry, or the name matched nothing in already-fetched data",
+      "desc": "no such resource, server entry, or name: the server answered 404 for an object or for an API through a downstream cluster, the config directory has no such entry, or the name matched nothing in already-fetched data",
       "exit": 4
     },
     {

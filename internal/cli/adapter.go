@@ -415,7 +415,7 @@ func remedyDirFor(dir string) string {
 // an empty stderr. Flags have already parsed, so the invocation's own
 // --output value is trusted, and its remedies name its directory.
 func renderDepsError(c *ucli.Command, io runtime.IO, err error) error {
-	ce := clierr.New(clierr.CodeGeneric, err.Error())
+	ce := clierr.From(err)
 	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), io.ExpandError(ce), errStyle(c, c.String("color")))
 	return exit(ce)
 }

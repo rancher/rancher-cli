@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -175,13 +176,15 @@ func TestDeleteUserProbeNotFoundSkips(t *testing.T) {
 // TestDeleteUserRawClusterErrorRefusesRetryably verifies that a raw (non-clierr)
 // Cluster() construction failure is wrapped in the retryable GENERIC refusal -
 // an ambiguous construction failure must cost a retry rather than risk a lockout.
-// Assertions use errors.As rather than ErrorIs because guardVerifyRefusal embeds
-// the original text in the message without wrapping the error identity; the
-// shape after errors.As is exactly what runtime.toClierr would return.
+// Assertions use errors.As: guardVerifyRefusal returns a *clierr.Error that
+// embeds the original text in its message and keeps the original error as its
+// cause; the shape after errors.As is exactly what runtime.toClierr would
+// return.
 func TestDeleteUserRawClusterErrorRefusesRetryably(t *testing.T) {
 	t.Parallel()
 	k := userKind(t)
-	cmd := NewDeleteUser(k, fakeFactory{cErr: errors.New("connection refused")})
+	cause := errors.New("connection refused")
+	cmd := NewDeleteUser(k, fakeFactory{cErr: cause})
 
 	_, err := planDeleteUser(t, cmd, stubInput{args: []string{"u-other"}})
 	require.Error(t, err, "raw Cluster() failure must prevent deletion")
@@ -192,6 +195,7 @@ func TestDeleteUserRawClusterErrorRefusesRetryably(t *testing.T) {
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.True(t, ce.Retryable, "raw construction failure must refuse retryably")
 	assert.Contains(t, ce.Message, "connection refused", "original text must be embedded in the message")
+	assert.ErrorIs(t, err, cause, "the original error must stay the cause")
 }
 
 // TestDeleteUserCliErrClusterErrorPassesThrough verifies that a clierr-coded
@@ -372,4 +376,41 @@ func TestDeleteUserEmptyProbeIDRefuses(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.True(t, ce.Retryable)
+}
+
+// TestDeleteUserProbeRateLimitedRefusesWithGuardText asserts that a self-user
+// probe the server answers 429 returns the guard's own refusal - generic,
+// retryable, with its remedy - not the classified 429 error, whose wording
+// does not say the delete was held back, and that a classified 403 on the
+// same probe still passes through.
+func TestDeleteUserProbeRateLimitedRefusesWithGuardText(t *testing.T) {
+	t.Parallel()
+	k := userKind(t)
+	run := func(status int) *clierr.Error {
+		t.Helper()
+		probeErr := clierr.FromResponse("creating selfuser", "POST", status, nil, nil)
+		require.True(t, clierr.Classified(probeErr), "the answer must be classified for the test to reach the guard's choice")
+		c := &fakeClient{
+			createFn:    probeErrCreate(probeErr),
+			gets:        map[string]*unstructured.Unstructured{"/u-other": delUserObj("u-other")},
+			allowDelete: true,
+		}
+		_, err := planDeleteUser(t, NewDeleteUser(k, fakeFactory{c: c}), stubInput{args: []string{"u-other"}})
+		require.Error(t, err)
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, "must be a structured error")
+		return ce
+	}
+
+	limited := run(429)
+	assert.Equal(t, clierr.CodeGeneric, limited.Code)
+	assert.True(t, limited.Retryable)
+	assert.Equal(t, "could not verify the target is not your own user: the server has received too many requests; retry later, or have another admin delete this user", limited.Message)
+	status, ok := clierr.HTTPStatus(limited)
+	assert.True(t, ok, "the status stays readable through the refusal")
+	assert.Equal(t, http.StatusTooManyRequests, status)
+
+	refused := run(403)
+	assert.Equal(t, clierr.CodeRBAC, refused.Code, "a classified 403 passes through")
+	assert.NotContains(t, refused.Message, "could not verify the target")
 }

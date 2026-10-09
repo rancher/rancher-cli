@@ -376,8 +376,9 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   concrete value to offer, there is no `hint` field at all - the guidance
   lives in `message` instead. Inspect a present hint before running it,
   the same as any other emitted text - do not execute it blindly.
-- `retryable: true` (timeouts, conflicts) → retry is reasonable; otherwise do
-  not repeat the identical call.
+- `retryable: true` (timeouts, conflicts except a create that found the name
+  taken, a 429, a 502/503/504, or another 5xx whose body is not a Kubernetes
+  Status) → retry is reasonable; otherwise do not repeat the identical call.
 - `AMBIGUOUS_SELECTION` returns a `candidates` list - pick with the user, don't
   guess.
 - `CREDENTIAL_STORE_UNAVAILABLE` (exit `14`, retryable) means the keychain

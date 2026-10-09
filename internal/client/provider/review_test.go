@@ -112,8 +112,8 @@ func TestPostReviewMapsApiserverStatus(t *testing.T) {
 }
 
 // TestPostReviewRetryabilityTable asserts 502, 503, 504 map retryable,
-// a Status 500 does not, and any plain-text 500 (the proxy-path shape,
-// classified by shape as mapErr does) does.
+// a Status 500 does not, and any 5xx whose body is not a Kubernetes Status
+// (the proxy-path shape, classified by shape as mapErr does) does.
 func TestPostReviewRetryabilityTable(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -129,7 +129,7 @@ func TestPostReviewRetryabilityTable(t *testing.T) {
 		{"500 status", http.StatusInternalServerError, "application/json", `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"boom","reason":"InternalError","code":500}`, false},
 		{"500 proxy text", http.StatusInternalServerError, "text/plain", "cluster agent disconnected", true},
 		{"500 other text", http.StatusInternalServerError, "text/plain", "upstream broke", true},
-		{"599", 599, "text/plain", "odd", false},
+		{"599", 599, "text/plain", "odd", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -255,9 +255,10 @@ func TestPostReviewProtocolErrors(t *testing.T) {
 	}
 }
 
-// TestPostReviewTransportStatusWins asserts the HTTP status, not a Status
-// body's code field, decides the public error code.
-func TestPostReviewTransportStatusWins(t *testing.T) {
+// TestPostReviewStatusBodyCodeWins asserts a Status body's code field,
+// not the HTTP status, decides the error code, as it does for a typed
+// request.
+func TestPostReviewStatusBodyCodeWins(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name   string
@@ -265,8 +266,8 @@ func TestPostReviewTransportStatusWins(t *testing.T) {
 		body   string
 		code   string
 	}{
-		{"401 carrying code 403", http.StatusUnauthorized, `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"x","reason":"Forbidden","code":403}`, clierr.CodeAuth},
-		{"403 carrying code 404", http.StatusForbidden, `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"x","reason":"NotFound","code":404}`, clierr.CodeRBAC},
+		{"401 carrying code 403", http.StatusUnauthorized, `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"x","reason":"Forbidden","code":403}`, clierr.CodeRBAC},
+		{"403 carrying code 404", http.StatusForbidden, `{"kind":"Status","apiVersion":"v1","status":"Failure","message":"x","reason":"NotFound","code":404}`, clierr.CodeNotFound},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

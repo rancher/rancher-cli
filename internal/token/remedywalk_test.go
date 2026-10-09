@@ -157,7 +157,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	texts["token reuse off"] = config.TokenReuseOffCommand
 	texts["the status report"] = config.StatusCommand
 	texts["a timed-out read"] = provider.InspectClusterRemedy
-	texts["a refused request"] = provider.AuthStatusRemedy
+	texts["a refused request"] = clierr.AuthStatusRemedy
 	texts["a missing --cluster"] = engine.ClusterRequiredHint
 	for _, kind := range []string{"cluster", "pod"} {
 		k, ok := kinds.Lookup(kind)

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 )
 
@@ -80,7 +81,7 @@ func fetchVersionResponse(ctx context.Context, eff config.Effective) (rancherVer
 		return rancherVersionResponse{}, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return rancherVersionResponse{}, fmt.Errorf("/rancherversion: unexpected status %d", resp.StatusCode)
+		return rancherVersionResponse{}, fmt.Errorf("/rancherversion: %w", clierr.ResponseError(http.MethodGet, resp.StatusCode, body))
 	}
 	var r rancherVersionResponse
 	if err := json.Unmarshal(body, &r); err != nil {

@@ -935,24 +935,28 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 	resp, respBody, err := httpx.Do(client, req)
 	r := loginCreateResult(resp, respBody, err, createdAt, input.description != "")
-	return r, loginError(resp, err)
+	return r, loginError(resp, respBody, err)
 }
 
 // loginError classifies the outcome of a login POST the same way for every
 // flow that carries credentials to Rancher: a transport error keeps its
-// cause, 401 and 403 are AUTH rejections, any other non-201 is GENERIC.
+// cause, 401 and 403 are AUTH rejections, any other non-201 is classified
+// by the status table.
 // A caller reading the error code sees one class for one fact.
-func loginError(resp *http.Response, err error) error {
+func loginError(resp *http.Response, body []byte, err error) error {
 	if err != nil {
 		return fmt.Errorf("error logging user in: %w", err)
 	}
+	if resp.StatusCode == http.StatusCreated {
+		return nil
+	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return clierr.New(clierr.CodeAuth, fmt.Sprintf("login rejected: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+		// Rancher answers a wrong password with 401 and a disabled user's
+		// correct one with 403: either way the user cannot sign in.
+		return clierr.New(clierr.CodeAuth, fmt.Sprintf("login rejected: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))).
+			WithCause(clierr.ResponseError(http.MethodPost, resp.StatusCode, body))
 	}
-	if resp.StatusCode != http.StatusCreated {
-		return clierr.New(clierr.CodeGeneric, fmt.Sprintf("login failed: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
-	}
-	return nil
+	return clierr.FromResponse("login failed", http.MethodPost, resp.StatusCode, body, nil)
 }
 
 // loginCreateResult classifies a login response: the body declares which
@@ -1062,7 +1066,8 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 			case http.StatusNotFound:
 				continue
 			default:
-				return res, fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+				return res, clierr.FromResponse("error fetching auth token", http.MethodGet, resp.StatusCode, respBody,
+					&clierr.Request{NoCredential: true})
 			}
 
 			var deposited Token
@@ -1083,16 +1088,17 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 			}
 			bearer := string(decryptedBytes)
 
-			resp, _, err = httpx.Do(client, deleteReq)
+			var delBody []byte
+			resp, delBody, err = httpx.Do(client, deleteReq)
 			if err == nil {
 				switch resp.StatusCode {
 				case http.StatusOK, http.StatusNoContent, http.StatusNotFound:
 				default:
-					err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+					err = clierr.ResponseError(http.MethodDelete, resp.StatusCode, delBody)
 				}
 			}
 			if err != nil {
-				p.Notice("error deleting auth token: " + err.Error())
+				p.Notice("error deleting auth token: " + clierr.From(err).Message)
 			}
 
 			res.Create.ExpiresAt = deposited.ExpiresAt
@@ -1129,11 +1135,14 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 	}
 
 	resp, respBody, err := httpx.Do(client, req)
-	if err == nil && resp.StatusCode != http.StatusOK {
-		err = fmt.Errorf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
-	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("error listing auth providers: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		// The provider list names an API, not an object: a 404 means the
+		// URL does not lead to Rancher.
+		return nil, nil, clierr.FromResponse("error listing auth providers", http.MethodGet, resp.StatusCode, respBody,
+			&clierr.Request{Endpoint: true, NoCredential: true})
 	}
 
 	if !gjson.ValidBytes(respBody) {
@@ -1403,8 +1412,8 @@ var ErrExtGroupAbsent = errors.New("ext.cattle.io not served")
 // no longer valid, a 403 says the credential is valid but the permission is
 // missing, which no re-authentication fixes.
 var (
-	errCredentialUnauthorized = errors.New("credential rejected: 401 Unauthorized")
-	errCredentialForbidden    = errors.New("credential lacks permission to create tokens: 403 Forbidden")
+	errCredentialUnauthorized = errors.New("credential rejected")
+	errCredentialForbidden    = errors.New("credential lacks permission to create tokens")
 )
 
 // CreateDerivedToken asks the ext Token store to create a purpose-made derived
@@ -1475,12 +1484,11 @@ func postTokenCreate(ctx context.Context, client *http.Client, url, bearer strin
 	case http.StatusOK, http.StatusCreated, http.StatusNotFound:
 		return r, resp, nil
 	case http.StatusUnauthorized:
-		return r, resp, fmt.Errorf("%w: %d %s", errCredentialUnauthorized, resp.StatusCode, http.StatusText(resp.StatusCode))
+		return r, resp, fmt.Errorf("%w: %w", errCredentialUnauthorized, clierr.ResponseError(http.MethodPost, resp.StatusCode, respBody))
 	case http.StatusForbidden:
-		return r, resp, fmt.Errorf("%w: %d %s", errCredentialForbidden, resp.StatusCode, http.StatusText(resp.StatusCode))
+		return r, resp, fmt.Errorf("%w: %w", errCredentialForbidden, clierr.ResponseError(http.MethodPost, resp.StatusCode, respBody))
 	default:
-		return r, resp, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("%s: %d %s", verb, resp.StatusCode, http.StatusText(resp.StatusCode)))
+		return r, resp, clierr.FromResponse(verb, http.MethodPost, resp.StatusCode, respBody, nil)
 	}
 }
 
@@ -1733,9 +1741,10 @@ func pluginClusterText(v string, list []steve.Cluster) engine.MatchText {
 }
 
 // pluginGetter sends steve GETs with bearer through client. Every non-2xx
-// answer's error holds *steve.StatusError, which the steve readers word; a
-// 401's also matches errCredentialUnauthorized, so classifyRejection keeps
-// its sign-in rule.
+// answer's error holds the status (clierr.HTTPStatus), which the steve
+// readers word; a 401's also matches errCredentialUnauthorized, so
+// classifyRejection keeps its sign-in rule, and any other is classified by
+// the status table.
 func pluginGetter(client *http.Client, base, bearer string) steve.Getter {
 	return func(ctx context.Context, r steve.Request) ([]byte, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+r.Path(), nil)
@@ -1748,27 +1757,16 @@ func pluginGetter(client *http.Client, base, bearer string) steve.Getter {
 		if err != nil {
 			return nil, clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
 		}
-		status := &steve.StatusError{Status: resp.StatusCode}
-		switch {
-		case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return body, nil
-		case resp.StatusCode == http.StatusUnauthorized:
-			return nil, pluginStatusError{cause: fmt.Errorf("resolving --cluster: %w", errCredentialUnauthorized), status: status}
-		default:
-			return nil, pluginStatusError{cause: clierr.New(clierr.CodeGeneric,
-				fmt.Sprintf("resolving --cluster: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))), status: status}
 		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, fmt.Errorf("resolving --cluster: %w: %w", errCredentialUnauthorized,
+				clierr.ResponseError(http.MethodGet, resp.StatusCode, body))
+		}
+		return nil, clierr.FromResponse("resolving --cluster", http.MethodGet, resp.StatusCode, body, nil)
 	}
 }
-
-// pluginStatusError carries the plugin's error and the status together.
-type pluginStatusError struct {
-	cause  error
-	status *steve.StatusError
-}
-
-func (e pluginStatusError) Error() string   { return e.cause.Error() }
-func (e pluginStatusError) Unwrap() []error { return []error{e.cause, e.status} }
 
 // legacyTokenTTL is the bounded staleness a legacy (pre-ext.cattle.io)
 // Rancher's stored-credential fallback caches under, since the raw stored
@@ -1916,7 +1914,7 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 	switch {
 	case errors.Is(err, errCredentialForbidden):
 		return clierr.New(clierr.CodeRBAC,
-			fmt.Sprintf("the stored login credential for %q cannot create tokens: %v", sc.name, err)).WithCause(err)
+			fmt.Sprintf("the stored login credential for %q cannot create tokens: %s", sc.name, clierr.From(err).Message)).WithCause(err)
 	case errors.Is(err, errCredentialUnauthorized) && sc.entry.Provenance == clierr.ProvenanceExecLogin:
 		return &pluginCredentialRejected{name: sc.name}
 	case errors.Is(err, errCredentialUnauthorized):
@@ -1926,7 +1924,7 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 			// is the one way to a login here.
 			refresh = ""
 		}
-		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%v); falling back to interactive login%s", sc.name, err, refresh))
+		p.Notice(fmt.Sprintf("the stored login credential for %q was rejected (%s); falling back to interactive login%s", sc.name, clierr.From(err).Message, refresh))
 		return errStoredCredentialRejected
 	}
 	return err

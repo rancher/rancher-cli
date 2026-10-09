@@ -59,7 +59,7 @@ func ResolveCluster(ctx context.Context, get Getter, list []Cluster, v string, t
 	r := Request{Type: ClustersType, Name: v}
 	body, gerr := get(ctx, r)
 	if gerr != nil {
-		if se, ok := errors.AsType[*StatusError](gerr); ok && (se.Status == http.StatusForbidden || se.Status == http.StatusNotFound) {
+		if st, ok := clierr.HTTPStatus(gerr); ok && (st == http.StatusForbidden || st == http.StatusNotFound) {
 			return "", "", err
 		}
 		return "", "", gerr
@@ -81,12 +81,12 @@ func GetCluster(ctx context.Context, get Getter, id string) (*unstructured.Unstr
 	r := Request{Type: ClustersType, Name: id}
 	body, err := get(ctx, r)
 	if err != nil {
-		se, ok := errors.AsType[*StatusError](err)
+		st, ok := clierr.HTTPStatus(err)
 		switch {
-		case ok && se.Status == http.StatusForbidden:
+		case ok && st == http.StatusForbidden:
 			return nil, clierr.New(clierr.CodeRBAC, fmt.Sprintf("you cannot read cluster %s (GET %s answered 403)",
 				clierr.ShellQuote(id), r.Path())).WithHint(clierr.Rancher + " access clusters").WithCause(err)
-		case ok && se.Status == http.StatusNotFound:
+		case ok && st == http.StatusNotFound:
 			return nil, clierr.New(clierr.CodeNotFound, "cluster not found: "+clierr.ShellQuote(id)).
 				WithHint(clierr.Rancher + " access clusters").WithCause(err)
 		}

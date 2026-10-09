@@ -229,9 +229,9 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 func freshCredentialError(err error) error {
 	switch {
 	case errors.Is(err, errCredentialUnauthorized):
-		return clierr.New(clierr.CodeAuth, "the server rejected the login credential it just issued: "+err.Error()).WithCause(err)
+		return clierr.New(clierr.CodeAuth, "the server rejected the login credential it just issued: "+clierr.From(err).Message).WithCause(err)
 	case errors.Is(err, errCredentialForbidden):
-		return clierr.New(clierr.CodeRBAC, "the login credential cannot create tokens: "+err.Error()).WithCause(err)
+		return clierr.New(clierr.CodeRBAC, "the login credential cannot create tokens: "+clierr.From(err).Message).WithCause(err)
 	}
 	return err
 }

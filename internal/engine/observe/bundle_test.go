@@ -444,7 +444,7 @@ func TestSupportBundleClusterOwnerCollectsClusterJSON(t *testing.T) {
 func TestSupportBundleClusterJSONSteveFailureIsManifestError(t *testing.T) {
 	t.Parallel()
 	factory, _ := ownerFactory(newFakeClient())
-	factory.root.withError(clusterPath("c-abc"), rootStatusError(500))
+	factory.root.withError(clusterPath("c-abc"), rootStatusError(500, clusterPath("c-abc")))
 
 	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
 	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "agent", flagClusters: "prod"}})

@@ -1,6 +1,7 @@
 package oidcclient
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -60,11 +61,11 @@ func strictTTLSeconds(flag, raw string) (int64, error) {
 // reaches the user. WithMessage preserves everything else (code, cause,
 // retryable, candidates, details), so only Hint needs a second fix-up.
 func rewrapTTLFlagName(err error, flag string) error {
-	ce, ok := err.(*clierr.Error)
+	ce, ok := errors.AsType[*clierr.Error](err)
 	if !ok {
 		return err
 	}
 	fixed := "--" + flag
-	return ce.WithMessage(strings.ReplaceAll(ce.Message, "--ttl", fixed)).
+	return ce.WithMessage(strings.ReplaceAll(err.Error(), "--ttl", fixed)).
 		WithHint(strings.ReplaceAll(ce.Hint, "--ttl", fixed))
 }

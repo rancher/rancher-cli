@@ -2,7 +2,6 @@ package access
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -374,10 +373,7 @@ func atoi(key string) int {
 // candidate's own request issue (degradable), unless the context is
 // already dead, which is terminal like everywhere else.
 func acquisitionIssue(ctx context.Context, err error) reviewResult {
-	ce, ok := errors.AsType[*clierr.Error](err)
-	if !ok {
-		ce = clierr.New(clierr.CodeGeneric, err.Error())
-	}
+	ce := clierr.From(err)
 	if ctx.Err() != nil {
 		return reviewResult{kind: outcomeTerminal, err: ce}
 	}

@@ -394,7 +394,7 @@ func TestCompletionFlagAsAFlagValueIsAnOrdinaryLine(t *testing.T) {
 		wantCode int
 		wantMsg  string
 	}{
-		{"a cluster named by the word", []string{"get", "pod", "--cluster", "--generate-shell-completion", "--namespace", "x", "mypod"}, 3, "rancher root GET /v1/management.cattle.io.clusters: 401 Unauthorized"},
+		{"a cluster named by the word", []string{"get", "pod", "--cluster", "--generate-shell-completion", "--namespace", "x", "mypod"}, 3, "rancher root GET /v1/management.cattle.io.clusters: the server rejected the credential (401)"},
 		{"a URL given as the word", []string{"config", "add-server", "--url", "--generate-shell-completion", "--apply", "myserver"}, 2, "invalid server URL: --generate-shell-completion"},
 	}
 	for _, tc := range tests {

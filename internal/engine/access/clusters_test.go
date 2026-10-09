@@ -290,7 +290,10 @@ func TestClustersDiscoveryFailureIsTerminal(t *testing.T) {
 	cmd.roots = fakeRootFactory{fakeRootClient{srv}}
 	_, err := cmd.Execute(t.Context(), clustersInput("", ""), nil)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "GET /v1/management.cattle.io.clusters answered 500")
+	require.ErrorContains(t, err, "rancher root GET /v1/management.cattle.io.clusters: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - retrying may succeed")
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.True(t, ce.Retryable, "a 5xx is retryable, and the collection is read once")
 }
 
 func TestClustersProvenanceFailureDegradesNotAborts(t *testing.T) {

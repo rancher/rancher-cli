@@ -28,7 +28,7 @@ func Preflight(ctx context.Context, eff config.Effective) (string, error) {
 	}
 	disc, err := kube.Discovery(discoveryConfig(rc))
 	if err != nil {
-		return "", clierr.New(clierr.CodeGeneric, err.Error())
+		return "", clierr.From(err)
 	}
 	ver, err := serverVersion(ctx, disc)
 	if err != nil {
@@ -70,19 +70,14 @@ func discoveryConfig(rc *rest.Config) *rest.Config {
 	return &c
 }
 
-// mapPreflightErr distinguishes credential rejection from unreachability.
+// mapPreflightErr distinguishes an answer from no answer. An answer goes
+// through the status table as a call that names an API, so a 404 says to
+// check the server URL; a structured error produced below the status
+// layer (the redirect refusal) is returned as is; no answer at all is a
+// retryable connectivity failure.
 func mapPreflightErr(err error) error {
-	// A structured error produced below the status layer (the redirect
-	// refusal) is deliberate and not retryable; it must not be relabeled
-	// as a connectivity failure whose remediation (check the CA) cannot
-	// apply.
-	if ce, ok := errors.AsType[*clierr.Error](err); ok {
+	if ce := clierr.FromStatus(err, &clierr.Request{Endpoint: true}); ce != nil {
 		return ce
-	}
-	if mapped := mapErr(err); mapped != nil {
-		if ce, ok := errors.AsType[*clierr.Error](mapped); ok && (ce.Code == clierr.CodeAuth || ce.Code == clierr.CodeRBAC) {
-			return ce
-		}
 	}
 	return clierr.Retryable(clierr.CodeGeneric, "cannot reach server: "+err.Error()+"; check the server URL and CA")
 }

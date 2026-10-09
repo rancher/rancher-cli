@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -543,7 +544,7 @@ func TestKubeconfigDirectOmittedIsOneNotice(t *testing.T) {
 func TestKubeconfigDirectClusterReadRefusedIsOneNotice(t *testing.T) {
 	t.Parallel()
 	dir := writeTestConfig(t, "")
-	forbidden := clierr.New(clierr.CodeAuth, "forbidden").WithCause(&engine.RootStatusError{Status: 403})
+	forbidden := clierr.New(clierr.CodeAuth, "forbidden").WithCause(clierr.ResponseError(http.MethodGet, 403, nil))
 	cmd := newTestCommand(dir, config.NewFileStore(dir), stubFactory{rootErrs: map[string]error{"c-abc": forbidden}})
 	var notices bytes.Buffer
 	res, err := cmd.(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cluster": "c-abc"}}, ui.New(&notices, nil, true, false))

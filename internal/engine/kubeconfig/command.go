@@ -170,8 +170,9 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 
 	// The direct endpoint contexts Rancher's own kubeconfig carries, read
 	// from the same management objects. An error here is a cancelled
-	// context or a cluster that vanished after resolution; every other
-	// failure is a reason in Omitted and the file stays proxy-only.
+	// context, a cluster that vanished after resolution or a refused
+	// credential (401); every other failure is a reason in Omitted and the
+	// file stays proxy-only.
 	mgmt, err := c.clients.Cluster(ctx, engine.LocalCluster)
 	if err != nil {
 		return runtime.Result{}, err

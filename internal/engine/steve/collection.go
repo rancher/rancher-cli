@@ -43,6 +43,11 @@ func ReadCollection[T comparable](ctx context.Context, get Getter, r Request, de
 		if !ok || !ce.Retryable || attempt == 1 {
 			return nil, err
 		}
+		if _, answered := clierr.HTTPStatus(err); answered {
+			// A server's refusal is returned at once; its retryable flag
+			// is the caller's to act on.
+			return nil, err
+		}
 		lastErr = err
 	}
 	return nil, lastErr

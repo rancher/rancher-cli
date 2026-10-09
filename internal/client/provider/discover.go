@@ -17,7 +17,7 @@ import (
 func serverVersion(ctx context.Context, disc discovery.DiscoveryInterface) (*version.Info, error) {
 	body, err := disc.RESTClient().Get().AbsPath("/version").Do(ctx).Raw()
 	if err != nil {
-		return nil, err
+		return nil, restoreStatus(err, body)
 	}
 	var info version.Info
 	if err := json.Unmarshal(body, &info); err != nil {
@@ -34,7 +34,7 @@ func serverVersion(ctx context.Context, disc discovery.DiscoveryInterface) (*ver
 func serverGroups(ctx context.Context, disc discovery.DiscoveryInterface) (*metav1.APIGroupList, error) {
 	body, err := disc.RESTClient().Get().AbsPath("/apis").Do(ctx).Raw()
 	if err != nil {
-		return nil, err
+		return nil, restoreStatus(err, body)
 	}
 	var groups metav1.APIGroupList
 	if err := json.Unmarshal(body, &groups); err != nil {

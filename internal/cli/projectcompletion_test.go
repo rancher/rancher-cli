@@ -1,13 +1,13 @@
 package cli
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"sync"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/stretchr/testify/assert"
@@ -82,14 +82,14 @@ func TestCompletionGetterServesRootCollectionsAndObjects(t *testing.T) {
 	srv, requested := projectPagesServer(t, http.StatusNotFound)
 	get := completionGetter(completion.NewConnection(srv.Client(), "tok", srv.URL, false, 5))
 	_, err := get(t.Context(), steve.Request{Type: steve.ProjectsType, Namespace: "c-aaa11"})
-	se, ok := errors.AsType[*steve.StatusError](err)
+	se, ok := clierr.HTTPStatus(err)
 	require.True(t, ok, "got %v", err)
-	assert.Equal(t, http.StatusNotFound, se.Status)
+	assert.Equal(t, http.StatusNotFound, se)
 
 	_, err = get(t.Context(), steve.Request{Type: steve.ClustersType, Name: "c-abc"})
-	se, ok = errors.AsType[*steve.StatusError](err)
+	se, ok = clierr.HTTPStatus(err)
 	require.True(t, ok, "a 404 for one object is a status error too: %v", err)
-	assert.Equal(t, http.StatusNotFound, se.Status)
+	assert.Equal(t, http.StatusNotFound, se)
 
 	for _, r := range []steve.Request{
 		{Cluster: "c-aaa11", Type: "namespaces"},

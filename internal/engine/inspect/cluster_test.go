@@ -78,16 +78,10 @@ func steveClusterPath(id string) string {
 }
 
 // rootStatusErr is the error the production root client returns for a
-// non-2xx answer.
+// non-2xx answer with no body (clierr.FromResponse with the same prefix and
+// request).
 func rootStatusErr(status int, path string) error {
-	cause := &engine.RootStatusError{Status: status}
-	switch status {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %d", path, status)).WithCause(cause)
-	case http.StatusNotFound:
-		return clierr.New(clierr.CodeNotFound, fmt.Sprintf("rancher root GET %s: not found", path)).WithCause(cause)
-	}
-	return clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %d", path, status)).WithCause(cause)
+	return clierr.FromResponse("rancher root GET "+path, http.MethodGet, status, nil, &clierr.Request{})
 }
 
 var _ engine.RootClient = (*fakeRoot)(nil)

@@ -4,17 +4,17 @@
   "data": {
     "error": {
       "code": "GENERIC",
-      "message": "creating derived token: 500 Internal Server Error",
+      "message": "creating derived token: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - retrying may succeed",
       "hint": "rancher auth login 'prod'",
-      "retryable": false,
+      "retryable": true,
       "details": {
         "primary": {
           "code": "GENERIC",
-          "message": "creating derived token: 500 Internal Server Error",
-          "retryable": false
+          "message": "creating derived token: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - retrying may succeed",
+          "retryable": true
         },
         "stage": "authentication",
-        "operationMarker": "ff9a5cb5da82",
+        "operationMarker": "091363ee65ea",
         "sessionToken": {
           "outcome": "known",
           "kind": "v3",
@@ -23,7 +23,7 @@
             "name": "fac-token-1"
           },
           "marked": true,
-          "createdAt": "2026-10-09T02:17:45Z",
+          "createdAt": "2026-10-09T03:56:30Z",
           "cleanup": {
             "ref": {
               "kind": "v3",
@@ -37,12 +37,12 @@
           "outcome": "unknown",
           "kind": "ext",
           "marked": true,
-          "createdAt": "2026-10-09T02:17:45Z",
+          "createdAt": "2026-10-09T03:56:30Z",
           "cleanup": {
             "result": "notAttempted"
           }
         },
-        "recovery": "no credential was stored; log in again with: rancher auth login 'prod'. An administrator can delete v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated, or it expires at 2026-10-09T02:32:45Z; no credential was stored; log in again with: rancher auth login 'prod', then list tokens with: rancher get tokens; a leftover token created by this login carries \"[op:ff9a5cb5da82]\" in its description; revoke it with the found name"
+        "recovery": "no credential was stored; log in again with: rancher auth login 'prod'. An administrator can delete v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated, or it expires at 2026-10-09T04:11:30Z; no credential was stored; log in again with: rancher auth login 'prod', then list tokens with: rancher get tokens; a leftover token created by this login carries \"[op:091363ee65ea]\" in its description; revoke it with the found name"
       }
     }
   }

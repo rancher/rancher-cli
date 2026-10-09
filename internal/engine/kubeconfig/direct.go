@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -64,9 +65,9 @@ var nodeGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version
 // when the endpoint is enabled, the multi-cluster-management Feature and
 // the cluster's nodes through mgmt.
 // A nil error with no Endpoints and no Omitted means the endpoint is off.
-// Errors are returned only for a cancelled or expired context and for a
-// management cluster that is not found; every completed refusal or failure
-// lands in Omitted.
+// Errors are returned only for a cancelled or expired context, for a
+// refused credential (401) and for a management cluster that is not
+// found; every other completed refusal or failure lands in Omitted.
 func DirectEndpoints(ctx context.Context, mgmt engine.ClusterClient, get steve.Getter, clusterID string) (Direct, error) {
 	var d Direct
 	cluster, err := steve.GetCluster(ctx, get, clusterID)
@@ -74,7 +75,7 @@ func DirectEndpoints(ctx context.Context, mgmt engine.ClusterClient, get steve.G
 		if ctx.Err() != nil {
 			return Direct{}, ctx.Err()
 		}
-		if clierr.IsNotFound(err) {
+		if clierr.IsNotFound(err) || credentialRefused(err) {
 			return Direct{}, err
 		}
 		d.Omitted = append(d.Omitted, "management cluster "+clusterID+" not readable: "+err.Error())
@@ -109,6 +110,9 @@ func DirectEndpoints(ctx context.Context, mgmt engine.ClusterClient, get steve.G
 	if err != nil {
 		if ctx.Err() != nil {
 			return Direct{}, ctx.Err()
+		}
+		if credentialRefused(err) {
+			return Direct{}, err
 		}
 		d.Omitted = append(d.Omitted, "the "+mcmFeature+" feature is not readable: "+err.Error())
 		return d, nil
@@ -149,6 +153,9 @@ func DirectEndpoints(ctx context.Context, mgmt engine.ClusterClient, get steve.G
 	if err != nil {
 		if ctx.Err() != nil {
 			return Direct{}, ctx.Err()
+		}
+		if credentialRefused(err) {
+			return Direct{}, err
 		}
 		d.Omitted = append(d.Omitted, "management nodes of "+clusterID+" not readable: "+err.Error())
 		return d, nil
@@ -328,4 +335,11 @@ func validEndpointURL(raw string) error {
 // parser the plugin's probe transport uses.
 func validPEM(pem []byte) bool {
 	return x509.NewCertPool().AppendCertsFromPEM(pem)
+}
+
+// credentialRefused reports a 401: the credential is refused whatever the
+// read, so the command fails instead of omitting the direct endpoints.
+func credentialRefused(err error) bool {
+	st, ok := clierr.HTTPStatus(err)
+	return ok && st == http.StatusUnauthorized
 }

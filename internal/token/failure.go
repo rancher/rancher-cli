@@ -98,7 +98,7 @@ func sessionRefOf(cred LoginCredential) *clierr.TokenRef { return cred.SessionTo
 func primaryOf(err error) (*clierr.Error, clierr.PrimaryFailure) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	if !ok {
-		ce = clierr.Wrap(err, err.Error())
+		ce = clierr.From(err)
 	}
 	return ce, clierr.PrimaryFailure{Code: ce.Code, Message: ce.Message, Hint: ce.Hint,
 		Retryable: ce.Retryable, Candidates: ce.Candidates, Details: ce.Details}

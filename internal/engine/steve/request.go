@@ -6,9 +6,7 @@ package steve
 
 import (
 	"context"
-	"errors"
 	"net/url"
-	"strconv"
 
 	"github.com/rancher/rancher-cli/internal/engine"
 )
@@ -37,26 +35,14 @@ func (r Request) Path() string {
 }
 
 // Getter sends one request with the caller's credential and returns the
-// body; a non-2xx answer is an error whose chain holds *StatusError.
+// body; a non-2xx answer is an error whose status clierr.HTTPStatus reads.
 type Getter func(ctx context.Context, r Request) ([]byte, error)
 
-// StatusError is the HTTP status of a non-2xx steve answer.
-type StatusError struct{ Status int }
-
-func (e *StatusError) Error() string { return "http status " + strconv.Itoa(e.Status) }
-
-// RootGetter sends requests through the CLI's root client. A non-2xx
-// answer keeps the root client's error and adds *StatusError to its chain.
+// RootGetter sends requests through the CLI's root client, whose error
+// for a non-2xx answer holds the status (clierr.HTTPStatus).
 func RootGetter(c engine.RootClient) Getter {
 	return func(ctx context.Context, r Request) ([]byte, error) {
-		body, err := c.GetJSON(ctx, r.Path())
-		if err == nil {
-			return body, nil
-		}
-		if rs, ok := errors.AsType[*engine.RootStatusError](err); ok {
-			return nil, statusError{err: err, status: &StatusError{Status: rs.Status}}
-		}
-		return nil, err
+		return c.GetJSON(ctx, r.Path())
 	}
 }
 
@@ -72,13 +58,3 @@ func RootFactoryGetter(roots engine.RootClientFactory) Getter {
 		return RootGetter(root)(ctx, r)
 	}
 }
-
-// statusError is a getter's error: the transport's own error, with the
-// status beside it in the chain.
-type statusError struct {
-	err    error
-	status *StatusError
-}
-
-func (e statusError) Error() string   { return e.err.Error() }
-func (e statusError) Unwrap() []error { return []error{e.err, e.status} }

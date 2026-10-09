@@ -575,6 +575,50 @@ func TestLogsServerErrorRetryabilityFollowsTheBody(t *testing.T) {
 	}
 }
 
+// TestTypedServerErrorShowsTheServersMessage asserts a 500 that is no
+// Status, read through client-go, shows the server's own message the way
+// an answer read without client-go does: the message of the cluster
+// router's norman object and of steve's error object, both written as
+// text/plain, never the raw JSON; the first line of other text; and the
+// status text for a body client-go does not keep.
+func TestTypedServerErrorShowsTheServersMessage(t *testing.T) {
+	t.Parallel()
+	norman := `{"Code":{"Code":"ServerError","Status":500},"Message":"failed to find cluster agent","Cause":null,"FieldName":""}`
+	steve := `{"type":"error","links":{},"code":"ServerError","message":"boom","status":500}`
+	for _, tc := range []struct {
+		name        string
+		contentType string
+		body        string
+		want        string
+	}{
+		{"router object as text/plain", "text/plain; charset=utf-8", norman, `("failed to find cluster agent")`},
+		{"steve object as text/plain", "text/plain", steve, `("boom")`},
+		{"steve object as application/json", "application/json", steve, `("Internal Server Error")`},
+		{"several lines of text", "text/plain", "upstream connect error\nreset before headers\n", `("upstream connect error")`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", tc.contentType)
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(srv.Close)
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "local")
+			require.NoError(t, err)
+
+			_, err = c.Get(t.Context(), schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}, "", "x")
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, clierr.CodeGeneric, ce.Code)
+			assert.True(t, ce.Retryable)
+			require.ErrorContains(t, err, tc.want)
+			assert.NotContains(t, ce.Message, `{"`)
+			assert.Contains(t, ce.Message, ") has prevented the request from succeeding - retrying may succeed")
+		})
+	}
+}
+
 // bodylessServer answers every request with status and no body or
 // Content-Type, as Rancher's local-cluster proxy refuses a user without
 // access to cluster local.
@@ -630,5 +674,5 @@ func TestDynamicClientBodylessRefusalsNameTheRequest(t *testing.T) {
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
 	assert.Equal(t, "the server rejected the credential (401) for list clusters.management.cattle.io", ce.Message)
-	assert.Equal(t, AuthStatusRemedy, ce.Hint)
+	assert.Equal(t, clierr.AuthStatusRemedy, ce.Hint)
 }

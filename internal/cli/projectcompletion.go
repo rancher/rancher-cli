@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 )
@@ -38,7 +40,7 @@ func completionGetter(c *completion.Connection) steve.Getter {
 		}
 		body, err := c.GetBody(ctx, p)
 		if se, ok := errors.AsType[*completion.StatusError](err); ok {
-			return nil, &steve.StatusError{Status: se.Status}
+			return nil, clierr.ResponseError(http.MethodGet, se.Status, nil)
 		}
 		return body, err
 	}

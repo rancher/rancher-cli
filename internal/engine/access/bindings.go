@@ -156,10 +156,7 @@ func readProvenance(ctx context.Context, local engine.ClusterClient, in provenan
 		if terminalProvenanceError(ctx, err) {
 			return budgetError(ctx, err, "the "+stage+" read")
 		}
-		ce, ok := errors.AsType[*clierr.Error](err)
-		if !ok {
-			ce = clierr.New(clierr.CodeGeneric, err.Error())
-		}
+		ce := clierr.From(err)
 		issues[stage] = issueFrom(ce)
 		return nil
 	}

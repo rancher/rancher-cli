@@ -2664,6 +2664,48 @@ func TestLoginFailureEnvelopeGoldens(t *testing.T) {
 	})
 }
 
+// TestLoginDerivedCreateRefusedEnvelopeIsRBAC asserts a derived token create
+// answered 403 ends the login RBAC: the envelope's code and its
+// details.primary.code are RBAC, the exit is 6, and the message names the
+// credential's missing permission through the status table.
+func TestLoginDerivedCreateRefusedEnvelopeIsRBAC(t *testing.T) {
+	f := testrancher.New(testrancher.Options{DerivedCreateStatus: http.StatusForbidden})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	dir, store := cmdtest.FilePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, "", false)
+	in := cmdtest.Input{Str: map[string]string{"auth-provider": "localProvider"}, Pos: []string{"prod"}}
+	p := ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true)
+	_, err := newPlainLoginCmd(dir, store).Execute(t.Context(), in, p)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "got %v", err)
+	assert.Equal(t, 6, ce.ExitCode())
+
+	var env struct {
+		Data struct {
+			Error struct {
+				Code      string `json:"code"`
+				Message   string `json:"message"`
+				Retryable bool   `json:"retryable"`
+				Details   struct {
+					Primary struct {
+						Code    string `json:"code"`
+						Message string `json:"message"`
+					} `json:"primary"`
+				} `json:"details"`
+			} `json:"error"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(loginFailureEnvelope(t, err, srv.URL), &env))
+	got := env.Data.Error
+	const message = "credential lacks permission to create tokens: the server refused the request (403) and gave no reason"
+	assert.Equal(t, clierr.CodeRBAC, got.Code)
+	assert.Equal(t, message, got.Message)
+	assert.False(t, got.Retryable)
+	assert.Equal(t, clierr.CodeRBAC, got.Details.Primary.Code)
+	assert.Equal(t, message, got.Details.Primary.Message)
+}
+
 // TestLoginReadOnlyHelperThenConfigWriteFailureRevokesOnce asserts the
 // read-only-helper branch followed by a failed guided-trust config write:
 // the derived token created for the login is revoked exactly once, the

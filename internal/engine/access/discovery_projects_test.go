@@ -132,7 +132,7 @@ func TestListNamespacesPassesTheRootErrorThrough(t *testing.T) {
 	_, err := listNamespaces(t.Context(), fakeRootClient{srv}, "c-m-a")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
-	assert.Equal(t, clierr.CodeAuth, ce.Code)
+	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 }
 
 func TestProjectsWithinClusters(t *testing.T) {

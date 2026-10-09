@@ -4,16 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
-	"strings"
 	"sync"
 
 	apidiscoveryv2 "k8s.io/api/apidiscovery/v2"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -51,7 +48,7 @@ func (r *dynamicClient) PostReview(ctx context.Context, req engine.ReviewRequest
 	defer cancel()
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
-		return engine.ReviewResponse{}, clierr.New(clierr.CodeGeneric, err.Error())
+		return engine.ReviewResponse{}, clierr.From(err)
 	}
 	hreq.Header.Set("Content-Type", "application/json")
 	hreq.Header.Set("Accept", "application/json")
@@ -69,7 +66,7 @@ func (r *dynamicClient) PostReview(ctx context.Context, req engine.ReviewRequest
 	}
 	out := engine.ReviewResponse{Status: resp.StatusCode, Body: body}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		out.Mapped = mapStatusBody(resp.StatusCode, body)
+		out.Mapped = clierr.FromResponse("", http.MethodPost, resp.StatusCode, body, &clierr.Request{Cluster: r.clusterID})
 		return out, nil
 	}
 	obj := &unstructured.Unstructured{}
@@ -181,59 +178,6 @@ func stringArrayOrAbsent(m map[string]any, key string) bool {
 	return true
 }
 
-// mapStatusBody maps a non-2xx review answer the way mapErr maps a
-// client-go error: a Kubernetes Status body becomes the equivalent
-// StatusError; anything else is classified by HTTP status and body text.
-// The transport status is authoritative: a Status body whose code field
-// disagrees with the HTTP status is mapped by the HTTP status.
-func mapStatusBody(status int, body []byte) *clierr.Error {
-	var st metav1.Status
-	if len(body) > 0 && json.Unmarshal(body, &st) == nil && st.Kind == "Status" {
-		// A reason is a known string apierrors classifies on ahead of the
-		// code, so a body disagreeing with the transport is stripped of it
-		// and classified by the HTTP status alone; an agreeing body keeps
-		// its reason and maps exactly as a client-go StatusError would.
-		if st.Code != int32(status) {
-			st.Reason = ""
-			st.Code = int32(status)
-		}
-		ce, _ := errors.AsType[*clierr.Error](mapErr(&apierrors.StatusError{ErrStatus: st}))
-		return ce
-	}
-	text := strings.TrimSpace(string(body))
-	switch {
-	case status == http.StatusUnauthorized:
-		return withDeniedFallback(clierr.New(clierr.CodeAuth, text), status, nil)
-	case status == http.StatusForbidden:
-		return withDeniedFallback(clierr.New(clierr.CodeRBAC, text), status, nil)
-	case status == http.StatusNotFound:
-		return clierr.New(clierr.CodeNotFound, nonEmpty(text, "not found"))
-	case status == http.StatusBadGateway, status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout:
-		return clierr.Retryable(clierr.CodeGeneric, nonEmpty(text, http.StatusText(status))+" - retrying may succeed")
-	case status == http.StatusInternalServerError:
-		// The body SHAPE classifies, as in mapErr: an apiserver answers
-		// 500 with a Kubernetes Status (handled above, non-retryable); a
-		// plain-text 500 can only have come from the proxy path, whose
-		// failures (agent disconnected, tunnel reset) clear on retry. The
-		// substring below refines the wording only, never the class.
-		if strings.Contains(text, "cluster agent disconnected") {
-			return clierr.Retryable(clierr.CodeGeneric, text+" - retry once the cluster reconnects")
-		}
-		return clierr.Retryable(clierr.CodeGeneric, nonEmpty(text, http.StatusText(status))+" - often a proxy-path failure; retrying may succeed")
-	case status >= 400 && status < 500:
-		return clierr.New(clierr.CodeValidation, nonEmpty(text, http.StatusText(status)))
-	default:
-		return clierr.New(clierr.CodeGeneric, nonEmpty(text, http.StatusText(status)))
-	}
-}
-
-func nonEmpty(s, fallback string) string {
-	if s == "" {
-		return fallback
-	}
-	return s
-}
-
 // maxDiscoveryBytes bounds one aggregated discovery document; the
 // largest real clusters answer well under a megabyte. A variable so a
 // test can lower it.
@@ -266,7 +210,9 @@ func (r *dynamicClient) ServerResources(ctx context.Context) ([]engine.APIResour
 	}
 	lists, failed, err := r.legacyResources(ctx)
 	if err != nil {
-		return nil, clierr.WrapUnlessCanceled(err, mapErr)
+		return nil, clierr.WrapUnlessCanceled(err, func(err error) error {
+			return mapRequestErr(err, &clierr.Request{Cluster: r.clusterID, Endpoint: true})
+		})
 	}
 	return engine.ResourcesFromLegacy(lists), engine.ErrDiscoveryIncompleteFor(failed)
 }
@@ -370,8 +316,7 @@ func (r *dynamicClient) getDiscoveryJSON(ctx context.Context, path string, dst a
 		return resp.StatusCode, fmt.Errorf("discovery document %s exceeds %d bytes", path, maxDiscoveryBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		line, _, _ := strings.Cut(strings.TrimSpace(string(body)), "\n")
-		return resp.StatusCode, fmt.Errorf("the server answered %d for %s: %s", resp.StatusCode, path, line)
+		return resp.StatusCode, fmt.Errorf("GET %s: %w", path, clierr.ResponseError(http.MethodGet, resp.StatusCode, body))
 	}
 	if err := json.Unmarshal(body, dst); err != nil {
 		return resp.StatusCode, fmt.Errorf("decoding discovery document %s: %w", path, err)

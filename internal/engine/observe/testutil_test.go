@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"sync"
 
@@ -249,7 +250,7 @@ var (
 // fakeRoot is an engine.RootClient serving management Clusters the way
 // steve does: the collection at /v1/management.cattle.io.clusters and one
 // object per id. A path in errs answers its error; any other unknown path
-// answers 404 as the real root client does.
+// answers the real root client's 404.
 type fakeRoot struct {
 	mu       sync.Mutex
 	clusters map[string]*unstructured.Unstructured
@@ -283,16 +284,10 @@ func (r *fakeRoot) withError(path string, err error) *fakeRoot {
 }
 
 // rootStatusError is the error the real root client returns for a non-2xx
-// answer of status.
-func rootStatusError(status int) error {
-	code := clierr.CodeGeneric
-	switch status {
-	case 401, 403:
-		code = clierr.CodeAuth
-	case 404:
-		code = clierr.CodeNotFound
-	}
-	return clierr.New(code, fmt.Sprintf("http status %d", status)).WithCause(&engine.RootStatusError{Status: status})
+// answer of status with no body (clierr.FromResponse with the same prefix and
+// request).
+func rootStatusError(status int, path string) error {
+	return clierr.FromResponse("rancher root GET "+path, http.MethodGet, status, nil, &clierr.Request{})
 }
 
 func (r *fakeRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
@@ -323,7 +318,7 @@ func (r *fakeRoot) GetJSON(_ context.Context, path string) ([]byte, error) {
 			return json.Marshal(obj.Object)
 		}
 	}
-	return nil, rootStatusError(404)
+	return nil, rootStatusError(404, path)
 }
 
 // clusterPath is the steve path of one management Cluster.

@@ -412,13 +412,14 @@ func TestImagesAllClustersListsClustersThroughSteve(t *testing.T) {
 func TestImagesAllClustersCollectionReadErrorIsReturned(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name     string
-		status   int
-		wantCode string
-		wantText string
+		name      string
+		status    int
+		wantCode  string
+		wantText  string
+		retryable bool
 	}{
 		{name: "forbidden", status: http.StatusForbidden, wantCode: clierr.CodeRBAC, wantText: "the server refused GET /v1/management.cattle.io.clusters (403)"},
-		{name: "server error", status: http.StatusInternalServerError, wantCode: clierr.CodeGeneric, wantText: "GET /v1/management.cattle.io.clusters answered 500"},
+		{name: "server error", status: http.StatusInternalServerError, wantCode: clierr.CodeGeneric, wantText: "rancher root GET /v1/management.cattle.io.clusters: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - retrying may succeed", retryable: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -431,6 +432,7 @@ func TestImagesAllClustersCollectionReadErrorIsReturned(t *testing.T) {
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, tc.wantCode, ce.Code)
+			assert.Equal(t, tc.retryable, ce.Retryable)
 			assert.Empty(t, factory.clusterCalls, "no cluster client is built after a failed collection read")
 		})
 	}

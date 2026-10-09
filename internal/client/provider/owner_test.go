@@ -19,8 +19,9 @@ import (
 // TestOwnerPostsOneSelfSubjectReview asserts auth login's owner request:
 // one POST of a SelfSubjectReview on the local cluster's path with the
 // token as bearer, whose username is the owner; a rejected token is AUTH,
-// an answer that names no user and a server failure are GENERIC, the
-// latter retryable as Preflight's are.
+// an answer that names no user and a server failure are GENERIC; a 5xx is
+// retryable unless its body is a Kubernetes Status, which the API server
+// itself sent.
 func TestOwnerPostsOneSelfSubjectReview(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -34,7 +35,8 @@ func TestOwnerPostsOneSelfSubjectReview(t *testing.T) {
 		{"the owner", http.StatusCreated, `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview","status":{"userInfo":{"username":"u-abc12"}}}`, "u-abc12", "", false},
 		{"no user", http.StatusCreated, `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview","status":{"userInfo":{}}}`, "", clierr.CodeGeneric, false},
 		{"rejected", http.StatusUnauthorized, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"Unauthorized","code":401}`, "", clierr.CodeAuth, false},
-		{"server failure", http.StatusInternalServerError, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"InternalError","code":500}`, "", clierr.CodeGeneric, true},
+		{"server failure with a Status", http.StatusInternalServerError, `{"kind":"Status","apiVersion":"v1","status":"Failure","reason":"InternalError","code":500}`, "", clierr.CodeGeneric, false},
+		{"server failure", http.StatusInternalServerError, `{"type":"error","code":"ServerError","status":500}`, "", clierr.CodeGeneric, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

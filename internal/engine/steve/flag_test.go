@@ -114,7 +114,8 @@ func TestResolveProjectFlagWithoutClusterReturnsAProjectsReadError(t *testing.T)
 	srv := newServer(t, map[string]route{allProjectsPath: {status: 500}})
 	_, _, err := ResolveProjectFlag(t.Context(), srv.getter(), &fakeFactory{}, "", "web")
 	assert.Equal(t, clierr.CodeGeneric, codeOf(t, err).Code)
-	require.ErrorContains(t, err, "answered 500")
+	assert.True(t, codeOf(t, err).Retryable)
+	require.ErrorContains(t, err, "rancher root GET "+allProjectsPath+": an error on the server (\"Internal Server Error\") has prevented the request from succeeding - retrying may succeed")
 	assert.Equal(t, []string{allProjectsPath}, srv.requests())
 }
 

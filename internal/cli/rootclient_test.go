@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rancher/rancher-cli/internal/client/provider"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine/inspect"
@@ -107,43 +107,73 @@ func TestRootClientTimesOut(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestRootClientMapsStatusToClierr asserts the root client classifies a
+// non-2xx answer through the status table and keeps the status readable
+// through clierr.HTTPStatus.
 func TestRootClientMapsStatusToClierr(t *testing.T) {
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/gone":
-			http.Error(w, "nope", http.StatusNotFound)
-		case "/denied":
-			http.Error(w, "nope", http.StatusUnauthorized)
-		case "/forbidden":
-			http.Error(w, "nope", http.StatusForbidden)
-		default:
-			http.Error(w, "boom", http.StatusInternalServerError)
+	const object = "application/json"
+	rows := []struct {
+		name        string
+		status      int
+		contentType string
+		body        string
+		code        string
+		message     string
+		hint        string
+		retryable   bool
+	}{
+		{"401 Rancher body", http.StatusUnauthorized, object, `{"type":"error","code":"Unauthorized","message":"must authenticate","status":401}`,
+			clierr.CodeAuth, "rancher root GET /x: the server rejected the credential (401)", clierr.AuthStatusRemedy, false},
+		{"403 steve object", http.StatusForbidden, object, `{"type":"error","links":{},"code":"PermissionDenied","message":"can not get management.cattle.io.clusterregistrationtokens","status":403}`,
+			clierr.CodeRBAC, "rancher root GET /x: can not get management.cattle.io.clusterregistrationtokens", "", false},
+		{"403 no body", http.StatusForbidden, "", "",
+			clierr.CodeRBAC, "rancher root GET /x: the server refused the request (403) and gave no reason", "", false},
+		{"404", http.StatusNotFound, "text/plain", "nope",
+			clierr.CodeNotFound, "rancher root GET /x: the server could not find the requested resource", "", false},
+		{"409 steve object", http.StatusConflict, object, `{"type":"error","code":"Conflict","message":"conflict","status":409}`,
+			clierr.CodeConflict, "the resource changed on the server since it was last read; retry the command", "", true},
+		{"400", http.StatusBadRequest, "text/plain", "bad",
+			clierr.CodeValidation, "", "", false},
+		{"422", http.StatusUnprocessableEntity, "text/plain", "bad",
+			clierr.CodeValidation, "", "", false},
+		{"429", http.StatusTooManyRequests, "text/plain", "slow down",
+			clierr.CodeGeneric, " - retry later", "", true},
+		{"503 no body", http.StatusServiceUnavailable, "", "",
+			clierr.CodeGeneric, "rancher root GET /x: the server is currently unable to handle the request - retrying may succeed", "", true},
+		{"500 steve object", http.StatusInternalServerError, object, `{"type":"error","links":{},"code":"ServerError","message":"etcdserver: request timed out","status":500}`,
+			clierr.CodeGeneric, `rancher root GET /x: an error on the server ("etcdserver: request timed out") has prevented the request from succeeding - retrying may succeed`, "", true},
+	}
+	var row int
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		r := rows[row]
+		if r.contentType != "" {
+			w.Header().Set("Content-Type", r.contentType)
 		}
+		w.WriteHeader(r.status)
+		_, _ = w.Write([]byte(r.body))
 	}))
 	defer srv.Close()
 
 	rc, err := seedRootConfig(t, srv).Root()
 	require.NoError(t, err)
-	var ce *clierr.Error
-
-	_, err = rc.GetJSON(t.Context(), "/gone")
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-
-	_, err = rc.GetJSON(t.Context(), "/denied")
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.Equal(t, provider.AuthStatusRemedy, ce.Hint, "a refused credential names the status check")
-
-	_, err = rc.GetJSON(t.Context(), "/forbidden")
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.Empty(t, ce.Hint, "a 403 is not a credential problem")
-
-	_, err = rc.GetJSON(t.Context(), "/boom")
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "boom", "generic error carries a body excerpt")
+	for i, r := range rows {
+		row = i
+		_, err := rc.GetJSON(t.Context(), "/x")
+		ce, ok := errors.AsType[*clierr.Error](err)
+		require.True(t, ok, r.name)
+		assert.Equal(t, r.code, ce.Code, r.name)
+		if strings.HasPrefix(r.message, " - ") {
+			assert.True(t, strings.HasPrefix(ce.Message, "rancher root GET /x: "), r.name)
+			assert.True(t, strings.HasSuffix(ce.Message, r.message), "%s: %q", r.name, ce.Message)
+		} else if r.message != "" {
+			assert.Equal(t, r.message, ce.Message, r.name)
+		}
+		assert.Equal(t, r.hint, ce.Hint, r.name)
+		assert.Equal(t, r.retryable, ce.Retryable, r.name)
+		st, ok := clierr.HTTPStatus(err)
+		require.True(t, ok, r.name)
+		assert.Equal(t, r.status, st, r.name)
+	}
 }
 
 // argsInput is a minimal runtime.Input for driving a command's Execute

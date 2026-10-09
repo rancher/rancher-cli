@@ -63,7 +63,7 @@ func skillSelection(in runtime.Input) (agent string, scope skillinstall.Scope, c
 func skillTargets(in runtime.Input) ([]skillinstall.Target, error) {
 	agent, scope, cwd, err := skillSelection(in)
 	if err != nil {
-		return nil, clierr.New(clierr.CodeGeneric, err.Error())
+		return nil, clierr.From(err)
 	}
 	targets, err := skillinstall.Targets(agent, scope, cwd)
 	if err != nil {
@@ -109,7 +109,7 @@ func (c skillInstallCmd) Execute(_ context.Context, in runtime.Input, _ runtime.
 	force := in.Bool("force")
 	lockDir, err := skillinstall.DefaultLockDir()
 	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeGeneric, err.Error())
+		return runtime.Result{}, clierr.From(err)
 	}
 	leases, err := skillinstall.Acquire(lockDir, targets, "install", force)
 	if err != nil {
@@ -166,7 +166,7 @@ func (c skillUninstallCmd) Execute(_ context.Context, in runtime.Input, _ runtim
 	}
 	lockDir, err := skillinstall.DefaultLockDir()
 	if err != nil {
-		return runtime.Result{}, clierr.New(clierr.CodeGeneric, err.Error())
+		return runtime.Result{}, clierr.From(err)
 	}
 	leases, err := skillinstall.Acquire(lockDir, targets, "uninstall", false)
 	if err != nil {

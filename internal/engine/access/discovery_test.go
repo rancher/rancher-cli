@@ -23,8 +23,9 @@ import (
 var steveClustersPath = steve.Request{Type: steve.ClustersType}.Path()
 
 // fakeRootClient answers engine.RootClient over a real httptest server with
-// the production root client's status contract, so the reader's decode and
-// consistency rules, not a substitute for them, are what the tests exercise.
+// the production root client's non-2xx answer (clierr.FromResponse with the
+// same prefix and request), so the reader's decode and consistency rules, not
+// a substitute for them, are what the tests exercise.
 type fakeRootClient struct{ srv *httptest.Server }
 
 func (f fakeRootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
@@ -41,17 +42,10 @@ func (f fakeRootClient) GetJSON(ctx context.Context, path string) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	status := &engine.RootStatusError{Status: resp.StatusCode}
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return body, nil
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status)).WithCause(status)
-	case resp.StatusCode == http.StatusNotFound:
-		return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("rancher root GET %s: not found", path)).WithCause(status)
-	default:
-		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status)).WithCause(status)
 	}
+	return nil, clierr.FromResponse("rancher root GET "+path, http.MethodGet, resp.StatusCode, body, &clierr.Request{})
 }
 
 var _ engine.RootClient = fakeRootClient{}

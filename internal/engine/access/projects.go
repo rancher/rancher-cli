@@ -2,7 +2,6 @@ package access
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -357,13 +356,10 @@ func (c *projectsCmd) reviewCluster(ctx context.Context, root engine.RootClient,
 		}
 		// A 401 is the credential refused, whatever the path: terminal. A
 		// 403 and every other failure are private to this cluster's read.
-		if st, ok := errors.AsType[*engine.RootStatusError](err); ok && st.Status == http.StatusUnauthorized {
+		if st, ok := clierr.HTTPStatus(err); ok && st == http.StatusUnauthorized {
 			return err
 		}
-		ce, ok := errors.AsType[*clierr.Error](err)
-		if !ok {
-			ce = clierr.New(clierr.CodeGeneric, err.Error())
-		}
+		ce := clierr.From(err)
 		iss := issueFrom(ce)
 		row.NamespaceDiscovery = &namespaceDiscovery{Source: RowScopeDiscovery, Issue: &iss}
 		for j := range row.Projects {

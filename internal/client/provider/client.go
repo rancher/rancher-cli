@@ -157,7 +157,7 @@ func (r *dynamicClient) resolveVersion(ctx context.Context, gvr schema.GroupVers
 	groups, err := r.groups(ctx)
 	if err != nil {
 		return gvr, clierr.WrapUnlessCanceled(err, func(err error) error {
-			return fmt.Errorf("discovering version for group %q: %w", gvr.Group, err)
+			return mapRequestErr(fmt.Errorf("discovering version for group %q: %w", gvr.Group, err), &clierr.Request{Cluster: r.clusterID, Endpoint: true})
 		})
 	}
 	for _, g := range groups.Groups {
@@ -198,15 +198,19 @@ func (r *dynamicClient) resolveVersion(ctx context.Context, gvr schema.GroupVers
 func (r *dynamicClient) curateNotFound(gvr schema.GroupVersionResource, name string, err error) error {
 	if ce := clierr.AsNotFound(err); ce != nil && ce.Hint == "" {
 		if k, ok := kinds.ByGVR(gvr); ok {
-			return kinds.NotFoundCurated(k, name, r.clusterID)
+			curated := kinds.NotFoundCurated(k, name, r.clusterID)
+			if cc, ok := errors.AsType[*clierr.Error](curated); ok {
+				return cc.WithCause(err)
+			}
+			return curated
 		}
 	}
 	return err
 }
 
 // request describes one call of this client for the error mapping.
-func (r *dynamicClient) request(verb string, gvr schema.GroupVersionResource, ns, name string) *request {
-	return &request{verb: verb, group: gvr.Group, resource: gvr.Resource, namespace: ns, name: name, cluster: r.clusterID}
+func (r *dynamicClient) request(verb string, gvr schema.GroupVersionResource, ns, name string) *clierr.Request {
+	return &clierr.Request{Verb: verb, Group: gvr.Group, Resource: gvr.Resource, Name: name, Cluster: r.clusterID}
 }
 
 // forbiddenHint adds the caller-scoped command kinds.ForbiddenHint names
@@ -260,7 +264,7 @@ func (r *dynamicClient) Logs(ctx context.Context, ns, pod string, opts engine.Lo
 	})
 	b, err := req.DoRaw(ctx)
 	if err != nil {
-		return "", mapRequestErr(restoreStatus(err, b), &request{verb: "get", resource: "pods/log", namespace: ns, name: pod, cluster: r.clusterID})
+		return "", mapRequestErr(restoreStatus(err, b), &clierr.Request{Verb: "get", Resource: "pods/log", Name: pod, Cluster: r.clusterID})
 	}
 	return string(b), nil
 }

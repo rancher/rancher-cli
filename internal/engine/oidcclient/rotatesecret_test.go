@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -476,4 +477,12 @@ func TestRotateSecretUnchangedValueProjectsCommittedDetails(t *testing.T) {
 
 func (f stubClusterClientFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
 	return f.Cluster(ctx, id)
+}
+
+// TestTransientSecretReadErrorIgnoresWrappedTerminalError asserts a wrapped
+// non-retryable classified error is terminal, not transient.
+func TestTransientSecretReadErrorIgnoresWrappedTerminalError(t *testing.T) {
+	t.Parallel()
+	err := fmt.Errorf("x: %w", clierr.New(clierr.CodeRBAC, "no"))
+	assert.False(t, isTransientSecretReadError(err))
 }

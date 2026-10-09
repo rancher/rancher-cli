@@ -5,7 +5,6 @@ package engine
 
 import (
 	"context"
-	"strconv"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -105,14 +104,6 @@ func ResolveClusterArgument(ctx context.Context, clients ClusterClientFactory, n
 	return clients.ResolveCluster(ctx, nameOrID)
 }
 
-// RootStatusError is the cause a RootClient attaches to the error of a
-// non-2xx answer, so a caller can tell a 401 (the credential is refused)
-// from a 403 (the caller may not read this path) when both map to the same
-// error code.
-type RootStatusError struct{ Status int }
-
-func (e *RootStatusError) Error() string { return "http status " + strconv.Itoa(e.Status) }
-
 // RootClient is the GET-only port for reads against the Rancher server
 // ROOT (Steve /v1 collections, the channel-server release routes) - the
 // surfaces ClusterClient's per-cluster /k8s/clusters/<id> proxy cannot
@@ -122,8 +113,8 @@ func (e *RootStatusError) Error() string { return "http status " + strconv.Itoa(
 // unauthenticated server-side - one policy, no anonymous special-casing.
 type RootClient interface {
 	// GetJSON GETs path (absolute, starting "/") against the server root
-	// and returns the response body. Non-2xx maps to a clierr code:
-	// 401/403 → auth, 404 → not-found, else generic with a body excerpt.
+	// and returns the response body. A non-2xx answer is classified by
+	// clierr's status table, and clierr.HTTPStatus reads its status.
 	GetJSON(ctx context.Context, path string) ([]byte, error)
 }
 

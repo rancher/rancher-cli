@@ -178,7 +178,7 @@ func oauthAuthCodeAuth(
 
 		oauthToken, err := oauthConfig.Exchange(exchangeCtx, result.code, oauth2.VerifierOption(verifier))
 		if err != nil {
-			return notAttempted, fmt.Errorf("failed to exchange authorization code for token: %w", idpCertificateError(err, oauthConfig.Endpoint.TokenURL))
+			return notAttempted, idpError(err, oauthConfig.Endpoint.TokenURL, "failed to exchange authorization code for token")
 		}
 
 		return rancherLogin(ctx, client, input, oauthToken)
@@ -299,7 +299,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 
 	deviceAuthResp, err := oauthConfig.DeviceAuth(ctxWithClient)
 	if err != nil {
-		return notAttempted, fmt.Errorf("failed to initiate device authorization: %w", idpCertificateError(err, oauthConfig.Endpoint.DeviceAuthURL))
+		return notAttempted, idpError(err, oauthConfig.Endpoint.DeviceAuthURL, "failed to initiate device authorization")
 	}
 
 	p.Notice(fmt.Sprintf(
@@ -310,7 +310,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 
 	oauthToken, err := oauthConfig.DeviceAccessToken(ctxWithClient, deviceAuthResp)
 	if err != nil {
-		return notAttempted, fmt.Errorf("failed to retrieve access token: %w", idpCertificateError(err, oauthConfig.Endpoint.TokenURL))
+		return notAttempted, idpError(err, oauthConfig.Endpoint.TokenURL, "failed to retrieve access token")
 	}
 
 	r, err := rancherLogin(ctx, client, input, oauthToken)
@@ -397,5 +397,5 @@ func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, o
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 	resp, respBody, err := httpx.Do(client, req)
 	r := loginCreateResult(resp, respBody, err, createdAt, input.description != "")
-	return r, loginError(resp, err)
+	return r, loginError(resp, respBody, err)
 }

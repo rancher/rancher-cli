@@ -224,15 +224,9 @@ func requestOwner(ctx context.Context, client *http.Client, base, clusterID, bea
 		}
 		return "", clierr.Retryable(clierr.CodeGeneric, "posting a SelfSubjectReview: "+err.Error())
 	}
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
-		return "", clierr.New(clierr.CodeAuth, "the server rejected the token: 401 Unauthorized")
-	case resp.StatusCode == http.StatusForbidden:
-		return "", clierr.New(clierr.CodeRBAC, "the server refused the SelfSubjectReview: 403 Forbidden")
-	case resp.StatusCode >= 500:
-		return "", clierr.Retryable(clierr.CodeGeneric, fmt.Sprintf("posting a SelfSubjectReview: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
-	case resp.StatusCode < 200 || resp.StatusCode > 299:
-		return "", clierr.New(clierr.CodeGeneric, fmt.Sprintf("posting a SelfSubjectReview: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return "", clierr.FromResponse("posting a SelfSubjectReview", http.MethodPost, resp.StatusCode, raw,
+			&clierr.Request{Cluster: clusterID, Endpoint: true, Unresolved: true})
 	}
 	var review struct {
 		Status struct {

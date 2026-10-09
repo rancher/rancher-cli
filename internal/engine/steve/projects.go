@@ -76,23 +76,28 @@ func Projects(ctx context.Context, get Getter, clusterID string) ([]Project, err
 
 // collectionRefusal words a collection read's non-2xx answer: steve
 // answers a signed-in user's collection read with 200, so a 403 came from
-// something in front of it, and any other status means the server does
-// not serve steve as expected. A 401 keeps the root client's error.
+// something in front of it, and a status steve's API does not send for a
+// collection, 404 included, means the server does not serve steve as
+// expected. A 401, a 429 and a 5xx keep the root client's error,
+// classified by the status table.
 func collectionRefusal(r Request, err error) error {
-	se, ok := errors.AsType[*StatusError](err)
+	st, ok := clierr.HTTPStatus(err)
 	if !ok {
 		return err
 	}
-	switch se.Status {
-	case http.StatusUnauthorized:
+	switch st {
+	case http.StatusUnauthorized, http.StatusTooManyRequests:
 		return err
 	case http.StatusForbidden:
 		return clierr.New(clierr.CodeRBAC, fmt.Sprintf(
 			"the server refused GET %s (403); Rancher answers this request with 200 for every signed-in user, so a proxy in front of Rancher or an unsupported Rancher refused it",
 			r.Path())).WithCause(err)
 	default:
+		if st >= http.StatusInternalServerError {
+			return err
+		}
 		return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
-			"GET %s answered %d; this server does not serve Rancher's steve API as expected", r.Path(), se.Status)).WithCause(err)
+			"GET %s answered %d; this server does not serve Rancher's steve API as expected", r.Path(), st)).WithCause(err)
 	}
 }
 
@@ -191,7 +196,7 @@ func ProjectNamespaces(ctx context.Context, downstream engine.ClusterClient, get
 		}
 		return name, "", nil
 	})
-	if se, ok := errors.AsType[*StatusError](err); ok && se.Status == http.StatusUnauthorized {
+	if st, ok := clierr.HTTPStatus(err); ok && st == http.StatusUnauthorized {
 		return nil, clierr.New(clierr.CodeRBAC, fmt.Sprintf(
 			"Rancher refused access to cluster %s (401 with no body, its answer to a user with no role on that cluster)", clierr.ShellQuote(clusterID))).
 			WithHint(clierr.Rancher + " access clusters").WithCause(err)

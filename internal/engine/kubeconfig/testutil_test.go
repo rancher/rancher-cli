@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -130,7 +131,7 @@ func (g *clusterGetter) Get(ctx context.Context, r steve.Request) ([]byte, error
 	}
 	obj, ok := g.objs[r.Name]
 	if r.Type != steve.ClustersType || !ok {
-		return nil, clierr.New(clierr.CodeNotFound, r.Path()+" not found").WithCause(&engine.RootStatusError{Status: 404})
+		return nil, clierr.New(clierr.CodeNotFound, r.Path()+" not found").WithCause(clierr.ResponseError(http.MethodGet, 404, nil))
 	}
 	return json.Marshal(obj.Object)
 }

@@ -23,7 +23,7 @@ func Owner(ctx context.Context, eff config.Effective) (string, error) {
 	}
 	dyn, err := kube.Dynamic(discoveryConfig(rc))
 	if err != nil {
-		return "", clierr.New(clierr.CodeGeneric, err.Error())
+		return "", clierr.From(err)
 	}
 	gvr, _ := engine.ReviewGVR(engine.ReviewSelfSubjectIdentity)
 	review := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "authentication.k8s.io/v1", "kind": "SelfSubjectReview"}}

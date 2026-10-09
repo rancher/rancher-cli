@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,7 +84,7 @@ func TestRancherVersionGarbageBodyReturnsError(t *testing.T) {
 		})
 		_, err := RancherVersion(t.Context(), effFor(t, srv))
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "/rancherversion")
+		require.ErrorContains(t, err, "/rancherversion")
 	})
 
 	t.Run("valid JSON but no Version field", func(t *testing.T) {
@@ -109,7 +110,10 @@ func TestRancherVersionNon200ReturnsError(t *testing.T) {
 
 	_, err := RancherVersion(t.Context(), effFor(t, srv))
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "503")
+	require.ErrorContains(t, err, "/rancherversion: the server is currently unable to handle the request")
+	status, ok := clierr.HTTPStatus(err)
+	require.True(t, ok)
+	assert.Equal(t, http.StatusServiceUnavailable, status)
 }
 
 // TestRancherVersionUnreachableReturnsError asserts the connectivity-failure path:

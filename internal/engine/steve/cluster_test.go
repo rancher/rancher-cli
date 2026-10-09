@@ -1,7 +1,6 @@
 package steve
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -154,9 +153,9 @@ func TestResolveClusterGetByIDOnAMiss(t *testing.T) {
 		ce := codeOf(t, err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		require.ErrorContains(t, err, "rancher root GET "+clusterByIDPath("c-new"))
-		se, ok := errors.AsType[*StatusError](err)
+		se, ok := clierr.HTTPStatus(err)
 		require.True(t, ok)
-		assert.Equal(t, http.StatusInternalServerError, se.Status)
+		assert.Equal(t, http.StatusInternalServerError, se)
 	})
 
 	t.Run("another cluster's object", func(t *testing.T) {

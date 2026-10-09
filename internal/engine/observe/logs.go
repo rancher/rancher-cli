@@ -111,6 +111,7 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 
 	var entries []logEntry
 	var warnings []string
+	var refusals []*clierr.Error
 	for i := range resolved.Pods {
 		podName := resolved.Pods[i].GetName()
 		for _, cname := range engine.ContainerNames(resolved.Pods[i].Object) {
@@ -122,6 +123,7 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 			out, lerr := resolved.Client.Logs(ctx, resolved.Namespace, podName, opts)
 			if lerr != nil {
 				warnings = append(warnings, fmt.Sprintf("%s/%s: %v", podName, cname, lerr))
+				refusals = append(refusals, clierr.From(lerr))
 				continue
 			}
 			entries = append(entries, logEntry{Pod: podName, Container: cname, Line: out})
@@ -129,6 +131,9 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	}
 
 	if len(entries) == 0 {
+		if ce := sameRefusal(refusals); ce != nil {
+			return runtime.Result{}, ce.WithWarnings(warnings...)
+		}
 		return runtime.Result{}, clierr.New(clierr.CodeNotFound,
 			fmt.Sprintf("no logs available for target %q in namespace %s on cluster %s; confirm the target is running, or check the warnings for per-pod fetch failures",
 				target.Name, resolved.Namespace, resolved.ClusterID))
@@ -140,6 +145,20 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 		Data:     logsResult{Pods: podNames(resolved.Pods), Entries: entries},
 		Warnings: warnings,
 	}, nil
+}
+
+// sameRefusal returns the first error, in pod and container order, when
+// every log read was refused with one code, AUTH or RBAC; otherwise nil.
+func sameRefusal(errs []*clierr.Error) *clierr.Error {
+	if len(errs) == 0 || (errs[0].Code != clierr.CodeAuth && errs[0].Code != clierr.CodeRBAC) {
+		return nil
+	}
+	for _, e := range errs[1:] {
+		if e.Code != errs[0].Code {
+			return nil
+		}
+	}
+	return errs[0]
 }
 
 // parseTailFlag defaults an empty --tail to 200 and rejects anything that is

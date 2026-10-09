@@ -19,9 +19,11 @@ import (
 // TestRequestOwnerMapsEachAnswer asserts the owner request after a
 // sign-in: one POST of a SelfSubjectReview through the cluster's path with
 // the token as bearer, whose username is the owner; each other answer is
-// a typed error - a rejected token AUTH, a refused review RBAC, a server
-// failure or no answer GENERIC and retryable, any other status, an
-// unreadable body or one naming no user GENERIC.
+// a typed error classified by the status table - a rejected token AUTH, a
+// refused review RBAC, a cluster Rancher does not know NOT_FOUND, each
+// worded with the --cluster remedy through a cluster other than local, a
+// server failure GENERIC and retryable, an unreadable body or one naming no
+// user GENERIC; no answer is GENERIC and retryable.
 func TestRequestOwnerMapsEachAnswer(t *testing.T) {
 	var (
 		mu       sync.Mutex
@@ -49,10 +51,13 @@ func TestRequestOwnerMapsEachAnswer(t *testing.T) {
 		{"the owner", http.StatusCreated, `{"status":{"userInfo":{"username":"u-abc12"}}}`, "u-abc12", "", false, ""},
 		{"no user", http.StatusCreated, `{"status":{"userInfo":{}}}`, "", clierr.CodeGeneric, false, "the SelfSubjectReview response named no user"},
 		{"unreadable", http.StatusCreated, `not json`, "", clierr.CodeGeneric, false, "the SelfSubjectReview response is not readable"},
-		{"rejected", http.StatusUnauthorized, ``, "", clierr.CodeAuth, false, "the server rejected the token: 401 Unauthorized"},
-		{"refused", http.StatusForbidden, ``, "", clierr.CodeRBAC, false, "the server refused the SelfSubjectReview: 403 Forbidden"},
-		{"not found", http.StatusNotFound, ``, "", clierr.CodeGeneric, false, "posting a SelfSubjectReview: 404 Not Found"},
-		{"server failure", http.StatusBadGateway, ``, "", clierr.CodeGeneric, true, "posting a SelfSubjectReview: 502 Bad Gateway"},
+		{"rejected", http.StatusUnauthorized, ``, "", clierr.CodeAuth, false, "posting a SelfSubjectReview: the server rejected the credential (401)"},
+		{"refused", http.StatusForbidden, ``, "", clierr.CodeRBAC, false,
+			"posting a SelfSubjectReview: the server refused the request (403) and gave no reason; Rancher answers 403 for a cluster the user cannot read and, to a user who cannot read every cluster, for one it does not know: check the --cluster value 'c-1/x'"},
+		{"not found", http.StatusNotFound, ``, "", clierr.CodeNotFound, false,
+			"posting a SelfSubjectReview: the server could not find the requested resource; Rancher answers 404 for a cluster it does not know: check the --cluster value 'c-1/x'"},
+		{"server failure", http.StatusBadGateway, ``, "", clierr.CodeGeneric, true,
+			`posting a SelfSubjectReview: an error on the server ("Bad Gateway") has prevented the request from succeeding - its agent may not be registered yet; retry once the cluster is active`},
 		{"an answer past the bound", http.StatusCreated, `{"status":{"userInfo":{"username":"u-abc12"}},"padding":"` + strings.Repeat("x", maxOwnerBody) + `"}`, "", clierr.CodeGeneric, false,
 			fmt.Sprintf("the SelfSubjectReview response is larger than %d bytes", maxOwnerBody)},
 	} {
@@ -77,6 +82,26 @@ func TestRequestOwnerMapsEachAnswer(t *testing.T) {
 			assert.Equal(t, tc.msg, ce.Message)
 		})
 	}
+	t.Run("through the local cluster", func(t *testing.T) {
+		for _, tc := range []struct {
+			status int
+			code   string
+			msg    string
+		}{
+			{http.StatusNotFound, clierr.CodeGeneric, "posting a SelfSubjectReview: the server could not find the requested resource; check the server URL"},
+			{http.StatusForbidden, clierr.CodeRBAC, "posting a SelfSubjectReview: the server refused the request (403) and gave no reason"},
+		} {
+			mu.Lock()
+			status, body, requests = tc.status, ``, nil
+			mu.Unlock()
+			_, err := requestOwner(t.Context(), srv.Client(), srv.URL, "local", "tok:secret")
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, tc.code, ce.Code, tc.status)
+			assert.False(t, ce.Retryable, tc.status)
+			assert.Equal(t, tc.msg, ce.Message, tc.status)
+		}
+	})
 	t.Run("no answer", func(t *testing.T) {
 		dead := httptest.NewServer(http.NotFoundHandler())
 		url := dead.URL

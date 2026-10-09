@@ -164,8 +164,10 @@ func TestProjectsOneClusterReadsItsNamespaceAndRefusesAnotherClustersItem(t *tes
 }
 
 // TestProjectsCollectionRefusals asserts a 401 keeps the root client's AUTH
-// error, a 403 is RBAC naming the refused request, and any other status is
-// a generic error saying the server does not serve steve as expected.
+// error, a 403 is RBAC naming the refused request, a 404 is a generic error
+// saying the server does not serve steve as expected, a 409 is the same
+// generic error and not retryable, and a 429 or a 5xx keeps the root client's
+// retryable error.
 func TestProjectsCollectionRefusals(t *testing.T) {
 	t.Parallel()
 	const path = "/v1/management.cattle.io.projects/c-abc"
@@ -176,9 +178,9 @@ func TestProjectsCollectionRefusals(t *testing.T) {
 		ce := codeOf(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		require.ErrorContains(t, err, "rancher root GET "+path)
-		rs, ok := errors.AsType[*engine.RootStatusError](err)
+		rs, ok := clierr.HTTPStatus(err)
 		require.True(t, ok)
-		assert.Equal(t, http.StatusUnauthorized, rs.Status)
+		assert.Equal(t, http.StatusUnauthorized, rs)
 	})
 	t.Run("403", func(t *testing.T) {
 		t.Parallel()
@@ -186,20 +188,48 @@ func TestProjectsCollectionRefusals(t *testing.T) {
 		_, err := Projects(t.Context(), srv.getter(), "c-abc")
 		assert.Equal(t, clierr.CodeRBAC, codeOf(t, err).Code)
 		require.ErrorContains(t, err, "the server refused GET "+path+" (403); Rancher answers this request with 200 for every signed-in user")
-		se, ok := errors.AsType[*StatusError](err)
+		se, ok := clierr.HTTPStatus(err)
 		require.True(t, ok, "the cause stays in the chain")
-		assert.Equal(t, http.StatusForbidden, se.Status)
+		assert.Equal(t, http.StatusForbidden, se)
 	})
-	for _, status := range []int{http.StatusNotFound, http.StatusInternalServerError} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
-			t.Parallel()
-			srv := newServer(t, map[string]route{path: {status: status}})
-			_, err := Projects(t.Context(), srv.getter(), "c-abc")
-			assert.Equal(t, clierr.CodeGeneric, codeOf(t, err).Code)
-			want := "GET " + path + " answered " + map[int]string{404: "404", 500: "500"}[status] + "; this server does not serve Rancher's steve API as expected"
-			require.ErrorContains(t, err, want)
-		})
-	}
+	t.Run("Not Found", func(t *testing.T) {
+		t.Parallel()
+		srv := newServer(t, map[string]route{path: {status: http.StatusNotFound}})
+		_, err := Projects(t.Context(), srv.getter(), "c-abc")
+		assert.Equal(t, clierr.CodeGeneric, codeOf(t, err).Code)
+		require.ErrorContains(t, err, "GET "+path+" answered 404; this server does not serve Rancher's steve API as expected")
+	})
+	t.Run("Conflict", func(t *testing.T) {
+		t.Parallel()
+		srv := newServer(t, map[string]route{path: {status: http.StatusConflict}})
+		_, err := Projects(t.Context(), srv.getter(), "c-abc")
+		ce := codeOf(t, err)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.False(t, ce.Retryable)
+		require.ErrorContains(t, err, "GET "+path+" answered 409; this server does not serve Rancher's steve API as expected")
+	})
+	t.Run("Too Many Requests", func(t *testing.T) {
+		t.Parallel()
+		srv := newServer(t, map[string]route{path: {status: http.StatusTooManyRequests}})
+		_, err := Projects(t.Context(), srv.getter(), "c-abc")
+		ce := codeOf(t, err)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.True(t, ce.Retryable)
+		require.ErrorContains(t, err, "rancher root GET "+path+": ")
+		require.ErrorContains(t, err, " - retry later")
+		assert.NotContains(t, err.Error(), "steve API")
+		assert.Equal(t, []string{path}, srv.requests(), "a 429 is not read again")
+	})
+	t.Run("Internal Server Error", func(t *testing.T) {
+		t.Parallel()
+		srv := newServer(t, map[string]route{path: {status: http.StatusInternalServerError}})
+		_, err := Projects(t.Context(), srv.getter(), "c-abc")
+		ce := codeOf(t, err)
+		assert.Equal(t, clierr.CodeGeneric, ce.Code)
+		assert.True(t, ce.Retryable)
+		require.ErrorContains(t, err, "rancher root GET "+path+": an error on the server (\"Internal Server Error\") has prevented the request from succeeding - retrying may succeed")
+		assert.NotContains(t, err.Error(), "steve API")
+	})
 }
 
 func projectFixture(t *testing.T, items ...map[string]any) (*recordingServer, Getter) {

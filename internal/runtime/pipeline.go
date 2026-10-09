@@ -826,7 +826,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 			text = boldShownOnceLine(text, outStyle)
 		}
 		if _, err := streams.Out.Write([]byte(plainRemedies(text))); err != nil {
-			return notices, clierr.New(clierr.CodeGeneric, err.Error())
+			return notices, clierr.From(err)
 		}
 		// Mirror every Warnings entry to stderr except OnceOnlyNotice
 		// (matched by value - see that field's doc for why position
@@ -843,7 +843,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	}
 	if res.RawBytes != nil {
 		if _, err := streams.Out.Write(res.RawBytes); err != nil {
-			return notices, clierr.New(clierr.CodeGeneric, err.Error())
+			return notices, clierr.From(err)
 		}
 		// RawBytes carries no envelope under any format (kubeconfig,
 		// completion): stderr is the only delivery path Warnings has, so it
@@ -857,7 +857,7 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	if res.Raw {
 		enc := json.NewEncoder(streams.Out)
 		if err := enc.Encode(res.Data); err != nil {
-			return notices, clierr.New(clierr.CodeGeneric, err.Error())
+			return notices, clierr.From(err)
 		}
 		// Same rationale as RawBytes above: kubectl surfaces exec-credential
 		// stderr, and no envelope exists here under any format.
@@ -872,11 +872,11 @@ func renderResult(streams IO, d Descriptor, res Result) ([]string, *clierr.Error
 	// not a separate body, so the wait line belongs on it as well.
 	if textRenderFormat(streams.Format) && res.Summary != "" {
 		if _, err := fmt.Fprintln(streams.Out, plainRemedies(res.Summary)); err != nil {
-			return notices, clierr.New(clierr.CodeGeneric, err.Error())
+			return notices, clierr.From(err)
 		}
 	}
 	if err := output.RenderStyled(plainRemedyWriter{streams.Out}, streams.Format, env, outStyle); err != nil {
-		return notices, clierr.New(clierr.CodeGeneric, err.Error())
+		return notices, clierr.From(err)
 	}
 	// renderTable (output/render.go) only ever reads env.Data, so an
 	// envelope-level warning would otherwise reach the user only when the
@@ -911,7 +911,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	eff.Warnings = streams.expandAll(append(drainNotices(streams), eff.Warnings...))
 	if textRenderFormat(streams.Format) {
 		if _, err := streams.Out.Write([]byte(plainRemedies(dryRunText(eff)))); err != nil {
-			return clierr.New(clierr.CodeGeneric, err.Error())
+			return clierr.From(err)
 		}
 		// Effect.Warnings are deliberately excluded from dryRunText's body -
 		// mirror them to stderr here so they are not silently dropped,
@@ -923,7 +923,7 @@ func renderEffect(streams IO, eff safety.Effect) *clierr.Error {
 	env := output.NewEnvelope("Effect", eff)
 	env.Warnings = append(env.Warnings, eff.Warnings...)
 	if err := output.Render(plainRemedyWriter{streams.Out}, streams.Format, env); err != nil {
-		return clierr.New(clierr.CodeGeneric, err.Error())
+		return clierr.From(err)
 	}
 	// renderTable (render.go) encodes env.Data alone, so envelope-level
 	// warnings vanish for every format that does not serialize the full
@@ -1201,21 +1201,19 @@ func allowedExitStatus(declared []int, status int) bool {
 	return slices.Contains(declared, status)
 }
 
-// toClierr gives a command's error its envelope shape: a structured
-// *clierr.Error passes through (a %w-wrapped one is unwrapped, so hint and
-// candidates survive) and anything else is GENERIC. When ctx, the command's
-// own context, has been cancelled, the operator's interrupt is what ended
-// the command whatever error the cancelled path surfaced, so the error is
-// INTERRUPTED with that error as its cause. A deadline on ctx is not an
-// interrupt.
+// toClierr gives a command's error its envelope shape through clierr.From: a
+// structured *clierr.Error passes through (a %w-wrapped one is unwrapped, so
+// hint and candidates survive), a server status in the error's chain gets
+// its code from the status table, and anything else is GENERIC. When ctx,
+// the command's own context, has been cancelled, the operator's interrupt is
+// what ended the command whatever error the cancelled path surfaced, so the
+// error is INTERRUPTED with that error as its cause. A deadline on ctx is
+// not an interrupt.
 func toClierr(ctx context.Context, err error) *clierr.Error {
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return interrupted(err)
 	}
-	if ce, ok := errors.AsType[*clierr.Error](err); ok {
-		return ce
-	}
-	return clierr.New(clierr.CodeGeneric, err.Error())
+	return clierr.From(err)
 }
 
 // interrupted builds the INTERRUPTED error for a command that ended with

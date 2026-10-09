@@ -23,8 +23,9 @@ import (
 var clustersPath = Request{Type: ClustersType}.Path()
 
 // fakeRootClient answers engine.RootClient over a real httptest server with
-// the production root client's status contract, so the reader's decode and
-// consistency rules, not a substitute for them, are what the tests exercise.
+// the production root client's non-2xx answer (clierr.FromResponse with the
+// same prefix and request), so the reader's decode and consistency rules, not
+// a substitute for them, are what the tests exercise.
 type fakeRootClient struct{ srv *httptest.Server }
 
 func (f fakeRootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
@@ -41,17 +42,10 @@ func (f fakeRootClient) GetJSON(ctx context.Context, path string) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	status := &engine.RootStatusError{Status: resp.StatusCode}
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return body, nil
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, clierr.New(clierr.CodeAuth, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status)).WithCause(status)
-	case resp.StatusCode == http.StatusNotFound:
-		return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("rancher root GET %s: not found", path)).WithCause(status)
-	default:
-		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %s", path, resp.Status)).WithCause(status)
 	}
+	return nil, clierr.FromResponse("rancher root GET "+path, http.MethodGet, resp.StatusCode, body, &clierr.Request{})
 }
 
 var _ engine.RootClient = fakeRootClient{}
@@ -164,9 +158,9 @@ func TestRequestPath(t *testing.T) {
 }
 
 // TestRootGetterKeepsTheRootErrorAndAddsTheStatus asserts a non-2xx answer
-// stays the root client's *clierr.Error with its *engine.RootStatusError
-// cause and also carries *StatusError, while an error with no status gains
-// none and a 2xx returns the body.
+// stays the root client's *clierr.Error with a status error cause (the one
+// clierr.ResponseError builds) that clierr.HTTPStatus reads, while an error
+// with no status gains none and a 2xx returns the body.
 func TestRootGetterKeepsTheRootErrorAndAddsTheStatus(t *testing.T) {
 	t.Parallel()
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError} {
@@ -177,14 +171,11 @@ func TestRootGetterKeepsTheRootErrorAndAddsTheStatus(t *testing.T) {
 			require.Error(t, err)
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
-			wantCode := map[int]string{401: clierr.CodeAuth, 403: clierr.CodeAuth, 404: clierr.CodeNotFound, 500: clierr.CodeGeneric}[status]
+			wantCode := map[int]string{401: clierr.CodeAuth, 403: clierr.CodeRBAC, 404: clierr.CodeNotFound, 500: clierr.CodeGeneric}[status]
 			assert.Equal(t, wantCode, ce.Code)
-			se, ok := errors.AsType[*StatusError](err)
+			got, ok := clierr.HTTPStatus(err)
 			require.True(t, ok)
-			assert.Equal(t, status, se.Status)
-			rs, ok := errors.AsType[*engine.RootStatusError](err)
-			require.True(t, ok)
-			assert.Equal(t, status, rs.Status)
+			assert.Equal(t, status, got)
 			require.ErrorContains(t, err, "rancher root GET /v1/x")
 		})
 	}
@@ -203,7 +194,7 @@ func TestRootGetterKeepsTheRootErrorAndAddsTheStatus(t *testing.T) {
 		srv.srv.Close()
 		_, err := srv.getter()(t.Context(), Request{Type: "x"})
 		require.Error(t, err)
-		_, ok := errors.AsType[*StatusError](err)
+		_, ok := clierr.HTTPStatus(err)
 		assert.False(t, ok, "a transport failure has no status")
 	})
 }
@@ -470,4 +461,23 @@ func TestRootFactoryGetterAsksForTheRootAtTheRequest(t *testing.T) {
 	boom := errors.New("no server configured")
 	_, err = RootFactoryGetter(fakeRootFactory{err: boom, calls: calls})(t.Context(), Request{Type: "x"})
 	require.ErrorIs(t, err, boom)
+}
+
+// TestReadCollectionReturnsARetryableRefusalAtOnce asserts a retryable
+// server answer (here a 503) is returned after one read: only a
+// collection whose pages disagree is read again.
+func TestReadCollectionReturnsARetryableRefusalAtOnce(t *testing.T) {
+	t.Parallel()
+	var calls int
+	get := func(context.Context, Request) ([]byte, error) {
+		calls++
+		return nil, clierr.FromResponse("GET /v1/x", http.MethodGet, http.StatusServiceUnavailable, nil, &clierr.Request{})
+	}
+	_, err := ReadCollection(t.Context(), get, Request{Type: ClustersType}, func(string, int, json.RawMessage) (string, string, error) {
+		return "", "", nil
+	})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.True(t, ce.Retryable)
+	assert.Equal(t, 1, calls)
 }

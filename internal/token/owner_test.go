@@ -482,7 +482,7 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		assert.True(t, ce.Retryable)
-		assert.Equal(t, "checking the signed-in user against --user-id 'user-carol': posting a SelfSubjectReview: 500 Internal Server Error; the token the sign-in created was revoked", msg)
+		assert.Equal(t, "checking the signed-in user against --user-id 'user-carol': posting a SelfSubjectReview: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed; the token the sign-in created was revoked", msg)
 		assert.Equal(t, 1, x.revoked())
 		assert.False(t, x.cached("prod-c-test", "user-carol"))
 	})

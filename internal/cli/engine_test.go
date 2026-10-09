@@ -17,7 +17,6 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
-	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
@@ -189,7 +188,7 @@ func (r *steveClustersRoot) GetJSON(_ context.Context, path string) ([]byte, err
 		status = http.StatusNotFound
 	}
 	return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %d", path, status)).
-		WithCause(&engine.RootStatusError{Status: status})
+		WithCause(clierr.ResponseError(http.MethodGet, status, nil))
 }
 
 func (r *steveClustersRoot) requests() []string {

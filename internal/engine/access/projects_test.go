@@ -475,7 +475,7 @@ func TestProjectsNamespaceRead401IsTerminal(t *testing.T) {
 		require.NoError(t, err, "status %d", tc.status)
 		out := decodeProjects(t, res)
 		require.NotNil(t, out.Clusters[0].NamespaceDiscovery.Issue)
-		assert.Equal(t, clierr.CodeAuth, out.Clusters[0].NamespaceDiscovery.Issue.Code)
+		assert.Equal(t, clierr.CodeRBAC, out.Clusters[0].NamespaceDiscovery.Issue.Code)
 		assert.Equal(t, exitUnknown, res.ExitStatus)
 	}
 }

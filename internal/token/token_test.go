@@ -937,7 +937,10 @@ func TestGetTokenSurfacesRealCreateFailureNotInteractive(t *testing.T) {
 		ui.Discard())
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "interactive login required")
-	require.ErrorContains(t, err, "500")
+	require.ErrorContains(t, err, `creating derived token: an error on the server ("Internal Server Error") has prevented the request from succeeding - retrying may succeed`)
+	ce := clierr.From(err)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.True(t, ce.Retryable, "a 5xx that is not a Status answer is retryable")
 	assert.Equal(t, int32(0), authProviderHits.Load(), "a real create failure must not fall through to the interactive flow")
 }
 
@@ -1959,7 +1962,11 @@ func TestGetAuthProviders404IsError(t *testing.T) {
 		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
 		p)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "404", "a 404 from /v1-public/authproviders must surface as an error")
+	require.ErrorContains(t, err, "error listing auth providers: the server could not find the requested resource; check the server URL",
+		"a 404 from /v1-public/authproviders must surface as an error naming the server URL")
+	ce := clierr.From(err)
+	assert.Equal(t, clierr.CodeGeneric, ce.Code)
+	assert.False(t, ce.Retryable)
 	mu.Lock()
 	defer mu.Unlock()
 	require.NotEmpty(t, paths)
@@ -2521,9 +2528,9 @@ func TestResolveClusterIDForCreateClassifiesRejections(t *testing.T) {
 	url := answer(http.StatusUnauthorized)
 	_, _, err := resolveClusterIDForCreate(t.Context(), http.DefaultClient, url, "b", "testcluster")
 	require.ErrorIs(t, err, errCredentialUnauthorized)
-	se, ok := errors.AsType[*steve.StatusError](err)
+	se, ok := clierr.HTTPStatus(err)
 	require.True(t, ok)
-	assert.Equal(t, http.StatusUnauthorized, se.Status)
+	assert.Equal(t, http.StatusUnauthorized, se)
 
 	url = answer(http.StatusForbidden)
 	_, _, err = resolveClusterIDForCreate(t.Context(), http.DefaultClient, url, "b", "testcluster")
@@ -2539,31 +2546,51 @@ func TestResolveClusterIDForCreateClassifiesRejections(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	require.NotErrorIs(t, err, errCredentialUnauthorized)
-	se, ok = errors.AsType[*steve.StatusError](err)
+	se, ok = clierr.HTTPStatus(err)
 	require.True(t, ok)
-	assert.Equal(t, http.StatusBadGateway, se.Status)
+	assert.Equal(t, http.StatusBadGateway, se)
 }
 
-// TestPluginGetterErrors asserts every non-2xx answer holds
-// *steve.StatusError beside the plugin's own error: a 401 also matches
-// errCredentialUnauthorized, any other status is the generic "resolving
-// --cluster" error, and a transport failure holds no status.
+// TestPluginGetterErrors asserts every non-2xx answer holds the status
+// (clierr.HTTPStatus): a 401 also matches errCredentialUnauthorized, any
+// other status is classified by the status table under the "resolving
+// --cluster" prefix (a 5xx is retryable), and a transport failure holds no
+// status.
 func TestPluginGetterErrors(t *testing.T) {
 	t.Parallel()
+	rows := []struct {
+		status    int
+		code      string
+		message   string
+		retryable bool
+	}{
+		{http.StatusForbidden, clierr.CodeRBAC, "resolving --cluster: the server refused the request (403) and gave no reason", false},
+		{http.StatusNotFound, clierr.CodeNotFound, "resolving --cluster: the server could not find the requested resource", false},
+		{http.StatusInternalServerError, clierr.CodeGeneric, `resolving --cluster: an error on the server ("Internal Server Error") has prevented the request from succeeding - retrying may succeed`, true},
+	}
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
 		_, err := pluginGetter(srv.Client(), srv.URL, "b")(t.Context(), steve.Request{Type: steve.ClustersType})
 		srv.Close()
-		se, ok := errors.AsType[*steve.StatusError](err)
+		se, ok := clierr.HTTPStatus(err)
 		require.True(t, ok, "status %d", status)
-		assert.Equal(t, status, se.Status)
+		assert.Equal(t, status, se)
 		if status == http.StatusUnauthorized {
 			require.ErrorIs(t, err, errCredentialUnauthorized)
 			continue
 		}
 		require.NotErrorIs(t, err, errCredentialUnauthorized)
 		require.NotErrorIs(t, err, errCredentialForbidden)
-		assert.Equal(t, fmt.Sprintf("resolving --cluster: %d %s", status, http.StatusText(status)), err.Error())
+		for _, row := range rows {
+			if row.status != status {
+				continue
+			}
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "status %d", status)
+			assert.Equal(t, row.code, ce.Code, "status %d", status)
+			assert.Equal(t, row.message, ce.Message, "status %d", status)
+			assert.Equal(t, row.retryable, ce.Retryable, "status %d", status)
+		}
 	}
 
 	var auth, accept string
@@ -2581,7 +2608,7 @@ func TestPluginGetterErrors(t *testing.T) {
 	srv.Close()
 	_, err = pluginGetter(srv.Client(), srv.URL, "b")(t.Context(), steve.Request{Type: steve.ClustersType})
 	require.ErrorContains(t, err, "resolving --cluster: ")
-	_, ok := errors.AsType[*steve.StatusError](err)
+	_, ok := clierr.HTTPStatus(err)
 	assert.False(t, ok, "a transport failure has no status")
 }
 
