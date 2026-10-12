@@ -1265,3 +1265,89 @@ func TestFacadeLogoutRefusesAClusterScopedToken(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer))
 	assert.True(t, f.ValidBearer(bearer))
 }
+
+// TestFacadeKubeconfigLoginScopeUnderTheV3Shape asserts that under the v3
+// login shape a kubeconfig login for a cluster creates a cluster-scoped
+// token, which logout refuses with 401 and leaves in place, while a plain
+// kubeconfig login creates an unscoped token that logout deletes.
+func TestFacadeKubeconfigLoginScopeUnderTheV3Shape(t *testing.T) {
+	t.Parallel()
+	f, srv := newFacade(t, testrancher.Options{LoginShape: "v3"}, &recordingHandler{})
+	login := func(responseType string) string {
+		return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+			map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": responseType})["token"].(string)
+	}
+	scoped, unscoped := login("kubeconfig_c-test"), login("kubeconfig")
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", scoped))
+	assert.True(t, f.ValidBearer(scoped), "logout leaves the cluster-scoped token")
+	assert.Equal(t, http.StatusOK, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", unscoped))
+	assert.False(t, f.ValidBearer(unscoped))
+}
+
+// TestFacadeV3DeleteAnswersForbiddenWithoutAnAuthenticatingBearer asserts
+// that with V3DeleteForbiddenForNonAdmin the proxy delete of a v3 token
+// answers 403 for a bearer that authenticates nothing (deleted or never
+// issued) as well as for a non-admin owner, an admin's bearer deletes it,
+// and the ext path still answers 401 for a bearer that authenticates
+// nothing.
+func TestFacadeV3DeleteAnswersForbiddenWithoutAnAuthenticatingBearer(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "a", Password: "pw", UserID: "user-a"}, {Name: "root", Password: "pw", UserID: "user-root"}},
+		AdminUserIDs: []string{"user-root"}, V3DeleteForbiddenForNonAdmin: true})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	loginAs := func(u string) string {
+		return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+			map[string]any{"type": "localProvider", "username": u, "password": "pw", "responseType": "json"})["token"].(string)
+	}
+	a, root := loginAs("a"), loginAs("root")
+	aName := nameOfBearer(a)
+	assert.Equal(t, http.StatusForbidden, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+aName, a), "a non-admin owner")
+	assert.Equal(t, http.StatusOK, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", a))
+	assert.Equal(t, http.StatusForbidden, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+aName, a), "the deleted token's bearer")
+	assert.Equal(t, http.StatusForbidden, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+aName, "nobody:secret"), "a bearer never issued")
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/"+aName, a), "the ext path")
+	rootName := nameOfBearer(root)
+	assert.Equal(t, http.StatusOK, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+rootName, root), "an admin's bearer deletes it")
+	assert.False(t, f.ValidBearer(root))
+}
+
+// TestFacadeForcedSingleLogoutChecksTheBearerFirst asserts that under forced
+// single logout a bearer that authenticates nothing (deleted, never issued)
+// and a cluster-scoped token get 401 from logout, and only a bearer that
+// authenticates gets 500.
+func TestFacadeForcedSingleLogoutChecksTheBearerFirst(t *testing.T) {
+	t.Parallel()
+	f, srv := newFacade(t, testrancher.Options{ForcedSingleLogout: true, LoginShape: "v3"}, &recordingHandler{})
+	login := func(responseType string) string {
+		return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+			map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": responseType})["token"].(string)
+	}
+	live, scoped, deleted := login("kubeconfig"), login("kubeconfig_c-test"), login("kubeconfig")
+	logout := func(bearer string) int {
+		return statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer)
+	}
+	assert.Equal(t, http.StatusInternalServerError, logout(live), "a bearer that authenticates")
+	assert.True(t, f.ValidBearer(live), "nothing is deleted")
+	assert.Equal(t, http.StatusUnauthorized, logout(scoped), "a cluster-scoped token")
+	assert.Equal(t, http.StatusUnauthorized, logout("nobody:secret"), "a bearer never issued")
+	name, _, _ := strings.Cut(deleted, ":")
+	assert.Equal(t, http.StatusOK, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+name, deleted))
+	assert.Equal(t, http.StatusUnauthorized, logout(deleted), "a deleted token's bearer")
+}
+
+// TestFacadeV3DeleteWithAClusterScopedBearerIsForbidden asserts that the
+// local proxy delete of a v3 token answers 403 to a cluster-scoped token's own
+// bearer, for an admin owner too, and leaves the token in place.
+func TestFacadeV3DeleteWithAClusterScopedBearerIsForbidden(t *testing.T) {
+	t.Parallel()
+	f := testrancher.New(testrancher.Options{LoginShape: "v3", Users: []testrancher.User{{Name: "root", Password: "pw", UserID: "user-root"}},
+		AdminUserIDs: []string{"user-root"}})
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	scoped := postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "root", "password": "pw", "responseType": "kubeconfig_c-test"})["token"].(string)
+	name := nameOfBearer(scoped)
+	assert.Equal(t, http.StatusForbidden, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+name, scoped))
+	assert.True(t, f.ValidBearer(scoped), "the token stays")
+}

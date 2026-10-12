@@ -490,9 +490,13 @@ Cached credentials: `rancher auth list-tokens` (a TOKEN column names each
 record's token) / `rancher auth delete-token` (deletes the cache records,
 then revokes the cluster tokens the plugin created and recorded; one that
 could not be revoked stays valid until `rancher delete token <name>`, or
-expiry; on a server without ext tokens it is a v3 token, which only an
-administrator deletes: `rancher delete management-token <name> --apply
---yes --allow-deprecated`).
+expiry; the plugin's default interactive sign-in (`--cluster`, token reuse
+off) creates a cluster-scoped v3 token on every supported Rancher, and so does
+its cluster token on a server without ext tokens; the CLI cannot delete a
+cluster-scoped v3 token, an administrator can: `rancher delete
+management-token <name> --apply --yes --allow-deprecated`). An unscoped v3
+cache token and a v3 login are deleted through Rancher's logout endpoint with
+the token itself.
 `rancher auth logout`, `auth logout --all` and `config delete-server` revoke
 the tokens the CLI created and recorded the same way. Their data carries
 `revoked` and `notRevoked`; the exit code is 0 whenever the local deletes

@@ -234,7 +234,11 @@ func TestUserIDOwnerRefusalsCarryTheTokensFate(t *testing.T) {
 		_, err := x.call("prod-c-test", "user-alice", "carol", nil)
 		f := fateOf(t, err)
 		require.NotNil(t, f.Ref)
-		assert.Equal(t, ResultRevoked, f.Cleanup.Result)
+		assert.Equal(t, clierr.TokenKindV3, f.Ref.Kind)
+		assert.Equal(t, ResultFailed, f.Cleanup.Result, "Rancher refuses a cluster-scoped token on both requests")
+		assert.Equal(t, "logout 401; delete 403 Forbidden", f.Cleanup.Error)
+		_, msg := refusal(t, err)
+		assert.Contains(t, msg, "could not be revoked (logout 401; delete 403 Forbidden); an administrator can delete v3/"+f.Ref.Name+" with: rancher delete management-token "+f.Ref.Name+" --apply --yes --allow-deprecated")
 	})
 	t.Run("no ext tokens", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{Legacy: true})

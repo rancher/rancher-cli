@@ -8,12 +8,30 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 )
 
+// tokenRecovery is the commands that revoke a token: the administrator's
+// delete for a v3 token, which no login of the entry's user can delete,
+// else the sequence that logs in as the token's owner and deletes it.
+func tokenRecovery(serverURL, userID string, ref clierr.TokenRef) []string {
+	if ref.Kind == clierr.TokenKindV3 {
+		_, revoke := clierr.RecoveryCommands(ref)
+		return []string{revoke}
+	}
+	return clierr.RecoverySequence(serverURL, userID, ref)
+}
+
+// administratorLine is the text that replaces the recovery sequence and
+// its assumption for a v3 token.
+func administratorLine(serverURL string, ref clierr.TokenRef) string {
+	_, revoke := clierr.RecoveryCommands(ref)
+	return "an administrator logged in to " + serverURL + " can delete it with: " + revoke
+}
+
 // tokenReport projects one named token (the entry's current token or a
-// superseded record) with its owner, expiry, and recovery sequence.
+// superseded record) with its owner, expiry, and recovery commands.
 func tokenReport(serverURL string, ref clierr.TokenRef, userID, expiresAt string) map[string]any {
 	m := map[string]any{
 		"ref":      map[string]any{"kind": string(ref.Kind), "name": ref.Name},
-		"recovery": clierr.RecoverySequence(serverURL, userID, ref),
+		"recovery": tokenRecovery(serverURL, userID, ref),
 	}
 	if userID != "" {
 		m["userId"] = userID
@@ -78,7 +96,7 @@ func entryReport(name string, s config.Server) map[string]any {
 
 // recordLines renders an entry's records as indented text lines: one
 // header per record, then state, last attempt, and the recovery sequence
-// with its assumption.
+// with its assumption, or for a v3 token the administrator's delete.
 func recordLines(s config.Server, indent string) []string {
 	var lines []string
 	for _, r := range s.SupersededTokens {
@@ -90,6 +108,10 @@ func recordLines(s config.Server, indent string) []string {
 		lines = append(lines, indent+"  state: "+recordState(s, r))
 		if r.LastAttempt != nil {
 			lines = append(lines, indent+"  last attempt: "+string(r.LastAttempt.Result)+" ("+r.LastAttempt.Error+")")
+		}
+		if r.Ref.Kind == clierr.TokenKindV3 {
+			lines = append(lines, indent+"  "+administratorLine(cmp.Or(r.Server, s.URL), r.Ref))
+			continue
 		}
 		lines = append(lines, sequenceLines(indent+"  ", clierr.RecoverySequence(cmp.Or(r.Server, s.URL), r.UserID, r.Ref))...)
 	}

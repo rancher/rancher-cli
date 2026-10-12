@@ -189,11 +189,46 @@ func TestRetireKeepsAV3RecordUnattempted(t *testing.T) {
 	require.Len(t, recs, 1)
 	assert.Nil(t, recs[0].LastAttempt)
 	require.Len(t, rep.Warnings, 1)
-	assert.Contains(t, rep.Warnings[0], "the CLI never deletes v3 tokens")
+	assert.Contains(t, rep.Warnings[0], "the CLI cannot delete this v3 token")
 	assert.Contains(t, rep.Warnings[0], "an administrator can delete it with: "+clierr.MarkRemedy("rancher delete management-token "+old.Ref.Name+" --apply --yes --allow-deprecated"))
 	assert.Contains(t, rep.Warnings[0], "or it expires")
 	_, alive := x.f.TokenOwner(old.Ref.Name)
 	assert.True(t, alive)
+}
+
+// TestRetireKeptV3RecordNamesTheAdministratorsDelete asserts the warning
+// for a v3 record the retirement pass keeps because of the login or the
+// server, rather than because it is v3: the administrator's delete and the
+// expiry, never the owner's login sequence or its assumption line.
+func TestRetireKeptV3RecordNamesTheAdministratorsDelete(t *testing.T) {
+	ref := TokenRef{Kind: TokenKindV3, Name: "kubeconfig-u-1"}
+	rec := config.SupersededToken{Ref: ref, UserID: "user-a", ExpiresAt: "2999-01-01T00:00:00Z", SupersededAt: "2026-09-02T00:00:00Z"}
+	for _, tc := range []struct {
+		name, why string
+		rec       config.SupersededToken
+		pasted    bool
+	}{
+		{"a pasted login", "it waits for a login the CLI creates, and this login's token was pasted", rec, true},
+		{"a record of another server", "it is a token of https://old.ex, which this entry no longer names",
+			config.SupersededToken{Ref: ref, UserID: "user-a", ExpiresAt: rec.ExpiresAt, SupersededAt: rec.SupersededAt, Server: "https://old.ex"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			x := newRetireFixture(t, testrancher.Options{})
+			x.seedRecords(t, []config.SupersededToken{tc.rec})
+			cred := UserSupplied("pasted")
+			if !tc.pasted {
+				cred = x.credAs(t, "a")
+			}
+			before := len(x.f.DeleteRequests())
+			rep := RetireSuperseded(t.Context(), x.dir, "e", x.url, cred, x.records(t))
+			assert.Len(t, rep.Kept, 1)
+			require.Len(t, rep.Warnings, 1)
+			assert.Equal(t, "the superseded token v3/kubeconfig-u-1 was not retired: "+tc.why+"; "+v3AdminRemedy(ref, rec.ExpiresAt), rep.Warnings[0])
+			assert.NotContains(t, rep.Warnings[0], clierr.RecoverySequenceAssumption)
+			assert.NotContains(t, rep.Warnings[0], "auth login")
+			assert.Len(t, x.f.DeleteRequests(), before)
+		})
+	}
 }
 
 // TestRetireOwnersABCThenA asserts A's record is retired and B's and C's
@@ -297,16 +332,16 @@ func TestRetireNoRequestUnderTheConfigLockAndReloadsBeforeWriting(t *testing.T) 
 }
 
 // TestV3RemedyTexts asserts the two v3 delete texts: the superseded-token
-// and revocation warnings (the CLI never deletes v3 tokens: an
+// and revocation warnings (the CLI cannot delete this v3 token: an
 // administrator's delete, or its expiry) and the residual text of a v3
 // token a login could not delete, which names the token and offers no hint.
 func TestV3RemedyTexts(t *testing.T) {
 	t.Parallel()
 	ref := TokenRef{Kind: TokenKindV3, Name: "token-v3"}
 	cmd := clierr.MarkRemedy("rancher delete management-token token-v3 --apply --yes --allow-deprecated")
-	assert.Equal(t, "the CLI never deletes v3 tokens; an administrator can delete it with: "+cmd+", or it expires at 2026-10-06T00:00:00Z",
+	assert.Equal(t, "the CLI cannot delete this v3 token; an administrator can delete it with: "+cmd+", or it expires at 2026-10-06T00:00:00Z",
 		v3Remedy(ref, "2026-10-06T00:00:00Z"))
-	assert.Equal(t, "the CLI never deletes v3 tokens; an administrator can delete it with: "+cmd+", or it expires", v3Remedy(ref, ""))
+	assert.Equal(t, "the CLI cannot delete this v3 token; an administrator can delete it with: "+cmd+", or it expires", v3Remedy(ref, ""))
 	assert.Equal(t, "an administrator can delete v3/token-v3 with: "+cmd+", or it expires at 2026-10-06T00:00:00Z",
 		v3AdminRemedy(ref, "2026-10-06T00:00:00Z"))
 	assert.Equal(t, "an administrator can delete v3/token-v3 with: "+cmd+", or it expires", v3AdminRemedy(ref, ""))

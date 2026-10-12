@@ -1199,7 +1199,20 @@ created and recorded:
   the token itself as bearer;
 - a superseded token of the same server and the same owner, revoked with the
   stored login;
-- the login token itself, last, with itself.
+- the login token itself, last, with itself;
+- an unscoped v3 token - a cache token with no cluster, cached by the legacy
+  `rancher token` command - and a v3 login token, through Rancher's logout
+  endpoint with the token itself as bearer; when logout does not answer 200
+  or 204 a `DELETE` of its `management.cattle.io` object is sent, again with
+  its own bearer (a standard user's answers 403);
+- a v3 superseded record that is the stored login's own token (the record a
+  logout leaves when its login delete failed), revoked the same way with that
+  login once the run deletes the login, and `notDeleted` until then.
+
+The CLI cannot delete a cluster-scoped v3 token (Rancher refuses it on every
+request that names no cluster) or a superseded v3 record whose bearer it does
+not store (a standard user cannot delete a v3 token with another token's
+bearer). Both are reported with reason `v3`.
 
 Every revoke runs after the local delete, outside the config lock, one at a
 time, under one 10 s budget. A request goes only to a server a current config
@@ -1248,7 +1261,8 @@ The data of each command gains two lists, `[]` when empty, never null:
 - `notRevoked`: `{ref?, source, server, entry?, reason, error?, retry,
   recovery?}` for each token that may still be live. `entry` is the entry the
   token is recorded on, `error` the answer or transport error behind `failed`,
-  `recovery` a command sequence.
+  `recovery` a command sequence; for a v3 token it is the administrator's
+  delete alone.
 
 The text output lists one line per token under `tokens on <server>:`, for
 example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
@@ -1257,12 +1271,12 @@ example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
 | `reason` | Meaning |
 |---|---|
 | `failed` | any other answer, or a transport error (`error` holds it) |
-| `unconfirmed` | 401 or 404 to the token's own bearer |
-| `forbidden` | 403 to the token's own bearer; the record is removed |
+| `unconfirmed` | 401 or 404 to the token's own bearer; for a v3 token, 401 from logout (the token is deleted, expired or disabled) or 404 to the delete |
+| `forbidden` | 403 to an ext token's own bearer; the record is removed |
 | `budget` | the 10 s budget ran out before this token |
 | `cancelled` | a Ctrl-C or termination signal |
 | `noBearer` | no readable bearer matches the token's `ref` |
-| `v3` | v3 tokens are never deleted; an administrator can run `rancher delete management-token <name> --apply --yes --allow-deprecated`, or it expires |
+| `v3` | a cluster-scoped v3 token, or a v3 record without its bearer: the CLI cannot delete it; an administrator can run `rancher delete management-token <name> --apply --yes --allow-deprecated`, or it expires |
 | `unproven` | no `tokenRef`: nothing proves the CLI created it; find it with `rancher get tokens` |
 | `noEntry` | its parent entry no longer exists, or no current entry names its server; nothing is sent |
 | `otherServer` | a token of a server the entry no longer names |
@@ -1276,8 +1290,8 @@ example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
 
 | `retry` | Meaning |
 |---|---|
-| `nextLogin` | the next login the CLI creates for `entry` revokes it: `rancher auth login <entry>` without a pasted token, or the kubectl sign-in through a plugin login entry. Given only when the token's owner equals the entry's `tokenUserId` (both known) and its server is the entry's current one |
-| `manual` | run `recovery`, or the reason's remedy |
+| `nextLogin` | the next login the CLI creates for `entry` revokes it: `rancher auth login <entry>` without a pasted token, or the kubectl sign-in through a plugin login entry. Given only when the token's owner equals the entry's `tokenUserId` (both known) and its server is the entry's current one; never for a v3 token |
+| `manual` | run `recovery`, or the reason's remedy; for a v3 token, an administrator's delete |
 | `none` | a pasted token |
 
 A command warns once per `manual` token, and once per entry for its
@@ -1311,10 +1325,11 @@ a Rancher without `ext.cattle.io` tokens.
 A superseded record carries `server`, the canonical URL of the server the
 token lives on. `rancher config status` shows it, gives a record whose server
 the entry no longer names the state `otherServer`, and prints its recovery
-sequence against that server. The retirement pass, at the next `rancher auth
+against that server. The retirement pass, at the next `rancher auth
 login` or plugin login, skips records of another server, leaves v3 records
-unattempted, drops records whose `expiresAt` passed more than an hour ago,
-and attempts nothing under a pasted login.
+unattempted (the CLI cannot delete them without their bearer), drops records
+whose `expiresAt` passed more than an hour ago, and attempts nothing under a
+pasted login.
 
 ## kubectl integration
 
@@ -1335,10 +1350,12 @@ Clear them with `rancher auth delete-token [<name>]`. That deletes the
 cache records, then revokes the cluster tokens the plugin created and
 recorded in them (see [Revoking the CLI's tokens](#revoking-the-clis-tokens));
 a token it could not revoke stays valid on the server until it expires, and
-`rancher get tokens` lists it (on a server without `ext.cattle.io` tokens the
-plugin creates a v3 token instead: v3 tokens are never deleted by the CLI;
-an administrator can run `rancher delete management-token <name> --apply
---yes --allow-deprecated`, or it expires). On a cache miss the plugin first
+`rancher get tokens` lists it. The plugin's interactive sign-in (with
+`--cluster`, token reuse off) creates a cluster-scoped v3 token on every
+supported Rancher, and on a server without `ext.cattle.io` tokens its cluster
+token is a cluster-scoped v3 token too: the CLI cannot delete either; an
+administrator can run `rancher delete management-token <name> --apply --yes
+--allow-deprecated`, or it expires. On a cache miss the plugin first
 tries to create a token from a stored `auth login` credential; when that
 credential lives in the OS keychain, this can trigger a keychain-unlock
 prompt - CI and other non-interactive runs should run `rancher kubeconfig`
@@ -1475,9 +1492,13 @@ A superseded record whose server the entry no longer names has the state
 `otherServer`, and its sequence runs against that server.
 Every text rendering of the sequence ends with what it assumes:
 `RANCHER_CLI_URL` and `RANCHER_CLI_TOKEN` are unset, and either would
-override the current server the sequence selects. `rancher config delete-server`
-reports a token it could not revoke under `notRevoked`, with the same sequence
-as its `recovery`, in the invocation that removes the entry, so the last
+override the current server the sequence selects. For a v3 token the
+recovery is the administrator's delete alone, `rancher delete
+management-token <name> --apply --yes --allow-deprecated`, and the text is
+one line: `an administrator logged in to <server> can delete it with:
+<command>`, naming the record's server, else the entry's. `rancher config
+delete-server` reports a token it could not revoke under `notRevoked`, with
+the same recovery, in the invocation that removes the entry, so the last
 reference to a live token is not lost with it.
 
 Two `rancher` processes cannot log in to one server at once: the plugin

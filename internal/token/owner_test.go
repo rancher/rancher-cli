@@ -472,8 +472,8 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 		_, err := x.call("prod-c-test", "user-alice", "carol", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, "the sign-in was made as Rancher user 'user-carol', and this exec entry names user 'user-alice' with --user-id; the token it created was revoked; sign in as 'user-alice'", msg)
-		assert.Equal(t, 1, x.revoked(), "the sign-in's token revokes itself")
+		assert.Equal(t, "the sign-in was made as Rancher user 'user-carol', and this exec entry names user 'user-alice' with --user-id; the token it created could not be revoked (logout 401; delete 403 Forbidden); an administrator can delete v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated, or it expires; sign in as 'user-alice'", msg)
+		assert.Equal(t, 2, x.revoked(), "logout refuses the cluster-scoped token, then the delete is refused too")
 		assert.False(t, x.cached("prod-c-test", "user-alice"))
 	})
 	t.Run("the request fails", func(t *testing.T) {
@@ -482,8 +482,8 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		assert.True(t, ce.Retryable)
-		assert.Equal(t, "checking the signed-in user against --user-id 'user-carol': posting a SelfSubjectReview: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed; the token the sign-in created was revoked", msg)
-		assert.Equal(t, 1, x.revoked())
+		assert.Equal(t, "checking the signed-in user against --user-id 'user-carol': posting a SelfSubjectReview: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed; the token the sign-in created could not be revoked (logout 401; delete 403 Forbidden); an administrator can delete v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated, or it expires", msg)
+		assert.Equal(t, 2, x.revoked(), "logout refuses the cluster-scoped token, then the delete is refused too")
 		assert.False(t, x.cached("prod-c-test", "user-carol"))
 	})
 	t.Run("the login response names the owner", func(t *testing.T) {

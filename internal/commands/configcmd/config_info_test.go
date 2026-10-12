@@ -370,9 +370,10 @@ func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
 	assert.Equal(t, "sameOwner", recs[1]["state"])
 	assert.Equal(t, "failed", recs[1]["lastAttempt"].(map[string]any)["result"])
 	assert.Equal(t, "unknownOwner", recs[2]["state"])
-	seq := recs[1]["recovery"].([]string)
-	assert.Equal(t, "rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-a'", seq[0])
-	assert.Equal(t, "rancher delete management-token kubeconfig-u-x --apply --yes --allow-deprecated", seq[2])
+	assert.Equal(t, []string{"rancher delete management-token kubeconfig-u-x --apply --yes --allow-deprecated"}, recs[1]["recovery"],
+		"a v3 token's recovery is the administrator's delete alone")
+	ext := recs[0]["recovery"].([]string)
+	assert.Equal(t, "rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-b'", ext[0])
 
 	p := servers["prod"].(map[string]any)
 	assert.Equal(t, "2026-09-04T12:00:00Z", p["loggedOutAt"])
@@ -389,6 +390,8 @@ func TestConfigInfoReportsTokenReuseAndCLIOwnedEntries(t *testing.T) {
 	assert.Contains(t, res.Text, "    supersededTokens:\n      ext/token-b:\n        userId: user-b\n")
 	assert.Contains(t, res.Text, "        state: differentOwner\n")
 	assert.Contains(t, res.Text, "        recovery:\n          rancher auth login 'recover-r.ex-8443' --url 'https://r.ex:8443'   # log in as user 'user-b'\n          rancher config use-server 'recover-r.ex-8443'\n")
+	assert.Contains(t, res.Text, "      v3/kubeconfig-u-x:\n        userId: user-a\n")
+	assert.Contains(t, res.Text, "        recovery:\n          an administrator logged in to https://r.ex:8443 can delete it with: rancher delete management-token kubeconfig-u-x --apply --yes --allow-deprecated\n")
 	assert.Contains(t, res.Text, "  prod:\n")
 	assert.Contains(t, res.Text, "    credential: no stored credential\n")
 	assert.Contains(t, res.Text, "  noref:\n    provenance: derived\n    currentToken:\n      note: cannot revoke by name: no tokenRef recorded\n")

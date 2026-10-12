@@ -76,6 +76,11 @@ var scriptOptions = map[string]func(*testrancher.Options){
 		o.Users = []testrancher.User{{Name: "e2e-user", Password: "e2e-pass", UserID: "user-e2e"}, {Name: "e2e-other", Password: "pw-other", UserID: "user-other"}}
 	},
 	"auth-login-providers": func(o *testrancher.Options) { o.ExtraProviders = []string{"githubProvider"} },
+	// A kubeconfig sign-in creates a v3 token, and a standard user's proxy
+	// delete of a v3 token answers 403, as Rancher's does.
+	"delete-token-v3": func(o *testrancher.Options) {
+		o.LoginShape, o.V3DeleteForbiddenForNonAdmin = "v3", true
+	},
 	// One cluster per page, so the collection reader follows steve's
 	// continue token and validates the count across pages.
 	"access-clusters": func(o *testrancher.Options) { o.ClustersPageSize = 1 },

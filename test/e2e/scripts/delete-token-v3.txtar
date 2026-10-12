@@ -1,0 +1,38 @@
+# auth delete-token deletes an unscoped v3 cache token with its own bearer.
+# The legacy `rancher token` command signs in interactively through a pty
+# (see auth-login-local.txtar) and caches the v3 token it receives, with no
+# cluster. This script's facade serves a standard user's proxy delete of a v3
+# token with 403, so the token can only go through the logout endpoint.
+[!unix] skip 'ttyin (real pty) is unix-only'
+env RANCHER_CLI_CREDENTIAL_STORE=file
+
+exec rancher config add-server prod --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT -o json
+ttyin -stdin creds.txt
+exec rancher token --server $TEST_RANCHER_URL --user testcluster --cacerts $TEST_RANCHER_CACERT --auth-provider localProvider
+jsonquery stdout kind ExecCredential
+! jsonquery stdout status.token ''
+
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.tokenRef.kind v3
+jsonget stdout data.0.tokenRef.name cached.txt
+setenvfrom CACHED cached.txt
+
+exec rancher auth delete-token --all -o json
+cp stdout deleted.json
+jsonquery deleted.json 'data.deleted.#' 1
+jsonquery deleted.json 'data.revoked.#' 1
+jsonquery deleted.json data.revoked.0.ref.kind v3
+jsonquery deleted.json data.revoked.0.ref.name $CACHED
+jsonquery deleted.json data.revoked.0.source cache
+jsonquery deleted.json 'data.notRevoked.#' 0
+
+# A rerun finds nothing left to revoke.
+exec rancher auth delete-token --all -o json
+jsonquery stdout 'data.deleted.#' 0
+jsonquery stdout 'data.revoked.#' 0
+jsonquery stdout 'data.notRevoked.#' 0
+
+-- creds.txt --
+e2e-user
+e2e-pass

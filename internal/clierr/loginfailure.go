@@ -55,6 +55,10 @@ type RevokeOutcome struct {
 	// came; never serialized. A revoke with the token as its own bearer
 	// reads 401, 403 and 404 differently from one with another bearer.
 	Status int `json:"-"`
+	// LogoutStatus is the HTTP status the logout endpoint answered for a
+	// v3 token revoked with its own bearer, 0 when logout was not sent or
+	// no answer came; never serialized.
+	LogoutStatus int `json:"-"`
 }
 
 // Provenance says who created a login credential and therefore who may

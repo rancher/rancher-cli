@@ -476,7 +476,12 @@ func (d *Deletion) ready(it *revocationItem) bool {
 		return false
 	case it.matchLogin != "":
 		if !d.loginDeleted[it.matchLogin] {
+			// A v3 record is the stored login's own token: the rerun that
+			// deletes the login sends it.
 			it.reason = reasonNoBearer
+			if it.ref.Kind == TokenKindV3 {
+				it.reason = reasonNotDeleted
+			}
 			return false
 		}
 		it.bearer, it.self, it.provenance, it.trust = d.loginRead[it.matchLogin], true, ProvenanceDerived, it.matchLogin
@@ -487,10 +492,12 @@ func (d *Deletion) ready(it *revocationItem) bool {
 // retryWithLogin retries a cache token whose own bearer could not confirm
 // its delete with a stored login the local delete read: one of the same
 // server whose entry records the token's owner. A 404 to that bearer
-// confirms the token gone.
+// confirms the token gone. A v3 token is never retried: with another
+// token's bearer a standard user's delete always answers 403, so the
+// request tells nothing.
 func (d *Deletion) retryWithLogin(budget context.Context, deadline time.Time, it *revocationItem) {
 	login, ok := d.retryLogin(it)
-	if !ok || !revocationClock().Before(deadline) {
+	if it.ref.Kind == TokenKindV3 || !ok || !revocationClock().Before(deadline) {
 		return
 	}
 	s := d.cfg.Servers[login]

@@ -177,8 +177,9 @@ type Options struct {
 	// V3CreateClusterID overrides the echoed clusterId on a Norman v3
 	// create; an empty string omits it.
 	V3CreateClusterID *string
-	// V3DeleteForbiddenForNonAdmin makes DELETE on the v3 path by a
-	// non-admin owner answer 403.
+	// V3DeleteForbiddenForNonAdmin makes DELETE on the v3 path answer 403
+	// for a non-admin owner and for a bearer that authenticates nothing
+	// (deleted or expired); an admin's bearer deletes the token.
 	V3DeleteForbiddenForNonAdmin bool
 	// RequestHook runs on every request the facade handles, before
 	// dispatch.
@@ -239,7 +240,9 @@ type Options struct {
 	LoginStatus int
 	// LoginShape forces the login response shape and the created record's
 	// kind ("ext" or "v3") regardless of the requested responseType. Empty
-	// follows the response type: json is v3, kubeconfig is ext.
+	// follows the response type: json is v3, kubeconfig is ext. With "v3",
+	// a kubeconfig_<cluster> response type creates a token scoped to that
+	// cluster, and plain kubeconfig an unscoped one.
 	LoginShape string
 
 	// DropDerivedCreateResponse creates the derived token and then closes the
@@ -263,9 +266,10 @@ type Options struct {
 	// on the request context so the answer cannot race the cancellation.
 	DerivedCreateHook func(r *http.Request)
 
-	// ForcedSingleLogout makes POST /v1/logout answer 500 and delete nothing,
-	// as a provider set to forced single logout does. It applies before any
-	// delete mode.
+	// ForcedSingleLogout makes POST /v1/logout answer 500 and delete nothing
+	// for a bearer that authenticates, as a provider set to forced single
+	// logout does; a bearer that authenticates nothing, or a cluster-scoped
+	// token, still gets 401. It applies before any delete mode.
 	ForcedSingleLogout bool
 
 	// SessionDeleteMode and DerivedDeleteMode fail the revoke of a located
@@ -731,6 +735,13 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 	rec := f.newToken("", 0)
 	f.mu.Lock()
 	rec.kind = loginKind(f.opts.LoginShape, req.ResponseType)
+	if f.opts.LoginShape == "v3" {
+		// A kubeconfig login for one cluster creates a token scoped to
+		// it, which Rancher refuses on any request that names no cluster.
+		if cluster, ok := strings.CutPrefix(req.ResponseType, "kubeconfig_"); ok {
+			rec.clusterName = cluster
+		}
+	}
 	rec.role = "session"
 	rec.description = req.Description
 	rec.userID = userID
@@ -1158,7 +1169,19 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 	f.mu.Unlock()
 
 	if !f.authorizedBearer(r) {
+		// Rancher answers a bearer that authenticates nothing with 403 on
+		// the v3 path, where the same bearer is a 401 on the ext path.
+		if kind == "v3" && f.opts.V3DeleteForbiddenForNonAdmin {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if kind == "v3" && f.bearerIsClusterScoped(bearerFromHeader(r)) {
+		// Rancher rejects a cluster-scoped token on any request whose path
+		// names no cluster, whatever its owner's role.
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
@@ -1233,10 +1256,6 @@ func (f *Facade) handleLogout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query string refused", http.StatusBadRequest)
 		return
 	}
-	if f.opts.ForcedSingleLogout {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 
 	f.mu.Lock()
 	var rec *record
@@ -1251,6 +1270,11 @@ func (f *Facade) handleLogout(w http.ResponseWriter, r *http.Request) {
 		// A cluster-scoped token authenticates only on its cluster's path,
 		// and logout has none.
 		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if f.opts.ForcedSingleLogout {
+		// Only a bearer that authenticates reaches the handler that fails.
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -1270,6 +1294,19 @@ func (f *Facade) handleLogout(w http.ResponseWriter, r *http.Request) {
 	delete(f.tokens, rec.name)
 	f.mu.Unlock()
 	w.WriteHeader(http.StatusOK)
+}
+
+// bearerIsClusterScoped reports whether bearer authenticates a token that is
+// scoped to a cluster.
+func (f *Facade) bearerIsClusterScoped(bearer string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, rec := range f.tokens {
+		if rec.bearer() == bearer && time.Now().Before(rec.expiresAt) {
+			return rec.clusterName != ""
+		}
+	}
+	return false
 }
 
 // SetDeleteMode makes DELETE of one token answer a fault mode: "gone"

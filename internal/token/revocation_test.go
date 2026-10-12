@@ -63,7 +63,8 @@ func TestLogoutRevokesItsCacheTokensRecordsAndLoginInOrder(t *testing.T) {
 // TestCacheTokenRows asserts the cache-token rows: a record without a ref
 // is unproven and never recorded, one whose token does not match its ref is
 // noBearer, one expired past the margin is not listed, one with a zero
-// expiry is never expired, and a v3 one is recorded and never sent.
+// expiry is never expired, a cluster-scoped v3 one is recorded and never
+// sent, and an unscoped v3 one is revoked.
 func TestCacheTokenRows(t *testing.T) {
 	x := newRevFixture(t, testrancher.Options{})
 	x.login("prod", "alice")
@@ -75,11 +76,15 @@ func TestCacheTokenRows(t *testing.T) {
 	require.NoError(t, x.store.SetCachedCred("zero", zero.Token, time.Time{}, "zero", x.url, "c-1", x.own("prod").WithCreatedToken(zero.Ref, "user-alice")))
 	v3 := x.own("prod").WithCreatedToken(&TokenRef{Kind: TokenKindV3, Name: "kubeconfig-u-1"}, "user-alice")
 	require.NoError(t, x.store.SetCachedCred("v3", "kubeconfig-u-1:secret", time.Now().Add(time.Hour), "v3", x.url, "c-1", v3))
+	unscoped := x.v3Token("alice")
+	x.cacheOn("v3-unscoped", unscoped, "", x.own("prod"))
 	before := len(x.f.DeleteRequests())
 
 	_, rep, err := x.run(x.req(DeleteForLogout, "prod"))
 	require.NoError(t, err)
 	assert.Contains(t, revokedNames(rep), zero.Ref.Name, "a zero expiry never expires")
+	assert.Contains(t, revokedNames(rep), unscoped.Ref.Name, "an unscoped v3 token is revoked with its own bearer")
+	assert.False(t, x.alive(unscoped))
 	for _, n := range rep.NotRevoked {
 		if n.Ref != nil {
 			assert.NotEqual(t, expired.Ref.Name, n.Ref.Name, "an expired token is not listed")

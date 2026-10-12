@@ -137,8 +137,13 @@ type revocationItem struct {
 
 // judge maps one answer onto the item: with its own bearer only 200/204
 // confirms, 404 and 401 leave it unconfirmed and 403 is forbidden; with
-// another bearer 404 confirms too and every other answer is failed.
+// another bearer 404 confirms too and every other answer is failed. A v3
+// token with its own bearer is judged by both of its answers instead.
 func (it *revocationItem) judge(out RevokeOutcome) {
+	if it.self && it.ref != nil && it.ref.Kind == TokenKindV3 {
+		it.judgeV3(out)
+		return
+	}
 	switch {
 	case out.Status == http.StatusOK || out.Status == http.StatusNoContent:
 		it.revoked = true
@@ -148,6 +153,26 @@ func (it *revocationItem) judge(out RevokeOutcome) {
 		it.reason = reasonUnconfirmed
 	case it.self && out.Status == http.StatusForbidden:
 		it.reason = reasonForbidden
+	default:
+		it.reason, it.errText = reasonFailed, out.Error
+	}
+}
+
+// judgeV3 maps the logout and delete answers for a v3 token revoked with
+// its own bearer onto the item, in this order: a 200 or 204 from either
+// request confirms; a 404 to the delete is unconfirmed; a 401 from logout
+// means the bearer no longer authenticates (the token is deleted, expired
+// or disabled, and the CLI cannot tell which), so it is unconfirmed too;
+// anything else is failed. The delete's 403 says nothing about the token
+// for a standard user, so a v3 item is never forbidden, and a forbidden
+// item's record is removed.
+func (it *revocationItem) judgeV3(out RevokeOutcome) {
+	switch {
+	case out.LogoutStatus == http.StatusOK || out.LogoutStatus == http.StatusNoContent,
+		out.Status == http.StatusOK || out.Status == http.StatusNoContent:
+		it.revoked = true
+	case out.Status == http.StatusNotFound, out.LogoutStatus == http.StatusUnauthorized:
+		it.reason = reasonUnconfirmed
 	default:
 		it.reason, it.errText = reasonFailed, out.Error
 	}
@@ -203,7 +228,10 @@ func (d *Deletion) planCacheRecord(cfg *config.Config, r config.CachedRecord) *r
 	}
 	it.entry, it.record = parent, true
 	switch {
-	case r.TokenRef.Kind == TokenKindV3:
+	case r.TokenRef.Kind == TokenKindV3 && (d.req.Command == DeleteForUpdateServer || r.Cluster != "" || !v3NameRE.MatchString(r.TokenRef.Name)):
+		// Only an unscoped token is deleted with its own bearer: Rancher
+		// refuses a cluster-scoped one on every request that names no
+		// cluster, and the record a moved entry keeps has no bearer.
 		it.reason = reasonV3
 	case d.req.Command == DeleteForUpdateServer && !slices.Contains(d.req.Targets, parent) && config.SameServerURL(cfg.Servers[parent].URL, r.Server):
 		// Another entry still names the old server: its next login
@@ -336,14 +364,17 @@ func (d *Deletion) planEntry(name string, s config.Server) {
 		it := &revocationItem{source: sourceSuperseded, ref: &ref, owner: rec.UserID, expiresAt: rec.ExpiresAt, entry: name,
 			server: cmp.Or(rec.Server, server)}
 		d.items = append(d.items, it)
+		matchesLogin := login != "" && usableBearer(rec.Ref.Kind, rec.Ref.Name, login) && it.server == server && s.CLICreated()
 		switch {
 		case expiredPastMargin(rec.ExpiresAt, d.now):
 			it.hidden = true
-		case rec.Ref.Kind == TokenKindV3:
+		case rec.Ref.Kind == TokenKindV3 && (d.req.Command == DeleteForUpdateServer || !matchesLogin || !v3NameRE.MatchString(rec.Ref.Name)):
+			// No bearer is stored for a v3 record, except the stored
+			// login's own token.
 			it.reason = reasonV3
 		case d.req.Command == DeleteForUpdateServer:
 			it.reason = reasonOtherServer
-		case login != "" && usableBearer(rec.Ref.Kind, rec.Ref.Name, login) && it.server == server && s.CLICreated():
+		case matchesLogin:
 			it.matchLogin = name
 		case it.server != server:
 			it.reason = reasonOtherServer
@@ -374,7 +405,7 @@ func (d *Deletion) planLogin(name string, s config.Server, server, login string)
 		switch {
 		case expiredPastMargin(it.expiresAt, d.now):
 			it.hidden, it.entry, it.record = true, "", false
-		case ref.Kind == TokenKindV3:
+		case ref.Kind == TokenKindV3 && (d.req.Command == DeleteForUpdateServer || !v3NameRE.MatchString(ref.Name)):
 			it.reason = reasonV3
 		case d.req.Command == DeleteForUpdateServer:
 			it.reason = reasonOtherServer
@@ -538,6 +569,12 @@ func (d *Deletion) retry(it *revocationItem) string {
 	switch it.reason {
 	case reasonUserSupplied:
 		return retryNone
+	}
+	if it.ref != nil && it.ref.Kind == TokenKindV3 && it.reason != reasonNotDeleted {
+		// No later login deletes a v3 token.
+		return retryManual
+	}
+	switch it.reason {
 	case reasonUnproven, reasonForbidden, reasonNotDeleted, reasonV3, reasonNoEntry, reasonOtherServer, reasonOtherOwner, reasonUnknownOwner:
 		return retryManual
 	}
@@ -551,8 +588,9 @@ func (d *Deletion) retry(it *revocationItem) string {
 	return retryNextLogin
 }
 
-// recovery is a manual token's way out: the reason's remedy, or the
-// sequence that logs in as its owner and deletes it.
+// recovery is a manual token's way out: the reason's remedy, the
+// administrator's delete for a v3 token, or the sequence that logs in as
+// its owner and deletes it.
 func (d *Deletion) recovery(it *revocationItem) []string {
 	if d.retry(it) != retryManual {
 		return nil
@@ -563,7 +601,7 @@ func (d *Deletion) recovery(it *revocationItem) []string {
 	case it.reason == reasonUnproven || it.ref == nil:
 		list, _ := clierr.RecoveryCommands(TokenRef{Kind: TokenKindExt})
 		return []string{list}
-	case it.reason == reasonV3:
+	case it.ref.Kind == TokenKindV3:
 		_, revoke := clierr.RecoveryCommands(*it.ref)
 		return []string{revoke}
 	}
@@ -602,6 +640,9 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	case reasonV3:
 		return fmt.Sprintf("the %s was not revoked: %s", what, v3Remedy(*it.ref, it.expiresAt))
 	}
+	if it.ref != nil && it.ref.Kind == TokenKindV3 {
+		return fmt.Sprintf("the %s was not revoked (%s); %s", what, reasonText(it), v3AdminRemedy(*it.ref, it.expiresAt))
+	}
 	seq := clierr.RecoverySequence(it.server, it.owner, *it.ref)
 	for i := range seq {
 		seq[i] = clierr.MarkRemedy(seq[i])
@@ -625,11 +666,20 @@ func (d *Deletion) nextLoginText(entry string, withCommand bool) string {
 
 // describe names a token in text: its ref and what it is.
 func describe(it *revocationItem) string {
-	kind := map[string]string{sourceCache: "cluster token", sourceSuperseded: "superseded token", sourceLogin: "login token"}[it.source]
+	kind := map[string]string{sourceCache: cacheTokenText(it), sourceSuperseded: "superseded token", sourceLogin: "login token"}[it.source]
 	if it.ref == nil {
 		return kind + " with no name recorded"
 	}
 	return kind + " " + it.ref.String()
+}
+
+// cacheTokenText names a cache token in text: a token with no cluster is
+// a cached token, one with a cluster a cluster token.
+func cacheTokenText(it *revocationItem) string {
+	if it.cluster == "" {
+		return "cached token"
+	}
+	return "cluster token"
 }
 
 func reasonText(it *revocationItem) string {
@@ -666,7 +716,10 @@ func (d *Deletion) textLine(it *revocationItem) string {
 		name = it.ref.String()
 	}
 	if it.revoked {
-		what := map[string]string{sourceCache: "cluster token, " + it.cluster, sourceSuperseded: "superseded token", sourceLogin: "login token"}[it.source]
+		what := map[string]string{sourceCache: cacheTokenText(it), sourceSuperseded: "superseded token", sourceLogin: "login token"}[it.source]
+		if it.source == sourceCache && it.cluster != "" {
+			what += ", " + it.cluster
+		}
 		return fmt.Sprintf("revoked %s (%s)", name, what)
 	}
 	if it.reason == reasonUserSupplied {

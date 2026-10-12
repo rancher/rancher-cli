@@ -134,7 +134,10 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 				errText(entryOnOtherServerError(&config.Config{Servers: map[string]config.Server{name: elsewhere.Servers[name]}}, name, url, "c-1"))...)
 		},
 		"keptWarning": func() []string {
-			return []string{keptWarning(config.SupersededToken{Ref: *ref, UserID: "u-abc12"}, url, "the server refused")}
+			return []string{
+				keptWarning(config.SupersededToken{Ref: *ref, UserID: "u-abc12"}, url, "the server refused"),
+				keptWarning(config.SupersededToken{Ref: TokenRef{Kind: TokenKindV3, Name: "t"}, UserID: "u-abc12"}, url, "the server refused"),
+			}
 		},
 		"namedEntryRoute": func() []string { return []string{namedEntryRoute(name, clierr.ShellQuote(name), "'c-1'", "prod")} },
 		"Deletion.manualWarning": func() []string {

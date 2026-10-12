@@ -44,6 +44,7 @@ func revokeToken(ctx context.Context, client *http.Client, base string, ref Toke
 	logout := ""
 	if deletesWithOwnBearer(ref, bearer) {
 		status, err := postLogout(ctx, client, base, bearer)
+		out.LogoutStatus = status
 		if status == http.StatusOK || status == http.StatusNoContent {
 			out.Status, out.Result = status, ResultRevoked
 			return out

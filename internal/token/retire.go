@@ -142,10 +142,10 @@ func RetireSuperseded(ctx context.Context, dir, entry, serverURL string, cred Lo
 	return rep
 }
 
-// v3Remedy says how a v3 token the CLI never deletes ends: an
+// v3Remedy says how a v3 token the CLI cannot delete ends: an
 // administrator's delete, or its expiry.
 func v3Remedy(ref TokenRef, expiresAt string) string {
-	return "the CLI never deletes v3 tokens; " + v3AdminDelete("it", ref, expiresAt)
+	return "the CLI cannot delete this v3 token; " + v3AdminDelete("it", ref, expiresAt)
 }
 
 // v3AdminRemedy says how a v3 token ends when the CLI could not delete it:
@@ -165,9 +165,14 @@ func v3AdminDelete(subject string, ref TokenRef, expiresAt string) string {
 	return "an administrator can delete " + subject + " with: " + clierr.MarkRemedy(revoke) + ", " + expiry
 }
 
-// keptWarning names one unretired token, why, and the sequence that
-// revokes it.
+// keptWarning names one unretired token, why, and what revokes it: the
+// sequence that logs in as its owner, or for a v3 token the administrator's
+// delete.
 func keptWarning(rec config.SupersededToken, serverURL, why string) string {
+	if rec.Ref.Kind == TokenKindV3 {
+		// No login of the owner deletes a v3 token for a standard user.
+		return fmt.Sprintf("the superseded token %s was not retired: %s; %s", rec.Ref.String(), why, v3AdminRemedy(rec.Ref, rec.ExpiresAt))
+	}
 	seq := clierr.RecoverySequence(serverURL, rec.UserID, rec.Ref)
 	for i := range seq {
 		seq[i] = clierr.MarkRemedy(seq[i])
