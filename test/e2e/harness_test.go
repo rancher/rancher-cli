@@ -667,11 +667,13 @@ func TestMain(m *testing.M) {
 	// Building the binary and starting envtest have no data dependency on
 	// each other - run them concurrently so `make e2e` pays max(build,
 	// envtest-start) instead of their sum.
-	env := &envtest.Environment{CRDDirectoryPaths: []string{filepath.Join("testdata", "crds")}}
-	// A failed start carries what etcd and kube-apiserver wrote, so the panic
-	// says why a process exited.
-	withProcessOutput := envtestlog.Capture(env, os.Stdout, os.Stderr)
+	var env *envtest.Environment
 	var cfg *rest.Config
+	stopEnv := func() {
+		if env != nil {
+			_ = envtestlog.Stop(env)
+		}
+	}
 	build := func() error {
 		if out, err := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher").CombinedOutput(); err != nil {
 			return fmt.Errorf("building rancher: %s", out)
@@ -695,15 +697,20 @@ func TestMain(m *testing.M) {
 	}
 	startEnv := func() error {
 		var err error
-		if cfg, err = env.Start(); err != nil {
+		// A failed start is printed with what etcd and kube-apiserver wrote,
+		// then started once more with a fresh environment.
+		env, cfg, err = envtestlog.Start(func() *envtest.Environment {
+			return &envtest.Environment{CRDDirectoryPaths: []string{filepath.Join("testdata", "crds")}}
+		}, os.Stdout, os.Stderr)
+		if err != nil {
 			// The hint mirrors scripts/e2e's exact invocation - keep the two
 			// in lockstep so a direct `go test` resolves the same binaries.
 			return fmt.Errorf("envtest (run via `make e2e`, which sets KUBEBUILDER_ASSETS; otherwise run "+
-				"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1 use 1.34.0 -p path` and export it): %w", withProcessOutput(err))
+				"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1 use 1.34.0 -p path` and export it): %w", err)
 		}
 		return nil
 	}
-	if err := buildAndStartEnv(build, startEnv, func() { _ = env.Stop() }); err != nil {
+	if err := buildAndStartEnv(build, startEnv, stopEnv); err != nil {
 		panic(err.Error())
 	}
 
@@ -747,7 +754,7 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 	srv.Close()
-	_ = env.Stop()
+	stopEnv()
 	_ = os.RemoveAll(tmp)
 	os.Exit(code)
 }

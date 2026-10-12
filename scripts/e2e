@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Tier-A end-to-end gate: testscript scenarios against an envtest-backed fake
-# Rancher proxy, plus the provider envtest contract tests. Both suites need
-# kube-apiserver/etcd binaries; setup-envtest downloads them once and caches.
+# Rancher proxy, the provider envtest contract tests, and the envtest helper
+# package's own tests. Each starts etcd and kube-apiserver binaries;
+# setup-envtest downloads them once and caches.
 ENVTEST_K8S_VERSION="1.34.0"
 
 echo "==> resolving envtest assets (k8s ${ENVTEST_K8S_VERSION})"
@@ -12,7 +13,10 @@ echo "==> resolving envtest assets (k8s ${ENVTEST_K8S_VERSION})"
 # run an unsigned binary named setup-envtest.exe (the installer-name elevation
 # heuristic), which breaks a plain `go run` of the upstream tool there.
 ENVTEST_TOOL_DIR="$(mktemp -d)"
-trap 'rm -rf "${ENVTEST_TOOL_DIR}"' EXIT
+# The trap also prints the start-retry file (set further down) first, so a start
+# that failed and then worked leaves its report in the log of a passing run;
+# the `if` and `|| true` keep a failed print from changing the exit status.
+trap 'if [ -s "${ENVTEST_START_RETRY_LOG:-}" ]; then echo "==> envtest starts that failed and were retried"; cat "${ENVTEST_START_RETRY_LOG}" || true; fi; rm -rf "${ENVTEST_TOOL_DIR}"' EXIT
 GOBIN="${ENVTEST_TOOL_DIR}" go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1
 ENVTEST_TOOL="${ENVTEST_TOOL_DIR}/envtest-assets$(go env GOEXE)"
 mv "${ENVTEST_TOOL_DIR}/setup-envtest$(go env GOEXE)" "${ENVTEST_TOOL}"
@@ -25,8 +29,19 @@ echo "==> assets: ${KUBEBUILDER_ASSETS}"
 # crash in either suite prints them all.
 export GOTRACEBACK=all
 
+# internal/envtestlog appends a report to this file each time a first envtest
+# start fails and is retried. `go test` hides the output of a package that
+# passes, so the file is how a retried start shows up in a green run.
+ENVTEST_START_RETRY_LOG="$(mktemp "${ENVTEST_TOOL_DIR}/start-retry.XXXXXX")"
+export ENVTEST_START_RETRY_LOG
+
 echo "==> provider envtest suite"
 go test -tags envtest -count=1 ./internal/client/provider/
+
+# Run alone, and verbose: its tests start control planes of their own, and
+# the Windows test logs the process names it found.
+echo "==> envtest helper package"
+go test -tags envtest -count=1 -v ./internal/envtestlog/
 
 echo "==> e2e scenario suite"
 go test -tags e2e -count=1 ./test/e2e/...

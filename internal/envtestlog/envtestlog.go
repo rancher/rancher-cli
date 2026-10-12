@@ -1,7 +1,13 @@
-// Package envtestlog keeps the output of the etcd and kube-apiserver
-// processes envtest starts, so a failed start can report why a process
-// exited. It is test-only: test files import it, production code never
-// does, and its writers are parameters so no non-test file names os.Stderr.
+// Package envtestlog helps test files that start envtest control planes. It
+// keeps the output of the etcd and kube-apiserver processes envtest starts,
+// so a failed start can report why a process exited (Capture). Start builds
+// an environment, captures its output and, when the start fails, prints the
+// failure and starts a fresh environment once more. Stop ends an environment,
+// and on Windows, where envtest cannot signal a process to stop, also ends
+// every etcd and kube-apiserver child of the test process, which is one
+// control plane per test process here. It is test-only: test files import it,
+// production code never does, and its writers are parameters so no non-test
+// file names os.Stderr.
 package envtestlog
 
 import (

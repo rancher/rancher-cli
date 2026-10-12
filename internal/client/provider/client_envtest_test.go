@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -55,18 +56,19 @@ var (
 // this file's tests.
 func init() {
 	startSharedEnvtest = func() {
-		sharedEnv = &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
-		withProcessOutput := envtestlog.Capture(sharedEnv, os.Stdout, os.Stderr)
-		sharedEnvConfig, sharedEnvErr = sharedEnv.Start()
+		sharedEnv, sharedEnvConfig, sharedEnvErr = envtestlog.Start(func() *envtest.Environment {
+			return &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
+		}, os.Stdout, os.Stderr)
 		if sharedEnvErr != nil {
-			// The tests report the short error; the process output goes to
-			// stderr once, here.
-			_, _ = fmt.Fprintln(os.Stderr, withProcessOutput(sharedEnvErr))
+			// The tests report the short error; the full one, with the process
+			// output, goes to stderr once, here.
+			_, _ = fmt.Fprintln(os.Stderr, sharedEnvErr)
+			sharedEnvErr = errors.New("envtest start failed twice; the output is on stderr")
 		}
 	}
 	stopSharedEnvtest = func() {
 		if sharedEnv != nil {
-			_ = sharedEnv.Stop()
+			_ = envtestlog.Stop(sharedEnv)
 		}
 	}
 }
