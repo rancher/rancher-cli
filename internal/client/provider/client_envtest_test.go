@@ -4,11 +4,14 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/envtestlog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -53,7 +56,13 @@ var (
 func init() {
 	startSharedEnvtest = func() {
 		sharedEnv = &envtest.Environment{CRDs: []*apiextv1.CustomResourceDefinition{widgetCRD()}}
+		withProcessOutput := envtestlog.Capture(sharedEnv, os.Stdout, os.Stderr)
 		sharedEnvConfig, sharedEnvErr = sharedEnv.Start()
+		if sharedEnvErr != nil {
+			// The tests report the short error; the process output goes to
+			// stderr once, here.
+			_, _ = fmt.Fprintln(os.Stderr, withProcessOutput(sharedEnvErr))
+		}
 	}
 	stopSharedEnvtest = func() {
 		if sharedEnv != nil {

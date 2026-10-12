@@ -93,6 +93,7 @@ what drifted the previous revision of this doc).
 | `internal/skillinstall` | Installs the embedded rancher agents skill into coding-agent harness skill directories (claude, codex, copilot, agents) with env-override support, user/project scope resolution, presence detection, and provenance/digest stamping. |
 | `internal/testrancher` | Test-only fake of Rancher's public auth surface (`/v1-public/*`) and the ext.cattle.io/v1 Token store's imperative create/revoke behavior, plus a Rancher that names each token it makes after the credential that asked, for the e2e harness and unit tests. No production package may import it. |
 | `internal/testrancher/fidelity` | The fidelity oracle for that fake: data-defined probes recorded against a real, digest-pinned Rancher (`make e2e-fidelity`) and replayed against the composite facade by `make e2e`, so drift from real-server behavior fails the build or is pinned as an explicit, machine-checked divergence. Probes marked `Downstream: true` run against the k3s cluster the oracle imports on every boot (`make e2e-fidelity` exports its id as `E2E_FIDELITY_DOWNSTREAM`), or against a Rancher you run yourself with its own downstream cluster (`make e2e-fidelity-downstream`); they are skipped when no downstream id is exported. Test-only. |
+| `internal/envtestlog` | Test-only: keeps the output of the etcd and kube-apiserver processes envtest starts (the last 64 KiB each) and adds it to the error from a failed `Start`. No production importer. |
 
 ## Package dependency diagram
 
@@ -156,6 +157,7 @@ graph TD
     skillinstall["internal/skillinstall"]
     testrancher["internal/testrancher"]
     fidelity["internal/testrancher/fidelity"]
+    envtestlog["internal/envtestlog"]
 
     main --> cli
     main --> skillinstall

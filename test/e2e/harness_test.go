@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/envtestlog"
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rogpeppe/go-internal/testscript"
 	"github.com/stretchr/testify/assert"
@@ -667,6 +668,9 @@ func TestMain(m *testing.M) {
 	// each other - run them concurrently so `make e2e` pays max(build,
 	// envtest-start) instead of their sum.
 	env := &envtest.Environment{CRDDirectoryPaths: []string{filepath.Join("testdata", "crds")}}
+	// A failed start carries what etcd and kube-apiserver wrote, so the panic
+	// says why a process exited.
+	withProcessOutput := envtestlog.Capture(env, os.Stdout, os.Stderr)
 	var cfg *rest.Config
 	build := func() error {
 		if out, err := exec.Command("go", "build", "-o", binPath, "github.com/rancher/rancher-cli/cmd/rancher").CombinedOutput(); err != nil {
@@ -695,7 +699,7 @@ func TestMain(m *testing.M) {
 			// The hint mirrors scripts/e2e's exact invocation - keep the two
 			// in lockstep so a direct `go test` resolves the same binaries.
 			return fmt.Errorf("envtest (run via `make e2e`, which sets KUBEBUILDER_ASSETS; otherwise run "+
-				"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1 use 1.34.0 -p path` and export it): %w", err)
+				"`go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1 use 1.34.0 -p path` and export it): %w", withProcessOutput(err))
 		}
 		return nil
 	}
