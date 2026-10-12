@@ -32,11 +32,12 @@ import (
 // CLI created and named on the fixture Rancher, with one cache record of
 // prod's own credential that names its token.
 type revokeDir struct {
-	dir   string
-	url   string
-	f     *testrancher.Facade
-	login token.LoginCredential
-	cache token.LoginCredential
+	dir    string
+	url    string
+	client *http.Client
+	f      *testrancher.Facade
+	login  token.LoginCredential
+	cache  token.LoginCredential
 }
 
 func newRevokeDir(t *testing.T, opts testrancher.Options) revokeDir {
@@ -53,7 +54,7 @@ func newRevokeDir(t *testing.T, opts testrancher.Options) revokeDir {
 		require.NoError(t, err)
 		return cred
 	}
-	r := revokeDir{dir: t.TempDir(), url: srv.URL, f: f, login: create(), cache: create()}
+	r := revokeDir{dir: t.TempDir(), url: srv.URL, client: srv.Client(), f: f, login: create(), cache: create()}
 	cfg := &config.Config{CredentialStore: "file", CurrentServer: "prod", Servers: map[string]config.Server{
 		"prod": {URL: srv.URL, Provenance: clierr.ProvenanceDerived, TokenRef: r.login.Ref, TokenUserID: r.login.UserID, CacheBindingID: "b1"},
 	}}
@@ -503,7 +504,7 @@ func TestALogoutWhoseLoginDeleteFailedAfterTheTokenWentCountsItDeleted(t *testin
 func TestALogoutWhoseFileCopyCannotBeDeletedFails(t *testing.T) {
 	r := newRevokeDir(t, testrancher.Options{})
 	useKeychainLogin(t, r)
-	plain, err := token.AcquireLoginCredential(t.Context(), http.DefaultClient,
+	plain, err := token.AcquireLoginCredential(t.Context(), r.client,
 		token.LoginRequest{Server: r.url, AuthProvider: "localProvider", ResponseType: "json"}, 0,
 		ui.New(&bytes.Buffer{}, newLineReader("e2e-user", "e2e-pass"), false, true))
 	require.NoError(t, err)

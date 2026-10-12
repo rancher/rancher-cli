@@ -32,6 +32,12 @@ func hangingServer(t *testing.T) (srv *httptest.Server, caPEM string) {
 	return srv, caPEM
 }
 
+// serverCA returns the certificate of a TLS test server as the PEM text
+// config.Effective.CA takes.
+func serverCA(srv *httptest.Server) string {
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+}
+
 // cancelSoon returns a context that is cancelled shortly after the call,
 // and fails the test if fn has not returned well before the request
 // timeout would have ended the request instead.
@@ -159,7 +165,7 @@ func TestDiscoveryAnswersWithAnEmptyBodyReadTheSameRebuilt(t *testing.T) {
 		t.Run(http.StatusText(tc.status), func(t *testing.T) {
 			t.Parallel()
 			srv := refusingServer(t, refusal{status: tc.status})
-			disc, err := kube.Discovery(discoveryConfig(&rest.Config{Host: srv.URL, BearerToken: "id:secret"}))
+			disc, err := kube.Discovery(discoveryConfig(&rest.Config{Host: srv.URL, BearerToken: "id:secret", Transport: srv.Client().Transport}))
 			require.NoError(t, err)
 			q := &clierr.Request{Endpoint: true}
 			_, rawErr := disc.RESTClient().Get().AbsPath("/version").Do(t.Context()).Raw()

@@ -144,7 +144,7 @@ func TestQuestionCompletionResolvesLikeTheCommandsOnALegacyRoot(t *testing.T) {
 	// The commands' side: the provider's own discovery against the same
 	// server, so the agreement is over the bytes the commands resolve
 	// against, not over a decoded fixture.
-	client, err := provider.NewClusterClient(&rest.Config{Host: srv.URL + "/k8s/clusters/c-x", BearerToken: "tok"}, "c-x")
+	client, err := provider.NewClusterClient(&rest.Config{Host: srv.URL + "/k8s/clusters/c-x", BearerToken: "tok", Transport: srv.Client().Transport}, "c-x")
 	require.NoError(t, err)
 	legacyAll, err := client.ServerResources(t.Context())
 	var incomplete *engine.DiscoveryIncomplete

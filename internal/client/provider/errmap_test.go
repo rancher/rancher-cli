@@ -172,7 +172,7 @@ func TestLogsWordsAnEmptyRefusalByItsRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			srv := refusingServer(t, refusal{status: tc.status, contentType: tc.contentType})
-			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "local")
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local")
 			require.NoError(t, err)
 			_, err = c.Logs(t.Context(), "default", "x", engine.LogOptions{})
 			ce, ok := errors.AsType[*clierr.Error](err)

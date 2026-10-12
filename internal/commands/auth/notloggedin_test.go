@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"net"
 	"net/http/httptest"
 	"strings"
@@ -64,15 +65,16 @@ func TestNotLoggedInHintForALonePluginLoginEntryRuns(t *testing.T) {
 	srv := httptest.NewUnstartedServer(testrancher.New(testrancher.Options{SeedToken: seed, SelfSubjectReviews: true}))
 	_ = srv.Listener.Close()
 	srv.Listener = ln
-	srv.Start()
+	srv.StartTLS()
 	t.Cleanup(srv.Close)
+	caPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
 	t.Setenv(config.EnvCredentialStore, "file")
 	t.Setenv(config.EnvURL, "")
 	t.Setenv(config.EnvToken, "")
 
 	dir := t.TempDir()
 	plugin := config.ExecLoginEntryName(config.CanonicalServerIdentity(srv.URL))
-	cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{plugin: {URL: srv.URL, Provenance: clierr.ProvenanceExecLogin}}}
+	cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{plugin: {URL: srv.URL, CA: caPEM, Provenance: clierr.ProvenanceExecLogin}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
@@ -93,7 +95,7 @@ func TestNotLoggedInHintForALonePluginLoginEntryRuns(t *testing.T) {
 	name := words[3]
 	assert.False(t, strings.HasPrefix(name, "-"), "a name with a leading dash reads as a flag: %q", name)
 
-	_, stderr, err = runRoot(t, seed+"\n", append(append([]string{"--config", dir}, words[1:]...), "--token-stdin")...)
+	_, stderr, err = runRoot(t, seed+"\n", append(append([]string{"--config", dir}, words[1:]...), "--token-stdin", "--cacert", caPEM)...)
 	require.NoError(t, err, stderr)
 	after, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)

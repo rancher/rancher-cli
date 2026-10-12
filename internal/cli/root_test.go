@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
@@ -1598,9 +1599,11 @@ func TestFeaturePatchWarnsWhenFlagIsNotDynamic(t *testing.T) {
 // versionServer serves a fixed /rancherversion body - enough for
 // primeFeatureCommunityWarning's ServerInfo call, no Feature route needed
 // since the enricher is exercised directly against an in-memory object.
-func versionServer(t *testing.T, rancherVersionBody string) *httptest.Server {
+func versionServer(t *testing.T, rancherVersionBody string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var hits atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
 		if r.URL.Path != "/rancherversion" {
 			http.NotFound(w, r)
 			return
@@ -1609,7 +1612,7 @@ func versionServer(t *testing.T, rancherVersionBody string) *httptest.Server {
 		_, _ = w.Write([]byte(rancherVersionBody))
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, &hits
 }
 
 // primeFeatureObj builds a minimal Feature object carrying exactly the
@@ -1644,7 +1647,7 @@ func TestPrimeFeatureCommunityWarning(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			srv := versionServer(t, fmt.Sprintf(`{"Version":"v2.15.1","RancherPrime":%q}`, tc.rancherPrime))
+			srv, _ := versionServer(t, fmt.Sprintf(`{"Version":"v2.15.1","RancherPrime":%q}`, tc.rancherPrime))
 			f := checkerFor(t, srv).f
 			enrich := primeFeatureCommunityWarning(f)
 			w, ok := enrich(t.Context(), primeFeatureObj("cluster-autoscaling", tc.prime, tc.enabled))
@@ -1660,12 +1663,13 @@ func TestPrimeFeatureCommunityWarning(t *testing.T) {
 
 	t.Run("edition unreadable: silent, never speculates", func(t *testing.T) {
 		t.Parallel()
-		srv := versionServer(t, "not json")
+		srv, hits := versionServer(t, "not json")
 		f := checkerFor(t, srv).f
 		enrich := primeFeatureCommunityWarning(f)
 		w, ok := enrich(t.Context(), primeFeatureObj("cluster-autoscaling", true, true))
 		assert.False(t, ok)
 		assert.Empty(t, w)
+		assert.Positive(t, hits.Load(), "the fake received a request: silence came from its answer, not from a failed connection")
 	})
 
 	t.Run("feature kind get override wires the warning", func(t *testing.T) {

@@ -44,7 +44,7 @@ func TestOwnerPostsOneSelfSubjectReview(t *testing.T) {
 				mu       sync.Mutex
 				requests []string
 			)
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var body map[string]any
 				_ = json.NewDecoder(r.Body).Decode(&body)
 				mu.Lock()
@@ -55,7 +55,7 @@ func TestOwnerPostsOneSelfSubjectReview(t *testing.T) {
 				_, _ = w.Write([]byte(tc.body))
 			}))
 			t.Cleanup(srv.Close)
-			got, err := Owner(t.Context(), config.Effective{URL: srv.URL, Token: "id:secret"})
+			got, err := Owner(t.Context(), config.Effective{URL: srv.URL, CA: serverCA(srv), Token: "id:secret"})
 			mu.Lock()
 			defer mu.Unlock()
 			assert.Equal(t, []string{"POST /k8s/clusters/local/apis/authentication.k8s.io/v1/selfsubjectreviews Bearer id:secret SelfSubjectReview"}, requests)

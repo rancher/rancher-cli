@@ -2028,7 +2028,8 @@ func TestLoginTLSFailureKeepsCertificateFactsInText(t *testing.T) {
 	t.Parallel()
 	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	srv := newTLSFake(t, fix)
-	_, err := http.Get(srv.URL + "/rancherversion") // the default client does not trust the fixture
+	untrusting := &http.Client{Transport: &http.Transport{}} // no root pool holds the fixture
+	_, err := untrusting.Get(srv.URL + "/rancherversion")
 	require.Error(t, err)
 	u, perr := neturl.Parse(srv.URL)
 	require.NoError(t, perr)

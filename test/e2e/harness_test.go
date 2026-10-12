@@ -27,6 +27,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/envtestlog"
 	"github.com/rancher/rancher-cli/internal/testrancher"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/rogpeppe/go-internal/testscript"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -769,7 +770,12 @@ func TestMain(m *testing.M) {
 	seedUserAttributeObjects()
 	seedManagementToken()
 
+	restore := testtransport.GuardDefaultTransport()
 	code := m.Run()
+	if err := restore(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		code = 1
+	}
 	srv.Close()
 	stopEnv()
 	_ = os.RemoveAll(tmp)

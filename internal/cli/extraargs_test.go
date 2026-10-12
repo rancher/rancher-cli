@@ -53,7 +53,7 @@ func (r *requestRecorder) take() []string {
 func extraArgsEnv(t *testing.T) *requestRecorder {
 	t.Helper()
 	rec := &requestRecorder{}
-	srv := httptest.NewServer(rec)
+	srv := httptest.NewTLSServer(rec)
 	t.Cleanup(srv.Close)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -62,6 +62,7 @@ func extraArgsEnv(t *testing.T) *requestRecorder {
 	t.Setenv(config.EnvConfigDir, t.TempDir())
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	t.Setenv(config.EnvURL, srv.URL)
+	t.Setenv(config.EnvCACert, string(pemFromServer(t, srv)))
 	t.Setenv(config.EnvToken, "token-x:y")
 	t.Chdir(t.TempDir())
 	return rec

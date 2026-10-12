@@ -19,7 +19,7 @@ func TestIdPStubIssuesIDTokenForAuthorizationCodeGrant(t *testing.T) {
 	f := New(Options{EnableIdP: true})
 	srv := httptest.NewServer(f.IdPHandler())
 	t.Cleanup(srv.Close)
-	resp, err := http.PostForm(srv.URL+"/idp/token", url.Values{"grant_type": {"authorization_code"}, "code": {"c-1"}})
+	resp, err := srv.Client().PostForm(srv.URL+"/idp/token", url.Values{"grant_type": {"authorization_code"}, "code": {"c-1"}})
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)

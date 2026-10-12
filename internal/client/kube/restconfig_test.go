@@ -177,7 +177,7 @@ func TestHTTPClientSendsKubernetesUserAgent(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
-	hc, err := HTTPClient(&rest.Config{Host: srv.URL})
+	hc, err := HTTPClient(&rest.Config{Host: srv.URL, Transport: srv.Client().Transport})
 	require.NoError(t, err)
 	resp, err := hc.Get(srv.URL + "/version")
 	require.NoError(t, err)

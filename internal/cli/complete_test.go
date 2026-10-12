@@ -79,12 +79,12 @@ func makeSteveClustersServer(t *testing.T, items []map[string]any, byID ...strin
 // The surface's requests of its own: resolving a typed --cluster to a
 // cluster id, as the command does, before a source lists under it.
 
-func resolveForTest(t *testing.T, srvURL, v string) string {
+func resolveForTest(t *testing.T, srv *httptest.Server, v string) string {
 	t.Helper()
-	cap := TokenCapability{Token: "tok", ServerURL: srvURL}
+	cap := TokenCapability{Token: "tok", ServerURL: srv.URL}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	return resolveDisplayNameToClusterID(ctx, &http.Client{}, cap, v)
+	return resolveDisplayNameToClusterID(ctx, srv.Client(), cap, v)
 }
 
 // TestResolveDisplayNameToClusterIDNotFound asserts a value no listed
@@ -93,7 +93,7 @@ func resolveForTest(t *testing.T, srvURL, v string) string {
 func TestResolveDisplayNameToClusterIDNotFound(t *testing.T) {
 	t.Parallel()
 	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod")})
-	assert.Empty(t, resolveForTest(t, srv.URL, "nonexistent"), "not-found must return empty string")
+	assert.Empty(t, resolveForTest(t, srv, "nonexistent"), "not-found must return empty string")
 	assert.Equal(t, []string{steveClustersPath, steveClustersPath + "/nonexistent"}, reqs())
 }
 
@@ -101,14 +101,14 @@ func TestResolveDisplayNameToClusterIDAmbiguous(t *testing.T) {
 	t.Parallel()
 	// Two clusters with the same display name: ambiguous → return "".
 	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod"), steveFixtureItem("c-def", "prod")})
-	assert.Empty(t, resolveForTest(t, srv.URL, "prod"), "ambiguous match must return empty string")
+	assert.Empty(t, resolveForTest(t, srv, "prod"), "ambiguous match must return empty string")
 	assert.Equal(t, []string{steveClustersPath}, reqs(), "an ambiguous name sends no GET by id")
 }
 
 func TestResolveDisplayNameToClusterIDUnambiguous(t *testing.T) {
 	t.Parallel()
 	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod"), steveFixtureItem("c-def", "staging")})
-	assert.Equal(t, "c-abc", resolveForTest(t, srv.URL, "prod"), "single match must return the cluster ID")
+	assert.Equal(t, "c-abc", resolveForTest(t, srv, "prod"), "single match must return the cluster ID")
 	assert.Equal(t, []string{steveClustersPath}, reqs())
 }
 
@@ -118,7 +118,7 @@ func TestResolveDisplayNameToClusterIDUnambiguous(t *testing.T) {
 func TestResolveDisplayNameToClusterIDIDWins(t *testing.T) {
 	t.Parallel()
 	srv, _ := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("prod", "c-abc"), steveFixtureItem("c-abc", "prod")})
-	assert.Equal(t, "prod", resolveForTest(t, srv.URL, "prod"))
+	assert.Equal(t, "prod", resolveForTest(t, srv, "prod"))
 }
 
 // TestResolveDisplayNameToClusterIDNotListedYet asserts a cluster steve's
@@ -126,7 +126,7 @@ func TestResolveDisplayNameToClusterIDIDWins(t *testing.T) {
 func TestResolveDisplayNameToClusterIDNotListedYet(t *testing.T) {
 	t.Parallel()
 	srv, reqs := makeSteveClustersServer(t, []map[string]any{steveFixtureItem("c-abc", "prod")}, "fresh")
-	assert.Equal(t, "fresh", resolveForTest(t, srv.URL, "fresh"))
+	assert.Equal(t, "fresh", resolveForTest(t, srv, "fresh"))
 	assert.Equal(t, []string{steveClustersPath, steveClustersPath + "/fresh"}, reqs())
 }
 
@@ -157,19 +157,19 @@ func TestResolveDisplayNameToClusterIDStaysWithinItsAllowance(t *testing.T) {
 	}
 	full := httptest.NewServer(count(pages(steve.MaxPages)))
 	t.Cleanup(full.Close)
-	assert.Equal(t, fmt.Sprintf("c-%03d", steve.MaxPages-1), resolveForTest(t, full.URL, fmt.Sprintf("name-%d", steve.MaxPages-1)))
+	assert.Equal(t, fmt.Sprintf("c-%03d", steve.MaxPages-1), resolveForTest(t, full, fmt.Sprintf("name-%d", steve.MaxPages-1)))
 	assert.Equal(t, int32(steve.MaxPages), hits.Load())
 
 	hits.Store(0)
 	miss := httptest.NewServer(count(pages(steve.MaxPages)))
 	t.Cleanup(miss.Close)
-	assert.Empty(t, resolveForTest(t, miss.URL, "absent"))
+	assert.Empty(t, resolveForTest(t, miss, "absent"))
 	assert.Equal(t, int32(steve.MaxPages+1), hits.Load(), "every page, then the GET by id")
 
 	hits.Store(0)
 	over := httptest.NewServer(count(pages(steve.MaxPages + 1)))
 	t.Cleanup(over.Close)
-	assert.Empty(t, resolveForTest(t, over.URL, "name-0"))
+	assert.Empty(t, resolveForTest(t, over, "name-0"))
 	assert.LessOrEqual(t, hits.Load(), int32(steve.MaxPages+1))
 }
 

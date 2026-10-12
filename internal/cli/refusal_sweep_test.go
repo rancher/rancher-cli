@@ -68,12 +68,29 @@ var refusalExemptions = map[string]refusalExemption{
 // the CLI created for the server, before it runs.
 var refusalStoredLogin = []string{"auth logout", "auth delete-token", "config delete-server"}
 
-// writeStoredLogin stores, in the config directory dir, the server a1 at
-// url with a login token and a cached cluster token the CLI created.
-func writeStoredLogin(t *testing.T, dir, url string) {
+// refusalStoredServer lists the commands that name a server with a flag
+// that has no --cacert beside it: each trusts the server through the CA of
+// the configured server entry whose URL matches.
+var refusalStoredServer = []string{"token"}
+
+// writeStoredServer stores, in the config directory dir, the server a1 at
+// url trusting the CA in caPEM, with no credential.
+func writeStoredServer(t *testing.T, dir, url, caPEM string) {
 	t.Helper()
 	cfg := &config.Config{CredentialStore: "file", CurrentServer: "a1", Servers: map[string]config.Server{
-		"a1": {URL: url, Provenance: clierr.ProvenanceDerived, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-login"}, TokenUserID: "u-1", CacheBindingID: "b1"},
+		"a1": {URL: url, CA: caPEM},
+	}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+}
+
+// writeStoredLogin stores, in the config directory dir, the server a1 at
+// url trusting the CA in caPEM, with a login token and a cached cluster
+// token the CLI created.
+func writeStoredLogin(t *testing.T, dir, url, caPEM string) {
+	t.Helper()
+	cfg := &config.Config{CredentialStore: "file", CurrentServer: "a1", Servers: map[string]config.Server{
+		"a1": {URL: url, CA: caPEM, Provenance: clierr.ProvenanceDerived, TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-login"}, TokenUserID: "u-1", CacheBindingID: "b1"},
 	}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -85,9 +102,10 @@ func writeStoredLogin(t *testing.T, dir, url string) {
 }
 
 // refusalSetup is the command line a command needs run first in its
-// config directory; "{url}" is the server's URL.
+// config directory; "{url}" is the server's URL and "{ca}" the path of its
+// CA file.
 var refusalSetup = map[string][]string{
-	"config update-server": {"config", "add-server", "a1", "--url", "{url}"},
+	"config update-server": {"config", "add-server", "a1", "--url", "{url}", "--cacert", "{ca}"},
 }
 
 // refusalArgs completes a command line the manifest alone cannot: the
@@ -122,8 +140,9 @@ func (s *refusalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // refusalArgv is c's command line: its positionals, a value for every
 // required flag and for --cluster and --namespace when it takes them
 // (cluster is the --cluster value), a JSON patch for --patch, the stdin
-// flags, the server's URL where a flag names a server, and refusalArgs.
-func refusalArgv(c runtime.SchemaCommand, cluster, url, manifest string) []string {
+// flags, the server's URL where a flag names a server, the path of its CA
+// file where a flag takes one, and refusalArgs.
+func refusalArgv(c runtime.SchemaCommand, cluster, url, caPath, manifest string) []string {
 	argv := append(strings.Fields(c.Name), argValues(c.Args)...)
 	extra := refusalArgs[c.Name]
 	for _, f := range c.Flags {
@@ -141,6 +160,8 @@ func refusalArgv(c runtime.SchemaCommand, cluster, url, manifest string) []strin
 			argv = append(argv, "--"+f.Name)
 		case f.Name == "url" || f.Name == "server":
 			argv = append(argv, "--"+f.Name, url)
+		case f.Name == "cacert":
+			argv = append(argv, "--cacert", caPath)
 		case f.Name == "filename" && f.Required:
 			argv = append(argv, "--filename", manifest)
 		case f.Required && len(f.Enum) > 0:
@@ -219,17 +240,21 @@ func TestEveryNetworkCommandReportsARefusal(t *testing.T) {
 		{"403", http.StatusForbidden, "", clierr.CodeRBAC},
 	} {
 		srv := &refusalServer{status: v.status, body: v.body}
-		hs := httptest.NewServer(srv)
+		hs := httptest.NewTLSServer(srv)
 		t.Cleanup(hs.Close)
+		caPEM := string(pemFromServer(t, hs))
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 		t.Setenv("USERPROFILE", home)
 		t.Setenv("XDG_CONFIG_HOME", home)
 		t.Setenv(config.EnvCredentialStore, "file")
 		t.Setenv(config.EnvURL, hs.URL)
+		t.Setenv(config.EnvCACert, caPEM)
 		t.Setenv(config.EnvToken, "token-x:y")
 		wd := t.TempDir()
 		t.Chdir(wd)
+		caPath := filepath.Join(wd, "ca.pem")
+		require.NoError(t, os.WriteFile(caPath, []byte(caPEM), 0o600))
 		manifest := filepath.Join(wd, "m.yaml")
 		require.NoError(t, os.WriteFile(manifest, []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n  namespace: default\n"), 0o600))
 
@@ -247,7 +272,7 @@ func TestEveryNetworkCommandReportsARefusal(t *testing.T) {
 				clusters = append(clusters, "c-abc12")
 			}
 			for _, cluster := range clusters {
-				argv := refusalArgv(c, cluster, hs.URL, manifest)
+				argv := refusalArgv(c, cluster, hs.URL, caPath, manifest)
 				if (runtime.OutputPolicy{AllowedFormats: c.OutputPolicy}).Allows("json") {
 					argv = append(argv, "-o", "json")
 				}
@@ -256,12 +281,15 @@ func TestEveryNetworkCommandReportsARefusal(t *testing.T) {
 					dir := t.TempDir()
 					t.Setenv(config.EnvConfigDir, dir)
 					if slices.Contains(refusalStoredLogin, c.Name) {
-						writeStoredLogin(t, dir, hs.URL)
+						writeStoredLogin(t, dir, hs.URL, caPEM)
+					}
+					if slices.Contains(refusalStoredServer, c.Name) {
+						writeStoredServer(t, dir, hs.URL, caPEM)
 					}
 					if setup, ok := refusalSetup[c.Name]; ok {
 						setup = slices.Clone(setup)
 						for i, w := range setup {
-							setup[i] = strings.ReplaceAll(w, "{url}", hs.URL)
+							setup[i] = strings.NewReplacer("{url}", hs.URL, "{ca}", caPath).Replace(w)
 						}
 						setupStderr, setupCode := runOnce(t, wr.root("v-test"), setup)
 						require.Zero(t, setupCode, "setup %v failed: %s", setup, setupStderr)

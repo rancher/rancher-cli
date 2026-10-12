@@ -50,6 +50,7 @@ what drifted the previous revision of this doc).
 | `internal/commands/register` | Server registration shared by `auth login` and `config add-server/update-server`: URL canonicalization, TLS preflight, CA selection, create and update under the config lock. |
 | `internal/commands/skill` | `skill install/uninstall/status` over `internal/skillinstall`. |
 | `internal/remedytest` | Test-only: the top-level commands that read a config directory, from the schema manifest golden, which the checks that every remedy command names the directory share. No production importer. |
+| `internal/testtransport` | Test-only: `GuardDefaultTransport`, which a test binary that starts httptest servers installs in `TestMain` so a request through `http.DefaultTransport` fails (an httptest server's `Close` closes that transport's idle connections, which breaks such a request in another test). A test sends requests through the server's own client instead. No production importer. |
 | `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness, an exec-plugin process and the harness that holds one mid-call while a command runs. No production importer. |
 | `internal/cli/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
 | `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
@@ -142,6 +143,7 @@ graph TD
     accesscomplete["internal/engine/access/complete"]
     kubeconfigengine["internal/engine/kubeconfig"]
     remedytest["internal/remedytest"]
+    testtransport["internal/testtransport"]
     config["internal/config"]
     credhelper["credhelper"]
     install["install"]

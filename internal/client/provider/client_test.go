@@ -525,7 +525,7 @@ func TestLogsKeepsTheServersRefusalMessage(t *testing.T) {
 				})
 			}))
 			t.Cleanup(srv.Close)
-			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "c-1")
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "c-1")
 			require.NoError(t, err)
 
 			_, err = c.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
@@ -562,7 +562,7 @@ func TestLogsServerErrorRetryabilityFollowsTheBody(t *testing.T) {
 				_, _ = w.Write([]byte(tc.body))
 			}))
 			t.Cleanup(srv.Close)
-			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "c-1")
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "c-1")
 			require.NoError(t, err)
 
 			_, err = c.Logs(t.Context(), "ns1", "web", engine.LogOptions{Container: "app"})
@@ -604,7 +604,7 @@ func TestTypedServerErrorShowsTheServersMessage(t *testing.T) {
 				_, _ = w.Write([]byte(tc.body))
 			}))
 			t.Cleanup(srv.Close)
-			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "local")
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local")
 			require.NoError(t, err)
 
 			_, err = c.Get(t.Context(), schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}, "", "x")
@@ -638,7 +638,8 @@ func TestDynamicClientBodylessRefusalsNameTheRequest(t *testing.T) {
 	t.Parallel()
 	clusters := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"}
 	projects := schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
-	c, err := NewClusterClient(&rest.Config{Host: bodylessServer(t, http.StatusForbidden).URL, BearerToken: "t"}, "local")
+	forbidden := bodylessServer(t, http.StatusForbidden)
+	c, err := NewClusterClient(&rest.Config{Host: forbidden.URL, BearerToken: "t", Transport: forbidden.Client().Transport}, "local")
 	require.NoError(t, err)
 
 	rbac := func(err error) *clierr.Error {
@@ -667,7 +668,8 @@ func TestDynamicClientBodylessRefusalsNameTheRequest(t *testing.T) {
 	ce = rbac(err)
 	assert.Equal(t, clierr.Rancher+" access projects --cluster 'c-abc'", ce.Hint)
 
-	u, err := NewClusterClient(&rest.Config{Host: bodylessServer(t, http.StatusUnauthorized).URL, BearerToken: "t"}, "local")
+	unauthorized := bodylessServer(t, http.StatusUnauthorized)
+	u, err := NewClusterClient(&rest.Config{Host: unauthorized.URL, BearerToken: "t", Transport: unauthorized.Client().Transport}, "local")
 	require.NoError(t, err)
 	_, err = u.List(t.Context(), clusters, "", "")
 	ce, ok := errors.AsType[*clierr.Error](err)

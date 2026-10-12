@@ -2,6 +2,7 @@ package testrancher_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/testrancher"
@@ -14,7 +15,7 @@ const (
 	gateMember = "member:secret"
 )
 
-func gatedFacade(t *testing.T) (*recordingHandler, string) {
+func gatedFacade(t *testing.T) (*recordingHandler, *httptest.Server) {
 	t.Helper()
 	fall := &recordingHandler{}
 	_, srv := newFacade(t, testrancher.Options{
@@ -29,7 +30,7 @@ func gatedFacade(t *testing.T) (*recordingHandler, string) {
 			return nil, false
 		},
 	}, fall)
-	return fall, srv.URL
+	return fall, srv
 }
 
 // TestLocalManagementGateRefusesAMemberBodyless asserts the gate answers a
@@ -38,20 +39,20 @@ func gatedFacade(t *testing.T) (*recordingHandler, string) {
 // cluster-wide and the namespaced form, and lets the admin through.
 func TestLocalManagementGateRefusesAMemberBodyless(t *testing.T) {
 	t.Parallel()
-	fall, url := gatedFacade(t)
+	fall, srv := gatedFacade(t)
 	for _, path := range []string{
 		"/k8s/clusters/local/apis/management.cattle.io/v3/clusters",
 		"/k8s/clusters/local/apis/management.cattle.io/v3/clusters/c-abc",
 		"/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-abc/clusterregistrationtokens",
 	} {
-		resp, body := doJSON(t, http.DefaultClient, http.MethodGet, url+path, nil, gateMember)
+		resp, body := doJSON(t, srv.Client(), http.MethodGet, srv.URL+path, nil, gateMember)
 		assert.Equal(t, http.StatusForbidden, resp.StatusCode, path)
 		assert.Empty(t, body, path)
 		assert.Empty(t, resp.Header.Get("Content-Type"), path)
 	}
 	assert.Empty(t, fall.requests, "a refused request never reaches the fallthrough")
 
-	resp, _ := doJSON(t, http.DefaultClient, http.MethodGet, url+"/k8s/clusters/local/apis/management.cattle.io/v3/clusters", nil, gateAdmin)
+	resp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+"/k8s/clusters/local/apis/management.cattle.io/v3/clusters", nil, gateAdmin)
 	assert.Equal(t, http.StatusTeapot, resp.StatusCode, "the admin reaches the fallthrough")
 }
 
@@ -60,7 +61,7 @@ func TestLocalManagementGateRefusesAMemberBodyless(t *testing.T) {
 // documents and other clusters' paths are not gated.
 func TestLocalManagementGateLetsAllowListedResourcesThrough(t *testing.T) {
 	t.Parallel()
-	fall, url := gatedFacade(t)
+	fall, srv := gatedFacade(t)
 	for _, path := range []string{
 		"/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/c-abc/projects",
 		"/k8s/clusters/local/apis/management.cattle.io/v3/users/u-1",
@@ -68,7 +69,7 @@ func TestLocalManagementGateLetsAllowListedResourcesThrough(t *testing.T) {
 		"/k8s/clusters/local/api/v1/namespaces",
 		"/k8s/clusters/c-abc/apis/management.cattle.io/v3/clusters",
 	} {
-		resp, _ := doJSON(t, http.DefaultClient, http.MethodGet, url+path, nil, gateMember)
+		resp, _ := doJSON(t, srv.Client(), http.MethodGet, srv.URL+path, nil, gateMember)
 		assert.Equal(t, http.StatusTeapot, resp.StatusCode, path)
 	}
 	assert.Len(t, fall.requests, 5)
@@ -79,18 +80,18 @@ func TestLocalManagementGateLetsAllowListedResourcesThrough(t *testing.T) {
 // bearer.
 func TestSteveClusterGetByID(t *testing.T) {
 	t.Parallel()
-	_, url := gatedFacade(t)
-	status, body := getDecoded(t, url, testrancher.ClustersCollectionPath+"/c-abc", gateMember)
+	_, srv := gatedFacade(t)
+	status, body := getDecoded(t, srv, testrancher.ClustersCollectionPath+"/c-abc", gateMember)
 	require.Equal(t, http.StatusOK, status)
 	assert.Equal(t, "c-abc", body["id"])
 	assert.Equal(t, map[string]any{"displayName": "prod"}, body["spec"])
 
-	status, _ = getDecoded(t, url, testrancher.ClustersCollectionPath+"/local", gateMember)
+	status, _ = getDecoded(t, srv, testrancher.ClustersCollectionPath+"/local", gateMember)
 	assert.Equal(t, http.StatusForbidden, status)
 
-	status, _ = getDecoded(t, url, testrancher.ClustersCollectionPath+"/local", gateAdmin)
+	status, _ = getDecoded(t, srv, testrancher.ClustersCollectionPath+"/local", gateAdmin)
 	assert.Equal(t, http.StatusOK, status)
 
-	status, _ = getDecoded(t, url, testrancher.ClustersCollectionPath+"/c-abc", "nobody:secret")
+	status, _ = getDecoded(t, srv, testrancher.ClustersCollectionPath+"/c-abc", "nobody:secret")
 	assert.Equal(t, http.StatusUnauthorized, status)
 }

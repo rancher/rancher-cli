@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/client/provider"
@@ -97,10 +98,13 @@ func featureObj(prime, defaultVal bool) string {
 
 // featureFake stands in for a management-scope Rancher server serving both
 // /rancherversion and a named Feature GET under the management proxy
-// path the completion fixtures use (managementClusterServer).
-func featureFake(t *testing.T, rancherVersionBody, featureBody string, featureStatus int) *httptest.Server {
+// path the completion fixtures use (managementClusterServer). The counter
+// is the number of requests it has received.
+func featureFake(t *testing.T, rancherVersionBody, featureBody string, featureStatus int) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var hits atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
 		switch r.URL.Path {
 		case "/rancherversion":
 			w.Header().Set("Content-Type", "application/json")
@@ -114,7 +118,7 @@ func featureFake(t *testing.T, rancherVersionBody, featureBody string, featureSt
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, &hits
 }
 
 func checkerFor(t *testing.T, srv *httptest.Server) *capabilityChecker {
@@ -122,7 +126,7 @@ func checkerFor(t *testing.T, srv *httptest.Server) *capabilityChecker {
 	dir := t.TempDir()
 	cfg := &config.Config{
 		CurrentServer: "acme",
-		Servers:       map[string]config.Server{"acme": {URL: srv.URL}},
+		Servers:       map[string]config.Server{"acme": {URL: srv.URL, CA: string(pemFromServer(t, srv))}},
 	}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
@@ -136,7 +140,7 @@ func checkerFor(t *testing.T, srv *httptest.Server) *capabilityChecker {
 // PRIME_REQUIRED, with Server populated for the error's details.
 func TestCapabilityCheckerPrimeRequiredEndToEnd(t *testing.T) {
 	t.Parallel()
-	srv := featureFake(t,
+	srv, _ := featureFake(t,
 		`{"Version":"v2.15.0","RancherPrime":"false"}`,
 		featureObj(true, false), http.StatusOK)
 	c := checkerFor(t, srv)
@@ -150,7 +154,7 @@ func TestCapabilityCheckerPrimeRequiredEndToEnd(t *testing.T) {
 // feature's own classification.
 func TestCapabilityCheckerDisabledOnPrimeServerEndToEnd(t *testing.T) {
 	t.Parallel()
-	srv := featureFake(t,
+	srv, _ := featureFake(t,
 		`{"Version":"v2.15.0","RancherPrime":"true"}`,
 		featureObj(true, false), http.StatusOK)
 	c := checkerFor(t, srv)
@@ -165,7 +169,7 @@ func TestCapabilityCheckerDisabledOnPrimeServerEndToEnd(t *testing.T) {
 // message variant.
 func TestCapabilityCheckerDisabledOnCommunityServerEndToEnd(t *testing.T) {
 	t.Parallel()
-	srv := featureFake(t,
+	srv, _ := featureFake(t,
 		`{"Version":"v2.15.0","RancherPrime":"false"}`,
 		featureObj(false, false), http.StatusOK)
 	c := checkerFor(t, srv)
@@ -180,10 +184,11 @@ func TestCapabilityCheckerDisabledOnCommunityServerEndToEnd(t *testing.T) {
 // target request speak.
 func TestCapabilityCheckerForbiddenFeatureGetIsUnknown(t *testing.T) {
 	t.Parallel()
-	srv := featureFake(t, `{"Version":"v2.15.0","RancherPrime":"false"}`, `{}`, http.StatusForbidden)
+	srv, hits := featureFake(t, `{"Version":"v2.15.0","RancherPrime":"false"}`, `{}`, http.StatusForbidden)
 	c := checkerFor(t, srv)
 	dec := c.Check(t.Context(), runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "widget-feature"})
 	assert.Equal(t, runtime.CapabilityUnknown, dec.Outcome)
+	assert.Positive(t, hits.Load(), "the fake received a request: unknown came from its answer, not from a failed connection")
 }
 
 // TestCapabilityCheckerOneEditionFetchSharedWithFeatureCheck proves the
@@ -193,7 +198,7 @@ func TestCapabilityCheckerForbiddenFeatureGetIsUnknown(t *testing.T) {
 func TestCapabilityCheckerOneEditionFetchSharedAcrossChecks(t *testing.T) {
 	t.Parallel()
 	var versionHits int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/rancherversion":
 			versionHits++
@@ -217,9 +222,11 @@ func TestCapabilityCheckerOneEditionFetchSharedAcrossChecks(t *testing.T) {
 // discovery: the two-step APIGroup -> preferred-version APIResourceList
 // walk checkExtDiscovery performs. resources is the list served at the
 // preferred version; groupStatus/resourceStatus let a case fail either step.
-func extDiscoveryFake(t *testing.T, resources []string, groupStatus, resourceStatus int) *httptest.Server {
+func extDiscoveryFake(t *testing.T, resources []string, groupStatus, resourceStatus int) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var hits atomic.Int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
 		switch r.URL.Path {
 		case "/apis/ext.cattle.io":
 			w.WriteHeader(groupStatus)
@@ -240,14 +247,14 @@ func extDiscoveryFake(t *testing.T, resources []string, groupStatus, resourceSta
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, &hits
 }
 
 // TestCapabilityCheckerExtDiscoveryProceed proves the positive case: the
 // named resource is listed in the group's preferred-version discovery.
 func TestCapabilityCheckerExtDiscoveryProceed(t *testing.T) {
 	t.Parallel()
-	srv := extDiscoveryFake(t, []string{"tokens", "passwordchangerequests"}, http.StatusOK, http.StatusOK)
+	srv, _ := extDiscoveryFake(t, []string{"tokens", "passwordchangerequests"}, http.StatusOK, http.StatusOK)
 	c := checkerFor(t, srv)
 	dec := c.Check(t.Context(), runtime.CapabilityRequirement{
 		Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow",
@@ -261,7 +268,7 @@ func TestCapabilityCheckerExtDiscoveryProceed(t *testing.T) {
 // this workflow, not a signal read failure.
 func TestCapabilityCheckerExtDiscoveryUnsupported(t *testing.T) {
 	t.Parallel()
-	srv := extDiscoveryFake(t, []string{"tokens", "kubeconfigs"}, http.StatusOK, http.StatusOK)
+	srv, _ := extDiscoveryFake(t, []string{"tokens", "kubeconfigs"}, http.StatusOK, http.StatusOK)
 	c := checkerFor(t, srv)
 	dec := c.Check(t.Context(), runtime.CapabilityRequirement{
 		Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow",
@@ -278,21 +285,23 @@ func TestCapabilityCheckerExtDiscoveryUnreadableIsUnknown(t *testing.T) {
 	t.Parallel()
 	t.Run("group discovery unreadable", func(t *testing.T) {
 		t.Parallel()
-		srv := extDiscoveryFake(t, nil, http.StatusNotFound, http.StatusOK)
+		srv, hits := extDiscoveryFake(t, nil, http.StatusNotFound, http.StatusOK)
 		c := checkerFor(t, srv)
 		dec := c.Check(t.Context(), runtime.CapabilityRequirement{
 			Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow",
 		})
 		assert.Equal(t, runtime.CapabilityUnknown, dec.Outcome)
+		assert.Positive(t, hits.Load(), "the fake received a request: unknown came from its answer, not from a failed connection")
 	})
 	t.Run("resource list unreadable", func(t *testing.T) {
 		t.Parallel()
-		srv := extDiscoveryFake(t, nil, http.StatusOK, http.StatusForbidden)
+		srv, hits := extDiscoveryFake(t, nil, http.StatusOK, http.StatusForbidden)
 		c := checkerFor(t, srv)
 		dec := c.Check(t.Context(), runtime.CapabilityRequirement{
 			Tier: runtime.CapabilityExtDiscovery, Feature: "passwordchangerequests", Unsupported: "the user-password workflow",
 		})
 		assert.Equal(t, runtime.CapabilityUnknown, dec.Outcome)
+		assert.Positive(t, hits.Load(), "the fake received a request: unknown came from its answer, not from a failed connection")
 	})
 }
 
@@ -304,7 +313,7 @@ func TestCapabilityCheckerExtDiscoveryUnreadableIsUnknown(t *testing.T) {
 func TestCapabilityCheckerNonPrimeEnabledFeatureSkipsEditionFetch(t *testing.T) {
 	t.Parallel()
 	var versionHits int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/rancherversion":
 			versionHits++
@@ -334,7 +343,7 @@ func TestCapabilityCheckerNonPrimeEnabledFeatureSkipsEditionFetch(t *testing.T) 
 // that the server's own controllers silently ignore.
 func TestCapabilityCheckerDefaultEnabledPrimeFeatureOnCommunityIsPrimeRequired(t *testing.T) {
 	t.Parallel()
-	srv := featureFake(t,
+	srv, _ := featureFake(t,
 		`{"Version":"v2.15.1","RancherPrime":"false"}`,
 		featureObj(true, true), http.StatusOK)
 	c := checkerFor(t, srv)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 
@@ -17,9 +18,9 @@ const projectsSeed = "seed:secret"
 
 // getDecoded GETs url with bearer and decodes a JSON object body; a body
 // that is not JSON decodes to nil.
-func getDecoded(t *testing.T, srvURL, path, bearer string) (int, map[string]any) {
+func getDecoded(t *testing.T, srv *httptest.Server, path, bearer string) (int, map[string]any) {
 	t.Helper()
-	resp, body := doJSON(t, http.DefaultClient, http.MethodGet, srvURL+path, nil, bearer)
+	resp, body := doJSON(t, srv.Client(), http.MethodGet, srv.URL+path, nil, bearer)
 	var out map[string]any
 	if json.Unmarshal(body, &out) != nil {
 		out = nil
@@ -52,7 +53,7 @@ func TestBuiltinProjectsCollections(t *testing.T) {
 	_, srv := newFacade(t, testrancher.Options{SeedToken: projectsSeed}, fall)
 
 	for _, path := range []string{testrancher.ProjectsCollectionPath, testrancher.ProjectsCollectionPath + "/local"} {
-		status, body := getDecoded(t, srv.URL, path, projectsSeed)
+		status, body := getDecoded(t, srv, path, projectsSeed)
 		require.Equal(t, http.StatusOK, status, path)
 		assert.Equal(t, "collection", body["type"], path)
 		assert.InDelta(t, 2, body["count"], 0, path)
@@ -72,7 +73,7 @@ func TestBuiltinProjectsCollections(t *testing.T) {
 		}
 	}
 
-	status, body := getDecoded(t, srv.URL, testrancher.ProjectsCollectionPath+"/c-nosuchcluster", projectsSeed)
+	status, body := getDecoded(t, srv, testrancher.ProjectsCollectionPath+"/c-nosuchcluster", projectsSeed)
 	require.Equal(t, http.StatusOK, status)
 	assert.Equal(t, "collection", body["type"])
 	assert.NotContains(t, body, "count", "an empty collection carries no count")
@@ -93,8 +94,8 @@ func TestBuiltinProjectsRefuseAnUnknownBearer(t *testing.T) {
 		testrancher.ProjectsCollectionPath + "/local",
 		testrancher.LocalProjectsPath + "/p-default",
 	} {
-		assert.Equal(t, http.StatusUnauthorized, statusOf(t, http.DefaultClient, http.MethodGet, srv.URL+path, ""), path)
-		assert.Equal(t, http.StatusUnauthorized, statusOf(t, http.DefaultClient, http.MethodGet, srv.URL+path, "other:secret"), path)
+		assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodGet, srv.URL+path, ""), path)
+		assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodGet, srv.URL+path, "other:secret"), path)
 	}
 }
 
@@ -106,14 +107,14 @@ func TestBuiltinProjectGetByID(t *testing.T) {
 	fall := &recordingHandler{}
 	_, srv := newFacade(t, testrancher.Options{SeedToken: projectsSeed}, fall)
 
-	status, body := getDecoded(t, srv.URL, testrancher.LocalProjectsPath+"/p-system", projectsSeed)
+	status, body := getDecoded(t, srv, testrancher.LocalProjectsPath+"/p-system", projectsSeed)
 	require.Equal(t, http.StatusOK, status)
 	assert.Equal(t, "management.cattle.io/v3", body["apiVersion"])
 	assert.Equal(t, "Project", body["kind"])
 	assert.Equal(t, map[string]any{"name": "p-system", "namespace": "local"}, body["metadata"])
 	assert.Equal(t, map[string]any{"clusterName": "local", "displayName": "System"}, body["spec"])
 
-	status, body = getDecoded(t, srv.URL, testrancher.LocalProjectsPath+"/p-nosuchproject", projectsSeed)
+	status, body = getDecoded(t, srv, testrancher.LocalProjectsPath+"/p-nosuchproject", projectsSeed)
 	require.Equal(t, http.StatusNotFound, status)
 	assert.Equal(t, "Status", body["kind"])
 	assert.Equal(t, "v1", body["apiVersion"])
@@ -155,36 +156,36 @@ func TestProjectVisibilityDecidesEachCollection(t *testing.T) {
 	fall := &recordingHandler{}
 	_, srv := newFacade(t, testrancher.Options{SeedToken: projectsSeed, ProjectVisibility: visibility}, fall)
 
-	status, body := getDecoded(t, srv.URL, testrancher.ProjectsCollectionPath, "known:secret")
+	status, body := getDecoded(t, srv, testrancher.ProjectsCollectionPath, "known:secret")
 	require.Equal(t, http.StatusOK, status)
 	items := projectItems(t, body)
 	require.Len(t, items, 2)
 	assert.Equal(t, "c-a/p-1", items[0]["id"], "sorted by cluster, then id")
 	assert.Equal(t, "c-b/p-2", items[1]["id"])
 
-	status, body = getDecoded(t, srv.URL, testrancher.ProjectsCollectionPath+"/c-b", "known:secret")
+	status, body = getDecoded(t, srv, testrancher.ProjectsCollectionPath+"/c-b", "known:secret")
 	require.Equal(t, http.StatusOK, status)
 	assert.InDelta(t, 1, body["count"], 0)
 	items = projectItems(t, body)
 	require.Len(t, items, 1)
 	assert.Equal(t, "c-b/p-2", items[0]["id"])
 
-	status, body = getDecoded(t, srv.URL, testrancher.ProjectsCollectionPath+"/c-none", "known:secret")
+	status, body = getDecoded(t, srv, testrancher.ProjectsCollectionPath+"/c-none", "known:secret")
 	require.Equal(t, http.StatusOK, status)
 	assert.NotContains(t, body, "count")
 	assert.Empty(t, projectItems(t, body))
 
-	assert.Equal(t, http.StatusUnauthorized, statusOf(t, http.DefaultClient, http.MethodGet, srv.URL+testrancher.ProjectsCollectionPath+"/c-a", "stranger:secret"))
-	assert.Equal(t, http.StatusInternalServerError, statusOf(t, http.DefaultClient, http.MethodGet, srv.URL+testrancher.ProjectsCollectionPath+"/c-a", "broken:secret"))
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodGet, srv.URL+testrancher.ProjectsCollectionPath+"/c-a", "stranger:secret"))
+	assert.Equal(t, http.StatusInternalServerError, statusOf(t, srv.Client(), http.MethodGet, srv.URL+testrancher.ProjectsCollectionPath+"/c-a", "broken:secret"))
 
 	mu.Lock()
 	assert.Equal(t, []string{"", "c-b", "c-none", "c-a", "c-a"}, clusters)
 	mu.Unlock()
 
 	require.Empty(t, fall.requests)
-	assert.Equal(t, http.StatusTeapot, statusOf(t, http.DefaultClient, http.MethodGet, srv.URL+testrancher.LocalProjectsPath+"/p-default", projectsSeed),
+	assert.Equal(t, http.StatusTeapot, statusOf(t, srv.Client(), http.MethodGet, srv.URL+testrancher.LocalProjectsPath+"/p-default", projectsSeed),
 		"with ProjectVisibility set the GET by id falls through")
-	assert.Equal(t, http.StatusTeapot, statusOf(t, http.DefaultClient, http.MethodGet, srv.URL+testrancher.ProjectsCollectionPath+"/c-a/p-1", "known:secret"),
+	assert.Equal(t, http.StatusTeapot, statusOf(t, srv.Client(), http.MethodGet, srv.URL+testrancher.ProjectsCollectionPath+"/c-a/p-1", "known:secret"),
 		"a steve GET of one project is not a collection")
 }
 
@@ -204,7 +205,7 @@ func TestSteveCollectionCountAcrossPages(t *testing.T) {
 		},
 	}, &recordingHandler{})
 
-	status, body := getDecoded(t, srv.URL, testrancher.ClustersCollectionPath, "known:secret")
+	status, body := getDecoded(t, srv, testrancher.ClustersCollectionPath, "known:secret")
 	require.Equal(t, http.StatusOK, status)
 	assert.NotContains(t, body, "count", "an empty collection carries no count")
 	assert.Empty(t, projectItems(t, body))
@@ -212,13 +213,13 @@ func TestSteveCollectionCountAcrossPages(t *testing.T) {
 	mu.Lock()
 	clusters = []testrancher.ClusterFixture{{ID: "c-a", DisplayName: "a"}, {ID: "c-b", DisplayName: "b"}}
 	mu.Unlock()
-	status, body = getDecoded(t, srv.URL, testrancher.ClustersCollectionPath, "known:secret")
+	status, body = getDecoded(t, srv, testrancher.ClustersCollectionPath, "known:secret")
 	require.Equal(t, http.StatusOK, status)
 	assert.InDelta(t, 2, body["count"], 0)
 	assert.Len(t, projectItems(t, body), 1)
 	require.Equal(t, "1", body["continue"])
 
-	status, body = getDecoded(t, srv.URL, testrancher.ClustersCollectionPath+"?continue=1", "known:secret")
+	status, body = getDecoded(t, srv, testrancher.ClustersCollectionPath+"?continue=1", "known:secret")
 	require.Equal(t, http.StatusOK, status)
 	assert.InDelta(t, 2, body["count"], 0)
 	assert.Len(t, projectItems(t, body), 1)

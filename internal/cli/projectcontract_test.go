@@ -271,7 +271,7 @@ func newContractHarness(t *testing.T) *contractHarness {
 	t.Helper()
 	keyring.MockInit()
 	h := &contractHarness{srv: &contractServer{}}
-	hs := httptest.NewServer(h.srv)
+	hs := httptest.NewTLSServer(h.srv)
 	t.Cleanup(hs.Close)
 	h.base = hs.URL
 	cfgDir, home := t.TempDir(), t.TempDir()
@@ -284,6 +284,7 @@ func newContractHarness(t *testing.T) *contractHarness {
 	t.Setenv("KUBECONFIG", filepath.Join(home, "kubeconfig"))
 	t.Setenv(config.EnvCredentialStore, "file")
 	t.Setenv(config.EnvURL, h.base)
+	t.Setenv(config.EnvCACert, string(pemFromServer(t, hs)))
 	t.Setenv(config.EnvToken, "token-abc:secret")
 	seed := &config.Config{CurrentServer: "x", Servers: map[string]config.Server{"x": {URL: h.base}}}
 	seed.SetPath(config.FilePath(cfgDir))

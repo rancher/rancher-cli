@@ -314,7 +314,7 @@ func newCallerHarness(t *testing.T, collide bool) *callerHarness {
 		RequestHook: s.record,
 		Fallthrough: http.HandlerFunc(callerFallthrough),
 	})
-	hs := httptest.NewServer(f)
+	hs := httptest.NewTLSServer(f)
 	t.Cleanup(hs.Close)
 	s.base = hs.URL
 
@@ -330,7 +330,7 @@ func newCallerHarness(t *testing.T, collide bool) *callerHarness {
 	t.Setenv(config.EnvToken, "")
 	require.NoError(t, os.Unsetenv(config.EnvURL))
 	require.NoError(t, os.Unsetenv(config.EnvToken))
-	cfg := &config.Config{CredentialStore: "file", CurrentServer: "x", Servers: map[string]config.Server{"x": {URL: s.base}}}
+	cfg := &config.Config{CredentialStore: "file", CurrentServer: "x", Servers: map[string]config.Server{"x": {URL: s.base, CA: string(pemFromServer(t, hs))}}}
 	cfg.SetPath(config.FilePath(cfgDir))
 	require.NoError(t, cfg.Write())
 	require.NoError(t, config.NewFileStore(cfgDir).SetToken(config.ServerRef{Name: "x", URL: s.base}, callerBearer))

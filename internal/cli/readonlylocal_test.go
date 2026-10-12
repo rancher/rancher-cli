@@ -136,7 +136,7 @@ func TestGetTokenRunsUnderEnvReadOnly(t *testing.T) {
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	_, stderr, _ := runBounded(t, root, []string{
-		"auth", "get-token", "--server", os.Getenv(config.EnvURL), "--cluster", "c1", "--name", "kube",
+		"auth", "get-token", "--server", os.Getenv(config.EnvURL), "--cacert", os.Getenv(config.EnvCACert), "--cluster", "c1", "--name", "kube",
 	})
 	assert.NotContains(t, stderr, "is a local command")
 	assert.NotEmpty(t, rec.take(), "the command reached the server")

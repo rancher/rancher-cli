@@ -2,7 +2,9 @@ package conformance
 
 import (
 	"bufio"
+	"fmt"
 	"go/build/constraint"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -66,8 +68,16 @@ func customTags(t *testing.T, path string) []string {
 	f, err := os.Open(path)
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
+	tags, err := customTagsIn(f)
+	require.NoError(t, err, "%s", path)
+	return tags
+}
+
+// customTagsIn returns the non-platform identifiers of the //go:build lines
+// that precede the package clause of the Go source in r.
+func customTagsIn(r io.Reader) ([]string, error) {
 	var tags []string
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		line := sc.Text()
 		if strings.HasPrefix(line, "package ") {
@@ -77,7 +87,9 @@ func customTags(t *testing.T, path string) []string {
 			continue
 		}
 		expr, err := constraint.Parse(line)
-		require.NoError(t, err, "%s: %s", path, line)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", line, err)
+		}
 		expr.Eval(func(tag string) bool {
 			if !platformTags[tag] && !strings.HasPrefix(tag, "go1.") && !strings.HasPrefix(tag, "goexperiment.") {
 				tags = append(tags, tag)
@@ -85,8 +97,7 @@ func customTags(t *testing.T, path string) []string {
 			return true
 		})
 	}
-	require.NoError(t, sc.Err())
-	return tags
+	return tags, sc.Err()
 }
 
 var lintBuildTagLine = regexp.MustCompile(`^\s+-\s+(\S+)\s*$`)

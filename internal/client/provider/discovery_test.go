@@ -65,7 +65,7 @@ func legacyDiscovery(w http.ResponseWriter, r *http.Request) bool {
 
 func discoveryClient(t *testing.T, srv *httptest.Server) engine.ClusterClient {
 	t.Helper()
-	c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "local")
+	c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local")
 	require.NoError(t, err)
 	return c
 }

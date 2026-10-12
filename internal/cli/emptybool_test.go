@@ -161,9 +161,10 @@ func methodRecorderEnv(t *testing.T) *methodRecorder {
 	t.Helper()
 	extraArgsEnv(t)
 	rec := &methodRecorder{}
-	srv := httptest.NewServer(rec)
+	srv := httptest.NewTLSServer(rec)
 	t.Cleanup(srv.Close)
 	t.Setenv(config.EnvURL, srv.URL)
+	t.Setenv(config.EnvCACert, string(pemFromServer(t, srv)))
 	return rec
 }
 

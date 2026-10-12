@@ -17,7 +17,7 @@ import (
 func TestIdentityCreateNamesTheFieldManager(t *testing.T) {
 	t.Parallel()
 	var gotManager, gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.NotFound(w, r)
 			return
@@ -29,7 +29,7 @@ func TestIdentityCreateNamesTheFieldManager(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	id, err := Identity(t.Context(), config.Effective{URL: srv.URL, Token: "id:secret"})
+	id, err := Identity(t.Context(), config.Effective{URL: srv.URL, CA: serverCA(srv), Token: "id:secret"})
 	require.NoError(t, err)
 	assert.Equal(t, "u-1", id)
 	assert.Equal(t, "/k8s/clusters/local/apis/ext.cattle.io/v1/selfusers", gotPath)

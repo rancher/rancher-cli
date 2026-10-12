@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"context"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,7 +22,24 @@ import (
 // verifyOwner is the owner the verify fake reports for its token.
 const verifyOwner = "u-owner1"
 
-// newVerifyFake starts an httptest server standing in for the
+// verifyCA returns the certificate of a verify fake as the PEM text a
+// server entry's CA takes, so provider.Owner builds its own transport.
+func verifyCA(srv *httptest.Server) string {
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+}
+
+// someCA returns a CA certificate that signs nothing the test reaches: a
+// server entry that names an unreachable address carries it so provider.Owner
+// builds its own transport and dials the address, instead of using
+// http.DefaultTransport.
+func someCA(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewTLSServer(http.NotFoundHandler())
+	defer srv.Close()
+	return verifyCA(srv)
+}
+
+// newVerifyFake starts an httptest TLS server standing in for the
 // SelfSubjectReview provider.Owner posts (BaseURL +
 // /k8s/clusters/local/apis/authentication.k8s.io/v1/selfsubjectreviews): a
 // request bearing wantToken is answered with verifyOwner as the username
@@ -30,7 +48,7 @@ const verifyOwner = "u-owner1"
 // counted in *requests when requests is set.
 func newVerifyFake(t *testing.T, wantToken string, requests ...*int) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, n := range requests {
 			*n++
 		}
@@ -65,7 +83,7 @@ func TestLoginVerifiesValidTokenBeforeStoringSucceeds(t *testing.T) {
 	t.Parallel()
 	srv := newVerifyFake(t, "id:sec")
 	dir, store := cmdtest.FilePolicyDir(t)
-	seedServer(t, dir, "prod", srv.URL, "", false)
+	seedServer(t, dir, "prod", srv.URL, verifyCA(srv), false)
 	in := cmdtest.Input{Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}}
 	res, err := verifyLoginCmd(dir, store).Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 	require.NoError(t, err)
@@ -87,7 +105,7 @@ func TestLoginRecordsThePastedTokensOwner(t *testing.T) {
 		var requests int
 		srv := newVerifyFake(t, "id:sec", &requests)
 		dir, store := cmdtest.FilePolicyDir(t)
-		seedServer(t, dir, "prod", srv.URL, "", false)
+		seedServer(t, dir, "prod", srv.URL, verifyCA(srv), false)
 		in := cmdtest.Input{Flag: map[string]bool{"token-stdin": true, "no-verify": noVerify}, Pos: []string{"prod"}}
 		res, err := verifyLoginCmd(dir, store).Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 		require.NoError(t, err)
@@ -107,7 +125,7 @@ func TestLoginVerifyRejects401TokenNothingPersisted(t *testing.T) {
 	t.Parallel()
 	srv := newVerifyFake(t, "good:sec")
 	dir, store := cmdtest.FilePolicyDir(t)
-	seedServer(t, dir, "prod", srv.URL, "", false)
+	seedServer(t, dir, "prod", srv.URL, verifyCA(srv), false)
 	in := cmdtest.Input{Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}}
 	_, err := verifyLoginCmd(dir, store).Execute(t.Context(), in, cmdtest.StdinPrompter("bad:sec\n"))
 	var ce *clierr.Error
@@ -123,7 +141,7 @@ func TestLoginVerifyRejects401TokenNothingPersisted(t *testing.T) {
 func TestLoginVerifyUnreachableServerRefusalClassifiesReachFailure(t *testing.T) {
 	t.Parallel()
 	dir, store := cmdtest.FilePolicyDir(t)
-	seedServer(t, dir, "prod", "https://127.0.0.1:1", "", false)
+	seedServer(t, dir, "prod", "https://127.0.0.1:1", someCA(t), false)
 	in := cmdtest.Input{Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}}
 	_, err := verifyLoginCmd(dir, store).Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 	var ce *clierr.Error
@@ -203,7 +221,7 @@ func TestLoginDelegatedVerifiesTokenBeforeStoring(t *testing.T) {
 	t.Parallel()
 	srv := newVerifyFake(t, "id:sec")
 	dir, store := cmdtest.FilePolicyDir(t)
-	in := cmdtest.Input{Str: map[string]string{"url": srv.URL}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}}
+	in := cmdtest.Input{Str: map[string]string{"url": srv.URL, "cacert": verifyCA(srv)}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}}
 	res, err := verifyLoginCmd(dir, store).Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(res.Text, "logged in to prod ("+srv.URL+")"))
@@ -222,7 +240,7 @@ func TestLoginDelegatedVerifyFailureGetsUndoGuidanceNotNoVerifyHint(t *testing.T
 	t.Parallel()
 	dir, store := cmdtest.FilePolicyDir(t)
 	cmd := verifyLoginCmd(dir, store)
-	in := cmdtest.Input{Str: map[string]string{"url": "https://127.0.0.1:1"}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"fresh"}}
+	in := cmdtest.Input{Str: map[string]string{"url": "https://127.0.0.1:1", "cacert": someCA(t)}, Flag: map[string]bool{"token-stdin": true}, Pos: []string{"fresh"}}
 	_, err := cmd.Execute(t.Context(), in, cmdtest.StdinPrompter("id:sec\n"))
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)

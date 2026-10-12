@@ -49,7 +49,7 @@ func newReviewServer(t *testing.T, status int, contentType, body string) (*httpt
 
 func clientFor(t *testing.T, srv *httptest.Server) engine.ClusterClient {
 	t.Helper()
-	c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "local")
+	c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local")
 	require.NoError(t, err)
 	return c
 }
@@ -184,7 +184,7 @@ func TestPostReviewNoResponseIsRetryableError(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	url := srv.URL
 	srv.Close()
-	c, err := NewClusterClient(&rest.Config{Host: url, BearerToken: "t"}, "local")
+	c, err := NewClusterClient(&rest.Config{Host: url, BearerToken: "t", Transport: srv.Client().Transport}, "local")
 	require.NoError(t, err)
 	res, err := c.PostReview(t.Context(), engine.ReviewRequest{Kind: engine.ReviewSelfSubjectAccess, Object: reviewObj("SelfSubjectAccessReview")})
 	ce, ok := errors.AsType[*clierr.Error](err)
@@ -319,7 +319,7 @@ func TestPostReviewSendsImpersonateUserOnly(t *testing.T) {
 			"status": map[string]any{"userInfo": map[string]any{"username": "u-abc12"}}})
 	}))
 	t.Cleanup(srv.Close)
-	rc := &rest.Config{Host: srv.URL, BearerToken: "t", Impersonate: rest.ImpersonationConfig{UserName: "u-abc12"}}
+	rc := &rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport, Impersonate: rest.ImpersonationConfig{UserName: "u-abc12"}}
 	c, err := NewClusterClient(rc, "c-1")
 	require.NoError(t, err)
 	_, err = c.PostReview(t.Context(), engine.ReviewRequest{Kind: engine.ReviewSelfSubjectIdentity, Object: reviewObj("SelfSubjectReview")})

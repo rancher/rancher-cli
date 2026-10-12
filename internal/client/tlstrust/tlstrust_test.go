@@ -114,7 +114,8 @@ func dialFail(t *testing.T, leafCert tls.Certificate, roots *x509.CertPool, serv
 }
 
 func TestClassifyNotATLSFailure(t *testing.T) {
-	_, err := http.Get("http://127.0.0.1:0")
+	client := &http.Client{Transport: &http.Transport{}}
+	_, err := client.Get("http://127.0.0.1:0")
 	require.Error(t, err)
 	assert.Nil(t, Classify(err, "example.com", time.Now()))
 }

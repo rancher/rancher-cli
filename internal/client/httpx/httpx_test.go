@@ -223,7 +223,7 @@ func TestDo(t *testing.T) {
 		req, err := http.NewRequest(http.MethodGet, server.URL, nil)
 		require.NoError(t, err)
 
-		resp, body, err := Do(http.DefaultClient, req)
+		resp, body, err := Do(server.Client(), req)
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusCreated, resp.StatusCode)
 		assert.Equal(t, `{"ok":true}`, string(body))
@@ -238,7 +238,7 @@ func TestDo(t *testing.T) {
 		req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:0", nil)
 		require.NoError(t, err)
 
-		_, body, err := Do(http.DefaultClient, req)
+		_, body, err := Do(&http.Client{Transport: &http.Transport{}}, req)
 		require.Error(t, err)
 		assert.Nil(t, body)
 	})

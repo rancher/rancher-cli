@@ -62,9 +62,9 @@ func factoryFor(t *testing.T, srvURL string) *clientFactory {
 	return newClientFactory(dir, &countingStore{token: "tok"})
 }
 
-func completeClusters(t *testing.T, src completion.Source, srvURL string, req completion.Request) ([]string, int) {
+func completeClusters(t *testing.T, src completion.Source, srv *httptest.Server, req completion.Request) ([]string, int) {
 	t.Helper()
-	conn := tracedConnection(http.DefaultClient, TokenCapability{Token: "tok", ServerURL: srvURL}, steve.MaxPages)
+	conn := tracedConnection(srv.Client(), TokenCapability{Token: "tok", ServerURL: srv.URL}, steve.MaxPages)
 	got := src.Complete(t.Context(), conn, req)
 	return got.Names, conn.Used()
 }
@@ -91,7 +91,7 @@ func TestClusterCompletionReadsWhatTheCommandReads(t *testing.T) {
 	commandRequests := requested()
 	reset()
 
-	shared, used := completeClusters(t, accesscomplete.SteveClusterSource(), srv.URL, completion.Request{Flag: "cluster"})
+	shared, used := completeClusters(t, accesscomplete.SteveClusterSource(), srv, completion.Request{Flag: "cluster"})
 	assert.Equal(t, commandRequests, requested(), "the same pages, in the same order")
 	assert.Equal(t, len(commandRequests), used)
 	reset()
@@ -105,7 +105,7 @@ func TestClusterCompletionReadsWhatTheCommandReads(t *testing.T) {
 	}
 	assert.Equal(t, want, shared, "ids plus the display names that are unique")
 
-	projects, _ := completeClusters(t, accesscomplete.ProjectsClusterSource(), srv.URL, completion.Request{Flag: "cluster"})
+	projects, _ := completeClusters(t, accesscomplete.ProjectsClusterSource(), srv, completion.Request{Flag: "cluster"})
 	assert.Equal(t, commandRequests, requested())
 	assert.ElementsMatch(t, append(slices.Clone(shared), "local"), projects)
 
@@ -160,7 +160,7 @@ func TestClusterCompletionRefusesWhatTheCommandRefuses(t *testing.T) {
 			commandRequests := len(requested())
 			reset()
 			for _, src := range []completion.Source{accesscomplete.SteveClusterSource(), accesscomplete.ProjectsClusterSource()} {
-				names, used := completeClusters(t, src, srv.URL, completion.Request{Flag: "cluster"})
+				names, used := completeClusters(t, src, srv, completion.Request{Flag: "cluster"})
 				assert.Empty(t, names)
 				assert.LessOrEqual(t, used, commandRequests, "one walk at most")
 				if tt.walk > 0 {
@@ -176,7 +176,7 @@ func TestClusterCompletionRefusesWhatTheCommandRefuses(t *testing.T) {
 			"":  {Data: []map[string]any{item("c-m-a", "a")}, Count: new(2), Continue: "n", Revision: "1"},
 			"n": {Data: []map[string]any{item("c-m-b", "b")}, Count: new(2), Revision: "1"},
 		})
-		conn := tracedConnection(http.DefaultClient, TokenCapability{Token: "tok", ServerURL: srv.URL}, 1)
+		conn := tracedConnection(srv.Client(), TokenCapability{Token: "tok", ServerURL: srv.URL}, 1)
 		assert.Empty(t, accesscomplete.SteveClusterSource().Complete(t.Context(), conn, completion.Request{Flag: "cluster"}).Names)
 	})
 }

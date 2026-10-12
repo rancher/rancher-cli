@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -148,9 +150,14 @@ func TestMain(m *testing.M) {
 		_ = os.Unsetenv(k)
 	}
 	_ = os.Setenv("HTTPS_PROXY", sharedConnectProxyForTests.srv.URL)
+	restore := testtransport.GuardDefaultTransport()
 	startSharedEnvtest()
 	code := m.Run()
 	stopSharedEnvtest()
+	if err := restore(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		code = 1
+	}
 	os.Exit(code)
 }
 

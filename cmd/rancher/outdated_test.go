@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -17,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,13 +29,21 @@ const mainChildEnv = "RANCHER_MAIN_TEST_CHILD"
 
 // TestMain runs main itself when runMainProcess starts the test binary as a
 // child, so a test sees main as a process does: its exit code, stdout and
-// stderr. The child's arguments are the command line main reads.
+// stderr. The child's arguments are the command line main reads. The test
+// process itself fails any request sent through http.DefaultTransport:
+// closing any httptest server closes that transport's idle connections.
 func TestMain(m *testing.M) {
 	if os.Getenv(mainChildEnv) == "1" {
 		main()
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	restore := testtransport.GuardDefaultTransport()
+	code := m.Run()
+	if err := restore(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		code = 1
+	}
+	os.Exit(code)
 }
 
 // runMainProcess runs main in a child process for words, the command line

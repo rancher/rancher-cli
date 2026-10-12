@@ -66,18 +66,33 @@ var refusals = []refusal{
 	{"401 text", http.StatusUnauthorized, "text/plain", "Unauthorized", clierr.CodeAuth, true},
 }
 
-// refusingServer answers every request with r.
-func refusingServer(t *testing.T, r refusal) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+// refuse answers every request with r.
+func refuse(r refusal) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if r.contentType != "" {
 			w.Header().Set("Content-Type", r.contentType)
 		}
 		w.WriteHeader(r.status)
 		_, _ = w.Write([]byte(r.body))
-	}))
+	})
+}
+
+// refusingServer answers every request with r.
+func refusingServer(t *testing.T, r refusal) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(refuse(r))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// refusingTLSServer answers every request with r over TLS, for the calls
+// that take a config.Effective: the CA it returns makes client-go build its
+// own transport instead of using http.DefaultTransport.
+func refusingTLSServer(t *testing.T, r refusal) (srv *httptest.Server, caPEM string) {
+	t.Helper()
+	srv = httptest.NewTLSServer(refuse(r))
+	t.Cleanup(srv.Close)
+	return srv, serverCA(srv)
 }
 
 // clusterClientCalls makes one call of each ClusterClient method for gvr;
@@ -153,7 +168,8 @@ func TestEveryClusterClientMethodClassifiesARefusal(t *testing.T) {
 	for _, r := range refusals {
 		t.Run(r.name, func(t *testing.T) {
 			t.Parallel()
-			c, err := NewClusterClient(&rest.Config{Host: refusingServer(t, r).URL, BearerToken: "t"}, "local")
+			srv := refusingServer(t, r)
+			c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local")
 			require.NoError(t, err)
 			for name, call := range clusterClientCalls {
 				rows := gvrs[:1]
@@ -208,7 +224,8 @@ func TestEveryProviderRequestClassifiesARefusal(t *testing.T) {
 	for _, r := range refusals {
 		t.Run(r.name, func(t *testing.T) {
 			t.Parallel()
-			eff := config.Effective{URL: refusingServer(t, r).URL, Token: "token-x:y"}
+			srv, caPEM := refusingTLSServer(t, r)
+			eff := config.Effective{URL: srv.URL, CA: caPEM, Token: "token-x:y"}
 			for name, call := range providerCalls {
 				err := call(t.Context(), eff)
 				ce, ok := errors.AsType[*clierr.Error](err)
@@ -234,7 +251,7 @@ func TestEveryProviderRequestClassifiesARefusal(t *testing.T) {
 func TestCuratedNotFoundKeepsTheStatus(t *testing.T) {
 	t.Parallel()
 	srv := refusingServer(t, refusal{status: http.StatusNotFound})
-	c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t"}, "local")
+	c, err := NewClusterClient(&rest.Config{Host: srv.URL, BearerToken: "t", Transport: srv.Client().Transport}, "local")
 	require.NoError(t, err)
 	gvr := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
 	for name, call := range map[string]func() error{

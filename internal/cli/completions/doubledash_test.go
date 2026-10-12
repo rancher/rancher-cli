@@ -18,6 +18,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/rancher/rancher-cli/internal/testtransport"
 )
 
 var (
@@ -45,7 +47,12 @@ func realRancher() (string, error) {
 }
 
 func TestMain(m *testing.M) {
+	restore := testtransport.GuardDefaultTransport()
 	code := m.Run()
+	if err := restore(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		code = 1
+	}
 	if rancherBinDir != "" {
 		_ = os.RemoveAll(rancherBinDir)
 	}

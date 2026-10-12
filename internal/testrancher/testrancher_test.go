@@ -564,7 +564,7 @@ func TestFacadeIdPURLPointsProviderAtExternalOrigin(t *testing.T) {
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 
-	resp, err := http.Get(srv.URL + "/v1-public/authproviders")
+	resp, err := srv.Client().Get(srv.URL + "/v1-public/authproviders")
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	var doc struct {
@@ -582,14 +582,14 @@ func TestFacadeIdPURLPointsProviderAtExternalOrigin(t *testing.T) {
 	assert.Equal(t, "https://idp.test:8443/idp/devicecode", azure["deviceAuthUrl"])
 	assert.Equal(t, "https://idp.test:8443/idp/token", azure["tokenUrl"])
 
-	local, err := http.Post(srv.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
+	local, err := srv.Client().Post(srv.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
 	require.NoError(t, err)
 	_ = local.Body.Close()
 	assert.Equal(t, http.StatusNotFound, local.StatusCode, "the facade must not serve the IdP on its own origin when IdPURL is set")
 
 	idp := httptest.NewServer(f.IdPHandler())
 	t.Cleanup(idp.Close)
-	ext, err := http.Post(idp.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
+	ext, err := idp.Client().Post(idp.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
 	require.NoError(t, err)
 	defer func() { _ = ext.Body.Close() }()
 	assert.Equal(t, http.StatusOK, ext.StatusCode)
@@ -602,7 +602,7 @@ func TestIdPHandlerWithoutIdPIsNotFound(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(testrancher.New(testrancher.Options{}).IdPHandler())
 	t.Cleanup(srv.Close)
-	resp, err := http.Post(srv.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
+	resp, err := srv.Client().Post(srv.URL+"/idp/devicecode", "application/x-www-form-urlencoded", nil)
 	require.NoError(t, err)
 	_ = resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
@@ -635,7 +635,7 @@ func TestFacadeJSONLoginReturnsV3ShapeWithDescription(t *testing.T) {
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	body := `{"type":"localProvider","responseType":"json","description":"rancher-cli login @ h [op:0123456789ab]","username":"e2e-user","password":"e2e-pass"}`
-	resp, err := http.Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
+	resp, err := srv.Client().Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -661,7 +661,7 @@ func TestFacadeDeleteRecordsKindNameAndBearer(t *testing.T) {
 	req, err := http.NewRequest(http.MethodDelete, srv.URL+"/k8s/clusters/local/apis/management.cattle.io/v3/tokens/token-abc", nil)
 	require.NoError(t, err)
 	req.Header.Set("Authorization", "Bearer seed:secret")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := srv.Client().Do(req)
 	require.NoError(t, err)
 	_ = resp.Body.Close()
 	recs := f.DeleteRequests()
@@ -691,7 +691,7 @@ func TestFacadeLoginFailureFixturesCreateTheRightKind(t *testing.T) {
 			srv := httptest.NewServer(f)
 			t.Cleanup(srv.Close)
 			body := `{"type":"localProvider","responseType":"json","username":"e2e-user","password":"e2e-pass"}`
-			resp, err := http.Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
+			resp, err := srv.Client().Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
 			if err == nil {
 				_ = resp.Body.Close()
 			}
@@ -711,7 +711,7 @@ func TestFacadeKubeconfigLoginIsAnExtObjectWithAName(t *testing.T) {
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	body := `{"type":"localProvider","responseType":"kubeconfig","username":"e2e-user","password":"e2e-pass"}`
-	resp, err := http.Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
+	resp, err := srv.Client().Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(body))
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	var got struct {
@@ -763,7 +763,7 @@ func TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx(t *testing.T) {
 				req, err = http.NewRequest(http.MethodPost, srv.URL+"/v1-public/login", strings.NewReader(`{"type":"localProvider","responseType":"json","username":"e2e-user","password":"e2e-pass"}`))
 				require.NoError(t, err)
 			}
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := srv.Client().Do(req)
 			require.NoError(t, err)
 			_ = resp.Body.Close()
 			assert.Equal(t, tc.status, resp.StatusCode)
@@ -793,7 +793,7 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 			f := testrancher.New(tc.opts)
 			srv := httptest.NewServer(f)
 			t.Cleanup(srv.Close)
-			login, err := http.Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(`{"type":"localProvider","responseType":"json","username":"e2e-user","password":"e2e-pass"}`))
+			login, err := srv.Client().Post(srv.URL+"/v1-public/login", "application/json", strings.NewReader(`{"type":"localProvider","responseType":"json","username":"e2e-user","password":"e2e-pass"}`))
 			require.NoError(t, err)
 			_ = login.Body.Close()
 			sessionKind := "v3"
@@ -804,7 +804,7 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 			create, err := http.NewRequest(http.MethodPost, srv.URL+extTokensPath, strings.NewReader(`{"spec":{}}`))
 			require.NoError(t, err)
 			create.Header.Set("Authorization", "Bearer "+sBearer)
-			resp, err := http.DefaultClient.Do(create)
+			resp, err := srv.Client().Do(create)
 			require.NoError(t, err)
 			_ = resp.Body.Close()
 			var dBearer string
@@ -822,7 +822,7 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 				req, err := http.NewRequest(http.MethodDelete, srv.URL+path+name, nil)
 				require.NoError(t, err)
 				req.Header.Set("Authorization", "Bearer "+bearer)
-				resp, err := http.DefaultClient.Do(req)
+				resp, err := srv.Client().Do(req)
 				require.NoError(t, err)
 				_ = resp.Body.Close()
 				return resp.StatusCode
@@ -842,13 +842,13 @@ func TestFacadeAuthTokenDepositOnCommand(t *testing.T) {
 	f := testrancher.New(testrancher.Options{EnableSAMLAuthTokens: true})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	resp, err := http.Get(srv.URL + "/v1-public/authtokens/req-1")
+	resp, err := srv.Client().Get(srv.URL + "/v1-public/authtokens/req-1")
 	require.NoError(t, err)
 	_ = resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	pub := testPublicKeyB64(t)
 	f.DepositAuthToken("req-1", pub)
-	resp, err = http.Get(srv.URL + "/v1-public/authtokens/req-1")
+	resp, err = srv.Client().Get(srv.URL + "/v1-public/authtokens/req-1")
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -872,7 +872,7 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 	create, err := http.NewRequest(http.MethodPost, srv.URL+extTokensPath, strings.NewReader(`{"spec":{"description":"x [op:0123456789ab]"}}`))
 	require.NoError(t, err)
 	create.Header.Set("Authorization", "Bearer seed:secret")
-	resp, err := http.DefaultClient.Do(create)
+	resp, err := srv.Client().Do(create)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -891,7 +891,7 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 		req, err := http.NewRequest(http.MethodGet, srv.URL+path, nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer seed:secret")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := srv.Client().Do(req)
 		require.NoError(t, err)
 		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -922,7 +922,7 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer seed:secret")
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := srv.Client().Do(req)
 		require.NoError(t, err)
 		_ = resp.Body.Close()
 		return resp.StatusCode
