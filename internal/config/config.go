@@ -61,10 +61,27 @@ func LogoutHintFor(name string) string {
 // accurate.
 func (c *Config) ErrNotLoggedIn() *clierr.Error {
 	servers := make(map[string]string, len(c.Servers))
+	withCA := make(map[string]bool, len(c.Servers))
 	for n, s := range c.Servers {
 		servers[n] = s.URL
+		withCA[n] = s.CA != ""
 	}
-	return ErrNotLoggedInFor(servers)
+	return ErrNotLoggedInFor(servers, withCA)
+}
+
+// InlineCAClause is the clause that follows an auth login command whose
+// CA is carried inline (a PEM, not a path): the login needs the CA from a
+// file, which the command cannot name, and says where the PEM is carried.
+// The login remedies of internal/token and ErrNotLoggedInFor share it.
+func InlineCAClause(src CASource) string {
+	const clause = ", adding --cacert with the path of a file that holds the server's CA certificate, which "
+	switch {
+	case src.Kind == CASourceVariable:
+		return clause + EnvCACert + " carries inline"
+	case src.Kind == CASourceEntry && src.Entry != "":
+		return clause + "server entry " + clierr.ShellQuote(src.Entry) + " carries inline in config.yaml"
+	}
+	return clause + "this exec entry carries inline"
 }
 
 // ErrNotLoggedInFor is ErrNotLoggedIn's core over a name→URL map, usable by
@@ -76,8 +93,10 @@ func (c *Config) ErrNotLoggedIn() *clierr.Error {
 // gets a concrete quoted login hint; more than one lists every name as a
 // selectable candidate plus body guidance, again with no template hint - a
 // rewritten constructor cannot adopt the executable-hint contract and keep a
-// placeholder form.
-func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
+// placeholder form. withCA names the entries that save a CA: the login the
+// message gives for the plugin login entry's server then adds the CA it
+// needs, and drops the hint, which would not run as written.
+func ErrNotLoggedInFor(servers map[string]string, withCA map[string]bool) *clierr.Error {
 	if len(servers) == 0 {
 		return clierr.New(clierr.CodeNotLoggedIn,
 			"not logged in and no "+EnvURL+" set; add a server with: "+clierr.Rancher+" auth login --url <url>")
@@ -97,9 +116,12 @@ func ErrNotLoggedInFor(servers map[string]string) *clierr.Error {
 			url := servers[names[0]]
 			name := strings.TrimLeft(clierr.HostEntryName("", url), "-")
 			login := LoginCommand + " " + clierr.ShellQuote(name) + " --url " + clierr.ShellQuote(url)
-			return clierr.New(clierr.CodeNotLoggedIn, "not logged in - no current server; the only server entry, "+
-				clierr.ShellQuote(names[0])+", is the exec plugin's own login entry, which auth login refuses; log in under a server entry of your own with: "+login).
-				WithHint(login)
+			msg := "not logged in - no current server; the only server entry, " +
+				clierr.ShellQuote(names[0]) + ", is the exec plugin's own login entry, which auth login refuses; log in under a server entry of your own with: "
+			if withCA[names[0]] {
+				return clierr.New(clierr.CodeNotLoggedIn, msg+login+InlineCAClause(CASource{Kind: CASourceEntry, Entry: names[0]}))
+			}
+			return clierr.New(clierr.CodeNotLoggedIn, msg+login).WithHint(login)
 		}
 		return clierr.New(clierr.CodeNotLoggedIn, "not logged in - no current server").
 			WithHint(LoginHintFor(names[0]))
@@ -180,10 +202,17 @@ type Server struct {
 	// CAFingerprint is the SHA-256 fingerprint (lowercase hex, see
 	// tlstrust.Fingerprint) of the certificate a guided-trust consent
 	// accepted for CA. It exists only while CA is exactly that single
-	// certificate: every write that replaces CA writes a fresh Server value
-	// rather than patching CA in place, so an explicit CA replacement clears
-	// this field for free.
+	// certificate: the trust-prompt write and its rollback set it to the
+	// accepted certificate's fingerprint, and the CA-only update and the URL
+	// change clear it.
 	CAFingerprint string `json:"caFingerprint,omitempty"`
+	// CAFromEnvironment records, for an entry with no CA, that the last
+	// auth login connected with RANCHER_CLI_CACERT: the server needs that CA
+	// and the entry does not save it. It is never set while CA is set, is
+	// cleared by a login that connected without the variable and by every
+	// write that replaces or clears CA, and records only that fact, never
+	// the variable's value. Revokes use the variable for such an entry.
+	CAFromEnvironment bool `json:"caFromEnvironment,omitempty"`
 	// Provenance says who created the stored login credential and therefore
 	// who may revoke it. Absent on entries written before provenance was
 	// persisted; those read as user entries.

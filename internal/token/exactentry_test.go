@@ -746,10 +746,10 @@ func TestCacheRecordIsAnchoredToTheIdentifiedEntry(t *testing.T) {
 }
 
 // TestResolveConnCAFollowsTheIdentifiedEntry asserts which CA a call
-// connects with: an explicit --cacert first, then the identified entry's
-// own CA (none if it has none, never another entry's), else the current
-// server's or the first entry by name as before. An identified entry at
-// another URL stops the call.
+// connects with when RANCHER_CLI_CACERT is unset: an explicit --cacert
+// first, then the identified entry's own CA (none if it has none, never
+// another entry's), else the current server's or the first entry by name.
+// An identified entry at another URL stops the call.
 func TestResolveConnCAFollowsTheIdentifiedEntry(t *testing.T) {
 	caProd := selfSignedCAPEM(t)
 	caEU := selfSignedCAPEM(t)
@@ -790,7 +790,7 @@ func TestResolveConnCAFollowsTheIdentifiedEntry(t *testing.T) {
 			if tc.noServer {
 				flagServer = ""
 			}
-			_, _, _, source, _, err := cmd.resolveConnWithCA(flagServer, "c-1", tc.cacert, tc.wantName, tc.shim)
+			_, _, _, source, _, _, err := cmd.resolveConnWithCA(flagServer, "c-1", tc.cacert, tc.wantName, tc.shim, false)
 			if tc.wantCode != "" {
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok, "%v", err)

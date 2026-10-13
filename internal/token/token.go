@@ -345,7 +345,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 
 	// Full resolution (config + CA disk I/O): required to authenticate on a miss
 	// and to build the definitive cache key when --server was not provided.
-	server, caPEM, clusterID, caSource, choice, err := t.resolveConnWithCA(params.Server, params.Cluster, params.CACert, params.Name, params.legacyShim)
+	server, caPEM, clusterID, caSource, caFrom, choice, err := t.resolveConnWithCA(params.Server, params.Cluster, params.CACert, params.Name, params.legacyShim, params.SkipVerify)
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -417,7 +417,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	}
 
 	t.resolved = choice
-	t.user = userCheck{userID: params.UserID, clusterID: clusterID, serverID: serverID, caSource: caSource}
+	t.user = userCheck{userID: params.UserID, clusterID: clusterID, serverID: serverID, caSource: caSource, caFrom: caFrom}
 	rancherToken, reuseOn, binding, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
 	// The plugin-created login exists to serve cluster-scoped tokens, so it
 	// runs only for an invocation that names a cluster. The legacy shim
@@ -464,7 +464,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		input.idpClient = httpx.NewExternal(httpx.DefaultTimeout)
 		// This lane is taken only when the plugin-created login is not,
 		// so a sign-in here keeps no login credential.
-		call := noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim, userID: params.UserID}
+		call := noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, userID: params.UserID}
 		if skipping {
 			call.skipped, call.skippedOwner = skipped.entry, skipped.owner
 		}
@@ -499,7 +499,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: fresh, binding: binding}
 	case err != nil:
 		// The plugin-created login reaches the same sign-in prompts.
-		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim, keepsLogin: pluginLane, userID: params.UserID})
+		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, keepsLogin: pluginLane, userID: params.UserID})
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth provider and credentials")
@@ -1354,12 +1354,16 @@ func generateKey() (string, error) {
 	return string(token), nil
 }
 
-// resolveConn fills server/CA/cluster from flags, falling back to the CLI config
-// (which already merges env over the file). Flags win over config. An explicit
-// --server with no --cacert never inherits the CURRENT context's CA - that CA
-// belongs to whatever server the context happens to point at, which may differ
-// from the server just named; instead it borrows the CA of the configured
-// server entry whose URL actually matches (see caForServer).
+// resolveConn fills server/CA/cluster from flags, falling back to the CLI
+// config. Flags win over the environment, and the environment over saved
+// state. The CA is the first of: --cacert (--cacerts for the shim);
+// RANCHER_CLI_CACERT, unless RANCHER_CLI_URL names another server or the
+// call skips verification; the CA of the configured server entry the call
+// identifies or whose URL matches (see caForServer); with no server named
+// and no entry identified, the current server entry's CA. A CA saved for
+// one server is never used for another: an explicit --server with no
+// --cacert never inherits the CURRENT context's CA, which belongs to
+// whatever server the context happens to point at.
 // When ignoreCurrentContext is true caForServer's current-server CA preference is
 // suppressed: an empty --cluster stays unscoped, and among same-host CA
 // candidates sorted order wins instead of the current-server entry - driven
@@ -1368,19 +1372,24 @@ func generateKey() (string, error) {
 // as plain strings rather than a runtime.Input, so callers (runWithParams)
 // can pass runParams fields directly without an adapter wrapper.
 func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurrentContext bool) (server, caPEM, cluster string, err error) {
-	server, caPEM, cluster, _, _, err = t.resolveConnWithCA(flagServer, flagCluster, caIn, "", ignoreCurrentContext)
+	server, caPEM, cluster, _, _, _, err = t.resolveConnWithCA(flagServer, flagCluster, caIn, "", ignoreCurrentContext, false)
 	return server, caPEM, cluster, err
 }
 
 // resolveConnWithCA is resolveConn that also returns the CA as it was
-// chosen - the --cacert value, or else the CA of the entry wantName
-// identifies, or else of the matching entry, from config.yaml, a path or an
-// inline PEM - before it is read, and the identification the CA was chosen
-// under when config.yaml was read to make it.
-func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName string, ignoreCurrentContext bool) (server, caPEM, cluster, caSource string, choice entryChoice, err error) {
+// chosen - a path or an inline PEM, before it is read - where it came
+// from, and the identification the CA was chosen under when config.yaml was
+// read to make it. config.yaml is read, and the entry identified, whatever
+// supplies the CA: the identification decides which credential and cache
+// record the call uses. skipVerify is the shim's --skip-verify, with which
+// no CA is used and RANCHER_CLI_CACERT is not read.
+func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName string, ignoreCurrentContext, skipVerify bool) (server, caPEM, cluster, caSource string, from config.CASource, choice entryChoice, err error) {
 	server = flagServer
 	cluster = flagCluster
 	explicitServer := server != ""
+	if caIn != "" {
+		from = config.CASource{Kind: config.CASourceFlag}
+	}
 	// Normalize the flag value's scheme here, once: it must happen before
 	// caForServer below, and a config-sourced server (from eff.URL) is always
 	// already scheme-qualified (login rejects a schemeless --server), so
@@ -1395,7 +1404,7 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName stri
 	// --server must fail here, never be filled from the config's current
 	// context below - past this point server == "" implies !ignoreCurrentContext.
 	if server == "" && ignoreCurrentContext {
-		return "", "", "", "", entryChoice{}, clierr.New(clierr.CodeValidation, "--server is required")
+		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "--server is required")
 	}
 
 	// The native get-token path requires --cluster: a token must never be created
@@ -1403,13 +1412,13 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName stri
 	// the legacy semantic where an empty --cluster is a deliberate unscoped
 	// create - still purely flag-driven, never filled from stored state.
 	if cluster == "" && !ignoreCurrentContext {
-		return "", "", "", "", entryChoice{}, clierr.New(clierr.CodeValidation, "--cluster is required")
+		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "--cluster is required")
 	}
 
 	if server == "" || caIn == "" {
 		cfg, cerr := config.Load(config.FilePath(t.dir))
 		if cerr != nil {
-			return "", "", "", "", entryChoice{}, cerr
+			return "", "", "", "", config.CASource{}, entryChoice{}, cerr
 		}
 		// The current server's URL and CA come from EffectiveConnection, which
 		// reads no credential: this call needs where to connect and whom to
@@ -1422,26 +1431,59 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName stri
 		if caIn == "" && server != "" {
 			identified, ierr := identifyEntry(cfg, server, wantName, cluster, ignoreCurrentContext)
 			if ierr != nil {
-				return "", "", "", "", entryChoice{}, ierr
+				return "", "", "", "", config.CASource{}, entryChoice{}, ierr
 			}
 			choice = entryChoice{known: true, name: identified}
-			if identified != "" || explicitServer {
-				caIn = caForServer(cfg, server, identified, ignoreCurrentContext)
-			} else {
-				caIn = eff.CA
+			variable := ""
+			if !skipVerify {
+				variable = config.EnvCACertFor(server)
+			}
+			switch {
+			case variable != "":
+				caIn, from = variable, config.CASource{Kind: config.CASourceVariable}
+			case identified != "" || explicitServer:
+				var entry string
+				caIn, entry = caForServer(cfg, server, identified, ignoreCurrentContext)
+				if caIn != "" {
+					from = config.CASource{Kind: config.CASourceEntry, Entry: entry}
+				}
+			case eff.CASource.Kind == config.CASourceEntry:
+				// No server named and no entry identified: the current
+				// server entry's CA, which Effective already cleared when
+				// RANCHER_CLI_URL names another server.
+				caIn, from = eff.CA, eff.CASource
 			}
 		}
 	}
 
 	if server == "" {
-		return "", "", "", "", entryChoice{}, clierr.New(clierr.CodeValidation,
+		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation,
 			"--server is required; pass it, or add and log in to a server first")
 	}
 	caPEM, err = config.ResolveCA(caIn)
 	if err != nil {
-		return "", "", "", "", entryChoice{}, clierr.New(clierr.CodeValidation, "reading --cacert: "+err.Error())
+		// ignoreCurrentContext is set only by the legacy shim, whose flag is
+		// --cacerts.
+		shim := ignoreCurrentContext
+		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "reading "+caReadSource(from, shim)+": "+err.Error())
 	}
-	return server, caPEM, cluster, caIn, choice, nil
+	return server, caPEM, cluster, caIn, from, choice, nil
+}
+
+// caReadSource names where an unreadable CA came from: the flag the call
+// was given (--cacerts for the legacy shim), RANCHER_CLI_CACERT, or the
+// server entry that saves it.
+func caReadSource(from config.CASource, shim bool) string {
+	switch from.Kind {
+	case config.CASourceVariable:
+		return config.EnvCACert
+	case config.CASourceEntry:
+		return "the CA of server entry " + clierr.ShellQuote(from.Entry)
+	}
+	if shim {
+		return "--cacerts"
+	}
+	return "--cacert"
 }
 
 // schemeRE matches an explicit URI scheme followed by "://", independent of
@@ -2001,31 +2043,31 @@ func (t tokenCmd) classifyRejection(err error, sc storedCredential, p runtime.Pr
 }
 
 // caForServer returns the CA of the configured server entry the call
-// means: the identified entry's, when identifyEntry found one, even if it
-// has none. Otherwise the CA of an entry whose URL matches server (compared
+// means, and that entry's name: the identified entry's, when identifyEntry
+// found one, even if it has none. Otherwise the CA of an entry whose URL matches server (compared
 // by scheme+host via SameServerURL), or "" if none matches - an explicit
 // --server with no --cacert never silently borrows a different server's
 // trust root. Among several matching entries and no identified one, the
 // current server wins unless ignoreCurrentContext, and the first by sorted
 // entry name otherwise, so repeated calls with the same config always
 // return the same CA regardless of map-iteration order.
-func caForServer(cfg *config.Config, server, identified string, ignoreCurrentContext bool) string {
+func caForServer(cfg *config.Config, server, identified string, ignoreCurrentContext bool) (ca, entry string) {
 	if identified != "" {
-		return cfg.Servers[identified].CA
+		return cfg.Servers[identified].CA, identified
 	}
 	matches := matchingServerNames(cfg, server)
 	if len(matches) == 0 {
-		return ""
+		return "", ""
 	}
 	if !ignoreCurrentContext {
 		curName, _, err := cfg.CurrentServerEntry()
 		if err == nil {
 			for _, n := range matches {
 				if n == curName {
-					return cfg.Servers[n].CA
+					return cfg.Servers[n].CA, n
 				}
 			}
 		}
 	}
-	return cfg.Servers[matches[0]].CA
+	return cfg.Servers[matches[0]].CA, matches[0]
 }

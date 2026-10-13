@@ -251,6 +251,7 @@ type PriorEntry struct {
 	URL                 string            `json:"url"`
 	CA                  string            `json:"ca,omitempty"`
 	CAFingerprint       string            `json:"caFingerprint,omitempty"`
+	CAFromEnvironment   bool              `json:"caFromEnvironment,omitempty"`
 	Provenance          Provenance        `json:"provenance,omitempty"`
 	TokenRef            *TokenRef         `json:"tokenRef,omitempty"`
 	TokenUserID         string            `json:"tokenUserId,omitempty"`
@@ -289,6 +290,9 @@ func (p *PriorEntry) text() string {
 	parts := []string{p.URL, "CA " + p.caShape()}
 	if p.CAFingerprint != "" {
 		parts[1] += " fingerprint " + p.CAFingerprint
+	}
+	if p.CAFromEnvironment {
+		parts[1] += ", last login connected with RANCHER_CLI_CACERT"
 	}
 	if p.Provenance != "" {
 		parts = append(parts, "provenance "+string(p.Provenance))

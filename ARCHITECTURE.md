@@ -572,7 +572,9 @@ reachable command.
 **Login and the credential store.** `auth login` stores a manually supplied token; it
 records the server entry only when given `--url` for a name that doesn't exist yet
 (delegating to the same registration path `config add-server` uses) - otherwise the entry
-must already exist, added by `config add-server` or a prior delegated login. The store
+must already exist, added by `config add-server` or a prior delegated login. A login that connects
+with `RANCHER_CLI_CACERT` never saves it; an entry left with no CA carries
+`caFromEnvironment: true` in `config.yaml`, so a revoke for it uses the variable. The store
 backend is resolved by `config.NewLazyStore` and `config.OpenStoreFor` on the read path,
 which never probe and never write the pin, and, for a login, by `loginBackendsOf` and
 `config.OpenResolvedStore`, which open an already-physical backend and write no pin.
@@ -782,7 +784,9 @@ record of it:
    plugin's next miss. Otherwise the last config write resumes the pause
    (`config delete-server` does so in its final span).
 6. The revokes run outside every lock, one at a time, under one 10 s budget, each sent to
-   the server a current entry names with that entry's CA and trust. A settle span follows,
+   the server a current entry names with that entry's CA and trust: its saved CA, or
+   `RANCHER_CLI_CACERT` for an entry `auth login` saved without a CA because the variable
+   supplied it (`caFromEnvironment`). A settle span follows,
    under the config lock again: it reloads the config and removes each superseded record
    whose token is confirmed gone or whose own bearer was refused, and stamps the others with
    the attempt. It runs detached from Ctrl-C, so a cancelled command still settles the
@@ -817,8 +821,11 @@ in `credentials.yaml`. A **flags-first fast path** serves a warm hit from
 `--name`/`--server`/`--cluster` and the invocation's config load, with no config read of
 its own; full connection resolution runs only on a miss. `config.IdentifyEntry` turns
 `--name` into one server entry - the exact name, else `<entry>` for `<entry>-<cluster>` -
-and the credential lookup, the cache record's binding, the CA and every cache hit use its
-answer; the lookup reads only that entry, with the plugin's own login entry as the one
+and the credential lookup, the cache record's binding and every cache hit use its answer;
+the CA is the first of `--cacert`, `RANCHER_CLI_CACERT` and the saved CA of the identified or
+matching entry (flag, then environment, then saved state; the variable is not applied when
+`RANCHER_CLI_URL` names another server), and config.yaml is read and the entry identified
+whichever of them supplies it; the lookup reads only that entry, with the plugin's own login entry as the one
 fallback while token reuse is on; a call that identifies no entry ranks the entries for its
 URL and fails when more than one at the winning rank has a credential. That lookup is one function,
 `token.LookupStoredLogin`, returning one typed outcome; `rancher kubeconfig` calls it too. `delete-token <name>` resolves the bare name
@@ -948,15 +955,24 @@ and `token --> engine` edges above. An id that is also another
 cluster's display name wins, with the warning on stderr; `""` and
 `local` send no request.
 
-**Environment overrides.** Applied over the file-based context, env always wins:
+**Environment overrides.** Applied over the file-based context, env wins, with the
+exceptions below the table:
 
 | Variable | Effect |
 |---|---|
 | `RANCHER_CLI_URL` | Override the effective server URL. |
 | `RANCHER_CLI_TOKEN` | Override the bearer token directly - used as-is, never read from or written to the store. |
-| `RANCHER_CLI_CACERT` | Override the CA bundle. |
+| `RANCHER_CLI_CACERT` | Override the CA bundle. A command that names its server (`auth get-token`, `rancher token`, `auth login`) takes `--cacert`, then the variable, then the saved CA of the entry; the variable is skipped when `RANCHER_CLI_URL` names another server. |
 | `RANCHER_CLI_CONFIG_DIR` | Config directory (below `--config`, above `$XDG_CONFIG_HOME/rancher` then `~/.config/rancher`). |
 | `RANCHER_CLI_CREDENTIAL_STORE` | Highest-precedence credential-store policy (`keychain` \| `file` \| `auto`). |
+
+The CA variable has three exceptions. `config add-server` and `config update-server` take
+`--cacert` only and never read it. The revoke commands (`auth logout`, `auth delete-token`,
+`config delete-server`) use the entry's saved CA, and the variable only for an entry saved
+without a CA because an `auth login` connected with it; that fact is the entry's
+`caFromEnvironment` field (set by such a login, cleared by a login that connected without the
+variable and by every change of the entry's CA or URL). And `auth login` connects with the
+variable but never saves it: the entry keeps its saved CA, or none, and the login warns.
 
 **Legacy migration.** There is none: config and credentials are never imported
 from a legacy `cli2.json`. Run `rancher auth login` once per server instead.

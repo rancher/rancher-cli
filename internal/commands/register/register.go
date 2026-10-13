@@ -30,10 +30,16 @@ type TLSPreflightFunc func(ctx context.Context, serverURL, caPEM string) (string
 // min-version warning, if any. The create and update commits re-verify this
 // snapshot under the lock before any write.
 type Probe struct {
-	CanonicalURL   string
-	CASelector     string
-	CABytes        string
-	VersionWarning string
+	CanonicalURL string
+	CASelector   string
+	CABytes      string
+	// ConnectionBytes is what the preflight connected with: CABytes, or the
+	// bytes of a CA a login took from RANCHER_CLI_CACERT, which is never
+	// saved and so never rechecked at commit.
+	ConnectionBytes string
+	// FromEnvironment says ConnectionBytes came from RANCHER_CLI_CACERT.
+	FromEnvironment bool
+	VersionWarning  string
 	// CAFingerprint is set only when CASelector is a guided-trust-accepted
 	// certificate: the fingerprint tlstrust.Classify already computed for
 	// the exact candidate this selector encodes. Every other registration
@@ -81,6 +87,16 @@ func CanonicalizeServerURL(rawURL string) (string, error) {
 // against a non-TLS connection) so the min-version check is never lost under
 // http.
 func Prepare(ctx context.Context, tlsPreflight TLSPreflightFunc, canonicalURL, caSelector string) (Probe, error) {
+	return PrepareConnecting(ctx, tlsPreflight, canonicalURL, caSelector, "")
+}
+
+// PrepareConnecting is Prepare for a login that connects with the CA of
+// RANCHER_CLI_CACERT (variableCA, a path or a PEM; empty for none) instead
+// of caSelector, the CA the entry saves. The preflight uses the variable's
+// bytes; the probe still carries the saved selector and its own bytes,
+// which the commit rechecks, and the variable's CA is never saved. An
+// unreadable saved CA fails first: it is the entry's own state.
+func PrepareConnecting(ctx context.Context, tlsPreflight TLSPreflightFunc, canonicalURL, caSelector, variableCA string) (Probe, error) {
 	if !config.IsSupportedScheme(canonicalURL) {
 		// The same gate config.Effective's credential-read path applies
 		// (resolve.go) - a scheme it refuses must never reach a committed
@@ -94,9 +110,17 @@ func Prepare(ctx context.Context, tlsPreflight TLSPreflightFunc, canonicalURL, c
 	if raerr != nil {
 		return Probe{}, clierr.New(clierr.CodeValidation, "reading --cacert: "+raerr.Error())
 	}
+	connection, fromEnvironment := caBytes, false
+	if variableCA != "" {
+		b, verr := ResolveCA(canonicalURL, variableCA)
+		if verr != nil {
+			return Probe{}, clierr.New(clierr.CodeValidation, "reading "+config.EnvCACert+": "+verr.Error())
+		}
+		connection, fromEnvironment = b, b != ""
+	}
 	var version string
 	if tlsPreflight != nil {
-		v, perr := tlsPreflight(ctx, canonicalURL, caBytes)
+		v, perr := tlsPreflight(ctx, canonicalURL, connection)
 		if perr != nil {
 			return Probe{}, perr
 		}
@@ -107,10 +131,12 @@ func Prepare(ctx context.Context, tlsPreflight TLSPreflightFunc, canonicalURL, c
 		_, warning = config.EvalMinVersionSupport(version)
 	}
 	return Probe{
-		CanonicalURL:   canonicalURL,
-		CASelector:     caSelector,
-		CABytes:        caBytes,
-		VersionWarning: warning,
+		CanonicalURL:    canonicalURL,
+		CASelector:      caSelector,
+		CABytes:         caBytes,
+		ConnectionBytes: connection,
+		FromEnvironment: fromEnvironment,
+		VersionWarning:  warning,
 	}, nil
 }
 
@@ -244,6 +270,9 @@ func commitCreateWith(cfg *config.Config, name string, probe Probe, beforeCreate
 		// A new entry starts with a cache binding id of its own, so no
 		// record an earlier entry of the same name left can match it.
 		e := config.Server{URL: probe.CanonicalURL, CA: probe.CASelector, CAFingerprint: probe.CAFingerprint}
+		if probe.CASelector == "" {
+			e.CAFromEnvironment = probe.FromEnvironment
+		}
 		if err := config.AdvanceCacheBinding(&e); err != nil {
 			return CreateOutcome{}, err
 		}
@@ -317,6 +346,11 @@ type UpdateSource struct {
 	CanonicalURL string
 	CASelector   string
 	CABytes      string
+	// ClearCA is set by an update that asked for system roots
+	// (--clear-cacert): on an entry with no CA that records a login made
+	// with RANCHER_CLI_CACERT, that is a change, because it clears the
+	// record.
+	ClearCA bool
 }
 
 // PrepareUpdateSource snapshots existing's canonical URL, CA selector, and
@@ -384,7 +418,7 @@ func ValidateUpdate(cfg *config.Config, name string, src UpdateSource, probe Pro
 	if existing.URL != probe.CanonicalURL {
 		changed = append(changed, "url")
 	}
-	if existing.CA != probe.CASelector {
+	if existing.CA != probe.CASelector || (src.ClearCA && existing.CA == "" && existing.CAFromEnvironment) {
 		changed = append(changed, "ca")
 	}
 	return UpdatePlan{
@@ -414,7 +448,7 @@ func ApplyUpdate(cfg *config.Config, plan UpdatePlan) (UpdateOutcome, error) {
 			// A CA-only update changes no credential: every other field
 			// is kept, a pause a change left included. The fingerprint
 			// belonged to the certificate being replaced.
-			e.URL, e.CA, e.CAFingerprint = plan.CanonicalURL, plan.CASelector, ""
+			e.URL, e.CA, e.CAFingerprint, e.CAFromEnvironment = plan.CanonicalURL, plan.CASelector, "", false
 		}
 		cfg.Servers[plan.Name] = e
 	}

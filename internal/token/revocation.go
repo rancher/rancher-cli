@@ -531,7 +531,7 @@ func (d *Deletion) send(budget context.Context, trust, bearer string, provenance
 
 func (d *Deletion) newClient(trust string) revokeClient {
 	s := d.cfg.Servers[trust]
-	pem, err := config.ResolveCA(s.CA)
+	pem, err := revokeCA(s)
 	if err != nil {
 		return revokeClient{err: err}
 	}
@@ -540,6 +540,26 @@ func (d *Deletion) newClient(trust string) revokeClient {
 		return revokeClient{err: err}
 	}
 	return revokeClient{client: client, base: kube.BaseURL(s.URL)}
+}
+
+// revokeCA is the CA a revoke to an entry's server is verified against: the
+// entry's saved CA. An entry that saves none because an auth login
+// connected with RANCHER_CLI_CACERT (CAFromEnvironment) uses the variable
+// where it applies to the entry's URL; a variable exported for another
+// server does not reach it. Any other entry without a saved CA names a
+// server the system roots verify, whatever the variable says.
+func revokeCA(s config.Server) (string, error) {
+	if s.CA != "" {
+		return config.ResolveCA(s.CA)
+	}
+	if !s.CAFromEnvironment {
+		return "", nil
+	}
+	pem, err := config.ResolveCA(config.EnvCACertFor(s.URL))
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", config.EnvCACert, err)
+	}
+	return pem, nil
 }
 
 // Settle records what the revokes did, in one config-lock span after

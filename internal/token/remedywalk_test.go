@@ -67,10 +67,10 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	plugin := map[string]config.Server{"exec-login-o": {URL: "https://other.example.com", CA: "/etc/rancher/other-ca.pem", Provenance: clierr.ProvenanceExecLogin}}
 	add("a plugin login entry at another URL", entryOnOtherServerError(elsewhere("prod", false, plugin), "exec-login-o", "https://r.example.com", "c-1"))
 	add("a plugin login entry at another URL with one here", entryOnOtherServerError(elsewhere("staging", true, plugin), "exec-login-o", "https://r.example.com", "c-1"))
-	add("not logged in, blank", config.ErrNotLoggedInFor(nil))
-	add("not logged in, one entry", config.ErrNotLoggedInFor(map[string]string{"prod": "https://r.example.com"}))
-	add("not logged in, several entries", config.ErrNotLoggedInFor(map[string]string{"prod": "a", "staging": "b"}))
-	add("not logged in, the one entry a plugin login entry", config.ErrNotLoggedInFor(map[string]string{"exec-login-r.ex": "https://[2001:db8::1]:8443"}))
+	add("not logged in, blank", config.ErrNotLoggedInFor(nil, nil))
+	add("not logged in, one entry", config.ErrNotLoggedInFor(map[string]string{"prod": "https://r.example.com"}, nil))
+	add("not logged in, several entries", config.ErrNotLoggedInFor(map[string]string{"prod": "a", "staging": "b"}, nil))
+	add("not logged in, the one entry a plugin login entry", config.ErrNotLoggedInFor(map[string]string{"exec-login-r.ex": "https://[2001:db8::1]:8443"}, nil))
 
 	dir := t.TempDir()
 	nt := tokenCmd{dir: dir}
@@ -139,7 +139,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 			storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}, ""))
 	}
 
-	texts["a login of a new entry, no user named"] = NewEntryLoginRemedy(cfg, "", "c-1", "https://r.example.com", "/etc/rancher/ca.pem")
+	texts["a login of a new entry, no user named"] = NewEntryLoginRemedy(cfg, "", "c-1", "https://r.example.com", "/etc/rancher/ca.pem", config.CASource{})
 
 	rec := config.SupersededToken{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc"}}
 	texts["a superseded token that was kept"] = keptWarning(rec, "https://r.example.com", "the server refused")

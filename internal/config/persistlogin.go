@@ -46,6 +46,10 @@ type PersistLoginInput struct {
 	// CA and CAFingerprint are persisted only on a create; an update never
 	// changes trust (PendingTrust is the one exception).
 	CA, CAFingerprint string
+	// CAFromEnvironment says the login connected with RANCHER_CLI_CACERT.
+	// An update records it on an entry that keeps no CA, and clears the
+	// record when the login connected without the variable.
+	CAFromEnvironment bool
 	Provenance        clierr.Provenance
 	TokenRef          *clierr.TokenRef
 	TokenUserID       string
@@ -508,7 +512,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	switch step := activationStep(in.PendingTrust != nil, declares, plan != nil); step {
 	case "":
 	case "trust":
-		entry.CA, entry.CAFingerprint = in.PendingTrust.CA, in.PendingTrust.Fingerprint
+		entry.CA, entry.CAFingerprint, entry.CAFromEnvironment = in.PendingTrust.CA, in.PendingTrust.Fingerprint, false
 		cfg.Servers[name] = entry
 		if werr := writeStep(step, cfg); werr != nil {
 			if commit.Compensate != nil {
@@ -740,6 +744,9 @@ func newEntry(in PersistLoginInput, snap *Server, now time.Time) Server {
 				SupersededAt: now.UTC().Format(time.RFC3339), Server: CanonicalServerIdentity(snap.URL),
 			})
 		}
+		if e.CA == "" {
+			e.CAFromEnvironment = in.CAFromEnvironment
+		}
 	}
 	e.Provenance, e.TokenRef, e.TokenUserID, e.CredentialExpiresAt = in.Provenance, in.TokenRef, in.TokenUserID, in.ExpiresAt
 	e.LoggedOutAt = ""
@@ -757,7 +764,7 @@ func restoredEntry(snap *Server, trust *PendingTrust, dropToken bool) *Server {
 	}
 	r := snap.Clone()
 	if trust != nil {
-		r.CA, r.CAFingerprint = trust.CA, trust.Fingerprint
+		r.CA, r.CAFingerprint, r.CAFromEnvironment = trust.CA, trust.Fingerprint, false
 	}
 	if dropToken {
 		r.TokenRef, r.TokenUserID, r.CredentialExpiresAt = nil, "", ""
@@ -881,7 +888,7 @@ func priorEntry(snap *Server) *clierr.PriorEntry {
 	if fp == "" {
 		fp = caFingerprintOf(snap.CA)
 	}
-	return &clierr.PriorEntry{URL: snap.URL, CA: snap.CA, CAFingerprint: fp, Provenance: snap.Provenance,
+	return &clierr.PriorEntry{URL: snap.URL, CA: snap.CA, CAFingerprint: fp, CAFromEnvironment: snap.CAFromEnvironment, Provenance: snap.Provenance,
 		TokenRef: snap.TokenRef, TokenUserID: snap.TokenUserID, CredentialExpiresAt: snap.CredentialExpiresAt,
 		SupersededTokens: snap.SupersededTokens}
 }

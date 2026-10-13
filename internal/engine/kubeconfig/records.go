@@ -110,9 +110,10 @@ func (e effectiveRead) GetToken(ref config.ServerRef) (string, error) {
 type lookupCall struct {
 	cfg                   *config.Config
 	dir, server, serverID string
-	name, clusterID, ca   string
+	name, clusterID       string
 	// caSource is the session's CA as config.yaml or the environment names
-	// it, a path or an inline PEM, for a remedy that names a new entry.
+	// it, a path or an inline PEM, for a remedy that names a new entry;
+	// eff.CASource says which of the two it is.
 	caSource string
 	eff      config.Effective
 	envToken bool
@@ -176,7 +177,7 @@ func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
 		// own login, which records its owner, then answers.
 		remedy = "pipe an API token to " + clierr.Rancher + " auth login " + clierr.ShellQuote(lk.Identified) + " --token-stdin" + again
 	default:
-		remedy = token.NewEntryLoginRemedy(l.cfg, "", l.clusterID, l.serverID, l.caSource)
+		remedy = token.NewEntryLoginRemedy(l.cfg, "", l.clusterID, l.serverID, l.caSource, l.eff.CASource)
 	}
 	return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose +
 		" records no owner, so the exec plugin does not check the user; " + remedy)
@@ -204,7 +205,7 @@ func lookupNotice(l lookupCall, lk token.StoredLogin) string {
 		}
 		return runtime.PrintableRemedies("this kubeconfig authenticates through " + through + ", not through " + not)
 	case token.LookupNone:
-		login := token.NoTerminalLogin(l.cfg, l.name, l.clusterID, l.serverID, l.ca, false)
+		login := token.NoTerminalLogin(l.cfg, l.name, l.clusterID, l.serverID, l.caSource, l.eff.CASource, false)
 		return runtime.PrintableRemedies(fmt.Sprintf("no stored login in %s answers for this kubeconfig: kubectl will sign in on first use when it has a terminal; "+
 			"for unattended use pipe an API token to %s first, or use %s for a kubeconfig that carries its own token",
 			l.dir, login.Text(), token.CreateKubeconfigRemedy(l.clusterID)))
@@ -230,7 +231,7 @@ func lookupNotice(l lookupCall, lk token.StoredLogin) string {
 // --user-id cache slots, which an environment-only session's host can
 // begin with. The remedy is a login under an entry of another name, with
 // the session's CA, made current.
-func reservedName(name, clusterID, serverURL, ca string) error {
+func reservedName(name, clusterID, serverURL, ca string, from config.CASource) error {
 	prefix := ""
 	switch {
 	case config.IsLegacyCacheSlot(name):
@@ -240,7 +241,7 @@ func reservedName(name, clusterID, serverURL, ca string) error {
 	default:
 		return nil
 	}
-	login := token.NoTerminalLogin(nil, "", clusterID, serverURL, ca, false)
+	login := token.NoTerminalLogin(nil, "", clusterID, serverURL, ca, from, false)
 	return clierr.New(clierr.CodeValidation, "the kubeconfig's --name "+clierr.ShellQuote(name)+" would start with "+clierr.ShellQuote(prefix)+
 		", which auth get-token refuses; log in with a server entry of another name: pipe an API token to "+login.Text()+
 		", then "+clierr.Rancher+" config use-server <name>, then "+clierr.Rancher+" kubeconfig --cluster "+clierr.ShellQuote(clusterID))

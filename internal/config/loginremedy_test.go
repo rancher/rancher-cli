@@ -83,8 +83,8 @@ func TestNoLoginRemedyNamesAPluginLoginEntry(t *testing.T) {
 	rows := map[string]func(t *testing.T) []string{
 		"LoginHintFor": func(*testing.T) []string { return []string{LoginHintFor(name)} },
 		"ErrNotLoggedInFor": func(*testing.T) []string {
-			return append(textOf(ErrNotLoggedInFor(map[string]string{name: "https://r.ex"})),
-				textOf(ErrNotLoggedInFor(map[string]string{name: "https://r.ex", "prod": "https://r.ex"}))...)
+			return append(textOf(ErrNotLoggedInFor(map[string]string{name: "https://r.ex"}, nil)),
+				textOf(ErrNotLoggedInFor(map[string]string{name: "https://r.ex", "prod": "https://r.ex"}, nil))...)
 		},
 		"credentialReplacedError": func(*testing.T) []string { return textOf(credentialReplacedError(name)) },
 		"loginIncompleteError":    func(*testing.T) []string { return textOf(loginIncompleteError(name)) },
@@ -152,7 +152,7 @@ func TestNotLoggedInWithOnlyAPluginLoginEntryNamesALoginOfANewEntry(t *testing.T
 	} {
 		t.Run(tc.url, func(t *testing.T) {
 			t.Parallel()
-			ce := ErrNotLoggedInFor(map[string]string{tc.entry: tc.url})
+			ce := ErrNotLoggedInFor(map[string]string{tc.entry: tc.url}, nil)
 			assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 			assert.Equal(t, "not logged in - no current server; the only server entry, '"+tc.entry+"', is the exec plugin's own login entry, which auth login refuses; "+
 				"log in under a server entry of your own with: "+tc.login, clierr.ExpandRemedies(ce.Message, ""))
@@ -161,5 +161,5 @@ func TestNotLoggedInWithOnlyAPluginLoginEntryNamesALoginOfANewEntry(t *testing.T
 	}
 	assert.Empty(t, LoginHintFor("exec-login-r.ex"), "auth login refuses the name, so it is no hint")
 	assert.Equal(t, "rancher auth login 'prod'", clierr.ExpandRemedies(LoginHintFor("prod"), ""))
-	assert.Equal(t, "rancher auth login 'prod'", clierr.ExpandRemedies(ErrNotLoggedInFor(map[string]string{"prod": "https://r.ex"}).Hint, ""))
+	assert.Equal(t, "rancher auth login 'prod'", clierr.ExpandRemedies(ErrNotLoggedInFor(map[string]string{"prod": "https://r.ex"}, nil).Hint, ""))
 }

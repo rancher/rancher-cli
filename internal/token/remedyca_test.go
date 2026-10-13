@@ -83,13 +83,13 @@ func TestNewEntryLoginRemediesRunAgainstAPrivateCA(t *testing.T) {
 
 	builders := map[string]func(ca string) string{
 		"another user's plugin login entry": func(ca string) string {
-			return token.NewEntryLoginRemedy(nil, "u-abc12", "c-1", srv.URL, ca)
+			return token.NewEntryLoginRemedy(nil, "u-abc12", "c-1", srv.URL, ca, config.CASource{})
 		},
 		"a login that records no owner": func(ca string) string {
-			return token.NewEntryLoginRemedy(nil, "", "c-1", srv.URL, ca)
+			return token.NewEntryLoginRemedy(nil, "", "c-1", srv.URL, ca, config.CASource{})
 		},
 		"a refused --name": func(ca string) string {
-			return token.NoTerminalLogin(nil, "", "c-1", srv.URL, ca, false).Text()
+			return token.NoTerminalLogin(nil, "", "c-1", srv.URL, ca, config.CASource{}, false).Text()
 		},
 	}
 	for name, build := range builders {

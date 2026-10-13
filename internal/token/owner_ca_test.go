@@ -300,14 +300,14 @@ func TestNoTerminalLoginForAPluginLoginEntryNameGoesOn(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			l := NoTerminalLogin(cfg, "exec-login-r.ex-"+tc.cluster, tc.cluster, url, "", false)
+			l := NoTerminalLogin(cfg, "exec-login-r.ex-"+tc.cluster, tc.cluster, url, "", config.CASource{}, false)
 			if tc.cluster == "" {
-				l = NoTerminalLogin(cfg, "exec-login-r.ex", tc.cluster, url, "", false)
+				l = NoTerminalLogin(cfg, "exec-login-r.ex", tc.cluster, url, "", config.CASource{}, false)
 			}
 			assert.Equal(t, tc.want, clierr.ExpandRemedies(l.Text(), ""))
 			assert.Empty(t, l.Hint())
 		})
 	}
-	user := NoTerminalLogin(cfg, "prod-c-1", "c-1", url, "", false)
+	user := NoTerminalLogin(cfg, "prod-c-1", "c-1", url, "", config.CASource{}, false)
 	assert.Equal(t, "rancher auth login 'prod' --url '"+url+"' --token-stdin", clierr.ExpandRemedies(user.Text(), ""), "a user entry's login is enough alone")
 }

@@ -70,7 +70,8 @@ var refusalStoredLogin = []string{"auth logout", "auth delete-token", "config de
 
 // refusalStoredServer lists the commands that name a server with a flag
 // that has no --cacert beside it: each trusts the server through the CA of
-// the configured server entry whose URL matches.
+// the configured server entry whose URL matches, so its run clears
+// RANCHER_CLI_CACERT, which would be the CA used instead.
 var refusalStoredServer = []string{"token"}
 
 // writeStoredServer stores, in the config directory dir, the server a1 at
@@ -284,6 +285,7 @@ func TestEveryNetworkCommandReportsARefusal(t *testing.T) {
 						writeStoredLogin(t, dir, hs.URL, caPEM)
 					}
 					if slices.Contains(refusalStoredServer, c.Name) {
+						t.Setenv(config.EnvCACert, "")
 						writeStoredServer(t, dir, hs.URL, caPEM)
 					}
 					if setup, ok := refusalSetup[c.Name]; ok {

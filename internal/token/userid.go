@@ -71,6 +71,9 @@ func (t tokenCmd) withNewEntryLogin(err error, in runtime.Input) error {
 		return err
 	}
 	u := userCheck{userID: in.String(userIDFlag), clusterID: in.String("cluster"), serverID: serverID, caSource: in.String("cacert")}
+	if u.caSource != "" {
+		u.caFrom = config.CASource{Kind: config.CASourceFlag}
+	}
 	return ce.WithMessage("--user-id needs --name, and no server entry in this directory is registered for " + serverID + "; log in under a new one: " +
 		u.loginOfNewEntry(cfg) + " - the kubeconfig it writes carries --name, and --user-id when the login records its owner")
 }

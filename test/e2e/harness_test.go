@@ -1077,10 +1077,10 @@ func TestScenarios(t *testing.T) {
 			e.Setenv("TEST_RANCHER_TOKEN", testToken)
 			e.Setenv("TEST_RANCHER_CACERT", facadeCACertPEM)
 			// Global CA trust for every script (env-only and config-flow alike):
-			// RANCHER_CLI_CACERT is env-effective everywhere Effective() is consulted.
-			// It does NOT reach `rancher kubeconfig`'s embedded CA, which reads
-			// only the config FILE's server entry - config-flow scripts pass
-			// --cacert on login for that.
+			// RANCHER_CLI_CACERT is env-effective everywhere Effective() is consulted,
+			// and it connects auth login, auth get-token and the legacy token shim
+			// and is the CA `rancher kubeconfig` embeds. A script that tests the
+			// CA saved on a server entry clears it with `env RANCHER_CLI_CACERT=`.
 			e.Setenv("RANCHER_CLI_CACERT", facadeCACertPEM)
 			e.Setenv("RANCHER_CLI_CONFIG_DIR", filepath.Join(e.WorkDir, "rancher-config"))
 			// credstore-pin.txtar clears this itself as its first

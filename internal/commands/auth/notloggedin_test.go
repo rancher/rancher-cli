@@ -74,7 +74,7 @@ func TestNotLoggedInHintForALonePluginLoginEntryRuns(t *testing.T) {
 
 	dir := t.TempDir()
 	plugin := config.ExecLoginEntryName(config.CanonicalServerIdentity(srv.URL))
-	cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{plugin: {URL: srv.URL, CA: caPEM, Provenance: clierr.ProvenanceExecLogin}}}
+	cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{plugin: {URL: srv.URL, Provenance: clierr.ProvenanceExecLogin}}}
 	cfg.SetPath(config.FilePath(dir))
 	require.NoError(t, cfg.Write())
 
@@ -101,4 +101,38 @@ func TestNotLoggedInHintForALonePluginLoginEntryRuns(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, srv.URL, after.Servers[name].URL, "the hint's entry is registered at the server")
 	assert.Equal(t, testrancher.SeedOwner, after.Servers[name].TokenUserID, "and logged in")
+}
+
+// TestNotLoggedInWithOnlyAPluginLoginEntryThatSavesACAAsksForTheCA asserts
+// the NOT_LOGGED_IN refusal of a directory whose one server entry is the
+// exec plugin's own login entry and saves a CA: the login it names adds the
+// CA, which the entry carries inline, and the error has no hint, since the
+// login needs a file and would not run as written.
+func TestNotLoggedInWithOnlyAPluginLoginEntryThatSavesACAAsksForTheCA(t *testing.T) {
+	t.Setenv(config.EnvCredentialStore, "file")
+	t.Setenv(config.EnvURL, "")
+	t.Setenv(config.EnvToken, "")
+	const entry = "exec-login-r.example.com"
+	dir := t.TempDir()
+	cfg := &config.Config{CredentialStore: "file", Servers: map[string]config.Server{
+		entry: {URL: "https://r.example.com", CA: "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n", Provenance: clierr.ProvenanceExecLogin},
+	}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+
+	_, stderr, err := runRoot(t, "", "--config", dir, "auth", "status", "-o", "json")
+	require.Error(t, err)
+	var env struct {
+		Data struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+				Hint    string `json:"hint"`
+			} `json:"error"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stderr), &env), stderr)
+	require.Equal(t, clierr.CodeNotLoggedIn, env.Data.Error.Code)
+	assert.Contains(t, env.Data.Error.Message, ", adding --cacert with the path of a file that holds the server's CA certificate, which server entry '"+entry+"' carries inline in config.yaml")
+	assert.Empty(t, env.Data.Error.Hint)
 }

@@ -287,3 +287,26 @@ func TestTokenFateExpiryIsNotRendered(t *testing.T) {
 	assert.NotContains(t, decoded, "expiresAt")
 	assert.NotContains(t, decoded, "ExpiresAt")
 }
+
+// TestPriorEntryCarriesWhetherTheLastLoginUsedTheVariable asserts the prior
+// entry's record that a login with no saved CA connected with
+// RANCHER_CLI_CACERT: a JSON field only when set, and a phrase in the text
+// beside the CA.
+func TestPriorEntryCarriesWhetherTheLastLoginUsedTheVariable(t *testing.T) {
+	t.Parallel()
+	marked := PriorEntry{URL: "https://r.ex", CAFromEnvironment: true}
+	raw, err := json.Marshal(marked)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.Equal(t, true, got["caFromEnvironment"])
+	assert.Equal(t, "https://r.ex, CA system roots, last login connected with RANCHER_CLI_CACERT", marked.text())
+
+	plain := PriorEntry{URL: "https://r.ex"}
+	raw, err = json.Marshal(plain)
+	require.NoError(t, err)
+	got = nil
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.NotContains(t, got, "caFromEnvironment")
+	assert.Equal(t, "https://r.ex, CA system roots", plain.text())
+}

@@ -113,7 +113,7 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 	rows := map[string]func() []string{
 		"CreateKubeconfigRemedy": func() []string { return []string{CreateKubeconfigRemedy("c-1")} },
 		"NoTerminalLogin": func() []string {
-			return []string{NoTerminalLogin(cfg, name, "c-1", url, "", false).Text(), NoTerminalLogin(cfg, name+"-c-1", "c-1", url, "", false).Text()}
+			return []string{NoTerminalLogin(cfg, name, "c-1", url, "", config.CASource{}, false).Text(), NoTerminalLogin(cfg, name+"-c-1", "c-1", url, "", config.CASource{}, false).Text()}
 		},
 		"RegenerateSteps": func() []string { return []string{RegenerateSteps(clierr.Rancher, name, "c-1")} },
 		"ResidualRecovery": func() []string {

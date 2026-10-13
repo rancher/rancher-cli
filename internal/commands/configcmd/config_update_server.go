@@ -77,6 +77,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 	if serr != nil {
 		return runtime.Result{}, serr
 	}
+	src.ClearCA = clearCacert
 
 	resultURL := existing.URL
 	if url != "" {

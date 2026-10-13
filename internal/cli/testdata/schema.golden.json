@@ -566,7 +566,10 @@
           "type": "bool"
         },
         {
-          "desc": "PEM CA bundle, a `path` or the literal PEM (requires --url)",
+          "desc": "PEM CA bundle, a `path` or the literal PEM, saved with the entry (requires --url); when absent, RANCHER_CLI_CACERT connects the login with or without --url, and is never saved",
+          "env": [
+            "RANCHER_CLI_CACERT"
+          ],
           "name": "cacert",
           "type": "string"
         },
@@ -10226,6 +10229,9 @@
         },
         {
           "desc": "PEM CA bundle `path` (legacy spelling of --cacert)",
+          "env": [
+            "RANCHER_CLI_CACERT"
+          ],
           "name": "cacerts",
           "type": "string"
         },

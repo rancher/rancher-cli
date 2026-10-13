@@ -571,7 +571,9 @@ func TestEffectiveConnectionMatchesEffectiveWithoutTheCredential(t *testing.T) {
 			assert.Equal(t, full.ServerName, conn.ServerName)
 			assert.Equal(t, full.URL, conn.URL)
 			assert.Equal(t, full.CA, conn.CA)
+			assert.Equal(t, full.CASource, conn.CASource)
 			assert.Equal(t, full.KnownServers, conn.KnownServers)
+			assert.Equal(t, full.ServersWithCA, conn.ServersWithCA)
 			assert.Empty(t, conn.Token, "the connection carries no credential")
 		})
 	}

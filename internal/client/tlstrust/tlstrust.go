@@ -117,6 +117,27 @@ func (d Details) TextDetails() []string {
 	return lines
 }
 
+// passCACertRemedy is the remedy Classify gives an unknown-authority
+// failure: the CA is passed with --cacert.
+const passCACertRemedy = " and pass it with --cacert"
+
+// UnknownAuthorityMessage is the message of an unknown-authority failure.
+// leaf is Details.IsLeafCertificate. remedy follows the sentence about
+// obtaining the CA and carries its own connector, so a caller whose
+// remedy differs from --cacert (a login that took its CA from
+// RANCHER_CLI_CACERT) builds the message itself instead of rewriting
+// the text of Classify.
+func UnknownAuthorityMessage(leaf bool, remedy string) string {
+	const tail = "; if this server was already trusted, check the subject and issuer shown here - " +
+		"a certificate you don't recognize can mean something in the network path is intercepting TLS"
+	if leaf {
+		return "the server presented a certificate signed by an unknown authority, with no separate certificate authority in the chain; " +
+			"obtain the certificate through a trusted channel (or verify the fingerprint shown here out of band)" + remedy + tail
+	}
+	return "the server presented a certificate signed by an unknown authority; " +
+		"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band)" + remedy + tail
+}
+
 // Classify reports whether err is a TLS certificate verification failure and,
 // if so, returns a fully structured clierr.Error: a stable message and hint
 // for kind, plus Details carrying the candidate anchor's metadata when one
@@ -153,14 +174,7 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	}
 	switch kind {
 	case KindUnknownAuthority:
-		msg := "the server presented a certificate signed by an unknown authority; " +
-			"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert; " +
-			"if this server was already trusted, check the subject and issuer shown here - a certificate you don't recognize can mean something in the network path is intercepting TLS"
-		if details.leaf {
-			msg = "the server presented a certificate signed by an unknown authority, with no separate certificate authority in the chain; " +
-				"obtain the certificate through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert; " +
-				"if this server was already trusted, check the subject and issuer shown here - a certificate you don't recognize can mean something in the network path is intercepting TLS"
-		}
+		msg := UnknownAuthorityMessage(details.leaf, passCACertRemedy)
 		return clierr.New(clierr.CodeTLSTrust, msg).
 			WithDetails(details)
 	case KindHostnameMismatch:

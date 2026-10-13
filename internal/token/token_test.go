@@ -2342,7 +2342,7 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 		}
 		// Run many times: map iteration order varies, so nondeterminism surfaces.
 		for i := range 20 {
-			got := caForServer(cfg, "https://shared.example", "", false)
+			got, _ := caForServer(cfg, "https://shared.example", "", false)
 			assert.Equal(t, caAlpha, got, "alpha < zeta: caAlpha must win on every call (iteration %d)", i)
 		}
 	})
@@ -2356,7 +2356,7 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 				"zeta":  {URL: "https://shared.example", CA: caZeta},
 			},
 		}
-		got := caForServer(cfg, "https://shared.example", "", false)
+		got, _ := caForServer(cfg, "https://shared.example", "", false)
 		assert.Equal(t, caZeta, got, "current server zeta must win over sorted alpha")
 	})
 
@@ -2371,7 +2371,7 @@ func TestCaForServerDeterministicWithMultipleMatches(t *testing.T) {
 				"zeta":  {URL: "https://shared.example", CA: caZeta},
 			},
 		}
-		got := caForServer(cfg, "https://shared.example", "", true)
+		got, _ := caForServer(cfg, "https://shared.example", "", true)
 		assert.Equal(t, caAlpha, got, "ignoreCurrentContext=true: current server zeta must be ignored; sorted alpha wins")
 	})
 }

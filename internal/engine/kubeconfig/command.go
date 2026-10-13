@@ -144,14 +144,14 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 		serverName = config.ServerHost(base)
 	}
 	entryName := fmt.Sprintf("%s-%s", serverName, id)
-	if err := reservedName(entryName, id, base, eff.CA); err != nil {
+	if err := reservedName(entryName, id, base, eff.CA, eff.CASource); err != nil {
 		return runtime.Result{}, err
 	}
 
 	// The plugin's own lookup, run once: it decides the --user-id the
 	// exec entry carries and the notices below.
 	lc := lookupCall{cfg: cfg, dir: dir, server: base, serverID: config.CanonicalServerIdentity(base),
-		name: entryName, clusterID: id, ca: caPEM, caSource: eff.CA, eff: eff, envToken: os.Getenv(config.EnvToken) != "", store: c.store}
+		name: entryName, clusterID: id, caSource: eff.CA, eff: eff, envToken: os.Getenv(config.EnvToken) != "", store: c.store}
 	lk := lc.lookup()
 	owner, ownerNotice := lc.recordedOwner(lk)
 

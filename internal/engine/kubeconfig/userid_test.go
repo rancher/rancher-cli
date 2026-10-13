@@ -91,7 +91,7 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner, so the exec plugin does not check the user; " +
 					"pipe an API token to rancher --config '" + dir + "' auth login <name> --url '" + recordsURL + "' --token-stdin, with a name of your choice for <name>, " +
-					"adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline, " +
+					"adding --cacert with the path of a file that holds the server's CA certificate, which RANCHER_CLI_CACERT carries inline, " +
 					"then rancher --config '" + dir + "' config use-server <name> (this sets the directory's current server, which is unset now), then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
 			}},
 		{name: "an owner --user-id would refuse", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod": {URL: recordsURL, TokenUserID: "U/1"}}), loggedIn: []string{"prod"}, unowned: true},
@@ -139,7 +139,7 @@ func TestKubeconfigWritesTheOwnerWithoutAPrompter(t *testing.T) {
 // namespace of the --user-id cache slots, or of the legacy shim's - is
 // never written: the run fails and names a login under an entry of
 // another name, with the session's CA as a path, or the clause asking for
-// one when the CA is inline.
+// one, naming RANCHER_CLI_CACERT as the holder, when the CA is inline.
 func TestKubeconfigRefusesANameAuthGetTokenRefuses(t *testing.T) {
 	keyring.MockInit()
 	caPath := filepath.Join(t.TempDir(), "ca.pem")
@@ -151,7 +151,7 @@ func TestKubeconfigRefusesANameAuthGetTokenRefuses(t *testing.T) {
 		{"user-id:", "https://user-id:8443", "user-id:", "", "", ""},
 		{"legacy:", "https://legacy:8443", "legacy:", "", "", ""},
 		{"a CA path", "https://user-id:8443", "user-id:", caPath, " --cacert '" + caPath + "'", ""},
-		{"an inline CA", "https://user-id:8443", "user-id:", pemCA, "", ", adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline"},
+		{"an inline CA", "https://user-id:8443", "user-id:", pemCA, "", ", adding --cacert with the path of a file that holds the server's CA certificate, which RANCHER_CLI_CACERT carries inline"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, _, dir, err := runRecords(t, recordsSetup{envURL: tc.url, envToken: true, envCA: tc.ca})

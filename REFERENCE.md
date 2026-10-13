@@ -227,7 +227,7 @@ precedence is flag > environment > file.
 |---|---|
 | `RANCHER_CLI_URL` | server URL |
 | `RANCHER_CLI_TOKEN` | token, used directly and never persisted |
-| `RANCHER_CLI_CACERT` | CA bundle (PEM) |
+| `RANCHER_CLI_CACERT` | CA bundle (PEM), a path or the PEM text; which commands apply it is in [Which CA a command trusts](#which-ca-a-command-trusts) |
 | `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>`; chooses the store for a directory that has not declared one, and must not disagree with one that has (a different value is a VALIDATION error, not an override); a keychain directory reads the keychain only, so set `file` where no keychain is reachable. `rancher kubeconfig` sets it in the exec entry: empty for a directory that declares its store, else the value set when it ran |
 | `RANCHER_CLI_CONFIG_DIR` | config directory; `rancher kubeconfig` sets it, absolute, in every exec entry it writes |
 | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
@@ -238,6 +238,47 @@ precedence is flag > environment > file.
 Scope is per-invocation: `--cluster` routes to a downstream cluster; `--project`
 names a project on it, for the commands that take it. No scope is persisted
 or implied - see [Project scope](#project-scope---project).
+
+### Which CA a command trusts
+
+A flag beats `RANCHER_CLI_CACERT`, which beats the CA saved on a server entry;
+with none of them the system roots verify the server.
+
+| Command | Connects with | Saves |
+|---|---|---|
+| `auth get-token`, `rancher token` | `--cacert` (`--cacerts`), then `RANCHER_CLI_CACERT`, then the CA of the server entry the call identifies or whose URL matches, then system roots; `rancher token --skip-verify` uses none | nothing |
+| ordinary commands | `RANCHER_CLI_CACERT`, then the current server entry's CA (dropped when `RANCHER_CLI_URL` names another server), then system roots | nothing |
+| `auth login` (with or without `--url`) | `--cacert` (with `--url` only), then `RANCHER_CLI_CACERT`, then the entry's saved CA, then system roots | `--cacert`, or a certificate accepted at the trust prompt; never the variable (an entry left without a CA after a login that used it carries `caFromEnvironment: true`) |
+| `auth logout`, `auth delete-token`, `config delete-server` (revokes) | the entry's saved CA; `RANCHER_CLI_CACERT` only for an entry `auth login` saved without a CA because that variable supplied it; otherwise system roots | nothing |
+| `config add-server`, `config update-server` | `--cacert`, else (`update-server`) the saved CA it keeps; the variable is not read | `--cacert` |
+| the exec plugin's own sign-in (token reuse on) | the same order as `auth get-token` | the CA it connected with, the variable's included (none under `--skip-verify`), in its `exec-login-*` entry |
+
+`RANCHER_CLI_CACERT` is not applied to a command that names a server other
+than the one `RANCHER_CLI_URL` names: a variable exported with
+`RANCHER_CLI_URL` is for that server. A variable exported alone applies to
+every command that connects to a server, so a call that names another
+server with its own private CA fails TLS verification; pass `--cacert` there.
+
+`auth login` never saves the variable's CA, so a later command run without
+the variable connects with the entry's saved CA, or with none. It warns when
+the entry it leaves has no saved CA, or one that differs from the variable,
+and the warning gives the `config update-server <name> --cacert <file>`
+that saves the CA. A login that connected with the variable never offers the
+trust prompt, and its unknown-authority error names the variable.
+
+`caFromEnvironment` is a field of a server entry in `config.yaml`. It is
+`true` on an entry with no `ca` whose last `auth login` connected with
+`RANCHER_CLI_CACERT`; the field records that fact, never the variable's
+value. It is never set on an entry that has a `ca`. A login that connects
+without the variable clears it, and so does every change that sets or clears
+the entry's CA or URL (`config update-server --cacert`, `--clear-cacert`,
+`--url`, an accepted trust prompt).
+
+The exec plugin's own sign-in saves the CA it connected with because later
+`kubectl` calls may run without the variable. Revokes use the variable only
+for an entry with `caFromEnvironment: true`: a variable set for one server must
+not stop revokes on others, and an entry with no saved CA and no
+`caFromEnvironment` names a server the system roots verify.
 
 ## Install internals
 
@@ -1216,7 +1257,9 @@ bearer). Both are reported with reason `v3`.
 
 Every revoke runs after the local delete, outside the config lock, one at a
 time, under one 10 s budget. A request goes only to a server a current config
-entry names, with that entry's CA: a bearer is never sent anywhere else.
+entry names, with that entry's CA (or `RANCHER_CLI_CACERT` for an entry
+`auth login` saved without a CA under that variable): a bearer is never sent
+anywhere else.
 Read-only mode set by config or the environment does not stop these revokes
 (a typed `--read-only` is refused on these commands). The command exits 0
 when every local delete succeeds, whatever the server answered; a Ctrl-C or
@@ -1343,7 +1386,9 @@ the same machinery. Flags: `--server`,
 caching), `--user-id` (the Rancher user every token must belong to; needs
 `--name`; see below), `--cacert`,
 `--auth-provider`, `--auth-flow`. When `--server` or `--cacert` are
-omitted, they fall back to the current server in config. It supports SAML,
+omitted, they fall back to the current server in config, and the CA is the
+first of `--cacert`, `RANCHER_CLI_CACERT` and the saved CA of the server
+entry the call identifies or whose URL matches. It supports SAML,
 OAuth (device-code / auth-code), and basic auth flows; long-poll flows can
 be canceled with Ctrl-C. List cached credentials with `rancher auth list-tokens`.
 Clear them with `rancher auth delete-token [<name>]`. That deletes the
@@ -1514,9 +1559,10 @@ server being logged in to; retry once that login completes.
 
 ## TLS & proxy
 
-Server connections verify TLS against the configured CA (`--cacert` /
-`RANCHER_CLI_CACERT`) or the system trust store by default - verification is never
-disabled implicitly. HTTP(S) proxies are honored from the environment.
+Server connections verify TLS against a CA from `--cacert`, `RANCHER_CLI_CACERT` or
+the server entry, which one depending on the command (see
+[Which CA a command trusts](#which-ca-a-command-trusts)), or the system trust store
+by default - verification is never disabled implicitly. HTTP(S) proxies are honored from the environment.
 
 Trust is scoped to the Rancher server's origin. The configured CA (and the
 legacy shim's `--skip-verify`) applies only to requests aimed at that
@@ -1529,8 +1575,8 @@ carry credentials to a server the configured trust was never meant to
 cover.
 
 There is no skip-verify flag anywhere in the native surface, ever: a
-self-signed or private-CA server is used by pinning its CA (`--cacert` or the
-stored server entry's CA), never by turning verification off. The one
+self-signed or private-CA server is used by pinning its CA (`--cacert`,
+`RANCHER_CLI_CACERT` or the stored server entry's CA), never by turning verification off. The one
 exception is the legacy `rancher token` shim, whose `--skip-verify` exists
 only because Rancher-generated kubeconfigs pass it verbatim - legacy
 compatibility, not an endorsement; kubeconfigs produced by this CLI never

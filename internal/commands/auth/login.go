@@ -13,6 +13,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/provider"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/register"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -97,6 +98,66 @@ func pinnedTrustFailure(err error, name string) error {
 		WithHint("")
 }
 
+// loginVariableRemedy is the remedy an unknown-authority failure names
+// when RANCHER_CLI_CACERT supplied the CA a login connected with: the CA
+// came from the variable, so the variable is what to change. The --url
+// path may be creating the entry, so it can pass the CA to the login; the
+// plain path can only point at the entry's saved CA.
+func loginVariableRemedy(urlPath bool, name string) string {
+	if urlPath {
+		return "the CA came from " + config.EnvCACert + " - pass --cacert <file> to this login, or unset " +
+			config.EnvCACert + ", or set it to the server's CA"
+	}
+	return "the CA came from " + config.EnvCACert + " - unset it, or set it to the server's CA; to save a CA for this entry, run: " +
+		"rancher config update-server " + clierr.ShellQuote(name) + " --cacert <file>"
+}
+
+// variableTrustFailure rewrites an unknown-authority TLS_TRUST error of a
+// login that connected with RANCHER_CLI_CACERT: the error names the
+// variable instead of --cacert as the CA to change. The remedy goes into
+// the message the same way tlstrust.Classify builds its own, and the error
+// carries no hint. Any other error, and every kind a CA cannot fix, passes
+// through unchanged.
+func variableTrustFailure(err error, remedy string) error {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok || ce.Code != clierr.CodeTLSTrust {
+		return err
+	}
+	d, ok := ce.Details.(tlstrust.Details)
+	if !ok || d.Kind != tlstrust.KindUnknownAuthority {
+		return err
+	}
+	return ce.WithMessage(tlstrust.UnknownAuthorityMessage(d.IsLeafCertificate(), "; "+remedy)).WithHint("")
+}
+
+// connectionCA is the CA a login connects with when it is not the CA the
+// entry saves. On the plain path variable is the selector of
+// RANCHER_CLI_CACERT where it applies to the entry's URL, resolved there
+// after the saved CA. On the --url path the registration already resolved
+// it: bytes is what the preflight connected with and fromEnvironment says
+// the variable supplied it.
+type connectionCA struct {
+	variable        string
+	bytes           string
+	fromEnvironment bool
+}
+
+// variableNotice is the warning of a login that connected with
+// RANCHER_CLI_CACERT and leaves an entry whose saved CA is not that CA:
+// the variable is never saved, so a command run without it connects with
+// the saved CA, or with none.
+func variableNotice(name, savedSelector string) string {
+	q := clierr.ShellQuote(name)
+	if savedSelector == "" {
+		return "server entry " + q + " has no saved CA and this login used " + config.EnvCACert +
+			"; commands run without that variable will not trust the server (logout uses the variable for this entry); " +
+			"to save the CA, run: rancher config update-server " + q + " --cacert <file>"
+	}
+	return "server entry " + q + " keeps its saved CA, which differs from " + config.EnvCACert +
+		" that this login used; commands run without that variable, and logout, use the saved CA, and fail if it does not fit the server; " +
+		"to replace it, run: rancher config update-server " + q + " --cacert <file>"
+}
+
 func (loginCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:         "auth login",
@@ -107,7 +168,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: "url", Type: "string", Desc: "Rancher server `url` to add and log into; when name is omitted, the server's hostname becomes the entry name"},
 			{Name: "token-stdin", Type: "bool", Desc: "read the API token (id:secret) from stdin"},
-			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM (requires --url)"},
+			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM, saved with the entry (requires --url); when absent, RANCHER_CLI_CACERT connects the login with or without --url, and is never saved", Env: []string{config.EnvCACert}},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "ttl", Type: "string", Desc: "session-token lifetime `duration`, e.g. 90d"},
@@ -320,9 +381,24 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 	if cacert == "" && known {
 		caSelector = existing.CA
 	}
+	// With no --cacert the login connects with RANCHER_CLI_CACERT where it
+	// applies to this URL. The variable is never saved, so the entry keeps
+	// caSelector, and a failure of that connection is the variable's, not
+	// the entry's: no trust prompt, and no "already registered" pointer.
+	variableCA := ""
+	if cacert == "" {
+		variableCA = config.EnvCACertFor(canonical)
+	}
+	viaVariable := variableCA != "" && strings.HasPrefix(canonical, "https://")
 
-	probe, err := register.Prepare(ctx, l.tlsPreflight, canonical, caSelector)
+	probe, err := register.PrepareConnecting(ctx, l.tlsPreflight, canonical, caSelector, variableCA)
 	switch {
+	case err != nil && viaVariable:
+		// The "is already registered - sign in to it directly" pointer is
+		// dropped for every kind of failure here, a known entry included:
+		// it points at the plain login, which connects with the same
+		// variable and fails the same way.
+		err = variableTrustFailure(err, loginVariableRemedy(true, name))
 	case err != nil && !known && cacert == "":
 		// Guided trust on the delegated path applies only to a genuinely new
 		// entry with no explicit --cacert: an already-registered entry's
@@ -349,11 +425,12 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 			_, warning = config.EvalMinVersionSupport(version)
 		}
 		probe = register.Probe{
-			CanonicalURL:   canonical,
-			CASelector:     accepted.pem,
-			CABytes:        accepted.pem,
-			VersionWarning: warning,
-			CAFingerprint:  accepted.fingerprint,
+			CanonicalURL:    canonical,
+			CASelector:      accepted.pem,
+			CABytes:         accepted.pem,
+			ConnectionBytes: accepted.pem,
+			VersionWarning:  warning,
+			CAFingerprint:   accepted.fingerprint,
 		}
 		err = nil
 	case err != nil && known && cacert == "":
@@ -381,7 +458,8 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 		early = append(early, probe.VersionWarning)
 	}
 	early = append(early, out.Notices...)
-	return l.authenticateDelegated(ctx, in, p, out.Name, out.CanonicalURL, out.CASelector, probe.CABytes, early, out.Created)
+	return l.authenticateDelegated(ctx, in, p, out.Name, out.CanonicalURL, out.CASelector, probe.CABytes,
+		connectionCA{bytes: probe.ConnectionBytes, fromEnvironment: probe.FromEnvironment}, early, out.Created)
 }
 
 // authenticatePlain authenticates an already-registered entry: no
@@ -389,11 +467,13 @@ func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input,
 // preflight itself, and an auth failure is final - there is no unlocked
 // registration window behind it to recheck for staleness.
 func (l loginCmd) authenticatePlain(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caFingerprint string) (runtime.Result, error) {
-	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, "", nil, caFingerprint, false, false)
+	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, "",
+		connectionCA{variable: config.EnvCACertFor(serverURL)}, nil, caFingerprint, false, false)
 }
 
 // authenticateDelegated authenticates immediately after this login's own
-// delegated registration committed: caBytes and the warnings (the probe's
+// delegated registration committed: caBytes (the saved selector's bytes),
+// conn and the warnings (the probe's
 // version warning, and any credential the registration removed from under
 // the new name) are already known from that registration (re-running the
 // preflight would repeat the same network round trip, and dropping the
@@ -401,8 +481,8 @@ func (l loginCmd) authenticatePlain(ctx context.Context, in runtime.Input, p run
 // login must still surface them), and a failure gets the stale-hint recheck scoped to the
 // just-closed unlocked registration window. added is threaded straight
 // into LoginResult.
-func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caBytes string, warnings []string, added bool) (runtime.Result, error) {
-	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, caBytes, warnings, "", true, added)
+func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p runtime.Prompter, name, serverURL, caSelector, caBytes string, conn connectionCA, warnings []string, added bool) (runtime.Result, error) {
+	return l.authenticateAndStore(ctx, in, p, name, serverURL, caSelector, caBytes, conn, warnings, "", true, added)
 }
 
 // authenticateAndStore runs the auth flow against (name, serverURL,
@@ -412,7 +492,7 @@ func (l loginCmd) authenticateDelegated(ctx context.Context, in runtime.Input, p
 // for their caller - no call site passes a bare bool literal.
 func (l loginCmd) authenticateAndStore(
 	ctx context.Context, in runtime.Input, p runtime.Prompter,
-	name, serverURL, caSelector, caBytes string, earlyWarnings []string, caFingerprint string,
+	name, serverURL, caSelector, caBytes string, conn connectionCA, earlyWarnings []string, caFingerprint string,
 	delegated, added bool,
 ) (runtime.Result, error) {
 	// The credential store is resolved before the sign-in, not under the
@@ -444,6 +524,11 @@ func (l loginCmd) authenticateAndStore(
 
 	isHTTPS := strings.HasPrefix(serverURL, "https://")
 	var pendingTrust *trustCandidate
+	// caBytes is the saved selector's bytes, which the snapshot below binds
+	// the commit to; connBytes is what every request of this login is
+	// verified against: the same bytes, unless RANCHER_CLI_CACERT supplied
+	// the CA.
+	connBytes, viaVariable := conn.bytes, conn.fromEnvironment
 	if !delegated {
 		// register.ResolveCA is the one place "resolve CA bytes only
 		// under https, and only when the selector names something" is
@@ -456,9 +541,21 @@ func (l loginCmd) authenticateAndStore(
 					"reading stored CA for server entry %q: %s; restore the file, or run: rancher config delete-server %s",
 					name, raerr.Error(), clierr.ShellQuote(name)))
 		}
-		caBytes = b
+		caBytes, connBytes = b, b
+		if conn.variable != "" {
+			vb, verr := register.ResolveCA(serverURL, conn.variable)
+			if verr != nil {
+				return runtime.Result{}, clierr.New(clierr.CodeValidation, "reading "+config.EnvCACert+": "+verr.Error())
+			}
+			connBytes, viaVariable = vb, vb != ""
+		}
 		if isHTTPS && l.tlsPreflight != nil {
-			if _, perr := l.tlsPreflight(ctx, serverURL, caBytes); perr != nil {
+			if _, perr := l.tlsPreflight(ctx, serverURL, connBytes); perr != nil {
+				if viaVariable {
+					// The failure is the variable's: no trust prompt, and no
+					// statement about trust the entry pinned.
+					return runtime.Result{}, variableTrustFailure(perr, loginVariableRemedy(false, name))
+				}
 				accepted, _, declined, gerr := offerGuidedTrust(ctx, perr, p, l.tlsPreflight, serverURL, caFingerprint)
 				if accepted == nil {
 					if declined {
@@ -475,6 +572,11 @@ func (l loginCmd) authenticateAndStore(
 			}
 		}
 	}
+	if viaVariable && (caSelector == "" || caBytes != connBytes) {
+		// The entry is saved either way, so the notice does not wait for the
+		// preflight to reach the server.
+		earlyWarnings = append(slices.Clone(earlyWarnings), variableNotice(name, caSelector))
+	}
 
 	// snap binds the commit below to the entry state THIS preflight verified
 	// against - caSelector/caBytes here are always the pre-consent, stored
@@ -487,7 +589,7 @@ func (l loginCmd) authenticateAndStore(
 		// The rest of THIS operation (token acquisition, verify) authenticates
 		// against the just-accepted candidate, never the still-failing stored
 		// CA.
-		caBytes = pendingTrust.pem
+		connBytes = pendingTrust.pem
 	}
 
 	// st accumulates what each persistence system holds as the login
@@ -496,23 +598,32 @@ func (l loginCmd) authenticateAndStore(
 	// did happen.
 	st := token.LoginStates{Config: clierr.ConfigNotWritten}
 	st.Warnings = append(st.Warnings, earlyWarnings...)
-	cred, authErr := resolveLoginToken(ctx, serverURL, caBytes, l.idpClient, in, p)
+	cred, authErr := resolveLoginToken(ctx, serverURL, connBytes, l.idpClient, in, p)
 	bearer := cred.Token
 	viaProvider := cred.Provenance != token.ProvenanceUserSupplied
 	if ae, ok := errors.AsType[*token.AcquireError](authErr); ok {
 		authErr = token.FailAcquire(ae, name)
 	}
+	// carriesWarnings is set when authErr is built from st, whose warnings
+	// already hold the early ones; any other failure of the sign-in has
+	// none yet, and the early warnings (the variable notice, a removed
+	// orphan credential) belong to steps that did happen.
+	carriesWarnings := false
 	if authErr == nil {
 		id, secret, ok := strings.Cut(bearer, ":")
 		if !ok || id == "" || secret == "" {
 			// The credential this operation created is unusable: revoke it and
 			// report it with the same shape every later failure carries.
+			carriesWarnings = true
 			authErr = token.FailLogin(clierr.New(clierr.CodeValidation,
 				"invalid token (expected non-empty id:secret); get one from the Rancher UI"),
 				clierr.StageCommit, st, cred, name)
 		}
 	}
 	if authErr != nil {
+		if !carriesWarnings {
+			authErr = config.WithNotices(authErr, earlyWarnings)
+		}
 		if delegated {
 			return runtime.Result{}, decorateDelegatedAuthFailure(ctx, l.dir, authErr, snap)
 		}
@@ -526,7 +637,7 @@ func (l loginCmd) authenticateAndStore(
 	// says so.
 	noVerify := in.Bool("no-verify")
 	if !viaProvider && !noVerify && l.verify != nil {
-		owner, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: caBytes, Token: bearer, ServerName: name})
+		owner, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: connBytes, Token: bearer, ServerName: name})
 		if verr != nil {
 			if ce, ok := errors.AsType[*clierr.Error](verr); ok && !delegated {
 				verr = ce.WithMessage(ce.Message + "; re-run with --no-verify to store the token without checking it").
@@ -548,7 +659,7 @@ func (l loginCmd) authenticateAndStore(
 		pendingCA = &config.PendingTrust{CA: pendingTrust.pem, Fingerprint: pendingTrust.fingerprint}
 	}
 	out, perr := config.PersistLoginCredential(ctx, l.dir, config.PersistLoginInput{
-		Name: name, CanonicalURL: serverURL,
+		Name: name, CanonicalURL: serverURL, CAFromEnvironment: viaVariable,
 		Provenance: cred.Provenance, TokenRef: cred.Ref, TokenUserID: cred.UserID,
 		Bearer: bearer, ExpiresAt: cred.ExpiresAt,
 		Policy: policy, ObservedDeclaration: observedDeclaration,

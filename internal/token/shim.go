@@ -68,7 +68,7 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 			{Name: "cluster", Type: "string", Desc: "cluster `id` for a cluster-scoped token (set by Authorized Cluster Endpoint kubeconfigs)"},
 			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
-			{Name: "cacerts", Type: "string", Desc: "PEM CA bundle `path` (legacy spelling of --cacert)"},
+			{Name: "cacerts", Type: "string", Desc: "PEM CA bundle `path` (legacy spelling of --cacert)", Env: []string{config.EnvCACert}},
 			{Name: "skip-verify", Type: "bool", Desc: "skip TLS verification (insecure)"},
 		},
 		ServerAccess: runtime.ServerAccessWrite,

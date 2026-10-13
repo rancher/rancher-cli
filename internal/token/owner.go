@@ -20,10 +20,9 @@ import (
 // canonical server URL, and the CA it resolved (a path or an inline PEM).
 type userCheck struct {
 	userID, clusterID, serverID, caSource string
-	// caEntry is the server entry whose config.yaml record holds caSource,
-	// when that is not the exec entry: a login of a plugin login entry's
-	// URL that is not the call's.
-	caEntry string
+	// caFrom is where caSource came from: --cacert, RANCHER_CLI_CACERT or a
+	// server entry, whose name the remedy gives for an inline CA.
+	caFrom config.CASource
 }
 
 // pluginEntrySkipped is the lookup's answer for a call with --user-id
@@ -62,8 +61,7 @@ func (u userCheck) loginOfEntry(cfg *config.Config, entry string) (text, hint st
 // It is three commands, so it has no hint. An empty user id names no
 // user.
 func (u userCheck) loginOfNewEntry(cfg *config.Config) string {
-	login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, false)
-	login.InlineCAEntry = u.caEntry
+	login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, u.caFrom, false)
 	current := ""
 	if cfg != nil {
 		current = cfg.CurrentServer
@@ -81,8 +79,8 @@ func (u userCheck) loginOfNewEntry(cfg *config.Config) string {
 // the CA the call resolved (a path, or an inline PEM it cannot name),
 // made current, then the kubeconfig for clusterID regenerated from it.
 // userID names the user the token must be of; empty names none.
-func NewEntryLoginRemedy(cfg *config.Config, userID, clusterID, serverURL, ca string) string {
-	return userCheck{userID: userID, clusterID: clusterID, serverID: serverURL, caSource: ca}.loginOfNewEntry(cfg)
+func NewEntryLoginRemedy(cfg *config.Config, userID, clusterID, serverURL, ca string, from config.CASource) string {
+	return userCheck{userID: userID, clusterID: clusterID, serverID: serverURL, caSource: ca, caFrom: from}.loginOfNewEntry(cfg)
 }
 
 // entryOwnerRefused is the refusal of a call whose entry holds a login

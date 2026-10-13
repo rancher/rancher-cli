@@ -329,8 +329,8 @@ func (d *Deletion) serverRecordParent(cfg *config.Config, r config.CachedRecord)
 
 // trustFor is the entry whose URL and CA a request for server uses: the
 // record's parent when it names that server, else among the entries that
-// do the one with a CA fingerprint, then one with a CA, then the first by
-// name. None means no current entry names the server, and nothing is
+// do the one with a CA fingerprint, then one with a CA, then one that
+// connects with RANCHER_CLI_CACERT, then the first by name. None means no current entry names the server, and nothing is
 // sent.
 func trustFor(cfg *config.Config, parent, server string) (string, bool) {
 	if s, ok := cfg.Servers[parent]; ok && config.SameServerURL(s.URL, server) {
@@ -343,6 +343,7 @@ func trustFor(cfg *config.Config, parent, server string) (string, bool) {
 	for _, pick := range []func(config.Server) bool{
 		func(s config.Server) bool { return s.CAFingerprint != "" },
 		func(s config.Server) bool { return s.CA != "" },
+		func(s config.Server) bool { return s.CAFromEnvironment },
 	} {
 		if i := slices.IndexFunc(names, func(n string) bool { return pick(cfg.Servers[n]) }); i >= 0 {
 			return names[i], true
@@ -647,7 +648,14 @@ func (d *Deletion) manualWarning(it *revocationItem) string {
 	for i := range seq {
 		seq[i] = clierr.MarkRemedy(seq[i])
 	}
-	return fmt.Sprintf("the %s was not revoked (%s); revoke it with: %s (%s)", what, reasonText(it), strings.Join(seq, "; "), clierr.RecoverySequenceAssumption)
+	text := fmt.Sprintf("the %s was not revoked (%s); revoke it with: %s (%s)", what, reasonText(it), strings.Join(seq, "; "), clierr.RecoverySequenceAssumption)
+	if it.reason == reasonNoEntry {
+		// No entry names the server, so the login in the sequence has no CA
+		// to connect with; a private CA has to come from the operator.
+		text += "; for a server whose certificate a private CA signs, add --cacert <file with the server's CA certificate> to the login, or set " +
+			config.EnvCACert + " to that file"
+	}
+	return text
 }
 
 // nextLoginText names the login that revokes an entry's recorded tokens,

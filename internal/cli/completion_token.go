@@ -59,7 +59,7 @@ func resolveCompletionConnection() completionConnection {
 		}
 		conn.ServerURL = v
 	}
-	if v := os.Getenv(config.EnvCACert); v != "" {
+	if v := config.EnvCACertFor(conn.ServerURL); v != "" {
 		conn.CACert = v
 	}
 

@@ -2841,7 +2841,7 @@ func TestLoginEarlyFailureKeepsTheVersionWarning(t *testing.T) {
 	}
 	in := cmdtest.Input{Flag: map[string]bool{"token-stdin": true}, Pos: []string{"prod"}}
 	const versionWarning = "server 2.10.0 is below the supported minimum 2.14; some commands may fail"
-	_, err := cmd.authenticateAndStore(t.Context(), in, cmdtest.StdinPrompter("id:secret"), "prod", "https://r.example", "", "", []string{versionWarning}, "", false, false)
+	_, err := cmd.authenticateAndStore(t.Context(), in, cmdtest.StdinPrompter("id:secret"), "prod", "https://r.example", "", "", connectionCA{}, []string{versionWarning}, "", false, false)
 	ce, d := decodeLoginFailure(t, err)
 	assert.Equal(t, clierr.CodeAuth, d.Primary.Code)
 	assert.Contains(t, ce.Warnings(), versionWarning)

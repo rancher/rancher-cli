@@ -1,7 +1,8 @@
 # Regression: a login's --cacert persists
 # that CA into the config's server entry (login.go), which is what a later
 # bare `auth get-token --server ...` call borrows via caForServer
-# (token.go's own resolveConn) - env RANCHER_CLI_CACERT never reaches that path.
+# (token.go's own resolveConn) when RANCHER_CLI_CACERT is unset, as it is
+# for that call below.
 # `auth delete-token --all` clears only the exec-credential cache, never the
 # stored login credential - that asymmetry is what makes the cold token create
 # reachable non-interactively at all.
@@ -12,6 +13,7 @@ exists $RANCHER_CLI_CONFIG_DIR/config.yaml
 exec rancher auth delete-token --all -o json
 jsonquery stdout 'data.deleted.#' 0
 
+env RANCHER_CLI_CACERT=
 exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name ex
 cp stdout execcred.json
 jsonquery execcred.json kind ExecCredential

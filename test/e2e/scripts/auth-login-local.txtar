@@ -2,9 +2,8 @@
 # basicAuth's username/password prompts gate on CanPrompt() = isTTY &&
 # !noInput (ui/prompter.go, adapter.go), so a plain stdin heredoc dead-ends
 # before reading anything, whereas a pty drives these prompts. --cacert is
-# mandatory: provider login builds its HTTP
-# client from --cacert only (login_ext.go), and RANCHER_CLI_CACERT never reaches
-# it. Assert data.* only, never warnings.* (the server-version
+# passed so the new entry saves the CA: RANCHER_CLI_CACERT connects a login
+# but is never saved. Assert data.* only, never warnings.* (the server-version
 # Setting is a shared singleton auth-min-version.txtar patches concurrently).
 [!unix] skip 'ttyin (real pty) is unix-only'
 

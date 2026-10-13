@@ -35,7 +35,7 @@ func RequireLogin(eff config.Effective) error {
 		// server entries survive, and every command routed through this
 		// factory should answer with the re-login shortcut, not the
 		// blank-machine wording (falls back to it when truly blank).
-		return config.ErrNotLoggedInFor(eff.KnownServers)
+		return config.ErrNotLoggedInFor(eff.KnownServers, eff.ServersWithCA)
 	}
 	if eff.Token == "" {
 		// eff.URL is resolved (a current server or RANCHER_CLI_URL exists) but

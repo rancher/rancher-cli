@@ -155,17 +155,61 @@ func SameServerURL(a, b string) bool {
 	return ca == cb
 }
 
+// EnvCACertFor returns RANCHER_CLI_CACERT for a command that connects to
+// serverURL: empty when the variable is unset, or when RANCHER_CLI_URL is
+// set and names another server - a variable exported with RANCHER_CLI_URL
+// is issued for that server and never applied to a different one. Every
+// reader of the variable goes through it.
+func EnvCACertFor(serverURL string) string {
+	v := os.Getenv(EnvCACert)
+	if v == "" {
+		return ""
+	}
+	if u := os.Getenv(EnvURL); u != "" && !SameServerURL(u, serverURL) {
+		return ""
+	}
+	return v
+}
+
+// CASourceKind says where the CA a connection trusts came from.
+type CASourceKind uint8
+
+const (
+	// CASourceNone is no custom CA: the system roots.
+	CASourceNone CASourceKind = iota
+	// CASourceFlag is --cacert, or --cacerts of the legacy token shim.
+	CASourceFlag
+	// CASourceVariable is RANCHER_CLI_CACERT.
+	CASourceVariable
+	// CASourceEntry is the CA saved on a server entry in config.yaml.
+	CASourceEntry
+)
+
+// CASource is where a connection's CA came from: the kind, and for a
+// server entry its name.
+type CASource struct {
+	Kind  CASourceKind
+	Entry string
+}
+
 // Effective is the merged connection info (file + env overrides).
 type Effective struct {
 	ServerName string
 	URL        string
 	CA         string
-	Token      string
+	// CASource is where CA came from: RANCHER_CLI_CACERT, the current
+	// server entry, or none - also none when a RANCHER_CLI_URL that names
+	// another server cleared the entry's CA.
+	CASource CASource
+	Token    string
 	// KnownServers is the configured server inventory (name → URL),
 	// carried so a downstream consumer that finds URL empty (no current
 	// server, no env) can answer with the re-login shortcut instead of
 	// the blank-machine wording - see ErrNotLoggedInFor and kube.RESTConfig.
 	KnownServers map[string]string
+	// ServersWithCA holds the names of the entries in KnownServers that
+	// save a CA, for the "not logged in" wording of a plugin login entry.
+	ServersWithCA map[string]bool
 	// noTokenFrom is the config whose current server's entry has no stored
 	// credential, kept for UnfinishedChange; nil otherwise. The change
 	// record is read only when a caller builds the "not logged in" error,
@@ -226,6 +270,12 @@ func (c *Config) connection() (eff Effective, name string, s Server, serverErr e
 		eff.KnownServers = make(map[string]string, len(c.Servers))
 		for n, srv := range c.Servers {
 			eff.KnownServers[n] = srv.URL
+			if srv.CA != "" {
+				if eff.ServersWithCA == nil {
+					eff.ServersWithCA = map[string]bool{}
+				}
+				eff.ServersWithCA[n] = true
+			}
 		}
 	}
 	name, s, serverErr = c.CurrentServerEntry()
@@ -233,6 +283,9 @@ func (c *Config) connection() (eff Effective, name string, s Server, serverErr e
 		// Field assignments, not a struct literal: a literal would zero the
 		// KnownServers inventory built above.
 		eff.ServerName, eff.URL, eff.CA = name, s.URL, s.CA
+		if s.CA != "" {
+			eff.CASource = CASource{Kind: CASourceEntry, Entry: name}
+		}
 	}
 
 	// Effective URL first (env > file).
@@ -242,12 +295,13 @@ func (c *Config) connection() (eff Effective, name string, s Server, serverErr e
 			// issued for; and (in Effective) never read the stored token
 			// either.
 			eff.CA = ""
+			eff.CASource = CASource{}
 			eff.ServerName = ""
 		}
 		eff.URL = v
 	}
-	if v := os.Getenv(EnvCACert); v != "" {
-		eff.CA = v
+	if v := EnvCACertFor(eff.URL); v != "" {
+		eff.CA, eff.CASource = v, CASource{Kind: CASourceVariable}
 	}
 	return eff, name, s, serverErr
 }

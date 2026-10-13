@@ -182,7 +182,7 @@ func entryOnOtherServerError(cfg *config.Config, name, server, clusterID string)
 	if plugin {
 		s := cfg.Servers[name]
 		ownEntry = "log in there under a server entry of your own, since auth login refuses the exec plugin's own login entries: " +
-			userCheck{clusterID: clusterID, serverID: s.URL, caSource: s.CA, caEntry: name}.loginOfNewEntry(cfg)
+			userCheck{clusterID: clusterID, serverID: s.URL, caSource: s.CA, caFrom: config.CASource{Kind: config.CASourceEntry, Entry: name}}.loginOfNewEntry(cfg)
 	}
 	if len(cfg.MatchingServerNames(server)) == 0 {
 		route := "regenerate the kubeconfig from " + entry + " with " + namedEntryRoute(name, entry, cluster, current)

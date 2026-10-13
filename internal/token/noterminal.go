@@ -41,13 +41,15 @@ func interactiveLoginRequired(provider, remedy string) *clierr.Error {
 
 // noTerminalCall is what the plugin's no-terminal remedies are filled in
 // with: the call's --name and --cluster, the server URL, the CA the call
-// resolved - its --cacert, or else the CA of the entry the call means or
-// the matching entry in config.yaml; a path or an inline PEM - whether the
+// resolved - its --cacert, or else RANCHER_CLI_CACERT, or else the CA of
+// the entry the call means or the matching entry in config.yaml; a path
+// or an inline PEM - and where it came from, whether the
 // call is the legacy shim's, and whether a sign-in would store a login
 // credential - token reuse on and a cluster named, the plugin-created
 // login's lane - which later calls reuse with a --name or without.
 type noTerminalCall struct {
 	name, clusterID, serverURL, caCert string
+	caFrom                             config.CASource
 	shim                               bool
 	keepsLogin                         bool
 	// userID is the call's --user-id: the login and the sign-in the
@@ -129,7 +131,7 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 		cfg = loaded
 		pending = config.UnfinishedChangeOf(t.dir, cfg)
 	}
-	login := NoTerminalLogin(cfg, call.name, call.clusterID, call.serverURL, call.caCert, call.shim)
+	login := NoTerminalLogin(cfg, call.name, call.clusterID, call.serverURL, call.caCert, call.caFrom, call.shim)
 	of, signIn := "", "sign in"
 	if call.userID != "" {
 		of, signIn = " of Rancher user "+clierr.ShellQuote(call.userID), "sign in as "+clierr.ShellQuote(call.userID)
@@ -236,10 +238,11 @@ type LoginRemedy struct {
 	// InlineCA reports that the call carries its CA inline, so auth login
 	// needs it from a file the command cannot name.
 	InlineCA bool
-	// InlineCAEntry, when set, is the server entry whose config.yaml record
-	// carries that inline CA, for a login of another server than the exec
-	// entry's; empty means the exec entry carries it.
-	InlineCAEntry string
+	// CASource is where an inline CA came from: RANCHER_CLI_CACERT, or the
+	// server entry whose config.yaml record carries it, for a login of
+	// another server than the exec entry's; otherwise the exec entry
+	// carries it.
+	CASource config.CASource
 	// Then are the steps after the login that make the exec entry use it,
 	// for an exec entry whose --name stands for an entry auth login
 	// refuses: the new entry made current, then the kubeconfig written
@@ -254,12 +257,8 @@ func (l LoginRemedy) Text() string {
 	if !l.Named {
 		s += ", with a name of your choice for <name>"
 	}
-	switch {
-	case l.InlineCA && l.InlineCAEntry != "":
-		s += ", adding --cacert with the path of a file that holds the server's CA certificate, which server entry " +
-			clierr.ShellQuote(l.InlineCAEntry) + " carries inline in config.yaml"
-	case l.InlineCA:
-		s += ", adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline"
+	if l.InlineCA {
+		s += config.InlineCAClause(l.CASource)
 	}
 	if l.Then != "" {
 		s += ", then " + l.Then
@@ -278,8 +277,8 @@ func (l LoginRemedy) Hint() string {
 
 // NoTerminalLogin builds the login the exec plugin's no-terminal error
 // names for a call with --name name, --cluster clusterID, the server URL
-// and the CA the call resolved (its --cacert, a path or an inline PEM),
-// over cfg (nil when config.yaml could not be read). The entry is the one
+// and the CA the call resolved (a path or an inline PEM) with where it
+// came from, over cfg (nil when config.yaml could not be read). The entry is the one
 // the call's --name identifies, which may carry another name than the
 // --name; else, for a --name of the form <entry>-<cluster>, <entry>,
 // which the plugin then identifies for every cluster's kubeconfig; else
@@ -290,7 +289,7 @@ func (l LoginRemedy) Hint() string {
 // the one the exec entry names, so the remedy goes on to make it current
 // and write the kubeconfig again from it (such a name is never Named, so
 // the remedy is no hint).
-func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert string, shim bool) LoginRemedy {
+func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert string, caFrom config.CASource, shim bool) LoginRemedy {
 	loginEntry := entryOfName(cfg, serverURL, name, clusterID, shim)
 	named := loginEntry != "" && config.ValidateEntryName(loginEntry) == nil
 	existing := false
@@ -330,6 +329,7 @@ func NoTerminalLogin(cfg *config.Config, name, clusterID, serverURL, caCert stri
 		Command:  fmt.Sprintf(clierr.Rancher+" auth login %s --url %s%s --token-stdin", entry, clierr.ShellQuote(serverURL), caFlag),
 		Named:    named,
 		InlineCA: inlineCA,
+		CASource: caFrom,
 		Then:     then,
 	}
 }

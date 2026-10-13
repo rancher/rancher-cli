@@ -1,0 +1,47 @@
+# The CA order of a call that names its server: --cacert, then
+# RANCHER_CLI_CACERT, then the CA saved on the server entry. The login saves
+# a CA file path; the file is then replaced by a CA that does not verify the
+# server, so the saved CA is wrong and the variable is right. The legacy
+# token shim names its server too and follows the same order.
+[!unix] skip 'writes the CA file with sh'
+exec sh -c 'printf "%s\n" "$TEST_RANCHER_CACERT" > $WORK/ca.pem'
+stdin token.txt
+exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $WORK/ca.pem --token-stdin
+exists $RANCHER_CLI_CONFIG_DIR/config.yaml
+exec rancher auth delete-token --all -o json
+cp wrong-ca.pem $WORK/ca.pem
+
+# Without the variable the saved CA is the one used, and it does not fit.
+env RANCHER_CLI_CACERT=
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name ex
+stderr 'certificate'
+
+# With it, the variable wins over the saved CA.
+env RANCHER_CLI_CACERT=$TEST_RANCHER_CACERT
+exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name ex
+cp stdout execcred.json
+jsonquery execcred.json kind ExecCredential
+! jsonquery execcred.json status.expirationTimestamp ''
+
+exec rancher token --server $TEST_RANCHER_URL --user shimuser
+jsonquery stdout kind ExecCredential
+! jsonquery stdout status.token ''
+
+# A flag beats the variable: a CA that does not fit fails the call even
+# though the variable would have fit.
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name flagged --cacert wrong-ca.pem
+stderr 'certificate'
+
+-- token.txt --
+e2e:secret
+-- wrong-ca.pem --
+-----BEGIN CERTIFICATE-----
+MIIBajCCARGgAwIBAgIBBzAKBggqhkjOPQQDAjAcMRowGAYDVQQDExF1bnJlbGF0
+ZWQgdGVzdCBDQTAgFw0yNjEwMTMyMDQ2MDBaGA8yMDU2MTAxMzIxNDYwMFowHDEa
+MBgGA1UEAxMRdW5yZWxhdGVkIHRlc3QgQ0EwWTATBgcqhkjOPQIBBggqhkjOPQMB
+BwNCAARQwEVAYfkMrchKZWq07dMo5CNQMs51zjD9Z4j0f7J3yuNE4UDg3umbVdCE
+fVMOtgKhNQUi6ZxltIaPK/MHEdOvo0IwQDAOBgNVHQ8BAf8EBAMCAgQwDwYDVR0T
+AQH/BAUwAwEB/zAdBgNVHQ4EFgQUoLrpE4lWfol/Ma8BQ/UZwEEn/QkwCgYIKoZI
+zj0EAwIDRwAwRAIgYAiPWNtSbyyMs+VOk7KiHSnKRN1jds9MTRVm+H4JIrwCIGwO
+AjVINu5WJ5nnNwFPxbS6N5B4EWJDW1dxp+Hy3v3u
+-----END CERTIFICATE-----
