@@ -14,8 +14,19 @@ jsonquery stderr data.error.code NOT_FOUND
 # missing --cluster on a Downstream kind → VALIDATION
 ! exec rancher get configmap ctx-cm --namespace default -o json
 jsonquery stderr data.error.code VALIDATION
-stderr 'cluster is required'
-stderr 'cluster local'
+jsonquery stderr data.error.message '--cluster is required; Rancher''s own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local'
+jsonquery stderr data.error.hint 'rancher access clusters'
+
+# images with neither --cluster nor --all-clusters → VALIDATION naming both
+! exec rancher images -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message '--cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list'
+jsonquery stderr data.error.hint 'rancher access clusters'
+
+# a downstream-only log target without --cluster → VALIDATION naming the target
+! exec rancher logs agent -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message '--cluster is required; agent runs only on a downstream cluster, pass a downstream cluster id or name'
 jsonquery stderr data.error.hint 'rancher access clusters'
 
 -- cm.yaml --

@@ -37,6 +37,8 @@ func NewCommand(dir string, store config.CredStore, clients engine.ClusterClient
 }
 
 func (kubeconfigCmd) Describe() runtime.Descriptor {
+	cluster := engine.ClusterFlag(true, false)
+	cluster.Desc = "cluster `id|name` to generate the kubeconfig for"
 	return runtime.Descriptor{
 		Name:  "kubeconfig",
 		Usage: "Print an exec-credential kubeconfig for a cluster, with its direct endpoint contexts when the cluster has them",
@@ -52,7 +54,7 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 			"that user's tokens; a notice says when the login records no owner. installHint says how to install rancher, or how to " +
 			"regenerate the file for another --exec-command.",
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` to generate the kubeconfig for"},
+			cluster,
 			{Name: "exec-command", Type: "string", Desc: "`command` kubectl runs for the exec plugin: a name looked up on PATH where kubectl runs, or a path, " +
 				"made absolute from the working directory (a leading ~ is the home directory); default rancher"},
 		},

@@ -43,8 +43,7 @@ func (c *explainCmd) Describe() runtime.Descriptor {
 			{Name: "resource", Type: "string", Desc: "resource plural, singular, short name, or resource.group; optionally /<name>; omitted with --non-resource-url"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Required: true, Desc: "cluster name or id the question is about",
-				MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint},
+			clusterFlag("cluster name or id the question is about"),
 			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace the question is about (one namespace; explain takes no --project or -A)"},
 			{Name: "group", Type: "string", Desc: "API group when the resource name exists in several groups"},
 			{Name: "subresource", Type: "string", Desc: "subresource such as status or log"},
@@ -100,7 +99,7 @@ func (c *explainCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 	}
 	ctx, cancel := fanOutContext(ctx, budget)
 	defer cancel()
-	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")
 	}

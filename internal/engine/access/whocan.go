@@ -44,8 +44,7 @@ func (c *whoCanCmd) Describe() runtime.Descriptor {
 			{Name: "resource", Type: "string", Desc: "resource plural, singular, short name, or resource.group; optionally /<name>; omitted with --non-resource-url"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Required: true, Desc: "cluster name or id the question is about",
-				MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint},
+			clusterFlag("cluster name or id the question is about"),
 			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace the question is about"},
 			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "all-namespaces", Type: "bool", Aliases: []string{"A"}, Desc: "ask in every namespace you can list, one row per subject per namespace"},
@@ -145,7 +144,7 @@ func (c *whoCanCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	}
 	ctx, cancel := fanOutContext(ctx, budget)
 	defer cancel()
-	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")
 	}

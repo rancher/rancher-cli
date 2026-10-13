@@ -1869,7 +1869,7 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "cluster `id|name`; required to address a clusterroletemplatebinding by name, omit to list across clusters",
+          "desc": "cluster `id|name` of the clusterroletemplatebinding",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -2860,7 +2860,7 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "cluster `id|name`; required to address a project by name, omit to list across clusters",
+          "desc": "cluster `id|name` of the project",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -6191,7 +6191,7 @@
           "type": "string"
         },
         {
-          "desc": "scan all downstream clusters",
+          "desc": "scan every cluster you can list",
           "name": "all-clusters",
           "type": "bool"
         },
@@ -7127,7 +7127,7 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "cluster `id|name`; required to address a clusterroletemplatebinding by name, omit to list across clusters",
+          "desc": "cluster `id|name` of the clusterroletemplatebinding",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -8955,7 +8955,7 @@
       "destructive": "false",
       "flags": [
         {
-          "desc": "cluster `id|name`; required to address a project by name, omit to list across clusters",
+          "desc": "cluster `id|name` of the project",
           "name": "cluster",
           "required": true,
           "type": "string"
@@ -10145,7 +10145,7 @@
       ],
       "flags": [
         {
-          "desc": "comma-separated log targets, or `all` (the default)",
+          "desc": "comma-separated log `targets` (server, agent, fleet-agent, kube-api-auth, webhook, api-extension), or all (the default)",
           "name": "targets",
           "type": "string"
         },

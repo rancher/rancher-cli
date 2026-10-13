@@ -50,7 +50,7 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			{Name: "namespace", Type: "string", Desc: "`namespace` for the secret"},
-			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
+			engine.ClusterFlag(true, true),
 			runtime.ProjectFlag(false, "create a project-scoped secret in this project's backing namespace; Rancher copies it into every namespace of the project (not with --namespace)"),
 			{Name: "from-literal", Type: "string", Once: true, Desc: "secret data as `key=value` pairs (comma-separated)"},
 			{Name: "type", Type: "string", Desc: "secret `type` (default Opaque)"},
@@ -103,7 +103,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	secretKind, _ := kinds.Lookup("secret")
 
 	if projectScoped {
-		cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+		cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
@@ -158,7 +158,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		return eff, engine.RedactMutationResult(exec, secretKind.RedactPaths, secretKind.Sensitive), nil
 	}
 
-	cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

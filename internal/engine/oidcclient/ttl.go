@@ -1,10 +1,8 @@
 package oidcclient
 
 import (
-	"errors"
 	"fmt"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -33,9 +31,9 @@ func strictTTLSeconds(flag, raw string) (int64, error) {
 	if raw == "" {
 		return 0, nil
 	}
-	ttl, err := extres.ParseTTL(raw)
+	ttl, err := extres.ParseTTL(flag, raw)
 	if err != nil {
-		return 0, rewrapTTLFlagName(err, flag)
+		return 0, err
 	}
 	if ttl <= 0 {
 		return 0, clierr.New(clierr.CodeValidation,
@@ -51,21 +49,4 @@ func strictTTLSeconds(flag, raw string) (int64, error) {
 			fmt.Sprintf("invalid --%s %q: must be at most %ds", flag, raw, maxTTLSeconds))
 	}
 	return secs, nil
-}
-
-// rewrapTTLFlagName corrects extres.ParseTTL's error, which hardcodes
-// "--ttl" (create token/create kubeconfig's actual flag name) in its
-// Message and Hint, into the flag this command really has (--token-ttl or
-// --refresh-ttl) - ParseTTL cannot name a flag it does not know about, so a
-// caller with a differently-named flag must correct the wording before it
-// reaches the user. WithMessage preserves everything else (code, cause,
-// retryable, candidates, details), so only Hint needs a second fix-up.
-func rewrapTTLFlagName(err error, flag string) error {
-	ce, ok := errors.AsType[*clierr.Error](err)
-	if !ok {
-		return err
-	}
-	fixed := "--" + flag
-	return ce.WithMessage(strings.ReplaceAll(err.Error(), "--ttl", fixed)).
-		WithHint(strings.ReplaceAll(ce.Hint, "--ttl", fixed))
 }

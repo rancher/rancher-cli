@@ -176,5 +176,16 @@ func TestExplainNeverReadsTheProjectFlag(t *testing.T) {
 	assert.Empty(t, p.scope.project)
 	assert.Equal(t, "team-a", p.scope.namespace)
 	_, err = parseQuestion(in, false, true)
-	require.ErrorContains(t, err, "pass at most one of --namespace, --project, --all-namespaces")
+	require.ErrorContains(t, err, "pass at most one of --namespace, --project")
+	assert.NotContains(t, err.Error(), "--all-namespaces")
+}
+
+// TestExplainClusterScopedResourceNamesOnlyItsSelector asserts the refusal of
+// a namespace on a cluster-scoped resource names --namespace alone: explain
+// takes no --project and no --all-namespaces.
+func TestExplainClusterScopedResourceNamesOnlyItsSelector(t *testing.T) {
+	t.Parallel()
+	f := canFactory("user-vwq4j")
+	_, err := NewExplain(f, f.caller).(runtime.ReadCommand).Execute(t.Context(), canInput(map[string]string{"namespace": "team-a"}, "get", "nodes"), nil)
+	require.EqualError(t, err, "resource nodes is cluster-scoped; omit --namespace")
 }

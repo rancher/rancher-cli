@@ -163,7 +163,23 @@ func TestImagesClusterAndAllClustersConflict(t *testing.T) {
 	t.Parallel()
 	cmd := NewImages(&fakeFactory{client: newFakeClient()}, nil)
 	_, err := execRead(t, cmd, input{s: map[string]string{"cluster": "c-abc"}, b: map[string]bool{"all-clusters": true}})
+	require.EqualError(t, err, "--cluster and --all-clusters are mutually exclusive")
+}
+
+// TestImagesNeitherClusterNorAllClustersIsRefused asserts a command line with
+// neither flag is refused naming both, with the cluster listing command as
+// the hint, before any request.
+func TestImagesNeitherClusterNorAllClustersIsRefused(t *testing.T) {
+	t.Parallel()
+	client := newFakeClient()
+	cmd := NewImages(&fakeFactory{client: client}, nil)
+	_, err := execRead(t, cmd, input{})
 	require.Error(t, err)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	assert.Equal(t, "--cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list", ce.Message)
+	assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
 }
 
 func TestImagesSkipsInactivePods(t *testing.T) {

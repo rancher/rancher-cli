@@ -32,7 +32,7 @@ func (createNamespaceCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			runtime.ProjectFlag(false, "add the namespace to this project when it is created"),
-			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
+			engine.ClusterFlag(true, false),
 		},
 		Examples:    []string{"rancher create namespace team-a --project p-x --cluster c-x --apply"},
 		Destructive: "false",
@@ -48,7 +48,7 @@ func (c createNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 	}
 	name := args[0]
 
-	cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, false)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

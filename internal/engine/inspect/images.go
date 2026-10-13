@@ -122,7 +122,7 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name`; pass exactly one of --cluster or --all-clusters"},
-			{Name: flagAllClusters, Type: "bool", Desc: "scan all downstream clusters"},
+			{Name: flagAllClusters, Type: "bool", Desc: "scan every cluster you can list"},
 			{Name: flagBy, Type: "string", Enum: []string{byImage, byWorkload},
 				Desc: "Group by unique image or by owning workload (default: image)"},
 			{Name: flagMatch, Type: "stringSlice",
@@ -153,8 +153,13 @@ func (c *imagesCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if allClusters {
 		return c.allClusters(ctx, by, needles)
 	}
+	if clusterFlag == "" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"--cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list").
+			WithHint(engine.ClusterRequiredHint)
+	}
 
-	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, false)
 	if err != nil {
 		return runtime.Result{}, err
 	}

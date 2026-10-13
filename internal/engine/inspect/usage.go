@@ -53,7 +53,7 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"to zero namespaces is verified empty: no pod or metrics read is issued.",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
-			resources.ClusterFlag(true),
+			engine.ClusterFlag(true, true),
 			{Name: resources.FlagNamespace, Type: "string", Desc: "`namespace` to operate in"},
 			runtime.ProjectFlag(false, "keep only the project's namespaces (not with --by node)"),
 			{Name: "by", Type: "string", Enum: []string{byNamespace, byProject, byNode, byPod},
@@ -84,7 +84,7 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 		}
 	}
 
-	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
 	if err != nil {
 		return runtime.Result{}, err
 	}

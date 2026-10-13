@@ -1528,6 +1528,62 @@ func TestValidateInputMissingRequiredFlagUsesDeclaredMessage(t *testing.T) {
 	assert.Empty(t, ce.Hint)
 }
 
+// TestValidateInputMissingInputListsAllowedValues asserts that a missing
+// required argument or flag lists its allowed values when it declares them,
+// that one without values keeps the short text, that a declared
+// MissingMessage wins over the list, and that the invalid-value texts keep
+// their form.
+func TestValidateInputMissingInputListsAllowedValues(t *testing.T) {
+	t.Parallel()
+	d := Descriptor{Name: "x",
+		Args: []ArgSpec{
+			{Name: "kind", Type: "string", Required: true, Enum: []string{"a", "b"}},
+			{Name: "name", Type: "string", Required: true},
+		},
+		Flags: []ArgSpec{
+			{Name: "mode", Type: "string", Required: true, Enum: []string{"c", "d"}},
+			{Name: "tags", Type: "stringSlice", Required: true, Enum: []string{"e", "f"}},
+			{Name: "free", Type: "string", Required: true},
+			{Name: "declared", Type: "string", Required: true, Enum: []string{"g", "h"}, MissingMessage: "--declared is required; see the docs"},
+		},
+	}
+	assert.Equal(t, "a|b", OneOf([]string{"a", "b"}))
+
+	full := mapInput{
+		a:  []string{"a", "n"},
+		s:  map[string]string{"mode": "c", "free": "v", "declared": "g"},
+		sl: map[string][]string{"tags": {"e"}},
+	}
+	require.Nil(t, validateInput(d, full, false))
+
+	for _, tc := range []struct {
+		name string
+		in   func(mapInput) mapInput
+		want string
+	}{
+		{"argument with values", func(in mapInput) mapInput { in.a = []string{"", "n"}; return in }, "argument <kind> is required; one of a|b"},
+		{"argument without values", func(in mapInput) mapInput { in.a = []string{"a"}; return in }, "argument <name> is required"},
+		{"flag with values", func(in mapInput) mapInput { in.s = map[string]string{"free": "v", "declared": "g"}; return in }, "--mode is required; one of c|d"},
+		{"list flag with values", func(in mapInput) mapInput { in.sl = nil; return in }, "--tags is required; one of e|f"},
+		{"flag without values", func(in mapInput) mapInput { in.s = map[string]string{"mode": "c", "declared": "g"}; return in }, "--free is required"},
+		{"declared message", func(in mapInput) mapInput { in.s = map[string]string{"mode": "c", "free": "v"}; return in }, "--declared is required; see the docs"},
+		{"invalid argument", func(in mapInput) mapInput { in.a = []string{"z", "n"}; return in }, `argument <kind>="z" is not one of a|b`},
+		{"invalid flag", func(in mapInput) mapInput {
+			in.s = map[string]string{"mode": "z", "free": "v", "declared": "g"}
+			return in
+		}, `--mode="z" is not one of c|d`},
+		{"invalid list entry", func(in mapInput) mapInput { in.sl = map[string][]string{"tags": {"e", "z"}}; return in }, `--tags="z" is not one of e|f`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ce := validateInput(d, tc.in(full), false)
+			require.NotNil(t, ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, tc.want, ce.Message)
+		})
+	}
+}
+
 // TestValidateInputStringSlicePerEntry asserts validateInput's
 // semantics: Required means at least one occurrence; Enum membership is
 // checked on every entry.

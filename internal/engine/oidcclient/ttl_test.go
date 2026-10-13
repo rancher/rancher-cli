@@ -1,7 +1,7 @@
 package oidcclient
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -70,44 +70,34 @@ func TestStrictTTLSecondsExactBoundary(t *testing.T) {
 	})
 }
 
-// TestStrictTTLSecondsRewrapsFlagName asserts that extres.ParseTTL's hardcoded
-// "--ttl" in both Message and Hint (it is shared with create token/create
-// kubeconfig, whose flag genuinely is --ttl) gets corrected to this
-// command's own flag name before the error reaches the user - never point
-// at a flag this command doesn't have.
-func TestStrictTTLSecondsRewrapsFlagName(t *testing.T) {
+// TestStrictTTLSecondsNamesItsOwnFlag asserts that a value that does not
+// parse is refused naming the flag the command was given (--token-ttl or
+// --refresh-ttl, never --ttl), and that the user's quoted value is printed
+// verbatim, also when it contains another flag's name.
+func TestStrictTTLSecondsNamesItsOwnFlag(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
 		flag string
 		raw  string
+		want string
 	}{
-		{"malformed duration", "refresh-ttl", "not-a-duration"},
-		{"day-count overflow", "refresh-ttl", "9223372036855d"},
+		{"malformed duration", "refresh-ttl", "not-a-duration",
+			`invalid --refresh-ttl "not-a-duration": use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)`},
+		{"day-count overflow", "refresh-ttl", "9223372036855d",
+			`invalid --refresh-ttl "9223372036855d": days must be at most 106751 (a larger value overflows the internal duration)`},
+		{"the value holds another flag name", "token-ttl", "a--ttl",
+			`invalid --token-ttl "a--ttl": use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := strictTTLSeconds(tc.flag, tc.raw)
 			require.Error(t, err)
-			ce, ok := err.(*clierr.Error)
+			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
-			assert.Contains(t, ce.Message, "--refresh-ttl")
-			assert.NotContains(t, ce.Message, "--ttl\"")
-			assert.NotContains(t, ce.Message, "--ttl ")
-			if ce.Hint != "" {
-				assert.NotContains(t, ce.Hint, "--ttl ")
-			}
+			assert.Equal(t, tc.want, ce.Message)
+			assert.Empty(t, ce.Hint)
 		})
 	}
-}
-
-// TestRewrapTTLFlagNameKeepsWrapperText asserts a wrapped ParseTTL error
-// keeps the text its wrapper adds, with the flag name corrected.
-func TestRewrapTTLFlagNameKeepsWrapperText(t *testing.T) {
-	t.Parallel()
-	err := fmt.Errorf("x: %w", clierr.New(clierr.CodeValidation, "--ttl bad"))
-	got := rewrapTTLFlagName(err, "token-ttl")
-	require.Error(t, got)
-	assert.Equal(t, "x: --token-ttl bad", got.Error())
 }

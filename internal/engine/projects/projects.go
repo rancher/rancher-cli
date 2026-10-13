@@ -190,7 +190,7 @@ func (createCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Required: true, Desc: "target cluster `id|name`"},
+			engine.ClusterFlag(true, false),
 			{Name: "description", Type: "string", Desc: "short `description` for the project"},
 			{Name: "quota-limit", Type: "string", Once: true, Desc: "project quota as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi"},
 			{Name: "namespace-default-quota", Type: "string", Once: true, Desc: "per-namespace default quota as `key=value` pairs (same keys as --quota-limit)"},

@@ -469,3 +469,50 @@ func TestSupportBundleDiscoveryListsSteveClusters(t *testing.T) {
 	assert.Equal(t, statusCollected, findItem(t, m, "cluster.json", "c-abc").Status)
 	assert.NotContains(t, local.kindReads, clusterKind.GVR)
 }
+
+// TestParseTargetsFlag asserts what --targets accepts and how it refuses:
+// the whole value empty or all selects every target; a list is split on
+// commas with each token trimmed and empty tokens dropped; an unknown token
+// is refused quoted, and a token all inside a list is refused with its own
+// text.
+func TestParseTargetsFlag(t *testing.T) {
+	t.Parallel()
+	names := func(ts []Target) []string {
+		var out []string
+		for _, tg := range ts {
+			out = append(out, tg.Name)
+		}
+		return out
+	}
+	for _, raw := range []string{"", "all"} {
+		got, err := parseTargetsFlag(raw)
+		require.NoError(t, err, raw)
+		assert.Equal(t, Names(), names(got), raw)
+	}
+	got, err := parseTargetsFlag("agent, server")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"agent", "server"}, names(got))
+	got, err = parseTargetsFlag(",")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	oneOf := "all|" + runtime.OneOf(Names())
+	for _, tc := range []struct {
+		raw  string
+		want string
+	}{
+		{"x", `--targets="x" is not one of ` + oneOf},
+		{"agent,x", `--targets="x" is not one of ` + oneOf},
+		{"x,all", `--targets="x" is not one of ` + oneOf},
+		{"all,x", "--targets: pass all as the whole value, or list targets without it"},
+		{"all,agent", "--targets: pass all as the whole value, or list targets without it"},
+		{"agent,all", "--targets: pass all as the whole value, or list targets without it"},
+		{"all,all", "--targets: pass all as the whole value, or list targets without it"},
+		{" all", "--targets: pass all as the whole value, or list targets without it"},
+		{"all,", "--targets: pass all as the whole value, or list targets without it"},
+	} {
+		_, err := parseTargetsFlag(tc.raw)
+		require.EqualError(t, err, tc.want, tc.raw)
+		assert.Equal(t, clierr.CodeValidation, clierrCode(t, err), tc.raw)
+	}
+}

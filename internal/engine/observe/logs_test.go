@@ -385,3 +385,55 @@ func TestLogsKubeAPIAuthPropagatesSteveError(t *testing.T) {
 	require.ErrorContains(t, err, "Internal Server Error")
 	assert.NotEqual(t, clierr.CodeNotFound, clierrCode(t, err))
 }
+
+// TestLogsAndBundleSinceRefusalsNameTheFlag asserts a --since that does not
+// parse, is below one second or overflows is refused naming --since (never
+// --ttl), before any request, by both commands that take it.
+func TestLogsAndBundleSinceRefusalsNameTheFlag(t *testing.T) {
+	t.Parallel()
+	const grammar = "use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)"
+	for _, tc := range []struct {
+		raw  string
+		want string
+	}{
+		{"bogus", `invalid --since "bogus": ` + grammar},
+		{"500us", `invalid --since "500us": too small to represent in seconds; pass at least 1s`},
+		{"213504d", `invalid --since "213504d": days must be at most 106751 (a larger value overflows the internal duration)`},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			t.Parallel()
+			downstream := newFakeClient()
+			factory := &fakeFactory{local: newFakeClient(), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
+
+			_, err := execLogs(t, factory, input{args: []string{"agent"}, s: map[string]string{engine.FlagCluster: "c-1", flagSince: tc.raw}})
+			require.EqualError(t, err, tc.want)
+			assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
+			assert.Empty(t, downstream.logOptsCalls)
+
+			_, err = execBundle(t, factory, input{s: map[string]string{flagSince: tc.raw}})
+			require.EqualError(t, err, tc.want)
+			assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
+		})
+	}
+}
+
+// TestLogsDownstreamOnlyTargetWithoutClusterNamesTheTarget asserts a target
+// that runs only on a downstream cluster, given no --cluster, is refused
+// naming that target, with the cluster listing command as the hint, before
+// any request.
+func TestLogsDownstreamOnlyTargetWithoutClusterNamesTheTarget(t *testing.T) {
+	t.Parallel()
+	for _, target := range []string{"agent", "kube-api-auth"} {
+		t.Run(target, func(t *testing.T) {
+			t.Parallel()
+			factory := &fakeFactory{local: newFakeClient()}
+			_, err := execLogs(t, factory, input{args: []string{target}})
+			require.Error(t, err)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, "--cluster is required; "+target+" runs only on a downstream cluster, pass a downstream cluster id or name", ce.Message)
+			assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+		})
+	}
+}

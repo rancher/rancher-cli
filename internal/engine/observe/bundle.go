@@ -79,7 +79,7 @@ func (c *supportBundleCmd) Describe() runtime.Descriptor {
 		Name:  "support-bundle",
 		Usage: "Collect diagnostics reachable through the API into one tar.gz for support",
 		Flags: []runtime.ArgSpec{
-			{Name: flagTargets, Type: "string", Desc: "comma-separated log targets, or `all` (the default)"},
+			{Name: flagTargets, Type: "string", Desc: "comma-separated log `targets` (" + strings.Join(Names(), ", ") + "), or all (the default)"},
 			{Name: flagClusters, Type: "string", Desc: "downstream cluster ids/names to include (comma-separated)"},
 			{Name: flagSince, Type: "string", Desc: "collect logs newer than this `duration` (default 24h)"},
 			{Name: flagTail, Type: "string", Desc: "max log `lines` per target (default 10000)"},
@@ -281,6 +281,7 @@ func itemStatus(err error) string {
 
 // parseTargetsFlag resolves --targets: "" or "all" means every target;
 // otherwise a comma-separated list, each name validated against the table.
+// "all" is accepted only as the whole value; inside a list it is refused.
 func parseTargetsFlag(raw string) ([]Target, error) {
 	if raw == "" || raw == "all" {
 		return Targets, nil
@@ -291,10 +292,14 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 		if tok == "" {
 			continue
 		}
+		if tok == "all" {
+			return nil, clierr.New(clierr.CodeValidation,
+				"--"+flagTargets+": pass all as the whole value, or list targets without it")
+		}
 		t, ok := Lookup(tok)
 		if !ok {
 			return nil, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("unknown log target %q; choose from: %s", tok, strings.Join(Names(), ", ")))
+				fmt.Sprintf("--%s=%q is not one of all|%s", flagTargets, tok, runtime.OneOf(Names())))
 		}
 		out = append(out, t)
 	}

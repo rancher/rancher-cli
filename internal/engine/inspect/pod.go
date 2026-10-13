@@ -43,7 +43,7 @@ func (c *podCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			resources.ClusterFlag(true),
+			engine.ClusterFlag(true, true),
 			{Name: resources.FlagNamespace, Type: "string", Required: true, Desc: "`namespace` to operate in"},
 			{Name: flagTail, Type: "string", Desc: "max log `lines` per container (default 50)"},
 		},

@@ -46,11 +46,11 @@ func resolveProviderLoginToken(ctx context.Context, server, caPEM string, idpCli
 		return token.LoginCredential{}, err
 	}
 
-	ttl, err := extres.ParseTTL(in.String("ttl"))
+	ttl, err := extres.ParseTTL("ttl", in.String("ttl"))
 	if err != nil {
 		return token.LoginCredential{}, err
 	}
-	ttlMs, err := extres.TTLMilliseconds(ttl, in.String("ttl"))
+	ttlMs, err := extres.TTLMilliseconds("ttl", ttl, in.String("ttl"))
 	if err != nil {
 		return token.LoginCredential{}, err
 	}

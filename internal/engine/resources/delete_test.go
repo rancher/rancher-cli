@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -406,4 +407,25 @@ func (*delClient) PostReview(context.Context, engine.ReviewRequest) (engine.Revi
 
 func (*delClient) ServerResources(context.Context) ([]engine.APIResource, error) {
 	return nil, errors.New("ServerResources not scripted in this fake")
+}
+
+// TestDeleteAndPatchRequiredClusterDescDropsTheListAdvice asserts a kind that
+// lists across clusters on get describes its --cluster, once delete and
+// patch require it, as the cluster of the object, with no advice to omit it.
+func TestDeleteAndPatchRequiredClusterDescDropsTheListAdvice(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"project", "clusterroletemplatebinding"} {
+		k, ok := kinds.Lookup(name)
+		require.True(t, ok, name)
+		require.Equal(t, kinds.NSCluster, k.Policy, name)
+		for _, flags := range [][]runtime.ArgSpec{getFlags(k), deleteFlags(k)} {
+			i := slices.IndexFunc(flags, func(f runtime.ArgSpec) bool { return f.Name == FlagCluster })
+			require.GreaterOrEqual(t, i, 0, name)
+			if flags[i].Required {
+				assert.Equal(t, "cluster `id|name` of the "+name, flags[i].Desc)
+			} else {
+				assert.Equal(t, "cluster `id|name`; required to address a "+name+" by name, omit to list across clusters", flags[i].Desc)
+			}
+		}
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -40,6 +41,33 @@ type scopeFlags struct {
 	project       string
 	allNamespaces bool
 	allowAll      bool
+	// takesProject says whether the command declares --project.
+	takesProject bool
+}
+
+// selectorNames lists the selector flags the command declares, for the
+// refusals that name them.
+func (f scopeFlags) selectorNames() []string {
+	names := []string{"--namespace"}
+	if f.takesProject {
+		names = append(names, "--project")
+	}
+	if f.allowAll {
+		names = append(names, "--all-namespaces")
+	}
+	return names
+}
+
+// joinFlagNames writes names as the refusals list them: "a", "a and b",
+// "a, b, and c".
+func joinFlagNames(names []string) string {
+	switch len(names) {
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
 }
 
 func (f scopeFlags) selectors() int {
@@ -56,7 +84,7 @@ func (f scopeFlags) selectors() int {
 // and --all-namespaces only where the command accepts it.
 func validateSelectors(f scopeFlags) error {
 	if f.selectors() > 1 {
-		return clierr.New(clierr.CodeValidation, "pass at most one of --namespace, --project, --all-namespaces")
+		return clierr.New(clierr.CodeValidation, "pass at most one of "+strings.Join(f.selectorNames(), ", "))
 	}
 	if f.allNamespaces && !f.allowAll {
 		return clierr.New(clierr.CodeValidation, "--all-namespaces is not accepted here; ask one namespace with -n or a project with --project")
@@ -69,7 +97,7 @@ func validateSelectors(f scopeFlags) error {
 func (r ResourceRef) rejectSelectors(f scopeFlags) error {
 	if !r.Namespaced && f.selectors() > 0 {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("resource %s is cluster-scoped; omit --namespace, --project, and --all-namespaces", r.Resource))
+			fmt.Sprintf("resource %s is cluster-scoped; omit %s", r.Resource, joinFlagNames(f.selectorNames())))
 	}
 	return nil
 }
@@ -126,4 +154,12 @@ func resolveScope(ctx context.Context, client engine.ClusterClient, clusterID st
 		sc.mode = scopeCluster
 	}
 	return sc, nil
+}
+
+// clusterFlag is the required --cluster of an access command, which takes
+// --namespace, with the command's own description.
+func clusterFlag(desc string) runtime.ArgSpec {
+	f := engine.ClusterFlag(true, true)
+	f.Desc = desc
+	return f
 }

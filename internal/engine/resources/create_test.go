@@ -312,6 +312,35 @@ func TestCreateResourceClusterScopedRejectsNamespace(t *testing.T) {
 	assert.Empty(t, fac.clusterCalls)
 }
 
+// TestCreateResourceWithoutClusterGetsTheTextThatFits asserts a manifest of a
+// downstream kind with no --cluster is refused before any request, with the
+// local-cluster advice only for a kind that lives in a namespace.
+func TestCreateResourceWithoutClusterGetsTheTextThatFits(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		manifest string
+		want     string
+	}{
+		{"namespaced kind", deploymentManifest, engine.ClusterRequiredMessage},
+		{"cluster-scoped kind", "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: team-a\n", engine.ClusterRequiredPlainMessage},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fac := &recFactory{client: &createClient{}}
+			_, _, err := planCreate(t, NewCreate(fac, mapFileSource{"m.yaml": []byte(tc.manifest)}),
+				input{s: map[string]string{"filename": "m.yaml"}})
+			require.Error(t, err)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, tc.want, ce.Message)
+			assert.Equal(t, engine.ClusterRequiredHint, ce.Hint)
+			assert.Empty(t, fac.clusterCalls)
+		})
+	}
+}
+
 // TestCreateResourceRejectsNoCreateViaManifestKind verifies that a manifest
 // whose resolved kind has NoCreateViaManifest set is rejected with a
 // VALIDATION error before any network call, and that the guidance is

@@ -148,7 +148,7 @@ func TestCanLocalConflictsMakeNoRequest(t *testing.T) {
 		in   fakeInput
 		want string
 	}{
-		{"two selectors", canInput(map[string]string{"namespace": "team-a", "project": "p-cvrp4"}, "get", "pods"), "at most one of"},
+		{"two selectors", canInput(map[string]string{"namespace": "team-a", "project": "p-cvrp4"}, "get", "pods"), "pass at most one of --namespace, --project"},
 		{"all-namespaces on can", fakeInput{strs: map[string]string{"cluster": "prod"}, bools: map[string]bool{"all-namespaces": true}, args: []string{"get", "pods"}}, "--all-namespaces is not accepted here"},
 		{"empty name after slash", canInput(map[string]string{"namespace": "team-a"}, "get", "pods/"), "the name is one segment"},
 		{"second slash", canInput(map[string]string{"namespace": "team-a"}, "get", "pods/web/extra"), "the name is one segment"},
@@ -175,7 +175,7 @@ func TestCanClusterScopedResourceRejectsProjectBeforeLookup(t *testing.T) {
 	t.Parallel()
 	f := canFactory("user-vwq4j")
 	_, err := NewCan(f, f.caller).(runtime.ReadCommand).Execute(unreadProjectContext(t), canInput(map[string]string{"project": "p-cvrp4"}, "get", "nodes"), nil)
-	require.ErrorContains(t, err, "resource nodes is cluster-scoped")
+	require.EqualError(t, err, "resource nodes is cluster-scoped; omit --namespace and --project")
 	assert.Len(t, f.caller.Reviews, 1, "preflight only")
 }
 

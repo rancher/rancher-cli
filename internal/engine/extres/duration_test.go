@@ -23,7 +23,7 @@ func TestParseTTL(t *testing.T) {
 		{"1d12h", 24*time.Hour + 12*time.Hour},
 	}
 	for _, tt := range tests {
-		got, err := ParseTTL(tt.in)
+		got, err := ParseTTL("ttl", tt.in)
 		require.NoError(t, err, tt.in)
 		assert.Equal(t, tt.want, got, tt.in)
 	}
@@ -41,7 +41,7 @@ func TestParseTTLRejections(t *testing.T) {
 		"1.5d",    // fractional days
 		"213504d", // overflows time.Duration: wraps to ~25 minutes if unbounded
 	} {
-		_, err := ParseTTL(in)
+		_, err := ParseTTL("ttl", in)
 		require.Error(t, err, in)
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce, in)
@@ -55,24 +55,24 @@ func TestParseTTLRejections(t *testing.T) {
 func TestParseTTLDaysOverflow(t *testing.T) {
 	t.Parallel()
 
-	_, err := ParseTTL("213504d")
+	_, err := ParseTTL("ttl", "213504d")
 	require.Error(t, err, "an overflowing day count must fail, not wrap to ~25 minutes")
 
-	got, err := ParseTTL(fmt.Sprintf("%dd", maxDays))
+	got, err := ParseTTL("ttl", fmt.Sprintf("%dd", maxDays))
 	require.NoError(t, err, "the exact bound must still be accepted")
 	assert.Equal(t, time.Duration(maxDays)*24*time.Hour, got)
 
-	_, err = ParseTTL(fmt.Sprintf("%dd", maxDays+1))
+	_, err = ParseTTL("ttl", fmt.Sprintf("%dd", maxDays+1))
 	require.Error(t, err, "one day past the bound must be VALIDATION")
 }
 
 func TestTTLMillisecondsSubMillisecondIsValidation(t *testing.T) {
 	t.Parallel()
-	ttl, err := ParseTTL("500us")
+	ttl, err := ParseTTL("ttl", "500us")
 	require.NoError(t, err)
 	require.Greater(t, ttl, time.Duration(0))
 
-	_, err = TTLMilliseconds(ttl, "500us")
+	_, err = TTLMilliseconds("ttl", ttl, "500us")
 	require.Error(t, err, "500us truncates to 0ms - must not silently become spec.ttl: 0")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -81,18 +81,18 @@ func TestTTLMillisecondsSubMillisecondIsValidation(t *testing.T) {
 
 func TestTTLMillisecondsZeroWhenTTLAbsent(t *testing.T) {
 	t.Parallel()
-	ms, err := TTLMilliseconds(0, "")
+	ms, err := TTLMilliseconds("ttl", 0, "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), ms)
 }
 
 func TestTTLSecondsSubSecondIsValidation(t *testing.T) {
 	t.Parallel()
-	ttl, err := ParseTTL("500ms")
+	ttl, err := ParseTTL("ttl", "500ms")
 	require.NoError(t, err)
 	require.Greater(t, ttl, time.Duration(0))
 
-	_, err = TTLSeconds(ttl, "500ms")
+	_, err = TTLSeconds("ttl", ttl, "500ms")
 	require.Error(t, err, "500ms truncates to 0s - must not silently become spec.ttl: 0")
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
@@ -101,7 +101,31 @@ func TestTTLSecondsSubSecondIsValidation(t *testing.T) {
 
 func TestTTLSecondsZeroWhenTTLAbsent(t *testing.T) {
 	t.Parallel()
-	secs, err := TTLSeconds(0, "")
+	secs, err := TTLSeconds("ttl", 0, "")
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), secs)
+}
+
+// TestDurationErrorsNameTheCallersFlag asserts every refusal branch prints
+// the flag name the caller passed, with the user's value quoted verbatim.
+func TestDurationErrorsNameTheCallersFlag(t *testing.T) {
+	t.Parallel()
+	for _, flag := range []string{"ttl", "since"} {
+		generic := fmt.Sprintf("invalid --%s %%q: use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)", flag)
+		for _, in := range []string{"garbage", "-12h", "12h1d", "a--ttl", "1dgarbage"} {
+			_, err := ParseTTL(flag, in)
+			require.Error(t, err, in)
+			require.EqualError(t, err, fmt.Sprintf(generic, in), "%s %s", flag, in)
+		}
+
+		_, err := ParseTTL(flag, "213504d")
+		require.Error(t, err)
+		require.EqualError(t, err, fmt.Sprintf("invalid --%s \"213504d\": days must be at most %d (a larger value overflows the internal duration)", flag, maxDays))
+
+		_, err = TTLMilliseconds(flag, 500*time.Microsecond, "500us")
+		require.EqualError(t, err, fmt.Sprintf("invalid --%s \"500us\": too small to represent in milliseconds; pass at least 1ms", flag))
+
+		_, err = TTLSeconds(flag, 500*time.Millisecond, "500ms")
+		require.EqualError(t, err, fmt.Sprintf("invalid --%s \"500ms\": too small to represent in seconds; pass at least 1s", flag))
+	}
 }

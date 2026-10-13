@@ -24,16 +24,17 @@ var leadingDaysRe = regexp.MustCompile(`^(\d+)d(.*)$`)
 // day count whose *24h product cannot overflow.
 const maxDays = int64(math.MaxInt64) / int64(24*time.Hour)
 
-// ParseTTL parses a --ttl flag: Go duration syntax (90m, 12h), optionally
-// prefixed by a leading "<integer>d" days segment (1d = 24h) that may itself
-// be followed by a plain Go duration ("1d12h"). At most one days segment is
-// accepted, and only as the leading token - "12h1d" (not leading), "1d2d"
-// (a second days segment), "1.5d" (fractional days), and a bare number with
-// no unit ("90") are all VALIDATION, since none of them satisfy either
-// branch below. Empty string means "no TTL" (server default). A negative
+// ParseTTL parses the value of the --<flag> flag (pass flag without
+// dashes; its errors name --<flag>): Go duration syntax (90m, 12h),
+// optionally prefixed by a leading "<integer>d" days segment (1d = 24h)
+// that may itself be followed by a plain Go duration ("1d12h"). At most
+// one days segment is accepted, and only as the leading token - "12h1d"
+// (not leading), "1d2d" (a second days segment), "1.5d" (fractional
+// days), and a bare number with no unit ("90") are all VALIDATION, since
+// none of them satisfy either branch below. Empty string means "no TTL" (server default). A negative
 // result, from either branch, is VALIDATION - never-expires is not exposed
 // by this flag.
-func ParseTTL(s string) (time.Duration, error) {
+func ParseTTL(flag, s string) (time.Duration, error) {
 	if s == "" {
 		return 0, nil
 	}
@@ -41,17 +42,17 @@ func ParseTTL(s string) (time.Duration, error) {
 	if m := leadingDaysRe.FindStringSubmatch(s); m != nil {
 		days, err := strconv.ParseInt(m[1], 10, 64)
 		if err != nil {
-			return 0, invalidTTL(s)
+			return 0, invalidTTL(flag, s)
 		}
 		if days > maxDays {
 			return 0, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("invalid --ttl %q: days must be at most %d (a larger value overflows the internal duration)", s, maxDays))
+				fmt.Sprintf("invalid --%s %q: days must be at most %d (a larger value overflows the internal duration)", flag, s, maxDays))
 		}
 		d = time.Duration(days) * 24 * time.Hour
 		if rest := m[2]; rest != "" {
 			extra, err := time.ParseDuration(rest)
 			if err != nil {
-				return 0, invalidTTL(s)
+				return 0, invalidTTL(flag, s)
 			}
 			d += extra
 		}
@@ -59,18 +60,18 @@ func ParseTTL(s string) (time.Duration, error) {
 		var err error
 		d, err = time.ParseDuration(s)
 		if err != nil {
-			return 0, invalidTTL(s)
+			return 0, invalidTTL(flag, s)
 		}
 	}
 	if d < 0 {
-		return 0, invalidTTL(s)
+		return 0, invalidTTL(flag, s)
 	}
 	return d, nil
 }
 
-func invalidTTL(s string) error {
+func invalidTTL(flag, s string) error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("invalid --ttl %q: use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)", s))
+		fmt.Sprintf("invalid --%s %q: use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)", flag, s))
 }
 
 // TTLMilliseconds converts a parsed, positive TTL to the milliseconds the
@@ -79,28 +80,28 @@ func invalidTTL(s string) error {
 // "use the default" sentinel, not what the caller asked for. ttl <= 0
 // (absent --ttl) returns 0, nil so callers can keep their existing
 // `if ttl > 0` idiom to omit the field entirely.
-func TTLMilliseconds(ttl time.Duration, raw string) (int64, error) {
+func TTLMilliseconds(flag string, ttl time.Duration, raw string) (int64, error) {
 	if ttl <= 0 {
 		return 0, nil
 	}
 	ms := ttl.Milliseconds()
 	if ms == 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --ttl %q: too small to represent in milliseconds; pass at least 1ms", raw))
+			fmt.Sprintf("invalid --%s %q: too small to represent in milliseconds; pass at least 1ms", flag, raw))
 	}
 	return ms, nil
 }
 
 // TTLSeconds is TTLMilliseconds' counterpart for the Kubeconfig spec, whose
 // ttl field is SECONDS, not milliseconds.
-func TTLSeconds(ttl time.Duration, raw string) (int64, error) {
+func TTLSeconds(flag string, ttl time.Duration, raw string) (int64, error) {
 	if ttl <= 0 {
 		return 0, nil
 	}
 	secs := int64(ttl.Seconds())
 	if secs == 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --ttl %q: too small to represent in seconds; pass at least 1s", raw))
+			fmt.Sprintf("invalid --%s %q: too small to represent in seconds; pass at least 1s", flag, raw))
 	}
 	return secs, nil
 }

@@ -36,8 +36,7 @@ func (c *listCmd) Describe() runtime.Descriptor {
 			"server's rules. Groups cannot be listed (no server operation exists). Exit 0 when every namespace answered " +
 			"completely, 13 otherwise.",
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Required: true, Desc: "cluster name or id",
-				MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint},
+			clusterFlag("cluster name or id"),
 			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace to list rules in (default: default)"},
 			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "all-namespaces", Type: "bool", Aliases: []string{"A"}, Desc: "list rules in every namespace you can list"},
@@ -109,7 +108,7 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	if as.Raw == anonymousUser {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, anonymousListMessage)
 	}
-	flags := scopeFlags{namespace: in.String(flagNamespace), project: in.String(flagProject), allNamespaces: in.Bool(flagAllNamespaces), allowAll: true}
+	flags := scopeFlags{namespace: in.String(flagNamespace), project: in.String(flagProject), allNamespaces: in.Bool(flagAllNamespaces), allowAll: true, takesProject: true}
 	if err := validateSelectors(flags); err != nil {
 		return runtime.Result{}, err
 	}
@@ -124,7 +123,7 @@ func (c *listCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 	ctx, cancel := fanOutContext(ctx, budget)
 	defer cancel()
 	// Before scope: the caller's own access to the cluster.
-	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")
 	}

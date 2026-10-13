@@ -362,18 +362,33 @@ func TestCreateMachineConfigCredentialRejectedCaseInsensitive(t *testing.T) {
 	}
 }
 
-// TestCreateMachineConfigArgValidation: missing kind/name and a
-// non-machine-config kind are VALIDATION (build re-checks defensively;
-// the Enum also guards at the runtime layer once registered).
+// TestCreateMachineConfigArgValidation asserts the pipeline's refusal of a
+// missing kind or name (with the allowed kinds listed), and that build
+// still refuses a non-machine-config kind.
 func TestCreateMachineConfigArgValidation(t *testing.T) {
 	t.Parallel()
-	_, err := buildMachineConfig(t, mcInput{})
-	_ = requireValidation(t, err)
+	kindRefusal := "argument <kind> is required; one of " + runtime.OneOf(machineConfigKindNames())
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"no args", nil, kindRefusal},
+		{"empty kind", []string{"", "x"}, kindRefusal},
+		{"no name", []string{"digitaloceanconfig"}, "argument <name> is required"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var out, errOut bytes.Buffer
+			_, ce := runtime.Run(t.Context(), NewCreateMachineConfig(fakeFactory{}), mcInput{a: tc.args},
+				runtime.IO{Out: &out, Err: &errOut}, safety.Binding{})
+			require.NotNil(t, ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, tc.want, ce.Message)
+		})
+	}
 
-	_, err = buildMachineConfig(t, mcInput{a: []string{"digitaloceanconfig"}})
-	_ = requireValidation(t, err)
-
-	_, err = buildMachineConfig(t, mcInput{a: []string{"pod", "x"}})
+	_, err := buildMachineConfig(t, mcInput{a: []string{"pod", "x"}})
 	ce := requireValidation(t, err)
 	assert.Contains(t, ce.Message, "pod")
 }

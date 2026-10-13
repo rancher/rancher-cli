@@ -11,7 +11,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	projectscomplete "github.com/rancher/rancher-cli/internal/engine/projects/complete"
 	"github.com/rancher/rancher-cli/internal/engine/rbac"
-	"github.com/rancher/rancher-cli/internal/engine/resources"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/output/style"
@@ -54,7 +53,7 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 			"scope: no workload or usage read is issued and nothing degrades.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
-		Flags:       []runtime.ArgSpec{resources.ClusterFlag(true)},
+		Flags:       []runtime.ArgSpec{engine.ClusterFlag(true, false)},
 		Auth:        true,
 		Shape:       runtime.ShapeText,
 	}
@@ -66,7 +65,7 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 func (*projectCmd) LiveSource() completion.Source { return projectscomplete.ProjectPositionalSource() }
 
 func (c *projectCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, false)
 	if err != nil {
 		return runtime.Result{}, err
 	}

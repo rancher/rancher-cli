@@ -180,14 +180,15 @@ func parseTailFlag(raw string) (*int64, error) {
 
 // parseSinceFlag wraps extres.ParseTTL for the duration GRAMMAR without its
 // zero-sentinel semantics: omitted → nil (no limit); a parsed
-// duration → *int64(seconds); an explicit zero ("0s") → VALIDATION, since a
-// pointer *0 means "logs since now" to PodLogOptions.SinceSeconds - silently
-// empty output, never what --since 0s meant to ask for.
+// duration → *int64(seconds); an explicit zero ("0s") or a positive value
+// under one second ("500us") → VALIDATION, since a pointer *0 means "logs
+// since now" to PodLogOptions.SinceSeconds - silently empty output, never
+// what --since 0s meant to ask for.
 func parseSinceFlag(raw string) (*int64, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	d, err := extres.ParseTTL(raw)
+	d, err := extres.ParseTTL(flagSince, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +196,10 @@ func parseSinceFlag(raw string) (*int64, error) {
 		return nil, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("--since %q must be greater than zero; omit --since for no time limit, or pass a positive duration (30m, 2h)", raw))
 	}
-	secs := int64(d.Seconds())
+	secs, err := extres.TTLSeconds(flagSince, d, raw)
+	if err != nil {
+		return nil, err
+	}
 	return &secs, nil
 }
 

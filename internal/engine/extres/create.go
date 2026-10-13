@@ -47,11 +47,11 @@ func (createTokenCmd) Describe() runtime.Descriptor {
 }
 
 func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
-	ttl, err := ParseTTL(in.String("ttl"))
+	ttl, err := ParseTTL("ttl", in.String("ttl"))
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	ttlMs, err := TTLMilliseconds(ttl, in.String("ttl"))
+	ttlMs, err := TTLMilliseconds("ttl", ttl, in.String("ttl"))
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

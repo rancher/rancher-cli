@@ -100,6 +100,12 @@ func (c getCmd) Describe() runtime.Descriptor {
 	}
 }
 
+// namespaceFlag is the --namespace flag shared by get/delete/patch (via
+// getFlags) and create, so its schema/TTY description lives in one place.
+func namespaceFlag() runtime.ArgSpec {
+	return runtime.ArgSpec{Name: FlagNamespace, Type: "string", Desc: "`namespace` to operate in"}
+}
+
 // getFlags declares the routing flags a kind's namespace policy needs:
 //   - NSCluster: --cluster (it becomes the namespace).
 //   - NSWorkspace: --namespace only (client is always management).
@@ -107,41 +113,29 @@ func (c getCmd) Describe() runtime.Descriptor {
 //   - NSNone: --cluster only when the kind is Downstream; nothing otherwise.
 //
 // A project scopable kind takes --project. Every kind additionally gains
-// --wait/--for/--timeout (named-get only; see Execute).
-// clusterFlag and namespaceFlag are the single source for the two routing
-// flags shared across get/delete/patch (via getFlags) and create, so their
-// schema/TTY description lives in one place. required is true for kinds that
-// always route to a downstream cluster - the schema must never advertise an
-// invocation Route would reject. NSCluster kinds and create resource pass
-// false and override Desc: the former lists across clusters when the flag is
-// omitted, the latter can take the cluster from the manifest.
-func ClusterFlag(required bool) runtime.ArgSpec {
-	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Required: required, Desc: "target cluster `id|name`",
-		MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint}
-}
-
-func namespaceFlag() runtime.ArgSpec {
-	return runtime.ArgSpec{Name: FlagNamespace, Type: "string", Desc: "`namespace` to operate in"}
-}
-
+// --wait/--for/--timeout (named-get only; see Execute). --cluster comes from
+// engine.ClusterFlag and is required for kinds that always route to a
+// downstream cluster - the schema must never advertise an invocation Route
+// would reject. NSCluster kinds declare it optional for get, which lists
+// across clusters when the flag is omitted.
 func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	var flags []runtime.ArgSpec
 	switch k.Policy {
 	case kinds.NSCluster:
-		f := ClusterFlag(false)
+		f := engine.ClusterFlag(false, false)
 		f.Desc = "cluster `id|name`; required to address a " + k.Name + " by name, omit to list across clusters"
 		flags = []runtime.ArgSpec{f}
 	case kinds.NSWorkspace:
 		flags = []runtime.ArgSpec{namespaceFlag()}
 	case kinds.NSPlain:
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{ClusterFlag(true), namespaceFlag()}
+			flags = []runtime.ArgSpec{engine.ClusterFlag(true, true), namespaceFlag()}
 		} else {
 			flags = []runtime.ArgSpec{namespaceFlag()}
 		}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{ClusterFlag(true)}
+			flags = []runtime.ArgSpec{engine.ClusterFlag(true, false)}
 		}
 	}
 	if kinds.ProjectScopable(k) {
@@ -503,13 +497,15 @@ func routeNamespaceKind(ctx context.Context, in runtime.Input, clusterID string,
 
 // routeCluster picks the serving cluster for the scope-driven policies (NSNone,
 // NSPlain): a Management kind is served by the local proxy; a Downstream kind
-// requires an explicit --cluster (VALIDATION when absent).
+// requires an explicit --cluster (VALIDATION when absent; the text follows
+// the kind's namespace policy, not the command's flags: the namespace text
+// for NSPlain, the plain text for the other kinds).
 // ns passes through unchanged and the Effect targets the serving cluster.
 func routeCluster(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kind, in runtime.Input, ns string) (clientCluster, nsOut, effectCluster string, err error) {
 	if k.Scope == kinds.Management {
 		return engine.LocalCluster, ns, engine.LocalCluster, nil
 	}
-	id, err := engine.ResolveDownstreamCluster(ctx, clients, in)
+	id, err := engine.ResolveDownstreamCluster(ctx, clients, in, k.Policy == kinds.NSPlain)
 	if err != nil {
 		return "", "", "", err
 	}

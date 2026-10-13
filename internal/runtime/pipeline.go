@@ -400,14 +400,13 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 	}
 	for i, a := range d.Args {
 		if a.Required && (i >= len(args) || args[i] == "") {
-			return clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("argument <%s> is required", a.Name))
+			return missingArgError(a)
 		}
 		if len(a.Enum) > 0 && i < len(args) && args[i] != "" {
 			ok := slices.Contains(a.Enum, args[i])
 			if !ok {
 				return clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("argument <%s>=%q is not one of %s", a.Name, args[i], strings.Join(a.Enum, "|")))
+					fmt.Sprintf("argument <%s>=%q is not one of %s", a.Name, args[i], OneOf(a.Enum)))
 			}
 		}
 	}
@@ -428,7 +427,7 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 					ok := slices.Contains(f.Enum, v)
 					if !ok {
 						return clierr.New(clierr.CodeValidation,
-							fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|")))
+							fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, OneOf(f.Enum)))
 					}
 				}
 			}
@@ -442,7 +441,7 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 			ok := slices.Contains(f.Enum, v)
 			if !ok {
 				return clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, strings.Join(f.Enum, "|")))
+					fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, OneOf(f.Enum)))
 			}
 		}
 	}
@@ -540,11 +539,32 @@ func declaredArgs(args []ArgSpec) string {
 	return fmt.Sprintf("takes %s (%s)", count, strings.Join(names, " "))
 }
 
+// OneOf renders a list of allowed values the way every refusal prints one.
+func OneOf(values []string) string {
+	return strings.Join(values, "|")
+}
+
+// missingArgError is the refusal for a required positional argument that
+// was not passed: it lists the argument's allowed values when it declares
+// them.
+func missingArgError(a ArgSpec) *clierr.Error {
+	if len(a.Enum) > 0 {
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("argument <%s> is required; one of %s", a.Name, OneOf(a.Enum)))
+	}
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf("argument <%s> is required", a.Name))
+}
+
 // missingFlagError is the refusal for a required flag that was not passed:
 // the flag's own MissingMessage and MissingHint when its descriptor set
-// them, the generic form otherwise.
+// them, otherwise the generic form, which lists the flag's allowed values
+// when it declares them.
 func missingFlagError(f ArgSpec) *clierr.Error {
 	if f.MissingMessage == "" {
+		if len(f.Enum) > 0 {
+			return clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("--%s is required; one of %s", f.Name, OneOf(f.Enum)))
+		}
 		return clierr.New(clierr.CodeValidation, fmt.Sprintf("--%s is required", f.Name))
 	}
 	ce := clierr.New(clierr.CodeValidation, f.MissingMessage)

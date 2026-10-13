@@ -170,3 +170,36 @@ func TestResolveScopeFollowsTheProjectRead(t *testing.T) {
 	assert.Empty(t, sc.Project)
 	assert.Equal(t, scopeCluster, sc.mode)
 }
+
+// TestSelectorRefusalsNameOnlyTheFlagsTheCommandTakes asserts the two
+// selector refusals list exactly the selectors the command declares: can
+// takes --namespace and --project, who-can and list add --all-namespaces,
+// explain takes --namespace alone.
+func TestSelectorRefusalsNameOnlyTheFlagsTheCommandTakes(t *testing.T) {
+	t.Parallel()
+	nodes := ResourceRef{Group: "", Version: "v1", Resource: "nodes", Namespaced: false}
+	for _, tc := range []struct {
+		name       string
+		flags      scopeFlags
+		wantTwo    string
+		wantScoped string
+	}{
+		{"can", scopeFlags{namespace: "a", project: "p", takesProject: true},
+			"pass at most one of --namespace, --project",
+			"resource nodes is cluster-scoped; omit --namespace and --project"},
+		{"who-can and list", scopeFlags{namespace: "a", project: "p", allowAll: true, takesProject: true},
+			"pass at most one of --namespace, --project, --all-namespaces",
+			"resource nodes is cluster-scoped; omit --namespace, --project, and --all-namespaces"},
+		{"explain", scopeFlags{namespace: "a"},
+			"",
+			"resource nodes is cluster-scoped; omit --namespace"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.wantTwo != "" {
+				require.EqualError(t, validateSelectors(tc.flags), tc.wantTwo)
+			}
+			require.EqualError(t, nodes.rejectSelectors(tc.flags), tc.wantScoped)
+		})
+	}
+}

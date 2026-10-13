@@ -101,7 +101,8 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 }
 
 // build validates input and assembles the machine-config CR. Pure - no
-// ctx, no network. Validation order: kind (the runtime layer's
+// ctx, no network. The runtime layer has already checked that both
+// arguments are present. Validation order: kind (the runtime layer's
 // Enum already guards it once registered; build re-checks defensively),
 // --set key=value shape, Kubernetes envelope-key rejection
 // (apiVersion/kind/metadata/status are object identity, not driver fields -
@@ -109,13 +110,6 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 // kind-scoping, credential-field rejection.
 func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructured, kinds.Kind, error) {
 	args := in.Args()
-	if len(args) == 0 || args[0] == "" {
-		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-			"argument <kind> is required; one of: "+machineConfigKindsHint())
-	}
-	if len(args) < 2 || args[1] == "" {
-		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, "argument <name> is required")
-	}
 	kindName, name := args[0], args[1]
 
 	k, found := kinds.Lookup(kindName)

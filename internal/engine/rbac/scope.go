@@ -48,7 +48,7 @@ func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in r
 		return Scope{Kind: ScopeGlobal, KindKey: "globalrolebinding", RoleField: "globalRoleName"}, nil
 	}
 	if project != "" {
-		cluster, err := engine.ResolveDownstreamCluster(ctx, clients, in)
+		cluster, err := engine.ResolveDownstreamCluster(ctx, clients, in, false)
 		if err != nil {
 			return Scope{}, err
 		}
@@ -65,7 +65,7 @@ func ResolveScope(ctx context.Context, clients engine.ClusterClientFactory, in r
 			KindKey: "projectroletemplatebinding", RoleField: "roleTemplateName"}, nil
 	}
 	if clusterFlag != "" {
-		cluster, err := engine.ResolveDownstreamCluster(ctx, clients, in)
+		cluster, err := engine.ResolveDownstreamCluster(ctx, clients, in, false)
 		if err != nil {
 			return Scope{}, err
 		}

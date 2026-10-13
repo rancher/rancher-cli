@@ -111,11 +111,11 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 			"--include-default-entry=false requires --clusters, or omit --include-default-entry to keep the default entry")
 	}
 
-	ttl, err := ParseTTL(in.String("ttl"))
+	ttl, err := ParseTTL("ttl", in.String("ttl"))
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	ttlSecs, err := TTLSeconds(ttl, in.String("ttl"))
+	ttlSecs, err := TTLSeconds("ttl", ttl, in.String("ttl"))
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

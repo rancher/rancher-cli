@@ -179,7 +179,12 @@ func resolveTargetCluster(ctx context.Context, clients engine.ClusterClientFacto
 		}
 		return engine.LocalCluster, nil
 	case t.DownstreamOnly:
-		resolved, err := engine.ResolveDownstreamCluster(ctx, clients, in)
+		if clusterFlag == "" {
+			return "", clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("--cluster is required; %s runs only on a downstream cluster, pass a downstream cluster id or name", t.Name)).
+				WithHint(engine.ClusterRequiredHint)
+		}
+		resolved, err := engine.ResolveDownstreamCluster(ctx, clients, in, false)
 		if err != nil {
 			return "", err
 		}

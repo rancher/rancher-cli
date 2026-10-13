@@ -13,16 +13,43 @@ import (
 // constant instead of drifting copies.
 const FlagCluster = runtime.FlagCluster
 
-// ClusterRequiredMessage and ClusterRequiredHint are the one refusal for an
-// absent --cluster, whether the pipeline rejects it as a missing required
-// flag or a resolver reaches the empty value. Routing is never implied, not
-// even for Rancher's own namespaces (cattle-system, cattle-tokens,
-// cattle-fleet-system), which live on the local cluster: the message says
-// so and names the value, the hint lists the clusters to choose from.
+// ClusterRequiredMessage, ClusterRequiredPlainMessage and
+// ClusterRequiredHint are the refusal for an absent --cluster, whether the
+// pipeline rejects it as a missing required flag or a resolver reaches the
+// empty value. Routing is never implied, not even for Rancher's own
+// namespaces (cattle-system, cattle-tokens, cattle-fleet-system), which live
+// on the local cluster: ClusterRequiredMessage, for commands that take a
+// namespace, says so and names the value; the hint lists the clusters to
+// choose from.
 const (
 	ClusterRequiredMessage = "--cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local"
 	ClusterRequiredHint    = clierr.Rancher + " access clusters"
+
+	// ClusterRequiredPlainMessage is the refusal for a command that takes
+	// neither --namespace nor --all-namespaces, where the local-cluster
+	// advice about Rancher's own namespaces does not apply.
+	ClusterRequiredPlainMessage = "--cluster is required; pass a cluster id or name"
 )
+
+// ClusterFlag declares --cluster with the missing-cluster text that fits the
+// command: ClusterRequiredMessage when it takes --namespace or
+// --all-namespaces (namespaced), ClusterRequiredPlainMessage otherwise. The
+// text and hint are set whether or not the flag is required, because a
+// caller may mark it required later. A caller with its own description
+// sets Desc on the result.
+func ClusterFlag(required, namespaced bool) runtime.ArgSpec {
+	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Required: required, Desc: "target cluster `id|name`",
+		MissingMessage: clusterRequiredMessage(namespaced), MissingHint: ClusterRequiredHint}
+}
+
+// clusterRequiredMessage is the missing-cluster refusal for a command that
+// does (namespaced) or does not take --namespace or --all-namespaces.
+func clusterRequiredMessage(namespaced bool) string {
+	if namespaced {
+		return ClusterRequiredMessage
+	}
+	return ClusterRequiredPlainMessage
+}
 
 // ResolveDownstreamCluster resolves --cluster for a command that always
 // targets a downstream cluster: an explicit flag is resolved via
@@ -32,13 +59,16 @@ const (
 // add/remove-namespace) - those live in a package resources already imports
 // (Route's project-membership validation), so this helper lives in engine,
 // which both can reach without an import cycle.
-func ResolveDownstreamCluster(ctx context.Context, clients ClusterClientFactory, in runtime.Input) (string, error) {
+//
+// namespaced says whether the calling command takes --namespace or
+// --all-namespaces; it selects the text of the refusal.
+func ResolveDownstreamCluster(ctx context.Context, clients ClusterClientFactory, in runtime.Input, namespaced bool) (string, error) {
 	target := in.String(FlagCluster)
 	if target == "" {
 		if err := runtime.MissingClusterError(ctx); err != nil {
 			return "", err
 		}
-		return "", clierr.New(clierr.CodeValidation, ClusterRequiredMessage).WithHint(ClusterRequiredHint)
+		return "", clierr.New(clierr.CodeValidation, clusterRequiredMessage(namespaced)).WithHint(ClusterRequiredHint)
 	}
 	return clients.ResolveCluster(ctx, target)
 }

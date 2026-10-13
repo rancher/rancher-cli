@@ -32,7 +32,7 @@ func (addNamespaceCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "namespace", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			runtime.ProjectFlag(true, "target project `id|name`"),
-			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` of the project"},
+			clusterFlag("cluster `id|name` of the project"),
 		},
 		Examples:    []string{"rancher project add-namespace team-a --project p-x --cluster c-x --apply"},
 		Destructive: "false",
@@ -96,7 +96,7 @@ func (removeNamespaceCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "namespace", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` of the namespace"},
+			clusterFlag("cluster `id|name` of the namespace"),
 		},
 		Examples:    []string{"rancher project remove-namespace team-a --cluster c-x --apply"},
 		Destructive: "false",
@@ -157,7 +157,7 @@ func membershipArgs(in runtime.Input) (nsName string, err error) {
 // membershipCluster resolves the cluster add/remove-namespace act on and its
 // client.
 func membershipCluster(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input) (string, engine.ClusterClient, error) {
-	cluster, err := engine.ResolveDownstreamCluster(ctx, clients, in)
+	cluster, err := engine.ResolveDownstreamCluster(ctx, clients, in, false)
 	if err != nil {
 		return "", nil, err
 	}
@@ -199,4 +199,12 @@ func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, befo
 		return res, nil
 	}
 	return eff, wrapped, nil
+}
+
+// clusterFlag is the required --cluster of a command that takes no
+// --namespace, with its own description.
+func clusterFlag(desc string) runtime.ArgSpec {
+	f := engine.ClusterFlag(true, false)
+	f.Desc = desc
+	return f
 }

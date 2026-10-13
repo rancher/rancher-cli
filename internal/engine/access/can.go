@@ -54,8 +54,7 @@ func (c *canCmd) Describe() runtime.Descriptor {
 			{Name: "resource", Type: "string", Desc: "resource plural, singular, short name, or resource.group; optionally /<name>; omitted with --non-resource-url"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "cluster", Type: "string", Required: true, Desc: "cluster name or id the question is about",
-				MissingMessage: engine.ClusterRequiredMessage, MissingHint: engine.ClusterRequiredHint},
+			clusterFlag("cluster name or id the question is about"),
 			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace the question is about"},
 			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "as", Type: "string", Desc: "subject to ask about: user name, id, or principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you"},
@@ -180,7 +179,7 @@ func parseQuestion(in runtime.Input, allowAll, takesProject bool) (parsedCan, er
 		return parsedCan{}, err
 	}
 	p.as = as
-	p.scope = scopeFlags{namespace: in.String(flagNamespace), allNamespaces: in.Bool(flagAllNamespaces), allowAll: allowAll}
+	p.scope = scopeFlags{namespace: in.String(flagNamespace), allNamespaces: in.Bool(flagAllNamespaces), allowAll: allowAll, takesProject: takesProject}
 	if takesProject {
 		p.scope.project = in.String(flagProject)
 	}
@@ -214,7 +213,7 @@ func (c *canCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompt
 	defer cancel()
 	// Order: cluster client, caller preflight, discovery, scope,
 	// then the rest of the identity protocol.
-	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in)
+	clusterID, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
 	if err != nil {
 		return runtime.Result{}, budgetError(ctx, err, "cluster resolution")
 	}
