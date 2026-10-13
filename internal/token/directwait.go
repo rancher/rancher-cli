@@ -260,12 +260,17 @@ func waitDirectReady(ctx context.Context, ec *execCluster, bearer string, bound 
 
 // freshToken is a cluster token this invocation just created, with the
 // capability to revoke it: the child of a stored or plugin-created login
-// is deleted with its parent bearer whatever the parent's provenance, the
-// unscoped interactive login token deletes itself, and a cluster-scoped
-// one cannot (its delete is reported failed).
+// is deleted with its parent bearer whatever the parent's provenance, and
+// the token of an interactive sign-in is deleted with its own bearer, which
+// succeeds for an ext token and is refused for a cluster-scoped v3 token
+// (that delete is reported failed).
 type freshToken struct {
 	create  CreateResult
 	cleanup func(ctx context.Context) RevokeOutcome
+	// leftover says how the token ends when its delete fails, for the
+	// person who can act on it. Only the sign-in of the exec plugin with
+	// token reuse off sets it; every other producer leaves it empty.
+	leftover string
 }
 
 // newFreshToken pairs a successful create with the bearer that may delete
@@ -301,7 +306,7 @@ func (d directWaitDetails) TextDetails() []string {
 
 // directWaitCancelled is the error for a caller cancellation during the
 // wait: the fresh token's fate travels as details, the cancellation as the
-// cause.
+// cause. A failed delete ends with the token's leftover text when it has one.
 func directWaitCancelled(cause error, fresh *freshToken, cleanup RevokeOutcome) error {
 	fate := &clierr.TokenFate{Outcome: fresh.create.Outcome, Kind: fresh.create.Kind, Ref: fresh.create.Ref, Marked: fresh.create.Marked, CreatedAt: fresh.create.CreatedAt, Cleanup: &cleanup}
 	msg := "cancelled while waiting for the direct endpoint to accept the new credential"
@@ -312,6 +317,9 @@ func directWaitCancelled(cause error, fresh *freshToken, cleanup RevokeOutcome) 
 		msg += "; the create outcome is unknown, nothing was revoked"
 	default:
 		msg += "; the token it created could not be revoked"
+		if fresh.leftover != "" {
+			msg += "; " + fresh.leftover
+		}
 	}
 	return clierr.New(clierr.CodeGeneric, msg).WithCause(cause).WithDetails(directWaitDetails{Fate: fate})
 }

@@ -49,8 +49,8 @@ func newRecordFixtureOpts(t *testing.T, reuse bool, opts testrancher.Options) *r
 // plugin records the ref and owner of a cluster token it created in the
 // same call, on each of the three paths that create one: from a stored
 // login, through the plugin-created login, and by an interactive sign-in.
-// Rancher answers a sign-in with the v3 login body, which names no owner.
-// The ref names the very token cached.
+// The sign-in creates an ext cluster token, whose create response names its
+// owner. The ref names the very token cached.
 func TestTheCacheRecordNamesTheTokenTheCallCreated(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -63,7 +63,7 @@ func TestTheCacheRecordNamesTheTokenTheCallCreated(t *testing.T) {
 	}{
 		{"a stored login's cluster token", false, testrancher.Options{}, func(r *recordFixture) { r.login("prod", "", "alice", false) }, false, TokenKindExt, "user-alice"},
 		{"the plugin-created login's cluster token", true, testrancher.Options{}, func(*recordFixture) {}, true, TokenKindExt, "user-carol"},
-		{"an interactive sign-in", false, testrancher.Options{LoginShape: "v3"}, func(*recordFixture) {}, true, TokenKindV3, ""},
+		{"an interactive sign-in", false, testrancher.Options{}, func(*recordFixture) {}, true, TokenKindExt, "user-carol"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRecordFixtureOpts(t, tc.reuse, tc.opts)

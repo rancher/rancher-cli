@@ -1,0 +1,36 @@
+# The exec plugin's sign-in with token reuse off ends in an ext cluster token
+# its user can delete: the call signs in, creates the cluster token with that
+# sign-in's login token, deletes the login token, and caches a record that
+# names the ext token. auth delete-token deletes it with its own bearer.
+# Prompts need a real pty; see auth-login-local.txtar.
+[!unix] skip 'ttyin (real pty) is unix-only'
+env RANCHER_CLI_CREDENTIAL_STORE=file
+
+exec rancher config add-server prod --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT -o json
+ttyin -stdin creds.txt
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name prod --auth-provider localProvider
+jsonquery stdout kind ExecCredential
+! exists $RANCHER_CLI_CONFIG_DIR/credentials.yaml
+
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.tokenRef.kind ext
+jsonquery stdout data.0.tokenUserId user-e2e
+jsonget stdout data.0.tokenRef.name cached.txt
+setenvfrom CACHED cached.txt
+
+exec rancher auth delete-token --all -o json
+cp stdout deleted.json
+jsonquery deleted.json 'data.revoked.#' 1
+jsonquery deleted.json data.revoked.0.ref.kind ext
+jsonquery deleted.json data.revoked.0.ref.name $CACHED
+jsonquery deleted.json data.revoked.0.source cache
+jsonquery deleted.json 'data.notRevoked.#' 0
+
+# A rerun finds nothing left to revoke.
+exec rancher auth delete-token --all -o json
+jsonquery stdout 'data.revoked.#' 0
+
+-- creds.txt --
+e2e-user
+e2e-pass

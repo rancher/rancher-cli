@@ -157,6 +157,10 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	texts["a marked token of unknown kind"] = text
 	text, _ = ResidualRecovery(clierr.TokenFate{Search: &clierr.UnmarkedTokenSearch{AuthProvider: "saml"}}, "prod", "m", true)
 	texts["an unmarked session token"] = text
+	for name, f := range signInLeftoverFates() {
+		texts["a sign-in token left behind, "+name+", user known"] = signInLeftover(f, "u-abc12", "m")
+		texts["a sign-in token left behind, "+name+", user unknown"] = signInLeftover(f, "", "m")
+	}
 	texts["a sign-in again"], texts["a sign-in again, hint"] = reLogin("prod")
 	texts["the regenerate steps"] = RegenerateSteps(clierr.Rancher, "prod", "c-1")
 	texts["a login with no entry named"] = config.LoginCommand
@@ -224,5 +228,22 @@ func TestNoExecPluginRemedyLogsInOrRemovesAPluginLoginEntry(t *testing.T) {
 	re := regexp.MustCompile(`rancher (?:auth login|auth logout|config delete-server) '?` + regexp.QuoteMeta(config.ExecLoginPrefix))
 	for name, s := range execPluginRemedyTexts(t) {
 		assert.NotRegexp(t, re, clierr.ExpandRemedies(s, ""), name)
+	}
+}
+
+// signInLeftoverFates is one token fate for each way the exec plugin's
+// sign-in can leave a token behind: an ext token and a v3 token with a
+// name, a marked token of ext, v3 and unknown kind with none, and an
+// unmarked token found only through the SAML handoff.
+func signInLeftoverFates() map[string]clierr.TokenFate {
+	return map[string]clierr.TokenFate{
+		"ext with a name":      {Ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc"}, ExpiresAt: "2026-10-12T12:00:00Z"},
+		"ext, no expiry":       {Ref: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc"}},
+		"v3 with a name":       {Ref: &clierr.TokenRef{Kind: clierr.TokenKindV3, Name: "token-v3"}, ExpiresAt: "2026-10-12T12:00:00Z"},
+		"marked ext":           {Marked: true, Kind: clierr.TokenKindExt},
+		"marked v3":            {Marked: true, Kind: clierr.TokenKindV3},
+		"marked, unknown":      {Marked: true},
+		"the SAML handoff":     {Search: &clierr.UnmarkedTokenSearch{AuthProvider: "keycloakSAML", HandoffAt: "2026-10-12T10:00:00Z", PollEndedAt: "2026-10-12T10:15:00Z"}},
+		"the SAML with an end": {Search: &clierr.UnmarkedTokenSearch{AuthProvider: "keycloakSAML", HandoffAt: "2026-10-12T10:00:00Z", PollEndedAt: "2026-10-12T10:15:00Z", RequestExpiresAt: "2026-10-12T10:30:00Z"}},
 	}
 }

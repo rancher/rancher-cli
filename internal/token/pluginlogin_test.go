@@ -259,9 +259,9 @@ func TestPluginLoginReprobeStaysTerminalOnAnUnsettledLogin(t *testing.T) {
 }
 
 // TestPluginLoginInvariantSettingOffStoresNothing asserts the default
-// posture: with the setting off, the plugin-only lane runs the scoped
-// interactive login (responseType kubeconfig_<cluster>), creates no
-// server entry, writes no credential, and caches only name@server/cluster.
+// posture: with the setting off, the plugin-only lane signs in (responseType
+// json) and creates the cluster token from that sign-in, creates no server
+// entry, writes no credential, and caches only name@server/cluster.
 func TestPluginLoginInvariantSettingOffStoresNothing(t *testing.T) {
 	var mu sync.Mutex
 	var responseTypes []string
@@ -281,7 +281,7 @@ func TestPluginLoginInvariantSettingOffStoresNothing(t *testing.T) {
 	res, err := x.getToken(t, "c-test", "n", localPrompter())
 	require.NoError(t, err)
 	assert.Equal(t, "ExecCredential", res.Kind)
-	assert.Equal(t, []string{"kubeconfig_c-test"}, responseTypes)
+	assert.Equal(t, []string{"json"}, responseTypes)
 	_, present := x.entry(t)
 	assert.False(t, present)
 	creds, _ := x.store.ListCachedCreds()

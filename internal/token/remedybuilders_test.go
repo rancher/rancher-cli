@@ -122,6 +122,13 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 			e, f := ResidualRecovery(clierr.TokenFate{Ref: &TokenRef{Kind: TokenKindV3, Name: "token-v3"}}, name, "m", false)
 			return []string{a, b, c, d, e, f}
 		},
+		"signInLeftover": func() []string {
+			var out []string
+			for _, f := range signInLeftoverFates() {
+				out = append(out, signInLeftover(f, "u-abc12", "m"), signInLeftover(f, "", "m"))
+			}
+			return out
+		},
 		"credentialRecoveryFor": func() []string {
 			st := LoginStates{Commit: &config.CommitOutcome{Backend: clierr.BackendKeyring, State: config.CommitPossiblyCommitted}}
 			return []string{credentialRecoveryFor(st, name).Command}

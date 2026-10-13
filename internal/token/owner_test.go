@@ -397,8 +397,8 @@ func TestUserIDFailsClosedWithoutExtTokens(t *testing.T) {
 // TestUserIDSkipsAnotherUsersPluginLoginEntry asserts a call with
 // --user-id whose plugin login entry records another owner neither reads
 // nor writes that entry: for a user entry with no login and for the
-// ranked answer, it signs in, checks the owner with one review through
-// the cluster's path, and caches under the name and the user id; without a
+// ranked answer, it signs in, checks the owner from the cluster token's
+// create response, and caches under the name and the user id; without a
 // terminal it names the login of the entry, and that the plugin login
 // entry was not used.
 func TestUserIDSkipsAnotherUsersPluginLoginEntry(t *testing.T) {
@@ -418,7 +418,7 @@ func TestUserIDSkipsAnotherUsersPluginLoginEntry(t *testing.T) {
 			if name == "prod-c-test" {
 				assert.NotContains(t, x.store.reads()[readsBefore:], x.pluginEntry(), "the plugin login entry's login is not even read")
 			}
-			assert.Equal(t, []string{"/k8s/clusters/c-test" + selfSubjectReviewPath}, x.ownerReviews(), "one owner request, through the cluster's path")
+			assert.Empty(t, x.ownerReviews(), "the cluster token's create response names the owner, so no owner request is made")
 			assert.False(t, x.usedBearer(pluginLogin), "no request is made with the plugin login entry's login")
 			after, pluginAfter := x.stored(x.pluginEntry())
 			assert.Equal(t, pluginLogin, after, "the plugin login entry is not written")
@@ -453,18 +453,19 @@ func TestUserIDSkipsAnotherUsersPluginLoginEntry(t *testing.T) {
 	})
 }
 
-// TestUserIDSignInOwnerIsChecked asserts the token an interactive sign-in
-// makes for a call with --user-id is handed kubectl only when the owner
-// request names the call's user; another user, or a failed request,
-// revokes it and caches nothing. A login response that names the owner
-// needs no request.
+// TestUserIDSignInOwnerIsChecked asserts the cluster token an interactive
+// sign-in creates for a call with --user-id is handed kubectl only when its
+// create response names the call's user, with no request to ask; another
+// user revokes it and caches nothing. A create response that names no owner
+// (the Norman create of a Rancher without ext tokens) is checked with one
+// owner request, and a failed request revokes the token too.
 func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 	t.Run("the user", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{})
 		got, err := x.call("prod-c-test", "user-carol", "carol", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "user-carol", got)
-		assert.Len(t, x.ownerReviews(), 1)
+		assert.Empty(t, x.ownerReviews(), "the ext create names the owner")
 		assert.True(t, x.cached("prod-c-test", "user-carol"))
 	})
 	t.Run("another user", func(t *testing.T) {
@@ -472,29 +473,48 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 		_, err := x.call("prod-c-test", "user-alice", "carol", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
-		assert.Equal(t, "the sign-in was made as Rancher user 'user-carol', and this exec entry names user 'user-alice' with --user-id; the token it created could not be revoked (logout 401; delete 403 Forbidden); an administrator can delete v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated, or it expires; sign in as 'user-alice'", msg)
-		assert.Equal(t, 2, x.revoked(), "logout refuses the cluster-scoped token, then the delete is refused too")
+		assert.Equal(t, "the sign-in was made as Rancher user 'user-carol', and this exec entry names user 'user-alice' with --user-id; the token it created was revoked; sign in as 'user-alice'", msg)
+		assert.Empty(t, x.ownerReviews())
+		assert.Equal(t, 2, x.revoked(), "the login token's logout, then the cluster token's own delete")
 		assert.False(t, x.cached("prod-c-test", "user-alice"))
 	})
-	t.Run("the request fails", func(t *testing.T) {
-		x := newOwnerFixture(t, false, testrancher.Options{SelfSubjectReviewStatus: http.StatusInternalServerError})
+	t.Run("another user, the token cannot be revoked", func(t *testing.T) {
+		x := newOwnerFixture(t, false, testrancher.Options{ClusterDeleteMode: "fail"})
+		_, err := x.call("prod-c-test", "user-alice", "carol", nil)
+		_, msg := refusal(t, err)
+		assert.Contains(t, msg, "the token it created could not be revoked (500 Internal Server Error); user 'user-carol' can delete it with: rancher delete token ")
+		assert.Contains(t, msg, " --apply --yes, from a directory signed in as user 'user-carol' (rancher auth login signs one in)")
+		assert.False(t, x.cached("prod-c-test", "user-alice"))
+	})
+	t.Run("the create response names no owner and the request fails", func(t *testing.T) {
+		x := newOwnerFixture(t, false, testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateOmitOwner: true, SelfSubjectReviewStatus: http.StatusInternalServerError})
 		_, err := x.call("prod-c-test", "user-carol", "carol", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
 		assert.True(t, ce.Retryable)
-		assert.Equal(t, "checking the signed-in user against --user-id 'user-carol': posting a SelfSubjectReview: an error on the server (\"Internal Server Error\") has prevented the request from succeeding - often a proxy-path failure such as an unreachable downstream cluster; retrying may succeed; the token the sign-in created could not be revoked (logout 401; delete 403 Forbidden); an administrator can delete v3/fac-token-1 with: rancher delete management-token fac-token-1 --apply --yes --allow-deprecated, or it expires", msg)
-		assert.Equal(t, 2, x.revoked(), "logout refuses the cluster-scoped token, then the delete is refused too")
+		assert.True(t, strings.HasPrefix(msg, "checking the signed-in user against --user-id 'user-carol': posting a SelfSubjectReview: an error on the server (\"Internal Server Error\") has prevented the request from succeeding"), msg)
+		assert.Contains(t, msg, "the token the sign-in created could not be revoked (logout 401; delete 403 Forbidden); an administrator can delete v3/")
+		assert.Contains(t, msg, " --apply --yes --allow-deprecated, or it expires")
+		assert.Len(t, x.ownerReviews(), 1)
+		assert.Equal(t, 3, x.revoked(), "the login token's logout, then the cluster token's logout and delete, both refused")
 		assert.False(t, x.cached("prod-c-test", "user-carol"))
 	})
-	t.Run("the login response names the owner", func(t *testing.T) {
-		x := newOwnerFixture(t, false, testrancher.Options{LegacyLoginBodyUserID: true})
+	t.Run("the create response names no owner", func(t *testing.T) {
+		x := newOwnerFixture(t, false, testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateOmitOwner: true})
+		got, err := x.call("prod-c-test", "user-carol", "carol", nil)
+		require.NoError(t, err)
+		assert.Equal(t, "user-carol", got)
+		assert.Len(t, x.ownerReviews(), 1, "one owner request where the response named none")
+	})
+	t.Run("the Norman create response names the owner", func(t *testing.T) {
+		x := newOwnerFixture(t, false, testrancher.Options{Legacy: true, V3TokenCreate: true})
 		got, err := x.call("prod-c-test", "user-carol", "carol", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "user-carol", got)
 		assert.Empty(t, x.ownerReviews(), "no request where the response named the owner")
 	})
-	t.Run("the login response names another owner", func(t *testing.T) {
-		x := newOwnerFixture(t, false, testrancher.Options{LegacyLoginBodyUserID: true})
+	t.Run("the Norman create response names another owner", func(t *testing.T) {
+		x := newOwnerFixture(t, false, testrancher.Options{Legacy: true, V3TokenCreate: true})
 		_, err := x.call("prod-c-test", "user-alice", "carol", nil)
 		_, msg := refusal(t, err)
 		assert.True(t, strings.HasPrefix(msg, "the sign-in was made as Rancher user 'user-carol'"), msg)
@@ -604,14 +624,14 @@ func TestUserIDPluginCreatedLoginChecksBothCreates(t *testing.T) {
 		assert.Empty(t, login, "the other user's entry is not logged in")
 		assert.Equal(t, "user-bob", s.TokenUserID)
 		assert.NotContains(t, notices.String(), "plaintext file", "no disclosure for a login that does not happen")
-		assert.Len(t, x.ownerReviews(), 1)
+		assert.Empty(t, x.ownerReviews(), "the cluster token's create response names the owner")
 	})
 }
 
 // TestUserIDPluginLoginEntryIsNotReadWithTokenReuseOff asserts a call with
 // --user-id whose --name identifies a plugin login entry while token reuse
 // is off reads nothing of that entry, whatever owner it records, and signs
-// in, checking the owner.
+// in, checking the owner from the cluster token's create response.
 func TestUserIDPluginLoginEntryIsNotReadWithTokenReuseOff(t *testing.T) {
 	x := newOwnerFixture(t, false, testrancher.Options{})
 	x.entry(x.pluginEntry(), "bob", "user-bob", true)
@@ -622,5 +642,5 @@ func TestUserIDPluginLoginEntryIsNotReadWithTokenReuseOff(t *testing.T) {
 	assert.Equal(t, "user-carol", got, "the call signs in")
 	assert.NotContains(t, x.store.reads()[readsBefore:], x.pluginEntry(), "the entry's login is not read")
 	assert.False(t, x.usedBearer(login))
-	assert.Len(t, x.ownerReviews(), 1)
+	assert.Empty(t, x.ownerReviews(), "the cluster token's create response names the owner")
 }

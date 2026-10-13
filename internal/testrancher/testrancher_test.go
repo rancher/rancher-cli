@@ -1284,6 +1284,40 @@ func TestFacadeKubeconfigLoginScopeUnderTheV3Shape(t *testing.T) {
 	assert.False(t, f.ValidBearer(unscoped))
 }
 
+// TestFacadeClusterKubeconfigLoginDefaultsToAScopedV3Token asserts that,
+// with no forced login shape, a kubeconfig_<cluster> login creates a
+// v3 token scoped to that cluster, as Rancher does (logout refuses it), while
+// plain kubeconfig and an empty response type keep their ext answer.
+func TestFacadeClusterKubeconfigLoginDefaultsToAScopedV3Token(t *testing.T) {
+	t.Parallel()
+	f, srv := newFacade(t, testrancher.Options{}, &recordingHandler{})
+	login := func(responseType string) map[string]any {
+		return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+			map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": responseType})
+	}
+	scoped := login("kubeconfig_c-test")
+	assert.Equal(t, "token", scoped["type"], "a v3 body")
+	bearer, ok := scoped["token"].(string)
+	require.True(t, ok)
+	assert.Regexp(t, `^kubeconfig-user-e2e\.c-testfac\d+$`, scoped["id"], "named for the user and the cluster, with a dot, as Rancher names it")
+	expiresAt, err := time.Parse(time.RFC3339, scoped["expiresAt"].(string))
+	require.NoError(t, err)
+	assert.InDelta(t, 30*24*time.Hour, time.Until(expiresAt), float64(time.Minute), "valid 30 days")
+	creates := f.CreateRequests()
+	require.Len(t, creates, 1)
+	assert.Equal(t, "Kubeconfig token", creates[0].Description, "Rancher ignores the request's description")
+	assert.Equal(t, []string{bearer}, f.BearersOfKind("v3"))
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer))
+	assert.True(t, f.ValidBearer(bearer), "logout leaves the cluster-scoped token")
+
+	for _, responseType := range []string{"kubeconfig", ""} {
+		body := login(responseType)
+		assert.Equal(t, "Token", body["kind"], "responseType %q keeps the ext answer", responseType)
+	}
+	assert.Len(t, f.BearersOfKind("ext"), 2)
+	assert.Len(t, f.BearersOfKind("v3"), 1)
+}
+
 // TestFacadeV3DeleteAnswersForbiddenWithoutAnAuthenticatingBearer asserts
 // that with V3DeleteForbiddenForNonAdmin the proxy delete of a v3 token
 // answers 403 for a bearer that authenticates nothing (deleted or never
@@ -1350,4 +1384,96 @@ func TestFacadeV3DeleteWithAClusterScopedBearerIsForbidden(t *testing.T) {
 	name := nameOfBearer(scoped)
 	assert.Equal(t, http.StatusForbidden, statusOf(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/"+name, scoped))
 	assert.True(t, f.ValidBearer(scoped), "the token stays")
+}
+
+// extCreate posts a cluster-scoped ext token create for cluster with bearer
+// and returns the status and the decoded body.
+func extCreate(t *testing.T, srv *httptest.Server, bearer, cluster string) (int, map[string]any) {
+	t.Helper()
+	resp, body := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens",
+		map[string]any{"spec": map[string]any{"clusterName": cluster, "description": "d"}}, bearer)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(body, &out))
+	return resp.StatusCode, out
+}
+
+func jsonLogin(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
+		map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": "json"})["token"].(string)
+}
+
+// TestFacadeExtCreateClusterAccessAnswersAsRancherDoes asserts the option:
+// a cluster-scoped ext create for a cluster that does not exist is a 400
+// Status `cluster <name> not found`, one the user may not access a 403
+// Status naming the user, both recorded as creates that made no token; an
+// allowed cluster and an unset option create the token.
+func TestFacadeExtCreateClusterAccessAnswersAsRancherDoes(t *testing.T) {
+	t.Parallel()
+	f, srv := newFacade(t, testrancher.Options{ExtCreateClusterAccess: func(_, cluster string) (bool, bool) {
+		return cluster != "c-gone", cluster != "c-denied"
+	}}, &recordingHandler{})
+	bearer := jsonLogin(t, srv)
+
+	status, body := extCreate(t, srv, bearer, "c-gone")
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.Equal(t, "Status", body["kind"])
+	assert.Equal(t, "BadRequest", body["reason"])
+	assert.Equal(t, "cluster c-gone not found", body["message"])
+
+	status, body = extCreate(t, srv, bearer, "c-denied")
+	assert.Equal(t, http.StatusForbidden, status)
+	assert.Equal(t, "Forbidden", body["reason"])
+	assert.Equal(t, "tokens.ext.cattle.io is forbidden: user user-e2e is not allowed to access cluster c-denied", body["message"])
+	assert.Len(t, f.BearersOfKind("ext"), 0, "a refused create makes no token")
+
+	status, _ = extCreate(t, srv, bearer, "c-test")
+	assert.Equal(t, http.StatusCreated, status)
+	assert.Len(t, f.BearersOfKind("ext"), 1)
+
+	_, open := newFacade(t, testrancher.Options{}, &recordingHandler{})
+	status, _ = extCreate(t, open, jsonLogin(t, open), "c-denied")
+	assert.Equal(t, http.StatusCreated, status, "an unset option allows every cluster")
+}
+
+// TestFacadeScopedCreateExpiresAtSendsNothingOrAnythingOrIsUnset asserts the
+// pointer option on the cluster-scoped ext create: nil sends the server's
+// expiry, a pointer to "" sends none, any other text is sent as it is.
+func TestFacadeScopedCreateExpiresAtSendsNothingOrAnythingOrIsUnset(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		opt  *string
+		want func(got any) bool
+	}{
+		{"unset", nil, func(got any) bool {
+			_, err := time.Parse(time.RFC3339, got.(string))
+			return err == nil
+		}},
+		{"empty", new(""), func(got any) bool { return got == "" }},
+		{"text", new("soon"), func(got any) bool { return got == "soon" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, srv := newFacade(t, testrancher.Options{ScopedCreateExpiresAt: tc.opt}, &recordingHandler{})
+			status, body := extCreate(t, srv, jsonLogin(t, srv), "c-test")
+			require.Equal(t, http.StatusCreated, status)
+			assert.True(t, tc.want(body["status"].(map[string]any)["expiresAt"]), "got %v", body["status"])
+		})
+	}
+}
+
+// TestFacadeNormanCreateEmptyExpiresAtSendsNone asserts V3CreateEmptyExpiresAt
+// leaves the Norman create's expiresAt empty and otherwise it carries one.
+func TestFacadeNormanCreateEmptyExpiresAtSendsNone(t *testing.T) {
+	t.Parallel()
+	for _, empty := range []bool{false, true} {
+		_, srv := newFacade(t, testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateEmptyExpiresAt: empty}, &recordingHandler{})
+		body := postJSON(t, srv.Client(), srv.URL+"/v3/tokens", jsonLogin(t, srv), map[string]any{"type": "token", "clusterId": "c-test"})
+		if empty {
+			assert.Equal(t, "", body["expiresAt"])
+		} else {
+			assert.NotEmpty(t, body["expiresAt"])
+		}
+	}
 }

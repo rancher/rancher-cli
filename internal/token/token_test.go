@@ -1534,23 +1534,33 @@ func TestBasicAuth401IsAuthError(t *testing.T) {
 func TestBasicAuthExtTokenResponse(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
-			w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/v1-public/authproviders"):
 			_, _ = w.Write([]byte(`{"data":[{"type":"localProvider"}]}`))
-			return
-		}
-		if r.Method == http.MethodPost {
-			w.Header().Set("Content-Type", "application/json")
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/v1-public/login"):
+			// A login that answers with an ext token: the sign-in's own token.
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{
+				"apiVersion": "ext.cattle.io/v1",
+				"kind": "Token",
+				"metadata": {"name": "token-login"},
+				"status": {"bearerToken": "ext/token-login:lllll", "expiresAt": ""}
+			}`))
+		case r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{
 				"apiVersion": "ext.cattle.io/v1",
 				"kind": "Token",
 				"metadata": {"name": "token-e2e"},
+				"spec": {"clusterName": "local"},
 				"status": {"bearerToken": "ext/token-e2e:sssss", "expiresAt": ""}
 			}`))
-			return
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
 		}
-		http.NotFound(w, r)
 	}))
 	defer srv.Close()
 
@@ -1559,7 +1569,7 @@ func TestBasicAuthExtTokenResponse(t *testing.T) {
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, newLineReader("alice", "secret"), false, true)
 	res, err := cmd.Execute(t.Context(),
-		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "c-1"}},
+		tin{s: map[string]string{"server": srv.URL, "name": "prod", "cluster": "local"}},
 		p)
 	require.NoError(t, err)
 
@@ -2906,7 +2916,9 @@ func TestGetTokenUser401FallsBackToScopedInteractiveNeverPluginLogin(t *testing.
 	require.NoError(t, err)
 	assert.Equal(t, 1, f.LoginCount())
 	descs := f.LoginDescriptions()
-	assert.Empty(t, descs, "the scoped interactive login is unmarked, as today")
+	require.Len(t, descs, 2, "the login token and the cluster token carry the description")
+	assert.Equal(t, descs[0], descs[1])
+	assert.Contains(t, descs[0], "[op:", "the sign-in's tokens are marked")
 	assert.Equal(t, "ExecCredential", res.Kind)
 	cfg, _ := config.Load(config.FilePath(dir))
 	for name := range cfg.Servers {

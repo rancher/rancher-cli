@@ -127,8 +127,10 @@ different actor for a different purpose:
    its own provider path above) and stores it in config. It never creates a
    token itself; Rancher does.
 2. `auth get-token` - drives the identity-provider flow via `/v1-public`;
-   RANCHER creates the session token (`spec.kind: "session"`). The kubeconfig
-   exec plugin drives this automatically and caches the result.
+   RANCHER creates a token for the sign-in, `auth get-token` creates an ext
+   cluster token with it (owned by the user who signed in) and deletes the
+   sign-in's token. The kubeconfig exec plugin drives this automatically and
+   caches the cluster token.
 3. `create token` - an existing authenticated session asks the ext Token
    store to create a DERIVED token (`spec.kind` empty), individually revocable
    and visible in `get tokens`.
@@ -491,10 +493,11 @@ record's token) / `rancher auth delete-token` (deletes the cache records,
 then revokes the cluster tokens the plugin created and recorded; one that
 could not be revoked stays valid until `rancher delete token <name>`, or
 expiry; the plugin's default interactive sign-in (`--cluster`, token reuse
-off) creates a cluster-scoped v3 token on every supported Rancher, and so does
-its cluster token on a server without ext tokens; the CLI cannot delete a
-cluster-scoped v3 token, an administrator can: `rancher delete
-management-token <name> --apply --yes --allow-deprecated`). An unscoped v3
+off) creates an ext cluster token its user can delete; on a server without ext
+tokens its cluster token is a cluster-scoped v3 token the CLI cannot delete,
+an administrator can: `rancher delete management-token <name> --apply --yes
+--allow-deprecated`; a sign-in token that cannot be deleted (forced single
+logout) is reported in a warning). An unscoped v3
 cache token and a v3 login are deleted through Rancher's logout endpoint with
 the token itself.
 `rancher auth logout`, `auth logout --all` and `config delete-server` revoke

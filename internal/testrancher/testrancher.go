@@ -55,6 +55,10 @@ const (
 	authTokensPathPrefix = "/v1-public/authtokens/"
 
 	defaultDerivedTTL = 15 * time.Minute
+	// kubeconfigTokenTTL and kubeconfigTokenDescription are what Rancher
+	// gives the token of a kubeconfig_<cluster> login.
+	kubeconfigTokenTTL         = 30 * 24 * time.Hour
+	kubeconfigTokenDescription = "Kubeconfig token"
 
 	// CRTCollectionPath is the Steve /v1 collection route for
 	// clusterregistrationtokens. It must match
@@ -165,6 +169,18 @@ type Options struct {
 	// ScopedCreateClusterName overrides the echoed spec.clusterName on a
 	// scoped create; an empty string omits it.
 	ScopedCreateClusterName *string
+	// ScopedCreateExpiresAt replaces status.expiresAt on a cluster-scoped
+	// ext create response: nil leaves it, a pointer to "" sends none (a
+	// token that never expires), any other text is sent as it is (for an
+	// expiry the client cannot parse).
+	ScopedCreateExpiresAt *string
+	// ExtCreateClusterAccess says, for a bearer and a cluster named by a
+	// cluster-scoped ext create, whether the cluster exists and whether the
+	// bearer's user may access it. A create for a cluster that does not
+	// exist answers 400 `cluster <name> not found`, one the user may not
+	// access 403 `user <id> is not allowed to access cluster <name>`, both as
+	// Rancher's ext store words them. nil allows every cluster.
+	ExtCreateClusterAccess func(bearer, cluster string) (exists, allowed bool)
 	// DerivedCreateOwner and ScopedCreateOwner override the spec.userID an
 	// unscoped and a cluster-scoped ext create echo, while the token stays
 	// the bearer's owner's; an empty string omits it.
@@ -174,6 +190,13 @@ type Options struct {
 	V3TokenCreate bool
 	// V3CreateStatus forces a status on the Norman v3 token create.
 	V3CreateStatus int
+	// V3CreateOmitOwner leaves userId out of the Norman v3 create response:
+	// a defensive case no supported Rancher sends, which makes the client
+	// ask whose token it holds.
+	V3CreateOmitOwner bool
+	// V3CreateEmptyExpiresAt sends an empty expiresAt on a Norman v3 create
+	// response, as a token that never expires.
+	V3CreateEmptyExpiresAt bool
 	// V3CreateClusterID overrides the echoed clusterId on a Norman v3
 	// create; an empty string omits it.
 	V3CreateClusterID *string
@@ -240,9 +263,11 @@ type Options struct {
 	LoginStatus int
 	// LoginShape forces the login response shape and the created record's
 	// kind ("ext" or "v3") regardless of the requested responseType. Empty
-	// follows the response type: json is v3, kubeconfig is ext. With "v3",
-	// a kubeconfig_<cluster> response type creates a token scoped to that
-	// cluster, and plain kubeconfig an unscoped one.
+	// follows the response type: json and kubeconfig_<cluster> are v3 (the
+	// latter scoped to that cluster, named kubeconfig-<user>.<cluster> plus a
+	// suffix, described "Kubeconfig token" and valid 30 days, as Rancher
+	// creates it), kubeconfig and an empty type are ext. With "v3", plain
+	// kubeconfig is an unscoped v3 token.
 	LoginShape string
 
 	// DropDerivedCreateResponse creates the derived token and then closes the
@@ -735,17 +760,24 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 	rec := f.newToken("", 0)
 	f.mu.Lock()
 	rec.kind = loginKind(f.opts.LoginShape, req.ResponseType)
-	if f.opts.LoginShape == "v3" {
+	if rec.kind == "v3" {
 		// A kubeconfig login for one cluster creates a token scoped to
 		// it, which Rancher refuses on any request that names no cluster.
 		if cluster, ok := strings.CutPrefix(req.ResponseType, "kubeconfig_"); ok {
 			rec.clusterName = cluster
+			// Rancher names it for the user and the cluster, ignores the
+			// request's description and keeps it 30 days.
+			delete(f.tokens, rec.name)
+			rec.name = "kubeconfig-" + userID + "." + cluster + "fac" + strings.TrimPrefix(rec.name, "fac-token-")
+			f.tokens[rec.name] = rec
+			rec.expiresAt = time.Now().Add(kubeconfigTokenTTL)
+			req.Description = kubeconfigTokenDescription
 		}
 	}
 	rec.role = "session"
 	rec.description = req.Description
 	rec.userID = userID
-	if req.Description != "" {
+	if req.Description != "" && !strings.HasPrefix(rec.name, "kubeconfig-") {
 		f.descriptions = append(f.descriptions, req.Description)
 	}
 	f.creates = append(f.creates, CreateRecord{Kind: rec.kind, Role: "session", Name: rec.name, Bearer: "", Description: req.Description, OwnerUserID: rec.userID})
@@ -785,12 +817,13 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // loginKind is the kind of resource a login creates: the forced shape when
-// a test sets one, else the shape the response type asks for.
+// a test sets one, else the shape the response type asks for. A login for
+// one cluster (kubeconfig_<cluster>) creates a v3 token, as Rancher does.
 func loginKind(shape, responseType string) string {
 	switch {
 	case shape != "":
 		return shape
-	case responseType == "json":
+	case responseType == "json", strings.HasPrefix(responseType, "kubeconfig_"):
 		return "v3"
 	default:
 		return "ext"
@@ -806,6 +839,15 @@ func deterministic4xx(status int) bool {
 		return true
 	}
 	return false
+}
+
+// writeStatus answers with a Kubernetes Status body, as an aggregated API
+// server does for a refused request.
+func writeStatus(w http.ResponseWriter, code int, reason, message string) {
+	writeJSON(w, code, map[string]any{
+		"kind": "Status", "apiVersion": "v1", "metadata": map[string]any{},
+		"status": "Failure", "message": message, "reason": reason, "code": code,
+	})
 }
 
 // dropConnection closes the connection with no response, so the client
@@ -902,6 +944,19 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if role == "cluster" && f.opts.ExtCreateClusterAccess != nil {
+		exists, allowed := f.opts.ExtCreateClusterAccess(bearerFromHeader(r), createReq.Spec.ClusterName)
+		if !exists || !allowed {
+			f.recordCreate(CreateRecord{Kind: "ext", Role: role, Bearer: bearerFromHeader(r), ClusterName: createReq.Spec.ClusterName, Description: createReq.Spec.Description, OwnerUserID: owner})
+			if !exists {
+				writeStatus(w, http.StatusBadRequest, "BadRequest", "cluster "+createReq.Spec.ClusterName+" not found")
+				return
+			}
+			writeStatus(w, http.StatusForbidden, "Forbidden", "tokens.ext.cattle.io is forbidden: user "+owner+" is not allowed to access cluster "+createReq.Spec.ClusterName)
+			return
+		}
+	}
+
 	rec := f.newToken(createReq.Spec.ClusterName, createReq.Spec.TTL)
 	f.mu.Lock()
 	rec.kind = "ext"
@@ -942,7 +997,11 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 			c.userID = *o
 			echoed = &c
 		}
-		writeExtTokenAsWithScope(w, http.StatusCreated, echoed, rec.name, bearer, !f.opts.OmitSpecOnCreate, echoedClusterName)
+		expiresAt := echoed.expiresAt.UTC().Format(time.RFC3339)
+		if o := f.opts.ScopedCreateExpiresAt; role == "cluster" && o != nil {
+			expiresAt = *o
+		}
+		writeExtTokenExpiring(w, http.StatusCreated, echoed, rec.name, bearer, !f.opts.OmitSpecOnCreate, echoedClusterName, expiresAt)
 	}
 }
 
@@ -1026,6 +1085,12 @@ func (f *Facade) handleNormanTokensPOST(w http.ResponseWriter, r *http.Request) 
 		"userId":    rec.userID,
 		"type":      "token",
 		"baseType":  "token",
+	}
+	if f.opts.V3CreateOmitOwner {
+		delete(body2, "userId")
+	}
+	if f.opts.V3CreateEmptyExpiresAt {
+		body2["expiresAt"] = ""
 	}
 	if echoedClusterID != "" {
 		body2["clusterId"] = echoedClusterID
@@ -2062,7 +2127,13 @@ func writeExtTokenAs(w http.ResponseWriter, status int, rec *record, name, beare
 // writeExtTokenAsWithScope writes the ext Token object with the given
 // identity and an optionally overridden echoed clusterName.
 func writeExtTokenAsWithScope(w http.ResponseWriter, status int, rec *record, name, bearer string, withSpec bool, echoedClusterName string) {
-	statusBlock := map[string]any{"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339)}
+	writeExtTokenExpiring(w, status, rec, name, bearer, withSpec, echoedClusterName, rec.expiresAt.UTC().Format(time.RFC3339))
+}
+
+// writeExtTokenExpiring is writeExtTokenAsWithScope with the status.expiresAt
+// text given, for an answer whose expiry the client cannot parse.
+func writeExtTokenExpiring(w http.ResponseWriter, status int, rec *record, name, bearer string, withSpec bool, echoedClusterName, expiresAt string) {
+	statusBlock := map[string]any{"expiresAt": expiresAt}
 	if bearer != "" {
 		statusBlock["bearerToken"] = bearer
 	}

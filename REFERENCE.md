@@ -1351,11 +1351,16 @@ cache records, then revokes the cluster tokens the plugin created and
 recorded in them (see [Revoking the CLI's tokens](#revoking-the-clis-tokens));
 a token it could not revoke stays valid on the server until it expires, and
 `rancher get tokens` lists it. The plugin's interactive sign-in (with
-`--cluster`, token reuse off) creates a cluster-scoped v3 token on every
-supported Rancher, and on a server without `ext.cattle.io` tokens its cluster
-token is a cluster-scoped v3 token too: the CLI cannot delete either; an
-administrator can run `rancher delete management-token <name> --apply --yes
---allow-deprecated`, or it expires. On a cache miss the plugin first
+`--cluster`, token reuse off) creates the cluster token itself: Rancher creates
+a token for the sign-in, the plugin creates an ext cluster token with it, and
+deletes the sign-in's token. The cluster token belongs to the user who signed
+in, who can delete it. On a server without `ext.cattle.io` tokens the cluster
+token is a cluster-scoped v3 token the CLI cannot delete; an administrator can
+run `rancher delete management-token <name> --apply --yes --allow-deprecated`,
+or it expires. When the sign-in's own token cannot be deleted (a provider set
+to forced single logout), the call still succeeds and a warning says who can
+delete it; the plugin-created login (token reuse on) warns the same way for
+the token its sign-in could not delete. On a cache miss the plugin first
 tries to create a token from a stored `auth login` credential; when that
 credential lives in the OS keychain, this can trigger a keychain-unlock
 prompt - CI and other non-interactive runs should run `rancher kubeconfig`

@@ -247,11 +247,12 @@ func requestOwner(ctx context.Context, client *http.Client, base, clusterID, bea
 	return review.Status.UserInfo.Username, nil
 }
 
-// checkSignInOwner is the check of the token an interactive sign-in made
-// for a call with --user-id: the owner the login response named, when it
-// named one, else the one the owner request reports, must be the call's
-// user. Any other answer, or a failed request, revokes the token, which
-// revokes itself, before anything is cached.
+// checkSignInOwner is the check of the cluster token an interactive sign-in
+// made for a call with --user-id: the owner its create response named (an
+// ext token's spec.userID), when it named one, else the one the owner
+// request reports, must be the call's user. Any other answer, or a failed
+// request, revokes the token with its own bearer before anything is cached;
+// a token that cannot be revoked ends as fresh.leftover says.
 func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, base string, created CreateResult, fresh *freshToken) error {
 	owner := created.UserID
 	if owner == "" {
@@ -264,7 +265,7 @@ func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, ba
 				code, retryable = ce.Code, ce.Retryable
 			}
 			return clierr.New(code, "checking the signed-in user against --user-id "+clierr.ShellQuote(u.userID)+": "+err.Error()+"; "+
-				revokedClause("the token the sign-in created", created.Ref, out)).WithRetryable(retryable).WithCause(err).WithDetails(fateDetails(fresh, out))
+				signInRevokedClause("the token the sign-in created", created.Ref, out, fresh.leftover)).WithRetryable(retryable).WithCause(err).WithDetails(fateDetails(fresh, out))
 		}
 	}
 	if owner == u.userID {
@@ -272,7 +273,7 @@ func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, ba
 	}
 	out := revokeRefused(ctx, fresh)
 	return clierr.New(clierr.CodeAuth, "the sign-in was made as Rancher user "+clierr.ShellQuote(owner)+", and this exec entry names user "+
-		clierr.ShellQuote(u.userID)+" with --user-id; "+revokedClause("the token it created", created.Ref, out)+"; sign in as "+clierr.ShellQuote(u.userID)).
+		clierr.ShellQuote(u.userID)+" with --user-id; "+signInRevokedClause("the token it created", created.Ref, out, fresh.leftover)+"; sign in as "+clierr.ShellQuote(u.userID)).
 		WithDetails(fateDetails(fresh, out))
 }
 

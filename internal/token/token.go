@@ -71,13 +71,13 @@ var supportedAuthProviders = map[string]bool{
 
 type loginInput struct {
 	server          string
-	clusterID       string
 	authProvider    string
 	skipVerify      bool
 	authFlow        string
 	usernameDefault string
 	// responseType is the shape the login request asks Rancher for. Empty
-	// keeps get-token's kubeconfig form; `auth login` asks for json.
+	// is the kubeconfig form the legacy shim without --cluster asks for; the
+	// sign-ins that create their own tokens ask for json.
 	responseType string
 	// description is the description every token this login creates
 	// carries. Empty creates an unmarked token.
@@ -371,6 +371,9 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		directTarget = ec
 	}
 	var loginWarnings []string
+	// signIn is set when this invocation signed in to create a cluster
+	// token (token reuse off, or another user's plugin login entry skipped).
+	var signIn *clusterSignIn
 	if ecErr != nil {
 		loginWarnings = append(loginWarnings, execInfoEnv+" could not be read ("+ecErr.Error()+"); not waiting for the direct endpoint")
 	}
@@ -402,7 +405,6 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 
 	input := &loginInput{
 		server:          server,
-		clusterID:       clusterID,
 		authProvider:    params.AuthProvider,
 		skipVerify:      params.SkipVerify,
 		authFlow:        params.AuthFlow,
@@ -460,25 +462,40 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// path, the steady state under kubectl's exec plugin, never dials
 		// an identity provider.
 		input.idpClient = httpx.NewExternal(httpx.DefaultTimeout)
+		// This lane is taken only when the plugin-created login is not,
+		// so a sign-in here keeps no login credential.
+		call := noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim, userID: params.UserID}
+		if skipping {
+			call.skipped, call.skippedOwner = skipped.entry, skipped.owner
+		}
+		if clusterID != "" {
+			// The sign-in creates the cluster token itself, with the login
+			// token it just created as bearer, and deletes that login token.
+			si, serr := signInForClusterToken(ctx, client, input, clusterID, p)
+			if serr != nil {
+				return runtime.Result{}, t.withNoTerminalRemedies(serr, call)
+			}
+			signIn = &si
+			fresh := newFreshToken(si.Cluster, client, kube.BaseURL(server), si.Cluster.Bearer)
+			fresh.leftover = si.leftover()
+			if params.UserID != "" {
+				if oerr := t.user.checkSignInOwner(ctx, client, kube.BaseURL(server), si.Cluster, fresh); oerr != nil {
+					return runtime.Result{}, si.withSignInFate(oerr, loginWarnings)
+				}
+			}
+			rancherToken = Token{Token: si.Cluster.Bearer, ExpiresAt: si.Cluster.ExpiresAt, fresh: fresh, binding: binding}
+			break
+		}
+		// The legacy shim without --cluster needs a token no cluster
+		// scopes: the sign-in's own kubeconfig token.
 		var res SessionAcquireResult
 		res, err = loginAndGenerateCred(ctx, client, input, p)
 		if err != nil {
-			// This lane is taken only when the plugin-created login is not,
-			// so a sign-in here keeps no login credential.
-			call := noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, shim: params.legacyShim, userID: params.UserID}
-			if skipping {
-				call.skipped, call.skippedOwner = skipped.entry, skipped.owner
-			}
 			return runtime.Result{}, t.withNoTerminalRemedies(err, call)
 		}
-		// The interactive login's cluster-scoped token has no parent
-		// bearer: it revokes itself if the wait below is cancelled.
+		// The interactive login's token has no parent bearer: it deletes
+		// itself if the wait below is cancelled.
 		fresh := newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer)
-		if params.UserID != "" {
-			if oerr := t.user.checkSignInOwner(ctx, client, kube.BaseURL(server), res.Create, fresh); oerr != nil {
-				return runtime.Result{}, oerr
-			}
-		}
 		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: fresh, binding: binding}
 	case err != nil:
 		// The plugin-created login reaches the same sign-in prompts.
@@ -492,7 +509,17 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	if rancherToken.ExpiresAt != "" {
 		tokenExpiry, err = time.Parse(time.RFC3339, rancherToken.ExpiresAt)
 		if err != nil {
-			return runtime.Result{}, clierr.New(clierr.CodeGeneric, "parsing token expiry: "+err.Error())
+			perr := clierr.New(clierr.CodeGeneric, "parsing token expiry: "+err.Error())
+			if signIn != nil && rancherToken.fresh != nil {
+				// The sign-in's token is not handed over: it is deleted with
+				// its own bearer, and the error reports it and the login
+				// token.
+				out := revokeRefused(ctx, rancherToken.fresh)
+				msg := perr.Message + "; " + signInRevokedClause("the token the sign-in created", rancherToken.fresh.create.Ref, out, rancherToken.fresh.leftover)
+				perr = perr.WithMessage(msg).WithDetails(fateDetails(rancherToken.fresh, out))
+				return runtime.Result{}, signIn.withSignInFate(perr, loginWarnings)
+			}
+			return runtime.Result{}, perr
 		}
 	}
 
@@ -519,7 +546,11 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			cctx, ccancel := cleanupContext(ctx)
 			out := rancherToken.fresh.cleanup(cctx)
 			ccancel()
-			return runtime.Result{}, directWaitCancelled(werr, rancherToken.fresh, out)
+			cancelled := directWaitCancelled(werr, rancherToken.fresh, out)
+			if signIn != nil {
+				return runtime.Result{}, signIn.withSignInFate(cancelled, loginWarnings)
+			}
+			return runtime.Result{}, cancelled
 		}
 	}
 
@@ -546,6 +577,12 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		}
 	}
 
+	if signIn != nil {
+		// A login token that outlives the call is listed with how it ends.
+		if w := signIn.warning(); w != "" {
+			loginWarnings = append(loginWarnings, w)
+		}
+	}
 	return runtime.Result{Raw: true, Kind: "ExecCredential", Warnings: loginWarnings, Data: newExecCredential(rancherToken.Token, tokenExpiry)}, nil
 }
 
@@ -843,14 +880,13 @@ func (d deleteTokenCmd) CompleteArgs(_ context.Context, view runtime.ConfigView,
 // is the first consumer.
 type LoginRequest struct {
 	Server       string
-	ClusterID    string
 	AuthProvider string
 	AuthFlow     string
 	// IdPClient dials the identity provider's OAuth endpoints (see
 	// loginInput.idpClient). Required for OAuth providers.
 	IdPClient *http.Client
 	// ResponseType is the shape asked of Rancher's login endpoint. Empty
-	// keeps get-token's kubeconfig form.
+	// asks for json.
 	ResponseType string
 	// BeforeSignIn, when set, runs once, right before the first prompt or
 	// notice that asks someone to act: after the provider is chosen, and
@@ -865,14 +901,11 @@ func loginNotAttempted(input *loginInput) CreateResult {
 }
 
 // loginResponseType is the responseType a login carries: the caller's when
-// set, else the kubeconfig form get-token has always asked for, scoped to
-// the cluster when one is named.
+// set, else the unscoped kubeconfig form the legacy shim without --cluster
+// asks for.
 func loginResponseType(input *loginInput) string {
 	if input.responseType != "" {
 		return input.responseType
-	}
-	if input.clusterID != "" {
-		return "kubeconfig_" + input.clusterID
 	}
 	return "kubeconfig"
 }
@@ -1477,7 +1510,7 @@ func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerTo
 	if clusterID != "" {
 		spec["clusterName"] = clusterID
 	}
-	r, resp, err := postTokenCreate(ctx, client, base+ExtTokensPath, bearerToken, map[string]any{"spec": spec}, TokenKindExt, description, "creating derived token")
+	r, resp, err := postTokenCreate(ctx, client, base+ExtTokensPath, bearerToken, map[string]any{"spec": spec}, TokenKindExt, description, extCreateVerb)
 	if err != nil {
 		return r, err
 	}

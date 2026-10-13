@@ -436,9 +436,10 @@ func TestGetTokenProxyContextNeverWaits(t *testing.T) {
 }
 
 // TestGetTokenCancelledDuringWaitRevokesTheToken asserts the cleanup: a
-// caller cancellation during the wait revokes the token this invocation
-// created, with the token itself as bearer for the interactive login, and
-// returns the cancellation with the token's fate as details, no credential.
+// caller cancellation during the wait revokes the cluster token this
+// invocation created, with the token itself as bearer, and returns the
+// cancellation with the token's fate as details, no credential. The login
+// token the sign-in created was deleted by its own bearer before the wait.
 func TestGetTokenCancelledDuringWaitRevokesTheToken(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		d := newInMemoryDirectEndpoint(t, 1000, "review")
@@ -458,11 +459,14 @@ func TestGetTokenCancelledDuringWaitRevokesTheToken(t *testing.T) {
 		require.ErrorContains(t, err, "cancelled while waiting for the direct endpoint")
 		require.ErrorContains(t, err, "was revoked")
 		deletes := x.f.DeleteRequests()
-		require.Len(t, deletes, 1)
+		require.Len(t, deletes, 2)
 		creates := x.f.CreateRequests()
-		require.NotEmpty(t, creates)
-		assert.Equal(t, deletes[0].Name, creates[len(creates)-1].Name, "the token this invocation created")
-		assert.Contains(t, deletes[0].Bearer, deletes[0].Name, "the interactive login's token revokes itself")
+		require.Len(t, creates, 2, "the login token and the cluster token")
+		assert.Equal(t, creates[0].Name, deletes[0].Name, "the login token is deleted first")
+		assert.Equal(t, testrancher.RouteLogout, deletes[0].Route, "by logout, with its own bearer")
+		assert.Contains(t, deletes[0].Bearer, deletes[0].Name)
+		assert.Equal(t, deletes[1].Name, creates[len(creates)-1].Name, "the token this invocation created")
+		assert.Contains(t, deletes[1].Bearer, deletes[1].Name, "the cluster token revokes itself")
 		_, cached, cerr := x.store.GetCachedCred(config.CacheKey("kc", credhelperCanonical(t, x.url), "local"), anchorFor(x.dir))
 		assert.ErrorIs(t, cerr, config.ErrNoToken, "nothing cached", cached)
 	})
@@ -579,7 +583,10 @@ func TestGetTokenCancelledBeforeAnUnprobeableEndpointStillRevokes(t *testing.T) 
 			_, err := x.command(x.store).Execute(ctx, x.input("local", "kc"), localPrompter())
 			require.ErrorIs(t, err, context.Canceled)
 			require.ErrorContains(t, err, "was revoked")
-			require.Len(t, x.f.DeleteRequests()[before:], 1)
+			deletes := x.f.DeleteRequests()[before:]
+			require.Len(t, deletes, 2, "the login token, then the cluster token")
+			assert.Equal(t, testrancher.RouteLogout, deletes[0].Route)
+			assert.Empty(t, deletes[1].Route)
 			_, _, cerr := x.store.GetCachedCred(config.CacheKey("kc", credhelperCanonical(t, x.url), "local"), anchorFor(x.dir))
 			assert.ErrorIs(t, cerr, config.ErrNoToken)
 		})

@@ -7,12 +7,16 @@
 [!unix] skip 'ttyin (real pty) is unix-only'
 env RANCHER_CLI_CREDENTIAL_STORE=file
 
-# Default posture: setting off, plugin-only use is scoped-only. The login
-# request carries the cluster suffix and nothing is stored under a server
-# entry.
+# Default posture: setting off, plugin-only use signs in, creates an ext
+# cluster token with that sign-in's own login token, and deletes the login
+# token. Nothing is stored under a server entry; the cached record names an
+# ext token.
 ttyin -stdin creds.txt
 exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name cold --auth-provider localProvider
 ! exists $RANCHER_CLI_CONFIG_DIR/credentials.yaml
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.tokenRef.kind ext
 exec rancher config status -o json
 jsonquery stdout data.tokenReuse false
 ! stdout exec-login

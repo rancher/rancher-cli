@@ -359,13 +359,15 @@ func checkOrphanHelperErase(t testscript.T, f *testrancher.Facade) {
 }
 
 // checkExecTokenReuse asserts what exec-token-reuse.txtar cannot see: the
-// plugin login made exactly one marked derived create and one marked
-// cluster create with that derived token as bearer, the silent second
-// cluster's create was unmarked and used the same bearer, and the recovery
-// sequence's delete carried a dry run and an execution with one
-// resourceVersion. The scoped interactive logins the script runs with the
-// setting off go through /v1-public/login, recorded with the session role,
-// so they are outside both create lists.
+// plugin login made exactly one marked derived create for its stored login
+// and one marked cluster create with that derived token as bearer, the
+// silent second cluster's create was unmarked and used the same bearer, the
+// two sign-ins the script runs with the setting off each made one marked
+// cluster create with their own login token as bearer (a v3 session token,
+// never an ext bearer), and the recovery sequence's delete carried a dry run
+// and an execution with one resourceVersion. Those sign-ins' logins go
+// through /v1-public/login, recorded with the session role, so they are
+// outside the create lists.
 func checkExecTokenReuse(t testscript.T, f *testrancher.Facade) {
 	var derived, marked, unmarked []testrancher.CreateRecord
 	for _, c := range f.CreateRequests() {
@@ -383,11 +385,26 @@ func checkExecTokenReuse(t testscript.T, f *testrancher.Facade) {
 	if len(derived) != 4 {
 		t.Fatal(fmt.Sprintf("expected four derived creates, got %d: %+v", len(derived), derived))
 	}
-	if len(marked) != 1 || marked[0].Bearer == "" {
-		t.Fatal(fmt.Sprintf("expected one marked cluster create with the plugin login as bearer, got %+v", marked))
+	// Three marked cluster creates, in the script's order: the first
+	// sign-in's, the plugin login's, the sign-in after the setting went off.
+	if len(marked) != 3 {
+		t.Fatal(fmt.Sprintf("expected three marked cluster creates (two sign-ins, one plugin login), got %+v", marked))
 	}
-	if len(unmarked) != 1 || unmarked[0].Bearer != marked[0].Bearer {
-		t.Fatal(fmt.Sprintf("expected one unmarked silent cluster create with the same bearer, got %+v", unmarked))
+	signIns := []testrancher.CreateRecord{marked[0], marked[2]}
+	for _, c := range signIns {
+		if c.Bearer == "" || strings.HasPrefix(c.Bearer, "ext/") || c.Kind != "ext" {
+			t.Fatal(fmt.Sprintf("expected an ext cluster create with the sign-in's login token (a v3 bearer) as bearer, got %+v", c))
+		}
+	}
+	if signIns[0].Bearer == signIns[1].Bearer {
+		t.Fatal(fmt.Sprintf("expected each sign-in to use its own login token, got %+v", signIns))
+	}
+	login := marked[1]
+	if !strings.HasPrefix(login.Bearer, "ext/") {
+		t.Fatal(fmt.Sprintf("expected the plugin login's cluster create to carry its derived token as bearer, got %+v", login))
+	}
+	if len(unmarked) != 1 || unmarked[0].Bearer != login.Bearer {
+		t.Fatal(fmt.Sprintf("expected one unmarked silent cluster create with the plugin login's bearer, got %+v", unmarked))
 	}
 	var attempts []testrancher.DeleteRecord
 	for _, r := range f.DeleteRequests() {

@@ -202,6 +202,20 @@ func fateOf(t *testing.T, err error) *clierr.TokenFate {
 	return d.Fate
 }
 
+// signInDetails is the details of a refusal after an interactive sign-in: the
+// login token's fate and the cluster token's, in the shape of a failed login.
+func signInDetails(t *testing.T, err error) clierr.LoginFailureDetails {
+	t.Helper()
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a typed error, got %v", err)
+	d, ok := ce.Details.(clierr.LoginFailureDetails)
+	require.True(t, ok, "the refusal carries both fates, got %T", ce.Details)
+	require.NotNil(t, d.SessionToken)
+	require.NotNil(t, d.ClusterToken)
+	require.NotNil(t, d.ClusterToken.Cleanup)
+	return d
+}
+
 // TestUserIDOwnerRefusalsCarryTheTokensFate asserts the details of the
 // refusals of a token another owner's login made: the token's ref and
 // what its revoke did - revoked, or failed with the server's answer, which
@@ -232,7 +246,18 @@ func TestUserIDOwnerRefusalsCarryTheTokensFate(t *testing.T) {
 	t.Run("the sign-in of another user", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{})
 		_, err := x.call("prod-c-test", "user-alice", "carol", nil)
-		f := fateOf(t, err)
+		d := signInDetails(t, err)
+		f := d.ClusterToken
+		require.NotNil(t, f.Ref)
+		assert.Equal(t, clierr.TokenKindExt, f.Ref.Kind, "the sign-in creates an ext cluster token")
+		assert.Equal(t, ResultRevoked, f.Cleanup.Result, "the token deletes itself")
+		assert.Equal(t, ResultRevoked, sessionCleanup(t, d), "the login token was deleted before the check")
+		assert.Equal(t, clierr.StageClusterToken, d.Stage)
+	})
+	t.Run("the sign-in of another user, on a Rancher without ext tokens", func(t *testing.T) {
+		x := newOwnerFixture(t, false, testrancher.Options{Legacy: true, V3TokenCreate: true})
+		_, err := x.call("prod-c-test", "user-alice", "carol", nil)
+		f := signInDetails(t, err).ClusterToken
 		require.NotNil(t, f.Ref)
 		assert.Equal(t, clierr.TokenKindV3, f.Ref.Kind)
 		assert.Equal(t, ResultFailed, f.Cleanup.Result, "Rancher refuses a cluster-scoped token on both requests")
