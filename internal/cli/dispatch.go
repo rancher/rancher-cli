@@ -81,6 +81,10 @@ func universalShellCompleteFunc(d runtime.Descriptor, sc runtime.ShellCompleter,
 			return
 		}
 
+		// The sources read a sibling flag by its long spelling, so every
+		// alias and single-dash form the command defines is spelled long
+		// before they see the words.
+		tail = longFlagSpellings(tail, slices.Concat(d.Flags, globalArgSpecs))
 		candidates := dispatchSite(ctx, site, d, sc, lc, tail)
 		w := c.Root().Writer
 		for _, cand := range candidates {

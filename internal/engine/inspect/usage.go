@@ -54,7 +54,7 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			engine.ClusterFlag(true, true),
-			{Name: resources.FlagNamespace, Type: "string", Desc: "`namespace` to operate in"},
+			engine.NamespaceFlag(false),
 			runtime.ProjectFlag(false, "keep only the project's namespaces (not with --by node)"),
 			{Name: "by", Type: "string", Enum: []string{byNamespace, byProject, byNode, byPod},
 				Desc: "Group results by namespace, project, node, or pod (default: namespace)"},

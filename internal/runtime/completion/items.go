@@ -88,7 +88,8 @@ func IDsWithUniqueDisplayNames(items []map[string]any) []string {
 // typed more than once takes its last spelling, as the command's parser
 // reads it. A source uses it for a sibling flag the surface does not
 // carry in Request (--namespace, --type); the value is data until a Path
-// builder validates it.
+// builder validates it. The completion dispatcher spells every flag the
+// command defines in its long form before a source reads the tail.
 func TailFlag(tail []string, name string) string {
 	long := "--" + name
 	value := ""

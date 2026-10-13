@@ -150,7 +150,7 @@ for lifecycle; `get provisioning-cluster` for reads.
 
 Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 `get po`). Addressing a namespaced kind by name needs `--cluster`
-(management) or `--namespace` (downstream); bare lists may omit them.
+(management) or `--namespace`/`-n` (downstream); bare lists may omit them.
 Every generated `get <kind>` list takes `--selector` (`-l`), a Kubernetes
 label selector applied by the server (`get pods --selector app=web,tier!=cache`);
 it cannot be combined with a name.

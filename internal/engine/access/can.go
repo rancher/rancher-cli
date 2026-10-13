@@ -55,7 +55,7 @@ func (c *canCmd) Describe() runtime.Descriptor {
 		},
 		Flags: []runtime.ArgSpec{
 			clusterFlag("cluster name or id the question is about"),
-			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace the question is about"},
+			namespaceFlag("namespace the question is about"),
 			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "as", Type: "string", Desc: "subject to ask about: user name, id, or principal; group principal; system:serviceaccount:<ns>:<name>; omitted = you"},
 			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "kind of a bare --as value when ambiguous"},

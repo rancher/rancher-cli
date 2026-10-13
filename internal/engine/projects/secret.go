@@ -43,13 +43,15 @@ func NewCreateSecret(clients engine.ClusterClientFactory) runtime.Command {
 }
 
 func (createSecretCmd) Describe() runtime.Descriptor {
+	namespace := engine.NamespaceFlag(false)
+	namespace.Desc = "`namespace` for the secret"
 	return runtime.Descriptor{
 		Name:        "create secret",
 		Usage:       "Create a secret, optionally project-scoped",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
-			{Name: "namespace", Type: "string", Desc: "`namespace` for the secret"},
+			namespace,
 			engine.ClusterFlag(true, true),
 			runtime.ProjectFlag(false, "create a project-scoped secret in this project's backing namespace; Rancher copies it into every namespace of the project (not with --namespace)"),
 			{Name: "from-literal", Type: "string", Once: true, Desc: "secret data as `key=value` pairs (comma-separated)"},

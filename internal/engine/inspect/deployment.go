@@ -35,7 +35,7 @@ func (c *deploymentCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
 			engine.ClusterFlag(true, true),
-			{Name: resources.FlagNamespace, Type: "string", Required: true, Desc: "`namespace` to operate in"},
+			engine.NamespaceFlag(true),
 		},
 		Auth:  true,
 		Shape: runtime.ShapeText,

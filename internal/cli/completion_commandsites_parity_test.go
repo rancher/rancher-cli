@@ -158,6 +158,7 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "cluster scale --pool", words: []string{"cluster", "scale", "prod", "--pool"}, want: []string{"pool-a", "pool-b"}, hits: map[string]int{provProdPath: 1}},
 		{name: "cluster scale --pool= equals form", words: []string{"cluster", "scale", "prod"}, cur: "--pool=", want: []string{"--pool=pool-a", "--pool=pool-b"}, hits: map[string]int{provProdPath: 1}},
 		{name: "cluster scale --pool in a typed namespace", words: []string{"cluster", "scale", "prod", "--namespace", "team-a", "--pool"}, want: []string{"team-pool"}, hits: map[string]int{provTeamProdPath: 1}},
+		{name: "cluster scale --pool in a namespace typed as -n", words: []string{"cluster", "scale", "prod", "-n", "team-a", "--pool"}, want: []string{"team-pool"}, hits: map[string]int{provTeamProdPath: 1}},
 		{name: "cluster scale --pool with the cluster after the flag", words: []string{"cluster", "scale", "--nodes", "3", "prod", "--pool"}, want: []string{"pool-a", "pool-b"}, hits: map[string]int{provProdPath: 1}},
 		{name: "cluster scale --pool without a cluster typed", words: []string{"cluster", "scale", "--pool"}, hits: map[string]int{}},
 		{name: "cluster scale --pool with an unusable cluster name", words: []string{"cluster", "scale", "a/b", "--pool"}, hits: map[string]int{}},

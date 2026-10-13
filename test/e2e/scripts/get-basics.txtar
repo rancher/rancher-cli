@@ -9,6 +9,9 @@ stdout basics-cm
 exec rancher get configmaps --cluster testcluster --namespace default -o name
 stdout basics-cm
 
+exec rancher get configmaps --cluster testcluster -n default -o name
+stdout basics-cm
+
 exec rancher get configmap basics-cm --cluster testcluster --namespace default -o yaml
 cp stdout cm.out.yaml
 jsonquery -yaml cm.out.yaml data.metadata.name basics-cm

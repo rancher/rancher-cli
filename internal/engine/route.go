@@ -13,6 +13,9 @@ import (
 // constant instead of drifting copies.
 const FlagCluster = runtime.FlagCluster
 
+// FlagNamespace is the --namespace flag's name.
+const FlagNamespace = "namespace"
+
 // ClusterRequiredMessage, ClusterRequiredPlainMessage and
 // ClusterRequiredHint are the refusal for an absent --cluster, whether the
 // pipeline rejects it as a missing required flag or a resolver reaches the
@@ -40,6 +43,13 @@ const (
 func ClusterFlag(required, namespaced bool) runtime.ArgSpec {
 	return runtime.ArgSpec{Name: FlagCluster, Type: "string", Required: required, Desc: "target cluster `id|name`",
 		MissingMessage: clusterRequiredMessage(namespaced), MissingHint: ClusterRequiredHint}
+}
+
+// NamespaceFlag declares --namespace with kubectl's -n. A caller with its
+// own description sets Desc on the result.
+func NamespaceFlag(required bool) runtime.ArgSpec {
+	return runtime.ArgSpec{Name: FlagNamespace, Type: "string", Required: required,
+		Aliases: []string{"n"}, Desc: "`namespace` to operate in"}
 }
 
 // clusterRequiredMessage is the missing-cluster refusal for a command that

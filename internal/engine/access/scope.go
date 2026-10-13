@@ -156,6 +156,14 @@ func resolveScope(ctx context.Context, client engine.ClusterClient, clusterID st
 	return sc, nil
 }
 
+// namespaceFlag is the --namespace of an access command, with the command's
+// own description.
+func namespaceFlag(desc string) runtime.ArgSpec {
+	f := engine.NamespaceFlag(false)
+	f.Desc = desc
+	return f
+}
+
 // clusterFlag is the required --cluster of an access command, which takes
 // --namespace, with the command's own description.
 func clusterFlag(desc string) runtime.ArgSpec {

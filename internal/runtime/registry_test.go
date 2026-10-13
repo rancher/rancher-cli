@@ -493,3 +493,52 @@ func TestValidateProjectFlagRules(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateFlagNamesAreDeclaredOnce asserts that a command's flag names
+// and aliases are each declared once: two flags with one name, a flag whose
+// alias is another flag's alias or name, and a flag whose alias is its own
+// name are refused with the name in the message, and distinct names and
+// aliases are accepted.
+func TestValidateFlagNamesAreDeclaredOnce(t *testing.T) {
+	t.Parallel()
+	read := func(flags ...ArgSpec) Descriptor {
+		return Descriptor{Name: "get widget", CommandType: ReadOnly, Shape: ShapeText, Flags: flags}
+	}
+	for _, tc := range []struct {
+		name  string
+		flags []ArgSpec
+		want  string // "" = valid
+	}{
+		{"distinct names and aliases", []ArgSpec{
+			{Name: "namespace", Type: "string", Aliases: []string{"n"}},
+			{Name: "selector", Type: "string", Aliases: []string{"l"}},
+			{Name: "wait", Type: "bool"},
+		}, ""},
+		{"two flags with one name", []ArgSpec{
+			{Name: "pool", Type: "string"}, {Name: "pool", Type: "string"},
+		}, `command "get widget": the flag name or alias "pool" is declared twice`},
+		{"an alias that is another flag's alias", []ArgSpec{
+			{Name: "namespace", Type: "string", Aliases: []string{"n"}},
+			{Name: "node", Type: "string", Aliases: []string{"n"}},
+		}, `the flag name or alias "n" is declared twice`},
+		{"an alias that is another flag's name", []ArgSpec{
+			{Name: "pool", Type: "string"},
+			{Name: "node", Type: "string", Aliases: []string{"pool"}},
+		}, `the flag name or alias "pool" is declared twice`},
+		{"an alias that is its own flag's name", []ArgSpec{
+			{Name: "pool", Type: "string", Aliases: []string{"pool"}},
+		}, `the flag name or alias "pool" is declared twice`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			reg := NewRegistry(stubResolver{})
+			reg.Register(fakeRead{d: read(tc.flags...)})
+			err := reg.Validate()
+			if tc.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}

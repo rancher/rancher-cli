@@ -54,7 +54,7 @@ func (setAutoscalingCmd) Describe() runtime.Descriptor {
 			{Name: "pool", Type: "string", Required: true, Desc: "machine pool `name`"},
 			{Name: "min", Type: "string", Required: true, Desc: "minimum node `count`"},
 			{Name: "max", Type: "string", Required: true, Desc: "maximum node `count`"},
-			clusterNamespaceFlag,
+			clusterNamespaceFlag(),
 		},
 		Examples:    []string{"rancher cluster set-autoscaling my-cluster --pool pool1 --min 2 --max 5 --apply --yes"},
 		Destructive: "true",
@@ -122,7 +122,7 @@ func (clearAutoscalingCmd) Describe() runtime.Descriptor {
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
 		Flags: []runtime.ArgSpec{
 			{Name: "pool", Type: "string", Required: true, Desc: "machine pool `name`"},
-			clusterNamespaceFlag,
+			clusterNamespaceFlag(),
 		},
 		Examples:    []string{"rancher cluster clear-autoscaling my-cluster --pool pool1 --apply --yes"},
 		Destructive: "true",

@@ -46,7 +46,7 @@ func (scaleCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: "pool", Type: "string", Required: true, Desc: "machine pool `name`"},
 			{Name: "nodes", Type: "string", Required: true, Desc: "target node `count`"},
-			clusterNamespaceFlag,
+			clusterNamespaceFlag(),
 		},
 		Examples:    []string{"rancher cluster scale my-cluster --pool pool1 --nodes 3 --apply --yes"},
 		Destructive: "true",

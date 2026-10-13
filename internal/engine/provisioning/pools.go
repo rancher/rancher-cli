@@ -32,10 +32,10 @@ const clusterAutoscalerPausedAnnotation = "provisioning.cattle.io/cluster-autosc
 // the same DefaultNamespace `delete provisioning-cluster` resolves against.
 // Unlike `create cluster`, which fixes the namespace with no flag, a family
 // verb's target may live in another fleet workspace.
-var clusterNamespaceFlag = runtime.ArgSpec{
-	Name: "namespace",
-	Type: "string",
-	Desc: "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+func clusterNamespaceFlag() runtime.ArgSpec {
+	f := engine.NamespaceFlag(false)
+	f.Desc = "fleet workspace namespace of the provisioning cluster (default: fleet-default)"
+	return f
 }
 
 // resolveClusterNamespace reads --namespace, falling back to fleet-default.

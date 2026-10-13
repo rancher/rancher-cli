@@ -420,6 +420,9 @@ func (reg *Registry) Validate() error {
 		if err := validateProjectFlag(c, d); err != nil {
 			return err
 		}
+		if err := validateFlagNames(d); err != nil {
+			return err
+		}
 		if codes := d.SuccessExitCodes; len(codes) > 0 {
 			errExits := map[int]bool{}
 			for _, e := range clierr.CodeExits() {
@@ -485,6 +488,23 @@ func validateProjectFlag(c Command, d Descriptor) error {
 	}
 	if _, ok := c.(ProjectRefusalHinter); ok && TakesProject(d) {
 		return fmt.Errorf("command %q: takes --project and also hints at what to run instead of it", d.Name)
+	}
+	return nil
+}
+
+// validateFlagNames checks that every name and alias of d's flags is
+// declared once: two flags with one name, an alias equal to another flag's
+// name or alias, and a flag that lists its own name as an alias all give
+// the parser two flags for one spelling.
+func validateFlagNames(d Descriptor) error {
+	seen := map[string]bool{}
+	for _, f := range d.Flags {
+		for _, n := range slices.Concat([]string{f.Name}, f.Aliases) {
+			if seen[n] {
+				return fmt.Errorf("command %q: the flag name or alias %q is declared twice", d.Name, n)
+			}
+			seen[n] = true
+		}
 	}
 	return nil
 }

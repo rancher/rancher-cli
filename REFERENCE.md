@@ -562,6 +562,8 @@ at the root, before the `-` still shows the help or the version.
 
 ## Kinds & verbs
 
+Every command that takes `--namespace` also takes `-n`, as kubectl does.
+
 Every kind in the schema vocabulary gets its generated verbs by these rules:
 
 - `get` and `patch` exist for every kind in the schema kind vocabulary.

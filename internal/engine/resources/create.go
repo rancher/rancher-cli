@@ -63,7 +63,7 @@ func (*createCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			{Name: flagFilename, Type: "string", Required: true, Aliases: []string{"f"}, Desc: "manifest `file`, or - for stdin"},
 			createClusterFlag(),
-			namespaceFlag(),
+			engine.NamespaceFlag(false),
 			runtime.ProjectFlag(false, "the manifest's namespace must be in this project (namespaced kinds; refused for a Namespace)"),
 		},
 		Examples:    []string{"rancher create resource -f deploy.yaml --cluster prod --dry-run", "rancher create resource -f - --apply"},

@@ -45,7 +45,7 @@ func (c *whoCanCmd) Describe() runtime.Descriptor {
 		},
 		Flags: []runtime.ArgSpec{
 			clusterFlag("cluster name or id the question is about"),
-			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace the question is about"},
+			namespaceFlag("namespace the question is about"),
 			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "all-namespaces", Type: "bool", Aliases: []string{"A"}, Desc: "ask in every namespace you can list, one row per subject per namespace"},
 			{Name: "group", Type: "string", Desc: "API group when the resource name exists in several groups"},

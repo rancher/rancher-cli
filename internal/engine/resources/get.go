@@ -22,7 +22,7 @@ import (
 // agree on these exact strings, so they are named once here.
 const (
 	FlagCluster   = engine.FlagCluster
-	FlagNamespace = "namespace"
+	FlagNamespace = engine.FlagNamespace
 	FlagProject   = runtime.FlagProject
 	flagFilename  = "filename"
 	flagPatch     = "patch"
@@ -100,12 +100,6 @@ func (c getCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// namespaceFlag is the --namespace flag shared by get/delete/patch (via
-// getFlags) and create, so its schema/TTY description lives in one place.
-func namespaceFlag() runtime.ArgSpec {
-	return runtime.ArgSpec{Name: FlagNamespace, Type: "string", Desc: "`namespace` to operate in"}
-}
-
 // getFlags declares the routing flags a kind's namespace policy needs:
 //   - NSCluster: --cluster (it becomes the namespace).
 //   - NSWorkspace: --namespace only (client is always management).
@@ -126,12 +120,12 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 		f.Desc = "cluster `id|name`; required to address a " + k.Name + " by name, omit to list across clusters"
 		flags = []runtime.ArgSpec{f}
 	case kinds.NSWorkspace:
-		flags = []runtime.ArgSpec{namespaceFlag()}
+		flags = []runtime.ArgSpec{engine.NamespaceFlag(false)}
 	case kinds.NSPlain:
 		if k.Scope == kinds.Downstream {
-			flags = []runtime.ArgSpec{engine.ClusterFlag(true, true), namespaceFlag()}
+			flags = []runtime.ArgSpec{engine.ClusterFlag(true, true), engine.NamespaceFlag(false)}
 		} else {
-			flags = []runtime.ArgSpec{namespaceFlag()}
+			flags = []runtime.ArgSpec{engine.NamespaceFlag(false)}
 		}
 	default: // NSNone
 		if k.Scope == kinds.Downstream {

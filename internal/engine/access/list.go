@@ -37,7 +37,7 @@ func (c *listCmd) Describe() runtime.Descriptor {
 			"completely, 13 otherwise.",
 		Flags: []runtime.ArgSpec{
 			clusterFlag("cluster name or id"),
-			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace to list rules in (default: default)"},
+			namespaceFlag("namespace to list rules in (default: default)"),
 			runtime.ProjectFlag(false, "ask about the project's namespaces"),
 			{Name: "all-namespaces", Type: "bool", Aliases: []string{"A"}, Desc: "list rules in every namespace you can list"},
 			{Name: "as", Type: "string", Desc: "user name, id, or principal, or system:serviceaccount:<ns>:<name>; omitted = you"},

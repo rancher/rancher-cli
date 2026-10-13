@@ -44,7 +44,7 @@ func (c *explainCmd) Describe() runtime.Descriptor {
 		},
 		Flags: []runtime.ArgSpec{
 			clusterFlag("cluster name or id the question is about"),
-			{Name: "namespace", Type: "string", Aliases: []string{"n"}, Desc: "namespace the question is about (one namespace; explain takes no --project or -A)"},
+			namespaceFlag("namespace the question is about (one namespace; explain takes no --project or -A)"),
 			{Name: "group", Type: "string", Desc: "API group when the resource name exists in several groups"},
 			{Name: "subresource", Type: "string", Desc: "subresource such as status or log"},
 			{Name: "non-resource-url", Type: "string", Desc: "ask about a non-resource path such as /healthz instead of a resource"},
