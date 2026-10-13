@@ -106,7 +106,7 @@ func TestRequestOwnerMapsEachAnswer(t *testing.T) {
 		dead := httptest.NewServer(http.NotFoundHandler())
 		url := dead.URL
 		dead.Close()
-		_, err := requestOwner(t.Context(), http.DefaultClient, url, "c-1", "tok:secret")
+		_, err := requestOwner(t.Context(), dead.Client(), url, "c-1", "tok:secret")
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok, "got %v", err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)

@@ -821,7 +821,7 @@ func TestStoredCredTokenStopsWhenConfigChangedUnderTheCall(t *testing.T) {
 
 	run := func(resolved entryChoice) error {
 		cmd := tokenCmd{dir: dir, store: store, resolved: resolved}
-		_, _, _, err := cmd.storedCredToken(t.Context(), http.DefaultClient, "https://r.ex", "c-1", "prod-eu-c-1", false, ui.Discard())
+		_, _, _, err := cmd.storedCredToken(t.Context(), failingTransportClient(t), "https://r.ex", "c-1", "prod-eu-c-1", false, ui.Discard())
 		return err
 	}
 

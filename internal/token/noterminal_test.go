@@ -296,7 +296,7 @@ func TestTheLegacyShimNamesTheRemediesWithoutATerminal(t *testing.T) {
 func TestAuthLoginKeepsItsOwnNoTerminalRemedy(t *testing.T) {
 	t.Parallel()
 	srv := localProviderServer(t)
-	_, err := AcquireLoginCredential(t.Context(), http.DefaultClient, LoginRequest{Server: srv.URL}, 0, noTerminal())
+	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL}, 0, noTerminal())
 	require.Error(t, err)
 	require.ErrorContains(t, err, "interactive login required for localProvider; run in a terminal, or use a cached --name")
 	assert.NotContains(t, err.Error(), "create kubeconfig")
@@ -326,7 +326,7 @@ func TestEverySignInPromptSaysItNeedsATerminal(t *testing.T) {
 				_, _ = w.Write([]byte(`{"data":[{"type":"` + tc.provider + `"}]}`))
 			}))
 			defer srv.Close()
-			_, err := loginAndGenerateCred(t.Context(), http.DefaultClient, &loginInput{server: srv.URL}, tc.p)
+			_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{server: srv.URL}, tc.p)
 			nt, ok := errors.AsType[*needsTerminal](err)
 			require.True(t, ok, "got %v", err)
 			assert.Equal(t, tc.provider, nt.provider)
@@ -334,7 +334,7 @@ func TestEverySignInPromptSaysItNeedsATerminal(t *testing.T) {
 	}
 	t.Run("the password with no terminal", func(t *testing.T) {
 		t.Parallel()
-		_, err := basicAuth(t.Context(), http.DefaultClient, &loginInput{server: "https://r.ex", authProvider: "localProvider"}, usernameOnly{})
+		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{server: "https://r.ex", authProvider: "localProvider"}, usernameOnly{})
 		nt, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
 		assert.Equal(t, "localProvider", nt.provider)

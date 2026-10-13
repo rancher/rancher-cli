@@ -291,7 +291,7 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 			return err
 		}
 		q := u.Query()
-		resp, err := http.Get(q.Get("redirect_uri") + "?code=c-1&state=" + url.QueryEscape(q.Get("state")))
+		resp, err := ownTransportClient(t).Get(q.Get("redirect_uri") + "?code=c-1&state=" + url.QueryEscape(q.Get("state")))
 		if err != nil {
 			return err
 		}
@@ -369,6 +369,26 @@ func TestValidateOAuthEndpoint(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ownTransportClient returns a client with a transport of its own, closed
+// when the test ends. A test uses it where no httptest server's client fits:
+// a plain-HTTP listener that no httptest server owns (the CLI's loopback
+// OAuth callback), a target with no server, or a server whose certificate
+// the client must not trust. It never uses http.DefaultTransport: closing
+// any httptest server closes that transport's idle connections.
+func ownTransportClient(t *testing.T) *http.Client {
+	t.Helper()
+	tr := &http.Transport{}
+	t.Cleanup(tr.CloseIdleConnections)
+	return &http.Client{Transport: tr}
+}
+
+// failingTransportClient returns a client that fails the test if a request
+// is sent through it.
+func failingTransportClient(t *testing.T) *http.Client {
+	t.Helper()
+	return &http.Client{Transport: failingTransport{t}}
 }
 
 // countingTransport records how many requests reach it and refuses each.

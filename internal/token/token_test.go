@@ -1716,7 +1716,7 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 		}
 		q := u.Query()
 		cbURL := q.Get("redirect_uri") + "?code=fake-code&state=" + url.QueryEscape(q.Get("state"))
-		resp, err := http.Get(cbURL)
+		resp, err := ownTransportClient(t).Get(cbURL)
 		if err != nil {
 			return err
 		}
@@ -1732,9 +1732,9 @@ func TestOAuthAuthCodeAuthHonorsCallerContext(t *testing.T) {
 		DeviceAuthURL: "https://idp.example/devicecode",
 		TokenURL:      "https://idp.example/token",
 	}
-	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: http.DefaultClient}
+	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
 
-	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	_, err := oauthAuthCodeAuth(ctx, rancherSrv.Client(), input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 	assert.Equal(t, int32(0), rancherHits.Load(),
@@ -1774,9 +1774,9 @@ func TestOAuthAuthCodeAuthAbortsOnCallerCancelDuringBrowserWait(t *testing.T) {
 		DeviceAuthURL: "https://idp.example/devicecode", // never reached
 		TokenURL:      "https://idp.example/token",
 	}
-	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: http.DefaultClient}
+	input := &loginInput{server: rancherSrv.URL, authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
 
-	_, err := oauthAuthCodeAuth(ctx, http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	_, err := oauthAuthCodeAuth(ctx, rancherSrv.Client(), input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled, "error must wrap context.Canceled, got: %v", err)
 	assert.Equal(t, int32(0), rancherHits.Load())
@@ -1798,7 +1798,7 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 		cbURL := q.Get("redirect_uri") + "?state=" + url.QueryEscape(q.Get("state")) +
 			"&error=" + url.QueryEscape("bad<script>alert(1)</script>") +
 			"&error_description=" + url.QueryEscape("<img src=x onerror=alert(2)>")
-		resp, err := http.Get(cbURL)
+		resp, err := ownTransportClient(t).Get(cbURL)
 		if err != nil {
 			return err
 		}
@@ -1814,9 +1814,9 @@ func TestOAuthCallbackEscapesReflectedErrorParams(t *testing.T) {
 		DeviceAuthURL: "https://idp.example/devicecode", // never reached
 		TokenURL:      "https://idp.example/token",
 	}
-	input := &loginInput{server: "http://ignored", authProvider: "azureADProvider", idpClient: http.DefaultClient}
+	input := &loginInput{server: "http://ignored", authProvider: "azureADProvider", idpClient: ownTransportClient(t)}
 
-	_, err := oauthAuthCodeAuth(t.Context(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())
+	_, err := oauthAuthCodeAuth(t.Context(), failingTransportClient(t), input, provider, 5*time.Second, openBrowserStub, ui.Discard())
 	require.Error(t, err)
 	assert.NotContains(t, string(body), "<script>", "reflected markup must be escaped, got %q", body)
 	assert.NotContains(t, string(body), "<img", "reflected markup must be escaped, got %q", body)
@@ -1850,7 +1850,7 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 		redirect := q.Get("redirect_uri")
 
 		attackURL := redirect + "?state=wrong-state&error=access_denied&error_description=nope"
-		attackResp, err := http.Get(attackURL)
+		attackResp, err := ownTransportClient(t).Get(attackURL)
 		if err != nil {
 			return err
 		}
@@ -1860,7 +1860,7 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 		}
 
 		cbURL := redirect + "?code=fake-code&state=" + url.QueryEscape(q.Get("state"))
-		resp, err := http.Get(cbURL)
+		resp, err := ownTransportClient(t).Get(cbURL)
 		if err != nil {
 			return err
 		}
@@ -1880,7 +1880,7 @@ func TestOAuthCallbackWrongStateWithErrorDoesNotConsumeHandler(t *testing.T) {
 	var noticeBuf strings.Builder
 	p := ui.New(&noticeBuf, strings.NewReader(""), true, false)
 
-	tok, err := oauthAuthCodeAuth(t.Context(), http.DefaultClient, input, provider, 5*time.Second, openBrowserStub, p)
+	tok, err := oauthAuthCodeAuth(t.Context(), rancherSrv.Client(), input, provider, 5*time.Second, openBrowserStub, p)
 	require.NoError(t, err, "the real redirect must still be processed after a forged wrong-state request")
 	require.NotNil(t, tok)
 	assert.Contains(t, noticeBuf.String(), "invalid state",
@@ -1916,7 +1916,7 @@ func TestSAMLAuthAbortsPromptlyOnCtxCancel(t *testing.T) {
 		}()
 
 		start := time.Now()
-		_, err := samlAuth(ctx, http.DefaultClient, input, ui.Discard())
+		_, err := samlAuth(ctx, srv.Client(), input, ui.Discard())
 		elapsed := time.Since(start)
 
 		require.Error(t, err)
@@ -2285,7 +2285,7 @@ func TestBasicAuthUsernameDefault(t *testing.T) {
 		authProvider:    "localProvider",
 		usernameDefault: "alice",
 	}
-	tok, err := basicAuth(t.Context(), http.DefaultClient, input, p)
+	tok, err := basicAuth(t.Context(), srv.Client(), input, p)
 	require.NoError(t, err)
 
 	assert.Contains(t, errBuf.String(), "[alice]", "prompt label must include the default in brackets")
@@ -2317,7 +2317,7 @@ func TestBasicAuthTrimsPaddedUsername(t *testing.T) {
 	p := ui.New(&errBuf, newLineReader("  bob  ", "secret"), false, true)
 
 	input := &loginInput{server: srv.URL, authProvider: "localProvider"}
-	_, err := basicAuth(t.Context(), http.DefaultClient, input, p)
+	_, err := basicAuth(t.Context(), srv.Client(), input, p)
 	require.NoError(t, err)
 	assert.Equal(t, "bob", gjson.GetBytes(gotBody, "username").String(), "padding must be trimmed from the sent username")
 }
@@ -2529,29 +2529,29 @@ func TestCreateDerivedTokenSplits401And403(t *testing.T) {
 // Each also holds the status for the steve readers.
 func TestResolveClusterIDForCreateClassifiesRejections(t *testing.T) {
 	t.Parallel()
-	answer := func(status int) string {
+	answer := func(status int) (string, *http.Client) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
 		t.Cleanup(srv.Close)
-		return srv.URL
+		return srv.URL, srv.Client()
 	}
 
-	url := answer(http.StatusUnauthorized)
-	_, _, err := resolveClusterIDForCreate(t.Context(), http.DefaultClient, url, "b", "testcluster")
+	url, client := answer(http.StatusUnauthorized)
+	_, _, err := resolveClusterIDForCreate(t.Context(), client, url, "b", "testcluster")
 	require.ErrorIs(t, err, errCredentialUnauthorized)
 	se, ok := clierr.HTTPStatus(err)
 	require.True(t, ok)
 	assert.Equal(t, http.StatusUnauthorized, se)
 
-	url = answer(http.StatusForbidden)
-	_, _, err = resolveClusterIDForCreate(t.Context(), http.DefaultClient, url, "b", "testcluster")
+	url, client = answer(http.StatusForbidden)
+	_, _, err = resolveClusterIDForCreate(t.Context(), client, url, "b", "testcluster")
 	require.NotErrorIs(t, err, errCredentialForbidden)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Equal(t, "the server refused GET /v1/management.cattle.io.clusters (403); Rancher answers this request with 200 for every signed-in user, so a proxy in front of Rancher or an unsupported Rancher refused it", ce.Message)
 
-	url = answer(http.StatusBadGateway)
-	_, _, err = resolveClusterIDForCreate(t.Context(), http.DefaultClient, url, "b", "testcluster")
+	url, client = answer(http.StatusBadGateway)
+	_, _, err = resolveClusterIDForCreate(t.Context(), client, url, "b", "testcluster")
 	ce, ok = errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)

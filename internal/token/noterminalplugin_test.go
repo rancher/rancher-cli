@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -81,8 +84,13 @@ func TestNoTerminalRemedyForAPluginLoginEntryNameWorks(t *testing.T) {
 			}
 			http.NotFound(w, r)
 		})})
-	srv := httptest.NewServer(f)
+	// TLS with --cacert: for a plain-HTTP server, auth login's owner check
+	// builds a client-go config with no CA and no Transport, which sends
+	// through http.DefaultTransport.
+	srv := httptest.NewTLSServer(f)
 	t.Cleanup(srv.Close)
+	caPath := filepath.Join(t.TempDir(), "ca.pem")
+	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600))
 	t.Setenv(config.EnvCredentialStore, "file")
 	t.Setenv(config.EnvURL, "")
 	t.Setenv(config.EnvToken, "")
@@ -96,13 +104,14 @@ func TestNoTerminalRemedyForAPluginLoginEntryNameWorks(t *testing.T) {
 			}}
 			cfg.SetPath(config.FilePath(dir))
 			require.NoError(t, cfg.Write())
-			getToken := func(name string) (string, error) {
-				_, stderr, err := runCLI(t, "", "--config", dir, "auth", "get-token", "--server", srv.URL, "--cluster", "local",
-					"--name", name, "--user-id", testrancher.SeedOwner, "-o", "json")
+			getToken := func(name string, extra ...string) (string, error) {
+				words := append([]string{"--config", dir, "auth", "get-token", "--server", srv.URL, "--cluster", "local",
+					"--name", name, "--user-id", testrancher.SeedOwner, "-o", "json"}, extra...)
+				_, stderr, err := runCLI(t, "", words...)
 				return stderr, err
 			}
 
-			stderr, err := getToken(plugin + "-local")
+			stderr, err := getToken(plugin+"-local", "--cacert", caPath)
 			require.Error(t, err)
 			msg := errorMessage(t, stderr)
 			commands := remedyCommands(msg)

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -136,7 +135,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 	t.Run("a prompt refused after the username", func(t *testing.T) {
 		t.Parallel()
 		p := newEventPrompter(usernameOnly{})
-		_, err := basicAuth(t.Context(), http.DefaultClient, &loginInput{server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
+		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
 		_, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
 		p.requireHookBefore(t, "prompt: Enter username")
@@ -153,7 +152,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 	t.Run("a prompter that cannot prompt refuses before any prompt", func(t *testing.T) {
 		t.Parallel()
 		p := newEventPrompter(cannotPrompt{})
-		_, err := basicAuth(t.Context(), http.DefaultClient, &loginInput{server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
+		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
 		nt, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
 		assert.Equal(t, "localProvider", nt.provider)
@@ -266,7 +265,7 @@ func TestTheOAuthAuthCodeSignInGivesTheHookBeforeTheBrowser(t *testing.T) {
 				return err
 			}
 			q := u.Query()
-			resp, err := http.Get(q.Get("redirect_uri") + "?code=c-1&state=" + url.QueryEscape(q.Get("state")))
+			resp, err := ownTransportClient(t).Get(q.Get("redirect_uri") + "?code=c-1&state=" + url.QueryEscape(q.Get("state")))
 			if err != nil {
 				return err
 			}

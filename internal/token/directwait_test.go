@@ -257,7 +257,7 @@ func TestProbeDirectClassifies(t *testing.T) {
 	t.Run("transport error", func(t *testing.T) {
 		t.Parallel()
 		d := newDirectEndpoint(t, 0, "review")
-		assert.Equal(t, probeRetry, probeDirect(t.Context(), http.DefaultClient, d.srv.URL, "tok"), "an untrusted certificate is a retry, never readiness")
+		assert.Equal(t, probeRetry, probeDirect(t.Context(), ownTransportClient(t), d.srv.URL, "tok"), "an untrusted certificate is a retry, never readiness")
 	})
 }
 

@@ -58,9 +58,7 @@ var serverHelperPackages = map[string]bool{
 
 // unguardedAllowlist maps a directory in scope to the reason it has no
 // guard yet.
-var unguardedAllowlist = map[string]string{
-	"internal/token": "its tests still reach the default transport, in files another change is rewriting; the guard is added after that change merges",
-}
+var unguardedAllowlist = map[string]string{}
 
 // ciPlatforms are the platforms CI compiles every package for.
 var ciPlatforms = []struct{ goos, goarch string }{
