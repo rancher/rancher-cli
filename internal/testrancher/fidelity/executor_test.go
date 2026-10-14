@@ -3,11 +3,13 @@ package fidelity
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -20,10 +22,17 @@ type fakeTarget struct {
 	srv        *httptest.Server
 	bearers    map[Identity]string
 	downstream string
+	// client, when set, replaces the server's own client.
+	client *http.Client
 }
 
-func (f *fakeTarget) BaseURL() string      { return f.srv.URL }
-func (f *fakeTarget) Client() *http.Client { return f.srv.Client() }
+func (f *fakeTarget) BaseURL() string { return f.srv.URL }
+func (f *fakeTarget) Client() *http.Client {
+	if f.client != nil {
+		return f.client
+	}
+	return f.srv.Client()
+}
 func (f *fakeTarget) Bearer(_ context.Context, id Identity) (string, error) {
 	return f.bearers[id], nil
 }
@@ -664,4 +673,220 @@ func TestRunProbeSendsTheClusterOwnerBearerItsSetupRecorded(t *testing.T) {
 
 	_, err = RunProbe(t.Context(), tgt, Probe{Name: "fam/no-owner", Observations: obs})
 	require.ErrorContains(t, err, "the probe's setup must create the cluster owner")
+}
+
+// shortWait shortens the WaitForStatus bound and interval for one test.
+// Tests that call it set package state and must not run in parallel.
+func shortWait(t *testing.T, timeout, interval time.Duration) {
+	t.Helper()
+	oldTimeout, oldInterval := waitForStatusTimeout, waitForStatusInterval
+	waitForStatusTimeout, waitForStatusInterval = timeout, interval
+	t.Cleanup(func() { waitForStatusTimeout, waitForStatusInterval = oldTimeout, oldInterval })
+}
+
+// statusSequence answers each request with the next status of seq and
+// repeats the last one; it counts the requests it served.
+func statusSequence(t *testing.T, seq ...int) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var n atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		i := int(n.Add(1)) - 1
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(seq[min(i, len(seq)-1)])
+		_, _ = fmt.Fprintf(w, `{"attempt":%d}`, i+1)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &n
+}
+
+func waitProbe(status int) Probe {
+	return Probe{Name: "fam/wait", Observations: []Observation{
+		{Name: "read", Request: RequestSpec{Method: http.MethodGet, Path: "/x", Identity: IdentityAdmin}, WaitForStatus: status},
+	}}
+}
+
+// TestWaitForStatusResendsUntilTheStatusMatches asserts that an observation
+// with WaitForStatus is re-sent until the answer has exactly that status,
+// in either direction, and that the matching answer is the one recorded.
+// It fails when the loop is removed, when it stops on any status change,
+// or when it waits only while the answer is 200.
+func TestWaitForStatusResendsUntilTheStatusMatches(t *testing.T) {
+	shortWait(t, 2*time.Second, 10*time.Millisecond)
+	for _, tc := range []struct {
+		name string
+		seq  []int
+		want int
+	}{
+		{"accepted then refused", []int{200, 200, 401}, 401},
+		{"another status is not the one waited for", []int{200, 500, 401}, 401},
+		{"a status of the same class is not the one waited for", []int{200, 404, 401}, 401},
+		{"refused then accepted", []int{401, 401, 200}, 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, n := statusSequence(t, tc.seq...)
+			tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+			results, err := runProbe(t.Context(), tgt, waitProbe(tc.want), 5*time.Second)
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			assert.Equal(t, tc.want, results[0].Status)
+			assert.InDelta(t, 3, results[0].Body["attempt"], 0, "the third answer is the one recorded")
+			assert.Equal(t, int32(3), n.Load())
+		})
+	}
+}
+
+// TestWaitForStatusSendsOnceWhenTheFirstAnswerMatches asserts that a
+// matching first answer is recorded at once. It fails when the loop
+// sleeps before the first send or sends again after a match.
+func TestWaitForStatusSendsOnceWhenTheFirstAnswerMatches(t *testing.T) {
+	shortWait(t, 2*time.Second, 500*time.Millisecond)
+	srv, n := statusSequence(t, 401)
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+	start := time.Now()
+	results, err := runProbe(t.Context(), tgt, waitProbe(401), 5*time.Second)
+	require.NoError(t, err)
+	assert.Less(t, time.Since(start), 500*time.Millisecond, "no wait before the first send")
+	assert.Equal(t, 401, results[0].Status)
+	assert.Equal(t, int32(1), n.Load())
+}
+
+// TestWaitForStatusFailsAtItsBound asserts that a status that never comes
+// fails the probe at the wait bound, not at the longer step deadline, and
+// names the status waited for, the last status, the attempt count and the
+// bound; no result is returned for a golden. It fails when the bound is
+// removed (the step deadline would end it with a context error instead)
+// or when the last answer is returned as the result.
+func TestWaitForStatusFailsAtItsBound(t *testing.T) {
+	shortWait(t, 300*time.Millisecond, 20*time.Millisecond)
+	srv, n := statusSequence(t, 200)
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+	start := time.Now()
+	results, err := runProbe(t.Context(), tgt, waitProbe(401), 5*time.Second)
+	elapsed := time.Since(start)
+	require.ErrorContains(t, err, "observation read: want status 401, still 200 after ")
+	require.ErrorContains(t, err, " attempts in 300ms")
+	require.NotErrorIs(t, err, context.DeadlineExceeded)
+	assert.Empty(t, results)
+	assert.GreaterOrEqual(t, elapsed, 300*time.Millisecond)
+	assert.Less(t, elapsed, 600*time.Millisecond, "ends at the wait bound, within twice the bound")
+	assert.Greater(t, n.Load(), int32(2))
+}
+
+type countingTransport struct {
+	next http.RoundTripper
+	n    atomic.Int32
+}
+
+func (c *countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.n.Add(1)
+	return c.next.RoundTrip(r)
+}
+
+// TestWaitForStatusStopsOnATransportError asserts that a transport error
+// ends the wait at once with that error. It fails when the loop retries a
+// request that got no answer.
+func TestWaitForStatusStopsOnATransportError(t *testing.T) {
+	shortWait(t, 2*time.Second, 10*time.Millisecond)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	srv.Close() // nothing listens on its address any more
+	ct := &countingTransport{next: &http.Transport{}}
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}, client: &http.Client{Transport: ct}}
+	_, err := runProbe(t.Context(), tgt, waitProbe(401), 5*time.Second)
+	require.ErrorIs(t, err, syscall.ECONNREFUSED)
+	assert.Equal(t, int32(1), ct.n.Load(), "a GET that got no answer is sent once")
+}
+
+// failAfterFirst passes the first request through and fails every later one.
+type failAfterFirst struct {
+	next http.RoundTripper
+	n    atomic.Int32
+}
+
+var errLaterSend = errors.New("later send failed")
+
+func (f *failAfterFirst) RoundTrip(r *http.Request) (*http.Response, error) {
+	if f.n.Add(1) > 1 {
+		return nil, errLaterSend
+	}
+	return f.next.RoundTrip(r)
+}
+
+// TestWaitForStatusStopsOnATransportErrorAfterAnAnswer asserts that a
+// transport error on a later send also ends the wait at once. It fails when
+// the loop retries transport errors after its first send.
+func TestWaitForStatusStopsOnATransportErrorAfterAnAnswer(t *testing.T) {
+	shortWait(t, 2*time.Second, 10*time.Millisecond)
+	srv, _ := statusSequence(t, 200)
+	ft := &failAfterFirst{next: srv.Client().Transport}
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}, client: &http.Client{Transport: ft}}
+	_, err := runProbe(t.Context(), tgt, waitProbe(401), 5*time.Second)
+	require.ErrorIs(t, err, errLaterSend)
+	assert.Equal(t, int32(2), ft.n.Load())
+}
+
+// closeTracker wraps every response body and counts the bodies read to the
+// end and the bodies closed.
+type closeTracker struct {
+	next    http.RoundTripper
+	sent    atomic.Int32
+	drained atomic.Int32
+	closed  atomic.Int32
+}
+
+type trackedBody struct {
+	io.ReadCloser
+	drained, closed *atomic.Int32
+}
+
+func (b trackedBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if errors.Is(err, io.EOF) {
+		b.drained.Add(1)
+	}
+	return n, err
+}
+
+func (b trackedBody) Close() error {
+	b.closed.Add(1)
+	return b.ReadCloser.Close()
+}
+
+func (c *closeTracker) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := c.next.RoundTrip(r)
+	if err != nil {
+		return nil, err
+	}
+	c.sent.Add(1)
+	resp.Body = trackedBody{ReadCloser: resp.Body, drained: &c.drained, closed: &c.closed}
+	return resp, nil
+}
+
+// TestWaitForStatusClosesEveryDiscardedBody asserts that the answers the
+// wait discards are read to the end and closed, as is the one it records.
+// It fails when the drain or the close of a discarded answer is removed.
+func TestWaitForStatusClosesEveryDiscardedBody(t *testing.T) {
+	shortWait(t, 2*time.Second, 10*time.Millisecond)
+	srv, _ := statusSequence(t, 200, 200, 401)
+	ct := &closeTracker{next: srv.Client().Transport}
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}, client: &http.Client{Transport: ct}}
+	_, err := runProbe(t.Context(), tgt, waitProbe(401), 5*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), ct.sent.Load())
+	assert.Equal(t, int32(3), ct.drained.Load())
+	assert.Equal(t, int32(3), ct.closed.Load())
+}
+
+// TestWaitForStatusEndsWithTheStepDeadline asserts that a step deadline
+// reached between sends ends the wait with that deadline and the status it
+// waited for. It fails when the wait ignores the step context.
+func TestWaitForStatusEndsWithTheStepDeadline(t *testing.T) {
+	shortWait(t, 10*time.Second, 5*time.Second)
+	srv, n := statusSequence(t, 200)
+	tgt := &fakeTarget{srv: srv, bearers: map[Identity]string{IdentityAdmin: "a"}}
+	start := time.Now()
+	_, err := runProbe(t.Context(), tgt, waitProbe(401), 300*time.Millisecond)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorContains(t, err, "want status 401, last 200 after 1 attempts")
+	assert.Less(t, time.Since(start), 3*time.Second, "the wait ends with the step deadline, not the interval")
+	assert.Equal(t, int32(1), n.Load())
 }

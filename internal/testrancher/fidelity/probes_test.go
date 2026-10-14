@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -376,5 +378,73 @@ func TestAccessProbesAreRegistered(t *testing.T) {
 		"access/explain-local-globalrole-labels", "access/explain-management-shapes",
 	} {
 		assert.True(t, names[want], want)
+	}
+}
+
+// TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus asserts
+// that every observation sending a captured bearer (an Authorization header
+// "Bearer {name}") or the revoked identity sets WaitForStatus to the status
+// its goldens record, unless it is allowlisted with a reason; and that the
+// admin reads of an ext token right after its create or delete do the
+// same. Rancher reads tokens from informer caches, so without the wait such
+// an observation can record the cache delay instead of the behavior.
+func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing.T) {
+	t.Parallel()
+	type key struct{ probe, observation string }
+	allowed := map[key]string{
+		{"revoke/standard-user-v3-self-delete-forbidden", "delete-with-its-own-bearer"}:                         "v3 bearer right after its create; a v3 cache miss falls back to a direct get",
+		{"revoke/standard-user-v3-token-logout-deletes-itself", "logout-with-its-own-bearer"}:                   "v3 bearer right after its create",
+		{"revoke/standard-user-login-token-logout-deletes-itself", "logout-with-its-own-bearer"}:                "login bearer right after the login",
+		{"revoke/standard-user-v3-logout-with-a-deleted-token", "logout-with-its-own-bearer"}:                   "v3 bearer right after its create",
+		{"owner-downstream/scoped-creates-and-reviews", "review-downstream-with-the-scoped-v3-token"}:           "v3 bearer right after its create",
+		{"owner-downstream/cluster-login-and-review", "review-downstream-with-the-login-token"}:                 "login bearer right after the login",
+		{"revoke-downstream/cluster-scoped-v3-token-logout-401", "logout-with-its-own-bearer"}:                  "cluster-scoped token refused outside its cluster; never deleted",
+		{"revoke-downstream/cluster-scoped-v3-token-logout-401", "delete-with-its-own-bearer-after-the-logout"}: "cluster-scoped token refused outside its cluster; never deleted",
+		{"owner-downstream/scoped-creates-and-reviews", "review-local-with-the-scoped-v3-token"}:                "cluster-scoped token refused outside its cluster; never deleted",
+		{"revoke/ext-token-deleted-by-another-token-of-its-user", "second-delete-with-the-other-token"}:         "bearer already accepted on the previous request; the object is read by a direct get",
+		{"access-downstream/member-cluster-token", "downstream-read-with-the-cluster-token"}:                    "token created in a setup step; its failures belong to the access-downstream investigation",
+	}
+	adminReads := map[key]bool{
+		{"tok/create-shape", "get"}:          true,
+		{"tok/dryrun-delete", "still-there"}: true,
+		{"tok/revoke", "gone"}:               true,
+	}
+	capturedBearer := regexp.MustCompile(`^Bearer \{[^}]+\}$`)
+	used := map[key]bool{}
+	for _, p := range All() {
+		for _, o := range p.Observations {
+			k := key{p.Name, o.Name}
+			selected := capturedBearer.MatchString(o.Request.Headers["Authorization"]) ||
+				o.Request.Identity == IdentityRevoked || adminReads[k]
+			if !selected {
+				assert.Zero(t, o.WaitForStatus, "%s %s does not use a token right after its create or delete", p.Name, o.Name)
+				continue
+			}
+			if reason, ok := allowed[k]; ok {
+				used[k] = true
+				assert.Zero(t, o.WaitForStatus, "%s %s is allowlisted: %s", p.Name, o.Name, reason)
+				continue
+			}
+			if !assert.NotZero(t, o.WaitForStatus, "%s %s: set WaitForStatus or allowlist it with a reason", p.Name, o.Name) {
+				continue
+			}
+			dirs := []string{"oracle"}
+			if p.Downstream {
+				dirs = []string{"downstream"}
+			}
+			if p.FacadeDivergence != "" {
+				dirs = append(dirs, "facade")
+			}
+			for _, dir := range dirs {
+				g, err := LoadGolden(GoldenPath(filepath.Join("testdata", dir), p.Name))
+				require.NoError(t, err)
+				i := slices.IndexFunc(g.Observations, func(r ObservationResult) bool { return r.Name == o.Name })
+				require.GreaterOrEqual(t, i, 0, "%s golden of %s has no %s", dir, p.Name, o.Name)
+				assert.Equal(t, g.Observations[i].Status, o.WaitForStatus, "%s %s: the %s golden records another status", p.Name, o.Name, dir)
+			}
+		}
+	}
+	for k, reason := range allowed {
+		assert.True(t, used[k], "allowlist entry %s %s (%s) matches no selected observation", k.probe, k.observation, reason)
 	}
 }

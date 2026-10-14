@@ -852,6 +852,7 @@ func authProbes() []Probe {
 	garbage := crtGet("auth/garbage-token", IdentityGarbage)
 	garbage.FacadeDivergence = bearer401Divergence
 	revoked := crtGet("auth/revoked-token", IdentityRevoked)
+	revoked.Observations[0].WaitForStatus = http.StatusUnauthorized
 	revoked.FacadeDivergence = bearer401Divergence
 
 	standardCreate := Probe{
@@ -948,7 +949,7 @@ func tokProbes() []Probe {
 		Name: "tok/create-shape",
 		Observations: []Observation{
 			create,
-			{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
+			{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}, WaitForStatus: http.StatusOK},
 		},
 		Normalize: tokenIdentity(),
 		Teardown:  []Step{revokeLeftover},
@@ -962,7 +963,7 @@ func tokProbes() []Probe {
 				Name:    "dry-run-delete",
 				Request: RequestSpec{Method: http.MethodDelete, Path: namedPath, Body: `{"dryRun":["All"]}`, Identity: IdentityAdmin},
 			},
-			{Name: "still-there", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
+			{Name: "still-there", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}, WaitForStatus: http.StatusOK},
 		},
 		Normalize: tokenIdentity(),
 		Teardown:  []Step{revokeLeftover},
@@ -997,7 +998,7 @@ func tokProbes() []Probe {
 		Observations: []Observation{
 			create,
 			{Name: "revoke", Request: RequestSpec{Method: http.MethodDelete, Path: namedPath, Identity: IdentityAdmin}},
-			{Name: "gone", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
+			{Name: "gone", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}, WaitForStatus: http.StatusNotFound},
 		},
 		// The 404 "gone" Status names the deleted token in details.name and in
 		// the message; both carry the generated token name.

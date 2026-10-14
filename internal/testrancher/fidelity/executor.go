@@ -27,6 +27,15 @@ const garbageBearer = "not-a-real-token"
 // exported RunProbe and never mutate shared state.
 const defaultStepTimeout = 30 * time.Second
 
+// waitForStatusTimeout and waitForStatusInterval pace an observation that
+// sets WaitForStatus. The bound stays well inside defaultStepTimeout, so a
+// wait that runs out fails with its own error, naming the status it waited
+// for, not with the step deadline. Tests shorten both.
+var (
+	waitForStatusTimeout  = 10 * time.Second
+	waitForStatusInterval = 250 * time.Millisecond
+)
+
 // RunProbe executes p's setup, observations, and teardown against tgt and
 // returns one normalized result per observation.
 func RunProbe(ctx context.Context, tgt Target, p Probe) ([]ObservationResult, error) {
@@ -133,7 +142,7 @@ func runObservation(ctx context.Context, tgt Target, o Observation, captured map
 	octx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	resp, err := attempt(octx, tgt, o, captured)
+	resp, err := attemptUntilStatus(octx, tgt, o, captured)
 	if err != nil {
 		return ObservationResult{}, nil, err
 	}
@@ -157,6 +166,32 @@ func runObservation(ctx context.Context, tgt Target, o Observation, captured map
 		}
 	}
 	return res, decoded, nil
+}
+
+// attemptUntilStatus sends the observation once, or, when it sets
+// WaitForStatus, again every waitForStatusInterval until the answer has
+// that status. A transport error ends it at once; when waitForStatusTimeout
+// passes first it fails, naming the status waited for, the last status and
+// the attempt count.
+func attemptUntilStatus(ctx context.Context, tgt Target, o Observation, captured map[string]string) (*http.Response, error) {
+	start := time.Now()
+	for attempts := 1; ; attempts++ {
+		resp, err := attempt(ctx, tgt, o, captured)
+		if err != nil || o.WaitForStatus == 0 || resp.StatusCode == o.WaitForStatus {
+			return resp, err
+		}
+		last := resp.StatusCode
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if time.Since(start) >= waitForStatusTimeout {
+			return nil, fmt.Errorf("want status %d, still %d after %d attempts in %s", o.WaitForStatus, last, attempts, waitForStatusTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("want status %d, last %d after %d attempts: %w", o.WaitForStatus, last, attempts, ctx.Err())
+		case <-time.After(waitForStatusInterval):
+		}
+	}
 }
 
 // attempt builds the observation's HTTP request from its RequestSpec and sends

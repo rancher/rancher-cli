@@ -21,6 +21,17 @@ func TestValidateAcceptsMinimalProbe(t *testing.T) {
 	require.NoError(t, validProbe().Validate())
 }
 
+// TestValidateAcceptsWaitForStatus asserts that 0 (unset) and every HTTP
+// status from 100 to 599 are accepted on an observation without captures.
+func TestValidateAcceptsWaitForStatus(t *testing.T) {
+	t.Parallel()
+	for _, status := range []int{0, 100, 401, 599} {
+		p := validProbe()
+		p.Observations[0].WaitForStatus = status
+		assert.NoError(t, p.Validate(), "WaitForStatus %d", status)
+	}
+}
+
 func TestValidateRejectsInvalidProbes(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -36,6 +47,13 @@ func TestValidateRejectsInvalidProbes(t *testing.T) {
 		}, "duplicate observation"},
 		{"missing method", func(p *Probe) { p.Observations[0].Request.Method = "" }, "method and path"},
 		{"missing path", func(p *Probe) { p.Observations[0].Request.Path = "" }, "method and path"},
+		{"wait status below 100", func(p *Probe) { p.Observations[0].WaitForStatus = 99 }, "is not an HTTP status"},
+		{"wait status above 599", func(p *Probe) { p.Observations[0].WaitForStatus = 600 }, "is not an HTTP status"},
+		{"negative wait status", func(p *Probe) { p.Observations[0].WaitForStatus = -1 }, "is not an HTTP status"},
+		{"wait on an observation that captures", func(p *Probe) {
+			p.Observations[0].WaitForStatus = 201
+			p.Observations[0].Captures = map[string]Capture{"name": {Path: "metadata.name"}}
+		}, "captures cannot set WaitForStatus"},
 		{"oracle-only with divergence pin", func(p *Probe) {
 			p.OracleOnly = true
 			p.FacadeDivergence = "some reason"

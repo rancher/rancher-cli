@@ -89,7 +89,7 @@ func ownerProbes() []Probe {
 					Captures: map[string]Capture{"extname": {Path: "status.bearerToken", ExtBearerName: true}, "extbearer": {Path: "status.bearerToken"}}},
 				{Name: "v3-create-unscoped", Request: RequestSpec{Method: http.MethodPost, Path: v3Create, Body: `{"type":"token","description":"e2e-fid-owner"}`, Identity: IdentityStandard},
 					Captures: map[string]Capture{"v3id": {Path: "id"}}},
-				{Name: "review-with-the-ext-token", Request: RequestSpec{Method: http.MethodPost, Path: localWhoami, Body: whoBody, Identity: IdentityNone, Headers: bearer("extbearer")}},
+				{Name: "review-with-the-ext-token", Request: RequestSpec{Method: http.MethodPost, Path: localWhoami, Body: whoBody, Identity: IdentityNone, Headers: bearer("extbearer")}, WaitForStatus: http.StatusCreated},
 			},
 			Normalize: rules(v3TokenRules, reviewRules),
 			Teardown: []Step{

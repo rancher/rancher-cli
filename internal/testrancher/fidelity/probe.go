@@ -82,6 +82,22 @@ type Observation struct {
 	Name     string
 	Request  RequestSpec
 	Captures map[string]Capture
+	// WaitForStatus, when non-zero, re-sends the request until the answer
+	// has this status, for at most waitForStatusTimeout; past that the
+	// probe fails and no golden is saved. Rancher authenticates a bearer
+	// from informer caches: a token just deleted or logged out can still
+	// authenticate, and an ext token just created can still be refused,
+	// until the watch event reaches the cache. Set it to the status the
+	// golden records on an observation that uses a token right after its
+	// create, delete or logout. An observation that captures never waits:
+	// it must not be sent twice.
+	WaitForStatus int
+}
+
+// waitingFor returns o with WaitForStatus set to status.
+func waitingFor(status int, o Observation) Observation {
+	o.WaitForStatus = status
+	return o
 }
 
 // NormalizeRule scrubs one field of a recorded body. Path is dotted; a "*"
@@ -179,6 +195,12 @@ func (p Probe) Validate() error {
 		seen[o.Name] = true
 		if o.Request.Method == "" || o.Request.Path == "" {
 			return fmt.Errorf("probe %s: observation %q: method and path are required", p.Name, o.Name)
+		}
+		if o.WaitForStatus != 0 && (o.WaitForStatus < 100 || o.WaitForStatus > 599) {
+			return fmt.Errorf("probe %s: observation %q: WaitForStatus %d is not an HTTP status", p.Name, o.Name, o.WaitForStatus)
+		}
+		if o.WaitForStatus != 0 && len(o.Captures) > 0 {
+			return fmt.Errorf("probe %s: observation %q: an observation with captures cannot set WaitForStatus", p.Name, o.Name)
 		}
 	}
 	if p.OracleOnly && p.FacadeDivergence != "" {
