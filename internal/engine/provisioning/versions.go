@@ -161,11 +161,12 @@ type rangeClause struct {
 
 // rangeTokenRE scans a raw range string for `>=`/`<=`/`>`/`<`/`=` immediately
 // (optionally with whitespace) followed by a `MAJOR.MINOR[.PATCH|.x]`
-// operand - the entire grammar the setting uses, and nothing more. A
+// operand - the entire grammar the setting uses, and nothing more. The
+// operand may carry a leading `v` (`>=v1.30.x`), as Rancher writes it. A
 // string with no such token (empty, or genuinely unparseable garbage) never
 // matches, which is exactly how parseSupportedRange reports "advisory data
 // unavailable" without a special-case.
-var rangeTokenRE = regexp.MustCompile(`(>=|<=|>|<|=)\s*(\d+)\.(\d+)(?:\.(\d+)|\.(x))?`)
+var rangeTokenRE = regexp.MustCompile(`(>=|<=|>|<|=)\s*v?(\d+)\.(\d+)(?:\.(\d+)|\.(x))?`)
 
 // parseSupportedRange parses raw into its AND-ed comparator clauses. ok is
 // false when raw carries no recognizable clause at all (empty or garbage) -
@@ -450,14 +451,31 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 			warnings = append(warnings, fmt.Sprintf("no %s setting on the server; no default marked", d.defaultSetting))
 		}
 		start := len(rows)
+		defaultVersion := results[i].defaultVersion
+		defaultMarked := false
 		for _, v := range vs {
-			rows = append(rows, Version{Distro: d.distro, Version: v, Default: v == results[i].defaultVersion, Supported: versionSupported(rangeRaw, v)})
+			isDefault := defaultVersion != "" && sameRelease(v, defaultVersion)
+			defaultMarked = defaultMarked || isDefault
+			rows = append(rows, Version{Distro: d.distro, Version: v, Default: isDefault, Supported: versionSupported(rangeRaw, v)})
+		}
+		if len(vs) > 0 && defaultVersion != "" && !defaultMarked {
+			warnings = append(warnings, fmt.Sprintf("%s is %q on the server, which names no listed release; no default marked", d.defaultSetting, defaultVersion))
 		}
 		if idx := newestVersionIndex(vs); idx >= 0 {
 			rows[start+idx].Newest = true
 		}
 	}
 	return rows, rangeRaw, warnings, nil
+}
+
+// sameRelease reports whether a and b name the same release: equal once a
+// leading "v" is trimmed from each. Rancher writes the default-version
+// settings without the "v" the release lists carry (a fallback copies the
+// channel's latest value, which can carry it, and an operator can set
+// either), and keeps the build suffix, which names one exact release;
+// nothing else is normalized.
+func sameRelease(a, b string) bool {
+	return strings.TrimPrefix(a, "v") == strings.TrimPrefix(b, "v")
 }
 
 // FetchVersions merges the channel-server release lists
@@ -531,7 +549,7 @@ func (c *getKubernetesVersionsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "get kubernetes-versions",
 		Usage:       "List available Kubernetes versions (rke2/k3s)",
-		Desc:        "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting is absent for a distro, no default is marked and a warning is emitted.",
+		Desc:        "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting for a distro is absent, or names no listed release, no default is marked and a warning is emitted.",
 		CommandType: runtime.ReadOnly,
 		Auth:        true,
 		Shape:       runtime.ShapeTabular,

@@ -28,3 +28,31 @@ stdout k3s
 stdout 'v1\.30\.6\+rke2r1'
 stderr 'no rke2-default-version setting on the server; no default marked'
 stderr 'no k3s-default-version setting on the server; no default marked'
+
+# Settings written the way Rancher writes them: the default version without
+# the leading "v" the release list carries, and a supported range with "v"
+# operands. The seeded Settings are cluster-scoped, shared with every script
+# in the one envtest apiserver, and never deleted; no other script depends on
+# them. The k3s empty-setting warning is the only one left, so warnings are
+# not asserted by index here.
+seedobj management.cattle.io/v3/settings . rke2default.yaml
+seedobj management.cattle.io/v3/settings . supportedrange.yaml
+exec rancher get kubernetes-versions -o json
+jsonquery stdout 'data.versions.#(version=="v1.30.6+rke2r1").default' true
+jsonquery stdout 'data.versions.#(version=="v1.30.5+rke2r1").default' false
+jsonquery stdout 'data.versions.#(version=="v1.30.6+rke2r1").supported' true
+jsonquery stdout 'data.versions.#(version=="v1.30.5+rke2r1").supported' true
+jsonquery stdout data.supportedRange '>=v1.30.x <=v1.30.x'
+
+-- rke2default.yaml --
+apiVersion: management.cattle.io/v3
+kind: Setting
+metadata:
+  name: rke2-default-version
+value: 1.30.6+rke2r1
+-- supportedrange.yaml --
+apiVersion: management.cattle.io/v3
+kind: Setting
+metadata:
+  name: ui-k8s-supported-versions-range
+value: '>=v1.30.x <=v1.30.x'

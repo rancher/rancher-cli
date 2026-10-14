@@ -518,7 +518,7 @@ func TestCreateClusterVersionWarningPresentWhenNotDiscovered(t *testing.T) {
 
 	client := &ccRecClient{objects: map[string]*unstructured.Unstructured{
 		"cc-abc12":                secretObj("cc-abc12", nil, nil),
-		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "v1.30.5+rke2r1"),
+		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "1.30.5+rke2r1"),
 	}}
 	cmd := NewCreateCluster(fakeFactory{c: client}, rootsFor(srv))
 
@@ -533,7 +533,7 @@ func TestCreateClusterVersionWarningPresentWhenNotDiscovered(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, eff.Warnings)
-	assert.Contains(t, eff.Warnings[0], "v1.99.9+rke2r1")
+	assert.Equal(t, `kubernetes version "v1.99.9+rke2r1" was not found among the discovered rke2/k3s releases (rke2 default v1.30.5+rke2r1)`, eff.Warnings[0])
 }
 
 // TestCreateClusterVersionWarningAbsentWhenDiscovered proves the converse:
@@ -685,7 +685,7 @@ func TestCreateClusterCreatorID(t *testing.T) {
 			name:     "ordering-stamp-after-version",
 			probeErr: errors.New("probe fail"),
 			objects: map[string]*unstructured.Unstructured{
-				rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "v1.30.5+rke2r1"),
+				rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "1.30.5+rke2r1"),
 			},
 			roots: rootsFor(srv),
 			input: ccInput{

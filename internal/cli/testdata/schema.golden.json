@@ -4957,7 +4957,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting is absent for a distro, no default is marked and a warning is emitted.",
+      "desc": "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting for a distro is absent, or names no listed release, no default is marked and a warning is emitted.",
       "group": "get",
       "name": "get kubernetes-versions",
       "serverAccess": "read",

@@ -3,8 +3,10 @@ package provisioning
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -74,8 +76,8 @@ func TestFetchVersionsMergesBothDistrosWithDefaults(t *testing.T) {
 	defer srv.Close()
 
 	client := settingsClient(map[string]*unstructured.Unstructured{
-		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "v1.30.6+rke2r1"),
-		k3sDefaultVersionSetting:  settingObj(k3sDefaultVersionSetting, "v1.30.5+k3s1"),
+		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "1.30.6+rke2r1"),
+		k3sDefaultVersionSetting:  settingObj(k3sDefaultVersionSetting, "1.30.5+k3s1"),
 	})
 	factory := fakeFactory{c: client}
 
@@ -94,6 +96,113 @@ func TestFetchVersionsMergesBothDistrosWithDefaults(t *testing.T) {
 	assert.False(t, byDistroVersion["k3s/v1.30.6+k3s1"].Default)
 }
 
+// TestFetchVersionsDefaultMarking asserts which rows the default-version
+// setting marks, in the formats a server writes it (without a leading "v",
+// with one, or naming a release the list does not carry), and which
+// warnings accompany each outcome.
+func TestFetchVersionsDefaultMarking(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name         string
+		list         []string
+		omitRoute    bool
+		setting      string
+		wantDefaults []string
+		wantMissing  bool
+		wantNotFound bool
+		wantUnlisted bool
+	}{
+		{
+			name:         "setting-without-v",
+			list:         []string{"v1.30.5+rke2r1", "v1.30.6+rke2r1"},
+			setting:      "1.30.6+rke2r1",
+			wantDefaults: []string{"v1.30.6+rke2r1"},
+		},
+		{
+			name:         "setting-with-v",
+			list:         []string{"v1.30.5+rke2r1", "v1.30.6+rke2r1"},
+			setting:      "v1.30.6+rke2r1",
+			wantDefaults: []string{"v1.30.6+rke2r1"},
+		},
+		{
+			name:         "list-without-v",
+			list:         []string{"1.30.5+rke2r1", "1.30.6+rke2r1"},
+			setting:      "v1.30.6+rke2r1",
+			wantDefaults: []string{"1.30.6+rke2r1"},
+		},
+		{
+			name:         "build-suffix-kept",
+			list:         []string{"v1.30.6+rke2r1", "v1.30.6+rke2r3"},
+			setting:      "1.30.6+rke2r1",
+			wantDefaults: []string{"v1.30.6+rke2r1"},
+		},
+		{
+			name:         "setting-names-no-listed-release",
+			list:         []string{"v1.30.5+rke2r1", "v1.30.6+rke2r1"},
+			setting:      "1.99.0+rke2r1",
+			wantUnlisted: true,
+		},
+		{
+			name:        "empty-setting",
+			list:        []string{"v1.30.5+rke2r1"},
+			setting:     "",
+			wantMissing: true,
+		},
+		{
+			name:    "empty-list",
+			list:    []string{},
+			setting: "1.30.6+rke2r1",
+		},
+		{
+			name:         "route-not-found",
+			omitRoute:    true,
+			setting:      "1.30.6+rke2r1",
+			wantNotFound: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			routes := map[string][]string{k3sReleasePath: {}}
+			if !tc.omitRoute {
+				routes[rke2ReleasePath] = tc.list
+			}
+			srv := httptest.NewServer(releaseHandler(t, routes))
+			defer srv.Close()
+
+			objs := map[string]*unstructured.Unstructured{}
+			if tc.setting != "" {
+				objs[rke2DefaultVersionSetting] = settingObj(rke2DefaultVersionSetting, tc.setting)
+			}
+			rows, _, warnings, err := fetchVersionsDetailed(t.Context(), rootsFor(srv), fakeFactory{c: settingsClient(objs)})
+			require.NoError(t, err)
+
+			var gotDefaults []string
+			for _, r := range rows {
+				if r.Default {
+					gotDefaults = append(gotDefaults, r.Version)
+				}
+			}
+			assert.Equal(t, tc.wantDefaults, gotDefaults)
+
+			unlisted := fmt.Sprintf("%s is %q on the server, which names no listed release; no default marked", rke2DefaultVersionSetting, tc.setting)
+			missing := fmt.Sprintf("no %s setting on the server; no default marked", rke2DefaultVersionSetting)
+			assert.Equal(t, tc.wantUnlisted, slices.Contains(warnings, unlisted), "warnings: %v", warnings)
+			assert.Equal(t, tc.wantMissing, slices.Contains(warnings, missing), "warnings: %v", warnings)
+			var gotNotFound bool
+			for _, w := range warnings {
+				if strings.Contains(w, "not found (older server?)") {
+					gotNotFound = true
+				}
+				if !tc.wantUnlisted {
+					assert.NotContains(t, w, "names no listed release")
+				}
+			}
+			assert.Equal(t, tc.wantNotFound, gotNotFound, "warnings: %v", warnings)
+		})
+	}
+}
+
 func TestFetchVersionsSupportedEvaluation(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -107,6 +216,10 @@ func TestFetchVersionsSupportedEvaluation(t *testing.T) {
 		{"above", ">= 1.11.0 <=1.14.x", "v1.15.0+rke2r1", new(false)},
 		{"wildcard-both-bounds-inside", ">=1.11.x <=1.14.x", "v1.14.99+rke2r1", new(true)},
 		{"wildcard-both-bounds-outside", ">=1.11.x <=1.14.x", "v1.15.0+rke2r1", new(false)},
+		{"v-operands-inside", ">=v1.30.x <=v1.31.x", "v1.30.5+rke2r1", new(true)},
+		{"v-operands-outside", ">=v1.30.x <=v1.31.x", "v1.32.0+rke2r1", new(false)},
+		{"v-operand-after-space", ">= v1.11.0 <=v1.14.x", "v1.12.3+rke2r1", new(true)},
+		{"v-operands-below", ">=v1.30.x <=v1.31.x", "v1.29.9+rke2r1", new(false)},
 		{"empty-setting", "", "v1.12.3+rke2r1", nil},
 		{"garbage-setting", "not a range at all", "v1.12.3+rke2r1", nil},
 	}
@@ -326,8 +439,8 @@ func TestNewGetKubernetesVersionsExecuteTabularRendersSupportedColumn(t *testing
 	defer srv.Close()
 
 	client := settingsClient(map[string]*unstructured.Unstructured{
-		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "v1.12.0+rke2r1"),
-		supportedRangeSetting:     settingObj(supportedRangeSetting, ">=1.11.0 <=1.14.x"),
+		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "1.12.0+rke2r1"),
+		supportedRangeSetting:     settingObj(supportedRangeSetting, ">=v1.11.x <=v1.14.x"),
 	})
 	factory := fakeFactory{c: client}
 
@@ -360,7 +473,7 @@ func TestNewGetKubernetesVersionsExecuteTabularRendersSupportedColumn(t *testing
 	enc.SetEscapeHTML(false)
 	require.NoError(t, enc.Encode(res.Data))
 	assert.Contains(t, buf.String(), "supportedRange")
-	assert.Contains(t, buf.String(), ">=1.11.0 <=1.14.x")
+	assert.Contains(t, buf.String(), ">=v1.11.x <=v1.14.x")
 }
 
 // TestFetchVersionsNewestMarkedWhenSettingsPresent verifies that the highest
@@ -376,8 +489,8 @@ func TestFetchVersionsNewestMarkedWhenSettingsPresent(t *testing.T) {
 	defer srv.Close()
 
 	client := settingsClient(map[string]*unstructured.Unstructured{
-		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "v1.30.6+rke2r1"),
-		k3sDefaultVersionSetting:  settingObj(k3sDefaultVersionSetting, "v1.30.5+k3s1"),
+		rke2DefaultVersionSetting: settingObj(rke2DefaultVersionSetting, "1.30.6+rke2r1"),
+		k3sDefaultVersionSetting:  settingObj(k3sDefaultVersionSetting, "1.30.5+k3s1"),
 	})
 	factory := fakeFactory{c: client}
 
