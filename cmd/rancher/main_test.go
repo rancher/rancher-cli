@@ -137,7 +137,7 @@ func TestFailingInvocationsWriteTheirErrorOnce(t *testing.T) {
 		{"unknown flag on a leaf", []string{"get", "pod", "--bogus"}, flagErr, 1},
 		{"unknown flag on a group", []string{"get", "--bogus"}, flagErr, 1},
 		{"unknown flag on the root", []string{"--bogus"}, flagErr, 1},
-		{"unknown flag before an unknown command", []string{"help", "--bogus"}, flagErr, 1},
+		{"unknown command before an unknown flag", []string{"help", "--bogus"}, `unknown command "help"`, 1},
 		{"unknown flag on the hidden completion command", []string{"__completion", "--bogus"}, flagErr, 1},
 		{"unknown top-level command", []string{"nosuch"}, `unknown command "nosuch"`, 1},
 		{"unknown command in a group", []string{"get", "nosuch"}, `unknown command "nosuch"`, 1},

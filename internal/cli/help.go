@@ -38,7 +38,7 @@ func visibleSubcommand(node *ucli.Command, word string) *ucli.Command {
 // showCommandHelp is urfave's seam for "show help for the subcommand
 // named name under cmd", reached by `<cmd> --help [words]`, by
 // `<cmd> <sub> --help` (cmd is the parent, name the command run), by
-// `<leaf> <arg> --help` and, as urfave's default action, by a root or group
+// `<leaf> <arg> --help` and, through groupCommandAction, by a root or group
 // run with an unknown first word (`rancher nosuch`, `rancher get help`).
 // Three cases:
 //   - cmd has no subcommand of that name and no CommandNotFound seam: name

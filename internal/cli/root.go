@@ -596,6 +596,25 @@ func groupPrimeMetadata(leaves []*ucli.Command) map[string]any {
 	return map[string]any{primeMetadataKey: true}
 }
 
+// groupCommandAction is the Action of the root and of every group command.
+// A group has no work of its own: run with no word it shows its help card,
+// and with a first word that names no subcommand, an empty word included,
+// it hands the word to showCommandHelp, which reports an unknown command.
+// urfave's default action skips that lookup for an empty word and shows the
+// card with exit 0, which would answer an unset shell variable with help
+// and success.
+func groupCommandAction(ctx context.Context, c *ucli.Command) error {
+	switch {
+	case c.Args().Present():
+		return showCommandHelp(ctx, c, c.Args().First())
+	case c == c.Root():
+		_ = ucli.ShowRootCommandHelp(c)
+		return nil
+	default:
+		return ucli.ShowSubcommandHelp(c)
+	}
+}
+
 // assembleCommands builds the root command list: the top-level commands
 // followed by one group command per group in first-appearance order. Leaves in
 // the "" group are attached at the top level.
@@ -610,7 +629,10 @@ func assembleCommands(topLevel []*ucli.Command, order []string, groups map[strin
 			out = append(out, leaves...)
 			continue
 		}
-		out = append(out, &ucli.Command{Name: g, Usage: groupUsages[g], Commands: leaves, Metadata: groupPrimeMetadata(leaves), CommandNotFound: commandNotFound, OnUsageError: onUsageError})
+		// With StopOnNthArg 1 the group parses no flag after its first word:
+		// a known subcommand parses the rest itself, and an unknown first
+		// word is reported before any flag typed after it.
+		out = append(out, &ucli.Command{Name: g, Usage: groupUsages[g], Commands: leaves, Metadata: groupPrimeMetadata(leaves), CommandNotFound: commandNotFound, OnUsageError: onUsageError, StopOnNthArg: new(1), Action: groupCommandAction})
 	}
 	return out
 }
@@ -942,6 +964,11 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 		}, GlobalFlags()...),
 		CommandNotFound: commandNotFound,
 		OnUsageError:    onUsageError,
+		// With StopOnNthArg 1 the root parses no flag after its first word:
+		// a known command parses the rest itself, and an unknown first word
+		// is reported before any flag typed after it.
+		StopOnNthArg: new(1),
+		Action:       groupCommandAction,
 		// Inherited by every command: urfave adds no `help` subcommand
 		// anywhere, so `help` is an ordinary unknown command name and a
 		// positional argument named help always reaches its command.

@@ -559,6 +559,10 @@ A `-` on its own ends the command line, so a line with any word after it
 after the command name; a `-` as a flag's value (`-f -`) or after `--` is
 not affected, and `--help` typed after a command's name, or `--version`
 at the root, before the `-` still shows the help or the version.
+A command name the CLI does not know is reported as `unknown command`
+before anything typed after it is read, so a wrong name is never hidden
+behind a flag error; an empty name (`rancher get ""`, an unset variable)
+is also reported as `unknown command`.
 
 ## Kinds & verbs
 

@@ -588,7 +588,8 @@ func isAllNamespacesFlag(err error) bool {
 // anywhere deeper in the path (e.g. a hypothetical `auth get-token`) does
 // not trigger the detail.
 var allNamespacesEntry = hintEntry[usageErrorInput]{
-	// kubectl reflex -A/--all-namespaces: the flag exists nowhere.
+	// kubectl reflex -A/--all-namespaces: only a few leaves declare it;
+	// the group commands and the other leaves do not.
 	// Under the get group the wording explains that lists already
 	// span all namespaces; elsewhere the base message alone covers it.
 	// One entry, wording chosen here - no order-dependent

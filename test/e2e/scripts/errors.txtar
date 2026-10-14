@@ -26,6 +26,11 @@ stderr 'rancher schema'
 jsonquery stderr data.error.code VALIDATION
 stderr 'rancher schema'
 
+# VALIDATION: an unknown command name is reported before the flags after it
+! exec rancher create roletemplate test-rt --context cluster -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message 'unknown command "roletemplate"'
+
 # -o yaml renders the same structured error envelope as -o json, serialized
 # as YAML - not JSON dressed up as one.
 ! exec rancher get project definitely-absent --cluster testcluster -o yaml
