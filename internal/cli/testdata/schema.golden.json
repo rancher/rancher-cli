@@ -10428,7 +10428,7 @@
       "commandType": "readOnly",
       "contract": "internal",
       "examples": [
-        "rancher support-bundle -f bundle.tar.gz",
+        "rancher support-bundle --output-file bundle.tar.gz",
         "rancher support-bundle --targets agent,fleet-agent --clusters prod,staging"
       ],
       "flags": [
@@ -10453,11 +10453,8 @@
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
-          "desc": "write the tar.gz archive to `file`",
-          "name": "filename",
+          "desc": "write the tar.gz archive to a new `file`; an existing file or - is refused",
+          "name": "output-file",
           "type": "string"
         }
       ],

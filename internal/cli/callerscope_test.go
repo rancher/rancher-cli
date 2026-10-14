@@ -518,7 +518,7 @@ func TestEveryClusterCommandResolvesAsTheCaller(t *testing.T) {
 					`patch cluster prod --patch [{"op":"add","path":"/metadata/labels","value":{"a":"b"}}] --dry-run -o json`,
 					"create kubeconfig --clusters prod --dry-run",
 					"create kubeconfig --clusters * --current-context prod --dry-run",
-					"support-bundle --clusters prod -o json",
+					"support-bundle --clusters prod --output-file positional-warnings.tar.gz -o json",
 				} {
 					r := h.run(t, strings.Fields(args))
 					// A text-mode run prints its warnings as "# warning:" lines.

@@ -556,7 +556,7 @@ run under config or environment read-only mode too.
     }
   }
   ```
-- `rancher support-bundle -f bundle.tar.gz [--targets ...] [--clusters ...]` -
+- `rancher support-bundle --output-file bundle.tar.gz [--targets ...] [--clusters ...]` -
   packs every curated target's logs plus cluster/node state, events, and an
   allowlisted settings/features/schema snapshot into one tar.gz;
   `manifest.json` inside records each item as collected, skipped (not

@@ -38,6 +38,25 @@ func CreateArchive(path string) (*ArchiveWriter, error) {
 	return createArchiveWith(path, func(w io.Writer) io.Writer { return w })
 }
 
+// archiveExistsError is the VALIDATION error for an archive path that is
+// already taken.
+func archiveExistsError(path string) error {
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("%s already exists; choose a different --output-file path, or remove the existing file", path))
+}
+
+// refuseExistingArchive returns the error CreateArchive gives when anything
+// exists at path, a symlink included (dangling or not), so a command can
+// refuse before it sends a request. Only a successful Lstat refuses; any
+// other error is left for CreateArchive to report. CreateArchive stays the
+// authority when the path appears after this check.
+func refuseExistingArchive(path string) error {
+	if _, err := os.Lstat(path); err == nil {
+		return archiveExistsError(path)
+	}
+	return nil
+}
+
 // createArchiveWith is the injectable core of CreateArchive; wrap lets
 // tests substitute a failing io.Writer around the underlying file without
 // mutating package-level state.
@@ -45,8 +64,7 @@ func createArchiveWith(path string, wrap func(io.Writer) io.Writer) (*ArchiveWri
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		if os.IsExist(err) {
-			return nil, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("%s already exists; choose a different -f path, or remove the existing file", path))
+			return nil, archiveExistsError(path)
 		}
 		return nil, err
 	}

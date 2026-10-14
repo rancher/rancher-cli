@@ -91,7 +91,7 @@ func TestCreateArchiveRefusesExistingFile(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, path)
+	assert.Equal(t, path+" already exists; choose a different --output-file path, or remove the existing file", ce.Message)
 
 	b, err := os.ReadFile(path)
 	require.NoError(t, err)

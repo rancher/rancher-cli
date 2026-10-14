@@ -20,7 +20,7 @@ import (
 const (
 	flagTargets        = "targets"
 	flagClusters       = "clusters"
-	flagFilename       = "filename"
+	flagOutputFile     = "output-file"
 	defaultBundleTail  = 10000
 	defaultBundleSince = 24 * time.Hour
 
@@ -65,7 +65,7 @@ type supportBundleCmd struct {
 }
 
 // NewSupportBundle builds `support-bundle [--targets ...|all] [--clusters
-// a,b|*] [--since <dur>] [--tail N=10000] [-f out]`: packs every
+// a,b|*] [--since <dur>] [--tail N=10000] [--output-file out]`: packs every
 // API-reachable diagnostic surface - curated component logs, cluster/node
 // state, per-namespace events, and the CLI's own settings/features/schema
 // snapshot - into one tar.gz, tri-state manifested so support can tell
@@ -83,11 +83,11 @@ func (c *supportBundleCmd) Describe() runtime.Descriptor {
 			{Name: flagClusters, Type: "string", Desc: "downstream cluster ids/names to include (comma-separated)"},
 			{Name: flagSince, Type: "string", Desc: "collect logs newer than this `duration` (default 24h)"},
 			{Name: flagTail, Type: "string", Desc: "max log `lines` per target (default 10000)"},
-			{Name: flagFilename, Type: "string", Aliases: []string{"f"}, Desc: "write the tar.gz archive to `file`"},
+			{Name: flagOutputFile, Type: "string", Desc: "write the tar.gz archive to a new `file`; an existing file or - is refused"},
 		},
 		CommandType: runtime.ReadOnly,
 		Examples: []string{
-			"rancher support-bundle -f bundle.tar.gz",
+			"rancher support-bundle --output-file bundle.tar.gz",
 			"rancher support-bundle --targets agent,fleet-agent --clusters prod,staging",
 		},
 		Auth:  true,
@@ -124,9 +124,16 @@ func (c *supportBundleCmd) Execute(ctx context.Context, in runtime.Input, _ runt
 		n := int64(defaultBundleTail)
 		tail = &n
 	}
-	path := in.String(flagFilename)
+	path := in.String(flagOutputFile)
 	if path == "" {
 		path = fmt.Sprintf("rancher-support-%d.tar.gz", c.now().Unix())
+	}
+	if path == "-" {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			`--output-file "-": support-bundle writes the archive to a file, not to stdout; pass a file path`)
+	}
+	if err := refuseExistingArchive(path); err != nil {
+		return runtime.Result{}, err
 	}
 
 	local, err := c.clients.Cluster(ctx, engine.LocalCluster)

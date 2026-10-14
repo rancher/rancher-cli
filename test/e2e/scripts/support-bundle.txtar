@@ -8,7 +8,7 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # pod under that same selector would make ITS pod count assertion flaky.
 exec rancher create resource -f webhook-pod.yaml --cluster local --apply
 
-exec rancher support-bundle --targets webhook --clusters local -f bundle.tar.gz -o json
+exec rancher support-bundle --targets webhook --clusters local --output-file bundle.tar.gz -o json
 jsonquery stdout data.path bundle.tar.gz
 
 exec tar -tzf bundle.tar.gz
@@ -16,10 +16,23 @@ stdout 'manifest\.json'
 stdout 'logs/'
 stdout 'clusters/'
 
-# the archive writer is O_CREATE|O_EXCL - the same -f path must be refused,
-# never truncated, on a second run.
-! exec rancher support-bundle --targets webhook --clusters local -f bundle.tar.gz -o json
+# the archive writer is O_CREATE|O_EXCL - the same --output-file path must be
+# refused, never truncated, on a second run.
+! exec rancher support-bundle --targets webhook --clusters local --output-file bundle.tar.gz -o json
 jsonquery stderr data.error.code VALIDATION
+
+# --output-file - is refused: the archive goes to a file, never to stdout.
+! exec rancher support-bundle --targets webhook --clusters local --output-file - -o json
+jsonquery stderr data.error.code VALIDATION
+! exists -
+! exec rancher support-bundle --targets webhook --clusters local --output-file=- -o json
+jsonquery stderr data.error.code VALIDATION
+! exists -
+
+# -f is not a support-bundle flag: it is refused as unknown and writes nothing.
+! exec rancher support-bundle --targets webhook --clusters local -f other.tar.gz -o json
+jsonquery stderr data.error.code VALIDATION
+! exists other.tar.gz
 
 -- webhook-pod.yaml --
 apiVersion: v1

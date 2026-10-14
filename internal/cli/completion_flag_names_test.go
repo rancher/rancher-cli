@@ -128,6 +128,31 @@ func TestFlagNameCompletionPartialFilter(t *testing.T) {
 	assert.NotContains(t, tokens, "--namespace", "--clu<TAB> must not include --namespace")
 }
 
+// TestSupportBundleOutputFileCompletion asserts that `support-bundle
+// --output-f<TAB>` offers only --output-file (the prefix is long enough to
+// leave out the global --output), that `-<TAB>` and `--<TAB>` offer
+// --output-file and neither -f nor --filename, and that the flag's value
+// gets no candidate, so the shell falls back to file names.
+func TestSupportBundleOutputFileCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	partial := extractTokens(runNameLikeCompletion(t, []string{"support-bundle"}, "--output-f"))
+	assert.Equal(t, []string{"--output-file"}, partial)
+
+	for _, cur := range []string{"-", "--"} {
+		tokens := extractTokens(runNameLikeCompletion(t, []string{"support-bundle"}, cur))
+		assert.Contains(t, tokens, "--output-file", cur)
+		assert.NotContains(t, tokens, "-f", cur)
+		assert.NotContains(t, tokens, "--filename", cur)
+	}
+
+	assert.Empty(t, strings.TrimSpace(runNameLikeCompletion(t, []string{"support-bundle", "--output-file"}, "")))
+	assert.Empty(t, strings.TrimSpace(runNameLikeCompletion(t, []string{"support-bundle"}, "--output-file=")))
+}
+
 // TestFlagNameCompletionConfigSetCompletion is the user-reported reproduction:
 // `config set-completion --<TAB>` must return the set-completion leaf's flags
 // (--network, --timeout) plus --help. Before the fix, output was empty.

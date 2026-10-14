@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,9 +59,9 @@ func TestSupportBundleManifestTriState(t *testing.T) {
 
 	path := filepath.Join(dir, "bundle.tar.gz")
 	res, err := execBundle(t, factory, input{s: map[string]string{
-		flagFilename: path,
-		flagTargets:  "server,agent",
-		flagClusters: "local,c-1",
+		flagOutputFile: path,
+		flagTargets:    "server,agent",
+		flagClusters:   "local,c-1",
 	}})
 	require.NoError(t, err, "a degraded target must never fail the whole command - partial bundles ship")
 
@@ -131,9 +133,9 @@ func TestSupportBundleNonACEKubeAPIAuthIsSkippedNotError(t *testing.T) {
 
 	path := filepath.Join(dir, "bundle.tar.gz")
 	res, err := execBundle(t, factory, input{s: map[string]string{
-		flagFilename: path,
-		flagTargets:  "kube-api-auth",
-		flagClusters: "c-1",
+		flagOutputFile: path,
+		flagTargets:    "kube-api-auth",
+		flagClusters:   "c-1",
 	}})
 	require.NoError(t, err)
 
@@ -159,9 +161,9 @@ func TestSupportBundleRBACFailingCollectorStillShipsBundle(t *testing.T) {
 
 	path := filepath.Join(dir, "bundle.tar.gz")
 	res, err := execBundle(t, factory, input{s: map[string]string{
-		flagFilename: path,
-		flagTargets:  "agent",
-		flagClusters: "c-1",
+		flagOutputFile: path,
+		flagTargets:    "agent",
+		flagClusters:   "c-1",
 	}})
 	require.NoError(t, err)
 
@@ -191,7 +193,7 @@ func TestSupportBundleSettingsAllowlist(t *testing.T) {
 	factory := &fakeFactory{local: local}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
-	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "", flagClusters: "local"}})
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "", flagClusters: "local"}})
 	require.NoError(t, err)
 
 	contents := readArchive(t, path)
@@ -231,7 +233,7 @@ func TestSupportBundleEventsPerNamespace(t *testing.T) {
 	factory := &fakeFactory{local: local, root: (&fakeRoot{}).withCluster(mgmtCluster), perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
-	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "fleet-agent", flagClusters: "c-1"}})
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "fleet-agent", flagClusters: "c-1"}})
 	require.NoError(t, err)
 
 	contents := readArchive(t, path)
@@ -269,7 +271,7 @@ func TestSupportBundleClusterDiscoveryFailureIsSignaled(t *testing.T) {
 	factory := &fakeFactory{local: newFakeClient(), root: root}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
-	res, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "webhook"}})
+	res, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "webhook"}})
 	require.NoError(t, err, "a fleet-discovery failure must degrade to local-only, not abort the command")
 
 	m := manifestFrom(t, path)
@@ -311,7 +313,7 @@ func TestSupportBundleEventsAreCappedNewestFirst(t *testing.T) {
 	factory := &fakeFactory{local: newFakeClient(), root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 
 	path := filepath.Join(dir, "bundle.tar.gz")
-	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "", flagClusters: "c-1"}})
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "", flagClusters: "c-1"}})
 	require.NoError(t, err)
 
 	m := manifestFrom(t, path)
@@ -356,9 +358,9 @@ func bundleWithAgentPod(t *testing.T, downstream *fakeClient) (runtime.Result, s
 	factory := &fakeFactory{local: newFakeClient(), root: root, perCluster: map[string]engine.ClusterClient{"c-1": downstream}}
 	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
 	res, err := execBundle(t, factory, input{s: map[string]string{
-		flagFilename: path,
-		flagTargets:  "agent",
-		flagClusters: "c-1",
+		flagOutputFile: path,
+		flagTargets:    "agent",
+		flagClusters:   "c-1",
 	}})
 	require.NoError(t, err)
 	return res, path
@@ -430,7 +432,7 @@ func TestSupportBundleClusterOwnerCollectsClusterJSON(t *testing.T) {
 	factory, local := ownerFactory(downstream)
 
 	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "agent", flagClusters: "prod"}})
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "agent", flagClusters: "prod"}})
 	require.NoError(t, err)
 
 	assert.Equal(t, statusCollected, findItem(t, manifestFrom(t, path), "cluster.json", "c-abc").Status)
@@ -447,7 +449,7 @@ func TestSupportBundleClusterJSONSteveFailureIsManifestError(t *testing.T) {
 	factory.root.withError(clusterPath("c-abc"), rootStatusError(500, clusterPath("c-abc")))
 
 	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "agent", flagClusters: "prod"}})
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "agent", flagClusters: "prod"}})
 	require.NoError(t, err)
 
 	assert.Contains(t, findItem(t, manifestFrom(t, path), "cluster.json", "c-abc").Status, "error: ")
@@ -462,7 +464,7 @@ func TestSupportBundleDiscoveryListsSteveClusters(t *testing.T) {
 	factory, local := ownerFactory(newFakeClient())
 
 	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	_, err := execBundle(t, factory, input{s: map[string]string{flagFilename: path, flagTargets: "agent"}})
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "agent"}})
 	require.NoError(t, err)
 
 	m := manifestFrom(t, path)
@@ -514,5 +516,103 @@ func TestParseTargetsFlag(t *testing.T) {
 		_, err := parseTargetsFlag(tc.raw)
 		require.EqualError(t, err, tc.want, tc.raw)
 		assert.Equal(t, clierr.CodeValidation, clierrCode(t, err), tc.raw)
+	}
+}
+
+// TestSupportBundleRefusesOutputFileDash asserts that --output-file - is
+// a VALIDATION error with the exact message, refused before any cluster
+// client is built, and that no file named - is created.
+func TestSupportBundleRefusesOutputFileDash(t *testing.T) {
+	// Not t.Parallel(): changes the process cwd.
+	t.Chdir(t.TempDir())
+
+	factory := &fakeFactory{local: newFakeClient()}
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: "-", flagTargets: "webhook", flagClusters: "local"}})
+	require.EqualError(t, err, `--output-file "-": support-bundle writes the archive to a file, not to stdout; pass a file path`)
+	assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
+	assert.Empty(t, factory.clusterCalls)
+	assert.NoFileExists(t, "-")
+}
+
+// TestSupportBundleWritesOutputFileDotDash asserts that ./- is a file path
+// like any other: only the exact value - is refused.
+func TestSupportBundleWritesOutputFileDotDash(t *testing.T) {
+	// Not t.Parallel(): changes the process cwd.
+	t.Chdir(t.TempDir())
+
+	factory := &fakeFactory{local: newFakeClient()}
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: "./-", flagTargets: "webhook", flagClusters: "local"}})
+	require.NoError(t, err)
+	assert.FileExists(t, "-")
+}
+
+// TestSupportBundleRefusesExistingOutputFile asserts that a path that is
+// already taken (a file, a directory, a symlink whether or not it dangles)
+// is refused with the exact message before any cluster client is built and
+// before any request, and that the existing file is left as it was.
+func TestSupportBundleRefusesExistingOutputFile(t *testing.T) {
+	// Not t.Parallel(): changes the process cwd.
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	require.NoError(t, os.WriteFile("taken.tar.gz", []byte("pre-existing"), 0600))
+	require.NoError(t, os.Mkdir("taken-dir", 0700))
+	require.NoError(t, os.Symlink("nowhere", "dangling.tar.gz"))
+	require.NoError(t, os.Symlink("taken.tar.gz", "link.tar.gz"))
+
+	for _, path := range []string{"taken.tar.gz", "taken-dir", "dangling.tar.gz", "link.tar.gz"} {
+		t.Run(path, func(t *testing.T) {
+			factory := &fakeFactory{local: newFakeClient(), root: &fakeRoot{}}
+			_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "webhook"}})
+			require.EqualError(t, err, path+" already exists; choose a different --output-file path, or remove the existing file")
+			assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
+			assert.Empty(t, factory.clusterCalls)
+			assert.Empty(t, factory.root.paths, "discovery must not send a request")
+		})
+	}
+
+	b, err := os.ReadFile("taken.tar.gz")
+	require.NoError(t, err)
+	assert.Equal(t, "pre-existing", string(b))
+}
+
+// TestSupportBundleRefusesExistingDefaultName asserts that the default
+// file name gets the same early refusal as a name passed with
+// --output-file.
+func TestSupportBundleRefusesExistingDefaultName(t *testing.T) {
+	// Not t.Parallel(): changes the process cwd.
+	t.Chdir(t.TempDir())
+	fixed := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	name := fmt.Sprintf("rancher-support-%d.tar.gz", fixed.Unix())
+	require.NoError(t, os.WriteFile(name, []byte("pre-existing"), 0600))
+
+	factory := &fakeFactory{local: newFakeClient(), root: &fakeRoot{}}
+	_, err := execBundle(t, factory, input{s: map[string]string{flagTargets: "webhook"}},
+		func(cmd *supportBundleCmd) { cmd.now = func() time.Time { return fixed } })
+	require.EqualError(t, err, name+" already exists; choose a different --output-file path, or remove the existing file")
+	assert.Equal(t, clierr.CodeValidation, clierrCode(t, err))
+	assert.Empty(t, factory.clusterCalls)
+	assert.Empty(t, factory.root.paths)
+}
+
+// TestSupportBundleMissingOutputDirIsNotRefusedEarly asserts that a path
+// the early check cannot stat (a missing parent directory, or a parent
+// that is a file) passes that check, so the error comes from opening the
+// file, not from the existing-file refusal.
+func TestSupportBundleMissingOutputDirIsNotRefusedEarly(t *testing.T) {
+	// Not t.Parallel(): changes the process cwd.
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.WriteFile("plain-file", []byte("x"), 0600))
+
+	for _, path := range []string{"missing/bundle.tar.gz", "plain-file/bundle.tar.gz"} {
+		t.Run(path, func(t *testing.T) {
+			factory := &fakeFactory{local: newFakeClient()}
+			_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "webhook", flagClusters: "local"}})
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "already exists")
+			if path == "missing/bundle.tar.gz" {
+				assert.ErrorIs(t, err, fs.ErrNotExist)
+			}
+		})
 	}
 }
