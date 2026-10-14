@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/credhelper"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
 // goos is runtime.GOOS behind a package var, so ResolveDir's
@@ -201,7 +203,11 @@ type Effective struct {
 	// server entry, or none - also none when a RANCHER_CLI_URL that names
 	// another server cleared the entry's CA.
 	CASource CASource
-	Token    string
+	// TLSRemedy words the remedy of a certificate failure from the server
+	// for the invocation that reads this connection; the zero value gives
+	// the wording of a command that takes --url and --cacert.
+	TLSRemedy tlstrust.Remedy
+	Token     string
 	// KnownServers is the configured server inventory (name → URL),
 	// carried so a downstream consumer that finds URL empty (no current
 	// server, no env) can answer with the re-login shortcut instead of
@@ -303,7 +309,37 @@ func (c *Config) connection() (eff Effective, name string, s Server, serverErr e
 	if v := EnvCACertFor(eff.URL); v != "" {
 		eff.CA, eff.CASource = v, CASource{Kind: CASourceVariable}
 	}
+	eff.TLSRemedy = tlsRemedyFor(eff)
 	return eff, name, s, serverErr
+}
+
+// tlsRemedyFor words a certificate failure for an ordinary command that
+// connects with eff: the CA is saved on the current server entry or comes
+// from RANCHER_CLI_URL's server alone, and RANCHER_CLI_CACERT may have
+// supplied it. With no URL nothing connects, so the wording stays zero.
+func tlsRemedyFor(eff Effective) tlstrust.Remedy {
+	if eff.URL == "" {
+		return tlstrust.Remedy{}
+	}
+	fromVariable := eff.CASource.Kind == CASourceVariable
+	if eff.ServerName == "" {
+		r := tlstrust.Remedy{URL: EnvURL, Fix: "a different CA"}
+		if fromVariable {
+			r.CA = "; the CA came from " + EnvCACert + " - set it to the server's CA"
+		} else {
+			r.CA = "; set " + EnvCACert + " to it"
+		}
+		return r
+	}
+	name := clierr.ShellQuote(eff.ServerName)
+	save := clierr.Rancher + " config update-server " + name + " --cacert <file>"
+	r := tlstrust.Remedy{URL: "the server URL saved for entry " + name, Fix: "a different CA"}
+	if fromVariable {
+		r.CA = "; the CA came from " + EnvCACert + " - unset it, or set it to the server's CA; to save a CA for this entry, run: " + save
+	} else {
+		r.CA = "; save it for this entry with: " + save
+	}
+	return r
 }
 
 // Effective merges env vars over the current server. Env wins.

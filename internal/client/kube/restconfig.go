@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"k8s.io/client-go/discovery"
@@ -89,6 +90,12 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	if caPEM != "" {
 		rc.TLSClientConfig = rest.TLSClientConfig{CAData: []byte(caPEM)}
 	}
+	// A certificate failure of a request to the Rancher origin becomes
+	// TLS_TRUST. HTTPClient copies rc, so every client built from it carries
+	// the wrapper; a config that does not come from here (the direct
+	// endpoint of a kubeconfig's exec entry) is not the Rancher server and
+	// stays unwrapped.
+	rc.WrapTransport = tlstrust.WrapTransportFor(host, eff.TLSRemedy)
 	return rc, nil
 }
 

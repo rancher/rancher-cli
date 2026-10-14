@@ -2,6 +2,7 @@ package access
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -69,8 +70,29 @@ func callerPreflight(ctx context.Context, callerClient engine.ClusterClient, clu
 		return callerIdentity{}, clierr.New(clierr.CodeRBAC,
 			fmt.Sprintf("you have no access to cluster %s; %s", clusterID, noClusterAccessDetail))
 	default:
+		if ce := tlsTrustCause(r.err); ce != nil {
+			return callerIdentity{}, ce
+		}
 		return callerIdentity{}, r.err
 	}
+}
+
+// tlsTrustCause returns the TLS_TRUST error in err's chain, or nil. A
+// review post that got no answer is a retryable GENERIC error a fan-out may
+// degrade; when the Rancher server's certificate failed, the TLS_TRUST error
+// is its cause, and a step that ends the command returns that one instead.
+func tlsTrustCause(err error) *clierr.Error {
+	for err != nil {
+		ce, ok := errors.AsType[*clierr.Error](err)
+		if !ok {
+			return nil
+		}
+		if ce.Code == clierr.CodeTLSTrust {
+			return ce
+		}
+		err = ce.Unwrap()
+	}
+	return nil
 }
 
 // planIdentity runs the identity protocol after the caller's own identity

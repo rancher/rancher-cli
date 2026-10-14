@@ -517,7 +517,7 @@ func commitUpdate(cfg *config.Config, name string, src UpdateSource, probe Probe
 func TLSPreflight(ctx context.Context, serverURL, caPEM string) (string, error) {
 	v, err := provider.RancherVersion(ctx, config.Effective{URL: serverURL, CA: caPEM})
 	if err != nil {
-		if ce := tlstrust.Classify(err, ServerLabel(serverURL), time.Now()); ce != nil {
+		if ce := tlstrust.Classify(err, ServerLabel(serverURL), time.Now(), tlstrust.Remedy{}); ce != nil {
 			return "", ce
 		}
 		return "", nil

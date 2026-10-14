@@ -117,13 +117,13 @@ func TestClassifyNotATLSFailure(t *testing.T) {
 	client := &http.Client{Transport: &http.Transport{}}
 	_, err := client.Get("http://127.0.0.1:0")
 	require.Error(t, err)
-	assert.Nil(t, Classify(err, "example.com", time.Now()))
+	assert.Nil(t, Classify(err, "example.com", time.Now(), Remedy{}))
 }
 
 func TestClassifyUnknownAuthority(t *testing.T) {
 	leaf, cert := selfSignedLeaf(t, "rancher.example")
 	err := dialFail(t, leaf, x509.NewCertPool(), "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
 	assert.Contains(t, ce.Message, "--cacert")
@@ -140,7 +140,7 @@ func TestClassifyHostnameMismatch(t *testing.T) {
 	roots.AddCert(ca)
 	leaf := genLeaf(t, ca, caKey, "wronghost.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	err := dialFail(t, leaf, roots, "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindHostnameMismatch, details.Kind)
@@ -153,7 +153,7 @@ func TestClassifyExpired(t *testing.T) {
 	roots.AddCert(ca)
 	leaf := genLeaf(t, ca, caKey, "rancher.example", time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour))
 	err := dialFail(t, leaf, roots, "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindExpired, details.Kind)
@@ -166,7 +166,7 @@ func TestClassifyNotYetValid(t *testing.T) {
 	roots.AddCert(ca)
 	leaf := genLeaf(t, ca, caKey, "rancher.example", time.Now().Add(time.Hour), time.Now().Add(2*time.Hour))
 	err := dialFail(t, leaf, roots, "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindNotYetValid, details.Kind)
@@ -180,7 +180,7 @@ func TestClassifyNotYetValid(t *testing.T) {
 // fields.
 func TestClassifyNullableDetailsOnEmptyChain(t *testing.T) {
 	err := &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}
-	ce := Classify(err, "example.com", time.Now())
+	ce := Classify(err, "example.com", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindUnknownAuthority, details.Kind)
@@ -220,7 +220,7 @@ func TestClassifyInvalidChainDefaultsUnrecognizedReason(t *testing.T) {
 	err := &tls.CertificateVerificationError{
 		Err: x509.CertificateInvalidError{Reason: x509.TooManyIntermediates},
 	}
-	ce := Classify(err, "example.com", time.Now())
+	ce := Classify(err, "example.com", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindInvalidChain, details.Kind)
@@ -300,7 +300,7 @@ func TestFingerprintIsSHA256HexOfDER(t *testing.T) {
 func TestClassifyProxyObservedChainDiffersFromDirect(t *testing.T) {
 	proxyLeaf, proxyCert := selfSignedLeaf(t, "proxy-observed")
 	err := dialFail(t, proxyLeaf, x509.NewCertPool(), "proxy-observed")
-	ce := Classify(err, "proxy-observed", time.Now())
+	ce := Classify(err, "proxy-observed", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, Fingerprint(proxyCert), details.Fingerprint)
@@ -316,7 +316,7 @@ func TestClassifyExpiredDetailsDescribeTheFailingCertificate(t *testing.T) {
 	roots.AddCert(ca)
 	leaf := genLeaf(t, ca, caKey, "rancher.example", time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour))
 	err := dialFail(t, leaf, roots, "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindExpired, details.Kind)
@@ -338,7 +338,7 @@ func TestClassifyUnknownAuthorityDetailsDescribeTheCandidateAnchor(t *testing.T)
 	// anchor above the leaf to find.
 	leaf.Certificate = append(leaf.Certificate, ca.Raw)
 	err := dialFail(t, leaf, x509.NewCertPool(), "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindUnknownAuthority, details.Kind)
@@ -367,7 +367,7 @@ func TestClassifyNotYetValidIntermediate(t *testing.T) {
 		},
 		Err: x509.CertificateInvalidError{Cert: future, Reason: x509.Expired},
 	}
-	ce := Classify(err, "rancher.example", now)
+	ce := Classify(err, "rancher.example", now, Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindNotYetValid, details.Kind,
@@ -415,7 +415,7 @@ func TestClassifyForOriginAttribution(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := synthURLErr(t, tc.terminal, leaf)
 			want := originOf(t, tc.want)
-			ce := ClassifyForOrigin(err, want, time.Now())
+			ce := ClassifyForOrigin(err, want, time.Now(), Remedy{})
 			kind, ok := KindOf(err, want, time.Now())
 			if !tc.attributed {
 				assert.Nil(t, ce)
@@ -495,13 +495,13 @@ func TestClassifyForOriginAfterSameOriginRedirect(t *testing.T) {
 	assert.Equal(t, int32(2), connections.Load(), "the redirect was followed and re-dialed")
 
 	want := originOf(t, "https://IDP.example:"+port)
-	ce := ClassifyForOrigin(err, want, time.Now())
+	ce := ClassifyForOrigin(err, want, time.Now(), Remedy{})
 	require.NotNil(t, ce, "the failure at the redirected spelling belongs to the original origin")
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
 	kind, ok := KindOf(err, want, time.Now())
 	require.True(t, ok)
 	assert.Equal(t, KindUnknownAuthority, kind)
-	assert.Nil(t, ClassifyForOrigin(err, originOf(t, "https://other.example:"+port), time.Now()))
+	assert.Nil(t, ClassifyForOrigin(err, originOf(t, "https://other.example:"+port), time.Now(), Remedy{}))
 }
 
 // TestClassifyForOriginRejectsInvalidInputs asserts the nil-returning
@@ -510,9 +510,9 @@ func TestClassifyForOriginAfterSameOriginRedirect(t *testing.T) {
 func TestClassifyForOriginRejectsInvalidInputs(t *testing.T) {
 	_, leaf := selfSignedLeaf(t, "idp.example")
 	want := originOf(t, "https://idp.example")
-	assert.Nil(t, ClassifyForOrigin(&tls.CertificateVerificationError{UnverifiedCertificates: []*x509.Certificate{leaf}, Err: x509.UnknownAuthorityError{}}, want, time.Now()))
-	assert.Nil(t, ClassifyForOrigin(synthURLErr(t, "::not a url", leaf), want, time.Now()))
-	assert.Nil(t, ClassifyForOrigin(synthURLErr(t, "https://idp.example/", leaf), httpx.Origin{}, time.Now()))
+	assert.Nil(t, ClassifyForOrigin(&tls.CertificateVerificationError{UnverifiedCertificates: []*x509.Certificate{leaf}, Err: x509.UnknownAuthorityError{}}, want, time.Now(), Remedy{}))
+	assert.Nil(t, ClassifyForOrigin(synthURLErr(t, "::not a url", leaf), want, time.Now(), Remedy{}))
+	assert.Nil(t, ClassifyForOrigin(synthURLErr(t, "https://idp.example/", leaf), httpx.Origin{}, time.Now(), Remedy{}))
 	_, ok := KindOf(errors.New("dial tcp: connection refused"), want, time.Now())
 	assert.False(t, ok)
 }
@@ -581,7 +581,7 @@ func TestKindOfRealHandshakePerKind(t *testing.T) {
 func TestClassifyUnknownAuthorityLeafOnlyLabelsServingCertificate(t *testing.T) {
 	leaf, cert := selfSignedLeaf(t, "rancher.example")
 	err := dialFail(t, leaf, x509.NewCertPool(), "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.True(t, details.IsLeafCertificate())
@@ -602,7 +602,7 @@ func TestClassifyUnknownAuthorityWithAnchorLabelsCertificateAuthority(t *testing
 	leaf := genLeaf(t, ca, caKey, "rancher.example", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	leaf.Certificate = append(leaf.Certificate, ca.Raw)
 	err := dialFail(t, leaf, x509.NewCertPool(), "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.False(t, details.IsLeafCertificate())
@@ -631,7 +631,7 @@ func TestClassifyNotYetValidCarriesNotBefore(t *testing.T) {
 	notBefore := time.Now().Add(time.Hour)
 	leaf := genLeaf(t, ca, caKey, "rancher.example", notBefore, time.Now().Add(2*time.Hour))
 	err := dialFail(t, leaf, roots, "rancher.example")
-	ce := Classify(err, "rancher.example", time.Now())
+	ce := Classify(err, "rancher.example", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindNotYetValid, details.Kind)
@@ -653,7 +653,7 @@ func TestClassifyForOriginMismatchMessageNamesPort(t *testing.T) {
 	terminal, perr := url.Parse(urlErr.URL)
 	require.NoError(t, perr)
 	want := originOf(t, urlErr.URL)
-	ce := ClassifyForOrigin(err, want, time.Now())
+	ce := ClassifyForOrigin(err, want, time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Equal(t, KindHostnameMismatch, ce.Details.(Details).Kind)
 	require.ErrorContains(t, ce, "is not valid for "+terminal.Host+";", "host and port must both appear")

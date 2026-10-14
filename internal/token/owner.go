@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 )
@@ -219,6 +220,9 @@ func requestOwner(ctx context.Context, client *http.Client, base, clusterID, bea
 	if err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			return "", cerr
+		}
+		if ce := tlstrust.TypedError(err); ce != nil {
+			return "", ce
 		}
 		return "", clierr.Retryable(clierr.CodeGeneric, "posting a SelfSubjectReview: "+err.Error())
 	}

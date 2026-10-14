@@ -1580,6 +1580,23 @@ redirect to a different origin is never followed: the request fails with a
 carry credentials to a server the configured trust was never meant to
 cover.
 
+A certificate failure from the Rancher server is a `TLS_TRUST` error (exit
+10, not retryable) on every command that stops on the failed request. Two
+groups keep their own handling: the revoke commands (`auth logout`, `auth
+delete-token`, `config delete-server`) report it in their `notRevoked` list,
+and steps that wait or collect across many requests (`--wait`,
+`support-bundle`, the per-cluster notes of `access`, the degraded parts of
+`inspect`) retry it or record it as they do any failed request. The error's
+`details` hold the certificate's kind, subject, issuer and fingerprint (for
+`auth login` and the sign-in of kubectl's credential plugin, inside the
+login failure's `primary` error), and the message names the remedy for
+the command that failed: a command that takes `--cacert` names it, `auth get-token` and `rancher
+token` name their own flags, a command that reads a server entry names `rancher
+config update-server`, and a server taken from `RANCHER_CLI_URL` names
+`RANCHER_CLI_CACERT`. When `RANCHER_CLI_CACERT` supplied the CA, the message
+says so. A certificate failure of an `https://` proxy is not a `TLS_TRUST`
+error: it keeps the transport error's text.
+
 There is no skip-verify flag anywhere in the native surface, ever: a
 self-signed or private-CA server is used by pinning its CA (`--cacert`,
 `RANCHER_CLI_CACERT` or the stored server entry's CA), never by turning verification off. The one

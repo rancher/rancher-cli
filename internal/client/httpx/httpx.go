@@ -14,6 +14,10 @@ type Options struct {
 	CACert   string
 	Insecure bool
 	Timeout  time.Duration
+	// WrapTransport, when set, wraps the client's transport. A caller that
+	// must see every transport error of the client (to classify it) installs
+	// its wrapper here; httpx cannot import the classifier itself.
+	WrapTransport func(http.RoundTripper) http.RoundTripper
 }
 
 // DefaultTimeout is the client-level request bound callers reach for when
@@ -51,8 +55,12 @@ func New(o Options) (*http.Client, error) {
 		tlsConfig.RootCAs = roots
 	}
 
+	var transport http.RoundTripper = newTransport(tlsConfig)
+	if o.WrapTransport != nil {
+		transport = o.WrapTransport(transport)
+	}
 	return &http.Client{
-		Transport:     newTransport(tlsConfig),
+		Transport:     transport,
 		Timeout:       o.Timeout,
 		CheckRedirect: RejectCrossOriginRedirect,
 	}, nil

@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -117,9 +118,43 @@ func (d Details) TextDetails() []string {
 	return lines
 }
 
-// passCACertRemedy is the remedy Classify gives an unknown-authority
-// failure: the CA is passed with --cacert.
-const passCACertRemedy = " and pass it with --cacert"
+// Remedy words the part of a certificate failure message that depends on
+// the command: how the CA reaches it, what the server URL is called, and
+// which option "cannot fix" a failure the CA does not cause. Each empty
+// field takes the wording of the auth login preflight, so the zero value
+// gives the message of a command that takes --url and --cacert.
+type Remedy struct {
+	// CA follows the sentence about obtaining the CA of an unknown-authority
+	// failure and carries its own connector (" and pass it with --cacert").
+	CA string
+	// URL is what a hostname mismatch tells the user to check against the
+	// certificate's hostname ("--url").
+	URL string
+	// Fix is the option a hostname mismatch, an expired and a not-yet-valid
+	// certificate say cannot fix the failure ("--cacert").
+	Fix string
+}
+
+func (r Remedy) ca() string {
+	if r.CA == "" {
+		return " and pass it with --cacert"
+	}
+	return r.CA
+}
+
+func (r Remedy) url() string {
+	if r.URL == "" {
+		return "--url"
+	}
+	return r.URL
+}
+
+func (r Remedy) fix() string {
+	if r.Fix == "" {
+		return "--cacert"
+	}
+	return r.Fix
+}
 
 // UnknownAuthorityMessage is the message of an unknown-authority failure.
 // leaf is Details.IsLeafCertificate. remedy follows the sentence about
@@ -145,7 +180,7 @@ func UnknownAuthorityMessage(leaf bool, remedy string) string {
 // certificate verification failure at all (DNS, connection-refused, timeout,
 // and similar errors are the caller's to classify as ordinary connectivity
 // failures).
-func Classify(err error, host string, now time.Time) *clierr.Error {
+func Classify(err error, host string, now time.Time, r Remedy) *clierr.Error {
 	kind, chain, offending, ok := classifyKind(err, host, now)
 	if !ok {
 		return nil
@@ -174,21 +209,21 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 	}
 	switch kind {
 	case KindUnknownAuthority:
-		msg := UnknownAuthorityMessage(details.leaf, passCACertRemedy)
+		msg := UnknownAuthorityMessage(details.leaf, r.ca())
 		return clierr.New(clierr.CodeTLSTrust, msg).
 			WithDetails(details)
 	case KindHostnameMismatch:
 		return clierr.New(clierr.CodeTLSTrust,
 			"the server's certificate is not valid for "+host+
-				"; check that --url matches the certificate's hostname; --cacert cannot fix a hostname mismatch").
+				"; check that "+r.url()+" matches the certificate's hostname; "+r.fix()+" cannot fix a hostname mismatch").
 			WithDetails(details)
 	case KindExpired:
 		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate has expired; ask the server operator to renew it; --cacert cannot fix an expired certificate").
+			"the server's certificate has expired; ask the server operator to renew it; "+r.fix()+" cannot fix an expired certificate").
 			WithDetails(details)
 	case KindNotYetValid:
 		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate is not yet valid; check the local clock, or ask the server operator to reissue it; --cacert cannot fix this").
+			"the server's certificate is not yet valid; check the local clock, or ask the server operator to reissue it; "+r.fix()+" cannot fix this").
 			WithDetails(details)
 	default: // KindInvalidChain
 		return clierr.New(clierr.CodeTLSTrust,
@@ -206,14 +241,95 @@ func Classify(err error, host string, now time.Time) *clierr.Error {
 // as the Rancher server's would produce a confident, specific, and wrong
 // diagnosis. Returns nil when err carries no *url.Error, the terminal URL
 // does not parse, or want is invalid.
-func ClassifyForOrigin(err error, want httpx.Origin, now time.Time) *clierr.Error {
+func ClassifyForOrigin(err error, want httpx.Origin, now time.Time, r Remedy) *clierr.Error {
 	if !terminalOriginIs(err, want) {
 		return nil
 	}
 	// host[:port], not the bare hostname: Classify verifies against the
 	// name and names the same string in its hostname-mismatch message, so
 	// two same-named servers on different ports stay distinguishable.
-	return Classify(err, want.HostPort(), now)
+	return Classify(err, want.HostPort(), now, r)
+}
+
+// TypedError returns the TLS_TRUST error in err's chain, or nil. A site that
+// would otherwise turn a transport error into plain text returns it
+// unchanged, so the code, message and details a classifying transport
+// produced reach the caller.
+func TypedError(err error) *clierr.Error {
+	ce, ok := errors.AsType[*clierr.Error](err)
+	if !ok || ce.Code != clierr.CodeTLSTrust {
+		return nil
+	}
+	return ce
+}
+
+// WrapTransport returns a wrapper that makes a certificate failure of a
+// request to server a TLS_TRUST error worded by r. The wrapped transport's
+// error stays reachable as the cause. A request to another origin, an error
+// that is not a certificate failure and a failure to verify an https proxy
+// are returned unchanged: Go verifies that proxy with the client's own
+// roots, which are the Rancher CA, and reports the failure under the Rancher
+// request URL, so classifying it would blame the server for the proxy's
+// certificate.
+func WrapTransport(server httpx.Origin, r Remedy) func(http.RoundTripper) http.RoundTripper {
+	return func(next http.RoundTripper) http.RoundTripper {
+		return &classifyingTransport{next: next, server: server, remedy: r}
+	}
+}
+
+// WrapTransportFor is WrapTransport for the origin of serverURL. It returns
+// nil, which every caller treats as no wrapper, when serverURL has no usable
+// origin: a request cannot then be attributed to the server.
+func WrapTransportFor(serverURL string, r Remedy) func(http.RoundTripper) http.RoundTripper {
+	u, err := url.Parse(serverURL)
+	if err != nil {
+		return nil
+	}
+	origin, err := httpx.OriginOf(u)
+	if err != nil {
+		return nil
+	}
+	return WrapTransport(origin, r)
+}
+
+type classifyingTransport struct {
+	next   http.RoundTripper
+	server httpx.Origin
+	remedy Remedy
+}
+
+// WrappedRoundTripper returns the transport this one wraps. client-go cancels
+// a timed-out request by walking its transport wrappers through this method;
+// without it, a client-go client with a timeout logs that it cannot cancel.
+func (t *classifyingTransport) WrappedRoundTripper() http.RoundTripper { return t.next }
+
+func (t *classifyingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// http.Client applies its Timeout to a transport it does not recognize
+	// through the deprecated Request.Cancel channel as well as the context
+	// deadline, and a transport that sees both may report either: "request
+	// canceled" instead of the deadline error the same client reports
+	// without this wrapper. The context carries the deadline, so the inner
+	// transport gets the request without the channel.
+	if req.Cancel != nil { //nolint:staticcheck // the channel is set by http.Client itself; this is the only way to withhold it
+		withoutCancel := *req
+		withoutCancel.Cancel = nil //nolint:staticcheck // see above
+		req = &withoutCancel
+	}
+	resp, err := t.next.RoundTrip(req)
+	if err == nil {
+		return resp, nil
+	}
+	if opErr, ok := errors.AsType[*net.OpError](err); ok && opErr.Op == "proxyconnect" {
+		return resp, err
+	}
+	origin, oerr := httpx.OriginOf(req.URL)
+	if oerr != nil || !origin.Equal(t.server) {
+		return resp, err
+	}
+	if ce := Classify(err, t.server.HostPort(), time.Now(), t.remedy); ce != nil {
+		return resp, ce.WithCause(err)
+	}
+	return resp, err
 }
 
 // KindOf reports the certificate-verification failure kind of err when the

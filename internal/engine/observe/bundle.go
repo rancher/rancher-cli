@@ -55,7 +55,12 @@ type bundleManifest struct {
 	Items         []manifestItem `json:"items"`
 }
 
-func errorStatus(err error) string { return fmt.Sprintf("error: %s", err) }
+// errorStatus is the manifest status of a failed collector. The manifest is
+// written into the archive, which no invocation expands remedy commands in,
+// so the remedy markers an error message carries are removed here.
+func errorStatus(err error) string {
+	return clierr.ExpandRemedies(fmt.Sprintf("error: %s", err), "")
+}
 
 type supportBundleCmd struct {
 	clients engine.ClusterClientFactory
@@ -502,7 +507,7 @@ func (o logOutcome) status() string {
 	if len(o.failed) == 0 {
 		return statusCollected
 	}
-	return fmt.Sprintf("error: %d of %d container logs not collected; %s", len(o.failed), o.containers, o.failed[0])
+	return clierr.ExpandRemedies(fmt.Sprintf("error: %d of %d container logs not collected; %s", len(o.failed), o.containers, o.failed[0]), "")
 }
 
 // warnings names every missing log once, so a caller reading the result

@@ -67,12 +67,12 @@ func resolveProviderLoginToken(ctx context.Context, server, caPEM string, idpCli
 		// acquire gathered must survive the reclassification, because it is
 		// the only record of a token that may have been left behind.
 		if ae, ok := errors.AsType[*token.AcquireError](err); ok {
-			if ce := tlstrust.ClassifyForOrigin(ae.Err, serverOrigin, time.Now()); ce != nil {
+			if ce := tlstrust.ClassifyForOrigin(ae.Err, serverOrigin, time.Now(), tlstrust.Remedy{}); ce != nil {
 				return token.LoginCredential{}, ae.WithPrimary(ce)
 			}
 			return token.LoginCredential{}, ae
 		}
-		if ce := tlstrust.ClassifyForOrigin(err, serverOrigin, time.Now()); ce != nil {
+		if ce := tlstrust.ClassifyForOrigin(err, serverOrigin, time.Now(), tlstrust.Remedy{}); ce != nil {
 			return token.LoginCredential{}, ce
 		}
 		return token.LoginCredential{}, err

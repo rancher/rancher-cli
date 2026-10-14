@@ -2035,7 +2035,7 @@ func TestLoginTLSFailureKeepsCertificateFactsInText(t *testing.T) {
 	require.NoError(t, perr)
 	origin, perr := httpx.OriginOf(u)
 	require.NoError(t, perr)
-	primary := tlstrust.ClassifyForOrigin(err, origin, time.Now())
+	primary := tlstrust.ClassifyForOrigin(err, origin, time.Now(), tlstrust.Remedy{})
 	require.NotNil(t, primary)
 	inner, ok := primary.Details.(clierr.TextDetails)
 	require.True(t, ok, "the TLS classification carries text details: %T", primary.Details)

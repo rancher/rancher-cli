@@ -14,7 +14,7 @@ cp wrong-ca.pem $WORK/ca.pem
 # Without the variable the saved CA is the one used, and it does not fit.
 env RANCHER_CLI_CACERT=
 ! exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name ex
-stderr 'certificate'
+stderr 'TLS_TRUST'
 
 # With it, the variable wins over the saved CA.
 env RANCHER_CLI_CACERT=$TEST_RANCHER_CACERT
@@ -30,7 +30,7 @@ jsonquery stdout kind ExecCredential
 # A flag beats the variable: a CA that does not fit fails the call even
 # though the variable would have fit.
 ! exec rancher auth get-token --server $TEST_RANCHER_URL --cluster c-test --name flagged --cacert wrong-ca.pem
-stderr 'certificate'
+stderr 'TLS_TRUST'
 
 -- token.txt --
 e2e:secret

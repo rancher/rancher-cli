@@ -2,12 +2,15 @@ package token
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 )
 
 // V3TokensPath is the management.cattle.io/v3 Token path through the
@@ -51,7 +54,7 @@ func revokeToken(ctx context.Context, client *http.Client, base string, ref Toke
 		}
 		logout = strconv.Itoa(status)
 		if err != nil && status == 0 {
-			logout = err.Error()
+			logout = revokeErrorText(err)
 		}
 	}
 	fail := func(answer string) RevokeOutcome {
@@ -72,7 +75,7 @@ func revokeToken(ctx context.Context, client *http.Client, base string, ref Toke
 	req.Header.Set("Authorization", "Bearer "+bearer)
 	resp, _, err := httpx.Do(client, req)
 	if err != nil {
-		return fail(err.Error())
+		return fail(revokeErrorText(err))
 	}
 	out.Status = resp.StatusCode
 	switch resp.StatusCode {
@@ -84,6 +87,21 @@ func revokeToken(ctx context.Context, client *http.Client, base string, ref Toke
 		return fail(fmt.Sprintf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
 	return out
+}
+
+// revokeErrorText is the text a failed revoke request records, in the
+// outcome's error and in the stamp a retired token's entry keeps. A
+// certificate failure reaches here as the classified error inside the
+// request's url.Error; the text is rebuilt as that url.Error around the
+// transport error, which is what an unclassified client produces, so the
+// recorded text does not depend on which client sent the request.
+func revokeErrorText(err error) string {
+	ce := tlstrust.TypedError(err)
+	ue, ok := errors.AsType[*url.Error](err)
+	if ce == nil || !ok || ce.Unwrap() == nil {
+		return err.Error()
+	}
+	return (&url.Error{Op: ue.Op, URL: ue.URL, Err: ce.Unwrap()}).Error()
 }
 
 // deletesWithOwnBearer reports whether bearer is the v3 token ref's own

@@ -370,7 +370,7 @@ a separate line to skip past.
 
 Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 `4` not-found · `5` conflict/precondition · `6` RBAC · `9` Prime required ·
-`14` credential store unavailable ·
+`10` TLS trust · `14` credential store unavailable ·
 `130` interrupted (the operator ended the command; not a failure to retry) ·
 `1` generic.
 
@@ -382,6 +382,10 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 - `retryable: true` (timeouts, conflicts except a create that found the name
   taken, a 429, a 502/503/504, or another 5xx whose body is not a Kubernetes
   Status) → retry is reasonable; otherwise do not repeat the identical call.
+- `TLS_TRUST` (exit `10`) means the server's certificate failed
+  verification: act on the remedy the message names (a different CA, the
+  server URL, or the server operator), or tell the user; never retry the
+  same call. It is not retryable.
 - `AMBIGUOUS_SELECTION` returns a `candidates` list - pick with the user, don't
   guess.
 - `CREDENTIAL_STORE_UNAVAILABLE` (exit `14`, retryable) means the keychain

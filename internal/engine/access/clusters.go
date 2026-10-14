@@ -197,6 +197,9 @@ func (c *clustersCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.P
 		if r.kind == outcomeNoClusterAccess {
 			return runtime.Result{}, clierr.New(clierr.CodeRBAC, "you have no access to the management cluster; "+noClusterAccessDetail)
 		}
+		if ce := tlsTrustCause(r.err); ce != nil {
+			return runtime.Result{}, ce
+		}
 		return runtime.Result{}, budgetError(ctx, r.err, "the caller's identity review")
 	}
 

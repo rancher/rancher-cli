@@ -112,6 +112,34 @@ func loginVariableRemedy(urlPath bool, name string) string {
 		"rancher config update-server " + clierr.ShellQuote(name) + " --cacert <file>"
 }
 
+// loginSaveCARemedy is the remedy of an unknown-authority failure of a
+// plain login's verify step: the CA is the one the entry saves, so the
+// entry is where to change it.
+func loginSaveCARemedy(name string) string {
+	return "save it for this entry with: rancher config update-server " + clierr.ShellQuote(name) + " --cacert <file>"
+}
+
+// verifyTLSRemedy words a certificate failure of the verify step. The
+// --url path takes its CA from a flag, a prompt or the variable and may be
+// creating the entry; the plain path signs in to an existing entry, whose
+// saved URL and CA are what to change. Login is not a remedy-scan command,
+// so every clause is plain text.
+func verifyTLSRemedy(delegated, viaVariable bool, name string) tlstrust.Remedy {
+	if delegated {
+		if viaVariable {
+			return tlstrust.Remedy{CA: "; " + loginVariableRemedy(true, name)}
+		}
+		return tlstrust.Remedy{}
+	}
+	r := tlstrust.Remedy{URL: "the server URL saved for entry " + clierr.ShellQuote(name), Fix: "a different CA"}
+	if viaVariable {
+		r.CA = "; " + loginVariableRemedy(false, name)
+	} else {
+		r.CA = "; " + loginSaveCARemedy(name)
+	}
+	return r
+}
+
 // variableTrustFailure rewrites an unknown-authority TLS_TRUST error of a
 // login that connected with RANCHER_CLI_CACERT: the error names the
 // variable instead of --cacert as the CA to change. The remedy goes into
@@ -637,9 +665,15 @@ func (l loginCmd) authenticateAndStore(
 	// says so.
 	noVerify := in.Bool("no-verify")
 	if !viaProvider && !noVerify && l.verify != nil {
-		owner, verr := l.verify(ctx, config.Effective{URL: serverURL, CA: connBytes, Token: bearer, ServerName: name})
+		owner, verr := l.verify(ctx, config.Effective{
+			URL: serverURL, CA: connBytes, Token: bearer, ServerName: name,
+			TLSRemedy: verifyTLSRemedy(delegated, viaVariable, name),
+		})
 		if verr != nil {
-			if ce, ok := errors.AsType[*clierr.Error](verr); ok && !delegated {
+			// A token for a server whose certificate fails verification helps
+			// no later command, so a certificate failure never suggests
+			// storing it unchecked.
+			if ce, ok := errors.AsType[*clierr.Error](verr); ok && !delegated && ce.Code != clierr.CodeTLSTrust {
 				verr = ce.WithMessage(ce.Message + "; re-run with --no-verify to store the token without checking it").
 					WithHint("")
 			}
@@ -793,9 +827,15 @@ func decorateDelegatedAuthFailure(ctx context.Context, dir string, authErr error
 // body and the hint, but --no-verify is a real way out of a verify failure
 // (unlike a plain auth failure, where it would just fail again the same
 // way), so it is folded into the body as a secondary option instead of
-// fighting the undo guidance for the one hint slot.
+// fighting the undo guidance for the one hint slot. A TLS_TRUST failure gets
+// no --no-verify option: a token stored for a server whose certificate fails
+// helps no later command.
 func decorateDelegatedVerifyFailure(ctx context.Context, dir string, verifyErr error, snap register.AuthSnapshot) error {
-	return decorateDelegatedFailure(ctx, dir, verifyErr, snap, ", or bypass verification with --no-verify")
+	extra := ", or bypass verification with --no-verify"
+	if ce, ok := errors.AsType[*clierr.Error](verifyErr); ok && ce.Code == clierr.CodeTLSTrust {
+		extra = ""
+	}
+	return decorateDelegatedFailure(ctx, dir, verifyErr, snap, extra)
 }
 
 // decorateDelegatedFailure is the shared body behind decorateDelegatedAuthFailure

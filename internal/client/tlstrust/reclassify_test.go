@@ -42,7 +42,7 @@ func TestClassifyUntypedUnknownAuthorityLeafOnly(t *testing.T) {
 	leafTLS := genLeaf(t, ca, caKey, "rancher.test", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	leaf := leafOf(t, leafTLS)
 
-	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf}), "rancher.test:443", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf}), "rancher.test:443", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
 	assert.Contains(t, ce.Message, "unknown authority")
@@ -63,7 +63,7 @@ func TestClassifyUntypedUnknownAuthorityFullChain(t *testing.T) {
 	leafTLS := genLeaf(t, ca, caKey, "rancher.test", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	leaf := leafOf(t, leafTLS)
 
-	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "rancher.test:443", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "rancher.test:443", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindUnknownAuthority, details.Kind)
@@ -79,7 +79,7 @@ func TestClassifyUntypedExpired(t *testing.T) {
 	leafTLS := genLeaf(t, ca, caKey, "rancher.test", time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour))
 	leaf := leafOf(t, leafTLS)
 
-	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "rancher.test:443", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "rancher.test:443", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Contains(t, ce.Message, "expired")
 	assert.Equal(t, KindExpired, ce.Details.(Details).Kind)
@@ -92,7 +92,7 @@ func TestClassifyUntypedNotYetValid(t *testing.T) {
 	leafTLS := genLeaf(t, ca, caKey, "rancher.test", time.Now().Add(time.Hour), time.Now().Add(2*time.Hour))
 	leaf := leafOf(t, leafTLS)
 
-	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "rancher.test:443", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "rancher.test:443", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Contains(t, ce.Message, "not yet valid")
 	assert.Equal(t, KindNotYetValid, ce.Details.(Details).Kind)
@@ -107,7 +107,7 @@ func TestClassifyUntypedHostnameMismatch(t *testing.T) {
 	leafTLS := genLeaf(t, ca, caKey, "good.test", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	leaf := leafOf(t, leafTLS)
 
-	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "other.test:443", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "other.test:443", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Contains(t, ce.Message, "not valid for other.test:443")
 	assert.Equal(t, KindHostnameMismatch, ce.Details.(Details).Kind)
@@ -126,7 +126,7 @@ func TestClassifyUntypedMatchingHostIsNotMismatch(t *testing.T) {
 	leafTLS := genLeaf(t, ca, caKey, "rancher.test", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	leaf := leafOf(t, leafTLS)
 
-	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "rancher.test:443", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, ca}), "rancher.test:443", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Equal(t, KindUnknownAuthority, ce.Details.(Details).Kind)
 }
@@ -141,7 +141,7 @@ func TestClassifyUntypedEmptyHost(t *testing.T) {
 	leafTLS := genLeaf(t, ca, caKey, "rancher.test", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 	leaf := leafOf(t, leafTLS)
 
-	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf}), "", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf}), "", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Equal(t, KindUnknownAuthority, ce.Details.(Details).Kind)
 }
@@ -160,7 +160,7 @@ func TestClassifyUntypedExtraneousStaleCertDoesNotReadAsExpired(t *testing.T) {
 	staleTLS := genLeaf(t, staleCA, staleKey, "stale.test", time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour))
 	stale := leafOf(t, staleTLS)
 
-	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, stale}), "rancher.test:443", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{leaf, stale}), "rancher.test:443", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindUnknownAuthority, details.Kind)
@@ -173,7 +173,7 @@ func TestClassifyUntypedExtraneousStaleCertDoesNotReadAsExpired(t *testing.T) {
 // panic or fabricate metadata.
 func TestClassifyUntypedEmptyChain(t *testing.T) {
 	t.Parallel()
-	ce := Classify(untypedVerifyError(nil), "rancher.test:443", time.Now())
+	ce := Classify(untypedVerifyError(nil), "rancher.test:443", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	details := ce.Details.(Details)
 	assert.Equal(t, KindInvalidChain, details.Kind)
@@ -190,12 +190,12 @@ func TestClassifyUntypedBracketedIPv6HostWithoutPortIsNotMismatch(t *testing.T) 
 	t.Parallel()
 	_, leaf := selfSignedLeaf(t, "::1")
 	for _, host := range []string{"[::1]", "[::1]:8443"} {
-		ce := Classify(untypedVerifyError([]*x509.Certificate{leaf}), host, time.Now())
+		ce := Classify(untypedVerifyError([]*x509.Certificate{leaf}), host, time.Now(), Remedy{})
 		require.NotNil(t, ce, host)
 		assert.Equal(t, KindUnknownAuthority, ce.Details.(Details).Kind, host)
 	}
 	_, other := selfSignedLeaf(t, "::2")
-	ce := Classify(untypedVerifyError([]*x509.Certificate{other}), "[::1]", time.Now())
+	ce := Classify(untypedVerifyError([]*x509.Certificate{other}), "[::1]", time.Now(), Remedy{})
 	require.NotNil(t, ce)
 	assert.Equal(t, KindHostnameMismatch, ce.Details.(Details).Kind, "a SAN for another address is still a mismatch")
 	assert.Contains(t, ce.Message, "not valid for [::1]")

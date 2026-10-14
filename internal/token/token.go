@@ -24,6 +24,7 @@ import (
 	"github.com/rancher/rancher-cli/credhelper"
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -191,12 +192,43 @@ type tokenCmd struct {
 	user userCheck
 }
 
-// clientFor is newClient or its production default.
+// clientFor is newClient or its production default. opts.WrapTransport
+// reaches an injected client too, when that client has a transport to wrap:
+// a client with none keeps none, so a test that injects one cannot fall
+// through to http.DefaultTransport.
 func (t tokenCmd) clientFor(opts httpx.Options) (*http.Client, error) {
-	if t.newClient != nil {
-		return t.newClient(opts)
+	if t.newClient == nil {
+		return httpx.New(opts)
 	}
-	return httpx.New(opts)
+	client, err := t.newClient(opts)
+	if err != nil || client == nil || opts.WrapTransport == nil || client.Transport == nil {
+		return client, err
+	}
+	wrapped := *client
+	wrapped.Transport = opts.WrapTransport(client.Transport)
+	return &wrapped, nil
+}
+
+// tlsRemedyFor words a certificate failure for auth get-token and the
+// legacy rancher token: neither names a command, because kubectl runs them
+// from a kubeconfig. shim selects the legacy command's --cacerts.
+func tlsRemedyFor(from config.CASource, shim bool) tlstrust.Remedy {
+	flag := "--cacert"
+	if shim {
+		flag = "--cacerts"
+	}
+	r := tlstrust.Remedy{URL: "--server", Fix: flag}
+	switch {
+	case from.Kind == config.CASourceVariable:
+		r.CA = "; the CA came from " + config.EnvCACert + " - pass " + flag + " <file>, or unset " +
+			config.EnvCACert + ", or set it to the server's CA"
+	case shim:
+		r.CA = " and pass it with " + flag
+	default:
+		r.CA = " and pass it with " + flag + " (a kubeconfig the CLI wrote also carries the CA in " +
+			"certificate-authority-data: save the CA on the server entry and write that kubeconfig again)"
+	}
+	return r
 }
 
 // directClientFor is newDirectClient or its production default.
@@ -411,7 +443,12 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		usernameDefault: params.UsernameDefault,
 	}
 
-	client, err := t.clientFor(httpx.Options{CACert: caPEM, Insecure: input.skipVerify, Timeout: httpx.DefaultTimeout})
+	client, err := t.clientFor(httpx.Options{
+		CACert:        caPEM,
+		Insecure:      input.skipVerify,
+		Timeout:       httpx.DefaultTimeout,
+		WrapTransport: tlstrust.WrapTransportFor(server, tlsRemedyFor(caFrom, params.legacyShim)),
+	})
 	if err != nil {
 		return runtime.Result{}, err
 	}
@@ -1590,6 +1627,9 @@ func postTokenCreate(ctx context.Context, client *http.Client, url, bearer strin
 	resp, respBody, err := httpx.Do(client, req)
 	r := classifyCreate(resp, respBody, err, createdAt, description != "", kind)
 	if err != nil {
+		if ce := tlstrust.TypedError(err); ce != nil {
+			return r, nil, ce
+		}
 		return r, nil, clierr.New(clierr.CodeGeneric, verb+": "+err.Error()).WithCause(err)
 	}
 	switch resp.StatusCode {
@@ -1867,6 +1907,9 @@ func pluginGetter(client *http.Client, base, bearer string) steve.Getter {
 		req.Header.Set("Accept", "application/json")
 		resp, body, err := httpx.Do(client, req)
 		if err != nil {
+			if ce := tlstrust.TypedError(err); ce != nil {
+				return nil, ce
+			}
 			return nil, clierr.New(clierr.CodeGeneric, "resolving --cluster: "+err.Error())
 		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {

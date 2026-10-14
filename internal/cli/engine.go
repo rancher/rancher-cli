@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/provider"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -169,7 +170,11 @@ func (f *clientFactory) Root() (engine.RootClient, error) {
 			f.rootErr = err
 			return
 		}
-		hc, err := httpx.New(httpx.Options{CACert: caPEM, Timeout: rootTimeout})
+		hc, err := httpx.New(httpx.Options{
+			CACert:        caPEM,
+			Timeout:       rootTimeout,
+			WrapTransport: tlstrust.WrapTransportFor(eff.URL, eff.TLSRemedy),
+		})
 		if err != nil {
 			f.rootErr = err
 			return
@@ -199,6 +204,9 @@ func (r *rootClient) GetJSON(ctx context.Context, path string) ([]byte, error) {
 	req.Header.Set("Accept", "application/json")
 	resp, body, err := httpx.Do(r.hc, req)
 	if err != nil {
+		if ce := tlstrust.TypedError(err); ce != nil {
+			return nil, ce
+		}
 		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("rancher root GET %s: %v", path, err))
 	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {

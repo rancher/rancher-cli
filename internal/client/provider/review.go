@@ -57,7 +57,7 @@ func (r *dynamicClient) PostReview(ctx context.Context, req engine.ReviewRequest
 		// No HTTP response at all (refused, reset, TLS, EOF, deadline):
 		// retryable by construction so a fan-out can degrade one member
 		// instead of aborting; a protocol error below is not.
-		return engine.ReviewResponse{}, clierr.Retryable(clierr.CodeGeneric, "no response from the cluster: "+err.Error())
+		return engine.ReviewResponse{}, clierr.Retryable(clierr.CodeGeneric, "no response from the cluster: "+err.Error()).WithCause(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReviewBody))
