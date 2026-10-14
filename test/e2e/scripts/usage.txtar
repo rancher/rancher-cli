@@ -1,0 +1,20 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# a --namespace that does not exist is NOT_FOUND, not an empty result.
+! exec rancher usage --cluster testcluster --namespace e2e-usage-missing -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'namespace not found: e2e-usage-missing'
+
+# a namespace that exists and holds no pods is an empty result with a zero
+# row. The namespace is created here, not default: other scripts create pods
+# there and the scripts share one envtest.
+exec rancher create namespace e2e-usage-empty --cluster testcluster --apply
+exec rancher usage --cluster testcluster --namespace e2e-usage-empty -o json
+jsonquery stdout data.by namespace
+jsonquery stdout data.rows.e2e-usage-empty.cpuRequest 0
+
+# a --node that does not exist is NOT_FOUND.
+! exec rancher usage --cluster testcluster --node e2e-usage-missing-node -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'node not found: e2e-usage-missing-node'

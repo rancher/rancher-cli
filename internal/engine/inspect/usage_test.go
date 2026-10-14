@@ -3,9 +3,11 @@ package inspect
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -609,5 +611,460 @@ func TestUsageMetricsCancellationStaysHard(t *testing.T) {
 			require.Error(t, err)
 			assert.ErrorIs(t, err, context.Canceled)
 		})
+	}
+}
+
+// quantityForm is one quantity as the pod spec or metrics server writes it,
+// the exact string the envelope keeps, and the cell the table prints.
+type quantityForm struct{ in, exact, cell string }
+
+var cpuForms = []quantityForm{
+	{"270091638n", "270091638n", "271m"},
+	{"1n", "1n", "1m"},
+	{"1500u", "1500u", "2m"},
+	{"250m", "250m", "250m"},
+	{"2", "2", "2000m"},
+	{"1500m", "1500m", "1500m"},
+	{"0", "0", "0m"},
+}
+
+var memoryForms = []quantityForm{
+	{"2934696Ki", "2934696Ki", "2865Mi"},
+	{"256Mi", "256Mi", "256Mi"},
+	{"1Gi", "1Gi", "1024Mi"},
+	{"1.5Gi", "1536Mi", "1536Mi"},
+	{"1023Ki", "1023Ki", "0Mi"},
+	{"1048577", "1048577", "1Mi"},
+	{"134217728", "134217728", "128Mi"},
+	{"0", "0", "0Mi"},
+}
+
+// quantitySet is the six quantities of one scope: request, limit and usage,
+// for CPU and for memory.
+type quantitySet struct{ cpuReq, cpuLim, cpuUse, memReq, memLim, memUse quantityForm }
+
+// quantitySets rotates the forms through every position, so each form is a
+// request, a limit and a usage in some set.
+func quantitySets() []quantitySet {
+	n := max(len(cpuForms), len(memoryForms))
+	sets := make([]quantitySet, n)
+	for i := range sets {
+		c := func(k int) quantityForm { return cpuForms[(i+k)%len(cpuForms)] }
+		m := func(k int) quantityForm { return memoryForms[(i+k)%len(memoryForms)] }
+		sets[i] = quantitySet{cpuReq: c(0), cpuLim: c(1), cpuUse: c(2), memReq: m(0), memLim: m(1), memUse: m(2)}
+	}
+	return sets
+}
+
+func (s quantitySet) exact() resourceTotals {
+	return resourceTotals{
+		CPURequest: s.cpuReq.exact, CPULimit: s.cpuLim.exact, CPUUsage: s.cpuUse.exact,
+		MemoryRequest: s.memReq.exact, MemoryLimit: s.memLim.exact, MemoryUsage: s.memUse.exact,
+	}
+}
+
+func (s quantitySet) cells() []string {
+	return []string{s.cpuReq.cell, s.cpuLim.cell, s.cpuUse.cell, s.memReq.cell, s.memLim.cell, s.memUse.cell}
+}
+
+// TestUsageTableConvertsQuantitiesAndEnvelopeKeepsThem asserts, for every
+// grouping, that the table prints CPU in millicores and memory in
+// mebibytes in all six quantity columns while the envelope keeps the exact
+// strings.
+func TestUsageTableConvertsQuantitiesAndEnvelopeKeepsThem(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	nodeKind := mustKind(t, "node")
+
+	podsFor := func(s quantitySet, node string) *unstructured.UnstructuredList {
+		pod := podOnNode("ns1", "p1", node, s.cpuReq.in, s.memReq.in, s.cpuLim.in, s.memLim.in)
+		return &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*pod}}
+	}
+	podMetricsFor := func(s quantitySet) *unstructured.UnstructuredList {
+		return &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			podMetricsWithUsage("ns1", "p1", s.cpuUse.in, s.memUse.in)}}
+	}
+
+	for _, g := range []struct {
+		name  string
+		key   string
+		scope string
+		run   func(t *testing.T, s quantitySet) (runtime.Result, error)
+	}{
+		{"namespace", "ns1", "ns1", func(t *testing.T, s quantitySet) (runtime.Result, error) {
+			t.Helper()
+			c := newFakeClient().withList(podKind.GVR, podsFor(s, "")).withList(podMetricsGVR, podMetricsFor(s))
+			return execRead(t, NewUsage(&fakeFactory{client: c}, nil), input{s: map[string]string{"cluster": "c-abc"}})
+		}},
+		{"pod", "ns1/p1", "ns1/p1", func(t *testing.T, s quantitySet) (runtime.Result, error) {
+			t.Helper()
+			c := newFakeClient().withList(podKind.GVR, podsFor(s, "")).withList(podMetricsGVR, podMetricsFor(s))
+			return execRead(t, NewUsage(&fakeFactory{client: c}, nil), input{s: map[string]string{"cluster": "c-abc", "by": byPod}})
+		}},
+		{"project", "p-x", "web", func(t *testing.T, s quantitySet) (runtime.Result, error) {
+			t.Helper()
+			c := newFakeClient().
+				withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+					namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"})}}).
+				withList(podKind.GVR, podsFor(s, "")).withList(podMetricsGVR, podMetricsFor(s))
+			root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
+			return execRead(t, NewUsage(&fakeFactory{client: c}, root.roots()), input{s: map[string]string{"cluster": "c-abc", "by": byProject}})
+		}},
+		{"node", "n1", "n1", func(t *testing.T, s quantitySet) (runtime.Result, error) {
+			t.Helper()
+			c := newFakeClient().
+				withList(nodeKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*nodeObj("n1")}}).
+				withList(podKind.GVR, podsFor(s, "n1")).
+				withList(nodeMetricsGVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+					nodeMetricsObj("n1", s.cpuUse.in, s.memUse.in)}})
+			return execRead(t, NewUsage(&fakeFactory{client: c}, nil), input{s: map[string]string{"cluster": "c-abc", "by": byNode}})
+		}},
+		{"named node", "n1", "n1", func(t *testing.T, s quantitySet) (runtime.Result, error) {
+			t.Helper()
+			c := newFakeClient().
+				withObject(nodeKind.GVR, "", "n1", nodeObj("n1")).
+				withList(podKind.GVR, podsFor(s, "n1")).
+				withObject(nodeMetricsGVR, "", "n1", nodeMetricsObjPtr("n1", s.cpuUse.in, s.memUse.in))
+			return execRead(t, NewUsage(&fakeFactory{client: c}, nil), input{s: map[string]string{"cluster": "c-abc", "by": byNode, "node": "n1"}})
+		}},
+	} {
+		t.Run(g.name, func(t *testing.T) {
+			t.Parallel()
+			for i, s := range quantitySets() {
+				res, err := g.run(t, s)
+				require.NoError(t, err, "set %d", i)
+				env, ok := res.Data.(usageEnvelope)
+				require.True(t, ok)
+				require.Contains(t, env.Data, g.key, "set %d", i)
+				assert.Equal(t, s.exact(), env.Data[g.key], "the envelope keeps the exact strings, set %d", i)
+				rows := env.Rows()
+				require.Len(t, rows, 1, "set %d", i)
+				assert.Equal(t, g.scope, rows[0][0], "set %d", i)
+				assert.Equal(t, s.cells(), rows[0][1:], "the table converts, set %d", i)
+			}
+		})
+	}
+}
+
+// TestUsageTableLeavesEmptyAndUnparsedCellsAsStored asserts a cell with no
+// value stays empty and a value that is not a quantity prints as stored.
+func TestUsageTableLeavesEmptyAndUnparsedCellsAsStored(t *testing.T) {
+	t.Parallel()
+	rows := usageRows{"ns1": {CPURequest: "100m", CPULimit: "not-a-quantity", MemoryRequest: "1Gi", MemoryLimit: "??"}}
+	assert.Equal(t, [][]string{{"ns1", "100m", "not-a-quantity", "", "1024Mi", "??", ""}}, rows.Rows())
+}
+
+// getAnswer scripts the fake's answer to one named GET: none leaves it
+// unregistered (the fake answers an unregistered GET with an error, so a
+// row that expects no read of it also asserts the GET log), an object, or
+// an error.
+type getAnswer struct {
+	registered bool
+	err        error
+}
+
+var getNone = getAnswer{}
+var getOK = getAnswer{registered: true}
+
+func getErr(err error) getAnswer { return getAnswer{registered: true, err: err} }
+
+// emptyScopeGets renders the GETs a fake served as "kind/name"; nil for none.
+func emptyScopeGets(client *fakeClient) []string {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	var out []string
+	for _, k := range client.getCalls {
+		out = append(out, k.gvr.Resource+"/"+k.name)
+	}
+	return out
+}
+
+// scopeFake serves pods as the apiserver does: a list in a namespace holds
+// that namespace's pods, a cluster-wide list all of them. The namespace
+// and the node answer as scripted.
+func scopeFake(t *testing.T, pods []unstructured.Unstructured, namespaces []string, nsAnswer, nodeAnswer getAnswer, ns, node string) *fakeClient {
+	t.Helper()
+	podKind, nsKind, nodeKind := mustKind(t, "pod"), mustKind(t, "namespace"), mustKind(t, "node")
+	client := newFakeClient().
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: pods}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{})
+	for _, name := range namespaces {
+		var inNS []unstructured.Unstructured
+		for _, p := range pods {
+			if p.GetNamespace() == name {
+				inNS = append(inNS, p)
+			}
+		}
+		client.withListNS(podKind.GVR, name, &unstructured.UnstructuredList{Items: inNS})
+	}
+	answer := func(a getAnswer, kind kinds.Kind, name string, obj *unstructured.Unstructured) {
+		switch {
+		case !a.registered:
+		case a.err != nil:
+			client.withGetErr(kind.GVR, "", name, a.err)
+		default:
+			client.withObject(kind.GVR, "", name, obj)
+		}
+	}
+	answer(nsAnswer, nsKind, ns, &unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": ns}}})
+	answer(nodeAnswer, nodeKind, node, nodeObj(node))
+	return client
+}
+
+// TestUsageEmptyScopeReadsNamespaceAndNode asserts, for the namespace and
+// pod groupings, that a --namespace or --node that matches no pods is
+// read: a missing one is NOT_FOUND before any metrics read, one the caller
+// cannot read leaves the result as it is with a warning, a scope with pods
+// reads nothing, and the namespace is read before the node.
+func TestUsageEmptyScopeReadsNamespaceAndNode(t *testing.T) {
+	t.Parallel()
+	nsKind, nodeKind := mustKind(t, "namespace"), mustKind(t, "node")
+	forbidden := clierr.New(clierr.CodeRBAC, "forbidden")
+	nsMissing := kinds.NotFoundCurated(nsKind, "web", "c-abc")
+	nodeMissing := kinds.NotFoundCurated(nodeKind, "n1", "c-abc")
+	nsWarning := `namespace "web" could not be checked: forbidden; no pods were found`
+	nodeWarning := `node "n1" could not be checked: forbidden; no pods were found`
+	webPod := func() unstructured.Unstructured { return *podOnNode("web", "p1", "n1", "10m", "10Mi", "20m", "20Mi") }
+	otherNodePod := func() unstructured.Unstructured { return *podOnNode("web", "p2", "n2", "10m", "10Mi", "20m", "20Mi") }
+	elsewherePod := func() unstructured.Unstructured { return *podOnNode("other", "p3", "n2", "10m", "10Mi", "20m", "20Mi") }
+
+	for _, tc := range []struct {
+		name         string
+		flags        map[string]string
+		pods         []unstructured.Unstructured
+		ns, node     getAnswer
+		metricsErr   error
+		wantCode     string
+		wantMessage  string
+		wantErr      bool
+		wantWarnings []string
+		wantGets     []string
+		wantNoPods   bool
+	}{
+		{name: "namespace without pods exists", flags: map[string]string{"namespace": "web"}, ns: getOK,
+			wantGets: []string{"namespaces/web"}, wantNoPods: true},
+		{name: "namespace without pods is missing", flags: map[string]string{"namespace": "web"}, ns: getErr(nsMissing),
+			wantCode: clierr.CodeNotFound, wantMessage: "namespace not found: web", wantGets: []string{"namespaces/web"}},
+		{name: "namespace without pods is unreadable", flags: map[string]string{"namespace": "web"}, ns: getErr(forbidden),
+			wantWarnings: []string{nsWarning}, wantGets: []string{"namespaces/web"}, wantNoPods: true},
+		{name: "unreadable namespace warns with the message and not the hint", flags: map[string]string{"namespace": "web"},
+			ns:           getErr(clierr.New(clierr.CodeRBAC, "forbidden").WithHint("ask an admin")),
+			wantWarnings: []string{nsWarning}, wantGets: []string{"namespaces/web"}, wantNoPods: true},
+		{name: "namespace read fails otherwise", flags: map[string]string{"namespace": "web"}, ns: getErr(errors.New("boom")),
+			wantErr: true, wantGets: []string{"namespaces/web"}},
+		{name: "namespace with pods reads nothing", flags: map[string]string{"namespace": "web"}, pods: []unstructured.Unstructured{webPod()}},
+		{name: "node without pods exists", flags: map[string]string{"node": "n1"}, node: getOK,
+			wantGets: []string{"nodes/n1"}, wantNoPods: true},
+		{name: "node without pods is missing", flags: map[string]string{"node": "n1"}, node: getErr(nodeMissing),
+			wantCode: clierr.CodeNotFound, wantMessage: "node not found: n1", wantGets: []string{"nodes/n1"}},
+		{name: "node without pods is unreadable", flags: map[string]string{"node": "n1"}, node: getErr(forbidden),
+			wantWarnings: []string{nodeWarning}, wantGets: []string{"nodes/n1"}, wantNoPods: true},
+		{name: "node with pods reads nothing", flags: map[string]string{"node": "n1"}, pods: []unstructured.Unstructured{webPod()}},
+		{name: "pods on another node read the node", flags: map[string]string{"node": "n1"}, pods: []unstructured.Unstructured{elsewherePod()},
+			node: getOK, wantGets: []string{"nodes/n1"}, wantNoPods: true},
+		{name: "namespace with pods on another node reads only the node", flags: map[string]string{"namespace": "web", "node": "n1"},
+			pods: []unstructured.Unstructured{otherNodePod()}, node: getOK, wantGets: []string{"nodes/n1"}, wantNoPods: true},
+		{name: "namespace and node without pods read both in order", flags: map[string]string{"namespace": "web", "node": "n1"},
+			ns: getOK, node: getOK, wantGets: []string{"namespaces/web", "nodes/n1"}, wantNoPods: true},
+		{name: "a missing namespace ends the check before the node", flags: map[string]string{"namespace": "web", "node": "n1"},
+			ns: getErr(nsMissing), wantCode: clierr.CodeNotFound, wantMessage: "namespace not found: web", wantGets: []string{"namespaces/web"}},
+		{name: "an unreadable namespace and a missing node", flags: map[string]string{"namespace": "web", "node": "n1"},
+			ns: getErr(forbidden), node: getErr(nodeMissing), wantCode: clierr.CodeNotFound, wantMessage: "node not found: n1",
+			wantGets: []string{"namespaces/web", "nodes/n1"}},
+		{name: "warnings: namespace, node, then metrics", flags: map[string]string{"namespace": "web", "node": "n1"},
+			ns: getErr(forbidden), node: getErr(forbidden), metricsErr: errors.New("no metrics server"),
+			wantWarnings: []string{nsWarning, nodeWarning, "metrics unavailable: no metrics server"},
+			wantGets:     []string{"namespaces/web", "nodes/n1"}, wantNoPods: true},
+	} {
+		for _, by := range []string{byNamespace, byPod} {
+			t.Run(by+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				client := scopeFake(t, tc.pods, []string{"web"}, tc.ns, tc.node, "web", "n1")
+				if tc.metricsErr != nil {
+					client.withListErr(podMetricsGVR, tc.metricsErr)
+				}
+				flags := map[string]string{"cluster": "c-abc", "by": by}
+				maps.Copy(flags, tc.flags)
+				res, err := execRead(t, NewUsage(&fakeFactory{client: client}, nil), input{s: flags})
+
+				assert.Equal(t, tc.wantGets, emptyScopeGets(client), "the GETs")
+				if tc.wantCode != "" || tc.wantErr {
+					require.Error(t, err)
+					assert.False(t, client.listed(podMetricsGVR), "an error ends the command before the metrics read")
+					if tc.wantCode != "" {
+						ce, ok := errors.AsType[*clierr.Error](err)
+						require.True(t, ok)
+						assert.Equal(t, tc.wantCode, ce.Code)
+						assert.Equal(t, tc.wantMessage, ce.Message)
+					}
+					return
+				}
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantWarnings, res.Warnings)
+				env, ok := res.Data.(usageEnvelope)
+				require.True(t, ok)
+				if tc.wantNoPods && by == byNamespace && tc.flags["namespace"] != "" {
+					require.Contains(t, env.Data, "web", "a namespace without pods keeps its zero row")
+					assert.Equal(t, "0", env.Data["web"].CPURequest)
+				} else if tc.wantNoPods {
+					assert.Empty(t, env.Data)
+				}
+			})
+		}
+	}
+}
+
+// TestUsageByProjectEmptyScope asserts the project grouping's reads of an
+// empty scoped result: --namespace is checked against the namespace list
+// the grouping already reads (no extra request), a namespace the list
+// holds without a project is not missing, --namespace with --project keeps
+// the membership error, and --node follows the same rule as the other
+// groupings.
+func TestUsageByProjectEmptyScope(t *testing.T) {
+	t.Parallel()
+	podKind, nsKind, nodeKind := mustKind(t, "pod"), mustKind(t, "namespace"), mustKind(t, "node")
+	forbidden := clierr.New(clierr.CodeRBAC, "forbidden")
+	nodeMissing := kinds.NotFoundCurated(nodeKind, "n1", "c-abc")
+	nodeWarning := `node "n1" could not be checked: forbidden; no pods were found`
+	pod := func(ns, node string) unstructured.Unstructured {
+		return *podOnNode(ns, "p1", node, "10m", "10Mi", "20m", "20Mi")
+	}
+
+	for _, tc := range []struct {
+		name         string
+		flags        map[string]string
+		pods         []unstructured.Unstructured
+		node         getAnswer
+		scoped       bool
+		wantCode     string
+		wantMessage  string
+		wantWarnings []string
+		wantGets     []string
+		wantPodList  bool
+	}{
+		{name: "namespace missing from the namespace list", flags: map[string]string{"namespace": "missing"},
+			wantCode: clierr.CodeNotFound, wantMessage: "namespace not found: missing"},
+		{name: "namespace without a project is not missing", flags: map[string]string{"namespace": "free"}, wantPodList: true},
+		{name: "namespace of a project with pods", flags: map[string]string{"namespace": "ns1"},
+			pods: []unstructured.Unstructured{pod("ns1", "n1")}, wantPodList: true},
+		{name: "project and a missing namespace keep the membership error", flags: map[string]string{"namespace": "missing"}, scoped: true,
+			wantCode: clierr.CodeValidation, wantMessage: `namespace "missing" is not in project "p-x"; pass a project namespace, or omit --namespace to scope the whole project`},
+		{name: "node without pods exists", flags: map[string]string{"node": "n1"}, node: getOK, wantGets: []string{"nodes/n1"}, wantPodList: true},
+		{name: "node without pods is missing", flags: map[string]string{"node": "n1"}, node: getErr(nodeMissing),
+			wantCode: clierr.CodeNotFound, wantMessage: "node not found: n1", wantGets: []string{"nodes/n1"}, wantPodList: true},
+		{name: "node without pods is unreadable", flags: map[string]string{"node": "n1"}, node: getErr(forbidden),
+			wantWarnings: []string{nodeWarning}, wantGets: []string{"nodes/n1"}, wantPodList: true},
+		{name: "node with pods reads nothing", flags: map[string]string{"node": "n1"},
+			pods: []unstructured.Unstructured{pod("ns1", "n1")}, wantPodList: true},
+		{name: "project and node without pods read the node", flags: map[string]string{"node": "n1"}, scoped: true,
+			node: getOK, wantGets: []string{"nodes/n1"}, wantPodList: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client := scopeFake(t, tc.pods, []string{"free", "ns1"}, getNone, tc.node, "", "n1").
+				withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+					namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+					namespaceObj("free", nil),
+				}})
+			flags := map[string]string{"cluster": "c-abc", "by": byProject}
+			maps.Copy(flags, tc.flags)
+			ctx := t.Context()
+			if tc.scoped {
+				flags["project"] = "p-x"
+				ctx = withProject(t, "c-abc", "p-x", "web", "ns1")
+			}
+			root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
+			res, err := execReadCtx(t, ctx, NewUsage(&fakeFactory{client: client}, root.roots()), input{s: flags})
+
+			assert.Equal(t, tc.wantGets, emptyScopeGets(client), "the GETs")
+			assert.Equal(t, tc.wantPodList, client.listed(podKind.GVR), "the pod list")
+			if tc.wantCode != "" {
+				ce, ok := errors.AsType[*clierr.Error](err)
+				require.True(t, ok, "%v", err)
+				assert.Equal(t, tc.wantCode, ce.Code)
+				assert.Equal(t, tc.wantMessage, ce.Message)
+				assert.False(t, client.listed(podMetricsGVR), "an error ends the command before the metrics read")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantWarnings, res.Warnings)
+		})
+	}
+}
+
+// TestUsageEmptyProjectScopeReadsNothingForTheNamespace asserts a project
+// scope never reads the namespace: an empty membership is a verified empty
+// result with no request at all, and a namespace outside the project is
+// refused by the membership check before any read; the node is still read
+// when the project's pods on it are none.
+func TestUsageEmptyProjectScopeReadsNothingForTheNamespace(t *testing.T) {
+	t.Parallel()
+	for _, by := range []string{byNamespace, byPod} {
+		t.Run(by+"/empty membership", func(t *testing.T) {
+			t.Parallel()
+			client := scopeFake(t, nil, nil, getNone, getNone, "", "n1")
+			res, err := execReadCtx(t, withProject(t, "c-abc", "p-x", "web"), NewUsage(&fakeFactory{client: client}, nil),
+				input{s: map[string]string{"cluster": "c-abc", "by": by, "project": "p-x", "node": "n1"}})
+			require.NoError(t, err)
+			assert.Empty(t, res.Warnings)
+			assert.Empty(t, emptyScopeGets(client))
+			assert.Empty(t, client.listNamespaces, "no list either")
+		})
+		t.Run(by+"/namespace outside the project", func(t *testing.T) {
+			t.Parallel()
+			client := scopeFake(t, nil, nil, getNone, getNone, "", "n1")
+			_, err := execReadCtx(t, withProject(t, "c-abc", "p-x", "web", "ns1"), NewUsage(&fakeFactory{client: client}, nil),
+				input{s: map[string]string{"cluster": "c-abc", "by": by, "project": "p-x", "namespace": "other"}})
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok, "%v", err)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Empty(t, emptyScopeGets(client))
+		})
+		t.Run(by+"/project namespace and node without pods", func(t *testing.T) {
+			t.Parallel()
+			client := scopeFake(t, nil, []string{"ns1"}, getNone, getOK, "", "n1")
+			res, err := execReadCtx(t, withProject(t, "c-abc", "p-x", "web", "ns1"), NewUsage(&fakeFactory{client: client}, nil),
+				input{s: map[string]string{"cluster": "c-abc", "by": by, "project": "p-x", "namespace": "ns1", "node": "n1"}})
+			require.NoError(t, err)
+			assert.Empty(t, res.Warnings)
+			assert.Equal(t, []string{"nodes/n1"}, emptyScopeGets(client), "the namespace is a member and is not read")
+		})
+	}
+}
+
+// TestUsageProjectNodeWithPodsOnlyOutsideTheProject asserts that with
+// --project and --node, a node whose pods are all outside the project is
+// read: the check runs on the pods left after the project's namespaces are
+// applied. A 200 gives no warning and a 403 gives the node warning.
+func TestUsageProjectNodeWithPodsOnlyOutsideTheProject(t *testing.T) {
+	t.Parallel()
+	nsKind := mustKind(t, "namespace")
+	nodeWarning := `node "n1" could not be checked: forbidden; no pods were found`
+	for _, by := range []string{byNamespace, byPod, byProject} {
+		for _, tc := range []struct {
+			name         string
+			node         getAnswer
+			wantWarnings []string
+		}{
+			{"node readable", getOK, nil},
+			{"node unreadable", getErr(clierr.New(clierr.CodeRBAC, "forbidden")), []string{nodeWarning}},
+		} {
+			t.Run(by+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
+				outside := *podOnNode("other", "p1", "n1", "10m", "10Mi", "20m", "20Mi")
+				client := scopeFake(t, []unstructured.Unstructured{outside}, nil, getNone, tc.node, "", "n1").
+					withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+						namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+						namespaceObj("other", nil),
+					}})
+				root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
+				res, err := execReadCtx(t, withProject(t, "c-abc", "p-x", "web", "ns1"), NewUsage(&fakeFactory{client: client}, root.roots()),
+					input{s: map[string]string{"cluster": "c-abc", "by": by, "project": "p-x", "node": "n1"}})
+				require.NoError(t, err)
+				assert.Equal(t, []string{"nodes/n1"}, emptyScopeGets(client), "the node is read")
+				assert.Equal(t, tc.wantWarnings, res.Warnings)
+			})
+		}
 	}
 }

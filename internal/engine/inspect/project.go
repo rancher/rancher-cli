@@ -350,14 +350,14 @@ func renderProjectText(r projectResult) string {
 	b.WriteString("\nUSAGE\n")
 	switch {
 	case r.Usage != nil:
-		cpu := fmt.Sprintf("  cpu: request=%s limit=%s", r.Usage.CPURequest, r.Usage.CPULimit)
+		cpu := fmt.Sprintf("  cpu: request=%s limit=%s", cpuCell(r.Usage.CPURequest), cpuCell(r.Usage.CPULimit))
 		if r.Usage.CPUUsage != "" {
-			cpu += " usage=" + r.Usage.CPUUsage
+			cpu += " usage=" + cpuCell(r.Usage.CPUUsage)
 		}
 		b.WriteString(cpu + "\n")
-		mem := fmt.Sprintf("  memory: request=%s limit=%s", r.Usage.MemoryRequest, r.Usage.MemoryLimit)
+		mem := fmt.Sprintf("  memory: request=%s limit=%s", memoryCell(r.Usage.MemoryRequest), memoryCell(r.Usage.MemoryLimit))
 		if r.Usage.MemoryUsage != "" {
-			mem += " usage=" + r.Usage.MemoryUsage
+			mem += " usage=" + memoryCell(r.Usage.MemoryUsage)
 		}
 		b.WriteString(mem + "\n")
 	case r.Namespaces != nil && len(r.Namespaces) == 0:

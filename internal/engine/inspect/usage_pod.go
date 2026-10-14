@@ -67,9 +67,22 @@ func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient
 		grouped[key] = []unstructured.Unstructured{pod}
 	}
 
+	// A project's membership check has already proved --namespace exists.
+	var checkNamespace, checkNode string
+	if projectID == "" && len(l.Items) == 0 {
+		checkNamespace = namespace
+	}
+	if len(grouped) == 0 {
+		checkNode = nodeName
+	}
+	warnings, err := checkEmptyScope(ctx, client, checkNamespace, checkNode)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
 	rows, err := aggregateUsage(ctx, client, sec, grouped, namespaces)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	return usageResult(byPod, rows, nil, sec), nil
+	return withCheckWarnings(usageResult(byPod, rows, nil, sec), warnings), nil
 }

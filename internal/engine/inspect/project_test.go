@@ -502,7 +502,7 @@ func TestRenderProjectTextSections(t *testing.T) {
 	// quota keys render recursively sorted: configMaps before pods.
 	assert.Contains(t, text, "QUOTA\n  limit:\n    configMaps: 5\n    pods: 10\n")
 	// measured usage renders when present; absent measurements stay off the line.
-	assert.Contains(t, text, "USAGE\n  cpu: request=500m limit=1 usage=250m\n  memory: request=1Gi limit=2Gi\n")
+	assert.Contains(t, text, "USAGE\n  cpu: request=500m limit=1000m usage=250m\n  memory: request=1024Mi limit=2048Mi\n")
 }
 
 // TestStyleProjectTextStripInvariant asserts inspect project's bold spans:
@@ -592,8 +592,8 @@ func TestInspectProjectZeroPodsVerifiedZero(t *testing.T) {
 
 	// Text view must render explicit zeros, not "unavailable".
 	text := res.Text
-	assert.Contains(t, text, "cpu: request=0 limit=0")
-	assert.Contains(t, text, "memory: request=0 limit=0")
+	assert.Contains(t, text, "cpu: request=0m limit=0m")
+	assert.Contains(t, text, "memory: request=0Mi limit=0Mi")
 	assert.NotContains(t, text, "unavailable")
 }
 

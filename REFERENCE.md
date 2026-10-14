@@ -543,6 +543,11 @@ namespace --project`). `create secret --project <p>` writes a project-scoped
 secret into the project's backing namespace and cannot be combined with
 `--namespace`. `usage` refuses `--project` with `--by node` (a node row
 mixing project-scoped requests with whole-node metrics would be misleading).
+`usage` reads a `--namespace` or `--node` that matches no pods, so a
+name that does not exist is NOT_FOUND instead of an empty result. A
+caller who can list pods there but cannot read the namespace or node
+gets the result with a warning that it could not be checked; one who
+cannot list pods there gets the RBAC error from the pod list, as before.
 
 A flag typed with an empty or blank value (`--project ''`, `--namespace=`,
 `-o ' '`) is refused with `VALIDATION` before any request instead of acting

@@ -440,7 +440,7 @@ outright.
 - `rancher inspect deployment <name>` - rollout + its pods (selector-scoped)
 - `rancher inspect project <name-or-id>` - project namespaces, workload counts, members, quota, usage
 - `rancher inspect user <id|username|displayName|principal>` - identity, groups, and roles across scopes; bindings that exist only, never permissions
-- `rancher usage` - capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`
+- `rancher usage` - capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`; a `--namespace` or `--node` that matches no pods is read, so a missing one is NOT_FOUND (a warning when the caller cannot read it, an RBAC error when the caller cannot list pods there)
 - `rancher images [--by image|workload] [--match substr]` - active-pod image inventory; repeatable `--match` substring-filters (OR), `--by workload` maps each image to its owning workload (CVE blast radius: `--match <affected-repo>: --by workload --all-clusters`)
 
 ### 8. kubectl interop

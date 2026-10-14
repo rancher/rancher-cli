@@ -2,7 +2,11 @@ package inspect
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"slices"
 	"sort"
+	"strconv"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -45,6 +49,11 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 			"--by node accepts only --node; combining --by node with --namespace or --project is a validation error. " +
 			"--project without --by returns project-namespace rows (namespace grouping filtered to the project). " +
 			"--by project --project X returns a single project bucket. " +
+			"When --namespace or --node matches no pods, the namespace or node is read: a missing one is NOT_FOUND, " +
+			"and one the caller cannot read leaves the result as it is with a warning " +
+			"(with --project, a namespace outside the project is a validation error; " +
+			"--by node --node reads the node first, and an unreadable node there is an error; " +
+			"--by project reads the namespace list, and an unreadable list is an error). " +
 			degradedContractDesc +
 			"Required collectors hard-error: cluster resolution and the pod list always; project " +
 			"resolution and the membership list with --project; the namespace map with --by project, " +
@@ -95,7 +104,9 @@ func (c *usageCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Prom
 
 	// Every usage mode's required collectors (cluster resolution, the pod
 	// list, and the scope-establishing reads) hard-error; only the metrics
-	// fetch degrades.
+	// fetch degrades. The namespace and node reads that check an empty
+	// scoped result are not collectors: a 404 is an error and a 403 is a
+	// warning.
 	sec := newSections(ctx, sectionMetrics)
 	switch by {
 	case byNode:
@@ -120,6 +131,52 @@ func usageResult(by string, rows usageRows, names map[string]string, sec *sectio
 	}
 }
 
+// checkEmptyScope reads the namespace and the node a scoped query named
+// when it found no pods, so a name that does not exist is a NOT_FOUND error
+// instead of an empty result. A caller who may list pods there but not read
+// the namespace or the node gets the empty result and a warning that it could
+// not be checked; any other error is returned. An empty namespace or node name
+// skips that read; the namespace is read first, so a missing namespace ends
+// the check before the node read.
+func checkEmptyScope(ctx context.Context, client engine.ClusterClient, namespace, nodeName string) ([]string, error) {
+	var warnings []string
+	for _, scope := range []struct{ kind, name string }{{"namespace", namespace}, {"node", nodeName}} {
+		if scope.name == "" {
+			continue
+		}
+		k, _ := kinds.Lookup(scope.kind)
+		_, err := client.Get(ctx, k.GVR, "", scope.name)
+		if err == nil {
+			continue
+		}
+		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeRBAC {
+			warnings = append(warnings, fmt.Sprintf("%s %q could not be checked: %s; no pods were found", scope.kind, scope.name, ce.Message))
+			continue
+		}
+		return nil, err
+	}
+	return warnings, nil
+}
+
+// withCheckWarnings puts the warnings of checkEmptyScope ahead of the
+// result's own, the metrics warning among them.
+func withCheckWarnings(res runtime.Result, warnings []string) runtime.Result {
+	if len(warnings) > 0 {
+		res.Warnings = append(slices.Clone(warnings), res.Warnings...)
+	}
+	return res
+}
+
+// noPods reports whether every pod slice of grouped is empty.
+func noPods(grouped map[string][]unstructured.Unstructured) bool {
+	for _, pods := range grouped {
+		if len(pods) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.ClusterClient, clusterID string, sec *sections, in runtime.Input) (runtime.Result, error) {
 	namespace := in.String(resources.FlagNamespace)
 	nodeName := in.String("node")
@@ -141,6 +198,9 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 
 	grouped := map[string][]unstructured.Unstructured{}
 	var namespaces []string
+	// checkNamespace is the --namespace to read when the pod list in it is
+	// empty; a project's membership check has already proved it exists.
+	var checkNamespace string
 	switch {
 	case namespace != "" && projectID != "":
 		if !members[namespace] {
@@ -186,6 +246,9 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 			return runtime.Result{}, lerr
 		}
 		grouped[namespace] = filterPodsByNode(l.Items, nodeName)
+		if len(l.Items) == 0 {
+			checkNamespace = namespace
+		}
 
 	default:
 		l, lerr := client.List(ctx, podKind.GVR, "", "")
@@ -197,11 +260,20 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 		}
 	}
 
+	var checkNode string
+	if noPods(grouped) {
+		checkNode = nodeName
+	}
+	warnings, err := checkEmptyScope(ctx, client, checkNamespace, checkNode)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
 	rows, err := aggregateUsage(ctx, client, sec, grouped, namespaces)
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	return usageResult(byNamespace, rows, nil, sec), nil
+	return withCheckWarnings(usageResult(byNamespace, rows, nil, sec), warnings), nil
 }
 
 // fetchPodMetrics lists pod metrics with ONE List call: scoped to the single
@@ -345,9 +417,49 @@ func (u usageRows) Rows() [][]string {
 	out := make([][]string, 0, len(keys))
 	for _, k := range keys {
 		t := u[k]
-		out = append(out, []string{k, t.CPURequest, t.CPULimit, t.CPUUsage, t.MemoryRequest, t.MemoryLimit, t.MemoryUsage})
+		out = append(out, []string{k,
+			cpuCell(t.CPURequest), cpuCell(t.CPULimit), cpuCell(t.CPUUsage),
+			memoryCell(t.MemoryRequest), memoryCell(t.MemoryLimit), memoryCell(t.MemoryUsage)})
 	}
 	return out
+}
+
+// cpuCell formats a CPU quantity for a table cell in the unit `kubectl top`
+// prints: whole millicores, rounded up, with the m suffix (270091638n is
+// 271m). An empty value stays empty and a value that is not a quantity
+// prints as stored. The structured output keeps the exact value.
+func cpuCell(s string) string {
+	q, ok := parseCell(s)
+	if !ok {
+		return s
+	}
+	return strconv.FormatInt(q.MilliValue(), 10) + "m"
+}
+
+// memoryCell formats a memory quantity for a table cell in the unit
+// `kubectl top` prints: whole mebibytes, truncated after the bytes are
+// rounded up, with the Mi suffix (2934696Ki is 2865Mi, 1Gi is 1024Mi). An
+// empty value stays empty and a value that is not a quantity prints as
+// stored. The structured output keeps the exact value.
+func memoryCell(s string) string {
+	q, ok := parseCell(s)
+	if !ok {
+		return s
+	}
+	return strconv.FormatInt(q.Value()/(1024*1024), 10) + "Mi"
+}
+
+// parseCell parses a table cell's quantity; it reports false for an empty
+// value or one that is not a quantity.
+func parseCell(s string) (resource.Quantity, bool) {
+	if s == "" {
+		return resource.Quantity{}, false
+	}
+	q, err := resource.ParseQuantity(s)
+	if err != nil {
+		return resource.Quantity{}, false
+	}
+	return q, true
 }
 
 // usageEnvelope is the top-level Result.Data for the `usage` command. It

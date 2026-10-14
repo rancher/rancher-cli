@@ -63,6 +63,14 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		nsByProject[ns] = pid // empty string means unowned
 	}
 
+	// Without --project, a --namespace the cluster does not list is missing.
+	// The namespace list read above answers it, so no extra request is made.
+	if namespace != "" && filterID == "" {
+		if _, listed := nsByProject[namespace]; !listed {
+			return runtime.Result{}, kinds.NotFoundCurated(nsKind, namespace, clusterID)
+		}
+	}
+
 	// The membership rule holds under this grouping too: --namespace with
 	// --project must name a member namespace.
 	if namespace != "" && filterID != "" && nsByProject[namespace] != filterID {
@@ -118,6 +126,15 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		}
 	}
 
+	var checkNode string
+	if noPods(grouped) {
+		checkNode = nodeName
+	}
+	warnings, err := checkEmptyScope(ctx, client, "", checkNode)
+	if err != nil {
+		return runtime.Result{}, err
+	}
+
 	// Scope the pod-metrics List to the one namespace when --namespace is set
 	// (same rule fetchPodMetrics applies everywhere else).
 	var namespaces []string
@@ -131,7 +148,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	// names makes the table SCOPE column show project display names while
 	// JSON row keys stay project ids. "<none>" has no entry
 	// and renders as-is.
-	return usageResult(byProject, rows, displayByID, sec), nil
+	return withCheckWarnings(usageResult(byProject, rows, displayByID, sec), warnings), nil
 }
 
 // ownsAnyNamespace reports whether the ownership map assigns at least one
