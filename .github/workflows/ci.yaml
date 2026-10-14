@@ -79,24 +79,48 @@ jobs:
   # 32/64 assumptions) surfaces on the PR, not at tag time. The list must
   # match the build loop in release.yaml. linux/amd64 duplicates the test
   # job's native build; it is kept for the 1:1 mapping with the release
-  # matrix. One job, one loop: a matrix would pay checkout+setup per leg for
-  # no isolation benefit.
+  # matrix. One job per platform, each with its own build cache, so the
+  # platforms build in parallel and reuse their own compiled packages:
+  # setup-go's cache key is shared by every Linux job and is saved by
+  # whichever job finishes first, so it cannot hold six platforms' builds.
   cross-compile:
+    name: cross-compile (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: s390x }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - id: setup-go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Compile all release platforms
-        run: |
-          for platform in linux/amd64 linux/arm64 linux/s390x darwin/amd64 darwin/arm64 windows/amd64; do
-            echo "==> ${platform}"
-            GOOS="${platform%/*}" GOARCH="${platform#*/}" CGO_ENABLED=0 go build ./...
-          done
+          cache: false
+      - name: Cache Go build and modules
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}-go${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            cross-compile-${{ matrix.goos }}-${{ matrix.goarch }}-go${{ steps.setup-go.outputs.go-version }}-
+      - name: Compile
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build ./...
 
   e2e:
     runs-on: ubuntu-latest

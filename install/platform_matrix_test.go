@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 var platformLoopRe = regexp.MustCompile(`for platform in ([^;]+); do`)
@@ -22,6 +23,36 @@ func parseWorkflowPlatforms(t *testing.T, path string) []string {
 	m := platformLoopRe.FindStringSubmatch(string(raw))
 	require.NotNilf(t, m, "%s: no `for platform in ...; do` build loop found - it moved or was reworded", path)
 	return strings.Fields(m[1])
+}
+
+// parseCrossCompileMatrix extracts the GOOS/GOARCH list from the matrix of
+// ci.yaml's cross-compile job, one job per platform.
+func parseCrossCompileMatrix(t *testing.T, path string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var wf struct {
+		Jobs map[string]struct {
+			Strategy struct {
+				Matrix struct {
+					Include []struct {
+						GOOS   string `yaml:"goos"`
+						GOARCH string `yaml:"goarch"`
+					} `yaml:"include"`
+				} `yaml:"matrix"`
+			} `yaml:"strategy"`
+		} `yaml:"jobs"`
+	}
+	require.NoError(t, yaml.Unmarshal(raw, &wf))
+	job, ok := wf.Jobs["cross-compile"]
+	require.Truef(t, ok, "%s: no cross-compile job", path)
+	var out []string
+	for _, p := range job.Strategy.Matrix.Include {
+		require.Truef(t, p.GOOS != "" && p.GOARCH != "", "%s: a cross-compile matrix entry lacks goos or goarch", path)
+		out = append(out, p.GOOS+"/"+p.GOARCH)
+	}
+	require.NotEmptyf(t, out, "%s: the cross-compile job has no matrix.include platforms", path)
+	return out
 }
 
 // installerPlatforms is every release platform install.sh must serve -
@@ -52,7 +83,7 @@ func deriveInstallerPlatforms() []string {
 
 // TestPlatformMatrixConformance keeps the release platform matrix from
 // desynchronizing across its independent copies: release.yaml's build loop,
-// ci.yaml's compile-check loop (which must exercise the same targets before
+// ci.yaml's cross-compile matrix (which must exercise the same targets before
 // a tag is cut), and install.sh's uname-to-GOOS/GOARCH map (asserted via
 // platformMappingCases, since install.sh is downloaded standalone and cannot
 // derive its map from any other file in this repo).
@@ -60,7 +91,7 @@ func TestPlatformMatrixConformance(t *testing.T) {
 	t.Parallel()
 
 	release := parseWorkflowPlatforms(t, filepath.Join("..", ".github", "workflows", "release.yaml"))
-	ci := parseWorkflowPlatforms(t, filepath.Join("..", ".github", "workflows", "ci.yaml"))
+	ci := parseCrossCompileMatrix(t, filepath.Join("..", ".github", "workflows", "ci.yaml"))
 	assert.ElementsMatch(t, release, ci, "release.yaml and ci.yaml must build-check the same platform set")
 
 	// platformMappingCases has multiple uname aliases per platform (e.g. both
