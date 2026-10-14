@@ -324,7 +324,8 @@ version floors, offline guarantees, and live-completion detail:
 
 ## Development
 
-Requires Go 1.27.1+ to build from source:
+Requires the Go version go.mod names (1.27); with the default
+`GOTOOLCHAIN=auto`, `go` downloads it:
 
     make build        # bin/rancher
     make test         # go test -cover ./... (-race everywhere but the source scans and the cache model)
