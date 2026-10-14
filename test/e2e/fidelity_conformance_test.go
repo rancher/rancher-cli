@@ -69,16 +69,15 @@ func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (str
 		// The facade has no downstream and no projects: every non-admin
 		// identity is its one derived user, and the member probes are
 		// downstream-only and never run here.
-		return c.standard.Get(func() (string, error) { return c.derivedBearer(ctx) })
+		return c.standard.Get(func() (string, error) {
+			bearer, _, err := c.derivedBearer(ctx)
+			return bearer, err
+		})
 	case fidelity.IdentityRevoked:
 		return c.revoked.Get(func() (string, error) {
-			bearer, err := c.derivedBearer(ctx)
+			bearer, name, err := c.derivedBearer(ctx)
 			if err != nil {
 				return "", err
-			}
-			name, ok := fidelity.NameFromExtBearer(bearer)
-			if !ok {
-				return "", fmt.Errorf("facade bearer is not ext-shaped (credential value withheld)")
 			}
 			if err := c.deleteToken(ctx, name); err != nil {
 				return "", err
@@ -90,39 +89,42 @@ func (c *compositeTarget) Bearer(ctx context.Context, id fidelity.Identity) (str
 	}
 }
 
-func (c *compositeTarget) derivedBearer(ctx context.Context) (string, error) {
+// derivedBearer logs in as the facade's one user with no responseType and
+// returns the v3 session token's bearer and its name.
+func (c *compositeTarget) derivedBearer(ctx context.Context) (bearer, name string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.srv.URL+"/v1-public/login",
 		newJSONBody(`{"type":"localProvider","username":"e2e-user","password":"e2e-pass"}`))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.srv.Client().Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("facade login: status %d", resp.StatusCode)
+		return "", "", fmt.Errorf("facade login: status %d", resp.StatusCode)
 	}
 	var created struct {
-		Status struct {
-			BearerToken string `json:"bearerToken"`
-		} `json:"status"`
+		ID    string `json:"id"`
+		Token string `json:"token"`
 	}
 	if err := decodeJSONBody(resp, &created); err != nil {
-		return "", err
+		return "", "", err
 	}
-	if created.Status.BearerToken == "" {
-		return "", errors.New("facade login: empty bearerToken")
+	if created.Token == "" || created.ID == "" {
+		return "", "", errors.New("facade login: empty token or id")
 	}
-	return created.Status.BearerToken, nil
+	return created.Token, created.ID, nil
 }
 
+// deleteToken deletes the v3 session token name through the proxy route with
+// the seed token.
 func (c *compositeTarget) deleteToken(ctx context.Context, name string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.srv.URL+extTokensPathForTest+"/"+name, nil)
+		c.srv.URL+token.V3TokensPath+"/"+name, nil)
 	if err != nil {
 		return err
 	}
@@ -178,10 +180,6 @@ func TestFidelityConformance(t *testing.T) {
 		})
 	}
 }
-
-// extTokensPathForTest re-exports the production constant for the delete
-// helper without a bare literal.
-const extTokensPathForTest = token.ExtTokensPath
 
 func newJSONBody(s string) *strings.Reader { return strings.NewReader(s) }
 

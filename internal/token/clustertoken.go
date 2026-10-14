@@ -25,7 +25,8 @@ var errServerTooOldForReuse = errors.New("this Rancher serves neither ext.cattle
 
 // createV3ClusterToken creates a cluster-scoped v3 token through Rancher's
 // Norman route with bearer as the credential. The response must carry a
-// non-empty token and echo clusterId; the status is classified as every
+// non-empty token and echo clusterId; an empty expiresAt is filled in from
+// its createdTS and ttl; the status is classified as every
 // create is (a deterministic 4xx proves absence, 5xx and transport failures
 // may follow a committed create).
 func createV3ClusterToken(ctx context.Context, client *http.Client, base, bearer, clusterID, description string) (CreateResult, error) {
@@ -36,6 +37,11 @@ func createV3ClusterToken(ctx context.Context, client *http.Client, base, bearer
 	}
 	if resp.StatusCode == http.StatusNotFound {
 		return r, errServerTooOldForReuse
+	}
+	if r.ExpiresAt == "" {
+		// Rancher answers a Norman create with an empty expiresAt and sets it
+		// after answering: the creation time plus the ttl.
+		r.ExpiresAt = computedExpiry(r.CreatedTS, r.TTL)
 	}
 	return validateScope(r, clusterID)
 }

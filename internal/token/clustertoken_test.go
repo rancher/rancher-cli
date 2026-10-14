@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -105,6 +106,9 @@ func TestCreateClusterTokenV3FallbackContract(t *testing.T) {
 		assert.Equal(t, "c-test", r.ClusterName)
 		assert.Equal(t, "user-e2e", r.UserID)
 		assert.Contains(t, r.Bearer, ":")
+		expiry, perr := time.Parse(time.RFC3339, r.ExpiresAt)
+		require.NoError(t, perr, "the create answers an empty expiresAt; the client fills it in from createdTS and ttl")
+		assert.WithinDuration(t, time.Now().Add(90*24*time.Hour), expiry, time.Minute)
 		last := f.CreateRequests()[len(f.CreateRequests())-1]
 		assert.Equal(t, "v3", last.Kind)
 	})
@@ -145,4 +149,44 @@ func TestCreateClusterTokenV3FallbackContract(t *testing.T) {
 		require.NotNil(t, r.Ref)
 		assert.Empty(t, r.Bearer)
 	})
+}
+
+// TestCreateV3ClusterTokenFillsAnEmptyExpiryFromCreatedTSAndTTL asserts the
+// expiry of a Norman create answer: an empty expiresAt with a createdTS and
+// a ttl in milliseconds gives their sum in RFC 3339 UTC; an expiresAt the
+// answer carries is kept; no createdTS, no positive ttl or a sum past the
+// year 9999 leave it empty.
+func TestCreateV3ClusterTokenFillsAnEmptyExpiryFromCreatedTSAndTTL(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		fields string
+		want   string
+	}{
+		{"createdTS and ttl", `"expiresAt":"","createdTS":1791564534000,"ttl":7776000000`, "2027-01-07T16:48:54Z"},
+		{"no expiresAt key", `"createdTS":1791564534000,"ttl":3600000`, "2026-10-09T17:48:54Z"},
+		{"an expiry the answer carries", `"expiresAt":"2026-08-01T12:00:00Z","createdTS":1791564534000,"ttl":7776000000`, "2026-08-01T12:00:00Z"},
+		{"no createdTS", `"expiresAt":"","ttl":7776000000`, ""},
+		{"a zero createdTS", `"expiresAt":"","createdTS":0,"ttl":7776000000`, ""},
+		{"no ttl", `"expiresAt":"","createdTS":1791564534000`, ""},
+		{"a ttl of zero", `"expiresAt":"","createdTS":1791564534000,"ttl":0`, ""},
+		{"a negative ttl", `"expiresAt":"","createdTS":1791564534000,"ttl":-1`, ""},
+		{"a sum past year 9999", `"expiresAt":"","createdTS":253402300799000,"ttl":1`, ""},
+		{"a sum that overflows", `"expiresAt":"","createdTS":1791564534000,"ttl":9223372036854775807`, ""},
+		{"timestamps that are not integers", `"expiresAt":"","createdTS":"1791564534000","ttl":1.5`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"id":"token-1","token":"token-1:secret","userId":"user-1","clusterId":"c-test",` + tc.fields + `}`))
+			}))
+			t.Cleanup(srv.Close)
+			r, err := createV3ClusterToken(t.Context(), srv.Client(), srv.URL, "bearer", "c-test", "d")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, r.ExpiresAt)
+			assert.Equal(t, "token-1:secret", r.Bearer)
+		})
+	}
 }

@@ -865,15 +865,18 @@ func authProbes() []Probe {
 		},
 		// The standard user is provisioned fresh each run, so its id (embedded
 		// in the token name, the user-id label, and the userPrincipal) and the
-		// token's own generated name vary; scrub them to the shape that matters.
+		// token's own generated name vary, and the principal's display and login
+		// names are fixture names that differ between targets; scrub them to the
+		// shape that matters.
 		Normalize: []NormalizeRule{
 			{Path: "metadata.name", Replace: "<name>"},
 			{Path: "metadata.labels.*", Replace: "<label>"},
 			{Path: "spec.userID", Replace: "<user-id>"},
 			{Path: "spec.userPrincipal.name", Replace: "<principal>"},
+			{Path: "spec.userPrincipal.displayName", Replace: "<display-name>"},
+			{Path: "spec.userPrincipal.loginName", Replace: "<login-name>"},
 		},
-		FacadeDivergence: "facade create returns a Token carrying only {apiVersion,kind,metadata:{name,resourceVersion},status:{bearerToken,expiresAt}}; the oracle returns the full ext Token with metadata (labels, generateName, uid), spec (ttl, userID, userPrincipal), and status (current/expired/lastUpdateTime)",
-		Teardown:         []Step{deleteFixture("created standard token", token.ExtTokensPath+"/{tokname}")},
+		Teardown: []Step{deleteFixture("created standard token", token.ExtTokensPath+"/{tokname}")},
 	}
 
 	forbiddenRead := Probe{
@@ -923,16 +926,11 @@ func tokProbes() []Probe {
 	namedPath := token.ExtTokensPath + "/{tokname}"
 	revokeLeftover := deleteFixture("created token", namedPath)
 
-	// The facade's ext-token store returns a sparse Token; every full-Token
-	// observation therefore diverges on shape (missing metadata labels/uid,
-	// spec.userPrincipal, and status.hash/current/expired/lastUpdateTime, plus
-	// an empty spec.clusterName the facade emits on GET).
-	const tokenShapeDivergence = "facade returns a Token carrying {metadata.name/rv, status:{bearerToken,expiresAt}} on create and {metadata.name/rv, spec.clusterName, status.expiresAt} on GET; the oracle returns the full ext Token with metadata labels/generateName/uid, spec ttl/userID/userPrincipal, and status hash/current/expired/lastUpdateTime"
-
 	// The create/get/revoke Token bodies carry the acting admin's per-install
 	// user id (spec.userID, the cattle.io/user-id label, and the userPrincipal
-	// name "local://<id>"), which differs across fresh boots; scrub it exactly
-	// as auth/standard-create does for its own user. metadata.labels.* stays
+	// name "local://<id>"), which differs across fresh boots, and the
+	// principal's display and login names, which differ between targets; scrub
+	// them exactly as auth/standard-create does for its own user. metadata.labels.* stays
 	// probe-level on purpose - as a default rule it would blank meaningful
 	// labels on other kinds (e.g. the mut/* Secrets).
 	tokenIdentity := func() []NormalizeRule {
@@ -941,6 +939,8 @@ func tokProbes() []Probe {
 			{Path: "metadata.labels.*", Replace: "<label>"},
 			{Path: "spec.userID", Replace: "<user-id>"},
 			{Path: "spec.userPrincipal.name", Replace: "<principal>"},
+			{Path: "spec.userPrincipal.displayName", Replace: "<display-name>"},
+			{Path: "spec.userPrincipal.loginName", Replace: "<login-name>"},
 		}
 	}
 
@@ -950,9 +950,8 @@ func tokProbes() []Probe {
 			create,
 			{Name: "get", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
 		},
-		Normalize:        tokenIdentity(),
-		FacadeDivergence: tokenShapeDivergence,
-		Teardown:         []Step{revokeLeftover},
+		Normalize: tokenIdentity(),
+		Teardown:  []Step{revokeLeftover},
 	}
 
 	dryrunDelete := Probe{
@@ -965,9 +964,8 @@ func tokProbes() []Probe {
 			},
 			{Name: "still-there", Request: RequestSpec{Method: http.MethodGet, Path: namedPath, Identity: IdentityAdmin}},
 		},
-		Normalize:        tokenIdentity(),
-		FacadeDivergence: tokenShapeDivergence,
-		Teardown:         []Step{revokeLeftover},
+		Normalize: tokenIdentity(),
+		Teardown:  []Step{revokeLeftover},
 	}
 
 	stalePrecondition := Probe{
@@ -990,7 +988,7 @@ func tokProbes() []Probe {
 			NormalizeRule{Path: "message", Replace: "<message>"},
 			NormalizeRule{Path: "details.causes.message", Replace: "<message>"},
 		),
-		FacadeDivergence: "facade returns 409 Conflict with no body where the 2.14.3 oracle returns 500 InternalError with a k8s Status for a stale preconditions.resourceVersion delete; the create observation also diverges on Token shape (minimal vs full).",
+		FacadeDivergence: "the facade answers 409 Conflict with no body, as Rancher v2.16 answers 409 (rancher/rancher#57111); Rancher 2.14 and 2.15, including this oracle, answer 500 InternalError with a Status",
 		Teardown:         []Step{revokeLeftover},
 	}
 
@@ -1007,7 +1005,6 @@ func tokProbes() []Probe {
 			NormalizeRule{Path: "details.name", Replace: "<name>"},
 			NormalizeRule{Path: "message", Replace: "<message>"},
 		),
-		FacadeDivergence: "facade create and revoke return a sparse Token; the oracle returns the full ext Token (metadata labels/generateName/uid, spec userPrincipal, status hash/current/expired/lastUpdateTime). The 404 gone observation conforms.",
 	}
 	return []Probe{createShape, dryrunDelete, stalePrecondition, revoke}
 }

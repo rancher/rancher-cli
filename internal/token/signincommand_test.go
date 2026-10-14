@@ -74,6 +74,9 @@ func TestExecPluginSignInOverSAMLWithAClusterWorks(t *testing.T) {
 		assert.Contains(t, p.loginURL(), "responseType=json")
 		assert.Equal(t, []string{res.Data.(*execCredential).Status.Token}, x.f.BearersOfKind("ext"))
 		assert.Empty(t, x.f.BearersOfKind("v3"), "the kubeconfig token was deleted")
+		creates := x.f.CreateRequests()
+		require.Len(t, creates, 1)
+		assert.Equal(t, "user-e2e", creates[0].OwnerUserID, "the SAML kubeconfig token belongs to the signed-in user, so the cluster token names its owner")
 	})
 }
 
@@ -107,7 +110,7 @@ func TestExecPluginWarnsOfALoginTokenItCouldNotDelete(t *testing.T) {
 	})
 	t.Run("an ext login token names its owner", func(t *testing.T) {
 		for _, reuse := range []bool{false, true} {
-			x := newPluginFixture(t, reuse, testrancher.Options{LoginShape: "ext", SessionDeleteMode: "fail"})
+			x := newPluginFixture(t, reuse, testrancher.Options{ExtSessionLogin: true, SessionDeleteMode: "fail"})
 			res, err := x.getToken(t, "c-test", "n", localPrompter())
 			require.NoError(t, err)
 			require.Len(t, res.Warnings, 1, "reuse %v", reuse)
@@ -443,8 +446,8 @@ func TestSignInWithNoExpiryCachesNothingAndSaysSo(t *testing.T) {
 		name string
 		opts testrancher.Options
 	}{
-		{"ext", testrancher.Options{ScopedCreateExpiresAt: new("")}},
-		{"Norman", testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateEmptyExpiresAt: true}},
+		{"ext", testrancher.Options{AuthTokenMaxTTLZero: true}},
+		{"Norman", testrancher.Options{Legacy: true, V3TokenCreate: true, AuthTokenMaxTTLZero: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			x := newPluginFixture(t, false, tc.opts)

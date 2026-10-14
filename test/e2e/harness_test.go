@@ -81,7 +81,7 @@ var scriptOptions = map[string]func(*testrancher.Options){
 	// A kubeconfig sign-in creates a v3 token, and a standard user's proxy
 	// delete of a v3 token answers 403, as Rancher's does.
 	"delete-token-v3": func(o *testrancher.Options) {
-		o.LoginShape, o.V3DeleteForbiddenForNonAdmin = "v3", true
+		o.V3DeleteForbiddenForNonAdmin = true
 	},
 	// One cluster per page, so the collection reader follows steve's
 	// continue token and validates the count across pages.

@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -54,11 +55,25 @@ const (
 	// deposited.
 	authTokensPathPrefix = "/v1-public/authtokens/"
 
-	defaultDerivedTTL = 15 * time.Minute
+	// sessionTokenTTL is the lifetime of a login's session token (Rancher's
+	// auth-user-session-ttl-minutes default, 960 minutes).
+	sessionTokenTTL = 960 * time.Minute
+	// maxTokenTTL is the lifetime of an ext or Norman token that asks for
+	// none, and the most one can ask for (Rancher's auth-token-max-ttl-minutes
+	// default, 90 days).
+	maxTokenTTL = 90 * 24 * time.Hour
 	// kubeconfigTokenTTL and kubeconfigTokenDescription are what Rancher
-	// gives the token of a kubeconfig_<cluster> login.
+	// gives a kubeconfig token: the one a kubeconfig login creates, the one
+	// the SAML sign-in deposits and the one a create kubeconfig makes
+	// (Rancher's kubeconfig-default-token-ttl-minutes default, 30 days).
 	kubeconfigTokenTTL         = 30 * 24 * time.Hour
 	kubeconfigTokenDescription = "Kubeconfig token"
+
+	// kindLabel and kubeconfigIDLabel are the labels Rancher puts on an ext
+	// token: its kind (spec.kind) and, on a kubeconfig token, the Kubeconfig
+	// it was created for.
+	kindLabel         = "authn.management.cattle.io/kind"
+	kubeconfigIDLabel = "authn.management.cattle.io/kubeconfig-id"
 
 	// CRTCollectionPath is the Steve /v1 collection route for
 	// clusterregistrationtokens. It must match
@@ -103,6 +118,9 @@ const (
 	// controller ever confirms), so the facade owns the route outright.
 	PasswordChangeRequestsCollectionPath = "/k8s/clusters/local/apis/ext.cattle.io/v1/passwordchangerequests"
 )
+
+// neverExpires is the expiry of a token that has none.
+var neverExpires = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 
 // User is a named user the facade authenticates.
 type User struct {
@@ -172,7 +190,9 @@ type Options struct {
 	// ScopedCreateExpiresAt replaces status.expiresAt on a cluster-scoped
 	// ext create response: nil leaves it, a pointer to "" sends none (a
 	// token that never expires), any other text is sent as it is (for an
-	// expiry the client cannot parse).
+	// expiry the client cannot parse). An empty status.expiresAt is a real
+	// answer: Rancher's ext token store sends one when its
+	// auth-token-max-ttl-minutes setting is below 1 (see AuthTokenMaxTTLZero).
 	ScopedCreateExpiresAt *string
 	// ExtCreateClusterAccess says, for a bearer and a cluster named by a
 	// cluster-scoped ext create, whether the cluster exists and whether the
@@ -194,9 +214,17 @@ type Options struct {
 	// a defensive case no supported Rancher sends, which makes the client
 	// ask whose token it holds.
 	V3CreateOmitOwner bool
-	// V3CreateEmptyExpiresAt sends an empty expiresAt on a Norman v3 create
-	// response, as a token that never expires.
-	V3CreateEmptyExpiresAt bool
+	// AuthTokenMaxTTLZero models a Rancher whose auth-token-max-ttl-minutes
+	// setting is 0, as Rancher v2.15 treats it: a requested ttl is kept with
+	// no cap, and an ext create that asks for none answers spec.ttl -1, an
+	// empty status.expiresAt and status.expired false, while a Norman v3
+	// create answers ttl 0; either token never expires. A requested ttl
+	// longer than a century also never expires here, where Rancher would
+	// answer a date that far out. Without it a create
+	// that asks for no ttl gets 90 days and a larger ttl is cut to 90 days;
+	// the Norman answer's expiresAt is empty either way, as Rancher sets it
+	// only after answering.
+	AuthTokenMaxTTLZero bool
 	// V3CreateClusterID overrides the echoed clusterId on a Norman v3
 	// create; an empty string omits it.
 	V3CreateClusterID *string
@@ -261,14 +289,17 @@ type Options struct {
 	// any other status carries no body, modelling a create the client
 	// never learned of.
 	LoginStatus int
-	// LoginShape forces the login response shape and the created record's
-	// kind ("ext" or "v3") regardless of the requested responseType. Empty
-	// follows the response type: json and kubeconfig_<cluster> are v3 (the
-	// latter scoped to that cluster, named kubeconfig-<user>.<cluster> plus a
-	// suffix, described "Kubeconfig token" and valid 30 days, as Rancher
-	// creates it), kubeconfig and an empty type are ext. With "v3", plain
-	// kubeconfig is an unscoped v3 token.
-	LoginShape string
+	// ExtSessionLogin makes every login that answers with a body and whose
+	// responseType does not start with kubeconfig (a cookie login keeps its
+	// v3 token) create an ext token with spec.kind "session", valid 960
+	// minutes, and answer the ext Token object. It is this fake's model of
+	// the login answer of Rancher v2.17, which creates session tokens as ext
+	// tokens; its lifetime and keys are to be checked against a 2.17
+	// pre-release. Without it a login creates the v3 tokens of Rancher v2.15
+	// and v2.16, as Rancher's login handler does: a session token for json,
+	// cookie, an empty responseType and any other value, and a kubeconfig
+	// token for a responseType that starts with kubeconfig.
+	ExtSessionLogin bool
 
 	// DropDerivedCreateResponse creates the derived token and then closes the
 	// connection without writing.
@@ -329,7 +360,19 @@ type record struct {
 	// endpoint. The
 	// delete fault modes select on it.
 	role      string
+	createdAt time.Time
 	expiresAt time.Time
+	// ttlMs is the lifetime in milliseconds the token answers as spec.ttl.
+	ttlMs int64
+	uid   string
+	// extKind is the ext token's spec.kind: "" for a plain create,
+	// "kubeconfig" or "session".
+	extKind string
+	// kubeconfigID names the Kubeconfig a kubeconfig token was created for.
+	kubeconfigID string
+	// provider is the auth provider the owner signed in with, "local" or
+	// "azuread"; empty means local.
+	provider string
 }
 
 // bearer renders the record's bearer in its kind's shape: an ext token
@@ -339,6 +382,13 @@ func (r *record) bearer() string {
 		return r.name + ":" + r.secret
 	}
 	return "ext/" + r.name + ":" + r.secret
+}
+
+// authDeposit is what the authtokens path serves for one request id: the
+// encrypted bearer and the expiry of the token it holds.
+type authDeposit struct {
+	payload   string
+	expiresAt time.Time
 }
 
 // AuthTokensRequest is one request the authtokens path received.
@@ -390,7 +440,7 @@ type Facade struct {
 	deletes           []DeleteRecord
 	creates           []CreateRecord
 	authTokensReqs    []AuthTokensRequest
-	authTokens        map[string]string // request id → encrypted base64 bearer
+	authTokens        map[string]authDeposit
 	logins            int
 	derivedCreates    int
 	dropped           bool
@@ -522,30 +572,37 @@ func (f *Facade) BearersOfKind(kind string) []string {
 	return bearers
 }
 
-// DepositAuthToken creates a v3 session token and deposits it for requestID,
-// encrypted to publicKeyB64 the way the browser sign-in does.
+// DepositAuthToken creates a v3 kubeconfig token valid 30 days, as Rancher's
+// SAML sign-in does, and deposits its bearer for requestID, encrypted to
+// publicKeyB64 the way the browser sign-in does. The token belongs to the
+// first configured user, as an azureAD login's does, with the local
+// principal: the deposit takes no provider.
 func (f *Facade) DepositAuthToken(requestID, publicKeyB64 string) {
-	rec := f.newToken("", 0)
+	rec := f.newToken("", kubeconfigTokenTTL.Milliseconds())
 	f.mu.Lock()
 	rec.kind = "v3"
 	rec.role = "session"
+	rec.description = kubeconfigTokenDescription
+	rec.userID = f.opts.Users[0].UserID
 	f.mu.Unlock()
 	f.DepositAuthTokenRaw(requestID, encryptToPublicKey(publicKeyB64, rec.bearer()))
 }
 
 // DepositAuthTokenPlaintext deposits plaintext for requestID, encrypted to
 // publicKeyB64 in place of a real bearer, for a payload the client can
-// decrypt but cannot read as a token.
+// decrypt but cannot read as a token. Like every deposit it expires in 30
+// days.
 func (f *Facade) DepositAuthTokenPlaintext(requestID, publicKeyB64, plaintext string) {
 	f.DepositAuthTokenRaw(requestID, encryptToPublicKey(publicKeyB64, plaintext))
 }
 
 // DepositAuthTokenRaw deposits b64 for requestID as it is, for a payload the
-// client cannot decrypt.
+// client cannot decrypt. The authtokens answer carries an expiry 30 days
+// from the deposit, the lifetime of the kubeconfig token Rancher deposits.
 func (f *Facade) DepositAuthTokenRaw(requestID, b64 string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.authTokens[requestID] = b64
+	f.authTokens[requestID] = authDeposit{payload: b64, expiresAt: time.Now().Add(kubeconfigTokenTTL)}
 }
 
 // New builds a Facade from opts, applying defaults for the optional
@@ -565,7 +622,7 @@ func New(opts Options) *Facade {
 		admins[id] = true
 	}
 	admins[SeedOwner] = true
-	f := &Facade{opts: opts, admins: admins, tokens: map[string]*record{}, authTokens: map[string]string{}}
+	f := &Facade{opts: opts, admins: admins, tokens: map[string]*record{}, authTokens: map[string]authDeposit{}}
 	if opts.EnableIdP {
 		f.idp = newIdPStub(opts.IdPPendingPolls)
 	}
@@ -621,6 +678,8 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleAuthTokens(w, r, strings.TrimPrefix(r.URL.Path, authTokensPathPrefix))
 	case r.Method == http.MethodPost && r.URL.Path == KubeconfigsCollectionPath:
 		f.handleKubeconfigsPOST(w, r)
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, KubeconfigsCollectionPath+"/"):
+		f.handleKubeconfigDelete(w, r, strings.TrimPrefix(r.URL.Path, KubeconfigsCollectionPath+"/"))
 	case r.Method == http.MethodPost && r.URL.Path == PasswordChangeRequestsCollectionPath:
 		f.handlePasswordChangeRequestsPOST(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == CRTCollectionPath:
@@ -722,6 +781,7 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var userID string
+	provider := "local"
 	switch req.Type {
 	case "localProvider":
 		var found bool
@@ -733,51 +793,63 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !found {
-			f.recordCreate(CreateRecord{Kind: loginKind(f.opts.LoginShape, req.ResponseType), Role: "session"})
+			f.recordCreate(CreateRecord{Kind: f.loginKind(req.ResponseType), Role: "session"})
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 	case "azureADProvider":
 		if f.idp == nil || !f.idp.validIDToken(req.IDToken) {
-			f.recordCreate(CreateRecord{Kind: loginKind(f.opts.LoginShape, req.ResponseType), Role: "session"})
+			f.recordCreate(CreateRecord{Kind: f.loginKind(req.ResponseType), Role: "session"})
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		userID = f.opts.Users[0].UserID
+		provider = "azuread"
 	default:
-		f.recordCreate(CreateRecord{Kind: loginKind(f.opts.LoginShape, req.ResponseType), Role: "session"})
+		f.recordCreate(CreateRecord{Kind: f.loginKind(req.ResponseType), Role: "session"})
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	// A deterministic 4xx proves the server created nothing, so it is
 	// answered before any record exists.
 	if deterministic4xx(f.opts.LoginStatus) {
-		f.recordCreate(CreateRecord{Kind: loginKind(f.opts.LoginShape, req.ResponseType), Role: "session"})
+		f.recordCreate(CreateRecord{Kind: f.loginKind(req.ResponseType), Role: "session"})
 		w.WriteHeader(f.opts.LoginStatus)
 		return
 	}
 
-	rec := f.newToken("", 0)
+	kubeconfig := isKubeconfigLogin(req.ResponseType)
+	ttl := sessionTokenTTL
+	if kubeconfig {
+		ttl = kubeconfigTokenTTL
+	}
+	rec := f.newToken("", ttl.Milliseconds())
 	f.mu.Lock()
-	rec.kind = loginKind(f.opts.LoginShape, req.ResponseType)
-	if rec.kind == "v3" {
-		// A kubeconfig login for one cluster creates a token scoped to
-		// it, which Rancher refuses on any request that names no cluster.
-		if cluster, ok := strings.CutPrefix(req.ResponseType, "kubeconfig_"); ok {
-			rec.clusterName = cluster
-			// Rancher names it for the user and the cluster, ignores the
-			// request's description and keeps it 30 days.
-			delete(f.tokens, rec.name)
-			rec.name = "kubeconfig-" + userID + "." + cluster + "fac" + strings.TrimPrefix(rec.name, "fac-token-")
-			f.tokens[rec.name] = rec
-			rec.expiresAt = time.Now().Add(kubeconfigTokenTTL)
-			req.Description = kubeconfigTokenDescription
+	rec.kind = f.loginKind(req.ResponseType)
+	rec.provider = provider
+	if kubeconfig {
+		// Rancher names a kubeconfig token for the user, and for the cluster
+		// when the response type names one, ignores the request's description
+		// and keeps it 30 days. A token for one cluster is scoped to it,
+		// which Rancher refuses on any request that names no cluster.
+		_, cluster, _ := strings.Cut(req.ResponseType, "_")
+		rec.clusterName = cluster
+		name := "kubeconfig-" + userID
+		if cluster != "" {
+			name += "." + cluster
 		}
+		delete(f.tokens, rec.name)
+		rec.name = name + "fac" + strings.TrimPrefix(rec.name, "fac-token-")
+		f.tokens[rec.name] = rec
+		req.Description = kubeconfigTokenDescription
+	}
+	if rec.kind == "ext" {
+		rec.extKind = "session"
 	}
 	rec.role = "session"
 	rec.description = req.Description
 	rec.userID = userID
-	if req.Description != "" && !strings.HasPrefix(rec.name, "kubeconfig-") {
+	if req.Description != "" && !kubeconfig {
 		f.descriptions = append(f.descriptions, req.Description)
 	}
 	f.creates = append(f.creates, CreateRecord{Kind: rec.kind, Role: "session", Name: rec.name, Bearer: "", Description: req.Description, OwnerUserID: rec.userID})
@@ -798,7 +870,11 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// status: the token exists and the client can read it, but the status
 	// is not the one a create promises. Any other forced status answers
 	// with no body: the record exists and the client learns nothing.
+	cookie := req.ResponseType == "cookie"
 	status := http.StatusCreated
+	if cookie {
+		status = http.StatusOK
+	}
 	if f.opts.LoginStatus != 0 {
 		status = f.opts.LoginStatus
 	}
@@ -809,25 +885,42 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 		dropConnection(w)
 	case f.opts.MalformedLoginResponse:
 		writeJSON(w, status, map[string]any{"broken": true})
+	case cookie:
+		// A cookie login answers 200 with the session cookie and no body, as
+		// Rancher's login handler does.
+		http.SetCookie(w, &http.Cookie{Name: "R_SESS", Value: bearer, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		w.WriteHeader(status)
 	case rec.kind == "v3":
 		writeV3Token(w, status, rec, name, bearer, f.opts.LegacyLoginBodyUserID)
 	default:
-		writeExtTokenAs(w, status, rec, name, bearer, !f.opts.OmitSpecOnCreate)
+		writeJSON(w, status, f.extTokenBody(rec, extAnswer{
+			name:              name,
+			bearer:            bearer,
+			withSpec:          !f.opts.OmitSpecOnCreate,
+			echoedClusterName: rec.clusterName,
+			expiresAt:         expiryText(rec),
+		}))
 	}
 }
 
-// loginKind is the kind of resource a login creates: the forced shape when
-// a test sets one, else the shape the response type asks for. A login for
-// one cluster (kubeconfig_<cluster>) creates a v3 token, as Rancher does.
-func loginKind(shape, responseType string) string {
-	switch {
-	case shape != "":
-		return shape
-	case responseType == "json", strings.HasPrefix(responseType, "kubeconfig_"):
-		return "v3"
-	default:
+// isKubeconfigLogin reports whether a login's response type asks for a
+// kubeconfig token, as Rancher's login handler decides it: any value that
+// starts with kubeconfig, kubeconfig_<cluster> for a token scoped to one
+// cluster. Every other value, an empty one included, gets a session token.
+func isKubeconfigLogin(responseType string) bool {
+	return strings.HasPrefix(responseType, "kubeconfig")
+}
+
+// loginKind is the kind of resource a login creates. Rancher v2.15 and v2.16
+// create a v3 token for every response type, as the login handler does; the
+// ext session option is this fake's model of v2.17, where a session token is
+// an ext token. A kubeconfig token and the
+// session token of a cookie login stay v3.
+func (f *Facade) loginKind(responseType string) string {
+	if f.opts.ExtSessionLogin && !isKubeconfigLogin(responseType) && responseType != "cookie" {
 		return "ext"
 	}
+	return "v3"
 }
 
 // deterministic4xx reports whether a status proves the request had no
@@ -957,12 +1050,14 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rec := f.newToken(createReq.Spec.ClusterName, createReq.Spec.TTL)
+	provider := f.bearerProvider(bearerFromHeader(r))
+	rec := f.newToken(createReq.Spec.ClusterName, f.requestedTTLMs(createReq.Spec.TTL, -1))
 	f.mu.Lock()
 	rec.kind = "ext"
 	rec.role = role
 	rec.description = createReq.Spec.Description
 	rec.userID = owner
+	rec.provider = provider
 	if createReq.Spec.Description != "" {
 		f.descriptions = append(f.descriptions, createReq.Spec.Description)
 	}
@@ -997,11 +1092,18 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 			c.userID = *o
 			echoed = &c
 		}
-		expiresAt := echoed.expiresAt.UTC().Format(time.RFC3339)
+		expiresAt := expiryText(echoed)
 		if o := f.opts.ScopedCreateExpiresAt; role == "cluster" && o != nil {
 			expiresAt = *o
 		}
-		writeExtTokenExpiring(w, http.StatusCreated, echoed, rec.name, bearer, !f.opts.OmitSpecOnCreate, echoedClusterName, expiresAt)
+		writeJSON(w, http.StatusCreated, f.extTokenBody(echoed, extAnswer{
+			name:              rec.name,
+			bearer:            bearer,
+			withSpec:          !f.opts.OmitSpecOnCreate,
+			echoedClusterName: echoedClusterName,
+			expiresAt:         expiresAt,
+			current:           bearerFromHeader(r) == rec.bearer(),
+		}))
 	}
 }
 
@@ -1054,12 +1156,14 @@ func (f *Facade) handleNormanTokensPOST(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	rec := f.newToken(req.ClusterID, req.TTL)
+	provider := f.bearerProvider(bearerFromHeader(r))
+	rec := f.newToken(req.ClusterID, f.requestedTTLMs(req.TTL, 0))
 	f.mu.Lock()
 	rec.kind = "v3"
 	rec.role = role
 	rec.description = req.Description
 	rec.userID = owner
+	rec.provider = provider
 	f.creates = append(f.creates, CreateRecord{Kind: "v3", Role: role, Name: rec.name, Bearer: bearerFromHeader(r), ClusterName: req.ClusterID, Description: req.Description, OwnerUserID: owner})
 	f.mu.Unlock()
 
@@ -1078,24 +1182,44 @@ func (f *Facade) handleNormanTokensPOST(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	body2 := map[string]any{
-		"id":        rec.name,
-		"token":     rec.bearer(),
-		"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339),
-		"userId":    rec.userID,
-		"type":      "token",
-		"baseType":  "token",
+	display, login := f.principalNames(rec.userID)
+	principal, provider := principalOf(rec)
+	link := requestOrigin(r) + normanTokensPath + "/" + rec.name
+	answer := map[string]any{
+		"authProvider": provider,
+		"baseType":     "token",
+		"clusterId":    nil,
+		"created":      rfc3339(rec.createdAt),
+		"createdTS":    rec.createdAt.UnixMilli(),
+		"creatorId":    nil,
+		"current":      false,
+		"description":  rec.description,
+		"enabled":      true,
+		"expired":      false,
+		"expiresAt":    "",
+		"id":           rec.name,
+		"isDerived":    true,
+		"labels":       map[string]any{"authn.management.cattle.io/token-userId": rec.userID},
+		"links":        map[string]any{"remove": link, "self": link, "update": link},
+		"name":         rec.name,
+		"token":        rec.bearer(),
+		"ttl":          rec.ttlMs,
+		"type":         "token",
+		"userId":       rec.userID,
+		"userPrincipal": "map[displayName:" + display + " loginName:" + login +
+			" me:true metadata:map[name:" + principal + "] principalType:user provider:" + provider + "]",
+		"uuid": rec.uid,
 	}
 	if f.opts.V3CreateOmitOwner {
-		delete(body2, "userId")
+		delete(answer, "userId")
 	}
-	if f.opts.V3CreateEmptyExpiresAt {
-		body2["expiresAt"] = ""
+	switch {
+	case f.opts.V3CreateClusterID != nil && echoedClusterID == "":
+		delete(answer, "clusterId")
+	case echoedClusterID != "":
+		answer["clusterId"] = echoedClusterID
 	}
-	if echoedClusterID != "" {
-		body2["clusterId"] = echoedClusterID
-	}
-	writeJSON(w, status, body2)
+	writeJSON(w, status, answer)
 }
 
 // handleExtCollection lists every ext record as a TokenList. With a
@@ -1126,7 +1250,7 @@ func (f *Facade) handleExtCollection(w http.ResponseWriter, r *http.Request) {
 	}
 	slices.Sort(names)
 	for _, name := range names {
-		items = append(items, tokenCRBody(f.tokens[name]))
+		items = append(items, f.storedExtTokenBody(f.tokens[name], r, false))
 	}
 	f.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1142,7 +1266,7 @@ func (f *Facade) handleExtCollection(w http.ResponseWriter, r *http.Request) {
 func (f *Facade) handleAuthTokens(w http.ResponseWriter, r *http.Request, id string) {
 	f.mu.Lock()
 	f.authTokensReqs = append(f.authTokensReqs, AuthTokensRequest{Method: r.Method, Path: r.URL.Path})
-	payload, ok := f.authTokens[id]
+	deposit, ok := f.authTokens[id]
 	if r.Method == http.MethodDelete {
 		delete(f.authTokens, id)
 	}
@@ -1155,8 +1279,8 @@ func (f *Facade) handleAuthTokens(w http.ResponseWriter, r *http.Request, id str
 		http.NotFound(w, r)
 	default:
 		writeJSON(w, http.StatusOK, map[string]any{
-			"token":     payload,
-			"expiresAt": time.Now().Add(defaultDerivedTTL).UTC().Format(time.RFC3339),
+			"token":     deposit.payload,
+			"expiresAt": rfc3339(deposit.expiresAt),
 		})
 	}
 }
@@ -1193,7 +1317,7 @@ func (f *Facade) handleNamedGet(w http.ResponseWriter, r *http.Request, name str
 		f.fallthroughTo(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, tokenCRBody(rec))
+	writeJSON(w, http.StatusOK, f.storedExtTokenBody(rec, r, false))
 }
 
 type deleteOptions struct {
@@ -1291,18 +1415,22 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 	}
 
 	if precondition != "" && precondition != rec.resourceVersion {
+		// A stale precondition is a 409 Conflict, as Rancher main (the v2.16
+		// pre-release) answers it (rancher/rancher#57111); main sends a Status
+		// body and the fake sends none. Rancher v2.15 answers 500
+		// InternalError.
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
 	if dryRun {
-		writeJSON(w, http.StatusOK, tokenCRBody(rec))
+		writeJSON(w, http.StatusOK, f.storedExtTokenBody(rec, r, true))
 		return
 	}
 
 	f.mu.Lock()
 	delete(f.tokens, name)
 	f.mu.Unlock()
-	writeJSON(w, http.StatusOK, tokenCRBody(rec))
+	writeJSON(w, http.StatusOK, f.storedExtTokenBody(rec, r, true))
 }
 
 // handleLogout serves POST /v1/logout: it deletes the token the bearer
@@ -1419,15 +1547,29 @@ func (f *Facade) deleteMode(rec *record) string {
 // forwarding a named copy to envtest (forwardNamedCreate) so a later
 // get/delete kubeconfig <name> succeeds against the real store.
 //
+// A create that is not a dry run makes one unscoped ext token of kind
+// kubeconfig, as Rancher does for a cluster without a local auth endpoint
+// (the facade models none): description "Kubeconfig token", a kubeconfig-id
+// label naming the Kubeconfig, valid 30 days, listed in the answer's
+// status.tokens. A requested spec.ttl is in seconds; above 30 days or
+// negative it is refused with 400, and the answer's spec.ttl is the 30 day
+// default when none was sent. The refusal follows Rancher 2.14 and 2.15,
+// where the cap is the kubeconfig-default-token-ttl-minutes setting (30 days
+// by default); Rancher main, the v2.16 pre-release, caps at
+// kubeconfig-max-token-ttl-minutes (90 days) and words the negative ttl
+// refusal differently. Deleting the Kubeconfig deletes its tokens
+// (handleKubeconfigDelete).
+//
 // ASSUMPTION (needs a fidelity probe against a real server): the real
 // server's status.value is a full kubeconfig document embedding a live,
 // revocable bearer scoped to spec.clusters, with entries Rancher's own
 // formatter builds (server URL, CA, impersonation-ready user). This facade
 // fills status.value with a fixture kubeconfig naming spec.clusters (or
-// "local" when empty) and an inert placeholder server/token - enough for
-// the command's own success path (it only checks status.value is
-// non-empty), never a claim about the real document's shape; the persisted
-// object's own spec is real, forwarded verbatim.
+// "local" when empty), the server the request came to and that token's
+// bearer - enough for the command's own success path and for the returned
+// kubeconfig to authenticate against this facade, never a claim about the
+// real document's shape; the persisted object's own spec is real,
+// forwarded verbatim.
 func (f *Facade) handleKubeconfigsPOST(w http.ResponseWriter, r *http.Request) {
 	body, handled := f.namedBodyFallthrough(w, r)
 	if handled {
@@ -1442,6 +1584,24 @@ func (f *Facade) handleKubeconfigsPOST(w http.ResponseWriter, r *http.Request) {
 	spec, ok := decodeSpec(w, body)
 	if !ok {
 		return
+	}
+	if spec == nil {
+		spec = map[string]any{}
+	}
+	requested, _ := spec["ttl"].(float64)
+	ttl := kubeconfigTokenTTL
+	switch {
+	case requested < 0:
+		writeStatus(w, http.StatusBadRequest, "BadRequest", "spec.ttl can't be negative")
+		return
+	case requested > kubeconfigTokenTTL.Seconds():
+		writeStatus(w, http.StatusBadRequest, "BadRequest",
+			fmt.Sprintf("spec.ttl %d exceeds max ttl %d", int64(requested), int64(kubeconfigTokenTTL.Seconds())))
+		return
+	case requested == 0:
+		spec["ttl"] = int64(kubeconfigTokenTTL.Seconds())
+	default:
+		ttl = time.Duration(requested) * time.Second
 	}
 
 	f.mu.Lock()
@@ -1458,16 +1618,58 @@ func (f *Facade) handleKubeconfigsPOST(w http.ResponseWriter, r *http.Request) {
 	}
 	if !slices.Contains(r.URL.Query()["dryRun"], "All") {
 		f.forwardNamedCreate(r, "Kubeconfig", "ext.cattle.io/v1", name, spec)
+		owner, _ := f.BearerOwner(bearerFromHeader(r))
+		provider := f.bearerProvider(bearerFromHeader(r))
+		rec := f.newToken("", ttl.Milliseconds())
+		f.mu.Lock()
+		rec.kind = "ext"
+		rec.role = "derived"
+		rec.extKind = "kubeconfig"
+		rec.description = kubeconfigTokenDescription
+		rec.userID = owner
+		rec.kubeconfigID = name
+		rec.provider = provider
+		f.mu.Unlock()
 		clusters := stringsFromAny(spec["clusters"])
 		currentContext, _ := spec["currentContext"].(string)
-		value, err := kubeconfigValueFixture(clusters, currentContext)
+		value, err := kubeconfigValueFixture(clusters, currentContext, requestOrigin(r), rec.bearer())
 		if err != nil {
 			http.Error(w, "building kubeconfig fixture: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		obj["status"] = map[string]any{"value": value, "summary": "Complete"}
+		obj["status"] = map[string]any{"value": value, "summary": "Complete", "tokens": []string{rec.name}}
 	}
 	writeJSON(w, http.StatusCreated, obj)
+}
+
+// handleKubeconfigDelete forwards the delete of a Kubeconfig to the real
+// store, where a Kubeconfig made by handleKubeconfigsPOST also lives, and
+// answers what it answers. When that delete succeeds and is not a dry run
+// (?dryRun=All or a body that says so, which Rancher passes through), it
+// deletes the tokens the Kubeconfig's create made, as Rancher does.
+func (f *Facade) handleKubeconfigDelete(w http.ResponseWriter, r *http.Request, name string) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "reading body", http.StatusBadRequest)
+		return
+	}
+	var opts deleteOptions
+	if len(body) > 0 {
+		_ = json.Unmarshal(body, &opts)
+	}
+	dryRun := slices.Contains(r.URL.Query()["dryRun"], "All") || slices.Contains(opts.DryRun, "All")
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	f.fallthroughTo(rec, r)
+	maps.Copy(w.Header(), rec.Header())
+	w.WriteHeader(rec.Code)
+	_, _ = w.Write(rec.Body.Bytes())
+	if rec.Code < 200 || rec.Code > 299 || dryRun {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	maps.DeleteFunc(f.tokens, func(_ string, tok *record) bool { return tok.kubeconfigID == name })
 }
 
 // forwardNamedCreate persists a named copy of an unnamed facade-owned create
@@ -1523,7 +1725,7 @@ func stringsFromAny(v any) []string {
 // correctly. One shared "rancher" AuthInfo carries every context, mirroring
 // the real store's single reused credential. See handleKubeconfigsPOST's
 // ASSUMPTION comment.
-func kubeconfigValueFixture(clusters []string, currentContext string) (string, error) {
+func kubeconfigValueFixture(clusters []string, currentContext, origin, bearer string) (string, error) {
 	if len(clusters) == 0 {
 		clusters = []string{"local"}
 	}
@@ -1533,12 +1735,12 @@ func kubeconfigValueFixture(clusters []string, currentContext string) (string, e
 	const authInfoName = "rancher"
 	cfg := clientcmdapi.Config{
 		Clusters:       map[string]*clientcmdapi.Cluster{},
-		AuthInfos:      map[string]*clientcmdapi.AuthInfo{authInfoName: {Token: "fac-kubeconfig-token"}},
+		AuthInfos:      map[string]*clientcmdapi.AuthInfo{authInfoName: {Token: bearer}},
 		Contexts:       map[string]*clientcmdapi.Context{},
 		CurrentContext: currentContext,
 	}
 	for _, c := range clusters {
-		cfg.Clusters[c] = &clientcmdapi.Cluster{Server: "https://facade.example.invalid/k8s/clusters/" + c}
+		cfg.Clusters[c] = &clientcmdapi.Cluster{Server: origin + "/k8s/clusters/" + c}
 		cfg.Contexts[c] = &clientcmdapi.Context{Cluster: c, AuthInfo: authInfoName}
 	}
 	b, err := clientcmd.Write(cfg)
@@ -2081,86 +2283,206 @@ func bearerFromHeader(r *http.Request) string {
 // newToken issues the next deterministic name/secret pair from the
 // instance-local counter, shared by /v1-public/login (the session token) and
 // the derived token create endpoint (the derived token) - the same mechanism that makes a
-// provider login consume two counter slots.
+// provider login consume two counter slots. The token lives for ttlMs
+// milliseconds; a ttlMs of zero or less, or one past a century, never
+// expires. Times are whole seconds, as Rancher's are.
 func (f *Facade) newToken(clusterName string, ttlMs int64) *record {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.counter++
 	n := f.counter
+	now := time.Now().Truncate(time.Second)
 	rec := &record{
 		name:            fmt.Sprintf("fac-token-%d", n),
 		secret:          fmt.Sprintf("fac-secret-%d", n),
 		resourceVersion: "1",
 		clusterName:     clusterName,
+		createdAt:       now,
+		expiresAt:       neverExpires,
+		ttlMs:           ttlMs,
+		uid:             fmt.Sprintf("00000000-0000-4000-8000-%012d", n),
 	}
-	if ttlMs > 0 {
-		rec.expiresAt = time.Now().Add(time.Duration(ttlMs) * time.Millisecond)
-	} else {
-		rec.expiresAt = time.Now().Add(defaultDerivedTTL)
+	if ttlMs > 0 && ttlMs < maxLifetimeMs {
+		rec.expiresAt = now.Add(time.Duration(ttlMs) * time.Millisecond)
 	}
 	f.tokens[rec.name] = rec
 	return rec
 }
 
-func tokenCRBody(rec *record) map[string]any {
-	spec := map[string]any{"clusterName": rec.clusterName}
-	if rec.description != "" {
-		spec["description"] = rec.description
+// maxLifetimeMs is a century in milliseconds: a ttl longer than this is a
+// token that never expires.
+const maxLifetimeMs = int64(100 * 365 * 24 * time.Hour / time.Millisecond)
+
+// requestedTTLMs is the lifetime in milliseconds a create that asks for
+// ttlMs gets: the request, at most 90 days, and 90 days when it asks for
+// none. With AuthTokenMaxTTLZero the request is kept as it is, and a create
+// that asks for none gets noTTL, which differs by route.
+func (f *Facade) requestedTTLMs(ttlMs, noTTL int64) int64 {
+	if f.opts.AuthTokenMaxTTLZero {
+		if ttlMs == 0 {
+			return noTTL
+		}
+		return ttlMs
 	}
-	return map[string]any{
-		"apiVersion": "ext.cattle.io/v1",
-		"kind":       "Token",
-		"metadata":   map[string]any{"name": rec.name, "resourceVersion": rec.resourceVersion},
-		"spec":       spec,
-		"status":     map[string]any{"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339)},
+	maxMs := maxTokenTTL.Milliseconds()
+	if ttlMs <= 0 || ttlMs >= maxMs {
+		return maxMs
 	}
+	return ttlMs
 }
 
-// writeExtTokenAs writes the ext Token object with the given identity: the
-// resource's name in metadata and its bearer in status. Either may be
-// empty, which withholds that field, for a response the client cannot
-// fully identify.
-func writeExtTokenAs(w http.ResponseWriter, status int, rec *record, name, bearer string, withSpec bool) {
-	writeExtTokenAsWithScope(w, status, rec, name, bearer, withSpec, rec.clusterName)
-}
+func rfc3339(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// writeExtTokenAsWithScope writes the ext Token object with the given
-// identity and an optionally overridden echoed clusterName.
-func writeExtTokenAsWithScope(w http.ResponseWriter, status int, rec *record, name, bearer string, withSpec bool, echoedClusterName string) {
-	writeExtTokenExpiring(w, status, rec, name, bearer, withSpec, echoedClusterName, rec.expiresAt.UTC().Format(time.RFC3339))
-}
-
-// writeExtTokenExpiring is writeExtTokenAsWithScope with the status.expiresAt
-// text given, for an answer whose expiry the client cannot parse.
-func writeExtTokenExpiring(w http.ResponseWriter, status int, rec *record, name, bearer string, withSpec bool, echoedClusterName, expiresAt string) {
-	statusBlock := map[string]any{"expiresAt": expiresAt}
-	if bearer != "" {
-		statusBlock["bearerToken"] = bearer
+// expiryText is a token's expiry as the answers write it: empty for a token
+// that never expires.
+func expiryText(rec *record) string {
+	if rec.expiresAt.Equal(neverExpires) {
+		return ""
 	}
-	metadata := map[string]any{"resourceVersion": rec.resourceVersion}
-	if name != "" {
-		metadata["name"] = name
+	return rfc3339(rec.expiresAt)
+}
+
+// principalOf is the name and provider of the principal a token's owner
+// signed in as.
+func principalOf(rec *record) (name, provider string) {
+	if rec.provider == "azuread" {
+		return "azuread_user://" + rec.userID, "azuread"
+	}
+	return "local://" + rec.userID, "local"
+}
+
+// bearerProvider is the provider the owner of the token that bearer
+// authenticates signed in with; the seed token and an unknown bearer are
+// local.
+func (f *Facade) bearerProvider(bearer string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, rec := range f.tokens {
+		if rec.bearer() == bearer && rec.provider != "" {
+			return rec.provider
+		}
+	}
+	return "local"
+}
+
+// requestOrigin is the scheme and host the request came to.
+func requestOrigin(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+// principalNames are the display and login names of the user with userID:
+// the configured user's name, else the id.
+func (f *Facade) principalNames(userID string) (display, login string) {
+	for _, u := range f.opts.Users {
+		if u.UserID == userID {
+			return u.Name, u.Name
+		}
+	}
+	return userID, userID
+}
+
+// extAnswer says what one answer about an ext Token carries beyond the keys
+// every answer has.
+type extAnswer struct {
+	// name is metadata.name; empty withholds it.
+	name string
+	// bearer is the bearer of a create answer: it adds status.bearerToken
+	// and status.value. Empty withholds both.
+	bearer string
+	// hash adds status.hash, which a delete and a dry-run delete answer
+	// carry.
+	hash bool
+	// current is status.current: whether the token's own bearer made the
+	// request.
+	current bool
+	// withSpec is false for an answer that leaves spec out.
+	withSpec bool
+	// echoedClusterName is spec.clusterName; empty leaves it out.
+	echoedClusterName string
+	// expiresAt is status.expiresAt as text.
+	expiresAt string
+}
+
+// storedExtTokenBody is the ext Token a get, a list, a delete and a dry-run
+// delete answer: the stored token as it is, with status.hash on a delete.
+func (f *Facade) storedExtTokenBody(rec *record, r *http.Request, hash bool) map[string]any {
+	return f.extTokenBody(rec, extAnswer{
+		name:              rec.name,
+		hash:              hash,
+		current:           bearerFromHeader(r) == rec.bearer(),
+		withSpec:          true,
+		echoedClusterName: rec.clusterName,
+		expiresAt:         expiryText(rec),
+	})
+}
+
+// extTokenBody builds the ext Token object of every answer: the keys of
+// Rancher's ext Token, with clusterName and description only when set.
+func (f *Facade) extTokenBody(rec *record, a extAnswer) map[string]any {
+	metadata := map[string]any{
+		"generateName":      "token-",
+		"uid":               rec.uid,
+		"creationTimestamp": rfc3339(rec.createdAt),
+		"resourceVersion":   rec.resourceVersion,
+		"labels":            map[string]any{kindLabel: rec.extKind, "cattle.io/user-id": rec.userID},
+	}
+	if rec.kubeconfigID != "" {
+		metadata["labels"].(map[string]any)[kubeconfigIDLabel] = rec.kubeconfigID
+	}
+	if a.name != "" {
+		metadata["name"] = a.name
+	}
+	status := map[string]any{
+		"expiresAt":      a.expiresAt,
+		"expired":        !time.Now().Before(rec.expiresAt),
+		"current":        a.current,
+		"lastUpdateTime": rfc3339(rec.createdAt),
+	}
+	if a.bearer != "" {
+		status["bearerToken"] = a.bearer
+		status["value"] = rec.secret
+	}
+	if a.hash {
+		status["hash"] = fmt.Sprintf("%x", sha256.Sum256([]byte(rec.secret)))
 	}
 	body := map[string]any{
 		"apiVersion": "ext.cattle.io/v1",
 		"kind":       "Token",
 		"metadata":   metadata,
-		"status":     statusBlock,
+		"status":     status,
 	}
-	if withSpec {
-		spec := map[string]any{}
-		if echoedClusterName != "" {
-			spec["clusterName"] = echoedClusterName
+	if a.withSpec {
+		spec := map[string]any{
+			"ttl":     rec.ttlMs,
+			"enabled": true,
+			"kind":    rec.extKind,
+		}
+		if a.echoedClusterName != "" {
+			spec["clusterName"] = a.echoedClusterName
 		}
 		if rec.description != "" {
 			spec["description"] = rec.description
 		}
 		if rec.userID != "" {
+			display, login := f.principalNames(rec.userID)
+			principal, provider := principalOf(rec)
 			spec["userID"] = rec.userID
+			spec["userPrincipal"] = map[string]any{
+				"name":          principal,
+				"displayName":   display,
+				"loginName":     login,
+				"me":            true,
+				"principalType": "user",
+				"provider":      provider,
+			}
 		}
 		body["spec"] = spec
 	}
-	writeJSON(w, status, body)
+	return body
 }
 
 // writeV3Token writes the Norman token shape a responseType json login
@@ -2168,7 +2490,7 @@ func writeExtTokenExpiring(w http.ResponseWriter, status int, rec *record, name,
 // Either may be empty, which withholds that field.
 func writeV3Token(w http.ResponseWriter, status int, rec *record, name, bearer string, withUserID bool) {
 	body := map[string]any{
-		"expiresAt": rec.expiresAt.UTC().Format(time.RFC3339),
+		"expiresAt": expiryText(rec),
 		"baseType":  "token",
 		"type":      "token",
 	}

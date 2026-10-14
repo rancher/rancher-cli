@@ -8,8 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -152,18 +154,20 @@ func TestLocalLoginHappyAndReject(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var tok struct {
 		APIVersion string `json:"apiVersion"`
-		Kind       string `json:"kind"`
-		Status     struct {
-			BearerToken string `json:"bearerToken"`
-			ExpiresAt   string `json:"expiresAt"`
-		}
+		ID         string `json:"id"`
+		Token      string `json:"token"`
+		ExpiresAt  string `json:"expiresAt"`
+		Type       string `json:"type"`
+		BaseType   string `json:"baseType"`
 	}
 	require.NoError(t, json.Unmarshal(body, &tok))
-	assert.Equal(t, "ext.cattle.io/v1", tok.APIVersion)
-	assert.Equal(t, "Token", tok.Kind)
-	assert.Equal(t, "ext/fac-token-1:fac-secret-1", tok.Status.BearerToken)
-	assert.NotEmpty(t, tok.Status.ExpiresAt)
-	_, err := time.Parse(time.RFC3339, tok.Status.ExpiresAt)
+	assert.Empty(t, tok.APIVersion, "a login answers a v3 token")
+	assert.Equal(t, "token", tok.Type)
+	assert.Equal(t, "token", tok.BaseType)
+	assert.Equal(t, "fac-token-1", tok.ID)
+	assert.Equal(t, "fac-token-1:fac-secret-1", tok.Token)
+	assert.NotEmpty(t, tok.ExpiresAt)
+	_, err := time.Parse(time.RFC3339, tok.ExpiresAt)
 	require.NoError(t, err)
 
 	resp2, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
@@ -175,42 +179,44 @@ func TestAzureADLoginHappyAndReject(t *testing.T) {
 	t.Parallel()
 	_, srv := newFacade(t, testrancher.Options{EnableIdP: true, IdPPendingPolls: 0}, &recordingHandler{})
 
-	// Drive the device-code stub directly to obtain a stub-issued id_token.
+	idToken := azureIDToken(t, srv)
+
+	resp2, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
+		map[string]string{"type": "azureADProvider", "responseType": "kubeconfig", "id_token": idToken}, "")
+	require.Equal(t, http.StatusCreated, resp2.StatusCode)
+	var loginTok struct {
+		ID    string `json:"id"`
+		Token string `json:"token"`
+	}
+	require.NoError(t, json.Unmarshal(body2, &loginTok))
+	assert.Equal(t, "kubeconfig-user-e2efac1", loginTok.ID, "a kubeconfig login creates the kubeconfig token")
+	assert.Equal(t, "kubeconfig-user-e2efac1:fac-secret-1", loginTok.Token)
+
+	resp3, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
+		map[string]string{"type": "azureADProvider", "responseType": "kubeconfig", "id_token": "not-issued-by-stub"}, "")
+	assert.Equal(t, http.StatusUnauthorized, resp3.StatusCode)
+}
+
+// azureIDToken drives the device-code stub of a facade with EnableIdP and no
+// pending polls and returns the id_token it issues.
+func azureIDToken(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
 	resp, body := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/idp/devicecode", nil, "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var dc struct {
 		DeviceCode string `json:"device_code"`
 	}
 	require.NoError(t, json.Unmarshal(body, &dc))
-
 	var tokenJSON struct {
-		Error   string `json:"error"`
 		IDToken string `json:"id_token"`
 	}
 	for tokenJSON.IDToken == "" {
 		tokResp, tokBody := postForm(t, srv.Client(), srv.URL+"/idp/token", map[string]string{"device_code": dc.DeviceCode})
 		require.Equal(t, http.StatusOK, tokResp.StatusCode)
-		tokenJSON = struct {
-			Error   string `json:"error"`
-			IDToken string `json:"id_token"`
-		}{}
+		tokenJSON.IDToken = ""
 		require.NoError(t, json.Unmarshal(tokBody, &tokenJSON))
 	}
-
-	resp2, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
-		map[string]string{"type": "azureADProvider", "responseType": "kubeconfig", "id_token": tokenJSON.IDToken}, "")
-	require.Equal(t, http.StatusCreated, resp2.StatusCode)
-	var loginTok struct {
-		Status struct {
-			BearerToken string `json:"bearerToken"`
-		}
-	}
-	require.NoError(t, json.Unmarshal(body2, &loginTok))
-	assert.Equal(t, "ext/fac-token-1:fac-secret-1", loginTok.Status.BearerToken)
-
-	resp3, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
-		map[string]string{"type": "azureADProvider", "responseType": "kubeconfig", "id_token": "not-issued-by-stub"}, "")
-	assert.Equal(t, http.StatusUnauthorized, resp3.StatusCode)
+	return tokenJSON.IDToken
 }
 
 func postForm(t *testing.T, client *http.Client, url string, form map[string]string) (*http.Response, []byte) {
@@ -286,7 +292,7 @@ func TestDerivedCreateTTLHonoredAndDefaulted(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body2, &tok2))
 	expiresAt2, err := time.Parse(time.RFC3339, tok2.Status.ExpiresAt)
 	require.NoError(t, err)
-	assert.WithinDuration(t, before2.Add(15*time.Minute), expiresAt2, 5*time.Second, "absent spec.ttl must default to +15m")
+	assert.WithinDuration(t, before2.Add(90*24*time.Hour), expiresAt2, 5*time.Second, "absent spec.ttl must default to 90 days")
 }
 
 func TestDerivedCreateClusterNameRecorded(t *testing.T) {
@@ -343,15 +349,13 @@ func TestProviderLoginConsumesTwoCounterSlots(t *testing.T) {
 	_, loginBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
 		map[string]string{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass"}, "")
 	var s struct {
-		Status struct {
-			BearerToken string `json:"bearerToken"`
-		}
+		Token string `json:"token"`
 	}
 	require.NoError(t, json.Unmarshal(loginBody, &s))
-	require.Equal(t, "ext/fac-token-1:fac-secret-1", s.Status.BearerToken)
+	require.Equal(t, "fac-token-1:fac-secret-1", s.Token)
 
 	createResp, createBody := doJSON(t, srv.Client(), http.MethodPost, srv.URL+extTokensPath,
-		map[string]any{"spec": map[string]any{}}, s.Status.BearerToken)
+		map[string]any{"spec": map[string]any{}}, s.Token)
 	require.Equal(t, http.StatusCreated, createResp.StatusCode)
 	var d struct {
 		Status struct {
@@ -361,7 +365,7 @@ func TestProviderLoginConsumesTwoCounterSlots(t *testing.T) {
 	require.NoError(t, json.Unmarshal(createBody, &d))
 	assert.Equal(t, "ext/fac-token-2:fac-secret-2", d.Status.BearerToken, "the stored credential after a provider login is fac-token-2")
 
-	revokeResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+extTokensPath+"/fac-token-1", nil, s.Status.BearerToken)
+	revokeResp, _ := doJSON(t, srv.Client(), http.MethodDelete, srv.URL+v3TokensPath+"/fac-token-1", nil, s.Token)
 	assert.Equal(t, http.StatusOK, revokeResp.StatusCode)
 }
 
@@ -702,10 +706,10 @@ func TestFacadeLoginFailureFixturesCreateTheRightKind(t *testing.T) {
 	}
 }
 
-// TestFacadeKubeconfigLoginIsAnExtObjectWithAName asserts the kubeconfig login
-// shape: an ext Token object whose metadata names the record and whose
-// bearer carries the ext prefix, recorded as an ext token.
-func TestFacadeKubeconfigLoginIsAnExtObjectWithAName(t *testing.T) {
+// TestFacadeKubeconfigLoginIsAnUnscopedV3KubeconfigToken asserts the plain
+// kubeconfig login: a v3 body naming a kubeconfig token for the user, whose
+// bearer is <name>:<secret>, recorded as a v3 token and no ext token.
+func TestFacadeKubeconfigLoginIsAnUnscopedV3KubeconfigToken(t *testing.T) {
 	t.Parallel()
 	f := testrancher.New(testrancher.Options{})
 	srv := httptest.NewServer(f)
@@ -715,18 +719,14 @@ func TestFacadeKubeconfigLoginIsAnExtObjectWithAName(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	var got struct {
-		Metadata struct {
-			Name string `json:"name"`
-		} `json:"metadata"`
-		Status struct {
-			BearerToken string `json:"bearerToken"`
-		} `json:"status"`
+		ID    string `json:"id"`
+		Token string `json:"token"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
-	require.NotEmpty(t, got.Metadata.Name)
-	assert.Equal(t, "ext/"+got.Metadata.Name+":", got.Status.BearerToken[:len("ext/"+got.Metadata.Name+":")])
-	assert.Equal(t, []string{got.Status.BearerToken}, f.BearersOfKind("ext"))
-	assert.Empty(t, f.BearersOfKind("v3"))
+	assert.Regexp(t, `^kubeconfig-user-e2efac\d+$`, got.ID)
+	assert.Equal(t, got.ID+":", got.Token[:len(got.ID)+1])
+	assert.Equal(t, []string{got.Token}, f.BearersOfKind("v3"))
+	assert.Empty(t, f.BearersOfKind("ext"))
 }
 
 // TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx asserts the
@@ -784,8 +784,8 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 		wantDerivedStatus int
 	}{
 		{"v3 session fails, derived fine", testrancher.Options{SessionDeleteMode: "fail"}, 500, 200},
-		{"ext session fails, derived fine", testrancher.Options{LoginShape: "ext", SessionDeleteMode: "fail"}, 500, 200},
-		{"derived fails, ext session fine", testrancher.Options{LoginShape: "ext", DerivedDeleteMode: "fail"}, 200, 500},
+		{"derived fails, v3 session fine", testrancher.Options{DerivedDeleteMode: "fail"}, 200, 500},
+		{"ext session fails, derived fine", testrancher.Options{ExtSessionLogin: true, SessionDeleteMode: "fail"}, 500, 200},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -797,7 +797,7 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 			require.NoError(t, err)
 			_ = login.Body.Close()
 			sessionKind := "v3"
-			if tc.opts.LoginShape == "ext" {
+			if tc.opts.ExtSessionLogin {
 				sessionKind = "ext"
 			}
 			sBearer := f.BearersOfKind(sessionKind)[0]
@@ -1266,13 +1266,13 @@ func TestFacadeLogoutRefusesAClusterScopedToken(t *testing.T) {
 	assert.True(t, f.ValidBearer(bearer))
 }
 
-// TestFacadeKubeconfigLoginScopeUnderTheV3Shape asserts that under the v3
-// login shape a kubeconfig login for a cluster creates a cluster-scoped
-// token, which logout refuses with 401 and leaves in place, while a plain
-// kubeconfig login creates an unscoped token that logout deletes.
-func TestFacadeKubeconfigLoginScopeUnderTheV3Shape(t *testing.T) {
+// TestFacadeKubeconfigLoginScope asserts that a kubeconfig login for a
+// cluster creates a cluster-scoped token, which logout refuses with 401 and
+// leaves in place, while a plain kubeconfig login creates an unscoped token
+// that logout deletes.
+func TestFacadeKubeconfigLoginScope(t *testing.T) {
 	t.Parallel()
-	f, srv := newFacade(t, testrancher.Options{LoginShape: "v3"}, &recordingHandler{})
+	f, srv := newFacade(t, testrancher.Options{}, &recordingHandler{})
 	login := func(responseType string) string {
 		return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
 			map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": responseType})["token"].(string)
@@ -1284,38 +1284,187 @@ func TestFacadeKubeconfigLoginScopeUnderTheV3Shape(t *testing.T) {
 	assert.False(t, f.ValidBearer(unscoped))
 }
 
-// TestFacadeClusterKubeconfigLoginDefaultsToAScopedV3Token asserts that,
-// with no forced login shape, a kubeconfig_<cluster> login creates a
-// v3 token scoped to that cluster, as Rancher does (logout refuses it), while
-// plain kubeconfig and an empty response type keep their ext answer.
-func TestFacadeClusterKubeconfigLoginDefaultsToAScopedV3Token(t *testing.T) {
+// loginAnswer posts a local login with responseType and returns the status,
+// the response header and the raw body.
+func loginAnswer(t *testing.T, srv *httptest.Server, responseType string, extra map[string]any) (*http.Response, []byte) {
+	t.Helper()
+	req := map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": responseType}
+	maps.Copy(req, extra)
+	return doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login", req, "")
+}
+
+// TestFacadeLoginCreatesWhatRancherCreatesForEachResponseType asserts the
+// token a login creates for each response type: its kind, scope, name,
+// description, lifetime, the create record's role and the answer. Rancher
+// matches any response type that starts with kubeconfig as a kubeconfig
+// token and creates a v3 session token for every other value.
+func TestFacadeLoginCreatesWhatRancherCreatesForEachResponseType(t *testing.T) {
+	t.Parallel()
+	const day = 24 * time.Hour
+	tests := []struct {
+		name         string
+		responseType string
+		cluster      string
+		namePattern  string
+		description  string
+		lifetime     time.Duration
+	}{
+		{"kubeconfig for a cluster", "kubeconfig_c-test", "c-test", `^kubeconfig-user-e2e\.c-testfac\d+$`, "Kubeconfig token", 30 * day},
+		{"kubeconfig, the cluster after the first underscore", "kubeconfigs_c-test", "c-test", `^kubeconfig-user-e2e\.c-testfac\d+$`, "Kubeconfig token", 30 * day},
+		{"kubeconfig", "kubeconfig", "", `^kubeconfig-user-e2efac\d+$`, "Kubeconfig token", 30 * day},
+		{"a response type that starts with kubeconfig", "kubeconfigs", "", `^kubeconfig-user-e2efac\d+$`, "Kubeconfig token", 30 * day},
+		{"json", "json", "", `^fac-token-\d+$`, "from the request", 960 * time.Minute},
+		{"empty", "", "", `^fac-token-\d+$`, "from the request", 960 * time.Minute},
+		{"another value", "saml", "", `^fac-token-\d+$`, "from the request", 960 * time.Minute},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f, srv := newFacade(t, testrancher.Options{}, &recordingHandler{})
+			resp, body := loginAnswer(t, srv, tc.responseType, map[string]any{"description": "from the request", "ttl": 60_000})
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+			var answer map[string]any
+			require.NoError(t, json.Unmarshal(body, &answer))
+			assert.ElementsMatch(t, []string{"token", "expiresAt", "id", "baseType", "type"}, slices.Collect(maps.Keys(answer)))
+			assert.Equal(t, "token", answer["type"])
+			assert.Equal(t, "token", answer["baseType"])
+			assert.Regexp(t, tc.namePattern, answer["id"])
+			bearer := answer["token"].(string)
+			assert.Equal(t, answer["id"].(string)+":", bearer[:len(answer["id"].(string))+1])
+			expiresAt, err := time.Parse(time.RFC3339, answer["expiresAt"].(string))
+			require.NoError(t, err)
+			assert.InDelta(t, tc.lifetime, time.Until(expiresAt), float64(time.Minute), "the request's ttl is ignored")
+
+			assert.Equal(t, []string{bearer}, f.BearersOfKind("v3"))
+			assert.Empty(t, f.BearersOfKind("ext"))
+			creates := f.CreateRequests()
+			require.Len(t, creates, 1)
+			assert.Equal(t, "v3", creates[0].Kind)
+			assert.Equal(t, "session", creates[0].Role)
+			assert.Equal(t, tc.description, creates[0].Description)
+			if tc.description == "Kubeconfig token" {
+				assert.Empty(t, f.LoginDescriptions(), "Rancher ignores the request's description for a kubeconfig token")
+			} else {
+				assert.Equal(t, []string{"from the request"}, f.LoginDescriptions())
+			}
+			scopedLogout := statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer)
+			if tc.cluster != "" {
+				assert.Equal(t, http.StatusUnauthorized, scopedLogout, "a cluster-scoped token is refused on a path with no cluster")
+			} else {
+				assert.Equal(t, http.StatusOK, scopedLogout)
+			}
+		})
+	}
+}
+
+// TestFacadeCookieLoginAnswersTheSessionCookieAndNoBody asserts a cookie
+// login creates a v3 session token and answers 200 with the R_SESS cookie
+// carrying its bearer and an empty body.
+func TestFacadeCookieLoginAnswersTheSessionCookieAndNoBody(t *testing.T) {
 	t.Parallel()
 	f, srv := newFacade(t, testrancher.Options{}, &recordingHandler{})
-	login := func(responseType string) map[string]any {
-		return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
-			map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": responseType})
+	resp, body := loginAnswer(t, srv, "cookie", nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Empty(t, body)
+	var session *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "R_SESS" {
+			session = c
+		}
 	}
-	scoped := login("kubeconfig_c-test")
-	assert.Equal(t, "token", scoped["type"], "a v3 body")
-	bearer, ok := scoped["token"].(string)
-	require.True(t, ok)
-	assert.Regexp(t, `^kubeconfig-user-e2e\.c-testfac\d+$`, scoped["id"], "named for the user and the cluster, with a dot, as Rancher names it")
-	expiresAt, err := time.Parse(time.RFC3339, scoped["expiresAt"].(string))
-	require.NoError(t, err)
-	assert.InDelta(t, 30*24*time.Hour, time.Until(expiresAt), float64(time.Minute), "valid 30 days")
+	require.NotNil(t, session)
+	assert.Equal(t, http.SameSiteLaxMode, session.SameSite, "Rancher sets SameSite=Lax")
+	assert.True(t, session.Secure)
+	assert.True(t, session.HttpOnly)
+	assert.Equal(t, []string{session.Value}, f.BearersOfKind("v3"))
+	assert.Equal(t, "fac-token-1:fac-secret-1", session.Value)
 	creates := f.CreateRequests()
 	require.Len(t, creates, 1)
-	assert.Equal(t, "Kubeconfig token", creates[0].Description, "Rancher ignores the request's description")
-	assert.Equal(t, []string{bearer}, f.BearersOfKind("v3"))
-	assert.Equal(t, http.StatusUnauthorized, statusOf(t, srv.Client(), http.MethodPost, srv.URL+"/v1/logout", bearer))
-	assert.True(t, f.ValidBearer(bearer), "logout leaves the cluster-scoped token")
+	assert.Equal(t, "session", creates[0].Role)
+	assert.True(t, f.ValidBearer(session.Value))
 
-	for _, responseType := range []string{"kubeconfig", ""} {
-		body := login(responseType)
-		assert.Equal(t, "Token", body["kind"], "responseType %q keeps the ext answer", responseType)
+	ext, extSrv := newFacade(t, testrancher.Options{ExtSessionLogin: true}, &recordingHandler{})
+	extResp, extBody := loginAnswer(t, extSrv, "cookie", nil)
+	assert.Equal(t, http.StatusOK, extResp.StatusCode)
+	assert.Empty(t, extBody)
+	assert.Len(t, ext.BearersOfKind("v3"), 1, "a cookie login stays v3 under the ext session option")
+	assert.Empty(t, ext.BearersOfKind("ext"))
+}
+
+// TestFacadeExtSessionLoginAnswersAnExtSessionToken asserts the ext session
+// option: a login creates an ext token with spec.kind session valid 960
+// minutes and answers the ext Token object, for json, empty and any other
+// response type, while a kubeconfig login keeps its v3 answer.
+func TestFacadeExtSessionLoginAnswersAnExtSessionToken(t *testing.T) {
+	t.Parallel()
+	for _, responseType := range []string{"json", "", "saml"} {
+		t.Run("response type "+responseType, func(t *testing.T) {
+			t.Parallel()
+			f, srv := newFacade(t, testrancher.Options{ExtSessionLogin: true}, &recordingHandler{})
+			resp, body := loginAnswer(t, srv, responseType, map[string]any{"description": "d"})
+			require.Equal(t, http.StatusCreated, resp.StatusCode)
+			var tok map[string]any
+			require.NoError(t, json.Unmarshal(body, &tok))
+			assert.Equal(t, "ext.cattle.io/v1", tok["apiVersion"])
+			assert.Equal(t, "Token", tok["kind"])
+			spec := tok["spec"].(map[string]any)
+			assert.Equal(t, "session", spec["kind"])
+			assert.Equal(t, "d", spec["description"])
+			assert.EqualValues(t, (960 * time.Minute).Milliseconds(), spec["ttl"])
+			status := tok["status"].(map[string]any)
+			assert.Equal(t, "ext/fac-token-1:fac-secret-1", status["bearerToken"])
+			expiresAt, err := time.Parse(time.RFC3339, status["expiresAt"].(string))
+			require.NoError(t, err)
+			assert.InDelta(t, 960*time.Minute, time.Until(expiresAt), float64(time.Minute))
+			assert.Equal(t, []string{"ext/fac-token-1:fac-secret-1"}, f.BearersOfKind("ext"))
+			assert.Empty(t, f.BearersOfKind("v3"))
+			creates := f.CreateRequests()
+			require.Len(t, creates, 1)
+			assert.Equal(t, "ext", creates[0].Kind)
+			assert.Equal(t, "session", creates[0].Role)
+		})
 	}
-	assert.Len(t, f.BearersOfKind("ext"), 2)
-	assert.Len(t, f.BearersOfKind("v3"), 1)
+
+	f, srv := newFacade(t, testrancher.Options{ExtSessionLogin: true}, &recordingHandler{})
+	for _, responseType := range []string{"kubeconfig", "kubeconfig_c-test"} {
+		resp, body := loginAnswer(t, srv, responseType, nil)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		var answer map[string]any
+		require.NoError(t, json.Unmarshal(body, &answer))
+		assert.Nil(t, answer["apiVersion"], "a kubeconfig login keeps its v3 answer under the option")
+	}
+	assert.Len(t, f.BearersOfKind("v3"), 2)
+	assert.Empty(t, f.BearersOfKind("ext"))
+}
+
+// TestFacadeRejectedLoginRecordsTheKindItWouldCreate asserts that a login the
+// facade refuses is recorded as a create of the kind a login of that response
+// type creates, v3 by default and ext under the ext session option, and
+// creates no token.
+func TestFacadeRejectedLoginRecordsTheKindItWouldCreate(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		opts         testrancher.Options
+		responseType string
+		want         string
+	}{
+		{"default", testrancher.Options{}, "json", "v3"},
+		{"ext session option", testrancher.Options{ExtSessionLogin: true}, "json", "ext"},
+		{"ext session option, kubeconfig", testrancher.Options{ExtSessionLogin: true}, "kubeconfig", "v3"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f, srv := newFacade(t, tc.opts, &recordingHandler{})
+			resp, _ := loginAnswer(t, srv, tc.responseType, map[string]any{"password": "wrong"})
+			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+			assert.Zero(t, f.TokenCount())
+			creates := f.CreateRequests()
+			require.Len(t, creates, 1)
+			assert.Equal(t, tc.want, creates[0].Kind)
+			assert.Equal(t, "session", creates[0].Role)
+		})
+	}
 }
 
 // TestFacadeV3DeleteAnswersForbiddenWithoutAnAuthenticatingBearer asserts
@@ -1352,7 +1501,7 @@ func TestFacadeV3DeleteAnswersForbiddenWithoutAnAuthenticatingBearer(t *testing.
 // authenticates gets 500.
 func TestFacadeForcedSingleLogoutChecksTheBearerFirst(t *testing.T) {
 	t.Parallel()
-	f, srv := newFacade(t, testrancher.Options{ForcedSingleLogout: true, LoginShape: "v3"}, &recordingHandler{})
+	f, srv := newFacade(t, testrancher.Options{ForcedSingleLogout: true}, &recordingHandler{})
 	login := func(responseType string) string {
 		return postJSON(t, srv.Client(), srv.URL+"/v1-public/login", "",
 			map[string]any{"type": "localProvider", "username": "e2e-user", "password": "e2e-pass", "responseType": responseType})["token"].(string)
@@ -1375,7 +1524,7 @@ func TestFacadeForcedSingleLogoutChecksTheBearerFirst(t *testing.T) {
 // bearer, for an admin owner too, and leaves the token in place.
 func TestFacadeV3DeleteWithAClusterScopedBearerIsForbidden(t *testing.T) {
 	t.Parallel()
-	f := testrancher.New(testrancher.Options{LoginShape: "v3", Users: []testrancher.User{{Name: "root", Password: "pw", UserID: "user-root"}},
+	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "root", Password: "pw", UserID: "user-root"}},
 		AdminUserIDs: []string{"user-root"}})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
@@ -1463,17 +1612,72 @@ func TestFacadeScopedCreateExpiresAtSendsNothingOrAnythingOrIsUnset(t *testing.T
 	}
 }
 
-// TestFacadeNormanCreateEmptyExpiresAtSendsNone asserts V3CreateEmptyExpiresAt
-// leaves the Norman create's expiresAt empty and otherwise it carries one.
-func TestFacadeNormanCreateEmptyExpiresAtSendsNone(t *testing.T) {
+// TestFacadeNormanCreateAnswersRanchersTwentyTwoKeys asserts the Norman
+// create answer: Rancher's 22 keys, an empty expiresAt that Rancher fills in
+// after answering, the ttl in milliseconds (90 days when none is asked for,
+// a requested ttl up to 90 days and no more) and createdTS in epoch
+// milliseconds; AuthTokenMaxTTLZero answers ttl 0.
+func TestFacadeNormanCreateAnswersRanchersTwentyTwoKeys(t *testing.T) {
 	t.Parallel()
-	for _, empty := range []bool{false, true} {
-		_, srv := newFacade(t, testrancher.Options{Legacy: true, V3TokenCreate: true, V3CreateEmptyExpiresAt: empty}, &recordingHandler{})
-		body := postJSON(t, srv.Client(), srv.URL+"/v3/tokens", jsonLogin(t, srv), map[string]any{"type": "token", "clusterId": "c-test"})
-		if empty {
-			assert.Equal(t, "", body["expiresAt"])
-		} else {
-			assert.NotEmpty(t, body["expiresAt"])
-		}
+	const ninetyDays = int64(90 * 24 * 60 * 60 * 1000)
+	tests := []struct {
+		name        string
+		opts        testrancher.Options
+		request     map[string]any
+		wantTTL     int64
+		wantCluster any
+	}{
+		{"no ttl asked for", testrancher.Options{}, map[string]any{"type": "token", "clusterId": "c-test", "description": "d"}, ninetyDays, "c-test"},
+		{"a ttl below 90 days is kept", testrancher.Options{}, map[string]any{"type": "token", "clusterId": "c-test", "ttl": 60_000}, 60_000, "c-test"},
+		{"a ttl above 90 days is cut to 90 days", testrancher.Options{}, map[string]any{"type": "token", "clusterId": "c-test", "ttl": ninetyDays + 1}, ninetyDays, "c-test"},
+		{"the max ttl setting is 0", testrancher.Options{AuthTokenMaxTTLZero: true}, map[string]any{"type": "token", "clusterId": "c-test"}, 0, "c-test"},
+		{"the max ttl setting is 0 and a ttl above 90 days is kept", testrancher.Options{AuthTokenMaxTTLZero: true}, map[string]any{"type": "token", "clusterId": "c-test", "ttl": ninetyDays + 1}, ninetyDays + 1, "c-test"},
+		{"a create with no cluster answers a null clusterId", testrancher.Options{}, map[string]any{"type": "token"}, ninetyDays, nil},
 	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.opts.Legacy, tc.opts.V3TokenCreate = true, true
+			before := time.Now()
+			f, srv := newFacade(t, tc.opts, &recordingHandler{})
+			body := postJSON(t, srv.Client(), srv.URL+"/v3/tokens", jsonLogin(t, srv), tc.request)
+			assert.ElementsMatch(t, []string{
+				"authProvider", "baseType", "clusterId", "created", "createdTS", "creatorId", "current", "description",
+				"enabled", "expired", "expiresAt", "id", "isDerived", "labels", "links", "name", "token", "ttl", "type",
+				"userId", "userPrincipal", "uuid",
+			}, slices.Collect(maps.Keys(body)))
+			assert.Equal(t, "", body["expiresAt"], "Rancher sets expiresAt after it has answered")
+			assert.EqualValues(t, tc.wantTTL, body["ttl"])
+			assert.InDelta(t, before.UnixMilli(), body["createdTS"], float64(5*time.Second.Milliseconds()))
+			assert.Contains(t, body, "clusterId")
+			assert.Equal(t, tc.wantCluster, body["clusterId"])
+			assert.Equal(t, "user-e2e", body["userId"])
+			assert.Equal(t, true, body["isDerived"])
+			assert.Equal(t, "local", body["authProvider"])
+			assert.Equal(t, body["id"], body["name"])
+			assert.IsType(t, "", body["userPrincipal"], "Rancher sends the principal as a string")
+			assert.Contains(t, body["userPrincipal"], "local://user-e2e")
+			assert.Equal(t, map[string]any{"authn.management.cattle.io/token-userId": "user-e2e"}, body["labels"])
+			assert.Regexp(t, `^http://127\.0\.0\.1:\d+/v3/tokens/fac-token-2$`, body["links"].(map[string]any)["self"])
+			bearer := body["token"].(string)
+			assert.True(t, f.ValidBearer(bearer), "the token authenticates whatever the answer's expiresAt says")
+		})
+	}
+}
+
+// TestFacadeNormanCreateOptionsChangeTheAnswer asserts that V3CreateOmitOwner
+// leaves userId out and V3CreateClusterID sets, or empties, clusterId.
+func TestFacadeNormanCreateOptionsChangeTheAnswer(t *testing.T) {
+	t.Parallel()
+	other, empty := "c-other", ""
+	create := func(opts testrancher.Options) map[string]any {
+		opts.Legacy, opts.V3TokenCreate = true, true
+		_, srv := newFacade(t, opts, &recordingHandler{})
+		return postJSON(t, srv.Client(), srv.URL+"/v3/tokens", jsonLogin(t, srv), map[string]any{"type": "token", "clusterId": "c-test"})
+	}
+	body := create(testrancher.Options{V3CreateOmitOwner: true})
+	assert.NotContains(t, body, "userId")
+	assert.Len(t, body, 21)
+	assert.Equal(t, "c-other", create(testrancher.Options{V3CreateClusterID: &other})["clusterId"])
+	assert.NotContains(t, create(testrancher.Options{V3CreateClusterID: &empty}), "clusterId")
 }

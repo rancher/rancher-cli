@@ -2056,10 +2056,16 @@ func TestLoginTLSFailureKeepsCertificateFactsInText(t *testing.T) {
 // in the ext collection, which a v3-only search would have missed.
 func TestLoginLostResponseRecoveryNamesBothCollections(t *testing.T) {
 	t.Parallel()
-	for _, shape := range []string{"v3", "ext"} {
-		t.Run("server created "+shape, func(t *testing.T) {
+	for _, tc := range []struct {
+		shape string
+		opts  testrancher.Options
+	}{
+		{"v3", testrancher.Options{DropLoginResponse: true}},
+		{"ext", testrancher.Options{DropLoginResponse: true, ExtSessionLogin: true}},
+	} {
+		t.Run("server created "+tc.shape, func(t *testing.T) {
 			t.Parallel()
-			f := testrancher.New(testrancher.Options{DropLoginResponse: true, LoginShape: shape})
+			f := testrancher.New(tc.opts)
 			srv := httptest.NewServer(f)
 			t.Cleanup(srv.Close)
 			dir, store := cmdtest.FilePolicyDir(t)
@@ -2079,7 +2085,7 @@ func TestLoginLostResponseRecoveryNamesBothCollections(t *testing.T) {
 			assert.Contains(t, d.Recovery, extList)
 			assert.Contains(t, d.Recovery, "[op:"+d.OperationMarker+"]")
 			assert.Contains(t, strings.Join(d.TextDetails(), "\n"), "(kind unknown)")
-			assert.Len(t, f.TokensWithDescriptionContaining(shape, "[op:"+d.OperationMarker+"]"), 1, "the leftover is in the collection the server chose")
+			assert.Len(t, f.TokensWithDescriptionContaining(tc.shape, "[op:"+d.OperationMarker+"]"), 1, "the leftover is in the collection the server chose")
 		})
 	}
 }
@@ -2089,7 +2095,7 @@ func TestLoginLostResponseRecoveryNamesBothCollections(t *testing.T) {
 // successful login: rancher delete token, never management-token.
 func TestLoginSuccessWithFailedExtSessionCleanupNamesTheTokenKind(t *testing.T) {
 	t.Parallel()
-	f := testrancher.New(testrancher.Options{LoginShape: "ext", SessionDeleteMode: "fail"})
+	f := testrancher.New(testrancher.Options{ExtSessionLogin: true, SessionDeleteMode: "fail"})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	dir, store := cmdtest.FilePolicyDir(t)

@@ -1,9 +1,6 @@
 package token
 
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/rancher/rancher-cli/internal/config"
 )
 
@@ -88,46 +85,4 @@ type AzureADProvider struct {
 // LocalProvider represents the local authentication provider.
 type LocalProvider struct {
 	AuthProvider `json:",inline"`
-}
-
-// extToken is the minimal wire shape of an ext.cattle.io/v1 Token login
-// response. Local definition per this file's no-rancher/rancher-import rule;
-// upstream shape: rancher/rancher pkg/apis/ext.cattle.io/v1 (see also
-// rancher/cli PR #632).
-type extToken struct {
-	Status struct {
-		BearerToken string `json:"bearerToken"`
-		ExpiresAt   string `json:"expiresAt"`
-	} `json:"status"`
-}
-
-// parseLoginResponse normalizes a /v1-public/login response into Token,
-// accepting both the v3 Norman shape (top-level token/expiresAt) and the
-// ext.cattle.io/v1 Token shape (status.bearerToken/status.expiresAt) for the
-// transition period while Rancher migrates session tokens. The ext bearer
-// keeps its "ext/" prefix - the server authenticator parses it back out of
-// the Bearer header, so it is opaque data here.
-func parseLoginResponse(body []byte) (Token, error) {
-	if kind, ok := LoginResponseShape(body); ok && kind == TokenKindExt {
-		var et extToken
-		if err := json.Unmarshal(body, &et); err != nil {
-			return Token{}, fmt.Errorf("error unmarshaling ext token login response: %w", err)
-		}
-		return Token{Token: et.Status.BearerToken, ExpiresAt: et.Status.ExpiresAt}, nil
-	}
-	var tok Token
-	if err := json.Unmarshal(body, &tok); err != nil {
-		return Token{}, fmt.Errorf("error unmarshaling login response: %w", err)
-	}
-	if tok.Token == "" {
-		var hdr struct {
-			APIVersion string `json:"apiVersion"`
-			Kind       string `json:"kind"`
-		}
-		_ = json.Unmarshal(body, &hdr)
-		if hdr.APIVersion != "" {
-			return Token{}, fmt.Errorf("unsupported token API version %q (kind %q) in login response", hdr.APIVersion, hdr.Kind)
-		}
-	}
-	return tok, nil
 }

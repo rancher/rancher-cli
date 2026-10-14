@@ -258,7 +258,7 @@ func TestAcquireSessionCreateKindKnowledge(t *testing.T) {
 		{"malformed", testrancher.Options{MalformedLoginResponse: true}, ""},
 		{"login 500", testrancher.Options{LoginStatus: 500}, ""},
 		{"name only", testrancher.Options{LoginNameOnly: true}, TokenKindV3},
-		{"name only, ext shape", testrancher.Options{LoginNameOnly: true, LoginShape: "ext"}, TokenKindExt},
+		{"name only, ext shape", testrancher.Options{LoginNameOnly: true, ExtSessionLogin: true}, TokenKindExt},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -282,7 +282,7 @@ func TestAcquireExtShapedSessionThroughLogin(t *testing.T) {
 	t.Parallel()
 	t.Run("derived success revokes S on the ext route", func(t *testing.T) {
 		t.Parallel()
-		f, _, cred, err := acquireAgainst(t, testrancher.Options{LoginShape: "ext"})
+		f, _, cred, err := acquireAgainst(t, testrancher.Options{ExtSessionLogin: true})
 		require.NoError(t, err)
 		require.NotNil(t, cred.SessionTokenCleanup.Ref)
 		assert.Equal(t, TokenKindExt, cred.SessionTokenCleanup.Ref.Kind)
@@ -294,7 +294,7 @@ func TestAcquireExtShapedSessionThroughLogin(t *testing.T) {
 	})
 	t.Run("create failure cleans the ext S", func(t *testing.T) {
 		t.Parallel()
-		f, _, _, err := acquireAgainst(t, testrancher.Options{LoginShape: "ext", DerivedCreateStatus: 500})
+		f, _, _, err := acquireAgainst(t, testrancher.Options{ExtSessionLogin: true, DerivedCreateStatus: 500})
 		ae, ok := errors.AsType[*AcquireError](err)
 		require.True(t, ok, "got %v", err)
 		require.NotNil(t, ae.SessionTokenRef)
@@ -304,7 +304,7 @@ func TestAcquireExtShapedSessionThroughLogin(t *testing.T) {
 	})
 	t.Run("legacy fallback transfers an ext ref", func(t *testing.T) {
 		t.Parallel()
-		_, _, cred, err := acquireAgainst(t, testrancher.Options{LoginShape: "ext", Legacy: true})
+		_, _, cred, err := acquireAgainst(t, testrancher.Options{ExtSessionLogin: true, Legacy: true})
 		require.NoError(t, err)
 		assert.Equal(t, ProvenanceLegacySession, cred.Provenance)
 		require.NotNil(t, cred.Ref)

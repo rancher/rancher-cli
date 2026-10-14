@@ -68,11 +68,6 @@ func newOwnerFixture(t *testing.T, reuse bool, opts testrancher.Options) *ownerF
 	x := &ownerFixture{t: t}
 	opts.Users = entryTableUsers()
 	opts.SelfSubjectReviews = true
-	if opts.LoginShape == "" {
-		// Rancher answers every login with the v3 body, which names no
-		// owner, kubeconfig_<cluster> included.
-		opts.LoginShape = "v3"
-	}
 	opts.RequestHook = func(r *http.Request) {
 		x.mu.Lock()
 		defer x.mu.Unlock()

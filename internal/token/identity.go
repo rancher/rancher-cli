@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
@@ -114,6 +115,13 @@ type CreateResult struct {
 	// ClusterName is the scope the response reported (ext spec.clusterName,
 	// v3 clusterId), for the fail-closed check.
 	ClusterName string
+	// CreatedTS and TTL are the v3 answer's createdTS (epoch milliseconds)
+	// and ttl (milliseconds); zero when the answer carried none or the kind
+	// is not v3. Only a Norman create answer carries them: Rancher answers it
+	// with an empty expiresAt, and createV3ClusterToken computes the expiry
+	// from these two fields. The login path never reads them.
+	CreatedTS int64
+	TTL       int64
 }
 
 // deterministicNotCreated lists the statuses that prove the server did not
@@ -148,6 +156,9 @@ func classifyCreate(resp *http.Response, body []byte, err error, createdAt strin
 	name, bearer, expires := extractIdentity(kind, probe)
 	r.ExpiresAt = expires
 	r.UserID, r.ClusterName = extractOwnerAndScope(kind, probe)
+	if kind == TokenKindV3 {
+		r.CreatedTS, r.TTL = extractCreatedTSAndTTL(probe)
+	}
 	switch {
 	case name != "":
 		r.Ref = &TokenRef{Kind: kind, Name: name}
@@ -166,11 +177,11 @@ func classifyCreate(resp *http.Response, body []byte, err error, createdAt strin
 // object of kind Token is an ext token; a body with no apiVersion that
 // carries a token or id field is the v3 Norman token; anything else
 // (unreadable JSON, a foreign apiVersion, an ext object of another kind, an
-// empty body) establishes no shape and the kind stays unknown. Rancher
-// answers login with either shape while it migrates session tokens; the kind
-// is a fact of the response, never of the request, and the absence of a
-// readable response proves nothing. parseLoginResponse uses the same
-// discriminator, so the two cannot drift.
+// empty body) establishes no shape and the kind stays unknown. Supported
+// Rancher versions answer login with a v3 token; Rancher v2.17 answers with
+// an ext Token (rancher/rancher#55988). The kind is a fact of the response,
+// never of the request, and the absence of a readable response proves
+// nothing.
 func LoginResponseShape(body []byte) (kind TokenKind, recognized bool) {
 	var hdr struct {
 		APIVersion string          `json:"apiVersion"`
@@ -215,6 +226,31 @@ func extractOwnerAndScope(kind TokenKind, probe map[string]json.RawMessage) (use
 		return spec.UserID, spec.ClusterName
 	}
 	return str(probe["userId"]), str(probe["clusterId"])
+}
+
+// maxCreatedExpiryMs is the latest expiry, in epoch milliseconds, the client
+// computes for a created token: 9999-12-31T23:59:59Z, the last year the
+// cache record's RFC 3339 expiry can hold.
+const maxCreatedExpiryMs = 253402300799000
+
+// extractCreatedTSAndTTL reads the v3 answer's createdTS and ttl as integers:
+// epoch milliseconds and milliseconds. A field that is absent or not an
+// integer reads as zero.
+func extractCreatedTSAndTTL(probe map[string]json.RawMessage) (createdTS, ttl int64) {
+	_ = json.Unmarshal(probe["createdTS"], &createdTS)
+	_ = json.Unmarshal(probe["ttl"], &ttl)
+	return createdTS, ttl
+}
+
+// computedExpiry is the RFC 3339 UTC expiry that a create answer's createdTS
+// plus ttl gives, as Rancher computes it for the token it has created. It is
+// empty when either is not positive or the sum would be later than the year
+// 9999 or overflow.
+func computedExpiry(createdTS, ttl int64) string {
+	if createdTS <= 0 || ttl <= 0 || ttl > maxCreatedExpiryMs-createdTS {
+		return ""
+	}
+	return time.UnixMilli(createdTS + ttl).UTC().Format(time.RFC3339)
 }
 
 // extractIdentity reads the resource name, bearer, and expiry from the two

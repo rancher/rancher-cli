@@ -13,8 +13,9 @@ import (
 // MadeFrom is a Rancher that makes a cluster token from whatever login
 // credential the request bears, and names the token after that
 // credential, so a test can tell which login a cached token was made
-// from; the token's owner is user-<credential>. It serves nothing but the
-// ext token create.
+// from; the token's owner is user-<credential>. Each token it makes expires
+// 90 days after its create, as an ext token that asks for no lifetime does.
+// It serves nothing but the ext token create.
 type MadeFrom struct {
 	URL string
 
@@ -31,7 +32,6 @@ type MadeFrom struct {
 // NewMadeFrom starts a MadeFrom; the caller closes it.
 func NewMadeFrom() *MadeFrom {
 	m := &MadeFrom{}
-	expiresAt := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	m.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != extTokensPath || r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusNotFound)
@@ -46,6 +46,7 @@ func NewMadeFrom() *MadeFrom {
 			d()
 		}
 		bearer := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		expiresAt := rfc3339(time.Now().Add(maxTokenTTL))
 		w.WriteHeader(http.StatusCreated)
 		_, _ = fmt.Fprintf(w, `{"metadata":{"name":"from-%s"},"spec":{"userID":%q},"status":{"bearerToken":%q,"expiresAt":%q}}`, bearer, "user-"+bearer, MadeFromToken(bearer), expiresAt)
 	}))

@@ -448,8 +448,9 @@ func (t *OracleTarget) lookupUsersNamed(ctx context.Context, username string) ([
 }
 
 // login posts local-provider credentials and returns the bearer, accepting
-// both the Norman ({token}) and ext ({status.bearerToken}) response shapes -
-// the same tolerance internal/token's parseLoginResponse implements.
+// both the v3 ({token}) and ext ({status.bearerToken}) response shapes:
+// supported Rancher versions answer a login with a v3 token, Rancher v2.17
+// with an ext Token.
 func (t *OracleTarget) login(ctx context.Context, user, pass string) (string, error) {
 	payload := map[string]any{"type": "localProvider", "username": user, "password": pass}
 	body, status, err := t.plainJSON(ctx, http.MethodPost, "/v1-public/login", payload)

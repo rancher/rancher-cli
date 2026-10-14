@@ -165,7 +165,7 @@ func TestClassifyCreateDeterministic4xxWithUnknownKind(t *testing.T) {
 // TestClassifyCreateExtVersionWithoutTokenKindIsNotKnown asserts that the
 // classifier never consumes a bearer from a body the shape reader did not
 // recognize: an ext apiVersion with another kind stays unknown with no
-// bearer, and parseLoginResponse rejects the same body.
+// bearer.
 func TestClassifyCreateExtVersionWithoutTokenKindIsNotKnown(t *testing.T) {
 	t.Parallel()
 	body := []byte(`{"apiVersion":"ext.cattle.io/v1","kind":"Session","metadata":{"name":"ext-1"},"status":{"bearerToken":"ext/ext-1:s"}}`)
@@ -176,8 +176,6 @@ func TestClassifyCreateExtVersionWithoutTokenKindIsNotKnown(t *testing.T) {
 	assert.Empty(t, r.Bearer)
 	assert.Nil(t, r.Ref)
 	assert.Empty(t, r.Kind)
-	_, perr := parseLoginResponse(body)
-	require.Error(t, perr)
 }
 
 // TestClassifyCreateKubeconfigLoginExtShape asserts the facade's kubeconfig
@@ -235,4 +233,135 @@ func TestClassifyCreateReadsOwnerAndScope(t *testing.T) {
 	r = classifyCreate(&http.Response{StatusCode: 201}, bare, nil, "t", true, TokenKindExt)
 	assert.Empty(t, r.UserID)
 	assert.Empty(t, r.ClusterName)
+}
+
+// TestLoginCreateResult asserts what a login answer of each shape and each
+// malformed form leaves behind: the kind it declares, the identified token,
+// the usable bearer and the expiry.
+func TestLoginCreateResult(t *testing.T) {
+	t.Parallel()
+	created := &http.Response{StatusCode: 201}
+
+	t.Run("a v3 token answer", func(t *testing.T) {
+		body := []byte(`{"type":"token","id":"token-abc","token":"token-abc:secretxyz","expiresAt":"2026-08-01T12:00:00Z","userId":"user-123"}`)
+		r := loginCreateResult(created, body, nil, "t", true)
+		assert.Equal(t, clierr.CreateKnown, r.Outcome)
+		assert.Equal(t, TokenKindV3, r.Kind)
+		assert.Equal(t, &TokenRef{Kind: TokenKindV3, Name: "token-abc"}, r.Ref)
+		assert.Equal(t, "token-abc:secretxyz", r.Bearer)
+		assert.Equal(t, "2026-08-01T12:00:00Z", r.ExpiresAt)
+		assert.Equal(t, "user-123", r.UserID)
+	})
+
+	t.Run("an ext Token answer keeps its ext prefix", func(t *testing.T) {
+		body := []byte(`{"apiVersion":"ext.cattle.io/v1","kind":"Token","metadata":{"name":"token-xyz"},"spec":{"userID":"user-123"},"status":{"bearerToken":"ext/token-xyz:secretabc","expiresAt":"2026-08-01T12:00:00Z"}}`)
+		r := loginCreateResult(created, body, nil, "t", true)
+		assert.Equal(t, clierr.CreateKnown, r.Outcome)
+		assert.Equal(t, TokenKindExt, r.Kind)
+		assert.Equal(t, "ext/token-xyz:secretabc", r.Bearer)
+		assert.Equal(t, "2026-08-01T12:00:00Z", r.ExpiresAt)
+		assert.Equal(t, "user-123", r.UserID)
+	})
+
+	t.Run("a foreign apiVersion establishes no token", func(t *testing.T) {
+		body := []byte(`{"apiVersion":"ext.cattle.io/v2","kind":"Token","status":{}}`)
+		r := loginCreateResult(created, body, nil, "t", true)
+		assert.Equal(t, clierr.CreateUnknown, r.Outcome)
+		assert.Empty(t, r.Kind)
+		assert.Empty(t, r.Bearer)
+		assert.Nil(t, r.Ref)
+	})
+
+	t.Run("a versioned body that is not an ext Token is not read as v3", func(t *testing.T) {
+		body := []byte(`{"apiVersion":"management.cattle.io/v3","kind":"somethingElse","token":"tok:sec","expiresAt":""}`)
+		r := loginCreateResult(created, body, nil, "t", true)
+		assert.Equal(t, clierr.CreateUnknown, r.Outcome)
+		assert.Empty(t, r.Bearer)
+		assert.Nil(t, r.Ref)
+	})
+
+	t.Run("an ext Token answer with no name and no bearer is unidentified", func(t *testing.T) {
+		body := []byte(`{"apiVersion":"ext.cattle.io/v1","kind":"Token","status":{}}`)
+		r := loginCreateResult(created, body, nil, "t", true)
+		assert.Equal(t, clierr.CreateUnidentified, r.Outcome)
+		assert.Equal(t, TokenKindExt, r.Kind)
+		assert.Empty(t, r.Bearer)
+		assert.Nil(t, r.Ref)
+	})
+
+	t.Run("unreadable JSON leaves the create unknown", func(t *testing.T) {
+		r := loginCreateResult(created, []byte(`{not json`), nil, "t", true)
+		assert.Equal(t, clierr.CreateUnknown, r.Outcome)
+		assert.Empty(t, r.Kind)
+		assert.Empty(t, r.Bearer)
+	})
+
+	t.Run("a login answer that carries createdTS and ttl keeps the expiry it gave", func(t *testing.T) {
+		withExpiry := []byte(`{"id":"token-abc","token":"token-abc:s","expiresAt":"2026-08-01T12:00:00Z","createdTS":1785585600000,"ttl":3600000}`)
+		r := loginCreateResult(created, withExpiry, nil, "t", true)
+		assert.Equal(t, "2026-08-01T12:00:00Z", r.ExpiresAt)
+
+		noExpiry := []byte(`{"id":"token-abc","token":"token-abc:s","expiresAt":"","createdTS":1785585600000,"ttl":3600000}`)
+		r = loginCreateResult(created, noExpiry, nil, "t", true)
+		assert.Empty(t, r.ExpiresAt, "the login path never computes an expiry")
+	})
+}
+
+// TestClassifyCreateReadsCreatedTSAndTTLOfAV3Answer asserts that a v3 answer's
+// createdTS and ttl are read as integers, and that no other kind and no
+// other form of the fields is read.
+func TestClassifyCreateReadsCreatedTSAndTTLOfAV3Answer(t *testing.T) {
+	t.Parallel()
+	ok := &http.Response{StatusCode: 201}
+	v3 := func(fields string) CreateResult {
+		body := []byte(`{"id":"token-1","token":"token-1:s","expiresAt":"",` + fields + `}`)
+		return classifyCreate(ok, body, nil, "t", false, TokenKindV3)
+	}
+	r := v3(`"createdTS":1791564534000,"ttl":7776000000`)
+	assert.Equal(t, int64(1791564534000), r.CreatedTS)
+	assert.Equal(t, int64(7776000000), r.TTL)
+
+	r = v3(`"createdTS":"1791564534000","ttl":1.5`)
+	assert.Zero(t, r.CreatedTS, "a string is not an integer")
+	assert.Zero(t, r.TTL, "a fraction is not an integer")
+
+	r = v3(`"unrelated":1`)
+	assert.Zero(t, r.CreatedTS)
+	assert.Zero(t, r.TTL)
+
+	ext := []byte(`{"metadata":{"name":"token-1"},"createdTS":1791564534000,"ttl":7776000000,"status":{"bearerToken":"ext/token-1:s"}}`)
+	r = classifyCreate(ok, ext, nil, "t", false, TokenKindExt)
+	assert.Zero(t, r.CreatedTS, "an ext answer's fields are not read")
+	assert.Zero(t, r.TTL)
+}
+
+// TestComputedExpiry asserts the expiry a create answer's createdTS and ttl
+// give: their sum in RFC 3339 UTC, and empty when either is not positive or
+// the sum is out of range.
+func TestComputedExpiry(t *testing.T) {
+	t.Parallel()
+	const day = int64(24 * 60 * 60 * 1000)
+	const base = int64(1791564534000)
+	tests := []struct {
+		name      string
+		createdTS int64
+		ttl       int64
+		want      string
+	}{
+		{"ninety days", base, 90 * day, "2027-01-07T16:48:54Z"},
+		{"one second", base, 1000, "2026-10-09T16:48:55Z"},
+		{"no ttl", base, 0, ""},
+		{"negative ttl", base, -1, ""},
+		{"no createdTS", 0, 90 * day, ""},
+		{"negative createdTS", -1, 90 * day, ""},
+		{"the last second of year 9999", 253402300799000 - 1000, 1000, "9999-12-31T23:59:59Z"},
+		{"a sum past year 9999", 253402300799000, 1, ""},
+		{"a sum that overflows", base, 1<<63 - 1, ""},
+		{"a createdTS past year 9999", 253402300800000, 1, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, computedExpiry(tc.createdTS, tc.ttl))
+		})
+	}
 }

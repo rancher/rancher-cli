@@ -25,8 +25,8 @@
           "ttl": 7776000000,
           "userID": "\u003cuser-id\u003e",
           "userPrincipal": {
-            "displayName": "Default Admin",
-            "loginName": "admin",
+            "displayName": "\u003cdisplay-name\u003e",
+            "loginName": "\u003clogin-name\u003e",
             "me": true,
             "name": "\u003cprincipal\u003e",
             "principalType": "user",
@@ -67,8 +67,8 @@
           "ttl": 7776000000,
           "userID": "\u003cuser-id\u003e",
           "userPrincipal": {
-            "displayName": "Default Admin",
-            "loginName": "admin",
+            "displayName": "\u003cdisplay-name\u003e",
+            "loginName": "\u003clogin-name\u003e",
             "me": true,
             "name": "\u003cprincipal\u003e",
             "principalType": "user",
@@ -108,8 +108,8 @@
           "ttl": 7776000000,
           "userID": "\u003cuser-id\u003e",
           "userPrincipal": {
-            "displayName": "Default Admin",
-            "loginName": "admin",
+            "displayName": "\u003cdisplay-name\u003e",
+            "loginName": "\u003clogin-name\u003e",
             "me": true,
             "name": "\u003cprincipal\u003e",
             "principalType": "user",
