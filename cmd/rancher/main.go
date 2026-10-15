@@ -19,7 +19,6 @@ func main() {
 	if cli.OutdatedCompletionScript(os.Args[1:], os.Stderr) {
 		return
 	}
-	cli.CaptureArgv(os.Args[1:])
 	root, err := cli.BuildRoot(VERSION)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "rancher:", err)
@@ -27,7 +26,7 @@ func main() {
 	}
 	ctx, stop := cli.InterruptContext(context.Background(), os.Exit)
 	defer stop()
-	if err := root.Run(ctx, cli.SanitizedArgs(os.Args)); err != nil {
+	if err := cli.Run(ctx, root, os.Args); err != nil {
 		os.Exit(cli.ReportRunError(root, err))
 	}
 }

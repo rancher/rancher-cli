@@ -98,7 +98,6 @@ func runAsMain(t *testing.T, argv ...string) string {
 	var stderr bytes.Buffer
 	root.Writer = &bytes.Buffer{}
 	root.ErrWriter = &stderr
-	cli.CaptureArgv(argv)
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -107,7 +106,7 @@ func runAsMain(t *testing.T, argv ...string) string {
 				}
 			}
 		}()
-		if runErr := root.Run(t.Context(), append([]string{"rancher"}, argv...)); runErr != nil {
+		if runErr := cli.Run(t.Context(), root, append([]string{"rancher"}, argv...)); runErr != nil {
 			cli.ReportRunError(root, runErr)
 		}
 	}()

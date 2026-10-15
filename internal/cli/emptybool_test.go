@@ -178,8 +178,7 @@ func runAsMain(t *testing.T, root *ucli.Command, argv []string) (stderr string, 
 	root.Writer = &out
 	root.ErrWriter = &errOut
 	root.Reader = strings.NewReader("")
-	CaptureArgv(argv)
-	err := root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, argv...)))
+	err := Run(t.Context(), root, append([]string{"rancher"}, argv...))
 	return errOut.String(), exitCodeOf(err)
 }
 
@@ -189,12 +188,12 @@ func runAsMain(t *testing.T, root *ucli.Command, argv []string) (stderr string, 
 // name, as a short alias, as a long name with one dash, twice, and followed
 // by the same flag with a value. A value that is only whitespace (a space,
 // a tab, a newline, a no-break space) and whitespace ahead of the flag are
-// read as urfave reads them, trimmed, a word that is only whitespace is
-// kept as typed, as urfave keeps it, and so is a line holding the
-// completion protocol marker, which urfave never sees. Each is VALIDATION
-// at exit 2 with no request, naming each flag once. The lines run as the
-// process entry point runs them. Not parallel: it sets the process
-// environment and the captured command line.
+// read with the whitespace cut off, a word that is only whitespace is
+// kept as typed, and so is a line holding the completion protocol marker,
+// which urfave never sees. Each is VALIDATION at exit 2 with no request,
+// naming each flag once. The lines run as the process entry point runs
+// them. Not parallel: it sets the process environment and the captured
+// command line.
 func TestEmptyBoolValueIsRefused(t *testing.T) {
 	restoreRawArgv(t)
 	rec := methodRecorderEnv(t)
@@ -240,12 +239,14 @@ func TestEmptyBoolValueIsRefused(t *testing.T) {
 
 // TestPaddedWordsAreReadAsUrfaveReadsThem asserts that the bool value and
 // extra argument rules read a word with whitespace around it the way urfave
-// does, trimmed: a padded bool value typed after a bool flag is refused as
-// a bool value, in a free declared slot or beyond the declared argument,
-// with the joined line's value trimmed so the hint runs, and a padded extra
-// word is named trimmed. A flag's separate value and a word after "--",
-// which urfave takes as typed, stay as typed in the hint. No row makes a request. Not parallel: it sets the
-// process environment and the captured command line.
+// does: a positional word is used as typed, and is classified with the
+// whitespace cut off. A padded bool value typed after a bool flag is
+// refused as a bool value, in a free declared slot or beyond the declared
+// argument, and named as typed, with the joined line's value trimmed so the
+// hint runs, and a padded extra word is named as typed. A flag's separate
+// value and a word after "--" stay as typed in the hint. No row makes a
+// request. Not parallel: it sets the process environment and the captured
+// command line.
 func TestPaddedWordsAreReadAsUrfaveReadsThem(t *testing.T) {
 	restoreRawArgv(t)
 	rec := extraArgsEnv(t)
@@ -258,13 +259,13 @@ func TestPaddedWordsAreReadAsUrfaveReadsThem(t *testing.T) {
 		{
 			name:    "a padded bool value in a free slot",
 			argv:    []string{"create", "user", "--dry-run", " false", "--password-stdin", "-o", "json"},
-			message: "create user: 'false' after the bool flag --dry-run" + boolRule,
+			message: "create user: ' false' after the bool flag --dry-run" + boolRule,
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "a padded bool value beyond the declared argument",
 			argv:    []string{"create", "user", "u04", "--dry-run", "false\t", "--password-stdin", "-o", "json"},
-			message: "create user: 'false' after the bool flag --dry-run" + boolRule,
+			message: "create user: 'false\t' after the bool flag --dry-run" + boolRule,
 			hint:    "rancher create user 'u04' --dry-run='false' --password-stdin -o 'json'",
 		},
 		{
@@ -282,7 +283,7 @@ func TestPaddedWordsAreReadAsUrfaveReadsThem(t *testing.T) {
 		{
 			name:    "a padded extra word",
 			argv:    []string{"create", "user", "u04", " extra", "--password-stdin", "-o", "json"},
-			message: "create user takes 1 argument (<username>); unexpected argument 'extra'",
+			message: "create user takes 1 argument (<username>); unexpected argument ' extra'",
 			hint:    "rancher create user --help",
 		},
 	} {
@@ -339,46 +340,6 @@ func TestBoolValuesTheEmptyRuleLeavesAlone(t *testing.T) {
 	assert.Equal(t, 0, code, "rancher auth delete-token -o json -- --apply=")
 }
 
-// TestEmptyBoolFlagsOffersNothingWhenTheLineDisagrees asserts that the
-// empty bool value reader reports the bool flags typed with "=" and an
-// empty value, ahead of the command name and after it, for the command
-// line urfave parsed for the leaf, and offers nothing for a line with no
-// such flag or a line that is not the one parsed, so a refusal never comes
-// from another line.
-func TestEmptyBoolFlagsOffersNothingWhenTheLineDisagrees(t *testing.T) {
-	restoreRawArgv(t)
-	extraArgsEnv(t)
-	root, err := BuildRoot("v-test")
-	require.NoError(t, err)
-
-	var leaf *ucli.Command
-	for _, c := range root.Commands {
-		if c.Name == "create" {
-			leaf = c.Command("user")
-		}
-	}
-	require.NotNil(t, leaf)
-	argv := []string{"--dry-run=", "create", "user", "u04", "--yes=", "--password-stdin"}
-	_, _ = runOnce(t, root, argv)
-	require.Equal(t, []string{"u04"}, leaf.Args().Slice())
-
-	flags, ok := emptyBoolFlags(argv, leaf)
-	require.True(t, ok)
-	assert.Equal(t, []string{"--dry-run", "--yes"}, flags)
-
-	for name, other := range map[string][]string{
-		"no empty bool value":                   {"create", "user", "u04", "--dry-run=false"},
-		"another positional":                    {"create", "user", "u05", "--dry-run="},
-		"a flag urfave did not set":             {"create", "user", "u04", "--apply="},
-		"the empty value after --":              {"create", "user", "u04", "--", "--dry-run="},
-		"a flag the leaf does not take":         {"create", "user", "u04", "--bogus="},
-		"a set flag and one urfave did not set": {"create", "user", "u04", "--yes=", "--apply="},
-	} {
-		_, ok := emptyBoolFlags(other, leaf)
-		assert.False(t, ok, name)
-	}
-}
-
 // TestIsEmptyBool asserts which words the empty bool value rule reads as a
 // bool flag with "=" and an empty value: a bool flag the command accepts,
 // joined with "=" and nothing or only whitespace after it, with or without
@@ -411,7 +372,7 @@ func TestIsEmptyBool(t *testing.T) {
 // and makes no request with network completion on, on a line holding a
 // bool flag typed with "=" and an empty value - after the leaf's name,
 // ahead of it, after a group's name, or at the root, also with whitespace
-// around the word as urfave reads it - while the same line
+// around the word - while the same line
 // with the flag joined to a value still offers candidates, and asks the
 // server for the leaf's live candidates. Not parallel: it sets the
 // process environment and the captured command line.
@@ -460,7 +421,7 @@ func TestEmptyBoolValueCompletesNothing(t *testing.T) {
 		assert.NotEmpty(t, out, "rancher %s %s<TAB> offers candidates", strings.Join(joined, " "), tc.cur)
 	}
 
-	// Words with whitespace around them, read as urfave reads them: a
+	// Words with whitespace around them: a
 	// blank joined bool value, whitespace ahead of a flag, a padded bool
 	// value after a bool flag, and a padded flag the leaf does not accept.
 	for _, words := range [][]string{

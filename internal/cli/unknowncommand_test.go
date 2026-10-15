@@ -28,8 +28,7 @@ type lineOutcome struct {
 func runLine(t *testing.T, gotCode *int, argv []string) lineOutcome {
 	t.Helper()
 	*gotCode = 0
-	CaptureArgv(argv)
-	stdout, stderr, err := runHelpArgv(t, argv...)
+	stdout, stderr, err := runHelpArgvAsMain(t, argv...)
 	out := lineOutcome{stdout: stdout, stderr: stderr, exit: exitCodeOf(err)}
 	if out.exit == 0 {
 		out.exit = *gotCode
@@ -151,7 +150,7 @@ func TestKnownCommandLinesKeepTheirResult(t *testing.T) {
 		{[]string{"-o", "json", "access", "-A", "list"}, 2, allNamespaces, ""},
 		{[]string{"-o", "json", "get", "--", "pod"}, 2, "--cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local", ""},
 		{[]string{"-o", "json", "get", "bogus", "--", "--madeupflag"}, 2, `unknown command "bogus"`, ""},
-		{[]string{"-o", "json", "get", "-", "--madeupflag", "v"}, 2, "a - on its own ends the command line, so the words after it would be ignored: '--madeupflag' 'v'", ""},
+		{[]string{"-o", "json", "get", "-", "--madeupflag", "v"}, 2, "'--madeupflag' 'v' after a - on its own; a - on its own ends the command line", ""},
 		{[]string{"--version"}, 0, "", `^rancher version v-test\n$`},
 		{[]string{"-v"}, 0, "", `^rancher version v-test\n$`},
 		{[]string{"get"}, 0, "", `(?m)^USAGE:\n\s+rancher get( |$)`},

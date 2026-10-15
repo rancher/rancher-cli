@@ -159,7 +159,8 @@ func TestCheckFlagValuesBeforeHookRendersPerParsedFormat(t *testing.T) {
 }
 
 // TestCheckFlagValuesStopsAtABareDash asserts that the scan reads no word
-// after a bare "-", padded or not, as urfave reads none, and that a "-"
+// after a bare "-", padded or not, since a line with one is refused before
+// the command runs, and that a "-"
 // typed as a flag's value is a value, after which the scan goes on.
 func TestCheckFlagValuesStopsAtABareDash(t *testing.T) {
 	t.Parallel()

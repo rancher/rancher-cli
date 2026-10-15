@@ -116,26 +116,10 @@ func drainNotices(streams IO) []string {
 func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	d := cmd.Describe()
 
-	// First of all: every other check reads the parsed line, which lacks
-	// the words after a bare "-". Those words can hold the -o or --color
-	// typed, so the refusal renders as the whole line selects.
-	if ce, format, color := droppedWordsError(in); ce != nil {
-		typed := streams
-		typed.Format, typed.Color = format, color
-		return 0, renderErr(typed, ce)
-	}
-
 	for _, g := range []string{"output", "color"} {
 		if in.IsSet(g) && blank(in.String(g)) {
 			return 0, renderErr(streams, EmptyValueError(g))
 		}
-	}
-
-	// Ahead of every gate a bool flag decides (read-only, dry-run, apply,
-	// confirmation), so the flag an empty value would have turned on decides
-	// nothing.
-	if ce := emptyBoolError(in); ce != nil {
-		return 0, renderErr(streams, ce)
 	}
 
 	if ce := validateFormat(streams.Format); ce != nil {
@@ -381,20 +365,14 @@ func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
 }
 
 // validateInput checks the Descriptor's Args and Flags against the parsed
-// Input: no positional arg typed as the separate value of a bool flag
-// (when the Input can tell); no more positional args than the Descriptor
-// declares; required positional args must be present and non-empty; enum
-// args/flags must hold a listed value; required flags must be non-empty.
+// Input: no more positional args than the Descriptor declares; required
+// positional args must be present and non-empty; enum args/flags must hold
+// a listed value; required flags must be non-empty.
 // Returns a structured VALIDATION error (nil if valid). Commands wanting
 // custom missing-input UX (e.g. a candidate list) mark the field
 // Required:false and validate it themselves in Execute.
 func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 	args := in.Args()
-	if bv, ok := in.(BoolValueArgs); ok {
-		if vals, line, ok := bv.BoolValueArgs(); ok {
-			return boolValueError(d, args, vals, line)
-		}
-	}
 	if len(args) > len(d.Args) {
 		return clierr.New(clierr.CodeValidation, extraArgsMessage(d, args[len(d.Args):])).WithHint(helpHint(d))
 	}
@@ -448,15 +426,17 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 	return nil
 }
 
-// boolValueError is the refusal for positional arguments typed as the
+// BoolValueError is the refusal for positional arguments typed as the
 // separate value of a bool flag (vals, indexes into args): the flag is on
-// and the word is an argument, whatever was meant. The hint is the command
-// with each value joined to its flag when the arguments left fill every
-// positional argument d declares, required or optional, and the command's
-// help otherwise, so the hint never names a line refused for a bool value,
-// a missing argument or an extra argument. An optional argument counts too:
-// a flag can need it (get refuses --wait without a name).
-func boolValueError(d Descriptor, args []string, vals []BoolValue, line string) *clierr.Error {
+// and the word is an argument, whatever was meant. A word is named as
+// typed. line is the command with each value joined to its flag
+// (`--dry-run='false'`), values shell-quoted. The hint is line when the
+// arguments left fill every positional argument d declares, required or
+// optional, and the command's help otherwise, so the hint never names a
+// line refused for a bool value, a missing argument or an extra argument.
+// An optional argument counts too: a flag can need it (get refuses --wait
+// without a name).
+func BoolValueError(d Descriptor, args []string, vals []BoolValue, line string) *clierr.Error {
 	named := make([]string, len(vals))
 	isValue := map[int]bool{}
 	for i, v := range vals {
@@ -1258,7 +1238,7 @@ func interrupted(err error) *clierr.Error {
 // which would otherwise act as if the flag were omitted: a list across
 // every namespace, a default, a filter dropped. A flag whose empty value
 // means something omission does not sets AllowEmpty. A bool flag typed
-// empty is emptyBoolError's: the parsed value cannot show it.
+// empty is EmptyBoolError's: the parsed value cannot show it.
 func emptyValueError(f ArgSpec, in Input) *clierr.Error {
 	if f.Type == "bool" || f.AllowEmpty || !in.IsSet(f.Name) {
 		return nil
@@ -1278,20 +1258,12 @@ func emptyValueError(f ArgSpec, in Input) *clierr.Error {
 	}
 }
 
-// emptyBoolError refuses the bool flags typed with "=" and an empty value
-// (when the Input can tell, see EmptyBoolFlags), which parse as true: the
-// value meant is unknown, so neither on nor off is assumed. Each flag is
-// named once, as typed; a line names a bounded number of distinct bool
-// flags, so every one is named.
-func emptyBoolError(in Input) *clierr.Error {
-	eb, ok := in.(EmptyBoolFlags)
-	if !ok {
-		return nil
-	}
-	flags, ok := eb.EmptyBoolFlags()
-	if !ok {
-		return nil
-	}
+// EmptyBoolError is the refusal of the bool flags typed with "=" and an
+// empty value or one of only whitespace, each as typed without the "=":
+// the value meant is unknown, so neither on nor off is assumed. Each flag is
+// named once; a line names a bounded number of distinct bool flags, so every
+// one is named.
+func EmptyBoolError(flags []string) *clierr.Error {
 	var named, fixes []string
 	for _, f := range flags {
 		if slices.Contains(named, f+"=") {
@@ -1309,30 +1281,13 @@ func emptyBoolError(in Input) *clierr.Error {
 		WithHint("write " + strings.Join(fixes, "; "))
 }
 
-// droppedWordsError refuses a command line with words after a bare "-"
-// (when the Input can tell, see DroppedWords): none of them was read, so
-// a flag among them (`--dry-run`, `--cluster c1`) would be ignored. format
-// and color are the output format and --color value the whole typed line
-// selects, for the refusal.
-func droppedWordsError(in Input) (ce *clierr.Error, format, color string) {
-	dw, ok := in.(DroppedWords)
-	if !ok {
-		return nil, "", ""
-	}
-	words, format, color, ok := dw.DroppedWords()
-	if !ok {
-		return nil, "", ""
-	}
-	return DroppedWordsError(words), format, color
-}
-
-// DroppedWordsError is the refusal of a command line with words, as
-// typed, after a bare "-", which the parser never reads. It names the
-// first maxNamedWords of them and counts the rest, except that a word
-// starting with "-" named last is named with the word after it unless
-// that word starts with "-" too, so a flag is never named without the
-// value that may follow it (`'-o' 'json'`, never `'-o' and 1 more`).
-// Which flags take a value is not known for words never parsed.
+// DroppedWordsError is the refusal of a command line with words, as typed,
+// after a "-" on its own. It names the first maxNamedWords of them and
+// counts the rest, except that a word starting with "-" named last is
+// named with the word after it unless that word starts with "-" too, so a
+// flag is never named without the value that may follow it (`'-o' 'json'`,
+// never `'-o' and 1 more`). Which flags take a value is not known for
+// words after a "-" that ends the line.
 func DroppedWordsError(words []string) *clierr.Error {
 	named := min(len(words), maxNamedWords)
 	if named < len(words) && startsWithDash(words[named-1]) && !startsWithDash(words[named]) {
@@ -1347,11 +1302,11 @@ func DroppedWordsError(words []string) *clierr.Error {
 		text += fmt.Sprintf(" and %d more", rest)
 	}
 	return clierr.New(clierr.CodeValidation,
-		"a - on its own ends the command line, so the words after it would be ignored: "+text).
+		text+" after a - on its own; a - on its own ends the command line").
 		WithHint("put - last, or after -- when it is meant as an argument")
 }
 
-// startsWithDash reports whether w, trimmed as the parser reads a word,
+// startsWithDash reports whether w, with the whitespace around it cut off,
 // starts with "-".
 func startsWithDash(w string) bool { return strings.HasPrefix(strings.TrimSpace(w), "-") }
 

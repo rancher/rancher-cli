@@ -16,7 +16,7 @@ import (
 // was not already typed as --name: a flag's separate value, a positional,
 // a word after "--" or after a bare "-", a flag no spec names and a word
 // padded with whitespace that needs no change stay byte-for-byte. A
-// rewritten word is trimmed, as the parser reads it. The result is a copy;
+// rewritten word has the whitespace around it cut off. The result is a copy;
 // tail is not modified.
 func longFlagSpellings(tail []string, flags []runtime.ArgSpec) []string {
 	known := make(map[string]bool, len(flags))

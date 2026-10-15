@@ -527,16 +527,16 @@ func completeCurrentWord(ctx context.Context, cmd *ucli.Command, bareWord func(w
 // the words after cmd's path: a flag cmd does not accept (urfave fails
 // with "flag provided but not defined"), more than maxWords words that are
 // neither a flag nor a flag's value, or a word typed after a bool flag
-// that accepts it as its value (the command pipeline refuses it in any
-// position). Anywhere on the line: a bool flag typed with "=" and an empty
-// value (`--dry-run=`), which the command pipeline refuses, a second
-// instance of a flag that may be given once (urfave fails with "can't
-// duplicate this flag"), and a bare "-": urfave reads no word after it,
-// so the word being completed would be dropped, and a line with a word
-// after a bare "-" is refused. maxWords is 0 at the root or a group
-// (urfave enters a subcommand that word names, so it names none) and the
-// number of positional arguments a leaf declares. A rejected line is
-// offered nothing, and no request is made for it.
+// that accepts it as its value (lineRefusal refuses it in any position).
+// Anywhere on the line: a bool flag typed with "=" and an empty value
+// (`--dry-run=`) or one of only whitespace, which lineRefusal refuses, a
+// second instance of a flag that may be given once (urfave fails with
+// "can't duplicate this flag"), and a bare "-": a line with a word after it
+// is refused before the command runs, and the word being completed would be
+// that word. maxWords is 0 at the root or a group (urfave enters a
+// subcommand that word names, so it names none) and the number of
+// positional arguments a leaf declares. A rejected line is offered nothing,
+// and no request is made for it.
 func lineRejected(cmd *ucli.Command, argv []string, maxWords int) bool {
 	words, _, undefined := tailWords(stripRoutingPrefixByCmd(argv, cmd), levelFlags(cmd))
 	if undefined || len(words) > maxWords {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -48,27 +49,6 @@ func (i cmdInput) Bool(name string) bool        { return i.c.Bool(name) }
 func (i cmdInput) Strings(name string) []string { return i.c.StringSlice(name) }
 func (i cmdInput) IsSet(name string) bool       { return i.c.IsSet(name) }
 func (i cmdInput) Args() []string               { return i.c.Args().Slice() }
-
-// BoolValueArgs implements runtime.BoolValueArgs from the captured command
-// line.
-func (i cmdInput) BoolValueArgs() ([]runtime.BoolValue, string, bool) {
-	return boolValueArgs(rawArgv, i.c)
-}
-
-// EmptyBoolFlags implements runtime.EmptyBoolFlags from the captured
-// command line.
-func (i cmdInput) EmptyBoolFlags() ([]string, bool) {
-	return emptyBoolFlags(rawArgv, i.c)
-}
-
-// DroppedWords implements runtime.DroppedWords from the captured command
-// line. The format and color come from the raw scans the root and group
-// refusals render with (scanOutputFormat, scanColorFlag), so a refusal
-// renders alike at every level.
-func (i cmdInput) DroppedWords() ([]string, string, string, bool) {
-	words, ok := droppedWords(rawArgv, i.c)
-	return words, scanOutputFormat(rawArgv), scanColorFlag(rawArgv), ok
-}
 
 // leafName returns the last space-separated token of a command name
 // ("auth status" -> "status") for use as the urfave leaf/subcommand name.
@@ -287,8 +267,7 @@ func primeDescription(d runtime.Descriptor) string {
 const primeMetadataKey = "prime"
 
 // primeMetadata returns a Metadata map flagging a Prime descriptor, or nil
-// for an ordinary one - nil leaves urfave's Metadata absent, exactly as
-// before this flag existed.
+// for an ordinary one.
 func primeMetadata(d runtime.Descriptor) map[string]any {
 	if d.Capability.Tier != runtime.CapabilityPrime {
 		return nil
@@ -307,27 +286,32 @@ const projectMetadataKey = "project"
 // leave it out.
 const localMetadataKey = "local"
 
-// leafMetadata is primeMetadata plus the command's --project description
-// when it takes --project and the Local marker for a Local command; nil
-// for an ordinary command that takes none.
+// descriptorMetadataKey is the Metadata map key holding the command's
+// runtime.Descriptor, which lineRefusal reads before urfave parses the line.
+const descriptorMetadataKey = "descriptor"
+
+// leafMetadata is the leaf's Metadata map: its Descriptor, primeMetadata's
+// marker for a Prime command, the command's --project description when it
+// takes --project and the Local marker for a Local command.
 func leafMetadata(d runtime.Descriptor) map[string]any {
-	md := primeMetadata(d)
+	md := map[string]any{descriptorMetadataKey: d}
+	maps.Copy(md, primeMetadata(d))
 	if d.CommandType == runtime.Local {
-		if md == nil {
-			md = map[string]any{}
-		}
 		md[localMetadataKey] = true
 	}
 	for _, f := range d.Flags {
-		if f.Name != runtime.FlagProject {
-			continue
+		if f.Name == runtime.FlagProject {
+			md[projectMetadataKey] = f.Desc
 		}
-		if md == nil {
-			md = map[string]any{}
-		}
-		md[projectMetadataKey] = f.Desc
 	}
 	return md
+}
+
+// commandDescriptor returns the Descriptor of the leaf cmd and whether cmd
+// is a leaf built from one.
+func commandDescriptor(cmd *ucli.Command) (runtime.Descriptor, bool) {
+	d, ok := cmd.Metadata[descriptorMetadataKey].(runtime.Descriptor)
+	return d, ok
 }
 
 // commandProject returns the description of cmd's own --project entry and
@@ -639,18 +623,8 @@ func usageErrorGuidance(c *ucli.Command, err error) (detail, hint string) {
 // process exit both happen here directly, mirroring how urfave's own
 // ShowRootCommandHelpAndExit calls OsExiter. No flag has parsed successfully
 // yet at this point, so the rendering format comes from a raw-argv scan
-// (scanOutputFormat), not a parsed --output value. A bare "-" typed where
-// a command name goes (name is "-") stops urfave at c, and the words
-// after it, which can hold the command name, are never read: that line
-// is refused the way the command pipeline refuses one, naming those
-// words. Any other name is an unknown command first, whatever follows it.
+// (scanOutputFormat), not a parsed --output value.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
-	if words, ok := droppedWords(rawArgv, c); ok && name == "-" {
-		ce := runtime.DroppedWordsError(words)
-		renderRawArgvError(c, ce)
-		ucli.OsExiter(ce.ExitCode())
-		return
-	}
 	reportUnknownCommand(c, name, c.Args().Tail())
 }
 

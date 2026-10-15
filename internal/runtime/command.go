@@ -264,50 +264,13 @@ type Input interface {
 	Args() []string
 }
 
-// BoolValueArgs is implemented by an Input that knows the command line as
-// typed; the CLI's Input does, a test's need not. A bool flag takes its
-// value only joined with "=", so `--force false` is the flag (true) and a
-// positional argument "false".
-type BoolValueArgs interface {
-	// BoolValueArgs reports the positional arguments typed as their own
-	// word directly after a bool flag that accepts them as its value, in
-	// order, and the command as typed with each of those values joined to
-	// its flag (`--force=false`), values shell-quoted. ok is false when no
-	// argument was typed that way, or the line read is not the one parsed.
-	BoolValueArgs() (vals []BoolValue, line string, ok bool)
-}
-
 // BoolValue is a positional argument typed after a bool flag: its index
-// among the positional arguments and the flag as typed.
+// among the positional arguments and the flag as typed. A bool flag takes
+// its value only joined with "=", so `--force false` is the flag (true) and
+// a positional argument "false".
 type BoolValue struct {
 	Index int
 	Flag  string
-}
-
-// EmptyBoolFlags is implemented by an Input that knows the command line as
-// typed; the CLI's Input does, a test's need not. A bool flag typed with
-// "=" and an empty value (`--apply=`) parses as true, so an empty or unset
-// shell variable (`--apply="$APPLY"`) would turn the flag on.
-type EmptyBoolFlags interface {
-	// EmptyBoolFlags reports the bool flags typed with "=" and an empty
-	// value, before or after the command name, each as typed without the
-	// "=" (`--apply`, `-A`), in order. ok is false when no flag was typed
-	// that way, or the line read is not the one parsed.
-	EmptyBoolFlags() (flags []string, ok bool)
-}
-
-// DroppedWords is implemented by an Input that knows the command line as
-// typed; the CLI's Input does, a test's need not. The parser stops reading
-// a command line at a bare "-" (a word that is only "-"): it keeps the "-"
-// as a positional argument and never reads a word after it, so a flag
-// typed there (`- --dry-run`) would be ignored.
-type DroppedWords interface {
-	// DroppedWords reports the words typed after a bare "-", as typed, in
-	// order, and the output format and --color value the whole typed line
-	// selects, those words included, for the refusal ("" for none). ok is
-	// false when no word follows one, or the line read is not the one
-	// parsed.
-	DroppedWords() (words []string, format, color string, ok bool)
 }
 
 // Result is a command's success payload, rendered into the output envelope.

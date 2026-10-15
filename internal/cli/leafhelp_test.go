@@ -61,19 +61,38 @@ func stubExit(t *testing.T) *int {
 	return code
 }
 
-// runHelpArgv runs argv through a freshly built root and returns stdout,
-// stderr and the error Run returned. The exit handler is a no-op, so an
-// error a real process would exit with comes back as the return value.
-func runHelpArgv(t *testing.T, argv ...string) (stdout, stderr string, err error) {
+// helpRoot returns a freshly built root with its output captured in out and
+// errOut and an exit handler that does nothing, so an error a real process
+// would exit with comes back as the return value of Run.
+func helpRoot(t *testing.T) (root *ucli.Command, out, errOut *bytes.Buffer) {
 	t.Helper()
-	root, buildErr := BuildRoot("v-test")
-	require.NoError(t, buildErr)
-	var out, errOut bytes.Buffer
-	root.Writer = &out
-	root.ErrWriter = &errOut
+	root, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	out, errOut = &bytes.Buffer{}, &bytes.Buffer{}
+	root.Writer = out
+	root.ErrWriter = errOut
 	root.Reader = strings.NewReader("")
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
+	return root, out, errOut
+}
+
+// runHelpArgv runs argv through a freshly built root and returns stdout,
+// stderr and the error Run returned. It leaves the captured command line
+// alone, so a parallel test can call it; a line the process entry point
+// refuses before urfave parses it runs through runHelpArgvAsMain.
+func runHelpArgv(t *testing.T, argv ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	root, out, errOut := helpRoot(t)
 	err = root.Run(t.Context(), append([]string{"rancher"}, argv...))
+	return out.String(), errOut.String(), err
+}
+
+// runHelpArgvAsMain is runHelpArgv through Run, as the process entry point
+// runs a line, with the command line captured. Not for a parallel test.
+func runHelpArgvAsMain(t *testing.T, argv ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	root, out, errOut := helpRoot(t)
+	err = Run(t.Context(), root, append([]string{"rancher"}, argv...))
 	return out.String(), errOut.String(), err
 }
 
@@ -462,9 +481,9 @@ func TestLevelFlagsOwnFlagWinsOverAncestors(t *testing.T) {
 
 // TestTailWords asserts how a tail of words is read under a set of flags:
 // words and flag values apart, the cut at the first undefined flag, a bare
-// dash as the last word, "--" and a number as the start of the words. The
-// last three follow urfave's own parsing (a bare dash ends the line, and a
-// "--" and a word that starts with a dash and a non-letter end the flags).
+// dash as the last word read, "--" and a word that starts with a dash and a
+// character that is not a letter as the start of the words, and a dash and
+// a letter of any script as a flag.
 func TestTailWords(t *testing.T) {
 	t.Parallel()
 	flags := map[string]bool{"output": true, "o": true, "debug": false}
@@ -483,7 +502,8 @@ func TestTailWords(t *testing.T) {
 		{"no flag is read after a bare dash", []string{"-", "--x"}, []string{"-"}, 1, false},
 		{"double dash starts the words", []string{"a", "--", "--x", "-o"}, []string{"a", "--x", "-o"}, 3, false},
 		{"number starts the words", []string{"a", "-1", "--x", "-o"}, []string{"a", "-1", "--x", "-o"}, 4, false},
-		{"multi-byte character after the dash starts the words", []string{"a", "-\u05d0", "--x"}, []string{"a", "-\u05d0", "--x"}, 3, false},
+		{"multi-byte symbol after the dash starts the words", []string{"a", "-\u20ac", "--x"}, []string{"a", "-\u20ac", "--x"}, 3, false},
+		{"multi-byte letter after the dash is a flag", []string{"a", "-\u05d0", "--x"}, []string{"a"}, 1, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

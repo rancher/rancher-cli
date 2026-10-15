@@ -118,8 +118,7 @@ func runCaptured(t *testing.T, root *ucli.Command, argv []string) (stdout, stder
 	root.Writer = &out
 	root.ErrWriter = &errOut
 	root.Reader = strings.NewReader("")
-	CaptureArgv(argv)
-	err := root.Run(t.Context(), append([]string{"rancher"}, argv...))
+	err := Run(t.Context(), root, append([]string{"rancher"}, argv...))
 	return out.String(), errOut.String(), exitCodeOf(err)
 }
 
@@ -440,45 +439,6 @@ func TestJoinedFormHintRunsVerbatim(t *testing.T) {
 					"%s: refused before running: %s", hint, ce.Message)
 			}
 		})
-	}
-}
-
-// TestBoolValueArgsOffersNothingWhenTheLineDisagrees asserts that the
-// bool value reader reports the positional arguments typed after a bool
-// flag, with the joined line, for the command line urfave parsed for the
-// leaf, and offers nothing for a line with no such argument or a line that
-// is not the one parsed, so a refusal and its hint never come from another
-// line.
-func TestBoolValueArgsOffersNothingWhenTheLineDisagrees(t *testing.T) {
-	restoreRawArgv(t)
-	extraArgsEnv(t)
-	root, err := BuildRoot("v-test")
-	require.NoError(t, err)
-
-	var leaf *ucli.Command
-	for _, c := range root.Commands {
-		if c.Name == "create" {
-			leaf = c.Command("user")
-		}
-	}
-	require.NotNil(t, leaf)
-	argv := []string{"create", "user", "u04", "--dry-run", "false", "--password-stdin"}
-	_, _ = runOnce(t, root, argv)
-	require.Equal(t, []string{"u04", "false"}, leaf.Args().Slice())
-
-	vals, line, ok := boolValueArgs(argv, leaf)
-	require.True(t, ok)
-	assert.Equal(t, []runtime.BoolValue{{Index: 1, Flag: "--dry-run"}}, vals)
-	assert.Equal(t, "rancher create user 'u04' --dry-run='false' --password-stdin", line)
-
-	for name, other := range map[string][]string{
-		"no argument after a bool flag": {"create", "user", "u04", "false", "--dry-run"},
-		"another positional":            {"create", "user", "u05", "--dry-run", "false"},
-		"no positional typed":           {"create", "user", "--dry-run"},
-		"words in another order":        {"create", "user", "--dry-run", "false", "u04"},
-	} {
-		_, _, ok := boolValueArgs(other, leaf)
-		assert.False(t, ok, name)
 	}
 }
 

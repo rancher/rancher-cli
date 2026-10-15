@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,13 +25,18 @@ import (
 const bareDashHint = "put - last, or after -- when it is meant as an argument"
 
 // bareDashMessage is the message of that refusal for the words, as typed,
-// written independently of the pipeline's own rendering.
-func bareDashMessage(words ...string) string {
+// and the count of the words it does not name, written independently of
+// the pipeline's own rendering.
+func bareDashMessage(more int, words ...string) string {
 	quoted := make([]string, len(words))
 	for i, w := range words {
 		quoted[i] = clierr.ShellQuote(w)
 	}
-	return "a - on its own ends the command line, so the words after it would be ignored: " + strings.Join(quoted, " ")
+	text := strings.Join(quoted, " ")
+	if more > 0 {
+		text += " and " + strconv.Itoa(more) + " more"
+	}
+	return text + " after a - on its own; a - on its own ends the command line"
 }
 
 // TestEveryLeafRefusesWordsAfterABareDash asserts that every leaf of the
@@ -81,7 +87,7 @@ func TestEveryLeafRefusesWordsAfterABareDash(t *testing.T) {
 			assertNoFiles(t, label, dirs...)
 			ce := renderedError(t, format, stderr)
 			assert.Equal(t, clierr.CodeValidation, ce.Code, label)
-			assert.Equal(t, bareDashMessage("--dry-run"), ce.Message, label)
+			assert.Equal(t, bareDashMessage(0, "--dry-run"), ce.Message, label)
 			assert.Equal(t, bareDashHint, ce.Hint, label)
 
 			stderr, code = runOnce(t, wr.root("v-test"), last)
@@ -98,22 +104,22 @@ func TestEveryLeafRefusesWordsAfterABareDash(t *testing.T) {
 
 // TestWordsAfterABareDashAreRefused asserts the refusal of a command line
 // with words after a bare "-" wherever the "-" sits: after the command
-// name, where urfave takes it as an argument and drops the flags after it
-// (--cluster, -o, --dry-run, --read-only), so a mutation would apply
-// though --dry-run or --read-only was typed; padded with whitespace, which
-// urfave trims; ahead of the command name, at the root or a group, where
-// the command name itself is dropped, also with --help typed; and with
-// more words than the refusal names, where a flag named last is named
-// with the word after it. A word after the "-" that looks like a flag
-// waiting for its value (`--cluster --output`) is not read either, and a
-// flag that may be given once, typed again after the "-", is a word after
-// it, not a second instance. Each is VALIDATION at exit 2, naming the
-// words after the "-" as typed, with no request and no file written,
-// rendered in the format the whole line selects, -o typed after the "-"
-// included, at a leaf, a group or the root. An unknown command name typed
-// ahead of the "-" is reported as an unknown command instead. The lines
-// run as the process entry point runs them. Not parallel: it sets the
-// process environment and the captured command line.
+// name, where the flags after it (--cluster, -o, --dry-run, --read-only)
+// would be read among the arguments, so a mutation could apply though
+// --dry-run or --read-only was typed; padded with whitespace, which is cut
+// off to classify the word; ahead of the command name, at the root or a
+// group, where the command name itself would be an argument, also with
+// --help typed; and with more words than the refusal names, where a flag
+// named last is named with the word after it. A word after the "-" that
+// looks like a flag waiting for its value (`--cluster --output`) is a word
+// after it, and so is a flag that may be given once, typed again after the
+// "-". Each is VALIDATION at exit 2, naming the words after the "-" as
+// typed, with no request and no file written, rendered in the format the
+// whole line selects, -o typed after the "-" included, at a leaf, a group
+// or the root. An unknown command name typed ahead of the "-" is reported
+// as an unknown command instead. The lines run as the process entry point
+// runs them. Not parallel: it sets the process environment and the
+// captured command line.
 func TestWordsAfterABareDashAreRefused(t *testing.T) {
 	restoreRawArgv(t)
 	exited := stubExit(t)
@@ -160,7 +166,7 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 			assertNoFiles(t, tc.name, dirs...)
 			ce := renderedBareDashError(t, tc.format, stderr)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Equal(t, bareDashMessage(tc.words...), ce.Message)
+			assert.Equal(t, bareDashMessage(0, tc.words...), ce.Message)
 			assert.Equal(t, bareDashHint, ce.Hint)
 		})
 	}
@@ -170,10 +176,10 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 		argv    []string
 		message string
 	}{
-		{"more words than the refusal names", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "e", "f", "g"}, bareDashMessage("a", "b", "c", "d", "e") + " and 2 more"},
-		{"a flag and its value across the cap", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "-o", "json", "x"}, bareDashMessage("a", "b", "c", "d", "-o", "json") + " and 1 more"},
-		{"a flag and its value last, across the cap", []string{"-o", "json", "-", "get", "pods", "--cluster", "c1", "-o", "json"}, bareDashMessage("get", "pods", "--cluster", "c1", "-o", "json")},
-		{"two flags across the cap", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "--dry-run", "--apply"}, bareDashMessage("a", "b", "c", "d", "--dry-run") + " and 1 more"},
+		{"more words than the refusal names", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "e", "f", "g"}, bareDashMessage(2, "a", "b", "c", "d", "e")},
+		{"a flag and its value across the cap", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "-o", "json", "x"}, bareDashMessage(1, "a", "b", "c", "d", "-o", "json")},
+		{"a flag and its value last, across the cap", []string{"-o", "json", "-", "get", "pods", "--cluster", "c1", "-o", "json"}, bareDashMessage(0, "get", "pods", "--cluster", "c1", "-o", "json")},
+		{"two flags across the cap", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "--dry-run", "--apply"}, bareDashMessage(1, "a", "b", "c", "d", "--dry-run")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
@@ -213,6 +219,45 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 	}
 }
 
+// TestEveryGroupRefusesWordsAfterABareDash asserts that the root and every
+// group of the built tree, given a bare "-", a word and -o json, refuse the
+// words after the "-" with VALIDATION at exit 2, naming them as typed, in
+// the JSON the line selects, with no request. Not parallel: it sets the
+// process environment, the exit function and the captured command line.
+func TestEveryGroupRefusesWordsAfterABareDash(t *testing.T) {
+	restoreRawArgv(t)
+	exited := stubExit(t)
+	rec := methodRecorderEnv(t)
+	dirs := emptyDirs(t)
+	tree, err := BuildRoot("v-test")
+	require.NoError(t, err)
+	_, groups := commandPaths(tree, nil)
+	require.Len(t, groups, 12, "the groups of the tree")
+	for _, path := range append([][]string{nil}, groups...) {
+		name := "root"
+		if len(path) > 0 {
+			name = strings.Join(path, " ")
+		}
+		t.Run(name, func(t *testing.T) {
+			root, err := BuildRoot("v-test")
+			require.NoError(t, err)
+			argv := append(slices.Clone(path), "-", "word", "-o", "json")
+			*exited = 0
+			stderr, code := runAsMain(t, root, argv)
+			if code == 0 {
+				code = *exited
+			}
+			assert.Equal(t, 2, code)
+			assert.Empty(t, rec.take(), "no request")
+			assertNoFiles(t, name, dirs...)
+			ce := renderedError(t, "json", stderr)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, bareDashMessage(0, "word", "-o", "json"), ce.Message)
+			assert.Equal(t, bareDashHint, ce.Hint)
+		})
+	}
+}
+
 // renderedBareDashError is renderedError that also reads the YAML
 // envelope, for format "yaml".
 func renderedBareDashError(t *testing.T, format, stderr string) cliError {
@@ -233,13 +278,13 @@ func renderedBareDashError(t *testing.T, format, stderr string) cliError {
 }
 
 // TestBareDashLinesTheRuleLeavesAlone asserts the lines with a "-" that
-// the rule does not refuse, each read as urfave reads it: a "-" as a
-// flag's separate value reads the manifest from stdin and keeps the
-// --dry-run after it (one dry-run request, nothing created); a "-" after
-// "--" is an argument and the words after it are kept, so the extra one
-// is refused as an extra argument; a "-" that is the last word is a
-// positional argument, as before. Not parallel: it sets the process
-// environment and the captured command line.
+// the rule does not refuse: a "-" as a flag's separate value reads the
+// manifest from stdin and keeps the --dry-run after it (one dry-run
+// request, nothing created); a "-" after "--" is an argument and the
+// words after it are kept, so the extra one is refused as an extra
+// argument; a "-" that is the last word is a positional argument, as
+// before. Not parallel: it sets the process environment and the captured
+// command line.
 func TestBareDashLinesTheRuleLeavesAlone(t *testing.T) {
 	restoreRawArgv(t)
 	rec := methodRecorderEnv(t)
@@ -250,8 +295,7 @@ func TestBareDashLinesTheRuleLeavesAlone(t *testing.T) {
 		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 		var out, errOut bytes.Buffer
 		root.Writer, root.ErrWriter, root.Reader = &out, &errOut, strings.NewReader(stdin)
-		CaptureArgv(argv)
-		err = root.Run(t.Context(), SanitizedArgs(append([]string{"rancher"}, argv...)))
+		err = Run(t.Context(), root, append([]string{"rancher"}, argv...))
 		return errOut.String(), exitCodeOf(err), rec.take()
 	}
 	const manifest = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: ns1\n"
@@ -320,68 +364,11 @@ func TestScanTailStopsAtABareDash(t *testing.T) {
 	}
 }
 
-// TestDroppedWordsOffersNothingWhenTheLineDisagrees asserts that the
-// reader of the words after a bare "-" reports them, as typed, for the
-// command line urfave parsed for the leaf, and offers nothing for a line
-// with no word after a bare "-" or a line that is not the one parsed,
-// also one with as many positional arguments as parsed but another one
-// among them, so a refusal never comes from another line.
-func TestDroppedWordsOffersNothingWhenTheLineDisagrees(t *testing.T) {
-	restoreRawArgv(t)
-	extraArgsEnv(t)
-	root, err := BuildRoot("v-test")
-	require.NoError(t, err)
-
-	var leaf *ucli.Command
-	for _, c := range root.Commands {
-		if c.Name == "get" {
-			leaf = c.Command("pod")
-		}
-	}
-	require.NotNil(t, leaf)
-	argv := []string{"-o", "json", "get", "pod", "--cluster", "c1", " - ", "--dry-run", " x"}
-	_, _ = runOnce(t, root, argv)
-	require.Equal(t, []string{"-"}, leaf.Args().Slice())
-
-	words, ok := droppedWords(argv, leaf)
-	require.True(t, ok)
-	assert.Equal(t, []string{"--dry-run", " x"}, words)
-
-	// The same number of arguments as parsed, another one among them.
-	other, err := BuildRoot("v-test")
-	require.NoError(t, err)
-	var parsed *ucli.Command
-	for _, c := range other.Commands {
-		if c.Name == "get" {
-			parsed = c.Command("pod")
-		}
-	}
-	require.NotNil(t, parsed)
-	_, _ = runOnce(t, other, []string{"get", "pod", "p1", "-", "x"})
-	require.Equal(t, []string{"p1", "-"}, parsed.Args().Slice())
-	words, ok = droppedWords([]string{"get", "pod", "p1", "-", "x"}, parsed)
-	require.True(t, ok)
-	assert.Equal(t, []string{"x"}, words)
-	_, ok = droppedWords([]string{"get", "pod", "p2", "-", "x"}, parsed)
-	assert.False(t, ok, "another argument than the one parsed")
-
-	for name, other := range map[string][]string{
-		"the dash last":              {"get", "pod", "--cluster", "c1", "-"},
-		"another positional":         {"get", "pod", "p1", "-", "--dry-run"},
-		"the dash after --":          {"get", "pod", "--", "-", "--dry-run"},
-		"the dash as a flag's value": {"get", "pod", "--cluster", "-", "--dry-run"},
-		"no dash":                    {"get", "pod", "--cluster", "c1", "--dry-run"},
-	} {
-		_, ok := droppedWords(other, leaf)
-		assert.False(t, ok, name)
-	}
-}
-
 // TestBareDashCompletesNothing asserts that completion offers nothing, and
 // makes no request with network completion on, on a line with a bare "-"
 // typed before the word being completed - after the leaf's name, padded,
 // ahead of the leaf's name, after a group's name, or at the root - since
-// that word would be one urfave never reads, while a "-" typed as a flag's
+// that word would be a word after the "-", while a "-" typed as a flag's
 // value keeps the candidates, and the line without the "-" asks the
 // server for the leaf's live candidates. Not parallel: it sets the process
 // environment and the captured command line.
