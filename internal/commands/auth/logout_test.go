@@ -797,3 +797,20 @@ func TestLogoutStampsLoggedOutAtOnEveryTarget(t *testing.T) {
 	assert.Equal(t, clierr.ProvenanceDerived, cfg.Servers["prod"].Provenance)
 	assert.Equal(t, "prod", cfg.CurrentServer, "logout still never clears the pointer")
 }
+
+// TestLogoutTextEndsWithANewline asserts auth logout's text ends with a
+// newline, as the other commands' do, so the first warning on stderr does not
+// start on the last line of stdout; the last line is a certificate line when
+// a revoke failed on the server's certificate. Mutation: trim the final
+// newline.
+func TestLogoutTextEndsWithANewline(t *testing.T) {
+	t.Parallel()
+	urlByName := map[string]string{"acme": "https://acme.ex"}
+	deletedFrom := map[string][]string{"acme": {"keychain"}}
+	for name, revocation := range map[string][]string{"no revocation lines": nil, "a revocation line last": {"tokens on https://acme.ex:", "  not revoked ext/a (failed, TLS_TRUST)", "    valid: 2026-10-01T16:09:49Z to 2036-09-28T16:09:49Z"}} {
+		text := renderLogoutText(urlByName, deletedFrom, 0, revocation)
+		assert.True(t, strings.HasSuffix(text, "\n"), "%s: %q", name, text)
+		assert.False(t, strings.HasSuffix(text, "\n\n"), "%s: one newline, not a blank line: %q", name, text)
+	}
+	assert.True(t, strings.HasSuffix(renderLogoutText(nil, nil, 0, nil), "\n"), "the empty case")
+}

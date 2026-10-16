@@ -92,7 +92,10 @@ func newServerRevokeDir(t *testing.T) *serverRevokeDir {
 }
 
 // during runs fn once, when the first revoke reaches the server: after the
-// local delete's lock span, before the span that removes the entry.
+// local delete's lock span, before the span that removes the entry. The
+// fixture decides what "reaches" means: newServerRevokeDir fires on the
+// first DELETE request, newTLSServerRevokeDir on the first connection,
+// since a revoke that fails its handshake sends no request.
 func (r *serverRevokeDir) during(fn func()) { r.armed.Store(&fn) }
 
 func (r *serverRevokeDir) edit(t *testing.T, change func(cfg *config.Config)) {

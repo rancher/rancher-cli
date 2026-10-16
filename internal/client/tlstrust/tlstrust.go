@@ -163,14 +163,14 @@ func (r Remedy) fix() string {
 // RANCHER_CLI_CACERT) builds the message itself instead of rewriting
 // the text of Classify.
 func UnknownAuthorityMessage(leaf bool, remedy string) string {
-	const tail = "; if this server was already trusted, check the subject and issuer shown here - " +
-		"a certificate you don't recognize can mean something in the network path is intercepting TLS"
+	const tail = "; if this server worked before, check the subject and issuer shown here - " +
+		"a certificate you don't recognize can mean something between you and the server, such as a proxy, is replacing its certificate"
 	if leaf {
 		return "the server presented a certificate signed by an unknown authority, with no separate certificate authority in the chain; " +
-			"obtain the certificate through a trusted channel (or verify the fingerprint shown here out of band)" + remedy + tail
+			"obtain the certificate from a source you trust (or confirm the fingerprint shown here with the server's administrator)" + remedy + tail
 	}
 	return "the server presented a certificate signed by an unknown authority; " +
-		"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band)" + remedy + tail
+		"obtain its CA from a source you trust (or confirm the fingerprint shown here with the server's administrator)" + remedy + tail
 }
 
 // Classify reports whether err is a TLS certificate verification failure and,
@@ -207,28 +207,26 @@ func Classify(err error, host string, now time.Time, r Remedy) *clierr.Error {
 		details.NotBefore = subject.NotBefore.UTC().Format(time.RFC3339)
 		details.NotAfter = subject.NotAfter.UTC().Format(time.RFC3339)
 	}
-	switch kind {
+	return clierr.New(clierr.CodeTLSTrust, Message(details, host, r)).WithDetails(details)
+}
+
+// Message is the text of a certificate failure of kind d.Kind on host,
+// worded for r. A caller that knows a better remedy than the classifier
+// was given (a login whose CA comes from the server entry) rebuilds the
+// message of an already classified error with it.
+func Message(d Details, host string, r Remedy) string {
+	switch d.Kind {
 	case KindUnknownAuthority:
-		msg := UnknownAuthorityMessage(details.leaf, r.ca())
-		return clierr.New(clierr.CodeTLSTrust, msg).
-			WithDetails(details)
+		return UnknownAuthorityMessage(d.leaf, r.ca())
 	case KindHostnameMismatch:
-		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate is not valid for "+host+
-				"; check that "+r.url()+" matches the certificate's hostname; "+r.fix()+" cannot fix a hostname mismatch").
-			WithDetails(details)
+		return "the server's certificate is not valid for " + host +
+			"; check that " + r.url() + " matches the certificate's hostname; " + r.fix() + " cannot fix a hostname mismatch"
 	case KindExpired:
-		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate has expired; ask the server operator to renew it; "+r.fix()+" cannot fix an expired certificate").
-			WithDetails(details)
+		return "the server's certificate has expired; ask the server's administrator to renew it; " + r.fix() + " cannot fix an expired certificate"
 	case KindNotYetValid:
-		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate is not yet valid; check the local clock, or ask the server operator to reissue it; "+r.fix()+" cannot fix this").
-			WithDetails(details)
+		return "the server's certificate is not yet valid; check the local clock, or ask the server's administrator to reissue it; " + r.fix() + " cannot fix this"
 	default: // KindInvalidChain
-		return clierr.New(clierr.CodeTLSTrust,
-			"the server's certificate chain failed validation; the chain is malformed or incomplete; contact the server operator").
-			WithDetails(details)
+		return "the server's certificate chain failed validation; the chain is malformed or incomplete; contact the server's administrator"
 	}
 }
 
@@ -373,7 +371,7 @@ func terminalOriginIs(err error, want httpx.Origin) bool {
 // chain is reclassified from evidence the chain itself carries (see
 // reclassifyUntyped). Without this, the most common first-contact case - a
 // self-signed Rancher server dialed with system roots on macOS - lands in
-// invalidChain with a contact-the-operator hint instead of unknownAuthority
+// invalidChain with a contact-the-administrator hint instead of unknownAuthority
 // with the --cacert hint.
 func classifyKind(err error, host string, now time.Time) (kind Kind, chain []*x509.Certificate, offending *x509.Certificate, ok bool) {
 	cve, found := errors.AsType[*tls.CertificateVerificationError](err)
@@ -440,8 +438,8 @@ func classifyVerifyError(verr error, chain []*x509.Certificate, now time.Time) (
 //     the platform distrusts for platform-only reasons (revoked root, CT
 //     policy) also lands here, and the --cacert remedy is mechanically
 //     real for it too - a pinned pool uses Go's verifier - while the
-//     fingerprint in the details supports the out-of-band check before
-//     anyone pins anything.
+//     fingerprint in the details supports confirming it with the
+//     server's administrator before anyone pins anything.
 //
 // ok=false only for an empty chain (nothing to reason from), keeping the
 // nullable-details invalidChain fallback. Window checks consult only the

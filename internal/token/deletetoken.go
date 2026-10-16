@@ -128,7 +128,7 @@ func (p deleteTokenFailure) TextDetails() []string {
 		lines = append(lines, "deleted: "+strings.Join(p.Deleted, ", "))
 	}
 	for _, n := range p.NotRevoked {
-		lines = append(lines, n.TextLine())
+		lines = append(lines, n.DetailLines()...)
 	}
 	return lines
 }

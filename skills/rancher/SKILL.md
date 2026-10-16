@@ -384,7 +384,7 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   Status) → retry is reasonable; otherwise do not repeat the identical call.
 - `TLS_TRUST` (exit `10`) means the server's certificate failed
   verification: act on the remedy the message names (a different CA, the
-  server URL, or the server operator), or tell the user; never retry the
+  server URL, or the server's administrator), or tell the user; never retry the
   same call. It is not retryable.
 - `AMBIGUOUS_SELECTION` returns a `candidates` list - pick with the user, don't
   guess.
@@ -521,7 +521,11 @@ again. Each entry has a `reason` and a `retry`:
 `nextLogin` needs nothing beyond the next login of its `entry`
 (`rancher auth login <entry>`, or the kubectl sign-in); `manual` means run
 its `recovery` (or the reason's remedy, as `unproven` says: find the token
-with `rancher get tokens`); `none` is a pasted token, nothing to do. Revokes
+with `rancher get tokens`); `none` is a pasted token, nothing to do. An
+entry with `code` `TLS_TRUST` failed because the server's certificate did not
+verify: read its `error` for the fix - a CA to save, a server URL to correct,
+or a certificate only the server's administrator can fix (`certificate` holds
+the certificate's facts) - then follow `retry`. Revokes
 run under config or environment read-only mode too.
 
 ### 9. Observability & support

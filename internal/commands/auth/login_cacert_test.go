@@ -336,7 +336,7 @@ func TestLoginUnreadableVariableSaysSo(t *testing.T) {
 // path, the unknown-authority error of a login whose CA came from
 // RANCHER_CLI_CACERT: no trust prompt is offered, the text names the
 // variable and the remedy of that path, and says nothing of --cacert as the
-// way to pass the CA, of pinned trust or of an existing registration.
+// way to pass the CA, of the entry's saved CA or of an existing registration.
 func TestLoginUnknownAuthorityUnderTheVariableNamesTheVariable(t *testing.T) {
 	url, _ := variableServer(t)
 	t.Setenv(config.EnvCACert, otherCA(t))
@@ -372,9 +372,9 @@ func TestLoginUnknownAuthorityUnderTheVariableNamesTheVariable(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, tlstrust.KindUnknownAuthority, details.Kind)
 			assert.Contains(t, ce.Message, tc.remedy)
-			assert.Contains(t, ce.Message, "obtain the certificate through a trusted channel")
+			assert.Contains(t, ce.Message, "obtain the certificate from a source you trust")
 			assert.NotContains(t, ce.Message, "and pass it with --cacert")
-			assert.NotContains(t, ce.Message, "pinned trust no longer matches")
+			assert.NotContains(t, ce.Message, "save it for this entry with")
 			assert.NotContains(t, ce.Message, "is already registered")
 			assert.Empty(t, ce.Hint)
 			assert.Empty(t, p.notices, "no trust card is shown")

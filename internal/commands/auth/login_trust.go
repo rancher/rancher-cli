@@ -124,24 +124,24 @@ func confirmTrust(ctx context.Context, p runtime.Prompter, d tlstrust.Details, p
 // d.TextDetails(), which already labels the certificate role (serving
 // certificate vs certificate authority) - plus the unauthenticated
 // self-identification heuristic: names are attacker-controlled, so the
-// card always follows with the reminder to verify the fingerprint through
-// a trusted channel regardless of what the certificate claims about
-// itself. priorFingerprint, when non-empty, opens the card with a
-// changed-identity warning naming it next to the new candidate's - the
-// SSH-changed-key moment: a re-prompt after a recorded consent must never
-// render identically to a first contact.
+// card always follows with the reminder to confirm the fingerprint with the
+// server's administrator, whatever the certificate claims about itself.
+// priorFingerprint, when non-empty, opens the card with a changed-identity
+// warning naming it next to the new candidate's - the SSH-changed-key
+// moment: a re-prompt after a recorded consent must never render
+// identically to a first contact.
 func trustCard(d tlstrust.Details, priorFingerprint string) string {
 	var lines []string
 	if priorFingerprint != "" && priorFingerprint != d.Fingerprint {
 		lines = append(lines,
-			fmt.Sprintf("warning: this server previously presented a certificate with fingerprint %s; it now presents a different one - this could mean the certificate rotated, or that a different party is answering", priorFingerprint))
+			fmt.Sprintf("warning: this server previously presented a certificate with fingerprint %s; it now presents a different one - the certificate may have been replaced, or another server may be answering in its place", priorFingerprint))
 	}
 	lines = append(lines, d.TextDetails()...)
 	if strings.Contains(strings.ToLower(d.Subject), dynamiclistenerCAMarker) {
 		lines = append(lines, "the certificate identifies itself as "+dynamiclistenerCAMarker+" (Rancher's generated CA)")
 	} else {
-		lines = append(lines, "the certificate does not identify itself as the server's own - a TLS-intercepting proxy may be in the path")
+		lines = append(lines, "the certificate is not Rancher's generated CA: it may come from your organization's CA, or from a proxy between you and the server that replaces certificates")
 	}
-	lines = append(lines, "verify the fingerprint through a trusted channel regardless of the subject shown above")
+	lines = append(lines, "confirm the fingerprint with the server's administrator, whatever the subject above says")
 	return strings.Join(lines, "\n")
 }

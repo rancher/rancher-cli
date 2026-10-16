@@ -38,7 +38,9 @@ func (configDeleteServerCmd) Describe() runtime.Descriptor {
 		Desc: "Deletes the entry's stored login token in every backend and the exec-credential cache records made from " +
 			"its login, deletes on the server the tokens among them the CLI created and recorded, as auth logout does, " +
 			"then removes the entry. data.revoked and data.notRevoked report each token; a token left on the removed " +
-			"entry is manual, with recovery holding the commands that revoke it. Refuses with CONFLICT, keeping the " +
+			"entry is manual, with recovery holding the commands that revoke it. A token the command could " +
+			"not revoke because the server's certificate failed verification is listed with code TLS_TRUST and the " +
+			"certificate's details. Refuses with CONFLICT, keeping the " +
 			"entry, when a login or a URL change touched the entry while the command ran. Exits 0 when every local " +
 			"delete succeeds, whatever the server answered. A Ctrl-C or termination signal that stops the local " +
 			"delete, or leaves a token unreached, ends it with INTERRUPTED (exit 130), with both lists in the " +

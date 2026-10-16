@@ -872,7 +872,8 @@ func (deleteTokenCmd) Describe() runtime.Descriptor {
 			"as the bearer. Read-only mode set by config or the environment does not stop those deletes. data.deleted " +
 			"lists the deleted keys; data.kept " +
 			"the keys the exec plugin rewrote meanwhile, left in place; data.revoked and data.notRevoked report each " +
-			"token as auth logout does. Exits 0 when every local delete succeeds, whatever the server answered, " +
+			"token as auth logout does. A token the command could not revoke because the server's certificate " +
+			"failed verification is listed with code TLS_TRUST and the certificate's details. Exits 0 when every local delete succeeds, whatever the server answered, " +
 			"unless a Ctrl-C or termination signal left a token unreached: then INTERRUPTED (exit 130), with both " +
 			"lists in the error's details.",
 		CommandType:  runtime.Local,

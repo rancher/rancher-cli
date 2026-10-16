@@ -35,7 +35,7 @@ func leafOf(t *testing.T, c tls.Certificate) *x509.Certificate {
 // leaf issued by an absent CA, presented WITHOUT that CA (dynamiclistener's
 // leaf-only shape) and failing with an untyped platform error,
 // classifies as unknownAuthority with the --cacert guidance - not invalidChain
-// with contact-the-operator.
+// with contact-the-administrator.
 func TestClassifyUntypedUnknownAuthorityLeafOnly(t *testing.T) {
 	t.Parallel()
 	ca, caKey := genCA(t, "dynamiclistener-ca@test")
@@ -119,7 +119,7 @@ func TestClassifyUntypedHostnameMismatch(t *testing.T) {
 // deliberately covers platform-only distrust of a sound chain (revoked
 // root, CT policy): the --cacert remedy is mechanically real there - a
 // pinned pool uses Go's verifier - and the details fingerprint supports the
-// out-of-band check before anyone pins.
+// confirmation with the server's administrator before anyone pins.
 func TestClassifyUntypedMatchingHostIsNotMismatch(t *testing.T) {
 	t.Parallel()
 	ca, caKey := genCA(t, "some-ca")

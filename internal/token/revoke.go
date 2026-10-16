@@ -75,6 +75,7 @@ func revokeToken(ctx context.Context, client *http.Client, base string, ref Toke
 	req.Header.Set("Authorization", "Bearer "+bearer)
 	resp, _, err := httpx.Do(client, req)
 	if err != nil {
+		out.TLSError = tlstrust.TypedError(err)
 		return fail(revokeErrorText(err))
 	}
 	out.Status = resp.StatusCode

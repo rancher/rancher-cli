@@ -1203,6 +1203,10 @@ reports the outcome in the error's `details`:
   carry `[op:<marker>]` in their description, so a leftover can be found
   by listing the collection its `kind` names and revoked with the
   `recovery` command.
+- `primary.details`: the certificate's facts (`kind`, `fingerprint`,
+  `subject`, `issuer`, `notBefore`, `notAfter`) when `primary` is a
+  `TLS_TRUST` error, including the check of the signed-in user against
+  `--user-id` in the kubectl plugin's sign-in. Absent for any other failure.
 
 Login deletes the transient session token with its own bearer through
 Rancher's logout endpoint (`POST /v1/logout`, which deletes the token its
@@ -1312,15 +1316,22 @@ The data of each command gains two lists, `[]` when empty, never null:
 - `revoked`: `{ref, source, server}` for each token the server confirmed
   deleted (200 or 204, or 404 to another token of the same owner).
   `source` is `cache`, `superseded` or `login`.
-- `notRevoked`: `{ref?, source, server, entry?, reason, error?, retry,
-  recovery?}` for each token that may still be live. `entry` is the entry the
-  token is recorded on, `error` the answer or transport error behind `failed`,
-  `recovery` a command sequence; for a v3 token it is the administrator's
-  delete alone.
+- `notRevoked`: `{ref?, source, server, entry?, reason, code?, error?,
+  certificate?, retry, recovery?}` for each token that may still be live.
+  `entry` is the entry the token is recorded on, `error` the answer or
+  transport error behind `failed`, `recovery` a command sequence; for a v3
+  token it is the administrator's delete alone. `code` is `TLS_TRUST` when
+  the delete failed because the server's certificate failed verification
+  (it is absent for any other failure), `error` then says how to fix the
+  certificate problem for what revokes the token, and `certificate` holds the
+  certificate's facts: `kind`, `fingerprint`, `subject`, `issuer`,
+  `notBefore`, `notAfter`.
 
 The text output lists one line per token under `tokens on <server>:`, for
 example `revoked ext/abc (cluster token, c-1)` or `not revoked ext/def
 (unconfirmed; recorded on prod: the next login of prod as u-1 revokes it)`.
+A token whose `code` is `TLS_TRUST` is followed by the message and the
+certificate's lines, indented under its line.
 
 | `reason` | Meaning |
 |---|---|
@@ -1588,19 +1599,21 @@ cover.
 A certificate failure from the Rancher server is a `TLS_TRUST` error (exit
 10, not retryable) on every command that stops on the failed request. Two
 groups keep their own handling: the revoke commands (`auth logout`, `auth
-delete-token`, `config delete-server`) report it in their `notRevoked` list,
-and steps that wait or collect across many requests (`--wait`,
-`support-bundle`, the per-cluster notes of `access`, the degraded parts of
-`inspect`) retry it or record it as they do any failed request. The error's
-`details` hold the certificate's kind, subject, issuer and fingerprint (for
-`auth login` and the sign-in of kubectl's credential plugin, inside the
-login failure's `primary` error), and the message names the remedy for
-the command that failed: a command that takes `--cacert` names it, `auth get-token` and `rancher
-token` name their own flags, a command that reads a server entry names `rancher
-config update-server`, and a server taken from `RANCHER_CLI_URL` names
-`RANCHER_CLI_CACERT`. When `RANCHER_CLI_CACERT` supplied the CA, the message
-says so. A certificate failure of an `https://` proxy is not a `TLS_TRUST`
-error: it keeps the transport error's text.
+delete-token`, `config delete-server`) report it in their `notRevoked` list
+with `code` `TLS_TRUST`, the message in `error` and the certificate's facts in
+`certificate`, and keep exit 0 when the local deletes succeed; and steps that
+wait or collect across many requests (`--wait`, `support-bundle`, the
+per-cluster notes of `access`, the degraded parts of `inspect`) retry it or
+record it as they do any failed request. The error's `details` hold the
+certificate's kind, subject, issuer and fingerprint (for `auth login` and the
+sign-in of kubectl's credential plugin, inside the login failure's `primary`
+error), and the message names the remedy for the command that failed: a
+command that takes `--cacert` names it, `auth get-token` and `rancher token`
+name their own flags, a command that reads a server entry names
+`rancher config update-server`, and a server taken from `RANCHER_CLI_URL`
+names `RANCHER_CLI_CACERT`. When `RANCHER_CLI_CACERT` supplied the CA, the
+message says so. A certificate failure of an `https://` proxy is not a
+`TLS_TRUST` error: it keeps the transport error's text.
 
 There is no skip-verify flag anywhere in the native surface, ever: a
 self-signed or private-CA server is used by pinning its CA (`--cacert`,

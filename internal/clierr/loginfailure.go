@@ -59,6 +59,10 @@ type RevokeOutcome struct {
 	// v3 token revoked with its own bearer, 0 when logout was not sent or
 	// no answer came; never serialized.
 	LogoutStatus int `json:"-"`
+	// TLSError is the TLS_TRUST error of a delete that failed on the
+	// server's certificate, nil otherwise; never serialized. Error keeps the
+	// request's own text.
+	TLSError *Error `json:"-"`
 }
 
 // Provenance says who created a login credential and therefore who may

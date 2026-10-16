@@ -75,7 +75,7 @@ func assertTrustError(t *testing.T, err error) {
 	require.NotNil(t, ce, "got %v", err)
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
 	assert.False(t, ce.Retryable)
-	assert.Contains(t, ce.Message, "(or verify the fingerprint shown here out of band); CA-SLOT; if this server")
+	assert.Contains(t, ce.Message, "(or confirm the fingerprint shown here with the server's administrator); CA-SLOT; if this server")
 }
 
 // TestHTTPClientInstallsNoClassifier asserts a client built by HTTPClient

@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 )
@@ -140,6 +142,11 @@ type revokeClient struct {
 	client *http.Client
 	base   string
 	err    error
+	// hostPort is the trust entry's server as host[:port], the host a
+	// certificate failure message names. fromVariable says RANCHER_CLI_CACERT
+	// supplied the CA the client verifies against.
+	hostPort     string
+	fromVariable bool
 }
 
 // DeleteAndRecord is the local delete, run inside the caller's config-lock
@@ -531,15 +538,25 @@ func (d *Deletion) send(budget context.Context, trust, bearer string, provenance
 
 func (d *Deletion) newClient(trust string) revokeClient {
 	s := d.cfg.Servers[trust]
-	pem, err := revokeCA(s)
+	pem, fromVariable, err := revokeCA(s)
 	if err != nil {
 		return revokeClient{err: err}
 	}
-	client, err := httpx.New(httpx.Options{CACert: pem, Timeout: httpx.DefaultTimeout})
+	client, err := httpx.New(httpx.Options{
+		CACert:        pem,
+		Timeout:       httpx.DefaultTimeout,
+		WrapTransport: tlstrust.WrapTransportFor(s.URL, tlstrust.Remedy{}),
+	})
 	if err != nil {
 		return revokeClient{err: err}
 	}
-	return revokeClient{client: client, base: kube.BaseURL(s.URL)}
+	rc := revokeClient{client: client, base: kube.BaseURL(s.URL), fromVariable: fromVariable}
+	if u, perr := url.Parse(s.URL); perr == nil {
+		if origin, oerr := httpx.OriginOf(u); oerr == nil {
+			rc.hostPort = origin.HostPort()
+		}
+	}
+	return rc
 }
 
 // revokeCA is the CA a revoke to an entry's server is verified against: the
@@ -547,19 +564,21 @@ func (d *Deletion) newClient(trust string) revokeClient {
 // connected with RANCHER_CLI_CACERT (CAFromEnvironment) uses the variable
 // where it applies to the entry's URL; a variable exported for another
 // server does not reach it. Any other entry without a saved CA names a
-// server the system roots verify, whatever the variable says.
-func revokeCA(s config.Server) (string, error) {
+// server the system roots verify, whatever the variable says. The second
+// result says the variable supplied the CA.
+func revokeCA(s config.Server) (string, bool, error) {
 	if s.CA != "" {
-		return config.ResolveCA(s.CA)
+		pem, err := config.ResolveCA(s.CA)
+		return pem, false, err
 	}
 	if !s.CAFromEnvironment {
-		return "", nil
+		return "", false, nil
 	}
 	pem, err := config.ResolveCA(config.EnvCACertFor(s.URL))
 	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", config.EnvCACert, err)
+		return "", false, fmt.Errorf("reading %s: %w", config.EnvCACert, err)
 	}
-	return pem, nil
+	return pem, config.EnvCACertFor(s.URL) != "", nil
 }
 
 // Settle records what the revokes did, in one config-lock span after

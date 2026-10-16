@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/ui"
@@ -159,6 +160,32 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 				out = append(out, d.manualWarning(it))
 			}
 			return out
+		},
+		"Deletion.revokeTLSRemedy": func() []string {
+			owned := &config.Config{Servers: map[string]config.Server{name: {URL: url, TokenUserID: "u-abc12", Provenance: clierr.ProvenanceExecLogin}}}
+			d := &Deletion{cfg: owned, view: owned, removed: map[string]bool{}, clients: map[string]revokeClient{}}
+			server := config.CanonicalServerIdentity(url)
+			v3 := &TokenRef{Kind: TokenKindV3, Name: "token-v3"}
+			var out []string
+			for _, it := range []*revocationItem{
+				{source: sourceCache, ref: ref, server: server, owner: "u-abc12", entry: name, trust: name, reason: reasonFailed},
+				{source: sourceCache, ref: ref, server: server, owner: "u-other", entry: name, trust: name, reason: reasonFailed},
+				{source: sourceCache, ref: v3, server: server, owner: "u-abc12", entry: name, trust: name, reason: reasonFailed},
+			} {
+				for _, fromVariable := range []bool{false, true} {
+					d.clients[name] = revokeClient{fromVariable: fromVariable}
+					r := d.revokeTLSRemedy(it)
+					out = append(out, r.CA, r.URL)
+				}
+			}
+			return out
+		},
+		"Deletion.Warnings": func() []string {
+			owned := &config.Config{Servers: map[string]config.Server{name: {URL: url, TokenUserID: "u-abc12", Provenance: clierr.ProvenanceExecLogin}}}
+			d := &Deletion{cfg: owned, view: owned, removed: map[string]bool{}, clients: map[string]revokeClient{name: {}}}
+			d.items = []*revocationItem{{source: sourceCache, ref: ref, server: config.CanonicalServerIdentity(url), owner: "u-abc12", entry: name, trust: name,
+				reason: reasonFailed, tlsErr: clierr.New(clierr.CodeTLSTrust, "x"), cert: &tlstrust.Details{Kind: tlstrust.KindUnknownAuthority}}}
+			return d.Warnings()
 		},
 		"deleteTokenCmd.Execute": func() []string {
 			res, err := deleteTokenCmd{dir: dir, store: config.NewFileStore(dir)}.Execute(t.Context(), tin{a: []string{name}}, ui.Discard())

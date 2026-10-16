@@ -590,8 +590,8 @@ func TestClassifyUnknownAuthorityLeafOnlyLabelsServingCertificate(t *testing.T) 
 	assert.Contains(t, details.TextDetails(), "serving certificate: "+details.Subject)
 	assert.NotContains(t, ce.Message, "obtain its CA", "a bare leaf is never called the server's CA")
 	assert.Contains(t, ce.Message, "no separate certificate authority")
-	assert.Contains(t, ce.Message, "intercepting TLS",
-		"an unrecognized certificate on a previously trusted server can mean a middlebox; the message says so")
+	assert.Contains(t, ce.Message, "such as a proxy, is replacing its certificate",
+		"an unrecognized certificate on a server that worked before can mean a proxy; the message says so")
 }
 
 // TestClassifyUnknownAuthorityWithAnchorLabelsCertificateAuthority asserts
@@ -610,8 +610,8 @@ func TestClassifyUnknownAuthorityWithAnchorLabelsCertificateAuthority(t *testing
 	assert.Equal(t, ca.Raw, details.Certificate().Raw)
 	assert.Contains(t, details.TextDetails(), "certificate authority: "+details.Subject)
 	assert.Contains(t, ce.Message, "obtain its CA")
-	assert.Contains(t, ce.Message, "intercepting TLS",
-		"an unrecognized certificate on a previously trusted server can mean a middlebox; the message says so")
+	assert.Contains(t, ce.Message, "such as a proxy, is replacing its certificate",
+		"an unrecognized certificate on a server that worked before can mean a proxy; the message says so")
 }
 
 // TestDetailsCertificateNilOnNullableDetails asserts that a

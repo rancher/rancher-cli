@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ func TestTrustCardSelfIdentifiesAsDynamiclistenerCA(t *testing.T) {
 
 func TestTrustCardDoesNotSelfIdentify(t *testing.T) {
 	d := tlstrust.Details{Kind: tlstrust.KindUnknownAuthority, Subject: "CN=rancher.example"}
-	assert.Contains(t, trustCard(d, ""), "does not identify itself as the server's own")
+	assert.Contains(t, trustCard(d, ""), "the certificate is not Rancher's generated CA")
 }
 
 func TestTrustCardFirstContactCarriesNoWarning(t *testing.T) {
@@ -252,7 +253,7 @@ func TestLoginPlainReverifyConnectivityFailureIsTreatedAsFailure(t *testing.T) {
 	require.ErrorContains(t, err, "could not be confirmed")
 	require.ErrorContains(t, err, "fingerprint", "must describe the just-consented candidate")
 	assert.NotContains(t, err.Error(), "--cacert", "the operator holds no file for a certificate that arrived over the wire")
-	assert.NotContains(t, err.Error(), "pinned trust no longer matches", "must never be reframed as the entry's stored trust")
+	assert.NotContains(t, err.Error(), "config update-server", "must never be reframed as a failure of the entry's saved CA")
 	assert.Equal(t, 2, calls, "the re-verify must actually run")
 
 	_, tokErr := store.GetToken(config.ServerRef{Name: "prod"})
@@ -556,4 +557,106 @@ func setTrustCommitConfigWriteHookForTest(fn func() error) (restore func()) {
 		}
 		return fn()
 	})
+}
+
+// TestTrustCardUsesPlainWords asserts the trust card's three explanations in
+// plain words, for a certificate that is not Rancher's own, a changed
+// certificate and the closing line, and that none of the retired phrases
+// appears in any card. Mutation: restore any retired line.
+func TestTrustCardUsesPlainWords(t *testing.T) {
+	d := tlstrust.Details{Kind: tlstrust.KindUnknownAuthority, Subject: "CN=rancher.example", Fingerprint: "newfp"}
+	first := trustCard(d, "")
+	changed := trustCard(d, "oldfp")
+	rancher := trustCard(tlstrust.Details{Kind: tlstrust.KindUnknownAuthority, Subject: "CN=dynamiclistener-ca"}, "")
+
+	assert.Contains(t, first, "the certificate is not Rancher's generated CA: it may come from your organization's CA, or from a proxy between you and the server that replaces certificates")
+	assert.True(t, strings.HasSuffix(first, "confirm the fingerprint with the server's administrator, whatever the subject above says"), first)
+	assert.Contains(t, changed, "it now presents a different one - the certificate may have been replaced, or another server may be answering in its place")
+	for _, card := range []string{first, changed, rancher} {
+		for _, phrase := range []string{"out of band", "out-of-band", "trusted channel", "intercepting TLS", "TLS-intercepting", "server operator",
+			"does not identify itself", "different party"} {
+			assert.NotContains(t, card, phrase)
+		}
+	}
+}
+
+// TestPlainLoginWithASavedCAThatDoesNotFitNamesConfigUpdateServer asserts the
+// unknown-authority failure of a plain login to an entry that saves a CA the
+// server's certificate does not match is rebuilt around the one remedy that
+// works for it, saving the CA with config update-server: the message names
+// the command and never says to pass --cacert (which a login without --url
+// refuses), nor "pinned trust" or a possessive on the quoted name. Mutation:
+// append the old sentence about the entry's pinned trust.
+func TestPlainLoginWithASavedCAThatDoesNotFitNamesConfigUpdateServer(t *testing.T) {
+	t.Parallel()
+	fix := selfSignedFixture(t, "127.0.0.1", time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	srv := newTLSFake(t, fix)
+	dir, store := cmdtest.FilePolicyDir(t)
+	seedServer(t, dir, "prod", srv.URL, otherCA(t), false)
+
+	_, err := tlsLoginCmd(dir, store).Execute(t.Context(), plainLoginInput("prod"), cmdtest.StdinPrompter("id:sec\n"))
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
+	assert.Empty(t, ce.Hint)
+	details, ok := ce.Details.(tlstrust.Details)
+	require.True(t, ok)
+	assert.Equal(t, tlstrust.UnknownAuthorityMessage(details.IsLeafCertificate(), "; save it for this entry with: rancher config update-server 'prod' --cacert <file>"), ce.Message)
+	assert.NotContains(t, ce.Message, "pass it with --cacert")
+	assert.NotContains(t, ce.Message, "pinned")
+	assert.NotContains(t, ce.Message, "'prod''s")
+}
+
+// TestPlainLoginCertificateFailuresNameTheSavedEntry asserts that a plain
+// login whose saved CA verifies the server's certificate, but whose
+// certificate is expired or names another host, words the failure for the
+// entry - the server URL saved for it and a different CA - and never names
+// --url or --cacert, which a login without --url does not take. Mutations:
+// rebuild only an unknown authority; rebuild with the zero Remedy.
+func TestPlainLoginCertificateFailuresNameTheSavedEntry(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		dns       string
+		notBefore time.Duration
+		notAfter  time.Duration
+		want      func(host string) string
+	}{
+		"expired": {
+			dns: "127.0.0.1", notBefore: -2 * time.Hour, notAfter: -time.Hour,
+			want: func(string) string {
+				return "the server's certificate has expired; ask the server's administrator to renew it; a different CA cannot fix an expired certificate"
+			},
+		},
+		"hostname mismatch": {
+			dns: "rancher.example", notBefore: -time.Hour, notAfter: time.Hour,
+			want: func(host string) string {
+				return "the server's certificate is not valid for " + host +
+					"; check that the server URL saved for entry 'prod' matches the certificate's hostname; a different CA cannot fix a hostname mismatch"
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			fix := selfSignedFixture(t, tc.dns, time.Now().Add(tc.notBefore), time.Now().Add(tc.notAfter))
+			srv := newTLSFake(t, fix)
+			dir, store := cmdtest.FilePolicyDir(t)
+			seedServer(t, dir, "prod", srv.URL, fix.pem, false)
+
+			_, err := tlsLoginCmd(dir, store).Execute(t.Context(), plainLoginInput("prod"), cmdtest.StdinPrompter("id:sec\n"))
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
+			assert.Empty(t, ce.Hint)
+			assert.Equal(t, tc.want(register.ServerLabel(srv.URL)), ce.Message)
+		})
+	}
+}
+
+// TestPinnedTrustFailurePassesOtherErrorsThrough asserts an error that is not
+// TLS_TRUST comes back unchanged. Mutation: wrap every error.
+func TestPinnedTrustFailurePassesOtherErrorsThrough(t *testing.T) {
+	t.Parallel()
+	other := errors.New("boom")
+	assert.Same(t, other, pinnedTrustFailure(other, "prod", "127.0.0.1:443"))
+	assert.NoError(t, pinnedTrustFailure(nil, "prod", "127.0.0.1:443"))
 }

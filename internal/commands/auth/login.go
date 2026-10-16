@@ -33,13 +33,14 @@ type loginCmd struct {
 	newStore func(backend, dir string) (config.CredStore, string, error)
 	// tlsPreflight verifies the server's certificate against caPEM (or
 	// system roots when caPEM is empty) before any credential is persisted.
-	// Plain login (an existing entry) still runs this: it enforces already-
-	// pinned trust, it just cannot change it - a certificate that no longer
-	// matches fails TLS_TRUST with the remediation in the message body, no
-	// machine hint (the new CA path is unknown). Delegated login (--url)
-	// never calls this directly: register.Prepare already ran it as part
-	// of establishing trust for the entry. nil is a valid, deliberately
-	// inert value: tests that do not exercise TLS behavior leave it unset.
+	// Plain login (an existing entry) still runs this: it verifies against
+	// the entry's saved CA, it just cannot change it - a certificate that
+	// the CA no longer verifies fails TLS_TRUST with the remediation in the
+	// message body, no machine hint (the new CA path is unknown). Delegated
+	// login (--url) never calls this directly: register.Prepare already ran
+	// it as part of establishing trust for the entry. nil is a valid,
+	// deliberately inert value: tests that do not exercise TLS behavior
+	// leave it unset.
 	tlsPreflight register.TLSPreflightFunc
 	// verify performs an authenticated self-read against the resolved token
 	// before it is persisted, and returns the token's owner. Follows
@@ -82,20 +83,24 @@ func NewLogin(dir string) runtime.Command {
 type loginVerifyFunc func(ctx context.Context, eff config.Effective) (string, error)
 
 // pinnedTrustFailure rewrites a TLS_TRUST error from plain login's preflight
-// (an existing entry's pinned CA no longer matches): the remediation is
-// config update-server, not a fully-known machine command - the new CA path
-// is unknown to the CLI - so the suggestion moves to the message body and no
-// hint is emitted, per the executable-hint contract. Non-TLS_TRUST errors
-// (including nil) pass through unchanged.
-func pinnedTrustFailure(err error, name string) error {
+// (an existing entry's saved CA no longer verifies the server, host being
+// the server as the preflight named it). The preflight words its message
+// for a command that takes --url and --cacert; a plain login takes
+// neither, so the message is rebuilt with the wording of the login's own
+// verify step: the server URL saved for the entry, a different CA, and
+// config update-server for an unknown authority. The new CA path is
+// unknown to the CLI, so no hint is emitted, per the executable-hint
+// contract. Non-TLS_TRUST errors (including nil) pass through unchanged.
+func pinnedTrustFailure(err error, name, host string) error {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	if !ok || ce.Code != clierr.CodeTLSTrust {
 		return err
 	}
-	return ce.WithMessage(ce.Message +
-		fmt.Sprintf("; %s's pinned trust no longer matches - to change it, run: rancher config update-server %s --cacert <path>",
-			clierr.ShellQuote(name), clierr.ShellQuote(name))).
-		WithHint("")
+	msg := ce.Message
+	if d, ok := ce.Details.(tlstrust.Details); ok {
+		msg = tlstrust.Message(d, host, verifyTLSRemedy(false, false, name))
+	}
+	return ce.WithMessage(msg).WithHint("")
 }
 
 // loginVariableRemedy is the remedy an unknown-authority failure names
@@ -587,13 +592,13 @@ func (l loginCmd) authenticateAndStore(
 				accepted, _, declined, gerr := offerGuidedTrust(ctx, perr, p, l.tlsPreflight, serverURL, caFingerprint)
 				if accepted == nil {
 					if declined {
-						return runtime.Result{}, pinnedTrustFailure(gerr, name)
+						return runtime.Result{}, pinnedTrustFailure(gerr, name, register.ServerLabel(serverURL))
 					}
 					// A consent was given but the candidate itself then
 					// failed to re-verify: gerr already describes THAT
 					// candidate, never the entry's still-failing stored
-					// trust - pinnedTrustFailure's "pinned trust no longer
-					// matches" framing would misdescribe it.
+					// trust - pinnedTrustFailure's message about the entry's
+					// saved CA would misdescribe it.
 					return runtime.Result{}, gerr
 				}
 				pendingTrust = accepted

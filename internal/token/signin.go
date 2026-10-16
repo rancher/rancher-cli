@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 )
@@ -144,9 +145,15 @@ func (si clusterSignIn) withSignInFate(err error, warnings []string) error {
 		cluster = &c
 	}
 	// The fate travels as clusterToken beside the login token's, so the
-	// copy of the primary error carries no details of its own.
+	// copy of the primary error carries no details of its own, except the
+	// certificate facts of a certificate failure the error was raised for.
 	primary := ce.WithMessage(ce.Message)
 	primary.Details = nil
+	if tls := tlstrust.TypedError(ce.Unwrap()); tls != nil {
+		if details, ok := tls.Details.(tlstrust.Details); ok {
+			primary.Details = details
+		}
+	}
 	return failSignIn(primary, clierr.StageClusterToken, si.Marker, si.Login, cluster, si.Cluster.UserID, "").WithWarnings(warnings...)
 }
 

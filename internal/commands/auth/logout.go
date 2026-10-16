@@ -39,7 +39,9 @@ func (logoutCmd) Describe() runtime.Descriptor {
 			"or the environment does not stop those deletes. data.revoked lists the tokens the server confirmed " +
 			"deleted; data.notRevoked lists the " +
 			"rest with a reason and a retry: nextLogin (the next login the CLI creates for the entry deletes it), " +
-			"manual (recovery holds the commands) or none (a pasted token, not the CLI's). Exits 0 when every " +
+			"manual (recovery holds the commands) or none (a pasted token, not the CLI's). A token the command " +
+			"could not revoke because the server's certificate failed verification is listed with code TLS_TRUST " +
+			"and the certificate's details. Exits 0 when every " +
 			"local delete succeeds, whatever the server answered. A Ctrl-C or termination signal that stops the " +
 			"local delete, or leaves a token unreached, ends it with INTERRUPTED (exit 130), with both lists in " +
 			"the error's details; a signal after the local delete that leaves no token unsent does not stop it.",
@@ -272,7 +274,7 @@ func renderLogoutText(urlByName map[string]string, deletedFrom map[string][]stri
 		// line too.
 		b.WriteString("no servers configured to log out of\n")
 	}
-	return strings.TrimSuffix(b.String(), "\n")
+	return b.String()
 }
 
 // styleLogoutText applies auth logout's bold spans to text, the plain
@@ -390,7 +392,7 @@ func (p LogoutAllPartialFailure) TextDetails() []string {
 		lines = append(lines, "revoked: "+r.Ref.String()+" on "+r.Server)
 	}
 	for _, n := range p.NotRevoked {
-		lines = append(lines, n.TextLine())
+		lines = append(lines, n.DetailLines()...)
 	}
 	if p.rerun != "" {
 		lines = append(lines, "those credentials are gone regardless of this failure - run "+p.rerun+" to finish")

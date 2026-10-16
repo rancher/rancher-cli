@@ -81,15 +81,15 @@ func failureKinds(t *testing.T) []struct {
 		phrase string
 	}{
 		{"unknown authority", KindUnknownAuthority, genLeaf(t, ca, caKey, "localhost", now.Add(-time.Hour), now.Add(time.Hour)), certPEM(other),
-			"(or verify the fingerprint shown here out of band); CA-SLOT; if this server was already trusted"},
+			"(or confirm the fingerprint shown here with the server's administrator); CA-SLOT; if this server worked before"},
 		{"hostname mismatch", KindHostnameMismatch, genLeaf(t, ca, caKey, "other.example", now.Add(-time.Hour), now.Add(time.Hour)), certPEM(ca),
 			"check that URL-SLOT matches the certificate's hostname; FIX-SLOT cannot fix a hostname mismatch"},
 		{"expired", KindExpired, genLeaf(t, ca, caKey, "localhost", now.Add(-2*time.Hour), now.Add(-time.Hour)), certPEM(ca),
-			"ask the server operator to renew it; FIX-SLOT cannot fix an expired certificate"},
+			"ask the server's administrator to renew it; FIX-SLOT cannot fix an expired certificate"},
 		{"not yet valid", KindNotYetValid, genLeaf(t, ca, caKey, "localhost", now.Add(time.Hour), now.Add(2*time.Hour)), certPEM(ca),
-			"ask the server operator to reissue it; FIX-SLOT cannot fix this"},
+			"ask the server's administrator to reissue it; FIX-SLOT cannot fix this"},
 		{"invalid chain", KindInvalidChain, genClientAuthOnlyLeaf(t, ca, caKey, "localhost"), certPEM(ca),
-			"the chain is malformed or incomplete; contact the server operator"},
+			"the chain is malformed or incomplete; contact the server's administrator"},
 	}
 }
 
@@ -246,14 +246,14 @@ func TestClassifyZeroRemedyKeepsTheLoginWording(t *testing.T) {
 
 			want := map[Kind]string{
 				KindUnknownAuthority: "the server presented a certificate signed by an unknown authority; " +
-					"obtain its CA through a trusted channel (or verify the fingerprint shown here out of band) and pass it with --cacert" +
-					"; if this server was already trusted, check the subject and issuer shown here - " +
-					"a certificate you don't recognize can mean something in the network path is intercepting TLS",
+					"obtain its CA from a source you trust (or confirm the fingerprint shown here with the server's administrator) and pass it with --cacert" +
+					"; if this server worked before, check the subject and issuer shown here - " +
+					"a certificate you don't recognize can mean something between you and the server, such as a proxy, is replacing its certificate",
 				KindHostnameMismatch: "the server's certificate is not valid for rancher.test" +
 					"; check that --url matches the certificate's hostname; --cacert cannot fix a hostname mismatch",
-				KindExpired:      "the server's certificate has expired; ask the server operator to renew it; --cacert cannot fix an expired certificate",
-				KindNotYetValid:  "the server's certificate is not yet valid; check the local clock, or ask the server operator to reissue it; --cacert cannot fix this",
-				KindInvalidChain: "the server's certificate chain failed validation; the chain is malformed or incomplete; contact the server operator",
+				KindExpired:      "the server's certificate has expired; ask the server's administrator to renew it; --cacert cannot fix an expired certificate",
+				KindNotYetValid:  "the server's certificate is not yet valid; check the local clock, or ask the server's administrator to reissue it; --cacert cannot fix this",
+				KindInvalidChain: "the server's certificate chain failed validation; the chain is malformed or incomplete; contact the server's administrator",
 			}
 			assert.Equal(t, want[tc.kind], ce.Message)
 		})

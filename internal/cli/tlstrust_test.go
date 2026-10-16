@@ -168,7 +168,7 @@ func TestKindCommandFailsWithTLSTrustThroughTheRealCLI(t *testing.T) {
 	got := cmdtest.DecodeErrorEnvelope(t, []byte(strings.TrimSpace(stderr)))
 	assert.Equal(t, clierr.CodeTLSTrust, got.Code)
 	assert.False(t, got.Retryable)
-	assert.Contains(t, got.Message, "obtain the certificate through a trusted channel")
+	assert.Contains(t, got.Message, "obtain the certificate from a source you trust")
 	assert.Contains(t, got.Message, "; save it for this entry with: rancher config update-server 'acme' --cacert <file>")
 }
 
