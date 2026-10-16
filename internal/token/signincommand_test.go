@@ -409,7 +409,7 @@ func TestExecPluginSignInWithoutATerminalRefusesBeforeAnyToken(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeAuth, ce.Code)
-	assert.True(t, strings.HasPrefix(ce.Message, "interactive login required for localProvider, and this call has no terminal to answer it; to log in without one, pipe an API token to "), ce.Message)
+	assert.True(t, strings.HasPrefix(ce.Message, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token to "), ce.Message)
 	assert.Contains(t, ce.Message, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 	assert.Nil(t, ce.Details)
 	assert.Zero(t, x.f.LoginCount())

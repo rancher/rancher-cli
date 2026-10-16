@@ -111,6 +111,11 @@ type PersistLoginOutcome struct {
 	// when a trust write failed after a committed credential.
 	CredentialState   clierr.CredentialState
 	CompensationError string
+	// ReplacedUserID is the user id the entry's stored login recorded
+	// before this login, read under the config lock: empty for an entry
+	// this login created, for one logged out (no stored login is left), and
+	// when the login recorded none.
+	ReplacedUserID string
 	// SupersededTokens is the written entry's record list, for the
 	// caller's retirement pass.
 	SupersededTokens []SupersededToken
@@ -254,6 +259,9 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		return err
 	}
 	out.Name = name
+	if exists && existing.LoggedOutAt == "" {
+		out.ReplacedUserID = existing.TokenUserID
+	}
 	var snap *Server
 	if exists {
 		s := existing.Clone()

@@ -240,8 +240,8 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		"tokenCmd.noTerminalError": func() []string {
 			call := noTerminalCall{name: name + "-c-1", clusterID: "c-1", serverURL: url, userID: "u-abc12", skipped: name, skippedOwner: "u-other"}
 			choice := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
-				providers: []string{"localProvider", "oktaProvider"}, noTerminal: []string{"oktaProvider"}})
-			return append(errText(tokenCmd{dir: dir}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"), call)),
+				configs: []string{"local", "okta"}, noTerminal: []clierr.Candidate{{ID: "okta", Name: "okta"}}})
+			return append(errText(tokenCmd{dir: dir}.withNoTerminalRemedies(interactiveLoginRequired("local", "x"), call)),
 				errText(tokenCmd{dir: dir}.withNoTerminalRemedies(choice, call))...)
 		},
 		"tokenCmd.withNewEntryLogin": func() []string {

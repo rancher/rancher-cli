@@ -80,10 +80,11 @@ func (c *Connection) Used() int {
 	return c.used
 }
 
-// GetJSON issues one authenticated GET for p and decodes the JSON body
-// into dst. accept is the Accept header, "" for application/json. A
-// request past the allowance returns ErrAllowanceExceeded without
-// sending; a non-2xx status and an undecodable body are errors.
+// GetJSON issues one GET for p, with the bearer token when the connection
+// has one, and decodes the JSON body into dst. accept is the Accept header,
+// "" for application/json. A request past the allowance returns
+// ErrAllowanceExceeded without sending; a non-2xx status and an
+// undecodable body are errors.
 func (c *Connection) GetJSON(ctx context.Context, p Path, accept string, dst any) error {
 	if p.path == "" {
 		return ErrEmptyPath

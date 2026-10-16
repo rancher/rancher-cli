@@ -133,7 +133,7 @@ func acquireLogin(ctx context.Context, client *http.Client, input *loginInput, p
 		return st, st.finishAcquireError(err)
 	}
 	if !st.sOwned {
-		return st, st.finishAcquireError(clierr.New(clierr.CodeAuth, "authentication returned no usable token; check the auth provider and credentials"))
+		return st, st.finishAcquireError(clierr.New(clierr.CodeAuth, "authentication returned no usable token; check the auth config and credentials"))
 	}
 	return st, nil
 }

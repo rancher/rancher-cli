@@ -47,8 +47,9 @@ func (t Token) recordBinding() config.CacheBinding {
 // AuthProvider is the base provider type; GetType satisfies the typedProvider interface.
 type AuthProvider struct {
 	Type string `json:"type"`
-	// ID is the provider's short name in the server's list ("local",
-	// "github"); accepted for --auth-provider beside the type.
+	// ID is the name of the entry's auth config in the server's list
+	// ("local", "corp-ldap"); --auth-provider takes it, and the login
+	// request sends it as configName.
 	ID string `json:"id,omitempty"`
 }
 

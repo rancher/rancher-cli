@@ -12,31 +12,37 @@ import (
 // needsTerminal is why a sign-in was refused: it has to ask someone, and
 // nobody can answer here. The four sign-in prompts give it, and both auth
 // login and the exec plugin reach them; each says what to do about it in
-// its own terms.
-type needsTerminal struct{ provider string }
+// its own terms. authConfig is the name of the auth config the sign-in
+// was for.
+type needsTerminal struct{ authConfig string }
 
-func (e *needsTerminal) Error() string { return "interactive login required for " + e.provider }
+func (e *needsTerminal) Error() string {
+	return "interactive login required for auth config " + e.authConfig
+}
 
-// providerChoiceNeedsTerminal is why a sign-in was refused before any
-// provider was chosen: the server offers several, and nobody can answer the
-// menu here. providers are the supported ones in the server's order;
-// noTerminal are those among them that sign in with no terminal (SAML and
-// OAuth, and only without --no-input); note names the providers the server
-// advertises that this CLI cannot use, "" when there are none.
+// providerChoiceNeedsTerminal is why a sign-in was refused before any auth
+// config was chosen: the server offers several, and nobody can answer the
+// menu here. text is the refusal's message without the note; configs are
+// the names --auth-provider can take for the offered entries, in the
+// server's order; noTerminal are those among them that sign in with no
+// terminal (SAML and OAuth, and only without --no-input), as candidates;
+// note names the providers the server advertises that this CLI cannot use,
+// "" when there are none.
 type providerChoiceNeedsTerminal struct {
-	providers, noTerminal []string
-	note                  string
+	text       string
+	configs    []string
+	noTerminal []clierr.Candidate
+	note       string
 }
 
-func (e *providerChoiceNeedsTerminal) Error() string {
-	return "multiple auth providers; select one"
-}
+func (e *providerChoiceNeedsTerminal) Error() string { return e.text }
 
 // interactiveLoginRequired is the refusal a sign-in prompt gives, with the
-// remedy of a command run by someone who could answer it.
-func interactiveLoginRequired(provider, remedy string) *clierr.Error {
-	return clierr.New(clierr.CodeAuth, "interactive login required for "+provider+"; "+remedy).
-		WithCause(&needsTerminal{provider: provider})
+// remedy of a command run by someone who could answer it. authConfig names
+// the auth config the sign-in was for.
+func interactiveLoginRequired(authConfig, remedy string) *clierr.Error {
+	return clierr.New(clierr.CodeAuth, "interactive login required for auth config "+authConfig+"; "+remedy).
+		WithCause(&needsTerminal{authConfig: authConfig})
 }
 
 // noTerminalCall is what the plugin's no-terminal remedies are filled in
@@ -75,9 +81,9 @@ type noTerminalCall struct {
 //     cluster and both of its gates, only when the current server's login
 //     would serve the call (currentLoginServes).
 //
-// The refusal to choose between several auth providers with no terminal to
+// The refusal to choose between several auth configs with no terminal to
 // answer the menu gets the same remedies. It offers, as candidates and in
-// the message, the providers that sign in with no terminal, and is
+// the message, the auth configs that sign in with no terminal, and is
 // AMBIGUOUS_SELECTION; when none does, or under --no-input, it is the
 // AUTH refusal of a sign-in prompt for all of them.
 //
@@ -86,7 +92,7 @@ type noTerminalCall struct {
 // error passes through.
 func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 	if nt, ok := errors.AsType[*needsTerminal](err); ok {
-		head := "interactive login required for " + nt.provider + ", and this call has no terminal to answer it"
+		head := "interactive login required for auth config " + nt.authConfig + "; this call has no terminal to answer it"
 		return t.noTerminalError(err, call, clierr.CodeAuth, head, "", nil, "")
 	}
 	pc, ok := errors.AsType[*providerChoiceNeedsTerminal](err)
@@ -94,32 +100,24 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 		return err
 	}
 	if len(pc.noTerminal) == 0 {
-		head := "interactive login required for any of " + strings.Join(pc.providers, ", ") + ", and this call has no terminal to answer it"
+		head := "interactive login required for one of the auth configs " + strings.Join(pc.configs, ", ") + "; this call has no terminal to answer it"
 		return t.noTerminalError(err, call, clierr.CodeAuth, head, "", nil, pc.note)
 	}
-	flag := "--auth-provider " + pc.noTerminal[0]
-	through := pc.noTerminal[0]
-	if len(pc.noTerminal) > 1 {
-		flag = "--auth-provider with one of " + strings.Join(pc.noTerminal, ", ")
-		through = "that provider"
+	names := make([]string, 0, len(pc.noTerminal))
+	for _, c := range pc.noTerminal {
+		names = append(names, c.ID)
 	}
-	choice := "or add " + flag + " to the command (in a kubeconfig, to the exec entry's args) to sign in through " + through + " in a browser"
-	head := "multiple auth providers and this call has no terminal to choose one"
-	return t.noTerminalError(err, call, clierr.CodeAmbiguousSelection, head, choice, providerCandidates(pc.noTerminal), pc.note)
-}
-
-// providerCandidates are the candidates that name auth provider types.
-func providerCandidates(types []string) []clierr.Candidate {
-	cs := make([]clierr.Candidate, 0, len(types))
-	for _, typ := range types {
-		cs = append(cs, clierr.Candidate{ID: typ, Name: typ})
+	choice := "or add --auth-provider " + names[0] + " to the command (in a kubeconfig, to the exec entry's args) to sign in through " + names[0] + " in a browser"
+	if len(names) > 1 {
+		choice = "or add --auth-provider with one of " + strings.Join(names, ", ") + " to the command (in a kubeconfig, to the exec entry's args) and sign in through it in a browser"
 	}
-	return cs
+	head := "this server has several auth configs and this call has no terminal to choose one"
+	return t.noTerminalError(err, call, clierr.CodeAmbiguousSelection, head, choice, pc.noTerminal, pc.note)
 }
 
 // noTerminalError builds the remedies both refusals share: head says what
 // was refused, then the login that takes a piped API token, choice (when
-// set) the provider to name, the sentence about a terminal sign-in, the
+// set) the auth config to name, the sentence about a terminal sign-in, the
 // kubeconfig the call could use, the plugin login entry skipped, and note
 // (when set). cause is kept as the new error's cause.
 func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, choice string, candidates []clierr.Candidate, note string) error {

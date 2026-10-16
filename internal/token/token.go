@@ -71,8 +71,18 @@ var supportedAuthProviders = map[string]bool{
 }
 
 type loginInput struct {
-	server          string
-	authProvider    string
+	server       string
+	authProvider string
+	// configName is the id of the auth config the sign-in uses: the chosen
+	// entry's id in the server's provider list, which both login requests
+	// send as configName. Empty when the entry has no id, and then none is sent.
+	configName string
+	// authConfig is the name messages give the chosen auth config: its id,
+	// or the provider name of its type when the entry has no id.
+	authConfig string
+	// notice, when set, is said once, right before the sign-in's first
+	// prompt or notice that asks someone to act (see signInStarts).
+	notice          string
 	skipVerify      bool
 	authFlow        string
 	usernameDefault string
@@ -93,16 +103,29 @@ type loginInput struct {
 	beforeSignIn func()
 }
 
-// signInStarts runs the hook, if there is one, at most once. Each sign-in
-// flow calls it right before the first prompt or notice that asks someone
-// to act, so the hook never runs for a sign-in that refuses first.
-func (in *loginInput) signInStarts() {
+// signInStarts says the sign-in's notice and runs the hook, each if there
+// is one, at most once. Each sign-in flow calls it right before the first
+// prompt or notice that asks someone to act, so neither runs for a sign-in
+// that refuses first.
+func (in *loginInput) signInStarts(p runtime.Prompter) {
+	if n := in.notice; n != "" {
+		in.notice = ""
+		p.Notice(n)
+	}
 	f := in.beforeSignIn
 	if f == nil {
 		return
 	}
 	in.beforeSignIn = nil
 	f()
+}
+
+// authConfigName is the name a message gives the sign-in's auth config.
+func (in *loginInput) authConfigName() string {
+	if in.authConfig != "" {
+		return in.authConfig
+	}
+	return providerName(in.authProvider)
 }
 
 // runParams carries the resolved flag values for a get-token invocation.
@@ -267,7 +290,7 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			{Name: "server", Type: "string", Desc: "Rancher server `url`", Env: []string{"RANCHER_CLI_URL"}},
 			{Name: "cluster", Type: "string", Required: true, Desc: "cluster `id|name` to create the exec-credential token for"},
 			{Name: "name", Type: "string", Desc: "stored server `name` to use"},
-			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
+			{Name: "auth-provider", Type: "string", Desc: "auth config `name` to sign in with (for example corp-ldap); a provider name or type such as openldap also works; with several matches the CLI asks, or lists them in the error"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM", Env: []string{"RANCHER_CLI_CACERT"}},
 			{Name: userIDFlag, Type: "string", Desc: "Rancher user `id` the token must belong to; needs --name"},
@@ -539,7 +562,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, keepsLogin: pluginLane, userID: params.UserID})
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
-		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth provider and credentials")
+		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth config and credentials")
 	}
 
 	var tokenExpiry time.Time
@@ -952,8 +975,11 @@ func loginResponseType(input *loginInput) string {
 // authoritative even when the error is non-nil: the outcome says whether S
 // may exist, and the SAML handoff says where to look for it.
 func loginAndGenerateCred(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (SessionAcquireResult, error) {
-	authProviders, unsupported, err := getAuthProviders(ctx, client, input.server)
+	authProviders, unsupported, unsupportedIDs, err := getAuthProviders(ctx, client, input.server)
 	if err != nil {
+		return SessionAcquireResult{}, err
+	}
+	if err := refuseUnsupportedConfig(input.authProvider, unsupportedIDs, unsupported, authProviders); err != nil {
 		return SessionAcquireResult{}, err
 	}
 	selectedProvider, err := selectAuthProvider(ctx, authProviders, unsupported, input.authProvider, p)
@@ -961,10 +987,13 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 		return SessionAcquireResult{}, err
 	}
 	input.authProvider = selectedProvider.GetType()
+	input.configName = selectedProvider.GetID()
+	input.authConfig = authConfigName(selectedProvider)
+	input.notice = signInNotice(authProviders, selectedProvider)
 
 	if samlProviders[input.authProvider] {
 		if p.NoInput() {
-			return SessionAcquireResult{}, interactiveLoginRequired(input.authProvider, "run without --no-input, or use a cached --name")
+			return SessionAcquireResult{}, interactiveLoginRequired(input.authConfigName(), "run without --no-input, or use a cached --name")
 		}
 		return samlAuth(ctx, client, input, p)
 	}
@@ -980,17 +1009,17 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p runtime.Prompter) (CreateResult, error) {
 	notAttempted := loginNotAttempted(input)
 	if !p.CanPrompt() {
-		return notAttempted, interactiveLoginRequired(input.authProvider, "run in a terminal, or use a cached --name")
+		return notAttempted, interactiveLoginRequired(input.authConfigName(), "run in a terminal, or use a cached --name")
 	}
 	label := "Enter username: "
 	if def := input.usernameDefault; def != "" {
 		label = "Enter username [" + def + "]: "
 	}
-	input.signInStarts()
+	input.signInStarts(p)
 	username, err := p.Prompt(ctx, label)
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return notAttempted, interactiveLoginRequired(input.authProvider, "run in a terminal, or use a cached --name")
+			return notAttempted, interactiveLoginRequired(input.authConfigName(), "run in a terminal, or use a cached --name")
 		}
 		return notAttempted, err
 	}
@@ -1004,7 +1033,7 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	password, err := p.PromptSecret(ctx, "Enter password: ")
 	if err != nil {
 		if errors.Is(err, ui.ErrNoInput) {
-			return notAttempted, interactiveLoginRequired(input.authProvider, "run in a terminal, or use a cached --name")
+			return notAttempted, interactiveLoginRequired(input.authConfigName(), "run in a terminal, or use a cached --name")
 		}
 		return notAttempted, err
 	}
@@ -1012,6 +1041,9 @@ func basicAuth(ctx context.Context, client *http.Client, input *loginInput, p ru
 	body := map[string]any{
 		"type": input.authProvider, "responseType": loginResponseType(input),
 		"username": username, "password": password,
+	}
+	if input.configName != "" {
+		body["configName"] = input.configName
 	}
 	if input.description != "" {
 		body["description"] = input.description
@@ -1140,7 +1172,7 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	res.Create.Outcome = CreateUnknown
 	defer func() { res.Handoff.PollEndedAt = time.Now().UTC().Format(time.RFC3339) }()
 
-	input.signInStarts()
+	input.signInStarts(p)
 	p.Notice(fmt.Sprintf("\nLogin Request Id: %s\n", id))
 	p.Notice(fmt.Sprintf("\nLogin to Rancher Server at %s \n", loginURL))
 
@@ -1221,36 +1253,39 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 // getAuthProviders lists the server's auth providers: the ones this CLI can
 // log in with (local first), and the types the server advertises that it
 // cannot, so a caller can name them instead of silently dropping them.
-func getAuthProviders(ctx context.Context, client *http.Client, server string) ([]typedProvider, []string, error) {
+func getAuthProviders(ctx context.Context, client *http.Client, server string) ([]typedProvider, []string, []string, error) {
 	authProvidersURL := fmt.Sprintf(authProviderURL, server)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authProvidersURL, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error creating request: %w", err)
+		return nil, nil, nil, fmt.Errorf("error creating request: %w", err)
 	}
 
 	resp, respBody, err := httpx.Do(client, req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error listing auth providers: %w", err)
+		return nil, nil, nil, fmt.Errorf("error listing auth providers: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		// The provider list names an API, not an object: a 404 means the
 		// URL does not lead to Rancher.
-		return nil, nil, clierr.FromResponse("error listing auth providers", http.MethodGet, resp.StatusCode, respBody,
+		return nil, nil, nil, clierr.FromResponse("error listing auth providers", http.MethodGet, resp.StatusCode, respBody,
 			&clierr.Request{Endpoint: true, NoCredential: true})
 	}
 
 	if !gjson.ValidBytes(respBody) {
-		return nil, nil, errors.New("invalid JSON response")
+		return nil, nil, nil, errors.New("invalid JSON response")
 	}
 	data := gjson.GetBytes(respBody, "data").Array()
 
 	var supportedProviders []typedProvider
-	var unsupported []string
+	var unsupported, unsupportedIDs []string
 	for _, provider := range data {
 		providerType := provider.Get("type").String()
 		if providerType != "" && !supportedAuthProviders[providerType] {
 			unsupported = append(unsupported, providerType)
+			if id := provider.Get("id").String(); id != "" {
+				unsupportedIDs = append(unsupportedIDs, id)
+			}
 		}
 
 		if providerType != "" && supportedAuthProviders[providerType] {
@@ -1267,7 +1302,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 
 			err = json.Unmarshal([]byte(provider.Raw), tp)
 			if err != nil {
-				return nil, nil, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
+				return nil, nil, nil, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
 			}
 
 			if tp.GetType() == "localProvider" {
@@ -1279,7 +1314,24 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 	}
 
 	slices.Sort(unsupported)
-	return supportedProviders, slices.Compact(unsupported), nil
+	return supportedProviders, slices.Compact(unsupported), unsupportedIDs, nil
+}
+
+// refuseUnsupportedConfig refuses an --auth-provider value that is the exact
+// name of an auth config whose type this CLI cannot sign in with. The match
+// by provider type or name must not run for it: names are unique, so the
+// value names that config, and signing in through another config of a
+// provider with that name would pick a config the user did not name. The
+// auth configs this CLI can sign in with are the candidates, as for a miss.
+func refuseUnsupportedConfig(want string, unsupportedIDs, unsupported []string, providers []typedProvider) error {
+	if want == "" || !slices.Contains(unsupportedIDs, want) {
+		return nil
+	}
+	msg := "--auth-provider " + want + " names an auth config this CLI cannot sign in with"
+	if note := unsupportedNote(unsupported); note != "" {
+		msg += "; " + note
+	}
+	return clierr.New(clierr.CodeNotFound, msg).WithCandidates(authConfigCandidates(providers))
 }
 
 // unsupportedNote names the providers the server advertises that this CLI
@@ -1292,84 +1344,103 @@ func unsupportedNote(unsupported []string) string {
 		" (server change requested: " + unsupportedProvidersRFE + ")"
 }
 
-// selectAuthProvider picks the provider to log in with. want matches a
-// provider's type (localProvider) or its id (local). A miss names the
-// supported providers as candidates and, in the message, the advertised
-// ones this CLI cannot use, so an operator can tell "not configured on the
-// server" from "not supported here". The same note precedes the prompt,
-// also when only one provider is left to prompt for: a user who came for
-// GitHub must not type those credentials into the local password prompt.
+// selectAuthProvider picks the auth config to sign in with. want is the
+// --auth-provider value: an auth config's name (an entry's id) matches that
+// entry; otherwise every entry whose provider type (openLdapProvider) or
+// provider name (openldap) equals it. One match is the choice; several ask
+// with a terminal, among only those, and fail with their names without one.
+// A miss names the auth configs as candidates and, in the message, the
+// advertised types this CLI cannot use, so an operator can tell "not
+// configured on the server" from "not supported here". The same note
+// precedes the prompt, also when only one entry is left to prompt for: a
+// user who came for GitHub must not type those credentials into the local
+// password prompt.
 func selectAuthProvider(ctx context.Context, providers []typedProvider, unsupported []string, want string, p runtime.Prompter) (typedProvider, error) {
 	note := unsupportedNote(unsupported)
 	if len(providers) == 0 {
-		msg := "no auth provider configured"
+		msg := "this server has no auth config this CLI can sign in with"
 		if note != "" {
 			msg += "; " + note
 		}
 		return nil, clierr.New(clierr.CodeGeneric, msg)
 	}
 
-	cands := func() []clierr.Candidate {
-		types := make([]string, 0, len(providers))
-		for _, prov := range providers {
-			types = append(types, prov.GetType())
-		}
-		return providerCandidates(types)
-	}
-
 	if want != "" {
 		for _, prov := range providers {
-			if prov.GetType() == want || (prov.GetID() != "" && prov.GetID() == want) {
+			if prov.GetID() != "" && prov.GetID() == want {
 				return prov, nil
 			}
 		}
-		msg := "auth provider not found: " + want
-		if note != "" {
-			msg += "; " + note
+		matches := slices.DeleteFunc(slices.Clone(providers), func(prov typedProvider) bool {
+			return prov.GetType() != want && providerName(prov.GetType()) != want
+		})
+		switch len(matches) {
+		case 0:
+			msg := "--auth-provider " + want + " matches no auth config this CLI can sign in with on this server"
+			if note != "" {
+				msg += "; " + note
+			}
+			return nil, clierr.New(clierr.CodeNotFound, msg).WithCandidates(authConfigCandidates(providers))
+		case 1:
+			return matches[0], nil
 		}
-		return nil, clierr.New(clierr.CodeNotFound, msg).WithCandidates(cands())
+		return chooseAuthConfig(ctx, matches, note, p, fmt.Sprintf("--auth-provider %s matches %d auth configs (%s); pass one of those names instead",
+			want, len(authConfigNames(matches)), strings.Join(authConfigNames(matches), ", ")))
 	}
 
 	if len(providers) == 1 {
 		if note != "" && p.CanPrompt() {
-			p.Notice("Auth provider: " + providers[0].GetType() + "\n" + note)
+			p.Notice("Auth config: " + authConfigLabel(providers[0]) + "\n" + note)
 		}
 		return providers[0], nil
 	}
+	failure := "this server has several auth configs"
+	if names := authConfigNames(providers); len(names) > 0 {
+		failure += ": " + strings.Join(names, ", ")
+	}
+	return chooseAuthConfig(ctx, providers, note, p, failure+"; pass one of them with --auth-provider")
+}
 
+// chooseAuthConfig asks which of several auth configs to sign in with, on a
+// terminal. failure is the message of the refusal when nothing can be
+// chosen: no terminal, or an answer that names none of the entries.
+func chooseAuthConfig(ctx context.Context, entries []typedProvider, note string, p runtime.Prompter, failure string) (typedProvider, error) {
 	if p.CanPrompt() {
 		var b strings.Builder
-		for i, prov := range providers {
-			fmt.Fprintf(&b, "%d - %s\n", i, prov.GetType())
+		for i, prov := range entries {
+			fmt.Fprintf(&b, "%d - %s\n", i, authConfigLabel(prov))
 		}
 		if note != "" {
 			b.WriteString(note + "\n")
 		}
-		p.Notice("Auth providers:\n" + b.String())
-		sel, err := p.Prompt(ctx, "Select auth provider: ")
+		p.Notice("Auth configs:\n" + b.String())
+		sel, err := p.Prompt(ctx, "Select auth config: ")
 		if err != nil {
 			return nil, err
 		}
-		if idx, aerr := strconv.Atoi(strings.TrimSpace(sel)); aerr == nil && idx >= 0 && idx < len(providers) {
-			return providers[idx], nil
+		if idx, aerr := strconv.Atoi(strings.TrimSpace(sel)); aerr == nil && idx >= 0 && idx < len(entries) {
+			return entries[idx], nil
 		}
 		// invalid (non-numeric / out-of-range) pick → fall through to AMBIGUOUS_SELECTION
 	}
 
-	msg := "multiple auth providers; select one"
+	msg := failure
 	if note != "" {
 		msg += "; " + note
 	}
-	ce := clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands())
+	ce := clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(authConfigCandidates(entries))
 	if !p.CanPrompt() {
 		// Nobody could answer the menu: the exec plugin builds its remedies
 		// from this cause.
-		cause := &providerChoiceNeedsTerminal{note: note}
-		for _, prov := range providers {
+		cause := &providerChoiceNeedsTerminal{text: failure, note: note}
+		for _, prov := range entries {
+			if prov.GetID() == "" {
+				continue
+			}
+			cause.configs = append(cause.configs, prov.GetID())
 			typ := prov.GetType()
-			cause.providers = append(cause.providers, typ)
 			if !p.NoInput() && (samlProviders[typ] || oauthProviders[typ]) {
-				cause.noTerminal = append(cause.noTerminal, typ)
+				cause.noTerminal = append(cause.noTerminal, clierr.Candidate{ID: prov.GetID(), Name: authConfigLabel(prov)})
 			}
 		}
 		ce = ce.WithCause(cause)
@@ -1422,8 +1493,56 @@ func (t tokenCmd) resolveConn(flagServer, flagCluster, caIn string, ignoreCurren
 // record the call uses. skipVerify is the shim's --skip-verify, with which
 // no CA is used and RANCHER_CLI_CACERT is not read.
 func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName string, ignoreCurrentContext, skipVerify bool) (server, caPEM, cluster, caSource string, from config.CASource, choice entryChoice, err error) {
-	server = flagServer
 	cluster = flagCluster
+	if flagServer == "" && ignoreCurrentContext {
+		return "", "", "", "", config.CASource{}, entryChoice{}, serverRequiredError()
+	}
+
+	// The native get-token path requires --cluster: a token must never be created
+	// for a cluster the caller didn't name. Shim calls (ignoreCurrentContext) keep
+	// the legacy semantic where an empty --cluster is a deliberate unscoped
+	// create - still purely flag-driven, never filled from stored state.
+	if cluster == "" && !ignoreCurrentContext {
+		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "--cluster is required")
+	}
+
+	var cfg *config.Config
+	if flagServer == "" || caIn == "" {
+		loaded, cerr := config.Load(config.FilePath(t.dir))
+		if cerr != nil {
+			return "", "", "", "", config.CASource{}, entryChoice{}, cerr
+		}
+		cfg = loaded
+	}
+	server, caSource, from, choice, err = connectionTarget(cfg, flagServer, cluster, caIn, wantName, ignoreCurrentContext, skipVerify)
+	if err != nil {
+		return "", "", "", "", config.CASource{}, entryChoice{}, err
+	}
+	caPEM, err = config.ResolveCA(caSource)
+	if err != nil {
+		// ignoreCurrentContext is set only by the legacy shim, whose flag is
+		// --cacerts.
+		shim := ignoreCurrentContext
+		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "reading "+caReadSource(from, shim)+": "+err.Error())
+	}
+	return server, caPEM, cluster, caSource, from, choice, nil
+}
+
+// serverRequiredError is the refusal of a flag-driven call with no --server:
+// it is never filled from the current server.
+func serverRequiredError() *clierr.Error {
+	return clierr.New(clierr.CodeValidation, "--server is required")
+}
+
+// connectionTarget is the part of resolveConnWithCA that reads only cfg, the
+// environment and nothing else: the server a call connects to and the CA it
+// is chosen as, before the CA is read (a path or an inline PEM), where it
+// came from, and the entry the call's --name identified when config.yaml
+// was read to choose the CA. cfg may be nil only when flagServer and caIn
+// are both set. The exec plugin's completion of --auth-provider asks it the
+// same question the call itself would answer.
+func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName string, ignoreCurrentContext, skipVerify bool) (server, ca string, from config.CASource, choice entryChoice, err error) {
+	server = flagServer
 	explicitServer := server != ""
 	if caIn != "" {
 		from = config.CASource{Kind: config.CASourceFlag}
@@ -1442,21 +1561,12 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName stri
 	// --server must fail here, never be filled from the config's current
 	// context below - past this point server == "" implies !ignoreCurrentContext.
 	if server == "" && ignoreCurrentContext {
-		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "--server is required")
-	}
-
-	// The native get-token path requires --cluster: a token must never be created
-	// for a cluster the caller didn't name. Shim calls (ignoreCurrentContext) keep
-	// the legacy semantic where an empty --cluster is a deliberate unscoped
-	// create - still purely flag-driven, never filled from stored state.
-	if cluster == "" && !ignoreCurrentContext {
-		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "--cluster is required")
+		return "", "", config.CASource{}, entryChoice{}, serverRequiredError()
 	}
 
 	if server == "" || caIn == "" {
-		cfg, cerr := config.Load(config.FilePath(t.dir))
-		if cerr != nil {
-			return "", "", "", "", config.CASource{}, entryChoice{}, cerr
+		if cfg == nil {
+			return "", "", config.CASource{}, entryChoice{}, errors.New("config is not loaded")
 		}
 		// The current server's URL and CA come from EffectiveConnection, which
 		// reads no credential: this call needs where to connect and whom to
@@ -1469,7 +1579,7 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName stri
 		if caIn == "" && server != "" {
 			identified, ierr := identifyEntry(cfg, server, wantName, cluster, ignoreCurrentContext)
 			if ierr != nil {
-				return "", "", "", "", config.CASource{}, entryChoice{}, ierr
+				return "", "", config.CASource{}, entryChoice{}, ierr
 			}
 			choice = entryChoice{known: true, name: identified}
 			variable := ""
@@ -1495,17 +1605,10 @@ func (t tokenCmd) resolveConnWithCA(flagServer, flagCluster, caIn, wantName stri
 	}
 
 	if server == "" {
-		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation,
+		return "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation,
 			"--server is required; pass it, or add and log in to a server first")
 	}
-	caPEM, err = config.ResolveCA(caIn)
-	if err != nil {
-		// ignoreCurrentContext is set only by the legacy shim, whose flag is
-		// --cacerts.
-		shim := ignoreCurrentContext
-		return "", "", "", "", config.CASource{}, entryChoice{}, clierr.New(clierr.CodeValidation, "reading "+caReadSource(from, shim)+": "+err.Error())
-	}
-	return server, caPEM, cluster, caIn, from, choice, nil
+	return server, caIn, from, choice, nil
 }
 
 // caReadSource names where an unreadable CA came from: the flag the call

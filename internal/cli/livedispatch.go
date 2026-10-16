@@ -21,7 +21,9 @@ import (
 // first positional. It reports owned=false when no source claims the site,
 // and the caller answers nothing. For a claimed site the policy is
 // all here: the allowance class is validated and mapped to a request count,
-// the credential and cluster needs are satisfied (a typed display name is
+// the credential and cluster needs are satisfied (a source that needs no
+// credential gets its server and CA from its command, see
+// noCredentialCandidates; a typed display name is
 // resolved with one request counted apart), the Connection is built under
 // the TAB deadline, and the Result is dropped whole when the source asked
 // for more than its allowance. Every failure answers nothing.
@@ -52,6 +54,10 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 
 	ctx, cancel := completionDeadline(ctx)
 	defer cancel()
+
+	if reqs.Credential == completion.CredentialNone {
+		return noCredentialCandidates(ctx, site, lc, req, src, limit), true
+	}
 
 	cap := resolveCompletionToken(tokenCluster(reqs, req))
 	if cap.Token == "" {

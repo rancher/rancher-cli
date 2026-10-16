@@ -479,6 +479,17 @@ positional names), project names, namespaces, pods, deployments, and nodes from
 the Rancher API. A credential-store capability note is printed to indicate which
 completions are available given your current auth setup.
 
+`--auth-provider` on `auth login`, `auth get-token` and `token` completes the
+names of the auth configs this CLI can sign in with, from the server's provider
+list, which needs no credential: the request carries none. The server and CA
+are the ones the command would connect with for the words typed: for `auth
+login`, `--url`, else the entry named, else the current entry; for `auth
+get-token`, `--server`, else `RANCHER_CLI_URL`, else the current entry (`--name`
+chooses only the CA, and an entry at another URL gives no suggestions); for
+`token`, the `--server` it requires and `--cacerts`. Nothing is offered with
+`--skip-verify`, when the command would refuse the line, or when the server
+cannot be reached or trusted.
+
 The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
 
     rancher config set-completion --timeout=1s
@@ -1396,6 +1407,54 @@ unattempted (the CLI cannot delete them without their bearer), drops records
 whose `expiresAt` passed more than an hour ago, and attempts nothing under a
 pasted login.
 
+## Auth configs (`--auth-provider`)
+
+A Rancher server can have several auth configs of one provider type (Rancher
+v2.16 and later: two OpenLDAP configs, or two Azure AD configs). `--auth-provider`
+on `auth login`, `auth get-token` and the legacy `token` names one auth config.
+The name is the auth config's Kubernetes name, the `id` the server's provider
+list (`/v1-public/authproviders`) shows, not the name the Rancher UI shows. The
+menu, the candidates of an error and shell completion all list these names.
+
+The value is matched in this order:
+
+1. An auth config whose name is the value. If that auth config's type is one
+   this CLI cannot sign in with, the call fails with `NOT_FOUND`, names the
+   types it cannot use, and offers the auth configs it can sign in with; it
+   does not go on to the next step.
+2. Otherwise every auth config whose provider type (`openLdapProvider`) or
+   provider name (`openldap`) is the value. One match is used. With several, a
+   terminal gets a menu of only those; with no terminal the call fails with
+   `AMBIGUOUS_SELECTION` and an error that lists their names, each valid as
+   given to `--auth-provider`. Through the exec plugin, its remedies name
+   `--auth-provider` with the auth configs that sign in without a terminal;
+   when none does, or under `--no-input`, the refusal is `AUTH`.
+3. No match is `NOT_FOUND`, with the auth configs this CLI can sign in with as
+   candidates.
+
+Every password and OAuth sign-in sends the chosen auth config's name as
+`configName` in the login request, which Rancher v2.16 needs for LDAP, Active
+Directory and Azure AD. When the chosen type has several auth configs, the
+sign-in first says which one it signs in through, before the first prompt. An
+entry of the provider list with no `id` is named by its provider name and sends
+no `configName`.
+
+A SAML sign-in goes through the Rancher sign-in page in the browser, which
+makes its own choice among the SAML auth configs. The CLI cannot pass the
+chosen one to it, and says so when several SAML auth configs are enabled.
+
+The flag chooses the auth config of a new sign-in only. A cached exec
+credential, a stored login and the plugin-created login (token reuse on) are
+served whatever `--auth-provider` says. When the call names `--user-id`, a
+sign-in as another user is refused, and a different auth config gives a
+different user unless an administrator linked both to one.
+
+`auth login` warns when a login replaces the user of the server entry's stored
+login: `server entry prod is now logged in as user u-abc12; it was logged in as
+user u-xyz34`. It says nothing for a first login, for the same user, after
+`auth logout`, or when either user id is unknown (a token stored with
+`--no-verify`).
+
 ## kubectl integration
 
 `rancher auth get-token` is a `client.authentication.k8s.io/v1beta1`
@@ -1407,7 +1466,7 @@ the same machinery. Flags: `--server`,
 `--cluster` (required), `--name` (cache slot, keyed per name+server+cluster; omitted = no
 caching), `--user-id` (the Rancher user every token must belong to; needs
 `--name`; see below), `--cacert`,
-`--auth-provider`, `--auth-flow`. When `--server` or `--cacert` are
+`--auth-provider` (an auth config name, see [Auth configs](#auth-configs---auth-provider)), `--auth-flow`. When `--server` or `--cacert` are
 omitted, they fall back to the current server in config, and the CA is the
 first of `--cacert`, `RANCHER_CLI_CACERT` and the saved CA of the server
 entry the call identifies or whose URL matches. It supports SAML,

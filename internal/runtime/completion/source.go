@@ -50,6 +50,10 @@ const (
 	// CredentialManagement needs a management token: the surface skips the
 	// source under an id-only token.
 	CredentialManagement
+	// CredentialNone needs no credential: the source reads an
+	// unauthenticated route, the surface attaches no token to its requests,
+	// and the command it completes for supplies the server and CA.
+	CredentialNone
 )
 
 // Allowance is the closed class of request budgets the surface grants. The
@@ -95,6 +99,13 @@ func ManagementListing() Requirements {
 	return Requirements{Cluster: ClusterNone, Credential: CredentialManagement, Allowance: AllowanceOne}
 }
 
+// PublicListing is the declaration of a source that makes one request to
+// an unauthenticated route of the server: no cluster need, no credential,
+// one request.
+func PublicListing() Requirements {
+	return Requirements{Cluster: ClusterNone, Credential: CredentialNone, Allowance: AllowanceOne}
+}
+
 // ClusterListing is the declaration of a source that makes one request to
 // the management cluster scoped by the typed cluster - a collection in
 // the cluster's namespace, or one object there: the cluster resolved, a
@@ -125,8 +136,11 @@ type Source struct {
 
 // Completer is the optional interface a command implements to own live
 // completion for some of its sites. It returns the Source its owner's
-// complete package declares; the functions that run at TAB time are the
-// Source's, never a method of the command.
+// complete package declares; the functions that answer a site are the
+// Source's, never a method of the command. A source that needs no
+// credential gets its server and CA from the command's own read-only
+// resolution, which the surface asks for through a method of the command
+// (CompletionTarget in internal/cli).
 type Completer interface {
 	LiveSource() Source
 }

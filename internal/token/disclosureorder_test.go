@@ -85,15 +85,15 @@ func TestAPluginSignInRefusedBeforeItsFirstPromptDisclosesNothing(t *testing.T) 
 	}{
 		{name: "several providers and no --auth-provider",
 			server: serverOf("localProvider", "oktaProvider"),
-			want:   "multiple auth providers and this call has no terminal to choose one"},
+			want:   "this server has several auth configs and this call has no terminal to choose one"},
 		{name: "a basic provider and no terminal",
 			server: serverOf("localProvider"),
-			want:   "interactive login required for localProvider"},
+			want:   "interactive login required for auth config local"},
 		{name: "the provider list refused",
 			server: refusingServer, want: "error listing auth providers"},
 		{name: "SAML under --no-input",
 			server:  serverOf("oktaProvider"),
-			noInput: true, want: "interactive login required for oktaProvider"},
+			noInput: true, want: "interactive login required for auth config okta"},
 		{name: "the device-authorization request failing",
 			server: deviceFailsServer, extra: map[string]string{"auth-provider": "azureADProvider"},
 			want: "failed to initiate device authorization"},
@@ -130,12 +130,28 @@ func TestAPluginSignInWithATerminalDisclosesBeforeItsFirstPrompt(t *testing.T) {
 		_, err := x.command(x.store).Execute(t.Context(), tin{s: map[string]string{"server": x.url, "cluster": "c-test", "name": "n"}}, p)
 		require.NoError(t, err)
 		assert.Equal(t, 1, p.count(plaintextDisclosureMark), "events %q", p.events)
-		assert.Less(t, p.at("notice: Auth providers:"), p.at("prompt: Select auth provider"), "events %q", p.events)
-		assert.Less(t, p.at("prompt: Select auth provider"), p.at(plaintextDisclosureMark), "events %q", p.events)
+		assert.Less(t, p.at("notice: Auth configs:"), p.at("prompt: Select auth config"), "events %q", p.events)
+		assert.Less(t, p.at("prompt: Select auth config"), p.at(plaintextDisclosureMark), "events %q", p.events)
 		assert.Less(t, p.at(plaintextDisclosureMark), p.at("prompt: Enter username"), "events %q", p.events)
 		_, ok := x.entry(t)
 		assert.True(t, ok, "the login committed")
 	})
+}
+
+// TestAPluginSignInNamesItsConfigBeforeTheDisclosure asserts that when the
+// type has several auth configs the notice naming the one signed in through
+// comes after the choice and before the plaintext-file disclosure, which is
+// before the first prompt.
+func TestAPluginSignInNamesItsConfigBeforeTheDisclosure(t *testing.T) {
+	isolateSignIn(t)
+	x := newPluginFixture(t, true, twoLDAPConfigs())
+	p := terminalLines("alice", "pw")
+	_, err := x.command(x.store).Execute(t.Context(), tin{s: map[string]string{"server": x.url, "cluster": "c-test", "name": "n", "auth-provider": "corp-ldap"}}, p)
+	require.NoError(t, err)
+	require.Equal(t, 1, p.count(plaintextDisclosureMark), "events %q", p.events)
+	require.GreaterOrEqual(t, p.at("Signing in through auth config corp-ldap"), 0, "events %q", p.events)
+	assert.Less(t, p.at("Signing in through auth config corp-ldap"), p.at(plaintextDisclosureMark), "events %q", p.events)
+	assert.Less(t, p.at(plaintextDisclosureMark), p.at("prompt: Enter username"), "events %q", p.events)
 }
 
 // TestAPluginSAMLSignInDisclosesBeforeItsRequestID asserts that with no

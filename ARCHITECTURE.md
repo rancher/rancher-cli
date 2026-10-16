@@ -53,10 +53,11 @@ what drifted the previous revision of this doc).
 | `internal/testtransport` | Test-only: `GuardDefaultTransport`, which a test binary that starts httptest servers installs in `TestMain` so a request through `http.DefaultTransport` fails (an httptest server's `Close` closes that transport's idle connections, which breaks such a request in another test). A test sends requests through the server's own client instead. No production importer. |
 | `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness, an exec-plugin process and the harness that holds one mid-call while a command runs. No production importer. |
 | `internal/cli/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
-| `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. |
+| `internal/token` | `auth get-token/list-tokens/delete-token`: the exec-credential plugin (basic / SAML / OAuth login flows) and its token cache. Names the auth config a login signs in through, and gives `--auth-provider` its completion target for `auth get-token` and the legacy `token`. |
+| `internal/token/complete` | The sign-in commands' live completion source: `AuthConfigSource` (`--auth-provider`: the ids of the auth configs, of a type the sign-in can use, in the server's unauthenticated provider list; it needs no credential, and its command supplies the server and CA through `CompletionTarget`) and the copy of the supported provider types a test holds equal to the sign-in's. A restricted `complete` package under the import and declaration fences. |
 | `internal/runtime` | Command contracts and the single middleware pipeline (validate → plan/gate → render), plus registry, resolver, and the `schema` command. |
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Contract`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
-| `internal/runtime/completion` | The live shell-completion seam: a source's `Claim`/`Complete` contract (`Source`, `Request`, `Requirements`, `Result`, the optional `Completer` interface), the request capability the surface builds (`Connection`: private client and bearer, counted allowance, sticky refusal), and the opaque `Path` builders that admit user-derived segments only through `ValidSegment`. A leaf of the standard library. |
+| `internal/runtime/completion` | The live shell-completion seam: a source's `Claim`/`Complete` contract (`Source`, `Request`, `Requirements`, `Result`, the optional `Completer` interface), the request capability the surface builds (`Connection`: private client and bearer, none for a source that needs no credential, counted allowance, sticky refusal), and the opaque `Path` builders that admit user-derived segments only through `ValidSegment`. A leaf of the standard library. |
 | `internal/runtime/completion/completiontest` | Test doubles the live completion sources' tests share: a server answering fixed bodies by path that records every request URI and Accept header, and the fixture documents more than one package asserts against (cloud credentials, the two discovery roots, the subject users). Imported by test code only. |
 | `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, downstream-cluster resolution, and reusable plan/execute helpers; depends only on runtime + safety + clierr contracts. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, contract bindings, table columns. |
@@ -115,6 +116,7 @@ graph TD
     skill["internal/commands/skill"]
     cmdtest["internal/commands/cmdtest"]
     token["internal/token"]
+    tokencomplete["internal/token/complete"]
     runtime["internal/runtime"]
     safety["internal/runtime/safety"]
     completion["internal/runtime/completion"]
@@ -214,6 +216,10 @@ graph TD
     token --> steve
     token --> tlstrust
     token --> output
+    token --> completion
+    token --> tokencomplete
+
+    tokencomplete --> completion
 
     runtime --> safety
     runtime --> output
@@ -364,6 +370,8 @@ graph TD
     auth --> outputstyle
     auth --> runtime
     auth --> token
+    auth --> completion
+    auth --> tokencomplete
     configcmd --> clierr
     configcmd --> register
     configcmd --> config

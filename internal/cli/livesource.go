@@ -32,8 +32,9 @@ const modulePath = "github.com/rancher/rancher-cli"
 // liveSourcePackages is the closed set of packages that may declare the
 // functions of a live completion source. A function declared anywhere
 // else - a method of a command, a helper in an owner package - is
-// rejected by BuildRoot, so no code outside these packages runs at TAB
-// time.
+// rejected by BuildRoot, so no code outside these packages answers a site.
+// The one command code that runs at TAB time is CompletionTarget, which
+// reads the loaded config, the environment and a CA file and nothing else.
 var liveSourcePackages = map[string]bool{
 	modulePath + "/internal/engine/kinds/complete":        true,
 	modulePath + "/internal/engine/access/complete":       true,
@@ -43,6 +44,7 @@ var liveSourcePackages = map[string]bool{
 	modulePath + "/internal/engine/provisioning/complete": true,
 	modulePath + "/internal/engine/observe/complete":      true,
 	modulePath + "/internal/engine/oidcclient/complete":   true,
+	modulePath + "/internal/token/complete":               true,
 }
 
 // sharedCompletionFlags are the flag names whose live source is shared

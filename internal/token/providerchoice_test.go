@@ -21,13 +21,14 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
-// providersServer is a Rancher that advertises the given auth provider
-// types, in that order, and answers nothing else.
+// providersServer is a Rancher that advertises one auth config of each given
+// provider type, named after its provider name as every config is up to
+// v2.15, in that order, and answers nothing else.
 func providersServer(t *testing.T, types ...string) *httptest.Server {
 	t.Helper()
 	var items []string
 	for _, typ := range types {
-		items = append(items, `{"type":"`+typ+`"}`)
+		items = append(items, `{"id":"`+providerName(typ)+`","type":"`+typ+`"}`)
 	}
 	body := `{"data":[` + strings.Join(items, ",") + `]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +106,7 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 		extra     map[string]string
 		unfinish  bool
 		code      string
-		// candidates are the provider types the error offers.
+		// candidates are the auth config names the error offers.
 		candidates []string
 		// choice is the --auth-provider sentence; "" when none is named.
 		choice string
@@ -118,54 +119,54 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			name:      "only basic providers",
 			providers: []string{"localProvider", "openLdapProvider"},
 			code:      clierr.CodeAuth,
-			head:      "interactive login required for any of localProvider, openLdapProvider, and this call has no terminal to answer it; to log in without one, pipe an API token to ",
+			head:      "interactive login required for one of the auth configs local, openldap; this call has no terminal to answer it; to log in without one, pipe an API token to ",
 		},
 		{
 			name:       "one provider signs in without a terminal",
 			providers:  []string{"localProvider", "oktaProvider"},
 			code:       clierr.CodeAmbiguousSelection,
-			candidates: []string{"oktaProvider"},
-			head:       "multiple auth providers and this call has no terminal to choose one; to log in without one, pipe an API token to ",
-			choice:     "; or add --auth-provider oktaProvider to the command (in a kubeconfig, to the exec entry's args) to sign in through oktaProvider in a browser",
+			candidates: []string{"okta"},
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to ",
+			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
 		},
 		{
 			name:       "several providers sign in without a terminal",
 			providers:  []string{"localProvider", "oktaProvider", "azureADProvider"},
 			code:       clierr.CodeAmbiguousSelection,
-			candidates: []string{"oktaProvider", "azureADProvider"},
-			head:       "multiple auth providers and this call has no terminal to choose one; to log in without one, pipe an API token to ",
-			choice:     "; or add --auth-provider with one of oktaProvider, azureADProvider to the command (in a kubeconfig, to the exec entry's args) to sign in through that provider in a browser",
+			candidates: []string{"okta", "azuread"},
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to ",
+			choice:     "; or add --auth-provider with one of okta, azuread to the command (in a kubeconfig, to the exec entry's args) and sign in through it in a browser",
 		},
 		{
 			name:      "no-input leaves no provider that signs in",
 			providers: []string{"localProvider", "oktaProvider"},
 			prompter:  func() runtime.Prompter { return noInputWithTerminal() },
 			code:      clierr.CodeAuth,
-			head:      "interactive login required for any of localProvider, oktaProvider, and this call has no terminal to answer it; to log in without one, pipe an API token to ",
+			head:      "interactive login required for one of the auth configs local, okta; this call has no terminal to answer it; to log in without one, pipe an API token to ",
 		},
 		{
 			name:       "a call for a user",
 			providers:  []string{"localProvider", "oktaProvider"},
 			extra:      map[string]string{"user-id": "u-abc12"},
 			code:       clierr.CodeAmbiguousSelection,
-			candidates: []string{"oktaProvider"},
-			head:       "multiple auth providers and this call has no terminal to choose one; to log in without one, pipe an API token of Rancher user " + clierr.ShellQuote("u-abc12") + " to ",
-			choice:     "; or add --auth-provider oktaProvider to the command (in a kubeconfig, to the exec entry's args) to sign in through oktaProvider in a browser",
+			candidates: []string{"okta"},
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token of Rancher user " + clierr.ShellQuote("u-abc12") + " to ",
+			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
 		},
 		{
 			name:       "an unsupported provider advertised",
 			providers:  []string{"localProvider", "oktaProvider", "githubProvider"},
 			code:       clierr.CodeAmbiguousSelection,
-			candidates: []string{"oktaProvider"},
-			head:       "multiple auth providers and this call has no terminal to choose one; to log in without one, pipe an API token to ",
-			choice:     "; or add --auth-provider oktaProvider to the command (in a kubeconfig, to the exec entry's args) to sign in through oktaProvider in a browser",
+			candidates: []string{"okta"},
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to ",
+			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
 			tail:       "; " + unsupportedNote([]string{"githubProvider"}),
 		},
 		{
 			name:      "an unsupported provider advertised, none that signs in",
 			providers: []string{"localProvider", "openLdapProvider", "githubProvider"},
 			code:      clierr.CodeAuth,
-			head:      "interactive login required for any of localProvider, openLdapProvider, and this call has no terminal to answer it; to log in without one, pipe an API token to ",
+			head:      "interactive login required for one of the auth configs local, openldap; this call has no terminal to answer it; to log in without one, pipe an API token to ",
 			tail:      "; " + unsupportedNote([]string{"githubProvider"}),
 		},
 		{
@@ -173,9 +174,9 @@ func TestAProviderChoiceWithoutATerminalNamesTheRemedies(t *testing.T) {
 			providers:  []string{"localProvider", "oktaProvider"},
 			unfinish:   true,
 			code:       clierr.CodeAmbiguousSelection,
-			candidates: []string{"oktaProvider"},
-			head:       "multiple auth providers and this call has no terminal to choose one; to log in without one, pipe an API token to ",
-			choice:     "; or add --auth-provider oktaProvider to the command (in a kubeconfig, to the exec entry's args) to sign in through oktaProvider in a browser",
+			candidates: []string{"okta"},
+			head:       "this server has several auth configs and this call has no terminal to choose one; to log in without one, pipe an API token to ",
+			choice:     "; or add --auth-provider okta to the command (in a kubeconfig, to the exec entry's args) to sign in through okta in a browser",
 			tail:       "; a credential store change is unfinished; run " + clierr.Rancher + " config status to see it",
 		},
 	} {
@@ -263,15 +264,16 @@ func TestSelectAuthProviderRecordsWhoSignsInWithoutATerminal(t *testing.T) {
 	t.Parallel()
 	azure := &AzureADProvider{}
 	azure.Type = "azureADProvider"
+	azure.ID = "azuread"
 	ps := []typedProvider{
-		&AuthProvider{Type: "localProvider"}, &AuthProvider{Type: "oktaProvider"}, azure, &AuthProvider{Type: "openLdapProvider"},
+		&AuthProvider{Type: "localProvider", ID: "local"}, &AuthProvider{Type: "oktaProvider", ID: "okta"}, azure, &AuthProvider{Type: "openLdapProvider", ID: "openldap"},
 	}
 
 	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", noTerminal())
 	cause, ok := errors.AsType[*providerChoiceNeedsTerminal](err)
 	require.True(t, ok, "got %v", err)
-	assert.Equal(t, []string{"localProvider", "oktaProvider", "azureADProvider", "openLdapProvider"}, cause.providers)
-	assert.Equal(t, []string{"oktaProvider", "azureADProvider"}, cause.noTerminal)
+	assert.Equal(t, []string{"local", "okta", "azuread", "openldap"}, cause.configs)
+	assert.Equal(t, []clierr.Candidate{{ID: "okta", Name: "okta"}, {ID: "azuread", Name: "azuread"}}, cause.noTerminal)
 	assert.Equal(t, unsupportedNote([]string{"githubProvider"}), cause.note)
 
 	_, err = selectAuthProvider(t.Context(), ps, nil, "", noInputWithTerminal())
@@ -287,7 +289,7 @@ func TestSelectAuthProviderRecordsWhoSignsInWithoutATerminal(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
-	assert.Equal(t, "multiple auth providers; select one", ce.Message)
+	assert.Equal(t, "this server has several auth configs: local, okta, azuread, openldap; pass one of them with --auth-provider", ce.Message)
 	assert.Len(t, ce.Candidates, 4)
 }
 
@@ -313,10 +315,10 @@ func TestAnInvalidProviderPickWithATerminalIsThePlainError(t *testing.T) {
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok, "got %v", err)
 			assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
-			assert.Equal(t, []string{"localProvider", "oktaProvider"}, candidateIDsOrNil(ce.Candidates))
-			assert.True(t, strings.HasPrefix(ce.Message, "multiple auth providers; select one"), "message %q", ce.Message)
+			assert.Equal(t, []string{"local", "okta"}, candidateIDsOrNil(ce.Candidates))
+			assert.True(t, strings.HasPrefix(ce.Message, "this server has several auth configs: local, okta; pass one of them with --auth-provider"), "message %q", ce.Message)
 			assert.NotContains(t, ce.Message, "pipe an API token")
-			assert.NotContains(t, ce.Message, "--auth-provider")
+			assert.NotContains(t, ce.Message, "or add --auth-provider")
 			_, ok = errors.AsType[*providerChoiceNeedsTerminal](err)
 			assert.False(t, ok, "someone could answer the menu")
 			assert.Zero(t, p.count(plaintextDisclosureMark), "nothing was signed in: no disclosure; events %q", p.events)

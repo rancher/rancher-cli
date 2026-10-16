@@ -182,7 +182,7 @@ func TestAzureADLoginHappyAndReject(t *testing.T) {
 	idToken := azureIDToken(t, srv)
 
 	resp2, body2 := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
-		map[string]string{"type": "azureADProvider", "responseType": "kubeconfig", "id_token": idToken}, "")
+		map[string]string{"type": "azureADProvider", "configName": "azuread", "responseType": "kubeconfig", "id_token": idToken}, "")
 	require.Equal(t, http.StatusCreated, resp2.StatusCode)
 	var loginTok struct {
 		ID    string `json:"id"`
@@ -193,7 +193,7 @@ func TestAzureADLoginHappyAndReject(t *testing.T) {
 	assert.Equal(t, "kubeconfig-user-e2efac1:fac-secret-1", loginTok.Token)
 
 	resp3, _ := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
-		map[string]string{"type": "azureADProvider", "responseType": "kubeconfig", "id_token": "not-issued-by-stub"}, "")
+		map[string]string{"type": "azureADProvider", "configName": "azuread", "responseType": "kubeconfig", "id_token": "not-issued-by-stub"}, "")
 	assert.Equal(t, http.StatusUnauthorized, resp3.StatusCode)
 }
 

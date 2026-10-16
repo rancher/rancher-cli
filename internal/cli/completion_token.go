@@ -73,6 +73,23 @@ func resolveCompletionConnection() completionConnection {
 	return conn
 }
 
+// completionServerURL validates a server URL before any request or stored
+// credential read of a completion: it returns the canonical form, and false
+// for a malformed URL or one with a scheme other than http and https.
+// Completion is best-effort, so the refusal is silent.
+func completionServerURL(raw string) (string, bool) {
+	canonical, err := credhelper.CanonicalServerURL(raw)
+	if err != nil {
+		completionDebugf("stop: server URL: %v", err)
+		return "", false
+	}
+	if !config.IsSupportedScheme(canonical) {
+		completionDebugf("stop: server URL scheme unsupported: %s", raw)
+		return "", false
+	}
+	return canonical, true
+}
+
 // resolveCompletionToken resolves the token for a TAB completion request
 // in this order: env token, file credential store, exec-cred cache. It
 // NEVER touches the keyring.
@@ -98,13 +115,8 @@ func resolveCompletionToken(clusterID string) TokenCapability {
 	// is best-effort: an unsupported or malformed URL silently yields an
 	// empty capability rather than surfacing a stored record that cannot
 	// be safely used (never trigger a helper exec for an invalid identity).
-	canonServerURL, csErr := credhelper.CanonicalServerURL(conn.ServerURL)
-	if csErr != nil {
-		completionDebugf("stop: server URL: %v", csErr)
-		return TokenCapability{}
-	}
-	if !config.IsSupportedScheme(canonServerURL) {
-		completionDebugf("stop: server URL scheme unsupported: %s", conn.ServerURL)
+	canonServerURL, ok := completionServerURL(conn.ServerURL)
+	if !ok {
 		return TokenCapability{}
 	}
 

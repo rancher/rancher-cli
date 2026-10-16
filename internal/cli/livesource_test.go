@@ -153,8 +153,9 @@ func TestValidateLiveWiring(t *testing.T) {
 // take a pool through the provisioning one, the two oidc-client secret
 // verbs through the oidcclient one, logs through the observe one, inspect
 // project's positional through the projects one, inspect cluster's
-// through the access one, every other entry's probe implements nothing,
-// and BuildRoot accepts the wiring.
+// through the access one, the three sign-in commands through the token
+// one, every other entry's probe implements nothing, and BuildRoot
+// accepts the wiring.
 func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 	t.Parallel()
 	var owners []string
@@ -174,6 +175,7 @@ func TestWiredCompletersAreDeclaredInCompletePackages(t *testing.T) {
 		"access can", "access who-can", "access explain",
 		"oidc-client rotate-secret", "oidc-client remove-secret",
 		"logs", "inspect project", "inspect cluster",
+		"auth login", "auth get-token", "token",
 	}, owners)
 	_, err := BuildRoot("v-test")
 	require.NoError(t, err)

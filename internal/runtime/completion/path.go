@@ -128,6 +128,12 @@ func SteveObjectPath(resource, name string) (Path, error) {
 	return build([]string{"v1", resource, name})
 }
 
+// AuthProvidersPath is the server's unauthenticated list of enabled auth
+// configs: /v1-public/authproviders.
+func AuthProvidersPath() (Path, error) {
+	return build([]string{"v1-public", "authproviders"})
+}
+
 // WithQuery returns p with key=value appended to its query, both
 // URL-encoded, so a value can never reach the path. A zero Path stays
 // zero.

@@ -1262,16 +1262,17 @@ func TestSelectAuthProviderExplicitMatch(t *testing.T) {
 
 func TestSelectAuthProviderNotFound(t *testing.T) {
 	t.Parallel()
-	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}}
+	ps := []typedProvider{&AuthProvider{Type: "pingProvider", ID: "ping"}}
 	_, err := selectAuthProvider(t.Context(), ps, nil, "nope", ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Contains(t, candidateIDs(ce.Candidates), "pingProvider")
+	assert.Equal(t, "--auth-provider nope matches no auth config this CLI can sign in with on this server", ce.Message)
+	assert.Equal(t, []string{"ping"}, candidateIDs(ce.Candidates))
 }
 
 // TestSelectAuthProviderMatchesTheProviderID asserts --auth-provider accepts
-// the server's short provider id (local) beside the type (localProvider).
+// an auth config's name (local) and the provider type (localProvider).
 func TestSelectAuthProviderMatchesTheProviderID(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider", ID: "local"}}, &AuthProvider{Type: "pingProvider", ID: "ping"}}
@@ -1286,7 +1287,7 @@ func TestSelectAuthProviderMatchesTheProviderID(t *testing.T) {
 // TestSelectAuthProviderNotFoundNamesUnsupported asserts a miss names the
 // providers the server advertises that this CLI cannot log in with, with
 // the server change requested, while the candidates stay the supported
-// types only.
+// auth configs only.
 func TestSelectAuthProviderNotFoundNamesUnsupported(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider", ID: "local"}}}
@@ -1294,22 +1295,22 @@ func TestSelectAuthProviderNotFoundNamesUnsupported(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Contains(t, ce.Message, "auth provider not found: github; advertised by the server but not supported by this CLI: githubProvider (server change requested: rancher/rancher#57034)")
-	assert.Equal(t, []string{"localProvider"}, candidateIDs(ce.Candidates))
+	assert.Contains(t, ce.Message, "--auth-provider github matches no auth config this CLI can sign in with on this server; advertised by the server but not supported by this CLI: githubProvider (server change requested: rancher/rancher#57034)")
+	assert.Equal(t, []string{"local"}, candidateIDs(ce.Candidates))
 }
 
 // TestSelectAuthProviderAmbiguousNamesUnsupported asserts the no-terminal
-// refusal between several supported providers still names the advertised
-// ones this CLI cannot use.
+// refusal between several supported auth configs still names the advertised
+// types this CLI cannot use.
 func TestSelectAuthProviderAmbiguousNamesUnsupported(t *testing.T) {
 	t.Parallel()
-	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}, &AuthProvider{Type: "oktaProvider"}}
+	ps := []typedProvider{&AuthProvider{Type: "pingProvider", ID: "ping"}, &AuthProvider{Type: "oktaProvider", ID: "okta"}}
 	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
 	assert.Contains(t, ce.Message, "not supported by this CLI: githubProvider")
-	assert.ElementsMatch(t, []string{"pingProvider", "oktaProvider"}, candidateIDs(ce.Candidates))
+	assert.ElementsMatch(t, []string{"ping", "okta"}, candidateIDs(ce.Candidates))
 }
 
 // TestSelectAuthProviderSingleNoticesUnsupported asserts the one supported
@@ -1323,7 +1324,7 @@ func TestSelectAuthProviderSingleNoticesUnsupported(t *testing.T) {
 	got, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", p)
 	require.NoError(t, err)
 	assert.Equal(t, "localProvider", got.GetType())
-	assert.Contains(t, errBuf.String(), "Auth provider: localProvider")
+	assert.Contains(t, errBuf.String(), "Auth config: local")
 	assert.Contains(t, errBuf.String(), "not supported by this CLI: githubProvider")
 
 	var quiet strings.Builder
@@ -1342,7 +1343,7 @@ func TestGetAuthProvidersSplitsSupportedAndUnsupported(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{"id":"github","type":"githubProvider"},{"id":"okta","type":"oktaProvider"},{"id":"local","type":"localProvider"},{"id":"google","type":"googleOAuthProvider"},{"id":"github2","type":"githubProvider"}]}`))
 	}))
 	defer srv.Close()
-	supported, unsupported, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
+	supported, unsupported, _, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
 	require.NoError(t, err)
 	require.Len(t, supported, 2)
 	assert.Equal(t, "localProvider", supported[0].GetType(), "local first")
@@ -1361,12 +1362,13 @@ func TestSelectAuthProviderSingle(t *testing.T) {
 
 func TestSelectAuthProviderAmbiguousNoInput(t *testing.T) {
 	t.Parallel()
-	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}, &AuthProvider{Type: "oktaProvider"}}
+	ps := []typedProvider{&AuthProvider{Type: "pingProvider", ID: "ping"}, &AuthProvider{Type: "oktaProvider", ID: "okta"}}
 	_, err := selectAuthProvider(t.Context(), ps, nil, "", ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
-	assert.ElementsMatch(t, []string{"pingProvider", "oktaProvider"}, candidateIDs(ce.Candidates))
+	assert.Equal(t, "this server has several auth configs: ping, okta; pass one of them with --auth-provider", ce.Message)
+	assert.ElementsMatch(t, []string{"ping", "okta"}, candidateIDs(ce.Candidates))
 }
 
 func candidateIDs(cs []clierr.Candidate) []string {

@@ -485,7 +485,7 @@
           "type": "string"
         },
         {
-          "desc": "auth provider `name` to sign in with",
+          "desc": "auth config `name` to sign in with (for example corp-ldap); a provider name or type such as openldap also works; with several matches the CLI asks, or lists them in the error",
           "name": "auth-provider",
           "type": "string"
         },
@@ -574,7 +574,7 @@
           "type": "string"
         },
         {
-          "desc": "auth provider `name` to sign in with",
+          "desc": "auth config `name` to sign in with (for example corp-ldap); a provider name or type such as openldap also works; with several matches the CLI asks, or lists them in the error",
           "name": "auth-provider",
           "type": "string"
         },
@@ -10492,7 +10492,7 @@
           "type": "string"
         },
         {
-          "desc": "auth provider `name` to sign in with",
+          "desc": "auth config `name` to sign in with (for example corp-ldap); a provider name or type such as openldap also works; with several matches the CLI asks, or lists them in the error",
           "name": "auth-provider",
           "type": "string"
         },

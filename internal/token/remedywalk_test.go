@@ -74,16 +74,16 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 
 	dir := t.TempDir()
 	nt := tokenCmd{dir: dir}
-	add("no terminal", nt.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+	add("no terminal", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com"}))
-	add("no terminal, no --name", nt.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+	add("no terminal, no --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
 		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com"}))
 	choice := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
-		providers: []string{"localProvider", "oktaProvider"}, noTerminal: []string{"oktaProvider"}})
+		configs: []string{"local", "okta"}, noTerminal: []clierr.Candidate{{ID: "okta", Name: "okta"}}})
 	add("no terminal, a provider choice", nt.withNoTerminalRemedies(choice,
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", keepsLogin: true}))
 	none := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
-		providers: []string{"localProvider", "openLdapProvider"}})
+		configs: []string{"local", "openldap"}})
 	add("no terminal, a provider choice no provider can answer", nt.withNoTerminalRemedies(none,
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", keepsLogin: true}))
 
@@ -97,7 +97,7 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		c := &config.Config{CredentialStore: "file", CredentialTransitionID: "0123456789abcdef0123456789abcdef"}
 		c.SetPath(config.FilePath(changed))
 		require.NoError(t, c.Write())
-		add(name, tokenCmd{dir: changed}.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+		add(name, tokenCmd{dir: changed}.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
 			noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com"}))
 	}
 
@@ -109,16 +109,16 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 	require.NoError(t, lc.Write())
 	require.NoError(t, config.NewFileStore(logged).SetToken(config.ServerRef{Name: "prod", URL: "https://r.example.com"}, "id:secret"))
 	add("no terminal, the current server's login serves the call", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
-		interactiveLoginRequired("localProvider", "x"), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
+		interactiveLoginRequired("local", "x"), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
 	add("no terminal, a --name of a plugin login entry", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
-		interactiveLoginRequired("localProvider", "x"), noTerminalCall{name: "exec-login-r.ex-c-1", clusterID: "c-1", serverURL: "https://r.example.com", caCert: "/etc/rancher/ca.pem"}))
+		interactiveLoginRequired("local", "x"), noTerminalCall{name: "exec-login-r.ex-c-1", clusterID: "c-1", serverURL: "https://r.example.com", caCert: "/etc/rancher/ca.pem"}))
 	add("--user-id without --name, no entry for the server", tokenCmd{dir: dir}.withNewEntryLogin(func() error {
 		_, err := readUserID(tin{s: map[string]string{"user-id": "u-abc12"}}, "", "c-1")
 		return err
 	}(), tin{s: map[string]string{"server": "https://r.example.com", "cluster": "c-1", "user-id": "u-abc12", "cacert": "/etc/rancher/ca.pem"}}))
-	add("no terminal, with --user-id", nt.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+	add("no terminal, with --user-id", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
-	add("no terminal, with --user-id, a plugin login entry skipped", nt.withNoTerminalRemedies(interactiveLoginRequired("localProvider", "x"),
+	add("no terminal, with --user-id, a plugin login entry skipped", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", skipped: "exec-login-r.ex", skippedOwner: "u-other"}))
 	add("--user-id without --name", func() error {
 		_, err := readUserID(tin{s: map[string]string{"user-id": "u-abc12"}}, "", "c-1")

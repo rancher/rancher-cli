@@ -198,7 +198,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
-			require.ErrorContains(t, err, "interactive login required for localProvider")
+			require.ErrorContains(t, err, "interactive login required for auth config local; this call has no terminal to answer it")
 			require.ErrorContains(t, err, "pipe an API token to "+tc.login)
 			switch {
 			case tc.reuse:
@@ -298,7 +298,7 @@ func TestAuthLoginKeepsItsOwnNoTerminalRemedy(t *testing.T) {
 	srv := localProviderServer(t)
 	_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL}, 0, noTerminal())
 	require.Error(t, err)
-	require.ErrorContains(t, err, "interactive login required for localProvider; run in a terminal, or use a cached --name")
+	require.ErrorContains(t, err, "interactive login required for auth config local; run in a terminal, or use a cached --name")
 	assert.NotContains(t, err.Error(), "create kubeconfig")
 	_, ok := errors.AsType[*needsTerminal](err)
 	assert.True(t, ok)
@@ -329,7 +329,7 @@ func TestEverySignInPromptSaysItNeedsATerminal(t *testing.T) {
 			_, err := loginAndGenerateCred(t.Context(), srv.Client(), &loginInput{server: srv.URL}, tc.p)
 			nt, ok := errors.AsType[*needsTerminal](err)
 			require.True(t, ok, "got %v", err)
-			assert.Equal(t, tc.provider, nt.provider)
+			assert.Equal(t, providerName(tc.provider), nt.authConfig)
 		})
 	}
 	t.Run("the password with no terminal", func(t *testing.T) {
@@ -337,7 +337,7 @@ func TestEverySignInPromptSaysItNeedsATerminal(t *testing.T) {
 		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{server: "https://r.ex", authProvider: "localProvider"}, usernameOnly{})
 		nt, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
-		assert.Equal(t, "localProvider", nt.provider)
+		assert.Equal(t, "local", nt.authConfig)
 	})
 }
 

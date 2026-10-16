@@ -70,7 +70,7 @@ func oauthAuth(ctx context.Context, client *http.Client, input *loginInput, prov
 	input.authFlow = strings.ToLower(resolveAuthFlow(input.authFlow))
 
 	if p.NoInput() {
-		return notAttempted, interactiveLoginRequired(input.authProvider, "run without --no-input, or use a cached --name")
+		return notAttempted, interactiveLoginRequired(input.authConfigName(), "run without --no-input, or use a cached --name")
 	}
 
 	if input.idpClient == nil {
@@ -158,7 +158,7 @@ func oauthAuthCodeAuth(
 		}
 	}()
 
-	input.signInStarts()
+	input.signInStarts(p)
 	p.Notice("\nOpening browser for authentication...\n")
 	if err := openBrowser(authURL); err != nil {
 		p.Notice(fmt.Sprintf("Failed to open browser automatically (%v). Please open the following URL manually:\n%s\n", err, authURL))
@@ -303,7 +303,7 @@ func oauthDeviceCodeAuth(ctx context.Context, client *http.Client, input *loginI
 		return notAttempted, idpError(err, oauthConfig.Endpoint.DeviceAuthURL, "failed to initiate device authorization")
 	}
 
-	input.signInStarts()
+	input.signInStarts(p)
 	p.Notice(fmt.Sprintf(
 		"\nTo sign in, use a web browser to open the page %s and enter the code %s to authenticate.\n",
 		deviceAuthResp.VerificationURI,
@@ -381,6 +381,9 @@ func rancherLogin(ctx context.Context, client *http.Client, input *loginInput, o
 		"type":         input.authProvider,
 		"responseType": loginResponseType(input),
 		"id_token":     oauthToken.Extra("id_token"),
+	}
+	if input.configName != "" {
+		body["configName"] = input.configName
 	}
 	if input.description != "" {
 		body["description"] = input.description

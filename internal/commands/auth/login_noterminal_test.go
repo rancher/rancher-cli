@@ -41,9 +41,9 @@ func TestLoginProviderFlowWithoutATerminalRefusesInItsOwnWords(t *testing.T) {
 		want     string
 	}{
 		{"a username and password provider, no terminal", "localProvider", false,
-			"interactive login required for localProvider; run in a terminal, or use a cached --name"},
+			"interactive login required for auth config local; run in a terminal, or use a cached --name"},
 		{"an OAuth provider under --no-input", "azureADProvider", true,
-			"interactive login required for azureADProvider; run without --no-input, or use a cached --name"},
+			"interactive login required for auth config azuread; run without --no-input, or use a cached --name"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -522,7 +522,7 @@ func TestFacadeATokenCarriesTheProviderItsOwnerSignedInWith(t *testing.T) {
 	t.Parallel()
 	_, srv := newFacade(t, testrancher.Options{EnableIdP: true, IdPPendingPolls: 0, V3TokenCreate: true}, &recordingHandler{})
 	resp, body := doJSON(t, srv.Client(), http.MethodPost, srv.URL+"/v1-public/login",
-		map[string]string{"type": "azureADProvider", "responseType": "json", "id_token": azureIDToken(t, srv)}, "")
+		map[string]string{"type": "azureADProvider", "configName": "azuread", "responseType": "json", "id_token": azureIDToken(t, srv)}, "")
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	azure := decodeObject(t, body)["token"].(string)
 	local := jsonLogin(t, srv)

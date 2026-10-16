@@ -18,15 +18,17 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// The functions that run at shell TAB time are declared in a closed set of
-// restricted `complete` packages, one per owner of a live completion
+// The functions that answer a live completion site are declared in a closed
+// set of restricted `complete` packages, one per owner of a live completion
 // source. A source may talk to the server only through the capability the
 // surface hands it, so these packages may import the seam, the kind table,
 // structured errors and a fixed set of standard-library packages - and
 // nothing that opens a socket, reads the environment or a file, runs a
 // process, or reaches a client or a credential store, not even through a
-// same-package helper. The checks below hold every file of every such
-// package to that list.
+// same-package helper. A source that needs no credential gets its server and
+// CA from its command's CompletionTarget, which reads the loaded config, the
+// environment and a CA file; the package itself reads none of them. The
+// checks below hold every file of every such package to that list.
 
 // completePackages is the closed set of restricted source packages.
 var completePackages = map[string]bool{
@@ -38,6 +40,7 @@ var completePackages = map[string]bool{
 	"internal/engine/provisioning/complete": true,
 	"internal/engine/observe/complete":      true,
 	"internal/engine/oidcclient/complete":   true,
+	"internal/token/complete":               true,
 }
 
 // completeImportAllowlist is every import path a complete package's
@@ -184,12 +187,12 @@ func carriesBehavior(t types.Type, seen map[*types.Named]bool) bool {
 }
 
 // completePackagesOnDisk returns every package directory whose last
-// element is "complete" under internal/engine, as slash paths.
+// element is "complete" under internal, as slash paths.
 func completePackagesOnDisk(t *testing.T) []string {
 	t.Helper()
 	var out []string
 	for pkg := range packagesOnDisk(t) {
-		if path.Base(pkg) == "complete" && strings.HasPrefix(pkg, "internal/engine/") {
+		if path.Base(pkg) == "complete" && strings.HasPrefix(pkg, "internal/") {
 			out = append(out, pkg)
 		}
 	}
@@ -197,8 +200,17 @@ func completePackagesOnDisk(t *testing.T) []string {
 	return out
 }
 
+// TestCompletePackagesOnDiskSeeEveryOwner asserts the scans below look at
+// every owner's complete package, the one of the sign-in commands under
+// internal/token among them, not only those under internal/engine.
+func TestCompletePackagesOnDiskSeeEveryOwner(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, slices.Sorted(maps.Keys(completePackages)), completePackagesOnDisk(t))
+	assert.Contains(t, completePackagesOnDisk(t), "internal/token/complete")
+}
+
 // TestCompletePackagesAreTheClosedSet asserts every complete package in
-// the tree is one of the named eight; a source package nobody reviewed
+// the tree is one of the named nine; a source package nobody reviewed
 // into the set fails here.
 func TestCompletePackagesAreTheClosedSet(t *testing.T) {
 	t.Parallel()

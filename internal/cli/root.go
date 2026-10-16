@@ -812,6 +812,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 	// probe adaptEntry installs the TAB callback on.
 	leaves := map[string]runtime.Descriptor{}
 	completers := map[string]completion.Source{}
+	targets := map[string]bool{}
 	for _, e := range entries {
 		leaf, name, err := wireEntry(reg, resolver, version, e)
 		if err != nil {
@@ -821,6 +822,7 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		leaves[name] = probe.Describe()
 		if lc, ok := probe.(completion.Completer); ok {
 			completers[name] = lc.LiveSource()
+			_, targets[name] = lc.(completionTargeter)
 		}
 		if _, seen := groups[e.group]; !seen {
 			order = append(order, e.group)
@@ -900,6 +902,9 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		return wiredRegistry{}, fmt.Errorf("command registry: %w", err)
 	}
 	if err := validateLiveWiring(leaves, completers, flagSources, kindSources, positionalKinds); err != nil {
+		return wiredRegistry{}, fmt.Errorf("live completion wiring: %w", err)
+	}
+	if err := validateCompletionTargets(leaves, completers, targets); err != nil {
 		return wiredRegistry{}, fmt.Errorf("live completion wiring: %w", err)
 	}
 	return wiredRegistry{

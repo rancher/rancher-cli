@@ -49,9 +49,12 @@ the keychain), with the keychain reachable, then run the command again.
   <name>`). With no piped/pasted token, it offers a choice: paste an
   existing API token, or sign in via an identity provider
   (`--auth-provider`, `--auth-flow devicecode|authcode` skip the prompt;
-  `--auth-provider` takes the type or the server's short id, `localProvider`
-  or `local`). A provider the server advertises but this CLI cannot log in
-  with (GitHub and the other OAuth providers whose client secret the server
+  `--auth-provider` takes an auth config name from the candidates of an
+  error or from completion, such as `local` or `corp-ldap`; a provider
+  name or type such as `openldap` also works, and when it matches several
+  auth configs the call fails with their names). A provider the server
+  advertises but this CLI cannot log in with (GitHub and the other OAuth
+  providers whose client secret the server
   holds) is named as such in the prompt and in the `NOT_FOUND` error rather
   than dropped: the fix is server-side (rancher/rancher#57034); paste a
   token created in the UI meanwhile. The provider path creates its own
@@ -100,7 +103,8 @@ the keychain), with the keychain reachable, then run the command again.
   provider must be trusted by the operating system store (or, on Linux,
   through `SSL_CERT_FILE`).
 - SAML/OAuth provider flows also live on `rancher auth get-token`
-  (`--auth-provider`, `--auth-flow devicecode|authcode`) - the kubeconfig exec
+  (`--auth-provider` takes an auth config name, `--auth-flow
+  devicecode|authcode`) - the kubeconfig exec
   plugin drives them automatically; that path creates cached exec credentials,
   not a stored login session.
 - Kubeconfigs that use the exec plugin log in once per cluster by default.

@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
-	neturl "net/url"
 	"slices"
 	"strings"
 
@@ -191,6 +189,17 @@ func variableNotice(name, savedSelector string) string {
 		"to replace it, run: rancher config update-server " + q + " --cacert <file>"
 }
 
+// replacedUserWarning is the warning of a login that leaves a server entry
+// logged in as another user than the one its stored login recorded: the
+// two user ids, in a list of one. Nothing is said for an entry that had no
+// stored login, for the same user, or when either id is unknown.
+func replacedUserWarning(name, was, now string) []string {
+	if was == "" || now == "" || was == now {
+		return nil
+	}
+	return []string{"server entry " + name + " is now logged in as user " + now + "; it was logged in as user " + was}
+}
+
 func (loginCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:         "auth login",
@@ -202,7 +211,7 @@ func (loginCmd) Describe() runtime.Descriptor {
 			{Name: "url", Type: "string", Desc: "Rancher server `url` to add and log into; when name is omitted, the server's hostname becomes the entry name"},
 			{Name: "token-stdin", Type: "bool", Desc: "read the API token (id:secret) from stdin"},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM, saved with the entry (requires --url); when absent, RANCHER_CLI_CACERT connects the login with or without --url, and is never saved", Env: []string{config.EnvCACert}},
-			{Name: "auth-provider", Type: "string", Desc: "auth provider `name` to sign in with"},
+			{Name: "auth-provider", Type: "string", Desc: "auth config `name` to sign in with (for example corp-ldap); a provider name or type such as openldap also works; with several matches the CLI asks, or lists them in the error"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "ttl", Type: "string", Desc: "session-token lifetime `duration`, e.g. 90d"},
 			{Name: "no-verify", Type: "bool", Desc: "store the token without an authenticated round-trip against the server"},
@@ -264,63 +273,14 @@ func (l loginCmd) Execute(ctx context.Context, in runtime.Input, p runtime.Promp
 		return runtime.Result{}, perr
 	}
 
+	target, err := resolveLoginTarget(cfg0, name, url, cacert)
+	if err != nil {
+		return runtime.Result{}, err
+	}
 	if url != "" {
-		return l.executeRegisterAndLogin(ctx, in, p, cfg0, name, url, cacert)
+		return l.executeRegisterAndLogin(ctx, in, p, target, cacert)
 	}
-
-	if name != "" {
-		if cacert != "" {
-			// Trust changes belong to registration, not authentication. A
-			// suggested command must be valid verbatim: only a KNOWN name
-			// can receive a fully interpolated update-server hint; an
-			// absent/unknown name falls through to VALIDATION/NOT_FOUND
-			// below with no hint at all.
-			if _, ok := cfg0.Servers[name]; ok {
-				return runtime.Result{}, clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--cacert without --url changes trust for %q, which belongs to registration", name)).
-					WithHint(fmt.Sprintf("rancher config update-server %s %s", clierr.ShellQuote(name), register.CAUpdateArg(cacert)))
-			}
-			return runtime.Result{}, loginUnknownNameError(cfg0, name)
-		}
-		existing, ok := cfg0.Servers[name]
-		if !ok {
-			return runtime.Result{}, loginUnknownNameError(cfg0, name)
-		}
-		return l.authenticatePlain(ctx, in, p, name, existing.URL, existing.CA, existing.CAFingerprint)
-	}
-
-	if cacert != "" {
-		// Matches the --cacert-without-url matrix's absent-name row: body
-		// guidance only, no machine hint (neither value is known here).
-		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--cacert without --url and without a name has no entry to attach trust to; pass a name to change an existing entry's trust with rancher config update-server")
-	}
-
-	cur, srv, cerr := cfg0.CurrentServerEntry()
-	if cerr == nil {
-		return l.authenticatePlain(ctx, in, p, cur, srv.URL, srv.CA, srv.CAFingerprint)
-	}
-
-	names := slices.Sorted(maps.Keys(cfg0.Servers))
-	switch len(names) {
-	case 0:
-		return runtime.Result{}, clierr.New(clierr.CodeNotLoggedIn,
-			"no servers configured; add one with: rancher auth login --url <url>")
-	case 1:
-		// Login never selects implicitly: a success here would authenticate
-		// an entry the pointer still doesn't name, so the next command
-		// would fail NOT_LOGGED_IN anyway. Point at the switch verb
-		// instead.
-		return runtime.Result{}, clierr.New(clierr.CodeNotLoggedIn, "no current server").
-			WithHint(configUseServerHint(names[0]))
-	default:
-		cands := make([]clierr.Candidate, 0, len(names))
-		for _, n := range names {
-			cands = append(cands, clierr.Candidate{ID: n, Name: n})
-		}
-		return runtime.Result{}, clierr.New(clierr.CodeAmbiguousSelection,
-			"multiple servers configured; specify a name").WithCandidates(cands)
-	}
+	return l.authenticatePlain(ctx, in, p, target.name, target.server, target.caSelector, target.caFingerprint)
 }
 
 // nameCollisionError is the refusal for a registration name already taken
@@ -360,68 +320,9 @@ func loginUnknownNameError(cfg *config.Config, name string) *clierr.Error {
 // persisted entry - registration completes, atomic, before any auth flow
 // starts. A failed auth after this leaves a valid registered entry, a
 // first-class state, not a bug to roll back.
-func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input, p runtime.Prompter, cfg0 *config.Config, name, url, cacert string) (runtime.Result, error) {
-	// canonical is resolved once and reused to derive an absent name from
-	// the URL's host, to detect a collision with an existing entry under
-	// that name below, and as register.Prepare's input - so a --url
-	// login parses the URL exactly once, and an invalid or
-	// unsupported-scheme URL is refused before any other work.
-	canonical, canonErr := register.CanonicalizeServerURL(url)
-	if canonErr != nil {
-		return runtime.Result{}, canonErr
-	}
-
-	derived := false
-	if name == "" {
-		// canonical already round-tripped through url.Parse inside
-		// CanonicalServerURL, so this reparse cannot fail.
-		u, _ := neturl.Parse(canonical)
-		name = u.Hostname()
-		derived = true
-		// An IPv6 literal survives Hostname() with its colons - only the
-		// brackets are stripped - and a colon-bearing entry name reads as
-		// a URL fragment everywhere a name is printed or quoted, so
-		// derivation refuses it instead of coining one.
-		if strings.Contains(name, ":") {
-			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				"a server name cannot be derived from an IPv6 address; pass an explicit name: rancher auth login <name> --url <url>")
-		}
-		// With colons refused above, a derived name cannot land in the
-		// legacy: or user-id: namespace, but a host can begin with
-		// exec-login-; the check refuses that, and keeps a future
-		// derivation change from producing reserved names unchecked.
-		if ce := config.ValidateEntryName(name); ce != nil {
-			return runtime.Result{}, ce
-		}
-	}
-
-	existing, known := cfg0.Servers[name]
-	// A known name whose canonicalized URL disagrees is a different server
-	// hiding behind a trusted name - refuse before any network call, rather
-	// than let a hijacking or a typo silently re-point the entry (or dial
-	// the wrong host first and only then fail deep inside registration).
-	// existing.URL is compared as stored: registration only ever stores it
-	// canonical.
-	if known && canonical != existing.URL {
-		return runtime.Result{}, nameCollisionError(name, existing.URL, canonical, derived)
-	}
-
-	// Known name, --cacert absent: prepare with the EXISTING entry's
-	// effective selector - the flag's absence is never treated as a switch
-	// to system roots (that would silently strip a private CA on a plain
-	// re-login-with-add spelling).
-	caSelector := cacert
-	if cacert == "" && known {
-		caSelector = existing.CA
-	}
-	// With no --cacert the login connects with RANCHER_CLI_CACERT where it
-	// applies to this URL. The variable is never saved, so the entry keeps
-	// caSelector, and a failure of that connection is the variable's, not
-	// the entry's: no trust prompt, and no "already registered" pointer.
-	variableCA := ""
-	if cacert == "" {
-		variableCA = config.EnvCACertFor(canonical)
-	}
+func (l loginCmd) executeRegisterAndLogin(ctx context.Context, in runtime.Input, p runtime.Prompter, target loginTarget, cacert string) (runtime.Result, error) {
+	name, canonical, known := target.name, target.server, target.known
+	caSelector, variableCA := target.caSelector, target.variable
 	viaVariable := variableCA != "" && strings.HasPrefix(canonical, "https://")
 
 	probe, err := register.PrepareConnecting(ctx, l.tlsPreflight, canonical, caSelector, variableCA)
@@ -733,6 +634,9 @@ func (l loginCmd) authenticateAndStore(
 	}
 	residual := []clierr.TokenFate{}
 	persisted := perr == nil
+	if persisted {
+		st.Warnings = append(st.Warnings, replacedUserWarning(name, out.ReplacedUserID, cred.UserID)...)
+	}
 	if perr != nil {
 		if !errors.Is(perr, config.ErrTokenStoreUnsupported) {
 			// A cancelled operation is reported as cancellation: the local

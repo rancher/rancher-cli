@@ -99,12 +99,12 @@ func terminalLines(lines ...string) *eventPrompter {
 // optional and runs at most once, however many flows reach it.
 func TestSignInStartsRunsTheHookOnce(t *testing.T) {
 	t.Parallel()
-	(&loginInput{}).signInStarts()
+	(&loginInput{}).signInStarts(ui.Discard())
 
 	var n int
 	in := &loginInput{beforeSignIn: func() { n++ }}
-	in.signInStarts()
-	in.signInStarts()
+	in.signInStarts(ui.Discard())
+	in.signInStarts(ui.Discard())
 	assert.Equal(t, 1, n)
 }
 
@@ -129,8 +129,8 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 		_, err := AcquireLoginCredential(t.Context(), srv.Client(), LoginRequest{Server: srv.URL, BeforeSignIn: p.hook}, 0, p)
 		require.Error(t, err, "the server has no login endpoint")
 		p.requireHookBefore(t, "prompt: Enter username")
-		assert.Less(t, p.at("notice: Auth providers:"), p.at("hook"), "the menu comes first: the choice is made before the hook")
-		assert.Less(t, p.at("prompt: Select auth provider"), p.at("hook"))
+		assert.Less(t, p.at("notice: Auth configs:"), p.at("hook"), "the menu comes first: the choice is made before the hook")
+		assert.Less(t, p.at("prompt: Select auth config"), p.at("hook"))
 	})
 	t.Run("a prompt refused after the username", func(t *testing.T) {
 		t.Parallel()
@@ -155,7 +155,7 @@ func TestTheBasicSignInGivesTheHookBeforeItsFirstPrompt(t *testing.T) {
 		_, err := basicAuth(t.Context(), failingTransportClient(t), &loginInput{server: "https://r.invalid", authProvider: "localProvider", beforeSignIn: func() { p.hook() }}, p)
 		nt, ok := errors.AsType[*needsTerminal](err)
 		require.True(t, ok, "got %v", err)
-		assert.Equal(t, "localProvider", nt.provider)
+		assert.Equal(t, "local", nt.authConfig)
 		require.ErrorContains(t, err, "run in a terminal, or use a cached --name")
 		assert.Empty(t, p.events, "no hook and no prompt")
 	})
@@ -249,7 +249,7 @@ func TestTheOAuthDeviceCodeSignInGivesTheHookBeforeItsCode(t *testing.T) {
 // port that is invalid or cannot be listened on fails before the hook.
 func TestTheOAuthAuthCodeSignInGivesTheHookBeforeTheBrowser(t *testing.T) {
 	so := splitOriginFacade(t)
-	providers, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
+	providers, _, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
 	require.NoError(t, err)
 	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", ui.Discard())
 	require.NoError(t, err)

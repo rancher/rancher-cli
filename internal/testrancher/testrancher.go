@@ -129,6 +129,27 @@ type User struct {
 	UserID   string
 }
 
+// AuthConfig is one auth config the facade lists in /v1-public/authproviders
+// and signs in through. Rancher v2.16 reads the config a login names from the
+// request's configName, which the LDAP, Active Directory and Azure AD logins
+// require; v2.15 and earlier ignore the field, because each provider type has
+// one auth config there.
+type AuthConfig struct {
+	// Name is the entry's id: the name of the auth config.
+	Name string
+	// Type is the provider type: openLdapProvider, freeIpaProvider,
+	// activeDirectoryProvider or azureADProvider.
+	Type string
+	// Users sign in through the config with a password (the LDAP types) or
+	// through its identity provider (azureADProvider, which signs in as the
+	// first one). Each config has its own, so a sign-in through another
+	// config is another user.
+	Users []User
+	// ClientID is an azureADProvider config's own client; default
+	// "facade-client-" and the name.
+	ClientID string
+}
+
 // Options configures a Facade instance. Every facade instance is meant to be
 // per-script: its counters and token store are not safe to share
 // across concurrent scripts.
@@ -146,6 +167,15 @@ type Options struct {
 	// EnableIdP turns on the azureADProvider entry and the /idp/* device-code
 	// stub.
 	EnableIdP bool
+	// AzureADName is the id of the azureADProvider entry EnableIdP lists:
+	// the name of its auth config. Default "azuread", the name up to
+	// Rancher v2.15, where every provider type has one auth config named
+	// after it.
+	AzureADName string
+	// AuthConfigs are further auth configs listed beside the local one, as
+	// Rancher v2.16 lists several auth configs of one provider type. A
+	// config of type azureADProvider needs EnableIdP.
+	AuthConfigs []AuthConfig
 	// IdPPendingPolls is how many /idp/token polls return
 	// authorization_pending before a token is issued; defaults to 2.
 	IdPPendingPolls int
@@ -370,9 +400,10 @@ type record struct {
 	extKind string
 	// kubeconfigID names the Kubeconfig a kubeconfig token was created for.
 	kubeconfigID string
-	// provider is the auth provider the owner signed in with, "local" or
-	// "azuread"; empty means local.
-	provider string
+	// provider is the provider name of the auth config the owner signed in
+	// through ("local", "azuread", "openldap"); empty means local.
+	// configName is that auth config's name, which prefixes the principal.
+	provider, configName string
 }
 
 // bearer renders the record's bearer in its kind's shape: an ext token
@@ -442,8 +473,43 @@ type Facade struct {
 	authTokensReqs    []AuthTokensRequest
 	authTokens        map[string]authDeposit
 	logins            int
+	loginRecords      []LoginRecord
+	idpRequests       []IdPRequest
 	derivedCreates    int
 	dropped           bool
+}
+
+// LoginRecord is what a login request named: its provider type, and the
+// auth config in configName. HasConfigName tells a body that omits the field
+// from one that sends it empty.
+type LoginRecord struct {
+	Type          string
+	ConfigName    string
+	HasConfigName bool
+}
+
+// LoginRecords returns every login request the facade answered, in order,
+// those it refused included.
+func (f *Facade) LoginRecords() []LoginRecord {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.loginRecords)
+}
+
+// IdPRequest is a device-authorization request the identity-provider stub
+// answered: the path it came to, which names the auth config whose endpoints
+// the CLI used, and the client id it sent.
+type IdPRequest struct {
+	Path     string
+	ClientID string
+}
+
+// IdPRequests returns the device-authorization requests the stub answered,
+// in order.
+func (f *Facade) IdPRequests() []IdPRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.idpRequests)
 }
 
 // LoginDescriptions returns the descriptions the token-creating requests of
@@ -700,10 +766,7 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.handleRelease(w, rke2ReleaseFixture)
 	case r.Method == http.MethodGet && r.URL.Path == k3sReleasePath:
 		f.handleRelease(w, k3sReleaseFixture)
-	case f.idp != nil && f.opts.IdPURL == "" && r.Method == http.MethodPost && r.URL.Path == "/idp/devicecode":
-		f.idp.handleDeviceCode(w, r)
-	case f.idp != nil && f.opts.IdPURL == "" && r.Method == http.MethodPost && r.URL.Path == "/idp/token":
-		f.idp.handleToken(w, r)
+	case f.idp != nil && f.opts.IdPURL == "" && r.Method == http.MethodPost && f.idpRoute(w, r):
 	case f.opts.SelfSubjectReviews && r.Method == http.MethodPost && selfSubjectReviewCluster(r.URL.Path) != "":
 		f.handleSelfSubjectReview(w, r)
 	case strings.HasPrefix(r.URL.Path, "/v3-public"):
@@ -715,16 +778,45 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // IdPHandler serves the device-code identity-provider stub for a caller
 // that hosts it on its own origin (Options.IdPURL). It answers POST
-// /idp/devicecode and POST /idp/token; anything else is 404, and every
-// route is 404 when the facade was built without EnableIdP.
+// /idp/devicecode and POST /idp/token, and the same two under
+// /idp/<auth config name>/ for each azureADProvider config; anything else
+// is 404, and every route is 404 when the facade was built without
+// EnableIdP.
 func (f *Facade) IdPHandler() http.Handler {
 	if f.idp == nil {
 		return http.NotFoundHandler()
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /idp/devicecode", f.idp.handleDeviceCode)
-	mux.HandleFunc("POST /idp/token", f.idp.handleToken)
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !f.idpRoute(w, r) {
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// idpRoute answers a POST to the stub's device-code or token path of the
+// default Azure AD entry, or of one of the azureADProvider configs, and
+// reports whether the path was one of them.
+func (f *Facade) idpRoute(w http.ResponseWriter, r *http.Request) bool {
+	prefixes := []string{"/idp"}
+	for _, c := range f.opts.AuthConfigs {
+		if c.Type == "azureADProvider" {
+			prefixes = append(prefixes, "/idp/"+c.Name)
+		}
+	}
+	for _, prefix := range prefixes {
+		switch r.URL.Path {
+		case prefix + "/devicecode":
+			f.mu.Lock()
+			f.idpRequests = append(f.idpRequests, IdPRequest{Path: r.URL.Path, ClientID: r.PostFormValue("client_id")})
+			f.mu.Unlock()
+			f.idp.handleDeviceCode(w, r)
+			return true
+		case prefix + "/token":
+			f.idp.handleToken(w, r)
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Facade) fallthroughTo(w http.ResponseWriter, r *http.Request) {
@@ -737,26 +829,77 @@ func (f *Facade) fallthroughTo(w http.ResponseWriter, r *http.Request) {
 
 func (f *Facade) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 	data := []map[string]any{{"id": "local", "type": "localProvider"}}
-	if f.opts.EnableIdP {
-		base := f.opts.IdPURL
-		if base == "" {
-			base = "https://" + r.Host
-		}
-		data = append(data, map[string]any{
-			"id":            "azuread",
+	base := f.opts.IdPURL
+	if base == "" {
+		base = "https://" + r.Host
+	}
+	azure := func(id, clientID, prefix string) map[string]any {
+		return map[string]any{
+			"id":            id,
 			"type":          "azureADProvider",
 			"redirectUrl":   "",
-			"clientId":      "facade-client",
+			"clientId":      clientID,
 			"scopes":        []string{"openid"},
-			"authUrl":       base + "/idp/authorize",
-			"deviceAuthUrl": base + "/idp/devicecode",
-			"tokenUrl":      base + "/idp/token",
-		})
+			"authUrl":       base + prefix + "/authorize",
+			"deviceAuthUrl": base + prefix + "/devicecode",
+			"tokenUrl":      base + prefix + "/token",
+		}
+	}
+	if f.opts.EnableIdP {
+		data = append(data, azure(f.azureADName(), "facade-client", "/idp"))
 	}
 	for _, p := range f.opts.ExtraProviders {
 		data = append(data, map[string]any{"id": strings.ToLower(strings.TrimSuffix(p, "Provider")), "type": p})
 	}
+	for _, c := range f.opts.AuthConfigs {
+		if c.Type == "azureADProvider" {
+			data = append(data, azure(c.Name, c.clientID(), "/idp/"+c.Name))
+			continue
+		}
+		data = append(data, map[string]any{"id": c.Name, "type": c.Type})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}
+
+func (f *Facade) azureADName() string {
+	if f.opts.AzureADName != "" {
+		return f.opts.AzureADName
+	}
+	return "azuread"
+}
+
+func (c AuthConfig) clientID() string {
+	if c.ClientID != "" {
+		return c.ClientID
+	}
+	return "facade-client-" + c.Name
+}
+
+// providerName is Rancher's short name for a provider type: the type in
+// lower case without a trailing "config" and "provider".
+func providerName(providerType string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(providerType), "config"), "provider")
+}
+
+// loginConfig is the auth config a login of one of the types that need
+// configName (the LDAP types, Active Directory, Azure AD) names: the enabled
+// config of that name and type. As of Rancher v2.16 a login without
+// configName, or one that names no enabled config of the type, fails; the
+// facade is stricter than Rancher where a type has one enabled config, and
+// the CLI always sends the name.
+func (f *Facade) loginConfig(providerType, name string) (AuthConfig, bool) {
+	if name == "" {
+		return AuthConfig{}, false
+	}
+	if providerType == "azureADProvider" && f.opts.EnableIdP && name == f.azureADName() {
+		return AuthConfig{Name: name, Type: providerType, Users: f.opts.Users[:1]}, true
+	}
+	for _, c := range f.opts.AuthConfigs {
+		if c.Name == name && c.Type == providerType {
+			return c, true
+		}
+	}
+	return AuthConfig{}, false
 }
 
 func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -770,6 +913,7 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Type         string `json:"type"`
+		ConfigName   string `json:"configName"`
 		User         string `json:"username"`
 		Pass         string `json:"password"`
 		IDToken      string `json:"id_token"`
@@ -780,8 +924,14 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
+	var present map[string]json.RawMessage
+	_ = json.Unmarshal(body, &present)
+	_, hasConfigName := present["configName"]
+	f.mu.Lock()
+	f.loginRecords = append(f.loginRecords, LoginRecord{Type: req.Type, ConfigName: req.ConfigName, HasConfigName: hasConfigName})
+	f.mu.Unlock()
 	var userID string
-	provider := "local"
+	provider, configName := "local", ""
 	switch req.Type {
 	case "localProvider":
 		var found bool
@@ -798,13 +948,31 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "azureADProvider":
-		if f.idp == nil || !f.idp.validIDToken(req.IDToken) {
+		cfg, ok := f.loginConfig(req.Type, req.ConfigName)
+		if !ok || f.idp == nil || !f.idp.validIDToken(req.IDToken) {
 			f.recordCreate(CreateRecord{Kind: f.loginKind(req.ResponseType), Role: "session"})
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		userID = f.opts.Users[0].UserID
-		provider = "azuread"
+		userID = cfg.Users[0].UserID
+		provider, configName = "azuread", cfg.Name
+	case "openLdapProvider", "freeIpaProvider", "activeDirectoryProvider":
+		cfg, ok := f.loginConfig(req.Type, req.ConfigName)
+		var found bool
+		if ok {
+			for _, u := range cfg.Users {
+				if u.Name == req.User && u.Password == req.Pass {
+					userID, found = u.UserID, true
+					break
+				}
+			}
+		}
+		if !found {
+			f.recordCreate(CreateRecord{Kind: f.loginKind(req.ResponseType), Role: "session"})
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		provider, configName = providerName(req.Type), cfg.Name
 	default:
 		f.recordCreate(CreateRecord{Kind: f.loginKind(req.ResponseType), Role: "session"})
 		w.WriteHeader(http.StatusUnauthorized)
@@ -826,7 +994,7 @@ func (f *Facade) handleLogin(w http.ResponseWriter, r *http.Request) {
 	rec := f.newToken("", ttl.Milliseconds())
 	f.mu.Lock()
 	rec.kind = f.loginKind(req.ResponseType)
-	rec.provider = provider
+	rec.provider, rec.configName = provider, configName
 	if kubeconfig {
 		// Rancher names a kubeconfig token for the user, and for the cluster
 		// when the response type names one, ignores the request's description
@@ -1050,14 +1218,14 @@ func (f *Facade) handleTokensPOST(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	provider := f.bearerProvider(bearerFromHeader(r))
+	provider, configName := f.bearerIdentity(bearerFromHeader(r))
 	rec := f.newToken(createReq.Spec.ClusterName, f.requestedTTLMs(createReq.Spec.TTL, -1))
 	f.mu.Lock()
 	rec.kind = "ext"
 	rec.role = role
 	rec.description = createReq.Spec.Description
 	rec.userID = owner
-	rec.provider = provider
+	rec.provider, rec.configName = provider, configName
 	if createReq.Spec.Description != "" {
 		f.descriptions = append(f.descriptions, createReq.Spec.Description)
 	}
@@ -1156,14 +1324,14 @@ func (f *Facade) handleNormanTokensPOST(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	provider := f.bearerProvider(bearerFromHeader(r))
+	provider, configName := f.bearerIdentity(bearerFromHeader(r))
 	rec := f.newToken(req.ClusterID, f.requestedTTLMs(req.TTL, 0))
 	f.mu.Lock()
 	rec.kind = "v3"
 	rec.role = role
 	rec.description = req.Description
 	rec.userID = owner
-	rec.provider = provider
+	rec.provider, rec.configName = provider, configName
 	f.creates = append(f.creates, CreateRecord{Kind: "v3", Role: role, Name: rec.name, Bearer: bearerFromHeader(r), ClusterName: req.ClusterID, Description: req.Description, OwnerUserID: owner})
 	f.mu.Unlock()
 
@@ -1619,7 +1787,7 @@ func (f *Facade) handleKubeconfigsPOST(w http.ResponseWriter, r *http.Request) {
 	if !slices.Contains(r.URL.Query()["dryRun"], "All") {
 		f.forwardNamedCreate(r, "Kubeconfig", "ext.cattle.io/v1", name, spec)
 		owner, _ := f.BearerOwner(bearerFromHeader(r))
-		provider := f.bearerProvider(bearerFromHeader(r))
+		provider, configName := f.bearerIdentity(bearerFromHeader(r))
 		rec := f.newToken("", ttl.Milliseconds())
 		f.mu.Lock()
 		rec.kind = "ext"
@@ -1628,7 +1796,7 @@ func (f *Facade) handleKubeconfigsPOST(w http.ResponseWriter, r *http.Request) {
 		rec.description = kubeconfigTokenDescription
 		rec.userID = owner
 		rec.kubeconfigID = name
-		rec.provider = provider
+		rec.provider, rec.configName = provider, configName
 		f.mu.Unlock()
 		clusters := stringsFromAny(spec["clusters"])
 		currentContext, _ := spec["currentContext"].(string)
@@ -2343,26 +2511,31 @@ func expiryText(rec *record) string {
 }
 
 // principalOf is the name and provider of the principal a token's owner
-// signed in as.
+// signed in as: as Rancher v2.16 builds them, the auth config's name and
+// "_user://" and the user's id, with the provider name of the config's type.
 func principalOf(rec *record) (name, provider string) {
-	if rec.provider == "azuread" {
-		return "azuread_user://" + rec.userID, "azuread"
+	if rec.provider == "" || rec.provider == "local" {
+		return "local://" + rec.userID, "local"
 	}
-	return "local://" + rec.userID, "local"
+	config := rec.configName
+	if config == "" {
+		config = rec.provider
+	}
+	return config + "_user://" + rec.userID, rec.provider
 }
 
-// bearerProvider is the provider the owner of the token that bearer
-// authenticates signed in with; the seed token and an unknown bearer are
-// local.
-func (f *Facade) bearerProvider(bearer string) string {
+// bearerIdentity is the provider name and auth config name of the owner of
+// the token that bearer authenticates; the seed token and an unknown bearer
+// are local.
+func (f *Facade) bearerIdentity(bearer string) (provider, configName string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, rec := range f.tokens {
 		if rec.bearer() == bearer && rec.provider != "" {
-			return rec.provider
+			return rec.provider, rec.configName
 		}
 	}
-	return "local"
+	return "local", ""
 }
 
 // requestOrigin is the scheme and host the request came to.
