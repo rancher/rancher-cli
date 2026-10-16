@@ -72,7 +72,7 @@ func groupName(fullName string) string {
 // flagsFor converts a Descriptor's named Flags into urfave flags (string/bool).
 // ArgSpec.Desc feeds the flag's TTY usage text; a backtick-quoted word in it
 // sets the value placeholder (urfave's unquoteUsage), e.g. a Desc of
-// "patch `file`" renders "--filename file". Required-ness and Enum membership
+// "patch `file`" renders "--patch-file file". Required-ness and Enum membership
 // are intentionally NOT set on the urfave flag: they are enforced by
 // runtime.validateInput so violations surface as structured clierr envelopes
 // (urfave's own required/validator errors are unstructured).

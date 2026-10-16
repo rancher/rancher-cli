@@ -66,14 +66,14 @@ func (c patchCmd) Describe() runtime.Descriptor {
 }
 
 // patchFlags is delete's Route flag set (same Required-per-policy rules - patch
-// is always a named op) plus the two input sources: --patch (inline ops) and
-// --filename/-f (a file or "-" for stdin). Exactly one of the two is required,
-// enforced in Plan.
+// is always a named op) plus the two input sources, spelled as kubectl spells
+// them: --patch/-p (inline ops) and --patch-file (a file or "-" for stdin).
+// Exactly one of the two is required, enforced in Plan.
 func patchFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := deleteFlags(k)
 	return append(flags,
-		runtime.ArgSpec{Name: flagPatch, Type: "string", Desc: "inline RFC 6902 JSON `patch` ops"},
-		runtime.ArgSpec{Name: flagFilename, Type: "string", Aliases: []string{"f"}, Desc: "patch `file`, or - for stdin"},
+		runtime.ArgSpec{Name: flagPatch, Type: "string", Aliases: []string{"p"}, Desc: "inline RFC 6902 JSON `patch` ops"},
+		runtime.ArgSpec{Name: flagPatchFile, Type: "string", Desc: "patch `file`, or - for stdin"},
 	)
 }
 
@@ -160,16 +160,16 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	return eff, engine.RedactMutationResult(exec, c.k.RedactPaths, c.k.Sensitive), nil
 }
 
-// decodePatch enforces the exactly-one-of-{--patch,-f} rule and decodes the
-// RFC 6902 patch. A read error, both sources, neither source, or malformed ops
-// are VALIDATION errors.
+// decodePatch enforces the exactly-one-of-{--patch,--patch-file} rule and
+// decodes the RFC 6902 patch. A read error, both sources, neither source, or
+// malformed ops are VALIDATION errors.
 func (c patchCmd) decodePatch(in runtime.Input) (jsonpatch.Patch, error) {
 	inline := in.String(flagPatch)
-	file := in.String(flagFilename)
+	file := in.String(flagPatchFile)
 	var raw []byte
 	switch {
 	case inline != "" && file != "":
-		return nil, clierr.New(clierr.CodeValidation, "provide exactly one of --patch or -f, not both")
+		return nil, clierr.New(clierr.CodeValidation, "provide exactly one of --patch or --patch-file, not both")
 	case inline != "":
 		raw = []byte(inline)
 	case file != "":
@@ -179,7 +179,7 @@ func (c patchCmd) decodePatch(in runtime.Input) (jsonpatch.Patch, error) {
 		}
 		raw = b
 	default:
-		return nil, clierr.New(clierr.CodeValidation, "a patch is required: pass --patch or -f")
+		return nil, clierr.New(clierr.CodeValidation, "a patch is required: pass --patch or --patch-file")
 	}
 	patch, err := jsonpatch.DecodePatch(raw)
 	if err != nil {

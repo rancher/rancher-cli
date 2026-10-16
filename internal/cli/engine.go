@@ -391,10 +391,10 @@ func (s noticeSources) DrainNotices() []string {
 }
 
 // runDeps bundles everything a command constructor might need for one run: the
-// per-run cluster client factory, the file source for -f input, and the
-// resolved config dir/store. Each entry's constructor takes what it needs and
-// ignores the rest, so a command is one entry row - no per-shape adapter or
-// wiring switch.
+// per-run cluster client factory, the file source for create's -f and patch's
+// --patch-file input, and the resolved config dir/store. Each entry's
+// constructor takes what it needs and ignores the rest, so a command is one
+// entry row - no per-shape adapter or wiring switch.
 type runDeps struct {
 	clients    engine.ClusterClientFactory
 	roots      engine.RootClientFactory

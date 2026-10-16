@@ -26,6 +26,7 @@ const (
 	FlagProject   = runtime.FlagProject
 	flagFilename  = "filename"
 	flagPatch     = "patch"
+	flagPatchFile = "patch-file"
 	flagWait      = "wait"
 	flagFor       = "for"
 	flagTimeout   = "timeout"

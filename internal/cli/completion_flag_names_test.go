@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -151,6 +152,36 @@ func TestSupportBundleOutputFileCompletion(t *testing.T) {
 
 	assert.Empty(t, strings.TrimSpace(runNameLikeCompletion(t, []string{"support-bundle", "--output-file"}, "")))
 	assert.Empty(t, strings.TrimSpace(runNameLikeCompletion(t, []string{"support-bundle"}, "--output-file=")))
+}
+
+// TestPatchFileCompletion asserts that `patch pod --patch-f<TAB>` offers
+// only --patch-file, that `-<TAB>` and `--<TAB>` offer --patch-file and
+// --patch (with -p only for `-<TAB>`) and neither -f nor --filename, and that
+// --patch-file's value gets no candidate, so the shell falls back to file
+// names.
+func TestPatchFileCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	partial := extractTokens(runNameLikeCompletion(t, []string{"patch", "pod"}, "--patch-f"))
+	assert.Equal(t, []string{"--patch-file"}, partial)
+
+	for _, tc := range []struct {
+		cur       string
+		wantShort bool
+	}{{"-", true}, {"--", false}} {
+		tokens := extractTokens(runNameLikeCompletion(t, []string{"patch", "pod"}, tc.cur))
+		assert.Contains(t, tokens, "--patch-file", tc.cur)
+		assert.Contains(t, tokens, "--patch", tc.cur)
+		assert.Equal(t, tc.wantShort, slices.Contains(tokens, "-p"), tc.cur)
+		assert.NotContains(t, tokens, "-f", tc.cur)
+		assert.NotContains(t, tokens, "--filename", tc.cur)
+	}
+
+	assert.Empty(t, strings.TrimSpace(runNameLikeCompletion(t, []string{"patch", "pod", "--patch-file"}, "")))
+	assert.Empty(t, strings.TrimSpace(runNameLikeCompletion(t, []string{"patch", "pod"}, "--patch-file=")))
 }
 
 // TestFlagNameCompletionConfigSetCompletion is the user-reported reproduction:

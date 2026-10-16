@@ -27,9 +27,29 @@ jsonquery label-eff.json data.diff.0.to web
 exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $LABEL_PATCH --dry-run
 stdout '  /metadata/labels/app\.kubernetes\.io~1name: <nil> -> web'
 
-# exactly one of --patch/-f
-! exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $PATCH -f cm.yaml
-stderr 'error \(VALIDATION\):'
+# -p is --patch, as in kubectl
+exec rancher patch configmap patch-cm --cluster testcluster --namespace default -p $LABEL_PATCH --dry-run -o json
+jsonquery stdout data.diff.0.to web
+
+# --patch-file reads the ops from a file, or from stdin for -
+exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch-file ops.json --dry-run -o json
+jsonquery stdout data.diff.0.path /data/key
+jsonquery stdout data.diff.0.to fromfile
+stdin ops.json
+exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch-file - --dry-run -o json
+jsonquery stdout data.diff.0.to fromfile
+
+# exactly one of --patch/--patch-file, not both and not neither
+! exec rancher patch configmap patch-cm --cluster testcluster --namespace default --patch $PATCH --patch-file ops.json -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message 'provide exactly one of --patch or --patch-file, not both'
+! exec rancher patch configmap patch-cm --cluster testcluster --namespace default -o json
+jsonquery stderr data.error.message 'a patch is required: pass --patch or --patch-file'
+
+# -f is not a patch flag: kubectl's -f names the object, not the patch
+! exec rancher patch configmap patch-cm --cluster testcluster --namespace default -f ops.json -o json
+jsonquery stderr data.error.code VALIDATION
+stderr 'flag provided but not defined: -f'
 
 env SECRET_PATCH='[{"op":"replace","path":"/data/password","value":"bmV3"}]'
 
@@ -54,6 +74,8 @@ exec rancher patch secret patch-secret --cluster testcluster --namespace default
 exec rancher get secret patch-secret --cluster testcluster --namespace default -o json
 jsonquery stdout data.data.password bmV3
 
+-- ops.json --
+[{"op":"replace","path":"/data/key","value":"fromfile"}]
 -- cm.yaml --
 apiVersion: v1
 kind: ConfigMap

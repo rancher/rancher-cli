@@ -18,6 +18,7 @@ var kubectlAliases = map[string]string{
 	"all-namespaces": "A",
 	"selector":       "l",
 	"filename":       "f",
+	"patch":          "p",
 }
 
 // aliasProblems lists how the flags of d break the alias table:

@@ -15,7 +15,7 @@ func newFileSource(stdin io.Reader) engine.FileSource { return fileSource{stdin:
 func (f fileSource) Read(path string) ([]byte, error) {
 	if path == "-" {
 		if f.stdin == nil {
-			return nil, fmt.Errorf("no stdin available for -f -")
+			return nil, fmt.Errorf("no stdin available")
 		}
 		return io.ReadAll(f.stdin)
 	}

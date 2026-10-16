@@ -6855,16 +6855,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -6919,16 +6919,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -6983,16 +6983,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7047,16 +7047,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7112,16 +7112,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7168,16 +7168,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7232,16 +7232,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7298,16 +7298,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7361,16 +7361,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7439,16 +7439,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7515,16 +7515,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7592,16 +7592,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7669,16 +7669,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7733,16 +7733,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7810,16 +7810,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7866,16 +7866,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7932,16 +7932,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -7997,16 +7997,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8053,16 +8053,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8110,16 +8110,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8175,16 +8175,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8252,16 +8252,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8328,16 +8328,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8405,16 +8405,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8461,16 +8461,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8526,16 +8526,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8590,16 +8590,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8654,16 +8654,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8713,16 +8713,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8783,16 +8783,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8845,16 +8845,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8901,16 +8901,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -8958,16 +8958,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9024,16 +9024,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9101,16 +9101,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9178,16 +9178,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9240,16 +9240,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9306,16 +9306,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9372,16 +9372,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9450,16 +9450,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9506,16 +9506,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9583,16 +9583,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9661,16 +9661,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9738,16 +9738,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9794,16 +9794,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9872,16 +9872,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9928,16 +9928,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -9985,16 +9985,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],
@@ -10050,16 +10050,16 @@
           "type": "string"
         },
         {
+          "aliases": [
+            "p"
+          ],
           "desc": "inline RFC 6902 JSON `patch` ops",
           "name": "patch",
           "type": "string"
         },
         {
-          "aliases": [
-            "f"
-          ],
           "desc": "patch `file`, or - for stdin",
-          "name": "filename",
+          "name": "patch-file",
           "type": "string"
         }
       ],

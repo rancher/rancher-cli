@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,27 +79,36 @@ func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {
 	assert.Contains(t, env.Data.Error.Message, "create resource")
 }
 
-// TestPatchShortFlag exercises the real urfave tree: `patch pod web -f ops.json`
-// must parse the `-f` alias on a generated patch command. The missing file is a
-// VALIDATION error, proving the alias reached the leaf (the flag parsed at all).
-func TestPatchShortFlag(t *testing.T) {
+// TestPatchFlagSpellings asserts on the real urfave tree that a generated
+// patch command takes kubectl's spellings of its two input flags: -p is
+// --patch and --patch-file names the patch file, each reaching the leaf
+// (the patch is decoded or the file read), while -f and --filename are
+// unknown flags.
+func TestPatchFlagSpellings(t *testing.T) {
+	restoreRawArgv(t)
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
-	dir := t.TempDir()
-	root, err := BuildRoot("v-test")
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		name string
+		tail []string
+		want string
+	}{
+		{"-p is --patch", []string{"-p", "{}"}, "invalid patch: "},
+		{"--patch-file reads the file", []string{"--patch-file", "does-not-exist.json"}, `cannot read patch "does-not-exist.json"`},
+		{"-f is unknown", []string{"-f", "ops.json"}, "flag provided but not defined: -f"},
+		{"--filename is unknown", []string{"--filename", "ops.json"}, "flag provided but not defined: -filename"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := BuildRoot("v-test")
+			require.NoError(t, err)
+			argv := slices.Concat([]string{"--config", t.TempDir(), "-o", "json", "patch", "pod", "web"}, tc.tail,
+				[]string{"--cluster", "local", "--namespace", "default", "--dry-run"})
+			stderr, code := runAsMain(t, root, argv)
+			assert.Equal(t, 2, code)
 
-	var out, errBuf bytes.Buffer
-	root.Writer = &out
-	root.ErrWriter = &errBuf
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
-
-	runErr := root.Run(t.Context(), []string{
-		"rancher", "--config", dir, "-o", "json", "patch", "pod", "web",
-		"-f", "does-not-exist.json", "--cluster", "local", "--namespace", "default", "--dry-run",
-	})
-	require.Error(t, runErr, "-f must parse on a generated patch command")
-
-	var env errEnvelope
-	require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
-	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+			var env errEnvelope
+			require.NoError(t, json.Unmarshal([]byte(stderr), &env))
+			assert.Equal(t, "VALIDATION", env.Data.Error.Code)
+			assert.Contains(t, env.Data.Error.Message, tc.want)
+		})
+	}
 }

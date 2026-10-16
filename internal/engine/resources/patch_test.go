@@ -478,15 +478,41 @@ func TestPatchExactlyOneInputSource(t *testing.T) {
 	t.Parallel()
 	fac := &recFactory{client: &patchClient{obj: objFromJSON(t, `{"apiVersion":"management.cattle.io/v3","kind":"Cluster","metadata":{"name":"c1"}}`)}}
 
-	// both --patch and -f → VALIDATION.
+	// both --patch and --patch-file → VALIDATION.
 	_, _, err := planPatch(t, NewPatch(mustKind(t, "cluster"), fac, mapFileSource{"p.json": []byte("[]")}),
-		input{args: []string{"c1"}, s: map[string]string{"patch": "[]", "filename": "p.json"}})
+		input{args: []string{"c1"}, s: map[string]string{"patch": "[]", "patch-file": "p.json"}})
 	requireValidation(t, err)
+	require.ErrorContains(t, err, "provide exactly one of --patch or --patch-file, not both")
 
 	// neither → VALIDATION.
 	_, _, err = planPatch(t, NewPatch(mustKind(t, "cluster"), fac, nil),
 		input{args: []string{"c1"}, s: map[string]string{}})
 	requireValidation(t, err)
+	require.ErrorContains(t, err, "a patch is required: pass --patch or --patch-file")
+}
+
+// TestPatchReadsOpsFromPatchFile asserts that --patch-file names the file
+// the ops are read from, and that a read failure is VALIDATION naming the
+// file.
+func TestPatchReadsOpsFromPatchFile(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)
+	fac := &recFactory{client: &patchClient{obj: orig}, resolve: map[string]string{"prod": "c-abc"}}
+	src := mapFileSource{"ops.json": []byte(`[{"op":"replace","path":"/spec/replicas","value":3}]`)}
+
+	eff, _, err := planPatch(t, NewPatch(mustKind(t, "deployment"), fac, src), input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns1", "patch-file": "ops.json",
+	}})
+	require.NoError(t, err)
+	require.Len(t, eff.Diff, 1)
+	assert.Equal(t, "/spec/replicas", eff.Diff[0].Path)
+	assert.EqualValues(t, 3, eff.Diff[0].To)
+
+	_, _, err = planPatch(t, NewPatch(mustKind(t, "deployment"), fac, src), input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns1", "patch-file": "absent.json",
+	}})
+	requireValidation(t, err)
+	require.ErrorContains(t, err, `cannot read patch "absent.json"`)
 }
 
 func TestPatchInvalidOpsRejected(t *testing.T) {
