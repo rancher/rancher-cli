@@ -356,7 +356,7 @@ func (t *OracleTarget) revokedBearer(ctx context.Context) (string, error) {
 
 // standardUserGoneTimeout bounds the wait for a deleted standard user to
 // leave the username lookup. Rancher deletes users asynchronously: on the
-// pinned 2.15.1 the lookup still returned the deleted user about 250 ms
+// 2.15.1 oracle the lookup still returned the deleted user about 250 ms
 // after DELETE answered 200, and a create in that window can be refused
 // as a duplicate username.
 var standardUserGoneTimeout = 10 * time.Second

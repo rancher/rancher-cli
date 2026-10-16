@@ -136,9 +136,10 @@ func TestCompleteQuestionSubresources(t *testing.T) {
 }
 
 // legacyGroupsRoot serves the core root as the aggregated document and
-// the groups root the way Rancher's local cluster does: 406 to the
-// aggregated Accept header, the legacy group list to plain JSON, and one
-// legacy document per group version; the dead group's document is 503.
+// the groups root the way the local cluster of Rancher v2.15.0 and
+// v2.15.1 does: 406 to the aggregated Accept header, the legacy group
+// list to plain JSON, and one legacy document per group version; the dead
+// group's document is 503.
 func legacyGroupsRoot(t *testing.T) *completiontest.Server {
 	t.Helper()
 	return completiontest.NewByAccept(t, func(path, accept string) (string, int) {

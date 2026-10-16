@@ -187,12 +187,12 @@ var maxDiscoveryBytes int64 = 16 << 20
 // version, subresources included as "<resource>/<sub>" entries. It asks
 // for aggregated discovery first: two requests (/api, /apis) bound to
 // ctx. A server whose answer to either root is not a 200
-// APIGroupDiscoveryList is walked the legacy way instead (Rancher's local
-// cluster does not serve aggregated discovery for /apis through the
-// proxy: it answers 406 to this header, and a legacy APIGroupList to
-// plain JSON): the plain root documents name the groups and their
-// preferred versions, then one document per group version is read, each
-// request bound to ctx. Either way a partial answer is returned as the
+// APIGroupDiscoveryList is walked the legacy way instead (the local
+// cluster of Rancher v2.15.0 and v2.15.1 does not serve aggregated
+// discovery for /apis through the proxy: it answers 406 to this header,
+// and a legacy APIGroupList to plain JSON): the plain root documents name
+// the groups and their preferred versions, then one document per group
+// version is read, each request bound to ctx. Either way a partial answer is returned as the
 // partial list TOGETHER with an *engine.DiscoveryIncomplete naming the
 // group versions the server could not describe (a stale aggregated
 // entry, a 503 discovery document), so a caller can tell a complete

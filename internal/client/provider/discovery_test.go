@@ -109,8 +109,8 @@ func TestServerResourcesAggregatedMarksStaleGroup(t *testing.T) {
 }
 
 // TestServerResourcesFallsBackToLegacyAndKeepsPartialError asserts the
-// Rancher-local shape: /apis answers a legacy APIGroupList whatever the
-// Accept header says, so discovery takes the per-group path, and a group
+// shape of the local cluster of Rancher v2.15.0 and v2.15.1: /apis answers
+// a legacy APIGroupList, so discovery takes the per-group path, and a group
 // whose document answers 503 is reported as DiscoveryIncomplete alongside
 // the resources of the groups that answered.
 func TestServerResourcesFallsBackToLegacyAndKeepsPartialError(t *testing.T) {

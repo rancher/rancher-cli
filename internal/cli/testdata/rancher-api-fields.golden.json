@@ -2,8 +2,8 @@
   "module": "github.com/rancher/rancher/pkg/apis",
   "oracles": {
     "community": {
-      "tag": "v2.15.1",
-      "pseudoVersion": "v0.0.0-20260827224206-8c257d748d23"
+      "tag": "v2.15.2",
+      "pseudoVersion": "v0.0.0-20260923184111-272e65580ca9"
     },
     "prime": {
       "tag": "v2.14.5",
@@ -17,22 +17,22 @@
       "fields": {
         "clusters": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "currentContext": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "description": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "includeDefaultEntry": [
-          "v2.15.1"
+          "v2.15.2"
         ],
         "ttl": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ]
       }
     },
@@ -42,15 +42,15 @@
       "fields": {
         "currentPassword": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "newPassword": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "userID": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ]
       }
     },
@@ -60,31 +60,31 @@
       "fields": {
         "clusterName": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "description": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "enabled": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "kind": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "ttl": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "userID": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "userPrincipal": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ]
       }
     },
@@ -94,23 +94,23 @@
       "fields": {
         "description": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "redirectURIs": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "refreshTokenExpirationSeconds": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "scopes": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "tokenExpirationSeconds": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ]
       }
     },
@@ -120,27 +120,27 @@
       "fields": {
         "clusterName": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "containerDefaultResourceLimit": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "description": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "displayName": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "namespaceDefaultResourceQuota": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "resourceQuota": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ]
       }
     },
@@ -150,35 +150,35 @@
       "fields": {
         "description": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "displayName": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "enabled": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "me": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "mustChangePassword": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "password": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "principalIds": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "username": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ]
       }
     },
@@ -188,54 +188,54 @@
       "fields": {
         "agentEnvVars": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "cloudCredentialSecretName": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "clusterAPIConfig": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "clusterAgentDeploymentCustomization": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "defaultClusterRoleForProjectMembers": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "defaultPodSecurityAdmissionConfigurationTemplateName": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "enableNetworkPolicy": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "fleetAgentDeploymentCustomization": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "kubernetesVersion": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "localClusterAuthEndpoint": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "redeploySystemAgentGeneration": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "rkeConfig": [
           "v2.14.5",
-          "v2.15.1"
+          "v2.15.2"
         ],
         "webhookDeploymentCustomization": [
-          "v2.15.1"
+          "v2.15.2"
         ]
       }
     }

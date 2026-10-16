@@ -33,8 +33,9 @@ func New(tb testing.TB, bodies map[string]string) *Server {
 
 // NewByAccept serves bodies chosen by path and Accept header: answer
 // returns the body and status for a request, so a test can stand in for a
-// server that refuses one media type (Rancher's local cluster answers
-// 406 to the aggregated discovery header) and serves another.
+// server that refuses one media type (the local cluster of Rancher
+// v2.15.0 and v2.15.1 answers 406 to the aggregated discovery header) and
+// serves another.
 func NewByAccept(tb testing.TB, answer func(path, accept string) (body string, status int)) *Server {
 	tb.Helper()
 	s := &Server{}

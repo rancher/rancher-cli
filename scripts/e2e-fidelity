@@ -9,7 +9,7 @@ set -euo pipefail
 # change. PRIME_ORACLE_IMAGE is the opt-in Prime oracle (E2E_FIDELITY_PRIME=1) -
 # it has no goldens; the suite boots it with the same downstream, smoke-checks
 # it, and leaves a kept pair for hand runs and fact probes against Prime.
-ORACLE_IMAGE="rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5"
+ORACLE_IMAGE="rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
 # K3S_IMAGE is the downstream cluster the oracle imports on every boot, so
 # the fidelity facts that need a downstream (the access-downstream family)

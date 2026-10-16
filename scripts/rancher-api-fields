@@ -24,7 +24,7 @@ set -euo pipefail
 # commit, and the module proxy names that commit's pkg/apis
 # pseudo-version, which the golden records (needs network access to the
 # repository as well).
-COMMUNITY_TAG="v2.15.1"
+COMMUNITY_TAG="v2.15.2"
 PRIME_TAG="v2.14.5"
 RANCHER_REPO="https://github.com/rancher/rancher"
 module="github.com/rancher/rancher/pkg/apis"

@@ -48,14 +48,15 @@ func All() []Probe {
 
 // discoveryProbes records the discovery shapes the provider's
 // ServerResources depends on: the aggregated document the downstream
-// serves (both roots), the local cluster's refusal to serve it through
-// the proxy (a legacy list whatever the Accept header says), and a dead
-// aggregated API group's legacy discovery document (503, text/plain),
-// which is what makes the provider report a partial answer. The dead group
-// is an APIService pointing at a service that does not exist, created
-// and removed around the observation; the aggregated Stale mark for it
-// appears only after the API server's availability controller runs, so
-// that shape is asserted by unit tests, not a probe.
+// serves (both roots), the local cluster's answer to the aggregated header
+// through the proxy (406 on Rancher v2.15.0 and v2.15.1, the aggregated
+// document from v2.15.2), and a dead aggregated API group's legacy
+// discovery document (503, text/plain), which is what makes the provider
+// report a partial answer. The dead group is an APIService pointing at a
+// service that does not exist, created and removed around the observation;
+// the aggregated Stale mark for it appears only after the API server's
+// availability controller runs, so that shape is asserted by unit tests,
+// not a probe.
 func discoveryProbes() []Probe {
 	const (
 		aggregatedAccept = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList," +
@@ -76,11 +77,14 @@ func discoveryProbes() []Probe {
 			Normalize: []NormalizeRule{{Path: "items", Replace: "<scrubbed>"}, {Path: "metadata", Replace: "<scrubbed>"}},
 		},
 		{
-			Name: "discovery/aggregated-not-served-on-local", OracleOnly: true,
+			// Rancher v2.15.0 and v2.15.1 redirected the local cluster's /apis
+			// to /apis/, which answers the aggregated-only header with 406;
+			// v2.15.2 serves the aggregated document there.
+			Name: "discovery/aggregated-on-local", OracleOnly: true,
 			Observations: []Observation{
 				{Name: "apis", Request: RequestSpec{Method: http.MethodGet, Path: "/k8s/clusters/local/apis", Headers: map[string]string{"Accept": aggregatedAccept}, Identity: IdentityAdmin}},
 			},
-			Normalize: []NormalizeRule{{Path: "groups", Replace: "<scrubbed>"}},
+			Normalize: []NormalizeRule{{Path: "items", Replace: "<scrubbed>"}, {Path: "metadata", Replace: "<scrubbed>"}},
 		},
 		{
 			Name: "discovery/dead-group-legacy-document", Downstream: true,

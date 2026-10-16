@@ -72,10 +72,10 @@ const AggregatedDiscoveryAccept = "application/json;g=apidiscovery.k8s.io;v=v2;a
 
 // IsAggregatedDiscovery reports whether a discovery answer's Content-Type
 // names the aggregated document. A server that does not serve it answers
-// the same request with something else (Rancher's local cluster: 406 to
-// the aggregated-only header, a legacy APIGroupList to a header that also
-// lists plain JSON), so the answer's content type, not the request,
-// decides which parser applies.
+// the same request with something else (the local cluster of Rancher
+// v2.15.0 and v2.15.1: 406 to the aggregated-only header, a legacy
+// APIGroupList to a header that also lists plain JSON), so the answer's
+// content type, not the request, decides which parser applies.
 func IsAggregatedDiscovery(contentType string) bool {
 	return strings.Contains(contentType, "as=APIGroupDiscoveryList")
 }

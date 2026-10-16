@@ -91,6 +91,10 @@ func callerScopeProbes() []Probe {
 		{Path: "metadata.fields", Replace: "<fields>"},
 		{Path: "metadata.relationships", Replace: "<relationships>"},
 		{Path: "status.conditions", SortBy: "type"},
+		// Rancher adds PreBootstrapped to the in-memory cluster record and
+		// stores it only on a later status write, so whether a read shows it
+		// depends on timing; the CLI reads Connected and Ready only.
+		{Path: "status.conditions", DropBy: "type", DropPrefix: "PreBootstrapped"},
 		{Path: "status.conditions.lastUpdateTime"},
 		{Path: "status.conditions.lastTransitionTime"},
 		{Path: "status.conditions.message"},

@@ -147,11 +147,12 @@ const legacyWorkers = 8
 // aggregated document contributes the first version the server did not
 // mark stale, as the commands' own discovery picks it; a stale version
 // contributes nothing, since a suggestion must be valid verbatim. A root
-// that does not serve it (Rancher's local cluster answers its /apis
-// with the legacy list whatever the Accept header says) is walked the
-// way the commands' own discovery walks it: the plain root document,
-// then one document per group in the server's preferred version, at
-// most completion.DiscoveryGroupLimit of them. A root or a group
+// that does not serve it (the local cluster of Rancher v2.15.0 and
+// v2.15.1 answers its /apis with the legacy list to plain JSON and with
+// 406 to the aggregated-only header) is walked the way the commands' own
+// discovery walks it: the plain root document, then one document per
+// group in the server's preferred version, at most
+// completion.DiscoveryGroupLimit of them. A root or a group
 // document that fails contributes nothing.
 func readDiscovery(ctx context.Context, conn *completion.Connection, clusterID string) []resource {
 	core, groups, err := completion.DiscoveryPaths(clusterID)

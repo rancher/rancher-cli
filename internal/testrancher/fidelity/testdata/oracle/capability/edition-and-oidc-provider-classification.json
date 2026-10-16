@@ -1,14 +1,14 @@
 {
-  "oracleImage": "rancher/rancher:v2.15.1@sha256:5f6c4dc52a05e0c400b53c08bf778ca55790f277e443b5881269158499b7ebe5",
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
   "observations": [
     {
       "name": "edition",
       "status": 200,
       "contentType": "text/plain",
       "body": {
-        "GitCommit": "8c257d748d23d4812092e28cc92b2a6f3e4dd594",
+        "GitCommit": "272e65580ca92b9dc51e0f0f0f9ae9d6d356e3b8",
         "RancherPrime": "false",
-        "Version": "v2.15.1"
+        "Version": "v2.15.2"
       }
     },
     {
