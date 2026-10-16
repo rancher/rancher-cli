@@ -99,11 +99,19 @@ func TestResolveScopeNamespaceMustExist(t *testing.T) {
 	assert.Equal(t, "team-a", m["namespace"])
 	_, hasList := m["namespaces"]
 	assert.False(t, hasList, "targets are not wire scope")
+	missing := clierr.New(clierr.CodeNotFound, "namespace not found: ghost").
+		WithHint("list with: rancher get namespaces --cluster 'c-phmj7'")
+	c.GetErrFor = map[string]error{"ghost": missing}
 	_, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{namespace: "ghost"}, runtime.Project{})
+	assert.Same(t, missing, err, "a missing namespace is the GET's NOT_FOUND, unchanged")
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	require.ErrorContains(t, err, "namespace ghost not found on cluster c-phmj7")
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+
+	forbidden := clierr.New(clierr.CodeRBAC, "namespaces \"team-a\" is forbidden")
+	c.GetErrFor = map[string]error{"team-a": forbidden}
+	_, err = resolveScope(t.Context(), c, "c-phmj7", scopeFlags{namespace: "team-a"}, runtime.Project{})
+	assert.Same(t, forbidden, err, "a refused namespace read is the GET's error, unchanged")
 }
 
 // TestResolveScopeProjectAndAllNamespacesTakeListedNames asserts the

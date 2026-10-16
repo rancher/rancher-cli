@@ -2,7 +2,6 @@ package access
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -110,19 +109,17 @@ func typedProject(ctx context.Context, in runtime.Input, clusterID string) (runt
 }
 
 // resolveScope turns the validated selector into targets on the already
-// resolved cluster. It existence-checks only a user-supplied namespace;
-// names returned by a successful LIST are targets as listed. p is the
-// project typedProject read, the zero Project when none was typed.
+// resolved cluster. It existence-checks only a user-supplied namespace; a
+// missing one is the GET's NOT_FOUND, as in the commands that read the
+// namespace or a named object in it. Names returned by a successful LIST
+// are targets as listed. p is the project typedProject read, the zero
+// Project when none was typed.
 func resolveScope(ctx context.Context, client engine.ClusterClient, clusterID string, f scopeFlags, p runtime.Project) (Scope, error) {
 	sc := Scope{Cluster: clusterID}
 	nsKind, _ := kinds.Lookup("namespace")
 	switch {
 	case f.namespace != "":
 		if _, err := client.Get(ctx, nsKind.GVR, "", f.namespace); err != nil {
-			if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeNotFound {
-				return Scope{}, clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("namespace %s not found on cluster %s", f.namespace, clusterID))
-			}
 			return Scope{}, err
 		}
 		sc.mode, sc.Namespace, sc.targets = scopeNamespace, f.namespace, []string{f.namespace}
