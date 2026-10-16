@@ -14,7 +14,7 @@ require (
 	github.com/gofrs/flock v0.13.1
 	github.com/rogpeppe/go-internal v1.16.0
 	github.com/stretchr/testify v1.12.1
-	github.com/tidwall/gjson v1.19.0
+	github.com/tidwall/gjson v1.20.0
 	github.com/urfave/cli/v3 v3.14.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/net v0.60.0
