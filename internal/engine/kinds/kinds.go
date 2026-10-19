@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 type Scope string
@@ -169,6 +170,38 @@ type Kind struct {
 	// none). Declared once here; get/patch/delete each copy it into their own
 	// Descriptor so the manifest, help, and runtime pipeline cannot drift.
 	Capability runtime.CapabilityRequirement
+	// Handle is set on a kind whose positional argument is the object's id
+	// while users know the object by another field (a username, a display
+	// name): the generated get, patch and delete name the argument Handle.Arg
+	// and, on a miss, look the typed text up in Handle.Lookup. Nil for a kind
+	// whose name is what users type.
+	Handle *Handle
+	// ArgDesc is the schema description of the generated verbs' positional
+	// argument. Set on every Handle row and on the management cluster, whose
+	// argument takes an id or a display name and has no Handle.
+	ArgDesc string
+}
+
+// Handle names the positional argument of a kind whose users do not type the
+// object's id, and the fields they type instead.
+type Handle struct {
+	// Arg is the positional argument's name in help and the schema ("id").
+	Arg string
+	// Lookup lists the fields a user knows the object by. Two contracts
+	// hold for every row:
+	//   - a candidate is named by the last non-empty field of its object in
+	//     Lookup order; the field that reads best as a name is listed last;
+	//   - a project row is matched through the project lister on the
+	//     project's display name, and its message uses the first label; its
+	//     Path serves the guard and help only.
+	Lookup []HandleField
+}
+
+// HandleField is one field of an object that a user may type in place of
+// its id.
+type HandleField struct {
+	Path  []string // field path in the object, e.g. {"spec", "displayName"}
+	Label string   // plain name in messages, e.g. "display name"
 }
 
 // PrefixFilter marks objects whose string-array field at Path carries an
@@ -346,6 +379,9 @@ var table = []Kind{
 		Key: "managementcluster", Name: "cluster", Aliases: []string{"clusters"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusters"},
 		Policy: NSNone, K8sKind: "Cluster", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
+
+		ArgDesc: "cluster id or display name",
+
 		NoDeleteReason: "cluster deletion goes through delete provisioning-cluster",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
@@ -355,6 +391,10 @@ var table = []Kind{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"},
 		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true,
+
+		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
+		ArgDesc: "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
+
 		// Cascade verified against rancher source 2026-08-05
 		// (pkg/controllers/managementuser/rbac/project_handler.go Remove):
 		// namespaces carrying field.cattle.io/creatorId are deleted, adopted
@@ -625,6 +665,13 @@ var table = []Kind{
 		Key: "user", Name: "user", Aliases: []string{"users"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "users"},
 		Policy: NSNone, K8sKind: "User", Scope: Management, Deletable: true, Completable: true, Sensitive: true,
+
+		Handle: &Handle{Arg: "id", Lookup: []HandleField{
+			{Path: []string{"username"}, Label: "username"},
+			{Path: []string{"displayName"}, Label: "display name"},
+		}},
+		ArgDesc: "user id (the NAME column of rancher get users), not the username or display name",
+
 		Binding: safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		// The Norman v3 user store hides any user whose principalIds carry a
 		// system:// entry from every API response (user_store.go, "filter
@@ -661,6 +708,10 @@ var table = []Kind{
 		Key: "roletemplate", Name: "roletemplate", Aliases: []string{"roletemplates"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "roletemplates"},
 		Policy: NSNone, K8sKind: "RoleTemplate", Scope: Management, Deletable: false, Sensitive: true,
+
+		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
+		ArgDesc: "role template id (the NAME column of rancher get roletemplates), not the display name",
+
 		NoDeleteReason: "role vocabulary consumed by grant/revoke",
 		Binding:        safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns:        []Column{{Header: "CONTEXT", Path: []string{"context"}}, {Header: "DISPLAY", Path: []string{"displayName"}}},
@@ -669,6 +720,10 @@ var table = []Kind{
 		Key: "globalrole", Name: "globalrole", Aliases: []string{"globalroles"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalroles"},
 		Policy: NSNone, K8sKind: "GlobalRole", Scope: Management, Deletable: false, Sensitive: true,
+
+		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
+		ArgDesc: "global role id (the NAME column of rancher get globalroles), not the display name",
+
 		NoDeleteReason: "role vocabulary consumed by grant/revoke",
 		Binding:        safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 	},
@@ -916,6 +971,10 @@ var table = []Kind{
 		Key: "nodedriver", Name: "nodedriver", Aliases: []string{"nodedrivers"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "nodedrivers"},
 		Policy: NSNone, K8sKind: "NodeDriver", Scope: Management, Deletable: false, Sensitive: true,
+
+		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
+		ArgDesc: "node driver id (the NAME column of rancher get nodedrivers), not the display name",
+
 		NoDeleteReason: "drivers are deactivated via spec.active, not deleted; builtin drivers are Rancher-managed",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
@@ -1094,6 +1153,9 @@ func validateKinds(ts []Kind) error {
 				return fmt.Errorf("kind %q SystemFilter has an empty Label", k.Key)
 			}
 		}
+		if err := validateHandle(k); err != nil {
+			return err
+		}
 		// Plural-first alias invariant: every row must register at least one
 		// alias and Aliases[0] must equal plural(strings.ReplaceAll(k.Name,
 		// "-", "")). hintToken relies on this to produce a resolvable CLI
@@ -1120,6 +1182,43 @@ func validateKinds(ts []Kind) error {
 			return fmt.Errorf("kind rows %q and %q share Group+Resource {%q, %q}: ByGVR cannot distinguish them", prev, k.Key, k.GVR.Group, k.GVR.Resource)
 		}
 		seenGR[gr] = k.Key
+	}
+	return nil
+}
+
+// validateHandle rejects a Handle the generated verbs could not use: an
+// argument name that is not a DNS-1123 label, a missing ArgDesc, and a lookup
+// that names no field, an empty path or segment, or two fields with one
+// label.
+func validateHandle(k Kind) error {
+	h := k.Handle
+	if h == nil {
+		return nil
+	}
+	if h.Arg == "" || len(validation.IsDNS1123Label(h.Arg)) > 0 {
+		return fmt.Errorf("kind %q Handle.Arg %q must be a DNS-1123 word", k.Key, h.Arg)
+	}
+	if k.ArgDesc == "" {
+		return fmt.Errorf("kind %q has a Handle and an empty ArgDesc", k.Key)
+	}
+	if len(h.Lookup) == 0 {
+		return fmt.Errorf("kind %q Handle has an empty Lookup", k.Key)
+	}
+	labels := map[string]bool{}
+	for _, f := range h.Lookup {
+		if len(f.Path) == 0 {
+			return fmt.Errorf("kind %q Handle.Lookup has an empty Path", k.Key)
+		}
+		if slices.Contains(f.Path, "") {
+			return fmt.Errorf("kind %q Handle.Lookup path %v has an empty segment", k.Key, f.Path)
+		}
+		if f.Label == "" {
+			return fmt.Errorf("kind %q Handle.Lookup path %v has an empty Label", k.Key, f.Path)
+		}
+		if labels[f.Label] {
+			return fmt.Errorf("kind %q Handle.Lookup repeats the label %q", k.Key, f.Label)
+		}
+		labels[f.Label] = true
 	}
 	return nil
 }

@@ -85,7 +85,7 @@ var remedyLiteralAllowed = []struct {
 
 // descriptorDocFields hold a command's own help and examples, which are
 // not remedies.
-var descriptorDocFields = map[string]bool{"Examples": true, "Desc": true, "Usage": true}
+var descriptorDocFields = map[string]bool{"Examples": true, "Desc": true, "Usage": true, "ArgDesc": true}
 
 // TestRemedyCommandsOnTheExecPluginPathsUseTheMarker asserts no remedy on
 // the exec plugin's and the kubeconfig command's paths is written as plain

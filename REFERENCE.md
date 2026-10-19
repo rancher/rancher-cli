@@ -605,6 +605,20 @@ Every kind in the schema vocabulary gets its generated verbs by these rules:
   `--yes`): deleting a user removes the identity record and Rancher's
   controllers cascade-remove the user's role bindings (cluster memberships,
   project memberships, global role bindings) with it.
+- `user`, `project`, `roletemplate`, `globalrole` and `nodedriver` take the
+  object's id as the argument, named `id` in help and the schema: the NAME
+  column of `get`, not the username or display name. When a named `get`,
+  `patch` or `delete` misses and the typed text is exactly the username or
+  display name of an object, the error message says which id that is, the
+  object is listed in `data.error.candidates`, and the hint is `rancher get
+  <kind> '<id>'`; several objects with that text stay `NOT_FOUND` with every
+  candidate listed. The lookup is one more read with the caller's own
+  credential and a 10 s limit, only after a miss; any failure leaves the
+  original error. Nothing acts on a match. A project is looked up among the
+  projects the caller can read on the `--cluster` cluster, and also after a
+  refusal (RBAC), because a project member's role allows a get by id only;
+  the error keeps its code and message. `get cluster` and `patch cluster`
+  take an id or a display name.
 - `create` is bespoke per kind where a real creation UX exists (`project`,
   `namespace`, `secret`, `token`, `kubeconfig`, `cluster`); `create
   resource -f` covers any supported kind from a manifest.

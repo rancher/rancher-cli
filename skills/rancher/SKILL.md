@@ -743,6 +743,18 @@ rancher oidc-client rotate-secret my-app --apply --yes
   `--namespace` (`-n`) scopes namespaced kinds. Scope is per-invocation only -
   no cluster or project is persisted or implied. Fleet kinds default to the
   `fleet-default` workspace.
+- **Ids:** `get`, `patch` and `delete` of a `user`, `project`, `roletemplate`,
+  `globalrole` or `nodedriver` take the object's id (the argument is `id` in
+  the schema), not its username or display name. A `NOT_FOUND` on a typed
+  username or display name names the id in `data.error.message`, lists it in
+  `data.error.candidates` and hints `rancher get <kind> '<id>'`; a project
+  also needs `--cluster`. Take the id from there and run the verb again.
+  When several objects have that text the code stays `NOT_FOUND` (exit 4)
+  and `data.error.candidates` lists each one. A project member who types a
+  display name is refused (`RBAC`, exit 6) instead; the message and
+  candidates follow the same rules (the id on one match, the ids as
+  candidates on several). `cluster` takes an id or a display
+  name.
 - **Project scope (`--project`):** `--project <id-or-name>` names a project on
   the cluster `--cluster` names; pass both. Only the commands whose `rancher
   schema` entry lists a `project` flag take it (generated `get`/`delete`/`patch`

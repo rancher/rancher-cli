@@ -33,7 +33,7 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 		// instead because it lists (see plural in get.go); patch matches this.
 		Usage:       "Delete the " + c.k.Name,
 		CommandType: runtime.Mutating,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Args:        []runtime.ArgSpec{argSpec(c.k, true)},
 		Flags:       deleteFlags(c.k),
 		Destructive: "true",
 		Auth:        true,
@@ -72,7 +72,7 @@ func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <"+argName(c.k)+"> is required")
 	}
 	name := args[0]
 
@@ -88,7 +88,7 @@ func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	}
 	obj, err := client.Get(ctx, c.k.GVR, ns, name)
 	if err != nil {
-		return safety.Effect{}, nil, err
+		return safety.Effect{}, nil, lookupHandle(ctx, c.clients, client, c.k, ns, name, err)
 	}
 	return PlanFromFetched(ctx, client, c.k, ns, name, obj, effectCluster)
 }

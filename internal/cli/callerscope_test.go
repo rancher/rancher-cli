@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -165,8 +166,11 @@ func (q callerRequest) String() string { return q.method + " " + q.path }
 type callerScopeServer struct {
 	base    string
 	collide bool
-	mu      sync.Mutex
-	reqs    []callerRequest
+	// projectMiss makes the local proxy answer a GET of one named project
+	// with NOT_FOUND, as it does for a name that is no project's id.
+	projectMiss atomic.Bool
+	mu          sync.Mutex
+	reqs        []callerRequest
 }
 
 func (s *callerScopeServer) clusters() []testrancher.ClusterFixture {
@@ -312,7 +316,17 @@ func newCallerHarness(t *testing.T, collide bool) *callerHarness {
 			return []testrancher.NamespaceFixture{{Name: "default", Project: "p-1"}}, known(b)
 		},
 		RequestHook: s.record,
-		Fallthrough: http.HandlerFunc(callerFallthrough),
+		Fallthrough: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rest, ok := strings.CutPrefix(r.URL.Path, "/k8s/clusters/local/apis/management.cattle.io/v3/namespaces/")
+			if segs := strings.Split(rest, "/"); ok && s.projectMiss.Load() && r.Method == http.MethodGet && len(segs) == 3 && segs[1] == "projects" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{"kind": "Status", "apiVersion": "v1", "metadata": map[string]any{},
+					"status": "Failure", "message": "projects.management.cattle.io \"" + segs[2] + "\" not found", "reason": "NotFound", "code": 404})
+				return
+			}
+			callerFallthrough(w, r)
+		}),
 	})
 	hs := httptest.NewTLSServer(f)
 	t.Cleanup(hs.Close)

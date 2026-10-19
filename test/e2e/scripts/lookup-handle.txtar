@@ -1,0 +1,43 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# Seed a user whose id is not its username or display name.
+exec rancher create resource -f user.yaml --apply --yes
+
+# The id reads the user.
+exec rancher get user u-handle-1 -o json
+jsonquery stdout data.username handle-alice
+
+# A username in place of the id names the id: message, candidate and hint.
+! exec rancher get user handle-alice -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'user not found: handle-alice; ''handle-alice'' is the username of user u-handle-1'
+jsonquery stderr data.error.hint 'rancher get user ''u-handle-1'''
+jsonquery stderr data.error.candidates.0.id u-handle-1
+jsonquery stderr data.error.candidates.0.name 'Handle Alice'
+
+# The same for the display name, on delete, which acts on nothing.
+! exec rancher delete user 'Handle Alice' --dry-run -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'user not found: Handle Alice; ''Handle Alice'' is the display name of user u-handle-1'
+jsonquery stderr data.error.hint 'rancher get user ''u-handle-1'''
+exec rancher get user u-handle-1 -o json
+jsonquery stdout data.metadata.name u-handle-1
+
+# A value that is no user's username or display name keeps the plain miss.
+! exec rancher delete user handle-nobody --dry-run -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr data.error.message 'user not found: handle-nobody'
+jsonquery stderr data.error.hint 'list with: rancher get users'
+
+exec rancher delete user u-handle-1 --apply --yes
+
+-- user.yaml --
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: u-handle-1
+displayName: Handle Alice
+username: handle-alice
+principalIds:
+  - local://u-handle-1

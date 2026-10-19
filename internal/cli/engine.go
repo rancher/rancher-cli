@@ -369,6 +369,24 @@ func (f *clientFactory) resolveCluster(ctx context.Context, nameOrID, flag strin
 	return id, nil
 }
 
+// ListProjects implements engine.ProjectNameLister: the projects the caller
+// can read on clusterID, read through steve.
+func (f *clientFactory) ListProjects(ctx context.Context, clusterID string) ([]engine.ProjectRef, error) {
+	root, err := f.Root()
+	if err != nil {
+		return nil, err
+	}
+	projects, err := steve.Projects(ctx, steve.RootGetter(root), clusterID)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]engine.ProjectRef, 0, len(projects))
+	for _, p := range projects {
+		refs = append(refs, engine.ProjectRef{ID: p.ID, DisplayName: p.DisplayName})
+	}
+	return refs, nil
+}
+
 // DrainNotices implements runtime.NoticeSource: the warnings of the
 // cluster lookups so far, each once.
 func (f *clientFactory) DrainNotices() []string {

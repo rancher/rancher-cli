@@ -154,6 +154,12 @@ Nouns accept singular, plural, and short aliases (`get pod` = `get pods` =
 Every generated `get <kind>` list takes `--selector` (`-l`), a Kubernetes
 label selector applied by the server (`get pods --selector app=web,tier!=cache`);
 it cannot be combined with a name.
+
+`get`, `patch` and `delete` of a `user`, `project`, `roletemplate`,
+`globalrole` or `nodedriver` take the object's id, not its username or
+display name. A miss names the id only when the typed text is exactly the
+username or display name of one object.
+
 Per-kind verb rules and kind notes:
 [REFERENCE.md](REFERENCE.md#kinds--verbs). Composite commands:
 [REFERENCE.md](REFERENCE.md#composite-commands). Project scoping:

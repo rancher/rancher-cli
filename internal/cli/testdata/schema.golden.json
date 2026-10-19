@@ -2915,7 +2915,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
+          "name": "id",
           "required": true,
           "type": "string"
         }
@@ -3440,7 +3441,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "user id (the NAME column of rancher get users), not the username or display name",
+          "name": "id",
           "required": true,
           "type": "string"
         }
@@ -3825,6 +3827,7 @@
       ],
       "args": [
         {
+          "desc": "cluster id or display name",
           "name": "name",
           "type": "string"
         }
@@ -4570,7 +4573,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "global role id (the NAME column of rancher get globalroles), not the display name",
+          "name": "id",
           "type": "string"
         }
       ],
@@ -5293,7 +5297,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "node driver id (the NAME column of rancher get nodedrivers), not the display name",
+          "name": "id",
           "type": "string"
         }
       ],
@@ -5572,7 +5577,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
+          "name": "id",
           "type": "string"
         }
       ],
@@ -5581,7 +5587,7 @@
       "contract": "public",
       "flags": [
         {
-          "desc": "cluster `id|name`; required to address a project by name, omit to list across clusters",
+          "desc": "cluster `id|name`; required to address a project by id, omit to list across clusters",
           "name": "cluster",
           "type": "string"
         },
@@ -5799,7 +5805,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "role template id (the NAME column of rancher get roletemplates), not the display name",
+          "name": "id",
           "type": "string"
         }
       ],
@@ -6200,7 +6207,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "user id (the NAME column of rancher get users), not the username or display name",
+          "name": "id",
           "type": "string"
         }
       ],
@@ -7187,6 +7195,7 @@
       ],
       "args": [
         {
+          "desc": "cluster id or display name",
           "name": "name",
           "required": true,
           "type": "string"
@@ -8189,7 +8198,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "global role id (the NAME column of rancher get globalroles), not the display name",
+          "name": "id",
           "required": true,
           "type": "string"
         }
@@ -9154,7 +9164,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "node driver id (the NAME column of rancher get nodedrivers), not the display name",
+          "name": "id",
           "required": true,
           "type": "string"
         }
@@ -9532,7 +9543,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
+          "name": "id",
           "required": true,
           "type": "string"
         }
@@ -9840,7 +9852,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "role template id (the NAME column of rancher get roletemplates), not the display name",
+          "name": "id",
           "required": true,
           "type": "string"
         }
@@ -10382,7 +10395,8 @@
       ],
       "args": [
         {
-          "name": "name",
+          "desc": "user id (the NAME column of rancher get users), not the username or display name",
+          "name": "id",
           "required": true,
           "type": "string"
         }

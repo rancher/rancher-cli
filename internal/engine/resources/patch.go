@@ -57,7 +57,7 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		// "patch" appeared twice per line.
 		Usage:       "Patch the " + c.k.Name,
 		CommandType: runtime.Mutating,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
+		Args:        []runtime.ArgSpec{argSpec(c.k, true)},
 		Flags:       patchFlags(c.k),
 		Destructive: destructive,
 		Auth:        true,
@@ -84,7 +84,7 @@ func patchFlags(k kinds.Kind) []runtime.ArgSpec {
 func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <"+argName(c.k)+"> is required")
 	}
 	name := args[0]
 	// The patch is checked before the cluster name lookup, so a patch that
@@ -111,7 +111,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	}
 	orig, err := client.Get(ctx, c.k.GVR, ns, name)
 	if err != nil {
-		return safety.Effect{}, nil, err
+		return safety.Effect{}, nil, lookupHandle(ctx, c.clients, client, c.k, ns, name, err)
 	}
 	rv := orig.GetResourceVersion()
 

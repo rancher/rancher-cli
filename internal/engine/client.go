@@ -104,6 +104,18 @@ func ResolveClusterArgument(ctx context.Context, clients ClusterClientFactory, n
 	return clients.ResolveCluster(ctx, nameOrID)
 }
 
+// ProjectRef is one project the caller can read: its id (metadata.name) and
+// its display name.
+type ProjectRef struct{ ID, DisplayName string }
+
+// ProjectNameLister is implemented by a ClusterClientFactory that can list the
+// projects the caller can read on one cluster. The generated verbs use it, on
+// a miss, to tell a caller who typed a project's display name which id it
+// has; a factory without it leaves the miss as the server answered it.
+type ProjectNameLister interface {
+	ListProjects(ctx context.Context, clusterID string) ([]ProjectRef, error)
+}
+
 // RootClient is the GET-only port for reads against the Rancher server
 // ROOT (Steve /v1 collections, the channel-server release routes) - the
 // surfaces ClusterClient's per-cluster /k8s/clusters/<id> proxy cannot

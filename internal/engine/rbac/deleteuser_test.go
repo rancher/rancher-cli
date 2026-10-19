@@ -414,3 +414,32 @@ func TestDeleteUserProbeRateLimitedRefusesWithGuardText(t *testing.T) {
 	assert.Equal(t, clierr.CodeRBAC, refused.Code, "a classified 403 passes through")
 	assert.NotContains(t, refused.Message, "could not verify the target")
 }
+
+// TestDeleteUserTypedUsernameNamesTheIDAndDeletesNothing asserts a username in
+// place of the id passes the self-delete guard (which compares the typed
+// argument with the caller's own id), is not found, and is answered with the
+// id of the user it names; nothing is deleted, not even as a dry run, even
+// when that user is the caller.
+func TestDeleteUserTypedUsernameNamesTheIDAndDeletesNothing(t *testing.T) {
+	t.Parallel()
+	k := userKind(t)
+	c := &fakeClient{
+		createFn:    selfUserCreate("u-self"),
+		allowDelete: true,
+		users: []map[string]any{
+			{"metadata": map[string]any{"name": "u-self"}, "username": "alice", "displayName": "Alice"},
+			{"metadata": map[string]any{"name": "u-other"}, "username": "bob"},
+		},
+	}
+	cmd := NewDeleteUser(k, fakeFactory{c: c})
+
+	_, err := planDeleteUser(t, cmd, stubInput{args: []string{"alice"}})
+	var ce *clierr.Error
+	require.ErrorAs(t, err, &ce)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, "not found: alice; 'alice' is the username of user u-self", ce.Message)
+	assert.Equal(t, clierr.Rancher+" get user 'u-self'", ce.Hint)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-self", Name: "Alice"}}, ce.Candidates)
+	assert.Empty(t, c.deleteDryRuns)
+	assert.Empty(t, c.deletedNames)
+}

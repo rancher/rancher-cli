@@ -414,7 +414,7 @@ func (*delClient) ServerResources(context.Context) ([]engine.APIResource, error)
 // patch require it, as the cluster of the object, with no advice to omit it.
 func TestDeleteAndPatchRequiredClusterDescDropsTheListAdvice(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"project", "clusterroletemplatebinding"} {
+	for name, by := range map[string]string{"project": "id", "clusterroletemplatebinding": "name"} {
 		k, ok := kinds.Lookup(name)
 		require.True(t, ok, name)
 		require.Equal(t, kinds.NSCluster, k.Policy, name)
@@ -424,7 +424,7 @@ func TestDeleteAndPatchRequiredClusterDescDropsTheListAdvice(t *testing.T) {
 			if flags[i].Required {
 				assert.Equal(t, "cluster `id|name` of the "+name, flags[i].Desc)
 			} else {
-				assert.Equal(t, "cluster `id|name`; required to address a "+name+" by name, omit to list across clusters", flags[i].Desc)
+				assert.Equal(t, "cluster `id|name`; required to address a "+name+" by "+by+", omit to list across clusters", flags[i].Desc)
 			}
 		}
 	}

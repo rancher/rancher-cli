@@ -94,7 +94,7 @@ func (c getCmd) Describe() runtime.Descriptor {
 		Usage:       "List " + kinds.Plural(c.k.Name) + " or show one",
 		Desc:        desc,
 		CommandType: runtime.ReadOnly,
-		Args:        []runtime.ArgSpec{{Name: "name", Type: "string"}},
+		Args:        []runtime.ArgSpec{argSpec(c.k, false)},
 		Flags:       flags,
 		Auth:        true,
 		Capability:  c.k.Capability,
@@ -119,7 +119,7 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	switch k.Policy {
 	case kinds.NSCluster:
 		f := engine.ClusterFlag(false, false)
-		f.Desc = "cluster `id|name`; required to address a " + k.Name + " by name, omit to list across clusters"
+		f.Desc = "cluster `id|name`; required to address a " + k.Name + " by " + argName(k) + ", omit to list across clusters"
 		flags = []runtime.ArgSpec{f}
 	case kinds.NSWorkspace:
 		flags = []runtime.ArgSpec{engine.NamespaceFlag(false)}
@@ -166,7 +166,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--for/--timeout require --wait")
 	}
 	if wait && !named {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait requires a resource name")
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait requires a resource "+argName(c.k))
 	}
 	if wait && c.k.WaitDefault == "" && forExpr == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -225,6 +225,11 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			one, err = client.Get(ctx, c.k.GVR, ns, name)
 		}
 		if err != nil {
+			// A wait polls through a refusal as transient; only a miss
+			// looks the typed text up there.
+			if !wait || clierr.IsNotFound(err) {
+				err = lookupHandle(ctx, c.clients, client, c.k, ns, in.Args()[0], err)
+			}
 			return runtime.Result{}, err
 		}
 		warnings := append(waitWarnings, c.enrichWarnings(ctx, one)...)
@@ -405,7 +410,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		if clusterFlag == "" {
 			if named {
 				return "", "", "", nil, clierr.New(clierr.CodeValidation,
-					"--cluster is required to address a "+k.Name+" by name")
+					"--cluster is required to address a "+k.Name+" by "+argName(k))
 			}
 			return engine.LocalCluster, "", "", nil, nil // list across all clusters
 		}
