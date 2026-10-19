@@ -1,17 +1,24 @@
 #!/bin/bash
 # Runs the unit tests: every package with the race detector, except the
-# ones listed in norace below, which run in a second pass without it. The
-# passes run one after the other with their output streaming, both always
-# run, and the script exits non-zero when either failed. Flags given to
-# this script go to both passes and replace the default -cover.
+# ones listed in norace below, which run without it. The passes run one
+# after the other with their output streaming, each always runs, and the
+# script exits non-zero when any failed. Flags given to this script go to
+# every pass and replace the default -cover.
 #
 # -coverprofile=FILE is the one flag that writes a file. Each pass writes
-# its own profile and the two are merged into FILE (the profiles hold
+# its own profile and they are merged into FILE (the profiles hold
 # different packages); -covermode=atomic is added unless the flags name a
 # mode, because the merged profiles must share one.
 #
-# The listed packages hold the source scans (test/conformance) and the
-# cache model (test/cachemodel). Their tests read files or enumerate
+# The source scans (test/conformance) list the repository's files with a
+# git subprocess, which Go's test cache does not see: a cached PASS would
+# survive an added or renamed file. Their package, listed in fresh below,
+# always runs with -count=1 unless the flags name a count; the other
+# packages may come from the cache. Every fresh entry must also be in
+# norace (the script refuses one that is not).
+#
+# The listed norace packages hold the source scans (test/conformance) and
+# the cache model (test/cachemodel). Their tests read files or enumerate
 # states and test no concurrent code, so the race detector has nothing to
 # find, and under it they run several times slower (the
 # planning-reference scan about 18 times). A package on this list must
@@ -27,6 +34,19 @@ set -e
 cd "$(dirname "$0")/.."
 
 norace=(test/conformance test/cachemodel)
+fresh=(test/conformance)
+for f in "${fresh[@]}"; do
+  listed=
+  for dir in "${norace[@]}"; do
+    if [ "$f" = "$dir" ]; then
+      listed=1
+    fi
+  done
+  if [ -z "$listed" ]; then
+    echo "error: $f is in fresh but not in norace" >&2
+    exit 2
+  fi
+done
 
 flags=()
 profile=
@@ -75,30 +95,59 @@ while IFS= read -r pkg; do
 done <<<"$all_pkgs"
 
 norace_pkgs=()
+fresh_pkgs=()
 for dir in "${norace[@]}"; do
-  norace_pkgs+=("$module/$dir")
+  is_fresh=
+  for f in "${fresh[@]}"; do
+    if [ "$dir" = "$f" ]; then
+      is_fresh=1
+    fi
+  done
+  if [ -n "$is_fresh" ]; then
+    fresh_pkgs+=("$module/$dir")
+  else
+    norace_pkgs+=("$module/$dir")
+  fi
+done
+
+count_named=
+for f in "${flags[@]}"; do
+  case "$f" in
+    -count | --count | -count=* | --count=* | -test.count | --test.count | -test.count=* | --test.count=*) count_named=1 ;;
+  esac
 done
 
 race_flags=("${flags[@]}")
 norace_flags=("${flags[@]}")
+fresh_flags=("${flags[@]}")
+if [ -z "$count_named" ]; then
+  fresh_flags+=(-count=1)
+fi
 if [ -n "$profile" ]; then
   profiles=$(mktemp -d)
   trap 'rm -rf "$profiles"' EXIT
   if [ -z "$covermode" ]; then
     race_flags+=(-covermode=atomic)
     norace_flags+=(-covermode=atomic)
+    fresh_flags+=(-covermode=atomic)
   fi
   race_flags+=("-coverprofile=$profiles/race")
   norace_flags+=("-coverprofile=$profiles/norace")
+  fresh_flags+=("-coverprofile=$profiles/fresh")
 fi
 
 status=0
 go test -race "${race_flags[@]}" "${race_pkgs[@]}" || status=1
-go test "${norace_flags[@]}" "${norace_pkgs[@]}" || status=1
+if [ ${#norace_pkgs[@]} -gt 0 ]; then
+  go test "${norace_flags[@]}" "${norace_pkgs[@]}" || status=1
+fi
+if [ ${#fresh_pkgs[@]} -gt 0 ]; then
+  go test "${fresh_flags[@]}" "${fresh_pkgs[@]}" || status=1
+fi
 
 if [ -n "$profile" ]; then
   written=()
-  for f in "$profiles/race" "$profiles/norace"; do
+  for f in "$profiles/race" "$profiles/norace" "$profiles/fresh"; do
     if [ -s "$f" ]; then
       written+=("$f")
     fi

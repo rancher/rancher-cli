@@ -16,7 +16,7 @@ Go: the version go.mod names (1.27). Automation is `make`, dispatching to
 | Command | Does |
 |---|---|
 | `make build` | build `bin/rancher` (CGO-free) |
-| `make test` | `go test -cover` on every package, with `-race` on all but `test/conformance` and `test/cachemodel` |
+| `make test` | `go test -cover` on every package, with `-race` on all but `test/conformance` and `test/cachemodel`; `test/conformance` runs uncached |
 | `make validate` | gofmt, vet, lint, tests (race detector except the source scans and the cache model) - the commit gate; CI runs it as two parallel jobs, `./scripts/validate static` and `./scripts/validate tests` |
 | `make e2e` | envtest provider suite + testscript scenarios |
 | `make e2e-fidelity` | verify recorded fidelity goldens against a real Rancher in Docker with an imported k3s downstream (~7-9 min boot; never on PRs - CI runs it on demand or weekly) |
@@ -30,6 +30,10 @@ Go: the version go.mod names (1.27). Automation is `make`, dispatching to
 `make` with no target runs `ci` (the full pipeline).
 
 Two gotchas:
+
+- **The source scans never come from the test cache.** `test/conformance`
+  lists the repository's files through git, which Go's test cache does
+  not see, so `scripts/test` runs it with `-count=1`.
 
 - **The e2e suite is behind a build tag** - a bare `go test ./test/e2e/` silently runs
   nothing. Use `make e2e`.

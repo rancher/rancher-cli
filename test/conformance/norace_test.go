@@ -261,3 +261,25 @@ func TestNoRaceScanSeesConcurrency(t *testing.T) {
 		assert.Len(t, concurrencyUses(fset, file), c.want, c.name)
 	}
 }
+
+// freshListRE matches the script's one list of packages that run with
+// -count=1.
+var freshListRE = regexp.MustCompile(`(?m)^fresh=\(([^)]*)\)$`)
+
+// TestFreshPackagesRunUncached asserts that the script lists the source
+// scans' package as one that always runs uncached, in one fresh list whose
+// every entry is also in norace (the pass that runs it).
+func TestFreshPackagesRunUncached(t *testing.T) {
+	t.Parallel()
+	script, err := os.ReadFile(noRaceScriptPath)
+	require.NoError(t, err)
+	lists := freshListRE.FindAllStringSubmatch(string(script), -1)
+	require.Len(t, lists, 1, "%s holds exactly one fresh=(...) list", noRaceScriptPath)
+	fresh := strings.Fields(lists[0][1])
+	assert.Contains(t, fresh, "test/conformance", "the source scans list files through git, which the test cache does not see")
+	norace, err := noRacePackages(string(script))
+	require.NoError(t, err)
+	for _, dir := range fresh {
+		assert.Contains(t, norace, dir, "%s is in fresh but not in norace", dir)
+	}
+}
