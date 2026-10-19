@@ -142,6 +142,10 @@ type cachedCred struct {
 	// Identified is the entry the call's --name identified, empty for
 	// none.
 	Identified string `json:"identified,omitempty"`
+	// UserID is the call's --user-id, empty for a call without one. The
+	// key carries it too; a record is served only to the call whose key
+	// names the same user.
+	UserID string `json:"userId,omitempty"`
 	// Entry and BindingID are the identified entry and its cache binding
 	// id, for a call that identified one.
 	Entry     string `json:"entry,omitempty"`
@@ -220,6 +224,18 @@ func CacheKeyFor(name, serverHost, cluster, userID string) string {
 		return key
 	}
 	return UserIDCachePrefix + userID + "/" + key
+}
+
+// userIDOfKey is the user id a cache key carries: the one CacheKeyFor puts
+// after UserIDCachePrefix, ended by the first "/", or "" for a key of a
+// call without --user-id.
+func userIDOfKey(key string) string {
+	rest, ok := strings.CutPrefix(key, UserIDCachePrefix)
+	if !ok {
+		return ""
+	}
+	id, _, _ := strings.Cut(rest, "/")
+	return id
 }
 
 // fileStore keeps tokens in a 0600 YAML map file.
@@ -502,10 +518,10 @@ func (f *fileStore) GetCachedCredDetail(key string, anchor *CacheAnchor) (Cached
 		return CachedCredDetail{}, ErrNoToken
 	}
 	live := cred.Expiry.IsZero() || !time.Now().After(cred.Expiry)
-	if live && anchor.valid(cred) {
+	if live && anchor.validFor(key, cred) {
 		return CachedCredDetail{Token: cred.Token, Expiry: cred.Expiry, ReadyEndpoints: cred.ReadyEndpoints}, nil
 	}
-	if live && !anchor.staleRecord(cred) {
+	if live && !anchor.staleRecord(key, cred) {
 		// A reader that cannot judge the record serves nothing and
 		// deletes nothing: the record may be another process's perfectly
 		// good one.
@@ -533,7 +549,7 @@ func (f *fileStore) GetCachedCredDetail(key string, anchor *CacheAnchor) (Cached
 		if !ok {
 			return nil
 		}
-		if (c.Expiry.IsZero() || !time.Now().After(c.Expiry)) && anchor.valid(c) {
+		if (c.Expiry.IsZero() || !time.Now().After(c.Expiry)) && anchor.validFor(key, c) {
 			refreshed = &c
 			return nil
 		}

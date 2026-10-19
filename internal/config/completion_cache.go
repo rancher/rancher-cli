@@ -141,7 +141,7 @@ func ReadOnlyCachedCred(dir, key string, anchor *CacheAnchor) (token string, exp
 	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
 		return "", time.Time{}, notice, ErrNoToken
 	}
-	if !anchor.valid(cred) {
+	if !anchor.validFor(key, cred) {
 		return "", time.Time{}, notice, ErrNoToken
 	}
 	return cred.Token, cred.Expiry, notice, nil
@@ -187,7 +187,7 @@ func ReadOnlyCachedCredsForClusterWithTokens(dir, serverHost, cluster string, an
 	}
 	var out []CachedCredEntry
 	for _, e := range all {
-		if e.Server == serverHost && e.Cluster == cluster && anchor.valid(e.record) {
+		if e.Server == serverHost && e.Cluster == cluster && anchor.validFor(e.Key, e.record) {
 			out = append(out, e)
 		}
 	}

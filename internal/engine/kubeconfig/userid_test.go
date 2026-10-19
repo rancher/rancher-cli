@@ -74,25 +74,24 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 			lines: 3,
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner, so the exec plugin does not check the user; " +
-					"pipe an API token to rancher --config '" + dir + "' auth login <name> --url '" + recordsURL + "' --token-stdin, with a name of your choice for <name>, " +
-					"then rancher --config '" + dir + "' config use-server <name> (this sets the directory's current server, which is unset now), then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
+					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
+					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
 			}},
 		{name: "a plugin login entry no entry is named for records no owner, the session's CA a path",
 			setup: recordsSetup{envURL: recordsURL, envToken: true, envCA: caPath, cfg: pluginOnly, loggedIn: []string{"exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner, so the exec plugin does not check the user; " +
-					"pipe an API token to rancher --config '" + dir + "' auth login <name> --url '" + recordsURL + "' --cacert '" + caPath + "' --token-stdin, with a name of your choice for <name>, " +
-					"then rancher --config '" + dir + "' config use-server <name> (this sets the directory's current server, which is unset now), then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
+					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
+					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
 			}},
 		{name: "a plugin login entry no entry is named for records no owner, the session's CA inline",
 			setup: recordsSetup{envURL: recordsURL, envToken: true, envCA: pemCA, cfg: pluginOnly, loggedIn: []string{"exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
 				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner, so the exec plugin does not check the user; " +
-					"pipe an API token to rancher --config '" + dir + "' auth login <name> --url '" + recordsURL + "' --token-stdin, with a name of your choice for <name>, " +
-					"adding --cacert with the path of a file that holds the server's CA certificate, which RANCHER_CLI_CACERT carries inline, " +
-					"then rancher --config '" + dir + "' config use-server <name> (this sets the directory's current server, which is unset now), then rancher --config '" + dir + "' kubeconfig --cluster 'c-1'"
+					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
+					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
 			}},
 		{name: "an owner --user-id would refuse", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod": {URL: recordsURL, TokenUserID: "U/1"}}), loggedIn: []string{"prod"}, unowned: true},
 			lines: 2,
@@ -172,8 +171,8 @@ func TestKubeconfigRefusesANameAuthGetTokenRefuses(t *testing.T) {
 // a login that records no owner never names auth login on a name in the
 // exec plugin's own login entry namespace, which auth login refuses
 // whatever the entry's provenance: an entry carrying such a name, as its
-// own login's entry or as the entry a plugin login entry answered for,
-// gets the login of a new entry instead.
+// own login's entry or as the entry a plugin login entry answered for, is
+// removed instead.
 func TestKubeconfigNamesNoLoginOfAPluginLoginEntryName(t *testing.T) {
 	keyring.MockInit()
 	plugin := config.Server{URL: recordsURL, Provenance: clierr.ProvenanceExecLogin}
@@ -197,7 +196,11 @@ func TestKubeconfigNamesNoLoginOfAPluginLoginEntryName(t *testing.T) {
 			}
 			require.NotEmpty(t, notice, "the login records no owner, so the notice is printed")
 			assert.NotContains(t, notice, "auth login 'exec-login-")
-			assert.Contains(t, notice, "rancher --config '"+dir+"' auth login <name> --url '"+recordsURL+"' --token-stdin, with a name of your choice for <name>")
+			entry := tc.setup.cfg.CurrentServer
+			if len(tc.setup.loggedIn) == 1 {
+				entry = tc.setup.loggedIn[0]
+			}
+			assert.Contains(t, notice, "remove '"+entry+"' with rancher --config '"+dir+"' auth logout '"+entry+"', then rancher --config '"+dir+"' config delete-server '"+entry+"'")
 		})
 	}
 }

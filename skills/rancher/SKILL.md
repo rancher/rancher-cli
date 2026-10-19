@@ -109,7 +109,8 @@ the keychain), with the keychain reachable, then run the command again.
   not a stored login session.
 - Kubeconfigs that use the exec plugin log in once per cluster by default.
   `rancher config set-token-reuse on` lets the plugin keep one login
-  credential per server (entry `exec-login-<host>`, provenance `execLogin`)
+  credential per server (entry `exec-login-<host>`, with `-<user id>` after it
+  for a call with `--user-id`; provenance `execLogin`)
   and create cluster tokens from it silently; `off` restores the default
   without deleting it. `rancher config status` lists every entry whose
   CLI-created tokens are still live, each with a four-command recovery
@@ -487,17 +488,27 @@ switches the directory's current server for every process using it (switch
 back with `rancher config use-server <previous>`), then
 `rancher kubeconfig --cluster <id>`.
 The exec entry also carries `--user-id <id>` when that login records its
-owner: the plugin then hands kubectl only that user's tokens. It refuses
-(`AUTH`) an entry whose login records another user, revokes a created
+owner: the plugin then hands kubectl only that user's tokens. Rancher writes
+the form `auth get-token --server <url> [--cluster <id>] --user-id <id>`
+with no `--name`; `--cluster` may be left out for a token for Rancher itself.
+With no `--name` (or one that identifies no entry) the plugin reads the
+entries for the URL that record that user - user entries first, the current
+server first, then by name, the plugin's own login entries only with token
+reuse on - and the first with a login answers; an entry that records no owner
+or another user is never read. It refuses (`AUTH`) the entry its `--name`
+identifies when that login records another user, revokes a created
 token whose owner is not the user (`AUTH`; `GENERIC` when the response
 names none), fails closed on a Rancher without `ext.cattle.io`
 (`CAPABILITY_UNSUPPORTED`), and after an interactive sign-in checks the
-user with one `SelfSubjectReview`. The refusal of an entry whose login
-records another user, and of a created token another user's login made,
-name a login of a user entry with `--token-stdin`, or of a new entry when no
-user entry is the call's, never one of the plugin's own login entries; the
-others name no login. Without a terminal the error says which plugin login
-entry it did not use and why. A notice says
+user with one `SelfSubjectReview`. The plugin-created login (token reuse on)
+writes `exec-login-<host>-<user id>`, never over an entry of another user. The
+refusal of an entry whose login records another user names a login of a user
+entry with `--token-stdin`, or, for the plugin's own login entry, its removal
+with `auth logout` and `config delete-server`. Without a terminal the error
+names a token of that user piped to `auth login`. With no `--name` no remedy
+names `--config`. With token reuse on, a call without `--user-id` is refused
+(`AMBIGUOUS_SELECTION`) when no user entry answers and the URL has more than
+one plugin login entry, since there is one per user. A notice says
 when the login records no owner (log in again without `--no-verify`, then
 regenerate the kubeconfig). `--name` values starting with `user-id:` are
 reserved.

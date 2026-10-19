@@ -208,6 +208,11 @@ type Descriptor struct {
 	// shell that runs the remedy does not carry. Go-only; the manifest
 	// does not carry it.
 	RemedyConfigDir bool `json:"-"`
+	// RemedyConfigDirUnless, when set, is asked with the parsed flags and
+	// leaves the remedies without the config directory for a call it says
+	// yes to, whose environment already names the directory. Go-only; used
+	// only with RemedyConfigDir.
+	RemedyConfigDirUnless func(Input) bool `json:"-"`
 }
 
 // EffectiveServerAccess is the server access the command runs with: the

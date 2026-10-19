@@ -306,8 +306,8 @@ func dispatchSite(
 		if execCommandSite(site, d) {
 			return execCommandCandidates(site)
 		}
-		// auth get-token --user-id: the owner the identified entry
-		// records, from config.yaml. Owned even when empty.
+		// auth get-token --user-id: the owners the entries record, from
+		// config.yaml. Owned even when empty.
 		if userIDSite(site, d) {
 			return userIDCandidates(site, tail)
 		}

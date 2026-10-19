@@ -472,7 +472,7 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 				if err != nil {
 					return renderDepsError(c, io, err)
 				}
-				if d.RemedyConfigDir {
+				if d.RemedyConfigDir && (d.RemedyConfigDirUnless == nil || !d.RemedyConfigDirUnless(cmdInput{c})) {
 					io.RemedyDir = remedyDirFor(dir)
 				}
 				store, anchor, err := openDirectory(dir)

@@ -2,8 +2,10 @@
 # kubeconfig names that owner with --user-id after --name; kubectl through
 # the file gets a token the server reports as that user's, and the next
 # call is served from that user's cache slot. A --user-id naming another
-# user is refused before any request, and --user-id without --name is
-# refused.
+# user is refused before any request. The form Rancher writes - --user-id
+# without --name, with a cluster and without one for a token for Rancher
+# itself - chooses the stored login by its recorded owner, is served from
+# the cache on the next call, and prints no remedy that names --config.
 [!kubectl] skip 'kubectl not on PATH'
 
 stdin token.txt
@@ -40,10 +42,57 @@ jsonquery stdout 'data.#' 1
 jsonquery stderr data.error.code AUTH
 stderr 'server entry ''e2e'' holds the login of Rancher user ''e2e-admin'', and this exec entry names user ''u-other'' with --user-id'
 
-# --user-id needs --name.
-! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id e2e-admin -o json
+# The form Rancher writes: --user-id without --name chooses the login that
+# records that user. Its token is cached in the slot of the user, and the
+# next call returns it.
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id e2e-admin
+cp stdout rancher-form.json
+jsonquery stdout kind ExecCredential
+! stdout 'e2e:secret'
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 2
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id e2e-admin
+cmp stdout rancher-form.json
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 2
+
+# Without --cluster it is a token for Rancher itself, cached in its own slot.
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --user-id e2e-admin
+cp stdout unscoped.json
+jsonquery stdout kind ExecCredential
+! cmp stdout rancher-form.json
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 3
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --user-id e2e-admin
+cmp stdout unscoped.json
+
+# A user none of the entries records is no candidate. With no terminal the
+# refusal names the login of that user and the sign-in in a terminal, and
+# none of its commands names --config: the file is Rancher's, and the
+# environment that ran kubectl chose the directory.
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id u-other --auth-provider local -o json
+jsonquery stderr data.error.code AUTH
+stderr 'pipe an API token of Rancher user ''u-other'' to rancher auth login <name> --url'
+stderr 'sign in as ''u-other'''
+! stderr 'rancher --config'
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --user-id u-other --auth-provider local -o json
+jsonquery stderr data.error.code AUTH
+! stderr 'create kubeconfig'
+! stderr 'rancher --config'
+
+# With a --name the remedies keep --config, and the entry the name
+# identifies is the one read.
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test --user-id u-other -o json
+jsonquery stderr data.error.code AUTH
+stderr 'rancher --config'
+
+# --cluster is required unless --user-id is given.
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT -o json
 jsonquery stderr data.error.code VALIDATION
-stderr '--user-id needs --name'
+stderr '--cluster is required'
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster= --user-id e2e-admin -o json
+jsonquery stderr data.error.code VALIDATION
+stderr '--cluster is empty; pass a value or omit --cluster'
 
 -- token.txt --
 e2e:secret

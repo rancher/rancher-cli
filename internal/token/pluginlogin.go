@@ -111,7 +111,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 
 		entry = in.refreshEntry
 		if entry == "" {
-			entry = config.ExecLoginEntryName(in.serverID)
+			entry = config.ExecLoginEntryNameFor(in.serverID, t.user.userID)
 			// A call whose --name identifies a plugin login entry logs that
 			// entry in, so the entry it reads next time holds the login;
 			// the lookup's binding names the entry the --name identified.
@@ -120,6 +120,12 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			}
 		}
 		target := config.CollisionFreeName(cfg, entry, in.serverID)
+		// The credential store takes an entry name of a bounded length on
+		// every operating system, and the name is known before anything is
+		// signed in.
+		if len(target) > config.MaxEntryNameLength {
+			return t.user.entryNameTooLong(cfg, len(target))
+		}
 		// Checked on this load, before anything is disclosed or signed in:
 		// an entry another call logged in for another user while this one
 		// waited is never written over. The caller signs in instead.

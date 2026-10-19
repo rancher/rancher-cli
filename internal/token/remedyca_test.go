@@ -50,11 +50,10 @@ func runPiped(t *testing.T, words []string, token string) (string, error) {
 	return errOut.String(), err
 }
 
-// TestNewEntryLoginRemediesRunAgainstAPrivateCA asserts the login every
-// remedy that names a new entry carries - the one for a plugin login
-// entry of another user, for a login that records no owner where no user
-// entry is the call's, and for a --name auth get-token would refuse - runs
-// as written against a Rancher whose CA is private, with a piped token
+// TestNewEntryLoginRemediesRunAgainstAPrivateCA asserts the login a
+// remedy that names a new entry carries - the one for a --name auth
+// get-token would refuse - runs as written against a Rancher whose CA is
+// private, with a piped token
 // and no terminal: with the CA as a path it registers the entry and logs
 // in; with the CA inline the text asks for the CA's file, and with that
 // file added the same holds.
@@ -82,12 +81,6 @@ func TestNewEntryLoginRemediesRunAgainstAPrivateCA(t *testing.T) {
 	require.NoError(t, os.WriteFile(caPath, []byte(caPEM), 0o600))
 
 	builders := map[string]func(ca string) string{
-		"another user's plugin login entry": func(ca string) string {
-			return token.NewEntryLoginRemedy(nil, "u-abc12", "c-1", srv.URL, ca, config.CASource{})
-		},
-		"a login that records no owner": func(ca string) string {
-			return token.NewEntryLoginRemedy(nil, "", "c-1", srv.URL, ca, config.CASource{})
-		},
 		"a refused --name": func(ca string) string {
 			return token.NoTerminalLogin(nil, "", "c-1", srv.URL, ca, config.CASource{}, false).Text()
 		},

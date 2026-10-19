@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -117,6 +119,37 @@ func TestTheExecPluginAndKubeconfigRemediesNameTheirDirectory(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal([]byte(runRemedyCLI(t, append(args, "-o", "json")...)), &env))
 		assertEveryCommandNames(t, env.Data.Error.Message, named)
+	})
+
+	// A file Rancher writes names a user and no --name and carries no env,
+	// and the environment that ran kubectl chose its directory, which a
+	// remedy run in the same environment resolves too: its remedies name no
+	// --config. With a --name the file is the CLI's, and they do.
+	t.Run("get-token with --user-id and no --name names no directory", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/v1-public/authproviders") {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":[{"id":"local","type":"localProvider"}]}`))
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		t.Cleanup(srv.Close)
+		require.NoError(t, os.RemoveAll("acct"))
+		writeRemedyConfig(t, "acct", &config.Config{})
+		base := []string{"--config", "acct", "auth", "get-token", "--server", srv.URL, "--user-id", "u-abc12", "--auth-provider", "local"}
+		for name, extra := range map[string][]string{
+			"with a cluster":    {"--cluster", "c-1"},
+			"without a cluster": nil,
+		} {
+			got := runRemedyCLI(t, append(append([]string{}, base...), extra...)...)
+			assert.Contains(t, got, "error (AUTH)", name)
+			assertEveryCommandNames(t, got, "")
+			assert.NotContains(t, got, "--config", name)
+		}
+		got := runRemedyCLI(t, append(append([]string{}, base...), "--cluster", "c-1", "--name", "prod")...)
+		assert.Contains(t, got, "error (AUTH)")
+		assertEveryCommandNames(t, got, named)
 	})
 
 	t.Run("the legacy token command's tie is plain", func(t *testing.T) {

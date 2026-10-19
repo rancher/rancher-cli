@@ -51,17 +51,17 @@ func interactiveLoginRequired(authConfig, remedy string) *clierr.Error {
 // the entry the call means or the matching entry in config.yaml; a path
 // or an inline PEM - and where it came from, whether the
 // call is the legacy shim's, and whether a sign-in would store a login
-// credential - token reuse on and a cluster named, the plugin-created
-// login's lane - which later calls reuse with a --name or without.
+// credential - token reuse on and a cluster or a user named, the
+// plugin-created login's lane - which later calls reuse with a --name or
+// without.
 type noTerminalCall struct {
 	name, clusterID, serverURL, caCert string
 	caFrom                             config.CASource
 	shim                               bool
 	keepsLogin                         bool
 	// userID is the call's --user-id: the login and the sign-in the
-	// remedies name are that user's. skipped is the plugin login entry the
-	// call did not use because it records skippedOwner.
-	userID, skipped, skippedOwner string
+	// remedies name are that user's.
+	userID string
 }
 
 // withNoTerminalRemedies is the exec plugin's form of that refusal. kubectl
@@ -75,11 +75,12 @@ type noTerminalCall struct {
 //     hint is a command that runs as written;
 //   - kubectl run once in a terminal, only where what it makes is kept: a
 //     login credential in the plugin-created login's lane, or else, with a
-//     --name, the cluster token until it expires. With neither the message
-//     says the exec entry needs a --name;
+//     --name or a --user-id, the cluster token until it expires. With
+//     neither the message says the exec entry needs a --name;
 //   - a kubeconfig that carries its own token, create kubeconfig with the
 //     cluster and both of its gates, only when the current server's login
-//     would serve the call (currentLoginServes).
+//     would serve the call (currentLoginServes), and never for a call with
+//     --user-id and no cluster, which asks for a token for Rancher itself.
 //
 // The refusal to choose between several auth configs with no terminal to
 // answer the menu gets the same remedies. It offers, as candidates and in
@@ -118,8 +119,8 @@ func (t tokenCmd) withNoTerminalRemedies(err error, call noTerminalCall) error {
 // noTerminalError builds the remedies both refusals share: head says what
 // was refused, then the login that takes a piped API token, choice (when
 // set) the auth config to name, the sentence about a terminal sign-in, the
-// kubeconfig the call could use, the plugin login entry skipped, and note
-// (when set). cause is kept as the new error's cause.
+// kubeconfig the call could use, and note (when set). cause is kept as the
+// new error's cause.
 func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, choice string, candidates []clierr.Candidate, note string) error {
 	var (
 		pending config.UnfinishedChange
@@ -145,18 +146,15 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 	switch {
 	case call.keepsLogin:
 		msg += "; or run kubectl once in a terminal and " + signIn
-	case call.name != "":
-		// Only the cluster token is kept, under this call's --name.
+	case call.name != "" || call.userID != "":
+		// Only the cluster token is kept, under this call's --name or, for
+		// a call with --user-id, under its user.
 		msg += "; or run kubectl once in a terminal and " + signIn + ", which lasts until the cached token expires"
 	default:
 		msg += "; this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with " + clierr.Rancher + " kubeconfig --cluster " + cluster
 	}
-	if t.currentLoginServes(cfg, call) {
+	if (call.userID == "" || call.clusterID != "") && t.currentLoginServes(cfg, call) {
 		msg += "; or use " + CreateKubeconfigRemedy(call.clusterID) + " for a kubeconfig that carries its own token"
-	}
-	if call.skipped != "" {
-		msg += "; the exec plugin's own login entry " + clierr.ShellQuote(call.skipped) + " records Rancher user " +
-			clierr.ShellQuote(call.skippedOwner) + " as its owner, so this call does not use it"
 	}
 	if note != "" {
 		msg += "; " + note

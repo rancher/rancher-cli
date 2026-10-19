@@ -644,9 +644,10 @@ the keychain itself or a different `--config`, never a silent fallback. `auth st
 surfaces `credentialStore: {policy, pinned, inUse, error, conflict}`.
 
 **Exec-credential cache binding.** Every cache record carries a format version (2), the
-directory that created it, its kind (which of the three rules below wrote it, so a hit
+directory that created it, its kind (which of the four rules below wrote it, so a hit
 requires exactly what that rule binds it to), the entry its call's `--name` identified (or
-none), and what the exec plugin's lookup for that call read, each entry with its
+none), the call's `--user-id` (which the record's key carries too, so a record serves only
+the user whose key it is under), and what the exec plugin's lookup for that call read, each entry with its
 `cacheBindingId` (a random per-entry value in `config.yaml`), all read in the same config
 load as the credential and carried to the write. A record made from the identified entry's
 own credential (or signed in after the server rejected it) is bound to that entry alone,
@@ -657,8 +658,13 @@ exactly to the URL's plugin login entries - and none is written or served while 
 has more than one, which that lookup refuses for an identified user entry; the record of a
 call that identifies none is bound exactly to every entry for its URL, to the current
 server (its name when it is one of them, else none; not for the legacy `token` shim, which
-ignores it) and to the setting. "Exactly" means no entry may be added to or removed from
-the list. For the plugin-created login the ids come from its lookup's load under the
+ignores it) and to the setting. For a call with `--user-id` the plugin login entries of the
+identified call's list are those that record the user, and the record of a call that
+identifies none is the owner record: bound exactly to the entries for the URL that record
+the user, to the current server among them and to the setting. "Exactly" means no entry
+may be added to or removed from the list, and, for the owner record, none may begin or
+stop recording the user; another user's entries change nothing. A call without `--user-id`
+reads no owner. For the plugin-created login the ids come from its lookup's load under the
 plugin-login lock, except the entry it wrote, whose id is the one its last write wrote. A
 call whose `--name` identifies a plugin login entry, when the plugin-created login stores
 its sign-in in another one, gets the record of any other identified call: bound to the
@@ -695,8 +701,8 @@ validated against. Disagreement is not a verdict: a reader whose stamp does not 
 with the config it loaded holds two halves from different moments, so it re-anchors on the
 current stamp, loads once more and judges again. That costs exactly one extra load, and
 only then a miss. A config write advances the stamp when it changes which entries exist,
-an entry's canonical URL, an entry's `cacheBindingId`, the current server or the
-token-reuse setting - evaluated by comparing the inputs being written against the ones
+an entry's canonical URL, an entry's `cacheBindingId`, an entry's recorded owner, the
+current server or the token-reuse setting - evaluated by comparing the inputs being written against the ones
 loaded, not by a list of writers - and writes the
 stamp file before `config.yaml`. A crash between the two leaves them permanently
 disagreeing: every reader pays the reload and misses, on every invocation, until the next
@@ -954,8 +960,15 @@ The native surface has no skip-verify flag; only the legacy `rancher token` shim
 A call with `--user-id` checks the owner of every token it hands kubectl:
 the create responses' owner (ext `spec.userID`, v3 `userId`), or, after an
 interactive sign-in, one `SelfSubjectReview` the plugin posts over the same
-`httpx` client through `/k8s/clusters/<cluster>` (`requestOwner`); the user
-id is part of the cache key (`config.CacheKeyFor`). `auth login` checks a
+`httpx` client through `/k8s/clusters/<cluster>`, or `/k8s/clusters/local` for a
+call with no `--cluster` (`requestOwner`); the user
+id is part of the cache key (`config.CacheKeyFor`). A call with `--user-id`
+needs no `--name` or `--cluster`: the lookup chooses among the entries that record
+the user (`ownerCredential`), the plugin-created login writes the plugin login entry
+named for the server and the user (`config.ExecLoginEntryNameFor`) and never over an
+entry that records another user, and the token is created with no cluster for a call
+with none. With token reuse on, a call without `--user-id` that reaches several
+plugin login entries is refused before any is read. `auth login` checks a
 pasted token with `provider.Owner`, the same review on the local cluster,
 and records the owner it names.
 On a cache miss, `get-token` resolves a `--cluster` display name to its id

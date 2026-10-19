@@ -618,11 +618,12 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	// this --name: the directory, and, when the name identifies an entry,
 	// that entry and its cache binding id, as a call answered by the
 	// entry's own login writes it; else what the lookup of a call that
-	// identifies none reads. Without it the record names no owner and
-	// every reader treats it as another directory's.
+	// identifies none reads, and the user id the key carries. Without it
+	// the record names no owner and every reader treats it as another
+	// directory's.
 	binding := config.CacheBindingForTest(dir, "", "")
 	if cfg, err := config.Load(config.FilePath(dir)); err == nil {
-		binding = config.CacheBindingForSeed(dir, cfg, name, srvID, cluster)
+		binding = config.CacheBindingForSeedOf(dir, cfg, name, srvID, cluster, userID)
 	}
 	if err := store.SetCachedCred(key, tok, time.Now().Add(24*time.Hour), name, srvID, cluster, binding); err != nil {
 		ts.Fatalf("seedexeccache: %v", err)

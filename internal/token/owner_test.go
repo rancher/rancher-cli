@@ -86,8 +86,15 @@ func newOwnerFixture(t *testing.T, reuse bool, opts testrancher.Options) *ownerF
 
 func (x *ownerFixture) serverID() string { return config.CanonicalServerIdentity(x.srv.URL) }
 
-// pluginEntry is the name of the URL's plugin login entry.
+// pluginEntry is the name of the URL's plugin login entry for a call
+// without --user-id.
 func (x *ownerFixture) pluginEntry() string { return config.ExecLoginEntryName(x.serverID()) }
+
+// pluginEntryOf is the name of the plugin login entry the plugin creates
+// for a call with --user-id userID.
+func (x *ownerFixture) pluginEntryOf(userID string) string {
+	return config.ExecLoginEntryNameFor(x.serverID(), userID)
+}
 
 // entry writes a server entry at the fixture's URL recording owner as its
 // login's owner, with user's login stored when user is set.
@@ -160,6 +167,13 @@ func (x *ownerFixture) ownerReviews() []string {
 // none when signIn is empty. It returns the owner of the token served.
 func (x *ownerFixture) call(name, userID, signIn string, notices *bytes.Buffer) (string, error) {
 	x.t.Helper()
+	return x.callIn("c-test", name, userID, signIn, notices)
+}
+
+// callIn is call for --cluster cluster, which may be empty, and --name
+// name, which may be empty; neither is passed when empty.
+func (x *ownerFixture) callIn(cluster, name, userID, signIn string, notices *bytes.Buffer) (string, error) {
+	x.t.Helper()
 	if notices == nil {
 		notices = &bytes.Buffer{}
 	}
@@ -167,7 +181,13 @@ func (x *ownerFixture) call(name, userID, signIn string, notices *bytes.Buffer) 
 	if signIn != "" {
 		p = ui.New(notices, newLineReader(signIn, "pw-"+signIn), false, true)
 	}
-	s := map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": name, "auth-provider": "localProvider"}
+	s := map[string]string{"server": x.srv.URL, "auth-provider": "localProvider"}
+	if cluster != "" {
+		s["cluster"] = cluster
+	}
+	if name != "" {
+		s["name"] = name
+	}
 	if userID != "" {
 		s["user-id"] = userID
 	}
@@ -187,7 +207,13 @@ func (x *ownerFixture) call(name, userID, signIn string, notices *bytes.Buffer) 
 // userID.
 func (x *ownerFixture) cached(name, userID string) bool {
 	x.t.Helper()
-	_, _, err := x.store.GetCachedCred(config.CacheKeyFor(name, x.serverID(), "c-test", userID), anchorFor(x.dir))
+	return x.cachedIn("c-test", name, userID)
+}
+
+// cachedIn is cached for the slot of cluster.
+func (x *ownerFixture) cachedIn(cluster, name, userID string) bool {
+	x.t.Helper()
+	_, _, err := x.store.GetCachedCred(config.CacheKeyFor(name, x.serverID(), cluster, userID), anchorFor(x.dir))
 	return err == nil
 }
 
@@ -212,11 +238,12 @@ func refusal(t *testing.T, err error) (*clierr.Error, string) {
 	return ce, clierr.ExpandRemedies(ce.Message, "")
 }
 
-// TestUserIDEntryOwnerRefusesBeforeAnyRequest asserts an entry whose login
-// records another owner refuses a call with --user-id before any request:
-// the identified user entry, the ranked user entry, and the identified
-// plugin login entry holding a login or none. A user entry with no login
-// keeps its recorded owner out of it: the call falls back.
+// TestUserIDEntryOwnerRefusesBeforeAnyRequest asserts the entry the --name
+// identifies refuses a call with --user-id before any request when its
+// login records another owner: a user entry, and a plugin login entry
+// holding a login or none. A user entry of another user is no candidate of
+// a call that names none, and a user entry with no login keeps its
+// recorded owner out of it: the call falls back.
 func TestUserIDEntryOwnerRefusesBeforeAnyRequest(t *testing.T) {
 	t.Run("identified user entry", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{})
@@ -242,13 +269,17 @@ func TestUserIDEntryOwnerRefusesBeforeAnyRequest(t *testing.T) {
 		assert.True(t, strings.HasSuffix(msg, "with rancher config use-server <entry> (this switches the directory's current server; switch back with rancher config use-server 'prod'), "+
 			"then rancher kubeconfig --cluster 'c-test'"), "the second route says how to go back to the current server: %s", msg)
 	})
-	t.Run("ranked user entry", func(t *testing.T) {
+	t.Run("a user entry of another user is no candidate of a call that names none", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{})
 		x.entry("prod", "bob", "user-bob", false)
+		bobLogin, _ := x.stored("prod")
+		x.forgetReads()
 		_, err := x.call("kube-c-test", "user-alice", "", nil)
-		_, msg := refusal(t, err)
-		assert.True(t, strings.HasPrefix(msg, "server entry 'prod' holds the login of Rancher user 'user-bob'"), msg)
-		assert.Empty(t, x.seen())
+		ce, msg := refusal(t, err)
+		assert.Equal(t, clierr.CodeAuth, ce.Code)
+		assert.True(t, strings.HasPrefix(msg, "interactive login required for auth config local; this call has no terminal to answer it"), msg)
+		assert.False(t, x.usedBearer(bobLogin), "no request is made with the other user's login")
+		assert.NotContains(t, x.store.reads(), "prod", "and it is not read")
 	})
 	for _, holds := range []bool{true, false} {
 		t.Run("identified plugin login entry", func(t *testing.T) {
@@ -264,12 +295,14 @@ func TestUserIDEntryOwnerRefusesBeforeAnyRequest(t *testing.T) {
 			assert.Equal(t, clierr.CodeAuth, ce.Code)
 			state := "holds the login of Rancher user 'user-bob'"
 			if !holds {
-				state = "records Rancher user 'user-bob' as its owner"
+				state = "was last logged in as Rancher user 'user-bob'"
 			}
 			assert.Equal(t, "server entry '"+x.pluginEntry()+"', the exec plugin's own login entry, "+state+", and this exec entry names user 'user-alice' with --user-id; "+
-				"pipe an API token of 'user-alice' to rancher auth login <name> --url '"+x.serverID()+"' --token-stdin, with a name of your choice for <name>, "+
-				"then rancher config use-server <name> (this sets the directory's current server, which is unset now), then rancher kubeconfig --cluster 'c-test'", msg)
-			assert.Empty(t, ce.Hint, "three commands are no hint")
+				"remove '"+x.pluginEntry()+"' with rancher auth logout '"+x.pluginEntry()+"', then rancher config delete-server '"+x.pluginEntry()+"'; "+
+				"the next call signs in as 'user-alice' in a terminal, or uses a login piped to rancher auth login <name> --url '"+x.serverID()+"' --token-stdin, with a name of your choice for <name>; "+
+				"or regenerate the kubeconfig from an entry that holds the login of 'user-alice' with rancher config use-server <entry> (this sets the directory's current server, which is unset now), "+
+				"then rancher kubeconfig --cluster 'c-test'", msg)
+			assert.Empty(t, ce.Hint, "removing an entry is no hint")
 			assert.Empty(t, x.seen(), "no request, and no sign-in")
 			after, afterEntry := x.stored(x.pluginEntry())
 			assert.Equal(t, before, after, "the other user's login is not written over")
@@ -279,7 +312,7 @@ func TestUserIDEntryOwnerRefusesBeforeAnyRequest(t *testing.T) {
 	t.Run("a user entry with no login falls back", func(t *testing.T) {
 		x := newOwnerFixture(t, true, testrancher.Options{})
 		x.entry("prod", "", "user-bob", false)
-		x.entry(x.pluginEntry(), "alice", "user-alice", true)
+		x.entry(x.pluginEntryOf("user-alice"), "alice", "user-alice", true)
 		got, err := x.call("prod-c-test", "user-alice", "", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "user-alice", got, "the owner a logged-out entry keeps plays no part")
@@ -291,8 +324,10 @@ func TestUserIDEntryOwnerRefusesBeforeAnyRequest(t *testing.T) {
 // call's user: an entry recording that user or none passes, and is
 // cached; another owner or none in the response revokes the token,
 // caches nothing and names the login to fix, for the identified entry's
-// own login, the plugin login entry it fell back to, and the plugin login
-// entry the --name identifies.
+// own login, the plugin login entry it fell back to, the plugin login
+// entry the --name identifies, and the entry a call that names none chose
+// by its recorded owner, which a failed login can leave beside another
+// user's credential.
 func TestUserIDCreatedTokenOwnerIsChecked(t *testing.T) {
 	for _, recorded := range []string{"user-alice", ""} {
 		t.Run("passes, recorded "+recorded, func(t *testing.T) {
@@ -327,18 +362,22 @@ func TestUserIDCreatedTokenOwnerIsChecked(t *testing.T) {
 		assert.Equal(t, 1, x.revoked())
 		assert.False(t, x.cached("prod-c-test", "user-alice"))
 	})
+	removal := func(x *ownerFixture, entry string) string {
+		return "remove '" + entry + "' with rancher auth logout '" + entry + "', then rancher config delete-server '" + entry + "'; " +
+			"the next call signs in as 'user-alice' in a terminal, or uses a login piped to rancher auth login <name> --url '" + x.serverID() +
+			"' --token-stdin, with a name of your choice for <name>"
+	}
 	t.Run("the fallback's login of another user", func(t *testing.T) {
 		x := newOwnerFixture(t, true, testrancher.Options{})
 		x.entry("prod", "", "", false)
-		x.entry(x.pluginEntry(), "bob", "", true)
-		before, beforeEntry := x.stored(x.pluginEntry())
+		x.entry(x.pluginEntryOf("user-alice"), "bob", "user-alice", true)
+		before, beforeEntry := x.stored(x.pluginEntryOf("user-alice"))
 		_, err := x.call("prod-c-test", "user-alice", "", nil)
 		ce, msg := refusal(t, err)
-		assert.Equal(t, "server entry 'prod' has no login, and the exec plugin's own login entry '"+x.pluginEntry()+"' it fell back to belongs to Rancher user 'user-bob', "+
-			"not to 'user-alice', which this exec entry names with --user-id; the token created from it was revoked; "+
-			"pipe an API token of 'user-alice' to rancher auth login 'prod' --token-stdin", msg)
-		assert.Equal(t, "rancher auth login 'prod' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
-		after, afterEntry := x.stored(x.pluginEntry())
+		assert.Equal(t, "the stored login of server entry '"+x.pluginEntryOf("user-alice")+"' belongs to Rancher user 'user-bob', "+
+			"not to 'user-alice', which this exec entry names with --user-id; the token created from it was revoked; "+removal(x, x.pluginEntryOf("user-alice")), msg)
+		assert.Empty(t, ce.Hint)
+		after, afterEntry := x.stored(x.pluginEntryOf("user-alice"))
 		assert.Equal(t, before, after, "the plugin login entry is not touched")
 		assert.Equal(t, beforeEntry, afterEntry)
 		assert.False(t, x.cached("prod-c-test", "user-alice"))
@@ -348,23 +387,22 @@ func TestUserIDCreatedTokenOwnerIsChecked(t *testing.T) {
 		x.entry(x.pluginEntry(), "bob", "", true)
 		_, err := x.call(x.pluginEntry()+"-c-test", "user-alice", "", nil)
 		ce, msg := refusal(t, err)
-		assert.Equal(t, "the exec plugin's own login entry '"+x.pluginEntry()+"' belongs to Rancher user 'user-bob', not to 'user-alice', which this exec entry names with --user-id; "+
-			"the token created from it was revoked; pipe an API token of 'user-alice' to rancher auth login <name> --url '"+x.serverID()+"' --token-stdin, "+
-			"with a name of your choice for <name>, then rancher config use-server <name> (this sets the directory's current server, which is unset now), "+
-			"then rancher kubeconfig --cluster 'c-test'", msg)
+		assert.Equal(t, "the stored login of server entry '"+x.pluginEntry()+"' belongs to Rancher user 'user-bob', not to 'user-alice', which this exec entry names with --user-id; "+
+			"the token created from it was revoked; "+removal(x, x.pluginEntry()), msg)
 		assert.Empty(t, ce.Hint)
 		assert.Equal(t, 1, x.revoked())
 	})
-	t.Run("the ranked plugin login entry's login of another user", func(t *testing.T) {
+	t.Run("the chosen plugin login entry's login of another user", func(t *testing.T) {
 		x := newOwnerFixture(t, true, testrancher.Options{})
-		x.entry(x.pluginEntry(), "bob", "", true)
+		x.entry(x.pluginEntryOf("user-alice"), "bob", "user-alice", true)
 		_, err := x.call("kube-c-test", "user-alice", "", nil)
 		_, msg := refusal(t, err)
-		assert.True(t, strings.HasPrefix(msg, "the exec plugin's own login entry '"+x.pluginEntry()+"' belongs to Rancher user 'user-bob'"), msg)
+		assert.True(t, strings.HasPrefix(msg, "the stored login of server entry '"+x.pluginEntryOf("user-alice")+"' belongs to Rancher user 'user-bob'"), msg)
+		assert.False(t, x.cached("kube-c-test", "user-alice"))
 	})
-	t.Run("the ranked plugin login entry's login of the user", func(t *testing.T) {
+	t.Run("the chosen plugin login entry's login of the user", func(t *testing.T) {
 		x := newOwnerFixture(t, true, testrancher.Options{})
-		x.entry(x.pluginEntry(), "alice", "", true)
+		x.entry(x.pluginEntryOf("user-alice"), "alice", "user-alice", true)
 		got, err := x.call("kube-c-test", "user-alice", "", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "user-alice", got)
@@ -389,14 +427,15 @@ func TestUserIDFailsClosedWithoutExtTokens(t *testing.T) {
 	assert.Equal(t, "user-alice", got, "without --user-id the stored login is served as before")
 }
 
-// TestUserIDSkipsAnotherUsersPluginLoginEntry asserts a call with
-// --user-id whose plugin login entry records another owner neither reads
-// nor writes that entry: for a user entry with no login and for the
-// ranked answer, it signs in, checks the owner from the cluster token's
-// create response, and caches under the name and the user id; without a
-// terminal it names the login of the entry, and that the plugin login
-// entry was not used.
-func TestUserIDSkipsAnotherUsersPluginLoginEntry(t *testing.T) {
+// TestUserIDNeverReadsOrWritesAnotherUsersPluginLoginEntry asserts a call
+// with --user-id never reads or writes the plugin login entry of another
+// user: for a user entry with no login and for a call that names none, it
+// signs in, makes its own plugin login entry, checks the owner from the
+// create responses and caches under the name and the user id; without a
+// terminal it names the login of the entry and nothing about the other
+// user's entry. A change of the other user's entry leaves its record
+// served, and one of its own ends it.
+func TestUserIDNeverReadsOrWritesAnotherUsersPluginLoginEntry(t *testing.T) {
 	for _, name := range []string{"prod-c-test", "kube-c-test"} {
 		t.Run(name, func(t *testing.T) {
 			x := newOwnerFixture(t, true, testrancher.Options{})
@@ -410,18 +449,29 @@ func TestUserIDSkipsAnotherUsersPluginLoginEntry(t *testing.T) {
 			got, err := x.call(name, "user-carol", "carol", nil)
 			require.NoError(t, err)
 			assert.Equal(t, "user-carol", got)
-			if name == "prod-c-test" {
-				assert.NotContains(t, x.store.reads()[readsBefore:], x.pluginEntry(), "the plugin login entry's login is not even read")
-			}
-			assert.Empty(t, x.ownerReviews(), "the cluster token's create response names the owner, so no owner request is made")
-			assert.False(t, x.usedBearer(pluginLogin), "no request is made with the plugin login entry's login")
+			assert.NotContains(t, x.store.reads()[readsBefore:], x.pluginEntry(), "the other user's login is not even read")
+			assert.Empty(t, x.ownerReviews(), "the create responses name the owner, so no owner request is made")
+			assert.False(t, x.usedBearer(pluginLogin), "no request is made with the other user's login")
 			after, pluginAfter := x.stored(x.pluginEntry())
-			assert.Equal(t, pluginLogin, after, "the plugin login entry is not written")
+			assert.Equal(t, pluginLogin, after, "the other user's entry is not written")
 			assert.Equal(t, pluginBefore, pluginAfter)
-			assert.True(t, x.cached(name, "user-carol"), "the sign-in's token is cached under the name and the user id")
+			own, ownEntry := x.stored(x.pluginEntryOf("user-carol"))
+			assert.NotEmpty(t, own, "the call's own plugin login entry is logged in")
+			assert.Equal(t, "user-carol", ownEntry.TokenUserID)
+			assert.True(t, x.cached(name, "user-carol"), "the token is cached under the name and the user id")
 
 			_, err = x.call(name, "user-carol", "", nil)
 			require.NoError(t, err, "the next call is served from the cache")
+
+			x.entry(x.pluginEntry(), "bob", "user-bob", true)
+			assert.True(t, x.cached(name, "user-carol"), "another user's entry changing does not end the record")
+			cfg, lerr := config.Load(config.FilePath(x.dir))
+			require.NoError(t, lerr)
+			s := cfg.Servers[x.pluginEntryOf("user-carol")]
+			require.NoError(t, config.AdvanceCacheBinding(&s))
+			cfg.Servers[x.pluginEntryOf("user-carol")] = s
+			require.NoError(t, cfg.Write())
+			assert.False(t, x.cached(name, "user-carol"), "a change of the user's own entry does")
 		})
 	}
 	t.Run("without a terminal", func(t *testing.T) {
@@ -432,19 +482,8 @@ func TestUserIDSkipsAnotherUsersPluginLoginEntry(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.Equal(t, "interactive login required for auth config local; this call has no terminal to answer it; to log in without one, pipe an API token of Rancher user 'user-carol' to "+
-			"rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin; or run kubectl once in a terminal and sign in as 'user-carol', which lasts until the cached token expires; "+
-			"the exec plugin's own login entry '"+x.pluginEntry()+"' records Rancher user 'user-bob' as its owner, so this call does not use it", msg)
+			"rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin; or run kubectl once in a terminal and sign in as 'user-carol'", msg)
 		assert.Equal(t, "rancher auth login 'prod' --url '"+x.serverID()+"' --token-stdin", clierr.ExpandRemedies(ce.Hint, ""))
-	})
-	t.Run("the record ends with a login of the plugin login entry", func(t *testing.T) {
-		x := newOwnerFixture(t, true, testrancher.Options{})
-		x.entry("prod", "", "", false)
-		x.entry(x.pluginEntry(), "bob", "user-bob", true)
-		_, err := x.call("prod-c-test", "user-carol", "carol", nil)
-		require.NoError(t, err)
-		require.True(t, x.cached("prod-c-test", "user-carol"))
-		x.entry(x.pluginEntry(), "bob", "user-bob", true)
-		assert.False(t, x.cached("prod-c-test", "user-carol"), "the record is bound to the plugin login entry's id")
 	})
 }
 
@@ -499,7 +538,7 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 		got, err := x.call("prod-c-test", "user-carol", "carol", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "user-carol", got)
-		assert.Len(t, x.ownerReviews(), 1, "one owner request where the response named none")
+		assert.Equal(t, []string{"/k8s/clusters/c-test" + selfSubjectReviewPath}, x.ownerReviews(), "one owner request where the response named none, through the call's cluster")
 	})
 	t.Run("the Norman create response names the owner", func(t *testing.T) {
 		x := newOwnerFixture(t, false, testrancher.Options{Legacy: true, V3TokenCreate: true})
@@ -527,11 +566,10 @@ func TestUserIDSignInOwnerIsChecked(t *testing.T) {
 
 // TestUserIDPluginCreatedLoginChecksBothCreates asserts the plugin-created
 // login of a call with --user-id stores the login only when the sign-in is
-// the call's user's, and records that user as the owner; a sign-in as
-// another user revokes both tokens and stores nothing. A plugin login
-// entry the --name identifies is the entry it writes, and one that
-// records another owner on the load under the flock sends the call to the
-// interactive sign-in without a disclosure.
+// the call's user's, and records that user as the owner, in an entry named
+// for the server and the user; a sign-in as another user revokes both
+// tokens and stores nothing. A plugin login entry the --name identifies is
+// the entry it writes.
 func TestUserIDPluginCreatedLoginChecksBothCreates(t *testing.T) {
 	t.Run("the user", func(t *testing.T) {
 		x := newOwnerFixture(t, true, testrancher.Options{})
@@ -539,9 +577,11 @@ func TestUserIDPluginCreatedLoginChecksBothCreates(t *testing.T) {
 		got, err := x.call("prod-c-test", "user-carol", "carol", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "user-carol", got)
-		login, s := x.stored(x.pluginEntry())
-		assert.NotEmpty(t, login)
+		login, s := x.stored(x.pluginEntryOf("user-carol"))
+		assert.NotEmpty(t, login, "the entry is named for the server and the user")
 		assert.Equal(t, "user-carol", s.TokenUserID)
+		_, hostOnly := x.stored(x.pluginEntry())
+		assert.Empty(t, hostOnly.URL, "the host-only name is for calls without --user-id")
 		assert.Empty(t, x.ownerReviews(), "both creates name the owner")
 	})
 	t.Run("another user", func(t *testing.T) {
@@ -551,7 +591,7 @@ func TestUserIDPluginCreatedLoginChecksBothCreates(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.True(t, strings.HasPrefix(msg, "the sign-in was made as Rancher user 'user-carol', and this exec entry names user 'user-alice' with --user-id; nothing was stored"), msg)
-		login, s := x.stored(x.pluginEntry())
+		login, s := x.stored(x.pluginEntryOf("user-alice"))
 		assert.Empty(t, login, "nothing is stored")
 		assert.Empty(t, s.URL, "no entry is written")
 		assert.GreaterOrEqual(t, x.revoked(), 2, "the session token and the login credential are revoked")
@@ -579,7 +619,7 @@ func TestUserIDPluginCreatedLoginChecksBothCreates(t *testing.T) {
 			x := newOwnerFixture(t, true, testrancher.Options{DerivedCreateOwner: tc.derived, ScopedCreateOwner: tc.scoped})
 			x.entry("prod", "", "", false)
 			got, err := x.call("prod-c-test", "user-carol", "carol", nil)
-			login, s := x.stored(x.pluginEntry())
+			login, s := x.stored(x.pluginEntryOf("user-carol"))
 			if tc.want == "" {
 				require.NoError(t, err)
 				assert.Equal(t, "user-carol", got)
@@ -608,19 +648,6 @@ func TestUserIDPluginCreatedLoginChecksBothCreates(t *testing.T) {
 			assert.Empty(t, other.URL, "no other plugin login entry is written")
 		})
 	}
-	t.Run("the entry to write records another owner", func(t *testing.T) {
-		x := newOwnerFixture(t, true, testrancher.Options{})
-		x.entry(x.pluginEntry(), "", "user-bob", true)
-		var notices bytes.Buffer
-		got, err := x.call("kube-c-test", "user-carol", "carol", &notices)
-		require.NoError(t, err)
-		assert.Equal(t, "user-carol", got, "the call signs in interactively")
-		login, s := x.stored(x.pluginEntry())
-		assert.Empty(t, login, "the other user's entry is not logged in")
-		assert.Equal(t, "user-bob", s.TokenUserID)
-		assert.NotContains(t, notices.String(), "plaintext file", "no disclosure for a login that does not happen")
-		assert.Empty(t, x.ownerReviews(), "the cluster token's create response names the owner")
-	})
 }
 
 // TestUserIDPluginLoginEntryIsNotReadWithTokenReuseOff asserts a call with

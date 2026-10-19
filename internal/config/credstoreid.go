@@ -130,6 +130,16 @@ func identityFileName(entry string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// maxKeychainAccount is the longest keychain account the CLI writes. It
+// stays under the 513 characters Windows allows a credential's user name
+// and leaves room in the 4096-byte command macOS's security tool takes.
+const maxKeychainAccount = 500
+
+// MaxEntryNameLength is the longest server entry name whose credential can
+// be stored under every operating system: the account is the entry's
+// identity, a colon and the name.
+const MaxEntryNameLength = maxKeychainAccount - identityIDLen - len(":")
+
 // keychainAccount is the keychain user field for an entry's credential:
 // the entry's identity, then the entry name. One constructor, so every raw
 // keyring call in this package spells the account the same way.

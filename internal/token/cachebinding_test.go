@@ -53,18 +53,30 @@ func newTokenCommandForTest(t *testing.T, dir string, store config.CredStore) ru
 // carries none either: the pair is equal and the record is served.
 func testBinding(t *testing.T, dir, name, server, cluster string) config.CacheBinding {
 	t.Helper()
+	return testBindingFor(t, dir, name, server, cluster, "")
+}
+
+// testBindingFor is testBinding for a call with --user-id userID.
+func testBindingFor(t *testing.T, dir, name, server, cluster, userID string) config.CacheBinding {
+	t.Helper()
 	cfg, err := config.Load(config.FilePath(dir))
 	if err != nil {
 		return config.CacheBindingForTest(config.CanonicalDir(dir), "", "")
 	}
-	return config.CacheBindingForSeed(config.CanonicalDir(dir), cfg, name, server, cluster)
+	return config.CacheBindingForSeedOf(config.CanonicalDir(dir), cfg, name, server, cluster, userID)
 }
 
 // seedCache writes a cache record the way a real invocation would, bound
 // to what the lookup for the call reads.
 func seedCache(t *testing.T, dir string, store config.CredStore, key, token string, expiry time.Time, name, server, cluster string) error {
 	t.Helper()
-	return store.SetCachedCred(key, token, expiry, name, server, cluster, testBinding(t, dir, name, server, cluster))
+	return seedCacheFor(t, dir, store, key, token, expiry, name, server, cluster, "")
+}
+
+// seedCacheFor is seedCache for a call with --user-id userID.
+func seedCacheFor(t *testing.T, dir string, store config.CredStore, key, token string, expiry time.Time, name, server, cluster, userID string) error {
+	t.Helper()
+	return store.SetCachedCred(key, token, expiry, name, server, cluster, testBindingFor(t, dir, name, server, cluster, userID))
 }
 
 // TestCopiedDirectoryDoesNotServeItsSourcesCacheRecords asserts what the
@@ -217,9 +229,9 @@ func TestHotPathOperationCounts(t *testing.T) {
 		// bound to a list the entries for the URL compared in memory.
 		kdir := t.TempDir()
 		kcfg := &config.Config{CurrentServer: "prod", TokenReuse: true, Servers: map[string]config.Server{
-			"prod":              {URL: "https://r.ex", CacheBindingID: "b1"},
+			"prod":              {URL: "https://r.ex", CacheBindingID: "b1", TokenUserID: "u-abc12"},
 			"staging":           {URL: "https://r.ex", CacheBindingID: "b2"},
-			"exec-login-plugin": {URL: "https://r.ex", CacheBindingID: "b3", Provenance: clierr.ProvenanceExecLogin},
+			"exec-login-plugin": {URL: "https://r.ex", CacheBindingID: "b3", TokenUserID: "u-abc12", Provenance: clierr.ProvenanceExecLogin},
 		}}
 		kcfg.SetPath(config.FilePath(kdir))
 		require.NoError(t, kcfg.Write())
@@ -228,18 +240,21 @@ func TestHotPathOperationCounts(t *testing.T) {
 		kinds := []struct {
 			name    string
 			call    string
+			user    string
 			shim    bool
 			binding config.CacheBinding
 		}{
-			{"the identified entry's own credential", "prod-c-1", false, config.CacheBindingFor(canon, kcfg, "prod")},
-			{"a plugin login entry's own credential", "exec-login-plugin-c-1", false, config.CacheBindingFor(canon, kcfg, "exec-login-plugin")},
-			{"another record of an identified call", "staging-c-1", false, config.CacheBindingForIdentified(canon, kcfg, "https://r.ex", "staging")},
-			{"a call that identifies no entry", "kube-c-1", false, config.CacheBindingForServer(canon, kcfg, "https://r.ex", false)},
-			{"the legacy shim", config.LegacyCachePrefix + "kube", true, config.CacheBindingForServer(canon, kcfg, "https://r.ex", true)},
+			{"the identified entry's own credential", "prod-c-1", "", false, config.CacheBindingFor(canon, kcfg, "prod")},
+			{"a plugin login entry's own credential", "exec-login-plugin-c-1", "", false, config.CacheBindingFor(canon, kcfg, "exec-login-plugin")},
+			{"another record of an identified call", "staging-c-1", "", false, config.CacheBindingForIdentified(canon, kcfg, "https://r.ex", "staging", "")},
+			{"another record of an identified call with --user-id", "staging-c-1", "u-abc12", false, config.CacheBindingForIdentified(canon, kcfg, "https://r.ex", "staging", "u-abc12")},
+			{"a call that identifies no entry", "kube-c-1", "", false, config.CacheBindingForServer(canon, kcfg, "https://r.ex", false)},
+			{"a call with --user-id that identifies no entry (the owner record)", "", "u-abc12", false, config.CacheBindingForOwner(canon, kcfg, "https://r.ex", "u-abc12")},
+			{"the legacy shim", config.LegacyCachePrefix + "kube", "", true, config.CacheBindingForServer(canon, kcfg, "https://r.ex", true)},
 		}
 		for _, k := range kinds {
 			t.Run(k.name, func(t *testing.T) {
-				kkey := config.CacheKey(k.call, config.CanonicalServerIdentity("https://r.ex"), "c-1")
+				kkey := config.CacheKeyFor(k.call, config.CanonicalServerIdentity("https://r.ex"), "c-1", k.user)
 				require.NoError(t, kstore.SetCachedCred(kkey, "tok-"+k.call, time.Now().Add(time.Hour), k.call, "https://r.ex", "c-1", k.binding))
 				ops, keyringOps, locks, flocks := count(t, anchorFor(kdir), func(anchor *config.CacheAnchor) {
 					var hit bool
@@ -247,7 +262,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 						_, _, _, hit, _ = shimProbeFlagCache(kdir, k.call, "https://r.ex", "c-1", anchor, ui.Discard())
 					} else {
 						cmd := tokenCmd{dir: kdir, store: kstore, anchor: anchor}
-						_, _, _, hit = cmd.probeFlagCache(k.call, "https://r.ex", "c-1", "", ui.Discard())
+						_, _, _, hit = cmd.probeFlagCache(k.call, "https://r.ex", "c-1", k.user, ui.Discard())
 					}
 					require.True(t, hit)
 				})
@@ -298,7 +313,7 @@ func TestHotPathOperationCounts(t *testing.T) {
 		// The user id is one more key component: the slot it names is read
 		// at the same cost, on the flag fast path and on the resolved path.
 		ukey := config.CacheKeyFor("prod", config.CanonicalServerIdentity("https://r.ex"), "c-1", "u-abc12")
-		require.NoError(t, seedCache(t, dir, store, ukey, "cached-user-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1"))
+		require.NoError(t, seedCacheFor(t, dir, store, ukey, "cached-user-tok", time.Now().Add(time.Hour), "prod", "https://r.ex", "c-1", "u-abc12"))
 		for _, resolved := range []bool{false, true} {
 			t.Run(map[bool]string{false: "flag fast path", true: "resolved path"}[resolved], func(t *testing.T) {
 				want := map[string]int{"stampread": 1}

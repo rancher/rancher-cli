@@ -61,7 +61,7 @@ conformance test (`internal/cli/migrating_test.go` +
 | `settings get` | → `rancher get setting <name>` |
 | `settings set` | → `rancher patch setting <name> --patch '<RFC 6902 JSON patch>' --apply` |
 | `ssh <node>` | DROPPED - RKE1/node-driver only, Norman-only; keep the legacy binary for this |
-| `token` | Existing Rancher-generated kubeconfigs that call `rancher token --server <url> --user <user-id>` keep working after a binary swap - the shim delegates to `auth get-token` machinery and also takes `--cacerts <path>`. Regenerate kubeconfigs (`rancher kubeconfig --cluster <id>`) to move them to `auth get-token` directly. Server-side token management: `rancher get tokens` / `create token` / `delete token`. Local exec-credential cache: `auth list-tokens` / `auth delete-token`. |
+| `token` | Existing Rancher-generated kubeconfigs that call `rancher token --server <url> --user <user-id>` keep working after a binary swap - the shim delegates to `auth get-token` machinery and also takes `--cacerts <path>`. Regenerate kubeconfigs (`rancher kubeconfig --cluster <id>`) to move them to `auth get-token` directly. A kubeconfig Rancher writes in the form `rancher auth get-token --server <url> [--cluster <id>] --user-id <id> [--auth-provider <p>]` runs as written: `--user-id` chooses the stored login that records that user and the plugin refuses a token of another user, and `--auth-provider` only chooses the sign-in. Server-side token management: `rancher get tokens` / `create token` / `delete token`. Local exec-credential cache: `auth list-tokens` / `auth delete-token`. |
 | `token delete` | → `rancher auth delete-token` |
 | `up -f compose.yml` | DROPPED - compose-era, no replacement |
 | `wait <type> <id>` | → `rancher get <kind> <name> --wait` |

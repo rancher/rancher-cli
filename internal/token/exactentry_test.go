@@ -412,13 +412,13 @@ func TestExecPluginEntryStateTable(t *testing.T) {
 			mutation:  "match the entry-cluster form by prefix instead of by the call's own cluster",
 		},
 		{
-			name:      "several plugin login entries with a credential, and no user entry, is an error naming them",
+			name:      "several plugin login entries, and no user entry, is an error naming them before any is read",
 			entries:   []rowEntry{seed, seedTwo},
 			reuse:     true,
 			wantCode:  clierr.CodeAmbiguousSelection,
 			wantMsg:   []string{"'exec-login-seed', 'exec-login-seed-2'", clierr.Rancher + " auth logout <entry>", clierr.Rancher + " config delete-server <entry>"},
 			noNetwork: true,
-			mutation:  "pick the first entry at the winning rank; give the regenerate remedy for a tie of plugin login entries",
+			mutation:  "refuse only when several plugin login entries have a credential; give the regenerate remedy for several plugin login entries",
 		},
 		{
 			name:    "the shim with several entries that have a credential is an error naming them and the remedy",
@@ -790,7 +790,7 @@ func TestResolveConnCAFollowsTheIdentifiedEntry(t *testing.T) {
 			if tc.noServer {
 				flagServer = ""
 			}
-			_, _, _, source, _, _, err := cmd.resolveConnWithCA(flagServer, "c-1", tc.cacert, tc.wantName, tc.shim, false)
+			_, _, _, source, _, _, err := cmd.resolveConnWithCA(flagServer, "c-1", tc.cacert, tc.wantName, "", tc.shim, false)
 			if tc.wantCode != "" {
 				ce, ok := errors.AsType[*clierr.Error](err)
 				require.True(t, ok, "%v", err)

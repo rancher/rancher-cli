@@ -66,8 +66,8 @@ func readEntryCredential(cfg *config.Config, store CredentialReader, name string
 // entry's own credential is the only one read; a store failure on it, of
 // any kind, is returned rather than answered by another entry. The one
 // fallback is the plugin's own login entry for the server, while token
-// reuse is on. A plugin login entry is never read with the setting off,
-// and, for a call with --user-id, never when it records another owner.
+// reuse is on; for a call with --user-id, the one that records that user.
+// A plugin login entry is never read with the setting off.
 func identifiedCredential(cfg *config.Config, store CredentialReader, server, identified string, user userCheck) (storedCredential, bool, error) {
 	isPluginEntry := cfg.Servers[identified].Provenance == clierr.ProvenanceExecLogin
 	if isPluginEntry && !cfg.TokenReuse {
@@ -79,12 +79,9 @@ func identifiedCredential(cfg *config.Config, store CredentialReader, server, id
 	if isPluginEntry || !cfg.TokenReuse {
 		return storedCredential{}, false, nil
 	}
-	plugin, err := pluginEntryFor(cfg, server)
+	plugin, err := pluginEntryFor(cfg, server, identified, user)
 	if err != nil || plugin == "" {
 		return storedCredential{}, false, err
-	}
-	if owner := cfg.Servers[plugin].TokenUserID; user.otherOwner(owner) {
-		return storedCredential{}, false, &pluginEntrySkipped{entry: plugin, owner: owner}
 	}
 	return readEntryCredential(cfg, store, plugin)
 }
@@ -92,14 +89,15 @@ func identifiedCredential(cfg *config.Config, store CredentialReader, server, id
 // pluginEntryFor returns the plugin's own login entry for server, the
 // fallback of a call whose identified user entry holds no credential: the
 // one entry with the execLogin provenance that answers for it, "" when
-// there is none. A plugin login entry has no fallback, so its caller never
-// asks. The refusal of several (config.PluginFallbackRefused for a user
-// entry) is an error.
-func pluginEntryFor(cfg *config.Config, server string) (string, error) {
-	found := cfg.PluginLoginEntries(server)
+// there is none. For a call with --user-id only the entries that record
+// that user count. A plugin login entry has no fallback, so its caller
+// never asks. The refusal of several (config.PluginFallbackRefused for a
+// user entry) is an error.
+func pluginEntryFor(cfg *config.Config, server, identified string, user userCheck) (string, error) {
+	found := cfg.PluginLoginEntriesOf(server, user.userID)
 	switch {
 	case config.PluginFallbackRefused(false, len(found)):
-		return "", pluginEntriesError(server, found, cfg)
+		return "", pluginEntriesError(server, found, cfg, identified, user)
 	case len(found) == 0:
 		return "", nil
 	}
@@ -107,16 +105,39 @@ func pluginEntryFor(cfg *config.Config, server string) (string, error) {
 }
 
 // pluginEntriesError is the refusal when more than one login entry the exec
-// plugin created answers for one URL: the plugin's own login is one entry,
-// so the extras go before anything can be chosen.
-func pluginEntriesError(server string, names []string, cfg *config.Config) *clierr.Error {
+// plugin created answers for one URL (for a call with --user-id, records
+// that user): the plugin's own login is one entry, so the extras go before
+// anything can be chosen. The first remedy is a login that makes the call
+// answer without them: for identified, the user entry the call's --name
+// identifies, a login of that entry, which is the hint; otherwise a login
+// of a new entry. Removing all but one entry comes last, since removing
+// another user's login breaks that user's calls.
+func pluginEntriesError(server string, names []string, cfg *config.Config, identified string, user userCheck) *clierr.Error {
 	cands := make([]clierr.Candidate, len(names))
 	for i, n := range names {
 		cands[i] = clierr.Candidate{ID: n, Name: cfg.Servers[n].URL}
 	}
-	return clierr.New(clierr.CodeAmbiguousSelection, fmt.Sprintf(
-		"more than one login entry the exec plugin created answers for %s (%s); keep one: for each other entry run "+clierr.Rancher+" auth logout <entry>, then "+clierr.Rancher+" config delete-server <entry>",
-		server, quotedList(names))).WithCandidates(cands).WithCause(errLookupRefused)
+	msg := fmt.Sprintf("more than one login entry the exec plugin created answers for %s (%s)", server, quotedList(names))
+	piped := "pipe an API token"
+	if user.userID != "" {
+		piped += " of " + clierr.ShellQuote(user.userID)
+	} else {
+		msg += ", and this exec entry names no Rancher user"
+	}
+	hint := ""
+	if identified != "" && config.ValidateEntryName(identified) == nil {
+		hint = clierr.Rancher + " auth login " + clierr.ShellQuote(identified) + " --token-stdin"
+		msg += "; " + piped + " to " + hint + " to log in to " + clierr.ShellQuote(identified)
+	} else {
+		url := user.serverID
+		if url == "" {
+			url = server
+		}
+		login := NoTerminalLogin(cfg, "", user.clusterID, url, user.caSource, user.caFrom, false)
+		msg += "; " + piped + " to " + login.Command + " to log in an entry for " + clierr.ShellQuote(url) + strings.TrimPrefix(login.Text(), login.Command)
+	}
+	msg += "; or keep one: for each other entry run " + clierr.Rancher + " auth logout <entry>, then " + clierr.Rancher + " config delete-server <entry>"
+	return clierr.New(clierr.CodeAmbiguousSelection, msg).WithCandidates(cands).WithCause(errLookupRefused).WithHint(hint)
 }
 
 // useServerRemedy names the command that selects entry (a quoted name, or
@@ -134,19 +155,14 @@ func useServerRemedy(entry, current string) string {
 // authenticate as whichever user the choice happened to be. The first
 // remedy changes only the exec entry; the second rewrites the kubeconfig
 // from the entry the caller picks and switches the directory's current
-// server on the way. When every tied entry is a plugin login entry the
-// remedy is to remove the extras.
+// server on the way. Only user entries tie: several plugin login entries
+// are refused by pluginEntriesError before any is read.
 func entryNotNamedError(cfg *config.Config, hits []storedCredential, clusterID string, ignoreCurrentContext bool) *clierr.Error {
 	names := make([]string, len(hits))
 	cands := make([]clierr.Candidate, len(hits))
-	allPlugin := true
 	for i, h := range hits {
 		names[i] = h.name
 		cands[i] = clierr.Candidate{ID: h.name, Name: h.entry.URL}
-		allPlugin = allPlugin && h.entry.Provenance == clierr.ProvenanceExecLogin
-	}
-	if allPlugin {
-		return pluginEntriesError(hits[0].entry.URL, names, cfg)
 	}
 	clusterArg, clusterSuffix := "<cluster>", "<cluster>"
 	if clusterID != "" {

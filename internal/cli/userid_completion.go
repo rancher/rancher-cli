@@ -22,16 +22,21 @@ func userIDSite(site CompletionSite, d runtime.Descriptor) bool {
 }
 
 // userIDCandidates completes --user-id from config.yaml alone: the
-// recorded owner of the entry the typed --name identifies, when it begins
-// with the word; else nothing. No store read, no request.
+// recorded owner of the entry the typed --name identifies, or else the
+// distinct recorded owners of the entries for the typed --server (the
+// current server's URL without one), those that begin with the word. No
+// store read, no request.
 func userIDCandidates(site CompletionSite, tail []string) []string {
-	owner := token.RecordedUserID(storedConfigSnapshot(), completion.TailFlag(tail, "server"),
-		completion.TailFlag(tail, "name"), completion.TailFlag(tail, "cluster"))
-	if owner == "" || !strings.HasPrefix(owner, site.Partial) {
-		return nil
+	var out []string
+	for _, owner := range token.RecordedUserIDs(storedConfigSnapshot(), completion.TailFlag(tail, "server"),
+		completion.TailFlag(tail, "name"), completion.TailFlag(tail, "cluster")) {
+		if !strings.HasPrefix(owner, site.Partial) {
+			continue
+		}
+		if site.EqualsForm {
+			owner = site.FlagSpelling + "=" + owner
+		}
+		out = append(out, owner)
 	}
-	if site.EqualsForm {
-		return []string{site.FlagSpelling + "=" + owner}
-	}
-	return []string{owner}
+	return out
 }

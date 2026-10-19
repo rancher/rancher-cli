@@ -23,18 +23,13 @@ const (
 	// LookupAnswered: the stored login of StoredLogin.Entry answers.
 	LookupAnswered
 	// LookupRefused: the plugin refuses the call - the entry its --name
-	// identifies is registered at another URL, several entries tie, or
-	// several plugin login entries answer. StoredLogin.Err is the refusal.
+	// identifies is registered at another URL or holds another user's
+	// login, several entries tie, or several plugin login entries answer.
+	// StoredLogin.Err is the refusal.
 	LookupRefused
 	// LookupReadFailed: a store read failed, so the plugin fails with it
 	// until it can read. StoredLogin.Err is the failure.
 	LookupReadFailed
-	// LookupSkipped: the call names --user-id, and the plugin login entry
-	// that would answer for it records another owner, so the call neither
-	// reads nor writes that entry and signs in. StoredLogin.Skipped is the
-	// entry and SkippedOwner the owner it records. A lookup without a user
-	// id never gives it.
-	LookupSkipped
 )
 
 // StoredLogin is the exec plugin's lookup for one call, as the plugin
@@ -54,8 +49,6 @@ type StoredLogin struct {
 	PluginEntry bool
 	// Err is the refusal or the read failure.
 	Err error
-	// Skipped and SkippedOwner are set only for LookupSkipped.
-	Skipped, SkippedOwner string
 
 	cred storedCredential
 	// identifiedErr: the identification refused the call, before any
@@ -68,11 +61,12 @@ type StoredLogin struct {
 var errLookupRefused = errors.New("the exec plugin's lookup refuses this call")
 
 // LookupStoredLogin is the exec plugin's lookup for a call from a
-// kubeconfig exec entry with --server server, --cluster clusterID and
-// --name name, over cfg and the store the plugin opens. It reads only
-// what the plugin reads, and no network.
-func LookupStoredLogin(cfg *config.Config, store CredentialReader, server, name, clusterID string) StoredLogin {
-	return lookupStoredLogin(cfg, store, server, name, clusterID, false, entryChoice{}, userCheck{})
+// kubeconfig exec entry with --server server, --cluster clusterID,
+// --name name and --user-id userID (empty for a call without one), over
+// cfg and the store the plugin opens. It reads only what the plugin
+// reads, and no network.
+func LookupStoredLogin(cfg *config.Config, store CredentialReader, server, name, clusterID, userID string) StoredLogin {
+	return lookupStoredLogin(cfg, store, server, name, clusterID, false, entryChoice{}, userCheck{userID: userID, clusterID: clusterID, serverID: server})
 }
 
 // lookupStoredLogin is the lookup the plugin's credential read and
@@ -80,9 +74,10 @@ func LookupStoredLogin(cfg *config.Config, store CredentialReader, server, name,
 // connection was set up under, when it read config.yaml for it: an
 // identification that differs now means the file changed under the call,
 // which is refused before any credential is read. user is the call's
-// --user-id: an entry whose login records another owner refuses the call
-// before any request, and a plugin login entry that records another owner
-// is skipped rather than read.
+// --user-id: the entry the call's --name identifies refuses the call
+// before any request when its login records another owner, and a call
+// that identifies no entry chooses among the entries that record the
+// user.
 func lookupStoredLogin(cfg *config.Config, store CredentialReader, server, name, clusterID string, shim bool, resolved entryChoice, user userCheck) StoredLogin {
 	identified, err := identifyEntry(cfg, server, name, clusterID, shim)
 	if err != nil {
@@ -92,9 +87,6 @@ func lookupStoredLogin(cfg *config.Config, store CredentialReader, server, name,
 		return StoredLogin{Outcome: LookupRefused, Err: configChangedError(resolved.name, identified), identifiedErr: true}
 	}
 	sc, ok, err := storedTokenForServer(cfg, store, server, identified, clusterID, shim, user)
-	if skipped, isSkip := errors.AsType[*pluginEntrySkipped](err); isSkip {
-		return StoredLogin{Outcome: LookupSkipped, Identified: identified, Skipped: skipped.entry, SkippedOwner: skipped.owner}
-	}
 	switch {
 	case errors.Is(err, errLookupRefused):
 		return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: err}
@@ -110,16 +102,10 @@ func lookupStoredLogin(cfg *config.Config, store CredentialReader, server, name,
 		return StoredLogin{Outcome: LookupNone, Identified: identified}
 	}
 	plugin := sc.entry.Provenance == clierr.ProvenanceExecLogin
+	// Only the identified entry's own credential can come with another
+	// owner: the entries chosen by owner and the fallback record the user.
 	if owner := sc.entry.TokenUserID; user.otherOwner(owner) {
-		switch {
-		case plugin && sc.name != identified:
-			// The URL's plugin login entry answering for an entry with no
-			// login, or as the ranked answer: refusing would leave only
-			// the removal of another user's login as the remedy.
-			return StoredLogin{Outcome: LookupSkipped, Identified: identified, Skipped: sc.name, SkippedOwner: owner}
-		default:
-			return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: user.entryOwnerRefused(cfg, sc.name, owner, plugin, true)}
-		}
+		return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: user.entryOwnerRefused(cfg, sc.name, owner, plugin, true)}
 	}
 	return StoredLogin{Outcome: LookupAnswered, Identified: identified, Entry: sc.name, PluginEntry: plugin, cred: sc}
 }

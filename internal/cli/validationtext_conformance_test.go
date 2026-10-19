@@ -48,13 +48,7 @@ type allowEntry struct {
 // Adding an entry is a decision for the maintainers, not a way to make this
 // test pass: every entry states the constraint that keeps the command out of
 // the rule, and the test fails once the command passes the rule.
-var validationTextAllowlist = map[string]allowEntry{
-	"auth get-token": {
-		rule: ruleClusterRequired,
-		reason: "auth get-token declares --cluster without the shared missing-cluster text; " +
-			"delete this entry when it uses engine.ClusterFlag",
-	},
-}
+var validationTextAllowlist = map[string]allowEntry{}
 
 // enumInput is a required argument or flag that declares an Enum.
 type enumInput struct {

@@ -206,29 +206,32 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		"v3AdminDelete": func() []string {
 			return []string{v3AdminDelete("it", TokenRef{Kind: TokenKindV3, Name: "token-v3"}, "")}
 		},
-		"pluginEntriesError": func() []string { return errText(pluginEntriesError(url, []string{name, name + "-2"}, cfg)) },
-		"reLogin":            func() []string { a, b := reLogin(name); return []string{a, b} },
-		"readUserID": func() []string {
-			_, err := readUserID(tin{s: map[string]string{"user-id": "u-abc12"}}, "", "c-1")
-			return errText(err)
+		"pluginEntriesError": func() []string {
+			names := []string{name, name + "-2"}
+			return append(errText(pluginEntriesError(url, names, cfg, "", userCheck{})),
+				append(errText(pluginEntriesError(url, names, cfg, "prod", u)), errText(pluginEntriesError(url, names, cfg, "", u))...)...)
 		},
+		"reLogin":       func() []string { a, b := reLogin(name); return []string{a, b} },
 		"revokedClause": func() []string { return []string{revokedClause("the token", ref, RevokeOutcome{Result: ResultFailed})} },
 		"unmarkedSessionText": func() []string {
 			return []string{unmarkedSessionText(clierr.UnmarkedTokenSearch{AuthProvider: "saml"})}
 		},
-		"useServerRemedy":           func() []string { return []string{useServerRemedy(clierr.ShellQuote(name), "prod")} },
-		"userCheck.loginOfEntry":    func() []string { a, b := u.loginOfEntry(cfg, name); return []string{a, b} },
-		"userCheck.loginOfNewEntry": func() []string { return []string{u.loginOfNewEntry(cfg)} },
+		"useServerRemedy": func() []string { return []string{useServerRemedy(clierr.ShellQuote(name), "prod")} },
+		"userCheck.relogin": func() []string {
+			a, b := u.relogin(cfg, name, true)
+			c, d := u.relogin(cfg, "prod", false)
+			e, f := u.relogin(cfg, name, false)
+			return []string{a, b, c, d, e, f}
+		},
+		"userCheck.entryNameTooLong": func() []string { return errText(u.entryNameTooLong(cfg, config.MaxEntryNameLength+1)) },
+		"userCheck.loginOfNewEntry":  func() []string { return []string{u.loginOfNewEntry(cfg)} },
 		"userCheck.entryOwnerRefused": func() []string {
 			return append(errText(u.entryOwnerRefused(cfg, name, "u-other", false, true)), errText(u.entryOwnerRefused(cfg, name, "u-other", true, false))...)
 		},
 		"userCheck.checkCreatedOwner": func() []string {
 			var out []string
-			for _, c := range []struct {
-				sc         storedCredential
-				identified string
-			}{{sc, name}, {sc, ""}, {storedCredential{name: name, entry: plugin}, "prod"}, {storedCredential{name: "prod", entry: userNamed}, name}} {
-				out = append(out, errText(u.checkCreatedOwner(t.Context(), cfg, created, fresh, c.sc, c.identified))...)
+			for _, c := range []storedCredential{sc, {name: name, entry: plugin}, {name: "prod", entry: userNamed}} {
+				out = append(out, errText(u.checkCreatedOwner(t.Context(), cfg, created, fresh, c))...)
 			}
 			return out
 		},
@@ -238,15 +241,11 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 			return []string{notices.String()}
 		},
 		"tokenCmd.noTerminalError": func() []string {
-			call := noTerminalCall{name: name + "-c-1", clusterID: "c-1", serverURL: url, userID: "u-abc12", skipped: name, skippedOwner: "u-other"}
+			call := noTerminalCall{name: name + "-c-1", clusterID: "c-1", serverURL: url, userID: "u-abc12"}
 			choice := clierr.New(clierr.CodeAmbiguousSelection, "x").WithCause(&providerChoiceNeedsTerminal{
 				configs: []string{"local", "okta"}, noTerminal: []clierr.Candidate{{ID: "okta", Name: "okta"}}})
 			return append(errText(tokenCmd{dir: dir}.withNoTerminalRemedies(interactiveLoginRequired("local", "x"), call)),
 				errText(tokenCmd{dir: dir}.withNoTerminalRemedies(choice, call))...)
-		},
-		"tokenCmd.withNewEntryLogin": func() []string {
-			_, err := readUserID(tin{s: map[string]string{"user-id": "u-abc12"}}, "", "c-1")
-			return errText(tokenCmd{dir: dir}.withNewEntryLogin(err, tin{s: map[string]string{"server": url, "cluster": "c-1", "user-id": "u-abc12"}}))
 		},
 		"tokenCmd.withStoreConflictSteps": func() []string {
 			conflict := clierr.New(clierr.CodeConflict, "conflict").WithCause(config.ErrCredentialStoreConflict)

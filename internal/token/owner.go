@@ -26,87 +26,88 @@ type userCheck struct {
 	caFrom config.CASource
 }
 
-// pluginEntrySkipped is the lookup's answer for a call with --user-id
-// whose plugin login entry records another owner: the call neither reads
-// nor writes that entry, which may be another user's login used by their
-// kubeconfigs, and signs in instead.
-type pluginEntrySkipped struct {
-	entry, owner string
-}
-
-func (e *pluginEntrySkipped) Error() string {
-	return "the exec plugin's own login entry " + e.entry + " records Rancher user " + e.owner + " as its owner"
-}
-
 // otherOwner reports whether a recorded owner is known and is not the
 // call's user.
 func (u userCheck) otherOwner(recorded string) bool {
 	return u.userID != "" && recorded != "" && recorded != u.userID
 }
 
-// loginOfEntry is the login of a user entry for the call's user without a
-// terminal, as a sentence names it, and the command alone, the hint. An
-// entry with a plugin login entry's name, which auth login refuses, gets
-// the login of a new entry instead, with no hint.
-func (u userCheck) loginOfEntry(cfg *config.Config, entry string) (text, hint string) {
-	if config.IsExecLoginEntryName(entry) {
-		return u.loginOfNewEntry(cfg), ""
+// relogin is the way to a login of the call's user for entry, as a
+// sentence names it, and the command alone, the hint. For a user entry it
+// is a login of that entry with a piped token, which needs no terminal. For
+// a plugin login entry, which auth login refuses by name, it is the entry's
+// removal, after which the next call signs in as the user in a terminal or
+// uses a login of an entry of the user's own choice; there is no hint.
+func (u userCheck) relogin(cfg *config.Config, entry string, plugin bool) (text, hint string) {
+	quoted := clierr.ShellQuote(entry)
+	if plugin || config.IsExecLoginEntryName(entry) {
+		login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, u.caFrom, false)
+		return "remove " + quoted + " with " + clierr.Rancher + " auth logout " + quoted + ", then " + clierr.Rancher + " config delete-server " + quoted +
+			"; the next call signs in as " + clierr.ShellQuote(u.userID) + " in a terminal, or uses a login piped to " + login.Text(), ""
 	}
-	hint = clierr.Rancher + " auth login " + clierr.ShellQuote(entry) + " --token-stdin"
+	hint = clierr.Rancher + " auth login " + quoted + " --token-stdin"
 	return "pipe an API token of " + clierr.ShellQuote(u.userID) + " to " + hint, hint
 }
 
-// loginOfNewEntry is the way to the call's user's login when no user entry
-// is the call's to log in: a new entry for the server, with the CA the
-// call resolved, made current, then the kubeconfig regenerated from it.
-// It is three commands, so it has no hint. An empty user id names no
-// user.
+// loginOfNewEntry is the way to a login when no user entry is the call's to
+// log in: a new entry for the server, with the CA the call resolved, made
+// current, then the kubeconfig regenerated from it. It is three commands,
+// so it has no hint.
 func (u userCheck) loginOfNewEntry(cfg *config.Config) string {
 	login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, u.caFrom, false)
 	current := ""
 	if cfg != nil {
 		current = cfg.CurrentServer
 	}
-	of := ""
-	if u.userID != "" {
-		of = " of " + clierr.ShellQuote(u.userID)
-	}
-	return "pipe an API token" + of + " to " + login.Text() + ", then " + useServerRemedy("<name>", current) +
+	return "pipe an API token to " + login.Text() + ", then " + useServerRemedy("<name>", current) +
 		", then " + clierr.Rancher + " kubeconfig --cluster " + clierr.ShellQuote(u.clusterID)
 }
 
-// NewEntryLoginRemedy is the way to a login whose owner is recorded when
-// no user entry is a call's to log in: a new entry for serverURL, with
-// the CA the call resolved (a path, or an inline PEM it cannot name),
-// made current, then the kubeconfig for clusterID regenerated from it.
-// userID names the user the token must be of; empty names none.
-func NewEntryLoginRemedy(cfg *config.Config, userID, clusterID, serverURL, ca string, from config.CASource) string {
-	return userCheck{userID: userID, clusterID: clusterID, serverID: serverURL, caSource: ca, caFrom: from}.loginOfNewEntry(cfg)
+// entryOwnerRefused is the refusal of a call whose entry holds a login
+// another user's token was recorded for, or for a plugin login entry that
+// holds none was last logged in as another user: no request is made with
+// it. The call's user logs in again, or, with a cluster, the kubeconfig is
+// regenerated from an entry that holds that user's login.
+func (u userCheck) entryOwnerRefused(cfg *config.Config, entry, owner string, plugin, holds bool) *clierr.Error {
+	subject := "server entry " + clierr.ShellQuote(entry)
+	state := " holds the login of Rancher user " + clierr.ShellQuote(owner)
+	if plugin {
+		subject += ", the exec plugin's own login entry,"
+		if !holds {
+			state = " was last logged in as Rancher user " + clierr.ShellQuote(owner)
+		}
+	}
+	text, hint := u.relogin(cfg, entry, plugin)
+	msg := subject + state + ", and this exec entry names user " + clierr.ShellQuote(u.userID) + " with --user-id; " + text
+	if u.clusterID != "" {
+		current := ""
+		if cfg != nil {
+			current = cfg.CurrentServer
+		}
+		// The plugin login entry's text ends with what the next call
+		// does, so the regenerate choice starts a clause of its own.
+		join := ", or"
+		if plugin || config.IsExecLoginEntryName(entry) {
+			join = "; or"
+		}
+		msg += join + " regenerate the kubeconfig from an entry that holds the login of " + clierr.ShellQuote(u.userID) + " with " +
+			useServerRemedy("<entry>", current) + ", then " + clierr.Rancher + " kubeconfig --cluster " + clierr.ShellQuote(u.clusterID)
+	}
+	return clierr.New(clierr.CodeAuth, msg).WithHint(hint)
 }
 
-// entryOwnerRefused is the refusal of a call whose entry holds a login
-// another user's token was recorded for: no request is made with it. A
-// user entry is logged in again for the call's user, or the kubeconfig is
-// regenerated from an entry that holds that user's login; a plugin login
-// entry is never the login target, so a new entry is.
-func (u userCheck) entryOwnerRefused(cfg *config.Config, entry, owner string, plugin, holds bool) *clierr.Error {
-	names := " and this exec entry names user " + clierr.ShellQuote(u.userID) + " with --user-id; "
-	if plugin {
-		state := "holds the login of Rancher user " + clierr.ShellQuote(owner)
-		if !holds {
-			state = "records Rancher user " + clierr.ShellQuote(owner) + " as its owner"
-		}
-		return clierr.New(clierr.CodeAuth, "server entry "+clierr.ShellQuote(entry)+", the exec plugin's own login entry, "+state+","+
-			names+u.loginOfNewEntry(cfg))
+// entryNameTooLong is the refusal of a plugin-created login whose entry
+// would have a name the credential store cannot hold: a login of a user
+// entry under a shorter name is the way to a stored login.
+func (u userCheck) entryNameTooLong(cfg *config.Config, length int) *clierr.Error {
+	login := NoTerminalLogin(cfg, "", u.clusterID, u.serverID, u.caSource, u.caFrom, false)
+	piped := "pipe an API token"
+	if u.userID != "" {
+		piped += " of " + clierr.ShellQuote(u.userID)
 	}
-	current := ""
-	if cfg != nil {
-		current = cfg.CurrentServer
-	}
-	text, hint := u.loginOfEntry(cfg, entry)
-	return clierr.New(clierr.CodeAuth, "server entry "+clierr.ShellQuote(entry)+" holds the login of Rancher user "+clierr.ShellQuote(owner)+","+
-		names+text+", or regenerate the kubeconfig from an entry that holds the login of "+clierr.ShellQuote(u.userID)+" with "+
-		useServerRemedy("<entry>", current)+", then "+clierr.Rancher+" kubeconfig --cluster "+clierr.ShellQuote(u.clusterID)).WithHint(hint)
+	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
+		"the exec plugin's login entry for this server would have a name of %d characters, and the credential store accepts at most %d; to log in under a shorter name, %s to %s",
+		length, config.MaxEntryNameLength, piped, login.Text()))
 }
 
 // revokedClause says what became of a token this call created and then
@@ -148,9 +149,8 @@ func fateDetails(fresh *freshToken, out RevokeOutcome) directWaitDetails {
 // checkCreatedOwner is the check of a token created from a stored login for
 // a call with --user-id: the create response must name the call's user as
 // the owner. Any other answer revokes the token, with the stored login as
-// bearer, before anything is cached. sc is the entry whose login made it
-// and identified the entry the call's --name identifies.
-func (u userCheck) checkCreatedOwner(ctx context.Context, cfg *config.Config, created CreateResult, fresh *freshToken, sc storedCredential, identified string) error {
+// bearer, before anything is cached. sc is the entry whose login made it.
+func (u userCheck) checkCreatedOwner(ctx context.Context, cfg *config.Config, created CreateResult, fresh *freshToken, sc storedCredential) error {
 	if created.UserID == u.userID {
 		return nil
 	}
@@ -160,23 +160,10 @@ func (u userCheck) checkCreatedOwner(ctx context.Context, cfg *config.Config, cr
 			" named no owner, so it cannot be checked against --user-id "+clierr.ShellQuote(u.userID)+"; "+
 			revokedClause("the token", created.Ref, out)).WithDetails(fateDetails(fresh, out))
 	}
-	owner := clierr.ShellQuote(created.UserID)
-	notU := " belongs to Rancher user " + owner + ", not to " + clierr.ShellQuote(u.userID) + ", which this exec entry names with --user-id; " +
-		revokedClause("the token created from it", created.Ref, out) + "; "
-	plugin := sc.entry.Provenance == clierr.ProvenanceExecLogin
-	var e *clierr.Error
-	switch {
-	case !plugin:
-		text, hint := u.loginOfEntry(cfg, sc.name)
-		e = clierr.New(clierr.CodeAuth, "the stored login of server entry "+clierr.ShellQuote(sc.name)+notU+text).WithHint(hint)
-	case identified != "" && identified != sc.name:
-		text, hint := u.loginOfEntry(cfg, identified)
-		e = clierr.New(clierr.CodeAuth, "server entry "+clierr.ShellQuote(identified)+" has no login, and the exec plugin's own login entry "+
-			clierr.ShellQuote(sc.name)+" it fell back to"+notU+text).WithHint(hint)
-	default:
-		e = clierr.New(clierr.CodeAuth, "the exec plugin's own login entry "+clierr.ShellQuote(sc.name)+notU+u.loginOfNewEntry(cfg))
-	}
-	return e.WithDetails(fateDetails(fresh, out))
+	text, hint := u.relogin(cfg, sc.name, sc.entry.Provenance == clierr.ProvenanceExecLogin)
+	return clierr.New(clierr.CodeAuth, "the stored login of server entry "+clierr.ShellQuote(sc.name)+" belongs to Rancher user "+clierr.ShellQuote(created.UserID)+
+		", not to "+clierr.ShellQuote(u.userID)+", which this exec entry names with --user-id; "+
+		revokedClause("the token created from it", created.Ref, out)+"; "+text).WithHint(hint).WithDetails(fateDetails(fresh, out))
 }
 
 // noOwnerWithoutExtTokens is the refusal of a call with --user-id on a
@@ -249,8 +236,10 @@ func requestOwner(ctx context.Context, client *http.Client, base, clusterID, bea
 	return review.Status.UserInfo.Username, nil
 }
 
-// checkSignInOwner is the check of the cluster token an interactive sign-in
-// made for a call with --user-id: the owner its create response named (an
+// checkSignInOwner is the check of the token an interactive sign-in made
+// for a call with --user-id, a cluster token or, with no cluster, the
+// sign-in's own token, which the owner request asks through the local
+// cluster: the owner its create response named (an
 // ext token's spec.userID), when it named one, else the one the owner
 // request reports, must be the call's user. Any other answer, or a failed
 // request, revokes the token with its own bearer before anything is cached;
@@ -259,7 +248,11 @@ func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, ba
 	owner := created.UserID
 	if owner == "" {
 		var err error
-		owner, err = requestOwner(ctx, client, base, u.clusterID, created.Bearer)
+		cluster := u.clusterID
+		if cluster == "" {
+			cluster = "local"
+		}
+		owner, err = requestOwner(ctx, client, base, cluster, created.Bearer)
 		if err != nil {
 			out := revokeRefused(ctx, fresh)
 			code, retryable := clierr.CodeGeneric, false

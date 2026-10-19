@@ -5,8 +5,6 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -62,16 +60,16 @@ func failingRancher(t *testing.T) *httptest.Server {
 }
 
 // TestGetTokenUserIDIsCheckedBeforeAnyCacheRead asserts --user-id typed
-// empty, a value that is not a Rancher user id, and --user-id without
-// --name are refused before the call reads anything, even with a cached
-// token waiting under the key the call would read.
+// empty and a value that is not a Rancher user id are refused before the
+// call reads anything, even with a cached token waiting under the key the
+// call would read.
 func TestGetTokenUserIDIsCheckedBeforeAnyCacheRead(t *testing.T) {
 	srv := failingRancher(t)
 	dir := t.TempDir()
 	store := &countingStore{CredStore: config.NewFileStore(dir)}
 	serverID := config.CanonicalServerIdentity(srv.URL)
 	for _, u := range []string{"", "u-a"} {
-		require.NoError(t, seedCache(t, dir, store.CredStore, config.CacheKeyFor("prod", serverID, "c-1", u), "warm-tok", time.Now().Add(time.Hour), "prod", serverID, "c-1"))
+		require.NoError(t, seedCacheFor(t, dir, store.CredStore, config.CacheKeyFor("prod", serverID, "c-1", u), "warm-tok", time.Now().Add(time.Hour), "prod", serverID, "c-1", u))
 	}
 	for _, tc := range []struct {
 		name, userID, wantMsg string
@@ -102,56 +100,44 @@ func TestGetTokenUserIDIsCheckedBeforeAnyCacheRead(t *testing.T) {
 	}
 }
 
-// TestGetTokenUserIDWithoutNameNamesAWayToAnEntry asserts the refusal of
-// --user-id without --name, before any cache read: its remedy, rancher
-// kubeconfig, writes --name, and when the directory has no server entry
-// for the call's server - which rancher kubeconfig needs - the refusal
-// names the login of a new entry there first, with the call's CA, a piped
-// token of the user and the entry made current. A call that names no
-// server in a directory with no current server keeps the plain form.
-func TestGetTokenUserIDWithoutNameNamesAWayToAnEntry(t *testing.T) {
-	const plain = "--user-id needs --name: regenerate the kubeconfig with rancher kubeconfig --cluster 'c-1', which writes --name, and --user-id when the login it uses records its owner"
+// TestGetTokenClusterIsRequiredUnlessUserIDIsGiven asserts the refusals of
+// --cluster, before the call reads anything, even with a cached token
+// waiting under the key the call would read: a missing one without
+// --user-id, which asks for a token for Rancher itself only when it is
+// given, and a typed empty one with or without it.
+func TestGetTokenClusterIsRequiredUnlessUserIDIsGiven(t *testing.T) {
 	srv := failingRancher(t)
+	dir := t.TempDir()
+	store := &countingStore{CredStore: config.NewFileStore(dir)}
 	serverID := config.CanonicalServerIdentity(srv.URL)
-	caPath := filepath.Join(t.TempDir(), "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, []byte(selfSignedCAPEM(t)), 0o600))
+	require.NoError(t, seedCache(t, dir, store.CredStore, config.CacheKeyFor("prod", serverID, "", ""), "warm-tok", time.Now().Add(time.Hour), "prod", serverID, ""))
+	require.NoError(t, seedCacheFor(t, dir, store.CredStore, config.CacheKeyFor("", serverID, "", "u-a"), "warm-user-tok", time.Now().Add(time.Hour), "", serverID, "", "u-a"))
 	for _, tc := range []struct {
-		name    string
-		entries map[string]config.Server
-		flags   map[string]string
-		want    string
+		name  string
+		flags map[string]string
+		want  string
 	}{
-		{"an entry registered for the server", map[string]config.Server{"prod": {URL: srv.URL}}, map[string]string{"server": srv.URL}, plain},
-		{"no entry for the server", map[string]config.Server{"other": {URL: "https://other.example.com"}}, map[string]string{"server": srv.URL, "cacert": caPath},
-			"--user-id needs --name, and no server entry in this directory is registered for " + serverID +
-				"; log in under a new one: pipe an API token of 'u-a' to rancher auth login <name> --url '" + serverID + "' --cacert '" + caPath + "' --token-stdin, with a name of your choice for <name>, " +
-				"then rancher config use-server <name> (this sets the directory's current server, which is unset now), then rancher kubeconfig --cluster 'c-1'" +
-				" - the kubeconfig it writes carries --name, and --user-id when the login records its owner"},
-		{"no server named and none current", nil, map[string]string{}, plain},
-		{"the server from the environment, no entry for it", nil, map[string]string{"env": srv.URL},
-			"--user-id needs --name, and no server entry in this directory is registered for " + serverID +
-				"; log in under a new one: pipe an API token of 'u-a' to rancher auth login <name> --url '" + serverID + "' --token-stdin, with a name of your choice for <name>, " +
-				"then rancher config use-server <name> (this sets the directory's current server, which is unset now), then rancher kubeconfig --cluster 'c-1'" +
-				" - the kubeconfig it writes carries --name, and --user-id when the login records its owner"},
-		{"a server URL that is not one", nil, map[string]string{"server": "https://[::1"}, plain},
+		{"no --cluster, no --user-id", map[string]string{"name": "prod"}, "--cluster is required"},
+		{"no --cluster, no --user-id, no --name", map[string]string{}, "--cluster is required"},
+		{"--cluster=, no --user-id", map[string]string{"name": "prod", "cluster": ""}, "--cluster is empty; pass a value or omit --cluster"},
+		{"--cluster= with --user-id", map[string]string{"name": "prod", "cluster": "", "user-id": "u-a"}, "--cluster is empty; pass a value or omit --cluster"},
+		{"--cluster= with --user-id, no --name", map[string]string{"cluster": "", "user-id": "u-a"}, "--cluster is empty; pass a value or omit --cluster"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			cfg := &config.Config{Servers: tc.entries}
-			cfg.SetPath(config.FilePath(dir))
-			require.NoError(t, cfg.Write())
-			store := &countingStore{CredStore: config.NewFileStore(dir)}
 			cmd := NewTokenCommand(dir, store, anchorFor(dir)).(runtime.ReadCommand)
-			t.Setenv(config.EnvURL, tc.flags["env"])
-			s := map[string]string{"cluster": "c-1", "user-id": "u-a"}
+			ops := map[string]int{}
+			restore := config.SetIdentityObserverForTest(func(op string) { ops[op]++ })
+			t.Cleanup(restore)
+			before := len(store.cacheReads())
+			s := map[string]string{"server": srv.URL}
 			maps.Copy(s, tc.flags)
-			delete(s, "env")
 			_, err := cmd.Execute(t.Context(), tin{s: s}, ui.Discard())
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Equal(t, tc.want, clierr.ExpandRemedies(ce.Message, ""))
-			assert.Empty(t, store.cacheReads(), "no cache slot is read")
+			assert.Equal(t, tc.want, ce.Message)
+			assert.Len(t, store.cacheReads(), before, "no cache slot is read")
+			assert.Empty(t, ops, "and nothing else is read: no stamp, no config")
 		})
 	}
 }

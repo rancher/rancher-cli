@@ -59,8 +59,9 @@ func (legacyTokenCmd) Describe() runtime.Descriptor {
 			"--user is the cache-slot key and basic-auth username default; " +
 			"it does not pick a stored login: the call uses the one user " +
 			"entry for the server that has a login, else the plugin's own " +
-			"login entry while token reuse is on, and fails when several " +
-			"entries of the kind it would use have one.",
+			"login entry while token reuse is on. It fails when several user " +
+			"entries have a login, and when no user entry has one and the " +
+			"server has more than one plugin login entry.",
 		CommandType: runtime.Local,
 		Flags: []runtime.ArgSpec{
 			{Name: "server", Type: "string", Required: true, Desc: "Rancher server `url` (https assumed when schemeless)"},

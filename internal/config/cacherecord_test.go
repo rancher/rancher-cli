@@ -48,8 +48,10 @@ func TestEachBindingIsBoundToWhatItsLookupReads(t *testing.T) {
 			want:  cachedCred{Kind: recordOwnCredential, Identified: "exec-login-r.ex", Entry: "exec-login-r.ex", BindingID: "b-plugin", TokenReuse: &on},
 		},
 		{
-			name:  "another record of an identified call, the setting on",
-			build: func(cfg *Config) CacheBinding { return CacheBindingForIdentified("/d", cfg, "https://r.ex", "prod") },
+			name: "another record of an identified call, the setting on",
+			build: func(cfg *Config) CacheBinding {
+				return CacheBindingForIdentified("/d", cfg, "https://r.ex", "prod", "")
+			},
 			want: cachedCred{Kind: recordIdentified, Identified: "prod", Entry: "prod", BindingID: "b-prod", TokenReuse: &on,
 				Entries: &[]cachedEntry{{Name: "exec-login-r.ex", BindingID: "b-plugin"}}},
 		},
@@ -57,7 +59,7 @@ func TestEachBindingIsBoundToWhatItsLookupReads(t *testing.T) {
 			name: "another record of an identified call, the setting off",
 			build: func(cfg *Config) CacheBinding {
 				cfg.TokenReuse = false
-				return CacheBindingForIdentified("/d", cfg, "https://r.ex", "prod")
+				return CacheBindingForIdentified("/d", cfg, "https://r.ex", "prod", "")
 			},
 			want: cachedCred{Kind: recordIdentified, Identified: "prod", Entry: "prod", BindingID: "b-prod", TokenReuse: &off},
 		},
@@ -103,7 +105,7 @@ func TestEachBindingIsBoundToWhatItsLookupReads(t *testing.T) {
 	t.Run("an entry the load does not have", func(t *testing.T) {
 		t.Parallel()
 		require.ErrorIs(t, CacheBindingFor("/d", recordConfig(), "gone").writable(), errCacheBindingUnset)
-		require.ErrorIs(t, CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "gone").writable(), errCacheBindingUnset)
+		require.ErrorIs(t, CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "gone", "").writable(), errCacheBindingUnset)
 		require.ErrorIs(t, CacheBindingForServer("/d", nil, "https://r.ex", false).writable(), errCacheBindingUnset)
 	})
 }
@@ -126,8 +128,8 @@ func TestAWriteIsRefusedWhileAnyBoundEntryIsPaused(t *testing.T) {
 		b      CacheBinding
 		paused string
 	}{
-		{"the identified entry", CacheBindingForIdentified("/d", pause("prod"), "https://r.ex", "prod"), "prod"},
-		{"the plugin's login entry an identified call is bound to", CacheBindingForIdentified("/d", pause("exec-login-r.ex"), "https://r.ex", "prod"), "exec-login-r.ex"},
+		{"the identified entry", CacheBindingForIdentified("/d", pause("prod"), "https://r.ex", "prod", ""), "prod"},
+		{"the plugin's login entry an identified call is bound to", CacheBindingForIdentified("/d", pause("exec-login-r.ex"), "https://r.ex", "prod", ""), "exec-login-r.ex"},
 		{"another entry for the URL of a call that identifies none", CacheBindingForServer("/d", pause("staging"), "https://r.ex", false), "staging"},
 	}
 	for _, tc := range cases {
@@ -144,7 +146,7 @@ func TestAWriteIsRefusedWhileAnyBoundEntryIsPaused(t *testing.T) {
 
 	t.Run("an entry the record is not bound to", func(t *testing.T) {
 		t.Parallel()
-		assert.NoError(t, CacheBindingForIdentified("/d", pause("staging"), "https://r.ex", "prod").writable(),
+		assert.NoError(t, CacheBindingForIdentified("/d", pause("staging"), "https://r.ex", "prod", "").writable(),
 			"an identified call's record is not bound to the other user entries for the URL")
 		assert.NoError(t, CacheBindingFor("/d", pause("exec-login-r.ex"), "prod").writable(),
 			"nor is a record of the identified entry's own credential bound to the plugin's login entry")
@@ -173,7 +175,7 @@ func TestAPluginCreatedLoginsBindingAddsTheEntryItWrote(t *testing.T) {
 
 	t.Run("an existing entry, for an identified call", func(t *testing.T) {
 		t.Parallel()
-		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod")
+		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod", "")
 		out := PersistLoginOutcome{Name: "exec-login-r.ex", committedTo: backendFile, written: written(func(cfg *Config) {
 			loginWrote(cfg, "exec-login-r.ex", "b-plugin-2")
 			// Another process's login of prod after the lookup read it.
@@ -205,7 +207,7 @@ func TestAPluginCreatedLoginsBindingAddsTheEntryItWrote(t *testing.T) {
 
 	t.Run("the entry the call identified", func(t *testing.T) {
 		t.Parallel()
-		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "exec-login-r.ex")
+		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "exec-login-r.ex", "")
 		out := PersistLoginOutcome{Name: "exec-login-r.ex", committedTo: backendFile, written: written(func(cfg *Config) {
 			loginWrote(cfg, "exec-login-r.ex", "b-plugin-2")
 		})}
@@ -217,7 +219,7 @@ func TestAPluginCreatedLoginsBindingAddsTheEntryItWrote(t *testing.T) {
 
 	t.Run("a pause the login's outcome reports", func(t *testing.T) {
 		t.Parallel()
-		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod")
+		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod", "")
 		out := PersistLoginOutcome{Name: "exec-login-r.ex", CacheWritesPaused: true, committedTo: backendFile,
 			written: written(func(cfg *Config) { loginWrote(cfg, "exec-login-r.ex", "b-plugin-2") })}
 		err := out.CacheBindingOver("/d", lookup).writable()
@@ -228,14 +230,14 @@ func TestAPluginCreatedLoginsBindingAddsTheEntryItWrote(t *testing.T) {
 
 	t.Run("nothing to build from", func(t *testing.T) {
 		t.Parallel()
-		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod")
+		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod", "")
 		require.ErrorIs(t, PersistLoginOutcome{Name: "exec-login-r.ex"}.CacheBindingOver("/d", lookup).writable(), errCacheBindingUnset,
 			"a login that returned before its last write")
 		out := PersistLoginOutcome{Name: "exec-login-r.ex", written: recordConfig()}
 		require.ErrorIs(t, out.CacheBindingOver("/d", CacheBinding{}).writable(), errCacheBindingUnset, "a lookup binding nobody built")
 		off := recordConfig()
 		off.TokenReuse = false
-		require.ErrorIs(t, out.CacheBindingOver("/d", CacheBindingForIdentified("/d", off, "https://r.ex", "prod")).writable(), errCacheBindingUnset,
+		require.ErrorIs(t, out.CacheBindingOver("/d", CacheBindingForIdentified("/d", off, "https://r.ex", "prod", "")).writable(), errCacheBindingUnset,
 			"a lookup that reads no plugin login entry cannot hold the one the login wrote")
 	})
 }
@@ -257,12 +259,12 @@ func TestARecordMissingWhatItsKindIsBoundToIsAMiss(t *testing.T) {
 	require.True(t, a.valid(unnamed), "the control record is served")
 	plugin := full(CacheBindingFor("/d", cfg, "exec-login-r.ex"), "exec-login-r.ex")
 	require.True(t, a.valid(plugin), "the control record is served")
-	identified := full(CacheBindingForIdentified("/d", cfg, "https://r.ex", "prod"), "prod")
+	identified := full(CacheBindingForIdentified("/d", cfg, "https://r.ex", "prod", ""), "prod")
 	require.True(t, a.valid(identified), "the control record is served")
 	offCfg := recordConfig()
 	offCfg.TokenReuse = false
 	offAnchor := &CacheAnchor{Dir: "/d", Cfg: offCfg}
-	identifiedOff := CacheBindingForIdentified("/d", offCfg, "https://r.ex", "prod").record("tok", time.Time{}, "prod", "https://r.ex", "c")
+	identifiedOff := CacheBindingForIdentified("/d", offCfg, "https://r.ex", "prod", "").record("tok", time.Time{}, "prod", "https://r.ex", "c")
 	require.True(t, offAnchor.valid(identifiedOff), "the control record is served")
 	own := full(CacheBindingFor("/d", cfg, "prod"), "prod")
 	require.True(t, a.valid(own), "the control record is served")
@@ -364,7 +366,7 @@ func TestARecordFollowsTheLookupItWasWrittenFor(t *testing.T) {
 		off := with(func(cfg *Config) { cfg.TokenReuse = false })
 		for name, r := range map[string]cachedCred{
 			"a plugin login entry's own record": rec(CacheBindingFor("/d", recordConfig(), "exec-login-r.ex"), "exec-login-r.ex"),
-			"an identified call's other record": rec(CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod"), "prod"),
+			"an identified call's other record": rec(CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod", ""), "prod"),
 			"an unnamed call's record":          rec(CacheBindingForServer("/d", recordConfig(), "https://r.ex", false), "kube-c"),
 		} {
 			require.True(t, judge(recordConfig(), r), "%s: the control record is served", name)
@@ -400,7 +402,7 @@ func TestARecordFollowsTheLookupItWasWrittenFor(t *testing.T) {
 
 	t.Run("an identified call's plugin login entries", func(t *testing.T) {
 		t.Parallel()
-		fallback := rec(CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod"), "prod")
+		fallback := rec(CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod", ""), "prod")
 		require.True(t, judge(recordConfig(), fallback), "the control record is served")
 		two := with(addEntry("exec-login-second", "https://r.ex", true))
 		assert.False(t, judge(two, fallback), "a second plugin login entry appeared")
@@ -419,18 +421,18 @@ func TestARecordFollowsTheLookupItWasWrittenFor(t *testing.T) {
 		listed.Entries = &entries
 		assert.False(t, judge(two, listed), "a record listing both, for a call whose lookup refuses them")
 
-		ofPlugin := rec(CacheBindingForIdentified("/d", two, "https://r.ex", "exec-login-r.ex"), "exec-login-r.ex")
+		ofPlugin := rec(CacheBindingForIdentified("/d", two, "https://r.ex", "exec-login-r.ex", ""), "exec-login-r.ex")
 		assert.True(t, judge(two, ofPlugin), "a call identifying a plugin login entry reads no other")
 	})
 
 	t.Run("the writers give no binding for a list the lookup refuses", func(t *testing.T) {
 		t.Parallel()
 		two := with(addEntry("exec-login-second", "https://r.ex", true))
-		direct := CacheBindingForIdentified("/d", two, "https://r.ex", "prod")
+		direct := CacheBindingForIdentified("/d", two, "https://r.ex", "prod", "")
 		assert.True(t, direct.Refused())
 		require.ErrorIs(t, direct.writable(), errCacheRecordRefused)
 
-		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod")
+		lookup := CacheBindingForIdentified("/d", recordConfig(), "https://r.ex", "prod", "")
 		out := PersistLoginOutcome{Name: "exec-login-second", committedTo: backendFile, written: two}
 		b := out.CacheBindingOver("/d", lookup)
 		assert.True(t, b.Refused(), "the login added the server's second plugin login entry")

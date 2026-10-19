@@ -51,7 +51,11 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 			texts[name+" hint"] = ce.Hint
 		}
 	}
-	add("several plugin login entries", pluginEntriesError("https://r.example.com", []string{"exec-login-r.ex", "exec-login-r.ex2"}, cfg))
+	pluginNames := []string{"exec-login-r.ex", "exec-login-r.ex2"}
+	owner := userCheck{userID: "u-abc12", clusterID: "c-1", serverID: "https://r.example.com", caSource: "/etc/rancher/ca.pem"}
+	add("several plugin login entries", pluginEntriesError("https://r.example.com", pluginNames, cfg, "", userCheck{}))
+	add("several plugin login entries of one user", pluginEntriesError("https://r.example.com", pluginNames, cfg, "prod", owner))
+	add("several plugin login entries of one user, no entry named", pluginEntriesError("https://r.example.com", pluginNames, cfg, "", owner))
 	add("a tie", entryNotNamedError(cfg, hits, "c-1", false))
 	add("a tie under the legacy shim", entryNotNamedError(cfg, hits, "c-1", true))
 	elsewhere := func(current string, here bool, extra map[string]config.Server) *config.Config {
@@ -112,18 +116,19 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		interactiveLoginRequired("local", "x"), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
 	add("no terminal, a --name of a plugin login entry", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
 		interactiveLoginRequired("local", "x"), noTerminalCall{name: "exec-login-r.ex-c-1", clusterID: "c-1", serverURL: "https://r.example.com", caCert: "/etc/rancher/ca.pem"}))
-	add("--user-id without --name, no entry for the server", tokenCmd{dir: dir}.withNewEntryLogin(func() error {
-		_, err := readUserID(tin{s: map[string]string{"user-id": "u-abc12"}}, "", "c-1")
-		return err
-	}(), tin{s: map[string]string{"server": "https://r.example.com", "cluster": "c-1", "user-id": "u-abc12", "cacert": "/etc/rancher/ca.pem"}}))
+	add("no terminal, --user-id without --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", caCert: "/etc/rancher/ca.pem", keepsLogin: true}))
+	add("no terminal, --user-id without --name, token reuse off", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
+	add("no terminal, --user-id without --cluster", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+		noTerminalCall{serverURL: "https://r.example.com", userID: "u-abc12", keepsLogin: true}))
+	add("no terminal, --user-id without --cluster, token reuse off", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
+		interactiveLoginRequired("local", "x"), noTerminalCall{serverURL: "https://r.example.com", userID: "u-abc12"}))
+	add("no terminal, a provider choice, --user-id without --name", nt.withNoTerminalRemedies(choice,
+		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", keepsLogin: true}))
 	add("no terminal, with --user-id", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
-	add("no terminal, with --user-id, a plugin login entry skipped", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
-		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", skipped: "exec-login-r.ex", skippedOwner: "u-other"}))
-	add("--user-id without --name", func() error {
-		_, err := readUserID(tin{s: map[string]string{"user-id": "u-abc12"}}, "", "c-1")
-		return err
-	}())
+	add("a plugin login entry name too long", userCheck{userID: "u-abc12", clusterID: "c-1", serverID: "https://r.example.com", caSource: "/etc/rancher/ca.pem"}.entryNameTooLong(cfg, config.MaxEntryNameLength+1))
 	for name, ca := range map[string]string{"": "", ", a CA path": "/etc/rancher/ca.pem", ", an inline CA": "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"} {
 		u := userCheck{userID: "u-abc12", clusterID: "c-1", serverID: "https://r.example.com", caSource: ca}
 		add("another owner's login in a user entry"+name, u.entryOwnerRefused(cfg, "prod", "u-other", false, true))
@@ -132,14 +137,13 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		created := CreateResult{Outcome: CreateKnown, Kind: TokenKindExt, Ref: &TokenRef{Kind: TokenKindExt, Name: "token-abc"}, UserID: "u-other"}
 		gone := &freshToken{create: created, cleanup: func(context.Context) RevokeOutcome { return RevokeOutcome{Result: ResultFailed, Error: "500"} }}
 		add("a created token of another owner"+name, u.checkCreatedOwner(t.Context(), cfg, created, gone,
-			storedCredential{name: "prod", entry: cfg.Servers["prod"]}, "prod"))
-		add("a created token of another owner, from the fallback"+name, u.checkCreatedOwner(t.Context(), cfg, created, gone,
-			storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}, "prod"))
+			storedCredential{name: "prod", entry: cfg.Servers["prod"]}))
 		add("a created token of another owner, from a plugin login entry"+name, u.checkCreatedOwner(t.Context(), cfg, created, gone,
-			storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}, ""))
+			storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}))
+		unscoped := userCheck{userID: "u-abc12", serverID: "https://r.example.com", caSource: ca}
+		add("another owner's login in a user entry, no cluster"+name, unscoped.entryOwnerRefused(cfg, "prod", "u-other", false, true))
+		add("another owner's plugin login entry, no cluster"+name, unscoped.entryOwnerRefused(cfg, "exec-login-r.ex", "u-other", true, true))
 	}
-
-	texts["a login of a new entry, no user named"] = NewEntryLoginRemedy(cfg, "", "c-1", "https://r.example.com", "/etc/rancher/ca.pem", config.CASource{})
 
 	rec := config.SupersededToken{Ref: clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc"}}
 	texts["a superseded token that was kept"] = keptWarning(rec, "https://r.example.com", "the server refused")
@@ -219,15 +223,28 @@ func ExecPluginRemedyTextsForTest(t *testing.T) map[string]string {
 	return execPluginRemedyTexts(t)
 }
 
-// TestNoExecPluginRemedyLogsInOrRemovesAPluginLoginEntry asserts no remedy
-// names auth login, auth logout or config delete-server on a plugin login
-// entry: auth login refuses the name, and the entry may be another user's
-// login that their kubeconfigs use.
-func TestNoExecPluginRemedyLogsInOrRemovesAPluginLoginEntry(t *testing.T) {
+// TestPluginLoginEntryRemediesNeverLogInAndRemoveOnlyAnotherUsersLogin
+// asserts no remedy names auth login on a plugin login entry, whose name
+// auth login refuses, and none names auth logout or config delete-server
+// on one unless it is the refusal of a call whose --name identifies that
+// entry (or that chose it by its recorded owner) when the entry holds
+// another user's login: the entry cannot answer the call, and removing it
+// is the way to the call's own. Every other remedy leaves a plugin login
+// entry alone, since it may be another user's login that their
+// kubeconfigs use.
+func TestPluginLoginEntryRemediesNeverLogInAndRemoveOnlyAnotherUsersLogin(t *testing.T) {
 	t.Parallel()
-	re := regexp.MustCompile(`rancher (?:auth login|auth logout|config delete-server) '?` + regexp.QuoteMeta(config.ExecLoginPrefix))
+	loginRE := regexp.MustCompile(`rancher auth login '?` + regexp.QuoteMeta(config.ExecLoginPrefix))
+	removeRE := regexp.MustCompile(`rancher (?:auth logout|config delete-server) '?` + regexp.QuoteMeta(config.ExecLoginPrefix))
+	removes := func(name string) bool {
+		return strings.HasPrefix(name, "another owner") || strings.HasPrefix(name, "a created token of another owner, from a plugin login entry")
+	}
 	for name, s := range execPluginRemedyTexts(t) {
-		assert.NotRegexp(t, re, clierr.ExpandRemedies(s, ""), name)
+		expanded := clierr.ExpandRemedies(s, "")
+		assert.NotRegexp(t, loginRE, expanded, name)
+		if !removes(name) {
+			assert.NotRegexp(t, removeRE, expanded, name)
+		}
 	}
 }
 

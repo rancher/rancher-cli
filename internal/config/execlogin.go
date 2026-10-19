@@ -25,6 +25,18 @@ func ExecLoginEntryName(canonicalURL string) string {
 	return clierr.HostEntryName(ExecLoginPrefix, canonicalURL)
 }
 
+// ExecLoginEntryNameFor is the name of the plugin login entry the plugin
+// creates for a call with --user-id userID: ExecLoginEntryName, a dash and
+// the user id, so one server holds one such entry per user. A call without
+// --user-id gets ExecLoginEntryName itself.
+func ExecLoginEntryNameFor(canonicalURL, userID string) string {
+	name := ExecLoginEntryName(canonicalURL)
+	if userID == "" {
+		return name
+	}
+	return name + "-" + userID
+}
+
 // ValidateEntryName rejects a server name reserved for the legacy token
 // shim's cache slots, the exec plugin's cache slots of calls with
 // --user-id, or the exec plugin's own login entries (names are

@@ -172,7 +172,11 @@ func CanonicalDir(dir string) string {
 //   - the record of a call that identifies none is bound exactly to every
 //     entry that answers for the server, to the current server, which the
 //     lookup prefers among them, and to the setting
-//     (CacheBindingForServer).
+//     (CacheBindingForServer);
+//   - the record of a call with --user-id that identifies none is bound
+//     the same way, but only to the entries that answer for the server and
+//     record that user as their owner, and to the current server among
+//     them (CacheBindingForOwner).
 //
 // "Exactly" means the list may neither gain nor lose an entry.
 //
@@ -192,6 +196,9 @@ type CacheBinding struct {
 	dir        string
 	kind       string
 	identified string
+	// userID is the call's --user-id: the user whose recorded owner picks
+	// the entries a list holds.
+	userID string
 	// entry is the entry the record is bound to by its id alone: the
 	// identified entry, empty for a call that identifies none.
 	entry boundEntry
@@ -224,6 +231,7 @@ const (
 	recordOwnCredential = "ownCredential"
 	recordIdentified    = "identifiedEntry"
 	recordServer        = "server"
+	recordOwner         = "owner"
 )
 
 // boundEntry is one entry a record is bound to: its name, its cache binding
@@ -268,15 +276,24 @@ func CacheBindingFor(dir string, cfg *Config, entry string) CacheBinding {
 	return b
 }
 
+// forUser is b for a call with --user-id userID, which the record carries
+// so that only a call naming that user is served it.
+func (b CacheBinding) forUser(userID string) CacheBinding {
+	b.userID = userID
+	return b
+}
+
 // CacheBindingForIdentified is the binding of any other record of a call
 // whose --name identified entry, for server: the plugin's own login entry
 // answering for it, the plugin-created login, or an interactive sign-in.
 // It is bound to entry, to the token-reuse setting, and, while the setting
 // is on, exactly to the server's plugin login entries; not to the other
 // entries for the server, nor to the current server, which that lookup
-// never reads. An entry cfg does not have gives the zero binding, and so
-// does a list the lookup refuses (see refusesPluginEntries).
-func CacheBindingForIdentified(dir string, cfg *Config, server, entry string) CacheBinding {
+// never reads. For a call with --user-id the plugin login entries are
+// those that record that user. An entry cfg does not have gives the zero
+// binding, and so does a list the lookup refuses (see
+// refusesPluginEntries).
+func CacheBindingForIdentified(dir string, cfg *Config, server, entry, userID string) CacheBinding {
 	if cfg == nil {
 		return CacheBinding{}
 	}
@@ -284,11 +301,11 @@ func CacheBindingForIdentified(dir string, cfg *Config, server, entry string) Ca
 	if !ok {
 		return CacheBinding{}
 	}
-	b := CacheBinding{dir: dir, kind: recordIdentified, identified: entry, entry: boundEntryOf(cfg, entry),
+	b := CacheBinding{dir: dir, kind: recordIdentified, identified: entry, userID: userID, entry: boundEntryOf(cfg, entry),
 		identifiedIsPlugin: s.Provenance == clierr.ProvenanceExecLogin,
 		reuseBound:         true, reuse: cfg.TokenReuse, built: true, load: cfg}
 	if cfg.TokenReuse {
-		b.listed, b.list = true, boundEntriesOf(cfg, cfg.PluginLoginEntries(server))
+		b.listed, b.list = true, boundEntriesOf(cfg, cfg.PluginLoginEntriesOf(server, userID))
 	}
 	if b.refusesPluginEntries() {
 		return CacheBinding{refused: true}
@@ -321,13 +338,16 @@ func PluginFallbackRefused(identifiedIsPlugin bool, pluginLoginEntries int) bool
 // own credential gives CacheBindingFor, any other answer of a call that
 // identifies an entry CacheBindingForIdentified, and a call that
 // identifies none CacheBindingForServer (legacyShim for the legacy
-// `rancher token` shim's lookup). Every writer picks its binding here.
-func CacheBindingForLookup(dir string, cfg *Config, server, identified, answered string, legacyShim bool) CacheBinding {
+// `rancher token` shim's lookup), or CacheBindingForOwner when the call
+// has a --user-id. Every writer picks its binding here.
+func CacheBindingForLookup(dir string, cfg *Config, server, identified, answered, userID string, legacyShim bool) CacheBinding {
 	switch {
 	case identified != "" && answered == identified:
-		return CacheBindingFor(dir, cfg, identified)
+		return CacheBindingFor(dir, cfg, identified).forUser(userID)
 	case identified != "":
-		return CacheBindingForIdentified(dir, cfg, server, identified)
+		return CacheBindingForIdentified(dir, cfg, server, identified, userID)
+	case userID != "":
+		return CacheBindingForOwner(dir, cfg, server, userID)
 	}
 	return CacheBindingForServer(dir, cfg, server, legacyShim)
 }
@@ -349,6 +369,22 @@ func CacheBindingForServer(dir string, cfg *Config, server string, legacyShim bo
 		b.currentBound, b.current = true, currentAmong(cfg.CurrentServer, names)
 	}
 	return b
+}
+
+// CacheBindingForOwner is the binding of a record of a call with --user-id
+// userID whose --name identifies no entry, for server: bound exactly to
+// every entry that answers for server and records userID as its owner, to
+// the current server among them - its name when it is one of them, else
+// none - and to the token-reuse setting. An entry whose recorded owner
+// becomes userID, or stops being it, ends the record, as does a new entry
+// of userID's or the removal of one.
+func CacheBindingForOwner(dir string, cfg *Config, server, userID string) CacheBinding {
+	if cfg == nil || userID == "" {
+		return CacheBinding{}
+	}
+	names := cfg.OwnedServerNames(server, userID)
+	return CacheBinding{dir: dir, kind: recordOwner, userID: userID, listed: true, list: boundEntriesOf(cfg, names),
+		currentBound: true, current: currentAmong(cfg.CurrentServer, names), reuseBound: true, reuse: cfg.TokenReuse, built: true, load: cfg}
 }
 
 // currentAmong is the current server as a record is bound to it: its name
@@ -383,12 +419,18 @@ func CacheBindingForTest(dir, entry, bindingID string) CacheBinding {
 // a real call would; the exec plugin itself picks its binding from what
 // its lookup read.
 func CacheBindingForSeed(dir string, cfg *Config, name, server, cluster string) CacheBinding {
+	return CacheBindingForSeedOf(dir, cfg, name, server, cluster, "")
+}
+
+// CacheBindingForSeedOf is CacheBindingForSeed for a call with --user-id
+// userID.
+func CacheBindingForSeedOf(dir string, cfg *Config, name, server, cluster, userID string) CacheBinding {
 	legacyShim := IsLegacyCacheSlot(name)
 	identified := ""
 	if id := IdentifyEntry(cfg, server, name, cluster, legacyShim); !id.OtherURL {
 		identified = id.Entry
 	}
-	return CacheBindingForLookup(dir, cfg, server, identified, identified, legacyShim)
+	return CacheBindingForLookup(dir, cfg, server, identified, identified, userID, legacyShim)
 }
 
 // WithCreatedToken is b with the token its record caches named: the ref
@@ -576,7 +618,7 @@ func (b CacheBinding) writable() error {
 // record is the cache record b writes for a credential.
 func (b CacheBinding) record(token string, expiry time.Time, name, server, cluster string) cachedCred {
 	rec := cachedCred{Token: token, Expiry: expiry, Name: name, Server: server, Cluster: cluster,
-		Version: cacheRecordVersion, Dir: b.dir, Kind: b.kind, Identified: b.identified, Entry: b.entry.name, BindingID: b.entry.id,
+		Version: cacheRecordVersion, Dir: b.dir, Kind: b.kind, Identified: b.identified, UserID: b.userID, Entry: b.entry.name, BindingID: b.entry.id,
 		TokenRef: b.tokenRef, TokenUserID: b.tokenUserID}
 	if b.listed {
 		entries := make([]cachedEntry, len(b.list))
@@ -701,6 +743,13 @@ func (a *CacheAnchor) valid(rec cachedCred) bool {
 	return a.Cfg.servesRecord(rec)
 }
 
+// validFor is valid for the record found under key: the user id the key
+// carries must be the one the record carries, so a record of a call with
+// --user-id serves only a call with that user, and never one without.
+func (a *CacheAnchor) validFor(key string, rec cachedCred) bool {
+	return userIDOfKey(key) == rec.UserID && a.valid(rec)
+}
+
 // servesRecord reports whether the exec plugin's lookup for the record's
 // call, run over c, would read what the record is bound to: the same
 // identification and no refusal, then, by the record's kind, the one
@@ -727,11 +776,20 @@ func (c *Config) servesRecord(rec cachedCred) bool {
 	}
 	switch rec.Kind {
 	case recordServer:
-		if rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || (rec.CurrentServer == nil) != legacyShim {
+		if rec.UserID != "" || rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || (rec.CurrentServer == nil) != legacyShim {
 			return false
 		}
 		names := c.MatchingServerNames(rec.Server)
 		if rec.CurrentServer != nil && currentAmong(c.CurrentServer, names) != *rec.CurrentServer {
+			return false
+		}
+		return c.sameEntries(names, *rec.Entries)
+	case recordOwner:
+		if rec.UserID == "" || rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || rec.CurrentServer == nil || legacyShim {
+			return false
+		}
+		names := c.OwnedServerNames(rec.Server, rec.UserID)
+		if currentAmong(c.CurrentServer, names) != *rec.CurrentServer {
 			return false
 		}
 		return c.sameEntries(names, *rec.Entries)
@@ -751,7 +809,7 @@ func (c *Config) servesRecord(rec cachedCred) bool {
 		if rec.Entries == nil {
 			return true
 		}
-		plugins := c.PluginLoginEntries(rec.Server)
+		plugins := c.PluginLoginEntriesOf(rec.Server, rec.UserID)
 		if PluginFallbackRefused(s.Provenance == clierr.ProvenanceExecLogin, len(plugins)) {
 			return false
 		}
@@ -791,8 +849,8 @@ func (c *Config) sameEntries(names []string, listed []cachedEntry) bool {
 // staleRecord reports whether this record is one the reader can prove is
 // not its own to serve, which is the only case a reader deletes as
 // cleanup.
-func (a *CacheAnchor) staleRecord(rec cachedCred) bool {
-	return a.judgeable() && !a.valid(rec)
+func (a *CacheAnchor) staleRecord(key string, rec cachedCred) bool {
+	return a.judgeable() && !a.validFor(key, rec)
 }
 
 // Confirm re-reads the binding stamp and reports whether it is still the
@@ -974,6 +1032,27 @@ func (c *Config) PluginLoginEntries(server string) []string {
 	})
 }
 
+// PluginLoginEntriesOf is PluginLoginEntries for a call with --user-id
+// userID: only the plugin login entries that record userID as their
+// owner. An empty userID lists them all.
+func (c *Config) PluginLoginEntriesOf(server, userID string) []string {
+	if userID == "" {
+		return c.PluginLoginEntries(server)
+	}
+	return slices.DeleteFunc(c.PluginLoginEntries(server), func(n string) bool {
+		return c.Servers[n].TokenUserID != userID
+	})
+}
+
+// OwnedServerNames lists the entries answering for a server that record
+// userID as their owner, sorted. An entry that records no owner is never
+// listed: nothing says whose login it holds.
+func (c *Config) OwnedServerNames(server, userID string) []string {
+	return slices.DeleteFunc(c.MatchingServerNames(server), func(n string) bool {
+		return c.Servers[n].TokenUserID != userID
+	})
+}
+
 // MatchingServerNames lists the entries answering for a server, compared
 // by scheme and host, sorted for determinism. One matching policy for
 // every caller: the credential lookup, the CA lookup and the lists a cache
@@ -994,14 +1073,16 @@ func (c *Config) MatchingServerNames(server string) []string {
 type entryInputRow struct {
 	url       string
 	bindingID string
+	owner     string
 }
 
 // recordInputs is the config.yaml content an exec-credential cache record
 // is judged against: which entries exist, which URL each one answers for,
-// the cache binding id each one carries, the current server and the
-// token-reuse setting. The last two decide which entry the exec plugin's
-// lookup reads for a call that names none, and whether it reads the
-// plugin's own login entries at all. A config write that leaves all of it
+// the cache binding id each one carries, the owner each one records, the
+// current server and the token-reuse setting. The owners decide which
+// entries a call with --user-id reads; the last two decide which entry the
+// exec plugin's lookup reads for a call that names none, and whether it
+// reads the plugin's own login entries at all. A config write that leaves all of it
 // unchanged cannot make any record invalid, so it needs no fresh stamp;
 // one that changes any of it can, so it writes one.
 //
@@ -1016,7 +1097,7 @@ type recordInputs struct {
 func (c *Config) recordInputs() recordInputs {
 	out := recordInputs{entries: make(map[string]entryInputRow, len(c.Servers)), currentServer: c.CurrentServer, tokenReuse: c.TokenReuse}
 	for name, s := range c.Servers {
-		out.entries[name] = entryInputRow{url: s.URL, bindingID: s.CacheBindingID}
+		out.entries[name] = entryInputRow{url: s.URL, bindingID: s.CacheBindingID, owner: s.TokenUserID}
 	}
 	return out
 }

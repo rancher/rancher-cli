@@ -89,7 +89,7 @@ func TestLookupStoredLoginOutcomes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var reads []string
-			got := LookupStoredLogin(&tc.cfg, mapReader{tokens: tc.tokens, fail: tc.fail, reads: &reads}, url, tc.callName, "c-1")
+			got := LookupStoredLogin(&tc.cfg, mapReader{tokens: tc.tokens, fail: tc.fail, reads: &reads}, url, tc.callName, "c-1", "")
 			assert.Equal(t, tc.want, got.Outcome)
 			assert.Equal(t, tc.identified, got.Identified)
 			assert.Equal(t, tc.entry, got.Entry)

@@ -46,11 +46,11 @@ func TestUserIDNewEntryLoginsCarryTheCallsCA(t *testing.T) {
 		wantCA := func(t *testing.T, x *ownerFixture, msg string) {
 			t.Helper()
 			if tc.ca == caPath {
-				assert.Contains(t, msg, "rancher auth login <name> --url '"+x.serverID()+"' --cacert '"+caPath+"' --token-stdin, with a name of your choice for <name>, then")
+				assert.Contains(t, msg, "rancher auth login <name> --url '"+x.serverID()+"' --cacert '"+caPath+"' --token-stdin, with a name of your choice for <name>")
 				return
 			}
 			assert.Contains(t, msg, "rancher auth login <name> --url '"+x.serverID()+"' --token-stdin, with a name of your choice for <name>, "+
-				"adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline, then")
+				"adding --cacert with the path of a file that holds the server's CA certificate, which this exec entry carries inline")
 		}
 		t.Run("another owner's plugin login entry, "+tc.name, func(t *testing.T) {
 			x := newOwnerFixture(t, true, testrancher.Options{})
@@ -63,7 +63,7 @@ func TestUserIDNewEntryLoginsCarryTheCallsCA(t *testing.T) {
 			x := newOwnerFixture(t, true, testrancher.Options{})
 			x.entry(x.pluginEntry(), "bob", "", true)
 			_, msg := refusal(t, x.callWithCA(x.pluginEntry()+"-c-test", "user-alice", tc.ca))
-			assert.True(t, strings.HasPrefix(msg, "the exec plugin's own login entry '"+x.pluginEntry()+"' belongs to Rancher user 'user-bob'"), msg)
+			assert.True(t, strings.HasPrefix(msg, "the stored login of server entry '"+x.pluginEntry()+"' belongs to Rancher user 'user-bob'"), msg)
 			wantCA(t, x, msg)
 		})
 	}
@@ -71,13 +71,13 @@ func TestUserIDNewEntryLoginsCarryTheCallsCA(t *testing.T) {
 
 // TestUserIDPluginCreatedLoginChecksTheSuffixedEntryItWrites asserts the
 // owner check of the entry the plugin-created login would write is made
-// on the entry the collision rule resolves: with the URL's plugin login
+// on the entry the collision rule resolves: with the call's plugin login
 // entry name taken by an entry at another URL, the URL's own is the
 // suffixed one, and when that one records another owner the call signs in
 // interactively and leaves both untouched.
 func TestUserIDPluginCreatedLoginChecksTheSuffixedEntryItWrites(t *testing.T) {
 	x := newOwnerFixture(t, true, testrancher.Options{})
-	taken, suffixed := x.pluginEntry(), x.pluginEntry()+"-2"
+	taken, suffixed := x.pluginEntryOf("user-carol"), x.pluginEntryOf("user-carol")+"-2"
 	cfg, err := config.Load(config.FilePath(x.dir))
 	require.NoError(t, err)
 	cfg.Servers[taken] = config.Server{URL: "https://elsewhere.example.com", Provenance: clierr.ProvenanceExecLogin}

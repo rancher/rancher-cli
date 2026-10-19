@@ -157,7 +157,7 @@ func (o PersistLoginOutcome) CacheBindingOver(dir string, lookup CacheBinding) C
 	}
 	var b CacheBinding
 	if lookup.identified == o.Name {
-		b = CacheBindingForLookup(dir, o.written, "", o.Name, o.Name, false)
+		b = CacheBindingForLookup(dir, o.written, "", o.Name, o.Name, lookup.userID, false)
 		b.entry.paused = b.entry.paused || o.CacheWritesPaused
 	} else {
 		b = lookup.withWritten(o.written, o.Name, o.CacheWritesPaused)

@@ -2,13 +2,11 @@ package token
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,11 +66,13 @@ func waitingOnTheFlock(t *testing.T) <-chan struct{} {
 // TestUserIDPluginCreatedLoginRechecksTheOwnerUnderTheFlock asserts the
 // race the check under the plugin-login flock closes. A call with
 // --user-id that missed while another call's plugin-created login was
-// signing in waits for that flock; when the other call has logged the
-// plugin login entry in as another user meanwhile - a new entry, or a
-// refresh after a rejection - the call signs in interactively instead of
-// writing over it, and prints no plaintext-file disclosure for a login
-// that does not happen.
+// signing in waits for that flock. When the other call, which names no
+// user, has refreshed the call's plugin login entry after a rejection by
+// logging in as another user meanwhile, the call signs in interactively
+// instead of writing over it, and prints no plaintext-file disclosure for
+// a login that does not happen. When the other call has made the entry of
+// its own, named for the server alone, the call goes on to make its own,
+// named for the server and its user, and the two never share an entry.
 func TestUserIDPluginCreatedLoginRechecksTheOwnerUnderTheFlock(t *testing.T) {
 	for _, refresh := range []bool{false, true} {
 		t.Run(map[bool]string{false: "a new entry", true: "a refresh"}[refresh], func(t *testing.T) {
@@ -81,8 +81,8 @@ func TestUserIDPluginCreatedLoginRechecksTheOwnerUnderTheFlock(t *testing.T) {
 			if refresh {
 				// The plugin login entry is carol's, and the server no longer
 				// accepts it: both calls get a 401 and refresh.
-				x.entry(x.pluginEntry(), "carol", "user-carol", true)
-				login, _ := x.stored(x.pluginEntry())
+				x.entry(x.pluginEntryOf("user-carol"), "carol", "user-carol", true)
+				login, _ := x.stored(x.pluginEntryOf("user-carol"))
 				id, _, _ := strings.Cut(strings.TrimPrefix(login, "ext/"), ":")
 				out := revokeToken(t.Context(), x.srv.Client(), x.srv.URL, TokenRef{Kind: TokenKindExt, Name: id}, login)
 				require.Equal(t, ResultRevoked, out.Result, "the server no longer accepts the login")
@@ -128,52 +128,25 @@ func TestUserIDPluginCreatedLoginRechecksTheOwnerUnderTheFlock(t *testing.T) {
 			got := <-done
 			require.NoError(t, got.err)
 			assert.Equal(t, "user-carol", got.owner, "the call signs in as its own user")
-			login, s := x.stored(x.pluginEntry())
+			if !refresh {
+				bobLogin, bobEntry := x.stored(x.pluginEntry())
+				owner, _ := x.f.BearerOwner(bobLogin)
+				assert.Equal(t, "user-bob", owner, "the other call's entry is its own")
+				assert.Equal(t, "user-bob", bobEntry.TokenUserID)
+				carolLogin, carolEntry := x.stored(x.pluginEntryOf("user-carol"))
+				owner, _ = x.f.BearerOwner(carolLogin)
+				assert.Equal(t, "user-carol", owner, "the call made an entry of its own")
+				assert.Equal(t, "user-carol", carolEntry.TokenUserID)
+				assert.Contains(t, notices.String(), "plaintext file", "the call's own login disclosed it")
+				assert.Contains(t, otherNotices.String(), "plaintext file", "the other call's login disclosed it")
+				return
+			}
+			login, s := x.stored(x.pluginEntryOf("user-carol"))
 			owner, _ := x.f.BearerOwner(login)
 			assert.Equal(t, "user-bob", owner, "the other call's login is not written over")
 			assert.Equal(t, "user-bob", s.TokenUserID)
 			assert.NotContains(t, notices.String(), "plaintext file", "no disclosure for a login that does not happen")
 			assert.Contains(t, otherNotices.String(), "plaintext file", "the other call's login disclosed it")
-		})
-	}
-}
-
-// TestUserIDSkipTakesNoPluginLoginFlock asserts a call that skips another
-// user's plugin login entry never enters the plugin lane: with the
-// plugin-login flock held by another call at a sign-in prompt, it reaches
-// its own sign-in at once.
-func TestUserIDSkipTakesNoPluginLoginFlock(t *testing.T) {
-	for _, name := range []string{"prod-c-test", "kube-c-test"} {
-		t.Run(name, func(t *testing.T) {
-			x := newOwnerFixture(t, true, testrancher.Options{})
-			if name == "prod-c-test" {
-				x.entry("prod", "", "", false)
-			}
-			x.entry(x.pluginEntry(), "bob", "user-bob", true)
-
-			held := make(chan struct{})
-			release := make(chan struct{})
-			lockDone := make(chan error, 1)
-			go func() {
-				lockDone <- config.WithPluginLoginLock(t.Context(), x.dir, x.serverID(), func() error {
-					close(held)
-					<-release
-					return nil
-				})
-			}()
-			<-held
-			t.Cleanup(func() {
-				close(release)
-				require.NoError(t, <-lockDone)
-			})
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			s := map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": name, "auth-provider": "localProvider", "user-id": "user-carol"}
-			cmd := NewTokenCommand(x.dir, x.store, anchorFor(x.dir)).(runtime.ReadCommand)
-			res, err := cmd.Execute(ctx, tin{s: s}, ui.New(&bytes.Buffer{}, newLineReader("carol", "pw-carol"), false, true))
-			require.NoError(t, err, "the call does not wait for the flock, which it would hold for a minute")
-			owner, _ := x.f.BearerOwner(res.Data.(*execCredential).Status.Token)
-			assert.Equal(t, "user-carol", owner)
 		})
 	}
 }

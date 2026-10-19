@@ -95,7 +95,7 @@ func TestResolveConnCAOrderWithTheVariable(t *testing.T) {
 				t.Helper()
 				t.Setenv(config.EnvCACert, v)
 				cmd := tokenCmd{dir: dir, store: config.NewFileStore(dir)}
-				_, _, _, source, from, choice, err = cmd.resolveConnWithCA(server, "c-1", tc.cacert, tc.wantName, tc.shim, tc.skipVerify)
+				_, _, _, source, from, choice, err = cmd.resolveConnWithCA(server, "c-1", tc.cacert, tc.wantName, "", tc.shim, tc.skipVerify)
 				return source, from, choice, err
 			}
 			withSource, withFrom, withChoice, err := call(t, variable)
@@ -136,7 +136,7 @@ func TestResolveConnCAReadsTheVariableAsAPathOrAPEM(t *testing.T) {
 	for name, v := range map[string]string{"a path": path, "a PEM": ca} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(config.EnvCACert, v)
-			_, pemOut, _, source, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA("https://r.ex", "c-1", "", "", false, false)
+			_, pemOut, _, source, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA("https://r.ex", "c-1", "", "", "", false, false)
 			require.NoError(t, err)
 			assert.Equal(t, v, source)
 			assert.Equal(t, ca, pemOut)
@@ -170,7 +170,7 @@ func TestResolveConnCANamesTheSourceOfAnUnreadableCA(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(config.EnvCACert, tc.variable)
-			_, _, _, _, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA(tc.server, "c-1", tc.cacert, "", tc.shim, false)
+			_, _, _, _, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA(tc.server, "c-1", tc.cacert, "", "", tc.shim, false)
 			ce, ok := clierrOf(err)
 			require.True(t, ok, "%v", err)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -198,7 +198,7 @@ func TestTheChosenCAIsTheOneTheConnectionTrusts(t *testing.T) {
 		cfg.SetPath(config.FilePath(dir))
 		require.NoError(t, cfg.Write())
 		t.Setenv(config.EnvCACert, variable)
-		_, caPEM, _, _, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA(srv.URL, "c-1", "", "", false, false)
+		_, caPEM, _, _, _, _, err := tokenCmd{dir: dir, store: config.NewFileStore(dir)}.resolveConnWithCA(srv.URL, "c-1", "", "", "", false, false)
 		require.NoError(t, err)
 		client, err := httpx.New(httpx.Options{CACert: caPEM, Timeout: httpx.DefaultTimeout})
 		require.NoError(t, err)

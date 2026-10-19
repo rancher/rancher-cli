@@ -40,12 +40,12 @@ func seedStampedConfig(t *testing.T) (dir string, cfg *Config, stamp string) {
 
 // TestConfigWriteStampsWhatCanInvalidateARecord asserts the rule the
 // binding stamp is written by: a write that changes which entries exist,
-// which URL one answers for, which cache binding id one carries, the
-// current server or the token-reuse setting advances the stamp, and a
-// write that changes anything else does not. A cache record's validity
-// depends on exactly those five, so a write that touches none of them
-// cannot invalidate one, and stamping it would throw away every warm hit
-// in the directory for nothing.
+// which URL one answers for, which cache binding id one carries, which
+// owner one records, the current server or the token-reuse setting
+// advances the stamp, and a write that changes anything else does not. A
+// cache record's validity depends on exactly those six, so a write that
+// touches none of them cannot invalidate one, and stamping it would throw
+// away every warm hit in the directory for nothing.
 func TestConfigWriteStampsWhatCanInvalidateARecord(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -66,6 +66,16 @@ func TestConfigWriteStampsWhatCanInvalidateARecord(t *testing.T) {
 		{name: "a cache binding id advances", stamped: true, mutate: func(c *Config) {
 			e := c.Servers["prod"]
 			e.CacheBindingID = "b2"
+			c.Servers["prod"] = e
+		}},
+		{name: "an entry's recorded owner changes", stamped: true, mutate: func(c *Config) {
+			e := c.Servers["prod"]
+			e.TokenUserID = "u-abc12"
+			c.Servers["prod"] = e
+		}},
+		{name: "an entry's recorded owner is written with its own value", mutate: func(c *Config) {
+			e := c.Servers["prod"]
+			e.TokenUserID = ""
 			c.Servers["prod"] = e
 		}},
 		{name: "the current server pointer moves", stamped: true, mutate: func(c *Config) {
@@ -439,10 +449,10 @@ func TestCacheRecordValidity(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.valid, tc.a.valid(tc.rec))
 			if !tc.valid && tc.a.judgeable() {
-				assert.True(t, tc.a.staleRecord(tc.rec), "a record judged not ours is cleaned up")
+				assert.True(t, tc.a.staleRecord("k", tc.rec), "a record judged not ours is cleaned up")
 			}
 			if !tc.a.judgeable() {
-				assert.False(t, tc.a.staleRecord(tc.rec), "a reader that cannot judge deletes nothing")
+				assert.False(t, tc.a.staleRecord("k", tc.rec), "a reader that cannot judge deletes nothing")
 			}
 		})
 	}

@@ -141,7 +141,7 @@ func (l lookupCall) lookup() token.StoredLogin {
 	if err != nil {
 		return token.StoredLogin{Outcome: token.LookupReadFailed, Err: err}
 	}
-	return token.LookupStoredLogin(l.cfg, reader, l.server, l.name, l.clusterID)
+	return token.LookupStoredLogin(l.cfg, reader, l.server, l.name, l.clusterID, "")
 }
 
 // recordedOwner is the --user-id the exec entry carries - the owner the
@@ -177,7 +177,10 @@ func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
 		// own login, which records its owner, then answers.
 		remedy = "pipe an API token to " + clierr.Rancher + " auth login " + clierr.ShellQuote(lk.Identified) + " --token-stdin" + again
 	default:
-		remedy = token.NewEntryLoginRemedy(l.cfg, "", l.clusterID, l.serverID, l.caSource, l.eff.CASource)
+		// The exec plugin's own login entry: auth login refuses its name,
+		// and the next sign-in makes it again with its owner.
+		entry := clierr.ShellQuote(lk.Entry)
+		remedy = "remove " + entry + " with " + clierr.Rancher + " auth logout " + entry + ", then " + clierr.Rancher + " config delete-server " + entry + again
 	}
 	return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose +
 		" records no owner, so the exec plugin does not check the user; " + remedy)
