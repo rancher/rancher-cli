@@ -47,7 +47,7 @@ func (c *projectsCmd) Describe() runtime.Descriptor {
 		Desc: "Lists the projects you can see, grouped by cluster, and asks each cluster's authorizer whether you (or an impersonated --as user) " +
 			"may get every namespace a project owns: the grant Rancher gives a project's members. Visibility is that answer rolled up per project " +
 			"(all, partial, none, unknown). Beside it, the ProjectRoleTemplateBindings that make the subject a member of the project, and the " +
-			"cluster and global bindings that reach it without membership. Projects and namespaces are what steve lists for you, so a member asking " +
+			"cluster and global bindings that reach it without membership. Projects and namespaces are what steve lists for you; a member asking " +
 			"about themselves sees their own projects only. Exit 0 when every cluster, project and namespace answered, 13 when any is unknown.",
 		Flags: []runtime.ArgSpec{
 			{Name: "cluster", Type: "string", Desc: "restrict to one cluster, by id or unique display name; omitted = every cluster you can list"},

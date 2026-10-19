@@ -47,7 +47,7 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 			"Degradable sections: namespaces (unavailable - the namespace rows, whose integer counts " +
 			"cannot represent an unknown), members (each row reports principal, displayName, role, binding, " +
 			"and system; unavailable - collected independently from the " +
-			"management plane, so downstream failures leave it intact), usage (unavailable - blocked by " +
+			"management plane - downstream failures leave it intact), usage (unavailable - blocked by " +
 			"a downstream-client, membership, or pod-list failure), metrics (unavailable - request and " +
 			"limit totals stay). A membership set that resolves to zero namespaces is a verified-empty " +
 			"scope: no workload or usage read is issued and nothing degrades.",

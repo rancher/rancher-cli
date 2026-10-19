@@ -49,7 +49,7 @@ func TestUpdateServerRefusesAURLChangeOnAnExecLoginEntry(t *testing.T) {
 	assert.False(t, got.Retryable)
 	assert.Empty(t, got.Hint, "the remedy is two commands, the first only when the entry holds a login")
 	assert.Equal(t,
-		"'exec-login-r.ex' is one of the exec plugin's own login entries, so its URL cannot change; remove it with rancher auth logout 'exec-login-r.ex' if it holds a login, then rancher config delete-server 'exec-login-r.ex', and the exec plugin creates a new entry for the new URL",
+		"'exec-login-r.ex' is one of the exec plugin's own login entries, and its URL cannot change; remove it with rancher auth logout 'exec-login-r.ex' if it holds a login, then rancher config delete-server 'exec-login-r.ex', and the exec plugin creates a new entry for the new URL",
 		got.Message)
 	assert.False(t, probed, "refused before the server is probed")
 

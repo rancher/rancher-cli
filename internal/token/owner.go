@@ -117,7 +117,7 @@ func revokedClause(subject string, ref *TokenRef, out RevokeOutcome) string {
 	case out.Result == ResultRevoked || out.Result == ResultAlreadyGone:
 		return subject + " was revoked"
 	case ref == nil:
-		return subject + " could not be identified, so it was not revoked"
+		return subject + " could not be identified; it was not revoked"
 	}
 	cause := ""
 	if out.Error != "" {
@@ -157,7 +157,7 @@ func (u userCheck) checkCreatedOwner(ctx context.Context, cfg *config.Config, cr
 	out := revokeRefused(ctx, fresh)
 	if created.UserID == "" {
 		return clierr.New(clierr.CodeGeneric, "the token create response for server entry "+clierr.ShellQuote(sc.name)+
-			" named no owner, so it cannot be checked against --user-id "+clierr.ShellQuote(u.userID)+"; "+
+			" named no owner; it cannot be checked against --user-id "+clierr.ShellQuote(u.userID)+"; "+
 			revokedClause("the token", created.Ref, out)).WithDetails(fateDetails(fresh, out))
 	}
 	text, hint := u.relogin(cfg, sc.name, sc.entry.Provenance == clierr.ProvenanceExecLogin)
@@ -170,7 +170,7 @@ func (u userCheck) checkCreatedOwner(ctx context.Context, cfg *config.Config, cr
 // Rancher that does not serve ext.cattle.io: the stored login itself would
 // be handed kubectl, and no response names whose login it is.
 func (u userCheck) noOwnerWithoutExtTokens(entry string) *clierr.Error {
-	return clierr.New(clierr.CodeCapabilityUnsupported, "this Rancher does not serve ext.cattle.io, so no token create reports whose login server entry "+
+	return clierr.New(clierr.CodeCapabilityUnsupported, "this Rancher does not serve ext.cattle.io; no token create reports whose login server entry "+
 		clierr.ShellQuote(entry)+" holds, and --user-id "+clierr.ShellQuote(u.userID)+" cannot be checked; Rancher "+config.MinRancherVersion+" or later is required").
 		WithDetails(clierr.CapabilityUnsupportedDetails{Feature: "ext.cattle.io/v1 tokens", Server: u.serverID})
 }
@@ -278,7 +278,7 @@ func (u userCheck) checkSignInOwner(ctx context.Context, client *http.Client, ba
 // the login created.
 func (u userCheck) pluginSignInRefused(owner string) *clierr.Error {
 	if owner == "" {
-		return clierr.New(clierr.CodeAuth, "the tokens the sign-in created named no owner, so the sign-in cannot be checked against --user-id "+
+		return clierr.New(clierr.CodeAuth, "the tokens the sign-in created named no owner; the sign-in cannot be checked against --user-id "+
 			clierr.ShellQuote(u.userID)+"; nothing was stored")
 	}
 	return clierr.New(clierr.CodeAuth, "the sign-in was made as Rancher user "+clierr.ShellQuote(owner)+", and this exec entry names user "+

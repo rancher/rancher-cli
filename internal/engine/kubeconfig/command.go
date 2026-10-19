@@ -48,9 +48,9 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 			"names an fqdn, else one <entry>-<node> per control-plane node, and the direct context is current. When those contexts " +
 			"cannot be derived (the endpoint's feature is off, the nodes cannot be read, no control-plane node has an address), the " +
 			"proxy-only file is printed and one notice on stderr says why. The user entry's env records this config directory, absolute, " +
-			"and RANCHER_CLI_CREDENTIAL_STORE (empty when the directory declares its store, else the value set now), so the file works " +
-			"for this user on this machine only; notices on stderr say so, and name the stored login kubectl's exec plugin will use when " +
-			"it is not this session's. The exec entry names that login's recorded owner with --user-id, so the plugin hands kubectl only " +
+			"and RANCHER_CLI_CREDENTIAL_STORE (empty when the directory declares its store, else the value set now): the file works " +
+			"for this user on this machine only. Notices on stderr say so, and name the stored login kubectl's exec plugin will use when " +
+			"it is not this session's. The exec entry names that login's recorded owner with --user-id, and the plugin hands kubectl only " +
 			"that user's tokens; a notice says when the login records no owner. installHint says how to install rancher, or how to " +
 			"regenerate the file for another --exec-command.",
 		Flags: []runtime.ArgSpec{

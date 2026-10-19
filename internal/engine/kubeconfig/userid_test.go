@@ -59,21 +59,21 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 			owner: "u-prod-c-1", lines: 2},
 		{name: "the session's own login records no owner", setup: recordsSetup{cfg: prodCurrent(nil), loggedIn: []string{"prod"}, unowned: true}, lines: 2,
 			notice: func(dir string) string {
-				return "this kubeconfig names no Rancher user: the stored login of 'prod' records no owner, so the exec plugin does not check the user; " +
+				return "this kubeconfig names no Rancher user: the stored login of 'prod' records no owner; the exec plugin does not check the user; " +
 					"pipe an API token to rancher --config '" + dir + "' auth login 'prod' --token-stdin, then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
 			}},
 		{name: "the plugin login entry an entry fell back to records no owner",
 			setup: recordsSetup{cfg: withReuse(prodCurrent(map[string]config.Server{"prod-c-1": {URL: recordsURL}, "exec-login-r": plugin})), loggedIn: []string{"prod", "exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
-				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner, so the exec plugin does not check the user; " +
+				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner; the exec plugin does not check the user; " +
 					"pipe an API token to rancher --config '" + dir + "' auth login 'prod-c-1' --token-stdin, then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
 			}},
 		{name: "a plugin login entry no entry is named for records no owner",
 			setup: recordsSetup{envURL: recordsURL, envToken: true, cfg: withReuse(config.Config{Servers: map[string]config.Server{"exec-login-r": plugin}}), loggedIn: []string{"exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
-				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner, so the exec plugin does not check the user; " +
+				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner; the exec plugin does not check the user; " +
 					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
 					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
 			}},
@@ -81,7 +81,7 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 			setup: recordsSetup{envURL: recordsURL, envToken: true, envCA: caPath, cfg: pluginOnly, loggedIn: []string{"exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
-				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner, so the exec plugin does not check the user; " +
+				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner; the exec plugin does not check the user; " +
 					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
 					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
 			}},
@@ -89,14 +89,14 @@ func TestKubeconfigWritesTheAnsweringLoginsOwner(t *testing.T) {
 			setup: recordsSetup{envURL: recordsURL, envToken: true, envCA: pemCA, cfg: pluginOnly, loggedIn: []string{"exec-login-r"}, unowned: true},
 			lines: 3,
 			notice: func(dir string) string {
-				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner, so the exec plugin does not check the user; " +
+				return "this kubeconfig names no Rancher user: the stored login of the exec plugin's own login entry 'exec-login-r' records no owner; the exec plugin does not check the user; " +
 					"remove 'exec-login-r' with rancher --config '" + dir + "' auth logout 'exec-login-r', then rancher --config '" + dir + "' config delete-server 'exec-login-r', " +
 					"then run rancher --config '" + dir + "' kubeconfig --cluster 'c-1' again"
 			}},
 		{name: "an owner --user-id would refuse", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod": {URL: recordsURL, TokenUserID: "U/1"}}), loggedIn: []string{"prod"}, unowned: true},
 			lines: 2,
 			notice: func(string) string {
-				return "this kubeconfig names no Rancher user: the stored login of 'prod' records the owner 'U/1', which --user-id does not accept, so the exec plugin does not check the user"
+				return "this kubeconfig names no Rancher user: the stored login of 'prod' records the owner 'U/1', which --user-id does not accept; the exec plugin does not check the user"
 			}},
 		{name: "no stored login answers", setup: recordsSetup{cfg: prodCurrent(nil)}, lines: 2},
 		{name: "the plugin refuses", setup: recordsSetup{cfg: prodCurrent(map[string]config.Server{"prod-c-1": {URL: "https://other.example.com"}}), loggedIn: []string{"prod"}}, lines: 2},

@@ -90,7 +90,7 @@ func collectionRefusal(r Request, err error) error {
 		return err
 	case http.StatusForbidden:
 		return clierr.New(clierr.CodeRBAC, fmt.Sprintf(
-			"the server refused GET %s (403); Rancher answers this request with 200 for every signed-in user, so a proxy in front of Rancher or an unsupported Rancher refused it",
+			"the server refused GET %s (403); Rancher answers this request with 200 for every signed-in user; a proxy in front of Rancher or an unsupported Rancher refused it",
 			r.Path())).WithCause(err)
 	default:
 		if st >= http.StatusInternalServerError {

@@ -37,7 +37,7 @@ func (scaleCmd) Describe() runtime.Descriptor {
 			"autoscaling is not paused: the server would accept the edit and apply it, but the cluster " +
 			"autoscaler re-asserts its own count within its loop, silently reverting the change minutes " +
 			"later - pause-autoscaling is the sanctioned override. Refuses on a cluster with no machine " +
-			"pools (imported, custom, or local). provisioningcluster is a Sensitive kind, so every scale " +
+			"pools (imported, custom, or local). provisioningcluster is a Sensitive kind; every scale " +
 			"is Destructive regardless of direction, the same as a generic patch on the same object - " +
 			"dry-run/apply --yes. --nodes 0 is schema-legal on every pool, including a control-plane/etcd " +
 			"pool; no invented floor.",

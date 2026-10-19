@@ -350,7 +350,7 @@ func plaintextKeptNotice(dir string, inFile, inKeychain []string) string {
 		too = " too"
 	}
 	return fmt.Sprintf(
-		"this directory %s, so this login stores its credential in the plaintext file %s%s; to move the directory to the keychain, %s, then log in again",
+		"this directory %s, and this login stores its credential in the plaintext file %s%s; to move the directory to the keychain, %s, then log in again",
 		strings.Join(parts, " and "), CredentialsFilePath(dir), too, which)
 }
 

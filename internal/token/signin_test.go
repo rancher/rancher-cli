@@ -493,7 +493,7 @@ func TestSignInNoExtAndNoV3CreateIsWordedForTheSignIn(t *testing.T) {
 	t.Parallel()
 	_, _, _, err := signInAgainst(t, testrancher.Options{Legacy: true}, "c-test")
 	ce, d := failureOf(t, err)
-	assert.Contains(t, ce.Message, "so the sign-in cannot create a cluster token")
+	assert.Contains(t, ce.Message, "; the sign-in cannot create a cluster token")
 	assert.NotContains(t, ce.Message, "token reuse")
 	assert.Equal(t, ResultRevoked, sessionCleanup(t, d))
 }
@@ -757,7 +757,7 @@ func TestSignInLeftoverNamesWhoRunsEachCommand(t *testing.T) {
 				`an administrator can list tokens with: rancher get management-tokens and delete the one whose description carries "[op:m]"`},
 		{"the SAML handoff with no token", clierr.TokenFate{Search: &search}, "",
 			"a kubeconfig token may have been created through keycloakSAML at or after 2026-10-12T10:00:00Z; the CLI stopped waiting at 2026-10-12T10:15:00Z, " +
-				"but the browser sign-in can still complete after that, so the token may be newer; these facts narrow the candidates but cannot identify one token; " +
+				"but the browser sign-in can still complete after that, and the token may be newer; these facts narrow the candidates but cannot identify one token; " +
 				"an administrator can inspect them with: rancher get management-tokens -o json; the user who signed in can find them in the UI under Account & API Keys"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -774,7 +774,7 @@ func TestSignInRevokedClauseSaysWhatBecameOfTheToken(t *testing.T) {
 	ref := &TokenRef{Kind: TokenKindExt, Name: "token-abc"}
 	assert.Equal(t, "the token was revoked", signInRevokedClause("the token", ref, RevokeOutcome{Result: ResultRevoked}, "x"))
 	assert.Equal(t, "the token was revoked", signInRevokedClause("the token", ref, RevokeOutcome{Result: ResultAlreadyGone}, "x"))
-	assert.Equal(t, "the token could not be identified, so it was not revoked", signInRevokedClause("the token", nil, RevokeOutcome{Result: ResultNotAttempted}, "x"))
+	assert.Equal(t, "the token could not be identified; it was not revoked", signInRevokedClause("the token", nil, RevokeOutcome{Result: ResultNotAttempted}, "x"))
 	assert.Equal(t, "the token could not be revoked (500 Internal Server Error); leftover text",
 		signInRevokedClause("the token", ref, RevokeOutcome{Result: ResultFailed, Error: "500 Internal Server Error"}, "leftover text"))
 }

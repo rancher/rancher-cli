@@ -40,12 +40,12 @@ var capabilityCoverageExtraOps = map[string][]string{
 // the retired tripwire (TestNoKindDeclaresCapabilityUntilCreateGatingLands)
 // had.
 var capabilityCoverageAllowlist = map[string]string{
-	"access can":                     "posts a SubjectAccessReview through the proxy - a review is created, never listed or deleted, so it carries no kind row",
-	"access list":                    "posts a SelfSubjectRulesReview through the proxy - a review is created, never listed or deleted, so it carries no kind row",
-	"access who-can":                 "posts one SubjectAccessReview per binding subject through the proxy - reviews are created, never listed or deleted, so it carries no kind row",
-	"access explain":                 "posts one review and reads bindings, roles, and management objects the caller may already read - nothing is created, so it carries no kind row",
-	"access clusters":                "reads the steve cluster collection and posts one SelfSubjectReview per cluster - reads and reviews only, so it carries no kind row",
-	"access projects":                "reads the steve cluster, project and namespace collections and posts one SelfSubjectAccessReview per project namespace - reads and reviews only, so it carries no kind row",
+	"access can":                     "posts a SubjectAccessReview through the proxy - a review is created, never listed or deleted; it carries no kind row",
+	"access list":                    "posts a SelfSubjectRulesReview through the proxy - a review is created, never listed or deleted; it carries no kind row",
+	"access who-can":                 "posts one SubjectAccessReview per binding subject through the proxy - reviews are created, never listed or deleted; it carries no kind row",
+	"access explain":                 "posts one review and reads bindings, roles, and management objects the caller may already read - nothing is created; it carries no kind row",
+	"access clusters":                "reads the steve cluster collection and posts one SelfSubjectReview per cluster - reads and reviews only; it carries no kind row",
+	"access projects":                "reads the steve cluster, project and namespace collections and posts one SelfSubjectAccessReview per project namespace - reads and reviews only; it carries no kind row",
 	"auth login":                     "local auth, no kind row",
 	"auth logout":                    "local auth, no kind row",
 	"auth status":                    "local auth, no kind row",
@@ -75,7 +75,7 @@ var capabilityCoverageAllowlist = map[string]string{
 	"logs":                           "bespoke log read, no kind row",
 	"usage":                          "bespoke discovery read, no kind row",
 	"support-bundle":                 "diagnostic bundle collector, no kind row",
-	"create password-change-request": "ext.cattle.io PasswordChangeRequest is create-only (no get/list/delete verb), so it carries no kind row - its own ext.cattle.io-discovery Capability requirement is declared directly on the command",
+	"create password-change-request": "ext.cattle.io PasswordChangeRequest is create-only (no get/list/delete verb); it carries no kind row - its own ext.cattle.io-discovery Capability requirement is declared directly on the command",
 }
 
 // registeredCommand is the minimal shape the coverage rule needs from a

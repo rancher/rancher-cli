@@ -263,7 +263,7 @@ func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient
 		return matches[0], provFound, "", nil
 	default:
 		ambiguous := clierr.New(clierr.CodeAmbiguousSelection, fmt.Sprintf(
-			"%d provisioning.cattle.io Clusters report status.clusterName %q, so the correlation is ambiguous",
+			"%d provisioning.cattle.io Clusters report status.clusterName %q; the correlation is ambiguous",
 			len(matches), clusterID))
 		return nil, provUnavailable, "", sec.Unavailable(sectionProvisioning, ambiguous)
 	}

@@ -41,7 +41,7 @@ func signInTokenError(err error) error {
 	case errors.Is(err, errCredentialForbidden):
 		return clierr.New(clierr.CodeRBAC, "the token this sign-in just created cannot create tokens: "+clierr.From(err).Message).WithCause(err)
 	case errors.Is(err, errServerTooOldForReuse):
-		return clierr.New(clierr.CodeGeneric, "this Rancher serves neither ext.cattle.io nor a v3 token create, so the sign-in cannot create a cluster token").WithCause(err)
+		return clierr.New(clierr.CodeGeneric, "this Rancher serves neither ext.cattle.io nor a v3 token create; the sign-in cannot create a cluster token").WithCause(err)
 	}
 	return err
 }
@@ -268,7 +268,7 @@ func signInLeftover(f clierr.TokenFate, userID, marker string) string {
 			window += " and not after " + f.Search.RequestExpiresAt
 		}
 		return fmt.Sprintf("a kubeconfig token may have been created through %s %s; the CLI stopped waiting at %s, "+
-			"but the browser sign-in can still complete after that, so the token may be newer; "+
+			"but the browser sign-in can still complete after that, and the token may be newer; "+
 			"these facts narrow the candidates but cannot identify one token; "+
 			"an administrator can inspect them with: %s; the user who signed in can find them in the UI under Account & API Keys",
 			f.Search.AuthProvider, window, f.Search.PollEndedAt, clierr.Rancher+" get management-tokens -o json")
@@ -284,7 +284,7 @@ func signInRevokedClause(subject string, ref *TokenRef, out RevokeOutcome, lefto
 	case out.Result == ResultRevoked || out.Result == ResultAlreadyGone:
 		return subject + " was revoked"
 	case ref == nil:
-		return subject + " could not be identified, so it was not revoked"
+		return subject + " could not be identified; it was not revoked"
 	}
 	cause := ""
 	if out.Error != "" {

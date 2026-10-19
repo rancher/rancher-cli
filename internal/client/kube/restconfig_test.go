@@ -105,7 +105,7 @@ func TestRESTConfigDefaultsAndAuth(t *testing.T) {
 			"; a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"},
 		{"a tokenless server while the change record cannot be read names the report as the hint",
 			"not: [yaml", clierr.Rancher + " config status",
-			"; the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + clierr.Rancher + " config status to see it; after that: " + clierr.Rancher + " auth login 'qa1'"},
+			"; the credential store change record cannot be read; every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + clierr.Rancher + " config status to see it; after that: " + clierr.Rancher + " auth login 'qa1'"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := RESTConfig(tokenlessWithChange(t, tc.record), "local")

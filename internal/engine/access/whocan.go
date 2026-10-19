@@ -18,7 +18,7 @@ const flagShowDenied = "show-denied"
 
 // fixedMastersNote explains the candidate included independently of
 // bindings.
-const fixedMastersNote = "fixed candidate: the apiserver allows system:masters before RBAC is consulted, so its answer carries no reason and its members are not visible to the CLI"
+const fixedMastersNote = "fixed candidate: the apiserver allows system:masters before RBAC is consulted; its answer carries no reason and its members are not visible to the CLI"
 
 type whoCanCmd struct {
 	clients engine.ClusterClientFactory

@@ -358,7 +358,7 @@ func TestUserIDCreatedTokenOwnerIsChecked(t *testing.T) {
 		_, err := x.call("prod-c-test", "user-alice", "", nil)
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
-		assert.Equal(t, "the token create response for server entry 'prod' named no owner, so it cannot be checked against --user-id 'user-alice'; the token was revoked", msg)
+		assert.Equal(t, "the token create response for server entry 'prod' named no owner; it cannot be checked against --user-id 'user-alice'; the token was revoked", msg)
 		assert.Equal(t, 1, x.revoked())
 		assert.False(t, x.cached("prod-c-test", "user-alice"))
 	})
@@ -419,7 +419,7 @@ func TestUserIDFailsClosedWithoutExtTokens(t *testing.T) {
 	_, err := x.call("prod-c-test", "user-alice", "", nil)
 	ce, msg := refusal(t, err)
 	assert.Equal(t, clierr.CodeCapabilityUnsupported, ce.Code)
-	assert.Equal(t, "this Rancher does not serve ext.cattle.io, so no token create reports whose login server entry 'prod' holds, and --user-id 'user-alice' cannot be checked; Rancher 2.14 or later is required", msg)
+	assert.Equal(t, "this Rancher does not serve ext.cattle.io; no token create reports whose login server entry 'prod' holds, and --user-id 'user-alice' cannot be checked; Rancher 2.14 or later is required", msg)
 	assert.False(t, x.cached("prod-c-test", "user-alice"))
 
 	got, err := x.call("prod-c-test", "", "", nil)
@@ -612,7 +612,7 @@ func TestUserIDPluginCreatedLoginChecksBothCreates(t *testing.T) {
 		{name: "the cluster token of another owner", scoped: new("user-mallory"),
 			want: "the sign-in was made as Rancher user 'user-mallory', and this exec entry names user 'user-carol' with --user-id; nothing was stored"},
 		{name: "no create names the owner", derived: new(""), scoped: new(""),
-			want: "the tokens the sign-in created named no owner, so the sign-in cannot be checked against --user-id 'user-carol'; nothing was stored"},
+			want: "the tokens the sign-in created named no owner; the sign-in cannot be checked against --user-id 'user-carol'; nothing was stored"},
 		{name: "only the cluster token names the owner", derived: new("")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

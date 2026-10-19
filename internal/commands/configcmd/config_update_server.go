@@ -261,7 +261,7 @@ func (c configUpdateServerCmd) Execute(ctx context.Context, in runtime.Input, _ 
 func execLoginURLChangeRefused(name string) error {
 	q := clierr.ShellQuote(name)
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"%s is one of the exec plugin's own login entries, so its URL cannot change; remove it with %s auth logout %s if it holds a login, then %s config delete-server %s, and the exec plugin creates a new entry for the new URL",
+		"%s is one of the exec plugin's own login entries, and its URL cannot change; remove it with %s auth logout %s if it holds a login, then %s config delete-server %s, and the exec plugin creates a new entry for the new URL",
 		q, clierr.Rancher, q, clierr.Rancher, q))
 }
 

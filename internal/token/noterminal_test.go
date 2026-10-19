@@ -206,7 +206,7 @@ func TestTheExecPluginNamesTheRemediesWithoutATerminal(t *testing.T) {
 				assert.NotContains(t, err.Error(), "until the cached token expires", "the plugin's own login keeps a login credential, --name or not")
 			case tc.flags["name"] == "":
 				assert.NotContains(t, err.Error(), "run kubectl once in a terminal", "with no --name nothing a terminal sign-in makes is kept")
-				require.ErrorContains(t, err, "this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with "+clierr.Rancher+" kubeconfig --cluster 'c-1'")
+				require.ErrorContains(t, err, "this exec entry sets no --name, and a sign-in in a terminal would not be kept; give it one, for example by regenerating the kubeconfig with "+clierr.Rancher+" kubeconfig --cluster 'c-1'")
 			default:
 				require.ErrorContains(t, err, "or run kubectl once in a terminal and sign in, which lasts until the cached token expires")
 			}

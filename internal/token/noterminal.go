@@ -151,7 +151,7 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 		// a call with --user-id, under its user.
 		msg += "; or run kubectl once in a terminal and " + signIn + ", which lasts until the cached token expires"
 	default:
-		msg += "; this exec entry sets no --name, so a sign-in in a terminal would not be kept: give it one, for example by regenerating the kubeconfig with " + clierr.Rancher + " kubeconfig --cluster " + cluster
+		msg += "; this exec entry sets no --name, and a sign-in in a terminal would not be kept; give it one, for example by regenerating the kubeconfig with " + clierr.Rancher + " kubeconfig --cluster " + cluster
 	}
 	if (call.userID == "" || call.clusterID != "") && t.currentLoginServes(cfg, call) {
 		msg += "; or use " + CreateKubeconfigRemedy(call.clusterID) + " for a kubeconfig that carries its own token"

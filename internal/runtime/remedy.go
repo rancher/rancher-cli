@@ -13,7 +13,7 @@ import (
 // when the config directory's path holds characters output.Printable
 // removes: printed as it is, the path would be another path, so no command
 // can name it and none is offered.
-const UnprintableConfigDirNote = "the config directory's path holds characters that cannot be printed, so no command is offered"
+const UnprintableConfigDirNote = "the config directory's path holds characters that cannot be printed; no command is offered"
 
 // RemedyPrefix is what follows the word rancher in every remedy command an
 // invocation against dir prints: --config and the directory, shell-quoted,

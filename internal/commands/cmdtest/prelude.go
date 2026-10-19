@@ -302,7 +302,7 @@ func RunPreludeRows(t *testing.T, run func(t *testing.T, dir string) ([]string, 
 			var warnings []string
 			counts := CountOperations(t, func() { warnings, err = run(t, dir) })
 			if !tc.keychain {
-				assert.Zero(t, counts.Keychain, "no keychain call, so its reachability changes nothing")
+				assert.Zero(t, counts.Keychain, "no keychain call; its reachability changes nothing")
 			}
 			if tc.fails != "" {
 				require.ErrorContains(t, err, tc.fails)

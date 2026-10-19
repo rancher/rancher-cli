@@ -29,10 +29,10 @@ func (pauseAutoscalingCmd) Describe() runtime.Descriptor {
 		Name:  "cluster pause-autoscaling",
 		Usage: "Pause the cluster autoscaler cluster-wide",
 		Desc: "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning " +
-			"Cluster. Pause is cluster-wide only - no per-pool pause exists server-side, so this verb " +
+			"Cluster. Pause is cluster-wide only - no per-pool pause exists server-side; this verb " +
 			"takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving " +
 			"every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. " +
-			"Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is " +
+			"Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind; this is " +
 			"Destructive like every other mutation on the same object - dry-run/apply --yes.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
@@ -67,7 +67,7 @@ func (resumeAutoscalingCmd) Describe() runtime.Descriptor {
 		Usage: "Resume the cluster autoscaler cluster-wide",
 		Desc: "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning " +
 			"Cluster, restoring autoscaler management of every pool that carries min/max config. " +
-			"Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is " +
+			"Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind; this is " +
 			"Destructive like every other mutation on the same object - dry-run/apply --yes.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},

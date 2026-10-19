@@ -43,9 +43,9 @@ func (setAutoscalingCmd) Describe() runtime.Descriptor {
 		Usage: "Turn on cluster-autoscaler management for a machine pool",
 		Desc: "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. " +
 			"Mirrors the CRD's validation client-side - --min and --max are both required and must both be " +
-			">= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool - so a bad " +
+			">= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool; a bad " +
 			"value is rejected with flag names before the server round-trip; the server remains the " +
-			"authority. provisioningcluster is a Sensitive kind, so this is Destructive like every other " +
+			"authority. provisioningcluster is a Sensitive kind; this is Destructive like every other " +
 			"mutation on the same object - dry-run/apply --yes. From this point the pool's quantity is " +
 			"managed by the cluster autoscaler, not the operator.",
 		CommandType: runtime.Mutating,
@@ -115,8 +115,8 @@ func (clearAutoscalingCmd) Describe() runtime.Descriptor {
 		Usage: "Return a machine pool to manual quantity",
 		Desc: "Removes spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize from the named " +
 			"pool, built from the fetched object so a half-set pool still clears cleanly. A pool that " +
-			"already carries neither field succeeds as a no-op, so a retry always converges. " +
-			"provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on " +
+			"already carries neither field succeeds as a no-op; a retry always converges. " +
+			"provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on " +
 			"the same object - dry-run/apply --yes.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},

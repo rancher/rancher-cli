@@ -601,7 +601,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 		if !ok {
 			out.ConfigState = clierr.ConfigStoreChangeNotApplied
 			return clierr.New(clierr.CodeGeneric, fmt.Sprintf(
-				"the credential for %s was stored, but neither the old copy nor the credential store pin could be changed, so this directory still reads the previous credential",
+				"the credential for %s was stored, but neither the old copy nor the credential store pin could be changed; this directory still reads the previous credential",
 				name)).
 				WithHint(LoginHintFor(name))
 		}

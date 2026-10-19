@@ -159,7 +159,7 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 		Name:  "create cluster",
 		Usage: "Create a provisioning cluster (--import, --custom, or node-driver)",
 		Desc: "Creates a single machine pool; repeatable pool flags are not supported " +
-			"yet, so a multi-pool cluster must go through `create resource -f` with a " +
+			"yet; a multi-pool cluster must go through `create resource -f` with a " +
 			"full manifest. Before the server-side dry-run, the command resolves the " +
 			"caller's identity via the ext.cattle.io SelfUser probe and stamps it into " +
 			"the creatorId annotation (rancher-webhook's validator requires the annotation " +
@@ -373,7 +373,7 @@ func stampCreatorID(ctx context.Context, client engine.ClusterClient, obj *unstr
 // which a real create reaches the server past a denied dry-run.
 func stampContext(cause string) string {
 	return stampWarningPrefix + " (" + cause + "): rancher-webhook may deny the dry-run for the missing " +
-		creatorIDAnnotation + " annotation, and --apply repeats the dry-run first, so fix the identity probe " +
+		creatorIDAnnotation + " annotation, and --apply repeats the dry-run first; fix the identity probe " +
 		"(log in again, or check that you may create selfusers.ext.cattle.io) before retrying"
 }
 

@@ -162,7 +162,7 @@ func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
 	}
 	if recorded != "" {
 		return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose + " records the owner " +
-			clierr.ShellQuote(recorded) + ", which --user-id does not accept, so the exec plugin does not check the user")
+			clierr.ShellQuote(recorded) + ", which --user-id does not accept; the exec plugin does not check the user")
 	}
 	again := ", then run " + clierr.Rancher + " kubeconfig --cluster " + clierr.ShellQuote(l.clusterID) + " again"
 	var remedy string
@@ -183,7 +183,7 @@ func (l lookupCall) recordedOwner(lk token.StoredLogin) (owner, notice string) {
 		remedy = "remove " + entry + " with " + clierr.Rancher + " auth logout " + entry + ", then " + clierr.Rancher + " config delete-server " + entry + again
 	}
 	return "", runtime.PrintableRemedies("this kubeconfig names no Rancher user: " + whose +
-		" records no owner, so the exec plugin does not check the user; " + remedy)
+		" records no owner; the exec plugin does not check the user; " + remedy)
 }
 
 // lookupNotice is what the kubeconfig says about the login kubectl's exec

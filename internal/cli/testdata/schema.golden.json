@@ -296,7 +296,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "public",
-      "desc": "Lists the projects you can see, grouped by cluster, and asks each cluster's authorizer whether you (or an impersonated --as user) may get every namespace a project owns: the grant Rancher gives a project's members. Visibility is that answer rolled up per project (all, partial, none, unknown). Beside it, the ProjectRoleTemplateBindings that make the subject a member of the project, and the cluster and global bindings that reach it without membership. Projects and namespaces are what steve lists for you, so a member asking about themselves sees their own projects only. Exit 0 when every cluster, project and namespace answered, 13 when any is unknown.",
+      "desc": "Lists the projects you can see, grouped by cluster, and asks each cluster's authorizer whether you (or an impersonated --as user) may get every namespace a project owns: the grant Rancher gives a project's members. Visibility is that answer rolled up per project (all, partial, none, unknown). Beside it, the ProjectRoleTemplateBindings that make the subject a member of the project, and the cluster and global bindings that reach it without membership. Projects and namespaces are what steve lists for you; a member asking about themselves sees their own projects only. Exit 0 when every cluster, project and namespace answered, 13 when any is unknown.",
       "examples": [
         "rancher access projects",
         "rancher access projects --cluster prod --as alice",
@@ -669,7 +669,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Removes spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize from the named pool, built from the fetched object so a half-set pool still clears cleanly. A pool that already carries neither field succeeds as a no-op, so a retry always converges. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
+      "desc": "Removes spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize from the named pool, built from the fetched object so a half-set pool still clears cleanly. A pool that already carries neither field succeeds as a no-op; a retry always converges. provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
       "destructive": "true",
       "examples": [
         "rancher cluster clear-autoscaling my-cluster --pool pool1 --apply --yes"
@@ -716,7 +716,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster. Pause is cluster-wide only - no per-pool pause exists server-side, so this verb takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
+      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster. Pause is cluster-wide only - no per-pool pause exists server-side; this verb takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
       "destructive": "true",
       "examples": [
         "rancher cluster pause-autoscaling my-cluster --apply --yes"
@@ -757,7 +757,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster, restoring autoscaler management of every pool that carries min/max config. Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
+      "desc": "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster, restoring autoscaler management of every pool that carries min/max config. Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
       "destructive": "true",
       "examples": [
         "rancher cluster resume-autoscaling my-cluster --apply --yes"
@@ -798,7 +798,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Patches spec.rkeConfig.machinePools[].quantity on the named pool, resolved by name to its array index at patch-build time. Refuses when the pool carries autoscalingMinSize/MaxSize and autoscaling is not paused: the server would accept the edit and apply it, but the cluster autoscaler re-asserts its own count within its loop, silently reverting the change minutes later - pause-autoscaling is the sanctioned override. Refuses on a cluster with no machine pools (imported, custom, or local). provisioningcluster is a Sensitive kind, so every scale is Destructive regardless of direction, the same as a generic patch on the same object - dry-run/apply --yes. --nodes 0 is schema-legal on every pool, including a control-plane/etcd pool; no invented floor.",
+      "desc": "Patches spec.rkeConfig.machinePools[].quantity on the named pool, resolved by name to its array index at patch-build time. Refuses when the pool carries autoscalingMinSize/MaxSize and autoscaling is not paused: the server would accept the edit and apply it, but the cluster autoscaler re-asserts its own count within its loop, silently reverting the change minutes later - pause-autoscaling is the sanctioned override. Refuses on a cluster with no machine pools (imported, custom, or local). provisioningcluster is a Sensitive kind; every scale is Destructive regardless of direction, the same as a generic patch on the same object - dry-run/apply --yes. --nodes 0 is schema-legal on every pool, including a control-plane/etcd pool; no invented floor.",
       "destructive": "true",
       "examples": [
         "rancher cluster scale my-cluster --pool pool1 --nodes 3 --apply --yes"
@@ -849,7 +849,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. Mirrors the CRD's validation client-side - --min and --max are both required and must both be >= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool - so a bad value is rejected with flag names before the server round-trip; the server remains the authority. provisioningcluster is a Sensitive kind, so this is Destructive like every other mutation on the same object - dry-run/apply --yes. From this point the pool's quantity is managed by the cluster autoscaler, not the operator.",
+      "desc": "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. Mirrors the CRD's validation client-side - --min and --max are both required and must both be >= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool; a bad value is rejected with flag names before the server round-trip; the server remains the authority. provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on the same object - dry-run/apply --yes. From this point the pool's quantity is managed by the cluster autoscaler, not the operator.",
       "destructive": "true",
       "examples": [
         "rancher cluster set-autoscaling my-cluster --pool pool1 --min 2 --max 5 --apply --yes"
@@ -1155,7 +1155,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Creates a single machine pool; repeatable pool flags are not supported yet, so a multi-pool cluster must go through `create resource -f` with a full manifest. Before the server-side dry-run, the command resolves the caller's identity via the ext.cattle.io SelfUser probe and stamps it into the creatorId annotation (rancher-webhook's validator requires the annotation on dry-run even though its mutator only stamps it on real creates). If the probe fails, a \"creatorId not stamped\" warning is emitted and the create proceeds unstamped - rancher-webhook may then deny the dry-run, but a real --apply create is still expected to succeed (the mutator stamps identity server-side on real creates).",
+      "desc": "Creates a single machine pool; repeatable pool flags are not supported yet; a multi-pool cluster must go through `create resource -f` with a full manifest. Before the server-side dry-run, the command resolves the caller's identity via the ext.cattle.io SelfUser probe and stamps it into the creatorId annotation (rancher-webhook's validator requires the annotation on dry-run even though its mutator only stamps it on real creates). If the probe fails, a \"creatorId not stamped\" warning is emitted and the create proceeds unstamped - rancher-webhook may then deny the dry-run, but a real --apply create is still expected to succeed (the mutator stamps identity server-side on real creates).",
       "destructive": "false",
       "examples": [
         "rancher create cluster imported-1 --import --apply",
@@ -6535,7 +6535,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Cluster resolution and the project resolve plus GET are required and hard-error. Degradable sections: namespaces (unavailable - the namespace rows, whose integer counts cannot represent an unknown), members (each row reports principal, displayName, role, binding, and system; unavailable - collected independently from the management plane, so downstream failures leave it intact), usage (unavailable - blocked by a downstream-client, membership, or pod-list failure), metrics (unavailable - request and limit totals stay). A membership set that resolves to zero namespaces is a verified-empty scope: no workload or usage read is issued and nothing degrades.",
+      "desc": "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. Cluster resolution and the project resolve plus GET are required and hard-error. Degradable sections: namespaces (unavailable - the namespace rows, whose integer counts cannot represent an unknown), members (each row reports principal, displayName, role, binding, and system; unavailable - collected independently from the management plane - downstream failures leave it intact), usage (unavailable - blocked by a downstream-client, membership, or pod-list failure), metrics (unavailable - request and limit totals stay). A membership set that resolves to zero namespaces is a verified-empty scope: no workload or usage read is issued and nothing degrades.",
       "flags": [
         {
           "desc": "target cluster `id|name`",
@@ -6579,7 +6579,7 @@
     {
       "auth": true,
       "commandType": "local",
-      "desc": "Prints a kubeconfig whose user entry runs the rancher exec-credential plugin. One context reaches the cluster through the Rancher proxy. When the cluster has the Authorized Cluster Endpoint enabled and the multi-cluster-management feature is on, the file also carries the direct contexts Rancher's own kubeconfig carries: <entry>-fqdn when the endpoint names an fqdn, else one <entry>-<node> per control-plane node, and the direct context is current. When those contexts cannot be derived (the endpoint's feature is off, the nodes cannot be read, no control-plane node has an address), the proxy-only file is printed and one notice on stderr says why. The user entry's env records this config directory, absolute, and RANCHER_CLI_CREDENTIAL_STORE (empty when the directory declares its store, else the value set now), so the file works for this user on this machine only; notices on stderr say so, and name the stored login kubectl's exec plugin will use when it is not this session's. The exec entry names that login's recorded owner with --user-id, so the plugin hands kubectl only that user's tokens; a notice says when the login records no owner. installHint says how to install rancher, or how to regenerate the file for another --exec-command.",
+      "desc": "Prints a kubeconfig whose user entry runs the rancher exec-credential plugin. One context reaches the cluster through the Rancher proxy. When the cluster has the Authorized Cluster Endpoint enabled and the multi-cluster-management feature is on, the file also carries the direct contexts Rancher's own kubeconfig carries: <entry>-fqdn when the endpoint names an fqdn, else one <entry>-<node> per control-plane node, and the direct context is current. When those contexts cannot be derived (the endpoint's feature is off, the nodes cannot be read, no control-plane node has an address), the proxy-only file is printed and one notice on stderr says why. The user entry's env records this config directory, absolute, and RANCHER_CLI_CREDENTIAL_STORE (empty when the directory declares its store, else the value set now): the file works for this user on this machine only. Notices on stderr say so, and name the stored login kubectl's exec plugin will use when it is not this session's. The exec entry names that login's recorded owner with --user-id, and the plugin hands kubectl only that user's tokens; a notice says when the login records no owner. installHint says how to install rancher, or how to regenerate the file for another --exec-command.",
       "examples": [
         "rancher kubeconfig --cluster prod > prod.yaml",
         "rancher kubeconfig --cluster prod --exec-command ~/bin/rancher > prod.yaml"
@@ -11209,7 +11209,7 @@
     },
     {
       "code": "CREDENTIAL_TRANSITION_INCOMPLETE",
-      "desc": "a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet, so a second store change is refused until it is; other commands proceed",
+      "desc": "a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet; a second store change is refused until it is, and other commands proceed",
       "exit": 3
     },
     {

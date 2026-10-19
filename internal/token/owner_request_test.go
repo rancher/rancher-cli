@@ -140,7 +140,7 @@ func TestRevokedClauseNamesTheFate(t *testing.T) {
 			"the token could not be revoked (500 Internal Server Error); revoke it with: rancher delete token token-abc --apply --yes"},
 		{"failed, v3, no cause", v3, RevokeOutcome{Result: ResultFailed},
 			"the token could not be revoked; an administrator can delete v3/token-v3 with: rancher delete management-token token-v3 --apply --yes --allow-deprecated, or it expires"},
-		{"not identified", nil, RevokeOutcome{Result: ResultNotAttempted}, "the token could not be identified, so it was not revoked"},
+		{"not identified", nil, RevokeOutcome{Result: ResultNotAttempted}, "the token could not be identified; it was not revoked"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

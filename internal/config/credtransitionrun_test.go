@@ -211,7 +211,7 @@ func TestUnfinishedChangeNoteNamesTheStatusCommand(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeNotLoggedIn, ce.Code)
 	assert.Equal(t, clierr.Rancher+" config status", ce.Hint)
-	assert.Equal(t, `not logged in to "prod"; the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run `+clierr.Rancher+` config status to see it; after that: `+clierr.Rancher+` auth login 'prod'`, ce.Message,
+	assert.Equal(t, `not logged in to "prod"; the credential store change record cannot be read; every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run `+clierr.Rancher+` config status to see it; after that: `+clierr.Rancher+` auth login 'prod'`, ce.Message,
 		"the login stays in the message, as what to run once the record is restored")
 
 	require.NoError(t, os.Remove(TransitionPath(dir)))

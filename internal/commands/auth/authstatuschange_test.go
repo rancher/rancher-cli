@@ -21,7 +21,7 @@ import (
 
 const (
 	unfinishedNote = "a credential store change is unfinished; run " + clierr.Rancher + " config status to see it"
-	unreadableNote = "the credential store change record cannot be read, so every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + clierr.Rancher + " config status to see it"
+	unreadableNote = "the credential store change record cannot be read; every auth login, auth logout, config delete-server and config update-server --url refuses until it is restored or moved aside; run " + clierr.Rancher + " config status to see it"
 )
 
 // TestAuthStatusReportsTheCredentialStoreChange asserts auth status adds

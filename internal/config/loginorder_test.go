@@ -442,7 +442,7 @@ func TestWhenTheOldCopyAndThePinBothFailTheLoginStopsPaused(t *testing.T) {
 
 	out, err := PersistLoginCredential(t.Context(), dir, repinInput())
 	require.Error(t, err)
-	require.ErrorContains(t, err, "neither the old copy nor the credential store pin could be changed, so this directory still reads the previous credential")
+	require.ErrorContains(t, err, "neither the old copy nor the credential store pin could be changed; this directory still reads the previous credential")
 	assert.Equal(t, clierr.ConfigStoreChangeNotApplied, out.ConfigState)
 	ce, ok := errorsAsClierr(err)
 	require.True(t, ok)

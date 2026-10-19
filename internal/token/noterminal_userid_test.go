@@ -93,6 +93,6 @@ func TestNoTerminalRemediesNameTheUserForACallWithUserID(t *testing.T) {
 		err := cmd.withNoTerminalRemedies(needs, noTerminalCall{clusterID: "c-1", serverURL: serverURL})
 		ce, ok := clierrOf(err)
 		require.True(t, ok)
-		assert.Contains(t, ce.Message, "this exec entry sets no --name, so a sign-in in a terminal would not be kept")
+		assert.Contains(t, ce.Message, "this exec entry sets no --name, and a sign-in in a terminal would not be kept")
 	})
 }

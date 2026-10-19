@@ -271,7 +271,7 @@ func unmarkedSessionText(s clierr.UnmarkedTokenSearch) string {
 		window += " and not after " + s.RequestExpiresAt
 	}
 	return fmt.Sprintf("a session token may have been created through %s %s; the CLI stopped waiting at %s, "+
-		"but the browser sign-in can still complete after that, so the token may be newer; "+
+		"but the browser sign-in can still complete after that, and the token may be newer; "+
 		"these facts narrow the candidates but cannot identify one token; "+
 		"inspect them with: "+clierr.Rancher+" get management-tokens -o json, or in the UI under Account & API Keys",
 		s.AuthProvider, window, s.PollEndedAt)
@@ -333,7 +333,7 @@ func credentialRecoveryText(cr *clierr.CredentialRecovery, server string) string
 	case cr.Backend == clierr.BackendKeyring && cr.State == clierr.CredentialPossiblyCommitted:
 		return fmt.Sprintf("the keychain item for %s may be this login's token, the earlier value, or another value; the CLI could not confirm which", server)
 	case cr.Backend == clierr.BackendKeyring && cr.State == clierr.CredentialCommittedUncompensatable:
-		return fmt.Sprintf("the keychain holds this login's token for %s and the earlier item could not be read, so it was not restored", server)
+		return fmt.Sprintf("the keychain holds this login's token for %s and the earlier item could not be read; it was not restored", server)
 	}
 	return fmt.Sprintf("the %s entry for %s holds this login's token", cr.Backend, server)
 }
@@ -378,7 +378,7 @@ func recoveryHint(d clierr.LoginFailureDetails, server string, persisted bool) s
 // nothing was persisted, then what to clean up.
 func FinishUnsupportedStore(cred LoginCredential, server string, st *LoginStates) (residual []clierr.TokenFate) {
 	st.Warnings = append(st.Warnings,
-		"credential helper is read-only; token not persisted, so future commands will re-acquire it through the helper")
+		"credential helper is read-only and the token was not persisted; future commands re-acquire it through the helper")
 	dClean := cred.Revoke()
 	st.CredentialCleanup = &dClean
 	add := func(f *clierr.TokenFate) {
