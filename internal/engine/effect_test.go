@@ -72,8 +72,12 @@ func (c *obsClient) Create(_ context.Context, _ schema.GroupVersionResource, _ s
 	}
 	return obj, nil
 }
-func (c *obsClient) Update(context.Context, schema.GroupVersionResource, string, *unstructured.Unstructured, bool) (*unstructured.Unstructured, error) {
-	return nil, nil
+func (c *obsClient) Update(_ context.Context, _ schema.GroupVersionResource, _ string, obj *unstructured.Unstructured, dryRun bool) (*unstructured.Unstructured, error) {
+	c.dryRuns = append(c.dryRuns, dryRun)
+	if dryRun && c.dryRunResult != nil {
+		return c.dryRunResult, nil
+	}
+	return obj, nil
 }
 func (c *obsClient) Delete(context.Context, schema.GroupVersionResource, string, string, string, bool) error {
 	return nil
@@ -120,6 +124,40 @@ func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []bool{true, false}, client.dryRuns)
 	assert.Equal(t, "digitaloceanconfig/web-pool created\n", res.Text)
+}
+
+// TestPlanUpdateObservedExposesDryRunResult asserts the update twin of the
+// dry-run seam: the caller receives the server's dry-run object, the
+// Effect carries the caller's diff and precondition, and the executor
+// still performs the real write.
+func TestPlanUpdateObservedExposesDryRunResult(t *testing.T) {
+	t.Parallel()
+	serverView := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": "app", "namespace": "default", "resourceVersion": "8"},
+		"data":     map[string]any{"a": "1", "defaulted": "by-server"},
+	}}
+	client := &obsClient{dryRunResult: serverView}
+	gvr := schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap",
+		"metadata": map[string]any{"name": "app", "namespace": "default", "resourceVersion": "7"},
+		"data":     map[string]any{"a": "1"},
+	}}
+	diff := []safety.DiffEntry{{Path: "/data/a", From: "0", To: "1"}}
+
+	eff, dryRun, exec, err := PlanUpdateObserved(t.Context(), client, gvr, "default", obj, "c-x", "configmap", "ConfigMap", diff, false)
+	require.NoError(t, err)
+	require.NotNil(t, exec)
+	assert.Equal(t, []bool{true}, client.dryRuns)
+	assert.Same(t, serverView, dryRun)
+	assert.Equal(t, safety.ActionUpdate, eff.Action)
+	assert.Equal(t, diff, eff.Diff)
+	assert.Equal(t, "7", eff.ResourceVersion, "the precondition is the submitted resourceVersion")
+
+	_, err = exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []bool{true, false}, client.dryRuns)
 }
 
 func TestPlanCreate(t *testing.T) {

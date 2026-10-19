@@ -184,6 +184,17 @@ func TestPatchFileCompletion(t *testing.T) {
 	assert.Empty(t, strings.TrimSpace(runNameLikeCompletion(t, []string{"patch", "pod"}, "--patch-file=")))
 }
 
+// TestPatchTypeCompletion asserts that `patch pod --type <TAB>` and
+// `--type=<TAB>` offer the two patch types and nothing else.
+func TestPatchTypeCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv(config.EnvConfigDir, t.TempDir())
+
+	assert.Equal(t, []string{"json", "merge"}, extractTokens(runNameLikeCompletion(t, []string{"patch", "pod", "--type"}, "")))
+	assert.Equal(t, []string{"--type=json", "--type=merge"}, extractTokens(runNameLikeCompletion(t, []string{"patch", "pod"}, "--type=")))
+}
+
 // TestFlagNameCompletionConfigSetCompletion is the user-reported reproduction:
 // `config set-completion --<TAB>` must return the set-completion leaf's flags
 // (--network, --timeout) plus --help. Before the fix, output was empty.

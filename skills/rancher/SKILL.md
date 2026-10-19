@@ -259,11 +259,15 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   (action, target, diff) to the user before applying anything non-trivial.
 - Patch previews include a field-level diff (`data.diff`) - show it. Its
   `path` is an RFC 6901 pointer (`~1` for `/`, `~0` for `~`), usable
-  verbatim as a `--patch` op's `path`.
+  verbatim as the `path` of an op in a `--patch` JSON Patch.
 - A patch preview may carry a warning that a changed field is applied by
   another manager (Flux, Argo CD) which may revert the change on its next
   reconcile; relay it before applying, and suggest changing the source that
   manager applies instead.
+- `--type merge` takes an RFC 7386 JSON merge patch (an object), which
+  replaces each list it names as a whole. Its preview warns when entries of
+  a list are dropped; relay it, and to change one entry use a JSON Patch op
+  on that entry's path instead.
 - `secret` diffs are redacted by design: `data`/`stringData` entries show the
   changed path but `from`/`to` are `<redacted>`, never the raw value.
 - `--allow-deprecated` is required to write through a deprecated-stability API.
@@ -578,7 +582,8 @@ run under config or environment read-only mode too.
   `errors: 0` means every requested log is inside. Complements
   rancherlabs/support-tools' node-level collector, not a replacement for it.
 - `rancher patch feature <name> --patch '[{"op":"replace","path":"/spec/value","value":true}]' --apply --yes` -
-  flip a Rancher feature flag (RFC 6902 patch, like every `patch <kind>`).
+  flip a Rancher feature flag (an RFC 6902 JSON Patch, the default type of
+  every `patch <kind>`).
   A `setting`'s `value` is a STRING field even when the setting is a
   boolean or a number: patch it with `"value":"true"`, never a bare `true`;
   gated like any sensitive-kind patch (`--yes` required, since flipping a

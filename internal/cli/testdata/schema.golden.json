@@ -6858,13 +6858,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -6922,13 +6931,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -6986,13 +7004,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7050,13 +7077,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7115,13 +7151,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7171,13 +7216,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7235,13 +7289,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7301,13 +7364,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7364,13 +7436,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7442,13 +7523,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7518,13 +7608,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7595,13 +7694,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7672,13 +7780,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7736,13 +7853,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7813,13 +7939,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7869,13 +8004,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -7935,13 +8079,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8000,13 +8153,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8056,13 +8218,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8113,13 +8284,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8178,13 +8358,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8255,13 +8444,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8331,13 +8529,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8408,13 +8615,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8464,13 +8680,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8529,13 +8754,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8593,13 +8827,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8657,13 +8900,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8716,13 +8968,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8786,13 +9047,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8848,13 +9118,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8904,13 +9183,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -8961,13 +9249,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9027,13 +9324,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9104,13 +9410,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9181,13 +9496,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9243,13 +9567,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9309,13 +9642,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9375,13 +9717,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9453,13 +9804,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9509,13 +9869,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9586,13 +9955,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9664,13 +10042,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9741,13 +10128,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9797,13 +10193,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9875,13 +10280,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9931,13 +10345,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -9988,13 +10411,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],
@@ -10053,13 +10485,22 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline RFC 6902 JSON `patch` ops",
+          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
         {
           "desc": "patch `file`, or - for stdin",
           "name": "patch-file",
+          "type": "string"
+        },
+        {
+          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "enum": [
+            "json",
+            "merge"
+          ],
+          "name": "type",
           "type": "string"
         }
       ],

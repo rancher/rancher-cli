@@ -27,6 +27,7 @@ const (
 	flagFilename  = "filename"
 	flagPatch     = "patch"
 	flagPatchFile = "patch-file"
+	flagPatchType = "type"
 	flagWait      = "wait"
 	flagFor       = "for"
 	flagTimeout   = "timeout"

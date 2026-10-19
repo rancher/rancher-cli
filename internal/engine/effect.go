@@ -74,8 +74,17 @@ func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 // contract/stability (see PlanCreateObserved). Mirrors PlanCreate so create
 // and update share one shape.
 func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
-	if _, err := client.Update(ctx, gvr, ns, obj, true); err != nil {
-		return safety.Effect{}, nil, err
+	eff, _, exec, err := PlanUpdateObserved(ctx, client, gvr, ns, obj, effectCluster, displayKind, resultKind, diff, destructive)
+	return eff, exec, err
+}
+
+// PlanUpdateObserved is PlanUpdate that also returns the server's dry-run
+// answer: the object as the update would store it, with the server's
+// defaults and admission changes applied.
+func PlanUpdateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
+	out, err := client.Update(ctx, gvr, ns, obj, true)
+	if err != nil {
+		return safety.Effect{}, nil, nil, err
 	}
 	eff := safety.Effect{
 		Action:            safety.ActionUpdate,
@@ -99,5 +108,5 @@ func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 		res.Data = updated.Object
 		return res, nil
 	}
-	return eff, exec, nil
+	return eff, out, exec, nil
 }

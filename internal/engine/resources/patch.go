@@ -30,7 +30,8 @@ type patchCmd struct {
 type EffectEnricher func(orig, patched *unstructured.Unstructured, eff *safety.Effect)
 
 // NewPatch builds `patch <kind> <name>` (mutating) from a Kind. It applies an
-// RFC 6902 JSON patch locally against the fetched object, diffs the original
+// RFC 6902 JSON patch (--type json, the default) or an RFC 7386 JSON merge
+// patch (--type merge) locally against the fetched object, diffs the original
 // and patched objects field-by-field, and updates with the fetched
 // resourceVersion as a precondition. Destructiveness is per-kind (Sensitive),
 // not a constant - patching a setting or identity kind requires --yes.
@@ -50,10 +51,10 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		Name:    "patch " + c.k.Name,
 		Aliases: c.k.Aliases,
 		// "Patch the <kind>" (a single named resource), matching delete's
-		// article choice; see the note in delete.go. The patch format (RFC
-		// 6902) is documented once, on the --patch flag that carries the
-		// payload - repeating it in every leaf's usage made `patch -h` read
-		// like a stutter, and "patch" appeared twice per line.
+		// article choice; see the note in delete.go. The patch formats are
+		// documented once, on the --patch and --type flags - repeating them
+		// in every leaf's usage made `patch -h` read like a stutter, and
+		// "patch" appeared twice per line.
 		Usage:       "Patch the " + c.k.Name,
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
@@ -67,13 +68,16 @@ func (c patchCmd) Describe() runtime.Descriptor {
 
 // patchFlags is delete's Route flag set (same Required-per-policy rules - patch
 // is always a named op) plus the two input sources, spelled as kubectl spells
-// them: --patch/-p (inline ops) and --patch-file (a file or "-" for stdin).
-// Exactly one of the two is required, enforced in Plan.
+// them: --patch/-p (inline) and --patch-file (a file or "-" for stdin), and
+// --type, which names the patch format. Exactly one source is required,
+// enforced in Plan.
 func patchFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := deleteFlags(k)
 	return append(flags,
-		runtime.ArgSpec{Name: flagPatch, Type: "string", Aliases: []string{"p"}, Desc: "inline RFC 6902 JSON `patch` ops"},
+		runtime.ArgSpec{Name: flagPatch, Type: "string", Aliases: []string{"p"}, Desc: "inline `patch`: RFC 6902 ops, or a JSON object with --type merge"},
 		runtime.ArgSpec{Name: flagPatchFile, Type: "string", Desc: "patch `file`, or - for stdin"},
+		runtime.ArgSpec{Name: flagPatchType, Type: "string", Enum: []string{patchTypeJSON, patchTypeMerge},
+			Desc: "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)"},
 	)
 }
 
@@ -83,17 +87,18 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <name> is required")
 	}
 	name := args[0]
+	// The patch is checked before the cluster name lookup, so a patch that
+	// cannot be used is refused before any request.
+	patch, err := c.decodePatch(in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
 	if c.k.Key == "managementcluster" {
 		resolved, rerr := engine.ResolveClusterArgument(ctx, c.clients, name)
 		if rerr != nil {
 			return safety.Effect{}, nil, rerr
 		}
 		name = resolved
-	}
-
-	patch, err := c.decodePatch(in)
-	if err != nil {
-		return safety.Effect{}, nil, err
 	}
 
 	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, c.k, in, OpNamed, in.Args()[0])
@@ -114,14 +119,16 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	patchedJSON, err := patch.Apply(origJSON)
+	patchedJSON, err := patch.apply(origJSON)
 	if err != nil {
+		// Only an op patch fails here: a merge of a checked object into a
+		// fetched object always succeeds.
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 			"cannot apply patch: "+err.Error()+"; check the patch ops against the resource")
 	}
-	patched := &unstructured.Unstructured{}
-	if err := patched.UnmarshalJSON(patchedJSON); err != nil {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "patched object is not valid: "+err.Error())
+	patched, err := decodePatched(patchedJSON)
+	if err != nil {
+		return safety.Effect{}, nil, err
 	}
 	// Whatever the patch did to metadata, the server receives the managed
 	// fields exactly as fetched: a PUT that dropped them would reset field
@@ -144,7 +151,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// PlanUpdate dry-runs the update for an admission preview and returns the
 	// executor; the Effect carries the field diff, the RV precondition, and the
 	// per-kind destructiveness.
-	eff, exec, err := engine.PlanUpdate(ctx, client, c.k.GVR, ns, patched, effectCluster, c.k.Name, resultKind(c.k), diff, c.k.Sensitive)
+	eff, stored, exec, err := engine.PlanUpdateObserved(ctx, client, c.k.GVR, ns, patched, effectCluster, c.k.Name, resultKind(c.k), diff, c.k.Sensitive)
 	if err != nil {
 		return eff, exec, err
 	}
@@ -154,6 +161,16 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// them), so this costs no request.
 	managedFields, _, _ := unstructured.NestedSlice(orig.Object, "metadata", "managedFields")
 	eff.Warnings = append(eff.Warnings, ownershipWarnings(managedFields, diff)...)
+	if patch.isMerge() {
+		// The dry-run answer carries the server's defaults on every list
+		// entry, as the fetched object does; the locally merged object does
+		// not, so comparing with it would count kept entries as dropped.
+		after := patched.Object
+		if stored != nil {
+			after = stored.Object
+		}
+		eff.Warnings = append(eff.Warnings, droppedListWarnings(patch.merge, orig.Object, after)...)
+	}
 	for _, e := range c.enrich {
 		e(orig, patched, &eff)
 	}
@@ -161,35 +178,28 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 }
 
 // decodePatch enforces the exactly-one-of-{--patch,--patch-file} rule and
-// decodes the RFC 6902 patch. A read error, both sources, neither source, or
-// malformed ops are VALIDATION errors.
-func (c patchCmd) decodePatch(in runtime.Input) (jsonpatch.Patch, error) {
+// checks and decodes the patch as --type says (json when unset). A read
+// error, both sources, neither source, or a patch that cannot be used are
+// VALIDATION errors.
+func (c patchCmd) decodePatch(in runtime.Input) (patchDoc, error) {
 	inline := in.String(flagPatch)
 	file := in.String(flagPatchFile)
 	var raw []byte
 	switch {
 	case inline != "" && file != "":
-		return nil, clierr.New(clierr.CodeValidation, "provide exactly one of --patch or --patch-file, not both")
+		return patchDoc{}, clierr.New(clierr.CodeValidation, "provide exactly one of --patch or --patch-file, not both")
 	case inline != "":
 		raw = []byte(inline)
 	case file != "":
 		b, err := c.src.Read(file)
 		if err != nil {
-			return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("cannot read patch %q: %v", file, err))
+			return patchDoc{}, clierr.New(clierr.CodeValidation, fmt.Sprintf("cannot read patch %q: %v", file, err))
 		}
 		raw = b
 	default:
-		return nil, clierr.New(clierr.CodeValidation, "a patch is required: pass --patch or --patch-file")
+		return patchDoc{}, clierr.New(clierr.CodeValidation, "a patch is required: pass --patch or --patch-file")
 	}
-	patch, err := jsonpatch.DecodePatch(raw)
-	if err != nil {
-		return nil, clierr.New(clierr.CodeValidation,
-			"invalid patch: "+err.Error()+"; expected an RFC 6902 JSON patch array")
-	}
-	if err := refuseServerOwnedOps(patch); err != nil {
-		return nil, err
-	}
-	return patch, nil
+	return parsePatch(raw, in.String(flagPatchType))
 }
 
 // refuseServerOwnedOps rejects any op that would change a field the server

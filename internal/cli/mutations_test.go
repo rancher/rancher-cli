@@ -96,6 +96,7 @@ func TestPatchFlagSpellings(t *testing.T) {
 		{"--patch-file reads the file", []string{"--patch-file", "does-not-exist.json"}, `cannot read patch "does-not-exist.json"`},
 		{"-f is unknown", []string{"-f", "ops.json"}, "flag provided but not defined: -f"},
 		{"--filename is unknown", []string{"--filename", "ops.json"}, "flag provided but not defined: -filename"},
+		{"--type takes json or merge", []string{"--type", "strategic", "-p", "{}"}, `--type="strategic" is not one of json|merge`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")

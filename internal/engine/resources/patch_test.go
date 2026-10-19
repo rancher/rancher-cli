@@ -33,6 +33,9 @@ type patchClient struct {
 	execUpdateErr error
 	updates       []updateCall
 	getName       []string
+	// dryRunAnswer, when set, is what a dry-run Update answers for the
+	// submitted object, as a server that fills defaults would.
+	dryRunAnswer func(*unstructured.Unstructured) *unstructured.Unstructured
 }
 
 func (p *patchClient) Get(_ context.Context, _ schema.GroupVersionResource, _ string, name string) (*unstructured.Unstructured, error) {
@@ -55,6 +58,9 @@ func (p *patchClient) Update(_ context.Context, _ schema.GroupVersionResource, n
 	p.updates = append(p.updates, updateCall{ns: ns, dryRun: dryRun, obj: obj})
 	if !dryRun && p.execUpdateErr != nil {
 		return nil, p.execUpdateErr
+	}
+	if dryRun && p.dryRunAnswer != nil {
+		return p.dryRunAnswer(obj), nil
 	}
 	return obj, nil
 }

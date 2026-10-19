@@ -677,14 +677,23 @@ that merely updated them (Rancher's controllers, `kubectl edit`) are not
 flagged. The warning informs; it never gates. A patch op whose `path` (or
 `from`) is `/metadata/managedFields` or `/metadata/resourceVersion`, or
 anything under them, is refused with `VALIDATION`; so is a replace of
-`/metadata` or of the whole object whose value carries them. The server
-sets both fields; the CLI always sends them back exactly as fetched.
+`/metadata` or of the whole object whose value carries them. A merge
+patch (`--type merge`) that sets or removes either field is refused the
+same way. The server sets both fields; the CLI always sends them back
+exactly as fetched.
 
 Every `diff[].path` a dry-run reports (in `-o json` and in the default text
 render) is an RFC 6901 JSON Pointer - `~1` for a literal `/` and `~0` for a
 literal `~` inside a key, so a domain-prefixed label or annotation key
 renders as one escaped segment. The string is usable verbatim as a JSON
 Patch op's `path`.
+
+`patch <kind>` takes an RFC 6902 JSON Patch (an array of ops) by default,
+and an RFC 7386 JSON merge patch (an object) with `--type merge`. A merge
+patch replaces each list it names as a whole; kubectl's default strategic
+merge patch merges some lists by key instead, and the CLI does not offer
+it. When a merge patch drops entries of a list the object has, the plan
+carries a warning naming the list.
 
 ## Cluster provisioning
 

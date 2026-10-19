@@ -46,6 +46,14 @@ jsonquery stderr data.error.message 'provide exactly one of --patch or --patch-f
 ! exec rancher patch configmap patch-cm --cluster testcluster --namespace default -o json
 jsonquery stderr data.error.message 'a patch is required: pass --patch or --patch-file'
 
+# --type merge applies an RFC 7386 merge patch; an object without it names the flag
+exec rancher patch configmap patch-cm --cluster testcluster --namespace default --type merge -p '{"data":{"key":"merged"}}' --dry-run -o json
+jsonquery stdout data.diff.0.path /data/key
+jsonquery stdout data.diff.0.to merged
+! exec rancher patch configmap patch-cm --cluster testcluster --namespace default -p '{"data":{"key":"merged"}}' -o json
+jsonquery stderr data.error.code VALIDATION
+jsonquery stderr data.error.message 'invalid patch: a JSON object is a merge patch; pass --type merge, or give RFC 6902 ops as a JSON array'
+
 # -f is not a patch flag: kubectl's -f names the object, not the patch
 ! exec rancher patch configmap patch-cm --cluster testcluster --namespace default -f ops.json -o json
 jsonquery stderr data.error.code VALIDATION
