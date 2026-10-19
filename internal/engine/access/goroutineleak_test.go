@@ -38,6 +38,10 @@ const leakScenarioEnv = "ACCESS_LEAK_SCENARIO"
 // scenarios gate anything.
 const plantedScenario = "planted"
 
+// plantedDeadline bounds how long the planted scenario waits for the
+// detector to report the planted goroutine.
+const plantedDeadline = 10 * time.Second
+
 // leakScenarios are the fan-out shapes the package runs, one function per
 // way a run can end. Each restores what it changed so the child measures
 // the shape, not the fixture.
@@ -208,12 +212,27 @@ func TestGoroutineLeakScenario(t *testing.T) {
 	profile := pprof.Lookup("goroutineleak")
 	require.NotNil(t, profile)
 	var report bytes.Buffer
-	require.NoError(t, profile.WriteTo(&report, 1))
 	if name == plantedScenario {
-		require.NotZero(t, profile.Count(), "the planted leak was not detected")
+		// The planted goroutine can still be runnable when a collection
+		// runs: it has sent on started but not yet parked on its channel.
+		// The detector counts a runnable goroutine as live, so its channel
+		// stays reachable and nothing is reported. It parks a moment later;
+		// collect again until the detector reports it, and fail at the
+		// deadline if it never does.
+		deadline := time.Now().Add(plantedDeadline)
+		for {
+			report.Reset()
+			require.NoError(t, profile.WriteTo(&report, 1))
+			if profile.Count() > 0 {
+				break
+			}
+			require.True(t, time.Now().Before(deadline), "the planted leak was not detected")
+			time.Sleep(10 * time.Millisecond)
+		}
 		require.Contains(t, report.String(), "plantedLeak", "the planted leak was not attributed")
 		return
 	}
+	require.NoError(t, profile.WriteTo(&report, 1))
 	require.Zero(t, profile.Count(), report.String())
 }
 
