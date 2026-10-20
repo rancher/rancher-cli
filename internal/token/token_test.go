@@ -35,7 +35,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 type tin struct {
@@ -630,7 +629,7 @@ func TestGetTokenCreateScopesToCluster(t *testing.T) {
 			_, _ = w.Write(steveClustersBody([2]string{"c-a", ""}, [2]string{"c-b", ""}))
 		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
-			gotClusters = append(gotClusters, gjson.GetBytes(body, "spec.clusterName").String())
+			gotClusters = append(gotClusters, createdClusterName(t, body))
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 		default:
@@ -676,7 +675,7 @@ func TestGetTokenClusterDisplayNameResolves(t *testing.T) {
 			_, _ = w.Write(steveClustersBody([2]string{"c-m-abc", "prod"}))
 		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
-			gotCluster = gjson.GetBytes(body, "spec.clusterName").String()
+			gotCluster = createdClusterName(t, body)
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 		default:
@@ -753,7 +752,7 @@ func TestGetTokenClusterIDWinsOverAnotherClustersDisplayName(t *testing.T) {
 			_, _ = w.Write(steveClustersBody([2]string{"c-1", "prod"}, [2]string{"c-2", "c-1"}, [2]string{"c-xyz", "staging"}))
 		case r.URL.Path == ExtTokensPath && r.Method == http.MethodPost:
 			body, _ := io.ReadAll(r.Body)
-			gotCluster = gjson.GetBytes(body, "spec.clusterName").String()
+			gotCluster = createdClusterName(t, body)
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"metadata":{"name":"created"},"status":{"bearerToken":"ext/created:secret"}}`))
 		default:
@@ -1350,6 +1349,131 @@ func TestGetAuthProvidersSplitsSupportedAndUnsupported(t *testing.T) {
 	assert.Equal(t, "local", supported[0].GetID())
 	assert.Equal(t, "oktaProvider", supported[1].GetType())
 	assert.Equal(t, []string{"githubProvider", "googleOAuthProvider"}, unsupported)
+}
+
+// TestGetAuthProvidersDecodesTheList asserts how getAuthProviders decodes
+// the server's provider list: the providers this CLI supports, local first;
+// the unsupported types sorted and deduplicated; their ids in response
+// order; keys matched as encoding/json matches them (the last
+// case-insensitive match), the same rule the provider decode uses; and an
+// error for a list that does not decode - a body that is not JSON or has
+// data after the list, a data member that is not an array, an element
+// that is not an object, a type or id that is not a string, or a
+// supported provider whose own fields do not decode. Each row's failsIf
+// names a change to the decoding that the row catches.
+func TestGetAuthProvidersDecodesTheList(t *testing.T) {
+	t.Parallel()
+	const listErr = "error decoding the auth provider list"
+	cases := []struct {
+		name            string
+		failsIf         string
+		body            string
+		wantSupported   []string
+		wantTypes       []string
+		wantUnsupported []string
+		wantIDs         []string
+		wantErr         string
+	}{
+		{name: "data absent", failsIf: "an absent data member is an error", body: `{}`},
+		{name: "data null", failsIf: "a null data member is an error", body: `{"data":null}`},
+		{name: "null element is skipped", failsIf: "a null element is an error or a provider", body: `{"data":[null,{"id":"local","type":"localProvider"}]}`, wantSupported: []string{"local"}, wantTypes: []string{"localProvider"}},
+		{name: "element without a type is skipped", failsIf: "an element without a type is listed", body: `{"data":[{"id":"x"},{"id":"local","type":"localProvider"}]}`, wantSupported: []string{"local"}, wantTypes: []string{"localProvider"}},
+		{name: "local provider first", failsIf: "localProvider is not moved first", body: `{"data":[{"id":"okta","type":"oktaProvider"},{"id":"local","type":"localProvider"}]}`, wantSupported: []string{"local", "okta"}, wantTypes: []string{"localProvider", "oktaProvider"}},
+		{name: "last case-insensitive type key counts", failsIf: "the type is read from a different key than the provider decode uses", body: `{"data":[{"id":"l","type":"githubProvider","TYPE":"localProvider"}]}`, wantSupported: []string{"l"}, wantTypes: []string{"localProvider"}},
+		{name: "last case-insensitive type key counts, reversed", failsIf: "the type is read from a different key than the provider decode uses", body: `{"data":[{"id":"l","type":"localProvider","TYPE":"githubProvider"}]}`, wantUnsupported: []string{"githubProvider"}, wantIDs: []string{"l"}},
+		{name: "last case-insensitive data key counts", failsIf: "the list is read from a different key than encoding/json uses", body: `{"data":[{"id":"local","type":"localProvider"}],"DATA":null}`},
+		{
+			name:            "Rancher-shaped list with members the CLI does not read",
+			failsIf:         "members the CLI does not read are refused",
+			body:            `{"type":"collection","links":{"self":"https://r/v1-public/authproviders"},"actions":{},"pagination":{"limit":1000},"resourceType":"authProvider","data":[{"id":"local","type":"localProvider","baseType":"authProvider","links":{"self":"https://r/v1-public/authproviders/local"},"actions":{"login":"https://r/v1-public/authproviders/local?action=login"}},{"id":"github","type":"githubProvider","baseType":"authProvider","links":{},"actions":{},"redirectUrl":"https://github.com/login/oauth/authorize"}]}`,
+			wantSupported:   []string{"local"},
+			wantTypes:       []string{"localProvider"},
+			wantUnsupported: []string{"githubProvider"},
+			wantIDs:         []string{"github"},
+		},
+		{
+			name:            "unsupported types sorted and deduplicated",
+			failsIf:         "the unsupported types are not sorted or not deduplicated",
+			body:            `{"data":[{"id":"g1","type":"githubProvider"},{"id":"go","type":"googleOAuthProvider"},{"id":"g2","type":"githubProvider"}]}`,
+			wantUnsupported: []string{"githubProvider", "googleOAuthProvider"},
+			wantIDs:         []string{"g1", "go", "g2"},
+		},
+		{
+			name:            "unsupported ids keep response order",
+			failsIf:         "the unsupported ids are sorted, deduplicated or dropped, or an empty id is listed",
+			body:            `{"data":[{"id":"g2","type":"githubProvider"},{"id":"okta","type":"oktaProvider"},{"type":"githubProvider"},{"id":"g1","type":"githubProvider"}]}`,
+			wantSupported:   []string{"okta"},
+			wantTypes:       []string{"oktaProvider"},
+			wantUnsupported: []string{"githubProvider"},
+			wantIDs:         []string{"g2", "g1"},
+		},
+		{name: "body that is not JSON", failsIf: "a list that does not decode is read", body: `{"data":[`, wantErr: listErr},
+		{name: "page that is not the API names the remedy", failsIf: "the list error does not point at the server URL", body: `<html>`, wantErr: "; check the server URL"},
+		{name: "data after the list", failsIf: "data after the list is ignored", body: `{"data":[{"id":"local","type":"localProvider"}]} x`, wantErr: listErr},
+		{name: "top level an array", failsIf: "a list that does not decode is read", body: `[{"id":"local","type":"localProvider"}]`, wantErr: listErr},
+		{name: "data an object", failsIf: "a list that does not decode is read", body: `{"data":{"id":"local","type":"localProvider"}}`, wantErr: listErr},
+		{name: "data a scalar", failsIf: "a list that does not decode is read", body: `{"data":"local"}`, wantErr: listErr},
+		{name: "element a scalar", failsIf: "an element that does not decode is skipped", body: `{"data":["x",{"id":"local","type":"localProvider"}]}`, wantErr: listErr},
+		{name: "number type", failsIf: "an element that does not decode is skipped", body: `{"data":[{"id":"n","type":5}]}`, wantErr: listErr},
+		{name: "bool id", failsIf: "an element that does not decode is skipped", body: `{"data":[{"id":true,"type":"githubProvider"}]}`, wantErr: listErr},
+		{name: "supported provider whose fields do not decode", failsIf: "a decode error of a supported provider is ignored", body: `{"data":[{"id":"azure","type":"azureADProvider","redirectUrl":5}]}`, wantErr: "error decoding the auth provider azureADProvider"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(c.body))
+			}))
+			defer srv.Close()
+			supported, unsupported, ids, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
+			if c.wantErr != "" {
+				require.ErrorContains(t, err, c.wantErr, "fails if %s", c.failsIf)
+				return
+			}
+			require.NoError(t, err, "fails if %s", c.failsIf)
+			var gotSupported, gotTypes []string
+			for _, p := range supported {
+				gotSupported = append(gotSupported, p.GetID())
+				gotTypes = append(gotTypes, p.GetType())
+			}
+			assert.Equal(t, c.wantSupported, gotSupported, "supported; fails if %s", c.failsIf)
+			assert.Equal(t, c.wantTypes, gotTypes, "supported types; fails if %s", c.failsIf)
+			assert.Equal(t, c.wantUnsupported, unsupported, "unsupported; fails if %s", c.failsIf)
+			assert.Equal(t, c.wantIDs, ids, "unsupported ids; fails if %s", c.failsIf)
+		})
+	}
+}
+
+// TestGetAuthProvidersDecodeErrorsKeepTheCause asserts that both decode
+// errors of the provider list - the list itself and one element - name the
+// remedy and wrap encoding/json's error, so a caller can still inspect it.
+func TestGetAuthProvidersDecodeErrorsKeepTheCause(t *testing.T) {
+	t.Parallel()
+	var syntaxErr *json.SyntaxError
+	var typeErr *json.UnmarshalTypeError
+	cases := []struct {
+		name  string
+		body  string
+		cause any
+	}{
+		{name: "list", body: `<html>`, cause: &syntaxErr},
+		{name: "element", body: `{"data":["x"]}`, cause: &typeErr},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(c.body))
+			}))
+			defer srv.Close()
+			_, _, _, err := getAuthProviders(t.Context(), srv.Client(), srv.URL)
+			require.ErrorContains(t, err, "error decoding the auth provider list: ")
+			require.ErrorContains(t, err, "; check the server URL")
+			assert.ErrorAs(t, err, c.cause, "the encoding/json error stays wrapped")
+		})
+	}
 }
 
 func TestSelectAuthProviderSingle(t *testing.T) {
@@ -2291,7 +2415,7 @@ func TestBasicAuthUsernameDefault(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Contains(t, errBuf.String(), "[alice]", "prompt label must include the default in brackets")
-	assert.Equal(t, "alice", gjson.GetBytes(gotBody, "username").String(), "empty answer must fall back to the default")
+	assert.Equal(t, "alice", loginUsername(t, gotBody), "empty answer must fall back to the default")
 	assert.Equal(t, "test-tok:s", tok.Bearer)
 }
 
@@ -2321,7 +2445,7 @@ func TestBasicAuthTrimsPaddedUsername(t *testing.T) {
 	input := &loginInput{server: srv.URL, authProvider: "localProvider"}
 	_, err := basicAuth(t.Context(), srv.Client(), input, p)
 	require.NoError(t, err)
-	assert.Equal(t, "bob", gjson.GetBytes(gotBody, "username").String(), "padding must be trimmed from the sent username")
+	assert.Equal(t, "bob", loginUsername(t, gotBody), "padding must be trimmed from the sent username")
 }
 
 // TestCaForServerDeterministicWithMultipleMatches asserts that
@@ -2981,4 +3105,29 @@ func TestStoredTokenForServerBlankTokenIsNotACredential(t *testing.T) {
 	got, ok, serr = lookupStored(cfg, store, "https://r.ex", "prod-a", "", false)
 	require.NoError(t, serr)
 	assert.False(t, ok, "an identified entry holding only whitespace has no credential: %q", got.token)
+}
+
+// createdClusterName returns spec.clusterName of an ext token create
+// request body, empty when the field is absent. It may run in a server
+// handler, so a body that does not decode fails the test without stopping
+// it.
+func createdClusterName(t *testing.T, body []byte) string {
+	t.Helper()
+	var req struct {
+		Spec struct {
+			ClusterName string `json:"clusterName"`
+		} `json:"spec"`
+	}
+	assert.NoError(t, json.Unmarshal(body, &req), "create request body %s", body)
+	return req.Spec.ClusterName
+}
+
+// loginUsername returns the username of a login request body.
+func loginUsername(t *testing.T, body []byte) string {
+	t.Helper()
+	var req struct {
+		Username string `json:"username"`
+	}
+	require.NoError(t, json.Unmarshal(body, &req), "login request body %s", body)
+	return req.Username
 }

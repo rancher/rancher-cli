@@ -31,7 +31,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/steve"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/ui"
-	"github.com/tidwall/gjson"
 )
 
 const (
@@ -1292,6 +1291,21 @@ func samlAuth(ctx context.Context, client *http.Client, input *loginInput, p run
 	}
 }
 
+// providerList is the server's auth provider list, each element kept as
+// JSON for the decode into its provider type.
+type providerList struct {
+	Data []json.RawMessage `json:"data"`
+}
+
+// providerEntry is the part of a provider list element that decides
+// whether this CLI supports it. It decodes under the same rules as the
+// provider types, so the type it reads is the type the provider decodes
+// with.
+type providerEntry struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
+
 // getAuthProviders lists the server's auth providers: the ones this CLI can
 // log in with (local first), and the types the server advertises that it
 // cannot, so a caller can name them instead of silently dropping them.
@@ -1314,19 +1328,23 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 			&clierr.Request{Endpoint: true, NoCredential: true})
 	}
 
-	if !gjson.ValidBytes(respBody) {
-		return nil, nil, nil, errors.New("invalid JSON response")
+	var list providerList
+	if err := json.Unmarshal(respBody, &list); err != nil {
+		return nil, nil, nil, fmt.Errorf("error decoding the auth provider list: %w; check the server URL", err)
 	}
-	data := gjson.GetBytes(respBody, "data").Array()
 
 	var supportedProviders []typedProvider
 	var unsupported, unsupportedIDs []string
-	for _, provider := range data {
-		providerType := provider.Get("type").String()
+	for _, raw := range list.Data {
+		var provider providerEntry
+		if err := json.Unmarshal(raw, &provider); err != nil {
+			return nil, nil, nil, fmt.Errorf("error decoding the auth provider list: %w; check the server URL", err)
+		}
+		providerType := provider.Type
 		if providerType != "" && !supportedAuthProviders[providerType] {
 			unsupported = append(unsupported, providerType)
-			if id := provider.Get("id").String(); id != "" {
-				unsupportedIDs = append(unsupportedIDs, id)
+			if provider.ID != "" {
+				unsupportedIDs = append(unsupportedIDs, provider.ID)
 			}
 		}
 
@@ -1342,7 +1360,7 @@ func getAuthProviders(ctx context.Context, client *http.Client, server string) (
 				tp = &AuthProvider{}
 			}
 
-			err = json.Unmarshal([]byte(provider.Raw), tp)
+			err = json.Unmarshal(raw, tp)
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("error decoding the auth provider %s: %w", providerType, err)
 			}

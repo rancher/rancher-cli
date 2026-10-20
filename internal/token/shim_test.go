@@ -2,6 +2,7 @@ package token
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -21,7 +22,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestLegacyTokenDescriptor(t *testing.T) {
@@ -193,7 +193,11 @@ func TestLegacyTokenNoContextCluster(t *testing.T) {
 	assert.Equal(t, "ext/no-cluster:tok", cred.Status.Token)
 
 	// The create request body must not include a clusterName field.
-	assert.False(t, gjson.GetBytes(createBody, "spec.clusterName").Exists(),
+	var created struct {
+		Spec map[string]json.RawMessage `json:"spec"`
+	}
+	require.NoError(t, json.Unmarshal(createBody, &created), "create request body %s", createBody)
+	assert.NotContains(t, created.Spec, "clusterName",
 		"create request must be unscoped when --cluster is omitted; got body: %s", createBody)
 
 	// The cache slot must be unscoped: CacheKey with empty cluster.
@@ -585,7 +589,11 @@ func TestLegacyTokenStoreNoticeReachesStderr(t *testing.T) {
 		safety.Binding{})
 	require.Nil(t, ce)
 	assert.Zero(t, status)
-	assert.Equal(t, "ExecCredential", gjson.GetBytes(out.Bytes(), "kind").String())
+	var got struct {
+		Kind string `json:"kind"`
+	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got), "output %s", out.String())
+	assert.Equal(t, "ExecCredential", got.Kind)
 	assert.Contains(t, errBuf.String(), "# warning: "+keychainUnavailableNotice)
 }
 
