@@ -5,7 +5,7 @@ set -euo pipefail
 # Rancher proxy, the provider envtest contract tests, and the envtest helper
 # package's own tests. Each starts etcd and kube-apiserver binaries;
 # setup-envtest downloads them once and caches.
-ENVTEST_K8S_VERSION="1.34.0"
+ENVTEST_K8S_VERSION="1.37.0"
 
 echo "==> resolving envtest assets (k8s ${ENVTEST_K8S_VERSION})"
 # Pinned for repeatability/supply-chain; bump alongside controller-runtime (go.mod).

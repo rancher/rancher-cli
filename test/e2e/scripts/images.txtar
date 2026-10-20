@@ -14,7 +14,7 @@ flipstatus testcluster core/v1/pods default images-pod '{"phase":"Pending"}'
 
 # Use --match images-e2e to isolate from other scenarios sharing the same
 # envtest cluster (parallel scenarios may have busybox pods that are also
-# active in k8s 1.34.0).
+# active in k8s 1.37.0).
 exec rancher images --cluster testcluster --match images-e2e -o json
 jsonquery stdout data.by image
 jsonquery stdout data.rows.0.image busybox:images-e2e
