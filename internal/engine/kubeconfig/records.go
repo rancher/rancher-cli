@@ -144,6 +144,22 @@ func (l lookupCall) lookup() token.StoredLogin {
 	return token.LookupStoredLogin(l.cfg, reader, l.server, l.name, l.clusterID, "")
 }
 
+// recordedAuthConfig is the --auth-provider the exec entry carries beside
+// --user-id: the auth config the answering login recorded, when it is an
+// auth config name. An entry that recorded none, or one that is not a name,
+// gets none, and no notice: a call without --auth-provider checks no auth
+// config.
+func (l lookupCall) recordedAuthConfig(lk token.StoredLogin) string {
+	if lk.Outcome != token.LookupAnswered {
+		return ""
+	}
+	recorded := l.cfg.Servers[lk.Entry].TokenAuthConfig
+	if token.ValidAuthConfigName(recorded) {
+		return recorded
+	}
+	return ""
+}
+
 // recordedOwner is the --user-id the exec entry carries - the owner the
 // login that answers records, when it is a user id - or why it carries
 // none: the answering login records no owner. Any other outcome of the

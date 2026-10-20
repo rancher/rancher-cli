@@ -725,7 +725,7 @@ func TestCacheRecordIsAnchoredToTheIdentifiedEntry(t *testing.T) {
 
 	probe := func() bool {
 		c := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-		_, _, _, hit := c.probeFlagCache("prod-eu-c-test", srv.URL, "c-test", "", ui.Discard())
+		_, _, _, hit := c.probeFlagCache("prod-eu-c-test", srv.URL, "c-test", "", "", ui.Discard())
 		return hit
 	}
 	require.True(t, probe(), "the sign-in's record is served")

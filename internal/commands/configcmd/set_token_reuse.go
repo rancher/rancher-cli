@@ -24,7 +24,8 @@ func (setTokenReuseCmd) Describe() runtime.Descriptor {
 		Desc: "Stores the token-reuse setting in config.yaml (default off). " +
 			"With it on, the first auth get-token cache miss for a server runs one interactive login, " +
 			"stores the resulting unscoped login credential under a server entry named exec-login-<host> " +
-			"(exec-login-<host>-<user id> for a call with --user-id) with provenance execLogin, and creates " +
+			"(exec-login-<host>-<user id> for a call with --user-id, exec-login-<host>-<user id>-<auth config> with --auth-provider too) " +
+			"with provenance execLogin, and creates " +
 			"cluster-scoped tokens from it silently for every cluster of that server; with --user-id and no " +
 			"--cluster the token is one for Rancher itself. Off restores the per-cluster interactive login without deleting " +
 			"the stored credential; the output then lists every dormant plugin-created login and the " +

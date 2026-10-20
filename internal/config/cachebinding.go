@@ -178,6 +178,11 @@ func CanonicalDir(dir string) string {
 //     record that user as their owner, and to the current server among
 //     them (CacheBindingForOwner).
 //
+// A call with --user-id and an auth config keeps in both lists only the
+// entries that recorded that auth config or none, each listed with the auth
+// config it recorded: an entry that has recorded one since is not the entry
+// the record was bound to.
+//
 // "Exactly" means the list may neither gain nor lose an entry.
 //
 // All of it comes from the same config load as the credential it belongs
@@ -199,6 +204,10 @@ type CacheBinding struct {
 	// userID is the call's --user-id: the user whose recorded owner picks
 	// the entries a list holds.
 	userID string
+	// authConfig is the call's --auth-provider with --user-id: the auth
+	// config whose recorded name, with that of an entry that recorded none,
+	// picks the entries a list holds. Empty for a call without one.
+	authConfig string
 	// entry is the entry the record is bound to by its id alone: the
 	// identified entry, empty for a call that identifies none.
 	entry boundEntry
@@ -235,15 +244,18 @@ const (
 )
 
 // boundEntry is one entry a record is bound to: its name, its cache binding
-// id in the load, and whether its cache writes were paused there.
+// id in the load, whether its cache writes were paused there, and the auth
+// config it recorded.
 type boundEntry struct {
 	name, id string
 	paused   bool
+	// authConfig is the auth config the entry recorded in the load.
+	authConfig string
 }
 
 func boundEntryOf(cfg *Config, name string) boundEntry {
 	s := cfg.Servers[name]
-	return boundEntry{name: name, id: s.CacheBindingID, paused: s.Paused()}
+	return boundEntry{name: name, id: s.CacheBindingID, paused: s.Paused(), authConfig: s.TokenAuthConfig}
 }
 
 func boundEntriesOf(cfg *Config, names []string) []boundEntry {
@@ -276,10 +288,11 @@ func CacheBindingFor(dir string, cfg *Config, entry string) CacheBinding {
 	return b
 }
 
-// forUser is b for a call with --user-id userID, which the record carries
-// so that only a call naming that user is served it.
-func (b CacheBinding) forUser(userID string) CacheBinding {
-	b.userID = userID
+// forUser is b for a call with --user-id userID and --auth-provider
+// authConfig, which the record carries so that only a call naming that user
+// and auth config is served it.
+func (b CacheBinding) forUser(userID, authConfig string) CacheBinding {
+	b.userID, b.authConfig = userID, authConfig
 	return b
 }
 
@@ -290,10 +303,10 @@ func (b CacheBinding) forUser(userID string) CacheBinding {
 // is on, exactly to the server's plugin login entries; not to the other
 // entries for the server, nor to the current server, which that lookup
 // never reads. For a call with --user-id the plugin login entries are
-// those that record that user. An entry cfg does not have gives the zero
-// binding, and so does a list the lookup refuses (see
-// refusesPluginEntries).
-func CacheBindingForIdentified(dir string, cfg *Config, server, entry, userID string) CacheBinding {
+// those that record that user and, with authConfig, either that auth config
+// or none. An entry cfg does not have gives the zero binding, and so does a
+// list the lookup refuses (see refusesPluginEntries).
+func CacheBindingForIdentified(dir string, cfg *Config, server, entry, userID, authConfig string) CacheBinding {
 	if cfg == nil {
 		return CacheBinding{}
 	}
@@ -301,11 +314,11 @@ func CacheBindingForIdentified(dir string, cfg *Config, server, entry, userID st
 	if !ok {
 		return CacheBinding{}
 	}
-	b := CacheBinding{dir: dir, kind: recordIdentified, identified: entry, userID: userID, entry: boundEntryOf(cfg, entry),
+	b := CacheBinding{dir: dir, kind: recordIdentified, identified: entry, userID: userID, authConfig: authConfig, entry: boundEntryOf(cfg, entry),
 		identifiedIsPlugin: s.Provenance == clierr.ProvenanceExecLogin,
 		reuseBound:         true, reuse: cfg.TokenReuse, built: true, load: cfg}
 	if cfg.TokenReuse {
-		b.listed, b.list = true, boundEntriesOf(cfg, cfg.PluginLoginEntriesOf(server, userID))
+		b.listed, b.list = true, boundEntriesOf(cfg, cfg.PluginLoginEntriesOf(server, userID, authConfig))
 	}
 	if b.refusesPluginEntries() {
 		return CacheBinding{refused: true}
@@ -316,7 +329,7 @@ func CacheBindingForIdentified(dir string, cfg *Config, server, entry, userID st
 // refusesPluginEntries reports that the lookup of the call this binding
 // is for refuses it over the binding's list (PluginFallbackRefused).
 func (b CacheBinding) refusesPluginEntries() bool {
-	return b.kind == recordIdentified && PluginFallbackRefused(b.identifiedIsPlugin, len(b.list))
+	return b.kind == recordIdentified && PluginFallbackRefused(b.identifiedIsPlugin, len(answeringGroup(b.list, b.authConfig, func(e boundEntry) string { return e.authConfig })))
 }
 
 // PluginFallbackRefused reports whether the exec plugin's lookup refuses a
@@ -340,14 +353,14 @@ func PluginFallbackRefused(identifiedIsPlugin bool, pluginLoginEntries int) bool
 // identifies none CacheBindingForServer (legacyShim for the legacy
 // `rancher token` shim's lookup), or CacheBindingForOwner when the call
 // has a --user-id. Every writer picks its binding here.
-func CacheBindingForLookup(dir string, cfg *Config, server, identified, answered, userID string, legacyShim bool) CacheBinding {
+func CacheBindingForLookup(dir string, cfg *Config, server, identified, answered, userID, authConfig string, legacyShim bool) CacheBinding {
 	switch {
 	case identified != "" && answered == identified:
-		return CacheBindingFor(dir, cfg, identified).forUser(userID)
+		return CacheBindingFor(dir, cfg, identified).forUser(userID, authConfig)
 	case identified != "":
-		return CacheBindingForIdentified(dir, cfg, server, identified, userID)
+		return CacheBindingForIdentified(dir, cfg, server, identified, userID, authConfig)
 	case userID != "":
-		return CacheBindingForOwner(dir, cfg, server, userID)
+		return CacheBindingForOwner(dir, cfg, server, userID, authConfig)
 	}
 	return CacheBindingForServer(dir, cfg, server, legacyShim)
 }
@@ -377,13 +390,15 @@ func CacheBindingForServer(dir string, cfg *Config, server string, legacyShim bo
 // the current server among them - its name when it is one of them, else
 // none - and to the token-reuse setting. An entry whose recorded owner
 // becomes userID, or stops being it, ends the record, as does a new entry
-// of userID's or the removal of one.
-func CacheBindingForOwner(dir string, cfg *Config, server, userID string) CacheBinding {
+// of userID's or the removal of one. With authConfig the list holds only the
+// entries that recorded that auth config or none, each with the auth config
+// it recorded.
+func CacheBindingForOwner(dir string, cfg *Config, server, userID, authConfig string) CacheBinding {
 	if cfg == nil || userID == "" {
 		return CacheBinding{}
 	}
-	names := cfg.OwnedServerNames(server, userID)
-	return CacheBinding{dir: dir, kind: recordOwner, userID: userID, listed: true, list: boundEntriesOf(cfg, names),
+	names := cfg.OwnedServerNames(server, userID, authConfig)
+	return CacheBinding{dir: dir, kind: recordOwner, userID: userID, authConfig: authConfig, listed: true, list: boundEntriesOf(cfg, names),
 		currentBound: true, current: currentAmong(cfg.CurrentServer, names), reuseBound: true, reuse: cfg.TokenReuse, built: true, load: cfg}
 }
 
@@ -419,18 +434,18 @@ func CacheBindingForTest(dir, entry, bindingID string) CacheBinding {
 // a real call would; the exec plugin itself picks its binding from what
 // its lookup read.
 func CacheBindingForSeed(dir string, cfg *Config, name, server, cluster string) CacheBinding {
-	return CacheBindingForSeedOf(dir, cfg, name, server, cluster, "")
+	return CacheBindingForSeedOf(dir, cfg, name, server, cluster, "", "")
 }
 
 // CacheBindingForSeedOf is CacheBindingForSeed for a call with --user-id
-// userID.
-func CacheBindingForSeedOf(dir string, cfg *Config, name, server, cluster, userID string) CacheBinding {
+// userID and --auth-provider authConfig.
+func CacheBindingForSeedOf(dir string, cfg *Config, name, server, cluster, userID, authConfig string) CacheBinding {
 	legacyShim := IsLegacyCacheSlot(name)
 	identified := ""
 	if id := IdentifyEntry(cfg, server, name, cluster, legacyShim); !id.OtherURL {
 		identified = id.Entry
 	}
-	return CacheBindingForLookup(dir, cfg, server, identified, identified, userID, legacyShim)
+	return CacheBindingForLookup(dir, cfg, server, identified, identified, userID, authConfig, legacyShim)
 }
 
 // WithCreatedToken is b with the token its record caches named: the ref
@@ -444,6 +459,88 @@ func (b CacheBinding) WithCreatedToken(ref *clierr.TokenRef, userID string) Cach
 	}
 	b.tokenUserID = userID
 	return b
+}
+
+// boundEntryNamed is the entry of the binding named name: the entry the
+// record is bound to by its id alone, or one of its list.
+func (b CacheBinding) boundEntryNamed(name string) (boundEntry, bool) {
+	if b.entry.name == name && name != "" {
+		return b.entry, true
+	}
+	for _, e := range b.list {
+		if e.name == name {
+			return e, true
+		}
+	}
+	return boundEntry{}, false
+}
+
+// BindingIDOf is the cache binding id the binding holds for the entry name
+// in its load, and whether the binding is bound to that entry at all.
+func (b CacheBinding) BindingIDOf(name string) (string, bool) {
+	e, ok := b.boundEntryNamed(name)
+	return e.id, ok
+}
+
+// withRecordedAuthConfig is b with the auth config the entry name now
+// records, so the record the call writes next lists it as it stands after
+// the write that recorded it.
+func (b CacheBinding) withRecordedAuthConfig(name, authConfig string) CacheBinding {
+	if b.entry.name == name && name != "" {
+		b.entry.authConfig = authConfig
+	}
+	b.list = slices.Clone(b.list)
+	for i := range b.list {
+		if b.list[i].name == name {
+			b.list[i].authConfig = authConfig
+		}
+	}
+	return b
+}
+
+// RecordAuthConfig writes authConfig as the auth config the entry name
+// records, and returns the binding as it stands after the write, and
+// whether it wrote. It writes only when every one of these holds, and
+// writes nothing, with no error, otherwise: the binding is built and bound to
+// the entry, the entry's cache writes were not paused in the binding's
+// load, the binding passes CheckStore, the config lock is free to take at
+// once (never under RANCHER_CLI_CONFIG_NO_LOCK, where a free lock proves
+// nothing), and the config under that lock still shows the entry with the
+// cache binding id the binding holds for it, a recorded owner and no
+// recorded auth config. A change of the entry's login that began after the
+// binding's load moved the id, and one that began before it shows as a
+// pause, so neither is recorded over. A write that fails is no write.
+//
+// The write sets that one field of that one entry. The caller holds no
+// other lock: the config lock is never taken while the token-cache,
+// identity or helper-records lock is held.
+func (b CacheBinding) RecordAuthConfig(dir, name, authConfig string) (CacheBinding, bool) {
+	e, ok := b.boundEntryNamed(name)
+	if !b.built || b.refused || authConfig == "" || !ok || e.paused || e.authConfig != "" || b.CheckStore() != nil {
+		return b, false
+	}
+	wrote := false
+	tried, err := tryWithLock(dir, func() error {
+		cfg, err := Load(FilePath(dir))
+		if err != nil {
+			return err
+		}
+		s, ok := cfg.Servers[name]
+		if !ok || s.CacheBindingID != e.id || s.TokenUserID == "" || s.TokenAuthConfig != "" {
+			return nil
+		}
+		s.TokenAuthConfig = authConfig
+		cfg.Servers[name] = s
+		if err := writeStep("recordAuthConfig", cfg); err != nil {
+			return err
+		}
+		wrote = true
+		return nil
+	})
+	if !tried || err != nil || !wrote {
+		return b, false
+	}
+	return b.withRecordedAuthConfig(name, authConfig), true
 }
 
 // ReadFrom records the store the binding's credential is read from, for
@@ -552,7 +649,7 @@ func (b CacheBinding) withWritten(written *Config, name string, paused bool) Cac
 	if !b.built || !ok || !b.listed {
 		return CacheBinding{}
 	}
-	wrote := boundEntry{name: name, id: s.CacheBindingID, paused: paused || s.Paused()}
+	wrote := boundEntry{name: name, id: s.CacheBindingID, paused: paused || s.Paused(), authConfig: s.TokenAuthConfig}
 	list := slices.Clone(b.list)
 	i, found := slices.BinarySearchFunc(list, name, func(e boundEntry, n string) int { return strings.Compare(e.name, n) })
 	if found {
@@ -618,12 +715,15 @@ func (b CacheBinding) writable() error {
 // record is the cache record b writes for a credential.
 func (b CacheBinding) record(token string, expiry time.Time, name, server, cluster string) cachedCred {
 	rec := cachedCred{Token: token, Expiry: expiry, Name: name, Server: server, Cluster: cluster,
-		Version: cacheRecordVersion, Dir: b.dir, Kind: b.kind, Identified: b.identified, UserID: b.userID, Entry: b.entry.name, BindingID: b.entry.id,
-		TokenRef: b.tokenRef, TokenUserID: b.tokenUserID}
+		Version: cacheRecordVersion, Dir: b.dir, Kind: b.kind, Identified: b.identified, UserID: b.userID, AuthConfig: b.authConfig,
+		Entry: b.entry.name, BindingID: b.entry.id, TokenRef: b.tokenRef, TokenUserID: b.tokenUserID}
 	if b.listed {
 		entries := make([]cachedEntry, len(b.list))
 		for i, e := range b.list {
 			entries[i] = cachedEntry{Name: e.name, BindingID: e.id}
+			if b.authConfig != "" {
+				entries[i].AuthConfig = e.authConfig
+			}
 		}
 		rec.Entries = &entries
 	}
@@ -743,11 +843,13 @@ func (a *CacheAnchor) valid(rec cachedCred) bool {
 	return a.Cfg.servesRecord(rec)
 }
 
-// validFor is valid for the record found under key: the user id the key
-// carries must be the one the record carries, so a record of a call with
-// --user-id serves only a call with that user, and never one without.
+// validFor is valid for the record found under key: the user id and the
+// auth config the key carries must be the ones the record carries, so a
+// record of a call with --user-id serves only a call with that user, and
+// never one without, and a record of a call with an auth config serves only
+// a call with that auth config.
 func (a *CacheAnchor) validFor(key string, rec cachedCred) bool {
-	return userIDOfKey(key) == rec.UserID && a.valid(rec)
+	return userIDOfKey(key) == rec.UserID && authConfigOfKey(key) == rec.AuthConfig && a.valid(rec)
 }
 
 // servesRecord reports whether the exec plugin's lookup for the record's
@@ -776,23 +878,23 @@ func (c *Config) servesRecord(rec cachedCred) bool {
 	}
 	switch rec.Kind {
 	case recordServer:
-		if rec.UserID != "" || rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || (rec.CurrentServer == nil) != legacyShim {
+		if rec.UserID != "" || rec.AuthConfig != "" || rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || (rec.CurrentServer == nil) != legacyShim {
 			return false
 		}
 		names := c.MatchingServerNames(rec.Server)
 		if rec.CurrentServer != nil && currentAmong(c.CurrentServer, names) != *rec.CurrentServer {
 			return false
 		}
-		return c.sameEntries(names, *rec.Entries)
+		return c.sameEntries(names, *rec.Entries, false)
 	case recordOwner:
 		if rec.UserID == "" || rec.Identified != "" || rec.Entry != "" || rec.Entries == nil || rec.TokenReuse == nil || rec.CurrentServer == nil || legacyShim {
 			return false
 		}
-		names := c.OwnedServerNames(rec.Server, rec.UserID)
+		names := c.OwnedServerNames(rec.Server, rec.UserID, rec.AuthConfig)
 		if currentAmong(c.CurrentServer, names) != *rec.CurrentServer {
 			return false
 		}
-		return c.sameEntries(names, *rec.Entries)
+		return c.sameEntries(names, *rec.Entries, rec.AuthConfig != "")
 	case recordOwnCredential:
 		s, ok := c.identifiedEntryOf(rec)
 		if !ok || rec.Entries != nil {
@@ -809,11 +911,11 @@ func (c *Config) servesRecord(rec cachedCred) bool {
 		if rec.Entries == nil {
 			return true
 		}
-		plugins := c.PluginLoginEntriesOf(rec.Server, rec.UserID)
-		if PluginFallbackRefused(s.Provenance == clierr.ProvenanceExecLogin, len(plugins)) {
+		plugins := c.PluginLoginEntriesOf(rec.Server, rec.UserID, rec.AuthConfig)
+		if PluginFallbackRefused(s.Provenance == clierr.ProvenanceExecLogin, len(c.answeringPluginEntries(plugins, rec.AuthConfig))) {
 			return false
 		}
-		return c.sameEntries(plugins, *rec.Entries)
+		return c.sameEntries(plugins, *rec.Entries, rec.AuthConfig != "")
 	}
 	return false
 }
@@ -833,13 +935,18 @@ func (c *Config) identifiedEntryOf(rec cachedCred) (Server, bool) {
 }
 
 // sameEntries reports whether names, sorted, are exactly the entries a
-// record lists, each with the cache binding id the record carries for it.
-func (c *Config) sameEntries(names []string, listed []cachedEntry) bool {
+// record lists, each with the cache binding id the record carries for it
+// and, in a record with an auth config (withAuthConfig), the auth config it
+// recorded then: an entry that has recorded one since stops the record.
+func (c *Config) sameEntries(names []string, listed []cachedEntry, withAuthConfig bool) bool {
 	if len(names) != len(listed) {
 		return false
 	}
 	for i, n := range names {
 		if listed[i].Name != n || c.Servers[n].CacheBindingID != listed[i].BindingID {
+			return false
+		}
+		if withAuthConfig && c.Servers[n].TokenAuthConfig != listed[i].AuthConfig {
 			return false
 		}
 	}
@@ -1033,24 +1140,94 @@ func (c *Config) PluginLoginEntries(server string) []string {
 }
 
 // PluginLoginEntriesOf is PluginLoginEntries for a call with --user-id
-// userID: only the plugin login entries that record userID as their
-// owner. An empty userID lists them all.
-func (c *Config) PluginLoginEntriesOf(server, userID string) []string {
+// userID: only the plugin login entries that record userID as their owner.
+// An empty userID lists them all. With authConfig, an entry that recorded
+// another auth config is left out; one that recorded none stays. Names stay
+// in name order, which the cache searches and compares in. The record's list
+// holds the entries that recorded authConfig and the ones that recorded
+// none; the entries that answer are AnsweringPluginEntries'.
+func (c *Config) PluginLoginEntriesOf(server, userID, authConfig string) []string {
 	if userID == "" {
 		return c.PluginLoginEntries(server)
 	}
 	return slices.DeleteFunc(c.PluginLoginEntries(server), func(n string) bool {
-		return c.Servers[n].TokenUserID != userID
+		return !c.owned(n, userID, authConfig)
 	})
 }
 
 // OwnedServerNames lists the entries answering for a server that record
 // userID as their owner, sorted. An entry that records no owner is never
-// listed: nothing says whose login it holds.
-func (c *Config) OwnedServerNames(server, userID string) []string {
+// listed: nothing says whose login it holds. With authConfig, an entry that
+// recorded another auth config is not listed either; one that recorded none
+// is.
+func (c *Config) OwnedServerNames(server, userID, authConfig string) []string {
 	return slices.DeleteFunc(c.MatchingServerNames(server), func(n string) bool {
-		return c.Servers[n].TokenUserID != userID
+		return !c.owned(n, userID, authConfig)
 	})
+}
+
+// owned reports whether the entry n records userID as its owner and, when
+// authConfig is set, either that auth config or none. The test reads the
+// entry's recorded values alone, whether or not it holds a credential.
+func (c *Config) owned(n, userID, authConfig string) bool {
+	s := c.Servers[n]
+	if s.TokenUserID != userID {
+		return false
+	}
+	return authConfig == "" || s.TokenAuthConfig == "" || s.TokenAuthConfig == authConfig
+}
+
+// answeringGroup picks, from items that passed the filter of a call with
+// the auth config authConfig, the ones that answer for it: those that
+// recorded authConfig when there are any, else those that recorded none.
+// Without authConfig every item answers. authOf gives an item's recorded
+// auth config. The identified entry's fallback, the cache record's hit and
+// the cache binding's refusal all count through this one function, so they
+// never disagree about which group counts.
+func answeringGroup[T any](items []T, authConfig string, authOf func(T) string) []T {
+	if authConfig == "" {
+		return items
+	}
+	var matching, unrecorded []T
+	for _, it := range items {
+		switch authOf(it) {
+		case authConfig:
+			matching = append(matching, it)
+		case "":
+			unrecorded = append(unrecorded, it)
+		}
+	}
+	if len(matching) > 0 {
+		return matching
+	}
+	return unrecorded
+}
+
+// answeringPluginEntries is the group of the plugin login entries names
+// (already filtered by PluginLoginEntriesOf) that answers for a call with
+// the auth config authConfig.
+func (c *Config) answeringPluginEntries(names []string, authConfig string) []string {
+	return answeringGroup(names, authConfig, func(n string) string { return c.Servers[n].TokenAuthConfig })
+}
+
+// AnsweringPluginEntries is the plugin login entries that answer for a call
+// with --user-id userID and --auth-provider authConfig at server, the
+// fallback of an identified user entry that holds no credential: the ones
+// that record authConfig, else the ones that record none. With no
+// authConfig it is PluginLoginEntriesOf. Several refuse the call.
+func (c *Config) AnsweringPluginEntries(server, userID, authConfig string) []string {
+	return c.answeringPluginEntries(c.PluginLoginEntriesOf(server, userID, authConfig), authConfig)
+}
+
+// OwnedGroupOrder is the place of the entry n among the entries
+// OwnedServerNames lists for a call with an auth config: the ones that
+// recorded authConfig first (0), then the ones that recorded none (1).
+// Within a group the caller's own order stands.
+func (c *Config) OwnedGroupOrder(n, authConfig string) int {
+	if authConfig != "" && c.Servers[n].TokenAuthConfig == authConfig {
+		return 0
+	}
+	return 1
 }
 
 // MatchingServerNames lists the entries answering for a server, compared
@@ -1071,16 +1248,17 @@ func (c *Config) MatchingServerNames(server string) []string {
 // entryInputRow is the fields of one server entry a cache record's validity
 // depends on.
 type entryInputRow struct {
-	url       string
-	bindingID string
-	owner     string
+	url        string
+	bindingID  string
+	owner      string
+	authConfig string
 }
 
 // recordInputs is the config.yaml content an exec-credential cache record
 // is judged against: which entries exist, which URL each one answers for,
-// the cache binding id each one carries, the owner each one records, the
-// current server and the token-reuse setting. The owners decide which
-// entries a call with --user-id reads; the last two decide which entry the
+// the cache binding id each one carries, the owner and the auth config each
+// one records, the current server and the token-reuse setting. The owners
+// and the auth configs decide which entries a call with --user-id reads; the last two decide which entry the
 // exec plugin's lookup reads for a call that names none, and whether it
 // reads the plugin's own login entries at all. A config write that leaves all of it
 // unchanged cannot make any record invalid, so it needs no fresh stamp;
@@ -1097,7 +1275,7 @@ type recordInputs struct {
 func (c *Config) recordInputs() recordInputs {
 	out := recordInputs{entries: make(map[string]entryInputRow, len(c.Servers)), currentServer: c.CurrentServer, tokenReuse: c.TokenReuse}
 	for name, s := range c.Servers {
-		out.entries[name] = entryInputRow{url: s.URL, bindingID: s.CacheBindingID, owner: s.TokenUserID}
+		out.entries[name] = entryInputRow{url: s.URL, bindingID: s.CacheBindingID, owner: s.TokenUserID, authConfig: s.TokenAuthConfig}
 	}
 	return out
 }

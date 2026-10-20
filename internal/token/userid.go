@@ -37,6 +37,31 @@ func readUserID(in runtime.Input) (string, error) {
 	return userID, nil
 }
 
+// ValidAuthConfigName reports whether name can be an auth config's name: a
+// Kubernetes object name, which holds neither ":" nor "/", which the cache
+// key's form relies on.
+func ValidAuthConfigName(name string) bool {
+	return len(validation.IsDNS1123Subdomain(name)) == 0
+}
+
+// readAuthConfig is the call's --auth-provider when it goes with --user-id,
+// checked before anything reads the cache, whose key carries it: the value,
+// untrimmed, must be an auth config name. A provider type such as
+// openLdapProvider is not one; a provider name such as openldap is, and is
+// then matched exactly. Without --user-id the flag keeps its meaning of
+// choosing a sign-in and nothing is checked or returned.
+func readAuthConfig(in runtime.Input, userID string) (string, error) {
+	if userID == "" {
+		return "", nil
+	}
+	authConfig := in.String("auth-provider")
+	if authConfig != "" && !ValidAuthConfigName(authConfig) {
+		return "", clierr.New(clierr.CodeValidation,
+			"--auth-provider "+clierr.ShellQuote(authConfig)+" is not an auth config name (a lowercase name such as corp-ldap)")
+	}
+	return authConfig, nil
+}
+
 // userIDPrefixRefused is the refusal of a --name in the namespace of the
 // cache keys of calls with --user-id: a call without --user-id whose
 // --name began with the prefix would read and write those keys.
@@ -51,8 +76,9 @@ func userIDPrefixRefused() *clierr.Error {
 // otherwise the distinct recorded owners of the entries for server. Only a
 // recorded owner that is a user id counts. An empty server is the
 // directory's current one, as the plugin reads it. The plugin accepts each
-// value: an owner has a login to find or leads to a sign-in, and an entry
-// the name identifies passes its own owner check.
+// value as a user id: an owner has a login to find or leads to a sign-in,
+// and an entry the name identifies passes its own owner check. A value can
+// still be refused for the auth config the call names.
 func RecordedUserIDs(cfg *config.Config, server, name, clusterID string) []string {
 	if cfg == nil {
 		return nil

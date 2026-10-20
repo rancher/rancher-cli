@@ -79,3 +79,30 @@ func TestSetTokenReuseCompletesOnOff(t *testing.T) {
 	assert.Equal(t, "config set-token-reuse", d.Name)
 	assert.Equal(t, runtime.Local, d.CommandType)
 }
+
+// TestTheTokenRecordsShowTheRecordedAuthConfig asserts the records that list
+// an entry's tokens - here the dormant plugin logins set-token-reuse off
+// names - carry the auth config the entry's login recorded as
+// tokenAuthConfig beside tokenUserId.
+func TestTheTokenRecordsShowTheRecordedAuthConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &config.Config{TokenReuse: true, Servers: map[string]config.Server{
+		"exec-login-r.ex": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin, TokenUserID: "user-a", TokenAuthConfig: "corp-ldap",
+			TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live"}},
+		"exec-login-r.ex-2": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin, TokenUserID: "user-a",
+			TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live-2"}},
+	}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	res, err := NewSetTokenReuse(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Pos: []string{"off"}}, ui.Discard())
+	require.NoError(t, err)
+	dormant := res.Data.(map[string]any)["dormantLogins"].([]map[string]any)
+	require.Len(t, dormant, 2)
+	byName := map[string]map[string]any{}
+	for _, d := range dormant {
+		byName[d["server"].(string)] = d
+	}
+	assert.Equal(t, "corp-ldap", byName["exec-login-r.ex"]["tokenAuthConfig"])
+	assert.NotContains(t, byName["exec-login-r.ex-2"], "tokenAuthConfig")
+}

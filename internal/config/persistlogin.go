@@ -53,6 +53,10 @@ type PersistLoginInput struct {
 	Provenance        clierr.Provenance
 	TokenRef          *clierr.TokenRef
 	TokenUserID       string
+	// TokenAuthConfig is the auth config the token create response named;
+	// empty when it named none, which a login of a pasted token never does.
+	// It replaces the one the entry recorded.
+	TokenAuthConfig   string
 	Bearer, ExpiresAt string
 	// OwnsEntry allows creating an absent entry; auth login never does.
 	OwnsEntry bool
@@ -116,6 +120,9 @@ type PersistLoginOutcome struct {
 	// this login created, for one logged out (no stored login is left), and
 	// when the login recorded none.
 	ReplacedUserID string
+	// ReplacedAuthConfig is the auth config the entry's stored login
+	// recorded before this login, read as ReplacedUserID is.
+	ReplacedAuthConfig string
 	// SupersededTokens is the written entry's record list, for the
 	// caller's retirement pass.
 	SupersededTokens []SupersededToken
@@ -157,7 +164,7 @@ func (o PersistLoginOutcome) CacheBindingOver(dir string, lookup CacheBinding) C
 	}
 	var b CacheBinding
 	if lookup.identified == o.Name {
-		b = CacheBindingForLookup(dir, o.written, "", o.Name, o.Name, lookup.userID, false)
+		b = CacheBindingForLookup(dir, o.written, "", o.Name, o.Name, lookup.userID, lookup.authConfig, false)
 		b.entry.paused = b.entry.paused || o.CacheWritesPaused
 	} else {
 		b = lookup.withWritten(o.written, o.Name, o.CacheWritesPaused)
@@ -260,7 +267,7 @@ func persistUnderLocks(ctx context.Context, dir string, in PersistLoginInput, ou
 	}
 	out.Name = name
 	if exists && existing.LoggedOutAt == "" {
-		out.ReplacedUserID = existing.TokenUserID
+		out.ReplacedUserID, out.ReplacedAuthConfig = existing.TokenUserID, existing.TokenAuthConfig
 	}
 	var snap *Server
 	if exists {
@@ -756,7 +763,7 @@ func newEntry(in PersistLoginInput, snap *Server, now time.Time) Server {
 			e.CAFromEnvironment = in.CAFromEnvironment
 		}
 	}
-	e.Provenance, e.TokenRef, e.TokenUserID, e.CredentialExpiresAt = in.Provenance, in.TokenRef, in.TokenUserID, in.ExpiresAt
+	e.Provenance, e.TokenRef, e.TokenUserID, e.TokenAuthConfig, e.CredentialExpiresAt = in.Provenance, in.TokenRef, in.TokenUserID, in.TokenAuthConfig, in.ExpiresAt
 	e.LoggedOutAt = ""
 	return e
 }
@@ -775,7 +782,7 @@ func restoredEntry(snap *Server, trust *PendingTrust, dropToken bool) *Server {
 		r.CA, r.CAFingerprint, r.CAFromEnvironment = trust.CA, trust.Fingerprint, false
 	}
 	if dropToken {
-		r.TokenRef, r.TokenUserID, r.CredentialExpiresAt = nil, "", ""
+		r.TokenRef, r.TokenUserID, r.TokenAuthConfig, r.CredentialExpiresAt = nil, "", "", ""
 	}
 	return &r
 }

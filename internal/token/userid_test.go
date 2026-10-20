@@ -69,7 +69,7 @@ func TestGetTokenUserIDIsCheckedBeforeAnyCacheRead(t *testing.T) {
 	store := &countingStore{CredStore: config.NewFileStore(dir)}
 	serverID := config.CanonicalServerIdentity(srv.URL)
 	for _, u := range []string{"", "u-a"} {
-		require.NoError(t, seedCacheFor(t, dir, store.CredStore, config.CacheKeyFor("prod", serverID, "c-1", u), "warm-tok", time.Now().Add(time.Hour), "prod", serverID, "c-1", u))
+		require.NoError(t, seedCacheFor(t, dir, store.CredStore, config.CacheKeyFor("prod", serverID, "c-1", u, ""), "warm-tok", time.Now().Add(time.Hour), "prod", serverID, "c-1", u))
 	}
 	for _, tc := range []struct {
 		name, userID, wantMsg string
@@ -110,8 +110,8 @@ func TestGetTokenClusterIsRequiredUnlessUserIDIsGiven(t *testing.T) {
 	dir := t.TempDir()
 	store := &countingStore{CredStore: config.NewFileStore(dir)}
 	serverID := config.CanonicalServerIdentity(srv.URL)
-	require.NoError(t, seedCache(t, dir, store.CredStore, config.CacheKeyFor("prod", serverID, "", ""), "warm-tok", time.Now().Add(time.Hour), "prod", serverID, ""))
-	require.NoError(t, seedCacheFor(t, dir, store.CredStore, config.CacheKeyFor("", serverID, "", "u-a"), "warm-user-tok", time.Now().Add(time.Hour), "", serverID, "", "u-a"))
+	require.NoError(t, seedCache(t, dir, store.CredStore, config.CacheKeyFor("prod", serverID, "", "", ""), "warm-tok", time.Now().Add(time.Hour), "prod", serverID, ""))
+	require.NoError(t, seedCacheFor(t, dir, store.CredStore, config.CacheKeyFor("", serverID, "", "u-a", ""), "warm-user-tok", time.Now().Add(time.Hour), "", serverID, "", "u-a"))
 	for _, tc := range []struct {
 		name  string
 		flags map[string]string
@@ -154,7 +154,7 @@ func TestGetTokenRefusesUserIDPrefixedName(t *testing.T) {
 	serverID := config.CanonicalServerIdentity(srv.URL)
 	// The slot a call with --name user-id:u-a/prod and no --user-id would
 	// read is the slot of --name prod with --user-id u-a.
-	key := config.CacheKeyFor("prod", serverID, "c-1", "u-a")
+	key := config.CacheKeyFor("prod", serverID, "c-1", "u-a", "")
 	require.Equal(t, key, config.CacheKey("user-id:u-a/prod", serverID, "c-1"))
 	require.NoError(t, seedCache(t, dir, store, key, "warm-tok", time.Now().Add(time.Hour), "prod", serverID, "c-1"))
 
@@ -186,9 +186,9 @@ func TestUserIDKeyIsOneKeyOnBothPaths(t *testing.T) {
 		{"prod", "https://r.ex", "c-1", "u-a"},
 		{"prod-c-1", "r.ex:8443", "c-1", "user-xyz"},
 	} {
-		got, ok := computeCacheProbeKey(tc.name, tc.server, tc.cluster, tc.userID)
+		got, ok := computeCacheProbeKey(tc.name, tc.server, tc.cluster, tc.userID, "")
 		require.True(t, ok)
-		assert.Equal(t, config.CacheKeyFor(tc.name, config.CanonicalServerIdentity(applyDefaultScheme(tc.server)), tc.cluster, tc.userID), got)
+		assert.Equal(t, config.CacheKeyFor(tc.name, config.CanonicalServerIdentity(applyDefaultScheme(tc.server)), tc.cluster, tc.userID, ""), got)
 	}
 
 	r := newRecordFixture(t, false)
@@ -199,7 +199,7 @@ func TestUserIDKeyIsOneKeyOnBothPaths(t *testing.T) {
 		"server": r.srv.URL, "cluster": "c-test", "name": "prod", "user-id": "user-alice",
 	}}, ui.Discard())
 	require.NoError(t, err)
-	want := config.CacheKeyFor("prod", config.CanonicalServerIdentity(r.srv.URL), "c-test", "user-alice")
+	want := config.CacheKeyFor("prod", config.CanonicalServerIdentity(r.srv.URL), "c-test", "user-alice", "")
 	assert.Equal(t, []string{want}, store.cacheReads(), "one read, of the slot of the name and the user id")
 }
 
@@ -207,9 +207,11 @@ func TestUserIDKeyIsOneKeyOnBothPaths(t *testing.T) {
 // set, --user-id userID, with no terminal, and returns the token served.
 func (r *recordFixture) callWithUserID(name, userID string) (string, error) {
 	r.t.Helper()
-	s := map[string]string{"server": r.srv.URL, "cluster": "c-test", "name": name, "auth-provider": "localProvider"}
+	s := map[string]string{"server": r.srv.URL, "cluster": "c-test", "name": name}
 	if userID != "" {
 		s["user-id"] = userID
+	} else {
+		s["auth-provider"] = "localProvider"
 	}
 	cmd := NewTokenCommand(r.dir, r.store, anchorFor(r.dir)).(runtime.ReadCommand)
 	res, err := cmd.Execute(r.t.Context(), tin{s: s}, ui.New(&bytes.Buffer{}, strings.NewReader(""), false, false))
@@ -236,8 +238,8 @@ func TestUserIDSlotsAreSeparateOnBothPaths(t *testing.T) {
 			}
 			r.login("prod", "", "alice", false)
 			serverID := config.CanonicalServerIdentity(r.srv.URL)
-			plainKey := config.CacheKeyFor("prod", serverID, "c-test", "")
-			userKey := config.CacheKeyFor("prod", serverID, "c-test", "user-alice")
+			plainKey := config.CacheKeyFor("prod", serverID, "c-test", "", "")
+			userKey := config.CacheKeyFor("prod", serverID, "c-test", "user-alice", "")
 			require.NoError(t, seedCache(t, r.dir, r.store, plainKey, "plain-tok", time.Now().Add(time.Hour), "prod", serverID, "c-test"))
 
 			first, err := r.callWithUserID("prod", "user-alice")

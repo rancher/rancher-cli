@@ -927,3 +927,41 @@ func TestAuthCheckReportsCredentialProvenance(t *testing.T) {
 	_, has = res.Data.(map[string]any)["credential"]
 	assert.False(t, has, "a pre-provenance entry has no block")
 }
+
+// TestAuthCheckReportsTheRecordedAuthConfig asserts auth status shows the
+// auth config the stored login recorded beside its owner, in the data and
+// in the one text line, and omits it for a login that recorded none.
+func TestAuthCheckReportsTheRecordedAuthConfig(t *testing.T) {
+	t.Setenv("RANCHER_CLI_TOKEN", "")
+	dir := seedAuthedDir(t)
+	cfg, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	s := cfg.Servers["default"]
+	s.Provenance, s.TokenUserID, s.TokenAuthConfig = clierr.ProvenanceExecLogin, "user-a", "corp-ldap"
+	s.TokenRef = &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live"}
+	cfg.Servers["default"] = s
+	require.NoError(t, cfg.Write())
+	store := config.NewFileStore(dir)
+	require.NoError(t, store.SetToken(config.ServerRef{Name: "default", URL: s.URL}, "ext/token-live:secretvalue"))
+	cmd := &authCheckCmd{dir: dir, store: store, preflight: alwaysOKPreflight, rancherVersion: alwaysOKVersion,
+		identity: func(context.Context, config.Effective) (string, error) { return "user-a", nil },
+		token: func(_ context.Context, _ config.Effective, name string) (provider.TokenMetadata, error) {
+			return provider.TokenMetadata{Name: name, Provider: "local"}, nil
+		}}
+	res, err := cmd.Execute(t.Context(), cmdtest.Input{}, ui.Discard())
+	require.NoError(t, err)
+	cred, ok := res.Data.(map[string]any)["credential"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "user-a", cred["userId"])
+	assert.Equal(t, "corp-ldap", cred["authConfig"])
+	assert.Contains(t, res.Text, "credential: execLogin (user user-a, auth config corp-ldap, token ext/token-live")
+
+	s.TokenAuthConfig = ""
+	cfg.Servers["default"] = s
+	require.NoError(t, cfg.Write())
+	res, err = cmd.Execute(t.Context(), cmdtest.Input{}, ui.Discard())
+	require.NoError(t, err)
+	cred = res.Data.(map[string]any)["credential"].(map[string]any)
+	assert.NotContains(t, cred, "authConfig")
+	assert.NotContains(t, res.Text, "auth config corp-ldap")
+}

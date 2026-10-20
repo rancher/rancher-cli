@@ -31,7 +31,7 @@ func revokeFixture(t *testing.T) (string, *Config) {
 	exp := time.Now().Add(time.Hour)
 	ref := &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-own"}
 	require.NoError(t, store.SetCachedCred("own", "ext/token-own:s", exp, "prod", "https://r.ex", "c-1", CacheBindingFor(canon, cfg, "prod").WithCreatedToken(ref, "user-a")))
-	require.NoError(t, store.SetCachedCred("identified", "t-id", exp, "prod", "https://r.ex", "c-2", CacheBindingForIdentified(canon, cfg, "https://r.ex", "prod", "")))
+	require.NoError(t, store.SetCachedCred("identified", "t-id", exp, "prod", "https://r.ex", "c-2", CacheBindingForIdentified(canon, cfg, "https://r.ex", "prod", "", "")))
 	require.NoError(t, store.SetCachedCred("server", "t-srv", exp, "kube", "https://r.ex", "c-3", CacheBindingForServer(canon, cfg, "https://r.ex", false)))
 	return dir, cfg
 }

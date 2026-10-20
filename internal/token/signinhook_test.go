@@ -251,7 +251,7 @@ func TestTheOAuthAuthCodeSignInGivesTheHookBeforeTheBrowser(t *testing.T) {
 	so := splitOriginFacade(t)
 	providers, _, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
 	require.NoError(t, err)
-	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", ui.Discard())
+	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", false, ui.Discard())
 	require.NoError(t, err)
 	newInput := func(p *eventPrompter) *loginInput {
 		return &loginInput{server: so.rancherURL, authProvider: "azureADProvider", idpClient: so.idpClient, beforeSignIn: p.hook}

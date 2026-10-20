@@ -51,7 +51,9 @@ func (kubeconfigCmd) Describe() runtime.Descriptor {
 			"and RANCHER_CLI_CREDENTIAL_STORE (empty when the directory declares its store, else the value set now): the file works " +
 			"for this user on this machine only. Notices on stderr say so, and name the stored login kubectl's exec plugin will use when " +
 			"it is not this session's. The exec entry names that login's recorded owner with --user-id, and the plugin hands kubectl only " +
-			"that user's tokens; a notice says when the login records no owner. installHint says how to install rancher, or how to " +
+			"that user's tokens; a notice says when the login records no owner. When the login also recorded the auth config its tokens " +
+			"are made through, the entry names it with --auth-provider beside --user-id, and the plugin hands kubectl only tokens made through it; " +
+			"a login that recorded none gets no --auth-provider, and no notice. installHint says how to install rancher, or how to " +
 			"regenerate the file for another --exec-command.",
 		Flags: []runtime.ArgSpec{
 			cluster,
@@ -159,6 +161,9 @@ func (c *kubeconfigCmd) Execute(ctx context.Context, in runtime.Input, p runtime
 	execArgs := []string{"auth", "get-token", "--server", base, "--cluster", id, "--name", entryName}
 	if owner != "" {
 		execArgs = append(execArgs, "--user-id", owner)
+		if authConfig := lc.recordedAuthConfig(lk); authConfig != "" {
+			execArgs = append(execArgs, "--auth-provider", authConfig)
+		}
 	}
 	if caPEM != "" {
 		cluster.CertificateAuthorityData = []byte(caPEM)

@@ -241,7 +241,7 @@ func shimAnchor(dir string, given *config.CacheAnchor) *config.CacheAnchor {
 // here could reach a different answer than the caller's, and then the two
 // halves of one invocation would judge records by two anchors.
 func shimProbeFlagCache(dir, name, server, cluster string, anchor *config.CacheAnchor, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
-	return probeCacheWith(name, server, cluster, "", func(k string) (string, time.Time, string, error) {
+	return probeCacheWith(name, server, cluster, "", "", func(k string) (string, time.Time, string, error) {
 		type read struct {
 			token  string
 			expiry time.Time

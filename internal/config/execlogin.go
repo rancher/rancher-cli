@@ -26,15 +26,21 @@ func ExecLoginEntryName(canonicalURL string) string {
 }
 
 // ExecLoginEntryNameFor is the name of the plugin login entry the plugin
-// creates for a call with --user-id userID: ExecLoginEntryName, a dash and
-// the user id, so one server holds one such entry per user. A call without
-// --user-id gets ExecLoginEntryName itself.
-func ExecLoginEntryNameFor(canonicalURL, userID string) string {
+// creates for a call with --user-id userID and --auth-provider authConfig:
+// ExecLoginEntryName, a dash and the user id, and a dash and the auth
+// config, so one server holds one such entry per user and auth config. A
+// call with --user-id and no auth config gets the name with the user id
+// alone, and a call without --user-id ExecLoginEntryName itself.
+func ExecLoginEntryNameFor(canonicalURL, userID, authConfig string) string {
 	name := ExecLoginEntryName(canonicalURL)
 	if userID == "" {
 		return name
 	}
-	return name + "-" + userID
+	name += "-" + userID
+	if authConfig == "" {
+		return name
+	}
+	return name + "-" + authConfig
 }
 
 // ValidateEntryName rejects a server name reserved for the legacy token

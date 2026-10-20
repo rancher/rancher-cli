@@ -19,6 +19,7 @@ type pluginLoginInput struct {
 	server, serverID, caPEM, clusterID string
 	client                             *http.Client
 	authProvider, authFlow             string
+	exactAuthConfig                    bool
 	newIdPClient                       func() *http.Client
 	wantName                           string
 	ignoreCurrentContext               bool
@@ -29,7 +30,7 @@ type pluginLoginInput struct {
 
 func (t tokenCmd) pluginInput(server, serverID, caPEM, clusterID string, client *http.Client, params runParams) pluginLoginInput {
 	return pluginLoginInput{server: server, serverID: serverID, caPEM: caPEM, clusterID: clusterID, client: client,
-		authProvider: params.AuthProvider, authFlow: params.AuthFlow,
+		authProvider: params.AuthProvider, authFlow: params.AuthFlow, exactAuthConfig: params.exactAuthConfig(),
 		newIdPClient: func() *http.Client { return httpx.NewExternal(httpx.DefaultTimeout) },
 		wantName:     params.Name, ignoreCurrentContext: params.legacyShim}
 }
@@ -111,7 +112,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 
 		entry = in.refreshEntry
 		if entry == "" {
-			entry = config.ExecLoginEntryNameFor(in.serverID, t.user.userID)
+			entry = config.ExecLoginEntryNameFor(in.serverID, t.user.userID, t.user.authConfig)
 			// A call whose --name identifies a plugin login entry logs that
 			// entry in, so the entry it reads next time holds the login;
 			// the lookup's binding names the entry the --name identified.
@@ -127,9 +128,10 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 			return t.user.entryNameTooLong(cfg, len(target))
 		}
 		// Checked on this load, before anything is disclosed or signed in:
-		// an entry another call logged in for another user while this one
-		// waited is never written over. The caller signs in instead.
-		if s, ok := cfg.Servers[target]; ok && t.user.otherOwner(s.TokenUserID) {
+		// an entry another call logged in for another user, or through
+		// another auth config, while this one waited is never written over.
+		// The caller signs in instead.
+		if s, ok := cfg.Servers[target]; ok && (t.user.otherOwner(s.TokenUserID) || t.user.otherAuthConfig(s.TokenAuthConfig)) {
 			return errNoStoredCredential
 		}
 		// Decided for the entry the login will write, suffix included.
@@ -137,7 +139,7 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		if derr != nil {
 			return derr
 		}
-		req := LoginRequest{Server: in.server, AuthProvider: in.authProvider,
+		req := LoginRequest{Server: in.server, AuthProvider: in.authProvider, ExactAuthConfig: in.exactAuthConfig,
 			AuthFlow: in.authFlow, IdPClient: in.newIdPClient(), ResponseType: "json"}
 		if disclosure.text != "" {
 			// Said when the sign-in is about to ask someone to act, never
@@ -161,6 +163,9 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 		st := LoginStates{Config: clierr.ConfigNotWritten}
 		if t.user.otherOwner(cred.UserID) {
 			return FailLogin(t.user.pluginSignInRefused(cred.UserID), clierr.StageAuthentication, st, cred, entry)
+		}
+		if t.user.otherAuthConfig(cred.AuthConfig) {
+			return FailLogin(t.user.pluginAuthConfigRefused(cred.AuthConfig), clierr.StageAuthentication, st, cred, entry)
 		}
 		resolved, warning, err := resolveClusterIDForCreate(ctx, in.client, base, cred.Token, in.clusterID)
 		if err != nil {
@@ -187,10 +192,28 @@ func (t tokenCmd) pluginLogin(ctx context.Context, in pluginLoginInput, p runtim
 				return FailLogin(t.user.pluginSignInRefused(""), clierr.StageClusterToken, st, cred, entry)
 			}
 			owner = t.user.userID
+			// Each create that names an auth config must name the call's, and
+			// one of them must name it.
+			if t.user.authConfig != "" {
+				named := cred.AuthConfig
+				if named == "" {
+					named = ct.AuthConfig
+				}
+				if named == "" || t.user.otherAuthConfig(ct.AuthConfig) {
+					st.ClusterToken = clusterTokenFate(ctx, ct, cred)
+					return FailLogin(t.user.pluginAuthConfigRefused(ct.AuthConfig), clierr.StageClusterToken, st, cred, entry)
+				}
+			}
+		}
+		// The login records the auth config of its own create when that
+		// names one, else the cluster token's.
+		recorded := cred.AuthConfig
+		if recorded == "" {
+			recorded = ct.AuthConfig
 		}
 		out, perr := config.PersistLoginCredential(ctx, t.dir, config.PersistLoginInput{
 			Name: entry, CollisionSuffix: true, CanonicalURL: in.serverID, CA: in.caPEM,
-			Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: owner,
+			Provenance: clierr.ProvenanceExecLogin, TokenRef: cred.Ref, TokenUserID: owner, TokenAuthConfig: recorded,
 			Bearer: cred.Token, ExpiresAt: cred.ExpiresAt,
 			OwnsEntry: true, Decision: &decision, ReadOnlyStoreIsFailure: true,
 			Policy: decision.Policy, ObservedDeclaration: cfg.CredentialStore,

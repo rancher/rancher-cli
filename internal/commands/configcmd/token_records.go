@@ -68,6 +68,9 @@ func entryReport(name string, s config.Server) map[string]any {
 	if s.TokenUserID != "" {
 		m["tokenUserId"] = s.TokenUserID
 	}
+	if s.TokenAuthConfig != "" {
+		m["tokenAuthConfig"] = s.TokenAuthConfig
+	}
 	if s.CredentialExpiresAt != "" {
 		m["credentialExpiresAt"] = s.CredentialExpiresAt
 	}

@@ -47,7 +47,7 @@ func TestProviderNameFollowsRancher(t *testing.T) {
 // picks that entry, whatever else is enabled.
 func TestSelectAuthProviderNamedConfig(t *testing.T) {
 	t.Parallel()
-	got, err := selectAuthProvider(t.Context(), ldapConfigs(), nil, "corp-ldap", ui.Discard())
+	got, err := selectAuthProvider(t.Context(), ldapConfigs(), nil, "corp-ldap", false, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "corp-ldap", got.GetID())
 }
@@ -58,7 +58,7 @@ func TestSelectAuthProviderNamedConfig(t *testing.T) {
 // provider name that matches both.
 func TestSelectAuthProviderNamedConfigBeatsTheProviderName(t *testing.T) {
 	t.Parallel()
-	got, err := selectAuthProvider(t.Context(), ldapConfigs(), nil, "openldap", ui.Discard())
+	got, err := selectAuthProvider(t.Context(), ldapConfigs(), nil, "openldap", false, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "openldap", got.GetID())
 }
@@ -72,7 +72,7 @@ func TestSelectAuthProviderProviderNameOfOneConfig(t *testing.T) {
 		&AuthProvider{Type: "openLdapProvider", ID: "corp-ldap"},
 	}
 	for _, want := range []string{"openldap", "openLdapProvider"} {
-		got, err := selectAuthProvider(t.Context(), ps, nil, want, ui.Discard())
+		got, err := selectAuthProvider(t.Context(), ps, nil, want, false, ui.Discard())
 		require.NoError(t, err, want)
 		assert.Equal(t, "corp-ldap", got.GetID(), want)
 	}
@@ -89,7 +89,7 @@ func TestSelectAuthProviderSeveralMatchesWithoutATerminal(t *testing.T) {
 		&AuthProvider{Type: "openLdapProvider", ID: "eu-ldap"},
 	}
 	for _, want := range []string{"openLdapProvider", "openldap"} {
-		_, err := selectAuthProvider(t.Context(), ps, nil, want, ui.Discard())
+		_, err := selectAuthProvider(t.Context(), ps, nil, want, false, ui.Discard())
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok, "got %v", err)
 		assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -107,7 +107,7 @@ func TestSelectAuthProviderSeveralMatchesWithoutATerminal(t *testing.T) {
 func TestSelectAuthProviderSeveralMatchesAsksAmongOnlyThose(t *testing.T) {
 	t.Parallel()
 	p := terminalLines("1")
-	got, err := selectAuthProvider(t.Context(), ldapConfigs(), nil, "openLdapProvider", p)
+	got, err := selectAuthProvider(t.Context(), ldapConfigs(), nil, "openLdapProvider", false, p)
 	require.NoError(t, err)
 	assert.Equal(t, "corp-ldap", got.GetID())
 	require.GreaterOrEqual(t, p.at("notice: Auth configs:"), 0, "events %q", p.events)
@@ -124,7 +124,7 @@ func TestTheMenuNamesAuthConfigs(t *testing.T) {
 	noID := &AuthProvider{Type: "oktaProvider"}
 	ps := append(ldapConfigs(), noID)
 	p := terminalLines("0")
-	_, err := selectAuthProvider(t.Context(), ps, nil, "", p)
+	_, err := selectAuthProvider(t.Context(), ps, nil, "", false, p)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, p.at("notice: Auth configs:"), 0, "events %q", p.events)
 	assert.Equal(t, "notice: Auth configs:\n0 - local\n1 - openldap\n2 - corp-ldap (openldap)\n3 - okta\n", p.events[p.at("notice: Auth configs:")])
@@ -137,7 +137,7 @@ func TestTheMenuNamesAuthConfigs(t *testing.T) {
 func TestCandidatesCarryTheMenuLineAsTheirName(t *testing.T) {
 	t.Parallel()
 	ps := append(ldapConfigs(), &AuthProvider{Type: "oktaProvider"})
-	_, err := selectAuthProvider(t.Context(), ps, nil, "nope", ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, nil, "nope", false, ui.Discard())
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -157,7 +157,7 @@ func TestNoFlagSeveralConfigsText(t *testing.T) {
 	noID := &AuthProvider{Type: "oktaProvider"}
 	ps := append(ldapConfigs(), noID)
 
-	_, err := selectAuthProvider(t.Context(), ps, nil, "", noTerminal())
+	_, err := selectAuthProvider(t.Context(), ps, nil, "", false, noTerminal())
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -167,12 +167,12 @@ func TestNoFlagSeveralConfigsText(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, ce.Message, cause.Error())
 
-	_, err = selectAuthProvider(t.Context(), ps, nil, "", terminalLines("not a number"))
+	_, err = selectAuthProvider(t.Context(), ps, nil, "", false, terminalLines("not a number"))
 	ce, ok = errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, "this server has several auth configs: local, openldap, corp-ldap; pass one of them with --auth-provider", ce.Message)
 
-	_, err = selectAuthProvider(t.Context(), ps, nil, "openLdapProvider", terminalLines("not a number"))
+	_, err = selectAuthProvider(t.Context(), ps, nil, "openLdapProvider", false, terminalLines("not a number"))
 	ce, ok = errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, "--auth-provider openLdapProvider matches 2 auth configs (openldap, corp-ldap); pass one of those names instead", ce.Message,
@@ -183,12 +183,12 @@ func TestNoFlagSeveralConfigsText(t *testing.T) {
 // CLI can sign in with, and that it names the advertised types it cannot use.
 func TestNoAuthConfigText(t *testing.T) {
 	t.Parallel()
-	_, err := selectAuthProvider(t.Context(), nil, nil, "", ui.Discard())
+	_, err := selectAuthProvider(t.Context(), nil, nil, "", false, ui.Discard())
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, "this server has no auth config this CLI can sign in with", ce.Message)
 
-	_, err = selectAuthProvider(t.Context(), nil, []string{"githubProvider"}, "", ui.Discard())
+	_, err = selectAuthProvider(t.Context(), nil, []string{"githubProvider"}, "", false, ui.Discard())
 	require.ErrorContains(t, err, "this server has no auth config this CLI can sign in with; advertised by the server but not supported by this CLI: githubProvider")
 }
 
@@ -199,7 +199,7 @@ func TestAnEntryWithNoIDIsNamedByItsProviderName(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "openLdapProvider"}}
 	var errBuf strings.Builder
-	got, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", ui.New(&errBuf, blockingReader{}, false, true))
+	got, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, ui.New(&errBuf, blockingReader{}, false, true))
 	require.NoError(t, err)
 	assert.Equal(t, "openLdapProvider", got.GetType())
 	assert.Contains(t, errBuf.String(), "Auth config: openldap\n")
@@ -214,7 +214,7 @@ func TestTheSingleEntryNoticeNamesTheAuthConfig(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "openLdapProvider", ID: "corp-ldap"}}
 	var errBuf strings.Builder
-	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", ui.New(&errBuf, blockingReader{}, false, true))
+	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, ui.New(&errBuf, blockingReader{}, false, true))
 	require.NoError(t, err)
 	assert.Contains(t, errBuf.String(), "Auth config: corp-ldap (openldap)\n")
 }
@@ -255,7 +255,7 @@ func TestAnEntryWithNoIDIsNeverNamedToThePlugin(t *testing.T) {
 		&AuthProvider{Type: "oktaProvider"},
 		&AuthProvider{Type: "azureADProvider", ID: "azuread"},
 	}
-	_, err := selectAuthProvider(t.Context(), ps, nil, "", noTerminal())
+	_, err := selectAuthProvider(t.Context(), ps, nil, "", false, noTerminal())
 	var cause *providerChoiceNeedsTerminal
 	require.ErrorAs(t, err, &cause)
 	assert.Equal(t, []string{"local", "azuread"}, cause.configs)

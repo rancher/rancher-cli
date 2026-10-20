@@ -254,8 +254,9 @@ func TestSeveralPluginLoginEntriesRefuseACallWithoutUserID(t *testing.T) {
 
 // TestUserIDWithoutAClusterAsksForATokenForRancherItself asserts --user-id
 // without --cluster creates a token with no cluster, from a user entry,
-// from the plugin-created login and from an interactive sign-in, checks
-// its owner as every other call's, and caches it by user.
+// from the plugin-created login and from an interactive sign-in, whose
+// token is the create the sign-in makes with the login token as bearer,
+// checks its owner as every other call's, and caches it by user.
 func TestUserIDWithoutAClusterAsksForATokenForRancherItself(t *testing.T) {
 	scoped := func(x *ownerFixture) int {
 		n := 0
@@ -300,7 +301,8 @@ func TestUserIDWithoutAClusterAsksForATokenForRancherItself(t *testing.T) {
 		got, err := x.callIn("", "", "user-carol", "carol", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "user-carol", got)
-		assert.Equal(t, []string{"/k8s/clusters/local" + selfSubjectReviewPath}, x.ownerReviews(), "the owner is asked through the local cluster")
+		assert.Empty(t, x.ownerReviews(), "the token's create names the owner, so no owner request is made")
+		assert.Zero(t, scoped(x), "the token the sign-in creates names no cluster")
 		assert.True(t, x.cachedIn("", "", "user-carol"))
 	})
 	t.Run("an interactive sign-in as another user", func(t *testing.T) {
@@ -309,7 +311,7 @@ func TestUserIDWithoutAClusterAsksForATokenForRancherItself(t *testing.T) {
 		ce, msg := refusal(t, err)
 		assert.Equal(t, clierr.CodeAuth, ce.Code)
 		assert.True(t, strings.HasPrefix(msg, "the sign-in was made as Rancher user 'user-carol', and this exec entry names user 'user-alice' with --user-id; "), msg)
-		assert.Equal(t, []string{"/k8s/clusters/local" + selfSubjectReviewPath}, x.ownerReviews())
+		assert.Empty(t, x.ownerReviews(), "the token's create names the owner")
 		assert.GreaterOrEqual(t, x.revoked(), 1, "the token is revoked")
 		assert.False(t, x.cachedIn("", "", "user-alice"))
 	})

@@ -57,3 +57,35 @@ func TestListTokensShowsTheTokenEachRecordNames(t *testing.T) {
 	assert.Equal(t, map[string]any{"kind": "ext", "name": "token-abc"}, decoded[1]["tokenRef"])
 	assert.Equal(t, "user-alice", decoded[1]["tokenUserId"])
 }
+
+// TestListTokensShowsTheAuthConfigTheRecordServes asserts the payload of the
+// listing carries tokenAuthConfig beside tokenUserId for a record of a call
+// with an auth config, and omits it for a record of a call without one; the
+// table keeps its columns.
+func TestListTokensShowsTheAuthConfigTheRecordServes(t *testing.T) {
+	dir := t.TempDir()
+	store := config.NewFileStore(dir)
+	cfg := &config.Config{Servers: map[string]config.Server{"prod": {URL: "https://r.ex", CacheBindingID: "b1", TokenUserID: "user-alice"}}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	loaded, err := config.Load(config.FilePath(dir))
+	require.NoError(t, err)
+	for _, authConfig := range []string{"corp-ldap", ""} {
+		key := config.CacheKeyFor("n", "https://r.ex", "c-1", "user-alice", authConfig)
+		b := config.CacheBindingForOwner(config.CanonicalDir(dir), loaded, "https://r.ex", "user-alice", authConfig).WithCreatedToken(&clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-abc"}, "user-alice")
+		require.NoError(t, store.SetCachedCred(key, "ext/token-abc:s", time.Now().Add(time.Hour), "n"+authConfig, "https://r.ex", "c-1", b))
+	}
+	res, err := NewListTokensCommand(dir, store).(runtime.ReadCommand).Execute(t.Context(), tin{}, ui.Discard())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"NAME", "SERVER", "CLUSTER", "TOKEN", "EXPIRY"}, res.Data.(credList).Columns())
+	raw, err := json.Marshal(res.Data)
+	require.NoError(t, err)
+	var decoded []map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	got := map[string]any{}
+	for _, d := range decoded {
+		got[d["name"].(string)] = d["tokenAuthConfig"]
+		assert.Equal(t, "user-alice", d["tokenUserId"])
+	}
+	assert.Equal(t, map[string]any{"ncorp-ldap": "corp-ldap", "n": nil}, got)
+}

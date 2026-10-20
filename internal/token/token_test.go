@@ -231,7 +231,7 @@ func TestGetTokenBrokenConfigMakesEveryCacheHitAMiss(t *testing.T) {
 	require.Error(t, lerr, "the config is unreadable, so the root hook stores no snapshot")
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchor}
-	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", "https://r.ex", "c-1", "", "", ui.Discard())
 	assert.False(t, hit, "a record whose binding cannot be checked is never served")
 
 	// And the record is left alone: a reader that cannot judge one must
@@ -278,7 +278,7 @@ func TestGetTokenSchemelessFlagSkipsLegacyHostOnlyKey(t *testing.T) {
 	// makes every cache hit a miss, which would pass this assertion for
 	// the wrong reason.
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	_, _, _, hit := cmd.probeFlagCache("prod", "host", "c-1", "", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", "host", "c-1", "", "", ui.Discard())
 	assert.False(t, hit, "schemeless --server must not serve a legacy host-only cache record")
 }
 
@@ -1255,7 +1255,7 @@ func TestStoredTokenForServerMatchesEquivalentURLSpellings(t *testing.T) {
 func TestSelectAuthProviderExplicitMatch(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider"}}, &AuthProvider{Type: "pingProvider"}}
-	got, err := selectAuthProvider(t.Context(), ps, nil, "pingProvider", ui.Discard())
+	got, err := selectAuthProvider(t.Context(), ps, nil, "pingProvider", false, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "pingProvider", got.GetType())
 }
@@ -1263,7 +1263,7 @@ func TestSelectAuthProviderExplicitMatch(t *testing.T) {
 func TestSelectAuthProviderNotFound(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "pingProvider", ID: "ping"}}
-	_, err := selectAuthProvider(t.Context(), ps, nil, "nope", ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, nil, "nope", false, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -1276,10 +1276,10 @@ func TestSelectAuthProviderNotFound(t *testing.T) {
 func TestSelectAuthProviderMatchesTheProviderID(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider", ID: "local"}}, &AuthProvider{Type: "pingProvider", ID: "ping"}}
-	got, err := selectAuthProvider(t.Context(), ps, nil, "ping", ui.Discard())
+	got, err := selectAuthProvider(t.Context(), ps, nil, "ping", false, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "pingProvider", got.GetType())
-	got, err = selectAuthProvider(t.Context(), ps, nil, "localProvider", ui.Discard())
+	got, err = selectAuthProvider(t.Context(), ps, nil, "localProvider", false, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "local", got.GetID())
 }
@@ -1291,7 +1291,7 @@ func TestSelectAuthProviderMatchesTheProviderID(t *testing.T) {
 func TestSelectAuthProviderNotFoundNamesUnsupported(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider", ID: "local"}}}
-	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "github", ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "github", false, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
@@ -1305,7 +1305,7 @@ func TestSelectAuthProviderNotFoundNamesUnsupported(t *testing.T) {
 func TestSelectAuthProviderAmbiguousNamesUnsupported(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "pingProvider", ID: "ping"}, &AuthProvider{Type: "oktaProvider", ID: "okta"}}
-	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -1321,14 +1321,14 @@ func TestSelectAuthProviderSingleNoticesUnsupported(t *testing.T) {
 	ps := []typedProvider{&LocalProvider{AuthProvider{Type: "localProvider", ID: "local"}}}
 	var errBuf strings.Builder
 	p := ui.New(&errBuf, blockingReader{}, false, true)
-	got, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", p)
+	got, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, p)
 	require.NoError(t, err)
 	assert.Equal(t, "localProvider", got.GetType())
 	assert.Contains(t, errBuf.String(), "Auth config: local")
 	assert.Contains(t, errBuf.String(), "not supported by this CLI: githubProvider")
 
 	var quiet strings.Builder
-	_, err = selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", ui.New(&quiet, blockingReader{}, true, false))
+	_, err = selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, ui.New(&quiet, blockingReader{}, true, false))
 	require.NoError(t, err)
 	assert.Empty(t, quiet.String(), "no prompt, no notice")
 }
@@ -1355,7 +1355,7 @@ func TestGetAuthProvidersSplitsSupportedAndUnsupported(t *testing.T) {
 func TestSelectAuthProviderSingle(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "pingProvider"}}
-	got, err := selectAuthProvider(t.Context(), ps, nil, "", ui.Discard())
+	got, err := selectAuthProvider(t.Context(), ps, nil, "", false, ui.Discard())
 	require.NoError(t, err)
 	assert.Equal(t, "pingProvider", got.GetType())
 }
@@ -1363,7 +1363,7 @@ func TestSelectAuthProviderSingle(t *testing.T) {
 func TestSelectAuthProviderAmbiguousNoInput(t *testing.T) {
 	t.Parallel()
 	ps := []typedProvider{&AuthProvider{Type: "pingProvider", ID: "ping"}, &AuthProvider{Type: "oktaProvider", ID: "okta"}}
-	_, err := selectAuthProvider(t.Context(), ps, nil, "", ui.Discard())
+	_, err := selectAuthProvider(t.Context(), ps, nil, "", false, ui.Discard())
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
@@ -1946,7 +1946,7 @@ func TestSelectAuthProviderCtrlCIsNotAmbiguous(t *testing.T) {
 	// racing ctx.Done() in the select and intermittently returning io.EOF.
 	p := ui.New(&errBuf, blockingReader{}, false, true)
 	providers := []typedProvider{&AuthProvider{Type: "pingProvider"}, &AuthProvider{Type: "oktaProvider"}}
-	_, err := selectAuthProvider(ctx, providers, nil, "", p)
+	_, err := selectAuthProvider(ctx, providers, nil, "", false, p)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled, "cancelled context must return context.Canceled, not AMBIGUOUS_SELECTION")
 }
@@ -2062,7 +2062,7 @@ func TestGetTokenMalformedServerNoFastPathCacheHit(t *testing.T) {
 	key := config.CacheKey("prod", fallbackID, "c-1")
 	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", fallbackID, "c-1"))
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	_, _, _, hit := cmd.probeFlagCache("prod", malformed, "c-1", "", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", malformed, "c-1", "", "", ui.Discard())
 	assert.False(t, hit, "malformed --server must not produce a fast-path cache hit")
 }
 
@@ -2078,7 +2078,7 @@ func TestGetTokenUnsupportedSchemeNoFastPathCacheHit(t *testing.T) {
 	require.NoError(t, seedCache(t, dir, store, key, "should-not-be-served", time.Now().Add(time.Hour), "prod", ftpID, "c-1"))
 
 	cmd := tokenCmd{dir: dir, store: store, anchor: anchorFor(dir)}
-	_, _, _, hit := cmd.probeFlagCache("prod", "ftp://host", "c-1", "", ui.Discard())
+	_, _, _, hit := cmd.probeFlagCache("prod", "ftp://host", "c-1", "", "", ui.Discard())
 	assert.False(t, hit, "unsupported scheme --server must not produce a fast-path cache hit")
 }
 

@@ -80,6 +80,11 @@ type loginInput struct {
 	// authConfig is the name messages give the chosen auth config: its id,
 	// or the provider name of its type when the entry has no id.
 	authConfig string
+	// exactAuthConfig makes authProvider match an auth config by its exact
+	// name only: no provider type or provider name, which another auth config
+	// can share. A call with --user-id and --auth-provider sets it, since the
+	// token it makes must be made through that one auth config.
+	exactAuthConfig bool
 	// notice, when set, is said once, right before the sign-in's first
 	// prompt or notice that asks someone to act (see signInStarts).
 	notice          string
@@ -172,6 +177,22 @@ type runParams struct {
 	ProbedKey       string
 	ProbedNoticed   bool
 	legacyShim      bool
+}
+
+// authConfigOfCall is the auth config the call's tokens must be made
+// through: its --auth-provider with --user-id. Without --user-id the flag
+// only chooses the sign-in's auth config, and nothing is checked.
+func (p runParams) authConfigOfCall() string {
+	if p.UserID == "" {
+		return ""
+	}
+	return p.AuthProvider
+}
+
+// exactAuthConfig reports whether the call's --auth-provider is matched as
+// an auth config's exact name: it is, with --user-id.
+func (p runParams) exactAuthConfig() bool {
+	return p.authConfigOfCall() != ""
 }
 
 type typedProvider interface {
@@ -290,7 +311,7 @@ func (tokenCmd) Describe() runtime.Descriptor {
 			{Name: "server", Type: "string", Desc: "Rancher server `url`", Env: []string{"RANCHER_CLI_URL"}},
 			{Name: "cluster", Type: "string", Desc: "cluster `id|name` to create the exec-credential token for; required unless --user-id is given"},
 			{Name: "name", Type: "string", Desc: "stored server `name` to use"},
-			{Name: "auth-provider", Type: "string", Desc: "auth config `name` to sign in with (for example corp-ldap); a provider name or type such as openldap also works; with several matches the CLI asks, or lists them in the error"},
+			{Name: "auth-provider", Type: "string", Desc: "auth config `name` to sign in with (for example corp-ldap); with --user-id it must be the auth config's exact name, and only tokens made through it are used; without --user-id a provider name or type such as openldap also works, and with several matches the CLI asks, or lists them in the error"},
 			{Name: "auth-flow", Type: "string", Enum: []string{"devicecode", "authcode"}, Desc: "identity-provider `flow`", Env: []string{config.EnvOAuthAuthFlow, config.EnvLegacyOAuthAuthFlow}},
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM", Env: []string{"RANCHER_CLI_CACERT"}},
 			{Name: userIDFlag, Type: "string", Desc: "Rancher user `id` the token must belong to; with it, --cluster may be omitted for a token for Rancher itself"},
@@ -343,6 +364,12 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	// Checked with the user id, before the cache probe: the value is part of
+	// the key.
+	authConfig, err := readAuthConfig(in, userID)
+	if err != nil {
+		return runtime.Result{}, err
+	}
 	// Require --cluster, unless --user-id asks for a token for Rancher
 	// itself, BEFORE the cache probe, not only in resolveConn: a
 	// still-valid cache entry keyed with an empty cluster component would
@@ -370,7 +397,7 @@ func (t tokenCmd) run(ctx context.Context, in runtime.Input, p runtime.Prompter)
 	if ec, err := loadExecCluster(); err == nil && ec == nil {
 		var r runtime.Result
 		var hit bool
-		flagKey, noticed, r, hit = t.probeFlagCache(name, flagServer, in.String("cluster"), userID, p)
+		flagKey, noticed, r, hit = t.probeFlagCache(name, flagServer, in.String("cluster"), userID, authConfig, p)
 		if hit {
 			return r, nil
 		}
@@ -426,7 +453,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("resolved server %q: unsupported scheme (only http and https are supported)", server))
 	}
-	cacheKey := config.CacheKeyFor(params.Name, serverID, clusterID, params.UserID)
+	cacheKey := config.CacheKeyFor(params.Name, serverID, clusterID, params.UserID, params.authConfigOfCall())
 
 	// The endpoint kubectl is about to use, when the kubeconfig asked
 	// kubectl to say: a direct endpoint gets the readiness wait, the
@@ -475,6 +502,7 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	input := &loginInput{
 		server:          server,
 		authProvider:    params.AuthProvider,
+		exactAuthConfig: params.exactAuthConfig(),
 		skipVerify:      params.SkipVerify,
 		authFlow:        params.AuthFlow,
 		usernameDefault: params.UsernameDefault,
@@ -491,11 +519,11 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 	}
 
 	t.resolved = choice
-	t.user = userCheck{userID: params.UserID, clusterID: clusterID, serverID: serverID, caSource: caSource, caFrom: caFrom}
+	t.user = userCheck{userID: params.UserID, authConfig: params.authConfigOfCall(), clusterID: clusterID, serverID: serverID, caSource: caSource, caFrom: caFrom}
 	rancherToken, reuseOn, binding, err := t.storedCredToken(ctx, client, server, clusterID, params.Name, params.legacyShim, p)
 	// The plugin-created login runs for an invocation that names a cluster
 	// or a user, whose token it checks. The legacy shim without --cluster
-	// keeps creating the unscoped kubeconfig token.
+	// keeps creating the unscoped kubeconfig token from the sign-in.
 	pluginLane := (clusterID != "" || params.UserID != "") && reuseOn
 	// An unsettled login counts as a clean miss for this one decision, and
 	// only here: parallel kubectl calls made while an operator's login is
@@ -534,10 +562,13 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		input.idpClient = httpx.NewExternal(httpx.DefaultTimeout)
 		// This lane is taken only when the plugin-created login is not,
 		// so a sign-in here keeps no login credential.
-		call := noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, userID: params.UserID}
-		if clusterID != "" {
+		call := noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, userID: params.UserID, authConfig: params.authConfigOfCall()}
+		if clusterID != "" || params.UserID != "" {
 			// The sign-in creates the cluster token itself, with the login
 			// token it just created as bearer, and deletes that login token.
+			// A call with --user-id and no cluster takes this lane too, with
+			// no cluster: its token comes from a create response, which names
+			// the owner and the auth config the call is checked against.
 			si, serr := signInForClusterToken(ctx, client, input, clusterID, p)
 			if serr != nil {
 				return runtime.Result{}, t.withNoTerminalRemedies(serr, call)
@@ -553,9 +584,8 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 			rancherToken = Token{Token: si.Cluster.Bearer, ExpiresAt: si.Cluster.ExpiresAt, fresh: fresh, binding: binding}
 			break
 		}
-		// A token no cluster scopes - the legacy shim without --cluster,
-		// or a call with --user-id and no cluster - is the sign-in's own
-		// kubeconfig token.
+		// A token no cluster scopes - the legacy shim without --cluster -
+		// is the sign-in's own kubeconfig token.
 		var res SessionAcquireResult
 		res, err = loginAndGenerateCred(ctx, client, input, p)
 		if err != nil {
@@ -564,15 +594,10 @@ func (t tokenCmd) runWithParams(ctx context.Context, params runParams, p runtime
 		// The interactive login's token has no parent bearer: it deletes
 		// itself if the wait below is cancelled.
 		fresh := newFreshToken(res.Create, client, kube.BaseURL(server), res.Create.Bearer)
-		if params.UserID != "" {
-			if oerr := t.user.checkSignInOwner(ctx, client, kube.BaseURL(server), res.Create, fresh); oerr != nil {
-				return runtime.Result{}, oerr
-			}
-		}
 		rancherToken = Token{Token: res.Create.Bearer, ExpiresAt: res.Create.ExpiresAt, fresh: fresh, binding: binding}
 	case err != nil:
 		// The plugin-created login reaches the same sign-in prompts.
-		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, keepsLogin: pluginLane, userID: params.UserID})
+		return runtime.Result{}, t.withNoTerminalRemedies(err, noTerminalCall{name: params.Name, clusterID: clusterID, serverURL: serverID, caCert: caSource, caFrom: caFrom, shim: params.legacyShim, keepsLogin: pluginLane, userID: params.UserID, authConfig: params.authConfigOfCall()})
 	}
 	if strings.TrimSpace(rancherToken.Token) == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeAuth, "authentication returned an empty token; check the auth config and credentials")
@@ -803,7 +828,7 @@ func directNotReadyWarning(server, entry string) string {
 // probes producing identical keys. Returns ("", false) when the probe is
 // impossible: the server is empty, the name and userID are both empty, the URL
 // is not parseable, or the scheme is not http/https.
-func computeCacheProbeKey(name, server, cluster, userID string) (string, bool) {
+func computeCacheProbeKey(name, server, cluster, userID, authConfig string) (string, bool) {
 	if (name == "" && userID == "") || server == "" {
 		return "", false
 	}
@@ -815,7 +840,7 @@ func computeCacheProbeKey(name, server, cluster, userID string) (string, bool) {
 	if !config.IsSupportedScheme(cu) {
 		return "", false
 	}
-	return config.CacheKeyFor(name, cu, cluster, userID), true
+	return config.CacheKeyFor(name, cu, cluster, userID, authConfig), true
 }
 
 // probeFlagCache attempts a flag-only cache probe when name and server are both
@@ -832,8 +857,8 @@ func computeCacheProbeKey(name, server, cluster, userID string) (string, bool) {
 // notices (drained elsewhere via its NoticeSource) rather than returning
 // one inline, so this read closure's own notice is always "" and the
 // discarded 5th return value is never meaningful here.
-func (t tokenCmd) probeFlagCache(name, server, cluster, userID string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
-	key, noticed, r, hit, _ = probeCacheWith(name, server, cluster, userID, func(k string) (string, time.Time, string, error) {
+func (t tokenCmd) probeFlagCache(name, server, cluster, userID, authConfig string, p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool) {
+	key, noticed, r, hit, _ = probeCacheWith(name, server, cluster, userID, authConfig, func(k string) (string, time.Time, string, error) {
 		type read struct {
 			token  string
 			expiry time.Time
@@ -868,8 +893,8 @@ func (t tokenCmd) probeFlagCache(name, server, cluster, userID string, p runtime
 // alongside the token (a loose-permission finding on the shim's direct file
 // read, say) - fired independently of hit/miss, since read may notice
 // before it even knows whether the key is present.
-func probeCacheWith(name, server, cluster, userID string, read func(string) (string, time.Time, string, error), p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
-	key, ok := computeCacheProbeKey(name, server, cluster, userID)
+func probeCacheWith(name, server, cluster, userID, authConfig string, read func(string) (string, time.Time, string, error), p runtime.Prompter) (key string, noticed bool, r runtime.Result, hit bool, warn string) {
+	key, ok := computeCacheProbeKey(name, server, cluster, userID, authConfig)
 	if !ok {
 		return "", false, runtime.Result{}, false, ""
 	}
@@ -956,7 +981,10 @@ func (d deleteTokenCmd) CompleteArgs(_ context.Context, view runtime.ConfigView,
 type LoginRequest struct {
 	Server       string
 	AuthProvider string
-	AuthFlow     string
+	// ExactAuthConfig makes AuthProvider match an auth config by its exact
+	// name only (see loginInput.exactAuthConfig).
+	ExactAuthConfig bool
+	AuthFlow        string
 	// IdPClient dials the identity provider's OAuth endpoints (see
 	// loginInput.idpClient). Required for OAuth providers.
 	IdPClient *http.Client
@@ -996,7 +1024,7 @@ func loginAndGenerateCred(ctx context.Context, client *http.Client, input *login
 	if err := refuseUnsupportedConfig(input.authProvider, unsupportedIDs, unsupported, authProviders); err != nil {
 		return SessionAcquireResult{}, err
 	}
-	selectedProvider, err := selectAuthProvider(ctx, authProviders, unsupported, input.authProvider, p)
+	selectedProvider, err := selectAuthProvider(ctx, authProviders, unsupported, input.authProvider, input.exactAuthConfig, p)
 	if err != nil {
 		return SessionAcquireResult{}, err
 	}
@@ -1363,13 +1391,15 @@ func unsupportedNote(unsupported []string) string {
 // entry; otherwise every entry whose provider type (openLdapProvider) or
 // provider name (openldap) equals it. One match is the choice; several ask
 // with a terminal, among only those, and fail with their names without one.
-// A miss names the auth configs as candidates and, in the message, the
-// advertised types this CLI cannot use, so an operator can tell "not
+// With exact, only an auth config's name matches: the provider type and
+// provider name do not, and a miss is NOT_FOUND naming the enabled auth
+// configs. A miss names the auth configs as candidates and, in the message,
+// the advertised types this CLI cannot use, so an operator can tell "not
 // configured on the server" from "not supported here". The same note
 // precedes the prompt, also when only one entry is left to prompt for: a
 // user who came for GitHub must not type those credentials into the local
 // password prompt.
-func selectAuthProvider(ctx context.Context, providers []typedProvider, unsupported []string, want string, p runtime.Prompter) (typedProvider, error) {
+func selectAuthProvider(ctx context.Context, providers []typedProvider, unsupported []string, want string, exact bool, p runtime.Prompter) (typedProvider, error) {
 	note := unsupportedNote(unsupported)
 	if len(providers) == 0 {
 		msg := "this server has no auth config this CLI can sign in with"
@@ -1384,6 +1414,13 @@ func selectAuthProvider(ctx context.Context, providers []typedProvider, unsuppor
 			if prov.GetID() != "" && prov.GetID() == want {
 				return prov, nil
 			}
+		}
+		if exact {
+			msg := "--auth-provider " + want + " names no enabled auth config on this server"
+			if note != "" {
+				msg += "; " + note
+			}
+			return nil, clierr.New(clierr.CodeNotFound, msg).WithCandidates(authConfigCandidates(providers))
 		}
 		matches := slices.DeleteFunc(slices.Clone(providers), func(prov typedProvider) bool {
 			return prov.GetType() != want && providerName(prov.GetType()) != want
@@ -1886,7 +1923,8 @@ func isLoginIncomplete(err error) bool {
 // one credentialed user entry at the winning rank is an error, never a
 // pick, and so are several plugin login entries when no user entry
 // answers. With --user-id the call chooses among the entries that record
-// that user (ownerCredential). A plugin login entry is a candidate only
+// that user (ownerCredential), and, with an auth config, that auth config or
+// none. A plugin login entry is a candidate only
 // while the token-reuse setting is on. ignoreCurrentContext is the shim's
 // flag-driven mode: no current-server preference, and the error's remedy
 // is the shim's.
@@ -1908,14 +1946,19 @@ func storedTokenForServer(cfg *config.Config, store CredentialReader, server, id
 // the failure, since the entry that failed might have been the answer. An
 // entry that records no owner is never a candidate.
 func ownerCredential(cfg *config.Config, store CredentialReader, server string, user userCheck) (storedCredential, bool, error) {
-	candidates := cfg.OwnedServerNames(server, user.userID)
+	candidates := cfg.OwnedServerNames(server, user.userID, user.authConfig)
 	if !cfg.TokenReuse {
 		candidates = slices.DeleteFunc(candidates, func(n string) bool {
 			return cfg.Servers[n].Provenance == clierr.ProvenanceExecLogin
 		})
 	}
 	rankOf := candidateRanker(cfg, false)
+	// With an auth config the entries that recorded it come first, then the
+	// ones that recorded none; each group keeps the fixed order.
 	sort.SliceStable(candidates, func(i, j int) bool {
+		if gi, gj := cfg.OwnedGroupOrder(candidates[i], user.authConfig), cfg.OwnedGroupOrder(candidates[j], user.authConfig); gi != gj {
+			return gi < gj
+		}
 		return rankOf(candidates[i]) < rankOf(candidates[j])
 	})
 	for _, n := range candidates {
@@ -2145,7 +2188,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	// it read is asked at the write, once the read has fixed it. The
 	// binding is built from this load alone, so building it after the read
 	// changes nothing.
-	binding := config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, "", t.user.userID, ignoreCurrentContext).ReadFrom(t.store)
+	binding := config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, "", t.user.userID, t.user.authConfig, ignoreCurrentContext).ReadFrom(t.store)
 	switch lookup.Outcome {
 	case LookupRefused, LookupReadFailed:
 		// A hard store/helper failure (missing binary, timeout, malformed
@@ -2159,7 +2202,7 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	// The entry that answered decides the binding: the identified entry's
 	// own credential binds the record to that entry alone, and so does a
 	// sign-in after the server rejects it.
-	binding = config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, sc.name, t.user.userID, ignoreCurrentContext).ReadFrom(t.store)
+	binding = config.CacheBindingForLookup(t.cacheDir(), cfg, server, identified, sc.name, t.user.userID, t.user.authConfig, ignoreCurrentContext).ReadFrom(t.store)
 	stored, ref := sc.token, sc.ref
 	base := kube.BaseURL(server)
 	resolvedCluster, warning, rerr := resolveClusterIDForCreate(ctx, client, base, stored, clusterID)
@@ -2224,6 +2267,22 @@ func (t tokenCmd) storedCredToken(ctx context.Context, client *http.Client, serv
 	if t.user.userID != "" {
 		if oerr := t.user.checkCreatedOwner(ctx, cfg, created, fresh, sc); oerr != nil {
 			return Token{}, cfg.TokenReuse, binding, oerr
+		}
+		if t.user.authConfig != "" {
+			// A response that names no auth config cannot be checked. One that
+			// names another is recorded on an entry that recorded none, so a
+			// later call without --name goes on to the next entry and one with
+			// a --name that identifies it is refused before any request, and
+			// the call fails.
+			if created.AuthConfig == "" {
+				return Token{}, cfg.TokenReuse, binding, t.user.refuseNoAuthConfig(ctx, created, fresh, sc)
+			}
+			if sc.entry.TokenUserID != "" && sc.entry.TokenAuthConfig == "" {
+				binding, _ = binding.RecordAuthConfig(t.dir, sc.name, created.AuthConfig)
+			}
+			if created.AuthConfig != t.user.authConfig {
+				return Token{}, cfg.TokenReuse, binding, t.user.refuseOtherAuthConfig(ctx, cfg, created, fresh, sc)
+			}
 		}
 	}
 	return Token{Token: bearer, ExpiresAt: expiresAt, fresh: fresh, binding: binding}, cfg.TokenReuse, binding, nil

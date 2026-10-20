@@ -474,3 +474,28 @@ func TestSetCompletionNoteOnAnUnpinnedDirectory(t *testing.T) {
 		})
 	}
 }
+
+// TestConfigInfoShowsTheRecordedAuthConfig asserts config info lists the
+// auth config an entry's login recorded as tokenAuthConfig beside
+// tokenUserId, in the data and in the text, and nothing for an entry that
+// recorded none.
+func TestConfigInfoShowsTheRecordedAuthConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := &config.Config{Servers: map[string]config.Server{
+		"exec-login-r.ex": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin, TokenUserID: "user-a", TokenAuthConfig: "corp-ldap",
+			TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live"}},
+		"exec-login-r.ex-2": {URL: "https://r.ex", Provenance: clierr.ProvenanceExecLogin, TokenUserID: "user-a",
+			TokenRef: &clierr.TokenRef{Kind: clierr.TokenKindExt, Name: "token-live-2"}},
+	}}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	res := execConfigInfoResult(t, dir)
+	servers := res.Data.(map[string]any)["servers"].(map[string]any)
+	with := servers["exec-login-r.ex"].(map[string]any)
+	assert.Equal(t, "user-a", with["tokenUserId"])
+	assert.Equal(t, "corp-ldap", with["tokenAuthConfig"])
+	without := servers["exec-login-r.ex-2"].(map[string]any)
+	assert.NotContains(t, without, "tokenAuthConfig")
+	assert.Equal(t, 1, strings.Count(res.Text, "tokenAuthConfig: corp-ldap"), res.Text)
+}

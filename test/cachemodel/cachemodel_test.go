@@ -76,7 +76,20 @@ import (
 //     binding stamp;
 //   - a call with neither --name nor --user-id whose lookup reaches the
 //     URL's plugin login entries is refused when there are two of them,
-//     whichever hold a credential.
+//     whichever hold a credential;
+//   - every entry also records the auth config its credential was made
+//     through, or none (a pasted token records none): a call with an auth
+//     config chooses among the entries that recorded it, then the ones that
+//     recorded none, never one that recorded another; the entries that
+//     answer as the identified entry's fallback are counted by the recorded
+//     auth config alone, whether or not they hold a credential; the first
+//     token a call creates from an entry that recorded none records the
+//     auth config the create reported, in one write that tries the config
+//     lock once, and only when the entry's binding id is the one the call's
+//     load showed, the load was not paused and the entry still records none;
+//     a record serves only a call with its auth config, and lists each entry
+//     with the auth config it recorded, so an entry that records one later
+//     ends it.
 //
 // The first protocol is asserted to break the invariant for every change
 // it models, which is what shows the model can see the windows; the
@@ -160,11 +173,27 @@ const (
 	// --name nor --user-id refusing the plugin login entries of its URL
 	// only when two of them hold a credential, not whenever there are two.
 	modelPluginTierRefusesOnlyTies
+	// modelAuthWriteIgnoresBindingID is the write of an entry's recorded auth
+	// config that does not compare the entry's binding id with the one the
+	// call's load showed, and modelAuthWriteIgnoresPause the one that writes
+	// although the load showed the entry's cache writes paused.
+	modelAuthWriteIgnoresBindingID
+	modelAuthWriteIgnoresPause
+	// modelRecordServesAnyAuthConfig is a hit that does not compare the
+	// record's auth config with the call's, and modelRecordListsNoAuthConfig
+	// one that compares the listed entries' names and ids but not the auth
+	// config each recorded.
+	modelRecordServesAnyAuthConfig
+	modelRecordListsNoAuthConfig
+	// modelFallbackJudgesStore is the identified entry's fallback counting an
+	// entry that recorded another auth config when it holds no credential:
+	// it is judged on its auth config only while it holds one.
+	modelFallbackJudgesStore
 )
 
 // lastModelProtocol is the last weakened rule, which the search for each
 // weakened rule's violation runs up to.
-const lastModelProtocol = modelPluginTierRefusesOnlyTies
+const lastModelProtocol = modelFallbackJudgesStore
 
 func (p modelProtocol) String() string {
 	return [...]string{
@@ -196,6 +225,11 @@ func (p modelProtocol) String() string {
 		"a write of an entry's recorded owner that moves no stamp",
 		"a call by owner's lookup reading another user's plugin login entry",
 		"an unnamed call's miss refusing two plugin login entries only when both hold a credential",
+		"a write of an entry's recorded auth config that skips the binding id",
+		"a write of an entry's recorded auth config while the load showed it paused",
+		"a hit that does not compare the record's auth config with the call's",
+		"a hit that does not compare the auth config each listed entry recorded",
+		"a fallback that counts an entry of another auth config only while it holds a credential",
 	}[p]
 }
 
@@ -266,17 +300,56 @@ const (
 	// alice's, from another login: a token made from one of alice's
 	// credentials is not a token made from the other.
 	modelAliceAgain
+	// modelAliceOther is alice's credential made through another auth config
+	// than the call's, as a sign-in through it records; modelAlicePasted is
+	// one made the same way but pasted, which records no auth config.
+	modelAliceOther
+	modelAlicePasted
 )
 
 func (u modelUser) String() string {
-	return [...]string{"nobody", "alice", "bob", "tom", "an interactive sign-in", "a refusal", "alice2"}[u]
+	return [...]string{"nobody", "alice", "bob", "tom", "an interactive sign-in", "a refusal", "alice2", "alice through another auth config", "alice pasted through another auth config"}[u]
+}
+
+// modelAuth is an auth config as an entry records it: none, the call's, or
+// another.
+type modelAuth int8
+
+const (
+	modelAuthNone modelAuth = iota
+	modelAuthA
+	modelAuthOther
+)
+
+func (a modelAuth) String() string {
+	return [...]string{"no auth config", "the call's auth config", "another auth config"}[a]
+}
+
+// credAuth is the auth config a credential was made through, which a token
+// create from it reports.
+func credAuth(u modelUser) modelAuth {
+	if u == modelAliceOther || u == modelAlicePasted {
+		return modelAuthOther
+	}
+	return modelAuthA
+}
+
+// loginAuth is the auth config a login of u's credential records on the
+// entry: the scenarios that model no auth config record none, a sign-in
+// through another one records it, a pasted token records none.
+func loginAuth(u modelUser) modelAuth {
+	if u == modelAliceOther {
+		return modelAuthOther
+	}
+	return modelAuthNone
 }
 
 // ownerOf is the user a credential belongs to: the owner a token create
 // response reports for a token made from it, and the owner a login
 // records for the entry.
 func ownerOf(u modelUser) modelUser {
-	if u == modelAliceAgain {
+	switch u {
+	case modelAliceAgain, modelAliceOther, modelAlicePasted:
 		return modelAlice
 	}
 	return u
@@ -335,6 +408,11 @@ const (
 	// token reuse is on, the plugin login entries after it, which the call
 	// refuses whenever there are two of them.
 	callUnnamedPlugins
+	// callIdentifiedAuth is a call with --user-id alice, an auth config and a
+	// --name that identifies prod, a user entry; its fallback is the plugin
+	// login entries staging and entry 2, both alice's, which a call counts by
+	// the auth config each recorded.
+	callIdentifiedAuth
 )
 
 // callOwner is the user the call by owner names with --user-id.
@@ -349,6 +427,7 @@ type modelCallView struct {
 	exists  [3]bool
 	paused  [3]int8
 	owners  [3]modelUser
+	auths   [3]modelAuth
 	current int8
 	reuse   bool
 }
@@ -374,6 +453,10 @@ type modelCallRecord struct {
 	reuseBound   bool
 	reuse        bool
 	ownerOnly    bool
+	// recAuth is the call's auth config the record was written for, and
+	// auths the auth config each bound entry recorded then.
+	recAuth modelAuth
+	auths   [3]modelAuth
 }
 
 // modelEntry is one server entry: the fields of config.yaml the protocol
@@ -385,8 +468,13 @@ type modelEntry struct {
 	id     int8
 	paused int8
 	owner  modelUser
-	cred   [2]modelUser
-	record modelRecord
+	// auth is the auth config config.yaml records for the entry's
+	// credential; authSet marks one a write of the recorded auth config
+	// made, which must describe the credential the entry holds.
+	auth    modelAuth
+	authSet bool
+	cred    [2]modelUser
+	record  modelRecord
 	// otherURL is an entry registered at another URL than the call's.
 	otherURL bool
 }
@@ -408,6 +496,7 @@ type modelDir struct {
 	current   int8
 	reuse     bool
 	kind      int8
+	callAuth  modelAuth
 	call      modelCallRecord
 	// proto is the protocol the scenario runs under, for the weakened
 	// rules that change the lookup itself.
@@ -473,24 +562,66 @@ func (d modelDir) resolved(i int) modelUser {
 func (d modelDir) callView() modelCallView {
 	v := modelCallView{current: d.current, reuse: d.reuse}
 	for i, e := range d.e {
-		v.ids[i], v.exists[i], v.paused[i], v.owners[i] = e.id, e.exists, e.paused, e.owner
+		v.ids[i], v.exists[i], v.paused[i], v.owners[i], v.auths[i] = e.id, e.exists, e.paused, e.owner, e.auth
 	}
 	return v
+}
+
+// authOK reports whether an entry that recorded a can be one of the
+// entries a call with the auth config d.callAuth chooses among: any, for a
+// call without one; else the entries that recorded none or that auth config.
+func (d modelDir) authOK(a modelAuth) bool {
+	return d.callAuth == modelAuthNone || a == modelAuthNone || a == d.callAuth
+}
+
+// userChecked reports whether the call's tokens are checked against the
+// user, and the auth config when it names one: the call by owner and the
+// identified call with an auth config.
+func (d modelDir) userChecked() bool {
+	return d.kind == callByOwner || d.kind == callIdentifiedAuth
+}
+
+// fallbackGroup is the plugin login entries of the identified call with an
+// auth config that answer in v: the entries 1 and 2 that are alice's and
+// recorded the call's auth config or none, then the ones that recorded the
+// call's auth config when there are any, else the ones that recorded none.
+func (d modelDir) fallbackGroup(v modelCallView) []int8 {
+	if d.kind != callIdentifiedAuth || !v.reuse {
+		return nil
+	}
+	var matching, unrecorded []int8
+	for _, i := range [2]int8{1, 2} {
+		if !d.ownerCandidate(i, v) {
+			continue
+		}
+		if v.auths[i] == d.callAuth {
+			matching = append(matching, i)
+		} else {
+			unrecorded = append(unrecorded, i)
+		}
+	}
+	if len(matching) > 0 {
+		return matching
+	}
+	return unrecorded
 }
 
 // ownerCandidate reports whether entry i answers for the call's URL in v
 // with callOwner as its recorded owner: the entries the call by owner
 // chooses among.
 func (d modelDir) ownerCandidate(i int8, v modelCallView) bool {
-	return d.atURL(i, v) && v.owners[i] == callOwner
+	return d.atURL(i, v) && v.owners[i] == callOwner && d.authOK(v.auths[i])
 }
 
 // listed reports whether entry i is one of the entries a record of the
 // call is bound to as a list: an entry for the URL, or, for the call by
 // owner, an entry for the URL whose recorded owner is callOwner.
 func (d modelDir) listed(i int8, v modelCallView) bool {
-	if d.kind == callByOwner {
+	switch d.kind {
+	case callByOwner:
 		return d.ownerCandidate(i, v)
+	case callIdentifiedAuth:
+		return i != 0 && d.ownerCandidate(i, v)
 	}
 	return d.atURL(i, v)
 }
@@ -552,7 +683,30 @@ func (d modelDir) callPlan(v modelCallView) (ident int8, refused bool, order [3]
 			order[n] = 2
 			n++
 		}
+		if d.callAuth != modelAuthNone {
+			// The entries that recorded the call's auth config come first,
+			// then the ones that recorded none; each group keeps its order.
+			var first, rest []int8
+			for _, i := range order[:n] {
+				if v.auths[i] == d.callAuth {
+					first = append(first, i)
+				} else {
+					rest = append(rest, i)
+				}
+			}
+			copy(order[:], append(first, rest...))
+		}
 		return -1, false, order, n
+	}
+	if d.kind == callIdentifiedAuth {
+		if !v.exists[0] {
+			return -1, false, order, 0
+		}
+		order[0], n = 0, 1
+		if group := d.fallbackGroup(v); len(group) > 0 {
+			order[1], n = group[0], 2
+		}
+		return 0, false, order, n
 	}
 	stagingIsPlugin := d.kind != callNamesNone
 	switch {
@@ -608,7 +762,27 @@ func (d modelDir) callCurrent(v modelCallView) int8 {
 // a callUnnamedPlugins call are two in v, which the call refuses as soon
 // as its lookup reaches them, whichever of them hold a credential.
 func (d modelDir) pluginTierShared(v modelCallView) bool {
+	if d.kind == callIdentifiedAuth {
+		return len(d.fallbackGroup(v))+d.uncredentialedOthers(v) > 1
+	}
 	return d.kind == callUnnamedPlugins && v.reuse && d.atURL(1, v) && d.atURL(2, v)
+}
+
+// uncredentialedOthers is the number of plugin login entries of the
+// identified call's URL that recorded another auth config and hold no
+// credential, which modelFallbackJudgesStore counts among the fallback's
+// entries and the rule leaves out.
+func (d modelDir) uncredentialedOthers(v modelCallView) int {
+	if d.proto != modelFallbackJudgesStore || !v.reuse {
+		return 0
+	}
+	n := 0
+	for _, i := range [2]int8{1, 2} {
+		if d.atURL(i, v) && v.owners[i] == callOwner && v.auths[i] == modelAuthOther && d.resolved(int(i)) == modelNobody {
+			n++
+		}
+	}
+	return n
 }
 
 // resolvedCall is the user whose credential a reader of the call gets now:
@@ -628,7 +802,7 @@ func (d modelDir) resolvedCall() modelUser {
 			return modelRefused
 		}
 		if u := d.resolved(int(i)); u != modelNobody {
-			if d.kind == callByOwner && ownerOf(u) != callOwner {
+			if d.userChecked() && d.mismatched(u) {
 				return modelRefused
 			}
 			return u
@@ -641,7 +815,14 @@ func (d modelDir) resolvedCall() modelUser {
 // call, is another user's than the call by owner names. An interactive
 // sign-in's token is checked against the owner when it is made.
 func (d modelDir) servedToAnother(src modelUser) bool {
-	return d.kind == callByOwner && src != modelSignedIn && ownerOf(src) != callOwner
+	return d.userChecked() && src != modelSignedIn && d.mismatched(src)
+}
+
+// mismatched reports whether a token made from u's credential is another
+// user's than the call names, or was made through another auth config than
+// the call's, which the create response shows.
+func (d modelDir) mismatched(u modelUser) bool {
+	return ownerOf(u) != callOwner || (d.callAuth != modelAuthNone && credAuth(u) != d.callAuth)
 }
 
 // callMatches reports whether a reader whose load returned v would serve
@@ -653,6 +834,12 @@ func (d modelDir) servedToAnother(src modelUser) bool {
 // listed. A record bound to the owner alone is served while any entry is.
 func (d modelDir) callMatches(r modelCallRecord, v modelCallView) bool {
 	if !r.present {
+		return false
+	}
+	if r.recAuth != d.callAuth && d.proto != modelRecordServesAnyAuthConfig {
+		return false
+	}
+	if d.kind == callIdentifiedAuth && v.reuse && len(d.fallbackGroup(v)) > 1 {
 		return false
 	}
 	if r.identBound {
@@ -674,6 +861,9 @@ func (d modelDir) callMatches(r modelCallRecord, v modelCallView) bool {
 	}
 	for i := range int8(3) {
 		if r.bound[i] && (!v.exists[i] || v.ids[i] != r.ids[i]) {
+			return false
+		}
+		if r.bound[i] && d.callAuth != modelAuthNone && d.proto != modelRecordListsNoAuthConfig && v.auths[i] != r.auths[i] {
 			return false
 		}
 		if r.exact[i] && d.listed(i, v) != r.bound[i] {
@@ -789,6 +979,12 @@ type modelLocals struct {
 	// priorOwner is the owner the entry a login changes recorded before
 	// it, which a failed login writes back.
 	priorOwner modelUser
+	// priorAuth is the auth config the entry recorded before the login.
+	priorAuth modelAuth
+	// cWrite says the write of a recorded auth config passed its checks under
+	// the config lock this process took, and holds that the process holds it.
+	cWrite bool
+	holds  bool
 }
 
 // modelAction is one atomic action of a process. A durable action is a
@@ -798,10 +994,14 @@ type modelLocals struct {
 // outcomes the action can have (success, failure), zero meaning one; when
 // is a condition under which the action runs at all.
 type modelAction struct {
-	name     string
-	locked   bool
-	release  bool
-	durable  bool
+	name    string
+	locked  bool
+	release bool
+	durable bool
+	// try is a locked action that takes the config lock only when its
+	// condition holds, tries it once, and skips itself when another
+	// process holds it.
+	try      bool
 	branches int
 	when     func(d modelDir, l modelLocals) bool
 	run      func(d *modelDir, l *modelLocals, branch int, c *modelCheck)
@@ -873,6 +1073,7 @@ func loginAdvance(o modelOpts) []modelAction {
 	return advanceWith(o, func(d *modelDir, l *modelLocals) {
 		e := &d.e[o.x]
 		l.priorOwner, e.owner = e.owner, ownerOf(o.user)
+		l.priorAuth, e.auth, e.authSet = e.auth, loginAuth(o.user), false
 	})
 }
 
@@ -884,13 +1085,15 @@ func loginAdvance(o modelOpts) []modelAction {
 func loginLast(o modelOpts) []modelAction {
 	a := resume(o, "resume cache writes", true)
 	when, run := a.when, a.run
-	restores := func(d modelDir, l modelLocals) bool { return l.failed && d.e[o.x].owner != l.priorOwner }
+	restores := func(d modelDir, l modelLocals) bool {
+		return l.failed && (d.e[o.x].owner != l.priorOwner || d.e[o.x].auth != l.priorAuth)
+	}
 	stamps := o.p != modelOwnerWriteWithoutStamp
 	a.when = func(d modelDir, l modelLocals) bool { return when(d, l) || restores(d, l) }
 	a.run = func(d *modelDir, l *modelLocals, b int, c *modelCheck) {
 		resumes := when(*d, *l)
 		if restores(*d, *l) {
-			d.e[o.x].owner = l.priorOwner
+			d.e[o.x].owner, d.e[o.x].auth, d.e[o.x].authSet = l.priorOwner, l.priorAuth, false
 			if stamps {
 				d.cfgStamp = l.stamp
 			}
@@ -1543,9 +1746,10 @@ func callBinding(p modelProtocol, d modelDir, l modelLocals, src modelUser) (rec
 			own = l.order[0]
 		}
 	}
+	rec.recAuth = d.callAuth
 	bind := func(i int8) {
 		if i >= 0 && v.exists[i] {
-			rec.bound[i], rec.ids[i] = true, v.ids[i]
+			rec.bound[i], rec.ids[i], rec.auths[i] = true, v.ids[i], v.auths[i]
 		}
 	}
 	switch {
@@ -1571,6 +1775,17 @@ func callBinding(p modelProtocol, d modelDir, l modelLocals, src modelUser) (rec
 	case l.ident >= 0 && l.servedBy == l.ident:
 		bind(l.ident)
 		if l.ident == 1 && p.bindsRanking() && p != modelPluginEntryRecordIgnoresReuse {
+			rec.reuseBound, rec.reuse = true, v.reuse
+		}
+	case l.ident >= 0 && d.kind == callIdentifiedAuth:
+		bind(l.ident)
+		for i := int8(1); i <= 2; i++ {
+			if d.listed(i, v) {
+				bind(i)
+			}
+			rec.exact[i] = true
+		}
+		if p.bindsRanking() {
 			rec.reuseBound, rec.reuse = true, v.reuse
 		}
 	case l.ident >= 0:
@@ -1599,6 +1814,10 @@ func callBinding(p modelProtocol, d modelDir, l modelLocals, src modelUser) (rec
 	}
 	if p == modelWriterIgnoresPause {
 		return rec, true
+	}
+	if d.kind == callIdentifiedAuth && v.reuse && len(d.fallbackGroup(v)) > 1 {
+		// The lookup refuses the call over this list: no record is written.
+		return rec, false
 	}
 	for i := range int8(3) {
 		if !rec.bound[i] || v.paused[i] == modelNotPaused {
@@ -1635,7 +1854,7 @@ func modelCallWriterReading(p modelProtocol, reads int8) modelProgram {
 				i := l.order[k]
 				if i != 0 && d.pluginTierShared(l.cv) {
 					tied := d.e[1].cred[l.store] != modelNobody && d.e[2].cred[l.store] != modelNobody
-					if p != modelPluginTierRefusesOnlyTies || tied {
+					if p != modelPluginTierRefusesOnlyTies || tied || d.kind != callUnnamedPlugins {
 						l.done = true
 						return
 					}
@@ -1679,7 +1898,18 @@ func modelCallWriterReading(p modelProtocol, reads int8) modelProgram {
 				l.done = true
 			}
 		}},
-	}, reading, []modelAction{
+	}, reading, authConfigWrite(p, func(d modelDir, l modelLocals) (int8, modelAuth, bool) {
+		// The create from the entry whose credential answered named the
+		// owner, which the call checked, and the auth config its
+		// principal named; an entry that recorded none records it.
+		x := l.servedBy
+		ok := d.callAuth != modelAuthNone && x >= 0 && !l.done && l.cred != modelSignedIn &&
+			ownerOf(l.cred) == callOwner && l.cv.owners[x] != modelNobody && l.cv.auths[x] == modelAuthNone
+		if !ok {
+			return 0, 0, false
+		}
+		return x, credAuth(l.cred), true
+	}), []modelAction{
 		{name: "writer: resolve the store again from the binding load", run: func(d *modelDir, l *modelLocals, _ int, _ *modelCheck) {
 			l.recheck, l.recheckOK = d.storeFor(l.bindDecl, d.pin)
 		}},
@@ -1822,6 +2052,66 @@ func modelCallReader() modelProgram {
 	}}
 }
 
+// authConfigWrite is the write of an entry's recorded auth config, as the
+// call's miss makes it after the create's checks passed: under the config
+// lock, tried once and skipped when it is busy, one load of config.yaml
+// whose entry must still have the binding id and the no-recorded-auth-config
+// state the call's load showed, with its cache writes not paused there, and
+// the store the credential was read from still the one readers resolve. It
+// writes the stamp file and then config.yaml, as every write of a recorded
+// value does, and the call's binding then carries the recorded value.
+// what says whether to write, for which entry and what.
+func authConfigWrite(p modelProtocol, what func(d modelDir, l modelLocals) (x int8, a modelAuth, ok bool)) []modelAction {
+	return []modelAction{
+		{name: "try the config lock, check the entry (stamp file)", locked: true, try: true,
+			when: func(d modelDir, l modelLocals) bool { _, _, ok := what(d, l); return ok },
+			run: func(d *modelDir, l *modelLocals, _ int, _ *modelCheck) {
+				l.holds = true
+				x, _, _ := what(*d, *l)
+				e := d.e[x]
+				store, storeOK := d.storeFor(l.bindDecl, d.pin)
+				if !e.exists || e.auth != modelAuthNone || e.owner == modelNobody || !storeOK || store != l.store {
+					return
+				}
+				if p != modelAuthWriteIgnoresBindingID && e.id != l.cv.ids[x] {
+					return
+				}
+				if p != modelAuthWriteIgnoresPause && l.cv.paused[x] != modelNotPaused {
+					return
+				}
+				l.stamp = d.fresh()
+				d.stampFile = l.stamp
+				l.cWrite = true
+			}},
+		{name: "write the recorded auth config (config.yaml)", durable: true,
+			when: func(_ modelDir, l modelLocals) bool { return l.cWrite },
+			run: func(d *modelDir, l *modelLocals, _ int, _ *modelCheck) {
+				x, a, _ := what(*d, *l)
+				d.e[x].auth, d.e[x].authSet = a, true
+				d.cfgStamp = l.stamp
+				l.cv.auths[x] = a
+			}},
+		{name: "release the config lock", release: true,
+			when: func(_ modelDir, l modelLocals) bool { return l.holds },
+			run:  func(d *modelDir, l *modelLocals, _ int, _ *modelCheck) { l.holds = false }},
+	}
+}
+
+// modelAuthRecorder is another call's miss that records the auth config
+// auth on entry x, the one its token create reported, from a load of its own.
+func modelAuthRecorder(p modelProtocol, x int8, auth modelAuth) modelProgram {
+	what := func(d modelDir, l modelLocals) (int8, modelAuth, bool) {
+		return x, auth, l.cv.exists[x] && l.cv.auths[x] == modelAuthNone && l.cv.owners[x] != modelNobody
+	}
+	load := modelAction{name: "load the config", run: func(d *modelDir, l *modelLocals, _ int, _ *modelCheck) {
+		loadCall(d, l)
+		l.bindDecl = d.decl
+		l.store, l.storeOK = d.readerStore()
+	}}
+	return modelProgram{name: "a call's record of the auth config", changer: true,
+		actions: append([]modelAction{load}, authConfigWrite(p, what)...)}
+}
+
 // modelWorld is the whole state the enumeration visits: the directory and
 // every process's memory. It is comparable, so a state reached twice is
 // explored once.
@@ -1869,11 +2159,23 @@ func (r *modelRun) explore(w modelWorld) {
 			continue
 		}
 		a := prog.actions[l.pc]
-		if a.locked && w.d.lock != 0 && w.d.lock != int8(i+1) {
+		if a.try {
+			// A try action takes the lock only when its condition holds,
+			// and never waits for it: with the condition false, or the lock
+			// held by another process, it is skipped and the process goes on.
+			moved = true
+			if (a.when != nil && !a.when(w.d, l)) || (w.d.lock != 0 && w.d.lock != int8(i+1)) {
+				next := w
+				next.p[i].pc++
+				settle(&next, i, len(prog.actions))
+				r.explore(next)
+				continue
+			}
+		} else if a.locked && w.d.lock != 0 && w.d.lock != int8(i+1) {
 			continue
 		}
 		moved = true
-		if a.when != nil && !a.when(w.d, l) {
+		if !a.try && a.when != nil && !a.when(w.d, l) {
 			// The condition is read where the action would run: under
 			// the config lock for a locked action, so a process that
 			// waits on the lock decides only once it holds it.
@@ -1882,7 +2184,7 @@ func (r *modelRun) explore(w modelWorld) {
 				next.d.lock = int8(i + 1)
 			}
 			next.p[i].pc++
-			if a.release {
+			if a.release && next.d.lock == int8(i+1) {
 				next.d.lock = 0
 			}
 			settle(&next, i, len(prog.actions))
@@ -1903,7 +2205,7 @@ func (r *modelRun) explore(w modelWorld) {
 			}
 			r.check.trace = append(r.check.trace, label)
 			a.run(&next.d, nl, b, &r.check)
-			if a.release {
+			if a.release && next.d.lock == int8(i+1) {
 				next.d.lock = 0
 			}
 			settle(&next, i, len(prog.actions))
@@ -1945,6 +2247,12 @@ func (r *modelRun) final(w modelWorld) {
 		if c := d.call; d.callMatches(c, d.callView()) && d.servedToAnother(c.src) {
 			r.check.violate(fmt.Sprintf("the record of the call with --user-id %s, made from %s's credential, stays valid", callOwner, c.src))
 			return
+		}
+		for i, e := range d.e {
+			if u := d.resolved(i); e.exists && e.authSet && u != modelNobody && credAuth(u) != e.auth {
+				r.check.violate(fmt.Sprintf("entry %d records %s, written for a credential it no longer holds: it holds %s's", i, e.auth, u))
+				return
+			}
 		}
 	}
 }
@@ -2000,6 +2308,12 @@ type callSetup struct {
 	entry2   bool
 	src      modelUser
 	servedBy int8
+	// auth is the auth config each entry records, callAuth the auth config
+	// of the call, and seedAuth the one of the call that wrote the seeded
+	// record.
+	auth     [3]modelAuth
+	callAuth modelAuth
+	seedAuth modelAuth
 }
 
 func (c callSetup) start(p modelProtocol) func(seeded bool) modelDir {
@@ -2009,6 +2323,7 @@ func (c callSetup) start(p modelProtocol) func(seeded bool) modelDir {
 			d.e[i].cred = [2]modelUser{}
 			d.e[i].cred[modelKeychain] = c.cred[i]
 			d.e[i].owner = c.owner[i]
+			d.e[i].auth = c.auth[i]
 		}
 		d.e[2].exists, d.e[2].id, d.e[2].otherURL = c.entry2, -4, c.otherURL
 		for i, gone := range c.absent {
@@ -2016,11 +2331,13 @@ func (c callSetup) start(p modelProtocol) func(seeded bool) modelDir {
 				d.e[i] = modelEntry{}
 			}
 		}
-		d.kind, d.reuse, d.current, d.proto = c.kind, c.reuse, c.current, p
+		d.kind, d.reuse, d.current, d.proto, d.callAuth = c.kind, c.reuse, c.current, p, c.callAuth
 		if seeded && c.src != modelNobody {
+			seed := d
+			seed.callAuth = c.seedAuth
 			l := modelLocals{servedBy: c.servedBy}
-			loadCall(&d, &l)
-			if rec, ok := callBinding(p, d, l, c.src); ok {
+			loadCall(&seed, &l)
+			if rec, ok := callBinding(p, seed, l, c.src); ok {
 				d.call = rec
 			}
 		}
@@ -2198,6 +2515,7 @@ func callScenarios(p modelProtocol) []modelScenario {
 	out = append(out, newEntryScenarios(p)...)
 	out = append(out, rankingScenarios(p)...)
 	out = append(out, ownerScenarios(p)...)
+	out = append(out, authConfigScenarios(p)...)
 	return append(out, pluginTierScenarios(p)...)
 }
 
@@ -2270,6 +2588,64 @@ func ownerScenarios(p modelProtocol) []modelScenario {
 		ownerCallScenario(p, "login of bob's plugin login entry as alice beside the call by owner signed in interactively", othersPlugin,
 			userLogin(p, 2, modelAlice, "login of bob's plugin login entry as alice")),
 	}
+}
+
+// The names of the scenarios of authConfigScenarios, which the tests below
+// pick.
+const (
+	recordedAuthConfigScenario = "another call's record of staging's auth config against the call with an auth config answered by prod"
+	otherAuthConfigScenario    = "a login of bob's entry 2 against the call with another auth config and a record made for the first"
+	pastedLoginScenario        = "a login of prod with a pasted token through another auth config against the call with an auth config answered by prod"
+	fallbackStoreScenario      = "logout of the plugin login entry of another auth config against the identified call answered by the plugin login entry"
+)
+
+// authConfigScenarios is the call with --user-id alice and an auth config,
+// against each change that alters which entries it chooses among, counts or
+// records:
+//
+//   - alice's prod and staging, neither recording an auth config, holding
+//     her two credentials made through the call's, the record made from
+//     prod's: another call records the call's auth config on staging, which
+//     the lookup then reads first;
+//   - a record made for the call's auth config from prod's credential, prod
+//     recording none, read by a call with another auth config;
+//   - alice's prod recording no auth config, holding a credential made
+//     through the call's: a login of prod with a pasted token made through
+//     another auth config, which records none, while the call's miss writes
+//     the auth config its create reported;
+//   - the identified call with --name prod, which holds no credential, token
+//     reuse on, alice's plugin login entries staging, recording the call's
+//     auth config with a credential, and entry 2, recording another with a
+//     credential, the record made from staging's: a logout of entry 2, which
+//     the fallback must not count.
+func authConfigScenarios(p modelProtocol) []modelScenario {
+	ownerWriter := func(change modelProgram, c callSetup) modelScenario {
+		return modelScenario{change.name, c.start(p), []modelProgram{change, modelOwnerCallWriter(p), modelCallReader(), modelReplay(p)}}
+	}
+	named := func(name string, s modelScenario) modelScenario {
+		s.name = name
+		return s
+	}
+	two := callSetup{kind: callByOwner, callAuth: modelAuthA, cred: [3]modelUser{modelAlice, modelAliceAgain}, owner: [3]modelUser{modelAlice, modelAlice},
+		src: modelAlice, seedAuth: modelAuthA}
+	other := callSetup{kind: callByOwner, callAuth: modelAuthOther, seedAuth: modelAuthA, cred: [3]modelUser{modelAlice}, owner: [3]modelUser{modelAlice},
+		absent: [2]bool{false, true}, src: modelAlice}
+	pasted := callSetup{kind: callByOwner, callAuth: modelAuthA, cred: [3]modelUser{modelAlice}, owner: [3]modelUser{modelAlice}, absent: [2]bool{false, true}}
+	fallback := callSetup{kind: callIdentifiedAuth, callAuth: modelAuthA, seedAuth: modelAuthA, reuse: true, entry2: true,
+		cred: [3]modelUser{1: modelAlice, 2: modelAliceOther}, owner: [3]modelUser{modelAlice, modelAlice, modelAlice},
+		auth: [3]modelAuth{modelAuthNone, modelAuthA, modelAuthOther}, src: modelAlice, servedBy: 1}
+	return []modelScenario{
+		named(recordedAuthConfigScenario, ownerWriter(modelAuthRecorder(p, 1, modelAuthA), two)),
+		named(otherAuthConfigScenario, ownerWriter(entryLogin(p, 2, "login of bob's entry 2"), other)),
+		named(pastedLoginScenario, ownerWriter(userLogin(p, 0, modelAlicePasted, "login of prod with a pasted token"), pasted)),
+		named(fallbackStoreScenario, ownerWriterReading(p, modelLogout(modelOpts{p: p, x: 2}), fallback)),
+	}
+}
+
+// ownerWriterReading is a scenario of the identified call: its writer reads
+// the identified entry and the one fallback entry.
+func ownerWriterReading(p modelProtocol, change modelProgram, c callSetup) modelScenario {
+	return modelScenario{change.name, c.start(p), []modelProgram{change, modelCallWriter(p), modelCallReader(), modelReplay(p)}}
 }
 
 // pluginTierScenarios is a call with neither --name nor --user-id whose
@@ -2478,7 +2854,10 @@ func TestCacheModelFindsEveryWeakenedRule(t *testing.T) {
 		t.Run(p.String(), func(t *testing.T) {
 			t.Parallel()
 			found := ""
-			for _, s := range modelScenarios(p) {
+			// The auth config scenarios first: the weakened rules about the
+			// auth config are found there, and the search for each stops at
+			// its first violation.
+			for _, s := range slices.Concat(authConfigScenarios(p), modelScenarios(p)) {
 				if check, _ := s.run(true); check.count > 0 {
 					found = s.name + ":\n  " + check.traces[0]
 					break
@@ -2808,6 +3187,40 @@ func TestCacheModelPluginTierRefusesTwoPluginLoginEntries(t *testing.T) {
 			got, fixedStates := fixed[i].run(false)
 			t.Logf("with the rule: %d states, %d violations", fixedStates, got.count)
 			require.Zero(t, got.count, "\n  %s", strings.Join(got.traces, "\n  "))
+		})
+	}
+}
+
+// TestCacheModelAuthConfigRulesAreNeeded asserts, for each rule about the
+// auth config a call names, the scenario that shows it is needed: a record
+// lists each entry with the auth config it recorded, so one that records its
+// auth config later ends it; a record serves only a call with its auth
+// config; the write of a recorded auth config compares the entry's binding
+// id and is skipped while the load showed the entry paused, so it never
+// describes a credential the entry no longer holds; and the identified
+// entry's fallback counts the entries by the recorded auth config alone, not
+// by what the store holds. Each weakened rule breaks the invariant there;
+// the rule holds there.
+func TestCacheModelAuthConfigRulesAreNeeded(t *testing.T) {
+	t.Parallel()
+	for _, row := range []struct {
+		p    modelProtocol
+		name string
+	}{
+		{modelRecordListsNoAuthConfig, recordedAuthConfigScenario},
+		{modelRecordServesAnyAuthConfig, otherAuthConfigScenario},
+		{modelAuthWriteIgnoresBindingID, pastedLoginScenario},
+		{modelAuthWriteIgnoresPause, pastedLoginScenario},
+		{modelFallbackJudgesStore, fallbackStoreScenario},
+	} {
+		t.Run(row.p.String()+": "+row.name, func(t *testing.T) {
+			t.Parallel()
+			check, states := callScenarioNamed(t, row.p, row.name).run(false)
+			require.NotEmpty(t, check.traces, "the model found no violation of the weakened rule")
+			t.Logf("%d states, %d violations; the first:\n  %s", states, check.count, check.traces[0])
+			fixed, fixedStates := callScenarioNamed(t, modelPaused, row.name).run(false)
+			t.Logf("with the rule: %d states, %d violations", fixedStates, fixed.count)
+			require.Zero(t, fixed.count, "\n  %s", strings.Join(fixed.traces, "\n  "))
 		})
 	}
 }

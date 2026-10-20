@@ -212,6 +212,14 @@ type Options struct {
 	SelfSubjectReviewStatus int
 	// OmitSpecOnCreate withholds spec on ext token create responses.
 	OmitSpecOnCreate bool
+	// OmitPrincipalOnCreate withholds spec.userPrincipal from ext token
+	// bodies, which keep spec.userID: a token whose create response names
+	// its owner and no auth config.
+	OmitPrincipalOnCreate bool
+	// PrincipalAuthConfig, when set, is the auth config the principal of
+	// every ext token body names, whatever the owner signed in through: a
+	// create that reports another auth config than the one the sign-in chose.
+	PrincipalAuthConfig string
 	// ScopedCreateStatus forces the status of a cluster-scoped ext create.
 	ScopedCreateStatus int
 	// ScopedCreateClusterName overrides the echoed spec.clusterName on a
@@ -2643,14 +2651,19 @@ func (f *Facade) extTokenBody(rec *record, a extAnswer) map[string]any {
 		if rec.userID != "" {
 			display, login := f.principalNames(rec.userID)
 			principal, provider := principalOf(rec)
+			if f.opts.PrincipalAuthConfig != "" {
+				principal = f.opts.PrincipalAuthConfig + "_user://" + rec.userID
+			}
 			spec["userID"] = rec.userID
-			spec["userPrincipal"] = map[string]any{
-				"name":          principal,
-				"displayName":   display,
-				"loginName":     login,
-				"me":            true,
-				"principalType": "user",
-				"provider":      provider,
+			if !f.opts.OmitPrincipalOnCreate {
+				spec["userPrincipal"] = map[string]any{
+					"name":          principal,
+					"displayName":   display,
+					"loginName":     login,
+					"me":            true,
+					"principalType": "user",
+					"provider":      provider,
+				}
 			}
 		}
 		body["spec"] = spec

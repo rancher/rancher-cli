@@ -149,7 +149,7 @@ func TestWhereAPluginAnswerIsRecorded(t *testing.T) {
 			}
 			ct := x.token("alice")
 			x.f.SetDeleteMode(ct.Ref.Name, "fail")
-			x.cache("k", ct, config.CacheBindingForIdentified(config.CanonicalDir(x.dir), x.load(), x.url, "exec-login-c", ""), true)
+			x.cache("k", ct, config.CacheBindingForIdentified(config.CanonicalDir(x.dir), x.load(), x.url, "exec-login-c", "", ""), true)
 			x.edit(func(cfg *config.Config) {
 				for _, n := range tc.demote {
 					s := cfg.Servers[n]

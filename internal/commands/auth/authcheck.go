@@ -538,6 +538,10 @@ func credentialReport(s config.Server) (map[string]any, string) {
 		m["userId"] = s.TokenUserID
 		facts = append(facts, "user "+s.TokenUserID)
 	}
+	if s.TokenAuthConfig != "" {
+		m["authConfig"] = s.TokenAuthConfig
+		facts = append(facts, "auth config "+s.TokenAuthConfig)
+	}
 	if s.TokenRef != nil {
 		m["tokenRef"] = map[string]any{"kind": string(s.TokenRef.Kind), "name": s.TokenRef.Name}
 		facts = append(facts, "token "+s.TokenRef.String())

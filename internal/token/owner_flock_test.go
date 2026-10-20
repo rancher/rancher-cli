@@ -40,9 +40,11 @@ func (g *gateReader) Read(p []byte) (int, error) {
 // callAside runs the exec plugin like call, for a goroutine other than the
 // test's, with a terminal reading from in, and returns the token's owner.
 func (x *ownerFixture) callAside(name, userID string, in *gateReader, notices *bytes.Buffer) (string, error) {
-	s := map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": name, "auth-provider": "localProvider"}
+	s := map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": name}
 	if userID != "" {
 		s["user-id"] = userID
+	} else {
+		s["auth-provider"] = "localProvider"
 	}
 	cmd := NewTokenCommand(x.dir, x.store, anchorFor(x.dir)).(runtime.ReadCommand)
 	res, err := cmd.Execute(x.t.Context(), tin{s: s}, ui.New(notices, in, false, true))
@@ -175,7 +177,7 @@ func (s failingCommit) SetTokenWithOutcome(config.ServerRef, string, config.Prio
 func TestUserIDBesideAFailedLoginOfItsEntry(t *testing.T) {
 	m := newMadeFrom(t)
 	userKey := func(dir, userID string) string {
-		return config.CacheKeyFor("prod", config.CanonicalServerIdentity(m.URL), "local", userID)
+		return config.CacheKeyFor("prod", config.CanonicalServerIdentity(m.URL), "local", userID, "")
 	}
 	servedFor := func(t *testing.T, dir, userID string) bool {
 		t.Helper()

@@ -143,7 +143,7 @@ func acquireLogin(ctx context.Context, client *http.Client, input *loginInput, p
 // the transient session token S exists, this function revokes it on every
 // path that does not hand it outward.
 func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginRequest, ttlMs int64, p runtime.Prompter) (LoginCredential, error) {
-	input := &loginInput{server: req.Server, authProvider: req.AuthProvider, authFlow: req.AuthFlow,
+	input := &loginInput{server: req.Server, authProvider: req.AuthProvider, authFlow: req.AuthFlow, exactAuthConfig: req.ExactAuthConfig,
 		idpClient: req.IdPClient, responseType: req.ResponseType, beforeSignIn: req.BeforeSignIn}
 	st, err := acquireLogin(ctx, client, input, p)
 	if err != nil {
@@ -207,8 +207,8 @@ func AcquireLoginCredential(ctx context.Context, client *http.Client, req LoginR
 	sClean := revokeToken(c, client, st.base, *s.Ref, sBearer)
 	cancel()
 	return LoginCredential{Token: dr.Bearer, ExpiresAt: dr.ExpiresAt, Provenance: ProvenanceDerived, Marker: marker,
-		UserID: dr.UserID,
-		Ref:    dr.Ref, SessionTokenCleanup: sClean, SessionTokenUnmarked: !s.Marked, SessionTokenSearch: st.session.Handoff,
+		UserID: dr.UserID, AuthConfig: dr.AuthConfig,
+		Ref: dr.Ref, SessionTokenCleanup: sClean, SessionTokenUnmarked: !s.Marked, SessionTokenSearch: st.session.Handoff,
 		SessionCreatedAt: s.CreatedAt, SessionExpiresAt: s.ExpiresAt, DerivedCreatedAt: dr.CreatedAt,
 		parent: ctx, client: client, base: st.base}, nil
 }
@@ -269,7 +269,7 @@ func signInForClusterToken(ctx context.Context, client *http.Client, input *logi
 		if !s.Marked && ct.Outcome == CreateNotAttempted {
 			marker = ""
 		}
-		return failSignIn(refusal.err, stage, marker, loginFate(loginOut), FateOf(ct.Outcome, ct.Kind, ct.Ref, ct.Marked, ct.CreatedAt, ct.ExpiresAt, clusterOut, nil), ct.UserID, refusal.retry)
+		return failSignIn(refusal.err, stage, marker, loginFate(loginOut), FateOf(ct.Outcome, ct.Kind, ct.Ref, ct.Marked, ct.CreatedAt, ct.ExpiresAt, clusterOut, nil), ct.UserID, refusal.retry, clusterID)
 	}
 
 	resolved, warning, err := resolveClusterIDForCreate(ctx, client, st.base, s.Bearer, clusterID)

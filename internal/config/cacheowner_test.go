@@ -39,11 +39,11 @@ func ownerConfig() *Config {
 // id and the colon.
 func TestExecLoginEntryNameForNamesTheServerAndTheUser(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "exec-login-r.example.com-u-abc12", ExecLoginEntryNameFor("https://r.example.com", "u-abc12"))
-	assert.Equal(t, "exec-login-r.example.com-8443-u-abc12", ExecLoginEntryNameFor("https://r.example.com:8443", "u-abc12"))
-	assert.Equal(t, ExecLoginEntryName("https://r.example.com"), ExecLoginEntryNameFor("https://r.example.com", ""))
+	assert.Equal(t, "exec-login-r.example.com-u-abc12", ExecLoginEntryNameFor("https://r.example.com", "u-abc12", ""))
+	assert.Equal(t, "exec-login-r.example.com-8443-u-abc12", ExecLoginEntryNameFor("https://r.example.com:8443", "u-abc12", ""))
+	assert.Equal(t, ExecLoginEntryName("https://r.example.com"), ExecLoginEntryNameFor("https://r.example.com", "", ""))
 	assert.Nil(t, ValidateEntryName("x"))
-	assert.NotNil(t, ValidateEntryName(ExecLoginEntryNameFor("https://r.example.com", "u-abc12")), "the reserved prefix keeps it out of auth login")
+	assert.NotNil(t, ValidateEntryName(ExecLoginEntryNameFor("https://r.example.com", "u-abc12", "")), "the reserved prefix keeps it out of auth login")
 	assert.Equal(t, 467, MaxEntryNameLength)
 	assert.Equal(t, 500, len(keychainAccount(string(make([]byte, identityIDLen)), string(make([]byte, MaxEntryNameLength)))))
 }
@@ -57,7 +57,7 @@ func TestTheOwnerRecordIsBoundToTheEntriesRecordingTheUser(t *testing.T) {
 	t.Parallel()
 	cfg := ownerConfig()
 	on := true
-	got := CacheBindingForOwner("/d", cfg, "https://r.ex", "u-alice").record("tok", time.Time{}, "", "https://r.ex", "c-1")
+	got := CacheBindingForOwner("/d", cfg, "https://r.ex", "u-alice", "").record("tok", time.Time{}, "", "https://r.ex", "c-1")
 	current := "prod"
 	assert.Equal(t, cachedCred{
 		Token: "tok", Server: "https://r.ex", Cluster: "c-1", Version: cacheRecordVersion, Dir: "/d", Kind: recordOwner, UserID: "u-alice",
@@ -67,13 +67,13 @@ func TestTheOwnerRecordIsBoundToTheEntriesRecordingTheUser(t *testing.T) {
 
 	noCurrent := ownerConfig()
 	noCurrent.CurrentServer = "bobs"
-	got = CacheBindingForOwner("/d", noCurrent, "https://r.ex", "u-alice").record("tok", time.Time{}, "", "https://r.ex", "c-1")
+	got = CacheBindingForOwner("/d", noCurrent, "https://r.ex", "u-alice", "").record("tok", time.Time{}, "", "https://r.ex", "c-1")
 	require.NotNil(t, got.CurrentServer)
 	assert.Empty(t, *got.CurrentServer, "the current server is bound only when it is one of the user's entries")
 
-	assert.False(t, CacheBindingForOwner("/d", nil, "https://r.ex", "u-alice").built, "no config gives no binding")
-	assert.False(t, CacheBindingForOwner("/d", cfg, "https://r.ex", "").built, "and no user")
-	empty := CacheBindingForOwner("/d", cfg, "https://r.ex", "u-nobody").record("tok", time.Time{}, "", "https://r.ex", "c-1")
+	assert.False(t, CacheBindingForOwner("/d", nil, "https://r.ex", "u-alice", "").built, "no config gives no binding")
+	assert.False(t, CacheBindingForOwner("/d", cfg, "https://r.ex", "", "").built, "and no user")
+	empty := CacheBindingForOwner("/d", cfg, "https://r.ex", "u-nobody", "").record("tok", time.Time{}, "", "https://r.ex", "c-1")
 	require.NotNil(t, empty.Entries)
 	assert.Empty(t, *empty.Entries, "a user with no entry has the empty list, which stays true until one appears")
 }
@@ -90,7 +90,7 @@ func TestAnOwnerRecordIsServedOnlyWhileTheUsersEntriesAreAsTheyWere(t *testing.T
 	dir := "/d"
 	anchorFor := func(c *Config) *CacheAnchor { return &CacheAnchor{Dir: dir, Stamp: "s", Cfg: stamped(c, "s")} }
 	record := func() cachedCred {
-		return CacheBindingForOwner(dir, ownerConfig(), server, "u-alice").record("tok", time.Time{}, "", server, "c-1")
+		return CacheBindingForOwner(dir, ownerConfig(), server, "u-alice", "").record("tok", time.Time{}, "", server, "c-1")
 	}
 	for _, tc := range []struct {
 		name   string
@@ -160,13 +160,13 @@ func TestTheIdentifiedRecordListsOnlyThePluginLoginEntriesRecordingTheUser(t *te
 	const server = "https://r.ex"
 	anchorFor := func(c *Config) *CacheAnchor { return &CacheAnchor{Dir: "/d", Stamp: "s", Cfg: stamped(c, "s")} }
 	rec := func(user string) cachedCred {
-		return CacheBindingForIdentified("/d", ownerConfig(), server, "prod", user).record("tok", time.Time{}, "prod", server, "c-1")
+		return CacheBindingForIdentified("/d", ownerConfig(), server, "prod", user, "").record("tok", time.Time{}, "prod", server, "c-1")
 	}
 	alice := rec("u-alice")
 	assert.Equal(t, "u-alice", alice.UserID)
 	require.NotNil(t, alice.Entries)
 	assert.Equal(t, []cachedEntry{{Name: "exec-login-r.ex", BindingID: "b-plugin"}}, *alice.Entries)
-	assert.True(t, CacheBindingForIdentified("/d", ownerConfig(), server, "prod", "").Refused(), "without --user-id two plugin login entries refuse the fallback")
+	assert.True(t, CacheBindingForIdentified("/d", ownerConfig(), server, "prod", "", "").Refused(), "without --user-id two plugin login entries refuse the fallback")
 
 	assert.True(t, anchorFor(ownerConfig()).valid(alice))
 	other := ownerConfig()
@@ -192,7 +192,7 @@ func TestARecordIsServedOnlyUnderTheKeyOfItsUser(t *testing.T) {
 	t.Parallel()
 	cfg := ownerConfig()
 	a := &CacheAnchor{Dir: "/d", Stamp: "s", Cfg: stamped(cfg, "s")}
-	owned := CacheBindingForOwner("/d", cfg, "https://r.ex", "u-alice").record("tok", time.Time{}, "", "https://r.ex", "c-1")
+	owned := CacheBindingForOwner("/d", cfg, "https://r.ex", "u-alice", "").record("tok", time.Time{}, "", "https://r.ex", "c-1")
 	plain := CacheBindingForServer("/d", &Config{}, "https://none.ex", false).record("tok", time.Time{}, "kube", "https://none.ex", "c-1")
 	for _, tc := range []struct {
 		name   string
@@ -200,11 +200,11 @@ func TestARecordIsServedOnlyUnderTheKeyOfItsUser(t *testing.T) {
 		rec    cachedCred
 		served bool
 	}{
-		{"its own key", CacheKeyFor("", "r.ex", "c-1", "u-alice"), owned, true},
-		{"another user's key", CacheKeyFor("", "r.ex", "c-1", "u-bob"), owned, false},
-		{"the key of a call without a user", CacheKeyFor("", "r.ex", "c-1", ""), owned, false},
-		{"a user's key, the record carrying none", CacheKeyFor("kube", "none.ex", "c-1", "u-alice"), plain, false},
-		{"a record with no user under its own key", CacheKeyFor("kube", "none.ex", "c-1", ""), plain, true},
+		{"its own key", CacheKeyFor("", "r.ex", "c-1", "u-alice", ""), owned, true},
+		{"another user's key", CacheKeyFor("", "r.ex", "c-1", "u-bob", ""), owned, false},
+		{"the key of a call without a user", CacheKeyFor("", "r.ex", "c-1", "", ""), owned, false},
+		{"a user's key, the record carrying none", CacheKeyFor("kube", "none.ex", "c-1", "u-alice", ""), plain, false},
+		{"a record with no user under its own key", CacheKeyFor("kube", "none.ex", "c-1", "", ""), plain, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.served {
@@ -218,8 +218,8 @@ func TestARecordIsServedOnlyUnderTheKeyOfItsUser(t *testing.T) {
 			assert.Equal(t, tc.served, bare.validFor(tc.key, tc.rec))
 		})
 	}
-	assert.Equal(t, "u-abc12", userIDOfKey(CacheKeyFor("n", "r.ex", "c", "u-abc12")))
-	assert.Empty(t, userIDOfKey(CacheKeyFor("n", "r.ex", "c", "")))
+	assert.Equal(t, "u-abc12", userIDOfKey(CacheKeyFor("n", "r.ex", "c", "u-abc12", "")))
+	assert.Empty(t, userIDOfKey(CacheKeyFor("n", "r.ex", "c", "", "")))
 }
 
 // TestAnOwnerRecordIsStoredAndReadBack asserts an owner record written
@@ -234,12 +234,12 @@ func TestAnOwnerRecordIsStoredAndReadBack(t *testing.T) {
 	canon := CanonicalDir(dir)
 	loaded, err := Load(FilePath(dir))
 	require.NoError(t, err)
-	key := CacheKeyFor("", "https://r.ex", "c-1", "u-alice")
-	require.NoError(t, store.SetCachedCred(key, "tok", time.Now().Add(time.Hour), "", "https://r.ex", "c-1", CacheBindingForOwner(canon, loaded, "https://r.ex", "u-alice")))
+	key := CacheKeyFor("", "https://r.ex", "c-1", "u-alice", "")
+	require.NoError(t, store.SetCachedCred(key, "tok", time.Now().Add(time.Hour), "", "https://r.ex", "c-1", CacheBindingForOwner(canon, loaded, "https://r.ex", "u-alice", "")))
 	anchor := NewCacheAnchor(dir).WithConfig(loaded)
 	got, _, err := store.GetCachedCred(key, anchor)
 	require.NoError(t, err)
 	assert.Equal(t, "tok", got)
-	_, _, err = store.GetCachedCred(CacheKeyFor("", "https://r.ex", "c-1", "u-bob"), anchor)
+	_, _, err = store.GetCachedCred(CacheKeyFor("", "https://r.ex", "c-1", "u-bob", ""), anchor)
 	assert.ErrorIs(t, err, ErrNoToken)
 }

@@ -96,16 +96,26 @@ func lookupStoredLogin(cfg *config.Config, store CredentialReader, server, name,
 		// A plugin login entry the --name identifies has no fallback, and
 		// the plugin-created login would write it: one that records
 		// another owner is refused rather than written over.
-		if s := cfg.Servers[identified]; identified != "" && cfg.TokenReuse && s.Provenance == clierr.ProvenanceExecLogin && user.otherOwner(s.TokenUserID) {
-			return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: user.entryOwnerRefused(cfg, identified, s.TokenUserID, true, false)}
+		if s := cfg.Servers[identified]; identified != "" && cfg.TokenReuse && s.Provenance == clierr.ProvenanceExecLogin {
+			switch {
+			case user.otherOwner(s.TokenUserID):
+				return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: user.entryOwnerRefused(cfg, identified, s.TokenUserID, true, false)}
+			case user.otherAuthConfig(s.TokenAuthConfig):
+				return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: user.entryAuthConfigRefused(cfg, identified, s.TokenAuthConfig, true, false)}
+			}
 		}
 		return StoredLogin{Outcome: LookupNone, Identified: identified}
 	}
 	plugin := sc.entry.Provenance == clierr.ProvenanceExecLogin
 	// Only the identified entry's own credential can come with another
-	// owner: the entries chosen by owner and the fallback record the user.
+	// owner or auth config: the entries chosen by owner and the fallback
+	// record the user, and the auth config or none. The owner is checked
+	// first.
 	if owner := sc.entry.TokenUserID; user.otherOwner(owner) {
 		return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: user.entryOwnerRefused(cfg, sc.name, owner, plugin, true)}
+	}
+	if recorded := sc.entry.TokenAuthConfig; user.otherAuthConfig(recorded) {
+		return StoredLogin{Outcome: LookupRefused, Identified: identified, Err: user.entryAuthConfigRefused(cfg, sc.name, recorded, plugin, true)}
 	}
 	return StoredLogin{Outcome: LookupAnswered, Identified: identified, Entry: sc.name, PluginEntry: plugin, cred: sc}
 }

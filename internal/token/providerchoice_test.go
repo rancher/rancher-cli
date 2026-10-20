@@ -269,20 +269,20 @@ func TestSelectAuthProviderRecordsWhoSignsInWithoutATerminal(t *testing.T) {
 		&AuthProvider{Type: "localProvider", ID: "local"}, &AuthProvider{Type: "oktaProvider", ID: "okta"}, azure, &AuthProvider{Type: "openLdapProvider", ID: "openldap"},
 	}
 
-	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", noTerminal())
+	_, err := selectAuthProvider(t.Context(), ps, []string{"githubProvider"}, "", false, noTerminal())
 	cause, ok := errors.AsType[*providerChoiceNeedsTerminal](err)
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, []string{"local", "okta", "azuread", "openldap"}, cause.configs)
 	assert.Equal(t, []clierr.Candidate{{ID: "okta", Name: "okta"}, {ID: "azuread", Name: "azuread"}}, cause.noTerminal)
 	assert.Equal(t, unsupportedNote([]string{"githubProvider"}), cause.note)
 
-	_, err = selectAuthProvider(t.Context(), ps, nil, "", noInputWithTerminal())
+	_, err = selectAuthProvider(t.Context(), ps, nil, "", false, noInputWithTerminal())
 	cause, ok = errors.AsType[*providerChoiceNeedsTerminal](err)
 	require.True(t, ok, "got %v", err)
 	assert.Empty(t, cause.noTerminal, "--no-input refuses the SAML and OAuth flows too")
 
 	var errBuf strings.Builder
-	_, err = selectAuthProvider(t.Context(), ps, nil, "", ui.New(&errBuf, newLineReader("not a number"), false, true))
+	_, err = selectAuthProvider(t.Context(), ps, nil, "", false, ui.New(&errBuf, newLineReader("not a number"), false, true))
 	require.Error(t, err)
 	_, ok = errors.AsType[*providerChoiceNeedsTerminal](err)
 	assert.False(t, ok, "someone was there to answer: an invalid pick is today's plain error")

@@ -21,7 +21,7 @@ import (
 // callWithCA is call with --cacert ca and no terminal.
 func (x *ownerFixture) callWithCA(name, userID, ca string) error {
 	x.t.Helper()
-	s := map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": name, "auth-provider": "localProvider", "user-id": userID, "cacert": ca}
+	s := map[string]string{"server": x.srv.URL, "cluster": "c-test", "name": name, "user-id": userID, "cacert": ca}
 	cmd := NewTokenCommand(x.dir, x.store, anchorFor(x.dir)).(runtime.ReadCommand)
 	_, err := cmd.Execute(x.t.Context(), tin{s: s}, ui.New(&bytes.Buffer{}, strings.NewReader(""), false, false))
 	return err

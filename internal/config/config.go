@@ -225,6 +225,13 @@ type Server struct {
 	// empty when no response carried one (a SAML legacy credential, or a
 	// pasted token stored with --no-verify).
 	TokenUserID string `json:"tokenUserId,omitempty"`
+	// TokenAuthConfig is the name of the auth config the token was made
+	// through, as the principal of a token create response named it: the
+	// prefix of the principal's name. Empty when no response carried one (a
+	// pasted token, a v3 token, a login made before it was recorded); the
+	// first token the exec plugin creates from the login for a call that
+	// names an auth config records it.
+	TokenAuthConfig string `json:"tokenAuthConfig,omitempty"`
 	// CredentialExpiresAt is the server-reported expiry, for display only:
 	// serving a token is decided by the server's answer, never by this.
 	CredentialExpiresAt string `json:"credentialExpiresAt,omitempty"`

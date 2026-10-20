@@ -105,6 +105,7 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 		name: {URL: "https://other.example.com", Provenance: clierr.ProvenanceExecLogin}, "prod": {URL: url},
 	}}
 	u := userCheck{userID: "u-abc12", clusterID: "c-1", serverID: url, caSource: "/etc/rancher/ca.pem"}
+	through := userCheck{userID: "u-abc12", authConfig: "corp-ldap", clusterID: "c-1", serverID: url, caSource: "/etc/rancher/ca.pem"}
 	sc := storedCredential{name: name, entry: userNamed}
 	ref := &TokenRef{Kind: TokenKindExt, Name: "token-abc"}
 	created := CreateResult{Outcome: CreateKnown, Kind: TokenKindExt, Ref: ref, UserID: "u-other"}
@@ -221,10 +222,20 @@ func TestNoRemedyBuilderNamesAuthLoginOnAPluginLoginEntry(t *testing.T) {
 			a, b := u.relogin(cfg, name, true)
 			c, d := u.relogin(cfg, "prod", false)
 			e, f := u.relogin(cfg, name, false)
+			g, h := through.relogin(cfg, name, true)
+			i, j := through.relogin(cfg, "prod", false)
+			return []string{a, b, c, d, e, f, g, h, i, j}
+		},
+		"userCheck.entryNameTooLong": func() []string {
+			return append(errText(u.entryNameTooLong(cfg, config.MaxEntryNameLength+1)), errText(through.entryNameTooLong(cfg, config.MaxEntryNameLength+1))...)
+		},
+		"userCheck.authConfigRemedy": func() []string {
+			a, b := through.authConfigRemedy(cfg, name, true)
+			c, d := through.authConfigRemedy(cfg, "prod", false)
+			e, f := through.authConfigRemedy(cfg, name, false)
 			return []string{a, b, c, d, e, f}
 		},
-		"userCheck.entryNameTooLong": func() []string { return errText(u.entryNameTooLong(cfg, config.MaxEntryNameLength+1)) },
-		"userCheck.loginOfNewEntry":  func() []string { return []string{u.loginOfNewEntry(cfg)} },
+		"userCheck.loginOfNewEntry": func() []string { return []string{u.loginOfNewEntry(cfg)} },
 		"userCheck.entryOwnerRefused": func() []string {
 			return append(errText(u.entryOwnerRefused(cfg, name, "u-other", false, true)), errText(u.entryOwnerRefused(cfg, name, "u-other", true, false))...)
 		},

@@ -647,7 +647,9 @@ surfaces `credentialStore: {policy, pinned, inUse, error, conflict}`.
 directory that created it, its kind (which of the four rules below wrote it, so a hit
 requires exactly what that rule binds it to), the entry its call's `--name` identified (or
 none), the call's `--user-id` (which the record's key carries too, so a record serves only
-the user whose key it is under), and what the exec plugin's lookup for that call read, each entry with its
+the user whose key it is under), the call's `--auth-provider` with `--user-id` (the key carries it too,
+as `user-id:<user id>:<auth config>/...`, so a record serves only a call with that auth config), and
+what the exec plugin's lookup for that call read, each entry with its
 `cacheBindingId` (a random per-entry value in `config.yaml`), all read in the same config
 load as the credential and carried to the write. A record made from the identified entry's
 own credential (or signed in after the server rejected it) is bound to that entry alone,
@@ -661,7 +663,13 @@ server (its name when it is one of them, else none; not for the legacy `token` s
 ignores it) and to the setting. For a call with `--user-id` the plugin login entries of the
 identified call's list are those that record the user, and the record of a call that
 identifies none is the owner record: bound exactly to the entries for the URL that record
-the user, to the current server among them and to the setting. "Exactly" means no entry
+the user, to the current server among them and to the setting. With an auth config both lists
+hold the entries that recorded it and the ones that recorded none, never one that recorded
+another, each listed with the auth config it recorded, which a hit compares beside the name and
+the id: an entry that has recorded an auth config since ends the record
+(`config.recordInputs` carries it, so that write moves the binding stamp too). The entries that
+answer as the identified entry's fallback are counted by one function, `answeringGroup`,
+for the plugin's lookup, a hit and the binding's refusal. "Exactly" means no entry
 may be added to or removed from the list, and, for the owner record, none may begin or
 stop recording the user; another user's entries change nothing. A call without `--user-id`
 reads no owner. For the plugin-created login the ids come from its lookup's load under the
@@ -958,19 +966,38 @@ The native surface has no skip-verify flag; only the legacy `rancher token` shim
 `--skip-verify` (kept for Rancher-generated kubeconfigs that pass it verbatim) sets
 `InsecureSkipVerify`, for that client only.
 A call with `--user-id` checks the owner of every token it hands kubectl:
-the create responses' owner (ext `spec.userID`, v3 `userId`), or, after an
-interactive sign-in, one `SelfSubjectReview` the plugin posts over the same
+the create responses' owner (ext `spec.userID`, v3 `userId`), or, when a create
+names none, one `SelfSubjectReview` the plugin posts over the same
 `httpx` client through `/k8s/clusters/<cluster>`, or `/k8s/clusters/local` for a
 call with no `--cluster` (`requestOwner`); the user
 id is part of the cache key (`config.CacheKeyFor`). A call with `--user-id`
 needs no `--name` or `--cluster`: the lookup chooses among the entries that record
 the user (`ownerCredential`), the plugin-created login writes the plugin login entry
-named for the server and the user (`config.ExecLoginEntryNameFor`) and never over an
-entry that records another user, and the token is created with no cluster for a call
-with none. With token reuse on, a call without `--user-id` that reaches several
-plugin login entries is refused before any is read. `auth login` checks a
-pasted token with `provider.Owner`, the same review on the local cluster,
+named for the server, the user and the auth config (`config.ExecLoginEntryNameFor`) and
+never over an entry that records another user or auth config, and the token is created
+with no cluster for a call with none. An interactive sign-in of such a call, with or
+without a cluster, goes through `signInForClusterToken` (the one lane: the
+sign-in's own token, deleted afterwards, is the bearer of an ext create with an
+empty cluster), so every token it hands kubectl comes from a create response
+the plugin checked for the owner and, with `--auth-provider`, for the auth
+config. With token reuse on, a call without `--user-id` that reaches several
+plugin login entries is refused before any is read. `auth login`
+checks a pasted token with `provider.Owner`, the same review on the local cluster,
 and records the owner it names.
+A call with `--user-id` and `--auth-provider` also checks the auth config of every
+token: the principal of an ext create response (`spec.userPrincipal.name`, which begins
+with the auth config, `authConfigOfPrincipal`; a v3 response names none) must name it,
+and a sign-in accepts only an enabled auth config of exactly that name
+(`loginInput.exactAuthConfig`). An entry that recorded none is a candidate after the ones that
+recorded the call's auth config, and the first token created from it for a call that names
+an auth config records the auth config the create reported (`CacheBinding.RecordAuthConfig`):
+one write that sets that one field, under the config lock tried once and never waited for
+(and never under `RANCHER_CLI_CONFIG_NO_LOCK`), and only when the entry's cache binding id
+is still the one the call's load showed, that load did not show its cache writes paused, and
+the entry still records an owner and no auth config. A skipped or failed write changes nothing
+the call hands kubectl, and a later miss writes it. A create that names another auth config
+is recorded the same way and then refused, so a later call without a `--name` goes on to the
+next candidate and one that names the entry is refused before any request.
 On a cache miss, `get-token` resolves a `--cluster` display name to its id
 the way every `--cluster` command does: `steve.ResolveCluster` over the
 steve clusters collection the credential's user can read (a getter that

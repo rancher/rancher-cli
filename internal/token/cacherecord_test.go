@@ -127,7 +127,7 @@ func (r *recordFixture) callTo(name string, terminal bool, notices *bytes.Buffer
 func (r *recordFixture) hit(name string) bool {
 	r.t.Helper()
 	c := tokenCmd{dir: r.dir, store: r.store, anchor: anchorFor(r.dir)}
-	_, _, _, hit := c.probeFlagCache(name, r.srv.URL, "c-test", "", ui.Discard())
+	_, _, _, hit := c.probeFlagCache(name, r.srv.URL, "c-test", "", "", ui.Discard())
 	return hit
 }
 
@@ -285,7 +285,7 @@ func (r *recordFixture) cachedOwner(name string, shim bool) (string, bool) {
 		_, _, res, hit, _ = shimProbeFlagCache(r.dir, config.LegacyCachePrefix+name, r.srv.URL, "c-test", anchorFor(r.dir), ui.Discard())
 	} else {
 		c := tokenCmd{dir: r.dir, store: r.store, anchor: anchorFor(r.dir)}
-		_, _, res, hit = c.probeFlagCache(name, r.srv.URL, "c-test", "", ui.Discard())
+		_, _, res, hit = c.probeFlagCache(name, r.srv.URL, "c-test", "", "", ui.Discard())
 	}
 	if !hit {
 		return "", false

@@ -1,0 +1,73 @@
+# --auth-provider with --user-id end to end, through a pasted token (a v3
+# API key of the Rancher UI is the same): the login records no auth config,
+# the first token the plugin creates from it for a call that names one
+# records the auth config the server reports, the next call is served from
+# a cache slot of that auth config, and rancher kubeconfig then writes
+# --auth-provider after --user-id. A call that names another auth config is
+# refused: before any request when its --name identifies the entry that
+# recorded one, and, for a login that recorded none, after the create, with
+# the token revoked.
+[!kubectl] skip 'kubectl not on PATH'
+
+# A value that is no auth config name is refused before anything is read.
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id e2e-admin --auth-provider openLdapProvider -o json
+jsonquery stderr data.error.code VALIDATION
+stderr 'is not an auth config name'
+
+stdin token.txt
+exec rancher auth login e2e --url $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --token-stdin -o json
+jsonquery stdout data.tokenUserId e2e-admin
+
+# The login recorded no auth config, so the file written from it carries none.
+exec rancher kubeconfig --cluster testcluster
+cp stdout plain.yaml
+jsonquery -yaml plain.yaml users.0.user.exec.args.9 e2e-admin
+! stderr 'auth config'
+
+# The first call that names an auth config creates a token from the login,
+# which the server says was made through local, and records it.
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id e2e-admin --auth-provider local
+cp stdout first.json
+jsonquery stdout kind ExecCredential
+! stdout 'e2e:secret'
+exec rancher auth list-tokens -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout 'data.#(key%"user-id:e2e-admin:local/*").tokenAuthConfig' local
+exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id e2e-admin --auth-provider local
+cmp stdout first.json
+
+# The kubeconfig written now names the auth config the login recorded.
+exec rancher kubeconfig --cluster testcluster
+cp stdout kc.yaml
+jsonquery -yaml kc.yaml users.0.user.exec.args.8 --user-id
+jsonquery -yaml kc.yaml users.0.user.exec.args.9 e2e-admin
+jsonquery -yaml kc.yaml users.0.user.exec.args.10 --auth-provider
+jsonquery -yaml kc.yaml users.0.user.exec.args.11 local
+exec kubectl --kubeconfig kc.yaml get namespaces
+stdout default
+
+# Another auth config: the entry that recorded local is refused before any
+# request when its --name identifies it, and is no candidate otherwise.
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test --user-id e2e-admin --auth-provider corp-ldap -o json
+jsonquery stderr data.error.code AUTH
+stderr 'server entry ''e2e'' holds a login made through auth config ''local'', and this exec entry names --auth-provider ''corp-ldap'''
+stderr 'rancher --config'
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --user-id e2e-admin --auth-provider corp-ldap -o json
+jsonquery stderr data.error.code NOT_FOUND
+stderr '--auth-provider corp-ldap names no enabled auth config on this server'
+! stderr 'rancher --config'
+
+# A login that recorded none is checked on the create: the token was made
+# through local, not corp-ldap, so it is revoked and the call fails, and the
+# entry records local, which later calls that identify it are refused for.
+stdin token.txt
+exec rancher auth login e2e --token-stdin -o json
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test --user-id e2e-admin --auth-provider corp-ldap -o json
+jsonquery stderr data.error.code AUTH
+stderr 'was made through auth config ''local'', not ''corp-ldap'''
+stderr 'the token was revoked'
+! exec rancher auth get-token --server $TEST_RANCHER_URL --cacert $TEST_RANCHER_CACERT --cluster c-test --name e2e-c-test --user-id e2e-admin --auth-provider corp-ldap -o json
+stderr 'server entry ''e2e'' holds a login made through auth config ''local'''
+
+-- token.txt --
+e2e:secret

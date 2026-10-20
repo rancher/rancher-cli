@@ -128,7 +128,16 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", keepsLogin: true}))
 	add("no terminal, with --user-id", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
 		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12"}))
+	add("no terminal, with --user-id and an auth config", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+		noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", authConfig: "corp-ldap"}))
+	add("no terminal, --user-id and an auth config without --name", nt.withNoTerminalRemedies(interactiveLoginRequired("local", "x"),
+		noTerminalCall{clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", authConfig: "corp-ldap", caCert: "/etc/rancher/ca.pem", keepsLogin: true}))
+	add("no terminal, the current server's login serves the call through the auth config", tokenCmd{dir: logged, store: config.NewFileStore(logged)}.withNoTerminalRemedies(
+		interactiveLoginRequired("local", "x"), noTerminalCall{name: "prod-c-1", clusterID: "c-1", serverURL: "https://r.example.com", userID: "u-abc12", authConfig: "corp-ldap"}))
 	add("a plugin login entry name too long", userCheck{userID: "u-abc12", clusterID: "c-1", serverID: "https://r.example.com", caSource: "/etc/rancher/ca.pem"}.entryNameTooLong(cfg, config.MaxEntryNameLength+1))
+	add("a plugin login entry name too long, with an auth config", userCheck{userID: "u-abc12", authConfig: "corp-ldap", clusterID: "c-1", serverID: "https://r.example.com", caSource: "/etc/rancher/ca.pem"}.entryNameTooLong(cfg, config.MaxEntryNameLength+1))
+	add("several plugin login entries of one user and an auth config", pluginEntriesError("https://r.example.com", pluginNames, cfg, "prod", userCheck{userID: "u-abc12", authConfig: "corp-ldap", clusterID: "c-1", serverID: "https://r.example.com"}))
+	add("several plugin login entries of one user and an auth config, no entry named", pluginEntriesError("https://r.example.com", pluginNames, cfg, "", userCheck{userID: "u-abc12", authConfig: "corp-ldap", clusterID: "c-1", serverID: "https://r.example.com"}))
 	for name, ca := range map[string]string{"": "", ", a CA path": "/etc/rancher/ca.pem", ", an inline CA": "-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"} {
 		u := userCheck{userID: "u-abc12", clusterID: "c-1", serverID: "https://r.example.com", caSource: ca}
 		add("another owner's login in a user entry"+name, u.entryOwnerRefused(cfg, "prod", "u-other", false, true))
@@ -140,6 +149,18 @@ func execPluginRemedyTexts(t *testing.T) map[string]string {
 			storedCredential{name: "prod", entry: cfg.Servers["prod"]}))
 		add("a created token of another owner, from a plugin login entry"+name, u.checkCreatedOwner(t.Context(), cfg, created, gone,
 			storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}))
+		through := userCheck{userID: "u-abc12", authConfig: "corp-ldap", clusterID: "c-1", serverID: "https://r.example.com", caSource: ca}
+		add("another owner's login in a user entry, through an auth config"+name, through.entryOwnerRefused(cfg, "prod", "u-other", false, true))
+		add("another owner's plugin login entry, through an auth config"+name, through.entryOwnerRefused(cfg, "exec-login-r.ex", "u-other", true, true))
+		add("another auth config's login in a user entry"+name, through.entryAuthConfigRefused(cfg, "prod", "openldap", false, true))
+		add("another auth config's plugin login entry"+name, through.entryAuthConfigRefused(cfg, "exec-login-r.ex", "openldap", true, true))
+		add("another auth config recorded by a plugin login entry"+name, through.entryAuthConfigRefused(cfg, "exec-login-r.ex", "openldap", true, false))
+		other := CreateResult{Outcome: CreateKnown, Kind: TokenKindExt, Ref: &TokenRef{Kind: TokenKindExt, Name: "token-abc"}, UserID: "u-abc12", AuthConfig: "openldap"}
+		otherGone := &freshToken{create: other, cleanup: func(context.Context) RevokeOutcome { return RevokeOutcome{Result: ResultFailed, Error: "500"} }}
+		add("a created token of another auth config"+name, through.refuseOtherAuthConfig(t.Context(), cfg, other, otherGone, storedCredential{name: "prod", entry: cfg.Servers["prod"]}))
+		add("a created token of another auth config, from a plugin login entry"+name, through.refuseOtherAuthConfig(t.Context(), cfg, other, otherGone,
+			storedCredential{name: "exec-login-r.ex", entry: cfg.Servers["exec-login-r.ex"]}))
+		add("a created token that names no auth config"+name, through.refuseNoAuthConfig(t.Context(), other, otherGone, storedCredential{name: "prod", entry: cfg.Servers["prod"]}))
 		unscoped := userCheck{userID: "u-abc12", serverID: "https://r.example.com", caSource: ca}
 		add("another owner's login in a user entry, no cluster"+name, unscoped.entryOwnerRefused(cfg, "prod", "u-other", false, true))
 		add("another owner's plugin login entry, no cluster"+name, unscoped.entryOwnerRefused(cfg, "exec-login-r.ex", "u-other", true, true))
@@ -223,21 +244,23 @@ func ExecPluginRemedyTextsForTest(t *testing.T) map[string]string {
 	return execPluginRemedyTexts(t)
 }
 
-// TestPluginLoginEntryRemediesNeverLogInAndRemoveOnlyAnotherUsersLogin
+// TestPluginLoginEntryRemediesNeverLogInAndRemoveOnlyALoginThatCannotAnswer
 // asserts no remedy names auth login on a plugin login entry, whose name
 // auth login refuses, and none names auth logout or config delete-server
 // on one unless it is the refusal of a call whose --name identifies that
 // entry (or that chose it by its recorded owner) when the entry holds
-// another user's login: the entry cannot answer the call, and removing it
-// is the way to the call's own. Every other remedy leaves a plugin login
-// entry alone, since it may be another user's login that their
-// kubeconfigs use.
-func TestPluginLoginEntryRemediesNeverLogInAndRemoveOnlyAnotherUsersLogin(t *testing.T) {
+// another user's login, or one made through another auth config than the
+// call's: the entry cannot answer the call, and removing it is the way to
+// the call's own. Every other remedy leaves a plugin login entry alone,
+// since it may be another user's login that their kubeconfigs use.
+func TestPluginLoginEntryRemediesNeverLogInAndRemoveOnlyALoginThatCannotAnswer(t *testing.T) {
 	t.Parallel()
 	loginRE := regexp.MustCompile(`rancher auth login '?` + regexp.QuoteMeta(config.ExecLoginPrefix))
 	removeRE := regexp.MustCompile(`rancher (?:auth logout|config delete-server) '?` + regexp.QuoteMeta(config.ExecLoginPrefix))
 	removes := func(name string) bool {
-		return strings.HasPrefix(name, "another owner") || strings.HasPrefix(name, "a created token of another owner, from a plugin login entry")
+		return strings.HasPrefix(name, "another owner") || strings.HasPrefix(name, "another auth config") ||
+			strings.HasPrefix(name, "a created token of another owner, from a plugin login entry") ||
+			strings.HasPrefix(name, "a created token of another auth config, from a plugin login entry")
 	}
 	for name, s := range execPluginRemedyTexts(t) {
 		expanded := clierr.ExpandRemedies(s, "")

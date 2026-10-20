@@ -62,6 +62,9 @@ type noTerminalCall struct {
 	// userID is the call's --user-id: the login and the sign-in the
 	// remedies name are that user's.
 	userID string
+	// authConfig is the call's --auth-provider with --user-id: the login
+	// and the sign-in the remedies name are made through it.
+	authConfig string
 }
 
 // withNoTerminalRemedies is the exec plugin's form of that refusal. kubectl
@@ -134,6 +137,10 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 	of, signIn := "", "sign in"
 	if call.userID != "" {
 		of, signIn = " of Rancher user "+clierr.ShellQuote(call.userID), "sign in as "+clierr.ShellQuote(call.userID)
+		if call.authConfig != "" {
+			through := " through auth config " + clierr.ShellQuote(call.authConfig)
+			of, signIn = of+" made"+through, signIn+through
+		}
 	}
 	msg := fmt.Sprintf("%s; to log in without one, pipe an API token%s to %s", head, of, login.Text())
 	if choice != "" {
@@ -170,7 +177,8 @@ func (t tokenCmd) noTerminalError(cause error, call noTerminalCall, code, head, 
 // directory's current server and its login, would give the call a
 // kubeconfig for the right server and user: the current server answers for
 // the call's URL and holds a login, and, for a call with --user-id, that
-// login records the call's user. A store that cannot be read says no.
+// login records the call's user and, for a call with an auth config, that
+// auth config. A store that cannot be read says no.
 func (t tokenCmd) currentLoginServes(cfg *config.Config, call noTerminalCall) bool {
 	if cfg == nil || t.store == nil {
 		return false
@@ -180,6 +188,11 @@ func (t tokenCmd) currentLoginServes(cfg *config.Config, call noTerminalCall) bo
 		return false
 	}
 	if call.userID != "" && s.TokenUserID != call.userID {
+		return false
+	}
+	// A login that recorded no auth config does not count: create kubeconfig
+	// uses it without the plugin's check of the token's auth config.
+	if call.authConfig != "" && s.TokenAuthConfig != call.authConfig {
 		return false
 	}
 	tok, err := t.store.GetToken(config.ServerRef{Name: cfg.CurrentServer, URL: s.URL})
@@ -260,6 +273,13 @@ func (l LoginRemedy) Text() string {
 		s += ", then " + l.Then
 	}
 	return s
+}
+
+// signIn is the sign-in through authConfig that logs in the same entry as
+// the piped login does: the command without --token-stdin and with
+// --auth-provider.
+func (l LoginRemedy) signIn(authConfig string) string {
+	return strings.TrimSuffix(l.Command, " --token-stdin") + " --auth-provider " + clierr.ShellQuote(authConfig)
 }
 
 // Hint is the login when it runs as written, "" otherwise: a hint is a

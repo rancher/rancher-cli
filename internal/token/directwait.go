@@ -288,13 +288,16 @@ func newFreshToken(created CreateResult, client *http.Client, base, bearer strin
 // happened to the token the invocation had already created.
 type directWaitDetails struct {
 	Fate *clierr.TokenFate `json:"clusterToken,omitempty"`
+	// unscoped says the token is for Rancher itself, which the text calls a
+	// token, not a cluster token.
+	unscoped bool
 }
 
 func (d directWaitDetails) TextDetails() []string {
 	if d.Fate == nil || d.Fate.Cleanup == nil {
 		return nil
 	}
-	line := "cluster token cleanup: " + string(d.Fate.Cleanup.Result)
+	line := clusterTokenNoun(!d.unscoped) + " cleanup: " + string(d.Fate.Cleanup.Result)
 	if d.Fate.Ref != nil {
 		line += " (" + d.Fate.Ref.String() + ")"
 	}

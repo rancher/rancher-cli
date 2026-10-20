@@ -200,6 +200,19 @@ func replacedUserWarning(name, was, now string) []string {
 	return []string{"server entry " + name + " is now logged in as user " + now + "; it was logged in as user " + was}
 }
 
+// replacedAuthConfigWarning is the warning of a login that leaves a server
+// entry logged in through another auth config than the one its stored login
+// recorded: the two auth config names, in a list of one. Nothing is said for
+// an entry that had no stored login, for the same auth config, or when
+// either is unknown (a pasted token records none). A login that changes the
+// user too gets both warnings, one line each.
+func replacedAuthConfigWarning(name, was, now string) []string {
+	if was == "" || now == "" || was == now {
+		return nil
+	}
+	return []string{"server entry " + name + " is now logged in through auth config " + now + "; it was logged in through auth config " + was}
+}
+
 func (loginCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:         "auth login",
@@ -600,7 +613,7 @@ func (l loginCmd) authenticateAndStore(
 	}
 	out, perr := config.PersistLoginCredential(ctx, l.dir, config.PersistLoginInput{
 		Name: name, CanonicalURL: serverURL, CAFromEnvironment: viaVariable,
-		Provenance: cred.Provenance, TokenRef: cred.Ref, TokenUserID: cred.UserID,
+		Provenance: cred.Provenance, TokenRef: cred.Ref, TokenUserID: cred.UserID, TokenAuthConfig: cred.AuthConfig,
 		Bearer: bearer, ExpiresAt: cred.ExpiresAt,
 		Policy: policy, ObservedDeclaration: observedDeclaration,
 		Declaration:  config.DeclarationFor(observedDeclaration, requested, policy),
@@ -636,6 +649,7 @@ func (l loginCmd) authenticateAndStore(
 	persisted := perr == nil
 	if persisted {
 		st.Warnings = append(st.Warnings, replacedUserWarning(name, out.ReplacedUserID, cred.UserID)...)
+		st.Warnings = append(st.Warnings, replacedAuthConfigWarning(name, out.ReplacedAuthConfig, cred.AuthConfig)...)
 	}
 	if perr != nil {
 		if !errors.Is(perr, config.ErrTokenStoreUnsupported) {
@@ -687,7 +701,7 @@ func (l loginCmd) authenticateAndStore(
 	res := runtime.Result{Kind: "LoginResult", Data: map[string]any{
 		"server": name, "url": serverURL, "currentServer": currentServer, "added": added, "verified": verified,
 		"residualTokens": residual, "provenance": string(cred.Provenance), "tokenUserId": cred.UserID,
-		"retiredTokens": retired,
+		"tokenAuthConfig": cred.AuthConfig, "retiredTokens": retired,
 	}}
 	res.Warnings = st.Warnings
 	var lines []string

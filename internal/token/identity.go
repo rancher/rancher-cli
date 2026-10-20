@@ -112,6 +112,11 @@ type CreateResult struct {
 	// UserID is the owner the create response reported (ext spec.userID, v3
 	// userId); empty when the response carried none.
 	UserID string
+	// AuthConfig is the name of the auth config the token was made through,
+	// as the principal of an ext create response named it; empty when the
+	// response carried none or an unreadable one, and for a v3 create, whose
+	// provider name can equal another auth config's name.
+	AuthConfig string
 	// ClusterName is the scope the response reported (ext spec.clusterName,
 	// v3 clusterId), for the fail-closed check.
 	ClusterName string
@@ -156,6 +161,7 @@ func classifyCreate(resp *http.Response, body []byte, err error, createdAt strin
 	name, bearer, expires := extractIdentity(kind, probe)
 	r.ExpiresAt = expires
 	r.UserID, r.ClusterName = extractOwnerAndScope(kind, probe)
+	r.AuthConfig = extractAuthConfig(kind, probe)
 	if kind == TokenKindV3 {
 		r.CreatedTS, r.TTL = extractCreatedTSAndTTL(probe)
 	}
@@ -226,6 +232,42 @@ func extractOwnerAndScope(kind TokenKind, probe map[string]json.RawMessage) (use
 		return spec.UserID, spec.ClusterName
 	}
 	return str(probe["userId"]), str(probe["clusterId"])
+}
+
+// extractAuthConfig reads the auth config an ext token was made through from
+// the response's spec.userPrincipal.name; a v3 response gives none.
+func extractAuthConfig(kind TokenKind, probe map[string]json.RawMessage) string {
+	if kind != TokenKindExt {
+		return ""
+	}
+	var spec struct {
+		UserPrincipal struct {
+			Name string `json:"name"`
+		} `json:"userPrincipal"`
+	}
+	_ = json.Unmarshal(probe["spec"], &spec)
+	return authConfigOfPrincipal(spec.UserPrincipal.Name)
+}
+
+// authConfigOfPrincipal is the auth config named by the prefix of a
+// principal name, which Rancher writes as <auth config>_<type>://<id>, and
+// as local://<id> for the local auth config. Anything that does not parse
+// that way, or names an empty auth config, gives "": the principal's
+// provider is never a substitute, since a provider name can equal the name
+// of another auth config.
+func authConfigOfPrincipal(name string) string {
+	head, _, ok := strings.Cut(name, ":")
+	if !ok {
+		return ""
+	}
+	config, _, hasType := strings.Cut(head, "_")
+	switch {
+	case hasType:
+		return config
+	case head == "local":
+		return "local"
+	}
+	return ""
 }
 
 // maxCreatedExpiryMs is the latest expiry, in epoch milliseconds, the client

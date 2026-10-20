@@ -93,7 +93,9 @@ the keychain), with the keychain reachable, then run the command again.
   or set `RANCHER_CLI_URL` + `RANCHER_CLI_TOKEN` env vars (no stored config needed).
   A piped token is VERIFIED against the server before it is stored: a bad
   token or unreachable server fails the login and stores nothing. The check
-  also records the token's owner (`tokenUserId` in the `-o json` result). To stage a
+  also records the token's owner (`tokenUserId` in the `-o json` result;
+  `tokenAuthConfig` is empty for a pasted token until a kubectl call that names
+  an auth config records it). To stage a
   credential without the round-trip (e.g. the server is down), add
   `--no-verify` - the result then reports `"verified": false` under `-o json`
   and says "not verified" in text. Behind a corporate proxy, set
@@ -110,7 +112,8 @@ the keychain), with the keychain reachable, then run the command again.
 - Kubeconfigs that use the exec plugin log in once per cluster by default.
   `rancher config set-token-reuse on` lets the plugin keep one login
   credential per server (entry `exec-login-<host>`, with `-<user id>` after it
-  for a call with `--user-id`; provenance `execLogin`)
+  for a call with `--user-id` and `-<auth config>` after that when it names one;
+  provenance `execLogin`)
   and create cluster tokens from it silently; `off` restores the default
   without deleting it. `rancher config status` lists every entry whose
   CLI-created tokens are still live, each with a four-command recovery
@@ -489,8 +492,19 @@ back with `rancher config use-server <previous>`), then
 `rancher kubeconfig --cluster <id>`.
 The exec entry also carries `--user-id <id>` when that login records its
 owner: the plugin then hands kubectl only that user's tokens. Rancher writes
-the form `auth get-token --server <url> [--cluster <id>] --user-id <id>`
-with no `--name`; `--cluster` may be left out for a token for Rancher itself.
+the form `auth get-token --server <url> [--cluster <id>] --user-id <id>
+[--auth-provider <auth config>]` with no `--name`; `--cluster` may be left out
+for a token for Rancher itself. With `--auth-provider` beside `--user-id` the
+value must be an auth config's exact name (`VALIDATION` for a provider type,
+`NOT_FOUND` before any prompt for a sign-in when none is named so), the plugin
+reads the entries that record that auth config first and then the ones that
+record none, never one that records another, and hands kubectl only tokens made
+through it: an entry whose login was made through another is refused before
+any request (`AUTH`) when its `--name` identifies it, and a token created
+through another auth config, or one whose response names none, is revoked
+(`AUTH`). The first token created from an entry that recorded none records the
+auth config; `rancher kubeconfig` writes `--auth-provider` when the login records
+one.
 With no `--name` (or one that identifies no entry) the plugin reads the
 entries for the URL that record that user - user entries first, the current
 server first, then by name, the plugin's own login entries only with token
@@ -500,12 +514,16 @@ identifies when that login records another user, revokes a created
 token whose owner is not the user (`AUTH`; `GENERIC` when the response
 names none), fails closed on a Rancher without `ext.cattle.io`
 (`CAPABILITY_UNSUPPORTED`), and after an interactive sign-in checks the
-user with one `SelfSubjectReview`. The plugin-created login (token reuse on)
-writes `exec-login-<host>-<user id>`, never over an entry of another user. The
-refusal of an entry whose login records another user names a login of a user
-entry with `--token-stdin`, or, for the plugin's own login entry, its removal
+user from the sign-in's token create, with one `SelfSubjectReview` only when it
+names no owner. The plugin-created login (token reuse on)
+writes `exec-login-<host>-<user id>` (`-<auth config>` after it with an auth
+config), never over an entry of another user or auth config. The
+refusal of an entry whose login records another user or auth config names a login
+of a user entry with `--token-stdin` (a sign-in through the auth config with
+`auth login <entry> --auth-provider <auth config>` too, for another auth config),
+or, for the plugin's own login entry, its removal
 with `auth logout` and `config delete-server`. Without a terminal the error
-names a token of that user piped to `auth login`. With no `--name` no remedy
+names a token of that user, made through the call's auth config, piped to `auth login`. With no `--name` no remedy
 names `--config`. With token reuse on, a call without `--user-id` is refused
 (`AMBIGUOUS_SELECTION`) when no user entry answers and the URL has more than
 one plugin login entry, since there is one per user. A notice says
@@ -516,8 +534,8 @@ Cached credentials: `rancher auth list-tokens` (a TOKEN column names each
 record's token) / `rancher auth delete-token` (deletes the cache records,
 then revokes the cluster tokens the plugin created and recorded; one that
 could not be revoked stays valid until `rancher delete token <name>`, or
-expiry; the plugin's default interactive sign-in (`--cluster`, token reuse
-off) creates an ext cluster token its user can delete; on a server without ext
+expiry; the plugin's default interactive sign-in (`--cluster` or `--user-id`,
+token reuse off) creates an ext token its user can delete; on a server without ext
 tokens its cluster token is a cluster-scoped v3 token the CLI cannot delete,
 an administrator can: `rancher delete management-token <name> --apply --yes
 --allow-deprecated`; a sign-in token that cannot be deleted (forced single

@@ -298,3 +298,39 @@ func TestConfigStatusListsEveryPausedEntryWithItsReason(t *testing.T) {
 		assert.NotContains(t, res.Text, "cacheWritesPaused")
 	})
 }
+
+// TestUpdateServerURLClearsTheRecordedAuthConfigAndACAOnlyUpdateKeepsIt
+// asserts the entry write of a URL change leaves the entry no auth config
+// - it was made through a login of the old address - and a CA-only update,
+// which changes no credential, keeps it with the owner.
+func TestUpdateServerURLClearsTheRecordedAuthConfigAndACAOnlyUpdateKeepsIt(t *testing.T) {
+	record := func(t *testing.T, dir string) {
+		t.Helper()
+		cfg, err := config.Load(config.FilePath(dir))
+		require.NoError(t, err)
+		s := cfg.Servers["prod"]
+		s.TokenAuthConfig = "corp-ldap"
+		cfg.Servers["prod"] = s
+		require.NoError(t, cfg.Write())
+	}
+	t.Run("a URL change", func(t *testing.T) {
+		dir, _ := pausedEntryDir(t)
+		record(t, dir)
+		_, err := newUpdateServerCmd(dir).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"url": "https://moved.example.com"}, Pos: []string{"prod"}}, nil)
+		require.NoError(t, err)
+		cfg, lerr := config.Load(config.FilePath(dir))
+		require.NoError(t, lerr)
+		assert.Empty(t, cfg.Servers["prod"].TokenAuthConfig)
+		assert.Empty(t, cfg.Servers["prod"].TokenUserID)
+	})
+	t.Run("a CA-only update", func(t *testing.T) {
+		dir, _ := pausedEntryDir(t)
+		record(t, dir)
+		_, err := newUpdateServerCmd(dir).Execute(t.Context(), cmdtest.Input{Str: map[string]string{"cacert": cmdtest.CAPem2}, Pos: []string{"prod"}}, nil)
+		require.NoError(t, err)
+		cfg, lerr := config.Load(config.FilePath(dir))
+		require.NoError(t, lerr)
+		assert.Equal(t, "corp-ldap", cfg.Servers["prod"].TokenAuthConfig)
+		assert.Equal(t, "u-1", cfg.Servers["prod"].TokenUserID)
+	})
+}

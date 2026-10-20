@@ -245,7 +245,7 @@ func renderFields(fields []field, indent string, text *strings.Builder) map[stri
 	return data
 }
 
-// entrySection is the text form of entryReport: provenance, owner, expiry,
+// entrySection is the text form of entryReport: provenance, owner, auth config, expiry,
 // logged-out state, the current token, and one section per superseded
 // record keyed by the token, each with state, last attempt, and recovery.
 func entrySection(s config.Server) []field {
@@ -255,6 +255,9 @@ func entrySection(s config.Server) []field {
 	}
 	if s.TokenUserID != "" {
 		out = append(out, field{"tokenUserId", s.TokenUserID})
+	}
+	if s.TokenAuthConfig != "" {
+		out = append(out, field{"tokenAuthConfig", s.TokenAuthConfig})
 	}
 	if s.CredentialExpiresAt != "" {
 		out = append(out, field{"credentialExpiresAt", s.CredentialExpiresAt})

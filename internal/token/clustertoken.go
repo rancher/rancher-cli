@@ -31,7 +31,11 @@ var errServerTooOldForReuse = errors.New("this Rancher serves neither ext.cattle
 // may follow a committed create).
 func createV3ClusterToken(ctx context.Context, client *http.Client, base, bearer, clusterID, description string) (CreateResult, error) {
 	body := map[string]any{"type": "token", "description": description, "clusterId": clusterID}
-	r, resp, err := postTokenCreate(ctx, client, base+normanTokensPath, bearer, body, TokenKindV3, description, "creating cluster token")
+	verb := "creating cluster token"
+	if clusterID == "" {
+		verb = "creating token"
+	}
+	r, resp, err := postTokenCreate(ctx, client, base+normanTokensPath, bearer, body, TokenKindV3, description, verb)
 	if err != nil {
 		return r, err
 	}

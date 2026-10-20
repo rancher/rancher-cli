@@ -34,6 +34,8 @@ type ownerFixture struct {
 
 	mu       sync.Mutex
 	requests []seenRequest
+	// hook, when set, sees every request the fixture Rancher receives.
+	hook func(r *http.Request)
 }
 
 // readRecorder is a store that records the entries whose stored login was
@@ -70,8 +72,12 @@ func newOwnerFixture(t *testing.T, reuse bool, opts testrancher.Options) *ownerF
 	opts.SelfSubjectReviews = true
 	opts.RequestHook = func(r *http.Request) {
 		x.mu.Lock()
-		defer x.mu.Unlock()
 		x.requests = append(x.requests, seenRequest{r.Method, r.URL.Path, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")})
+		hook := x.hook
+		x.mu.Unlock()
+		if hook != nil {
+			hook(r)
+		}
 	}
 	x.f = newFacadeWithClusters(&opts)
 	x.srv = httptest.NewServer(x.f)
@@ -93,7 +99,7 @@ func (x *ownerFixture) pluginEntry() string { return config.ExecLoginEntryName(x
 // pluginEntryOf is the name of the plugin login entry the plugin creates
 // for a call with --user-id userID.
 func (x *ownerFixture) pluginEntryOf(userID string) string {
-	return config.ExecLoginEntryNameFor(x.serverID(), userID)
+	return config.ExecLoginEntryNameFor(x.serverID(), userID, "")
 }
 
 // entry writes a server entry at the fixture's URL recording owner as its
@@ -181,7 +187,10 @@ func (x *ownerFixture) callIn(cluster, name, userID, signIn string, notices *byt
 	if signIn != "" {
 		p = ui.New(notices, newLineReader(signIn, "pw-"+signIn), false, true)
 	}
-	s := map[string]string{"server": x.srv.URL, "auth-provider": "localProvider"}
+	s := map[string]string{"server": x.srv.URL}
+	if userID == "" {
+		s["auth-provider"] = "localProvider"
+	}
 	if cluster != "" {
 		s["cluster"] = cluster
 	}
@@ -213,7 +222,7 @@ func (x *ownerFixture) cached(name, userID string) bool {
 // cachedIn is cached for the slot of cluster.
 func (x *ownerFixture) cachedIn(cluster, name, userID string) bool {
 	x.t.Helper()
-	_, _, err := x.store.GetCachedCred(config.CacheKeyFor(name, x.serverID(), cluster, userID), anchorFor(x.dir))
+	_, _, err := x.store.GetCachedCred(config.CacheKeyFor(name, x.serverID(), cluster, userID, ""), anchorFor(x.dir))
 	return err == nil
 }
 

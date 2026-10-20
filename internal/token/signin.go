@@ -31,17 +31,28 @@ const (
 	grantCluster = "an administrator can grant the user access to cluster %s, or " + correctCluster
 )
 
+// clusterTokenNoun is what a message calls the token the sign-in creates: a
+// cluster token when it is scoped to a cluster, else a token for Rancher
+// itself.
+func clusterTokenNoun(scoped bool) string {
+	if scoped {
+		return "cluster token"
+	}
+	return "token"
+}
+
 // signInTokenError words a rejection of the token this sign-in just created
-// (the lookup, or the Norman create). The sign-in keeps no login and token
-// reuse plays no part in it, so the text names neither.
-func signInTokenError(err error) error {
+// (the lookup, or the Norman create), scoped to a cluster or not. The
+// sign-in keeps no login and token reuse plays no part in it, so the text
+// names neither.
+func signInTokenError(err error, scoped bool) error {
 	switch {
 	case errors.Is(err, errCredentialUnauthorized):
 		return clierr.New(clierr.CodeAuth, "the server rejected the token this sign-in just created: "+clierr.From(err).Message).WithCause(err)
 	case errors.Is(err, errCredentialForbidden):
 		return clierr.New(clierr.CodeRBAC, "the token this sign-in just created cannot create tokens: "+clierr.From(err).Message).WithCause(err)
 	case errors.Is(err, errServerTooOldForReuse):
-		return clierr.New(clierr.CodeGeneric, "this Rancher serves neither ext.cattle.io nor a v3 token create; the sign-in cannot create a cluster token").WithCause(err)
+		return clierr.New(clierr.CodeGeneric, "this Rancher serves neither ext.cattle.io nor a v3 token create; the sign-in cannot create a "+clusterTokenNoun(scoped)).WithCause(err)
 	}
 	return err
 }
@@ -52,15 +63,19 @@ func lookupRefusal(err error) signInRefusal {
 	if clierr.AsNotFound(err) != nil {
 		return signInRefusal{err: err, retry: correctCluster}
 	}
-	return signInRefusal{err: signInTokenError(err)}
+	return signInRefusal{err: signInTokenError(err, true)}
 }
 
-// createRefusal words a failure of the cluster token create for cluster. A
-// create answers 400 for a cluster that does not exist and 403 for one the
-// user may not access: Rancher's own refusal, which signing in again
-// repeats, so the recovery says who can change it. The status decides; the
-// Norman create keeps the token wording in its message.
+// createRefusal words a failure of the cluster token create for cluster, or,
+// with no cluster, of the create of a token for Rancher itself. A create
+// answers 400 for a cluster that does not exist and 403 for one the user may
+// not access: Rancher's own refusal, which signing in again repeats, so the
+// recovery says who can change it. The status decides; the Norman create
+// keeps the token wording in its message.
 func createRefusal(err error, cluster string, ext bool) signInRefusal {
+	if cluster == "" {
+		return unscopedCreateRefusal(err, ext)
+	}
 	quoted := clierr.ShellQuote(cluster)
 	status, _ := clierr.HTTPStatus(err)
 	if ext {
@@ -74,13 +89,37 @@ func createRefusal(err error, cluster string, ext bool) signInRefusal {
 	}
 	switch {
 	case errors.Is(err, errServerTooOldForReuse):
-		return signInRefusal{err: signInTokenError(err), retry: "this command needs Rancher " + config.MinRancherVersion + " or later"}
+		return signInRefusal{err: signInTokenError(err, true), retry: "this command needs Rancher " + config.MinRancherVersion + " or later"}
 	case status == http.StatusForbidden:
-		return signInRefusal{err: signInTokenError(err), retry: fmt.Sprintf(grantCluster, quoted)}
+		return signInRefusal{err: signInTokenError(err, true), retry: fmt.Sprintf(grantCluster, quoted)}
 	case status == http.StatusBadRequest:
-		return signInRefusal{err: signInTokenError(err), retry: correctCluster}
+		return signInRefusal{err: signInTokenError(err, true), retry: correctCluster}
 	}
-	return signInRefusal{err: signInTokenError(err)}
+	return signInRefusal{err: signInTokenError(err, true)}
+}
+
+// unscopedCreateRefusal is createRefusal for a token for Rancher itself: no
+// cluster is named, so no recovery names one. A 403 is the user's missing
+// permission to create tokens, which an administrator grants.
+func unscopedCreateRefusal(err error, ext bool) signInRefusal {
+	status, _ := clierr.HTTPStatus(err)
+	const grant = "an administrator can allow the user to create tokens"
+	if ext {
+		text := "Rancher refused to create a token for this user: " + rancherMessage(err)
+		switch status {
+		case http.StatusForbidden:
+			return signInRefusal{err: clierr.New(clierr.CodeRBAC, text).WithCause(err), retry: grant}
+		case http.StatusBadRequest:
+			return signInRefusal{err: clierr.New(clierr.From(err).Code, text).WithCause(err)}
+		}
+	}
+	switch {
+	case errors.Is(err, errServerTooOldForReuse):
+		return signInRefusal{err: signInTokenError(err, false), retry: "this command needs Rancher " + config.MinRancherVersion + " or later"}
+	case status == http.StatusForbidden:
+		return signInRefusal{err: signInTokenError(err, false), retry: grant}
+	}
+	return signInRefusal{err: signInTokenError(err, false)}
 }
 
 // extCreateVerb leads the text of a failed ext create (CreateDerivedToken).
@@ -109,7 +148,7 @@ func failSignInAcquire(ae *AcquireError) error {
 		// token exists, so the error is returned as it is.
 		return ae.Err
 	}
-	return failSignIn(ae.Err, clierr.StageAuthentication, ae.Marker, login, nil, "", "")
+	return failSignIn(ae.Err, clierr.StageAuthentication, ae.Marker, login, nil, "", "", "")
 }
 
 // failSignIn is the error of a failed sign-in for a cluster token: the
@@ -117,11 +156,12 @@ func failSignInAcquire(ae *AcquireError) error {
 // the plugin's sign-in with token reuse on returns. Either fate may be nil.
 // userID is the user the cluster token belongs to, "" when unknown. retry
 // is the way on after the leftover tokens, "" for signInAgain; the recovery
-// is never empty.
-func failSignIn(primary error, stage clierr.LoginStage, marker string, login, cluster *clierr.TokenFate, userID, retry string) *clierr.Error {
+// is never empty. clusterName is the cluster the token is scoped to, "" for
+// a token for Rancher itself, which the recovery calls a token.
+func failSignIn(primary error, stage clierr.LoginStage, marker string, login, cluster *clierr.TokenFate, userID, retry, clusterName string) *clierr.Error {
 	ce, pf := primaryOf(primary)
 	d := clierr.LoginFailureDetails{Primary: pf, Stage: stage, OperationMarker: marker,
-		SessionToken: login, ClusterToken: cluster, Recovery: signInRecovery(login, cluster, marker, userID, retry)}
+		SessionToken: login, ClusterToken: cluster, Recovery: signInRecovery(login, cluster, marker, userID, retry, clusterName)}
 	return compose(ce, d)
 }
 
@@ -154,7 +194,7 @@ func (si clusterSignIn) withSignInFate(err error, warnings []string) error {
 			primary.Details = details
 		}
 	}
-	return failSignIn(primary, clierr.StageClusterToken, si.Marker, si.Login, cluster, si.Cluster.UserID, "").WithWarnings(warnings...)
+	return failSignIn(primary, clierr.StageClusterToken, si.Marker, si.Login, cluster, si.Cluster.UserID, "", si.Cluster.ClusterName).WithWarnings(warnings...)
 }
 
 // clusterFate is the cluster token's fate at creation, with no cleanup
@@ -184,7 +224,7 @@ func (si clusterSignIn) warning() string {
 
 // signInRecovery is the recovery text of a failed sign-in: how each token it
 // could not delete ends, then retry, or signInAgain when retry is empty.
-func signInRecovery(login, cluster *clierr.TokenFate, marker, userID, retry string) string {
+func signInRecovery(login, cluster *clierr.TokenFate, marker, userID, retry, clusterName string) string {
 	if retry == "" {
 		retry = signInAgain
 	}
@@ -192,7 +232,7 @@ func signInRecovery(login, cluster *clierr.TokenFate, marker, userID, retry stri
 	for _, t := range []struct {
 		noun string
 		f    *clierr.TokenFate
-	}{{loginTokenNoun(login), login}, {"cluster token", cluster}} {
+	}{{loginTokenNoun(login), login}, {clusterTokenNoun(clusterName != ""), cluster}} {
 		if cleanFate(t.f) {
 			continue
 		}

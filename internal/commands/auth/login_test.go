@@ -2867,9 +2867,9 @@ func TestLoginRejectsExecLoginPrefix(t *testing.T) {
 }
 
 // TestLoginPersistsProvenanceAndTokenRefMetadataFirst asserts a provider
-// login writes the entry's provenance, tokenRef, owner, and expiry in the
-// entry write that precedes the credential commit, returns them in the
-// result, and never changes CurrentServer.
+// login writes the entry's provenance, tokenRef, owner, auth config and
+// expiry in the entry write that precedes the credential commit, returns
+// them in the result, and never changes CurrentServer.
 func TestLoginPersistsProvenanceAndTokenRefMetadataFirst(t *testing.T) {
 	t.Parallel()
 	f := testrancher.New(testrancher.Options{Users: []testrancher.User{{Name: "alice", Password: "pw", UserID: "user-alice"}}})
@@ -2887,6 +2887,8 @@ func TestLoginPersistsProvenanceAndTokenRefMetadataFirst(t *testing.T) {
 	require.NoError(t, err)
 	got := cfg.Servers["prod"]
 	assert.Equal(t, clierr.ProvenanceDerived, got.Provenance)
+	assert.NotEmpty(t, got.TokenAuthConfig, "the login records the auth config its token was made through")
+	assert.Equal(t, got.TokenAuthConfig, res.Data.(map[string]any)["tokenAuthConfig"])
 	require.NotNil(t, got.TokenRef)
 	assert.Equal(t, clierr.TokenKindExt, got.TokenRef.Kind)
 	assert.Equal(t, "user-alice", got.TokenUserID)

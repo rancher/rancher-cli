@@ -613,7 +613,7 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	srvID := config.CanonicalServerIdentity(rawURL)
 	dir := ts.Getenv("RANCHER_CLI_CONFIG_DIR")
 	store := config.NewFileStore(dir)
-	key := config.CacheKeyFor(name, srvID, cluster, userID)
+	key := config.CacheKeyFor(name, srvID, cluster, userID, "")
 	// The record carries the binding a real invocation would write for
 	// this --name: the directory, and, when the name identifies an entry,
 	// that entry and its cache binding id, as a call answered by the
@@ -623,7 +623,7 @@ func cmdSeedExecCache(ts *testscript.TestScript, neg bool, args []string) {
 	// directory's.
 	binding := config.CacheBindingForTest(dir, "", "")
 	if cfg, err := config.Load(config.FilePath(dir)); err == nil {
-		binding = config.CacheBindingForSeedOf(dir, cfg, name, srvID, cluster, userID)
+		binding = config.CacheBindingForSeedOf(dir, cfg, name, srvID, cluster, userID, "")
 	}
 	if err := store.SetCachedCred(key, tok, time.Now().Add(24*time.Hour), name, srvID, cluster, binding); err != nil {
 		ts.Fatalf("seedexeccache: %v", err)

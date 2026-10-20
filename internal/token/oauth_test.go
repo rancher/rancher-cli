@@ -300,7 +300,7 @@ func TestAuthCodeFlowSucceedsAcrossSplitOrigins(t *testing.T) {
 	}
 	providers, _, _, err := getAuthProviders(t.Context(), so.rancherClient, so.rancherURL)
 	require.NoError(t, err)
-	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", ui.Discard())
+	provider, err := selectAuthProvider(t.Context(), providers, nil, "azureADProvider", false, ui.Discard())
 	require.NoError(t, err)
 	input := &loginInput{server: so.rancherURL, authProvider: "azureADProvider", idpClient: so.idpClient}
 	tok, err := oauthAuthCodeAuth(t.Context(), so.rancherClient, input, provider, 5*time.Second, openBrowserStub, ui.Discard())

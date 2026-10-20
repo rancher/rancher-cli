@@ -41,18 +41,20 @@ func (c countingStore) GetToken(ref config.ServerRef) (string, error) {
 
 // recordsSetup is one directory for a kubeconfig run: its config, the
 // entries with a stored login, each recording its owner as u-<entry>
-// unless unowned, and the session's variables.
+// unless unowned and the auth config in authConfig when it is set, and the
+// session's variables.
 type recordsSetup struct {
-	cfg      config.Config
-	loggedIn []string
-	unowned  bool
-	envURL   string
-	envCA    string
-	envToken bool
-	envStore string
-	failRead error
-	cluster  string
-	exec     string
+	cfg        config.Config
+	loggedIn   []string
+	unowned    bool
+	authConfig string
+	envURL     string
+	envCA      string
+	envToken   bool
+	envStore   string
+	failRead   error
+	cluster    string
+	exec       string
 }
 
 // runRecords runs kubeconfig for s and returns the exec entry, the
@@ -74,6 +76,15 @@ func runRecords(t *testing.T, s recordsSetup) (*clientcmdapi.ExecConfig, []strin
 		for _, e := range s.loggedIn {
 			entry := servers[e]
 			entry.TokenUserID = "u-" + e
+			servers[e] = entry
+		}
+		cfg.Servers = servers
+	}
+	if s.authConfig != "" {
+		servers := maps.Clone(cfg.Servers)
+		for _, e := range s.loggedIn {
+			entry := servers[e]
+			entry.TokenAuthConfig = s.authConfig
 			servers[e] = entry
 		}
 		cfg.Servers = servers

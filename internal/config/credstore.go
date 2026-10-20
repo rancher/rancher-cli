@@ -146,6 +146,12 @@ type cachedCred struct {
 	// key carries it too; a record is served only to the call whose key
 	// names the same user.
 	UserID string `json:"userId,omitempty"`
+	// AuthConfig is the call's --auth-provider with --user-id, empty for a
+	// call without one. Every token the call hands kubectl was made through
+	// this auth config. The key carries it too; a record is served only to
+	// the call whose key names the same auth config, and the cached-credential
+	// listing shows it as the token's.
+	AuthConfig string `json:"authConfig,omitempty"`
 	// Entry and BindingID are the identified entry and its cache binding
 	// id, for a call that identified one.
 	Entry     string `json:"entry,omitempty"`
@@ -176,6 +182,10 @@ type cachedCred struct {
 type cachedEntry struct {
 	Name      string `json:"name"`
 	BindingID string `json:"bindingId,omitempty"`
+	// AuthConfig is the auth config the entry recorded when the record was
+	// written, in a record with an auth config only; empty is an entry that
+	// recorded none.
+	AuthConfig string `json:"authConfig,omitempty"`
 }
 
 // CachedCredDetail is one cached exec credential with its readiness.
@@ -200,6 +210,9 @@ type CachedCredInfo struct {
 	// the exec plugin created it in the call that cached it.
 	TokenRef    *clierr.TokenRef `json:"tokenRef,omitempty"`
 	TokenUserID string           `json:"tokenUserId,omitempty"`
+	// TokenAuthConfig is the auth config the call named, which every token
+	// the record serves was made through; empty for a call without one.
+	TokenAuthConfig string `json:"tokenAuthConfig,omitempty"`
 }
 
 // CacheKey scopes an exec-credential cache entry by server identity and
@@ -208,34 +221,58 @@ type CachedCredInfo struct {
 // output) so that equivalent URL spellings - including http vs https - produce
 // distinct keys. The parameter is named serverHost for historical reasons.
 func CacheKey(name, serverHost, cluster string) string {
-	return CacheKeyFor(name, serverHost, cluster, "")
+	return CacheKeyFor(name, serverHost, cluster, "", "")
 }
 
-// CacheKeyFor is the exec plugin's cache key for a call with --name name
-// and --user-id userID, for serverHost (a canonical server identity) and
-// cluster: CacheKey's form for a call without --user-id, and
-// user-id:<userID>/<name>@<serverHost>/<cluster> for one with it. Every
-// key the plugin reads or writes is built here. A user id is a Kubernetes
-// object name, which holds no "/", so the user id ends at the first "/"
-// and two user ids give two keys.
-func CacheKeyFor(name, serverHost, cluster, userID string) string {
+// CacheKeyFor is the exec plugin's cache key for a call with --name name,
+// --user-id userID and --auth-provider authConfig, for serverHost (a
+// canonical server identity) and cluster: CacheKey's form for a call
+// without --user-id, user-id:<userID>/<name>@<serverHost>/<cluster> for one
+// with it, and user-id:<userID>:<authConfig>/<name>@<serverHost>/<cluster>
+// for one with an auth config too (an auth config applies with --user-id
+// only). Every key the plugin reads or writes is built here. A user id and
+// an auth config name are Kubernetes object names, which hold neither ":"
+// nor "/", so the user id ends at the first of the two and the auth config
+// at the next "/", and no --name makes either form.
+func CacheKeyFor(name, serverHost, cluster, userID, authConfig string) string {
 	key := name + "@" + serverHost + "/" + cluster
 	if userID == "" {
 		return key
+	}
+	if authConfig != "" {
+		return UserIDCachePrefix + userID + ":" + authConfig + "/" + key
 	}
 	return UserIDCachePrefix + userID + "/" + key
 }
 
 // userIDOfKey is the user id a cache key carries: the one CacheKeyFor puts
-// after UserIDCachePrefix, ended by the first "/", or "" for a key of a
-// call without --user-id.
+// after UserIDCachePrefix, ended by the first ":" or "/", or "" for a key
+// of a call without --user-id.
 func userIDOfKey(key string) string {
 	rest, ok := strings.CutPrefix(key, UserIDCachePrefix)
 	if !ok {
 		return ""
 	}
-	id, _, _ := strings.Cut(rest, "/")
-	return id
+	if i := strings.IndexAny(rest, ":/"); i >= 0 {
+		return rest[:i]
+	}
+	return rest
+}
+
+// authConfigOfKey is the auth config a cache key carries: the one CacheKeyFor
+// puts between the ":" that ends the user id and the "/" that follows, or
+// "" for a key with none.
+func authConfigOfKey(key string) string {
+	rest, ok := strings.CutPrefix(key, UserIDCachePrefix)
+	if !ok {
+		return ""
+	}
+	i := strings.IndexAny(rest, ":/")
+	if i < 0 || rest[i] != ':' {
+		return ""
+	}
+	authConfig, _, _ := strings.Cut(rest[i+1:], "/")
+	return authConfig
 }
 
 // fileStore keeps tokens in a 0600 YAML map file.
@@ -646,13 +683,14 @@ func (f *fileStore) ListCachedCreds() ([]CachedCredInfo, error) {
 			continue
 		}
 		info := CachedCredInfo{
-			Key:         key,
-			Name:        cred.Name,
-			Server:      cred.Server,
-			Cluster:     cred.Cluster,
-			Expiry:      cred.Expiry,
-			TokenRef:    cred.TokenRef,
-			TokenUserID: cred.TokenUserID,
+			Key:             key,
+			Name:            cred.Name,
+			Server:          cred.Server,
+			Cluster:         cred.Cluster,
+			Expiry:          cred.Expiry,
+			TokenRef:        cred.TokenRef,
+			TokenUserID:     cred.TokenUserID,
+			TokenAuthConfig: cred.AuthConfig,
 		}
 		if info.Name == "" {
 			// Legacy bare entry: no record fields - surface the raw key as the name.

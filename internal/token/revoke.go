@@ -143,6 +143,10 @@ type LoginCredential struct {
 	// when no response carried one (a SAML legacy credential, or a 2.14+
 	// login body).
 	UserID string
+	// AuthConfig is the auth config the token was made through, as the
+	// create response's principal named it; empty when it named none (a
+	// pasted token, a login without ext tokens, a v3 token).
+	AuthConfig string
 	// Ref identifies the transferred token for revocation; nil when the
 	// token is user-supplied or unidentified.
 	Ref *TokenRef

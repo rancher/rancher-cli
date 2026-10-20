@@ -90,11 +90,13 @@ func identifiedCredential(cfg *config.Config, store CredentialReader, server, id
 // fallback of a call whose identified user entry holds no credential: the
 // one entry with the execLogin provenance that answers for it, "" when
 // there is none. For a call with --user-id only the entries that record
-// that user count. A plugin login entry has no fallback, so its caller
+// that user count and, for a call with an auth config, the group that
+// answers: the entries that recorded that auth config, else the ones that
+// recorded none. A plugin login entry has no fallback, so its caller
 // never asks. The refusal of several (config.PluginFallbackRefused for a
 // user entry) is an error.
 func pluginEntryFor(cfg *config.Config, server, identified string, user userCheck) (string, error) {
-	found := cfg.PluginLoginEntriesOf(server, user.userID)
+	found := cfg.AnsweringPluginEntries(server, user.userID, user.authConfig)
 	switch {
 	case config.PluginFallbackRefused(false, len(found)):
 		return "", pluginEntriesError(server, found, cfg, identified, user)
@@ -121,6 +123,9 @@ func pluginEntriesError(server string, names []string, cfg *config.Config, ident
 	piped := "pipe an API token"
 	if user.userID != "" {
 		piped += " of " + clierr.ShellQuote(user.userID)
+		if user.authConfig != "" {
+			piped += " made through auth config " + clierr.ShellQuote(user.authConfig)
+		}
 	} else {
 		msg += ", and this exec entry names no Rancher user"
 	}
