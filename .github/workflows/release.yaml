@@ -42,7 +42,7 @@ jobs:
           # release artifacts (zizmor cache-poisoning). Modules are
           # re-verified via the sumdb; envtest re-downloads (~30s).
           cache: false
-      - uses: ./.github/actions/setup-tools
+      - uses: $/.github/actions/setup-tools
       - run: make validate
       - run: make e2e
 

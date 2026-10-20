@@ -19,7 +19,7 @@ import (
 
 const (
 	ciWorkflowPath    = ".github/workflows/ci.yaml"
-	setupToolsAction  = "./.github/actions/setup-tools"
+	setupToolsAction  = "$/.github/actions/setup-tools"
 	setupToolsFile    = ".github/actions/setup-tools/action.yml"
 	validateScript    = "scripts/validate"
 	versionScript     = "scripts/golangci-lint-version"

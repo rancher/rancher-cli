@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: ./.github/actions/setup-tools
+      - uses: $/.github/actions/setup-tools
         with:
           shells: "false"
       - run: ./scripts/validate static
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: ./.github/actions/setup-tools
+      - uses: $/.github/actions/setup-tools
         with:
           lint-tools: "false"
       # The completion script tests run each script under its real shell

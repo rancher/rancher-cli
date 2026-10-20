@@ -81,8 +81,14 @@ static() {
   # Workflow lint: static analysis over .github/workflows. Best-effort - CI
   # proves the workflows by running them, so a machine without actionlint
   # only loses the early local signal.
+  #
+  # The workflows call in-repo actions with GitHub's self-repository
+  # syntax (`uses: $/...`), which zizmor's self-repository audit requires.
+  # actionlint 1.7.12 and its main branch do not know the syntax and
+  # report a missing ref for it; the ignore drops only that message.
+  # Remove it once a release includes rhysd/actionlint#732 (issue #711).
   if command -v actionlint >/dev/null 2>&1; then
-    actionlint
+    actionlint -ignore 'invalid format because ref is missing'
   else
     echo "warning: actionlint not installed; skipping (install for the workflow gate)" >&2
   fi
