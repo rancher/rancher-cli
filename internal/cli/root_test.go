@@ -829,22 +829,24 @@ func TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster(t *testing.T
 // kinds.Bindings()'s own entry for that op. Every del override in production,
 // and TestDeleteOverrideResolverGeneralizesBeyondProvisioningCluster's own
 // "node" stand-in, sits on a Deletable: false row, so this test covers the
-// other case. "project" (Deletable: true, no override in production) stands in
+// other case. "pod" (Deletable: true, no override in production) stands in
 // for a hypothetical del override installed on an already-deletable kind:
 // installing one here and still getting a successful BuildRoot demonstrates the
 // branch prevents the ComposeResolvers duplicate-binding error; without the
-// branch, BuildRoot fails with the "operation \"delete project\" resolved by
+// branch, BuildRoot fails with the "operation \"delete pod\" resolved by
 // both resolvers" error. NOT t.Parallel - it mutates the package-level
 // kindOverrideTable (same constraint as the sibling tests in this file).
 func TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision(t *testing.T) {
 	orig := kindOverrideTable
-	projectKind, ok := kinds.Lookup("project")
+	podKind, ok := kinds.Lookup("pod")
 	require.True(t, ok)
-	require.True(t, projectKind.Deletable, "project must stay deletable for this test to exercise the collision-avoidance branch")
+	require.True(t, podKind.Deletable, "pod must stay deletable for this test to exercise the collision-avoidance branch")
+	_, overridden := orig["pod"]
+	require.False(t, overridden, "pod must have no del override in production for this stand-in")
 
 	overrides := make(map[string]kindOverride, len(orig)+1)
 	maps.Copy(overrides, orig)
-	overrides["project"] = kindOverride{del: func(k kinds.Kind, d runDeps) runtime.Command { return markerDelCmd{k} }}
+	overrides["pod"] = kindOverride{del: func(k kinds.Kind, d runDeps) runtime.Command { return markerDelCmd{k} }}
 	kindOverrideTable = overrides
 	t.Cleanup(func() { kindOverrideTable = orig })
 
@@ -853,9 +855,9 @@ func TestDeleteOverrideResolverSkipsDeletableRowToAvoidCollision(t *testing.T) {
 
 	delGroup := findCommand(root.Commands, "delete")
 	require.NotNil(t, delGroup)
-	projectDelete := findCommand(delGroup.Commands, "project")
-	require.NotNil(t, projectDelete, "delete project must still be wired")
-	assert.Equal(t, "MARKER-DEL", projectDelete.Usage, "the override's del constructor must still be used for the generated command")
+	podDelete := findCommand(delGroup.Commands, "pod")
+	require.NotNil(t, podDelete, "delete pod must still be wired")
+	assert.Equal(t, "MARKER-DEL", podDelete.Usage, "the override's del constructor must still be used for the generated command")
 }
 
 func TestBuildRootFailsOnEngineEntryWithoutBinding(t *testing.T) {

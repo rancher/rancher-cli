@@ -64,7 +64,7 @@ what drifted the previous revision of this doc).
 | `internal/engine/kinds/complete` | The generic live completion source of the kind table: for any Completable kind, its objects' names derived from the row's group, version, resource, namespace policy and scope alone (`KindSource`), plus the shared `--namespace` and `--node` sources, which are that derivation for the namespace and node kinds. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (`Route`, given the operation: cluster/namespace, plus the `--project` refusal for a kind or operation it does not apply to and membership validation against the project the pipeline resolved) and table projection. |
 | `internal/engine/inspect` | Read composites (`inspect pod`/`deployment`/`project`/`cluster`, `images`, `usage`): bespoke ReadCommands joining several cluster reads into one document, degrading metrics/log/prtb/provisioning/registration fetch failures to warnings. |
-| `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), the project membership commands, plus the membership label helpers and the backing-namespace lookup. |
+| `internal/engine/projects` | The bespoke `create project` mutating command (dry-run plan → execute a `management.cattle.io/v3` Project), the project membership commands, plus the membership helpers (`ProjectOf`, `IsMember` and `MemberSelector`: the one place that knows how a namespace names its project) and the backing-namespace lookup. |
 | `internal/engine/projects/complete` | The projects' live completion sources over the completion connection's project lister: `ProjectSource` (the shared `--project` value: every id plus each unique display name), `ProjectIDSource` (the project kind's name for the generated verbs: ids only) and `ProjectPositionalSource` (`inspect project`'s positional). A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/steve` | Rancher's steve API read as the caller: one request type and getter, the collection page protocol (`ReadCollection`), the project and cluster collections, the cluster lookup every `--cluster` uses (`MatchCluster`, `ResolveCluster`: id or display name, then one GET by id) and the one-cluster read (`GetCluster`), and the `--project` lookup (`ResolveProjectFlag`: the per-cluster project collection matched by id or display name, then one GET by id; without `--cluster`, the refusal naming the clusters the project is on). |
 | `internal/engine/provisioning` | Cloud-credential resolution (`cattle-global-data` Secrets, id-or-display-name matching) and the read-only `get cloud-credential` listing - reads Secret metadata and `data` key names only, never a `data` value. Also the per-kind overrides for `clusterregistrationtoken`: `get` reads Steve `/v1` directly (the only place the real token is spliced into the command/manifest fields) and `patch` is refused outright (read-only surface). The CRT decode is a policy-neutral exported boundary (`CRTObject`, `PlaceholderFields`, `FetchDefaultCRT`) consumed by both the get override and `inspect cluster`. |
@@ -244,6 +244,7 @@ graph TD
     resources --> kinds
     resources --> output
     resources --> projects
+    resources --> steve
     resources --> runtime
     resources --> safety
     resources --> clierr
@@ -273,6 +274,7 @@ graph TD
     projectscomplete --> completion
     steve --> engine
     steve --> kinds
+    steve --> projects
     steve --> clierr
 
     provisioning --> engine
@@ -355,6 +357,7 @@ graph TD
     access --> output
     access --> accesscomplete
     access --> steve
+    access --> projects
     access --> completion
 
     accesscomplete --> kinds

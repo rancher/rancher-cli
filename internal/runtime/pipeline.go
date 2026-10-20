@@ -957,6 +957,7 @@ func dryRunText(eff safety.Effect) string {
 		// control characters stripped so a value cannot forge a line.
 		lines = append(lines, output.Printable(fmt.Sprintf("%s: %v -> %v", d.Path, d.From, d.To)))
 	}
+	lines = append(lines, ObjectLines(eff.Objects, eff.DisplayKind)...)
 	gate := "dry run - re-run with --apply"
 	if eff.Destructive {
 		gate += " --yes"

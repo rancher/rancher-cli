@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 )
 
 // Identity names the credential an observation is sent with. Targets map
@@ -108,7 +109,12 @@ func waitingFor(status int, o Observation) Observation {
 // does not start with the prefix is replaced by "<group>" in place, order
 // and count kept, so a fact like "system:masters is absent from the
 // caller's groups" survives while every instance-chosen element (a SAML
-// group principal name, say) does not.
+// group principal name, say) does not. KeepKeys, exclusive with every other
+// mode, treats the addressed value as an object and deletes every key not
+// listed, compared literally, so one annotation whose name holds dots can
+// stay while the rest of the map goes; a value that is not an object
+// becomes "<object>". An object with none of the kept keys records as `{}`,
+// which means none of the kept keys, not an empty map on the server.
 type NormalizeRule struct {
 	Path       string
 	Replace    string
@@ -129,6 +135,7 @@ type NormalizeRule struct {
 	DropPrefix string
 	DropBy     string
 	CountKey   string
+	KeepKeys   []string
 }
 
 // Step is a fixture action run before or after a probe's observations.
@@ -224,6 +231,12 @@ func (p Probe) Validate() error {
 		}
 		if r.DropPrefix != "" && (r.Replace != "" || r.KeepPrefix != "" || r.SortBy != "") {
 			return fmt.Errorf("probe %s: normalize rule %s: DropPrefix is exclusive with Replace, KeepPrefix and SortBy", p.Name, r.Path)
+		}
+		if len(r.KeepKeys) > 0 && (r.Replace != "" || r.KeepPrefix != "" || r.SortBy != "" || r.DropPrefix != "") {
+			return fmt.Errorf("probe %s: normalize rule %s: KeepKeys is exclusive with Replace, KeepPrefix, SortBy and DropPrefix", p.Name, r.Path)
+		}
+		if slices.Contains(r.KeepKeys, "") {
+			return fmt.Errorf("probe %s: normalize rule %s: KeepKeys has an empty entry", p.Name, r.Path)
 		}
 	}
 	return nil

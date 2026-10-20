@@ -63,8 +63,8 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		return safety.Effect{}, nil, err
 	}
 
-	current, _, _ := unstructured.NestedString(before.Object, "metadata", "labels", projectLabel)
-	if current != "" && current != projectID {
+	current, inProject := projectOn(before, cluster)
+	if inProject && current != projectID {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("namespace %q belongs to project %q; remove it from that project first", nsName, current)).
 			WithHint(fmt.Sprintf(clierr.Rancher+" project remove-namespace %s --cluster %s",
@@ -74,7 +74,9 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	after := before.DeepCopy()
 	SetMembership(after, cluster, projectID)
 
-	return planMembershipUpdate(ctx, client, before, after, cluster, fmt.Sprintf("added to project %s", projectID))
+	return planMembershipUpdate(ctx, client, before, after, cluster, func(res runtime.Result) runtime.Result {
+		return withContextLine(res, fmt.Sprintf("added to project %s", projectID))
+	})
 }
 
 type removeNamespaceCmd struct {
@@ -83,8 +85,10 @@ type removeNamespaceCmd struct {
 
 // NewRemoveNamespace builds `project remove-namespace <namespace> --cluster
 // <c>` (mutating): clears the membership label and annotation from an
-// existing namespace. The namespace's own project label names the project
-// it leaves, so the command takes no --project.
+// existing namespace. The namespace's own project annotation names the
+// project it leaves, so the command takes no --project. A namespace with the
+// project label and no annotation is in no project; the command makes sure
+// its label is removed.
 func NewRemoveNamespace(clients engine.ClusterClientFactory) runtime.Command {
 	return &removeNamespaceCmd{clients: clients}
 }
@@ -92,7 +96,7 @@ func NewRemoveNamespace(clients engine.ClusterClientFactory) runtime.Command {
 func (removeNamespaceCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "project remove-namespace",
-		Usage:       "Remove a namespace from a project",
+		Usage:       "Remove a namespace from its project and make sure its project label is removed",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "namespace", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
@@ -132,16 +136,32 @@ func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 		return safety.Effect{}, nil, err
 	}
 
-	current, _, _ := unstructured.NestedString(before.Object, "metadata", "labels", projectLabel)
-	if current == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("namespace %s is in no project; there is nothing to remove", clierr.ShellQuote(nsName)))
+	current, inProject := projectOn(before, cluster)
+	if !inProject {
+		if !hasProjectLabelWithoutAnnotation(before) {
+			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
+				fmt.Sprintf("namespace %s is in no project; there is nothing to remove", clierr.ShellQuote(nsName)))
+		}
+		after := before.DeepCopy()
+		ClearMembership(after)
+		eff, exec, err := planMembershipUpdate(ctx, client, before, after, cluster, func(res runtime.Result) runtime.Result {
+			tr := runtime.MutationText("namespace", nsName, "project label removed")
+			res.Text, res.StyledText = tr.Text, tr.StyledText
+			return res
+		})
+		if err != nil {
+			return eff, exec, err
+		}
+		eff.Warnings = append(eff.Warnings, fmt.Sprintf("%s is in no project; this makes sure its project label is removed", nsName))
+		return eff, exec, nil
 	}
 
 	after := before.DeepCopy()
 	ClearMembership(after)
 
-	return planMembershipUpdate(ctx, client, before, after, cluster, fmt.Sprintf("removed from project %s", current))
+	return planMembershipUpdate(ctx, client, before, after, cluster, func(res runtime.Result) runtime.Result {
+		return withContextLine(res, fmt.Sprintf("removed from project %s", current))
+	})
 }
 
 // membershipArgs validates the shared add/remove-namespace input shape: a
@@ -175,12 +195,38 @@ func getNamespace(ctx context.Context, client engine.ClusterClient, nsName strin
 	return client.Get(ctx, nsKind.GVR, "", nsName)
 }
 
+// projectOn is the project a namespace belongs to on cluster, from its
+// annotation. A namespace whose annotation names another cluster is in no
+// project here.
+func projectOn(ns *unstructured.Unstructured, cluster string) (projectID string, ok bool) {
+	c, p, found := ProjectOf(ns)
+	if !found || c != cluster {
+		return "", false
+	}
+	return p, true
+}
+
+// hasProjectLabelWithoutAnnotation reports whether ns has the project
+// label and no project annotation: Rancher no longer counts it in a
+// project.
+func hasProjectLabelWithoutAnnotation(ns *unstructured.Unstructured) bool {
+	_, hasAnnotation := ns.GetAnnotations()[projectKey]
+	return ns.GetLabels()[projectKey] != "" && !hasAnnotation
+}
+
+// withContextLine appends the bespoke, already-worded detail line,
+// indented, below the shared "namespace/<ns> patched" text.
+func withContextLine(res runtime.Result, contextLine string) runtime.Result {
+	tr := runtime.TextLines(strings.TrimSuffix(res.Text, "\n"), contextLine)
+	res.Text, res.StyledText = tr.Text, tr.StyledText
+	return res
+}
+
 // planMembershipUpdate diffs before/after and previews the update through the
 // shared PlanUpdate. An unchanged namespace (re-adding to its own project)
-// yields an empty diff rather than an error. contextLine is the bespoke,
-// already-worded detail line appended, indented, below the shared
-// "namespace/<ns> patched" text once the mutation commits.
-func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, before, after *unstructured.Unstructured, cluster, contextLine string) (safety.Effect, runtime.ExecuteFunc, error) {
+// yields an empty diff rather than an error. finish rewrites the result text
+// once the mutation commits.
+func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, before, after *unstructured.Unstructured, cluster string, finish func(runtime.Result) runtime.Result) (safety.Effect, runtime.ExecuteFunc, error) {
 	diff := engine.DiffObjects(before.Object, after.Object)
 	rv := before.GetResourceVersion()
 	after.SetResourceVersion(rv)
@@ -194,9 +240,7 @@ func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, befo
 		if err != nil {
 			return res, err
 		}
-		tr := runtime.TextLines(strings.TrimSuffix(res.Text, "\n"), contextLine)
-		res.Text, res.StyledText = tr.Text, tr.StyledText
-		return res, nil
+		return finish(res), nil
 	}
 	return eff, wrapped, nil
 }

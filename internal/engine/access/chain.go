@@ -543,8 +543,9 @@ func (w *chainWalker) aggregationParents(b *unstructured.Unstructured, key aggre
 
 // narrowByProject keeps the PRTBs whose project owns the binding: a
 // ClusterRoleBinding bound to "<project>-namespaces-<rt>" names the
-// project in the role; a RoleBinding's namespace carries
-// field.cattle.io/projectId. When neither applies, all are kept.
+// project in the role. A RoleBinding's namespace names its project in the
+// field.cattle.io/projectId annotation (<cluster>:<project>), which this
+// function does not read. When the role names no project, all are kept.
 func narrowByProject(matched []*unstructured.Unstructured, b *unstructured.Unstructured, roleName string) []*unstructured.Unstructured {
 	project := ""
 	if p, _, ok := strings.Cut(roleName, "-namespaces-"); ok && p != "" {

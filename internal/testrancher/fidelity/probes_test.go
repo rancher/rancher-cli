@@ -68,6 +68,7 @@ func TestExpectedProbeSet(t *testing.T) {
 		"revoke/standard-user-v3-self-delete-forbidden", "revoke-downstream/cluster-scoped-ext-token-deletes-itself",
 		"revoke/standard-user-v3-token-logout-deletes-itself", "revoke/standard-user-v3-logout-with-a-deleted-token",
 		"revoke-downstream/cluster-scoped-v3-token-logout-401", "revoke/standard-user-login-token-logout-deletes-itself",
+		"project-namespaces-downstream/annotation-and-label", "project-namespaces-downstream/after-project-delete",
 	}
 	var got []string
 	for _, p := range All() {

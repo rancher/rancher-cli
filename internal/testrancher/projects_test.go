@@ -225,3 +225,98 @@ func TestSteveCollectionCountAcrossPages(t *testing.T) {
 	assert.Len(t, projectItems(t, body), 1)
 	assert.NotContains(t, body, "continue")
 }
+
+// namespaceItems GETs a cluster's steve namespace collection and returns its
+// items by id.
+func namespaceItems(t *testing.T, srv *httptest.Server, cluster string) map[string]map[string]any {
+	t.Helper()
+	status, body := getDecoded(t, srv, "/k8s/clusters/"+cluster+"/v1/namespaces", projectsSeed)
+	require.Equal(t, http.StatusOK, status)
+	items := map[string]map[string]any{}
+	for _, item := range projectItems(t, body) {
+		id, ok := item["id"].(string)
+		require.True(t, ok, "item id is a string: %v", item)
+		items[id] = item
+	}
+	return items
+}
+
+// itemMeta is the metadata object of a steve item.
+func itemMeta(t *testing.T, items map[string]map[string]any, name string) map[string]any {
+	t.Helper()
+	item, ok := items[name]
+	require.True(t, ok, "item %s is served", name)
+	meta, ok := item["metadata"].(map[string]any)
+	require.True(t, ok, "item %s has metadata", name)
+	return meta
+}
+
+// TestNamespacesCollectionCarriesTheProjectAnnotation asserts a steve
+// namespace item carries the project label and the <cluster>:<project>
+// annotation of the cluster in the request path, the creatorId annotation,
+// the resourceVersion and the phase, and that a namespace the caller has no
+// get on is served as the item steve serves in that case.
+func TestNamespacesCollectionCarriesTheProjectAnnotation(t *testing.T) {
+	t.Parallel()
+	visibility := func(string, string) ([]testrancher.NamespaceFixture, bool) {
+		return []testrancher.NamespaceFixture{
+			{Name: "apps", Project: "p-1"},
+			{Name: "legacy", Project: "p-1", CreatorID: "u-abc", Terminating: true},
+			{Name: "outside"},
+			{Name: "hidden", Project: "p-1", CreatorID: "u-abc", WithoutGet: true,
+				Labels:      map[string]string{"fleet.cattle.io/managed": "true", "team": "ops"},
+				Annotations: map[string]string{"management.cattle.io/system-namespace": "true", "note": "x"}},
+			{Name: "ending", Terminating: true, WithoutGet: true},
+		}, true
+	}
+	_, srv := newFacade(t, testrancher.Options{SeedToken: projectsSeed, NamespaceVisibility: visibility}, &recordingHandler{})
+
+	for _, cluster := range []string{"c-abc", "c-def"} {
+		items := namespaceItems(t, srv, cluster)
+		meta := func(name string) map[string]any { return itemMeta(t, items, name) }
+
+		assert.Equal(t, "1", meta("apps")["resourceVersion"])
+		assert.Equal(t, map[string]any{"kubernetes.io/metadata.name": "apps", "field.cattle.io/projectId": "p-1"}, meta("apps")["labels"])
+		assert.Equal(t, map[string]any{"field.cattle.io/projectId": cluster + ":p-1"}, meta("apps")["annotations"])
+		assert.Equal(t, map[string]any{"field.cattle.io/projectId": cluster + ":p-1", "field.cattle.io/creatorId": "u-abc"}, meta("legacy")["annotations"])
+		assert.Equal(t, map[string]any{"phase": "Terminating"}, items["legacy"]["status"])
+		assert.NotEmpty(t, meta("legacy")["deletionTimestamp"])
+		assert.NotContains(t, meta("outside"), "annotations", "a namespace with no annotation serves no annotations key")
+
+		assert.Equal(t, map[string]any{
+			"name": "hidden", "resourceVersion": "1",
+			"labels":      map[string]any{"fleet.cattle.io/managed": "true"},
+			"annotations": map[string]any{"field.cattle.io/projectId": cluster + ":p-1", "management.cattle.io/system-namespace": "true"},
+		}, meta("hidden"), "no creatorId, no other labels or annotations")
+		assert.Equal(t, map[string]any{"phase": "Active"}, items["hidden"]["status"])
+
+		assert.Equal(t, map[string]any{"name": "ending", "resourceVersion": "1"}, meta("ending"),
+			"no deletionTimestamp, and no labels or annotations keys when there are none")
+		assert.Equal(t, map[string]any{"phase": "Terminating"}, items["ending"]["status"])
+	}
+}
+
+// TestNamespaceFixtureDedicatedFieldsWinOverTheFreeFormMaps asserts the
+// project label and annotation, the creatorId annotation and the name label
+// come from Project, CreatorID and Name when Labels and Annotations set the
+// same keys.
+func TestNamespaceFixtureDedicatedFieldsWinOverTheFreeFormMaps(t *testing.T) {
+	t.Parallel()
+	visibility := func(string, string) ([]testrancher.NamespaceFixture, bool) {
+		return []testrancher.NamespaceFixture{{
+			Name: "apps", Project: "p-1", CreatorID: "u-abc",
+			Labels: map[string]string{
+				"field.cattle.io/projectId":   "p-other",
+				"kubernetes.io/metadata.name": "other",
+			},
+			Annotations: map[string]string{
+				"field.cattle.io/projectId": "c-other:p-other",
+				"field.cattle.io/creatorId": "u-other",
+			},
+		}}, true
+	}
+	_, srv := newFacade(t, testrancher.Options{SeedToken: projectsSeed, NamespaceVisibility: visibility}, &recordingHandler{})
+	meta := itemMeta(t, namespaceItems(t, srv, "c-abc"), "apps")
+	assert.Equal(t, map[string]any{"kubernetes.io/metadata.name": "apps", "field.cattle.io/projectId": "p-1"}, meta["labels"])
+	assert.Equal(t, map[string]any{"field.cattle.io/projectId": "c-abc:p-1", "field.cattle.io/creatorId": "u-abc"}, meta["annotations"])
+}

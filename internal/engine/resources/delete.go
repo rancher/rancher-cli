@@ -70,27 +70,38 @@ func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 }
 
 func (c deleteCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
+	client, ns, name, obj, effectCluster, err := c.fetch(ctx, in)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
+	return PlanFromFetched(ctx, client, c.k, ns, name, obj, effectCluster)
+}
+
+// fetch routes the command, reads the object to delete and returns it with
+// the client that read it, the namespace it lives in and the cluster the
+// Effect names.
+func (c deleteCmd) fetch(ctx context.Context, in runtime.Input) (client engine.ClusterClient, ns, name string, obj *unstructured.Unstructured, effectCluster string, err error) {
 	args := in.Args()
 	if len(args) == 0 || args[0] == "" {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, "argument <"+argName(c.k)+"> is required")
+		return nil, "", "", nil, "", clierr.New(clierr.CodeValidation, "argument <"+argName(c.k)+"> is required")
 	}
-	name := args[0]
+	name = args[0]
 
 	// delete always addresses a resource by name; Route enforces the
 	// Management+Namespaced --cluster requirement independently of the flag.
 	clientCluster, ns, effectCluster, _, err := Route(ctx, c.clients, c.k, in, OpNamed, in.Args()[0])
 	if err != nil {
-		return safety.Effect{}, nil, err
+		return nil, "", "", nil, "", err
 	}
-	client, err := c.clients.Cluster(ctx, clientCluster)
+	client, err = c.clients.Cluster(ctx, clientCluster)
 	if err != nil {
-		return safety.Effect{}, nil, err
+		return nil, "", "", nil, "", err
 	}
-	obj, err := client.Get(ctx, c.k.GVR, ns, name)
+	obj, err = client.Get(ctx, c.k.GVR, ns, name)
 	if err != nil {
-		return safety.Effect{}, nil, lookupHandle(ctx, c.clients, client, c.k, ns, name, err)
+		return nil, "", "", nil, "", lookupHandle(ctx, c.clients, client, c.k, ns, name, err)
 	}
-	return PlanFromFetched(ctx, client, c.k, ns, name, obj, effectCluster)
+	return client, ns, name, obj, effectCluster, nil
 }
 
 // PlanFromFetched builds a delete Effect and exec closure from an object

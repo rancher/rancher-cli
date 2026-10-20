@@ -13,6 +13,7 @@
             "id": "{downstream}/{project}",
             "kind": "Project",
             "metadata": {
+              "annotations": {},
               "finalizers": [
                 "controller.cattle.io/mgmt-project-rbac-remove",
                 "clusterscoped.controller.cattle.io/project-namespace-auth_{downstream}"
@@ -47,6 +48,9 @@
             "id": "default",
             "kind": "Namespace",
             "metadata": {
+              "annotations": {
+                "field.cattle.io/projectId": "{downstream}:{project}"
+              },
               "labels": {
                 "field.cattle.io/projectId": "{project}",
                 "kubernetes.io/metadata.name": "default"

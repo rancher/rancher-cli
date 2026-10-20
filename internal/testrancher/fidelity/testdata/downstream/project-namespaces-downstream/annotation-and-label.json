@@ -1,0 +1,64 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "namespace-with-creator",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {
+          "annotations": {
+            "field.cattle.io/creatorId": "e2e-fid-creator",
+            "field.cattle.io/projectId": "{downstream}:p-e2e-fid-nsmap"
+          },
+          "creationTimestamp": "\u003cts\u003e",
+          "labels": {
+            "field.cattle.io/projectId": "p-e2e-fid-nsmap"
+          },
+          "name": "e2e-fid-nsmap-created",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "finalizers": [
+            "kubernetes"
+          ]
+        },
+        "status": {
+          "phase": "Active"
+        }
+      }
+    },
+    {
+      "name": "namespace-without-creator",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {
+          "annotations": {
+            "field.cattle.io/projectId": "{downstream}:p-e2e-fid-nsmap"
+          },
+          "creationTimestamp": "\u003cts\u003e",
+          "labels": {
+            "field.cattle.io/projectId": "p-e2e-fid-nsmap"
+          },
+          "name": "e2e-fid-nsmap-kept",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "finalizers": [
+            "kubernetes"
+          ]
+        },
+        "status": {
+          "phase": "Active"
+        }
+      }
+    }
+  ]
+}

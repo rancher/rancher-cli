@@ -1670,9 +1670,9 @@ func seedAccessRBAC() {
 
 	nsGVR := schema.GroupVersionResource{Version: "v1", Resource: "namespaces"}
 	for _, ns := range []string{"team-a", "team-b"} {
-		patch := []byte(`{"metadata":{"labels":{"field.cattle.io/projectId":"p-e2e"}}}`)
+		patch := []byte(`{"metadata":{"labels":{"field.cattle.io/projectId":"p-e2e"},"annotations":{"field.cattle.io/projectId":"c-test:p-e2e"}}}`)
 		if _, err := dynCli.Resource(nsGVR).Patch(context.Background(), ns, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil { // survives the test body: runs from TestMain, no *testing.T in scope
-			panic("labelling namespace " + ns + " into project p-e2e: " + err.Error())
+			panic("adding namespace " + ns + " to project p-e2e: " + err.Error())
 		}
 	}
 

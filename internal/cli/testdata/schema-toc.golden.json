@@ -51,6 +51,10 @@
       {
         "name": "destructive",
         "type": "bool"
+      },
+      {
+        "name": "objects",
+        "type": "array"
       }
     ]
   },
@@ -242,7 +246,7 @@
         },
         {
           "name": "project remove-namespace",
-          "usage": "Remove a namespace from a project"
+          "usage": "Remove a namespace from its project and make sure its project label is removed"
         }
       ],
       "desc": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",

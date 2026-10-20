@@ -81,6 +81,21 @@ func TestValidateRejectsInvalidProbes(t *testing.T) {
 		{"drop rule with sort-by", func(p *Probe) {
 			p.Normalize = []NormalizeRule{{Path: "data", DropBy: "id", DropPrefix: "e2e-fid-", SortBy: "id"}}
 		}, "DropPrefix is exclusive"},
+		{"keep-keys rule with replace", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"a"}, Replace: "x"}}
+		}, "KeepKeys is exclusive"},
+		{"keep-keys rule with keep-prefix", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"a"}, KeepPrefix: "system:"}}
+		}, "KeepKeys is exclusive"},
+		{"keep-keys rule with sort-by", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"a"}, SortBy: "id"}}
+		}, "KeepKeys is exclusive"},
+		{"keep-keys rule with drop-prefix", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"a"}, DropBy: "id", DropPrefix: "e2e-fid-"}}
+		}, "KeepKeys is exclusive"},
+		{"keep-keys rule with an empty entry", func(p *Probe) {
+			p.Normalize = []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"a", ""}}}
+		}, "KeepKeys has an empty entry"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

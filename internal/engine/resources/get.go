@@ -248,8 +248,10 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	// caller-side list filtering: a Downstream NSPlain kind under a
 	// project without --namespace carries the member set here; the
 	// namespace-kind special case instead carries a server-side Selector
-	// above and leaves Members nil.
-	if scope != nil && scope.Members != nil {
+	// above, narrowing the list by the project label, and keeps the
+	// namespaces whose annotation names the project.
+	switch {
+	case scope != nil && scope.Members != nil:
 		filtered := make([]unstructured.Unstructured, 0, len(items))
 		for _, item := range items {
 			if scope.Members[item.GetNamespace()] {
@@ -257,6 +259,10 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			}
 		}
 		items = filtered
+	case scope != nil && scope.Project != "":
+		items = slices.DeleteFunc(slices.Clone(items), func(item unstructured.Unstructured) bool {
+			return !projects.IsMember(&item, scope.Cluster, scope.Project)
+		})
 	}
 	var warnings []string
 	if c.k.SystemFilter != nil && !in.Bool(flagIncludeSystem) {
@@ -334,11 +340,14 @@ func hasName(in runtime.Input) bool {
 // resolved: nil means unscoped. Members is the project's member
 // namespace set, used for caller-side membership validation and list
 // filtering (the generic Downstream NSPlain path). Selector is a server-side
-// label selector, used only by the namespace-kind special case (Members is
-// nil there - membership is enforced by the server, not the caller).
+// label selector that only narrows a list, used only by the namespace-kind
+// special case (Members is nil there); Cluster and Project name the project
+// whose annotation the namespaces it returns must carry.
 type ProjectScope struct {
 	Members  map[string]bool
 	Selector string
+	Cluster  string
+	Project  string
 }
 
 // Operation is what a routed command does with its kind: list it, address
@@ -489,11 +498,11 @@ func routeNamespaceKind(ctx context.Context, in runtime.Input, clusterID string,
 		}
 		return clusterID, "", clusterID, nil, nil
 	}
-	selector, err := projects.ProjectSelector(p.ID)
+	selector, err := projects.MemberSelector(p.ID)
 	if err != nil {
 		return "", "", "", nil, err
 	}
-	return clusterID, "", clusterID, &ProjectScope{Selector: selector}, nil
+	return clusterID, "", clusterID, &ProjectScope{Selector: selector, Cluster: clusterID, Project: p.ID}, nil
 }
 
 // routeCluster picks the serving cluster for the scope-driven policies (NSNone,

@@ -2170,11 +2170,25 @@ type ProjectFixture struct {
 }
 
 // NamespaceFixture is one namespace of a cluster's steve collection; Project
-// is the bare project id its field.cattle.io/projectId label carries, empty
-// for a namespace outside every project.
+// is the bare project id its field.cattle.io/projectId label carries (and
+// <cluster>:<project> its annotation of the same name), empty for a
+// namespace outside every project. CreatorID is the value of its
+// field.cattle.io/creatorId annotation, Terminating gives it a
+// deletionTimestamp and the Terminating phase, and Labels and Annotations
+// are further metadata; Project, CreatorID and Name set their keys after
+// Labels and Annotations and win over them. With WithoutGet the facade serves the
+// item steve serves when the caller has no get on the namespace: the name,
+// the resourceVersion, the phase, the annotations field.cattle.io/projectId
+// and management.cattle.io/system-namespace and the label
+// fleet.cattle.io/managed; the deletionTimestamp is not served.
 type NamespaceFixture struct {
-	Name    string
-	Project string
+	Name        string
+	Project     string
+	CreatorID   string
+	Terminating bool
+	WithoutGet  bool
+	Labels      map[string]string
+	Annotations map[string]string
 }
 
 // builtinProjects are the projects Rancher creates on the local cluster,
@@ -2306,17 +2320,63 @@ func (f *Facade) handleNamespacesCollection(w http.ResponseWriter, r *http.Reque
 	sort.Slice(visible, func(i, j int) bool { return visible[i].Name < visible[j].Name })
 	items := make([]map[string]any, 0, len(visible))
 	for _, ns := range visible {
-		labels := map[string]any{"kubernetes.io/metadata.name": ns.Name}
-		if ns.Project != "" {
-			labels["field.cattle.io/projectId"] = ns.Project
-		}
-		items = append(items, map[string]any{
-			"id":       ns.Name,
-			"type":     "namespace",
-			"metadata": map[string]any{"name": ns.Name, "labels": labels},
-		})
+		items = append(items, steveNamespaceItem(cluster, ns))
 	}
 	f.serveSteveCollection(w, r, "namespace", items)
+}
+
+// steveNamespaceItem is the steve item of a namespace: the whole object, or
+// the item steve serves when the caller has no get on the namespace. Labels
+// and annotations are set only when there are some, as Kubernetes omits an
+// empty map.
+func steveNamespaceItem(cluster string, ns NamespaceFixture) map[string]any {
+	labels := map[string]any{}
+	annotations := map[string]any{}
+	for k, v := range ns.Labels {
+		labels[k] = v
+	}
+	for k, v := range ns.Annotations {
+		annotations[k] = v
+	}
+	labels["kubernetes.io/metadata.name"] = ns.Name
+	if ns.Project != "" {
+		labels["field.cattle.io/projectId"] = ns.Project
+		annotations["field.cattle.io/projectId"] = cluster + ":" + ns.Project
+	}
+	if ns.CreatorID != "" {
+		annotations["field.cattle.io/creatorId"] = ns.CreatorID
+	}
+	phase := "Active"
+	if ns.Terminating {
+		phase = "Terminating"
+	}
+	item := map[string]any{"id": ns.Name, "type": "namespace", "status": map[string]any{"phase": phase}}
+	if ns.WithoutGet {
+		meta := map[string]any{"name": ns.Name, "resourceVersion": "1"}
+		kept := map[string]any{}
+		for _, key := range []string{"field.cattle.io/projectId", "management.cattle.io/system-namespace"} {
+			if v, ok := annotations[key]; ok {
+				kept[key] = v
+			}
+		}
+		if len(kept) > 0 {
+			meta["annotations"] = kept
+		}
+		if v, ok := labels["fleet.cattle.io/managed"]; ok {
+			meta["labels"] = map[string]any{"fleet.cattle.io/managed": v}
+		}
+		item["metadata"] = meta
+		return item
+	}
+	meta := map[string]any{"name": ns.Name, "resourceVersion": "1", "labels": labels}
+	if len(annotations) > 0 {
+		meta["annotations"] = annotations
+	}
+	if ns.Terminating {
+		meta["deletionTimestamp"] = "2026-01-01T00:00:00Z"
+	}
+	item["metadata"] = meta
+	return item
 }
 
 // serveSteveCollection writes one page of a steve collection: count is the

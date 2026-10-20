@@ -98,7 +98,7 @@ type namespaceDiscovery struct {
 	Issue  *Issue    `json:"issue"`
 }
 
-// unlistedProject groups the namespaces whose project label names a
+// unlistedProject groups the namespaces whose project annotation names a
 // project the caller's project set does not carry.
 type unlistedProject struct {
 	Project    string   `json:"project"`

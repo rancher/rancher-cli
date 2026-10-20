@@ -20,8 +20,8 @@ func TestUsageByProjectGroupsByProject(t *testing.T) {
 	root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"), steveProjectItem("c-abc", "p-y", "api"))
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
-			namespaceObj("ns2", map[string]any{"field.cattle.io/projectId": "p-y"}),
+			projectNamespaceObj("ns1", "c-abc", "p-x"),
+			projectNamespaceObj("ns2", "c-abc", "p-y"),
 			namespaceObj("ns3", nil), // unowned
 		}}).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
@@ -78,7 +78,7 @@ func TestUsageByProjectWithProjectFlagSingleBucket(t *testing.T) {
 
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			projectNamespaceObj("ns1", "c-abc", "p-x"),
 		}}).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -131,8 +131,8 @@ func TestUsageByProjectNamespaceFilter(t *testing.T) {
 	root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
-			namespaceObj("ns2", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			projectNamespaceObj("ns1", "c-abc", "p-x"),
+			projectNamespaceObj("ns2", "c-abc", "p-x"),
 		}}).
 		withListNS(podMetricsGVR, "ns1", &unstructured.UnstructuredList{}).
 		withListNS(podKind.GVR, "ns1", &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -155,7 +155,7 @@ func TestUsageByProjectNamespaceMustBeMember(t *testing.T) {
 
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns-other", map[string]any{"field.cattle.io/projectId": "p-y"}),
+			projectNamespaceObj("ns-other", "c-abc", "p-y"),
 		}})
 
 	cmd := NewUsage(&fakeFactory{client: client}, newSteveRoot(t, nil).roots())
@@ -178,7 +178,7 @@ func TestUsageByProjectNodeFilter(t *testing.T) {
 	root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			projectNamespaceObj("ns1", "c-abc", "p-x"),
 		}}).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -212,7 +212,7 @@ func TestUsageByProjectWithProjectReadsNoProjectCollection(t *testing.T) {
 			nsKind := mustKind(t, "namespace")
 			client := newFakeClient().
 				withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-					namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+					projectNamespaceObj("ns1", "c-abc", "p-x"),
 				}}).
 				withList(podMetricsGVR, &unstructured.UnstructuredList{}).
 				withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -246,8 +246,8 @@ func TestUsageByProjectWithProjectSumsOnlyItsPods(t *testing.T) {
 	nsKind := mustKind(t, "namespace")
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
-			namespaceObj("ns2", map[string]any{"field.cattle.io/projectId": "p-y"}),
+			projectNamespaceObj("ns1", "c-abc", "p-x"),
+			projectNamespaceObj("ns2", "c-abc", "p-y"),
 		}}).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -278,7 +278,7 @@ func TestUsageByProjectReadsTheClustersProjectsOnce(t *testing.T) {
 	nsKind := mustKind(t, "namespace")
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			projectNamespaceObj("ns1", "c-abc", "p-x"),
 		}}).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
 		withList(podKind.GVR, &unstructured.UnstructuredList{})
@@ -315,4 +315,34 @@ func TestUsageByProjectProjectsCollection403IsRBAC(t *testing.T) {
 	assert.Equal(t, clierr.CodeRBAC, cerr.Code)
 	assert.Equal(t, "the server refused GET /v1/management.cattle.io.projects/c-abc (403); Rancher answers this request with 200 for every signed-in user; a proxy in front of Rancher or an unsupported Rancher refused it", cerr.Message)
 	assert.False(t, client.listed(nsKind.GVR), "no namespace read after the refusal")
+}
+
+// TestUsageByProjectGroupsByTheAnnotationOnly asserts a pod's project is the
+// one its namespace's annotation names on this cluster: a namespace with the
+// project label and no annotation, or an annotation for another cluster,
+// counts as unowned.
+func TestUsageByProjectGroupsByTheAnnotationOnly(t *testing.T) {
+	t.Parallel()
+	podKind := mustKind(t, "pod")
+	nsKind := mustKind(t, "namespace")
+	root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
+	withProjectLabel := namespaceObj("with-project-label", map[string]any{"field.cattle.io/projectId": "p-x"})
+	elsewhere := projectNamespaceObj("elsewhere", "c-other", "p-x")
+	client := newFakeClient().
+		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			projectNamespaceObj("ns1", "c-abc", "p-x"), withProjectLabel, elsewhere,
+		}}).
+		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
+		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+			*podWithResources("ns1", "p1", "100m", "128Mi", "200m", "256Mi"),
+			*podWithResources("with-project-label", "p2", "50m", "64Mi", "100m", "128Mi"),
+			*podWithResources("elsewhere", "p3", "10m", "10Mi", "20m", "20Mi"),
+		}})
+
+	res, err := execRead(t, NewUsage(&fakeFactory{client: client}, root.roots()), input{s: map[string]string{"cluster": "c-abc", "by": "project"}})
+	require.NoError(t, err)
+	env, ok := res.Data.(usageEnvelope)
+	require.True(t, ok)
+	assert.Equal(t, "100m", env.Data["p-x"].CPURequest, "only the annotated namespace is in the project")
+	assert.Equal(t, "60m", env.Data["<none>"].CPURequest, "the namespaces with only the project label or another cluster annotation are in no project")
 }

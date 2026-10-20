@@ -11,19 +11,13 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // ProjectsType is the steve type of Rancher's management projects.
 const ProjectsType = "management.cattle.io.projects"
-
-// projectIDLabel and the annotation of the same name carry a namespace's
-// project: the label holds the bare project id, the annotation
-// <cluster>:<project>.
-const projectIDLabel = "field.cattle.io/projectId"
 
 // Project is one project the caller can read. ID is the bare
 // metadata.name, the form the project label and the backing namespace use.
@@ -159,27 +153,45 @@ func resolveProject(ctx context.Context, get Getter, local engine.ClusterClient,
 }
 
 // ProjectNamespaces returns the names of projectID's namespaces on
-// clusterID: the server-filtered namespace LIST through downstream, or,
-// when that LIST is refused (a project member may not list namespaces
-// cluster-wide), the namespaces steve lists for the caller, kept by the
-// project label or, on an item steve returned without labels, the
-// <cluster>:<project> annotation.
+// clusterID: the members, by their field.cattle.io/projectId annotation, of
+// ProjectNamespaceObjects.
 func ProjectNamespaces(ctx context.Context, downstream engine.ClusterClient, get Getter, clusterID, projectID string) (map[string]bool, error) {
-	req, err := labels.NewRequirement(projectIDLabel, selection.Equals, []string{projectID})
+	items, _, err := ProjectNamespaceObjects(ctx, downstream, get, clusterID, projectID)
 	if err != nil {
-		return nil, clierr.New(clierr.CodeValidation, fmt.Sprintf("invalid project id %s: %v", clierr.ShellQuote(projectID), err))
+		return nil, err
+	}
+	members := make(map[string]bool, len(items))
+	for i := range items {
+		members[items[i].GetName()] = true
+	}
+	return members, nil
+}
+
+// ProjectNamespaceObjects returns projectID's namespaces on clusterID as
+// objects: the namespace LIST through downstream, narrowed server-side by
+// the project label, or, when that LIST is refused (a project member may
+// not list namespaces cluster-wide), the namespaces steve lists for the
+// caller. Either answer is kept by projects.IsMember: the label only
+// narrows the list. viaSteve is true for the steve answer, whose items for a
+// namespace the caller cannot get carry only a few fields (see
+// ReadableInFull).
+func ProjectNamespaceObjects(ctx context.Context, downstream engine.ClusterClient, get Getter, clusterID, projectID string) (items []unstructured.Unstructured, viaSteve bool, err error) {
+	selector, err := projects.MemberSelector(projectID)
+	if err != nil {
+		return nil, false, err
 	}
 	nsKind, _ := kinds.Lookup("namespace")
-	list, err := downstream.List(ctx, nsKind.GVR, "", labels.NewSelector().Add(*req).String())
+	list, err := downstream.List(ctx, nsKind.GVR, "", selector)
 	if err == nil {
-		members := make(map[string]bool, len(list.Items))
 		for i := range list.Items {
-			members[list.Items[i].GetName()] = true
+			if projects.IsMember(&list.Items[i], clusterID, projectID) {
+				items = append(items, list.Items[i])
+			}
 		}
-		return members, nil
+		return items, false, nil
 	}
 	if ce, ok := errors.AsType[*clierr.Error](err); !ok || ce.Code != clierr.CodeRBAC {
-		return nil, err
+		return nil, false, err
 	}
 	r := Request{Cluster: clusterID, Type: "namespaces"}
 	rows, err := ReadCollection(ctx, get, r, func(path string, index int, raw json.RawMessage) (string, string, error) {
@@ -191,24 +203,39 @@ func ProjectNamespaces(ctx context.Context, downstream engine.ClusterClient, get
 		if name == "" {
 			return "", "", protocolError(path, fmt.Sprintf("item %d has no metadata.name", index))
 		}
-		if item.GetLabels()[projectIDLabel] == projectID || item.GetAnnotations()[projectIDLabel] == clusterID+":"+projectID {
-			return name, name, nil
+		if projects.IsMember(&item, clusterID, projectID) {
+			return name, string(raw), nil
 		}
 		return name, "", nil
 	})
 	if st, ok := clierr.HTTPStatus(err); ok && st == http.StatusUnauthorized {
-		return nil, clierr.New(clierr.CodeRBAC, fmt.Sprintf(
+		return nil, false, clierr.New(clierr.CodeRBAC, fmt.Sprintf(
 			"Rancher refused access to cluster %s (401 with no body, its answer to a user with no role on that cluster)", clierr.ShellQuote(clusterID))).
 			WithHint(clierr.Rancher + " access clusters").WithCause(err)
 	}
 	if err != nil {
-		return nil, collectionRefusal(r, err)
+		return nil, false, collectionRefusal(r, err)
 	}
-	members := map[string]bool{}
-	for _, n := range rows {
-		if n != "" {
-			members[n] = true
+	for _, raw := range rows {
+		if raw == "" {
+			continue
 		}
+		var item unstructured.Unstructured
+		if err := json.Unmarshal([]byte(raw), &item.Object); err != nil {
+			return nil, false, err
+		}
+		items = append(items, item)
 	}
-	return members, nil
+	return items, true, nil
 }
+
+// ReadableInFull reports whether a namespace object from steve's list is the
+// whole object. For a namespace the caller cannot get, steve answers only
+// the name, resourceVersion, phase and a few annotations and labels; every
+// namespace the API returns in full carries the kubernetes.io/metadata.name
+// label.
+func ReadableInFull(ns *unstructured.Unstructured) bool {
+	return ns.GetLabels()[namespaceNameLabel] != ""
+}
+
+const namespaceNameLabel = "kubernetes.io/metadata.name"

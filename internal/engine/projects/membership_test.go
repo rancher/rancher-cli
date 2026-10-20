@@ -74,8 +74,8 @@ func namespaceObj(name, projectID string) *unstructured.Unstructured {
 		"metadata": map[string]any{"name": name, "resourceVersion": "1"},
 	}}
 	if projectID != "" {
-		_ = unstructured.SetNestedField(obj.Object, projectID, "metadata", "labels", projectLabel)
-		_ = unstructured.SetNestedField(obj.Object, "c-x:"+projectID, "metadata", "annotations", projectLabel)
+		_ = unstructured.SetNestedField(obj.Object, projectID, "metadata", "labels", projectKey)
+		_ = unstructured.SetNestedField(obj.Object, "c-x:"+projectID, "metadata", "annotations", projectKey)
 	}
 	return obj
 }
@@ -108,9 +108,9 @@ func TestAddNamespaceSetsLabelAndAnnotation(t *testing.T) {
 	assert.Equal(t, "namespaces/team-a", eff.Target)
 	assert.False(t, eff.Destructive)
 
-	label, _, _ := unstructured.NestedString(client.updated.Object, "metadata", "labels", projectLabel)
+	label, _, _ := unstructured.NestedString(client.updated.Object, "metadata", "labels", projectKey)
 	assert.Equal(t, "p-1", label)
-	annotation, _, _ := unstructured.NestedString(client.updated.Object, "metadata", "annotations", projectLabel)
+	annotation, _, _ := unstructured.NestedString(client.updated.Object, "metadata", "annotations", projectKey)
 	assert.Equal(t, "c-x:p-1", annotation)
 	require.NotEmpty(t, eff.Diff)
 
@@ -166,9 +166,9 @@ func TestAddNamespaceAlreadyMemberIsEmptyDiff(t *testing.T) {
 }
 
 // TestRemoveNamespaceClearsLabelAndAnnotation asserts the namespace's own
-// project label names the project it leaves: the preview shows that label
-// removed and the result line names that project. The command never reads
-// a project.
+// project annotation names the project it leaves: the preview shows the
+// label and annotation removed and the result line names that project. The
+// command never reads a project.
 func TestRemoveNamespaceClearsLabelAndAnnotation(t *testing.T) {
 	t.Parallel()
 	client := &membershipClient{
@@ -183,9 +183,9 @@ func TestRemoveNamespaceClearsLabelAndAnnotation(t *testing.T) {
 	eff, exec, err := planMembership(t, ctx, cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{"team-a"}})
 	require.NoError(t, err)
 	assert.Equal(t, safety.ActionUpdate, eff.Action)
-	_, found, _ := unstructured.NestedString(client.updated.Object, "metadata", "labels", projectLabel)
+	_, found, _ := unstructured.NestedString(client.updated.Object, "metadata", "labels", projectKey)
 	assert.False(t, found)
-	_, found, _ = unstructured.NestedString(client.updated.Object, "metadata", "annotations", projectLabel)
+	_, found, _ = unstructured.NestedString(client.updated.Object, "metadata", "annotations", projectKey)
 	assert.False(t, found)
 	assert.Equal(t, []safety.DiffEntry{
 		{Path: "/metadata/annotations/field.cattle.io~1projectId", From: "c-x:p-7"},
@@ -197,8 +197,9 @@ func TestRemoveNamespaceClearsLabelAndAnnotation(t *testing.T) {
 	assert.Equal(t, "namespace/team-a patched\n  removed from project p-7\n", res.Text)
 }
 
-// TestRemoveNamespaceInNoProjectIsValidation asserts a namespace with no
-// project label is refused after its one GET, with nothing previewed.
+// TestRemoveNamespaceInNoProjectIsValidation asserts a namespace with
+// neither the project label nor the annotation is refused after its one
+// GET, with nothing previewed.
 func TestRemoveNamespaceInNoProjectIsValidation(t *testing.T) {
 	t.Parallel()
 	client := &membershipClient{
@@ -213,6 +214,97 @@ func TestRemoveNamespaceInNoProjectIsValidation(t *testing.T) {
 	assert.Equal(t, "namespace 'ns' is in no project; there is nothing to remove", ce.Message)
 	assert.Equal(t, 1, client.gets, "the namespace GET is the one request")
 	assert.Nil(t, client.updated, "nothing is previewed")
+}
+
+// namespaceWithProjectLabelWithoutAnnotation is a namespace with the
+// project label and no annotation.
+func namespaceWithProjectLabelWithoutAnnotation(name, projectID string) *unstructured.Unstructured {
+	obj := namespaceObj(name, "")
+	_ = unstructured.SetNestedField(obj.Object, projectID, "metadata", "labels", projectKey)
+	return obj
+}
+
+// TestRemoveNamespaceClearsALabelWithoutAnnotation asserts a namespace with
+// the project label and no annotation has its label removed through the
+// gated update: the preview carries the note and the removal, the result
+// line says the label was removed.
+func TestRemoveNamespaceClearsALabelWithoutAnnotation(t *testing.T) {
+	t.Parallel()
+	client := &membershipClient{
+		namespaces: map[string]*unstructured.Unstructured{"team-a": namespaceWithProjectLabelWithoutAnnotation("team-a", "p-7")},
+	}
+	cmd := NewRemoveNamespace(stubFactory{c: client})
+
+	eff, exec, err := planMembership(t, t.Context(), cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{"team-a"}})
+	require.NoError(t, err)
+	assert.Equal(t, safety.ActionUpdate, eff.Action)
+	assert.Equal(t, []safety.DiffEntry{{Path: "/metadata/labels/field.cattle.io~1projectId", From: "p-7"}}, eff.Diff)
+	assert.Equal(t, []string{"team-a is in no project; this makes sure its project label is removed"}, eff.Warnings)
+	_, found, _ := unstructured.NestedString(client.updated.Object, "metadata", "labels", projectKey)
+	assert.False(t, found)
+
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "namespace/team-a project label removed\n", res.Text)
+}
+
+// TestRemoveNamespaceKeepsLabelWhileAnAnnotationNamesAProject asserts the
+// path for a namespace with only the project label is not taken for a namespace that has the annotation: it
+// leaves its project and says which.
+func TestRemoveNamespaceKeepsLabelWhileAnAnnotationNamesAProject(t *testing.T) {
+	t.Parallel()
+	client := &membershipClient{
+		namespaces: map[string]*unstructured.Unstructured{"team-a": namespaceObj("team-a", "p-7")},
+	}
+	eff, exec, err := planMembership(t, t.Context(), NewRemoveNamespace(stubFactory{c: client}), in{s: map[string]string{"cluster": "c-x"}, a: []string{"team-a"}})
+	require.NoError(t, err)
+	assert.Empty(t, eff.Warnings)
+	res, err := exec(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "namespace/team-a patched\n  removed from project p-7\n", res.Text)
+}
+
+// TestRemoveNamespaceAnnotatedForAnotherClusterIsInNoProject asserts a
+// namespace whose annotation names another cluster is in no project here:
+// it is refused, and its label is not cleared.
+func TestRemoveNamespaceAnnotatedForAnotherClusterIsInNoProject(t *testing.T) {
+	t.Parallel()
+	ns := namespaceObj("team-a", "p-7")
+	_ = unstructured.SetNestedField(ns.Object, "c-def:p-7", "metadata", "annotations", projectKey)
+	client := &membershipClient{namespaces: map[string]*unstructured.Unstructured{"team-a": ns}}
+	_, _, err := planMembership(t, t.Context(), NewRemoveNamespace(stubFactory{c: client}), in{s: map[string]string{"cluster": "c-x"}, a: []string{"team-a"}})
+	require.ErrorContains(t, err, "is in no project; there is nothing to remove")
+	assert.Nil(t, client.updated)
+}
+
+// TestAddNamespaceIgnoresALabelWithoutAnnotation asserts a namespace with a
+// project label and no annotation, or an annotation naming another cluster,
+// is in no project here: it is added with no conflict.
+func TestAddNamespaceIgnoresALabelWithoutAnnotation(t *testing.T) {
+	t.Parallel()
+	otherCluster := namespaceObj("team-b", "p-2")
+	_ = unstructured.SetNestedField(otherCluster.Object, "c-def:p-2", "metadata", "annotations", projectKey)
+	for name, ns := range map[string]*unstructured.Unstructured{
+		"team-a": namespaceWithProjectLabelWithoutAnnotation("team-a", "p-2"),
+		"team-b": otherCluster,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			client := &membershipClient{namespaces: map[string]*unstructured.Unstructured{name: ns}}
+			_, _, err := planMembership(t, projectCtx(t, "p-1"), NewAddNamespace(stubFactory{c: client}),
+				in{s: map[string]string{"project": "web", "cluster": "c-x"}, a: []string{name}})
+			require.NoError(t, err)
+			annotation, _, _ := unstructured.NestedString(client.updated.Object, "metadata", "annotations", projectKey)
+			assert.Equal(t, "c-x:p-1", annotation)
+		})
+	}
+}
+
+// TestRemoveNamespaceHelpSaysItMakesSureTheLabelIsRemoved asserts the
+// command's one-line help.
+func TestRemoveNamespaceHelpSaysItMakesSureTheLabelIsRemoved(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "Remove a namespace from its project and make sure its project label is removed", NewRemoveNamespace(stubFactory{}).Describe().Usage)
 }
 
 // TestRemoveNamespaceProjectRefusalHint asserts the command a typed
@@ -254,9 +346,9 @@ func TestCreateNamespaceWithProjectCarriesMembershipFromBirth(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 	assert.Equal(t, safety.ActionCreate, eff.Action)
-	label, _, _ := unstructured.NestedString(client.created.Object, "metadata", "labels", projectLabel)
+	label, _, _ := unstructured.NestedString(client.created.Object, "metadata", "labels", projectKey)
 	assert.Equal(t, "p-1", label)
-	annotation, _, _ := unstructured.NestedString(client.created.Object, "metadata", "annotations", projectLabel)
+	annotation, _, _ := unstructured.NestedString(client.created.Object, "metadata", "annotations", projectKey)
 	assert.Equal(t, "c-x:p-1", annotation)
 }
 
@@ -267,7 +359,7 @@ func TestCreateNamespaceWithoutProjectHasNoMembership(t *testing.T) {
 
 	_, _, err := planMembership(t, t.Context(), cmd, in{s: map[string]string{"cluster": "c-x"}, a: []string{"team-c"}})
 	require.NoError(t, err)
-	_, found, _ := unstructured.NestedString(client.created.Object, "metadata", "labels", projectLabel)
+	_, found, _ := unstructured.NestedString(client.created.Object, "metadata", "labels", projectKey)
 	assert.False(t, found)
 }
 

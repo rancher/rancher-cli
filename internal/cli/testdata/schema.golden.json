@@ -2946,6 +2946,11 @@
           "desc": "wait `timeout`, e.g. 5m (default 120s)",
           "name": "timeout",
           "type": "string"
+        },
+        {
+          "desc": "also delete the project's namespaces and everything in them",
+          "name": "delete-namespaces",
+          "type": "bool"
         }
       ],
       "gates": [
@@ -10601,7 +10606,7 @@
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
-      "usage": "Remove a namespace from a project"
+      "usage": "Remove a namespace from its project and make sure its project label is removed"
     },
     {
       "args": [
@@ -11089,6 +11094,10 @@
       {
         "name": "destructive",
         "type": "bool"
+      },
+      {
+        "name": "objects",
+        "type": "array"
       }
     ]
   },

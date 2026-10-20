@@ -48,9 +48,9 @@ func projectsPages() map[string]*stevePage {
 			steveProject("c-1", "p-a", "Payments"), steveProject("c-1", "p-b", "Ops"),
 			steveProject("c-2", "p-c", "Edge"), steveProject("local", "p-l", "System"),
 		),
-		steveNamespacesPath("c-1"):   page(steveNamespace("pay2", "p-a"), steveNamespace("ops", "p-b"), steveNamespace("stray", "p-zz"), steveNamespace("plain", ""), steveNamespace("pay1", "p-a")),
-		steveNamespacesPath("c-2"):   page(steveNamespace("edge1", "p-c")),
-		steveNamespacesPath("local"): page(steveNamespace("cattle-system", "p-l"), steveNamespace("fleet-default", "")),
+		steveNamespacesPath("c-1"):   page(steveNamespace("c-1", "pay2", "p-a"), steveNamespace("c-1", "ops", "p-b"), steveNamespace("c-1", "stray", "p-zz"), steveNamespace("c-1", "plain", ""), steveNamespace("c-1", "pay1", "p-a")),
+		steveNamespacesPath("c-2"):   page(steveNamespace("c-2", "edge1", "p-c")),
+		steveNamespacesPath("local"): page(steveNamespace("local", "cattle-system", "p-l"), steveNamespace("local", "fleet-default", "")),
 	}
 }
 
@@ -277,7 +277,7 @@ func TestProjectsNamespaceDiscoveryFailureIsTheClustersIssue(t *testing.T) {
 
 func TestProjectsEmptyProjectIsUnknownFromScopeDiscovery(t *testing.T) {
 	pages := projectsPages()
-	pages[steveNamespacesPath("c-2")] = page(steveNamespace("plain", ""))
+	pages[steveNamespacesPath("c-2")] = page(steveNamespace("c-2", "plain", ""))
 	cmd, _ := projectsFixture(t, pages)
 	res, err := cmd.Execute(t.Context(), projectsInput("", "", ""), nil)
 	require.NoError(t, err)

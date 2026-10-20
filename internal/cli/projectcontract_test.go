@@ -131,7 +131,9 @@ func (s *contractServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"spec":     map[string]any{"displayName": "web", "clusterName": "c-abc"}})
 	case r.Method == http.MethodGet && p == "/k8s/clusters/c-abc/api/v1/namespaces":
 		ns := map[string]any{"apiVersion": "v1", "kind": "Namespace",
-			"metadata": map[string]any{"name": "default", "resourceVersion": "1", "labels": map[string]any{"field.cattle.io/projectId": "p-xyz"}}}
+			"metadata": map[string]any{"name": "default", "resourceVersion": "1",
+				"labels":      map[string]any{"field.cattle.io/projectId": "p-xyz"},
+				"annotations": map[string]any{"field.cattle.io/projectId": "c-abc:p-xyz"}}}
 		write(map[string]any{"apiVersion": "v1", "kind": "NamespaceList", "metadata": map[string]any{"resourceVersion": "1"}, "items": []any{ns}})
 	case r.Method == http.MethodGet && p == "/k8s/clusters/c-abc/api/v1/pods":
 		write(map[string]any{"apiVersion": "v1", "kind": "PodList", "metadata": map[string]any{"resourceVersion": "1"}, "items": []any{}})

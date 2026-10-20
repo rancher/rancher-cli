@@ -326,6 +326,47 @@ func TestGetNamespacesWithProjectListsUsingLabelSelector(t *testing.T) {
 	assert.Equal(t, []routeListCall{{resource: "namespaces", selector: "field.cattle.io/projectId=p-1"}}, client.listCalls)
 }
 
+// annotatedNamespaceItem is a namespace whose labels and annotations are as
+// given; an empty value leaves that key off.
+func annotatedNamespaceItem(name, label, annotation string) unstructured.Unstructured {
+	meta := map[string]any{"name": name}
+	if label != "" {
+		meta["labels"] = map[string]any{"field.cattle.io/projectId": label}
+	}
+	if annotation != "" {
+		meta["annotations"] = map[string]any{"field.cattle.io/projectId": annotation}
+	}
+	return unstructured.Unstructured{Object: map[string]any{"metadata": meta}}
+}
+
+// TestGetNamespacesWithProjectKeepsTheNamespacesTheAnnotationNames asserts
+// the label selector only narrows the list: the rows are the namespaces
+// whose annotation names the project on the cluster. A namespace with the
+// label and no annotation, and one annotated for another cluster, are
+// dropped; one with the annotation only is kept.
+func TestGetNamespacesWithProjectKeepsTheNamespacesTheAnnotationNames(t *testing.T) {
+	t.Parallel()
+	client, fac := newRouteProjectFixture()
+	client.lists["namespaces"] = &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		annotatedNamespaceItem("both", "p-1", "c-abc:p-1"),
+		annotatedNamespaceItem("annotation-only", "", "c-abc:p-1"),
+		annotatedNamespaceItem("with-project-label", "p-1", ""),
+		annotatedNamespaceItem("other-cluster", "p-1", "c-def:p-1"),
+		annotatedNamespaceItem("other-project", "p-1", "c-abc:p-2"),
+	}}
+	ctx, _ := projectContext(t)
+	res, err := NewGet(mustKind(t, "namespace"), fac).(runtime.ReadCommand).Execute(ctx,
+		input{s: map[string]string{"cluster": "prod", "project": "web"}}, nil)
+	require.NoError(t, err)
+	tbl, ok := res.Data.(table)
+	require.True(t, ok)
+	var names []string
+	for _, item := range tbl.items {
+		names = append(names, item.GetName())
+	}
+	assert.Equal(t, []string{"both", "annotation-only"}, names)
+}
+
 var _ engine.ClusterClient = (*routeProjectClient)(nil)
 
 func (*routeProjectClient) PostReview(context.Context, engine.ReviewRequest) (engine.ReviewResponse, error) {

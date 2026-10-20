@@ -537,6 +537,10 @@ of Downstream namespaced kinds and of namespaces, `create resource`,
 typed `--project` with `VALIDATION` before it sends a request, whether the
 flag is typed before or after the command name.
 
+`rancher project remove-namespace` also accepts a namespace that has the
+project label and no project annotation, and makes sure its project label
+is removed.
+
 The project is looked up once per command, as you: among the projects
 Rancher lists for you on that cluster, by id or display name. An id wins
 over another project's display name, with a warning naming that project;
@@ -547,8 +551,12 @@ names the clusters a project with that id or display name is on; it never
 picks one.
 
 What the project does: a list is filtered to the project's namespaces, and
-a named object or a mutation must be in one of them. `get namespaces
---project <p>` lists the project's namespaces by their label, server-side.
+a named object or a mutation must be in one of them. A namespace belongs to
+the project its `field.cattle.io/projectId` annotation (`<cluster>:<project>`)
+names, on the cluster the namespace is in; the label of the same name is
+not the membership. `get namespaces --project <p>` asks the server for the
+namespaces with the project label and keeps the ones whose annotation names
+the project.
 `create resource` refuses `--project` for a Namespace manifest (use `create
 namespace --project`). `create secret --project <p>` writes a project-scoped
 secret into the project's backing namespace and cannot be combined with
@@ -592,7 +600,8 @@ Every kind in the schema vocabulary gets its generated verbs by these rules:
   selector the server applies (the same grammar as kubectl's `-l`:
   `app=web`, `tier!=cache`, `env in (a,b)`, `!legacy`); it is validated
   before the request and refused on a named get. Under `--project` both
-  apply: `get namespaces` sends the two selectors as one conjunction; for
+  apply: `get namespaces` sends the two selectors as one conjunction and
+  keeps the namespaces whose annotation names the project; for
   every other kind the server filters by `--selector` and the CLI keeps
   only the project's namespaces. `get clusterregistrationtoken` reads
   through Steve and applies the selector to the decoded list itself.
@@ -605,6 +614,53 @@ Every kind in the schema vocabulary gets its generated verbs by these rules:
   `--yes`): deleting a user removes the identity record and Rancher's
   controllers cascade-remove the user's role bindings (cluster memberships,
   project memberships, global role bindings) with it.
+- `delete project` is destructive and lists the project's namespaces before
+  it deletes anything. It reads them on the project's cluster: the
+  namespace list narrowed by the project label, or, for a caller refused
+  that list (a project owner), the namespaces steve lists for the caller;
+  either way the members are the namespaces whose annotation names the
+  project. Rancher deletes the member namespaces that carry the
+  `field.cattle.io/creatorId` annotation, with everything in them, and
+  keeps the others, removing the project annotation from each; it also
+  removes the project's role bindings and project-scoped secrets. The
+  dry-run Effect and the result carry the list in `data.objects`: one
+  item per namespace with `kind`, `name`, `outcome` and, for a failure,
+  `code` and `message` (a `not deleted` item gives its reason in
+  `message`). Text output shows at most five names per outcome and a count
+  of the rest; JSON carries every item. Without the flag the outcomes say
+  what Rancher will do: `rancher deletes`, `rancher keeps`, `being deleted`
+  (the namespace already has a deletion timestamp or the Terminating
+  phase) and `unknown` (the caller cannot get the namespace, so the
+  creatorId annotation is not visible). The CLI deletes no namespace
+  without the flag. If the namespaces cannot be read, the dry-run warns
+  and the delete goes on. When a namespace is kept, the dry-run sends one
+  `SelfSubjectAccessReview` to the project's cluster (verb `get`, resource
+  `namespaces`, no name); if the cluster denies it, the caller can see
+  namespaces only through their project and a warning names the kept
+  namespaces the caller will not see after the delete. A failed review gives
+  no warning.
+  `--delete-namespaces` also deletes the member namespaces: one at a time,
+  in name order, each with the resourceVersion it was read with, then the
+  project. Every namespace is dry-run deleted first; a namespace refused
+  there, a namespace the caller cannot get, or a failed read refuses the
+  command before anything is deleted. Namespaces already being deleted are
+  listed and left alone. Nobody may delete `default`, `kube-system` and
+  `kube-public` on any cluster, nor `local` and `fleet-local` on the local
+  cluster: they are listed as `not deleted` with the reason and skipped.
+  The outcomes under the flag are `will be deleted` (dry-run), `deletion
+  started`, `already gone` (the namespace was gone when the delete was
+  sent), `not deleted`, `being deleted`, `failed` and `not attempted`; the
+  project is the last item. A failed namespace delete stops the run and
+  keeps the project: the error carries the failing call's code and
+  `data.error.details.objects` holds every item with its outcome. When the
+  project changes while its namespaces are being deleted, the project
+  delete is retried up to three times with the new resourceVersion if only
+  its used quota (`spec.resourceQuota.usedLimit`) and its status changed;
+  any other change, or a fourth conflict, is `CONFLICT` with the project
+  kept. Re-run the same command after any partial result: it reads the
+  project's namespaces again and skips the ones already being deleted.
+  The result kind stays `ProjectDelete`; its `data` is `deleted` and
+  `objects`.
 - `user`, `project`, `roletemplate`, `globalrole` and `nodedriver` take the
   object's id as the argument, named `id` in help and the schema: the NAME
   column of `get`, not the username or display name. When a named `get`,
@@ -972,7 +1028,8 @@ wins over another cluster's display name, with a warning).
 For every reachable cluster the command reads the namespaces you see
 through steve (a project member cannot LIST namespaces through the
 Kubernetes API, and steve answers every caller with exactly the namespaces
-their access grants), groups them by the `field.cattle.io/projectId` label,
+their access grants), groups them by the project their
+`field.cattle.io/projectId` annotation names on that cluster,
 and asks the cluster's authorizer, as you or as the impersonated user,
 whether it may get each namespace a project owns: that is the grant Rancher
 gives every member of the project, and false for other projects'

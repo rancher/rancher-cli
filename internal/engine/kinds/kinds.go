@@ -395,11 +395,10 @@ var table = []Kind{
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
 		ArgDesc: "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
 
-		// Cascade verified against rancher source 2026-08-05
-		// (pkg/controllers/managementuser/rbac/project_handler.go Remove):
-		// namespaces carrying field.cattle.io/creatorId are deleted, adopted
-		// ones are released; PRTBs and project-scoped secrets go regardless.
-		DeleteCascadeWarning: "deleting this project cascades: namespaces created through Rancher are deleted along with their workloads (namespaces moved into the project are released and survive); the project's role bindings and project-scoped secrets are removed",
+		// Rancher deletes the namespaces of the project that carry
+		// field.cattle.io/creatorId and keeps the rest, removing their project
+		// annotation; role bindings and project-scoped secrets go regardless.
+		DeleteCascadeWarning: "deleting this project keeps its namespaces and their workloads, except a namespace with the field.cattle.io/creatorId annotation (which Rancher writes on namespaces created through its v3 API), which is deleted with everything in it; Rancher removes the project annotation from each kept namespace; the project's role bindings and project-scoped secrets are removed",
 		Completable:          true,
 		Binding:              safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns: []Column{

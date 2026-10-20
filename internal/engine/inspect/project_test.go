@@ -32,8 +32,19 @@ func projectFixtureObj(id, displayName, backingNamespace string) *unstructured.U
 	return obj
 }
 
+// nsListItem is a namespace of project p-1 on cluster c-test, as the
+// project's namespace LIST returns it.
 func nsListItem(name string) unstructured.Unstructured {
-	return unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": name}}}
+	return nsListItemIn(name, "p-1")
+}
+
+// nsListItemIn is a namespace of project on cluster c-test.
+func nsListItemIn(name, project string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{
+		"name":        name,
+		"labels":      map[string]any{"field.cattle.io/projectId": project},
+		"annotations": map[string]any{"field.cattle.io/projectId": "c-test:" + project},
+	}}}
 }
 
 func podListItem(ns, name string) unstructured.Unstructured {
@@ -261,19 +272,46 @@ func TestInspectProjectMemberShapedAccess(t *testing.T) {
 	assert.Contains(t, res.Text, "USAGE\n  usage: unavailable\n")
 }
 
+// TestInspectProjectKeepsOnlyNamespacesTheAnnotationNamesAsMembers asserts
+// the namespaces of a project are the ones whose annotation names this
+// project on this cluster: a namespace with the project label and no
+// annotation, and one annotated for another cluster, are not members.
+func TestInspectProjectKeepsOnlyNamespacesTheAnnotationNamesAsMembers(t *testing.T) {
+	t.Parallel()
+	fac, root, _, downstream := setUpProjectFixture(t, "")
+	nsKind := mustKind(t, "namespace")
+	withProjectLabel := unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{
+		"name": "with-project-label", "labels": map[string]any{"field.cattle.io/projectId": "p-1"}}}}
+	elsewhere := nsListItem("elsewhere")
+	elsewhere.SetAnnotations(map[string]string{"field.cattle.io/projectId": "c-other:p-1"})
+	annotationOnly := unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{
+		"name": "annotation-only", "annotations": map[string]any{"field.cattle.io/projectId": "c-test:p-1"}}}}
+	downstream.withList(nsKind.GVR, &unstructured.UnstructuredList{
+		Items: []unstructured.Unstructured{nsListItem("ns-a"), withProjectLabel, elsewhere, annotationOnly},
+	})
+
+	res, err := execRead(t, NewInspectProject(fac, root.roots()), input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
+	require.NoError(t, err)
+	names := make([]string, 0)
+	for _, ns := range res.Data.(projectResult).Namespaces {
+		names = append(names, ns.Name)
+	}
+	assert.ElementsMatch(t, []string{"ns-a", "annotation-only"}, names)
+}
+
 // TestInspectProjectMemberReadsItsNamespacesFromSteve asserts a project
 // member, whom the downstream namespace LIST refuses, still gets the
 // project's namespaces: the ones steve lists for the caller that carry the
-// project label, and the workload sections built on them.
+// project annotation, and the workload sections built on them.
 func TestInspectProjectMemberReadsItsNamespacesFromSteve(t *testing.T) {
 	t.Parallel()
 	fac, root, _, downstream := setUpProjectFixture(t, "")
 	nsKind := mustKind(t, "namespace")
 	downstream.withListErr(nsKind.GVR, clierr.New(clierr.CodeRBAC, "namespaces is forbidden"))
-	labelled := func(name, project string) map[string]any {
-		return map[string]any{"id": name, "metadata": map[string]any{"name": name, "labels": map[string]any{"field.cattle.io/projectId": project}}}
+	annotated := func(name, project string) map[string]any {
+		return map[string]any{"id": name, "metadata": map[string]any{"name": name, "annotations": map[string]any{"field.cattle.io/projectId": "c-test:" + project}}}
 	}
-	root.answer(steveNamespacesPath("c-test"), stevePage(labelled("ns-a", "p-1"), labelled("ns-b", "p-1"), labelled("ns-other", "p-2")))
+	root.answer(steveNamespacesPath("c-test"), stevePage(annotated("ns-a", "p-1"), annotated("ns-b", "p-1"), annotated("ns-other", "p-2")))
 	cmd := NewInspectProject(fac, root.roots())
 
 	res, err := execRead(t, cmd, input{args: []string{"p-1"}, s: map[string]string{"cluster": "c-test"}})
@@ -569,7 +607,7 @@ func TestInspectProjectZeroPodsVerifiedZero(t *testing.T) {
 
 	downstream := newFakeClient()
 	downstream.withList(nsKind.GVR, &unstructured.UnstructuredList{
-		Items: []unstructured.Unstructured{nsListItem("ns-a")},
+		Items: []unstructured.Unstructured{nsListItemIn("ns-a", "p-empty")},
 	})
 	downstream.withList(podKind.GVR, &unstructured.UnstructuredList{})
 	downstream.withList(depKind.GVR, &unstructured.UnstructuredList{})

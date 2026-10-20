@@ -56,6 +56,33 @@ type DiffEntry struct {
 	To   any    `json:"to"`
 }
 
+// Object is one object a multi-object mutation acts on or reports: its kind
+// and name, what the command did or will do to it (Outcome, a short phrase
+// the command defines), and for a failure the error's code and message. A
+// refusal reason for an object the command leaves alone rides in Message.
+type Object struct {
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Outcome string `json:"outcome"`
+	Code    string `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// The outcomes of an Object, in the order text output lists them. A command
+// uses the ones that apply to what it does.
+const (
+	OutcomeRancherKeeps    = "rancher keeps"
+	OutcomeRancherDeletes  = "rancher deletes"
+	OutcomeUnknown         = "unknown"
+	OutcomeWillBeDeleted   = "will be deleted"
+	OutcomeNotDeleted      = "not deleted"
+	OutcomeBeingDeleted    = "being deleted"
+	OutcomeDeletionStarted = "deletion started"
+	OutcomeAlreadyGone     = "already gone"
+	OutcomeFailed          = "failed"
+	OutcomeNotAttempted    = "not attempted"
+)
+
 // Effect is the server-computed preview of a mutation (from Plan). Contract and
 // Stability are NOT serialized - the schema manifest is the single published
 // source for those; the internal Binding continues to drive the --allow-deprecated
@@ -84,6 +111,10 @@ type Effect struct {
 	ConflictDetection bool        `json:"conflictDetection"`
 	Reversible        bool        `json:"reversible"`
 	Destructive       bool        `json:"destructive"`
+	// Objects lists the objects beyond Target that the command acts on or
+	// reports, each with its outcome. Empty for a command that touches one
+	// object, which leaves its output unchanged.
+	Objects []Object `json:"objects,omitempty"`
 	// Warnings are advisory preview notes rendered with the Effect BEFORE
 	// confirmation (version-not-in-discovery, etcd-quorum impact, deletion
 	// cascade). They never gate - gating is Action/Destructive/Stability's

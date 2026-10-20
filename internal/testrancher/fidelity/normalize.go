@@ -2,6 +2,7 @@ package fidelity
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -106,6 +107,20 @@ func setOrDelete(m map[string]any, key string, r NormalizeRule) {
 			sort.SliceStable(items, func(i, j int) bool {
 				return sortKey(items[i], r.SortBy) < sortKey(items[j], r.SortBy)
 			})
+		}
+		return
+	}
+	if len(r.KeepKeys) > 0 {
+		obj, ok := v.(map[string]any)
+		if !ok {
+			// Named because it carries instance data: never left in place.
+			m[key] = "<object>"
+			return
+		}
+		for k := range obj {
+			if !slices.Contains(r.KeepKeys, k) {
+				delete(obj, k)
+			}
 		}
 		return
 	}

@@ -1,0 +1,60 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# a project with two namespaces born as members (the label and the annotation).
+exec rancher create project del-ns --cluster testcluster --apply
+exec rancher create namespace del-ns-a --project del-ns --cluster testcluster --apply
+exec rancher create namespace del-ns-b --project del-ns --cluster testcluster --apply
+
+# the preview without the flag says what Rancher does; the namespaces have no
+# creatorId annotation, so it keeps both. It sends no namespace delete.
+exec rancher delete project del-ns --cluster testcluster --dry-run
+stdout 'delete project/del-ns'
+stdout 'namespaces:'
+stdout 'rancher keeps: del-ns-a, del-ns-b'
+stderr 'deleting this project keeps its namespaces and their workloads'
+exec rancher delete project del-ns --cluster testcluster --dry-run -o json
+cp stdout keep.json
+jsonquery keep.json 'data.objects.#' 2
+jsonquery keep.json data.objects.0.kind namespace
+jsonquery keep.json data.objects.0.name del-ns-a
+jsonquery keep.json data.objects.0.outcome 'rancher keeps'
+jsonquery keep.json data.objects.1.name del-ns-b
+
+# the preview with the flag lists the namespaces to delete and ends with the
+# project; its warning replaces the one without the flag.
+exec rancher delete project del-ns --cluster testcluster --delete-namespaces --dry-run -o json
+cp stdout flag.json
+jsonquery flag.json 'data.objects.#' 3
+jsonquery flag.json data.objects.0.outcome 'will be deleted'
+jsonquery flag.json data.objects.1.outcome 'will be deleted'
+jsonquery flag.json data.objects.2.kind project
+jsonquery flag.json data.objects.2.name del-ns
+jsonquery flag.json data.objects.2.outcome 'will be deleted'
+jsonquery flag.json warnings.0 'deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project''s role bindings and project-scoped secrets are removed'
+exec rancher delete project del-ns --cluster testcluster --delete-namespaces --dry-run
+stdout 'will be deleted: del-ns-a, del-ns-b'
+
+# the flag does not weaken the gates.
+! exec rancher delete project del-ns --cluster testcluster --delete-namespaces --apply -o json
+jsonquery stderr data.error.code CONFIRMATION_REQUIRED
+exec rancher get namespace del-ns-a --cluster testcluster -o json
+jsonquery stdout data.status.phase Active
+
+# the run deletes the namespaces, then the project. A namespace is Terminating
+# here, not gone: the test cluster has no namespace controller to finish it.
+exec rancher delete project del-ns --cluster testcluster --delete-namespaces --apply --yes -o json
+cp stdout done.json
+jsonquery done.json kind ProjectDelete
+jsonquery done.json data.deleted del-ns
+jsonquery done.json data.objects.0.name del-ns-a
+jsonquery done.json data.objects.0.outcome 'deletion started'
+jsonquery done.json data.objects.1.outcome 'deletion started'
+jsonquery done.json data.objects.2.kind project
+jsonquery done.json data.objects.2.outcome 'deletion started'
+exec rancher get namespace del-ns-a --cluster testcluster -o json
+jsonquery stdout data.status.phase Terminating
+exec rancher get namespace del-ns-b --cluster testcluster -o json
+jsonquery stdout data.status.phase Terminating
+! exec rancher get project del-ns --cluster testcluster -o json
+jsonquery stderr data.error.code NOT_FOUND

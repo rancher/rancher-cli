@@ -43,6 +43,7 @@ func All() []Probe {
 	probes = append(probes, ownerProbes()...)
 	probes = append(probes, callerScopeProbes()...)
 	probes = append(probes, revocationProbes()...)
+	probes = append(probes, projectNamespaceProbes()...)
 	return probes
 }
 
@@ -1470,8 +1471,9 @@ func memberProbes() []Probe {
 			// What access projects reads for a member: the steve project
 			// collection (exactly the member's project), the downstream's
 			// steve namespace collection (exactly that project's namespaces,
-			// labeled with the project id) where the Kubernetes LIST is
-			// refused, and the per-namespace review the command asks: get
+			// labeled and annotated with the project id) where the
+			// Kubernetes LIST is refused, and the per-namespace review the
+			// command asks: get
 			// the namespace, allowed for the project's own namespace and
 			// denied for another project's.
 			Name:               "access-downstream/member-steve-projects-and-namespaces",
@@ -1498,10 +1500,12 @@ func memberProbes() []Probe {
 				NormalizeRule{Path: "data.links", Replace: ""},
 				NormalizeRule{Path: "data.actions", Replace: ""},
 				NormalizeRule{Path: "data.status", Replace: ""},
-				// The namespace item keeps its name and labels (the
-				// project mapping); the rest of its metadata is
-				// instance data.
-				NormalizeRule{Path: "data.metadata.annotations", Replace: ""},
+				// The namespace item keeps its name, its labels and its
+				// field.cattle.io/projectId annotation (the project
+				// mapping); the rest of its metadata is instance data. The
+				// annotations rule also reaches the Project item in the same
+				// answer.
+				NormalizeRule{Path: "data.metadata.annotations", KeepKeys: []string{"field.cattle.io/projectId"}},
 				NormalizeRule{Path: "data.metadata.managedFields", Replace: ""},
 				NormalizeRule{Path: "data.metadata.fields", Replace: ""},
 				NormalizeRule{Path: "data.metadata.creationTimestamp", Replace: ""},

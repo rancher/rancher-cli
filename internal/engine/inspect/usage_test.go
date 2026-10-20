@@ -46,6 +46,18 @@ func namespaceObj(name string, labels map[string]any) unstructured.Unstructured 
 	}}
 }
 
+// projectNamespaceObj is a namespace in project on cluster: the label holds
+// the bare project id and the annotation <cluster>:<project>.
+func projectNamespaceObj(name, cluster, project string) unstructured.Unstructured {
+	return unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{
+			"name":        name,
+			"labels":      map[string]any{"field.cattle.io/projectId": project},
+			"annotations": map[string]any{"field.cattle.io/projectId": cluster + ":" + project},
+		},
+	}}
+}
+
 func TestUsageAggregatesPerNamespace(t *testing.T) {
 	t.Parallel()
 	podKind := mustKind(t, "pod")
@@ -322,7 +334,7 @@ func TestUsageByProjectWithProjectFlagGivesSingleBucket(t *testing.T) {
 
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+			projectNamespaceObj("ns1", "c-abc", "p-x"),
 		}}).
 		withList(podMetricsGVR, &unstructured.UnstructuredList{}).
 		withList(podKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
@@ -456,7 +468,7 @@ func TestUsageByProjectVerifiedZeroBucketSkipsReads(t *testing.T) {
 
 	client := newFakeClient().
 		withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-			namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-y"}),
+			projectNamespaceObj("ns1", "c-abc", "p-y"),
 		}}).
 		withListErr(podKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden")).
 		withListErr(podMetricsGVR, clierr.New(clierr.CodeRBAC, "forbidden"))
@@ -491,7 +503,7 @@ func TestUsageRequiredCollectorsHardError(t *testing.T) {
 	base := func() *fakeClient {
 		return newFakeClient().
 			withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-				namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+				projectNamespaceObj("ns1", "c-abc", "p-x"),
 			}}).
 			withList(nodeKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
 				*nodeObj("n1"),
@@ -706,7 +718,7 @@ func TestUsageTableConvertsQuantitiesAndEnvelopeKeepsThem(t *testing.T) {
 			t.Helper()
 			c := newFakeClient().
 				withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-					namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"})}}).
+					projectNamespaceObj("ns1", "c-abc", "p-x")}}).
 				withList(podKind.GVR, podsFor(s, "")).withList(podMetricsGVR, podMetricsFor(s))
 			root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))
 			return execRead(t, NewUsage(&fakeFactory{client: c}, root.roots()), input{s: map[string]string{"cluster": "c-abc", "by": byProject}})
@@ -964,7 +976,7 @@ func TestUsageByProjectEmptyScope(t *testing.T) {
 			t.Parallel()
 			client := scopeFake(t, tc.pods, []string{"free", "ns1"}, getNone, tc.node, "", "n1").
 				withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-					namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+					projectNamespaceObj("ns1", "c-abc", "p-x"),
 					namespaceObj("free", nil),
 				}})
 			flags := map[string]string{"cluster": "c-abc", "by": byProject}
@@ -1055,7 +1067,7 @@ func TestUsageProjectNodeWithPodsOnlyOutsideTheProject(t *testing.T) {
 				outside := *podOnNode("other", "p1", "n1", "10m", "10Mi", "20m", "20Mi")
 				client := scopeFake(t, []unstructured.Unstructured{outside}, nil, getNone, tc.node, "", "n1").
 					withList(nsKind.GVR, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
-						namespaceObj("ns1", map[string]any{"field.cattle.io/projectId": "p-x"}),
+						projectNamespaceObj("ns1", "c-abc", "p-x"),
 						namespaceObj("other", nil),
 					}})
 				root := projectsRoot(t, "c-abc", steveProjectItem("c-abc", "p-x", "web"))

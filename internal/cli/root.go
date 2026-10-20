@@ -269,6 +269,13 @@ var kindOverrideTable = map[string]kindOverride{
 	"user": {
 		del: func(k kinds.Kind, d runDeps) runtime.Command { return rbac.NewDeleteUser(k, d.clients) },
 	},
+	// project: delete lists the namespaces Rancher deletes and keeps, and
+	// --delete-namespaces deletes them with the project.
+	"project": {
+		del: func(k kinds.Kind, d runDeps) runtime.Command {
+			return resources.NewDeleteProject(k, d.clients, d.roots)
+		},
+	},
 	// provisioningcluster: patch keeps the generic
 	// diff/redaction/RV-precondition behavior - only an advisory etcd-quorum
 	// preview is added, via the EffectEnricher seam, never a gate.

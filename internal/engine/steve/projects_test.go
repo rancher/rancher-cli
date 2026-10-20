@@ -399,12 +399,32 @@ func namespacesServer(t *testing.T, items ...map[string]any) *recordingServer {
 	return projectsServer(t, "/k8s/clusters/c-abc/v1/namespaces", onePage(items...))
 }
 
+// annotatedNamespace is a namespace object whose project annotation is value;
+// an empty value leaves the annotation off.
+func annotatedNamespace(name, value string, labels map[string]any) unstructured.Unstructured {
+	meta := map[string]any{"name": name}
+	if value != "" {
+		meta["annotations"] = map[string]any{"field.cattle.io/projectId": value}
+	}
+	if labels != nil {
+		meta["labels"] = labels
+	}
+	return unstructured.Unstructured{Object: map[string]any{"metadata": meta}}
+}
+
+// TestProjectNamespacesUsesTheFilteredList asserts the namespace LIST is
+// narrowed by the project label and kept by the annotation: a namespace
+// with the label and no annotation (Rancher no longer counts it in the
+// project) is not a member, one with the annotation only is, and one
+// whose annotation names another cluster is not.
 func TestProjectNamespacesUsesTheFilteredList(t *testing.T) {
 	t.Parallel()
-	list := &unstructured.UnstructuredList{}
-	for _, n := range []string{"ns-a", "ns-b"} {
-		list.Items = append(list.Items, unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": n}}})
-	}
+	list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{
+		annotatedNamespace("ns-a", "c-abc:p-1", map[string]any{"field.cattle.io/projectId": "p-1"}),
+		annotatedNamespace("ns-b", "c-abc:p-1", nil),
+		annotatedNamespace("with-project-label", "", map[string]any{"field.cattle.io/projectId": "p-1"}),
+		annotatedNamespace("other-cluster", "c-def:p-1", map[string]any{"field.cattle.io/projectId": "p-1"}),
+	}}
 	down := &fakeCluster{listObj: list}
 	srv := namespacesServer(t)
 	got, err := ProjectNamespaces(t.Context(), down, srv.getter(), "c-abc", "p-1")
@@ -443,8 +463,42 @@ func TestProjectNamespacesRefusedListReadsSteveAndKeepsTheProjectsNamespaces(t *
 	)
 	got, err := ProjectNamespaces(t.Context(), down, srv.getter(), "c-abc", "p-1")
 	require.NoError(t, err)
-	assert.Equal(t, map[string]bool{"by-label": true, "by-annotation": true}, got)
+	assert.Equal(t, map[string]bool{"by-annotation": true}, got, "the label alone does not make a namespace a member")
 	assert.Equal(t, []string{"/k8s/clusters/c-abc/v1/namespaces"}, srv.requests())
+}
+
+// TestProjectNamespaceObjectsItemsWithoutGetAreMembersByAnnotation asserts an
+// item steve returns for a namespace the caller cannot get (the annotation
+// and no labels) is a member by its annotation and is not readable in full,
+// while a full object is.
+func TestProjectNamespaceObjectsItemsWithoutGetAreMembersByAnnotation(t *testing.T) {
+	t.Parallel()
+	down := &fakeCluster{listErr: clierr.New(clierr.CodeRBAC, "forbidden")}
+	srv := namespacesServer(t,
+		namespaceItem("without-get", map[string]any{}, map[string]any{"field.cattle.io/projectId": "c-abc:p-1"}),
+		namespaceItem("full", map[string]any{"kubernetes.io/metadata.name": "full"}, map[string]any{"field.cattle.io/projectId": "c-abc:p-1"}),
+	)
+	items, viaSteve, err := ProjectNamespaceObjects(t.Context(), down, srv.getter(), "c-abc", "p-1")
+	require.NoError(t, err)
+	assert.True(t, viaSteve)
+	require.Len(t, items, 2)
+	byName := map[string]bool{}
+	for i := range items {
+		byName[items[i].GetName()] = ReadableInFull(&items[i])
+	}
+	assert.Equal(t, map[string]bool{"without-get": false, "full": true}, byName)
+}
+
+// TestProjectNamespaceObjectsListIsNotViaSteve asserts a successful LIST
+// reports its items as not from steve.
+func TestProjectNamespaceObjectsListIsNotViaSteve(t *testing.T) {
+	t.Parallel()
+	down := &fakeCluster{listObj: &unstructured.UnstructuredList{Items: []unstructured.Unstructured{annotatedNamespace("ns-a", "c-abc:p-1", nil)}}}
+	items, viaSteve, err := ProjectNamespaceObjects(t.Context(), down, namespacesServer(t).getter(), "c-abc", "p-1")
+	require.NoError(t, err)
+	assert.False(t, viaSteve)
+	require.Len(t, items, 1)
+	assert.Equal(t, "ns-a", items[0].GetName())
 }
 
 func TestProjectNamespacesSteve401IsRBACWithAHint(t *testing.T) {

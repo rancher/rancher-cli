@@ -9,7 +9,9 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/engine/steve"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // The steve collections of management Clusters and Projects (steve.Clusters,
@@ -29,11 +31,6 @@ func steveNamespacesPath(clusterID string) string {
 	return steve.Request{Cluster: clusterID, Type: "namespaces"}.Path()
 }
 
-// projectIDLabel is the namespace label Rancher sets to the bare id of the
-// project the namespace belongs to. The annotation of the same name carries
-// <cluster>:<project> and is not read.
-const projectIDLabel = "field.cattle.io/projectId"
-
 // discoveredCluster is one row of the caller's cluster set.
 type discoveredCluster struct {
 	ID          string
@@ -45,7 +42,7 @@ type discoveredCluster struct {
 
 // discoveredProject is one project of the caller's project set. Project is
 // the bare project id (the part after the cluster in steve's
-// <cluster>/<project> id), the value a namespace's project label carries.
+// <cluster>/<project> id), the project part of a namespace's project annotation.
 type discoveredProject struct {
 	Cluster     string
 	Project     string
@@ -53,8 +50,8 @@ type discoveredProject struct {
 }
 
 // discoveredNamespace is one namespace of a cluster as the caller sees it.
-// Project is the bare project id from the namespace's label, empty when the
-// namespace belongs to no project.
+// Project is the bare project id from the namespace's annotation, empty when
+// the namespace belongs to no project.
 type discoveredNamespace struct {
 	Name    string
 	Project string
@@ -63,8 +60,8 @@ type discoveredNamespace struct {
 type steveNamespaceItem struct {
 	ID       string `json:"id"`
 	Metadata struct {
-		Name   string            `json:"name"`
-		Labels map[string]string `json:"labels"`
+		Name        string            `json:"name"`
+		Annotations map[string]string `json:"annotations"`
 	} `json:"metadata"`
 }
 
@@ -119,7 +116,7 @@ func listProjects(ctx context.Context, root engine.RootClient) ([]discoveredProj
 // listNamespaces reads one cluster's namespaces as the caller sees them,
 // ordered by name.
 func listNamespaces(ctx context.Context, root engine.RootClient, clusterID string) ([]discoveredNamespace, error) {
-	rows, err := steve.ReadCollection(ctx, steve.RootGetter(root), steve.Request{Cluster: clusterID, Type: "namespaces"}, decodeNamespaceItem)
+	rows, err := steve.ReadCollection(ctx, steve.RootGetter(root), steve.Request{Cluster: clusterID, Type: "namespaces"}, namespaceItemDecoder(clusterID))
 	if err != nil {
 		return nil, err
 	}
@@ -127,19 +124,29 @@ func listNamespaces(ctx context.Context, root engine.RootClient, clusterID strin
 	return rows, nil
 }
 
-// decodeNamespaceItem consumes id, metadata.name and the project label.
-func decodeNamespaceItem(path string, index int, raw json.RawMessage) (string, discoveredNamespace, error) {
-	var item steveNamespaceItem
-	if err := json.Unmarshal(raw, &item); err != nil {
-		return "", discoveredNamespace{}, protocolError(path, fmt.Sprintf("item %d is not an object: %s", index, err))
+// namespaceItemDecoder consumes id, metadata.name and the project
+// annotation of one steve namespace item on clusterID. An annotation that
+// names another cluster puts the namespace in no project here.
+func namespaceItemDecoder(clusterID string) steve.Decoder[discoveredNamespace] {
+	return func(path string, index int, raw json.RawMessage) (string, discoveredNamespace, error) {
+		var item steveNamespaceItem
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return "", discoveredNamespace{}, protocolError(path, fmt.Sprintf("item %d is not an object: %s", index, err))
+		}
+		if item.ID == "" {
+			return "", discoveredNamespace{}, protocolError(path, fmt.Sprintf("item %d has no id", index))
+		}
+		if item.Metadata.Name != "" && item.Metadata.Name != item.ID {
+			return "", discoveredNamespace{}, protocolError(path, fmt.Sprintf("item %q names itself %q", item.ID, item.Metadata.Name))
+		}
+		var ns unstructured.Unstructured
+		ns.SetAnnotations(item.Metadata.Annotations)
+		project := ""
+		if c, p, ok := projects.ProjectOf(&ns); ok && c == clusterID {
+			project = p
+		}
+		return item.ID, discoveredNamespace{Name: item.ID, Project: project}, nil
 	}
-	if item.ID == "" {
-		return "", discoveredNamespace{}, protocolError(path, fmt.Sprintf("item %d has no id", index))
-	}
-	if item.Metadata.Name != "" && item.Metadata.Name != item.ID {
-		return "", discoveredNamespace{}, protocolError(path, fmt.Sprintf("item %q names itself %q", item.ID, item.Metadata.Name))
-	}
-	return item.ID, discoveredNamespace{Name: item.ID, Project: item.Metadata.Labels[projectIDLabel]}, nil
 }
 
 // withLocal guarantees the local row: the management cluster is always a

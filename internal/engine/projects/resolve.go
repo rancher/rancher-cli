@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -12,9 +13,11 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 )
 
-// projectLabel is the Rancher label namespaces carry to mark their project
-// membership (usage.go's mechanism, reused here).
-const projectLabel = "field.cattle.io/projectId"
+// projectKey names both the annotation and the label a namespace carries
+// for its project. The annotation holds <cluster>:<project> and is what
+// Rancher reads; the label holds the bare project id and only narrows a
+// server-side list.
+const projectKey = "field.cattle.io/projectId"
 
 // BackingNamespace returns the namespace projectroletemplatebindings and
 // project-scoped secrets live in for projectID: status.backingNamespace,
@@ -58,24 +61,46 @@ func NotMemberError(namespace, projectID, detail string) error {
 // and annotation - the one place the label+annotation encoding lives, so
 // create-namespace and add-namespace can never drift on what "member" means.
 func SetMembership(obj *unstructured.Unstructured, clusterID, projectID string) {
-	_ = unstructured.SetNestedField(obj.Object, projectID, "metadata", "labels", projectLabel)
-	_ = unstructured.SetNestedField(obj.Object, clusterID+":"+projectID, "metadata", "annotations", projectLabel)
+	_ = unstructured.SetNestedField(obj.Object, projectID, "metadata", "labels", projectKey)
+	_ = unstructured.SetNestedField(obj.Object, clusterID+":"+projectID, "metadata", "annotations", projectKey)
 }
 
 // ClearMembership removes the project membership label and annotation from
 // obj (a namespace) - SetMembership's inverse, kept beside it.
 func ClearMembership(obj *unstructured.Unstructured) {
-	unstructured.RemoveNestedField(obj.Object, "metadata", "labels", projectLabel)
-	unstructured.RemoveNestedField(obj.Object, "metadata", "annotations", projectLabel)
+	unstructured.RemoveNestedField(obj.Object, "metadata", "labels", projectKey)
+	unstructured.RemoveNestedField(obj.Object, "metadata", "annotations", projectKey)
 }
 
-// ProjectSelector renders the validated, correctly-escaped equality selector
-// for the projectID membership label. labels.NewRequirement rejects a
-// malformed project id (e.g. one containing an unescaped comma) with a
-// VALIDATION error instead of silently building a selector that matches
-// something other than intended.
-func ProjectSelector(projectID string) (string, error) {
-	req, err := labels.NewRequirement(projectLabel, selection.Equals, []string{projectID})
+// ProjectOf reads the project a namespace belongs to from its
+// field.cattle.io/projectId annotation, <cluster>:<project>. ok is false
+// when the annotation is absent or does not have that form. It is the only
+// reader of the encoding: the label of the same key is not consulted.
+func ProjectOf(ns *unstructured.Unstructured) (clusterID, projectID string, ok bool) {
+	value := ns.GetAnnotations()[projectKey]
+	clusterID, projectID, found := strings.Cut(value, ":")
+	if !found || clusterID == "" || projectID == "" || strings.Contains(projectID, ":") {
+		return "", "", false
+	}
+	return clusterID, projectID, true
+}
+
+// IsMember reports whether ns belongs to projectID on clusterID. A
+// namespace whose annotation names another cluster is a member of nothing
+// on this one.
+func IsMember(ns *unstructured.Unstructured, clusterID, projectID string) bool {
+	c, p, ok := ProjectOf(ns)
+	return ok && c == clusterID && p == projectID
+}
+
+// MemberSelector renders the validated, correctly-escaped equality selector
+// on the project label. It only narrows a server-side namespace list: the
+// label is not the membership, so every caller filters the answer with
+// IsMember. labels.NewRequirement rejects a malformed project id (e.g. one
+// containing an unescaped comma) with a VALIDATION error instead of
+// silently building a selector that matches something other than intended.
+func MemberSelector(projectID string) (string, error) {
+	req, err := labels.NewRequirement(projectKey, selection.Equals, []string{projectID})
 	if err != nil {
 		return "", clierr.New(clierr.CodeValidation,
 			fmt.Sprintf("invalid project id %q: %v; pass a valid label value", projectID, err))

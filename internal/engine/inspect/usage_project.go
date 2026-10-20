@@ -51,7 +51,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 		}
 	}
 
-	// Cluster-wide namespace List on the downstream client to read ownership labels.
+	// Cluster-wide namespace List on the downstream client to read each namespace's project.
 	nsList, err := client.List(ctx, nsKind.GVR, "", "")
 	if err != nil {
 		return runtime.Result{}, err
@@ -59,8 +59,11 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	nsByProject := map[string]string{} // namespace name → project id
 	for i := range nsList.Items {
 		ns := nsList.Items[i].GetName()
-		pid, _, _ := unstructured.NestedString(nsList.Items[i].Object, "metadata", "labels", "field.cattle.io/projectId")
-		nsByProject[ns] = pid // empty string means unowned
+		var pid string // empty string means unowned
+		if nsCluster, nsProject, ok := projects.ProjectOf(&nsList.Items[i]); ok && nsCluster == clusterID {
+			pid = nsProject
+		}
+		nsByProject[ns] = pid
 	}
 
 	// Without --project, a --namespace the cluster does not list is missing.

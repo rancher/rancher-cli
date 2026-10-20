@@ -1,0 +1,69 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "namespace-with-creator",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 404,
+        "details": {
+          "kind": "namespaces",
+          "name": "e2e-fid-nsdel-created"
+        },
+        "kind": "Status",
+        "message": "namespaces \"e2e-fid-nsdel-created\" not found",
+        "metadata": {},
+        "reason": "NotFound",
+        "status": "Failure"
+      }
+    },
+    {
+      "name": "namespace-without-creator",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "kind": "Namespace",
+        "metadata": {
+          "annotations": {},
+          "creationTimestamp": "\u003cts\u003e",
+          "labels": {
+            "field.cattle.io/projectId": "p-e2e-fid-nsdel"
+          },
+          "name": "e2e-fid-nsdel-kept",
+          "resourceVersion": "\u003crv\u003e",
+          "uid": "\u003cuid\u003e"
+        },
+        "spec": {
+          "finalizers": [
+            "kubernetes"
+          ]
+        },
+        "status": {
+          "phase": "Active"
+        }
+      }
+    },
+    {
+      "name": "project",
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "v1",
+        "code": 404,
+        "details": {
+          "group": "management.cattle.io",
+          "kind": "projects",
+          "name": "p-e2e-fid-nsdel"
+        },
+        "kind": "Status",
+        "message": "projects.management.cattle.io \"p-e2e-fid-nsdel\" not found",
+        "metadata": {},
+        "reason": "NotFound",
+        "status": "Failure"
+      }
+    }
+  ]
+}

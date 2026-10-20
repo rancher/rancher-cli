@@ -258,6 +258,19 @@ rancher create project web --cluster prod --apply             # 2. execute
 rancher delete project web --cluster prod --apply --yes       # 3. destructive effects additionally need --yes
 ```
 
+- `delete project <id> --cluster <c>` lists the project's namespaces in the
+  dry-run Effect and in the result: `data.objects`, one item per namespace
+  with `kind`, `name`, `outcome` (and `code`, `message` for a failure). Rancher
+  deletes the namespaces with the `field.cattle.io/creatorId` annotation
+  (`rancher deletes`) and keeps the rest (`rancher keeps`); relay the lists
+  and the warnings before applying. `--delete-namespaces` also deletes the
+  namespaces, one at a time, then the project; `default`, `kube-system`,
+  `kube-public` (and `local`, `fleet-local` on the local cluster) are
+  `not deleted`. A failure stops the run, keeps the project and carries every
+  item in `data.error.details.objects`; re-run the same command.
+- `project remove-namespace <ns>` also accepts a namespace with the project
+  label and no project annotation, and makes sure its project label is
+  removed.
 - A mutation without `--apply` is refused with `CONFIRMATION_REQUIRED`; the
   error's `message` names the exact flags to add. Relay the dry-run Effect
   (action, target, diff) to the user before applying anything non-trivial.
@@ -780,8 +793,10 @@ rancher oidc-client rotate-secret my-app --apply --yes
   `project add-namespace`, `grant`, `revoke`, `usage`, `access can|list|who-can`);
   every other command refuses it with `VALIDATION` before any request. A list
   filters to the project's namespaces, a named op or mutation must be in one.
-  `get namespaces --project <p>` is the membership listing (server-side label
-  selector). An id wins over another project's display name, with a warning in
+  `get namespaces --project <p>` is the membership listing: the server narrows
+  the list by the project label and the CLI keeps the namespaces whose
+  `field.cattle.io/projectId` annotation (`<cluster>:<project>`) names the
+  project. An id wins over another project's display name, with a warning in
   `warnings`; duplicate display names are `AMBIGUOUS_SELECTION` - pass the id.
   Without `--cluster` the refusal names the clusters the project is on.
 - **Empty values:** a flag typed with an empty or blank value (`--flag ''`,

@@ -183,3 +183,41 @@ func TestNormalizeDropPrefixFiltersAnArrayAndItsCount(t *testing.T) {
 	assert.Equal(t, []any{}, body["data"])
 	assert.NotContains(t, body, "count", "steve omits count on an empty collection")
 }
+
+func TestNormalizeKeepKeysKeepsListedKeysAndDropsTheRest(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{"metadata": map[string]any{"annotations": map[string]any{
+		"field.cattle.io/projectId": "c-abc12:p-xyz",
+		"cattle.io/status":          `{"Conditions":[]}`,
+		"lifecycle.cattle.io/x":     "true",
+	}}}
+	Normalize(body, []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"field.cattle.io/projectId", "field.cattle.io/creatorId"}}})
+	assert.Equal(t, map[string]any{"field.cattle.io/projectId": "c-abc12:p-xyz"},
+		body["metadata"].(map[string]any)["annotations"], "a listed key absent from the object is not created")
+}
+
+func TestNormalizeKeepKeysTraversesArrays(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{"data": []any{
+		map[string]any{"metadata": map[string]any{"annotations": map[string]any{"keep": "1", "drop": "2"}}},
+		map[string]any{"metadata": map[string]any{"annotations": map[string]any{"drop": "3"}}},
+	}}
+	Normalize(body, []NormalizeRule{{Path: "data.metadata.annotations", KeepKeys: []string{"keep"}}})
+	items := body["data"].([]any)
+	assert.Equal(t, map[string]any{"keep": "1"}, items[0].(map[string]any)["metadata"].(map[string]any)["annotations"])
+	assert.Equal(t, map[string]any{}, items[1].(map[string]any)["metadata"].(map[string]any)["annotations"])
+}
+
+func TestNormalizeKeepKeysNeverLeavesANonObjectInPlace(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{"metadata": map[string]any{"annotations": []any{"instance-data"}}}
+	Normalize(body, []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"keep"}}})
+	assert.Equal(t, "<object>", body["metadata"].(map[string]any)["annotations"])
+}
+
+func TestNormalizeKeepKeysAbsentPathStaysAbsent(t *testing.T) {
+	t.Parallel()
+	body := map[string]any{"metadata": map[string]any{"name": "n"}}
+	Normalize(body, []NormalizeRule{{Path: "metadata.annotations", KeepKeys: []string{"keep"}}})
+	assert.Equal(t, map[string]any{"metadata": map[string]any{"name": "n"}}, body)
+}

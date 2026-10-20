@@ -19,14 +19,20 @@ func steveProject(cluster, project, display string) map[string]any {
 		"spec":     map[string]any{"clusterName": cluster, "displayName": display}}
 }
 
-func steveNamespace(name, project string) map[string]any {
-	labels := map[string]any{"kubernetes.io/metadata.name": name}
+// projectKey is the label and annotation a namespace carries for its
+// project.
+const projectKey = "field.cattle.io/projectId"
+
+// steveNamespace is a steve namespace item on cluster: the project label
+// holds the bare id and the annotation <cluster>:<project>; a namespace in
+// no project has neither.
+func steveNamespace(cluster, name, project string) map[string]any {
+	meta := map[string]any{"name": name, "labels": map[string]any{"kubernetes.io/metadata.name": name}}
 	if project != "" {
-		labels[projectIDLabel] = project
+		meta["labels"].(map[string]any)[projectKey] = project
+		meta["annotations"] = map[string]any{projectKey: cluster + ":" + project}
 	}
-	return map[string]any{"id": name, "type": "namespace",
-		"metadata": map[string]any{"name": name, "labels": labels,
-			"annotations": map[string]any{projectIDLabel: "c-x:" + project}}}
+	return map[string]any{"id": name, "type": "namespace", "metadata": meta}
 }
 
 // pagedServerAt serves pages for one collection path, keyed by the continue
@@ -74,20 +80,34 @@ func TestListProjectsOrdersByClusterThenProject(t *testing.T) {
 	assert.Equal(t, []string{steveProjectsPath}, *paths)
 }
 
-func TestListNamespacesReadsTheClusterCollectionAndTheProjectLabel(t *testing.T) {
+// TestListNamespacesReadsTheClusterCollectionAndTheProjectAnnotation
+// asserts the project of a namespace is the project its annotation names on
+// this cluster: a label alone, an annotation for another cluster and an
+// item steve serves without get (no labels) give the project the
+// annotation names (or none), never the label's.
+func TestListNamespacesReadsTheClusterCollectionAndTheProjectAnnotation(t *testing.T) {
 	t.Parallel()
+	withProjectLabel := steveNamespace("c-m-a", "with-project-label", "p-old")
+	delete(withProjectLabel["metadata"].(map[string]any), "annotations")
+	elsewhere := steveNamespace("c-other", "elsewhere", "p-else")
+	withoutGet := map[string]any{"id": "without-get", "type": "namespace", "metadata": map[string]any{
+		"name": "without-get", "labels": map[string]any{}, "annotations": map[string]any{projectKey: "c-m-a:p-sys"}}}
 	srv, paths := pagedServerAt(t, steveNamespacesPath("c-m-a"), map[string]stevePage{
 		"": {Data: []map[string]any{
-			steveNamespace("kube-system", "p-sys"), steveNamespace("default", "p-def"), steveNamespace("local", ""),
-		}, Count: new(3), Revision: "44"},
+			steveNamespace("c-m-a", "kube-system", "p-sys"), steveNamespace("c-m-a", "default", "p-def"), steveNamespace("c-m-a", "local", ""),
+			withProjectLabel, elsewhere, withoutGet,
+		}, Count: new(6), Revision: "44"},
 	})
 	rows, err := listNamespaces(t.Context(), fakeRootClient{srv}, "c-m-a")
 	require.NoError(t, err)
 	assert.Equal(t, []discoveredNamespace{
 		{Name: "default", Project: "p-def"},
+		{Name: "elsewhere", Project: ""},
 		{Name: "kube-system", Project: "p-sys"},
 		{Name: "local", Project: ""},
-	}, rows, "the label, never the annotation, names the project; an unlabeled namespace has none")
+		{Name: "with-project-label", Project: ""},
+		{Name: "without-get", Project: "p-sys"},
+	}, rows)
 	assert.Equal(t, []string{"/k8s/clusters/c-m-a/v1/namespaces"}, *paths)
 }
 
