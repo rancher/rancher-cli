@@ -8,7 +8,9 @@ set -euo pipefail
 # literal tag+digest, changed only through a reviewed golden-regeneration
 # change. PRIME_ORACLE_IMAGE is the opt-in Prime oracle (E2E_FIDELITY_PRIME=1) -
 # it has no goldens; the suite boots it with the same downstream, smoke-checks
-# it, and leaves a kept pair for hand runs and fact probes against Prime.
+# it, and leaves a kept pair for hand runs and fact probes against Prime. The
+# upcoming-minor oracle (E2E_FIDELITY_MINOR=<major>.<minor>) is the third
+# opt-in oracle, described below.
 ORACLE_IMAGE="rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea"
 PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:073346158ebe41229177aef8f99cf765762f0b222e0ac6350c842d2bb19c31ca"
 # K3S_IMAGE is the downstream cluster the oracle imports on every boot, so
@@ -17,13 +19,27 @@ PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:07334615
 # literal tag+digest, bumped through a reviewed golden-regeneration change
 # like ORACLE_IMAGE.
 K3S_IMAGE="rancher/k3s:v1.34.4-k3s1@sha256:a5f627f1ed014dede348fdc77bc7e452d03712a8daff000e0f2667d28f9a2d11"
-# HEAD_ORACLE_IMAGE is the opt-in head oracle (E2E_FIDELITY_HEAD=1): the next
-# minor's moving image, for readiness checks and component release-candidate
-# validation before that minor ships. It has no goldens and is never a
-# pin: the tag is resolved to its digest at boot, the digest is what runs
-# and what the state file records, so a kept pair is reused only while head
-# has not moved. Boot, bootstrap, and downstream-proxy smoke only.
-HEAD_ORACLE_IMAGE="rancher/rancher:head"
+# The upcoming-minor oracle (E2E_FIDELITY_MINOR=<major>.<minor>, for example
+# 2.16) boots the newest build of a Rancher minor with no GA release yet, for
+# readiness checks and component release-candidate validation before that
+# minor ships. It has no goldens and is never a pin: the Rancher image and the
+# k3s downstream image are resolved at run time to tag+digest, the digests are
+# what run and what the state file records, so a kept pair is reused only
+# while both are unchanged. The Rancher image is rancher/rancher:v<minor>-head
+# once release/v<minor> exists on RANCHER_REPO, else
+# rancher/rancher:head while its CATTLE_SERVER_VERSION is of that minor; the
+# downstream is the rancher/k3s tag its CATTLE_K3S_VERSION names. The image
+# environment is read from the registry API, with no layer pull.
+# E2E_FIDELITY_UPCOMING_IMAGE and E2E_FIDELITY_K3S_IMAGE override the two
+# images; E2E_FIDELITY_PRINT_IMAGES=1 prints the choice and boots nothing.
+# Boot, bootstrap, and downstream-proxy smoke only.
+#
+# E2E_FIDELITY_RANCHER_REPO and E2E_FIDELITY_REGISTRY_URL exist for the tests,
+# which point them at a local git repository and a local registry stand-in.
+UPCOMING_REPO="rancher/rancher"
+UPCOMING_K3S_REPO="rancher/k3s"
+RANCHER_REPO="${E2E_FIDELITY_RANCHER_REPO:-https://github.com/rancher/rancher}"
+REGISTRY_URL="${E2E_FIDELITY_REGISTRY_URL:-https://registry-1.docker.io}"
 
 # The harness reaches the oracle through the CLI's own Rancher-scoped HTTP
 # client: it honours HTTPS_PROXY/HTTP_PROXY/NO_PROXY from this shell (a
@@ -46,10 +62,61 @@ EXTRA_SANS="${E2E_FIDELITY_EXTRA_SANS:-}"
 # within a single run.
 BIND_ADDR="${E2E_FIDELITY_BIND_ADDR:-127.0.0.1}"
 
-if [ "${E2E_FIDELITY_PRIME:-}" = "1" ] && [ "${E2E_FIDELITY_HEAD:-}" = "1" ]; then
-  echo "error: E2E_FIDELITY_PRIME and E2E_FIDELITY_HEAD select different oracles; set one" >&2
+# Every refusal below runs before any Docker call.
+MINOR="${E2E_FIDELITY_MINOR:-}"
+UPCOMING_IMAGE="${E2E_FIDELITY_UPCOMING_IMAGE:-}"
+K3S_OVERRIDE="${E2E_FIDELITY_K3S_IMAGE:-}"
+PRINT_IMAGES="${E2E_FIDELITY_PRINT_IMAGES:-}"
+if [ -n "${E2E_FIDELITY_HEAD:-}" ]; then
+  echo "error: E2E_FIDELITY_HEAD is no longer read; set E2E_FIDELITY_MINOR=<major>.<minor> (for example 2.16)" >&2
   exit 1
 fi
+if [ -n "${MINOR}" ] && [ "${E2E_FIDELITY_PRIME:-}" = "1" ]; then
+  echo "error: E2E_FIDELITY_PRIME and E2E_FIDELITY_MINOR select different oracles; set one" >&2
+  exit 1
+fi
+if [ -z "${MINOR}" ]; then
+  for var in E2E_FIDELITY_UPCOMING_IMAGE E2E_FIDELITY_K3S_IMAGE E2E_FIDELITY_PRINT_IMAGES; do
+    # PRINT_IMAGES counts only as 1, as it does with a minor.
+    if [ "${var}" = E2E_FIDELITY_PRINT_IMAGES ] && [ "${!var:-}" != 1 ]; then
+      continue
+    fi
+    if [ -n "${!var:-}" ]; then
+      echo "error: ${var} is set without E2E_FIDELITY_MINOR; the community and Prime profiles run only their pinned images" >&2
+      exit 1
+    fi
+  done
+fi
+minor_pattern='^[1-9][0-9]*\.(0|[1-9][0-9]*)$'
+if [ -n "${MINOR}" ] && ! [[ "${MINOR}" =~ ${minor_pattern} ]]; then
+  echo "error: E2E_FIDELITY_MINOR=${MINOR} is not <major>.<minor>; for example 2.16" >&2
+  exit 1
+fi
+k3s_override_pattern='^(([a-z0-9.-]+(:[0-9]+)?)/)?[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}@sha256:[0-9a-f]{64}$'
+upcoming_override_pattern='^[a-z0-9]+([_-][a-z0-9]+)*/[a-z0-9]+([._-][a-z0-9]+)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}@sha256:[0-9a-f]{64}$'
+# check_image_format exits with a message naming the rule an image override
+# breaks. $4 is 1 when the value must not name a registry host; $5 is the
+# form the messages show.
+check_image_format() {
+  local var="$1" value="$2" pattern="$3" no_host="$4" form="$5" name last
+  local digest_pattern='@sha256:[0-9a-f]{64}$'
+  name="${value%%@*}"
+  last="${name##*/}"
+  if [ "${no_host}" = 1 ] && { [[ "${value}" != */* ]] || [[ "${value%%/*}" == *[.:]* ]] || [ "${value%%/*}" = "localhost" ]; }; then
+    echo "error: ${var}=${value} must be written without a registry host, as ${form}; the script reads Docker Hub only" >&2
+  elif [[ "${last}" != *:* ]]; then
+    echo "error: ${var}=${value} has no tag; write ${form}" >&2
+  elif ! [[ "${value}" =~ ${digest_pattern} ]]; then
+    echo "error: ${var}=${value} does not end in @sha256: and 64 lowercase hex digits; write ${form}" >&2
+  elif [[ "${value}" =~ ${pattern} ]]; then
+    return 0
+  else
+    echo "error: ${var}=${value} is not ${form}" >&2
+  fi
+  exit 1
+}
+[ -z "${K3S_OVERRIDE}" ] || check_image_format E2E_FIDELITY_K3S_IMAGE "${K3S_OVERRIDE}" "${k3s_override_pattern}" 0 '<repo>:<tag>@sha256:<64 hex>'
+[ -z "${UPCOMING_IMAGE}" ] || check_image_format E2E_FIDELITY_UPCOMING_IMAGE "${UPCOMING_IMAGE}" "${upcoming_override_pattern}" 1 '<namespace>/<repo>:<tag>@sha256:<64 hex>'
 # SMOKE_PROFILE names the opt-in oracle that gets the boot smoke instead of
 # the golden suite; empty for the community pin.
 SMOKE_PROFILE=""
@@ -60,13 +127,22 @@ if [ "${E2E_FIDELITY_PRIME:-}" = "1" ]; then
   HOST_PORT="8444"
   STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity-prime"
   SUBNET="172.30.2.0/24"
-elif [ "${E2E_FIDELITY_HEAD:-}" = "1" ]; then
-  ORACLE_IMAGE="${HEAD_ORACLE_IMAGE}"
-  SMOKE_PROFILE="head"
-  CONTAINER="rancher-cli-e2e-fidelity-head"
-  HOST_PORT="8445"
-  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity-head"
-  SUBNET="172.30.3.0/24"
+elif [ -n "${MINOR}" ]; then
+  # Upcoming-minor slots. Two slots alternate: a minor's row is added at
+  # the GA of the minor two before it, on the slot that GA frees. The
+  # community profile uses 8443 and 172.30.1.0/24, Prime 8444 and
+  # 172.30.2.0/24.
+  case "${MINOR}" in
+    2.16) HOST_PORT="8445"; SUBNET="172.30.3.0/24" ;;
+    2.17) HOST_PORT="8446"; SUBNET="172.30.4.0/24" ;;
+    *)
+      echo "error: E2E_FIDELITY_MINOR=${MINOR} has no slot in scripts/e2e-fidelity; slots: 2.16 2.17" >&2
+      exit 1
+      ;;
+  esac
+  CONTAINER="rancher-cli-e2e-fidelity-v${MINOR}"
+  STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/rancher-cli-e2e-fidelity-v${MINOR}"
+  SMOKE_PROFILE="v${MINOR}"
 else
   CONTAINER="rancher-cli-e2e-fidelity"
   HOST_PORT="8443"
@@ -104,17 +180,389 @@ fi
 for tool in docker curl openssl python3 go; do
   command -v "${tool}" >/dev/null || { echo "error: ${tool} not found" >&2; exit 1; }
 done
+if [ -n "${MINOR}" ]; then
+  command -v git >/dev/null || { echo "error: git not found" >&2; exit 1; }
+fi
 docker info >/dev/null 2>&1 || { echo "error: docker daemon not reachable" >&2; exit 1; }
 
-if [ "${SMOKE_PROFILE}" = "head" ]; then
-  # The moving tag is pulled and replaced by its digest before anything
-  # reads ORACLE_IMAGE: the kept-pair check and the state file then work
-  # on the image that actually runs.
-  echo "==> resolving ${HEAD_ORACLE_IMAGE}"
-  docker pull -q "${HEAD_ORACLE_IMAGE}" >/dev/null
-  ORACLE_IMAGE="$(docker inspect --format '{{index .RepoDigests 0}}' "${HEAD_ORACLE_IMAGE}")"
-  [ -n "${ORACLE_IMAGE}" ] || { echo "error: could not resolve ${HEAD_ORACLE_IMAGE} to a digest" >&2; exit 1; }
-  echo "==> head is ${ORACLE_IMAGE}"
+# read_registry_image reads one image from the registry API at REGISTRY_URL
+# with no layer pull: <repo> <ref> <platform> <mode>. ref is a tag or a
+# sha256 digest; platform is <os>/<arch>; mode "env" also reads the image
+# environment of that platform's image, "digest" stops at the digest. Exit 0
+# prints one JSON line {"digest","serverVersion","k3sVersion"}; exit 3 means
+# the tag is not published; exit 1 prints one error line on stderr. Every
+# manifest list, manifest and config blob is checked against the digest it
+# was fetched by.
+read_registry_image() {
+  python3 -I - "${REGISTRY_URL}" "$1" "$2" "$3" "$4" <<'PY'
+import hashlib
+import json
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+base, repo, ref, platform, mode = sys.argv[1:6]
+base = base.rstrip("/")
+timeout = 30
+index_types = (
+    "application/vnd.oci.image.index.v1+json, "
+    "application/vnd.docker.distribution.manifest.list.v2+json, "
+    "application/vnd.oci.image.manifest.v1+json, "
+    "application/vnd.docker.distribution.manifest.v2+json"
+)
+manifest_types = (
+    "application/vnd.oci.image.manifest.v1+json, "
+    "application/vnd.docker.distribution.manifest.v2+json"
+)
+by_digest = ref.startswith("sha256:")
+image = repo + ("@" if by_digest else ":") + ref
+
+
+class ReadError(Exception):
+    pass
+
+
+def request(method, path, accept=None, token=None):
+    req = urllib.request.Request(path, method=method)
+    if accept:
+        req.add_header("Accept", accept)
+    if token:
+        # Not copied to a redirect target: the blob redirect leaves the registry.
+        req.add_unredirected_header("Authorization", "Bearer " + token)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.headers, resp.read()
+    except urllib.error.HTTPError as err:
+        with err:
+            return err.code, err.headers, b""
+
+
+def get(path, accept, token):
+    status, _, body = request("GET", base + path, accept, token)
+    if status != 200:
+        raise ReadError("HTTP %d" % status)
+    return body
+
+
+def check_digest(label, digest, body):
+    got = "sha256:" + hashlib.sha256(body).hexdigest()
+    if got != digest:
+        raise ReadError("%s %s does not match its digest (got %s)" % (label, digest, got))
+
+
+def emit(digest, server_version, k3s_version):
+    print(json.dumps({"digest": digest, "serverVersion": server_version, "k3sVersion": k3s_version}))
+
+
+def read():
+    manifest_path = "/v2/%s/manifests/%s" % (repo, ref)
+    status, headers, _ = request("HEAD", base + manifest_path)
+    token = None
+    if status == 401:
+        challenge = headers.get("WWW-Authenticate", "")
+        if not challenge.lower().startswith("bearer "):
+            raise ReadError("HTTP 401 without a bearer challenge")
+        params = dict(re.findall(r'(\w+)="([^"]*)"', challenge))
+        if not params.get("realm"):
+            raise ReadError("the 401 challenge names no token realm")
+        query = urllib.parse.urlencode(
+            [("service", params.get("service", "")), ("scope", "repository:%s:pull" % repo)], safe=":/"
+        )
+        status, _, body = request("GET", params["realm"] + "?" + query)
+        if status != 200:
+            raise ReadError("token request HTTP %d" % status)
+        token = json.loads(body).get("token")
+        if not token:
+            raise ReadError("the token response has no token")
+    if by_digest:
+        digest = ref
+    else:
+        status, headers, _ = request("HEAD", base + manifest_path, index_types, token)
+        if status == 404:
+            sys.exit(3)
+        if status != 200:
+            raise ReadError("HTTP %d" % status)
+        digest = headers.get("Docker-Content-Digest", "")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+            raise ReadError("no valid Docker-Content-Digest header")
+    if mode == "digest":
+        emit(digest, "", "")
+        return
+    body = get("/v2/%s/manifests/%s" % (repo, digest), index_types, token)
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        doc = None
+    is_list = not isinstance(doc, dict) or "manifests" in doc
+    check_digest("manifest list" if is_list else "manifest", digest, body)
+    if not isinstance(doc, dict):
+        raise ReadError("the manifest is not JSON")
+    if is_list:
+        os_name, _, arch = platform.partition("/")
+        platform_digest = None
+        for entry in doc["manifests"]:
+            entry_platform = entry.get("platform") or {}
+            if entry_platform.get("os") == os_name and entry_platform.get("architecture") == arch:
+                platform_digest = entry["digest"]
+                break
+        if platform_digest is None:
+            raise ReadError("no manifest for platform %s" % platform)
+        body = get("/v2/%s/manifests/%s" % (repo, platform_digest), manifest_types, token)
+        check_digest("manifest", platform_digest, body)
+        doc = json.loads(body)
+    config_digest = doc["config"]["digest"]
+    body = get("/v2/%s/blobs/%s" % (repo, config_digest), None, token)
+    check_digest("config blob", config_digest, body)
+    env = {}
+    for item in (json.loads(body).get("config") or {}).get("Env") or []:
+        key, _, value = item.partition("=")
+        env[key] = value
+    emit(digest, env.get("CATTLE_SERVER_VERSION", ""), env.get("CATTLE_K3S_VERSION", ""))
+
+
+try:
+    read()
+except Exception as err:
+    if isinstance(err, urllib.error.URLError):
+        reason = str(err.reason)
+    elif isinstance(err, KeyError):
+        reason = "missing field %s" % err
+    else:
+        reason = str(err) or type(err).__name__
+    print("error: could not read %s from %s (%s)" % (image, base, reason), file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
+# image_info_or_stop sets IMAGE_INFO to the JSON read_registry_image prints for
+# <repo> <ref> <mode>. A tag that is not published ends the run with the
+# message in $4; any other failure already printed its own error line.
+image_info_or_stop() {
+  local status=0
+  IMAGE_INFO="$(read_registry_image "$1" "$2" "${platform}" "$3")" || status=$?
+  case "${status}" in
+    0) return 0 ;;
+    3) echo "error: $4" >&2 ;;
+  esac
+  exit 1
+}
+
+# json_field prints one top-level field of a JSON object given as text.
+json_field() {
+  python3 -I -c 'import json,sys; print(json.loads(sys.argv[1])[sys.argv[2]])' "$1" "$2"
+}
+
+# holder_note prints what follows a holder's name in a slot refusal: the
+# remove advice for another minor's pair, or which fixed pair it is. The
+# community and Prime arms cannot match with the slot table as written; they
+# make a mistyped slot row refuse by naming the pair it collides with.
+holder_note() {
+  local name="$1" state_home="${XDG_STATE_HOME:-$HOME/.local/state}" other
+  local pair_pattern='^rancher-cli-e2e-fidelity-v([1-9][0-9]*\.(0|[1-9][0-9]*))(-k3s|-net)?$'
+  if [[ "${name}" =~ ${pair_pattern} ]] && [ "${BASH_REMATCH[1]}" != "${MINOR}" ]; then
+    other="${BASH_REMATCH[1]}"
+    printf '; that is the %s pair: remove containers rancher-cli-e2e-fidelity-v%s and rancher-cli-e2e-fidelity-v%s-k3s, network rancher-cli-e2e-fidelity-v%s-net and state root %s/rancher-cli-e2e-fidelity-v%s' \
+      "${other}" "${other}" "${other}" "${other}" "${state_home}" "${other}"
+    return 0
+  fi
+  case "${name}" in
+    rancher-cli-e2e-fidelity | rancher-cli-e2e-fidelity-k3s | rancher-cli-e2e-fidelity-net) printf ', the community pair' ;;
+    rancher-cli-e2e-fidelity-prime | rancher-cli-e2e-fidelity-prime-k3s | rancher-cli-e2e-fidelity-prime-net) printf ', the Prime pair' ;;
+  esac
+}
+
+# port_is_free reports whether nothing outside Docker listens on
+# BIND_ADDR:HOST_PORT. The bind sets no SO_REUSEADDR: with it, macOS accepts
+# a bind on one address while another process listens on the wildcard address.
+# Without it, Linux refuses while a connection sits in TIME_WAIT after a pair
+# was just removed, so the bind is tried twice, 2 seconds apart.
+port_is_free() {
+  python3 -I - "${BIND_ADDR}" "${HOST_PORT}" <<'PY'
+import socket
+import sys
+import time
+
+addr, port = sys.argv[1], int(sys.argv[2])
+for attempt in range(2):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((addr, port))
+        sys.exit(0)
+    except OSError:
+        pass
+    finally:
+        sock.close()
+    if attempt == 0:
+        time.sleep(2)
+sys.exit(1)
+PY
+}
+
+# check_slot refuses a host port or subnet that another container or network
+# holds, before the lock and before anything is removed. A port named only in
+# a stopped container's configuration counts as held: that container could
+# never start again.
+check_slot() {
+  local container_ports networks holder subnet_holder name ports p own_port=""
+  # shellcheck disable=SC2016
+  container_ports="$(docker ps -aq | xargs -r docker inspect -f '{{.Name}} {{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{.HostPort}} {{end}}{{end}}')" ||
+    { echo "error: could not read the containers' published ports from docker" >&2; exit 1; }
+  holder=""
+  while read -r name ports; do
+    name="${name#/}"
+    [ -n "${name}" ] || continue
+    # shellcheck disable=SC2086
+    for p in ${ports}; do
+      [ "${p}" = "${HOST_PORT}" ] || continue
+      if [ "${name}" = "${CONTAINER}" ]; then
+        own_port=1
+      elif [ -z "${holder}" ]; then
+        holder="${name}"
+      fi
+    done
+  done <<<"${container_ports}"
+  if [ -n "${holder}" ]; then
+    echo "error: port ${HOST_PORT} for ${MINOR} is held by container ${holder}$(holder_note "${holder}")" >&2
+    exit 1
+  fi
+  if [ -z "${own_port}" ] && ! port_is_free; then
+    echo "error: port ${HOST_PORT} for ${MINOR} is in use on ${BIND_ADDR} outside Docker (checked twice, 2 s apart); a pair removed in the last minute can leave the port in TIME_WAIT" >&2
+    exit 1
+  fi
+  networks="$(docker network ls -q | xargs -r docker network inspect -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}')" ||
+    { echo "error: could not read the networks' subnets from docker" >&2; exit 1; }
+  subnet_holder="$(python3 -I -c '
+import ipaddress
+import sys
+
+want = ipaddress.ip_network(sys.argv[1], strict=False)
+for line in sys.stdin.read().splitlines():
+    fields = line.split()
+    if not fields or fields[0] == sys.argv[2]:
+        continue
+    for text in fields[1:]:
+        try:
+            if want.overlaps(ipaddress.ip_network(text, strict=False)):
+                print(fields[0], text)
+                sys.exit(0)
+        except ValueError:
+            pass
+' "${SUBNET}" "${NETWORK}" <<<"${networks}")"
+  if [ -n "${subnet_holder}" ]; then
+    read -r name p <<<"${subnet_holder}"
+    echo "error: subnet ${SUBNET} for ${MINOR} overlaps network ${name} (${p})$(holder_note "${name}")" >&2
+    exit 1
+  fi
+}
+
+if [ -n "${MINOR}" ]; then
+  # One read decides between the release branch's image and the main
+  # branch's: a failed read stops the run instead of being taken as no branch.
+  ls_status=0
+  ls_out="$(GIT_TERMINAL_PROMPT=0 git ls-remote --exit-code "${RANCHER_REPO}" "refs/heads/release/v${MINOR}" "refs/tags/v${MINOR}.0")" || ls_status=$?
+  has_branch=""
+  has_tag=""
+  case "${ls_status}" in
+    0)
+      while read -r _ ls_ref; do
+        [ "${ls_ref}" != "refs/heads/release/v${MINOR}" ] || has_branch=1
+        [ "${ls_ref}" != "refs/tags/v${MINOR}.0" ] || has_tag=1
+      done <<<"${ls_out}"
+      ;;
+    2) ;;
+    *)
+      echo "error: could not read branches and tags from ${RANCHER_REPO} (git ls-remote exit ${ls_status}); a failed read is never taken as no branch" >&2
+      exit 1
+      ;;
+  esac
+  if [ -n "${has_tag}" ]; then
+    echo "error: v${MINOR}.0 is tagged on ${UPCOMING_REPO}; ${MINOR} is released and is not an upcoming minor" >&2
+    exit 1
+  fi
+  platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" ||
+    { echo "error: could not read the Docker server platform" >&2; exit 1; }
+
+  if [ -n "${UPCOMING_IMAGE}" ]; then
+    UPCOMING_SOURCE="override"
+    upcoming_name="${UPCOMING_IMAGE%%@*}"
+    image_repo="${upcoming_name%:*}"
+    image_ref="${UPCOMING_IMAGE#*@}"
+    not_published="${UPCOMING_IMAGE} is not published"
+  else
+    image_repo="${UPCOMING_REPO}"
+    if [ -n "${has_branch}" ]; then
+      UPCOMING_SOURCE="release-branch"
+      image_ref="v${MINOR}-head"
+      not_published="release/v${MINOR} exists but ${image_repo}:${image_ref} is not published; set E2E_FIDELITY_UPCOMING_IMAGE to a build from the branch (${image_repo}:v${MINOR}-<commit>-head@sha256:<digest>)"
+    else
+      UPCOMING_SOURCE="main"
+      image_ref="head"
+      not_published="${image_repo}:${image_ref} is not published; set E2E_FIDELITY_UPCOMING_IMAGE to a ${MINOR} build"
+    fi
+  fi
+  image_info_or_stop "${image_repo}" "${image_ref}" env "${not_published}"
+  image_info="${IMAGE_INFO}"
+  SERVER_VERSION="$(json_field "${image_info}" serverVersion)"
+  version_ok=""
+  case "${SERVER_VERSION}" in
+    "v${MINOR}-"*) version_ok=1 ;;
+    "v${MINOR}."*) [ -z "${UPCOMING_IMAGE}" ] || version_ok=1 ;;
+  esac
+  if [ -z "${version_ok}" ]; then
+    not_of="CATTLE_SERVER_VERSION=${SERVER_VERSION}, not ${MINOR}"
+    if [ -n "${UPCOMING_IMAGE}" ]; then
+      echo "error: E2E_FIDELITY_UPCOMING_IMAGE is ${not_of}" >&2
+    elif [ -n "${has_branch}" ]; then
+      echo "error: ${image_repo}:${image_ref} is ${not_of}; set E2E_FIDELITY_UPCOMING_IMAGE to a ${MINOR} build" >&2
+    else
+      echo "error: ${image_repo}:${image_ref} is ${not_of}, and release/v${MINOR} does not exist; set E2E_FIDELITY_UPCOMING_IMAGE to a ${MINOR} build" >&2
+    fi
+    exit 1
+  fi
+  if [ -n "${UPCOMING_IMAGE}" ]; then
+    ORACLE_IMAGE="${UPCOMING_IMAGE}"
+  else
+    ORACLE_IMAGE="${image_repo}:${image_ref}@$(json_field "${image_info}" digest)"
+  fi
+  echo "==> ${MINOR} oracle image ${ORACLE_IMAGE} (CATTLE_SERVER_VERSION ${SERVER_VERSION})" >&2
+
+  K3S_VERSION=""
+  if [ -n "${K3S_OVERRIDE}" ]; then
+    K3S_SOURCE="override"
+    K3S_IMAGE="${K3S_OVERRIDE}"
+    echo "==> ${MINOR} downstream image ${K3S_IMAGE} (from E2E_FIDELITY_K3S_IMAGE)" >&2
+  else
+    K3S_SOURCE="image"
+    K3S_VERSION="$(json_field "${image_info}" k3sVersion)"
+    k3s_version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+$'
+    if ! [[ "${K3S_VERSION}" =~ ${k3s_version_pattern} ]]; then
+      echo "error: ${ORACLE_IMAGE} has no usable CATTLE_K3S_VERSION (\"${K3S_VERSION}\"); set E2E_FIDELITY_K3S_IMAGE" >&2
+      exit 1
+    fi
+    k3s_tag="${K3S_VERSION//+/-}"
+    image_info_or_stop "${UPCOMING_K3S_REPO}" "${k3s_tag}" digest \
+      "${UPCOMING_K3S_REPO}:${k3s_tag} (from CATTLE_K3S_VERSION ${K3S_VERSION}) is not published; set E2E_FIDELITY_K3S_IMAGE"
+    K3S_IMAGE="${UPCOMING_K3S_REPO}:${k3s_tag}@$(json_field "${IMAGE_INFO}" digest)"
+    echo "==> ${MINOR} downstream image ${K3S_IMAGE} (from CATTLE_K3S_VERSION ${K3S_VERSION})" >&2
+  fi
+
+  if [ "${PRINT_IMAGES}" = "1" ]; then
+    python3 -I -c 'import json,sys; print(json.dumps(dict(zip(["minor","source","oracleImage","serverVersion","k3sImage","k3sSource","k3sVersion"], sys.argv[1:]))))' \
+      "${MINOR}" "${UPCOMING_SOURCE}" "${ORACLE_IMAGE}" "${SERVER_VERSION}" "${K3S_IMAGE}" "${K3S_SOURCE}" "${K3S_VERSION}"
+    exit 0
+  fi
+
+  check_slot
+
+  # Both images are pulled before the lock, so a failed pull stops the run
+  # before a kept pair is removed or its downstream rebuilt.
+  for image_ref in "${ORACLE_IMAGE}" "${K3S_IMAGE}"; do
+    docker image inspect "${image_ref}" >/dev/null 2>&1 ||
+      docker pull -q "${image_ref}" >/dev/null ||
+      { echo "error: could not pull ${image_ref}; nothing was removed" >&2; exit 1; }
+  done
 fi
 
 mkdir -p "${STATE_ROOT}"
@@ -159,7 +607,7 @@ cleanup() {
     docker exec "${K3S_CONTAINER}" kubectl -n cattle-system logs deploy/cattle-cluster-agent --tail 50 2>&1 | sed 's/^/[agent] /' || true
   fi
   if [ "${E2E_FIDELITY_KEEP:-}" != "1" ]; then
-    docker rm -f "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
+    docker rm -f -v "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
     docker network rm "${NETWORK}" >/dev/null 2>&1 || true
     rm -f "${STATE_FILE}"
   fi
@@ -185,15 +633,36 @@ require_disk() {
   fi
 }
 
+# fetch_ca writes the signing CA to CA_FILE. /cacerts serves the signing CA,
+# which is stable for the container's life. Scraping the served chain is not
+# equivalent: the oracle serves its leaf alone, and dynamiclistener reissues
+# that leaf whenever a new SAN is first contacted (a LAN-bound run does
+# exactly that), so a scraped "CA" goes stale mid-run. -k is sound only here:
+# this script created the server seconds ago on this host, and everything
+# after verifies strictly against what this returns. A server whose API
+# aggregation is not ready answers /cacerts with a plain text message, so the
+# read is retried until the body is a certificate, for CA_LIMIT_SECONDS at
+# most; nothing else is ever written to CA_FILE.
+CA_LIMIT_SECONDS=300
+CA_WAIT_SECONDS=5
 fetch_ca() {
-  # /cacerts serves the signing CA, which is stable for the container's
-  # life. Scraping the served chain is not equivalent: the oracle serves
-  # its leaf alone, and dynamiclistener reissues that leaf whenever a new
-  # SAN is first contacted (a LAN-bound run does exactly that), so a
-  # scraped "CA" goes stale mid-run. -k is sound only here: this script
-  # created the server seconds ago on this host, and everything after
-  # verifies strictly against what this returns.
-  curl -sk --max-time 10 "${BASE_URL}/cacerts"
+  local deadline=$((SECONDS + CA_LIMIT_SECONDS)) out status="" body last
+  while :; do
+    out="$(curl -sk --max-time 10 -w '\n%{http_code}' "${BASE_URL}/cacerts" || true)"
+    status="${out##*$'\n'}"
+    body="${out%$'\n'*}"
+    if [[ "${body}" == "-----BEGIN CERTIFICATE-----"* ]] && printf '%s' "${body}" | openssl x509 -noout >/dev/null 2>&1; then
+      printf '%s' "${body}" >"${CA_FILE}"
+      return 0
+    fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      last="last HTTP status ${status}"
+      [ "${status}" != "000" ] || last="no HTTP answer"
+      echo "error: ${BASE_URL}/cacerts did not return a certificate within ${CA_LIMIT_SECONDS} s (${last})" >&2
+      return 1
+    fi
+    sleep "${CA_WAIT_SECONDS}"
+  done
 }
 
 wait_for_ping() {
@@ -208,12 +677,12 @@ wait_for_ping() {
   return 1
 }
 
-# The head oracle installs its system charts noticeably slower than the
-# pinned releases (its chart branch is fetched fresh and its aggregation
+# An upcoming-minor oracle installs its system charts noticeably slower than
+# the pinned releases (its chart branch is fetched fresh and its aggregation
 # check restarts the server when the embedded k3s is slow), so it gets
 # twice the webhook window.
 WEBHOOK_WAIT_TRIES=30
-[ "${SMOKE_PROFILE}" != "head" ] || WEBHOOK_WAIT_TRIES=60
+[ -z "${MINOR}" ] || WEBHOOK_WAIT_TRIES=60
 
 wait_for_webhook() {
   echo "==> waiting for rancher-webhook readiness"
@@ -262,7 +731,7 @@ refuse_pre_rename_leftovers() {
   fi
   [ -n "${found}" ] || return 0
   echo "error: a pre-rename oracle pair is still present:${found}" >&2
-  echo "error: the suite was renamed from e2e-real to e2e-fidelity; remove them (docker rm -f, docker network rm) together with the old state root ${STATE_ROOT/e2e-fidelity/e2e-real}, or rename them, then rerun" >&2
+  echo "error: the suite was renamed from e2e-real to e2e-fidelity; remove them (docker rm -f -v, docker network rm) together with the old state root ${STATE_ROOT/e2e-fidelity/e2e-real}, or rename them, then rerun" >&2
   return 1
 }
 
@@ -284,7 +753,7 @@ prime_ip_san() {
 }
 
 boot_k3s() {
-  docker rm -f "${K3S_CONTAINER}" >/dev/null 2>&1 || true
+  docker rm -f -v "${K3S_CONTAINER}" >/dev/null 2>&1 || true
   echo "==> booting downstream ${K3S_IMAGE}"
   # --privileged for the same reason as the oracle (containerd, CNI, kernel
   # mounts); the container has no published port and is reachable only on
@@ -341,13 +810,15 @@ JSON
 
 wait_for_downstream_active() {
   echo "==> waiting for the downstream cluster ${DOWNSTREAM_ID} to be active"
-  for _ in $(seq 1 60); do
+  # An upcoming minor's build can redeploy the cluster agent several times
+  # before the cluster turns active; 6 minutes was not always enough.
+  for _ in $(seq 1 100); do
     state="$(api "${BASE_URL}/v3/clusters/${DOWNSTREAM_ID}" \
       | python3 -c 'import json,sys; print(json.load(sys.stdin).get("state",""))' 2>/dev/null || true)"
     [ "${state}" = "active" ] && { wait_for_downstream_proxy; return; }
     sleep 6
   done
-  echo "error: the downstream cluster did not become active within 6 minutes" >&2
+  echo "error: the downstream cluster did not become active within 10 minutes" >&2
   return 1
 }
 
@@ -439,7 +910,7 @@ rebuild_downstream() {
     done
     [ "${code}" = "404" ] || { echo "error: the stale imported cluster did not go away within 2 minutes" >&2; return 1; }
   fi
-  docker rm -f "${K3S_CONTAINER}" >/dev/null 2>&1 || true
+  docker rm -f -v "${K3S_CONTAINER}" >/dev/null 2>&1 || true
   prime_ip_san
   boot_k3s
   import_downstream
@@ -457,6 +928,43 @@ write_state() {
   )
 }
 
+# login_admin prints the token of the bootstrap admin login. A failed or
+# non-JSON answer is retried until LOGIN_LIMIT_SECONDS have passed; a 401 or
+# 403 ends it at once, since a retry cannot change that answer. Each attempt
+# is bounded by curl's --max-time. The request body carries the bootstrap
+# password; it goes on stdin (curl -d @-) so no secret ever lands on the curl
+# argv, and a response body is never printed.
+LOGIN_LIMIT_SECONDS=300
+LOGIN_WAIT_SECONDS=5
+login_admin() {
+  local deadline=$((SECONDS + LOGIN_LIMIT_SECONDS)) out status body token last
+  while :; do
+    out="$(curl -s --max-time 30 -w '\n%{http_code}' --cacert "${CA_FILE}" "${BASE_URL}/v3-public/localProviders/local?action=login" \
+      -H 'Content-Type: application/json' -d @- <<JSON || true
+{"username":"admin","password":"${BOOTSTRAP_PW}"}
+JSON
+)"
+    status="${out##*$'\n'}"
+    body="${out%$'\n'*}"
+    token="$(printf '%s' "${body}" | python3 -c 'import json,sys; t=json.load(sys.stdin)["token"]; print(t if isinstance(t, str) else "")' 2>/dev/null || true)"
+    if [ -n "${token}" ]; then
+      printf '%s\n' "${token}"
+      return 0
+    fi
+    if [ "${status}" = "401" ] || [ "${status}" = "403" ]; then
+      echo "error: the admin login was refused with HTTP status ${status}" >&2
+      return 1
+    fi
+    if [ "${SECONDS}" -ge "${deadline}" ]; then
+      last="last HTTP status ${status}"
+      [ "${status}" != "000" ] || last="no HTTP answer"
+      echo "error: the admin login did not return a token within ${LOGIN_LIMIT_SECONDS} s (${last})" >&2
+      return 1
+    fi
+    sleep "${LOGIN_WAIT_SECONDS}"
+  done
+}
+
 if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && reuse_state; then
   require_disk
   echo "==> reusing healthy kept container"
@@ -468,7 +976,7 @@ if [ "${E2E_FIDELITY_KEEP:-}" = "1" ] && reuse_state; then
   [ -z "${EXTRA_SANS}" ] || prime_extra_sans
 else
   refuse_pre_rename_leftovers
-  docker rm -f "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
+  docker rm -f -v "${K3S_CONTAINER}" "${CONTAINER}" >/dev/null 2>&1 || true
   docker network rm "${NETWORK}" >/dev/null 2>&1 || true
   rm -f "${STATE_FILE}"
   ensure_network
@@ -501,17 +1009,10 @@ else
   wait_for_ping
   wait_for_webhook
   [ -z "${EXTRA_SANS}" ] || prime_extra_sans
-  fetch_ca >"${CA_FILE}"
-  [ -s "${CA_FILE}" ] || { echo "error: could not extract the server CA" >&2; exit 1; }
+  fetch_ca
 
   echo "==> bootstrapping admin"
-  # The login body carries the bootstrap password; feed request bodies on
-  # stdin (curl -d @-) so no secret ever lands on the curl argv.
-  LOGIN_TOKEN="$(curl -s --cacert "${CA_FILE}" "${BASE_URL}/v3-public/localProviders/local?action=login" \
-    -H 'Content-Type: application/json' -d @- <<JSON | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'
-{"username":"admin","password":"${BOOTSTRAP_PW}"}
-JSON
-)"
+  LOGIN_TOKEN="$(login_admin)"
   # server-url is what the downstream agent dials (baked into the import
   # manifest): the oracle's address on the private network. Nothing the
   # harness records echoes it; the harness itself keeps dialing BASE_URL.
@@ -537,10 +1038,10 @@ export E2E_FIDELITY_ORACLE_IMAGE="${ORACLE_IMAGE}"
 export E2E_FIDELITY_DOWNSTREAM="${DOWNSTREAM_ID}"
 
 if [ -n "${SMOKE_PROFILE}" ]; then
-  # No goldens for the Prime or head oracle: golden verification runs only
-  # against the community pin. This is boot, bootstrap, and downstream-proxy
-  # verification; the kept pair then serves hand runs and fact probes with
-  # the same downstream shape as the community pair.
+  # No goldens for the Prime or upcoming-minor oracle: golden verification
+  # runs only against the community pin. This is boot, bootstrap, and
+  # downstream-proxy verification; the kept pair then serves hand runs and
+  # fact probes with the same downstream shape as the community pair.
   echo "==> ${SMOKE_PROFILE} oracle boot smoke"
   # -f: a 4xx/5xx on the unauthenticated version endpoint must fail the
   # smoke, not print an error body and fall through to the token check.

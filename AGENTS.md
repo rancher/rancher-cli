@@ -46,6 +46,20 @@ Two gotchas:
   pins (the oracle and the k3s downstream it imports) live in
   `scripts/e2e-fidelity`; bumping either is a reviewed golden-regeneration
   change.
+- **Upcoming Rancher minors get their own oracle.**
+  `E2E_FIDELITY_MINOR=<major>.<minor>` (for example `2.16`) boots the
+  newest build of a minor with no GA release yet:
+  `rancher/rancher:v<minor>-head` once `release/v<minor>` exists, else
+  `rancher/rancher:head` when its `CATTLE_SERVER_VERSION` is of that
+  minor; anything else stops the run before boot. The downstream is the
+  k3s that build names in `CATTLE_K3S_VERSION`. Both are resolved to
+  digests and recorded in the state file. `E2E_FIDELITY_UPCOMING_IMAGE`
+  and `E2E_FIDELITY_K3S_IMAGE` (each `repo:tag@sha256:<hex>`) override
+  them; `E2E_FIDELITY_PRINT_IMAGES=1` prints the choice and boots
+  nothing. Each minor has its own port, subnet, containers and state
+  root from the slot table in `scripts/e2e-fidelity`; a minor with no
+  row is refused. It runs the boot smoke, never the goldens; these
+  variables are refused without `E2E_FIDELITY_MINOR`.
 - **The downstream fidelity axis rides on `make e2e-fidelity`.** The oracle
   imports a pinned `rancher/k3s` container on every boot and exports
   `E2E_FIDELITY_DOWNSTREAM`, so probes marked `Downstream: true` (family
