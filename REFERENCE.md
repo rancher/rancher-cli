@@ -284,71 +284,75 @@ not stop revokes on others, and an entry with no saved CA and no
 
 `install.sh` unpacks each release into its own versioned directory under
 `~/.local/share/rancher-cli` and activates it by atomically switching one
-`current` symlink. The `rancher` and `rancher-credential-vault` links in
-the bin dir point through `current`, so an upgrade updates both binaries
-in a single switch - the pair can never end up on different versions. On
-a fresh install the two bin-dir links are created separately; a kill
-between them can leave the helper link missing, and rerunning the
-installer repairs that state.
-An install receipt at `~/.config/rancher-cli/install-receipt.json`
-records what is installed; rerunning the installer silently replaces
-managed links and prints a notice when taking over a previous manual
-installation.
+`current` symlink. The `rancher` and `rancher-credential-vault` links in the bin
+directory point through `current`, so an upgrade updates both binaries in a
+single switch - the two binaries can never end up on different versions. On a
+fresh install the installer creates the two links in the bin directory one after
+the other; if it is stopped between them, the `rancher-credential-vault` link
+can be missing, and running the installer again creates it.
+An install receipt at `~/.config/rancher-cli/install-receipt.json` records what
+is installed; running the installer again replaces the links it created without
+a message, and prints a notice when it replaces an existing file or link it did
+not create.
 
-`install.ps1` keeps the same layout under `%LOCALAPPDATA%\rancher-cli`:
-each release lands in `versions\<tag>\` as `rancher.exe` and
+`install.ps1` keeps the same layout under `%LOCALAPPDATA%\rancher-cli`: each
+release is unpacked into `versions\<tag>\` as `rancher.exe` and
 `rancher-credential-vault.exe`, and the `bin` directory (the one to put on
-`PATH`) is an NTFS junction to the current version. A junction needs no
-admin rights and no developer mode, and the installer switches it by
-creating a new junction beside it and renaming that over the old one in a
-single operation - both binaries change together, and a kill at any point
-leaves either the old pair or the new pair in place, never neither. The
-receipt lives at `%APPDATA%\rancher-cli\install-receipt.json`. `-BinDir`
-moves the junction, so the directory it names must be new, empty, or hold
-only a prior by-hand `rancher.exe`/`rancher-credential-vault.exe` pair,
-which the installer takes over with a notice. Unlike `install.sh`, which
-links each binary into a shared directory such as `~/.local/bin`,
-`-BinDir` on Windows must name a dedicated directory: the whole directory
-becomes the version junction.
+`PATH`) is a Windows directory link (NTFS junction) to the current version.
+Unlike a symbolic link, this directory link needs no admin rights and no
+developer mode. To switch versions, the installer creates a new directory link
+next to the old one and renames it over the old one in one step: both binaries
+change together, and if the installer is stopped at any point, either the old or
+the new version of both binaries is in place. The receipt lives at
+`%APPDATA%\rancher-cli\install-receipt.json`. `-BinDir` sets where the directory
+link goes; the directory it names must be new, be empty, be a Windows directory
+link (NTFS junction), or hold only a `rancher.exe` and
+`rancher-credential-vault.exe` installed by hand; the installer replaces those
+files, or a directory link it did not create, with a notice. Unlike
+`install.sh`, which links each binary into a shared directory such as
+`~/.local/bin`, `-BinDir` on Windows must name a dedicated directory: the whole
+directory becomes the Windows directory link to the current version.
 
 Checksums (`SHA256SUMS`) are always verified. Build provenance is
 verified when an authenticated `gh` CLI is available, and
 `--verify-attestation` makes that verification mandatory instead of
 best-effort.
 
-Token resolution order: `GH_TOKEN` > `GITHUB_TOKEN` > `gh auth token`
-(when `gh` is on PATH and authenticated) > anonymous.
+GitHub token lookup order: `GH_TOKEN` > `GITHUB_TOKEN` > `gh auth token` (when
+`gh` is on PATH and authenticated) > anonymous.
 
-When a token is in play the installer downloads assets through the
-GitHub API asset endpoint - required on internal repositories, where
-the plain release download URLs serve nothing - and fetches any signed
-storage redirect with a second, untokened request, so the token never
-travels past the API host. A token that cannot read the release
-metadata falls back to the direct download URLs with the failure
-explained in any later error.
+When the installer has a GitHub token, it downloads assets through the GitHub
+API asset endpoint (internal repositories require it, because their plain
+release download URLs return nothing), and fetches any signed storage redirect
+with a second request that carries no token: the token is sent only to the API
+host. If the GitHub token cannot read the release metadata, the installer uses
+the plain release download URLs instead; if the download of the `rancher` binary
+then fails, the error also says the release metadata was unreadable and gives
+its HTTP status.
 
-After linking, the installer warns about any other `rancher` or
-`rancher-credential-vault` elsewhere on `PATH` (a shadowed install is
-easy to miss behind a stale shell command hash - `hash -r` or `rehash`
-clears it), staying silent for convenience symlinks that resolve back
-to the installed binary. A version change is named at the switch:
-upgrades as a note, downgrades as a warning - rollback stays a
-one-command flow, it is just never silent.
+After creating the links, the installer warns about any other `rancher` or
+`rancher-credential-vault` elsewhere on `PATH` (your shell can keep running the
+old one from its cached command locations until you run `hash -r` or `rehash`),
+and gives no warning for symlinks that resolve to the installed binary. When the
+installer changes the version it says so: a note for an upgrade, a warning for a
+downgrade, and a note when the name of the previous version directory is not a
+release tag. Going back to an earlier version is one command: rerun the
+installer with `--version <tag>` (`-Version <tag>` on Windows).
 
-Each release carries its own fixed `install.sh` and `install.ps1` as
-release assets, checksummed and attested like every other asset; the raw
-`https://raw.githubusercontent.com/…/main/install.sh` and `…/install.ps1`
-URLs always serve the current copy from `main`.
+Each release includes its own copy of `install.sh` and `install.ps1` as they
+were at that release, as release assets with checksums and attestations like
+every other asset; the raw `https://raw.githubusercontent.com/…/main/install.sh`
+and `…/install.ps1` URLs always return the current copy from `main`.
 
-### Defensive bootstrap
+### Downloading and running the installer safely
 
-The README one-liner is safe against truncation - every statement in
-`install.sh` lives inside a function and the final `main "$@"` line only
-runs when the whole script arrived, so a cut download either stops on a
-syntax error or executes nothing. The pipe form's one trade-off: when the
-*fetch itself* fails, `sh` reads empty input and exits `0` - curl's
-message on stderr is the only failure signal. For scripts that must
-branch on the download's exit code, use the download-then-run form:
+The one-line install command in the README is safe if the download is cut off:
+every statement in `install.sh` is inside a function and only the last line,
+`main "$@"`, runs it; a cut download either stops on a syntax error or runs
+nothing. Piping the download into `sh` has one drawback: when the *download
+itself* fails, `sh` reads empty input and exits `0`; curl's message on stderr is
+the only sign of the failure. For scripts that must check the download's exit
+code, download the installer to a file first and then run it:
 
     (
       t="$(mktemp)" || exit 1
@@ -360,12 +364,13 @@ branch on the download's exit code, use the download-then-run form:
         && sh "$t"
     )
 
-It propagates curl's exit code, cleans up its temp file on any exit, and
-never executes a partial stream.
+It passes on curl's exit code, removes its temp file on any exit, and never runs
+a partial download.
 
-While the repository is internal and `gh` is unavailable, use the
-token-authenticated equivalent below - the token reaches curl via stdin
-config and `sh` via the environment, never process arguments:
+While the repository is internal and `gh` is unavailable, use the command below,
+which sends a GitHub token: curl reads the token from a configuration given on
+standard input, and `sh` reads it from the environment; the token is never a
+command-line argument:
 
     (
       t="$(mktemp)" || exit 1
@@ -378,7 +383,7 @@ config and `sh` via the environment, never process arguments:
         && GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}" sh "$t"
     )
 
-Flags append to the `sh "$t"` invocation (e.g. `sh "$t" --version <tag>`).
+Pass installer flags after `sh "$t"` (for example `sh "$t" --version <tag>`).
 
 ### Manual download & verification
 
@@ -399,9 +404,9 @@ when an authenticated `gh` is available (`-VerifyAttestation` makes that
 mandatory), installs under `%LOCALAPPDATA%\rancher-cli`, and prints the
 `PATH` line to add - it never edits `PATH` itself. Its atomic switch
 to a new version relies on a directory rename that requires Windows 10
-version 1607 / Windows Server 2016 or later. Parameters
-(`-Version <tag>`, `-Pre`, `-BinDir <dir>`, `-VerifyAttestation`,
-`-DryRun`, `-Quiet`) go through the scriptblock form:
+version 1607 / Windows Server 2016 or later. To pass parameters
+(`-Version <tag>`, `-Pre`, `-BinDir <dir>`, `-VerifyAttestation`, `-DryRun`,
+`-Quiet`), run the downloaded script as a script block:
 
     iex "& { $(irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1) } -Version v1.2.3"
 
@@ -419,15 +424,16 @@ If the installer cannot be used, install by hand:
 
 1. Download the `windows` release assets: the CLI binary and
    `rancher-credential-vault`.
-2. Rename them to `rancher.exe` and `rancher-credential-vault.exe`. Both
-   names matter: the kubeconfig exec plugin invokes the bare command
-   `rancher` (unless `rancher kubeconfig --exec-command` named another),
-   and a credential store helper is invoked as
-   `rancher-credential-<name>` - on Windows, Go's process lookup only
-   resolves a bare name against a `PATHEXT` extension (`.exe`) on `PATH`.
-3. Verify both executables against `SHA256SUMS` (PowerShell) - the
-   helper matters as much as the CLI: it is the process that receives
-   your vault credentials, so never install it unverified:
+2. Rename them to `rancher.exe` and `rancher-credential-vault.exe`. Both names
+   matter: kubectl runs the kubeconfig's exec plugin as the command `rancher`
+   (unless `rancher kubeconfig --exec-command` set another), and the CLI runs a
+   credential helper as `rancher-credential-<name>`; on Windows, a program
+   started by name is found only on `PATH` and only with an extension listed in
+   `PATHEXT` (`.exe`).
+3. Verify both binaries against `SHA256SUMS` (PowerShell);
+   `rancher-credential-vault.exe` matters as much as `rancher.exe`: it is the
+   process that stores your Rancher credentials and holds your Vault token;
+   never install it unverified:
 
        Get-FileHash rancher.exe -Algorithm SHA256
        Get-FileHash rancher-credential-vault.exe -Algorithm SHA256
@@ -436,9 +442,9 @@ If the installer cannot be used, install by hand:
 4. Optionally verify build provenance for both:
    `gh attestation verify rancher.exe --repo rancher/rancher-cli --signer-workflow rancher/rancher-cli/.github/workflows/release.yaml`,
    then the same command with `rancher-credential-vault.exe`.
-5. Only after both files verify, place them in a directory on `PATH`.
+5. Only after both binaries verify, place them in a directory on `PATH`.
 
-##### Editor quirk
+##### Notepad on Windows 11
 
 On Windows 11, the Store version of Notepad opens `config edit`'s temp file as a new tab in an already-running Notepad window rather than a new window; close the tab, not the window, to return control to the CLI.
 
@@ -453,17 +459,18 @@ To persist it, add that line to your `$PROFILE`. Loading `$PROFILE` itself needs
 an ExecutionPolicy that allows local scripts (`RemoteSigned` or looser); the
 per-session command above works regardless.
 
-Minimum shell versions: bash 3.2 (macOS stock) with the `bash-completion`
-package installed - on bash 3 the double-TAB description column is absent,
-completion itself works; zsh 5.0 with `compinit` loaded; fish 3.0;
-Windows PowerShell 5.1 or pwsh 7. Each generated script states its own floor
-in its header comment.
+Minimum shell versions: bash 3.2 (the version macOS ships) with the
+`bash-completion` package installed - on bash 3 a second TAB shows no
+descriptions, but completion works; zsh 5.0 with `compinit` loaded; fish 3.0;
+Windows PowerShell 5.1 or pwsh 7. Each generated script states the minimum shell
+version it needs in its header comment.
 
-Completion is offline-only by default: command/group/flag names are free (the
-whole tree); `get`/`patch`/`delete` additionally complete each kind's plural
-and short aliases (`po<TAB>` → `po`/`pod`/`pods`); `config use-server` and
-`config delete-server` complete from the local config file. It never touches the network, prompts, or writes anything -
-a missing or unreadable config degrades to no candidates, never an error.
+Completion works offline by default: every command, group and flag name
+completes; `get`/`patch`/`delete` also complete each kind's plural, singular and
+short names (`po<TAB>` → `po`/`pod`/`pods`); `config use-server` and
+`config delete-server` complete from the local config file. It never uses the
+network, never prompts and never writes anything; a missing or unreadable config
+gives no candidates and no error.
 That holds on a line with a `--` too, where every word is an argument:
 completion offers the values the command accepts at that position, never a
 flag, and never runs the command.
@@ -476,13 +483,13 @@ After installing the script, enable live resource-name completion:
 
 This completes cluster names (including `inspect cluster` and `inspect project`
 positional names), project names, namespaces, pods, deployments, and nodes from
-the Rancher API. A credential-store capability note is printed to indicate which
-completions are available given your current auth setup.
+the Rancher API. `rancher config set-completion --network=true` prints a note on
+which completions work with your credential store or `RANCHER_CLI_TOKEN`.
 
 User, role template, global role and node driver ids complete as well. A user,
-project, cluster, role template, global role or node driver id is offered with
-a description when the object has a display name or, for a user, a username.
-The shell shows it beside the id where it shows one: a user's username and
+project, cluster, role template, global role or node driver id is offered with a
+description when the object has a display name or, for a user, a username. Where
+the shell shows descriptions, it shows one beside the id: a user's username and
 display name (`u-abc12`, `alice (Alice Smith)`), the display name for the
 others. The value inserted is always the id. A username or display name that
 completion offers as a value carries no description. A description is cut to 56
@@ -492,31 +499,32 @@ space.
 - zsh and fish show the description in the completion list; PowerShell shows it
   as the tooltip of the candidate.
 - bash lists descriptions on the second TAB (`token  -- description`) on bash
-  4 and later. Bash 3 (the macOS system bash) lists the values only. The first
+  4 and later. Bash 3 (the version macOS ships) lists the values only. The first
   TAB inserts the value on every bash.
 - Windows PowerShell 5.1 decodes the CLI's output with the console encoding,
   so a description with non-ASCII characters may show garbled there.
 
 `--auth-provider` on `auth login`, `auth get-token` and `token` completes the
-names of the auth configs this CLI can sign in with, from the server's provider
-list, which needs no credential: the request carries none. The server and CA
-are the ones the command would connect with for the words typed: for `auth
-login`, `--url`, else the entry named, else the current entry; for `auth
-get-token`, `--server`, else `RANCHER_CLI_URL`, else the current entry (`--name`
-chooses only the CA, and an entry at another URL gives no suggestions); for
-`token`, the `--server` it requires and `--cacerts`. Nothing is offered with
-`--skip-verify`, when the command would refuse the line, or when the server
-cannot be reached or trusted.
+names of the auth configs this CLI can sign in with, from the list of auth
+configs the server publishes, which needs no credential: the request carries
+none. The server and CA are the ones the command would connect with for what you
+have typed so far: for `auth login`, `--url`, else the server entry you name,
+else the current entry; for `auth get-token`, `--server`, else
+`RANCHER_CLI_URL`, else the current entry (`--name` chooses only the CA, and an
+entry at another URL gives no suggestions); for `token`, the `--server` it
+requires and `--cacerts`. Nothing is offered with `--skip-verify`, when the
+command would refuse the line, or when the server cannot be reached or trusted.
 
-The per-TAB HTTP budget defaults to 500 ms; adjust with `--timeout`:
+By default, each TAB waits at most 500 ms for the server's HTTP responses;
+change the limit with `--timeout`:
 
     rancher config set-completion --timeout=1s
 
-Live completion degrades to no candidates on any failure - an expired token,
-a slow server, a URL the credential store cannot match - without a message.
-To see why, run the request the shell script issues with tracing on; every
-phase prints one timed line on stderr and stdout stays exactly what the
-shell would receive:
+On any failure (an expired token, a slow server, a URL that no stored credential
+matches), live completion offers no candidates and prints no message.
+To see why, run the command the shell script runs, with tracing on: each step
+prints one line on stderr with the time since the process started, and stdout
+holds exactly what the shell would receive:
 
     RANCHER_CLI_COMPLETION_DEBUG=1 rancher --rancher-completion-proto=2 get cluster --rancher-completion-cur= --generate-shell-completion
 
@@ -525,33 +533,35 @@ command.
 
 ## Cluster scope (--cluster)
 
-`--cluster <id-or-name>` is looked up once per command, as you: among the
-clusters Rancher's steve API lists for you (`rancher access clusters` shows
-them), by id or display name, so a cluster owner or project member who
-cannot read the local cluster resolves it like an administrator. An id wins
-over another cluster's display name, with a warning naming that cluster;
-two clusters with the same display name are `AMBIGUOUS_SELECTION` (pass the
-id). A cluster created moments ago that the list does not show yet is found
-by one read of its id. `local` is always the local cluster, and an omitted
-`--cluster` means it where the command allows it. kubectl's exec plugin
-resolves its `--cluster` the same way on a cache miss, with the warning on
-stderr; its `NOT_FOUND` lists the clusters you can read.
+`--cluster <id-or-name>` is looked up once per command with your permissions:
+among the clusters Rancher lists for you (`rancher access clusters` shows them),
+by id or display name; a cluster owner or project member who cannot read the
+local cluster can use it the same way an administrator does. An id takes
+precedence over another cluster's display name, with a warning naming that
+cluster; two clusters with the same display name give `AMBIGUOUS_SELECTION`
+(pass the id). If a cluster was created moments ago and the list does not show
+it yet, the CLI gets it by its id. `local` is always the local cluster, and
+where a command allows it, leaving out `--cluster` means the local cluster.
+kubectl's exec plugin resolves its `--cluster` the same way when it has no
+cached credential and creates one, with the warning on stderr; its `NOT_FOUND`
+error lists the clusters you can read.
 
-`get` and `patch` of the `cluster` kind and `get projects` keep kubectl's
-semantics: they go through the local cluster's Kubernetes API, where
-Rancher answers clusters only for users with access to the local cluster,
-and projects by your own permissions. A refusal names the request and the
-caller-scoped command to use instead (`rancher access clusters`, `rancher
-inspect cluster <id>`, `rancher access projects --cluster <id>`).
+`get` and `patch` of the `cluster` kind and `get projects` work as in kubectl:
+they go through the local cluster's Kubernetes API, where Rancher returns
+clusters only to users with access to the local cluster, and returns projects
+according to your permissions. When Rancher refuses one of these requests, the
+error names the request and a command to use instead that works with your
+permissions (`rancher access clusters`, `rancher inspect cluster <id>`,
+`rancher access projects --cluster <id>`).
 
 ## Project scope (--project)
 
 `--project <id-or-name>` names a project on the cluster `--cluster` names.
-Only the commands that take it accept it: the generated `get`/`delete`/`patch`
-of Downstream namespaced kinds and of namespaces, `create resource`,
-`create namespace`, `create secret`, `project add-namespace`, `grant`,
-`revoke`, `usage`, and `access can`/`list`/`who-can`; `rancher schema` lists
-`project` among each such command's flags. Every other command refuses a
+Only the commands that take it accept it: `get`, `delete` and `patch` of
+namespaced kinds on downstream clusters and of namespaces, `create resource`,
+`create namespace`, `create secret`, `project add-namespace`, `grant`, `revoke`,
+`usage`, and `access can`/`list`/`who-can`; `rancher schema` lists `project`
+among each such command's flags. Every other command refuses a
 typed `--project` with `VALIDATION` before it sends a request, whether the
 flag is typed before or after the command name.
 
@@ -559,32 +569,31 @@ flag is typed before or after the command name.
 project label and no project annotation, and makes sure its project label
 is removed.
 
-The project is looked up once per command, as you: among the projects
-Rancher lists for you on that cluster, by id or display name. An id wins
-over another project's display name, with a warning naming that project;
-two projects with the same display name are `AMBIGUOUS_SELECTION` (pass the
-id). A project created moments ago that the list does not show yet is
-found by one read of its id. Without `--cluster` the command refuses and
+The project is looked up once per command with your permissions: among the
+projects Rancher lists for you on that cluster, by id or display name. An id
+takes precedence over another project's display name, with a warning naming that
+project; two projects with the same display name give `AMBIGUOUS_SELECTION`
+(pass the id). If a project was created moments ago and the list does not show
+it yet, the CLI gets it by its id. Without `--cluster` the command refuses and
 names the clusters a project with that id or display name is on; it never
 picks one.
 
-What the project does: a list is filtered to the project's namespaces, and
-a named object or a mutation must be in one of them. A namespace belongs to
+What `--project` does: a list shows only objects in the project's namespaces,
+and an object you name or change must be in one of them. A namespace belongs to
 the project its `field.cattle.io/projectId` annotation (`<cluster>:<project>`)
-names, on the cluster the namespace is in; the label of the same name is
-not the membership. `get namespaces --project <p>` asks the server for the
-namespaces with the project label and keeps the ones whose annotation names
-the project.
-`create resource` refuses `--project` for a Namespace manifest (use `create
-namespace --project`). `create secret --project <p>` writes a project-scoped
-secret into the project's backing namespace and cannot be combined with
-`--namespace`. `usage` refuses `--project` with `--by node` (a node row
-mixing project-scoped requests with whole-node metrics would be misleading).
-`usage` reads a `--namespace` or `--node` that matches no pods, so a
-name that does not exist is NOT_FOUND instead of an empty result. A
-caller who can list pods there but cannot read the namespace or node
-gets the result with a warning that it could not be checked; one who
-cannot list pods there gets the RBAC error from the pod list, as before.
+names, on the cluster the namespace is in; the label of the same name does not
+decide which project a namespace belongs to. `get namespaces --project <p>` asks
+the server for the namespaces with the project label and keeps the ones whose
+annotation names the project. `create resource` refuses `--project` for a
+Namespace manifest (use `create namespace --project`). `create secret --project
+<p>` writes a project-scoped secret into the project's backing namespace and
+cannot be combined with `--namespace`. `usage` refuses `--project` with `--by
+node` (a node row mixing project-scoped requests with whole-node metrics would
+be misleading). When a `--namespace` or `--node` matches no pods, `usage` gets
+that namespace or node; a name that does not exist gives NOT_FOUND instead of an
+empty result. If you can list pods there but cannot read the namespace or node,
+you get the result with a warning that it could not be checked; if you cannot
+list pods there, you get the RBAC error from the pod list.
 
 A flag typed with an empty or blank value (`--project ''`, `--namespace=`,
 `-o ' '`) is refused with `VALIDATION` before any request instead of acting
@@ -592,19 +601,19 @@ as if it were omitted; in a script, pass `--flag "$VAR"` only when `VAR` is
 set. A bool flag typed with `=` and an empty or blank value
 (`--apply="$APPLY"` with `APPLY` unset) is refused the same way; write
 `--apply` or `--apply=true|false`. Positional arguments beyond the ones a
-command takes (`rancher schema <command>` lists them) are refused the same
-way, and so is a separate word after a bool flag that the flag accepts as
-its value: a bool flag takes its value joined with `=` (`--dry-run=false`),
-and an argument that reads as a bool goes before the flags or after `--`.
-A `-` on its own ends the command line, so a line with any word after it
-(`rancher get pods - --cluster c1`) is refused the same way, before or
-after the command name; a `-` as a flag's value (`-f -`) or after `--` is
-not affected, and `--help` typed after a command's name, or `--version`
-at the root, before the `-` still shows the help or the version.
-A command name the CLI does not know is reported as `unknown command`
-before anything typed after it is read, so a wrong name is never hidden
-behind a flag error; an empty name (`rancher get ""`, an unset variable)
-is also reported as `unknown command`.
+command takes (`rancher schema <command>` lists them) are refused the same way,
+and so is a separate argument after a bool flag that the flag could take as its
+value: give a bool flag its value with `=` (`--dry-run=false`), and put a
+positional argument the flag could read as a bool (such as `true` or `false`)
+before the flags or after `--`.
+A `-` on its own ends the command line: a line with any argument after it
+(`rancher get pods - --cluster c1`) is refused the same way, whether the `-`
+comes before or after the command name. A `-` as a flag's value (`-f -`) or
+after `--` is accepted, and `--help` after a command's name, or `--version` at
+the root, still shows the help or the version when it comes before the `-`.
+A command name the CLI does not know is reported as `unknown command` whatever
+you typed after it; a wrong name never shows up as a flag error. An empty name
+(`rancher get ""`, an unset variable) is also reported as `unknown command`.
 
 ## Kinds & verbs
 

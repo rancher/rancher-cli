@@ -51,7 +51,7 @@ access ships prereleases only; drop it once a stable release exists.
 Prerelease resolution on Linux and macOS needs `jq` or `python3` on PATH.
 
 Without `gh`, the token-authenticated download-then-run form is in
-[REFERENCE.md](REFERENCE.md#defensive-bootstrap).
+[REFERENCE.md](REFERENCE.md#downloading-and-running-the-installer-safely).
 
 On Linux and macOS both forms install the `rancher` CLI and its credential
 helper to `~/.local/bin`; on Windows to `%LOCALAPPDATA%\rancher-cli\bin`

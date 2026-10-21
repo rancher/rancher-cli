@@ -328,10 +328,10 @@ func TestMvCapabilityProbePrecedesAnyMutation(t *testing.T) {
 }
 
 // TestAuthenticatedBootstrapSnippet mirrors the internal-phase
-// download-then-run bootstrap in REFERENCE.md's Defensive bootstrap section
-// (moved from README 2026-08-12) and runs it against a stub serving
-// install.sh, asserting the token arrives as an Authorization header and
-// never in argv.
+// download-then-run bootstrap in REFERENCE.md's "Downloading and running the
+// installer safely" section (moved from README 2026-08-12) and runs it
+// against a stub serving install.sh, asserting the token arrives as an
+// Authorization header and never in argv.
 func TestAuthenticatedBootstrapSnippet(t *testing.T) {
 	t.Parallel()
 	script, err := os.ReadFile("../install.sh")
@@ -358,8 +358,9 @@ func TestAuthenticatedBootstrapSnippet(t *testing.T) {
 	writeRelease(s, "v1.2.3", false)
 	s.setLatest("v1.2.3")
 
-	// The REFERENCE.md defensive-bootstrap snippet with the raw URL swapped
-	// for the stub's and a --dry-run appended; everything else byte-identical.
+	// The snippet in REFERENCE.md's "Downloading and running the installer
+	// safely" section with the raw URL swapped for the stub's and a --dry-run
+	// appended; everything else byte-identical.
 	snippet := `(
   t="$(mktemp)" || exit 1
   trap 'rc=$?; rm -f "$t"; exit "$rc"' 0
