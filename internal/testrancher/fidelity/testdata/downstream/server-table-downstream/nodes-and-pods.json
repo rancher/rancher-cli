@@ -1,0 +1,147 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "nodes",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "meta.k8s.io/v1",
+        "columnDefinitions": [
+          {
+            "format": "name",
+            "name": "Name",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Status",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Roles",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Age",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Version",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Internal-IP",
+            "priority": 1,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "External-IP",
+            "priority": 1,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "OS-Image",
+            "priority": 1,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Kernel-Version",
+            "priority": 1,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Container-Runtime",
+            "priority": 1,
+            "type": "string"
+          }
+        ],
+        "kind": "Table",
+        "metadata": {
+          "resourceVersion": "\u003crv\u003e"
+        }
+      }
+    },
+    {
+      "name": "pods",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "meta.k8s.io/v1",
+        "columnDefinitions": [
+          {
+            "format": "name",
+            "name": "Name",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Ready",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Status",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Restarts",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Age",
+            "priority": 0,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "IP",
+            "priority": 1,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Node",
+            "priority": 1,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Nominated Node",
+            "priority": 1,
+            "type": "string"
+          },
+          {
+            "format": "",
+            "name": "Readiness Gates",
+            "priority": 1,
+            "type": "string"
+          }
+        ],
+        "kind": "Table",
+        "metadata": {
+          "resourceVersion": "\u003crv\u003e"
+        }
+      }
+    }
+  ]
+}

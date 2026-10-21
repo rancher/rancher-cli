@@ -120,6 +120,7 @@ TARGETS=(
   "FuzzParseArgTail|./internal/cli"
   "FuzzConfigLoad|./internal/config"
   "FuzzScrubPaths|./internal/engine"
+  "FuzzTableRender|./internal/engine/resources"
 )
 
 run_fuzz_target() {

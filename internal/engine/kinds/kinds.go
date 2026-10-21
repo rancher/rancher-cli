@@ -145,6 +145,12 @@ type Kind struct {
 	Completable bool
 	Binding     safety.Binding
 	Columns     []Column // extra table columns beyond NAME
+	// ServerTable marks a kind whose text tables (the default format,
+	// table and wide) come from the cluster's API server, as kubectl's do:
+	// get asks for the server's Table and shows its columns and cells, so
+	// the row carries no Columns, and the server's answer is shown as it
+	// is, so the row carries no SystemFilter or RedactPaths either.
+	ServerTable bool
 	// RedactPaths lists dot-path field paths (each as a []string key sequence)
 	// scrubbed from every serialized representation - list/get JSON/YAML output
 	// and patch diff From/To entries - because they carry live credentials. The
@@ -417,11 +423,7 @@ var table = []Kind{
 		NoDeleteReason: "owned by the cluster lifecycle; remove the machine instead",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns: []Column{
-			{Header: "STATUS", Condition: "Ready"},
-			{Header: "VERSION", Path: []string{"status", "nodeInfo", "kubeletVersion"}},
-			{Header: "OS-IMAGE", Path: []string{"status", "nodeInfo", "osImage"}, Wide: true},
-		},
+		ServerTable:    true,
 	},
 	{
 		Key: "namespace", Name: "namespace", Aliases: []string{"namespaces", "ns"},
@@ -429,7 +431,7 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "Namespace", Scope: Downstream, Deletable: true,
 		Completable: true,
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns:     []Column{{Header: "STATUS", Path: []string{"status", "phase"}}},
+		ServerTable: true,
 	},
 	{
 		Key: "pod", Name: "pod", Aliases: []string{"pods", "po"},
@@ -437,11 +439,7 @@ var table = []Kind{
 		Policy: NSPlain, K8sKind: "Pod", Scope: Downstream, Deletable: true, WaitDefault: "condition=Ready",
 		Completable: true,
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns: []Column{
-			{Header: "STATUS", Path: []string{"status", "phase"}},
-			{Header: "IP", Path: []string{"status", "podIP"}, Wide: true},
-			{Header: "NODE", Path: []string{"spec", "nodeName"}, Wide: true},
-		},
+		ServerTable: true,
 	},
 	{
 		Key: "deployment", Name: "deployment", Aliases: []string{"deployments", "deploy"},
@@ -449,92 +447,71 @@ var table = []Kind{
 		Policy: NSPlain, K8sKind: "Deployment", Scope: Downstream, Deletable: true, WaitDefault: "condition=Available",
 		Completable: true,
 		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		// status.updatedReplicas/availableReplicas are omitempty ints: zero is
-		// ABSENT on the wire, so Default:"0" carries it - without it we'd
-		// render blank where kubectl shows 0 under the same header (the
-		// User.enabled Default:"true" pattern, applied to a numeric absence).
-		Columns: []Column{
-			{Header: "UP-TO-DATE", Path: []string{"status", "updatedReplicas"}, Default: "0"},
-			{Header: "AVAILABLE", Path: []string{"status", "availableReplicas"}, Default: "0"},
-		},
+		ServerTable: true,
 	},
 	{
 		Key: "service", Name: "service", Aliases: []string{"services", "svc"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"},
 		Policy: NSPlain, K8sKind: "Service", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns: []Column{
-			{Header: "TYPE", Path: []string{"spec", "type"}},
-			{Header: "CLUSTER-IP", Path: []string{"spec", "clusterIP"}},
-		},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "configmap", Name: "configmap", Aliases: []string{"configmaps", "cm"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"},
 		Policy: NSPlain, K8sKind: "ConfigMap", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns: []Column{{Header: "DATA", Count: []string{"data"}}},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "secret", Name: "secret", Aliases: []string{"secrets"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"},
 		Policy: NSPlain, K8sKind: "Secret", Scope: Downstream, Deletable: true, Sensitive: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns: []Column{
-			{Header: "TYPE", Path: []string{"type"}},
-			{Header: "DATA", Count: []string{"data"}},
-		},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 
 	{
 		Key: "statefulset", Name: "statefulset", Aliases: []string{"statefulsets", "sts"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"},
 		Policy: NSPlain, K8sKind: "StatefulSet", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "daemonset", Name: "daemonset", Aliases: []string{"daemonsets", "ds"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"},
 		Policy: NSPlain, K8sKind: "DaemonSet", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		// Field names checked against the apps/v1 DaemonSetStatus schema:
-		// desiredNumberScheduled/currentNumberScheduled are non-omitempty;
-		// numberAvailable is omitempty, so Default:"0" carries its absence.
-		Columns: []Column{
-			{Header: "DESIRED", Path: []string{"status", "desiredNumberScheduled"}},
-			{Header: "CURRENT", Path: []string{"status", "currentNumberScheduled"}},
-			{Header: "AVAILABLE", Path: []string{"status", "numberAvailable"}, Default: "0"},
-		},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "replicaset", Name: "replicaset", Aliases: []string{"replicasets", "rs"},
 		GVR:    schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"},
 		Policy: NSPlain, K8sKind: "ReplicaSet", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		// spec.replicas is *int32 omitempty (absent only when explicitly
-		// nil); status.replicas is non-omitempty. Neither needs a Default.
-		Columns: []Column{
-			{Header: "DESIRED", Path: []string{"spec", "replicas"}},
-			{Header: "CURRENT", Path: []string{"status", "replicas"}},
-		},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "job", Name: "job", Aliases: []string{"jobs"},
 		GVR:    schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"},
 		Policy: NSPlain, K8sKind: "Job", Scope: Downstream, Deletable: true, WaitDefault: "condition=Complete",
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "cronjob", Name: "cronjob", Aliases: []string{"cronjobs"},
 		GVR:    schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "cronjobs"},
 		Policy: NSPlain, K8sKind: "CronJob", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "ingress", Name: "ingress", Aliases: []string{"ingresses", "ing"},
 		GVR:    schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
 		Policy: NSPlain, K8sKind: "Ingress", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "persistentvolume", Name: "persistentvolume", Aliases: []string{"persistentvolumes", "pv"},
@@ -542,19 +519,21 @@ var table = []Kind{
 		Policy: NSNone, K8sKind: "PersistentVolume", Scope: Downstream, Deletable: false,
 		NoDeleteReason: "released through its claim; delete the persistentvolumeclaim instead",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable:    true,
 	},
 	{
 		Key: "persistentvolumeclaim", Name: "persistentvolumeclaim", Aliases: []string{"persistentvolumeclaims", "pvc"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
 		Policy: NSPlain, K8sKind: "PersistentVolumeClaim", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "serviceaccount", Name: "serviceaccount", Aliases: []string{"serviceaccounts", "sa"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"},
 		Policy: NSPlain, K8sKind: "ServiceAccount", Scope: Downstream, Deletable: true,
-		Binding: safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns: []Column{{Header: "SECRETS", Count: []string{"secrets"}}},
+		Binding:     safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable: true,
 	},
 	{
 		Key: "event", Name: "event", Aliases: []string{"events", "ev"},
@@ -562,6 +541,7 @@ var table = []Kind{
 		Policy: NSPlain, K8sKind: "Event", Scope: Downstream, Deletable: false,
 		NoDeleteReason: "expires on its own TTL",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
+		ServerTable:    true,
 	},
 
 	{
@@ -1119,6 +1099,17 @@ func validateKinds(ts []Kind) error {
 				return fmt.Errorf("kind identifier %q claimed by both %q and %q", id, prev, k.Key)
 			}
 			seen[id] = k.Key
+		}
+		if k.ServerTable {
+			if len(k.Columns) > 0 {
+				return fmt.Errorf("kind %q sets ServerTable together with Columns (the server's table has its own columns)", k.Key)
+			}
+			if k.SystemFilter != nil {
+				return fmt.Errorf("kind %q sets ServerTable together with SystemFilter (the server's table is shown as it is)", k.Key)
+			}
+			if len(k.RedactPaths) > 0 {
+				return fmt.Errorf("kind %q sets ServerTable together with RedactPaths (the server's table is shown as it is)", k.Key)
+			}
 		}
 		for _, col := range k.Columns {
 			if col.Condition != "" && (len(col.Path) > 0 || len(col.AltPaths) > 0 || col.Bool) {

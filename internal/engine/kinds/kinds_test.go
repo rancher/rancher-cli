@@ -623,6 +623,33 @@ func TestValidateRejectsSystemFilterMisuse(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsServerTableMisuse asserts a ServerTable row is refused
+// when it also carries Columns, a SystemFilter or RedactPaths, and accepted
+// on its own: the server's table has its own columns and is shown as it is.
+func TestValidateRejectsServerTableMisuse(t *testing.T) {
+	t.Parallel()
+	base := Kind{Key: "a", Name: "foo", K8sKind: "Foo", Aliases: []string{"foos"}, ServerTable: true}
+	require.NoError(t, validateKinds([]Kind{base}))
+	for _, tt := range []struct {
+		name string
+		edit func(k *Kind)
+		want string
+	}{
+		{"Columns", func(k *Kind) { k.Columns = []Column{{Header: "X", Path: []string{"x"}}} }, "Columns"},
+		{"SystemFilter", func(k *Kind) {
+			k.SystemFilter = &PrefixFilter{Path: []string{"p"}, Prefix: "s://", Label: "system account"}
+		}, "SystemFilter"},
+		{"RedactPaths", func(k *Kind) { k.RedactPaths = [][]string{{"password"}} }, "RedactPaths"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			bad := base
+			tt.edit(&bad)
+			require.ErrorContains(t, validateKinds([]Kind{bad}), tt.want)
+		})
+	}
+}
+
 // TestByKeyMatchesTheKeyAlone asserts ByKey resolves a canonical key and
 // declines the CLI name and aliases Lookup accepts.
 func TestByKeyMatchesTheKeyAlone(t *testing.T) {

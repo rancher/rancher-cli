@@ -297,7 +297,7 @@ func checkPlan(eff safety.Effect, exec ExecuteFunc) *clierr.Error {
 // runRead executes a read command.
 func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.Binding) (int, *clierr.Error) {
 	p := ui.New(streams.Err, streams.In, streams.NoInput, streams.IsTTY).WithNoticeRewrite(streams.ExpandText)
-	res, err := c.Execute(ctx, in, p)
+	res, err := c.Execute(ctx, textTableInput{Input: in, textTable: textRenderFormat(streams.Format)}, p)
 	if err != nil {
 		return 0, renderErr(streams, toClierr(ctx, err))
 	}
@@ -679,10 +679,12 @@ func textRenderFormat(format string) bool {
 //
 // The check is scoped to the render path the requested format actually
 // takes. ShapeTabular and the RawBytes/Raw payloads (ShapeBytes,
-// ShapeExecJSON) back every format identically - Tabular Data renders the
-// same envelope-or-table content regardless of -o, and the RawBytes/Raw
-// branches in renderResult never look at format at all - so those three
-// checks apply unconditionally. ShapeText is different: Text is read only
+// ShapeExecJSON) back every format identically - Tabular Data is a payload
+// whichever format renders it (a command that serves a table from the
+// cluster learns from TextTableInput whether a text table is rendered, and
+// returns the table only then), and the RawBytes/Raw branches in
+// renderResult never look at format at all - so those three checks apply
+// unconditionally. ShapeText is different: Text is read only
 // by the table-family render path (textRenderFormat); -o json/-o yaml
 // render the envelope over Data exactly as before, and -o name/-o template
 // do the same (render.go's existing "-o name over non-Tabular Data emits

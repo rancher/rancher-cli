@@ -1,0 +1,114 @@
+{
+  "kind": "Table",
+  "apiVersion": "meta.k8s.io/v1",
+  "metadata": {
+    "resourceVersion": "15512"
+  },
+  "columnDefinitions": [
+    {
+      "name": "Name",
+      "type": "string",
+      "format": "name",
+      "priority": 0
+    },
+    {
+      "name": "Status",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Roles",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Age",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Version",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Internal-IP",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "External-IP",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "OS-Image",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "Kernel-Version",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "Container-Runtime",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    }
+  ],
+  "rows": [
+    {
+      "cells": [
+        "k3s-node-1",
+        "Ready",
+        "control-plane",
+        "120m",
+        "v1.34.4+k3s1",
+        "192.0.2.10",
+        "<none>",
+        "K3s v1.34.4+k3s1",
+        "6.18.37-0-virt",
+        "containerd://2.1.5-k3s1"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "k3s-node-1",
+          "uid": "00000000-0000-4000-8000-000000000001",
+          "resourceVersion": "15371",
+          "creationTimestamp": "2026-10-20T18:32:41Z",
+          "labels": {
+            "beta.kubernetes.io/arch": "arm64",
+            "beta.kubernetes.io/instance-type": "k3s",
+            "beta.kubernetes.io/os": "linux",
+            "kubernetes.io/arch": "arm64",
+            "kubernetes.io/hostname": "k3s-node-1",
+            "kubernetes.io/os": "linux",
+            "node-role.kubernetes.io/control-plane": "true",
+            "node.kubernetes.io/instance-type": "k3s",
+            "plan.cattle.io/cluster-group": "management.cattle.io",
+            "plan.cattle.io/cluster-kind": "Cluster",
+            "plan.cattle.io/cluster-name": "c-m-fixture",
+            "plan.cattle.io/machine-group": "management.cattle.io",
+            "plan.cattle.io/machine-kind": "Node",
+            "plan.cattle.io/machine-name": "node-fixture"
+          },
+          "finalizers": [
+            "wrangler.cattle.io/node"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -20,6 +20,13 @@ exec rancher get configmaps --cluster testcluster --project web -o json
 jsonquery stdout 'data.#' 1
 jsonquery stdout data.0.metadata.name proj-member-cm
 
+# the same list as a text table: the member's row only, with the namespace
+# column a list across namespaces has.
+exec rancher get configmaps --cluster testcluster --project web
+stdout 'NAMESPACE\s+NAME\s+DATA\s+AGE'
+stdout 'proj-ns-member\s+proj-member-cm\s+'
+! stdout 'proj-other-cm'
+
 # named get of the non-member's configmap under --project → VALIDATION, never
 # a silent no-op.
 ! exec rancher get configmap proj-other-cm --cluster testcluster --namespace proj-ns-other --project web

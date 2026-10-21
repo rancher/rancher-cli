@@ -269,6 +269,27 @@ type Input interface {
 	Args() []string
 }
 
+// TextTableInput is the Input the pipeline hands a read command's Execute:
+// TextTable reports whether the invocation's output format renders a text
+// table (the default, table and wide). A command asks for the server's table
+// only then, so json, yaml, name and template requests stay as they are. A
+// command type-asserts it; an Input from anywhere else, a test calling
+// Execute directly included, does not implement it.
+type TextTableInput interface {
+	Input
+	TextTable() bool
+}
+
+// textTableInput is the Input the pipeline wraps around the command's own.
+// It exposes the Input methods and TextTable only: an optional method the
+// wrapped Input has is not visible through it.
+type textTableInput struct {
+	Input
+	textTable bool
+}
+
+func (i textTableInput) TextTable() bool { return i.textTable }
+
 // BoolValue is a positional argument typed after a bool flag: its index
 // among the positional arguments and the flag as typed. A bool flag takes
 // its value only joined with "=", so `--force false` is the flag (true) and

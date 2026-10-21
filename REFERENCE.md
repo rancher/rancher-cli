@@ -1102,16 +1102,32 @@ call can reach.
 
 ## Output formats
 
-`-o`/`--output`: `table` (default, for users) · `wide` (table plus any
-Wide-marked columns - presentation, never a scope change: a payload with no
-wide-only columns renders identically to `table`) · `json` · `yaml` ·
+`-o`/`--output`: `table` (default, for users) · `wide` (table plus the
+wide-only columns: a kind's Wide-marked columns, or the priority columns the
+cluster's API server sends for a built-in kind - presentation, never a scope
+change: a payload with no wide-only columns renders identically to `table`) ·
+`json` · `yaml` ·
 `name` (`.metadata.name`/ids only) · `template=<go-template>` - a Go template
 over the JSON view of `data` (same shape as `-o json`). Any other value is
 rejected with a `VALIDATION` error before the command runs. Every kind
-declares its own table projection; there is no pretty-JSON fallback under
-`table`/`wide` - a kind that did not implement it would fail with a
-rendering error instead of silently dumping JSON, so use `-o json` for the
-versioned envelope. Some commands (e.g. `logs`) render a plain-text default
+has its own table, its columns or the cluster's own (next paragraph); there is
+no pretty-JSON fallback under `table`/`wide` - a kind that did not implement
+it would fail with a rendering error instead of silently dumping JSON, so use
+`-o json` for the versioned envelope.
+
+The table of a built-in Kubernetes kind (node, namespace, pod, deployment,
+service, configmap, secret, statefulset, daemonset, replicaset, job, cronjob,
+ingress, persistentvolume, persistentvolumeclaim, serviceaccount, event) comes
+from the cluster's API server, as kubectl's does: the server's column names
+and cells, the same as `kubectl get` shows, and with `-o wide` the columns the
+server marks as wide. The columns follow the cluster's Kubernetes version.
+`json`, `yaml`, `name` and `template=` ask for the object as before. A
+namespaced kind listed without `--namespace` has a NAMESPACE column first, and
+an empty list prints its header line. If the server answers without a table,
+the CLI shows NAME and AGE with a warning. The kinds of Rancher's own APIs
+keep the CLI's columns.
+
+Some commands (e.g. `logs`) render a plain-text default
 under `table`/default format instead, with warnings on stderr as
 `# warning: <w>` lines; `-o json`/`yaml`/`template=`/`name` still see the
 normal envelope over `data`. Every text format - `table`, `wide`, `name`,

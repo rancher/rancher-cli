@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -76,7 +77,7 @@ func ClearMembership(obj *unstructured.Unstructured) {
 // field.cattle.io/projectId annotation, <cluster>:<project>. ok is false
 // when the annotation is absent or does not have that form. It is the only
 // reader of the encoding: the label of the same key is not consulted.
-func ProjectOf(ns *unstructured.Unstructured) (clusterID, projectID string, ok bool) {
+func ProjectOf(ns metav1.Object) (clusterID, projectID string, ok bool) {
 	value := ns.GetAnnotations()[projectKey]
 	clusterID, projectID, found := strings.Cut(value, ":")
 	if !found || clusterID == "" || projectID == "" || strings.Contains(projectID, ":") {
@@ -88,7 +89,7 @@ func ProjectOf(ns *unstructured.Unstructured) (clusterID, projectID string, ok b
 // IsMember reports whether ns belongs to projectID on clusterID. A
 // namespace whose annotation names another cluster is a member of nothing
 // on this one.
-func IsMember(ns *unstructured.Unstructured, clusterID, projectID string) bool {
+func IsMember(ns metav1.Object, clusterID, projectID string) bool {
 	c, p, ok := ProjectOf(ns)
 	return ok && c == clusterID && p == projectID
 }

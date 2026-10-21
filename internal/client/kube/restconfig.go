@@ -10,6 +10,9 @@ import (
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
+	"k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -146,6 +149,29 @@ func Dynamic(rc *rest.Config) (dynamic.Interface, error) {
 		return nil, err
 	}
 	return dynamic.NewForConfigAndClient(rc, hc)
+}
+
+// TableClient builds the REST client for requests whose answer is a Table:
+// the metadata client's config shape (no group version, a decoder that
+// reads the meta.k8s.io Table in both its versions), over the same
+// HTTPClient the dynamic client uses, so the certificate classification, the
+// same-origin redirect policy and the User-Agent are the same. The caller
+// sets the Accept header and builds the path with AbsPath.
+func TableClient(rc *rest.Config) (rest.Interface, error) {
+	hc, err := HTTPClient(rc)
+	if err != nil {
+		return nil, err
+	}
+	cfg := rest.CopyConfig(rc)
+	cfg.ContentType = runtime.ContentTypeJSON
+	cfg.AcceptContentTypes = runtime.ContentTypeJSON
+	cfg.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+	cfg.GroupVersion = &schema.GroupVersion{}
+	// The table client builds every request path with AbsPath. APIPath is a
+	// value no request may send: a request built with Resource or Name
+	// instead would carry it to the server and fail.
+	cfg.APIPath = "/this-value-should-never-be-sent"
+	return rest.UnversionedRESTClientForConfigAndClient(cfg, hc)
 }
 
 // Discovery builds a discovery client (used by auth status / server-version).

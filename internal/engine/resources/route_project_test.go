@@ -23,6 +23,22 @@ type routeProjectClient struct {
 	lists map[string]*unstructured.UnstructuredList
 
 	listCalls []routeListCall
+
+	// tables is what ListTable answers by resource name; the requests it
+	// receives are recorded like List's.
+	tables     map[string]engine.TableAnswer
+	tableCalls []routeListCall
+}
+
+var _ engine.TableReader = (*routeProjectClient)(nil)
+
+func (c *routeProjectClient) ListTable(_ context.Context, gvr schema.GroupVersionResource, ns, selector string) (engine.TableAnswer, error) {
+	c.tableCalls = append(c.tableCalls, routeListCall{resource: gvr.Resource, ns: ns, selector: selector})
+	return c.tables[gvr.Resource], nil
+}
+
+func (c *routeProjectClient) GetTable(context.Context, schema.GroupVersionResource, string, string) (engine.TableAnswer, error) {
+	return engine.TableAnswer{}, errors.New("GetTable not scripted in this fake")
 }
 
 type routeListCall struct {

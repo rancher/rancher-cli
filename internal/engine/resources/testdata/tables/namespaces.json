@@ -1,0 +1,91 @@
+{
+  "kind": "Table",
+  "apiVersion": "meta.k8s.io/v1",
+  "metadata": {
+    "resourceVersion": "48737",
+    "continue": "eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6NDg3MzcsInN0YXJ0IjoiL2MtbS1tZ2hqYjJncC1wLWQ1bmgyXHUwMDAwIn0",
+    "remainingItemCount": 22
+  },
+  "columnDefinitions": [
+    {
+      "name": "Name",
+      "type": "string",
+      "format": "name",
+      "priority": 0
+    },
+    {
+      "name": "Status",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Age",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    }
+  ],
+  "rows": [
+    {
+      "cells": [
+        "c-m-fixture",
+        "Active",
+        "120m"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "c-m-fixture",
+          "uid": "00000000-0000-4000-8000-000000000001",
+          "resourceVersion": "3283",
+          "creationTimestamp": "2026-10-20T18:32:44Z",
+          "labels": {
+            "kubernetes.io/metadata.name": "c-m-fixture"
+          }
+        }
+      }
+    },
+    {
+      "cells": [
+        "c-m-fixture-p-47jmq",
+        "Active",
+        "120m"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "c-m-fixture-p-47jmq",
+          "uid": "00000000-0000-4000-8000-000000000002",
+          "resourceVersion": "3311",
+          "creationTimestamp": "2026-10-20T18:32:44Z",
+          "labels": {
+            "kubernetes.io/metadata.name": "c-m-fixture-p-47jmq"
+          }
+        }
+      }
+    },
+    {
+      "cells": [
+        "c-m-fixture-p-d5nh2",
+        "Active",
+        "120m"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "c-m-fixture-p-d5nh2",
+          "uid": "00000000-0000-4000-8000-000000000003",
+          "resourceVersion": "3322",
+          "creationTimestamp": "2026-10-20T18:32:44Z",
+          "labels": {
+            "kubernetes.io/metadata.name": "c-m-fixture-p-d5nh2"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "kind": "Table",
+  "apiVersion": "meta.k8s.io/v1",
+  "metadata": {
+    "resourceVersion": "15512",
+    "continue": "eyJ2IjoibWV0YS5rOHMuaW8vdjEiLCJydiI6MTU1MTIsInN0YXJ0IjoiL2FkbWluXHUwMDAwIn0",
+    "remainingItemCount": 91
+  },
+  "columnDefinitions": [
+    {
+      "name": "Name",
+      "type": "string",
+      "format": "name",
+      "priority": 0
+    },
+    {
+      "name": "Created At",
+      "type": "date",
+      "format": "",
+      "priority": 0
+    }
+  ],
+  "rows": [
+    {
+      "cells": [
+        "admin",
+        "2026-10-20T18:32:41Z"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "admin",
+          "uid": "00000000-0000-4000-8000-000000000001",
+          "resourceVersion": "346",
+          "creationTimestamp": "2026-10-20T18:32:41Z",
+          "labels": {
+            "kubernetes.io/bootstrapping": "rbac-defaults"
+          }
+        }
+      }
+    }
+  ]
+}

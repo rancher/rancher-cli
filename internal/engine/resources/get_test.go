@@ -35,6 +35,29 @@ type memClient struct {
 	listSelector []string
 	getNS        []string
 	getName      []string
+
+	// table is what ListTable and GetTable answer, or tableErr; the calls
+	// they receive are recorded like List and Get's.
+	table             engine.TableAnswer
+	tableErr          error
+	listTableNS       []string
+	listTableSelector []string
+	getTableNS        []string
+	getTableName      []string
+}
+
+var _ engine.TableReader = (*memClient)(nil)
+
+func (m *memClient) ListTable(_ context.Context, _ schema.GroupVersionResource, ns, selector string) (engine.TableAnswer, error) {
+	m.listTableNS = append(m.listTableNS, ns)
+	m.listTableSelector = append(m.listTableSelector, selector)
+	return m.table, m.tableErr
+}
+
+func (m *memClient) GetTable(_ context.Context, _ schema.GroupVersionResource, ns, name string) (engine.TableAnswer, error) {
+	m.getTableNS = append(m.getTableNS, ns)
+	m.getTableName = append(m.getTableName, name)
+	return m.table, m.tableErr
 }
 
 func (m *memClient) Get(_ context.Context, _ schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {

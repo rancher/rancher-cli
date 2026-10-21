@@ -1,0 +1,307 @@
+{
+  "kind": "Table",
+  "apiVersion": "meta.k8s.io/v1",
+  "metadata": {
+    "resourceVersion": "15512"
+  },
+  "columnDefinitions": [
+    {
+      "name": "Name",
+      "type": "string",
+      "format": "name",
+      "priority": 0
+    },
+    {
+      "name": "Ready",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Status",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Restarts",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Age",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "IP",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "Node",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "Nominated Node",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "Readiness Gates",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    }
+  ],
+  "rows": [
+    {
+      "cells": [
+        "fleet-agent-55dd77c5f5-kw44x",
+        "1/1",
+        "Running",
+        "0",
+        "119m",
+        "192.0.2.10",
+        "k3s-node-1",
+        "<none>",
+        "<none>"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "fleet-agent-55dd77c5f5-kw44x",
+          "generateName": "fleet-agent-55dd77c5f5-",
+          "namespace": "cattle-fleet-system",
+          "uid": "00000000-0000-4000-8000-000000000001",
+          "resourceVersion": "1109",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:33:41Z",
+          "labels": {
+            "app": "fleet-agent",
+            "pod-template-hash": "55dd77c5f5"
+          },
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "fleet-agent-55dd77c5f5",
+              "uid": "00000000-0000-4000-8000-000000000002",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "cells": [
+        "cattle-cluster-agent-776fc6b8c6-6qjxm",
+        "1/1",
+        "Running",
+        "0",
+        "119m",
+        "192.0.2.11",
+        "k3s-node-1",
+        "<none>",
+        "<none>"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "cattle-cluster-agent-776fc6b8c6-6qjxm",
+          "generateName": "cattle-cluster-agent-776fc6b8c6-",
+          "namespace": "cattle-system",
+          "uid": "00000000-0000-4000-8000-000000000003",
+          "resourceVersion": "623",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:33:18Z",
+          "labels": {
+            "app": "cattle-cluster-agent",
+            "pod-template-hash": "776fc6b8c6"
+          },
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "cattle-cluster-agent-776fc6b8c6",
+              "uid": "00000000-0000-4000-8000-000000000004",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "cells": [
+        "rancher-webhook-6d86954448-cw8ph",
+        "1/1",
+        "Running",
+        "0",
+        "118m",
+        "192.0.2.12",
+        "k3s-node-1",
+        "<none>",
+        "<none>"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "rancher-webhook-6d86954448-cw8ph",
+          "generateName": "rancher-webhook-6d86954448-",
+          "namespace": "cattle-system",
+          "uid": "00000000-0000-4000-8000-000000000005",
+          "resourceVersion": "1285",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:34:02Z",
+          "labels": {
+            "app": "rancher-webhook",
+            "pod-template-hash": "6d86954448"
+          },
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "rancher-webhook-6d86954448",
+              "uid": "00000000-0000-4000-8000-000000000006",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "cells": [
+        "system-upgrade-controller-86ccb5954c-vsn47",
+        "1/1",
+        "Running",
+        "0",
+        "118m",
+        "192.0.2.13",
+        "k3s-node-1",
+        "<none>",
+        "<none>"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "system-upgrade-controller-86ccb5954c-vsn47",
+          "generateName": "system-upgrade-controller-86ccb5954c-",
+          "namespace": "cattle-system",
+          "uid": "00000000-0000-4000-8000-000000000007",
+          "resourceVersion": "1427",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:34:12Z",
+          "labels": {
+            "app.kubernetes.io/component": "controller",
+            "app.kubernetes.io/name": "system-upgrade-controller",
+            "pod-template-hash": "86ccb5954c",
+            "upgrade.cattle.io/controller": "system-upgrade-controller"
+          },
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "system-upgrade-controller-86ccb5954c",
+              "uid": "00000000-0000-4000-8000-000000000008",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "cells": [
+        "coredns-695cbbfcb9-8dc29",
+        "1/1",
+        "Running",
+        "0",
+        "120m",
+        "192.0.2.14",
+        "k3s-node-1",
+        "<none>",
+        "<none>"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "coredns-695cbbfcb9-8dc29",
+          "generateName": "coredns-695cbbfcb9-",
+          "namespace": "kube-system",
+          "uid": "00000000-0000-4000-8000-000000000009",
+          "resourceVersion": "430",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:32:47Z",
+          "labels": {
+            "k8s-app": "kube-dns",
+            "pod-template-hash": "695cbbfcb9"
+          },
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "coredns-695cbbfcb9",
+              "uid": "00000000-0000-4000-8000-000000000010",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "cells": [
+        "local-path-provisioner-546dfc6456-j94cp",
+        "1/1",
+        "Running",
+        "0",
+        "120m",
+        "192.0.2.15",
+        "k3s-node-1",
+        "<none>",
+        "<none>"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "local-path-provisioner-546dfc6456-j94cp",
+          "generateName": "local-path-provisioner-546dfc6456-",
+          "namespace": "kube-system",
+          "uid": "00000000-0000-4000-8000-000000000011",
+          "resourceVersion": "438",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:32:47Z",
+          "labels": {
+            "app": "local-path-provisioner",
+            "pod-template-hash": "546dfc6456"
+          },
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "local-path-provisioner-546dfc6456",
+              "uid": "00000000-0000-4000-8000-000000000012",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

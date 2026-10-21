@@ -579,80 +579,6 @@ func TestShippedColumnRows(t *testing.T) {
 		assert.Equal(t, []string{"p-1", "Default", "c-x", "c-x-p-1", "team workloads", ""}, tab.WideRows()[0])
 	})
 
-	t.Run("node STATUS/VERSION default, OS-IMAGE wide", func(t *testing.T) {
-		t.Parallel()
-		k, ok := kinds.Lookup("node")
-		require.True(t, ok)
-		obj := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "n-1"},
-			"status": map[string]any{
-				"conditions": []any{map[string]any{"type": "Ready", "status": "True"}},
-				"nodeInfo":   map[string]any{"kubeletVersion": "v1.30.5", "osImage": "K3s v1.30.5"},
-			},
-		}}
-		tab := newTable(k, []unstructured.Unstructured{obj}, false)
-		assert.Equal(t, []string{"n-1", "Ready", "v1.30.5", ""}, tab.Rows()[0])
-		assert.Equal(t, []string{"n-1", "Ready", "v1.30.5", "K3s v1.30.5", ""}, tab.WideRows()[0])
-	})
-
-	t.Run("pod IP/NODE wide", func(t *testing.T) {
-		t.Parallel()
-		k, ok := kinds.Lookup("pod")
-		require.True(t, ok)
-		obj := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "pod-1"},
-			"status":   map[string]any{"phase": "Running", "podIP": "10.0.0.1"},
-			"spec":     map[string]any{"nodeName": "n-1"},
-		}}
-		tab := newTable(k, []unstructured.Unstructured{obj}, false)
-		assert.Equal(t, []string{"pod-1", "Running", ""}, tab.Rows()[0])
-		assert.Equal(t, []string{"pod-1", "Running", "10.0.0.1", "n-1", ""}, tab.WideRows()[0])
-	})
-
-	t.Run("service TYPE/CLUSTER-IP", func(t *testing.T) {
-		t.Parallel()
-		k, ok := kinds.Lookup("service")
-		require.True(t, ok)
-		obj := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "svc-1"},
-			"spec":     map[string]any{"type": "ClusterIP", "clusterIP": "10.43.0.1"},
-		}}
-		tab := newTable(k, []unstructured.Unstructured{obj}, false)
-		assert.Equal(t, []string{"svc-1", "ClusterIP", "10.43.0.1", ""}, tab.Rows()[0])
-	})
-
-	t.Run("configmap/secret DATA count", func(t *testing.T) {
-		t.Parallel()
-		cm, ok := kinds.Lookup("configmap")
-		require.True(t, ok)
-		cmObj := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "cm-1"},
-			"data":     map[string]any{"a": "1", "b": "2"},
-		}}
-		assert.Equal(t, []string{"cm-1", "2", ""}, newTable(cm, []unstructured.Unstructured{cmObj}, false).Rows()[0])
-
-		sec, ok := kinds.Lookup("secret")
-		require.True(t, ok)
-		secObj := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "sec-1"},
-			"type":     "Opaque",
-			"data":     map[string]any{"key": "v"},
-		}}
-		assert.Equal(t, []string{"sec-1", "Opaque", "1", ""}, newTable(sec, []unstructured.Unstructured{secObj}, false).Rows()[0])
-	})
-
-	t.Run("serviceaccount SECRETS count", func(t *testing.T) {
-		t.Parallel()
-		k, ok := kinds.Lookup("serviceaccount")
-		require.True(t, ok)
-		obj := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "sa-1"},
-			"secrets":  []any{map[string]any{"name": "sa-1-token"}},
-		}}
-		tab := newTable(k, []unstructured.Unstructured{obj}, false)
-		assert.Equal(t, []string{"sa-1", "1", ""}, tab.Rows()[0])
-	})
-
 	t.Run("fleet-cluster LAST-SEEN", func(t *testing.T) {
 		t.Parallel()
 		k, ok := kinds.Lookup("fleet-cluster")
@@ -663,53 +589,6 @@ func TestShippedColumnRows(t *testing.T) {
 		}}
 		tab := newTable(k, []unstructured.Unstructured{obj}, false)
 		assert.Equal(t, []string{"c-x", "2026-08-01T00:00:00Z", ""}, tab.Rows()[0])
-	})
-
-	t.Run("deployment UP-TO-DATE/AVAILABLE default 0 on omitted zero", func(t *testing.T) {
-		t.Parallel()
-		k, ok := kinds.Lookup("deployment")
-		require.True(t, ok)
-		// omitempty ints at zero are absent from the wire entirely.
-		zero := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "d-zero"},
-			"status":   map[string]any{},
-		}}
-		nonzero := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "d-1"},
-			"status":   map[string]any{"updatedReplicas": int64(2), "availableReplicas": int64(1)},
-		}}
-		tab := newTable(k, []unstructured.Unstructured{zero, nonzero}, false)
-		assert.Equal(t, []string{"d-zero", "0", "0", ""}, tab.Rows()[0])
-		assert.Equal(t, []string{"d-1", "2", "1", ""}, tab.Rows()[1])
-	})
-
-	t.Run("daemonset DESIRED/CURRENT/AVAILABLE", func(t *testing.T) {
-		t.Parallel()
-		k, ok := kinds.Lookup("daemonset")
-		require.True(t, ok)
-		obj := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "ds-1"},
-			"status": map[string]any{
-				"desiredNumberScheduled": int64(3),
-				"currentNumberScheduled": int64(3),
-				// numberAvailable omitted: omitempty at zero.
-			},
-		}}
-		tab := newTable(k, []unstructured.Unstructured{obj}, false)
-		assert.Equal(t, []string{"ds-1", "3", "3", "0", ""}, tab.Rows()[0])
-	})
-
-	t.Run("replicaset DESIRED/CURRENT", func(t *testing.T) {
-		t.Parallel()
-		k, ok := kinds.Lookup("replicaset")
-		require.True(t, ok)
-		obj := unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": "rs-1"},
-			"spec":     map[string]any{"replicas": int64(2)},
-			"status":   map[string]any{"replicas": int64(2)},
-		}}
-		tab := newTable(k, []unstructured.Unstructured{obj}, false)
-		assert.Equal(t, []string{"rs-1", "2", "2", ""}, tab.Rows()[0])
 	})
 
 	t.Run("provisioning-cluster VERSION/CLUSTER-NAME/READY", func(t *testing.T) {

@@ -1,0 +1,133 @@
+env RANCHER_CLI_URL=$TEST_RANCHER_URL
+env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
+
+# A built-in kind's text table is the API server's: kubectl's column names
+# and cells, with the priority columns added by -o wide.
+exec rancher create resource -f cm.yaml --cluster testcluster --apply
+exec rancher create resource -f secret.yaml --cluster testcluster --apply --yes
+exec rancher create resource -f svc.yaml --cluster testcluster --apply
+exec rancher create resource -f pod.yaml --cluster testcluster --apply
+exec rancher create resource -f deploy.yaml --cluster testcluster --apply
+
+exec rancher get namespaces --cluster testcluster
+stdout 'NAME\s+STATUS\s+AGE'
+stdout 'default\s+Active\s+'
+exec rancher get namespaces --cluster testcluster -o wide
+stdout 'NAME\s+STATUS\s+AGE'
+
+exec rancher get configmaps --cluster testcluster --namespace default
+stdout 'NAME\s+DATA\s+AGE'
+stdout 'table-cm\s+2\s+'
+exec rancher get configmaps --cluster testcluster --namespace default -o wide
+stdout 'NAME\s+DATA\s+AGE'
+
+exec rancher get secrets --cluster testcluster --namespace default
+stdout 'NAME\s+TYPE\s+DATA\s+AGE'
+stdout 'table-secret\s+Opaque\s+1\s+'
+
+exec rancher get services --cluster testcluster --namespace default
+stdout 'NAME\s+TYPE\s+CLUSTER-IP\s+EXTERNAL-IP\s+PORT\(S\)\s+AGE'
+! stdout 'SELECTOR'
+stdout 'table-svc\s+ClusterIP\s+\S+\s+<none>\s+80/TCP\s+'
+exec rancher get services --cluster testcluster --namespace default -o wide
+stdout 'NAME\s+TYPE\s+CLUSTER-IP\s+EXTERNAL-IP\s+PORT\(S\)\s+AGE\s+SELECTOR'
+stdout 'table-svc\s+ClusterIP\s+\S+\s+<none>\s+80/TCP\s+\S+\s+app=table'
+
+exec rancher get pods --cluster testcluster --namespace default
+stdout 'NAME\s+READY\s+STATUS\s+RESTARTS\s+AGE'
+stdout 'table-pod\s+0/1\s+Pending\s+0\s+'
+! stdout 'NOMINATED NODE'
+exec rancher get pods --cluster testcluster --namespace default -o wide
+stdout 'NAME\s+READY\s+STATUS\s+RESTARTS\s+AGE\s+IP\s+NODE\s+NOMINATED NODE\s+READINESS GATES'
+
+exec rancher get deployments --cluster testcluster --namespace default
+stdout 'NAME\s+READY\s+UP-TO-DATE\s+AVAILABLE\s+AGE'
+stdout 'table-deploy\s+0/1\s+0\s+0\s+'
+! stdout 'CONTAINERS'
+exec rancher get deployments --cluster testcluster --namespace default -o wide
+stdout 'NAME\s+READY\s+UP-TO-DATE\s+AVAILABLE\s+AGE\s+CONTAINERS\s+IMAGES\s+SELECTOR'
+stdout 'table-deploy\s+0/1\s+0\s+0\s+\S+\s+main\s+busybox\s+app=table'
+
+# A named get reads the object's table.
+exec rancher get pod table-pod --cluster testcluster --namespace default
+stdout 'NAME\s+READY\s+STATUS\s+RESTARTS\s+AGE'
+stdout 'table-pod\s+0/1\s+Pending'
+
+# A list across namespaces has a NAMESPACE column, first; one namespace has
+# none.
+exec rancher get configmaps --cluster testcluster
+stdout 'NAMESPACE\s+NAME\s+DATA\s+AGE'
+stdout 'default\s+table-cm\s+2\s+'
+exec rancher get configmaps --cluster testcluster --namespace default
+! stdout 'NAMESPACE'
+
+# --selector narrows the table as it narrows the list.
+exec rancher get pods --cluster testcluster --namespace default --selector app=nomatch
+stdout 'NAME\s+READY\s+STATUS\s+RESTARTS\s+AGE'
+! stdout 'table-pod'
+
+# A structured format is the object, not the table.
+exec rancher get configmaps --cluster testcluster --namespace default -o json
+jsonquery stdout 'data.#(metadata.name=="table-cm").data.a' 1
+! stdout 'columnDefinitions'
+
+-- cm.yaml --
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: table-cm
+  namespace: default
+data:
+  a: "1"
+  b: "2"
+-- secret.yaml --
+apiVersion: v1
+kind: Secret
+metadata:
+  name: table-secret
+  namespace: default
+type: Opaque
+stringData:
+  key: value
+-- svc.yaml --
+apiVersion: v1
+kind: Service
+metadata:
+  name: table-svc
+  namespace: default
+spec:
+  selector:
+    app: table
+  ports:
+    - port: 80
+-- pod.yaml --
+apiVersion: v1
+kind: Pod
+metadata:
+  name: table-pod
+  namespace: default
+  labels:
+    app: table
+spec:
+  containers:
+    - name: main
+      image: busybox
+-- deploy.yaml --
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: table-deploy
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: table
+  template:
+    metadata:
+      labels:
+        app: table
+    spec:
+      containers:
+        - name: main
+          image: busybox

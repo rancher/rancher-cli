@@ -13,6 +13,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/engine/projects"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 )
@@ -58,7 +59,13 @@ type GetEnricher func(ctx context.Context, obj *unstructured.Unstructured) (stri
 // NewGet builds `get <kind> [name]` (readOnly) from a Kind: the Descriptor,
 // scope-based flags, and cluster/namespace routing all derive from the table
 // row. enrich runs against every rendered object, named or listed.
+//
+// A ServerTable kind shows the cluster's own table, so an enricher, which
+// reads whole objects, cannot apply: registering one is a programming error.
 func NewGet(k kinds.Kind, clients engine.ClusterClientFactory, enrich ...GetEnricher) runtime.Command {
+	if k.ServerTable && len(enrich) > 0 {
+		panic("resources.NewGet: " + k.Key + " is a ServerTable kind and takes no enrichers")
+	}
 	return &getCmd{k: k, clients: clients, enrich: enrich}
 }
 
@@ -185,6 +192,13 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	if err != nil {
 		return runtime.Result{}, err
 	}
+	var tables engine.TableReader
+	if tt, ok := in.(runtime.TextTableInput); ok && c.k.ServerTable && tt.TextTable() {
+		if tables, ok = client.(engine.TableReader); !ok {
+			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
+				"command bug: the cluster client cannot read tables, which "+c.k.Name+" needs for a text table")
+		}
+	}
 	title := resultKind(c.k)
 	if named {
 		name := in.Args()[0]
@@ -196,6 +210,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			name = resolved
 		}
 		var one *unstructured.Unstructured
+		var ans engine.TableAnswer
 		var waitSummary string
 		var waitWarnings []string
 		if wait {
@@ -221,6 +236,8 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 					}
 				}
 			}
+		} else if tables != nil {
+			ans, err = tables.GetTable(ctx, c.k.GVR, ns, name)
 		} else {
 			one, err = client.Get(ctx, c.k.GVR, ns, name)
 		}
@@ -232,6 +249,21 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 			}
 			return runtime.Result{}, err
 		}
+		if tables != nil {
+			if wait {
+				var terr error
+				if ans, terr = tables.GetTable(ctx, c.k.GVR, ns, name); terr != nil {
+					return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true),
+						Summary: waitSummary, Warnings: append(waitWarnings, waitTableWarning(terr))}, nil
+				}
+			}
+			data, tableWarnings, derr := tableData(c.k, ans, true, nil, false)
+			if derr != nil {
+				return runtime.Result{}, derr
+			}
+			return runtime.Result{Kind: title, Data: data, Summary: waitSummary,
+				Warnings: append(waitWarnings, tableWarnings...)}, nil
+		}
 		warnings := append(waitWarnings, c.enrichWarnings(ctx, one)...)
 		return runtime.Result{Kind: title, Data: newTable(c.k, []unstructured.Unstructured{*one}, true),
 			Summary: waitSummary, Warnings: warnings}, nil
@@ -240,30 +272,22 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	if scope != nil {
 		selector = joinSelectors(scope.Selector, labelSelector)
 	}
+	if tables != nil {
+		ans, lerr := tables.ListTable(ctx, c.k.GVR, ns, selector)
+		if lerr != nil {
+			return runtime.Result{}, lerr
+		}
+		data, tableWarnings, derr := tableData(c.k, ans, false, scope, ns == "" && c.k.Policy == kinds.NSPlain)
+		if derr != nil {
+			return runtime.Result{}, derr
+		}
+		return runtime.Result{Kind: title + "List", Data: data, Warnings: tableWarnings}, nil
+	}
 	list, lerr := client.List(ctx, c.k.GVR, ns, selector)
 	if lerr != nil {
 		return runtime.Result{}, lerr
 	}
-	items := list.Items
-	// caller-side list filtering: a Downstream NSPlain kind under a
-	// project without --namespace carries the member set here; the
-	// namespace-kind special case instead carries a server-side Selector
-	// above, narrowing the list by the project label, and keeps the
-	// namespaces whose annotation names the project.
-	switch {
-	case scope != nil && scope.Members != nil:
-		filtered := make([]unstructured.Unstructured, 0, len(items))
-		for _, item := range items {
-			if scope.Members[item.GetNamespace()] {
-				filtered = append(filtered, item)
-			}
-		}
-		items = filtered
-	case scope != nil && scope.Project != "":
-		items = slices.DeleteFunc(slices.Clone(items), func(item unstructured.Unstructured) bool {
-			return !projects.IsMember(&item, scope.Cluster, scope.Project)
-		})
-	}
+	items := inScopeItems(list.Items, scope)
 	var warnings []string
 	if c.k.SystemFilter != nil && !in.Bool(flagIncludeSystem) {
 		var hidden int
@@ -276,6 +300,25 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		warnings = append(warnings, c.enrichWarnings(ctx, &items[i])...)
 	}
 	return runtime.Result{Kind: title + "List", Data: newTable(c.k, items, false), Warnings: warnings}, nil
+}
+
+// inScope reports whether obj belongs to the project scope, nil meaning
+// none. A Downstream NSPlain kind listed under a project without --namespace
+// carries the member set: the object's namespace must be in it. The
+// namespace kind carries the project instead: the namespace's annotation
+// must name it. A scope with a selector alone, which only narrows the server's
+// list, keeps every object. It reads the object's metadata alone, so the
+// listed objects and a table's rows share it.
+func inScope(scope *ProjectScope, obj metav1.Object) bool {
+	switch {
+	case scope == nil:
+		return true
+	case scope.Members != nil:
+		return scope.Members[obj.GetNamespace()]
+	case scope.Project != "":
+		return projects.IsMember(obj, scope.Cluster, scope.Project)
+	}
+	return true
 }
 
 // hideSystemManaged drops objects matching f, returning the kept objects and

@@ -5,7 +5,10 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -50,6 +53,48 @@ type ClusterClient interface {
 	// fatal loses only the partial list; a caller that needs to tell a
 	// complete inventory from a survivor unwraps *DiscoveryIncomplete.
 	ServerResources(ctx context.Context) ([]APIResource, error)
+}
+
+// TableAnswer is the server's answer to a table request: the decoded Table,
+// or, when the server answered with the ordinary list or object instead,
+// those objects. A reader chooses by Table: it is set for a Table, and
+// otherwise Items holds the answer.
+type TableAnswer struct {
+	// Table is the server's Table. Each row's Object holds a
+	// *metav1.PartialObjectMetadata when the server sent the row's object
+	// (DecodeRowObjects).
+	Table *metav1.Table
+	// Items is the answer when Table is nil: the listed objects, possibly
+	// none, or the one named object.
+	Items []unstructured.Unstructured
+}
+
+// TableReader is implemented by a ClusterClient that can ask the cluster's
+// API server for a kind's table, as kubectl does: the columns and cells the
+// server's printers produce, with each row's object metadata. A command
+// type-asserts it, as it does ClusterArgumentResolver; a command that
+// requires it while its client lacks it has a bug. The arguments and the
+// errors are those of List and Get.
+type TableReader interface {
+	ListTable(ctx context.Context, gvr schema.GroupVersionResource, ns, selector string) (TableAnswer, error)
+	GetTable(ctx context.Context, gvr schema.GroupVersionResource, ns, name string) (TableAnswer, error)
+}
+
+// DecodeRowObjects decodes each row's raw object of t into
+// *metav1.PartialObjectMetadata. A row without an object is left as it is.
+func DecodeRowObjects(t *metav1.Table) error {
+	for i := range t.Rows {
+		row := &t.Rows[i]
+		if row.Object.Object != nil || len(row.Object.Raw) == 0 {
+			continue
+		}
+		var meta metav1.PartialObjectMetadata
+		if err := json.Unmarshal(row.Object.Raw, &meta); err != nil {
+			return fmt.Errorf("decoding the object of row %d of the table: %w", i, err)
+		}
+		row.Object.Object = &meta
+	}
+	return nil
 }
 
 // LogOptions parameterizes a Logs call. SinceSeconds and TailLines are both

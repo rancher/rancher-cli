@@ -85,6 +85,10 @@ type dynamicClient struct {
 	hc   *http.Client // authenticated transport
 	host string       // rest.Config.Host: https://<rancher>/k8s/clusters/<id>
 
+	// tbl serves the table reads (ListTable, GetTable): the same
+	// connection settings as dyn, with a decoder for the server's Table.
+	tbl rest.Interface
+
 	// clusterID is the --cluster value this client's proxy targets, carried
 	// only so a curated NOT_FOUND hint for a Downstream-scoped kind can name
 	// a complete list command - it plays no role in request routing itself.
@@ -116,8 +120,12 @@ func NewClusterClient(rc *rest.Config, clusterID string) (engine.ClusterClient, 
 	if err != nil {
 		return nil, err
 	}
+	tbl, err := kube.TableClient(rc)
+	if err != nil {
+		return nil, err
+	}
 	return &dynamicClient{
-		dyn: dyn, cs: cs, hc: hc, host: strings.TrimRight(rc.Host, "/"),
+		dyn: dyn, cs: cs, hc: hc, tbl: tbl, host: strings.TrimRight(rc.Host, "/"),
 		groups: func(ctx context.Context) (*metav1.APIGroupList, error) {
 			return serverGroups(ctx, disc)
 		},

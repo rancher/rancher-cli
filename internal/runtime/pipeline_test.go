@@ -513,6 +513,44 @@ func TestReadCommandExecutes(t *testing.T) {
 	assert.Equal(t, "LoginResult", env["kind"])
 }
 
+// textTableProbe records the Input a read command's Execute receives.
+type textTableProbe struct {
+	d   Descriptor
+	got *Input
+}
+
+func (f textTableProbe) Describe() Descriptor { return f.d }
+func (f textTableProbe) Execute(_ context.Context, in Input, _ Prompter) (Result, error) {
+	*f.got = in
+	return Result{Kind: "Thing", Text: "ok\n", Data: map[string]string{"a": "b"}}, nil
+}
+
+// TestReadCommandLearnsWhetherATextTableRenders asserts the Input a read
+// command receives reports a text table for the default, table and wide
+// formats and none for every other format, and still answers the command's
+// own flag values.
+func TestReadCommandLearnsWhetherATextTableRenders(t *testing.T) {
+	t.Parallel()
+	for format, want := range map[string]bool{
+		"": true, "table": true, "wide": true,
+		"json": false, "yaml": false, "name": false, "template=x{{ . }}": false,
+	} {
+		t.Run("format "+format, func(t *testing.T) {
+			t.Parallel()
+			var got Input
+			cmd := textTableProbe{d: Descriptor{Name: "get thing", CommandType: ReadOnly, Shape: ShapeText}, got: &got}
+			var out, errBuf bytes.Buffer
+			_, ce := Run(t.Context(), cmd, mapInput{s: map[string]string{"selector": "a=b"}},
+				IO{Out: &out, Err: &errBuf, Format: format}, safety.Binding{})
+			require.Nil(t, ce)
+			tt, ok := got.(TextTableInput)
+			require.True(t, ok, "the pipeline hands a command a TextTableInput")
+			assert.Equal(t, want, tt.TextTable())
+			assert.Equal(t, "a=b", tt.String("selector"))
+		})
+	}
+}
+
 func TestRawResultBypassesEnvelope(t *testing.T) {
 	t.Parallel()
 	cmd := fakeRead{

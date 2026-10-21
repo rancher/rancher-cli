@@ -1,20 +1,21 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# -o wide on a kind with Wide-marked columns (pod's IP/NODE): the default
-# table omits them, -o wide adds them after every default column. envtest has
-# no scheduler/kubelet, so spec.nodeName set in the manifest never gets
-# overwritten (logs-target.txtar's precedent).
+# -o wide on a kind whose table the API server serves (pod): the default
+# table has kubectl's columns, -o wide adds the server's priority columns
+# (IP, NODE and the rest) after them. envtest has no scheduler/kubelet, so
+# spec.nodeName set in the manifest never gets overwritten (logs-target.txtar's
+# precedent).
 exec rancher create resource -f wide-pod.yaml --cluster testcluster --apply
 
 exec rancher get pod wide-pod --cluster testcluster --namespace default
-stdout 'NAME\s+STATUS\s+AGE'
+stdout 'NAME\s+READY\s+STATUS\s+RESTARTS\s+AGE'
 ! stdout 'NODE'
 ! stdout 'some-node'
 
 exec rancher get pod wide-pod --cluster testcluster --namespace default -o wide
-stdout 'NAME\s+STATUS\s+IP\s+NODE\s+AGE'
-stdout 'some-node'
+stdout 'NAME\s+READY\s+STATUS\s+RESTARTS\s+AGE\s+IP\s+NODE\s+NOMINATED NODE\s+READINESS GATES'
+stdout 'wide-pod\s+0/1\s+Pending\s+0\s+\S+\s+<none>\s+some-node'
 
 # -o wide on a kind with no Wide columns (namespace) renders the same column
 # set as -o table - presentation, never a scope change. (AGE ticks between

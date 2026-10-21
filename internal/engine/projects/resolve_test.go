@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -181,6 +182,26 @@ func TestIsMemberNeedsBothTheClusterAndTheProject(t *testing.T) {
 	assert.False(t, IsMember(annotated, "c-abc", "p-2"), "another project")
 	assert.False(t, IsMember(namespaceWith(map[string]string{projectKey: "p-1"}, nil), "c-abc", "p-1"), "a label alone")
 	assert.True(t, IsMember(namespaceWith(nil, map[string]string{projectKey: "c-abc:p-1"}), "c-abc", "p-1"), "an annotation alone")
+}
+
+// TestMembershipReadsAnyObjectMetadata asserts ProjectOf and IsMember read
+// the annotation from an object's metadata alone: a table row's
+// PartialObjectMetadata answers as the full namespace object does.
+func TestMembershipReadsAnyObjectMetadata(t *testing.T) {
+	t.Parallel()
+	meta := &metav1.PartialObjectMetadata{
+		Name:        "team-a",
+		Labels:      map[string]string{projectKey: "p-1"},
+		Annotations: map[string]string{projectKey: "c-abc:p-1"},
+	}
+	c, p, ok := ProjectOf(meta)
+	assert.True(t, ok)
+	assert.Equal(t, "c-abc", c)
+	assert.Equal(t, "p-1", p)
+	assert.True(t, IsMember(meta, "c-abc", "p-1"))
+	assert.False(t, IsMember(meta, "c-abc", "p-2"))
+	meta.Annotations = nil
+	assert.False(t, IsMember(meta, "c-abc", "p-1"), "a label alone")
 }
 
 func TestMemberSelectorIsTheLabelEquality(t *testing.T) {

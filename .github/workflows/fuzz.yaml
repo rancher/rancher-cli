@@ -14,8 +14,8 @@ permissions:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
-    # Five targets, each with an ~8-minute outer watchdog envelope (5m fuzz +
-    # 1m minimization + 2m allowance) = ~40 minutes, plus checkout/setup/
+    # Six targets, each with an ~8-minute outer watchdog envelope (5m fuzz +
+    # 1m minimization + 2m allowance) = ~48 minutes, plus checkout/setup/
     # self-test/script overhead and failure-artifact upload. 60 minutes keeps
     # a comfortable margin so the job timeout never preempts a per-target
     # watchdog's distinct hang diagnosis.

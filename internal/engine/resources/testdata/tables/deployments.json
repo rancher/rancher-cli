@@ -1,0 +1,221 @@
+{
+  "kind": "Table",
+  "apiVersion": "meta.k8s.io/v1",
+  "metadata": {
+    "resourceVersion": "15512"
+  },
+  "columnDefinitions": [
+    {
+      "name": "Name",
+      "type": "string",
+      "format": "name",
+      "priority": 0
+    },
+    {
+      "name": "Ready",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Up-to-date",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Available",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Age",
+      "type": "string",
+      "format": "",
+      "priority": 0
+    },
+    {
+      "name": "Containers",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "Images",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    },
+    {
+      "name": "Selector",
+      "type": "string",
+      "format": "",
+      "priority": 1
+    }
+  ],
+  "rows": [
+    {
+      "cells": [
+        "fleet-agent",
+        "1/1",
+        1,
+        1,
+        "119m",
+        "fleet-agent",
+        "rancher/fleet-agent:v0.16.2",
+        "app=fleet-agent"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "fleet-agent",
+          "namespace": "cattle-fleet-system",
+          "uid": "00000000-0000-4000-8000-000000000001",
+          "resourceVersion": "1134",
+          "generation": 2,
+          "creationTimestamp": "2026-10-20T18:33:41Z",
+          "labels": {
+            "app.kubernetes.io/managed-by": "Helm",
+            "objectset.rio.cattle.io/hash": "f399d0b310fbfb28e9667312fdc7a33954e2b8c8"
+          }
+        }
+      }
+    },
+    {
+      "cells": [
+        "cattle-cluster-agent",
+        "1/1",
+        1,
+        1,
+        "120m",
+        "cluster-register",
+        "rancher/rancher-agent:v2.15.2",
+        "app=cattle-cluster-agent"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "cattle-cluster-agent",
+          "namespace": "cattle-system",
+          "uid": "00000000-0000-4000-8000-000000000002",
+          "resourceVersion": "638",
+          "generation": 4,
+          "creationTimestamp": "2026-10-20T18:32:47Z"
+        }
+      }
+    },
+    {
+      "cells": [
+        "rancher-webhook",
+        "1/1",
+        1,
+        1,
+        "119m",
+        "rancher-webhook",
+        "rancher/rancher-webhook:v0.11.3",
+        "app=rancher-webhook"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "rancher-webhook",
+          "namespace": "cattle-system",
+          "uid": "00000000-0000-4000-8000-000000000003",
+          "resourceVersion": "1300",
+          "generation": 2,
+          "creationTimestamp": "2026-10-20T18:33:51Z",
+          "labels": {
+            "app.kubernetes.io/managed-by": "Helm"
+          }
+        }
+      }
+    },
+    {
+      "cells": [
+        "system-upgrade-controller",
+        "1/1",
+        1,
+        1,
+        "118m",
+        "system-upgrade-controller",
+        "rancher/system-upgrade-controller:v0.20.1",
+        "upgrade.cattle.io/controller=system-upgrade-controller"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "system-upgrade-controller",
+          "namespace": "cattle-system",
+          "uid": "00000000-0000-4000-8000-000000000004",
+          "resourceVersion": "1429",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:34:12Z",
+          "labels": {
+            "app.kubernetes.io/managed-by": "Helm"
+          }
+        }
+      }
+    },
+    {
+      "cells": [
+        "coredns",
+        "1/1",
+        1,
+        1,
+        "120m",
+        "coredns",
+        "rancher/mirrored-coredns-coredns:1.14.1",
+        "k8s-app=kube-dns"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "coredns",
+          "namespace": "kube-system",
+          "uid": "00000000-0000-4000-8000-000000000005",
+          "resourceVersion": "434",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:32:44Z",
+          "labels": {
+            "k8s-app": "kube-dns",
+            "kubernetes.io/name": "CoreDNS",
+            "objectset.rio.cattle.io/hash": "bce283298811743a0386ab510f2f67ef74240c57"
+          }
+        }
+      }
+    },
+    {
+      "cells": [
+        "local-path-provisioner",
+        "1/1",
+        1,
+        1,
+        "120m",
+        "local-path-provisioner",
+        "rancher/local-path-provisioner:v0.0.34",
+        "app=local-path-provisioner"
+      ],
+      "object": {
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
+        "metadata": {
+          "name": "local-path-provisioner",
+          "namespace": "kube-system",
+          "uid": "00000000-0000-4000-8000-000000000006",
+          "resourceVersion": "440",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T18:32:44Z",
+          "labels": {
+            "objectset.rio.cattle.io/hash": "183f35c65ffbc3064603f43f1580d8c68a2dabd4"
+          }
+        }
+      }
+    }
+  ]
+}
