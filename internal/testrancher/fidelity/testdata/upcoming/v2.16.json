@@ -1,0 +1,410 @@
+{
+  "minor": "2.16",
+  "entries": [
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/local/body/spec/assetsImageOverride",
+      "got": "",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/local/body/spec/desiredAssetsImage",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/local/body/spec/k3sConfig/etcd",
+      "got": "\u003cvalue\u003e",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/local/body/status/agentFeatures/provisioningprebootstrap",
+      "want": "\u003cvalue\u003e",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/local/body/status/agentFeatures/ui-sql-cache",
+      "want": "\u003cvalue\u003e",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/local/body/status/appliedSpec/assetsImageOverride",
+      "got": "",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/local/body/status/appliedSpec/desiredAssetsImage",
+      "got": "",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/local/body/status/assetsImage",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/steve/body/spec/assetsImageOverride",
+      "got": "",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/steve/body/spec/desiredAssetsImage",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/steve/body/spec/k3sConfig/etcd",
+      "got": "\u003cvalue\u003e",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/steve/body/status/agentFeatures/provisioningprebootstrap",
+      "want": "\u003cvalue\u003e",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/steve/body/status/agentFeatures/ui-sql-cache",
+      "want": "\u003cvalue\u003e",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/steve/body/status/appliedSpec/assetsImageOverride",
+      "got": "",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/steve/body/status/appliedSpec/desiredAssetsImage",
+      "got": "",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/admin-steve-cluster-shape",
+      "pointer": "/steve/body/status/assetsImage",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/direct-endpoint-shapes",
+      "pointer": "/management-cluster/body/spec/assetsImageOverride",
+      "got": "",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/direct-endpoint-shapes",
+      "pointer": "/management-cluster/body/spec/desiredAssetsImage",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/direct-endpoint-shapes",
+      "pointer": "/management-cluster/body/status/assetsImage",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/direct-endpoint-shapes",
+      "pointer": "/management-nodes/body/items/0/status/internalNodeStatus/declaredFeatures",
+      "got": [
+        "ExtendWebSocketsToKubelet",
+        "InPlacePodLevelResourcesVerticalScaling",
+        "InPlacePodVerticalScalingInitContainers",
+        "RestartAllContainersOnContainerExits"
+      ],
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "kubernetes",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/owner-steve",
+      "pointer": "/own-cluster-namespaces/body/count",
+      "want": 8,
+      "got": 7,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "newer-patch"
+    },
+    {
+      "probe": "access-downstream/owner-steve",
+      "pointer": "/own-cluster-namespaces/body/data",
+      "want": [
+        {
+          "apiVersion": "v1",
+          "id": "cattle-fleet-system",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "cattle-impersonation-system",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "cattle-system",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "default",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "kube-node-lease",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "kube-public",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "kube-system",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "local",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        }
+      ],
+      "got": [
+        {
+          "apiVersion": "v1",
+          "id": "cattle-fleet-system",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "cattle-impersonation-system",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "cattle-system",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "default",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "kube-node-lease",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "kube-public",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        },
+        {
+          "apiVersion": "v1",
+          "id": "kube-system",
+          "kind": "Namespace",
+          "spec": "\u003cspec\u003e",
+          "type": "namespace"
+        }
+      ],
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "newer-patch"
+    },
+    {
+      "probe": "access/explain-management-shapes",
+      "pointer": "/roletemplate-edit/body/metadata/labels/management.cattle.io~1roletemplate-aggregation",
+      "got": "true",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access/explain-management-shapes",
+      "pointer": "/roletemplate-project-member/body/metadata/labels/management.cattle.io~1roletemplate-aggregation",
+      "got": "true",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access/impersonate-user-dropped-on-local",
+      "pointer": "/whoami-with-header/body/status/userInfo/extra/requesthost/0",
+      "want": "127.0.0.1:8443",
+      "got": "127.0.0.1:8445",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access/whoami-through-proxy",
+      "pointer": "/whoami/body/status/userInfo/extra/requesthost/0",
+      "want": "127.0.0.1:8443",
+      "got": "127.0.0.1:8445",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "capability/edition-and-oidc-provider-classification",
+      "pointer": "/edition/body/GitCommit",
+      "want": "272e65580ca92b9dc51e0f0f0f9ae9d6d356e3b8",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "capability/edition-and-oidc-provider-classification",
+      "pointer": "/edition/body/Version",
+      "want": "v2.15.2",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "tok/stale-precondition-delete",
+      "pointer": "/stale-delete/body/code",
+      "want": 500,
+      "got": 409,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "fake-follows"
+    },
+    {
+      "probe": "tok/stale-precondition-delete",
+      "pointer": "/stale-delete/body/details/causes",
+      "want": [
+        {
+          "message": "\u003cmessage\u003e"
+        }
+      ],
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "fake-follows"
+    },
+    {
+      "probe": "tok/stale-precondition-delete",
+      "pointer": "/stale-delete/body/details/group",
+      "got": "ext.cattle.io",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "fake-follows"
+    },
+    {
+      "probe": "tok/stale-precondition-delete",
+      "pointer": "/stale-delete/body/details/kind",
+      "got": "tokens",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "fake-follows"
+    },
+    {
+      "probe": "tok/stale-precondition-delete",
+      "pointer": "/stale-delete/body/details/name",
+      "gotVaries": true,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "fake-follows"
+    },
+    {
+      "probe": "tok/stale-precondition-delete",
+      "pointer": "/stale-delete/body/reason",
+      "want": "InternalError",
+      "got": "Conflict",
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "fake-follows"
+    },
+    {
+      "probe": "tok/stale-precondition-delete",
+      "pointer": "/stale-delete/status",
+      "want": 500,
+      "got": 409,
+      "firstSeen": "dcf17c8b87d6d1d81990af50b44b4c53de2d8db0",
+      "cause": "rancher",
+      "ruling": "fake-follows"
+    }
+  ]
+}
