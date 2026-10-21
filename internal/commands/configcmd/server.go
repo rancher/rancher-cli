@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
+	"github.com/rancher/rancher-cli/internal/commands/register"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -81,16 +82,12 @@ func (s serverSwitchCmd) Execute(cmdCtx context.Context, in runtime.Input, _ run
 			return err
 		}
 		if len(in.Args()) == 0 {
-			cands := make([]clierr.Candidate, 0, len(cfg.Servers))
-			for n := range cfg.Servers {
-				cands = append(cands, clierr.Candidate{ID: n, Name: n})
-			}
 			return clierr.New(clierr.CodeAmbiguousSelection, "server name required").
-				WithCandidates(cands)
+				WithCandidates(register.ServerCandidates(cfg))
 		}
 		name = in.Args()[0]
 		if _, ok := cfg.Servers[name]; !ok {
-			return clierr.New(clierr.CodeNotFound, "server not found: "+name)
+			return register.ServerNotFound(cfg, name)
 		}
 		cfg.CurrentServer = name
 		return cfg.Write()

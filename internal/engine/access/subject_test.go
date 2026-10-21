@@ -2,6 +2,7 @@ package access
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -156,4 +157,144 @@ func TestResolveSubjectUnknownUserIsNotFound(t *testing.T) {
 		assert.Equal(t, clierr.CodeNotFound, ce.Code)
 		assert.Equal(t, "rancher get users", ce.Hint)
 	}
+}
+
+// usersClient answers the user LIST with the given users and the user GET
+// with not found.
+func usersClient(users ...*unstructured.Unstructured) *fakeClient {
+	list := &unstructured.UnstructuredList{}
+	for _, u := range users {
+		list.Items = append(list.Items, *u)
+	}
+	return &fakeClient{Lists: map[string]*unstructured.UnstructuredList{"users||": list}}
+}
+
+// numberedUsers returns n users u-01..u-NN, each with username and display
+// name set from name and a principal of its own.
+func numberedUsers(n int, name string) []*unstructured.Unstructured {
+	users := make([]*unstructured.Unstructured, 0, n)
+	for i := 1; i <= n; i++ {
+		id := fmt.Sprintf("u-%02d", i)
+		users = append(users, userObj(id, name, "", "local://"+id))
+	}
+	return users
+}
+
+func candidateIDs(cands []clierr.Candidate) []string {
+	ids := make([]string, 0, len(cands))
+	for _, c := range cands {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+func findUserError(t *testing.T, local *fakeClient, raw string) *clierr.Error {
+	t.Helper()
+	_, err := findRancherUser(t.Context(), local, raw)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, "rancher get users", ce.Hint)
+	return ce
+}
+
+// TestFindRancherUserBareNameMissListsNearMatches asserts a bare name that
+// matches no user lists the users it near-matches, by user id, and leaves
+// system users out.
+func TestFindRancherUserBareNameMissListsNearMatches(t *testing.T) {
+	t.Parallel()
+	local := usersClient(
+		userObj("u-1", "alice", "Alice A", "local://u-1"),
+		userObj("u-2", "alicia", "", "local://u-2"),
+		userObj("u-3", "bob", "Bob B", "local://u-3"),
+		userObj("u-sys", "alice-system", "", "system://alice-system"),
+	)
+	ce := findUserError(t, local, "alic")
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "Alice A"}, {ID: "u-2", Name: "alicia"}}, ce.Candidates)
+}
+
+// TestFindRancherUserBareNameMissCapsTheFallback asserts a bare name with no
+// near match lists the first 10 users, not every user.
+func TestFindRancherUserBareNameMissCapsTheFallback(t *testing.T) {
+	t.Parallel()
+	local := usersClient(numberedUsers(12, "member")...)
+	ce := findUserError(t, local, "zzz")
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, []string{"u-01", "u-02", "u-03", "u-04", "u-05", "u-06", "u-07", "u-08", "u-09", "u-10"}, candidateIDs(ce.Candidates))
+}
+
+// TestResolveSubjectBareNameMissListsCandidates asserts the candidates reach
+// the caller of ResolveSubject, the path every --as value takes.
+func TestResolveSubjectBareNameMissListsCandidates(t *testing.T) {
+	t.Parallel()
+	local := usersClient(userObj("u-1", "alice", "Alice A", "local://u-1"))
+	p, err := ParseSubject("alic", "")
+	require.NoError(t, err)
+	_, err = ResolveSubject(t.Context(), local, p)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "Alice A"}}, ce.Candidates)
+}
+
+// TestFindRancherUserSharedUsernameListsEveryMatch asserts a username that
+// 12 users share is AMBIGUOUS_SELECTION and lists all 12 by user id.
+func TestFindRancherUserSharedUsernameListsEveryMatch(t *testing.T) {
+	t.Parallel()
+	local := usersClient(numberedUsers(12, "dup")...)
+	ce := findUserError(t, local, "dup")
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	require.ErrorContains(t, ce, "12 users match dup")
+	require.Len(t, ce.Candidates, 12)
+	for i, c := range ce.Candidates {
+		assert.Equal(t, fmt.Sprintf("u-%02d", i+1), c.ID)
+		assert.Equal(t, "dup", c.Name)
+	}
+}
+
+// TestFindRancherUserSharedPrincipalListsEveryMatch asserts a principal that
+// several users hold is AMBIGUOUS_SELECTION and lists every one of them.
+func TestFindRancherUserSharedPrincipalListsEveryMatch(t *testing.T) {
+	t.Parallel()
+	local := usersClient(
+		userObj("u-1", "alice", "Alice A", "local://u-1", "github_user://7"),
+		userObj("u-2", "alice2", "", "local://u-2", "github_user://7"),
+		userObj("u-3", "bob", "Bob B", "local://u-3"),
+	)
+	ce := findUserError(t, local, "github_user://7")
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "Alice A"}, {ID: "u-2", Name: "alice2"}}, ce.Candidates)
+}
+
+// TestFindRancherUserAmbiguityListsSystemUsers asserts a match that is a
+// system user is listed: its id resolves to exactly that user.
+func TestFindRancherUserAmbiguityListsSystemUsers(t *testing.T) {
+	t.Parallel()
+	local := usersClient(
+		userObj("u-1", "dup", "", "local://u-1"),
+		userObj("u-sys", "dup", "", "system://dup"),
+	)
+	ce := findUserError(t, local, "dup")
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Equal(t, []string{"u-1", "u-sys"}, candidateIDs(ce.Candidates))
+}
+
+// TestFindRancherUserPrincipalMissHasNoCandidates asserts a principal that
+// no user holds is NOT_FOUND with no candidates: it has no name to match.
+func TestFindRancherUserPrincipalMissHasNoCandidates(t *testing.T) {
+	t.Parallel()
+	local := usersClient(numberedUsers(3, "member")...)
+	ce := findUserError(t, local, "github_user://404")
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Empty(t, ce.Candidates)
+}
+
+// TestFindRancherUserSystemValueMissHasNoCandidates asserts a system: value
+// that no user holds is NOT_FOUND with no candidates.
+func TestFindRancherUserSystemValueMissHasNoCandidates(t *testing.T) {
+	t.Parallel()
+	local := usersClient(numberedUsers(3, "member")...)
+	ce := findUserError(t, local, "system:nobody")
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Empty(t, ce.Candidates)
 }

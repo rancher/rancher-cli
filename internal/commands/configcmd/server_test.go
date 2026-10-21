@@ -2,11 +2,13 @@ package configcmd
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/commands/cmdtest"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/output"
@@ -86,4 +88,59 @@ func TestServerSwitchCompleteArgsDelegatesToServerNames(t *testing.T) {
 	view := cmdtest.View{Servers: []string{"acme", "beta"}}
 	got := serverSwitchCmd{}.CompleteArgs(t.Context(), view, nil)
 	assert.Equal(t, []string{"acme", "beta"}, got)
+}
+
+// writeEightServersConfig writes eight servers, so a candidate list built in
+// map order is out of name order with near certainty.
+func writeEightServersConfig(t *testing.T, dir string) []string {
+	t.Helper()
+	sorted := []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"}
+	servers := map[string]config.Server{}
+	for _, n := range sorted {
+		servers[n] = config.Server{URL: "https://" + n + ".example.com"}
+	}
+	cfg := &config.Config{CurrentServer: "alpha", Servers: servers}
+	cfg.SetPath(config.FilePath(dir))
+	require.NoError(t, cfg.Write())
+	return sorted
+}
+
+func candidateIDs(cands []clierr.Candidate) []string {
+	ids := make([]string, 0, len(cands))
+	for _, c := range cands {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+// TestServerSwitchUnknownNameListsServers asserts an unknown name is
+// NOT_FOUND and the error lists every configured server in name order.
+func TestServerSwitchUnknownNameListsServers(t *testing.T) {
+	dir := t.TempDir()
+	want := writeEightServersConfig(t, dir)
+
+	_, err := NewServerSwitch(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{Pos: []string{"nope"}}, ui.Discard())
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	require.ErrorContains(t, err, "server not found: nope")
+	assert.Equal(t, want, candidateIDs(ce.Candidates))
+
+	cfg, lerr := config.Load(config.FilePath(dir))
+	require.NoError(t, lerr)
+	assert.Equal(t, "alpha", cfg.CurrentServer, "a refused switch leaves the current server alone")
+}
+
+// TestServerSwitchWithoutNameListsServers asserts a missing name is
+// AMBIGUOUS_SELECTION and the error lists every configured server in name
+// order.
+func TestServerSwitchWithoutNameListsServers(t *testing.T) {
+	dir := t.TempDir()
+	want := writeEightServersConfig(t, dir)
+
+	_, err := NewServerSwitch(dir).(runtime.ReadCommand).Execute(t.Context(), cmdtest.Input{}, ui.Discard())
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeAmbiguousSelection, ce.Code)
+	assert.Equal(t, want, candidateIDs(ce.Candidates))
 }

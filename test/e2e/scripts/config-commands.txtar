@@ -30,6 +30,13 @@ jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr 'data.error.candidates.#' 1
 jsonquery stderr data.error.candidates.0.id acme
 
+# config use-server: unknown name -> NOT_FOUND with every configured server
+# as a candidate.
+! exec rancher config use-server definitely-not-a-real-server -o json
+jsonquery stderr data.error.code NOT_FOUND
+jsonquery stderr 'data.error.candidates.#' 1
+jsonquery stderr data.error.candidates.0.id acme
+
 # config delete-server end-to-end: removes the server, clears the
 # current-server pointer that named it, and reports the delete (file
 # backend; no stored token here, so deletedFrom is empty and there is no

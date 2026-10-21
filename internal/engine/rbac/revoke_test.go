@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -188,6 +189,70 @@ func TestRevokeZeroMatchesListsHeldRoles(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Contains(t, ce.Message, "subject holds: project-member, project-owner")
+}
+
+// revokeHeldRolesError plans a project-scope revoke of --role nonexistent-role
+// for u-abc, who holds one binding per entry in roles (an empty entry is a
+// binding with no role), and returns the NOT_FOUND error.
+func revokeHeldRolesError(t *testing.T, roles ...string) *clierr.Error {
+	t.Helper()
+	var items []unstructured.Unstructured
+	for i, r := range roles {
+		items = append(items, revokeBinding("prtb-"+string(rune('a'+i)), "p-x", "rv", "roleTemplateName", r, "u-abc", "", ""))
+	}
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{
+			"projectroletemplatebindings": {Items: items},
+		},
+		gets: map[string]*unstructured.Unstructured{"c-x/p-x": projectGetObj("p-x")},
+	}
+	_, _, err := planRevoke(t, NewRevoke(fakeFactory{c: client}), stubInput{
+		strings: map[string]string{"project": "p-x", "cluster": "c-x", "role": "nonexistent-role"},
+		args:    []string{"u-abc"},
+	})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	return ce
+}
+
+// TestRevokeZeroMatchesOffersHeldRolesAsCandidates asserts the roles the
+// subject holds at the scope come back as candidates, sorted, each a value
+// --role accepts.
+func TestRevokeZeroMatchesOffersHeldRolesAsCandidates(t *testing.T) {
+	t.Parallel()
+	ce := revokeHeldRolesError(t, "project-owner", "project-member", "read-only", "cluster-owner", "cluster-member", "admin")
+	want := []string{"admin", "cluster-member", "cluster-owner", "project-member", "project-owner", "read-only"}
+	var got []string
+	for _, c := range ce.Candidates {
+		assert.Equal(t, c.ID, c.Name)
+		got = append(got, c.ID)
+	}
+	assert.Equal(t, want, got)
+	require.ErrorContains(t, ce, "subject holds: "+strings.Join(want, ", "))
+	assert.Empty(t, ce.Hint)
+}
+
+// TestRevokeZeroMatchesSkipsAnEmptyHeldRole asserts a binding with no role
+// is neither a candidate nor listed in the message.
+func TestRevokeZeroMatchesSkipsAnEmptyHeldRole(t *testing.T) {
+	t.Parallel()
+	ce := revokeHeldRolesError(t, "", "project-member")
+	assert.Equal(t, []clierr.Candidate{{ID: "project-member", Name: "project-member"}}, ce.Candidates)
+	assert.True(t, strings.HasSuffix(ce.Message, "subject holds: project-member"), ce.Message)
+	assert.Empty(t, ce.Hint)
+}
+
+// TestRevokeZeroMatchesWithOnlyEmptyHeldRolesGivesTheHint asserts a subject
+// whose bindings all lack a role is treated as holding none: no candidates
+// and the hint that lists the bindings.
+func TestRevokeZeroMatchesWithOnlyEmptyHeldRolesGivesTheHint(t *testing.T) {
+	t.Parallel()
+	ce := revokeHeldRolesError(t, "", "")
+	assert.Empty(t, ce.Candidates)
+	assert.NotContains(t, ce.Message, "subject holds")
+	assert.Equal(t, "rancher get projectroletemplatebinding --namespace 'p-x' -o json", ce.Hint)
 }
 
 func TestRevokeZeroMatchesHintNamesRealCommand(t *testing.T) {

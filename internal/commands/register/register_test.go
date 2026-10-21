@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -406,4 +407,32 @@ func TestCommitUpdateResultPathDisappearsBetweenProbeAndCommit(t *testing.T) {
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
+}
+
+// TestServerCandidatesAreSortedByName asserts every configured server is a
+// candidate, in name order, whatever order the map yields.
+func TestServerCandidatesAreSortedByName(t *testing.T) {
+	servers := map[string]config.Server{}
+	for _, n := range []string{"hotel", "alpha", "golf", "charlie", "echo", "bravo", "foxtrot", "delta"} {
+		servers[n] = config.Server{URL: "https://" + n + ".example.com"}
+	}
+	cands := ServerCandidates(&config.Config{Servers: servers})
+	require.Len(t, cands, 8)
+	var ids []string
+	for _, c := range cands {
+		assert.Equal(t, c.ID, c.Name)
+		ids = append(ids, c.ID)
+	}
+	assert.True(t, slices.IsSorted(ids), "candidates are in name order: %v", ids)
+	assert.Equal(t, []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"}, ids)
+}
+
+// TestServerNotFoundCarriesSortedServers asserts the NOT_FOUND error names
+// the unknown server and lists every configured one, sorted.
+func TestServerNotFoundCarriesSortedServers(t *testing.T) {
+	cfg := &config.Config{Servers: map[string]config.Server{"b": {URL: "https://b"}, "a": {URL: "https://a"}}}
+	e := ServerNotFound(cfg, "ghost")
+	assert.Equal(t, clierr.CodeNotFound, e.Code)
+	require.ErrorContains(t, e, "server not found: ghost")
+	assert.Equal(t, []clierr.Candidate{{ID: "a", Name: "a"}, {ID: "b", Name: "b"}}, e.Candidates)
 }

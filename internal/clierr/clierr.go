@@ -156,7 +156,8 @@ func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// Candidate is a selectable option returned with AMBIGUOUS_SELECTION.
+// Candidate is a selectable option returned with AMBIGUOUS_SELECTION,
+// and with NOT_FOUND when the command holds the list.
 type Candidate struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -276,7 +277,7 @@ var codeDescs = map[string]string{
 	CodeNotLoggedIn:                    "no server is selected, the selected server entry does not exist, or it has no stored credential and RANCHER_CLI_TOKEN is not set",
 	CodeConfirmationRequired:           "the mutation was not applied because a required gate flag (--apply, --yes, --allow-deprecated) was missing; the message names the flags",
 	CodeDryRunNotApplicable:            "--dry-run was given to a command that does not mutate",
-	CodeAmbiguousSelection:             "more than one value matched and none was selected; the error lists the candidates when it can",
+	CodeAmbiguousSelection:             "more than one value matched and none was selected; the error lists the candidates the command holds",
 	CodeConflict:                       "a write collided with existing state: a resource changed on the server since it was read, a name already exists, a server entry is registered with a different URL or CA, the config directory changed while the command ran, or the server answered 409",
 	CodeLockTimeout:                    "a config-directory lock was not released within the wait, usually because another rancher process is writing",
 	CodeAuth:                           "authentication failed: the server rejected the credential (HTTP 401), Rancher refused the sign-in, the exchange with the identity provider failed or timed out, an environment URL was set without RANCHER_CLI_TOKEN, or the credential belongs to another Rancher user than the call names",
@@ -284,7 +285,7 @@ var codeDescs = map[string]string{
 	CodeLoginIncomplete:                "a login for the server entry is in progress, or ended before it recorded its credential identity",
 	CodeCredentialTransitionIncomplete: "a change of this directory's credential store has work left: the old copy of the credential it changed, or the store pin, is not settled yet; a second store change is refused until it is, and other commands proceed",
 	CodeCredentialStoreUnavailable:     "the credential store this directory uses cannot be read or written right now: a locked keychain, a keychain prompt that was cancelled, a keychain that cannot be reached, or a credential helper that is missing, timed out or failed; the message names the store, the entry, the cause as far as it is known, and the remedy",
-	CodeNotFound:                       "no such resource, server entry, or name: the server answered 404 for an object or for an API through a downstream cluster, the config directory has no such entry, or the name matched nothing in already-fetched data",
+	CodeNotFound:                       "no such resource, server entry, or name: the server answered 404 for an object or for an API through a downstream cluster, the config directory has no such entry, or the name matched nothing in already-fetched data; when the command holds the list of names it could have meant, the error lists them as candidates",
 	CodeRBAC:                           "the server denied the request for lack of permission (HTTP 403), including Rancher's proxy rejecting an invalid or insufficient token",
 	CodeValidation:                     "the request was refused before or by the server: a missing or invalid flag or argument, a mutation under read-only mode, a disabled feature, or an object the server refused (HTTP 400 or 422)",
 	CodeGeneric:                        "an error with no more specific code, including a server or transport failure",

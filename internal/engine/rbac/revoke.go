@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -152,13 +154,13 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	if len(names) == 0 {
 		msg := fmt.Sprintf("no %s for subject %q at this scope", bindKind.GVR.Resource, args[0])
 		var hint string
-		if len(heldRoles) > 0 {
-			held := make([]string, 0, len(heldRoles))
-			for r := range heldRoles {
-				held = append(held, r)
-			}
-			sort.Strings(held)
+		held := slices.DeleteFunc(slices.Sorted(maps.Keys(heldRoles)), func(r string) bool { return r == "" })
+		var heldCands []clierr.Candidate
+		if len(held) > 0 {
 			msg += "; subject holds: " + strings.Join(held, ", ")
+			for _, r := range held {
+				heldCands = append(heldCands, clierr.Candidate{ID: r, Name: r})
+			}
 		} else {
 			// bindKind.Name, NOT bindKind.GVR.Resource: kinds.Lookup
 			// matches Name/Key/Aliases only, and the plural GVR
@@ -179,6 +181,9 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 		e := clierr.New(clierr.CodeNotFound, msg)
 		if hint != "" {
 			e = e.WithHint(hint)
+		}
+		if len(heldCands) > 0 {
+			e = e.WithCandidates(heldCands)
 		}
 		return safety.Effect{}, nil, e
 	}

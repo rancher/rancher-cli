@@ -493,3 +493,20 @@ func (*fakeClient) ServerResources(context.Context) ([]engine.APIResource, error
 func (f fakeFactory) ImpersonatedCluster(ctx context.Context, id string, _ engine.Impersonation) (engine.ClusterClient, error) {
 	return f.Cluster(ctx, id)
 }
+
+// TestSubjectCandidatesFallbackIsCappedInListOrder asserts a needle that
+// near-matches no user returns exactly the first 10 users, in list order.
+func TestSubjectCandidatesFallbackIsCappedInListOrder(t *testing.T) {
+	t.Parallel()
+	var users []*unstructured.Unstructured
+	for i := 1; i <= 12; i++ {
+		id := fmt.Sprintf("u-%02d", i)
+		users = append(users, &unstructured.Unstructured{Object: userObj(id, "", "member", "local://"+id)})
+	}
+	cands := SubjectCandidates(users, "lx-no-such-user")
+	var ids []string
+	for _, c := range cands {
+		ids = append(ids, c.ID)
+	}
+	assert.Equal(t, []string{"u-01", "u-02", "u-03", "u-04", "u-05", "u-06", "u-07", "u-08", "u-09", "u-10"}, ids)
+}

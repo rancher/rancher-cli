@@ -2,6 +2,8 @@ package rbac
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -764,6 +766,33 @@ func TestGrantNoNearMatchRoleFallsBackToPool(t *testing.T) {
 	assert.Contains(t, ids, "cluster-member")
 	// project-context role excluded at cluster scope.
 	assert.NotContains(t, ids, "project-member")
+}
+
+func TestGrantNoNearMatchRoleFallbackIsCappedInListOrder(t *testing.T) {
+	t.Parallel()
+	// Twelve at-scope roles and a name that near-matches none: the error
+	// lists exactly the first 10, in list order.
+	var roles []unstructured.Unstructured
+	for i := 1; i <= 12; i++ {
+		roles = append(roles, unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": fmt.Sprintf("role-%02d", i)}, "context": "cluster"}})
+	}
+	client := &fakeClient{
+		users:      []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		listsByGVR: map[string]*unstructured.UnstructuredList{"roletemplates": {Items: roles}},
+	}
+	_, _, err := planGrant(t, NewGrant(fakeFactory{c: client}), stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "lx-no-such-role"},
+		args:    []string{"u-abc"},
+	})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	var ids []string
+	for _, c := range ce.Candidates {
+		ids = append(ids, c.ID)
+	}
+	assert.Equal(t, []string{"role-01", "role-02", "role-03", "role-04", "role-05", "role-06", "role-07", "role-08", "role-09", "role-10"}, ids)
 }
 
 func TestGrantBadRoleTypoKeepsNarrowedCandidates(t *testing.T) {

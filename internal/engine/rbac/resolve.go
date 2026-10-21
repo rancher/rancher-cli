@@ -25,9 +25,10 @@ type ResolvedSubject struct {
 
 const candidateCap = 10
 
-// isSystemUser mirrors rancher's User.IsSystem: any principalIds entry
-// matching the shared system-principal predicate (engine.IsSystemPrincipal).
-func isSystemUser(u *unstructured.Unstructured) bool {
+// IsSystemUser reports whether u is a system user. It mirrors rancher's
+// User.IsSystem: any principalIds entry matching the shared system-principal
+// predicate (engine.IsSystemPrincipal).
+func IsSystemUser(u *unstructured.Unstructured) bool {
 	pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
 	return slices.ContainsFunc(pids, engine.IsSystemPrincipal)
 }
@@ -73,7 +74,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 			// A successful Get hit on a system user is TERMINAL for both
 			// local and external paths: never fall through to a scan or
 			// provisioning (the caller addressed a system account).
-			if isSystemUser(obj) {
+			if IsSystemUser(obj) {
 				return ResolvedSubject{}, systemUserError(sub.Principal)
 			}
 			if isLocal {
@@ -112,7 +113,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		var owners []*unstructured.Unstructured
 		for i := range list.Items {
 			u := &list.Items[i]
-			if isSystemUser(u) {
+			if IsSystemUser(u) {
 				continue
 			}
 			pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
@@ -139,7 +140,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		default:
 			cands := make([]clierr.Candidate, 0, len(owners))
 			for _, u := range owners {
-				cands = append(cands, candidate(u))
+				cands = append(cands, UserCandidate(u))
 			}
 			return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
 				fmt.Sprintf("%d users share principal %q", len(owners), sub.Principal)).
@@ -154,7 +155,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	// >1 match → AMBIGUOUS_SELECTION; 0 → NOT_FOUND.
 	obj, err := client.Get(ctx, userKind.GVR, "", sub.Bare)
 	if err == nil {
-		if isSystemUser(obj) {
+		if IsSystemUser(obj) {
 			return ResolvedSubject{}, systemUserError(sub.Bare)
 		}
 		return resolvedFromUser(obj)
@@ -174,7 +175,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 	var all []*unstructured.Unstructured
 	for i := range list.Items {
 		u := &list.Items[i]
-		if isSystemUser(u) {
+		if IsSystemUser(u) {
 			continue
 		}
 		all = append(all, u)
@@ -189,12 +190,12 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		return resolvedFromUser(nameMatches[0])
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+sub.Bare).
-			WithCandidates(subjectCandidates(all, sub.Bare)).
+			WithCandidates(SubjectCandidates(all, sub.Bare)).
 			WithHint("rancher get users")
 	default:
 		cands := make([]clierr.Candidate, 0, len(nameMatches))
 		for _, u := range nameMatches {
-			cands = append(cands, candidate(u))
+			cands = append(cands, UserCandidate(u))
 		}
 		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
 			fmt.Sprintf("%d users match %q", len(nameMatches), sub.Bare)).
@@ -218,7 +219,9 @@ func resolvedFromUser(u *unstructured.Unstructured) (ResolvedSubject, error) {
 	return ResolvedSubject{UserID: u.GetName(), Principal: preferredPrincipal(pids), PrincipalIDs: pids}, nil
 }
 
-func candidate(u *unstructured.Unstructured) clierr.Candidate {
+// UserCandidate returns u as a selectable candidate: its id (the object name)
+// and its display name, else its username.
+func UserCandidate(u *unstructured.Unstructured) clierr.Candidate {
 	display, _, _ := unstructured.NestedString(u.Object, "displayName")
 	if display == "" {
 		display, _, _ = unstructured.NestedString(u.Object, "username")
@@ -231,12 +234,13 @@ func principalOwned(pids []string, principal string) bool {
 	return slices.Contains(pids, principal)
 }
 
-// subjectCandidates builds the candidate slice for a user not-found error.
-// Each user's fields are extracted once: username for the haystack and
-// candidate() for the display-name-fallback Candidate. The haystack is
-// id + candidate.Name + username; the display-name-fallback rule is owned
-// by candidate(), so it is not restated here.
-func subjectCandidates(users []*unstructured.Unstructured, needle string) []clierr.Candidate {
+// SubjectCandidates builds the candidate slice for a user not-found error:
+// the users whose id, display name or username near-matches needle, else
+// the first few users. Each user's fields are extracted once: username for
+// the haystack and UserCandidate() for the display-name-fallback Candidate.
+// The haystack is id + candidate.Name + username; the display-name-fallback
+// rule is owned by UserCandidate(), so it is not restated here.
+func SubjectCandidates(users []*unstructured.Unstructured, needle string) []clierr.Candidate {
 	type row struct {
 		haystack string
 		cand     clierr.Candidate
@@ -244,7 +248,7 @@ func subjectCandidates(users []*unstructured.Unstructured, needle string) []clie
 	rows := make([]row, len(users))
 	for i, u := range users {
 		un, _, _ := unstructured.NestedString(u.Object, "username")
-		cand := candidate(u)
+		cand := UserCandidate(u)
 		rows[i] = row{
 			haystack: cand.ID + " " + cand.Name + " " + un,
 			cand:     cand,

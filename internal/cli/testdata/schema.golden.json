@@ -11202,7 +11202,7 @@
     },
     {
       "code": "AMBIGUOUS_SELECTION",
-      "desc": "more than one value matched and none was selected; the error lists the candidates when it can",
+      "desc": "more than one value matched and none was selected; the error lists the candidates the command holds",
       "exit": 2
     },
     {
@@ -11242,7 +11242,7 @@
     },
     {
       "code": "NOT_FOUND",
-      "desc": "no such resource, server entry, or name: the server answered 404 for an object or for an API through a downstream cluster, the config directory has no such entry, or the name matched nothing in already-fetched data",
+      "desc": "no such resource, server entry, or name: the server answered 404 for an object or for an API through a downstream cluster, the config directory has no such entry, or the name matched nothing in already-fetched data; when the command holds the list of names it could have meant, the error lists them as candidates",
       "exit": 4
     },
     {

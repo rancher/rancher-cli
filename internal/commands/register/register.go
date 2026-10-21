@@ -3,7 +3,9 @@ package register
 import (
 	"context"
 	"fmt"
+	"maps"
 	neturl "net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -525,18 +527,25 @@ func TLSPreflight(ctx context.Context, serverURL, caPEM string) (string, error) 
 	return v, nil
 }
 
-// ServerNotFound builds the NOT_FOUND error `config delete-server` and
-// `auth logout` both return for an unknown server name: every currently
-// configured server offered back as a selectable candidate, from one
-// implementation. `config use-server`'s own not-found path stays a plain
-// NOT_FOUND with no candidates.
-func ServerNotFound(cfg *config.Config, name string) *clierr.Error {
-	cands := make([]clierr.Candidate, 0, len(cfg.Servers))
-	for s := range cfg.Servers {
-		cands = append(cands, clierr.Candidate{ID: s, Name: s})
+// ServerCandidates returns every configured server as a selectable
+// candidate, sorted by name.
+func ServerCandidates(cfg *config.Config) []clierr.Candidate {
+	names := slices.Sorted(maps.Keys(cfg.Servers))
+	cands := make([]clierr.Candidate, 0, len(names))
+	for _, n := range names {
+		cands = append(cands, clierr.Candidate{ID: n, Name: n})
 	}
+	return cands
+}
+
+// ServerNotFound builds the NOT_FOUND error that `config delete-server`,
+// `config update-server`, `config use-server`, `auth logout <name>` and
+// `auth login <name>` return for an unknown server name: every currently
+// configured server offered back as a selectable candidate, from one
+// implementation.
+func ServerNotFound(cfg *config.Config, name string) *clierr.Error {
 	return clierr.New(clierr.CodeNotFound, "server not found: "+name).
-		WithCandidates(cands)
+		WithCandidates(ServerCandidates(cfg))
 }
 
 // ServerLabel renders the server as host[:port] with a scheme-default port

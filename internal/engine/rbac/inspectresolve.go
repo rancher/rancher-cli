@@ -86,7 +86,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 	default:
 		cands := make([]clierr.Candidate, 0, len(owners))
 		for _, u := range owners {
-			cands = append(cands, candidate(u))
+			cands = append(cands, UserCandidate(u))
 		}
 		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
 			fmt.Sprintf("%d users share principal %q", len(owners), principal)).
@@ -127,12 +127,12 @@ func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, us
 		return resolvedInspectUser(matches[0]), nil
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+bare).
-			WithCandidates(subjectCandidates(toPointerSlice(list.Items), bare)).
+			WithCandidates(SubjectCandidates(toPointerSlice(list.Items), bare)).
 			WithHint("rancher get users")
 	default:
 		cands := make([]clierr.Candidate, 0, len(matches))
 		for _, u := range matches {
-			cands = append(cands, candidate(u))
+			cands = append(cands, UserCandidate(u))
 		}
 		return ResolvedSubject{}, clierr.New(clierr.CodeAmbiguousSelection,
 			fmt.Sprintf("%d users match %q", len(matches), bare)).
@@ -165,7 +165,7 @@ func PreferredPrincipalOrID(userID string, principalIDs []string) string {
 }
 
 // toPointerSlice adapts an UnstructuredList's Items into the []*Unstructured
-// shape subjectCandidates expects.
+// shape SubjectCandidates expects.
 func toPointerSlice(items []unstructured.Unstructured) []*unstructured.Unstructured {
 	out := make([]*unstructured.Unstructured, len(items))
 	for i := range items {

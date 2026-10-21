@@ -356,3 +356,19 @@ func TestAURLChangeWithoutTheLockClearsThePauseItMade(t *testing.T) {
 	require.NoError(t, lerr)
 	assert.False(t, after.Servers["qa1"].Paused())
 }
+
+// TestUpdateServerUnknownNameListsServers asserts an unknown name is
+// NOT_FOUND and the error lists every configured server in name order.
+func TestUpdateServerUnknownNameListsServers(t *testing.T) {
+	dir, _ := cmdtest.FilePolicyDir(t)
+	want := []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"}
+	for _, n := range want {
+		addServerForUpdateTests(t, dir, n, "https://"+n+".example.com")
+	}
+	c := newUpdateServerCmd(dir)
+	_, err := c.Execute(t.Context(), cmdtest.Input{Str: map[string]string{"url": "https://qa1.example.com"}, Pos: []string{"ghost"}}, nil)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, want, candidateIDs(ce.Candidates))
+}

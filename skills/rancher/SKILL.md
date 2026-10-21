@@ -413,6 +413,8 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
   same call. It is not retryable.
 - `AMBIGUOUS_SELECTION` returns a `candidates` list - pick with the user, don't
   guess.
+- `NOT_FOUND` may carry a `candidates` list of names that exist - offer
+  them, don't guess.
 - `CREDENTIAL_STORE_UNAVAILABLE` (exit `14`, retryable) means the keychain
   or credential helper this directory uses cannot be read or written right
   now: a locked keychain, a cancelled keychain prompt, a helper that is

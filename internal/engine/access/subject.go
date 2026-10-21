@@ -157,10 +157,27 @@ func findRancherUser(ctx context.Context, local engine.ClusterClient, raw string
 	case 1:
 		return matches[0], nil
 	case 0:
-		return nil, clierr.New(clierr.CodeNotFound, fmt.Sprintf("user %s not found", raw)).WithHint("rancher get users")
+		e := clierr.New(clierr.CodeNotFound, fmt.Sprintf("user %s not found", raw)).WithHint("rancher get users")
+		// A principal or a system: value has no name to match near.
+		if !strings.Contains(raw, "://") && !strings.HasPrefix(raw, "system:") {
+			var nonSystem []*unstructured.Unstructured
+			for i := range list.Items {
+				if !rbac.IsSystemUser(&list.Items[i]) {
+					nonSystem = append(nonSystem, &list.Items[i])
+				}
+			}
+			e = e.WithCandidates(rbac.SubjectCandidates(nonSystem, raw))
+		}
+		return nil, e
 	default:
+		cands := make([]clierr.Candidate, 0, len(matches))
+		for _, u := range matches {
+			cands = append(cands, rbac.UserCandidate(u))
+		}
 		return nil, clierr.New(clierr.CodeAmbiguousSelection,
-			fmt.Sprintf("%d users match %s; pass the user id", len(matches), raw)).WithHint("rancher get users")
+			fmt.Sprintf("%d users match %s; pass the user id", len(matches), raw)).
+			WithHint("rancher get users").
+			WithCandidates(cands)
 	}
 }
 
