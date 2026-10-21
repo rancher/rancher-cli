@@ -2,30 +2,22 @@ name: Renovate
 on:
   workflow_dispatch:
     inputs:
-      logLevel:
-        description: "Override default log level"
-        required: false
-        default: info
-        type: choice
-        options:
-        - info
-        - debug
       overrideSchedule:
         description: "Override all schedules"
         required: false
         default: "false"
         type: choice
         options:
-        - "false"
-        - "true"
+          - "false"
+          - "true"
       configMigration:
         description: "Toggle PRs for config migration"
         required: false
         default: "true"
         type: choice
         options:
-        - "false"
-        - "true"
+          - "false"
+          - "true"
       renovateConfig:
         description: "Define a custom renovate config file"
         required: false
@@ -36,28 +28,28 @@ on:
         required: false
         default: "null"
         type: string
-      extendsPreset:
-        description: "Override renovate extends preset (default: 'github>rancher/renovate-config#release')."
-        required: false
-        default: "github>rancher/renovate-config#release"
-        type: string
 
   schedule:
-  - cron: '30 4,6 * * 1-5'
+    - cron: '30 4,6 * * 1-5'
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 jobs:
   call-workflow:
-    uses: rancher/renovate-config/.github/workflows/renovate-vault.yml@3f2aca35d6e84aa79062c7178b2fd1ef3c0f3060 # release
+    permissions:
+      contents: read
+      id-token: write # Required for Vault OIDC authentication.
+    # https://github.com/rancher/renovate-config/releases
+    uses: rancher/renovate-config/.github/workflows/renovate-vault.yml@80aa9b4d01e1f6cd0b56d524492357271e75df72 # v1.0.13
+    # Note: github.event.inputs.<name> with '||' fallbacks is used across all inputs
+    # so that scheduled cron runs (where github.event.inputs is null) safely default.
     with:
-      configMigration: ${{ inputs.configMigration || 'true' }}
-      logLevel: ${{ inputs.logLevel || 'info' }}
-      overrideSchedule: ${{ github.event.inputs.overrideSchedule == 'true' && '{''schedule'':null}' || '' }}
-      renovateConfig: ${{ inputs.renovateConfig || '.github/renovate.json' }}
-      minimumReleaseAge: ${{ inputs.minimumReleaseAge || 'null' }}
-      extendsPreset: ${{ inputs.extendsPreset || 'github>rancher/renovate-config#release' }}
+      configMigration: ${{ github.event.inputs.configMigration || 'true' }}
+      overrideSchedule: ${{ github.event.inputs.overrideSchedule || 'false' }}
+      renovateConfig: ${{ github.event.inputs.renovateConfig || '.github/renovate.json' }}
+      minimumReleaseAge: ${{ github.event.inputs.minimumReleaseAge || 'null' }}
     secrets:
+      # Optional: RENOVATE_FORK_GH_TOKEN allows this action to run on repository forks where
+      # Vault/App token generation is unavailable. Defaulting to '' allows the caller
+      # to fall back gracefully on standard runs without failing secret evaluation.
       override-token: "${{ secrets.RENOVATE_FORK_GH_TOKEN || '' }}"
