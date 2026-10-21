@@ -21,6 +21,7 @@ import (
 var update = flag.Bool("update", false, "record oracle goldens from the real server")
 
 func TestOracle(t *testing.T) {
+	recordDriftTest(t)
 	tgt, err := fidelity.NewOracleTargetFromEnv()
 	require.NoError(t, err)
 	oracleImage := os.Getenv("E2E_FIDELITY_ORACLE_IMAGE")
@@ -29,8 +30,13 @@ func TestOracle(t *testing.T) {
 	dir := filepath.Join("..", "..", "..", "internal", "testrancher", "fidelity", "testdata", "oracle")
 	for _, p := range fidelity.All() {
 		t.Run(p.Name, func(t *testing.T) {
+			recordDriftTest(t)
 			if p.Downstream {
 				t.Skipf("downstream probe: recorded by TestDownstream, not TestOracle")
+			}
+			if driftConfig != nil {
+				runDriftProbe(t, fidelity.SuiteOracle, tgt, p, dir)
+				return
 			}
 			results, err := fidelity.RunProbe(t.Context(), tgt, p)
 			require.NoError(t, err)

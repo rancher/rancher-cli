@@ -19,6 +19,10 @@ type ObservationResult struct {
 	ContentType string         `json:"contentType"`
 	Body        map[string]any `json:"body,omitempty"`
 	Text        string         `json:"text,omitempty"`
+	// WaitRanOut is set by a drift run when the observation's WaitForStatus
+	// never arrived and the last answer was kept; it is never written to a
+	// golden.
+	WaitRanOut bool `json:"-"`
 }
 
 // Golden is one probe's recorded truth. OracleImage is provenance - the

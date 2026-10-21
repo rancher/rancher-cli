@@ -26,6 +26,7 @@ import (
 // through scripts/e2e-fidelity-downstream. Unset, the suite skips entirely, and
 // TestOracle never covers these probes.
 func TestDownstream(t *testing.T) {
+	recordDriftTest(t)
 	downstream := os.Getenv("E2E_FIDELITY_DOWNSTREAM")
 	if downstream == "" {
 		t.Skip("E2E_FIDELITY_DOWNSTREAM is unset; no downstream cluster to probe")
@@ -49,6 +50,11 @@ func TestDownstream(t *testing.T) {
 			continue
 		}
 		t.Run(p.Name, func(t *testing.T) {
+			recordDriftTest(t)
+			if driftConfig != nil {
+				runDriftProbe(t, fidelity.SuiteDownstream, tgt, p, dir)
+				return
+			}
 			results, err := fidelity.RunProbe(t.Context(), tgt, p)
 			require.NoError(t, err)
 			got := fidelity.Golden{OracleImage: image, Observations: results}

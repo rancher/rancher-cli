@@ -1,0 +1,15 @@
+{
+  "minor": "2.16",
+  "entries": [
+    {
+      "probe": "fixture/oracle",
+      "pointer": "/edition/status",
+      "want": 200,
+      "got": 403,
+      "firstSeen": "abc1234",
+      "cause": "rancher",
+      "ruling": "rancher-defect",
+      "url": "https://github.com/rancher/not-listed/issues/1"
+    }
+  ]
+}

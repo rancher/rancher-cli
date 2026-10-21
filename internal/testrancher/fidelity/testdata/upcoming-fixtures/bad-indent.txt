@@ -1,0 +1,19 @@
+{
+    "minor": "2.16",
+    "entries": [
+        {
+            "probe": "fixture/oracle",
+            "pointer": "/edition/body/labels",
+            "want": {
+                "a/b": "x"
+            },
+            "got": {
+                "a/b": "x",
+                "c": "\u00b7"
+            },
+            "firstSeen": "abc1234",
+            "cause": "rancher",
+            "ruling": "expected-at-ga"
+        }
+    ]
+}

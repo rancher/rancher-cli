@@ -1,0 +1,14 @@
+{
+  "minor": "2.16",
+  "entries": [
+    {
+      "probe": "fixture/oracle",
+      "pointer": "/edition/body/list/01",
+      "want": 1,
+      "got": 3,
+      "firstSeen": "abc1234",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    }
+  ]
+}

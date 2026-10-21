@@ -1,0 +1,14 @@
+{
+  "minor": "2.16",
+  "entries": [
+    {
+      "probe": "fixture/oracle",
+      "pointer": "/edition/body/GitCommit",
+      "want": "aaaa",
+      "gotVaries": true,
+      "firstSeen": "0123456789abcdef0123456789abcdef01234567",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    }
+  ]
+}

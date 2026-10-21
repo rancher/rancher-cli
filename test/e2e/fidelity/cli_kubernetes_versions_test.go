@@ -43,6 +43,9 @@ type kubernetesVersionRow struct {
 // creates nothing on the server and records no values: the release list and
 // the settings follow published data, so only their relationship is checked.
 func TestCLIKubernetesVersions(t *testing.T) {
+	if driftConfig != nil {
+		t.Cleanup(func() { driftCollector.CLITest(t.Name(), !t.Failed()) })
+	}
 	base := os.Getenv("E2E_FIDELITY_URL")
 	adminToken := os.Getenv("E2E_FIDELITY_ADMIN_TOKEN")
 	caPEM := os.Getenv("E2E_FIDELITY_CACERT")
@@ -72,6 +75,9 @@ func TestCLIKubernetesVersions(t *testing.T) {
 	}
 	supportedRange := readSettingValue(ctx, t, apiClient, base, adminToken, "ui-k8s-supported-versions-range")
 
+	if driftConfig != nil {
+		driftCollector.CLIStarted(t.Name())
+	}
 	cmd := exec.CommandContext(ctx, binPath, "get", "kubernetes-versions", "-o", "json")
 	cmd.Env = []string{
 		"RANCHER_CLI_URL=" + base,

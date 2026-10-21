@@ -1,0 +1,23 @@
+{
+  "minor": "2.16",
+  "entries": [
+    {
+      "probe": "fixture/oracle",
+      "pointer": "/edition/body/a~1b",
+      "want": "slash",
+      "got": "other",
+      "firstSeen": "abc1234",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "fixture/oracle",
+      "pointer": "/edition/body/~01",
+      "want": "tilde",
+      "got": "other",
+      "firstSeen": "abc1234",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    }
+  ]
+}

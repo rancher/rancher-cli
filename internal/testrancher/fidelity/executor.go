@@ -36,18 +36,36 @@ var (
 	waitForStatusInterval = 250 * time.Millisecond
 )
 
+// RunOptions changes how RunProbeWith executes a probe.
+type RunOptions struct {
+	// KeepLastAnswer records the last answer of an observation whose
+	// WaitForStatus never arrived, instead of failing the probe. The result
+	// carries WaitRanOut.
+	KeepLastAnswer bool
+}
+
 // RunProbe executes p's setup, observations, and teardown against tgt and
 // returns one normalized result per observation.
 func RunProbe(ctx context.Context, tgt Target, p Probe) ([]ObservationResult, error) {
 	return runProbe(ctx, tgt, p, defaultStepTimeout)
 }
 
-// runProbe is RunProbe with an injectable per-step deadline. Teardown is
+// RunProbeWith is RunProbe with options. A cancelled context still fails the
+// probe whatever the options say.
+func RunProbeWith(ctx context.Context, tgt Target, p Probe, opts RunOptions) ([]ObservationResult, error) {
+	return runProbeWith(ctx, tgt, p, defaultStepTimeout, opts)
+}
+
+func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) ([]ObservationResult, error) {
+	return runProbeWith(ctx, tgt, p, timeout, RunOptions{})
+}
+
+// runProbeWith is RunProbeWith with an injectable per-step deadline. Teardown is
 // installed BEFORE setup runs and always executes - after a partial setup
 // failure, an observation failure, a capture failure, or success - with the
 // captures resolved so far. Every teardown error is collected and joined
 // with the primary error; none is dropped.
-func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (results []ObservationResult, err error) {
+func runProbeWith(ctx context.Context, tgt Target, p Probe, timeout time.Duration, opts RunOptions) (results []ObservationResult, err error) {
 	if verr := p.Validate(); verr != nil {
 		return nil, verr
 	}
@@ -81,7 +99,7 @@ func runProbe(ctx context.Context, tgt Target, p Probe, timeout time.Duration) (
 
 	rules := append(DefaultNormalizeRules(), p.Normalize...)
 	for _, o := range p.Observations {
-		res, raw, oerr := runObservation(ctx, tgt, o, captured, timeout)
+		res, raw, oerr := runObservation(ctx, tgt, o, captured, timeout, opts)
 		if oerr != nil {
 			return results, fmt.Errorf("probe %s: observation %s: %w", p.Name, o.Name, oerr)
 		}
@@ -138,11 +156,11 @@ func resolveCapture(raw map[string]any, c Capture) (string, error) {
 	return v, nil
 }
 
-func runObservation(ctx context.Context, tgt Target, o Observation, captured map[string]string, timeout time.Duration) (ObservationResult, map[string]any, error) {
+func runObservation(ctx context.Context, tgt Target, o Observation, captured map[string]string, timeout time.Duration, opts RunOptions) (ObservationResult, map[string]any, error) {
 	octx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	resp, err := attemptUntilStatus(octx, tgt, o, captured)
+	resp, waitRanOut, err := attemptUntilStatus(octx, tgt, o, captured, opts.KeepLastAnswer)
 	if err != nil {
 		return ObservationResult{}, nil, err
 	}
@@ -156,6 +174,7 @@ func runObservation(ctx context.Context, tgt Target, o Observation, captured map
 		Name:        o.Name,
 		Status:      resp.StatusCode,
 		ContentType: strings.Split(resp.Header.Get("Content-Type"), ";")[0],
+		WaitRanOut:  waitRanOut,
 	}
 	var decoded map[string]any
 	if len(rawBody) > 0 {
@@ -172,23 +191,28 @@ func runObservation(ctx context.Context, tgt Target, o Observation, captured map
 // WaitForStatus, again every waitForStatusInterval until the answer has
 // that status. A transport error ends it at once; when waitForStatusTimeout
 // passes first it fails, naming the status waited for, the last status and
-// the attempt count.
-func attemptUntilStatus(ctx context.Context, tgt Target, o Observation, captured map[string]string) (*http.Response, error) {
+// the attempt count. With keepLast the last answer is returned instead, with
+// waitRanOut true, unless the context ended.
+func attemptUntilStatus(ctx context.Context, tgt Target, o Observation, captured map[string]string, keepLast bool) (resp *http.Response, waitRanOut bool, err error) {
 	start := time.Now()
 	for attempts := 1; ; attempts++ {
 		resp, err := attempt(ctx, tgt, o, captured)
 		if err != nil || o.WaitForStatus == 0 || resp.StatusCode == o.WaitForStatus {
-			return resp, err
+			return resp, false, err
 		}
 		last := resp.StatusCode
+		timedOut := time.Since(start) >= waitForStatusTimeout
+		if timedOut && keepLast && ctx.Err() == nil {
+			return resp, true, nil
+		}
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
-		if time.Since(start) >= waitForStatusTimeout {
-			return nil, fmt.Errorf("want status %d, still %d after %d attempts in %s", o.WaitForStatus, last, attempts, waitForStatusTimeout)
+		if timedOut {
+			return nil, false, fmt.Errorf("want status %d, still %d after %d attempts in %s", o.WaitForStatus, last, attempts, waitForStatusTimeout)
 		}
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("want status %d, last %d after %d attempts: %w", o.WaitForStatus, last, attempts, ctx.Err())
+			return nil, false, fmt.Errorf("want status %d, last %d after %d attempts: %w", o.WaitForStatus, last, attempts, ctx.Err())
 		case <-time.After(waitForStatusInterval):
 		}
 	}

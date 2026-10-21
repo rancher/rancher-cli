@@ -57,8 +57,14 @@ Gotchas:
   them; `E2E_FIDELITY_PRINT_IMAGES=1` prints the choice and boots
   nothing. Each minor has its own port, subnet, containers and state
   root from the slot table in `scripts/e2e-fidelity`; a minor with no
-  row is refused. It runs the boot smoke, never the goldens; these
-  variables are refused without `E2E_FIDELITY_MINOR`.
+  row is refused. It runs the boot smoke; with `E2E_FIDELITY_DRIFT=1` it
+  also compares every probe with the community goldens and writes a
+  report (exit 0 clean, 3 differences, any other code a boot or harness
+  failure), matching differences against
+  `internal/testrancher/fidelity/testdata/upcoming/v<minor>.json`.
+  `E2E_FIDELITY_UPCOMING_IMAGE`, `E2E_FIDELITY_K3S_IMAGE`,
+  `E2E_FIDELITY_PRINT_IMAGES=1` and `E2E_FIDELITY_DRIFT` are refused
+  without `E2E_FIDELITY_MINOR`.
 - **The downstream fidelity axis rides on `make e2e-fidelity`.** The oracle
   imports a pinned `rancher/k3s` container on every boot and exports
   `E2E_FIDELITY_DOWNSTREAM`, so probes marked `Downstream: true` (family

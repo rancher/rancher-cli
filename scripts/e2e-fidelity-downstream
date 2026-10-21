@@ -18,6 +18,15 @@ if [ "${#missing[@]}" -ne 0 ]; then
   exit 1
 fi
 
+# The drift run's variables belong to scripts/e2e-fidelity with
+# E2E_FIDELITY_DRIFT=1; this script never runs a drift comparison.
+for var in E2E_FIDELITY_DRIFT_REPORT E2E_FIDELITY_DRIFT_KNOWN E2E_FIDELITY_DRIFT_STARTED E2E_FIDELITY_GOLDEN_IMAGE E2E_FIDELITY_GOLDEN_K3S_IMAGE E2E_FIDELITY_DOWNSTREAM_IMAGE; do
+  if [ -n "${!var:-}" ]; then
+    echo "error: ${var} is set without E2E_FIDELITY_DRIFT=1; unset it" >&2
+    exit 1
+  fi
+done
+
 # E2E_FIDELITY_DOWNSTREAM_UPDATE_FLAG is a fixed internal value ("" or
 # "-update"), set only by scripts/e2e-fidelity-downstream-update, never
 # user-supplied, so the intentional word-splitting here is safe.

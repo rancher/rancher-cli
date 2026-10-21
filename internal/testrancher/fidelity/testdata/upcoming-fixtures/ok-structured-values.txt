@@ -1,0 +1,45 @@
+{
+  "minor": "2.16",
+  "entries": [
+    {
+      "probe": "fixture/oracle",
+      "pointer": "/edition/body/labels",
+      "want": {
+        "a/b": "x"
+      },
+      "got": {
+        "a/b": "x",
+        "c": "\u00b7"
+      },
+      "firstSeen": "abc1234",
+      "cause": "rancher",
+      "ruling": "cli-change",
+      "url": "https://github.com/rancher/rancher-cli/pull/1"
+    },
+    {
+      "probe": "fixture/oracle",
+      "pointer": "/edition/body/list",
+      "want": [
+        1,
+        2
+      ],
+      "got": [
+        1,
+        2,
+        3
+      ],
+      "firstSeen": "abc1234",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "fixture/oracle",
+      "pointer": "/edition/body/nothing",
+      "want": null,
+      "got": "x",
+      "firstSeen": "abc1234",
+      "cause": "rancher",
+      "ruling": ""
+    }
+  ]
+}

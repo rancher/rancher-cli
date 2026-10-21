@@ -1,0 +1,14 @@
+{
+  "minor": "2.16",
+  "entries": [
+    {
+      "probe": "fixture/nothing",
+      "pointer": "/edition/status",
+      "want": 200,
+      "got": 403,
+      "firstSeen": "abc1234",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    }
+  ]
+}

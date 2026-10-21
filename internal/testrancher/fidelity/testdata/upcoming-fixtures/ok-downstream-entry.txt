@@ -1,0 +1,14 @@
+{
+  "minor": "2.16",
+  "entries": [
+    {
+      "probe": "fixture/downstream",
+      "pointer": "/steve/body/state",
+      "want": "active",
+      "got": "inactive",
+      "firstSeen": "abc1234",
+      "cause": "undetermined",
+      "ruling": ""
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+
 # Fidelity oracle harness: boots the pinned real Rancher in Docker, bootstraps
 # an admin token, and runs the e2e_fidelity record/verify suite against it.
 #
@@ -19,6 +21,12 @@ PRIME_ORACLE_IMAGE="registry.rancher.com/rancher/rancher:v2.14.5@sha256:07334615
 # literal tag+digest, bumped through a reviewed golden-regeneration change
 # like ORACLE_IMAGE.
 K3S_IMAGE="rancher/k3s:v1.34.4-k3s1@sha256:a5f627f1ed014dede348fdc77bc7e452d03712a8daff000e0f2667d28f9a2d11"
+# The community goldens' images, read before the profile block below
+# overwrites ORACLE_IMAGE and K3S_IMAGE for an upcoming minor. A drift run
+# (E2E_FIDELITY_DRIFT=1) compares that minor with the goldens recorded against
+# these two.
+GOLDEN_ORACLE_IMAGE="${ORACLE_IMAGE}"
+GOLDEN_K3S_IMAGE="${K3S_IMAGE}"
 # The upcoming-minor oracle (E2E_FIDELITY_MINOR=<major>.<minor>, for example
 # 2.16) boots the newest build of a Rancher minor with no GA release yet, for
 # readiness checks and component release-candidate validation before that
@@ -32,7 +40,14 @@ K3S_IMAGE="rancher/k3s:v1.34.4-k3s1@sha256:a5f627f1ed014dede348fdc77bc7e452d0371
 # environment is read from the registry API, with no layer pull.
 # E2E_FIDELITY_UPCOMING_IMAGE and E2E_FIDELITY_K3S_IMAGE override the two
 # images; E2E_FIDELITY_PRINT_IMAGES=1 prints the choice and boots nothing.
-# Boot, bootstrap, and downstream-proxy smoke only.
+# Boot, bootstrap, and downstream-proxy smoke; with E2E_FIDELITY_DRIFT=1 the
+# smoke is followed by a drift run: every probe runs against the minor and is
+# compared with the community goldens and the minor's known-differences file,
+# and the test binary writes one JSON report (E2E_FIDELITY_DRIFT_REPORT names
+# it; the default is under the state root). The exit is 0 when the report is
+# clean, 3 when it holds a new difference, an errored probe, a failed CLI
+# test or a suite that ran no probe, and 1 for a boot or harness failure; the
+# last line on stdout gives the counts.
 #
 # E2E_FIDELITY_RANCHER_REPO and E2E_FIDELITY_REGISTRY_URL exist for the tests,
 # which point them at a local git repository and a local registry stand-in.
@@ -91,6 +106,41 @@ minor_pattern='^[1-9][0-9]*\.(0|[1-9][0-9]*)$'
 if [ -n "${MINOR}" ] && ! [[ "${MINOR}" =~ ${minor_pattern} ]]; then
   echo "error: E2E_FIDELITY_MINOR=${MINOR} is not <major>.<minor>; for example 2.16" >&2
   exit 1
+fi
+DRIFT=0
+[ "${E2E_FIDELITY_DRIFT:-}" != "1" ] || DRIFT=1
+DRIFT_REPORTED=0
+DRIFT_REPORT_ABS=""
+DRIFT_KNOWN=""
+if [ "${DRIFT}" = 1 ]; then
+  if [ -z "${MINOR}" ]; then
+    echo "error: E2E_FIDELITY_DRIFT needs E2E_FIDELITY_MINOR=<major>.<minor>; the drift run compares an upcoming minor with the community goldens" >&2
+    exit 1
+  fi
+  if [ -n "${E2E_FIDELITY_UPDATE_FLAG:-}" ]; then
+    echo "error: E2E_FIDELITY_DRIFT compares only; it never records goldens" >&2
+    exit 1
+  fi
+  DRIFT_REPORT_ABS="${E2E_FIDELITY_DRIFT_REPORT:-}"
+  if [ -n "${DRIFT_REPORT_ABS}" ]; then
+    case "${DRIFT_REPORT_ABS}" in
+      /*) ;;
+      *) DRIFT_REPORT_ABS="${PWD}/${DRIFT_REPORT_ABS}" ;;
+    esac
+    report_dir="$(dirname "${DRIFT_REPORT_ABS}")"
+    if [ -d "${DRIFT_REPORT_ABS}" ] || [[ "${DRIFT_REPORT_ABS}" == */ ]] || [ ! -d "${report_dir}" ] || [ ! -w "${report_dir}" ] || [ ! -x "${report_dir}" ]; then
+      echo "error: E2E_FIDELITY_DRIFT_REPORT=${E2E_FIDELITY_DRIFT_REPORT} is not a file path in an existing writable directory" >&2
+      exit 1
+    fi
+  fi
+  DRIFT_KNOWN="${REPO_ROOT}/internal/testrancher/fidelity/testdata/upcoming/v${MINOR}.json"
+else
+  for var in E2E_FIDELITY_DRIFT_REPORT E2E_FIDELITY_DRIFT_KNOWN E2E_FIDELITY_DRIFT_STARTED E2E_FIDELITY_GOLDEN_IMAGE E2E_FIDELITY_GOLDEN_K3S_IMAGE E2E_FIDELITY_DOWNSTREAM_IMAGE; do
+    if [ -n "${!var:-}" ]; then
+      echo "error: ${var} is set without E2E_FIDELITY_DRIFT=1; unset it" >&2
+      exit 1
+    fi
+  done
 fi
 k3s_override_pattern='^(([a-z0-9.-]+(:[0-9]+)?)/)?[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}@sha256:[0-9a-f]{64}$'
 upcoming_override_pattern='^[a-z0-9]+([_-][a-z0-9]+)*/[a-z0-9]+([._-][a-z0-9]+)*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}@sha256:[0-9a-f]{64}$'
@@ -549,8 +599,16 @@ if [ -n "${MINOR}" ]; then
   fi
 
   if [ "${PRINT_IMAGES}" = "1" ]; then
-    python3 -I -c 'import json,sys; print(json.dumps(dict(zip(["minor","source","oracleImage","serverVersion","k3sImage","k3sSource","k3sVersion"], sys.argv[1:]))))' \
-      "${MINOR}" "${UPCOMING_SOURCE}" "${ORACLE_IMAGE}" "${SERVER_VERSION}" "${K3S_IMAGE}" "${K3S_SOURCE}" "${K3S_VERSION}"
+    print_keys="minor,source,oracleImage,serverVersion,k3sImage,k3sSource,k3sVersion,goldenOracleImage,goldenK3sImage"
+    print_values=("${MINOR}" "${UPCOMING_SOURCE}" "${ORACLE_IMAGE}" "${SERVER_VERSION}" "${K3S_IMAGE}" "${K3S_SOURCE}" "${K3S_VERSION}" "${GOLDEN_ORACLE_IMAGE}" "${GOLDEN_K3S_IMAGE}")
+    if [ "${DRIFT}" = 1 ]; then
+      # The report path is empty when the caller named none: the default is
+      # under the state root, with a time in its name.
+      print_keys="${print_keys},driftReport,driftKnown"
+      print_values+=("${DRIFT_REPORT_ABS}" "${DRIFT_KNOWN}")
+    fi
+    python3 -I -c 'import json,sys; print(json.dumps(dict(zip(sys.argv[1].split(","), sys.argv[2:]))))' \
+      "${print_keys}" "${print_values[@]}"
     exit 0
   fi
 
@@ -581,9 +639,20 @@ echo $$ >"${LOCK_DIR}/pid"
 
 cleanup() {
   status=$?
+  # A drift run exits 3 only through drift_result, which sets
+  # DRIFT_REPORTED=1 once the report holds differences and the summary line
+  # is printed; any other 3 (a command that happens to exit 3) is a failure.
+  report_only=0
+  if [ "${DRIFT}" = 1 ] && [ ${status} -eq 3 ]; then
+    if [ "${DRIFT_REPORTED}" = 1 ]; then
+      report_only=1
+    else
+      status=1
+    fi
+  fi
   # Diagnostics fire on EVERY failure - kept runs (recording, reconciling)
   # are exactly the ones that need them. Only removal is gated on keep mode.
-  if [ ${status} -ne 0 ]; then
+  if [ ${status} -ne 0 ] && [ ${report_only} -eq 0 ]; then
     # Host and node state first: a suite that fails with webhook endpoints
     # gone or pods rescheduled mid-run is a starved node until the
     # conditions, the pod list, and the host's disk and memory say
@@ -615,6 +684,78 @@ cleanup() {
   exit ${status}
 }
 trap cleanup EXIT
+
+# drift_result decides the exit of a drift run from the report the test
+# binary wrote: <go test status> <report path> <oracle image> <start time>.
+# The report counts only when it is complete and belongs to this run (its
+# oracleImage and startedAt equal the arguments). It exits 0 when go test
+# passed and the report is clean, 3 (after printing the summary line) when the
+# report holds new differences, errored probes, failed CLI tests or a suite
+# that ran no probe, and 1 for everything else: no report, an unreadable,
+# malformed, incomplete or foreign one, a harness failure listed in it, or a
+# failed go test with a clean report.
+drift_result() {
+  local suite_status="$1" report="$2" image="$3" started="$4" program out result summary
+  read -r -d '' program <<'PY' || true
+import json, sys
+path, image, started = sys.argv[1:4]
+try:
+    with open(path, encoding="utf-8") as f:
+        r = json.load(f)
+except FileNotFoundError:
+    print("harness: no report at " + path)
+    sys.exit(0)
+except (OSError, ValueError) as e:
+    print("harness: the report at " + path + " is unreadable: " + str(e))
+    sys.exit(0)
+try:
+    if r.get("complete") is not True:
+        print("harness: the report at " + path + " is not complete")
+        sys.exit(0)
+    if r.get("oracleImage") != image or r.get("startedAt") != started:
+        print("harness: the report at " + path + " is not from this run")
+        sys.exit(0)
+    failures = r["harnessFailures"]
+    if failures:
+        print("failed: " + "; ".join(str(f["name"]) + ": " + "; ".join(str(f["reason"]).splitlines()) for f in failures))
+        sys.exit(0)
+    c = r["counts"]
+    summary = "drift v%s: new %d (wait ran out %d), known %d, known no ruling %d, no longer seen %d, not checked %d, errored %d, failed CLI tests %d, suites with no probe %d; report %s" % (
+        r["minor"], c["new"], c["waitRanOut"], c["known"], c["knownNoRuling"], c["noLongerSeen"],
+        c["notChecked"], c["errored"], c["failedCLITests"], c["suitesWithNoProbe"], path)
+    print("clean" if r["clean"] is True else "drift")
+    print(summary)
+except (KeyError, TypeError, ValueError) as e:
+    print("harness: the report at " + path + " is malformed: " + repr(e))
+PY
+  out="$(python3 -I -c "${program}" "${report}" "${image}" "${started}")"
+  result="${out%%$'\n'*}"
+  summary=""
+  [ "${out}" = "${result}" ] || summary="${out#*$'\n'}"
+  case "${result}" in
+    clean)
+      if [ "${suite_status}" != 0 ]; then
+        echo "error: go test exited ${suite_status} although the drift report is clean; see the output above" >&2
+        exit 1
+      fi
+      echo "${summary}"
+      exit 0
+      ;;
+    drift)
+      echo "${summary}"
+      DRIFT_REPORTED=1
+      exit 3
+      ;;
+    failed:*)
+      echo "error: the drift run failed: ${result#failed: }" >&2
+      exit 1
+      ;;
+    *)
+      echo "error: the drift run did not finish; ${result#harness: }" >&2
+      exit 1
+      ;;
+  esac
+}
 
 # require_disk refuses to boot when the filesystem holding Docker's data
 # has less than 15 GiB free. k3s (the oracle's embedded one and the
@@ -1055,6 +1196,21 @@ if [ -n "${SMOKE_PROFILE}" ]; then
     -H "Authorization: Bearer ${ADMIN_TOKEN}" "${BASE_URL}/k8s/clusters/${DOWNSTREAM_ID}/version")"
   [ "${code}" = "200" ] || { echo "error: downstream proxy smoke check failed (http ${code})" >&2; exit 1; }
   echo "==> ${SMOKE_PROFILE} oracle bootstrap smoke passed"
+  if [ "${DRIFT}" = 1 ]; then
+    echo "==> drift run of ${MINOR} against the community goldens"
+    suite_status=0
+    REPORT="${DRIFT_REPORT_ABS:-${STATE_ROOT}/drift-$(date -u +%Y%m%dT%H%M%SZ).json}"
+    [ ! -f "${REPORT}" ] || rm -f "${REPORT}"
+    STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    export E2E_FIDELITY_DRIFT_REPORT="${REPORT}"
+    export E2E_FIDELITY_DRIFT_STARTED="${STARTED}"
+    export E2E_FIDELITY_DRIFT_KNOWN="${DRIFT_KNOWN}"
+    export E2E_FIDELITY_GOLDEN_IMAGE="${GOLDEN_ORACLE_IMAGE}"
+    export E2E_FIDELITY_GOLDEN_K3S_IMAGE="${GOLDEN_K3S_IMAGE}"
+    export E2E_FIDELITY_DOWNSTREAM_IMAGE="${K3S_IMAGE}"
+    go test -tags e2e_fidelity -count=1 ./test/e2e/fidelity/ || suite_status=$?
+    drift_result "${suite_status}" "${REPORT}" "${ORACLE_IMAGE}" "${STARTED}"
+  fi
 else
   echo "==> running e2e_fidelity suite${UPDATE_FLAG:+ (record mode)}"
   # E2E_FIDELITY_UPDATE_FLAG is a fixed internal value ("" or "-update"), never

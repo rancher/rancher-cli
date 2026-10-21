@@ -21,6 +21,9 @@ import (
 )
 
 func TestCLIImagesWorkload(t *testing.T) {
+	if driftConfig != nil {
+		t.Cleanup(func() { driftCollector.CLITest(t.Name(), !t.Failed()) })
+	}
 	base := os.Getenv("E2E_FIDELITY_URL")
 	adminToken := os.Getenv("E2E_FIDELITY_ADMIN_TOKEN")
 	caPEM := os.Getenv("E2E_FIDELITY_CACERT")
@@ -106,6 +109,9 @@ func TestCLIImagesWorkload(t *testing.T) {
 	require.NoError(t, pollDeploymentAvailable(ctx, t, apiClient, adminToken, depURL, 3*time.Minute))
 
 	configDir := t.TempDir()
+	if driftConfig != nil {
+		driftCollector.CLIStarted(t.Name())
+	}
 	cmd := exec.CommandContext(ctx, binPath,
 		"images", "--cluster", "local", "--by", "workload", "--match", depImage, "-o", "json",
 	)
