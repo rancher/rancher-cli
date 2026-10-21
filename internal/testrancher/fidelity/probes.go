@@ -131,9 +131,11 @@ func discoveryProbes() []Probe {
 // downstreamWhoami and localWhoami are the SelfSubjectReview endpoints the
 // access-downstream family posts to; probes_test.go checks every observation
 // against these same constants to require the whoami privacy rules below.
+// downstreamReview is the downstream cluster's authorization review prefix.
 const (
 	downstreamWhoami = "/k8s/clusters/{downstream}/apis/authentication.k8s.io/v1/selfsubjectreviews"
 	localWhoami      = "/k8s/clusters/local/apis/authentication.k8s.io/v1/selfsubjectreviews"
+	downstreamReview = "/k8s/clusters/{downstream}/apis/authorization.k8s.io/v1/"
 )
 
 // whoamiPrivacyRules normalizes the two userInfo fields every whoami
@@ -167,14 +169,13 @@ func bindingMetadataRules() []NormalizeRule {
 
 func accessDownstreamProbes() []Probe {
 	const (
-		downstreamReview = "/k8s/clusters/{downstream}/apis/authorization.k8s.io/v1/"
-		whoBody          = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
-		ssrrBody         = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectRulesReview","spec":{"namespace":"default"}}`
-		ssarBody         = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"list","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
-		sarAnonBody      = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:anonymous","groups":["system:unauthenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
-		nonexistentUser  = "u-nonexistent99"
-		nonexistentSA    = "system:serviceaccount:default:nonexistent-sa"
-		defaultSA        = "system:serviceaccount:default:default"
+		whoBody         = `{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`
+		ssrrBody        = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectRulesReview","spec":{"namespace":"default"}}`
+		ssarBody        = `{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"list","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		sarAnonBody     = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:anonymous","groups":["system:unauthenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
+		nonexistentUser = "u-nonexistent99"
+		nonexistentSA   = "system:serviceaccount:default:nonexistent-sa"
+		defaultSA       = "system:serviceaccount:default:default"
 
 		sarSchedulerDefault    = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:kube-scheduler","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
 		sarSchedulerKubeSystem = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"system:kube-scheduler","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"kube-system"}}}`
@@ -349,80 +350,10 @@ func accessDownstreamProbes() []Probe {
 		Normalize: bindingMetadataRules(),
 	}
 
-	const (
-		mgmtAPI          = "/k8s/clusters/local/apis/management.cattle.io/v3"
-		explainUser      = "e2e-fid-explain-user"
-		explainProject   = "p-e2e-fid-explain"
-		explainNamespace = "e2e-fid-explain"
-		explainBackingNS = "{downstream}-" + explainProject
-		downstreamRBAC   = "/k8s/clusters/{downstream}/apis/rbac.authorization.k8s.io/v1/"
-		downstreamCore   = "/k8s/clusters/{downstream}/api/v1/"
-		userBody         = `{"apiVersion":"management.cattle.io/v3","kind":"User","metadata":{"name":"` + explainUser + `"},"username":"e2e-fid-explain","displayName":"e2e-fid-explain","enabled":true,"principalIds":["local://` + explainUser + `"]}`
-		grbBody          = `{"apiVersion":"management.cattle.io/v3","kind":"GlobalRoleBinding","metadata":{"name":"e2e-fid-explain-grb"},"userName":"` + explainUser + `","globalRoleName":"user"}`
-		projectBody      = `{"apiVersion":"management.cattle.io/v3","kind":"Project","metadata":{"name":"` + explainProject + `","namespace":"{downstream}"},"spec":{"clusterName":"{downstream}","displayName":"e2e-fid-explain"}}`
-		namespaceBody    = `{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"` + explainNamespace + `","annotations":{"field.cattle.io/projectId":"{downstream}:` + explainProject + `"}}}`
-		prtbBody         = `{"apiVersion":"management.cattle.io/v3","kind":"ProjectRoleTemplateBinding","metadata":{"name":"e2e-fid-explain-prtb","namespace":"` + explainBackingNS + `"},"userName":"` + explainUser + `","roleTemplateName":"project-member","projectName":"{downstream}:` + explainProject + `"}`
-		crtbBody         = `{"apiVersion":"management.cattle.io/v3","kind":"ClusterRoleTemplateBinding","metadata":{"name":"e2e-fid-explain-crtb","namespace":"{downstream}"},"userName":"` + explainUser + `","roleTemplateName":"cluster-member","clusterName":"{downstream}"}`
-		// The plain Role grants a resource no RoleTemplate grants (a private
-		// API group), so the authorizer can name only this binding for it;
-		// with a shared grant it names whichever sufficient binding it
-		// visits first, and the PRTB's bindings carry generated names.
-		roleBody       = `{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"Role","metadata":{"name":"e2e-fid-explain-role","namespace":"` + explainNamespace + `"},"rules":[{"apiGroups":["e2e-fid.example"],"resources":["widgets"],"verbs":["get"]}]}`
-		rbBody         = `{"apiVersion":"rbac.authorization.k8s.io/v1","kind":"RoleBinding","metadata":{"name":"e2e-fid-explain-rb","namespace":"` + explainNamespace + `"},"roleRef":{"apiGroup":"rbac.authorization.k8s.io","kind":"Role","name":"e2e-fid-explain-role"},"subjects":[{"apiGroup":"rbac.authorization.k8s.io","kind":"User","name":"` + explainUser + `"}]}`
-		sarPodsNS      = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"` + explainUser + `","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"` + explainNamespace + `"}}}`
-		sarNodes       = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"` + explainUser + `","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"nodes","group":"","version":"v1"}}}`
-		sarWidgets     = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"` + explainUser + `","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"widgets","group":"e2e-fid.example","version":"v1","namespace":"` + explainNamespace + `"}}}`
-		sarPodsDefault = `{"apiVersion":"authorization.k8s.io/v1","kind":"SubjectAccessReview","spec":{"user":"` + explainUser + `","groups":["system:authenticated"],"resourceAttributes":{"verb":"get","resource":"pods","group":"","version":"v1","namespace":"default"}}}`
-	)
-	// explainSetup creates the fixture chain through the management
-	// cluster's Kubernetes API with names the probe chooses (a Step cannot
-	// capture, so nothing generated is needed later), deleting leftovers
-	// first so a rerun on a kept pair starts clean, and waits for Rancher's
-	// controllers to put the grants on the downstream. explainTeardown
-	// removes it all. Both return fresh slices: two probes share them.
-	explainSetup := func() []Step {
-		return []Step{
-			deleteUserNamed(explainUser),
-			deleteFixture("stale project", mgmtAPI+"/namespaces/{downstream}/projects/"+explainProject),
-			deleteFixture("stale namespace", downstreamCore+"namespaces/"+explainNamespace),
-			// A deleted project's backing namespace on the management cluster
-			// and the fixture namespace on the downstream linger while their
-			// finalizers run; Rancher's project webhook refuses (500) a
-			// project whose backing namespace still exists, so the setup
-			// waits until the project, its backing namespace, and the
-			// downstream namespace are all gone.
-			waitFixture("stale project gone", http.MethodGet, mgmtAPI+"/namespaces/{downstream}/projects/"+explainProject, "",
-				func(_ map[string]any, status int) bool { return status == http.StatusNotFound }),
-			waitFixture("stale backing namespace gone", http.MethodGet, "/k8s/clusters/local/api/v1/namespaces/"+explainBackingNS, "",
-				func(_ map[string]any, status int) bool { return status == http.StatusNotFound }),
-			waitFixture("stale namespace gone", http.MethodGet, downstreamCore+"namespaces/"+explainNamespace, "",
-				func(_ map[string]any, status int) bool { return status == http.StatusNotFound }),
-			createFixture("user", mgmtAPI+"/users", userBody),
-			createFixture("user global role binding", mgmtAPI+"/globalrolebindings", grbBody),
-			createFixture("project", mgmtAPI+"/namespaces/{downstream}/projects", projectBody),
-			waitFixture("backing namespace", http.MethodGet, "/k8s/clusters/local/api/v1/namespaces/"+explainBackingNS, "",
-				func(_ map[string]any, status int) bool { return status == http.StatusOK }),
-			createFixture("namespace", downstreamCore+"namespaces", namespaceBody),
-			createFixture("prtb", mgmtAPI+"/namespaces/"+explainBackingNS+"/projectroletemplatebindings", prtbBody),
-			createFixture("crtb", mgmtAPI+"/namespaces/{downstream}/clusterroletemplatebindings", crtbBody),
-			// The probes read the two bindings back as objects; the recorded
-			// bodies carry what Rancher's controllers write after the API
-			// answered (the lifecycle annotations, the labels-updated labels,
-			// userPrincipalName), so the setup waits for that decoration.
-			waitFixture("prtb reconciled", http.MethodGet, mgmtAPI+"/namespaces/"+explainBackingNS+"/projectroletemplatebindings/e2e-fid-explain-prtb", "",
-				bindingReconciled("prtb")),
-			waitFixture("crtb reconciled", http.MethodGet, mgmtAPI+"/namespaces/{downstream}/clusterroletemplatebindings/e2e-fid-explain-crtb", "",
-				bindingReconciled("crtb")),
-			createFixture("plain role", downstreamRBAC+"namespaces/"+explainNamespace+"/roles", roleBody),
-			createFixture("plain rolebinding", downstreamRBAC+"namespaces/"+explainNamespace+"/rolebindings", rbBody),
-			waitFixture("prtb grant live", http.MethodPost, downstreamReview+"subjectaccessreviews", sarPodsNS, sarAllowed),
-			waitFixture("crtb grant live", http.MethodPost, downstreamReview+"subjectaccessreviews", sarNodes, sarAllowed),
-		}
-	}
 	explainTeardown := func() []Step {
 		return []Step{
-			deleteFixture("crtb", mgmtAPI+"/namespaces/{downstream}/clusterroletemplatebindings/e2e-fid-explain-crtb"),
-			deleteFixture("prtb", mgmtAPI+"/namespaces/"+explainBackingNS+"/projectroletemplatebindings/e2e-fid-explain-prtb"),
+			deleteFixture("crtb", mgmtAPI+"/namespaces/{downstream}/clusterroletemplatebindings/"+explainCRTBName),
+			deleteFixture("prtb", mgmtAPI+"/namespaces/"+explainBackingNS+"/projectroletemplatebindings/"+explainPRTBName),
 			deleteFixture("namespace", downstreamCore+"namespaces/"+explainNamespace),
 			deleteFixture("project", mgmtAPI+"/namespaces/{downstream}/projects/"+explainProject),
 			deleteFixture("user global role binding", mgmtAPI+"/globalrolebindings/e2e-fid-explain-grb"),
@@ -443,19 +374,19 @@ func accessDownstreamProbes() []Probe {
 		Name:               "access-downstream/explain-fixture-chain",
 		Downstream:         true,
 		SubstituteCaptures: true,
-		Setup:              explainSetup(),
+		Setup:              explainSetupSteps(),
 		Observations: []Observation{
 			{Name: "reason-prtb-grant", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "subjectaccessreviews", Body: sarPodsNS, Identity: IdentityAdmin}},
 			{Name: "reason-crtb-grant", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "subjectaccessreviews", Body: sarNodes, Identity: IdentityAdmin}},
 			{Name: "prtb-rolebindings", Request: RequestSpec{Method: http.MethodGet, Path: downstreamRBAC + "namespaces/" + explainNamespace + "/rolebindings",
-				Query: url.Values{"labelSelector": {"authz.cluster.cattle.io/rtb-owner-updated=" + explainBackingNS + "_e2e-fid-explain-prtb"}}, Identity: IdentityAdmin}},
+				Query: url.Values{"labelSelector": {"{" + selectorPRTBRoleBindings + "}"}}, Identity: IdentityAdmin}},
 			{Name: "prtb-clusterrolebindings", Request: RequestSpec{Method: http.MethodGet, Path: downstreamRBAC + "clusterrolebindings",
-				Query: url.Values{"labelSelector": {explainBackingNS + "_e2e-fid-explain-prtb=owner-user"}}, Identity: IdentityAdmin}},
+				Query: url.Values{"labelSelector": {"{" + selectorPRTBClusterRoleBindings + "}"}}, Identity: IdentityAdmin}},
 			{Name: "crtb-clusterrolebindings", Request: RequestSpec{Method: http.MethodGet, Path: downstreamRBAC + "clusterrolebindings",
-				Query: url.Values{"labelSelector": {"authz.cluster.cattle.io/rtb-owner-updated={downstream}_e2e-fid-explain-crtb"}}, Identity: IdentityAdmin}},
+				Query: url.Values{"labelSelector": {"{" + selectorCRTBClusterRoleBindings + "}"}}, Identity: IdentityAdmin}},
 			{Name: "clusterrole-project-member", Request: RequestSpec{Method: http.MethodGet, Path: downstreamRBAC + "clusterroles/project-member", Identity: IdentityAdmin}},
-			{Name: "prtb-object", Request: RequestSpec{Method: http.MethodGet, Path: "/v1/management.cattle.io.projectroletemplatebindings/" + explainBackingNS + "/e2e-fid-explain-prtb", Identity: IdentityAdmin}},
-			{Name: "crtb-object", Request: RequestSpec{Method: http.MethodGet, Path: "/v1/management.cattle.io.clusterroletemplatebindings/{downstream}/e2e-fid-explain-crtb", Identity: IdentityAdmin}},
+			{Name: "prtb-object", Request: RequestSpec{Method: http.MethodGet, Path: "/v1/management.cattle.io.projectroletemplatebindings/" + explainBackingNS + "/" + explainPRTBName, Identity: IdentityAdmin}},
+			{Name: "crtb-object", Request: RequestSpec{Method: http.MethodGet, Path: "/v1/management.cattle.io.clusterroletemplatebindings/{downstream}/" + explainCRTBName, Identity: IdentityAdmin}},
 			{Name: "admin-whoami", Request: RequestSpec{Method: http.MethodPost, Path: localWhoami, Body: whoBody, Identity: IdentityAdmin},
 				Captures: map[string]Capture{"adminuid": {Path: "status.userInfo.username"}}},
 			{Name: "globaladmin-binding", Request: RequestSpec{Method: http.MethodGet, Path: downstreamRBAC + "clusterrolebindings/globaladmin-{adminuid}", Identity: IdentityAdmin},
@@ -510,7 +441,7 @@ func accessDownstreamProbes() []Probe {
 		Name:               "access-downstream/explain-fixture-reason-grammar",
 		Downstream:         true,
 		SubstituteCaptures: true,
-		Setup:              explainSetup(),
+		Setup:              explainSetupSteps(),
 		Observations: []Observation{
 			{Name: "reason-rolebinding-of-role", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "subjectaccessreviews", Body: sarWidgets, Identity: IdentityAdmin}},
 			{Name: "denied-elsewhere", Request: RequestSpec{Method: http.MethodPost, Path: downstreamReview + "subjectaccessreviews", Body: sarPodsDefault, Identity: IdentityAdmin}},
@@ -1191,6 +1122,16 @@ func adminJSON(ctx context.Context, tgt Target, method, path, body string) (map[
 // project's backing namespace, the downstream bindings behind a CRTB or
 // PRTB) after the API answered.
 func waitFixture(name, method, pathTemplate, body string, ready func(decoded map[string]any, status int) bool) Step {
+	return waitFixtureCaptured(name, method, pathTemplate, body,
+		func(decoded map[string]any, status int, _ map[string]string) (bool, error) {
+			return ready(decoded, status), nil
+		})
+}
+
+// waitFixtureCaptured is waitFixture for a condition that depends on a
+// value an earlier setup step stored in the probe's captures: ready also
+// receives them, and an error from it fails the step at once.
+func waitFixtureCaptured(name, method, pathTemplate, body string, ready func(decoded map[string]any, status int, captured map[string]string) (bool, error)) Step {
 	return Step{
 		Name: name,
 		Do: func(ctx context.Context, tgt Target, captured map[string]string) error {
@@ -1202,7 +1143,11 @@ func waitFixture(name, method, pathTemplate, body string, ready func(decoded map
 				if err != nil {
 					return err
 				}
-				if ready(decoded, status) {
+				done, err := ready(decoded, status, captured)
+				if err != nil {
+					return fmt.Errorf("%s: %w", name, err)
+				}
+				if done {
 					return nil
 				}
 				if time.Now().After(deadline) {
@@ -1250,45 +1195,64 @@ func deleteUserNamed(id string) Step {
 // bindingReconciled reports whether a ProjectRoleTemplateBinding or
 // ClusterRoleTemplateBinding read back from the management API carries
 // what Rancher's controllers write to it after creation, every field
-// the recorded golden holds: the mgmt-auth controller's lifecycle
-// annotation, the cluster sync controller's lifecycle annotation (its
-// key ends in the cluster id), both labels-updated labels, the resolved
-// userPrincipalName and, on a ClusterRoleTemplateBinding, the status
-// the mgmt-auth controller stamps (status.lastUpdateTime). kind is
-// "prtb" or "crtb", the token both controller names carry.
-func bindingReconciled(kind string) func(decoded map[string]any, status int) bool {
-	return func(decoded map[string]any, status int) bool {
-		if status != http.StatusOK {
+// the recorded golden holds. kind is "prtb" or "crtb", the token both
+// controller names carry. The conditions, by grammar:
+//
+//   - both: status 200, the mgmt-auth controller's lifecycle annotation,
+//     the cluster sync controller's lifecycle annotation (its key ends in
+//     the cluster id), the resolved userPrincipalName and, on a
+//     ClusterRoleTemplateBinding, status.lastUpdateTime (the classic
+//     mgmt-auth controller and the aggregation handler both stamp it);
+//   - classic: also both labels-updated labels, which only the classic
+//     handlers write;
+//   - aggregation: nothing more; the aggregation handlers never write the
+//     labels-updated labels.
+func bindingReconciled(decoded map[string]any, status int, kind string, grammar bindingGrammar) bool {
+	if status != http.StatusOK {
+		return false
+	}
+	if kind == "crtb" {
+		st, _ := decoded["status"].(map[string]any)
+		if updated, _ := st["lastUpdateTime"].(string); updated == "" {
 			return false
 		}
-		if kind == "crtb" {
-			st, _ := decoded["status"].(map[string]any)
-			if updated, _ := st["lastUpdateTime"].(string); updated == "" {
-				return false
-			}
+	}
+	md, _ := decoded["metadata"].(map[string]any)
+	annotations, _ := md["annotations"].(map[string]any)
+	labels, _ := md["labels"].(map[string]any)
+	if _, ok := annotations["lifecycle.cattle.io/create.mgmt-auth-"+kind+"-controller"]; !ok {
+		return false
+	}
+	synced := false
+	for key := range annotations {
+		if strings.HasPrefix(key, "lifecycle.cattle.io/create.cluster-"+kind+"-sync_") {
+			synced = true
 		}
-		md, _ := decoded["metadata"].(map[string]any)
-		annotations, _ := md["annotations"].(map[string]any)
-		labels, _ := md["labels"].(map[string]any)
-		if _, ok := annotations["lifecycle.cattle.io/create.mgmt-auth-"+kind+"-controller"]; !ok {
-			return false
-		}
-		synced := false
-		for key := range annotations {
-			if strings.HasPrefix(key, "lifecycle.cattle.io/create.cluster-"+kind+"-sync_") {
-				synced = true
-			}
-		}
-		if !synced {
-			return false
-		}
+	}
+	if !synced {
+		return false
+	}
+	if grammar == grammarClassic {
 		for _, key := range []string{"auth.management.cattle.io/crb-rb-labels-updated", "authz.cluster.cattle.io/crb-rb-labels-updated"} {
 			if _, ok := labels[key]; !ok {
 				return false
 			}
 		}
-		principal, _ := decoded["userPrincipalName"].(string)
-		return principal != ""
+	}
+	principal, _ := decoded["userPrincipalName"].(string)
+	return principal != ""
+}
+
+// waitBindingReconciled is the ready function of a wait step for
+// bindingReconciled: it reads the grammar the detection step stored and
+// fails when none is stored, never assuming one.
+func waitBindingReconciled(kind string) func(decoded map[string]any, status int, captured map[string]string) (bool, error) {
+	return func(decoded map[string]any, status int, captured map[string]string) (bool, error) {
+		grammar, err := storedGrammar(captured)
+		if err != nil {
+			return false, err
+		}
+		return bindingReconciled(decoded, status, kind, grammar), nil
 	}
 }
 

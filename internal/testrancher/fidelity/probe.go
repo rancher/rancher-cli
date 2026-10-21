@@ -6,9 +6,11 @@ package fidelity
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 )
 
 // Identity names the credential an observation is sent with. Targets map
@@ -146,7 +148,10 @@ type NormalizeRule struct {
 // id of a fixture it created, for the teardown to delete by, or a value an
 // observation's request needs as a {name} placeholder; it is complete
 // during teardown. Recorded values are substituted like captures when
-// SubstituteCaptures is set.
+// SubstituteCaptures is set, except those whose name starts with
+// unrecordedPrefix: such a value is an input to later requests and waits
+// (a label selector, a detected grammar), never rewritten into a recorded
+// body or text, and it never contains a "{" placeholder.
 type Step struct {
 	Name string
 	Do   func(ctx context.Context, tgt Target, captured map[string]string) error
@@ -179,7 +184,8 @@ type Probe struct {
 	// cluster id, anything an observation captured) with "{name}" in the
 	// keys and string values of every recorded body, after Normalize. A
 	// label key built from the cluster id then records as the template
-	// the next boot reproduces.
+	// the next boot reproduces. Captures whose name starts with
+	// unrecordedPrefix are the exception: they are never substituted.
 	SubstituteCaptures bool
 }
 
@@ -208,6 +214,11 @@ func (p Probe) Validate() error {
 		}
 		if o.WaitForStatus != 0 && len(o.Captures) > 0 {
 			return fmt.Errorf("probe %s: observation %q: an observation with captures cannot set WaitForStatus", p.Name, o.Name)
+		}
+		for _, name := range slices.Sorted(maps.Keys(o.Captures)) {
+			if strings.HasPrefix(name, unrecordedPrefix) {
+				return fmt.Errorf("probe %s: observation %q: capture %q: the %q prefix is reserved for setup values that are never recorded", p.Name, o.Name, name, unrecordedPrefix)
+			}
 		}
 	}
 	if p.OracleOnly && p.FacadeDivergence != "" {

@@ -387,13 +387,31 @@ func NameFromExtBearer(bearer string) (string, bool) {
 	return name, true
 }
 
-// substituteCaptured replaces every captured value with its "{name}"
-// placeholder in the keys and string values of body, longest values first
-// so a value that contains another is replaced whole.
-func substituteCaptured(body map[string]any, captured map[string]string) {
-	names := slices.SortedFunc(maps.Keys(captured), func(a, b string) int {
+// unrecordedPrefix opens the name of a capture that is only an input to
+// later requests and waits: a setup step stores a value under it, a
+// request or wait reads it, and substituteCaptured and
+// substituteCapturedString never rewrite it into a recorded body or text.
+const unrecordedPrefix = "unrecorded."
+
+// recordedNames lists the captures whose values are rewritten into their
+// placeholders in recorded output, longest value first so a value that
+// contains another is replaced whole; captures named under
+// unrecordedPrefix are left out.
+func recordedNames(captured map[string]string) []string {
+	names := slices.DeleteFunc(slices.Collect(maps.Keys(captured)), func(name string) bool {
+		return strings.HasPrefix(name, unrecordedPrefix)
+	})
+	slices.SortFunc(names, func(a, b string) int {
 		return cmp.Or(len(captured[b])-len(captured[a]), strings.Compare(a, b))
 	})
+	return names
+}
+
+// substituteCaptured replaces every recorded capture's value with its
+// "{name}" placeholder in the keys and string values of body, longest
+// values first so a value that contains another is replaced whole.
+func substituteCaptured(body map[string]any, captured map[string]string) {
+	names := recordedNames(captured)
 	var walk func(v any) any
 	walk = func(v any) any {
 		switch t := v.(type) {
@@ -421,9 +439,7 @@ func substituteCaptured(body map[string]any, captured map[string]string) {
 
 func substituteCapturedString(s string, captured map[string]string, order ...string) string {
 	if len(order) == 0 {
-		order = slices.SortedFunc(maps.Keys(captured), func(a, b string) int {
-			return cmp.Or(len(captured[b])-len(captured[a]), strings.Compare(a, b))
-		})
+		order = recordedNames(captured)
 	}
 	for _, name := range order {
 		if v := captured[name]; v != "" {

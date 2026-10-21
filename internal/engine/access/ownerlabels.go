@@ -9,9 +9,9 @@ import (
 
 // The labels Rancher writes on the RoleBindings and ClusterRoleBindings it
 // creates for a ClusterRoleTemplateBinding or ProjectRoleTemplateBinding.
-// Two grammars exist on the same server versions: the classic one is the
-// default; the aggregation one is written behind the
-// aggregated-roletemplates feature and marked by aggregationLabel.
+// Both grammars exist: the classic one is the default before Rancher
+// v2.16, the aggregation one from v2.16 on (the aggregated-roletemplates
+// feature), marked by aggregationLabel.
 const (
 	// rtbOwnerLabel carries "<namespace>_<name>" of the owning binding.
 	rtbOwnerLabel = "authz.cluster.cattle.io/rtb-owner-updated"
