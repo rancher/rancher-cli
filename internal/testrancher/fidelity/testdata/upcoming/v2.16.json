@@ -167,6 +167,274 @@
       "ruling": "expected-at-ga"
     },
     {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/clusterrole-project-member/body/metadata/annotations",
+      "want": {
+        "authz.cluster.cattle.io/clusterrole-owner": "project-member"
+      },
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/clusterrole-project-member/body/metadata/labels",
+      "got": {
+        "authz.cluster.cattle.io/clusterrole-owner": "project-member",
+        "management.cattle.io/aggregates": "project-member",
+        "management.cattle.io/roletemplate-aggregation": "true"
+      },
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/crtb-clusterrolebindings/body/items/0/metadata/labels/authz.cluster.cattle.io~1crtb-owner-e2e-fid-explain-crtb",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/crtb-clusterrolebindings/body/items/0/metadata/labels/authz.cluster.cattle.io~1rtb-owner-updated",
+      "want": "{downstream}_e2e-fid-explain-crtb",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/crtb-clusterrolebindings/body/items/0/metadata/labels/management.cattle.io~1roletemplate-aggregation",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/crtb-clusterrolebindings/body/items/0/roleRef/name",
+      "want": "cluster-member",
+      "got": "cluster-member-aggregator",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/crtb-object/body/metadata/labels/auth.management.cattle.io~1crb-rb-labels-updated",
+      "want": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/crtb-object/body/metadata/labels/authz.cluster.cattle.io~1crb-rb-labels-updated",
+      "want": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/crtb-object/body/metadata/labels/management.cattle.io~1roletemplate-aggregation",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/0/metadata/labels/authz.cluster.cattle.io~1prtb-owner-e2e-fid-explain-prtb",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/0/metadata/labels/management.cattle.io~1roletemplate-aggregation",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/0/metadata/labels/{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb",
+      "want": "owner-user",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/1/metadata/labels/authz.cluster.cattle.io~1prtb-owner-e2e-fid-explain-prtb",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/1/metadata/labels/management.cattle.io~1roletemplate-aggregation",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/1/metadata/labels/{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb",
+      "want": "owner-user",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/2/metadata/labels/authz.cluster.cattle.io~1prtb-owner-e2e-fid-explain-prtb",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/2/metadata/labels/management.cattle.io~1roletemplate-aggregation",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/2/metadata/labels/{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb",
+      "want": "owner-user",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-clusterrolebindings/body/items/2/roleRef/name",
+      "want": "project-member-promoted",
+      "got": "project-member-promoted-aggregator",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-object/body/metadata/labels/auth.management.cattle.io~1crb-rb-labels-updated",
+      "want": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-object/body/metadata/labels/authz.cluster.cattle.io~1crb-rb-labels-updated",
+      "want": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-object/body/metadata/labels/management.cattle.io~1roletemplate-aggregation",
+      "got": "true",
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
+      "probe": "access-downstream/explain-fixture-chain",
+      "pointer": "/prtb-rolebindings/body/items",
+      "want": [
+        {
+          "metadata": {
+            "creationTimestamp": "\u003ctime\u003e",
+            "labels": {
+              "authz.cluster.cattle.io/rtb-owner-updated": "{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb"
+            },
+            "name": "\u003cname\u003e",
+            "namespace": "e2e-fid-explain",
+            "resourceVersion": "\u003crv\u003e",
+            "uid": "\u003cuid\u003e"
+          },
+          "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "ClusterRole",
+            "name": "edit"
+          },
+          "subjects": [
+            {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "User",
+              "name": "e2e-fid-explain-user"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "creationTimestamp": "\u003ctime\u003e",
+            "labels": {
+              "authz.cluster.cattle.io/rtb-owner-updated": "{downstream}-p-e2e-fid-explain_e2e-fid-explain-prtb"
+            },
+            "name": "\u003cname\u003e",
+            "namespace": "e2e-fid-explain",
+            "resourceVersion": "\u003crv\u003e",
+            "uid": "\u003cuid\u003e"
+          },
+          "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "ClusterRole",
+            "name": "project-member"
+          },
+          "subjects": [
+            {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "User",
+              "name": "e2e-fid-explain-user"
+            }
+          ]
+        }
+      ],
+      "got": [
+        {
+          "metadata": {
+            "creationTimestamp": "\u003ctime\u003e",
+            "labels": {
+              "authz.cluster.cattle.io/prtb-owner-e2e-fid-explain-prtb": "true",
+              "management.cattle.io/roletemplate-aggregation": "true"
+            },
+            "name": "\u003cname\u003e",
+            "namespace": "e2e-fid-explain",
+            "resourceVersion": "\u003crv\u003e",
+            "uid": "\u003cuid\u003e"
+          },
+          "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "ClusterRole",
+            "name": "project-member-aggregator"
+          },
+          "subjects": [
+            {
+              "apiGroup": "rbac.authorization.k8s.io",
+              "kind": "User",
+              "name": "e2e-fid-explain-user"
+            }
+          ]
+        }
+      ],
+      "firstSeen": "c49dad3ae0935ef0e6773c3a836711ab0088c925",
+      "cause": "rancher",
+      "ruling": "expected-at-ga"
+    },
+    {
       "probe": "access-downstream/owner-steve",
       "pointer": "/own-cluster-namespaces/body/count",
       "want": 8,
