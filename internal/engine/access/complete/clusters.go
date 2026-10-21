@@ -12,8 +12,9 @@ import (
 // ClusterSource is the shared --cluster source and the management cluster
 // kind's name source: the management cluster list, every id plus each
 // display name that is unique and is not itself an id, so a value offered
-// is one the commands resolve. It needs a management token and one
-// listing; a typed cluster on the line never concerns it.
+// is one the commands resolve; each id is described by its display name.
+// It needs a management token and one listing; a typed cluster on the line
+// never concerns it.
 func ClusterSource() completion.Source {
 	return completion.Source{Claim: claimManagementList, Complete: completeClusters}
 }
@@ -35,15 +36,17 @@ func completeClusters(ctx context.Context, conn *completion.Connection, _ comple
 	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
 		return completion.Result{}
 	}
-	return completion.Result{Names: completion.IDsWithUniqueDisplayNames(list.Items)}
+	names, displayNames := completion.IDsWithDisplayNames(list.Items)
+	return completion.Result{Names: names, Descriptions: displayNames}
 }
 
 // SteveClusterSource is the shared --cluster source and `inspect
 // cluster`'s positional source: the clusters the caller can read, as the
 // commands resolve the value against them, every id plus each display name
-// that is unique and is not itself an id. It needs a management token and
-// one walk of the steve clusters collection; a typed cluster on the line
-// never concerns it. Every other site is declined.
+// that is unique and is not itself an id; each id is described by its
+// display name. It needs a management token and one walk of the steve
+// clusters collection; a typed cluster on the line never concerns it.
+// Every other site is declined.
 func SteveClusterSource() completion.Source {
 	return completion.Source{Claim: claimSteveCluster, Complete: completeReadableClusters}
 }
@@ -68,7 +71,8 @@ func completeReadableClusters(ctx context.Context, conn *completion.Connection, 
 	if err != nil {
 		return completion.Result{}
 	}
-	return completion.Result{Names: completion.IDsWithUniqueDisplayNames(clusterItems(list))}
+	names, displayNames := completion.IDsWithDisplayNames(clusterItems(list))
+	return completion.Result{Names: names, Descriptions: displayNames}
 }
 
 func clusterItems(list []completion.ClusterItem) []map[string]any {
@@ -115,5 +119,6 @@ func completeSteveClusters(ctx context.Context, conn *completion.Connection, _ c
 		list = append(list, completion.ClusterItem{ID: localClusterRow, DisplayName: localClusterRow})
 	}
 	slices.SortFunc(list, func(a, b completion.ClusterItem) int { return strings.Compare(a.ID, b.ID) })
-	return completion.Result{Names: completion.IDsWithUniqueDisplayNames(clusterItems(list))}
+	names, displayNames := completion.IDsWithDisplayNames(clusterItems(list))
+	return completion.Result{Names: names, Descriptions: displayNames}
 }

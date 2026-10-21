@@ -115,12 +115,16 @@ func ClusterListing() Requirements {
 }
 
 // Result is what a source answers. Names are bare candidates the surface
-// sanitizes, dedupes and sorts. Prefix, when set, is a compiled-in literal
-// the source chose ("<kind>/" for a composite value) that the surface
-// validates and puts in front of every sanitized name.
+// sanitizes, dedupes and sorts. Descriptions maps a bare name to the raw
+// text a shell shows beside it; a name with no entry has none, and the
+// surface sanitizes every text and looks it up by the bare name, before
+// any prefix. Prefix, when set, is a compiled-in literal the source chose
+// ("<kind>/" for a composite value) that the surface validates and puts in
+// front of every sanitized name.
 type Result struct {
-	Names  []string
-	Prefix string
+	Names        []string
+	Descriptions map[string]string
+	Prefix       string
 }
 
 // Source is a live completion source. Claim runs first, without I/O:

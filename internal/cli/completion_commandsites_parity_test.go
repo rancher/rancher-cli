@@ -63,7 +63,7 @@ func machineConfigPrefixes(spelling string) []string {
 // mutates env globals, setStoredConfig mutates storedConfig.
 func TestCommandSitesFullCallback(t *testing.T) {
 	s := newCommandSitesServer(t)
-	users := []string{"alice", "bob", "sameid", "u-alice", "u-badname", "u-bob"}
+	users := []string{"alice", "bob", "sameid:sameid (Same Id)", "u-alice:alice (Alice Smith)", "u-badname:bad name!", "u-bob:bob"}
 	credentials := []string{"aws-prod", "cc-abc12", "cc-collide", "cc-dup1", "cc-dup2", "cc-hostile", "cc-noannotation", "marker-only"}
 	resources := []string{"deployments", "gauges", "ingresses", "nodes", "pods", "services"}
 	groups := []string{"apps", "gateway.example.io", "metrics.example.io", "networking.k8s.io"}
@@ -141,7 +141,7 @@ func TestCommandSitesFullCallback(t *testing.T) {
 		{name: "access explain --subresource", words: []string{"access", "explain", "get", "pods", "--cluster", "c-aaa11", "--subresource"}, want: podSubresources, hits: discovery},
 		// --as on the access commands that declare it
 		{name: "access can --as", words: []string{"access", "can", "get", "pods", "--as"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
-		{name: "access can --as= equals form", words: []string{"access", "can", "get", "pods"}, cur: "--as=", want: []string{"--as=alice", "--as=bob", "--as=sameid", "--as=u-alice", "--as=u-badname", "--as=u-bob"}, hits: map[string]int{mgmtUsersPath: 1}},
+		{name: "access can --as= equals form", words: []string{"access", "can", "get", "pods"}, cur: "--as=", want: []string{"--as=alice", "--as=bob", "--as=sameid:sameid (Same Id)", "--as=u-alice:alice (Alice Smith)", "--as=u-badname:bad name!", "--as=u-bob:bob"}, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "access can --as with an unusable cluster value still answers", words: []string{"access", "can", "get", "pods", "--cluster", "prod cluster", "--as"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "access can --as with the network off", words: []string{"access", "can", "get", "pods", "--as"}, noNet: true, hits: map[string]int{}},
 		// Under --type group a bare --as value is a Kubernetes group, which

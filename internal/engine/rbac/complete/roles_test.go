@@ -20,15 +20,15 @@ func roleServer(t *testing.T) *completiontest.Server {
 	t.Helper()
 	return completiontest.New(t, map[string]string{
 		"/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates": `{"items":[
-			{"metadata":{"name":"project-owner"},"context":"project"},
-			{"metadata":{"name":"project-member"},"context":"project"},
-			{"metadata":{"name":"project-member"},"context":"project"},
-			{"metadata":{"name":"cluster-owner"},"context":"cluster"},
+			{"metadata":{"name":"project-owner"},"context":"project","displayName":"Project Owner","description":"full control of a project"},
+			{"metadata":{"name":"project-member"},"context":"project","displayName":"Project Member"},
+			{"metadata":{"name":"project-member"},"context":"project","displayName":"Project Member"},
+			{"metadata":{"name":"cluster-owner"},"context":"cluster","displayName":"Cluster Owner"},
 			{"metadata":{"name":"bad name!"},"context":"project"},
 			{"metadata":{"name":"no-context-role"}}
 		]}`,
 		"/k8s/clusters/local/apis/management.cattle.io/v3/globalroles": `{"items":[
-			{"metadata":{"name":"admin"}},
+			{"metadata":{"name":"admin"},"displayName":"Administrator","description":"all rights"},
 			{"metadata":{"name":"user"}}
 		]}`,
 	})
@@ -131,19 +131,20 @@ func TestRoleSourceClaim(t *testing.T) {
 // TestRoleSourceCompleteByScope asserts each scope lists its collection
 // once and answers the names of the scope's context: project- or
 // cluster-context roletemplates, deduped, context-less rows excluded;
-// every globalrole at global scope. Names are answered unsanitized; the
-// surface drops "bad name!".
+// every globalrole at global scope, each described by its display name.
+// Names are answered unsanitized; the surface drops "bad name!".
 func TestRoleSourceCompleteByScope(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name string
-		tail []string
-		want []string
+		name         string
+		tail         []string
+		want         []string
+		descriptions map[string]string
 	}{
-		{name: "global", tail: []string{"grant", "jane", "--global", "--role"}, want: []string{"admin", "user"}},
-		{name: "project", tail: []string{"grant", "jane", "--project", "Default", "--role"}, want: []string{"bad name!", "project-member", "project-owner"}},
-		{name: "project with cluster qualifier", tail: []string{"revoke", "jane", "--project=Default", "--cluster", "c-x", "--role"}, want: []string{"bad name!", "project-member", "project-owner"}},
-		{name: "cluster", tail: []string{"grant", "jane", "--cluster", "c-x", "--role"}, want: []string{"cluster-owner"}},
+		{name: "global", tail: []string{"grant", "jane", "--global", "--role"}, want: []string{"admin", "user"}, descriptions: map[string]string{"admin": "Administrator"}},
+		{name: "project", tail: []string{"grant", "jane", "--project", "Default", "--role"}, want: []string{"bad name!", "project-member", "project-owner"}, descriptions: map[string]string{"project-member": "Project Member", "project-owner": "Project Owner"}},
+		{name: "project with cluster qualifier", tail: []string{"revoke", "jane", "--project=Default", "--cluster", "c-x", "--role"}, want: []string{"bad name!", "project-member", "project-owner"}, descriptions: map[string]string{"project-member": "Project Member", "project-owner": "Project Owner"}},
+		{name: "cluster", tail: []string{"grant", "jane", "--cluster", "c-x", "--role"}, want: []string{"cluster-owner"}, descriptions: map[string]string{"cluster-owner": "Cluster Owner"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -152,6 +153,7 @@ func TestRoleSourceCompleteByScope(t *testing.T) {
 			conn := s.Conn(1)
 			got := RoleSource().Complete(t.Context(), conn, roleRequest(tt.tail...))
 			assert.Equal(t, tt.want, got.Names)
+			assert.Equal(t, tt.descriptions, got.Descriptions, "the display name, never the description")
 			assert.Empty(t, got.Prefix)
 			assert.Len(t, s.Requested(), 1)
 			assert.False(t, conn.Exceeded())
@@ -216,4 +218,26 @@ func TestRoleSourceCompleteFailsEmpty(t *testing.T) {
 			assert.Empty(t, RoleSource().Complete(ctx, conn, req).Names)
 		})
 	})
+}
+
+// TestRoleSourceDescribesWithTheLookupFieldsOnly asserts, for a role
+// template and a global role, the description is the display name of the
+// row's Handle.Lookup and no other field the object carries.
+func TestRoleSourceDescribesWithTheLookupFieldsOnly(t *testing.T) {
+	t.Parallel()
+	body := `{"items":[
+		{"metadata":{"name":"r-1"},"context":"project","displayName":"Role One","description":"decoy description","spec":{"name":"decoy spec","displayName":"decoy display"}},
+		{"metadata":{"name":"r-2"},"context":"project","description":"decoy description","spec":{"displayName":"decoy display"}}
+	]}`
+	s := completiontest.New(t, map[string]string{
+		"/k8s/clusters/local/apis/management.cattle.io/v3/roletemplates": body,
+		"/k8s/clusters/local/apis/management.cattle.io/v3/globalroles":   body,
+	})
+	for name, tail := range map[string][]string{
+		"roletemplate": {"grant", "jane", "--project", "Default", "--role"},
+		"globalrole":   {"grant", "jane", "--global", "--role"},
+	} {
+		got := RoleSource().Complete(t.Context(), s.Conn(1), roleRequest(tail...))
+		assert.Equal(t, map[string]string{"r-1": "Role One"}, got.Descriptions, name)
+	}
 }

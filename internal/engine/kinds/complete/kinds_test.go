@@ -1,6 +1,7 @@
 package complete
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -39,6 +40,8 @@ func TestRequirements(t *testing.T) {
 		{key: "pod", want: downstream, ok: true},
 		{key: "deployment", want: downstream, ok: true},
 		{key: "nodedriver", want: management, ok: true},
+		{key: "roletemplate", want: management, ok: true},
+		{key: "globalrole", want: management, ok: true},
 		{key: "oidcclient", want: management, ok: true},
 		{key: "user", want: management, ok: true},
 		{key: "managementcluster", want: management, ok: true},
@@ -155,4 +158,102 @@ func TestKindSourceCompleteFailsEmpty(t *testing.T) {
 	assert.Empty(t, KindSource("nodedriver").Complete(t.Context(), exhausted, completion.Request{}).Names)
 	assert.True(t, exhausted.Exceeded())
 	assert.Empty(t, ls.Requested())
+}
+
+// TestKindSourceDescribesTheKindsThatHaveAHandle asserts the generic source
+// describes a name with the fields of the row's Handle.Lookup: the display
+// name of a node driver (spec.displayName), a role template and a global
+// role (displayName), never spec.description or description. A hidden or
+// locked role is listed and described like any other, and a name without a
+// display name has no description.
+func TestKindSourceDescribesTheKindsThatHaveAHandle(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		key  string
+		body string
+		want map[string]string
+	}{
+		{
+			key: "nodedriver",
+			body: `{"items":[
+				{"metadata":{"name":"amazonec2"},"spec":{"displayName":"Amazon EC2","description":"machines on AWS"}},
+				{"metadata":{"name":"custom"},"spec":{"description":"no display name"}},
+				{"metadata":{"name":"evil"},"spec":{"displayName":"a\nb\u001b[31m"}}
+			]}`,
+			want: map[string]string{"amazonec2": "Amazon EC2", "evil": "a\nb\u001b[31m"},
+		},
+		{
+			key: "roletemplate",
+			body: `{"items":[
+				{"metadata":{"name":"project-owner"},"displayName":"Project Owner","description":"full control"},
+				{"metadata":{"name":"edit"},"displayName":"Kubernetes edit","hidden":true},
+				{"metadata":{"name":"retired"},"displayName":"Retired","locked":true},
+				{"metadata":{"name":"plain"}}
+			]}`,
+			want: map[string]string{"project-owner": "Project Owner", "edit": "Kubernetes edit", "retired": "Retired"},
+		},
+		{
+			key: "globalrole",
+			body: `{"items":[
+				{"metadata":{"name":"admin"},"displayName":"Administrator","description":"all rights"},
+				{"metadata":{"name":"hidden"},"displayName":"Hidden","hidden":true,"locked":true}
+			]}`,
+			want: map[string]string{"admin": "Administrator", "hidden": "Hidden"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			t.Parallel()
+			ls := completiontest.NewFixed(t, tt.body)
+			got := KindSource(tt.key).Complete(t.Context(), ls.Conn(1), completion.Request{})
+			assert.Equal(t, tt.want, got.Descriptions)
+			assert.Len(t, got.Names, strings.Count(tt.body, `"metadata"`), "every listed name is offered, hidden and locked included")
+		})
+	}
+}
+
+// TestKindSourceDescribesNothingWithoutAHandle asserts a Completable kind
+// whose row has no Handle gets no description, whatever display or
+// description fields its objects carry.
+func TestKindSourceDescribesNothingWithoutAHandle(t *testing.T) {
+	t.Parallel()
+	body := `{"items":[{"metadata":{"name":"a"},"displayName":"A","description":"d","spec":{"displayName":"A","description":"d"}}]}`
+	tests := []struct {
+		key string
+		req completion.Request
+	}{
+		{key: "pod", req: completion.Request{ClusterID: "c-x", Tail: []string{"--namespace", "default"}}},
+		{key: "deployment", req: completion.Request{ClusterID: "c-x", Tail: []string{"--namespace", "default"}}},
+		{key: "namespace", req: completion.Request{ClusterID: "c-x"}},
+		{key: "node", req: completion.Request{ClusterID: "c-x"}},
+		{key: "oidcclient", req: completion.Request{}},
+		{key: "provisioningcluster", req: completion.Request{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			t.Parallel()
+			k := mustKind(t, tt.key)
+			require.True(t, k.Completable, tt.key)
+			require.Nil(t, k.Handle, "the kind has a Handle; move it to the table with a Handle")
+			ls := completiontest.NewFixed(t, body)
+			got := KindSource(tt.key).Complete(t.Context(), ls.Conn(1), tt.req)
+			assert.Equal(t, []string{"a"}, got.Names)
+			assert.Empty(t, got.Descriptions)
+		})
+	}
+}
+
+// TestKindSourceDescribesWithTheLookupFieldsOnly asserts a node driver, a
+// role template and a global role are described by the fields of their
+// Handle.Lookup and by no other field the object carries.
+func TestKindSourceDescribesWithTheLookupFieldsOnly(t *testing.T) {
+	t.Parallel()
+	body := `{"items":[
+		{"metadata":{"name":"a"},"displayName":"Top Display","description":"decoy description","spec":{"name":"decoy spec","displayName":"Spec Display","description":"decoy spec description"},"status":{"displayName":"decoy status"}}
+	]}`
+	for key, want := range map[string]string{"nodedriver": "Spec Display", "roletemplate": "Top Display", "globalrole": "Top Display"} {
+		ls := completiontest.NewFixed(t, body)
+		got := KindSource(key).Complete(t.Context(), ls.Conn(1), completion.Request{})
+		assert.Equal(t, map[string]string{"a": want}, got.Descriptions, key)
+	}
 }

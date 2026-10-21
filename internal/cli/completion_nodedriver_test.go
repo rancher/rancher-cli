@@ -74,12 +74,12 @@ func TestNodeDriverPositionalSiteFullCallback(t *testing.T) {
 		return out.String()
 	}
 
-	t.Run("get nodedriver positional → driver names", func(t *testing.T) {
+	t.Run("get nodedriver positional → driver names with display names", func(t *testing.T) {
 		setup(t, true)
 		got := run(t, []string{"get", "nodedriver"}, "")
-		assert.Contains(t, got, "amazonec2")
-		assert.Contains(t, got, "digitalocean")
+		assert.Equal(t, "amazonec2:Amazon EC2\ndigitalocean:DigitalOcean\n", got)
 		assert.NotContains(t, got, "evil")
+		assert.NotContains(t, got, "hostile", "a name outside the charset is dropped with its description")
 	})
 
 	t.Run("network gate off → empty", func(t *testing.T) {

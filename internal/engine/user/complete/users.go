@@ -10,8 +10,10 @@ import (
 // UserIDSource is the user kind's name source on the generated verbs, on
 // inspect user and on create password-change-request: the ids
 // (metadata.name) of the management Users the kind table does not mark
-// as system accounts. Ids only: those commands address a user by id and
-// reject a bare username. It needs a management token and one listing.
+// as system accounts, each described by its username and display name.
+// The values are ids only; the descriptions are display only, and inspect
+// user also takes a username, a display name or a principal. It needs a
+// management token and one listing.
 func UserIDSource() completion.Source {
 	return completion.Source{Claim: claimUsers, Complete: completeUserIDs}
 }
@@ -33,14 +35,21 @@ func completeUserIDs(ctx context.Context, conn *completion.Connection, _ complet
 	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
 		return completion.Result{}
 	}
+	paths := k.DescriptionPaths()
 	var ids []string
+	descriptions := map[string]string{}
 	for _, item := range list.Items {
 		if k.SystemFilter.Matches(item) {
 			continue
 		}
 		if id := completion.ItemName(item); id != "" {
 			ids = append(ids, id)
+			if _, ok := descriptions[id]; !ok {
+				if d := completion.ItemDescription(item, paths); d != "" {
+					descriptions[id] = d
+				}
+			}
 		}
 	}
-	return completion.Result{Names: ids}
+	return completion.Result{Names: ids, Descriptions: descriptions}
 }

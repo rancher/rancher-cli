@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
 	"github.com/rancher/rancher-cli/internal/runtime/completion/completiontest"
 	"github.com/stretchr/testify/assert"
@@ -104,4 +105,43 @@ func TestProjectPositionalSourceCompletesLikeTheFlag(t *testing.T) {
 	conn, _ := listerConn(t, items, nil)
 	got := ProjectPositionalSource().Complete(t.Context(), conn, completion.Request{Index: 0, ClusterID: "c-aaa11"})
 	assert.Equal(t, []string{"p-1", "p-2", "p-3", "Edge"}, got.Names)
+}
+
+// TestProjectSourcesDescribeEveryIdByDisplayName asserts every project
+// source describes an id by its display name, raw: a project without a
+// display name has none, a display name shared by two projects still
+// describes both ids, and a display name offered as a value (unique, not
+// an id) carries no description.
+func TestProjectSourcesDescribeEveryIdByDisplayName(t *testing.T) {
+	t.Parallel()
+	items := []completion.ProjectItem{
+		{ID: "p-1", DisplayName: "Default"},
+		{ID: "p-2", DisplayName: "System"},
+		{ID: "p-3", DisplayName: "System"},
+		{ID: "p-4"},
+		{ID: "p-5", DisplayName: "a\nb\u001b[31m"},
+	}
+	for name, src := range map[string]completion.Source{"shared": ProjectSource(), "positional": ProjectPositionalSource(), "ids": ProjectIDSource()} {
+		conn, _ := listerConn(t, items, nil)
+		got := src.Complete(t.Context(), conn, completion.Request{Index: 0, ClusterID: "c-aaa11"})
+		assert.Equal(t, map[string]string{
+			"p-1": "Default",
+			"p-2": "System",
+			"p-3": "System",
+			"p-5": "a\nb\u001b[31m",
+		}, got.Descriptions, name)
+		for _, display := range []string{"Default", "System", "a\nb\u001b[31m"} {
+			assert.NotContains(t, got.Descriptions, display, "%s: a display name offered as a value carries no description", name)
+		}
+	}
+}
+
+// TestProjectRowLookupIsTheDisplayName asserts the project row's
+// Handle.Lookup is exactly spec.displayName, the field the project
+// sources read from the lister's items.
+func TestProjectRowLookupIsTheDisplayName(t *testing.T) {
+	t.Parallel()
+	k, ok := kinds.ByKey("project")
+	require.True(t, ok)
+	assert.Equal(t, [][]string{{"spec", "displayName"}}, k.DescriptionPaths())
 }

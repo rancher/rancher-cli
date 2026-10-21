@@ -94,7 +94,7 @@ func liveSourceCandidates(ctx context.Context, site CompletionSite, d runtime.De
 		completionDebugf("stop: source exceeded its allowance of %d requests; result dropped", limit)
 		return nil, true
 	}
-	completionDebugf("source: %d requests, %d names", conn.Used(), len(res.Names))
+	completionDebugf("source: %d requests, %d names, %d descriptions", conn.Used(), len(res.Names), len(res.Descriptions))
 	return emitResult(site, res), true
 }
 
@@ -233,7 +233,10 @@ func credentialNeedMet(reqs completion.Requirements, cap TokenCapability) bool {
 // shell-safe characters ending in exactly one "/" or the whole result is
 // dropped; the names pass the shell-safe charset, are deduped and
 // sorted; the prefix is put in front of every survivor, and an equals-form
-// site gets full --flag=value tokens.
+// site gets full --flag=value tokens. A survivor's description is looked
+// up by its bare name, sanitized, and written after the token as
+// "token:description" (see formatCandidate); a name with no description
+// left, or whose description is the name itself, is the bare token.
 func emitResult(site CompletionSite, res completion.Result) []string {
 	if res.Prefix != "" && !validCompositePrefix(res.Prefix) {
 		completionDebugf("stop: source prefix %q is not a composite prefix; result dropped", res.Prefix)
@@ -249,7 +252,11 @@ func emitResult(site CompletionSite, res completion.Result) []string {
 		if site.EqualsForm {
 			tok = site.FlagSpelling + "=" + tok
 		}
-		out = append(out, tok)
+		desc := completion.SanitizeDescription(res.Descriptions[n])
+		if desc == n {
+			desc = ""
+		}
+		out = append(out, formatCandidate(tok, desc))
 	}
 	return out
 }

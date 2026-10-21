@@ -194,6 +194,8 @@ type Handle struct {
 	//   - a project row is matched through the project lister on the
 	//     project's display name, and its message uses the first label; its
 	//     Path serves the guard and help only.
+	// Completion also describes each id with every Lookup field, in order
+	// (DescriptionPaths): a field added here shows in those descriptions.
 	Lookup []HandleField
 }
 
@@ -706,7 +708,7 @@ var table = []Kind{
 	{
 		Key: "roletemplate", Name: "roletemplate", Aliases: []string{"roletemplates"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "roletemplates"},
-		Policy: NSNone, K8sKind: "RoleTemplate", Scope: Management, Deletable: false, Sensitive: true,
+		Policy: NSNone, K8sKind: "RoleTemplate", Scope: Management, Deletable: false, Completable: true, Sensitive: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
 		ArgDesc: "role template id (the NAME column of rancher get roletemplates), not the display name",
@@ -718,7 +720,7 @@ var table = []Kind{
 	{
 		Key: "globalrole", Name: "globalrole", Aliases: []string{"globalroles"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "globalroles"},
-		Policy: NSNone, K8sKind: "GlobalRole", Scope: Management, Deletable: false, Sensitive: true,
+		Policy: NSNone, K8sKind: "GlobalRole", Scope: Management, Deletable: false, Completable: true, Sensitive: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
 		ArgDesc: "global role id (the NAME column of rancher get globalroles), not the display name",

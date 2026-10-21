@@ -103,6 +103,14 @@ func (s *authListServer) caFile(t *testing.T) string {
 // environment variables beyond that.
 func completeAuthProvider(t *testing.T, cfg *config.Config, env map[string]string, words ...string) (candidates []string, trace string) {
 	t.Helper()
+	stdout, trace := completeAuthProviderOutput(t, cfg, env, words...)
+	return strings.Fields(stdout), trace
+}
+
+// completeAuthProviderOutput is completeAuthProvider returning the exact
+// bytes written to stdout instead of its fields.
+func completeAuthProviderOutput(t *testing.T, cfg *config.Config, env map[string]string, words ...string) (stdout, trace string) {
+	t.Helper()
 	keyring.MockInit()
 	dir := t.TempDir()
 	cfg.Completion = config.CompletionConfig{Network: true}
@@ -118,11 +126,28 @@ func completeAuthProvider(t *testing.T, cfg *config.Config, env map[string]strin
 	}
 	t.Setenv(config.EnvCredentialStore, "file")
 	t.Setenv(config.EnvCompletionDebug, "1")
-	stdout, trace := runCompletionTraced(t, append(words, "--auth-provider"))
-	return strings.Fields(stdout), trace
+	return runCompletionTraced(t, append(words, "--auth-provider"))
 }
 
 var authConfigNames = []string{"corp-ldap", "local"}
+
+// TestAuthProviderCandidatesCarryNoDescription asserts the candidates of
+// the no-credential path are the bare names, one per line, byte for byte:
+// no colon, no description, the same lines before and after descriptions
+// existed for other sources.
+// NOT parallel: the environment and the stored config are process-wide.
+func TestAuthProviderCandidatesCarryNoDescription(t *testing.T) {
+	srv := newAuthListServer(t, false)
+	cfg := &config.Config{CurrentServer: "cur", Servers: map[string]config.Server{"cur": {URL: srv.srv.URL}}}
+	stdout, _ := completeAuthProviderOutput(t, cfg, nil, "auth", "get-token")
+	assert.Equal(t, "corp-ldap\nlocal\n", stdout)
+
+	stdout, _ = completeAuthProviderOutput(t, cfg, nil, "auth", "login")
+	assert.Equal(t, "corp-ldap\nlocal\n", stdout)
+
+	stdout, _ = completeAuthProviderOutput(t, &config.Config{}, nil, "token", "--server", srv.srv.URL, "--user", "alice")
+	assert.Equal(t, "corp-ldap\nlocal\n", stdout)
+}
 
 // TestGetTokenCompletesAuthProviderFromItsOwnTarget asserts, through the
 // real root, that auth get-token completes --auth-provider from the server

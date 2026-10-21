@@ -121,3 +121,38 @@ func TestProjectsClusterSourceAddsTheLocalRowInIDOrder(t *testing.T) {
 	got = ProjectsClusterSource().Complete(t.Context(), listerConn(nil, errors.New("moved"), &calls), completion.Request{Flag: "cluster"})
 	assert.Empty(t, got.Names, "a failed read offers not even the local row")
 }
+
+// TestClusterSourcesDescribeEveryIdByDisplayName asserts every cluster
+// source describes an id by spec.displayName, raw, never by
+// spec.description: a cluster without a display name has none, two
+// clusters sharing a display name each keep it as their description, and
+// a display name offered as a value carries no description.
+func TestClusterSourcesDescribeEveryIdByDisplayName(t *testing.T) {
+	t.Parallel()
+	want := map[string]string{
+		"c-aaa11": "prod",
+		"c-bbb22": "dup",
+		"c-ccc33": "dup",
+		"c-eee55": "a\nb\u001b[31m",
+	}
+	s := completiontest.NewFixed(t, `{"items":[
+		{"metadata":{"name":"c-aaa11"},"spec":{"displayName":"prod","description":"production workloads"}},
+		{"metadata":{"name":"c-bbb22"},"spec":{"displayName":"dup"}},
+		{"metadata":{"name":"c-ccc33"},"spec":{"displayName":"dup"}},
+		{"metadata":{"name":"c-ddd44"},"spec":{"description":"no display name"}},
+		{"metadata":{"name":"c-eee55"},"spec":{"displayName":"a\nb\u001b[31m"}}
+	]}`)
+	got := ClusterSource().Complete(t.Context(), s.Conn(1), completion.Request{Flag: "cluster"})
+	assert.Equal(t, want, got.Descriptions)
+	assert.NotContains(t, got.Descriptions, "prod", "a display name offered as a value carries no description")
+
+	calls := 0
+	list := []completion.ClusterItem{{ID: "c-aaa11", DisplayName: "prod"}, {ID: "c-bbb22", DisplayName: "dup"}, {ID: "c-ccc33", DisplayName: "dup"},
+		{ID: "c-ddd44"}, {ID: "c-eee55", DisplayName: "a\nb\u001b[31m"}}
+	got = SteveClusterSource().Complete(t.Context(), listerConn(list, nil, &calls), completion.Request{Flag: "cluster"})
+	assert.Equal(t, want, got.Descriptions)
+
+	got = ProjectsClusterSource().Complete(t.Context(), listerConn(list, nil, &calls), completion.Request{Flag: "cluster"})
+	want["local"] = "local"
+	assert.Equal(t, want, got.Descriptions, "the added local row is described like any other")
+}

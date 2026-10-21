@@ -174,7 +174,7 @@ func TestAccessProjectsClusterOffersTheSteveSet(t *testing.T) {
 	f.reset()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
 	got := liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"})
-	assert.Equal(t, []string{"c-abc12", "c-zzz99", "local", "membercluster", "testcluster"}, sorted(got),
+	assert.Equal(t, []string{"c-abc12:testcluster", "c-zzz99:membercluster", "local", "membercluster", "testcluster"}, sorted(got),
 		"the collection omits local, so the completer inserts it as the command does")
 	assert.Equal(t, []string{"/v1/management.cattle.io.clusters"}, f.served())
 }
@@ -211,7 +211,7 @@ func TestAccessProjectsClusterCompletionFollowsEveryPage(t *testing.T) {
 	f.reset()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
 	got := liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"})
-	assert.Equal(t, []string{"alone", "c-aaa11", "c-bbb22", "c-ccc33", "local"}, sorted(got),
+	assert.Equal(t, []string{"alone", "c-aaa11:shared", "c-bbb22:shared", "c-ccc33:alone", "local"}, sorted(got),
 		"three pages read, the repeated name offered by id only, local inserted once")
 	assert.Len(t, f.served(), 3)
 }
@@ -246,7 +246,7 @@ func TestAccessProjectsClusterCompletionKeepsAReturnedLocal(t *testing.T) {
 	f.mu.Unlock()
 	f.reset()
 	site := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
-	assert.Equal(t, []string{"c-aaa11", "local", "prod"}, sorted(liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"})))
+	assert.Equal(t, []string{"c-aaa11:prod", "local", "prod"}, sorted(liveCandidates(accessCtx(t), site, d, projectsCompleter(), []string{"--cluster"})))
 }
 
 // TestAccessProjectsClusterCompletionFailsClosedLikeTheCommandReader

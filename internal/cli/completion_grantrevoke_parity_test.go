@@ -20,13 +20,13 @@ func newGrantRevokeServer(t *testing.T) *pathCountingServer {
 		mgmtClustersPath:  clustersBody,
 		steveProjectsPath: projectsBody,
 		roleTemplatesPath: items(
-			`{"metadata":{"name":"project-owner"},"context":"project"}`,
-			`{"metadata":{"name":"project-member"},"context":"project"}`,
-			`{"metadata":{"name":"project-member"},"context":"project"}`,
-			`{"metadata":{"name":"cluster-owner"},"context":"cluster"}`,
+			`{"metadata":{"name":"project-owner"},"context":"project","displayName":"Project Owner","description":"full control of a project"}`,
+			`{"metadata":{"name":"project-member"},"context":"project","displayName":"Project Member"}`,
+			`{"metadata":{"name":"project-member"},"context":"project","displayName":"Project Member"}`,
+			`{"metadata":{"name":"cluster-owner"},"context":"cluster","displayName":"Cluster Owner"}`,
 			`{"metadata":{"name":"bad name!"},"context":"project"}`,
 			`{"metadata":{"name":"no-context-role"}}`),
-		globalRolesPath: items(plain("admin"), plain("user")),
+		globalRolesPath: items(`{"metadata":{"name":"admin"},"displayName":"Administrator","description":"all rights"}`, plain("user")),
 	}, steveClustersPages)
 }
 
@@ -86,9 +86,9 @@ func runCompletion(t *testing.T, words []string, currentWord string) []string {
 // storedConfig.
 func TestGrantRevokeSitesFullCallback(t *testing.T) {
 	s := newGrantRevokeServer(t)
-	users := []string{"alice", "bob", "sameid", "u-alice", "u-badname", "u-bob"}
-	clusters := []string{"c-aaa11", "c-bbb22", "c-ccc33", "c-ddd44", "local", "prod"}
-	projects := []string{"Default", "System", "p-1", "p-2"}
+	users := []string{"alice", "bob", "sameid:sameid (Same Id)", "u-alice:alice (Alice Smith)", "u-badname:bad name!", "u-bob:bob"}
+	clusters := []string{"c-aaa11:prod", "c-bbb22:dup", "c-ccc33:dup", "c-ddd44:prod cluster", "local", "prod"}
+	projects := []string{"Default", "System", "p-1:Default", "p-2:System"}
 	tests := []struct {
 		name  string
 		tail  []string // after the command name
@@ -97,18 +97,18 @@ func TestGrantRevokeSitesFullCallback(t *testing.T) {
 		hits  map[string]int
 		noNet bool
 	}{
-		{name: "--role global", tail: []string{"jane", "--global", "--role"}, want: []string{"admin", "user"}, hits: map[string]int{globalRolesPath: 1}},
-		{name: "--role= global equals form", tail: []string{"jane", "--global"}, cur: "--role=", want: []string{"--role=admin", "--role=user"}, hits: map[string]int{globalRolesPath: 1}},
-		{name: "--role project", tail: []string{"jane", "--project", "Default", "--cluster", "c-aaa11", "--role"}, want: []string{"project-member", "project-owner"}, hits: map[string]int{roleTemplatesPath: 1}},
-		{name: "--role project equals form", tail: []string{"jane", "--project=Default", "--cluster=c-aaa11"}, cur: "--role=", want: []string{"--role=project-member", "--role=project-owner"}, hits: map[string]int{roleTemplatesPath: 1}},
-		{name: "--role cluster", tail: []string{"jane", "--cluster", "c-aaa11", "--role"}, want: []string{"cluster-owner"}, hits: map[string]int{roleTemplatesPath: 1}},
-		{name: "--role cluster by display name is not resolved", tail: []string{"jane", "--cluster", "prod", "--role"}, want: []string{"cluster-owner"}, hits: map[string]int{roleTemplatesPath: 1}},
-		{name: "--role cluster with an unusable cluster value still answers", tail: []string{"jane", "--cluster", "prod cluster", "--role"}, want: []string{"cluster-owner"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "--role global", tail: []string{"jane", "--global", "--role"}, want: []string{"admin:Administrator", "user"}, hits: map[string]int{globalRolesPath: 1}},
+		{name: "--role= global equals form", tail: []string{"jane", "--global"}, cur: "--role=", want: []string{"--role=admin:Administrator", "--role=user"}, hits: map[string]int{globalRolesPath: 1}},
+		{name: "--role project", tail: []string{"jane", "--project", "Default", "--cluster", "c-aaa11", "--role"}, want: []string{"project-member:Project Member", "project-owner:Project Owner"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "--role project equals form", tail: []string{"jane", "--project=Default", "--cluster=c-aaa11"}, cur: "--role=", want: []string{"--role=project-member:Project Member", "--role=project-owner:Project Owner"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "--role cluster", tail: []string{"jane", "--cluster", "c-aaa11", "--role"}, want: []string{"cluster-owner:Cluster Owner"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "--role cluster by display name is not resolved", tail: []string{"jane", "--cluster", "prod", "--role"}, want: []string{"cluster-owner:Cluster Owner"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "--role cluster with an unusable cluster value still answers", tail: []string{"jane", "--cluster", "prod cluster", "--role"}, want: []string{"cluster-owner:Cluster Owner"}, hits: map[string]int{roleTemplatesPath: 1}},
 		{name: "--role no scope", tail: []string{"jane", "--role"}, hits: map[string]int{}},
 		{name: "--role conflicting scope", tail: []string{"jane", "--global", "--project", "Default", "--role"}, hits: map[string]int{}},
 		{name: "--role network off", tail: []string{"jane", "--global", "--role"}, noNet: true, hits: map[string]int{}},
 		// A flag typed twice takes its last spelling, as the command reads it.
-		{name: "--role global then global=false with a cluster selects cluster", tail: []string{"jane", "--global", "--global=false", "--cluster", "c-aaa11", "--role"}, want: []string{"cluster-owner"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "--role global then global=false with a cluster selects cluster", tail: []string{"jane", "--global", "--global=false", "--cluster", "c-aaa11", "--role"}, want: []string{"cluster-owner:Cluster Owner"}, hits: map[string]int{roleTemplatesPath: 1}},
 		{name: "--role global=false then global with a cluster conflicts", tail: []string{"jane", "--global=false", "--global", "--cluster", "c-aaa11", "--role"}, hits: map[string]int{}},
 		{name: "subject positional", tail: nil, want: users, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "subject positional with an unusable cluster value still answers", tail: []string{"--cluster", "prod cluster"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
@@ -120,10 +120,10 @@ func TestGrantRevokeSitesFullCallback(t *testing.T) {
 		{name: "second positional completes nothing", tail: []string{"jane"}, hits: map[string]int{}},
 		{name: "--type static enum", tail: []string{"jane", "--type"}, want: []string{"group", "user"}, hits: map[string]int{}},
 		{name: "--cluster value", tail: []string{"jane", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
-		{name: "--cluster= equals form", tail: []string{"jane"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster= equals form", tail: []string{"jane"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11:prod", "--cluster=c-bbb22:dup", "--cluster=c-ccc33:dup", "--cluster=c-ddd44:prod cluster", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
 		{name: "--project value with a cluster id", tail: []string{"jane", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "--project value with a cluster display name resolves it first", tail: []string{"jane", "--cluster", "prod", "--project"}, want: projects, hits: map[string]int{steveClustersPath: 2, steveProjectsPath: 1}},
-		{name: "--project= equals form", tail: []string{"jane", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1", "--project=p-2"}, hits: map[string]int{steveProjectsPath: 1}},
+		{name: "--project= equals form", tail: []string{"jane", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1:Default", "--project=p-2:System"}, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "--project value without a cluster", tail: []string{"jane", "--project"}, hits: map[string]int{}},
 		{name: "--project value with a spaced display name resolves it first", tail: []string{"jane", "--cluster", "prod cluster", "--project"}, hits: map[string]int{steveClustersPath: 2, "/v1/management.cattle.io.projects/c-ddd44": 1}},
 		{name: "--project value with a display name nothing carries", tail: []string{"jane", "--cluster", "nope", "--project"}, hits: map[string]int{steveClustersPath: 2, steveClusterNopePath: 1}},

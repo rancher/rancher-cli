@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -78,6 +79,60 @@ func TestEmitResult(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tt.want, emitResult(tt.site, tt.res))
+		})
+	}
+}
+
+// TestEmitResultDescriptions asserts the description channel: a description
+// is written after the token as "token:description" through the one line
+// format; an equals-form site and a composite prefix put the token in
+// front of the colon and the description is looked up by the bare name; a
+// name with no entry, an empty or invisible description, or a description
+// equal to the name is the bare token, never a trailing colon; text with
+// control characters arrives as one line; and a name the charset drops
+// takes its description with it.
+func TestEmitResultDescriptions(t *testing.T) {
+	t.Parallel()
+	space := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster"}
+	equals := CompletionSite{Kind: SiteFlagValue, FlagName: "cluster", FlagSpelling: "--cluster", EqualsForm: true}
+	tests := []struct {
+		name string
+		site CompletionSite
+		res  completion.Result
+		want []string
+	}{
+		{name: "description after the token", site: space, res: completion.Result{Names: []string{"c-abc12"}, Descriptions: map[string]string{"c-abc12": "prod"}}, want: []string{"c-abc12:prod"}},
+		{name: "sorted by name with descriptions", site: space, res: completion.Result{Names: []string{"b", "a"}, Descriptions: map[string]string{"a": "first", "b": "second"}}, want: []string{"a:first", "b:second"}},
+		{name: "a repeated name is one line", site: space, res: completion.Result{Names: []string{"a", "a"}, Descriptions: map[string]string{"a": "first"}}, want: []string{"a:first"}},
+		{name: "equals form", site: equals, res: completion.Result{Names: []string{"c-abc12", "local"}, Descriptions: map[string]string{"c-abc12": "prod"}}, want: []string{"--cluster=c-abc12:prod", "--cluster=local"}},
+		{name: "prefix form looks up the bare name", site: space, res: completion.Result{Names: []string{"web"}, Descriptions: map[string]string{"web": "Web server"}, Prefix: "amazonec2config/"}, want: []string{"amazonec2config/web:Web server"}},
+		{name: "prefix form ignores a description of the prefixed token", site: space, res: completion.Result{Names: []string{"web"}, Descriptions: map[string]string{"amazonec2config/web": "Web server"}, Prefix: "amazonec2config/"}, want: []string{"amazonec2config/web"}},
+		{name: "prefix and equals form", site: equals, res: completion.Result{Names: []string{"web"}, Descriptions: map[string]string{"web": "Web server"}, Prefix: "amazonec2config/"}, want: []string{"--cluster=amazonec2config/web:Web server"}},
+		{name: "no entry", site: space, res: completion.Result{Names: []string{"a", "b"}, Descriptions: map[string]string{"a": "first"}}, want: []string{"a:first", "b"}},
+		{name: "nil map", site: space, res: completion.Result{Names: []string{"a"}}, want: []string{"a"}},
+		{name: "empty description", site: space, res: completion.Result{Names: []string{"a"}, Descriptions: map[string]string{"a": ""}}, want: []string{"a"}},
+		{name: "description of white space", site: space, res: completion.Result{Names: []string{"a"}, Descriptions: map[string]string{"a": " \t\n"}}, want: []string{"a"}},
+		{name: "description of control characters", site: space, res: completion.Result{Names: []string{"a"}, Descriptions: map[string]string{"a": "\x1b\x07\x00"}}, want: []string{"a"}},
+		{name: "description of an invisible filler", site: space, res: completion.Result{Names: []string{"a"}, Descriptions: map[string]string{"a": "\u3164"}}, want: []string{"a"}},
+		{name: "description equal to the name", site: space, res: completion.Result{Names: []string{"local"}, Descriptions: map[string]string{"local": "local"}}, want: []string{"local"}},
+		{name: "description equal to the name after sanitizing", site: space, res: completion.Result{Names: []string{"local"}, Descriptions: map[string]string{"local": " local\n"}}, want: []string{"local"}},
+		{name: "equal to the bare name with a prefix", site: space, res: completion.Result{Names: []string{"web"}, Descriptions: map[string]string{"web": "web"}, Prefix: "amazonec2config/"}, want: []string{"amazonec2config/web"}},
+		{name: "newline and escape sequence become one line", site: space, res: completion.Result{Names: []string{"a"}, Descriptions: map[string]string{"a": "x\ny\x1b[31mz"}}, want: []string{"a:x y [31mz"}},
+		{name: "a colon in the description is kept", site: space, res: completion.Result{Names: []string{"a"}, Descriptions: map[string]string{"a": "dev: build team"}}, want: []string{"a:dev: build team"}},
+		{name: "long description is cut", site: space, res: completion.Result{Names: []string{"a"}, Descriptions: map[string]string{"a": strings.Repeat("x", 57)}}, want: []string{"a:" + strings.Repeat("x", 56) + "..."}},
+		{name: "a name outside the charset is dropped with its description", site: space, res: completion.Result{Names: []string{"evil;rm -rf", "ok"}, Descriptions: map[string]string{"evil;rm -rf": "hostile", "ok": "fine"}}, want: []string{"ok:fine"}},
+		{name: "only names outside the charset", site: space, res: completion.Result{Names: []string{"bad name!"}, Descriptions: map[string]string{"bad name!": "hostile"}}},
+		{name: "a description for a name that is not offered is ignored", site: space, res: completion.Result{Names: []string{"a"}, Descriptions: map[string]string{"b": "other"}}, want: []string{"a"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := emitResult(tt.site, tt.res)
+			assert.Equal(t, tt.want, got)
+			for _, line := range got {
+				assert.NotContains(t, line, "\n")
+				assert.False(t, strings.HasSuffix(line, ":"), "no trailing colon: %q", line)
+			}
 		})
 	}
 }
@@ -422,7 +477,7 @@ func TestRoleSiteThroughTheGrantProbe(t *testing.T) {
 
 	role := CompletionSite{Kind: SiteFlagValue, FlagName: "role", FlagSpelling: "--role"}
 	got := liveCandidates(t.Context(), role, d, probe, []string{"grant", "jane", "--cluster", "prod cluster", "--role"})
-	assert.Equal(t, []string{"cluster-owner"}, got)
+	assert.Equal(t, []string{"cluster-owner:Cluster Owner"}, got)
 	assert.Equal(t, map[string]int{roleTemplatesPath: 1}, s.reset())
 
 	got = liveCandidates(t.Context(), role, d, probe, []string{"grant", "jane", "--role"})
@@ -431,7 +486,7 @@ func TestRoleSiteThroughTheGrantProbe(t *testing.T) {
 
 	subject := CompletionSite{Kind: SitePositional, Index: 0}
 	got = liveCandidates(t.Context(), subject, d, probe, []string{"grant"})
-	assert.Contains(t, got, "u-alice")
+	assert.Contains(t, got, "u-alice:alice (Alice Smith)")
 	assert.Equal(t, map[string]int{mgmtUsersPath: 1}, s.reset())
 }
 

@@ -10,8 +10,10 @@
 # Minimum supported shell: bash 3.2 (macOS stock) with the bash-completion
 # package (1.2+) providing _get_comp_words_by_ref; when bash-completion 2.12+
 # is present its _comp_initialize is used instead. Without bash-completion
-# the completer silently declines. On bash 3 the double-TAB description
-# column is absent (COMP_TYPE is bash 4.0+); completion itself is unaffected.
+# the completer silently declines. The second TAB lists each candidate with
+# its description ("token  -- description") on bash 4.0 and later, where
+# COMP_TYPE exists; on bash 3 the list shows tokens only. Completion itself
+# is unaffected.
 
 # macOS still ships Bash 3, where bash-completion may not provide
 # _init_completion. This is a minimal compatible fallback.
@@ -40,22 +42,6 @@ __rancher_build_completion_request() {
   )
 }
 
-# Keep Bash 3 compatibility: associative arrays require Bash 4+, so
-# descriptions are looked up via parallel indexed arrays.
-__rancher_find_description_for() {
-  local candidate="$1"
-  local i
-
-  for i in "${!__rancher_completion_tokens[@]}"; do
-    if [[ "${__rancher_completion_tokens[i]}" == "${candidate}" ]]; then
-      printf '%s' "${__rancher_completion_descriptions[i]}"
-      return 0
-    fi
-  done
-
-  return 1
-}
-
 __rancher_bash_autocomplete() {
   local words=("${COMP_WORDS[@]}")
 
@@ -73,7 +59,9 @@ __rancher_bash_autocomplete() {
     opts=$("${__rancher_completion_request[@]}" 2>/dev/null)
 
     # Completion output lines use "token:description" format; some of our
-    # own commands print a bare token with no colon, handled below too.
+    # own commands print a bare token with no colon, handled below too. The
+    # description of token N is element N of the second array: associative
+    # arrays are bash 4+, and these two parallel indexed arrays work on 3.2.
     __rancher_completion_tokens=()
     __rancher_completion_descriptions=()
 
@@ -111,17 +99,18 @@ __rancher_bash_autocomplete() {
     done
 
     # COMP_TYPE=63 means Bash is listing matches (usually on second TAB).
+    # One pass over the token and description arrays by index, with no
+    # command substitution: every row costs the same, however long the list.
     if [[ "${COMP_TYPE:-}" == "63" && ${#matches[@]} -gt 0 ]]; then
       local listed=()
-      local candidate
-      for candidate in "${matches[@]}"; do
-        local desc="$(__rancher_find_description_for "${candidate}")"
-
-        if [[ -n "${desc}" ]]; then
-          local padded="$(printf '%-*s' "${longest}" "${candidate}")"
-          listed+=("${padded}  -- ${desc}")
+      local __rancher_i __rancher_padded
+      for (( __rancher_i = 0; __rancher_i < ${#__rancher_completion_tokens[@]}; __rancher_i++ )); do
+        [[ "${__rancher_completion_tokens[__rancher_i]}" == "${cur}"* ]] || continue
+        if [[ -n "${__rancher_completion_descriptions[__rancher_i]}" ]]; then
+          printf -v __rancher_padded '%-*s' "${longest}" "${__rancher_completion_tokens[__rancher_i]}"
+          listed+=("${__rancher_padded}  -- ${__rancher_completion_descriptions[__rancher_i]}")
         else
-          listed+=("${candidate}")
+          listed+=("${__rancher_completion_tokens[__rancher_i]}")
         fi
       done
       COMPREPLY=("${listed[@]}")

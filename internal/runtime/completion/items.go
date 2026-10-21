@@ -39,47 +39,49 @@ func Dedupe(s []string) []string {
 	return slices.Compact(out)
 }
 
-// IDsWithUniqueDisplayNames projects a list of Rancher management objects
-// that carry a display name (clusters, projects) into the values a
-// command resolving "id or unique display name" accepts: every
-// metadata.name, plus each spec.displayName that appears exactly once
-// across the list's rows and collides with no id. In list order, each
-// value once; an item without metadata is skipped whole.
-func IDsWithUniqueDisplayNames(items []map[string]any) []string {
+// IDsWithDisplayNames projects a list of Rancher management objects that
+// carry a display name (clusters, projects) into the values a command
+// resolving "id or unique display name" accepts: every metadata.name,
+// plus each spec.displayName that appears exactly once across the list's
+// rows and collides with no id. The values are in list order, each once;
+// an item without metadata is skipped whole. It also returns each id's
+// spec.displayName (the first non-empty one of a repeated id); an id with
+// no display name has no entry.
+func IDsWithDisplayNames(items []map[string]any) (values []string, displayNames map[string]string) {
 	type entry struct{ id, display string }
 	entries := make([]entry, 0, len(items))
 	ids := map[string]bool{}
 	displays := map[string]int{}
+	displayNames = map[string]string{}
 	for _, item := range items {
 		if _, ok := item["metadata"].(map[string]any); !ok {
 			continue
 		}
 		id := ItemName(item)
-		display := ""
-		if spec, _ := item["spec"].(map[string]any); spec != nil {
-			display, _ = spec["displayName"].(string)
-		}
+		display := ItemString(item, []string{"spec", "displayName"})
 		entries = append(entries, entry{id: id, display: display})
 		if id != "" {
 			ids[id] = true
+			if _, ok := displayNames[id]; !ok && display != "" {
+				displayNames[id] = display
+			}
 		}
 		if display != "" {
 			displays[display]++
 		}
 	}
 	seen := map[string]bool{}
-	var out []string
 	for _, e := range entries {
 		if e.id != "" && !seen[e.id] {
 			seen[e.id] = true
-			out = append(out, e.id)
+			values = append(values, e.id)
 		}
 		if e.display != "" && displays[e.display] == 1 && !ids[e.display] && !seen[e.display] {
 			seen[e.display] = true
-			out = append(out, e.display)
+			values = append(values, e.display)
 		}
 	}
-	return out
+	return values, displayNames
 }
 
 // TailFlag returns the value of --name on an arg tail: the token after a

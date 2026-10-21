@@ -11,11 +11,12 @@ import (
 // management Users that are not system accounts, each by id and, when
 // the username names exactly one user across usernames and display
 // names and is no account's id, by username - the values the commands
-// resolve a subject by without ambiguity. Users only: the completion
-// protocol splits a candidate at its first ':', so a group principal
-// cannot be offered, and under --type group, where a bare value is a
-// group, nothing is. It needs a management token and one listing; every
-// other site is declined.
+// resolve a subject by without ambiguity. Each id is described by its
+// username and display name; a username value carries no description.
+// Users only: the completion protocol splits a candidate at its first ':',
+// so a group principal cannot be offered, and under --type group, where a
+// bare value is a group, nothing is. It needs a management token and one
+// listing; every other site is declined.
 func SubjectSource() completion.Source {
 	return completion.Source{Claim: claimAs, Complete: completeSubjects}
 }
@@ -72,8 +73,10 @@ func completeSubjects(ctx context.Context, conn *completion.Connection, _ comple
 	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
 		return completion.Result{}
 	}
+	paths := k.DescriptionPaths()
 	type entry struct{ id, username string }
 	var entries []entry
+	descriptions := map[string]string{}
 	ids := map[string]bool{}
 	named := map[string]int{}
 	for _, item := range list.Items {
@@ -94,6 +97,9 @@ func completeSubjects(ctx context.Context, conn *completion.Connection, _ comple
 		username, _ := item["username"].(string)
 		display, _ := item["displayName"].(string)
 		entries = append(entries, entry{id: id, username: username})
+		if d := completion.ItemDescription(item, paths); d != "" {
+			descriptions[id] = d
+		}
 		if username != "" {
 			named[username]++
 		}
@@ -108,7 +114,7 @@ func completeSubjects(ctx context.Context, conn *completion.Connection, _ comple
 			out = append(out, e.username)
 		}
 	}
-	return completion.Result{Names: out}
+	return completion.Result{Names: out, Descriptions: descriptions}
 }
 
 // hasPrincipals reports whether a User carries at least one principal

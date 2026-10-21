@@ -59,7 +59,7 @@ func noCredentialCandidates(ctx context.Context, site CompletionSite, lc complet
 		completionDebugf("stop: source exceeded its allowance of %d requests; result dropped", limit)
 		return nil
 	}
-	completionDebugf("source: %d requests, %d names", conn.Used(), len(res.Names))
+	completionDebugf("source: %d requests, %d names, %d descriptions", conn.Used(), len(res.Names), len(res.Descriptions))
 	return emitResult(site, res)
 }
 

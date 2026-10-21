@@ -43,24 +43,25 @@ const (
 )
 
 // usersBody carries one of every user shape the projections must handle:
-// a plain user, a repeated row, a system account, a username outside the
-// shell-safe charset, a user without principals, and one whose id equals
-// its username.
+// a plain user with a display name, a repeated row, a system account, a
+// username outside the shell-safe charset, a user without principals, and
+// one whose id equals its username and carries a display name.
 const usersBody = `{"items":[
-	{"metadata":{"name":"u-alice"},"username":"alice","principalIds":["local://u-alice"]},
+	{"metadata":{"name":"u-alice"},"username":"alice","displayName":"Alice Smith","principalIds":["local://u-alice"]},
 	{"metadata":{"name":"u-bob"},"username":"bob","principalIds":["local://u-bob"]},
 	{"metadata":{"name":"u-bob"},"username":"bob","principalIds":["local://u-bob"]},
 	{"metadata":{"name":"u-sys"},"username":"system-svc","principalIds":["system://u-sys"]},
 	{"metadata":{"name":"u-badname"},"username":"bad name!","principalIds":["local://u-badname"]},
 	{"metadata":{"name":"u-nopids"},"username":"nopids"},
-	{"metadata":{"name":"sameid"},"username":"sameid","principalIds":["local://sameid"]}
+	{"metadata":{"name":"sameid"},"username":"sameid","displayName":"Same Id","principalIds":["local://sameid"]}
 ]}`
 
-// clustersBody carries a cluster with a unique display name, the local
-// cluster, two clusters sharing a display name, and one whose display
-// name carries a space (never a candidate; resolves when typed quoted).
+// clustersBody carries a cluster with a unique display name and a
+// description that differs from it, the local cluster, two clusters
+// sharing a display name, and one whose display name carries a space
+// (never a candidate; resolves when typed quoted).
 const clustersBody = `{"items":[
-	{"metadata":{"name":"c-aaa11"},"spec":{"displayName":"prod"}},
+	{"metadata":{"name":"c-aaa11"},"spec":{"displayName":"prod","description":"production workloads"}},
 	{"metadata":{"name":"local"},"spec":{"displayName":"local"}},
 	{"metadata":{"name":"c-bbb22"},"spec":{"displayName":"dup"}},
 	{"metadata":{"name":"c-ccc33"},"spec":{"displayName":"dup"}},
@@ -68,9 +69,9 @@ const clustersBody = `{"items":[
 ]}`
 
 // projectsBody is the steve project collection of c-aaa11: two projects
-// with unique display names.
+// with unique display names, the first with a description that differs.
 const projectsBody = `{"count":2,"revision":"1","data":[
-	{"id":"c-aaa11/p-1","metadata":{"name":"p-1"},"spec":{"clusterName":"c-aaa11","displayName":"Default"}},
+	{"id":"c-aaa11/p-1","metadata":{"name":"p-1"},"spec":{"clusterName":"c-aaa11","displayName":"Default","description":"the default project"}},
 	{"id":"c-aaa11/p-2","metadata":{"name":"p-2"},"spec":{"clusterName":"c-aaa11","displayName":"System"}}
 ]}`
 

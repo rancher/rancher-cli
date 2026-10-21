@@ -69,7 +69,7 @@ func TestCompletionDebugTrace(t *testing.T) {
 		setup(t, true)
 		t.Setenv(config.EnvCompletionDebug, "")
 		stdout, trace := runCompletionTraced(t, []string{"get", "cluster"})
-		assert.Equal(t, "c-abc\nprod\n", stdout)
+		assert.Equal(t, "c-abc:prod\nprod\n", stdout)
 		assert.Empty(t, trace)
 	})
 
@@ -77,7 +77,7 @@ func TestCompletionDebugTrace(t *testing.T) {
 		setup(t, true)
 		t.Setenv(config.EnvCompletionDebug, "1")
 		stdout, trace := runCompletionTraced(t, []string{"get", "cluster"})
-		assert.Equal(t, "c-abc\nprod\n", stdout)
+		assert.Equal(t, "c-abc:prod\nprod\n", stdout)
 
 		for l := range strings.SplitSeq(strings.TrimSuffix(trace, "\n"), "\n") {
 			assert.True(t, strings.HasPrefix(l, "completion +"), "every trace line carries the elapsed-time prefix: %q", l)
@@ -89,7 +89,7 @@ func TestCompletionDebugTrace(t *testing.T) {
 			"token: RANCHER_CLI_TOKEN (full capability)",
 			"source: claimed by the managementcluster kind source",
 			"GET /k8s/clusters/local/apis/management.cattle.io/v3/clusters: HTTP 200",
-			"source: 1 requests, 2 names",
+			"source: 1 requests, 2 names, 1 descriptions",
 			"done: 2 candidates",
 		}
 		for _, p := range phases {

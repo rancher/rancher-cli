@@ -29,7 +29,9 @@ func requirements(k kinds.Kind) (completion.Requirements, bool) {
 // Key is key: its objects' names, listed where the row says they live.
 // Claim declines a key that names no Completable kind. The same source
 // serves the kind's name positional on the generated verbs and, for the
-// namespace and node kinds, the shared --namespace and --node flags.
+// namespace and node kinds, the shared --namespace and --node flags. A kind
+// with a Handle also describes each name by the fields of the row's
+// Handle.Lookup (a display name); a kind without one gets no description.
 func KindSource(key string) completion.Source {
 	k, known := kinds.ByKey(key)
 	return completion.Source{
@@ -70,7 +72,25 @@ func listNames(ctx context.Context, conn *completion.Connection, req completion.
 	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
 		return completion.Result{}
 	}
-	return completion.Result{Names: list.Names()}
+	paths := k.DescriptionPaths()
+	if len(paths) == 0 {
+		return completion.Result{Names: list.Names()}
+	}
+	var names []string
+	descriptions := map[string]string{}
+	for _, item := range list.Items {
+		name := completion.ItemName(item)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+		if _, ok := descriptions[name]; !ok {
+			if d := completion.ItemDescription(item, paths); d != "" {
+				descriptions[name] = d
+			}
+		}
+	}
+	return completion.Result{Names: names, Descriptions: descriptions}
 }
 
 // listPath derives the collection path for k at the site, one arm per

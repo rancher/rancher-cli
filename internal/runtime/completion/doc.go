@@ -4,7 +4,8 @@
 // deadline, resolves the connection, grants the request allowance and
 // sanitizes the answer. An owner package declares a Source: Claim says
 // whether the source owns a site and what it needs, without I/O; Complete
-// answers bare names through the Connection the surface built. The package
-// is a leaf of the standard library: it imports nothing of the module, so
-// every owner can depend on it.
+// answers bare names, each with an optional raw description, through the
+// Connection the surface built. The package is a leaf of the standard
+// library: it imports nothing of the module, so every owner can depend on
+// it.
 package completion

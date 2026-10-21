@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // nospaceBashes returns every distinct bash to exercise: the PATH one plus
@@ -47,10 +48,17 @@ func nospaceBashes(t *testing.T) []string {
 // and tilde expansion is testable); disableCompopt runs `enable -n compopt`
 // first, which removes the builtin on bash 4+ and is a harmless error on
 // bash 3 - the one lever that makes the bash-3-only fallback path
-// exercisable under ANY harness bash (e.g. Linux CI without a bash 3).
+// exercisable under ANY harness bash (e.g. Linux CI without a bash 3);
+// compType is the COMP_TYPE the driver sets before the completer runs:
+// empty for the first TAB, "63" for the list the second TAB shows.
 type bashDriverOpts struct {
 	workDir        string
 	disableCompopt bool
+	compType       string
+	// cpu, when set, receives the CPU time the driver shell and every
+	// process it ran used (user plus system), a measure that load on the
+	// machine does not stretch the way wall time is.
+	cpu *time.Duration
 }
 
 // bashCompletionEntries drives the full __rancher_bash_autocomplete in
@@ -100,15 +108,19 @@ _get_comp_words_by_ref() { cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[C
 source %q
 COMP_WORDS=%s
 COMP_CWORD=%d
-COMP_TYPE=""
+COMP_TYPE=%q
 __rancher_bash_autocomplete
 if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf 'R:%%s\n' "${COMPREPLY[@]}"; fi
 printf 'DONE\n'
-`, prelude, binDir, scriptPath, wordsLiteral, compCword)
+`, prelude, binDir, scriptPath, wordsLiteral, compCword, opts.compType)
 
-	out, err := exec.Command(bashBin, "-c", driver).CombinedOutput()
+	cmd := exec.Command(bashBin, "-c", driver)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("running bash driver (%s): %v\noutput:\n%s", bashBin, err, out)
+	}
+	if opts.cpu != nil {
+		*opts.cpu = cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()
 	}
 	if !strings.Contains(string(out), "DONE") {
 		t.Fatalf("driver did not run to completion (%s); output:\n%s", bashBin, out)

@@ -16,10 +16,20 @@ import (
 func newKindSitesServer(t *testing.T) *pathCountingServer {
 	t.Helper()
 	return newPathCountingServer(t, map[string]string{
-		mgmtClustersPath:   clustersBody,
-		steveProjectsPath:  projectsBody,
-		mgmtUsersPath:      usersBody,
-		nodeDriversPath:    items(plain("digitalocean"), plain("amazonec2")),
+		mgmtClustersPath:  clustersBody,
+		steveProjectsPath: projectsBody,
+		mgmtUsersPath:     usersBody,
+		nodeDriversPath: items(
+			`{"metadata":{"name":"digitalocean"},"spec":{"displayName":"DigitalOcean","description":"Create machines on DigitalOcean"}}`,
+			`{"metadata":{"name":"amazonec2"},"spec":{"displayName":"Amazon EC2"}}`),
+		roleTemplatesPath: items(
+			`{"metadata":{"name":"project-owner"},"displayName":"Project Owner","description":"full control of a project","context":"project"}`,
+			`{"metadata":{"name":"edit"},"displayName":"Kubernetes edit","hidden":true,"context":"cluster"}`,
+			`{"metadata":{"name":"retired"},"displayName":"Retired","locked":true,"context":"project"}`,
+			plain("no-display-name")),
+		globalRolesPath: items(
+			`{"metadata":{"name":"admin"},"displayName":"Administrator","description":"all rights","builtin":true}`,
+			`{"metadata":{"name":"hidden-role"},"displayName":"Hidden","hidden":true,"locked":true}`),
 		oidcClientsPath:    items(plain("other"), plain("my-client")),
 		oidcClientPath:     `{"metadata":{"name":"my-client"},"status":{"clientSecrets":{"secret-2":{},"secret-1":{}}}}`,
 		provDefaultPath:    items(plain("prod"), plain("dev")),
@@ -54,10 +64,10 @@ func newKindSitesServer(t *testing.T) *pathCountingServer {
 // storedConfig.
 func TestKindSitesFullCallback(t *testing.T) {
 	s := newKindSitesServer(t)
-	clusters := []string{"c-aaa11", "c-bbb22", "c-ccc33", "c-ddd44", "local", "prod"}
-	projects := []string{"Default", "System", "p-1", "p-2"}
-	projectIDs := []string{"p-1", "p-2"}
-	users := []string{"sameid", "u-alice", "u-badname", "u-bob", "u-nopids"}
+	clusters := []string{"c-aaa11:prod", "c-bbb22:dup", "c-ccc33:dup", "c-ddd44:prod cluster", "local", "prod"}
+	projects := []string{"Default", "System", "p-1:Default", "p-2:System"}
+	projectIDs := []string{"p-1:Default", "p-2:System"}
+	users := []string{"sameid:sameid (Same Id)", "u-alice:alice (Alice Smith)", "u-badname:bad name!", "u-bob:bob", "u-nopids:nopids"}
 	provClusters := []string{"dev", "prod"}
 	namespaces := []string{"default", "kube-system"}
 	tests := []struct {
@@ -70,17 +80,17 @@ func TestKindSitesFullCallback(t *testing.T) {
 	}{
 		// the shared --cluster value
 		{name: "--cluster on a generated command", words: []string{"get", "pod", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
-		{name: "--cluster= equals form", words: []string{"get", "pod"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster= equals form", words: []string{"get", "pod"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11:prod", "--cluster=c-bbb22:dup", "--cluster=c-ccc33:dup", "--cluster=c-ddd44:prod cluster", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
 		{name: "--cluster on another command", words: []string{"get", "namespace", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
 		{name: "--cluster with a typed partial offers every cluster", words: []string{"get", "pod", "--cluster"}, cur: "c-", want: clusters, hits: map[string]int{steveClustersPath: 2}},
-		{name: "--cluster= with a typed partial offers every cluster", words: []string{"get", "pod"}, cur: "--cluster=c-", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster= with a typed partial offers every cluster", words: []string{"get", "pod"}, cur: "--cluster=c-", want: []string{"--cluster=c-aaa11:prod", "--cluster=c-bbb22:dup", "--cluster=c-ccc33:dup", "--cluster=c-ddd44:prod cluster", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
 		{name: "--project with a cluster id", words: []string{"get", "pod", "--cluster", "c-aaa11", "--project"}, want: projects, hits: map[string]int{steveProjectsPath: 1}},
-		{name: "--project= equals form on a command that takes it", words: []string{"usage", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1", "--project=p-2"}, hits: map[string]int{steveProjectsPath: 1}},
+		{name: "--project= equals form on a command that takes it", words: []string{"usage", "--cluster", "c-aaa11"}, cur: "--project=", want: []string{"--project=Default", "--project=System", "--project=p-1:Default", "--project=p-2:System"}, hits: map[string]int{steveProjectsPath: 1}},
 		{name: "--project on a command that does not take it", words: []string{"get", "node", "--cluster", "c-aaa11", "--project"}, hits: map[string]int{}},
 		{name: "--project= on a command that does not take it", words: []string{"inspect", "pod", "--cluster", "c-aaa11"}, cur: "--project=", hits: map[string]int{}},
 		{name: "--project on project remove-namespace", words: []string{"project", "remove-namespace", "--cluster", "c-aaa11", "--project"}, hits: map[string]int{}},
 		{name: "--cluster on access projects walks steve", words: []string{"access", "projects", "--cluster"}, want: clusters, hits: map[string]int{steveClustersPath: 2}},
-		{name: "--cluster= on access projects", words: []string{"access", "projects"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11", "--cluster=c-bbb22", "--cluster=c-ccc33", "--cluster=c-ddd44", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
+		{name: "--cluster= on access projects", words: []string{"access", "projects"}, cur: "--cluster=", want: []string{"--cluster=c-aaa11:prod", "--cluster=c-bbb22:dup", "--cluster=c-ccc33:dup", "--cluster=c-ddd44:prod cluster", "--cluster=local", "--cluster=prod"}, hits: map[string]int{steveClustersPath: 2}},
 		// the shared --namespace and --node values
 		{name: "--namespace with a cluster id", words: []string{"get", "pod", "--cluster", "c-aaa11", "--namespace"}, want: namespaces, hits: map[string]int{downNamespacesPath: 1}},
 		{name: "--namespace with a cluster display name resolves it first", words: []string{"get", "pod", "--cluster", "prod", "--namespace"}, want: namespaces, hits: map[string]int{steveClustersPath: 2, downNamespacesPath: 1}},
@@ -104,7 +114,11 @@ func TestKindSitesFullCallback(t *testing.T) {
 		{name: "get user", words: []string{"get", "user"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "delete user", words: []string{"delete", "user"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
 		{name: "patch user", words: []string{"patch", "user"}, want: users, hits: map[string]int{mgmtUsersPath: 1}},
-		{name: "get nodedriver", words: []string{"get", "nodedriver"}, want: []string{"amazonec2", "digitalocean"}, hits: map[string]int{nodeDriversPath: 1}},
+		{name: "get nodedriver", words: []string{"get", "nodedriver"}, want: []string{"amazonec2:Amazon EC2", "digitalocean:DigitalOcean"}, hits: map[string]int{nodeDriversPath: 1}},
+		{name: "get roletemplate offers every id, hidden and locked included", words: []string{"get", "roletemplate"}, want: []string{"edit:Kubernetes edit", "no-display-name", "project-owner:Project Owner", "retired:Retired"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "patch roletemplate", words: []string{"patch", "roletemplate"}, want: []string{"edit:Kubernetes edit", "no-display-name", "project-owner:Project Owner", "retired:Retired"}, hits: map[string]int{roleTemplatesPath: 1}},
+		{name: "get globalrole offers every id, hidden and locked included", words: []string{"get", "globalrole"}, want: []string{"admin:Administrator", "hidden-role:Hidden"}, hits: map[string]int{globalRolesPath: 1}},
+		{name: "patch globalrole", words: []string{"patch", "globalrole"}, want: []string{"admin:Administrator", "hidden-role:Hidden"}, hits: map[string]int{globalRolesPath: 1}},
 		{name: "get oidcclient", words: []string{"get", "oidcclient"}, want: []string{"my-client", "other"}, hits: map[string]int{oidcClientsPath: 1}},
 		{name: "get provisioning-cluster", words: []string{"get", "provisioning-cluster"}, want: provClusters, hits: map[string]int{provDefaultPath: 1}},
 		{name: "get provisioning-cluster in a typed namespace", words: []string{"get", "provisioning-cluster", "--namespace", "team-a"}, want: []string{"team"}, hits: map[string]int{provTeamPath: 1}},

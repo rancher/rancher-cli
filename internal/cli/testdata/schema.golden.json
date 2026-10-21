@@ -12476,6 +12476,7 @@
       "aliases": [
         "roletemplates"
       ],
+      "completable": true,
       "group": "management.cattle.io",
       "key": "roletemplate",
       "name": "roletemplate",
@@ -12505,6 +12506,7 @@
       "aliases": [
         "globalroles"
       ],
+      "completable": true,
       "group": "management.cattle.io",
       "key": "globalrole",
       "name": "globalrole",

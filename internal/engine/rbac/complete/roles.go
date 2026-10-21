@@ -58,8 +58,9 @@ func ScopeOfTail(tail []string) (Scope, bool) {
 
 // RoleSource is the source grant and revoke hand the surface. It claims
 // the --role value site alone (no cluster, a management credential, one
-// listing) and answers the role names of the scope typed on the line;
-// every other site of the two commands is declined.
+// listing) and answers the role names of the scope typed on the line, each
+// described by its display name; every other site of the two commands is
+// declined.
 func RoleSource() completion.Source {
 	return completion.Source{Claim: claimRole, Complete: completeRole}
 }
@@ -94,7 +95,9 @@ func completeRole(ctx context.Context, conn *completion.Connection, req completi
 	if err := conn.GetJSON(ctx, p, "", &list); err != nil {
 		return completion.Result{}
 	}
+	paths := k.DescriptionPaths()
 	var names []string
+	descriptions := map[string]string{}
 	for _, item := range list.Items {
 		if roleContext != "" {
 			if c, _ := item["context"].(string); c != roleContext {
@@ -103,9 +106,14 @@ func completeRole(ctx context.Context, conn *completion.Connection, req completi
 		}
 		if name := completion.ItemName(item); name != "" {
 			names = append(names, name)
+			if _, ok := descriptions[name]; !ok {
+				if d := completion.ItemDescription(item, paths); d != "" {
+					descriptions[name] = d
+				}
+			}
 		}
 	}
-	return completion.Result{Names: completion.Dedupe(names)}
+	return completion.Result{Names: completion.Dedupe(names), Descriptions: descriptions}
 }
 
 // flagPresent reports whether --name or --name=... is on the tail.

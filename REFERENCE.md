@@ -479,6 +479,24 @@ positional names), project names, namespaces, pods, deployments, and nodes from
 the Rancher API. A credential-store capability note is printed to indicate which
 completions are available given your current auth setup.
 
+User, role template, global role and node driver ids complete as well. A user,
+project, cluster, role template, global role or node driver id is offered with
+a description when the object has a display name or, for a user, a username.
+The shell shows it beside the id where it shows one: a user's username and
+display name (`u-abc12`, `alice (Alice Smith)`), the display name for the
+others. The value inserted is always the id. A username or display name that
+completion offers as a value carries no description. A description is cut to 56
+characters; control and invisible characters in it are dropped or shown as a
+space.
+
+- zsh and fish show the description in the completion list; PowerShell shows it
+  as the tooltip of the candidate.
+- bash lists descriptions on the second TAB (`token  -- description`) on bash
+  4 and later. Bash 3 (the macOS system bash) lists the values only. The first
+  TAB inserts the value on every bash.
+- Windows PowerShell 5.1 decodes the CLI's output with the console encoding,
+  so a description with non-ASCII characters may show garbled there.
+
 `--auth-provider` on `auth login`, `auth get-token` and `token` completes the
 names of the auth configs this CLI can sign in with, from the server's provider
 list, which needs no credential: the request carries none. The server and CA
