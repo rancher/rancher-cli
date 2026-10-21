@@ -105,7 +105,7 @@ func TestCreateSecretWithoutNamespaceOrProjectIsValidation(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, "pass --namespace <namespace> for an ordinary secret, or --project <project> for a project-scoped secret", ce.Message)
+	assert.Equal(t, "pass --namespace <namespace> to create a secret in a namespace, or --project <project> to create a project-scoped secret", ce.Message)
 	assert.Equal(t, clierr.Rancher+" access projects --cluster 'c-x'", ce.Hint)
 }
 
@@ -123,7 +123,7 @@ func TestCreateSecretProjectWithNamespaceIsValidationBeforeReadingTheProject(t *
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, "--project and --namespace cannot be combined: --project creates a project-scoped secret in the project's backing namespace, --namespace an ordinary secret in that namespace", ce.Message)
+	assert.Equal(t, "--project and --namespace cannot be combined: --project creates a project-scoped secret in the project's backing namespace, --namespace creates a secret in that namespace", ce.Message)
 }
 
 func TestCreateSecretProjectScopedWithBackingNamespaceSet(t *testing.T) {
@@ -164,7 +164,7 @@ func TestCreateSecretProjectScopedEmptyBackingNamespaceWarns(t *testing.T) {
 	res, err := exec(t.Context())
 	require.NoError(t, err)
 	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "requires Rancher >= 2.14, the supported minimum")
+	assert.Equal(t, "the project has no status.backingNamespace yet; Rancher might not copy this project-scoped secret into the project's namespaces (copying needs Rancher 2.14 or later, the oldest version this CLI supports)", res.Warnings[0])
 }
 
 func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {

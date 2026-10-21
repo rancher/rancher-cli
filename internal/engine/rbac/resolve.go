@@ -129,7 +129,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 				// Create and receive AlreadyExists - provisioning cannot
 				// succeed. Return a structured conflict.
 				return ResolvedSubject{}, clierr.New(clierr.CodeConflict,
-					fmt.Sprintf("principal %q cannot be provisioned: predicted user id %q is already occupied by a different identity; find the right user, or pass its id directly",
+					fmt.Sprintf("principal %q cannot be provisioned: the user id Rancher would give the new user, %q, already belongs to a user without this principal; find the right user, or pass its id directly",
 						sub.Principal, hashIDOccupied)).
 					WithHint("rancher get users")
 			}
@@ -214,7 +214,7 @@ func resolvedFromUser(u *unstructured.Unstructured) (ResolvedSubject, error) {
 	pids, _, _ := unstructured.NestedStringSlice(u.Object, "principalIds")
 	if len(pids) == 0 {
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("user %q has no principal ids; fix the user object, or pass a fully qualified principal", u.GetName()))
+			fmt.Sprintf("user %q has no principalIds; fix the user in Rancher, or pass a fully qualified principal", u.GetName()))
 	}
 	return ResolvedSubject{UserID: u.GetName(), Principal: preferredPrincipal(pids), PrincipalIDs: pids}, nil
 }

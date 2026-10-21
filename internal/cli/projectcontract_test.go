@@ -570,7 +570,7 @@ func TestProjectContract(t *testing.T) {
 		secret := h.run(t, "create", "secret", "s", "--cluster", "c-abc", "--dry-run", "-o", "json")
 		require.NotNil(t, secret.err)
 		assert.Equal(t, "VALIDATION", secret.err.Code)
-		assert.Equal(t, "pass --namespace <namespace> for an ordinary secret, or --project <project> for a project-scoped secret", secret.err.Message)
+		assert.Equal(t, "pass --namespace <namespace> to create a secret in a namespace, or --project <project> to create a project-scoped secret", secret.err.Message)
 		assert.Equal(t, "rancher access projects --cluster 'c-abc'", secret.err.Hint)
 		assert.Equal(t, validationExit, secret.exit)
 		assert.Empty(t, secret.requests, "the flag combination is refused before any request")

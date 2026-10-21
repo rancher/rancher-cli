@@ -188,7 +188,8 @@ func TestRevokeZeroMatchesListsHeldRoles(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Contains(t, ce.Message, "subject holds: project-member, project-owner")
+	assert.Contains(t, ce.Message, "with that role for subject")
+	assert.Contains(t, ce.Message, "the subject has: project-member, project-owner")
 }
 
 // revokeHeldRolesError plans a project-scope revoke of --role nonexistent-role
@@ -230,7 +231,7 @@ func TestRevokeZeroMatchesOffersHeldRolesAsCandidates(t *testing.T) {
 		got = append(got, c.ID)
 	}
 	assert.Equal(t, want, got)
-	require.ErrorContains(t, ce, "subject holds: "+strings.Join(want, ", "))
+	require.ErrorContains(t, ce, "the subject has: "+strings.Join(want, ", "))
 	assert.Empty(t, ce.Hint)
 }
 
@@ -240,7 +241,7 @@ func TestRevokeZeroMatchesSkipsAnEmptyHeldRole(t *testing.T) {
 	t.Parallel()
 	ce := revokeHeldRolesError(t, "", "project-member")
 	assert.Equal(t, []clierr.Candidate{{ID: "project-member", Name: "project-member"}}, ce.Candidates)
-	assert.True(t, strings.HasSuffix(ce.Message, "subject holds: project-member"), ce.Message)
+	assert.True(t, strings.HasSuffix(ce.Message, "the subject has: project-member"), ce.Message)
 	assert.Empty(t, ce.Hint)
 }
 
@@ -251,7 +252,7 @@ func TestRevokeZeroMatchesWithOnlyEmptyHeldRolesGivesTheHint(t *testing.T) {
 	t.Parallel()
 	ce := revokeHeldRolesError(t, "", "")
 	assert.Empty(t, ce.Candidates)
-	assert.NotContains(t, ce.Message, "subject holds")
+	assert.NotContains(t, ce.Message, "the subject has")
 	assert.Equal(t, "rancher get projectroletemplatebinding --namespace 'p-x' -o json", ce.Hint)
 }
 
@@ -366,7 +367,8 @@ func TestRevokePartialFailure(t *testing.T) {
 	require.ErrorAs(t, execErr, &ce)
 	assert.Equal(t, clierr.CodeConflict, ce.Code)
 	assert.True(t, ce.Retryable, "partialFailure must hoist Retryable from the underlying error")
-	assert.Contains(t, ce.Message, "re-run")
+	assert.Contains(t, ce.Message, "not attempted")
+	assert.Contains(t, ce.Message, "run the same revoke command again to delete the remaining bindings")
 
 	// Type assertion asserts the Details shape.
 	pf, ok := ce.Details.(RevokePartialFailure)
@@ -389,7 +391,7 @@ func TestRevokePartialFailure(t *testing.T) {
 		"deleted: crtb-alpha",
 		"failed: crtb-beta (CONFLICT: rv conflict)",
 		"not attempted: crtb-gamma",
-		"deleted bindings are gone - re-run revoke to remove the rest",
+		"bindings already deleted stay deleted; run the same revoke command again to delete the rest",
 	}, pf.TextDetails())
 }
 
@@ -404,7 +406,7 @@ func TestRevokePartialFailureTextDetailsOmitsEmptyLines(t *testing.T) {
 	}
 	assert.Equal(t, []string{
 		"failed: crtb-alpha (CONFLICT: rv conflict)",
-		"deleted bindings are gone - re-run revoke to remove the rest",
+		"bindings already deleted stay deleted; run the same revoke command again to delete the rest",
 	}, pf.TextDetails())
 }
 

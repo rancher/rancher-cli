@@ -405,14 +405,14 @@ func TestDeleteUserProbeRateLimitedRefusesWithGuardText(t *testing.T) {
 	limited := run(429)
 	assert.Equal(t, clierr.CodeGeneric, limited.Code)
 	assert.True(t, limited.Retryable)
-	assert.Equal(t, "could not verify the target is not your own user: the server has received too many requests; retry later, or have another admin delete this user", limited.Message)
+	assert.Equal(t, "could not check whether the target is your own user: the server answered 429 Too Many Requests; the user was not deleted; retry later, or have another admin delete this user", limited.Message)
 	status, ok := clierr.HTTPStatus(limited)
 	assert.True(t, ok, "the status stays readable through the refusal")
 	assert.Equal(t, http.StatusTooManyRequests, status)
 
 	refused := run(403)
 	assert.Equal(t, clierr.CodeRBAC, refused.Code, "a classified 403 passes through")
-	assert.NotContains(t, refused.Message, "could not verify the target")
+	assert.NotContains(t, refused.Message, "could not check whether the target")
 }
 
 // TestDeleteUserTypedUsernameNamesTheIDAndDeletesNothing asserts a username in

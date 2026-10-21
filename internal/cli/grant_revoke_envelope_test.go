@@ -414,7 +414,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 
 	provID := rbac.ProvisionedUserID("okta_user://ghost")
-	provWarn := "no user exists for principal \"okta_user://ghost\" - Rancher will provision user \"" + provID + "\" when the binding applies"
+	provWarn := "no user exists for principal \"okta_user://ghost\"; Rancher will provision user \"" + provID + "\" when the binding is created"
 
 	t.Run("grant project preview", func(t *testing.T) {
 		opts := &serverOpts{}

@@ -330,7 +330,7 @@ func TestCreateProjectContainerLimitDocs(t *testing.T) {
 	d := NewCreate(stubFactory{}).Describe()
 	i := slices.IndexFunc(d.Flags, func(a runtime.ArgSpec) bool { return a.Name == "container-default-resource-limit" })
 	require.GreaterOrEqual(t, i, 0)
-	assert.Equal(t, "default container requests and limits as `key=value`", d.Flags[i].Desc)
+	assert.Equal(t, "default container resource requests and limits as `key=value` pairs", d.Flags[i].Desc)
 	for _, k := range ContainerDefaultResourceLimitKeys() {
 		assert.Contains(t, d.Desc, k, "the schema desc names every key")
 	}
@@ -368,7 +368,7 @@ func TestKeyValueFlagsRefuseARepeatedKey(t *testing.T) {
 			var ce *clierr.Error
 			require.ErrorAs(t, err, &ce)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			require.ErrorContains(t, err, "--"+tc.flag+` names the key "limitsCpu" more than once`)
+			require.ErrorContains(t, err, `the key "limitsCpu" appears more than once in --`+tc.flag)
 			assert.Empty(t, client.dryRuns, "refused before any request")
 		})
 	}
@@ -383,7 +383,7 @@ func TestKeyValueFlagsRefuseARepeatedKey(t *testing.T) {
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
 		assert.Equal(t, clierr.CodeValidation, ce.Code)
-		require.ErrorContains(t, err, `--from-literal names the key "token" more than once`)
+		require.ErrorContains(t, err, `the key "token" appears more than once in --from-literal`)
 		assert.Nil(t, client.created, "refused before any request")
 	})
 }

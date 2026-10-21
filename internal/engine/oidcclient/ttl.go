@@ -22,7 +22,7 @@ const maxTTLSeconds = int64(math.MaxInt64) / int64(time.Second)
 // omitted: the caller applies its OWN default (3600/86400) - the CLI's
 // default, never the server's, since both OIDCClientSpec TTL fields are
 // CRD-required with no server-side defaulting. A supplied value must be a
-// positive whole number of seconds: any sub-second/fractional remainder,
+// positive whole number of seconds: any value with a part of a second,
 // zero, or negative value is VALIDATION, never silently truncated or
 // reinterpreted as omission - the existing TTLSeconds/TTLMilliseconds
 // zero-is-omission sentinel precedent is deliberately not reused here for
@@ -41,7 +41,7 @@ func strictTTLSeconds(flag, raw string) (int64, error) {
 	}
 	if ttl%time.Second != 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --%s %q: must be a whole number of seconds with no fractional remainder; e.g. 1h or 3600s", flag, raw))
+			fmt.Sprintf("invalid --%s %q: must be a whole number of seconds; e.g. 1h or 3600s", flag, raw))
 	}
 	secs := int64(ttl / time.Second)
 	if secs > maxTTLSeconds {

@@ -961,7 +961,7 @@ func TestUsageByProjectEmptyScope(t *testing.T) {
 		{name: "namespace of a project with pods", flags: map[string]string{"namespace": "ns1"},
 			pods: []unstructured.Unstructured{pod("ns1", "n1")}, wantPodList: true},
 		{name: "project and a missing namespace keep the membership error", flags: map[string]string{"namespace": "missing"}, scoped: true,
-			wantCode: clierr.CodeValidation, wantMessage: `namespace "missing" is not in project "p-x"; pass a project namespace, or omit --namespace to scope the whole project`},
+			wantCode: clierr.CodeValidation, wantMessage: `namespace "missing" is not in project "p-x"; pass a project namespace, or omit --namespace to cover every namespace of the project`},
 		{name: "node without pods exists", flags: map[string]string{"node": "n1"}, node: getOK, wantGets: []string{"nodes/n1"}, wantPodList: true},
 		{name: "node without pods is missing", flags: map[string]string{"node": "n1"}, node: getErr(nodeMissing),
 			wantCode: clierr.CodeNotFound, wantMessage: "node not found: n1", wantGets: []string{"nodes/n1"}, wantPodList: true},

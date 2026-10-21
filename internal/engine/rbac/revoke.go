@@ -49,7 +49,7 @@ func (p RevokePartialFailure) TextDetails() []string {
 	if len(p.Unattempted) > 0 {
 		lines = append(lines, "not attempted: "+strings.Join(p.Unattempted, ", "))
 	}
-	lines = append(lines, "deleted bindings are gone - re-run revoke to remove the rest")
+	lines = append(lines, "bindings already deleted stay deleted; run the same revoke command again to delete the rest")
 	return lines
 }
 
@@ -71,18 +71,18 @@ func (revokeCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "revoke",
 		Usage: "Revoke a subject's role(s) at project, cluster, or global scope",
-		Desc: "Lists the scope's bindings for the subject, optionally filtered by --role, " +
-			"dry-runs each delete, and plans sequential execution. " +
-			"Discover available roles: rancher get roletemplates (project/cluster scopes) " +
+		Desc: "Finds the subject's bindings at the scope (only those for --role when it is given), " +
+			"checks each deletion with a server-side dry-run, and previews deleting them one at a time. " +
+			"List the available roles with: rancher get roletemplates (project and cluster scopes) " +
 			"or rancher get globalroles (global scope).",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
 		Flags: []runtime.ArgSpec{
-			{Name: "role", Type: "string", Desc: "revoke only this role; absent revokes every role at the scope"},
+			{Name: "role", Type: "string", Desc: "revoke only this role; without it, every role of the subject at the scope is revoked"},
 			runtime.ProjectFlag(false, "project scope: project `id|name`"),
-			{Name: "cluster", Type: "string", Desc: "cluster scope, or the cluster qualifying --project"},
+			{Name: "cluster", Type: "string", Desc: "cluster scope, or the cluster the --project is in"},
 			{Name: "global", Type: "bool", Desc: "global scope"},
-			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type; recognized principal forms are inferred, other fully qualified forms require this flag"},
+			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other fully qualified principal"},
 		},
 		Examples: []string{
 			"rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
@@ -157,7 +157,7 @@ func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 		held := slices.DeleteFunc(slices.Sorted(maps.Keys(heldRoles)), func(r string) bool { return r == "" })
 		var heldCands []clierr.Candidate
 		if len(held) > 0 {
-			msg += "; subject holds: " + strings.Join(held, ", ")
+			msg = fmt.Sprintf("no %s with that role for subject %q at this scope; the subject has: %s", bindKind.GVR.Resource, args[0], strings.Join(held, ", "))
 			for _, r := range held {
 				heldCands = append(heldCands, clierr.Candidate{ID: r, Name: r})
 			}
@@ -259,8 +259,8 @@ func partialFailure(err error, failedName string, deleted, unattempted []string)
 		unattempted = []string{}
 	}
 	return clierr.New(code,
-		fmt.Sprintf("revoke partially applied: %d deleted, failed on %q, %d unattempted"+
-			"; re-run the same revoke command; it re-matches the remaining bindings",
+		fmt.Sprintf("revoke partially applied: %d deleted, failed on %q, %d not attempted"+
+			"; run the same revoke command again to delete the remaining bindings",
 			len(deleted), failedName, len(unattempted))).
 		WithRetryable(retryable).
 		WithDetails(RevokePartialFailure{

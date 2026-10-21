@@ -22,10 +22,10 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
 
-// cascadeWarning: deleting a user removes the identity record and
-// Rancher's controllers remove the user's role bindings (cluster and
-// project memberships, global role bindings) with it.
-const userCascadeWarning = "deleting this user removes the identity record; Rancher's controllers remove the user's role bindings (cluster memberships, project memberships, global role bindings) with it"
+// cascadeWarning: deleting a user deletes the User object and Rancher's
+// controllers also delete the user's role bindings (cluster and project
+// memberships, global role bindings).
+const userCascadeWarning = "deleting this user deletes the User object; Rancher's controllers also delete the user's role bindings (cluster memberships, project memberships, global role bindings)"
 
 // NewDeleteUser builds the delete override for the user kind row. clients is
 // passed straight through to resources.NewGuardedDeletePrePlan, which runs the
@@ -93,14 +93,14 @@ func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, i
 	}
 	currentID := selfuser.UserID(probe)
 	if currentID == "" {
-		return guardVerifyRefusal(errors.New("probe returned no identity"))
+		return guardVerifyRefusal(errors.New("the server returned no user id for the current user"))
 	}
 	if currentID != args[0] {
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation,
-		"refusing to delete user "+args[0]+": deleting your own user record locks this CLI out"+
-			"; switch to a different admin account, then delete this user - another admin must do it")
+		"refusing to delete user "+args[0]+": it is your own user, and deleting it locks this CLI out"+
+			"; log in as a different admin and delete it from there")
 }
 
 // guardVerifyRefusal returns the retryable GENERIC error used when the
@@ -111,10 +111,10 @@ func guardSelfDelete(ctx context.Context, clients engine.ClusterClientFactory, i
 func guardVerifyRefusal(cause error) *clierr.Error {
 	if status, ok := clierr.HTTPStatus(cause); ok && status == http.StatusTooManyRequests {
 		return clierr.Retryable(clierr.CodeGeneric,
-			"could not verify the target is not your own user: the server has received too many requests; retry later, or have another admin delete this user").WithCause(cause)
+			"could not check whether the target is your own user: the server answered 429 Too Many Requests; the user was not deleted; retry later, or have another admin delete this user").WithCause(cause)
 	}
 	return clierr.Retryable(clierr.CodeGeneric,
-		fmt.Sprintf("could not verify the target is not your own user: %v; retry, or have another admin delete this user", cause)).WithCause(cause)
+		fmt.Sprintf("could not check whether the target is your own user: %v; the user was not deleted; retry, or have another admin delete this user", cause)).WithCause(cause)
 }
 
 // passClassifiedOrRefuse returns err unchanged when it is a classified clierr

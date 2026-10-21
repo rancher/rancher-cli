@@ -35,19 +35,19 @@ func (grantCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "grant",
 		Usage: "Grant a role to a user or group at project, cluster, or global scope",
-		Desc: "Verifies the role exists at the declared scope " +
-			"(roletemplate for project/cluster, globalrole for global), resolves the subject, " +
-			"then checks for an existing duplicate binding and plans a create. " +
-			"Discover available roles: rancher get roletemplates (project/cluster scopes) " +
+		Desc: "Checks that the role exists for the scope (a roletemplate for project or cluster scope, " +
+			"a globalrole for global scope), finds the subject, checks that the subject does not already " +
+			"have the role there, and previews creating the binding. " +
+			"List the available roles with: rancher get roletemplates (project and cluster scopes) " +
 			"or rancher get globalroles (global scope).",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "subject", Type: "string", Required: true, Desc: "user/group name, id, or fully qualified principal"}},
 		Flags: []runtime.ArgSpec{
 			{Name: "role", Type: "string", Required: true, Desc: "role for the scope: a roletemplate `id` (project/cluster) or globalrole `id` (global); discover with: rancher get roletemplates (project/cluster) or rancher get globalroles (global)"},
 			runtime.ProjectFlag(false, "project scope: project `id|name`"),
-			{Name: "cluster", Type: "string", Desc: "cluster scope, or the cluster qualifying --project"},
+			{Name: "cluster", Type: "string", Desc: "cluster scope, or the cluster the --project is in"},
 			{Name: "global", Type: "bool", Desc: "global scope"},
-			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type; recognized principal forms are inferred, other fully qualified forms require this flag"},
+			{Name: "type", Type: "string", Enum: []string{"user", "group"}, Desc: "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other fully qualified principal"},
 		},
 		Examples: []string{
 			"rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
@@ -122,7 +122,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		if r != role || !bindingMatchesSubject(b, rs, sub, true) {
 			continue
 		}
-		msg := fmt.Sprintf("subject already holds role %q at this scope (binding %s)", role, b.GetName())
+		msg := fmt.Sprintf("subject already has role %q at this scope (binding %s)", role, b.GetName())
 		var hint string
 		// Alias-only match: the binding carries a different principal alias
 		// than the caller supplied. Revoke matches with aliasPrincipals=false
@@ -131,12 +131,12 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		// the caller can act precisely.
 		if !bindingMatchesSubject(b, rs, sub, false) {
 			if upn, _, _ := unstructured.NestedString(b.Object, "userPrincipalName"); upn != "" {
-				msg += fmt.Sprintf("; alias-matched binding uses principal %q", upn)
+				msg += fmt.Sprintf("; that binding uses another principal of the same user, %q", upn)
 				hint = fmt.Sprintf("rancher revoke %s --role %s%s", clierr.ShellQuote(upn), clierr.ShellQuote(role), scope.Flags())
 			}
 		}
 		if hint == "" {
-			msg += "; nothing to grant; use revoke to remove it first if re-granting"
+			msg += "; nothing to grant; to grant it again, revoke it first"
 		}
 		e := clierr.New(clierr.CodeConflict, msg)
 		if hint != "" {
@@ -196,7 +196,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	eff.Diff = grantDiff(fields)
 	if rs.Provision {
 		eff.Warnings = append(eff.Warnings, fmt.Sprintf(
-			"no user exists for principal %q - Rancher will provision user %q when the binding applies",
+			"no user exists for principal %q; Rancher will provision user %q when the binding is created",
 			rs.Principal, ProvisionedUserID(rs.Principal)))
 	}
 	return eff, exec, nil

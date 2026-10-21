@@ -246,7 +246,7 @@
         },
         {
           "name": "project remove-namespace",
-          "usage": "Remove a namespace from its project and make sure its project label is removed"
+          "usage": "Remove a namespace from its project and remove its project label"
         }
       ],
       "desc": "Manage project namespaces: add or remove downstream namespaces from a Rancher project.",

@@ -41,7 +41,7 @@ jsonquery stdout 'warnings.0' 'this client secret is shown exactly once - store 
 # must never fail on discovery quality.
 jsonquery stdout data.issuer ${TEST_RANCHER_URL}/oidc
 jsonquery stdout data.endpoints ''
-stdout 'could not confirm the discovery document'
+stdout 'could not read the discovery document'
 
 # -o name is rejected before Plan for this once-only command - zero total
 # requests, never a silent invalidate-and-discard.

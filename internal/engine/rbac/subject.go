@@ -68,14 +68,14 @@ func ParseSubject(arg, typeFlag string) (Subject, error) {
 
 	if arg[strings.Index(arg, "://")+3:] == "" {
 		return Subject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("principal %q has empty remainder after ://; provide the full principal id, e.g. local://<user-id>", arg))
+			fmt.Sprintf("principal %q has nothing after ://; provide the full principal id, e.g. local://<user-id>", arg))
 	}
 
-	// Closed inference rule: only recognized principal forms infer a kind.
-	// "_user" → user, "_group" → group, plus Rancher's documented group
-	// aliases (github_org, github_team) and "local" (users only). Unknown
-	// prefixes never default silently: an explicit --type decides them, and
-	// without one they are a validation error.
+	// Closed inference rule: only a principal prefix the CLI recognizes
+	// infers a kind. "_user" → user, "_group" → group, plus Rancher's
+	// documented group aliases (github_org, github_team) and "local" (users
+	// only). Unknown prefixes never default silently: an explicit --type
+	// decides them, and without one they are a validation error.
 	prefix := arg[:strings.Index(arg, "://")]
 	var inferred SubjectKind
 	switch {
@@ -92,7 +92,7 @@ func ParseSubject(arg, typeFlag string) (Subject, error) {
 	}
 	if typeFlag != "" && flagKind != inferred {
 		return Subject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--type %s contradicts principal %q (inferred %s); drop --type or pass the matching principal", typeFlag, arg, inferred))
+			fmt.Sprintf("--type %s does not match principal %q (a %s principal); drop --type or pass the matching principal", typeFlag, arg, inferred))
 	}
 	return Subject{Kind: inferred, Principal: arg}, nil
 }

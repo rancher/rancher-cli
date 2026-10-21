@@ -19,7 +19,7 @@ type removeSecretCmd struct {
 
 // NewRemoveSecret builds `oidc-client remove-secret <client> <secret-name>`
 // (mutating): sets the remove annotation and waits for the controller to
-// drop the named secret. Destructive + --yes. Delivers no once-only value
+// remove the named secret. Destructive + --yes. Delivers no once-only value
 // (ordinary Delivery), unlike add-secret/rotate-secret.
 func NewRemoveSecret(clients engine.ClusterClientFactory) runtime.Command {
 	return &removeSecretCmd{clients: clients}
@@ -29,7 +29,7 @@ func (removeSecretCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "oidc-client remove-secret",
 		Usage:       "Remove a client secret from an OIDC client",
-		Desc:        "Sets the remove annotation and waits for the controller to drop the named secret.",
+		Desc:        "Sets the cattle.io/oidc-client-secret-remove annotation on the client and waits for Rancher's controller to remove the named secret.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
 			{Name: "client", Type: "string", Required: true, Desc: "OIDC client name"},

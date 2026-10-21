@@ -150,21 +150,23 @@ func TestAddSecretThroughRunMutatingKeepsPlanWarningAndSuppressesShownOnce(t *te
 // it, non-retryable, never deliver a possibly-wrong key, and name the keys
 // that appeared and disappeared.
 func TestAddSecretExecAmbiguousTransitionsAreTerminal(t *testing.T) {
-	const prefix = "oidc-client my-app: its client secrets changed other than by the one new key add-secret asked for ("
-	const suffix = "); another change to this client, or Rancher's controller handling the request twice, can do this"
+	const suffix = "); another change to this client, or Rancher's controller handling the annotation twice, can do this"
+	const changedBy = "oidc-client my-app: its client secrets changed by more than the one new secret add-secret asked for ("
+	const noneAdded = "oidc-client my-app: add-secret expected exactly one new client secret, but none was added and some were removed ("
 	cases := []struct {
 		name   string
 		after  *unstructured.Unstructured
+		prefix string
 		change string
 	}{
 		{"concurrent remove: baseline key missing", oidcClientObj("my-app", "client-abc", map[string]any{
 			"client-secret-2": map[string]any{},
-		}), "added [client-secret-2], removed [client-secret-1]"},
+		}), changedBy, "added: client-secret-2; removed: client-secret-1"},
 		{"concurrent two-add: two new keys", oidcClientObj("my-app", "client-abc", map[string]any{
 			"client-secret-1": map[string]any{}, "client-secret-2": map[string]any{}, "client-secret-3": map[string]any{},
-		}), "added [client-secret-2 client-secret-3]"},
+		}), changedBy, "added: client-secret-2, client-secret-3"},
 		{"concurrent remove: no new key", oidcClientObj("my-app", "client-abc", map[string]any{}),
-			"removed [client-secret-1]"},
+			noneAdded, "removed: client-secret-1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -178,7 +180,7 @@ func TestAddSecretExecAmbiguousTransitionsAreTerminal(t *testing.T) {
 			require.Error(t, err)
 			ce, ok := errors.AsType[*clierr.Error](err)
 			require.True(t, ok)
-			assert.Equal(t, prefix+tc.change+suffix, ce.Message)
+			assert.Equal(t, tc.prefix+tc.change+suffix, ce.Message)
 			assert.Equal(t, 2, client.pollCalls, "the first poll that sees the change ends the wait")
 			assert.False(t, ce.Retryable)
 			details, ok := ce.Details.(clierr.CommittedContextDetails)
@@ -219,9 +221,10 @@ func TestAddSecretExecWaitsBetweenTheControllersWrites(t *testing.T) {
 	assert.Equal(t, 5, client.pollCalls, "the wait ran through both in-between polls")
 }
 
-// TestAddSecretExecTimeoutNamesAConsumedRequest asserts the timeout message
-// when the create request was consumed and no new key ever appeared.
-func TestAddSecretExecTimeoutNamesAConsumedRequest(t *testing.T) {
+// TestAddSecretExecTimeoutNamesTheRemovedAnnotation asserts the timeout
+// message when the create annotation was removed and no new client secret
+// ever appeared.
+func TestAddSecretExecTimeoutNamesTheRemovedAnnotation(t *testing.T) {
 	withFastPoll(t)
 	before := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
 	consumed := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
@@ -233,7 +236,7 @@ func TestAddSecretExecTimeoutNamesAConsumedRequest(t *testing.T) {
 	require.Error(t, err)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
-	assert.Equal(t, "timed out waiting for oidc-client my-app to add a secret: the create request was consumed but no new client secret appeared", ce.Message)
+	assert.Equal(t, "timed out waiting for oidc-client my-app to add a secret: the cattle.io/oidc-client-secret-create annotation was removed but no new client secret appeared", ce.Message)
 	assert.False(t, ce.Retryable)
 	details, ok := ce.Details.(clierr.CommittedContextDetails)
 	require.True(t, ok)

@@ -205,7 +205,7 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 	case namespace != "" && projectID != "":
 		if !members[namespace] {
 			return runtime.Result{}, projects.NotMemberError(namespace, projectID,
-				"pass a project namespace, or omit --namespace to scope the whole project")
+				"pass a project namespace, or omit --namespace to cover every namespace of the project")
 		}
 		namespaces = []string{namespace}
 		l, lerr := client.List(ctx, podKind.GVR, namespace, "")

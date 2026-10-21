@@ -149,7 +149,7 @@ func TestAddNamespaceWithoutProjectOnTheContextIsACommandBug(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Equal(t, "command bug: project add-namespace runs without the required --project", ce.Message)
+	assert.Equal(t, "internal error: project add-namespace ran without --project", ce.Message)
 	assert.Nil(t, client.updated, "nothing is previewed")
 }
 
@@ -239,7 +239,7 @@ func TestRemoveNamespaceClearsALabelWithoutAnnotation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, safety.ActionUpdate, eff.Action)
 	assert.Equal(t, []safety.DiffEntry{{Path: "/metadata/labels/field.cattle.io~1projectId", From: "p-7"}}, eff.Diff)
-	assert.Equal(t, []string{"team-a is in no project; this makes sure its project label is removed"}, eff.Warnings)
+	assert.Equal(t, []string{"team-a is in no project; removing its project label"}, eff.Warnings)
 	_, found, _ := unstructured.NestedString(client.updated.Object, "metadata", "labels", projectKey)
 	assert.False(t, found)
 
@@ -300,11 +300,11 @@ func TestAddNamespaceIgnoresALabelWithoutAnnotation(t *testing.T) {
 	}
 }
 
-// TestRemoveNamespaceHelpSaysItMakesSureTheLabelIsRemoved asserts the
+// TestRemoveNamespaceHelpSaysItRemovesTheProjectLabel asserts the
 // command's one-line help.
-func TestRemoveNamespaceHelpSaysItMakesSureTheLabelIsRemoved(t *testing.T) {
+func TestRemoveNamespaceHelpSaysItRemovesTheProjectLabel(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "Remove a namespace from its project and make sure its project label is removed", NewRemoveNamespace(stubFactory{}).Describe().Usage)
+	assert.Equal(t, "Remove a namespace from its project and remove its project label", NewRemoveNamespace(stubFactory{}).Describe().Usage)
 }
 
 // TestRemoveNamespaceProjectRefusalHint asserts the command a typed

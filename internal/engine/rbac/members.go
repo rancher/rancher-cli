@@ -163,7 +163,7 @@ func ResolveMembers(ctx context.Context, mgmt engine.ClusterClient, bindings []u
 	}
 	sort.Strings(collisions)
 	for _, p := range collisions {
-		warnings = append(warnings, fmt.Sprintf("display name for %s is ambiguous (multiple owners); left unresolved", p))
+		warnings = append(warnings, fmt.Sprintf("display name for %s not shown: more than one user has this principal, or userattributes give it different display names", p))
 	}
 
 	sort.Slice(rows, func(i, j int) bool {
@@ -241,7 +241,7 @@ func resolveUserDisplayNames(ctx context.Context, mgmt engine.ClusterClient, use
 	case listErr != nil && lookupCanceled(ctx, listErr):
 		return nil, nil, "", listErr
 	case listErr != nil:
-		return display, collided, "users unavailable: " + listErr.Error(), nil
+		return display, collided, "could not list users; user display names are not shown: " + listErr.Error(), nil
 	}
 
 	owners := map[string]int{} // referenced principal id → count of Users advertising it
@@ -295,7 +295,7 @@ func resolveGroupDisplayNames(ctx context.Context, mgmt engine.ClusterClient, gr
 	case listErr != nil && lookupCanceled(ctx, listErr):
 		return nil, nil, "", listErr
 	case listErr != nil:
-		return display, collided, "userattributes unavailable: " + listErr.Error(), nil
+		return display, collided, "could not list userattributes; group display names are not shown: " + listErr.Error(), nil
 	}
 
 	for i := range list.Items {

@@ -20,7 +20,7 @@ type rotateSecretCmd struct {
 
 // NewRotateSecret builds `oidc-client rotate-secret <client> [secret-name]`
 // (mutating): sets the regenerate annotation, waits for the controller to
-// replace the named secret's value, and prints the new value once.
+// generate a new value for the named secret, and prints the new value once.
 // Destructive + --yes. Omitting secret-name is legal only when the client
 // has exactly one secret.
 func NewRotateSecret(clients engine.ClusterClientFactory) runtime.Command {
@@ -31,9 +31,9 @@ func (rotateSecretCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "oidc-client rotate-secret",
 		Usage: "Regenerate a client secret on an OIDC client",
-		Desc: "Sets the regenerate annotation, waits for the controller to replace the named secret's " +
-			"value, and prints the new value once. secret-name may be omitted only when the client has " +
-			"exactly one secret.",
+		Desc: "Sets the cattle.io/oidc-client-secret-regenerate annotation on the client, waits for Rancher's " +
+			"controller to generate a new value for the named secret, and prints the new value once. " +
+			"secret-name may be omitted only when the client has exactly one secret.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
 			{Name: "client", Type: "string", Required: true, Desc: "OIDC client name"},
@@ -147,7 +147,7 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 
 	secretLine, shownOnce := runtime.OnceOnlyLine("client secret", newValue, "client secret")
 	res := runtime.MutationText("oidcclient", clientName, "patched",
-		"secret "+secretName+" rotated",
+		"secret "+secretName+" regenerated",
 		secretLine,
 	)
 	res.Kind = "OIDCClientSecretRotated"
@@ -177,10 +177,10 @@ func isTransientSecretReadError(err error) bool {
 
 // rotateUnchangedValueError is rotate's terminal error for the (should-be
 // impossible with full-value comparison) case where the controller
-// consumed the regenerate annotation but the backing value did not change.
+// removed the regenerate annotation but the backing value did not change.
 func rotateUnchangedValueError(clientName, secretName, recovery string) *clierr.Error {
 	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("oidc-client %s: secret %s did not change even though the controller consumed the rotation request", clientName, secretName)).
+		fmt.Sprintf("oidc-client %s: secret %s did not change although the cattle.io/oidc-client-secret-regenerate annotation was removed", clientName, secretName)).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName, Recovery: recovery,
 		})

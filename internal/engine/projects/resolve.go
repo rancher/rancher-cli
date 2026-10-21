@@ -104,7 +104,7 @@ func MemberSelector(projectID string) (string, error) {
 	req, err := labels.NewRequirement(projectKey, selection.Equals, []string{projectID})
 	if err != nil {
 		return "", clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid project id %q: %v; pass a valid label value", projectID, err))
+			fmt.Sprintf("invalid project id %q: %v; pass a project id that is a valid Kubernetes label value", projectID, err))
 	}
 	return labels.NewSelector().Add(*req).String(), nil
 }

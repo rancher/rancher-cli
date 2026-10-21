@@ -171,7 +171,7 @@ func TestRotateSecretExecSuccessDeliversNewValue(t *testing.T) {
 	assert.Equal(t, "client-secret-1", data["secretName"])
 	require.NotNil(t, res.CommittedContext)
 	assert.Equal(t, "oidcclient/my-app patched\n"+
-		"  secret client-secret-1 rotated\n"+
+		"  secret client-secret-1 regenerated\n"+
 		"  client secret: new-value   (shown once - store it now)\n", res.Text)
 }
 

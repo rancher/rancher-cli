@@ -30,7 +30,7 @@ func (addSecretCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "oidc-client add-secret",
 		Usage:       "Add a new client secret to an OIDC client",
-		Desc:        "Sets the create annotation, waits for the controller to generate a new secret, and prints it once.",
+		Desc:        "Sets the cattle.io/oidc-client-secret-create annotation on the client, waits for Rancher's controller to generate a new client secret, and prints it once.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
 			{Name: "client", Type: "string", Required: true, Desc: "OIDC client name"},
@@ -113,7 +113,7 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 		func(last *unstructured.Unstructured) *clierr.Error {
 			msg := fmt.Sprintf("timed out waiting for oidc-client %s to add a secret", clientName)
 			if last != nil && !annotationPresent(last, annotationSecretCreate) {
-				msg += ": the create request was consumed but no new client secret appeared"
+				msg += ": the cattle.io/oidc-client-secret-create annotation was removed but no new client secret appeared"
 			}
 			return clierr.New(clierr.CodeGeneric, msg).
 				WithDetails(clierr.CommittedContextDetails{
@@ -151,16 +151,19 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 // new key must fail immediately rather than be misread as success. The
 // message names the keys that appeared and the keys that disappeared.
 func addSecretConcurrentChange(clientName string, newKeys, missing []string) *clierr.Error {
-	var change []string
-	if len(newKeys) > 0 {
-		change = append(change, fmt.Sprintf("added %v", newKeys))
+	var msg string
+	if len(newKeys) == 0 {
+		msg = fmt.Sprintf("oidc-client %s: add-secret expected exactly one new client secret, but none was added and some were removed (removed: %s); another change to this client, or Rancher's controller handling the annotation twice, can do this",
+			clientName, strings.Join(missing, ", "))
+	} else {
+		change := []string{"added: " + strings.Join(newKeys, ", ")}
+		if len(missing) > 0 {
+			change = append(change, "removed: "+strings.Join(missing, ", "))
+		}
+		msg = fmt.Sprintf("oidc-client %s: its client secrets changed by more than the one new secret add-secret asked for (%s); another change to this client, or Rancher's controller handling the annotation twice, can do this",
+			clientName, strings.Join(change, "; "))
 	}
-	if len(missing) > 0 {
-		change = append(change, fmt.Sprintf("removed %v", missing))
-	}
-	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("oidc-client %s: its client secrets changed other than by the one new key add-secret asked for (%s); another change to this client, or Rancher's controller handling the request twice, can do this",
-			clientName, strings.Join(change, ", "))).
+	return clierr.New(clierr.CodeGeneric, msg).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName,
 			Recovery: recoveryHint(clientName),

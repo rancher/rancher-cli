@@ -307,11 +307,12 @@ func TestCreateExecDegradedDiscovery(t *testing.T) {
 	cases := []struct {
 		name string
 		root stubRootFactory
+		verb string
 	}{
-		{"malformed JSON", stubRootFactory{c: fakeRootClient{body: []byte("not json")}}},
-		{"incomplete document", stubRootFactory{c: fakeRootClient{body: []byte(`{"issuer":"https://rancher.example/oidc","authorization_endpoint":"https://rancher.example/oidc/authorize"}`)}}},
-		{"issuer mismatch", stubRootFactory{c: fakeRootClient{body: []byte(`{"issuer":"https://wrong.example/oidc","authorization_endpoint":"a","token_endpoint":"b","jwks_uri":"c"}`)}}},
-		{"http failure", stubRootFactory{c: fakeRootClient{err: clierr.New(clierr.CodeGeneric, "connection refused")}}},
+		{"malformed JSON", stubRootFactory{c: fakeRootClient{body: []byte("not json")}}, "use"},
+		{"incomplete document", stubRootFactory{c: fakeRootClient{body: []byte(`{"issuer":"https://rancher.example/oidc","authorization_endpoint":"https://rancher.example/oidc/authorize"}`)}}, "use"},
+		{"issuer mismatch", stubRootFactory{c: fakeRootClient{body: []byte(`{"issuer":"https://wrong.example/oidc","authorization_endpoint":"a","token_endpoint":"b","jwks_uri":"c"}`)}}, "use"},
+		{"http failure", stubRootFactory{c: fakeRootClient{err: clierr.New(clierr.CodeGeneric, "connection refused")}}, "read"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -339,7 +340,7 @@ func TestCreateExecDegradedDiscovery(t *testing.T) {
 			// first once merged; the table/wide render skips exactly the
 			// notice and still mirrors the discovery warning normally.
 			require.Len(t, res.Warnings, 1)
-			assert.Contains(t, res.Warnings[0], "discovery")
+			assert.Contains(t, res.Warnings[0], "could not "+tc.verb+" the discovery document")
 			assert.Contains(t, res.OnceOnlyNotice, "shown exactly once")
 		})
 	}

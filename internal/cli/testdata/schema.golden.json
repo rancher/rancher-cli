@@ -1404,7 +1404,7 @@
     {
       "args": [
         {
-          "desc": "OIDC client name (user-chosen; the server does not generate one)",
+          "desc": "OIDC client name; you choose it, the server does not generate one",
           "name": "name",
           "required": true,
           "type": "string"
@@ -1414,14 +1414,14 @@
       "commandType": "mutating",
       "contract": "internal",
       "delivery": "onceOnly",
-      "desc": "Creates the client, waits for the server to provision it, reads the initial client secret once, and reads the live discovery document - printing a complete relying-app configuration (clientID, clientSecret, issuer, endpoints) in one document.",
+      "desc": "Creates the client, waits for the server to provision it, reads the initial client secret once and the discovery document, then prints everything an application needs to use the client (clientID, clientSecret, issuer, endpoints) as one document.",
       "destructive": "true",
       "examples": [
         "rancher create oidc-client my-app --redirect-uri https://example.invalid/callback --apply --yes"
       ],
       "flags": [
         {
-          "desc": "note attached to the client for identification",
+          "desc": "description of the client",
           "name": "description",
           "type": "string"
         },
@@ -1431,17 +1431,17 @@
           "type": "stringSlice"
         },
         {
-          "desc": "OAuth `scope` granted to the client (repeatable)",
+          "desc": "OAuth `scope` the client is allowed to request (repeatable)",
           "name": "scope",
           "type": "stringSlice"
         },
         {
-          "desc": "access-token lifetime, a positive whole number of seconds as a duration, e.g. 1h (omit for the CLI default, 3600s/1h)",
+          "desc": "access token expiration, a duration of whole seconds above zero, e.g. 1h (default 1h)",
           "name": "token-ttl",
           "type": "string"
         },
         {
-          "desc": "refresh-token lifetime, a positive whole number of seconds as a duration, e.g. 24h (omit for the CLI default, 86400s/24h)",
+          "desc": "refresh token expiration, a duration of whole seconds above zero, e.g. 24h (default 24h)",
           "name": "refresh-ttl",
           "type": "string"
         },
@@ -1538,17 +1538,17 @@
           "type": "string"
         },
         {
-          "desc": "project quota as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi",
+          "desc": "project resource quota limit as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi",
           "name": "quota-limit",
           "type": "string"
         },
         {
-          "desc": "per-namespace default quota as `key=value` pairs (same keys as --quota-limit)",
+          "desc": "default resource quota for each namespace as `key=value` pairs (same keys as --quota-limit)",
           "name": "namespace-default-quota",
           "type": "string"
         },
         {
-          "desc": "default container requests and limits as `key=value`",
+          "desc": "default container resource requests and limits as `key=value` pairs",
           "name": "container-default-resource-limit",
           "type": "string"
         }
@@ -6325,7 +6325,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Verifies the role exists at the declared scope (roletemplate for project/cluster, globalrole for global), resolves the subject, then checks for an existing duplicate binding and plans a create. Discover available roles: rancher get roletemplates (project/cluster scopes) or rancher get globalroles (global scope).",
+      "desc": "Checks that the role exists for the scope (a roletemplate for project or cluster scope, a globalrole for global scope), finds the subject, checks that the subject does not already have the role there, and previews creating the binding. List the available roles with: rancher get roletemplates (project and cluster scopes) or rancher get globalroles (global scope).",
       "destructive": "true",
       "examples": [
         "rancher grant u-abc123 --project p-x --cluster c-x --role project-member --apply --yes",
@@ -6345,7 +6345,7 @@
           "type": "string"
         },
         {
-          "desc": "cluster scope, or the cluster qualifying --project",
+          "desc": "cluster scope, or the cluster the --project is in",
           "name": "cluster",
           "type": "string"
         },
@@ -6355,7 +6355,7 @@
           "type": "bool"
         },
         {
-          "desc": "subject type; recognized principal forms are inferred, other fully qualified forms require this flag",
+          "desc": "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other fully qualified principal",
           "enum": [
             "user",
             "group"
@@ -6700,7 +6700,7 @@
       "commandType": "mutating",
       "contract": "internal",
       "delivery": "onceOnly",
-      "desc": "Sets the create annotation, waits for the controller to generate a new secret, and prints it once.",
+      "desc": "Sets the cattle.io/oidc-client-secret-create annotation on the client, waits for Rancher's controller to generate a new client secret, and prints it once.",
       "destructive": "true",
       "examples": [
         "rancher oidc-client add-secret my-app --apply --yes"
@@ -6751,7 +6751,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets the remove annotation and waits for the controller to drop the named secret.",
+      "desc": "Sets the cattle.io/oidc-client-secret-remove annotation on the client and waits for Rancher's controller to remove the named secret.",
       "destructive": "true",
       "examples": [
         "rancher oidc-client remove-secret my-app client-secret-2 --apply --yes"
@@ -6795,7 +6795,7 @@
       "commandType": "mutating",
       "contract": "internal",
       "delivery": "onceOnly",
-      "desc": "Sets the regenerate annotation, waits for the controller to replace the named secret's value, and prints the new value once. secret-name may be omitted only when the client has exactly one secret.",
+      "desc": "Sets the cattle.io/oidc-client-secret-regenerate annotation on the client, waits for Rancher's controller to generate a new value for the named secret, and prints the new value once. secret-name may be omitted only when the client has exactly one secret.",
       "destructive": "true",
       "examples": [
         "rancher oidc-client rotate-secret my-app client-secret-1 --apply --yes"
@@ -10606,7 +10606,7 @@
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
-      "usage": "Remove a namespace from its project and make sure its project label is removed"
+      "usage": "Remove a namespace from its project and remove its project label"
     },
     {
       "args": [
@@ -10620,7 +10620,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "public",
-      "desc": "Lists the scope's bindings for the subject, optionally filtered by --role, dry-runs each delete, and plans sequential execution. Discover available roles: rancher get roletemplates (project/cluster scopes) or rancher get globalroles (global scope).",
+      "desc": "Finds the subject's bindings at the scope (only those for --role when it is given), checks each deletion with a server-side dry-run, and previews deleting them one at a time. List the available roles with: rancher get roletemplates (project and cluster scopes) or rancher get globalroles (global scope).",
       "destructive": "true",
       "examples": [
         "rancher revoke u-abc123 --project p-x --cluster c-x --apply --yes",
@@ -10629,7 +10629,7 @@
       ],
       "flags": [
         {
-          "desc": "revoke only this role; absent revokes every role at the scope",
+          "desc": "revoke only this role; without it, every role of the subject at the scope is revoked",
           "name": "role",
           "type": "string"
         },
@@ -10639,7 +10639,7 @@
           "type": "string"
         },
         {
-          "desc": "cluster scope, or the cluster qualifying --project",
+          "desc": "cluster scope, or the cluster the --project is in",
           "name": "cluster",
           "type": "string"
         },
@@ -10649,7 +10649,7 @@
           "type": "bool"
         },
         {
-          "desc": "subject type; recognized principal forms are inferred, other fully qualified forms require this flag",
+          "desc": "subject type, user or group; the CLI infers it from a principal prefix it recognizes, and requires it for any other fully qualified principal",
           "enum": [
             "user",
             "group"

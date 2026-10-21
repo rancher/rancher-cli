@@ -55,7 +55,7 @@ func (c addNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		return safety.Effect{}, nil, err
 	}
 	if !ok {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "command bug: project add-namespace runs without the required --project")
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: project add-namespace ran without --project")
 	}
 	projectID := p.ID
 	before, err := getNamespace(ctx, client, nsName)
@@ -87,8 +87,8 @@ type removeNamespaceCmd struct {
 // <c>` (mutating): clears the membership label and annotation from an
 // existing namespace. The namespace's own project annotation names the
 // project it leaves, so the command takes no --project. A namespace with the
-// project label and no annotation is in no project; the command makes sure
-// its label is removed.
+// project label and no annotation is in no project; the command removes its
+// label.
 func NewRemoveNamespace(clients engine.ClusterClientFactory) runtime.Command {
 	return &removeNamespaceCmd{clients: clients}
 }
@@ -96,7 +96,7 @@ func NewRemoveNamespace(clients engine.ClusterClientFactory) runtime.Command {
 func (removeNamespaceCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "project remove-namespace",
-		Usage:       "Remove a namespace from its project and make sure its project label is removed",
+		Usage:       "Remove a namespace from its project and remove its project label",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "namespace", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
@@ -152,7 +152,7 @@ func (c removeNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 		if err != nil {
 			return eff, exec, err
 		}
-		eff.Warnings = append(eff.Warnings, fmt.Sprintf("%s is in no project; this makes sure its project label is removed", nsName))
+		eff.Warnings = append(eff.Warnings, fmt.Sprintf("%s is in no project; removing its project label", nsName))
 		return eff, exec, nil
 	}
 

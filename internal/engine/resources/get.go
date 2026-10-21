@@ -508,7 +508,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		}
 		if nspace != "" && !members[nspace] {
 			return "", "", "", nil, projects.NotMemberError(nspace, p.ID,
-				"pass a project namespace, or omit --namespace to scope the whole project")
+				"pass a project namespace, or omit --namespace to cover every namespace of the project")
 		}
 		return clientCluster, ns, effectCluster, &ProjectScope{Members: members}, nil
 	default: // NSNone

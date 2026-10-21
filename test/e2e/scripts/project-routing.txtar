@@ -56,12 +56,12 @@ jsonquery stdout 'data.#' 1
 jsonquery stdout data.0.metadata.name proj-ns-member
 
 # a namespace with the project label and no annotation is in no project: the
-# listing leaves it out, and remove-namespace makes sure its label is removed.
+# listing leaves it out, and remove-namespace removes its label.
 exec rancher create resource -f ns-with-project-label.yaml --cluster testcluster --apply
 exec rancher get namespaces --project web --cluster testcluster -o json
 jsonquery stdout 'data.#' 1
 exec rancher project remove-namespace proj-ns-with-project-label --cluster testcluster --dry-run
-stderr 'proj-ns-with-project-label is in no project; this makes sure its project label is removed'
+stderr 'proj-ns-with-project-label is in no project; removing its project label'
 exec rancher project remove-namespace proj-ns-with-project-label --cluster testcluster --apply
 stdout 'namespace/proj-ns-with-project-label project label removed'
 exec rancher get namespace proj-ns-with-project-label --cluster testcluster -o json

@@ -77,12 +77,12 @@ func readClientSecret(ctx context.Context, clients engine.ClusterClientFactory, 
 	encoded, found, _ := unstructured.NestedString(obj.Object, "data", key)
 	if !found || encoded == "" {
 		return "", clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("backing secret %s/%s has no data key %q", secretNamespace, clientID, key))
+			fmt.Sprintf("Secret %s/%s has no data key %q", secretNamespace, clientID, key))
 	}
 	decoded, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("backing secret %s/%s key %q is not valid base64: %v", secretNamespace, clientID, key, err))
+			fmt.Sprintf("Secret %s/%s data key %q is not valid base64: %v", secretNamespace, clientID, key, err))
 	}
 	return string(decoded), nil
 }

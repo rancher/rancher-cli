@@ -45,7 +45,7 @@ func resolveInspectUserPrincipal(ctx context.Context, client engine.ClusterClien
 	prefix, remainder, _ := strings.Cut(principal, "://")
 	if remainder == "" {
 		return ResolvedSubject{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("principal %q has empty remainder after ://; provide the full principal id, e.g. local://<user-id>", principal))
+			fmt.Sprintf("principal %q has nothing after ://; provide the full principal id, e.g. local://<user-id>", principal))
 	}
 
 	switch {

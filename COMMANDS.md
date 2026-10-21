@@ -71,7 +71,7 @@ target for the legacy `server switch` command.
 | Command | Purpose |
 |---|---|
 | `project add-namespace <ns>` | Add a namespace to a project - dry-run/apply |
-| `project remove-namespace <ns>` | Remove a namespace from its project and make sure its project label is removed - dry-run/apply |
+| `project remove-namespace <ns>` | Remove a namespace from its project and remove its project label - dry-run/apply |
 | `grant <subject>` | Grant a role at project, cluster, or global scope - dry-run/apply --yes |
 | `revoke <subject>` | Revoke role binding(s) at a scope; omitting `--role` revokes every role there - destructive; dry-run/apply --yes |
 

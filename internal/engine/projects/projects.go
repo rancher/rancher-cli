@@ -71,7 +71,7 @@ func parsePairs(s, flag string, allowEmptyValue bool, malformed func(pair string
 		}
 		if _, seen := data[k]; seen {
 			return nil, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--%s names the key %q more than once; give each key once", flag, k))
+				fmt.Sprintf("the key %q appears more than once in --%s; give each key once", k, flag))
 		}
 		data[k] = v
 	}
@@ -192,9 +192,9 @@ func (createCmd) Describe() runtime.Descriptor {
 		Flags: []runtime.ArgSpec{
 			engine.ClusterFlag(true, false),
 			{Name: "description", Type: "string", Desc: "short `description` for the project"},
-			{Name: "quota-limit", Type: "string", Once: true, Desc: "project quota as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi"},
-			{Name: "namespace-default-quota", Type: "string", Once: true, Desc: "per-namespace default quota as `key=value` pairs (same keys as --quota-limit)"},
-			{Name: "container-default-resource-limit", Type: "string", Once: true, Desc: "default container requests and limits as `key=value`"},
+			{Name: "quota-limit", Type: "string", Once: true, Desc: "project resource quota limit as `key=value` pairs, e.g. limitsCpu=2,limitsMemory=4Gi"},
+			{Name: "namespace-default-quota", Type: "string", Once: true, Desc: "default resource quota for each namespace as `key=value` pairs (same keys as --quota-limit)"},
+			{Name: "container-default-resource-limit", Type: "string", Once: true, Desc: "default container resource requests and limits as `key=value` pairs"},
 		},
 		Examples:    []string{"rancher create project web --cluster c-x --dry-run", "rancher create project web --cluster c-x --apply"},
 		Destructive: "false",

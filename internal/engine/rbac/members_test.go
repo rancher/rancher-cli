@@ -82,7 +82,7 @@ func TestResolveMembersLazyAndEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []MemberRow{{Principal: "github_org://1", Role: "r", Binding: "prtb-g"}}, rows)
 	require.Len(t, warns, 1, "group-only input must not touch the users LIST")
-	assert.Contains(t, warns[0], "userattributes unavailable")
+	assert.Contains(t, warns[0], "could not list userattributes")
 }
 
 func TestResolveMembersCollisionStaysUnresolved(t *testing.T) {
@@ -209,8 +209,8 @@ func TestResolveMembersWarningOrderDeterministic(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, warns, 2)
-	assert.Contains(t, warns[0], "users unavailable")
-	assert.Contains(t, warns[1], "userattributes unavailable")
+	assert.Contains(t, warns[0], "could not list users")
+	assert.Contains(t, warns[1], "could not list userattributes")
 
 	fc2 := &fakeClient{
 		users: []map[string]any{

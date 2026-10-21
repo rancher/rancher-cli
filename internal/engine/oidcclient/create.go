@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -37,7 +38,7 @@ type createCmd struct {
 // precedented by `create token` (a single-backing-row derived op with
 // flag→spec mapping and a once-only sensitive value) - but, unlike the ext
 // Token store, OIDCClient is a plain CRD with no name generation, so <name>
-// is a required, user-chosen positional.
+// is a required positional the user chooses.
 func NewCreate(clients engine.ClusterClientFactory, roots engine.RootClientFactory, serverBase engine.ServerBaseURLProvider) runtime.Command {
 	return &createCmd{clients: clients, roots: roots, serverBase: serverBase}
 }
@@ -47,18 +48,18 @@ func (createCmd) Describe() runtime.Descriptor {
 		Name:  "create oidc-client",
 		Usage: "Create an OIDC client for Rancher's embedded OIDC provider",
 		Desc: "Creates the client, waits for the server to provision it, reads the initial " +
-			"client secret once, and reads the live discovery document - printing a complete " +
-			"relying-app configuration (clientID, clientSecret, issuer, endpoints) in one document.",
+			"client secret once and the discovery document, then prints everything an " +
+			"application needs to use the client (clientID, clientSecret, issuer, endpoints) as one document.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
-			{Name: "name", Type: "string", Required: true, Desc: "OIDC client name (user-chosen; the server does not generate one)"},
+			{Name: "name", Type: "string", Required: true, Desc: "OIDC client name; you choose it, the server does not generate one"},
 		},
 		Flags: []runtime.ArgSpec{
-			{Name: "description", Type: "string", Desc: "note attached to the client for identification"},
+			{Name: "description", Type: "string", Desc: "description of the client"},
 			{Name: "redirect-uri", Type: "stringSlice", Desc: "allowed redirect `URI` (repeatable)"},
-			{Name: "scope", Type: "stringSlice", Desc: "OAuth `scope` granted to the client (repeatable)"},
-			{Name: "token-ttl", Type: "string", Desc: "access-token lifetime, a positive whole number of seconds as a duration, e.g. 1h (omit for the CLI default, 3600s/1h)"},
-			{Name: "refresh-ttl", Type: "string", Desc: "refresh-token lifetime, a positive whole number of seconds as a duration, e.g. 24h (omit for the CLI default, 86400s/24h)"},
+			{Name: "scope", Type: "stringSlice", Desc: "OAuth `scope` the client is allowed to request (repeatable)"},
+			{Name: "token-ttl", Type: "string", Desc: "access token expiration, a duration of whole seconds above zero, e.g. 1h (default 1h)"},
+			{Name: "refresh-ttl", Type: "string", Desc: "refresh token expiration, a duration of whole seconds above zero, e.g. 24h (default 24h)"},
 			{Name: "timeout", Type: "string", Desc: "wait `timeout` for the server to provision the client, e.g. 90s (default 60s)"},
 		},
 		Examples: []string{
@@ -226,7 +227,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 	return res, nil
 }
 
-// discover reads the live discovery document and returns its projected
+// discover reads the discovery document and returns its projected
 // endpoints and issuer, or degrades: a static issuer derived from the SAME
 // resolved base and no endpoints, with a warning naming what failed.
 // Discovery failure (a blip, a proxy, the server's 500 when zero clients
@@ -234,22 +235,22 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 // failure here would read as retryable, and a retry creates a second client.
 func (c *createCmd) discover(ctx context.Context, base string) (*oidcEndpoints, string, []string) {
 	fallbackIssuer := base + "/oidc"
-	degrade := func(reason string) (*oidcEndpoints, string, []string) {
+	degrade := func(verb, reason string) (*oidcEndpoints, string, []string) {
 		return nil, fallbackIssuer, []string{
-			fmt.Sprintf("could not confirm the discovery document (%s); issuer shown is derived from the server, not read live", reason),
+			fmt.Sprintf("could not %s the discovery document (%s); the issuer shown is the server URL plus /oidc", verb, reason),
 		}
 	}
 	root, err := c.roots.Root()
 	if err != nil {
-		return degrade(err.Error())
+		return degrade("read", err.Error())
 	}
 	body, err := root.GetJSON(ctx, "/oidc/.well-known/openid-configuration")
 	if err != nil {
-		return degrade(err.Error())
+		return degrade("read", err.Error())
 	}
 	endpoints, issuer, err := validateDiscovery(body, base)
 	if err != nil {
-		return degrade(err.Error())
+		return degrade("use", err.Error())
 	}
 	return endpoints, issuer, nil
 }
@@ -301,15 +302,15 @@ func validateDiscovery(body []byte, effectiveBase string) (*oidcEndpoints, strin
 }
 
 // impossibleCreateShape builds create's terminal, non-retryable error for
-// an observed shape the controller alone could never produce: a secret key
-// present with no clientID, or more than one secret on the FIRST
-// observation - a concurrent add after this create's own mutation. A
-// completed controller plus a concurrent actor must never be misdiagnosed
-// as a dead/disabled provider by waiting to timeout.
+// client secrets in a state the controller alone does not create: a secret
+// with no clientID, or more than one secret on the first observation,
+// which means something else added one after this create's own mutation.
+// A completed controller plus another change must never be misdiagnosed
+// as a dead or disabled provider by waiting to timeout.
 func impossibleCreateShape(name string, secrets map[string]any) *clierr.Error {
 	keys := slices.Sorted(maps.Keys(secrets))
 	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("oidc-client %s: observed an impossible secret shape (keys: %v) - a concurrent actor changed this client while create was waiting", name, keys)).
+		fmt.Sprintf("oidc-client %s: found client secrets (%s) in a state the controller alone does not create (client secrets with no client ID, or more than one client secret); something else changed this client while create was waiting", name, strings.Join(keys, ", "))).
 		WithDetails(clierr.CommittedContextDetails{
 			Committed: true, ResourceKind: "OIDCClient", ResourceName: name,
 			Recovery: recoveryHint(name),

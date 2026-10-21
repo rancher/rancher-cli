@@ -79,10 +79,10 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	switch {
 	case projectScoped && nsFlag != "":
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			"--project and --namespace cannot be combined: --project creates a project-scoped secret in the project's backing namespace, --namespace an ordinary secret in that namespace")
+			"--project and --namespace cannot be combined: --project creates a project-scoped secret in the project's backing namespace, --namespace creates a secret in that namespace")
 	case !projectScoped && nsFlag == "":
 		ce := clierr.New(clierr.CodeValidation,
-			"pass --namespace <namespace> for an ordinary secret, or --project <project> for a project-scoped secret")
+			"pass --namespace <namespace> to create a secret in a namespace, or --project <project> to create a project-scoped secret")
 		if cluster := in.String(engine.FlagCluster); cluster != "" {
 			ce = ce.WithHint(clierr.Rancher + " access projects --cluster " + clierr.ShellQuote(cluster))
 		}
@@ -145,15 +145,15 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		}
 		if statusEmpty {
 			// status.backingNamespace was absent/empty; the fallback still
-			// writes to a namespace, but propagation only works there on
-			// Rancher 2.12+.
+			// writes to a namespace, but Rancher might not copy the secret
+			// into the project's namespaces.
 			inner := exec
 			exec = func(ctx context.Context) (runtime.Result, error) {
 				res, err := inner(ctx)
 				if err != nil {
 					return res, err
 				}
-				res.Warnings = append(res.Warnings, fmt.Sprintf("project-scoped secret propagation is not guaranteed (requires Rancher >= %s, the supported minimum)", config.MinRancherVersion))
+				res.Warnings = append(res.Warnings, fmt.Sprintf("the project has no status.backingNamespace yet; Rancher might not copy this project-scoped secret into the project's namespaces (copying needs Rancher %s or later, the oldest version this CLI supports)", config.MinRancherVersion))
 				return res, nil
 			}
 		}
