@@ -42,6 +42,19 @@ func TestMarkRemedy(t *testing.T) {
 	assert.Equal(t, Rancher+" auth login", MarkRemedy(Rancher+" auth login"))
 }
 
+// TestErrorMapTextKeepsTheCandidatesTotal asserts mapping the text of an
+// error keeps its candidates and their total.
+func TestErrorMapTextKeepsTheCandidatesTotal(t *testing.T) {
+	t.Parallel()
+	e := New(CodeNotFound, "try "+Rancher+" get users").
+		WithCandidatesCut(candidateRange(12), 10)
+	got := e.MapText(func(s string) string { return ExpandRemedies(s, " -c '/d'") })
+	require.NotSame(t, e, got)
+	assert.Equal(t, "try rancher -c '/d' get users", got.Message)
+	assert.Equal(t, 12, got.CandidatesTotal)
+	assert.Len(t, got.Candidates, 10)
+}
+
 // TestErrorMapTextCoversEveryRenderedString asserts the message, the
 // hint, the warnings and a login failure's recovery commands are mapped,
 // the cause and code survive, and an error with no marker is returned

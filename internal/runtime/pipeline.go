@@ -1068,7 +1068,11 @@ func errorText(ce *clierr.Error, s style.Style) string {
 		for i, c := range ce.Candidates {
 			names[i] = fmt.Sprintf("%s (%s)", output.Printable(c.Name), output.Printable(c.ID))
 		}
-		lines = append(lines, "candidates: "+strings.Join(names, ", "))
+		label := "candidates"
+		if ce.CandidatesTotal > 0 {
+			label = fmt.Sprintf("candidates (%d of %d)", len(ce.Candidates), ce.CandidatesTotal)
+		}
+		lines = append(lines, label+": "+strings.Join(names, ", "))
 	}
 	for _, l := range detailsTextLines(ce.Details) {
 		lines = append(lines, output.Printable(l))

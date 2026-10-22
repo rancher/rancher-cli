@@ -1,6 +1,8 @@
 package rbac
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -150,4 +152,56 @@ func TestResolveInspectUserEmptyPrincipalRemainderRejected(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+func inspectUserNotFound(t *testing.T, users []map[string]any, bare string) *clierr.Error {
+	t.Helper()
+	_, err := ResolveInspectUser(t.Context(), fakeFactory{c: &fakeClient{users: users}}, bare)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	return ce
+}
+
+// TestResolveInspectUserBareNotFoundWholePoolIsCutInListOrder asserts a bare
+// name that near-matches none of twelve users lists the first 10 in list
+// order and counts all twelve.
+func TestResolveInspectUserBareNotFoundWholePoolIsCutInListOrder(t *testing.T) {
+	var users []map[string]any
+	for i := 1; i <= 12; i++ {
+		id := fmt.Sprintf("u-%02d", i)
+		users = append(users, userObj(id, "", "member", "local://"+id))
+	}
+	ce := inspectUserNotFound(t, users, "lx-no-such-user")
+	assert.Equal(t, []string{"u-01", "u-02", "u-03", "u-04", "u-05", "u-06", "u-07", "u-08", "u-09", "u-10"}, candidateIDs(ce))
+	assert.Equal(t, 12, ce.CandidatesTotal)
+}
+
+// TestResolveInspectUserBareNotFoundNearMatchesAreCutAndCounted asserts
+// fifteen users that contain the typed name list the first 10 in list order
+// and count all fifteen.
+func TestResolveInspectUserBareNotFoundNearMatchesAreCutAndCounted(t *testing.T) {
+	var users []map[string]any
+	for i := 1; i <= 15; i++ {
+		id := fmt.Sprintf("u-jan%02d", i)
+		users = append(users, userObj(id, fmt.Sprintf("Jan %d", i), fmt.Sprintf("jan%d", i), "local://"+id))
+	}
+	users = append(users, userObj("u-zzz", "Zed", "zed", "local://u-zzz"))
+	ce := inspectUserNotFound(t, users, "jan")
+	require.Len(t, ce.Candidates, CandidateLimit)
+	assert.Equal(t, "u-jan01", ce.Candidates[0].ID)
+	assert.Equal(t, 15, ce.CandidatesTotal)
+}
+
+// TestResolveInspectUserBareNotFoundAtTheLimitHasNoTotal asserts a pool of
+// exactly 10 users is listed whole with no total.
+func TestResolveInspectUserBareNotFoundAtTheLimitHasNoTotal(t *testing.T) {
+	var users []map[string]any
+	for i := range CandidateLimit {
+		id := fmt.Sprintf("u-%02d", i)
+		users = append(users, userObj(id, "", "member", "local://"+id))
+	}
+	ce := inspectUserNotFound(t, users, "lx-no-such-user")
+	assert.Len(t, ce.Candidates, CandidateLimit)
+	assert.Zero(t, ce.CandidatesTotal)
 }

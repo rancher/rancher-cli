@@ -1231,6 +1231,9 @@ envelope's `retryable` field; the `hint`, when present, is the remedy.
 | `GENERIC` | 1 | an error with no more specific code, including a server or transport failure |
 <!-- /conformance:error-codes -->
 
+When a candidate list is cut to its first entries,
+`data.error.candidatesTotal` gives the size of the full list.
+
 ## Machine hints
 
 An error's `data.error.hint` field, when present, is exactly one

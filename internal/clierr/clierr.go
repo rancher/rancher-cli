@@ -169,7 +169,11 @@ type Error struct {
 	Message    string      `json:"message"`
 	Hint       string      `json:"hint,omitempty"`
 	Candidates []Candidate `json:"candidates,omitempty"`
-	Retryable  bool        `json:"retryable"`
+	// CandidatesTotal is the size of the full list Candidates was cut from.
+	// It is set only when the cut dropped entries; absent means Candidates
+	// is the full list.
+	CandidatesTotal int  `json:"candidatesTotal,omitempty"`
+	Retryable       bool `json:"retryable"`
 	// Details carries an optional command-specific structured payload
 	// (e.g. revoke's partial-failure split). Shape is owned by the
 	// producing command; consumers decode by command context.
@@ -205,8 +209,9 @@ func CodeExits() map[string]int {
 func (e *Error) WithHint(h string) *Error { e.Hint = h; return e }
 
 // WithMessage returns a copy of e with msg as its message; every other
-// field (code, hint, cause, retryable, candidates, details, warnings)
-// carries over, so a caller amending the text cannot silently drop the rest.
+// field (code, hint, cause, retryable, candidates and their total, details,
+// warnings) carries over, so a caller amending the text cannot silently drop
+// the rest.
 func (e *Error) WithMessage(msg string) *Error {
 	c := *e
 	c.Message = msg
@@ -217,9 +222,31 @@ func (e *Error) WithMessage(msg string) *Error {
 	return &c
 }
 
-func (e *Error) WithCause(err error) *Error          { e.cause = err; return e }
-func (e *Error) WithRetryable(b bool) *Error         { e.Retryable = b; return e }
-func (e *Error) WithCandidates(c []Candidate) *Error { e.Candidates = c; return e }
+func (e *Error) WithCause(err error) *Error  { e.cause = err; return e }
+func (e *Error) WithRetryable(b bool) *Error { e.Retryable = b; return e }
+
+// WithCandidates sets the candidates to c as the full list: it clears any
+// total an earlier WithCandidatesCut set.
+func (e *Error) WithCandidates(c []Candidate) *Error {
+	e.Candidates = c
+	e.CandidatesTotal = 0
+	return e
+}
+
+// WithCandidatesCut sets the candidates to the first limit entries of full.
+// When full is longer than limit it also sets CandidatesTotal to len(full);
+// otherwise the total is cleared. A negative limit counts as 0. The
+// candidates have no spare capacity, so appending to them never writes into
+// full.
+func (e *Error) WithCandidatesCut(full []Candidate, limit int) *Error {
+	limit = max(limit, 0)
+	e.Candidates = slices.Clip(full[:min(len(full), limit)])
+	e.CandidatesTotal = 0
+	if len(full) > limit {
+		e.CandidatesTotal = len(full)
+	}
+	return e
+}
 
 // WithDetails attaches d as the error's structured details payload: d must
 // implement TextDetails, so a details type with no reviewed default-format

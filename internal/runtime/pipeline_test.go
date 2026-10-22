@@ -1266,6 +1266,74 @@ func TestRunInvalidOutputFormatRefusesMutatingBeforePlan(t *testing.T) {
 	assert.Contains(t, ce.Message, `--output="csv"`)
 }
 
+// TestRenderErrCandidatesTotal asserts the text renderer says how many of
+// the full list a cut shows, the line is unchanged without a total, and
+// the envelope carries candidatesTotal only when the list was cut.
+func TestRenderErrCandidatesTotal(t *testing.T) {
+	t.Parallel()
+	full := make([]clierr.Candidate, 37)
+	for i := range full {
+		full[i] = clierr.Candidate{Name: fmt.Sprintf("n%02d", i), ID: fmt.Sprintf("u-%02d", i)}
+	}
+	shown := func(n int) string {
+		parts := make([]string, n)
+		for i := range parts {
+			parts[i] = fmt.Sprintf("n%02d (u-%02d)", i, i)
+		}
+		return strings.Join(parts, ", ")
+	}
+
+	t.Run("text with a total", func(t *testing.T) {
+		t.Parallel()
+		ce := clierr.New(clierr.CodeNotFound, "user not found: x").WithCandidatesCut(full, 10)
+		var errBuf bytes.Buffer
+		_ = renderErr(IO{Err: &errBuf}, ce)
+		assert.Equal(t, "error (NOT_FOUND): user not found: x\n"+
+			"  candidates (10 of 37): "+shown(10)+"\n", errBuf.String())
+	})
+
+	t.Run("text without a total", func(t *testing.T) {
+		t.Parallel()
+		ce := clierr.New(clierr.CodeNotFound, "user not found: x").WithCandidatesCut(full[:10], 10)
+		var errBuf bytes.Buffer
+		_ = renderErr(IO{Err: &errBuf}, ce)
+		assert.Equal(t, "error (NOT_FOUND): user not found: x\n"+
+			"  candidates: "+shown(10)+"\n", errBuf.String())
+	})
+
+	for _, tc := range []struct {
+		name      string
+		full      []clierr.Candidate
+		wantTotal bool
+	}{
+		{name: "envelope of a cut list", full: full, wantTotal: true},
+		{name: "envelope of a list at the limit", full: full[:10], wantTotal: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ce := clierr.New(clierr.CodeNotFound, "user not found: x").WithCandidatesCut(tc.full, 10)
+			var errBuf bytes.Buffer
+			_ = renderErr(IO{Err: &errBuf, Format: "json"}, ce)
+			var env struct {
+				Data struct {
+					Error struct {
+						Candidates      []clierr.Candidate `json:"candidates"`
+						CandidatesTotal *int               `json:"candidatesTotal"`
+					} `json:"error"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(errBuf.Bytes(), &env))
+			assert.Len(t, env.Data.Error.Candidates, 10)
+			if tc.wantTotal {
+				require.NotNil(t, env.Data.Error.CandidatesTotal)
+				assert.Equal(t, 37, *env.Data.Error.CandidatesTotal)
+			} else {
+				assert.Nil(t, env.Data.Error.CandidatesTotal)
+			}
+		})
+	}
+}
+
 // TestRenderErrFormatAware asserts renderErr's format switch: default, table,
 // wide, name, and template all render the short operator-facing text block
 // to stderr; json and yaml render the structured envelope, each in its own

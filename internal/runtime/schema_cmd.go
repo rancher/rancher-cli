@@ -431,9 +431,10 @@ func lookupGroup(gs []SchemaGroup, want string) (SchemaGroup, bool) {
 	return SchemaGroup{}, false
 }
 
-// maxNearestMatches caps the candidate list: a short query can substring-
-// match a large slice of the generated commands, and past a screenful the
-// list stops helping.
+// maxNearestMatches is how many of the nearest matches the error lists: a
+// short query can substring-match a large slice of the generated commands,
+// and past a screenful the list stops helping. A longer list is cut to its
+// first entries and the error records the full size.
 const maxNearestMatches = 10
 
 // commandListCmd and kindsArrayCmd are the two paste-valid pointers to the
@@ -482,16 +483,16 @@ func unknownSelection(m Manifest, want string, kindOnly bool) error {
 	for i, name := range matches {
 		cands[i] = clierr.Candidate{ID: name, Name: name}
 	}
-	return ce.WithCandidates(cands)
+	return ce.WithCandidatesCut(cands, maxNearestMatches)
 }
 
-// nearestSelectors finds the nearest matches: a case-insensitive substring
+// nearestSelectors finds every nearest match: a case-insensitive substring
 // search of want over command names and full alias forms (the "<verb> <alias>"
 // shape matchesAlias resolves) plus kind names, keys, and aliases - every
 // candidate deduplicated to its selectable name (a command/kind collision
-// yields one candidate), sorted, capped. kindOnly restricts the search to
-// kinds, matching --kind's forced interpretation. commandOnly skips the kind
-// scan for multi-token (command-shaped) queries - kinds are always single
+// yields one candidate), sorted. kindOnly restricts the search to kinds,
+// matching --kind's forced interpretation. commandOnly skips the kind scan
+// for multi-token (command-shaped) queries - kinds are always single
 // tokens, so the kind half of the search is noise for a query like "get pdo".
 func nearestSelectors(m Manifest, want string, kindOnly, commandOnly bool) []string {
 	q := strings.ToLower(want)
@@ -529,9 +530,6 @@ func nearestSelectors(m Manifest, want string, kindOnly, commandOnly bool) []str
 		}
 	}
 	sort.Strings(out)
-	if len(out) > maxNearestMatches {
-		out = out[:maxNearestMatches]
-	}
 	return out
 }
 

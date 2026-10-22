@@ -3,6 +3,8 @@ package runtime
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -1676,4 +1678,52 @@ func TestSchemaFilterGroupsStripsDesc(t *testing.T) {
 	assert.Empty(t, got[1].Desc, "unnamed section Desc must be stripped on the filtered path")
 	assert.Equal(t, []string{"auth login"}, got[0].Commands)
 	assert.Equal(t, []string{"schema"}, got[1].Commands)
+}
+
+// manifestWithCommands returns a Manifest of n commands named "get thingNN".
+func manifestWithCommands(n int) Manifest {
+	var m Manifest
+	for i := 1; i <= n; i++ {
+		m.Commands = append(m.Commands, SchemaCommand{Name: fmt.Sprintf("get thing%02d", i)})
+	}
+	return m
+}
+
+func unknownSelectionError(t *testing.T, m Manifest, want string) *clierr.Error {
+	t.Helper()
+	err := unknownSelection(m, want, false)
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	return ce
+}
+
+// TestUnknownSelectionNearMatchesAboveTheLimitAreCutAndCounted asserts a
+// selector that 12 commands contain lists the first 10 in sorted order and
+// counts all twelve.
+func TestUnknownSelectionNearMatchesAboveTheLimitAreCutAndCounted(t *testing.T) {
+	t.Parallel()
+	ce := unknownSelectionError(t, manifestWithCommands(12), "thing")
+	require.Len(t, ce.Candidates, maxNearestMatches)
+	for i, c := range ce.Candidates {
+		assert.Equal(t, fmt.Sprintf("get thing%02d", i+1), c.ID)
+		assert.Equal(t, c.ID, c.Name)
+	}
+	assert.Equal(t, 12, ce.CandidatesTotal)
+}
+
+// TestUnknownSelectionNearMatchesAtTheLimitHaveNoTotal asserts exactly 10
+// matches are listed whole with no total.
+func TestUnknownSelectionNearMatchesAtTheLimitHaveNoTotal(t *testing.T) {
+	t.Parallel()
+	ce := unknownSelectionError(t, manifestWithCommands(maxNearestMatches), "thing")
+	assert.Len(t, ce.Candidates, maxNearestMatches)
+	assert.Zero(t, ce.CandidatesTotal)
+}
+
+// TestNearestSelectorsReturnsEveryMatch asserts the search itself cuts
+// nothing.
+func TestNearestSelectorsReturnsEveryMatch(t *testing.T) {
+	t.Parallel()
+	assert.Len(t, nearestSelectors(manifestWithCommands(25), "thing", false, false), 25)
 }

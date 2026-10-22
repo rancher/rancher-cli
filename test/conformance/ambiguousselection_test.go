@@ -19,7 +19,8 @@ import (
 // The scan below requires every use of clierr.CodeAmbiguousSelection outside
 // internal/clierr to be one of:
 //   - argument 0 of a clierr.New call whose builder chain (the calls
-//     chained on its result) contains WithCandidates;
+//     chained on its result) contains WithCandidates or
+//     WithCandidatesCut;
 //   - an operand of == or !=, or an expression of a switch case, a
 //     comparison of a code, not an error built from it;
 //   - a use inside a declaration listed in ambiguousSelectionAllowlist.
@@ -35,10 +36,11 @@ import (
 // the allowlist says; spell the code with clierr.CodeAmbiguousSelection.
 //
 // Known limits: candidates attached in a later statement fail the scan
-// (write the error as one chain); WithCandidates(nil) passes; a code held in
-// a variable or a &clierr.Error literal is flagged, since the scan cannot
-// follow the value; two methods with the same name in one file share one
-// key, as in declaredKeys.
+// (write the error as one chain); WithCandidates(nil) and
+// WithCandidatesCut(nil, n) pass; a code held in a variable or a
+// &clierr.Error literal is flagged, since the scan cannot follow the value;
+// two methods with the same name in one file share one key, as in
+// declaredKeys.
 
 // ambiguousSelectionAllowlist names the declarations, as "<file>:<name>",
 // that use the code without attaching candidates to the error built from it;
@@ -86,8 +88,8 @@ func scanAmbiguousSelection(fset *token.FileSet, path string, f *ast.File, allow
 		return ok && sel.Sel.Name == "CodeAmbiguousSelection" && isClierr(sel.X)
 	}
 	// holdsCandidates reports whether the builder chain that starts at the
-	// clierr.New call has a WithCandidates call. ancestors are the call's
-	// ancestors, outermost first.
+	// clierr.New call has a WithCandidates or WithCandidatesCut call.
+	// ancestors are the call's ancestors, outermost first.
 	holdsCandidates := func(ancestors []ast.Node, call *ast.CallExpr) bool {
 		node := ast.Node(call)
 		for i := len(ancestors) - 1; i >= 1; i -= 2 {
@@ -96,7 +98,7 @@ func scanAmbiguousSelection(fset *token.FileSet, path string, f *ast.File, allow
 			if !ok || !isCall || sel.X != node || outer.Fun != sel {
 				return false
 			}
-			if sel.Sel.Name == "WithCandidates" {
+			if sel.Sel.Name == "WithCandidates" || sel.Sel.Name == "WithCandidatesCut" {
 				return true
 			}
 			node = outer
@@ -153,7 +155,7 @@ func scanAmbiguousSelection(fset *token.FileSet, path string, f *ast.File, allow
 			}
 			if !allowed {
 				res.offenders = append(res.offenders, fset.Position(n.Pos()).String()+
-					": clierr.CodeAmbiguousSelection without candidates; chain WithCandidates on the clierr.New call, or compare the code with == or !=")
+					": clierr.CodeAmbiguousSelection without candidates; chain WithCandidates or WithCandidatesCut on the clierr.New call, or compare the code with == or !=")
 			}
 			return true
 		})
@@ -232,19 +234,21 @@ func probeAmbiguousSelection(t *testing.T, path, src string, allow map[string]st
 func TestAmbiguousSelectionScanFlagsEachShape(t *testing.T) {
 	t.Parallel()
 	for name, src := range map[string]string{
-		"bare New":                    "func f() error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\") }",
-		"New with only a hint":        "func f() error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithHint(\"h\") }",
-		"candidates in a later line":  "func f(c []clierr.Candidate) error { e := clierr.New(clierr.CodeAmbiguousSelection, \"m\"); return e.WithCandidates(c) }",
-		"code from a variable":        "func f() error { code := clierr.CodeAmbiguousSelection; return clierr.New(code, \"m\") }",
-		"error literal":               "func f() error { return &clierr.Error{Code: clierr.CodeAmbiguousSelection} }",
-		"code as a second argument":   "func f(c []clierr.Candidate) error { return clierr.New(\"x\", clierr.CodeAmbiguousSelection).WithCandidates(c) }",
-		"code passed to another call": "func f() error { return g(clierr.CodeAmbiguousSelection) }\nfunc g(string) error { return nil }",
-		"package-level value":         "var code = clierr.CodeAmbiguousSelection",
-		"candidates on another error": "func f(c []clierr.Candidate) error { _ = clierr.New(\"X\", \"o\").WithCandidates(c); return clierr.New(clierr.CodeAmbiguousSelection, \"m\") }",
-		"string literal":              "var s = \"AMBIGUOUS_SELECTION\"",
-		"raw string literal":          "var s = `AMBIGUOUS_SELECTION`",
-		"string literal in a call":    "func f() error { return clierr.New(\"AMBIGUOUS_SELECTION\", \"m\") }",
-		"renamed import":              "package p\nimport ce \"github.com/rancher/rancher-cli/internal/clierr\"\nfunc f() error { return ce.New(ce.CodeAmbiguousSelection, \"m\") }",
+		"bare New":                       "func f() error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\") }",
+		"New with only a hint":           "func f() error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithHint(\"h\") }",
+		"candidates in a later line":     "func f(c []clierr.Candidate) error { e := clierr.New(clierr.CodeAmbiguousSelection, \"m\"); return e.WithCandidates(c) }",
+		"cut candidates in a later line": "func f(c []clierr.Candidate) error { e := clierr.New(clierr.CodeAmbiguousSelection, \"m\"); return e.WithCandidatesCut(c, 10) }",
+		"neither candidates call":        "func f() error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithMessage(\"x\").WithRetryable(false) }",
+		"code from a variable":           "func f() error { code := clierr.CodeAmbiguousSelection; return clierr.New(code, \"m\") }",
+		"error literal":                  "func f() error { return &clierr.Error{Code: clierr.CodeAmbiguousSelection} }",
+		"code as a second argument":      "func f(c []clierr.Candidate) error { return clierr.New(\"x\", clierr.CodeAmbiguousSelection).WithCandidates(c) }",
+		"code passed to another call":    "func f() error { return g(clierr.CodeAmbiguousSelection) }\nfunc g(string) error { return nil }",
+		"package-level value":            "var code = clierr.CodeAmbiguousSelection",
+		"candidates on another error":    "func f(c []clierr.Candidate) error { _ = clierr.New(\"X\", \"o\").WithCandidates(c); return clierr.New(clierr.CodeAmbiguousSelection, \"m\") }",
+		"string literal":                 "var s = \"AMBIGUOUS_SELECTION\"",
+		"raw string literal":             "var s = `AMBIGUOUS_SELECTION`",
+		"string literal in a call":       "func f() error { return clierr.New(\"AMBIGUOUS_SELECTION\", \"m\") }",
+		"renamed import":                 "package p\nimport ce \"github.com/rancher/rancher-cli/internal/clierr\"\nfunc f() error { return ce.New(ce.CodeAmbiguousSelection, \"m\") }",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -261,18 +265,21 @@ func TestAmbiguousSelectionScanFlagsEachShape(t *testing.T) {
 func TestAmbiguousSelectionScanPassesEachShape(t *testing.T) {
 	t.Parallel()
 	for name, src := range map[string]string{
-		"head alone":                       "",
-		"WithCandidates chain":             "func f(c []clierr.Candidate) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithCandidates(c) }",
-		"WithCandidates after a hint":      "func f(c []clierr.Candidate) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithHint(\"h\").WithCandidates(c) }",
-		"WithCandidates before a cause":    "func f(c []clierr.Candidate, e error) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithCandidates(c).WithCause(e) }",
-		"WithCandidates on a long chain":   "func f(c []clierr.Candidate) error {\n\treturn clierr.New(clierr.CodeAmbiguousSelection,\n\t\tfmt.Sprintf(\"%d\", 1)).\n\t\tWithCandidates(c)\n}",
-		"equality comparison":              "func f(e *clierr.Error) bool { return e.Code == clierr.CodeAmbiguousSelection }",
-		"inequality comparison":            "func f(e *clierr.Error) bool { return clierr.CodeAmbiguousSelection != e.Code }",
-		"switch case":                      "func f(e *clierr.Error) bool { switch e.Code { case clierr.CodeAmbiguousSelection: return true }; return false }",
-		"switch case among several":        "func f(e *clierr.Error) bool { switch e.Code { case clierr.CodeNotFound, clierr.CodeAmbiguousSelection: return true }; return false }",
-		"another string literal":           "var s = \"NOT_FOUND\"",
-		"another code":                     "func f() error { return clierr.New(clierr.CodeNotFound, \"m\") }",
-		"function literal with candidates": "var g = func(c []clierr.Candidate) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithCandidates(c) }",
+		"head alone":                        "",
+		"WithCandidates chain":              "func f(c []clierr.Candidate) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithCandidates(c) }",
+		"WithCandidatesCut chain":           "func f(c []clierr.Candidate) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithCandidatesCut(c, 10) }",
+		"WithCandidatesCut after a hint":    "func f(c []clierr.Candidate) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithHint(\"h\").WithCandidatesCut(c, 10) }",
+		"WithCandidatesCut on a long chain": "func f(c []clierr.Candidate) error {\n\treturn clierr.New(clierr.CodeAmbiguousSelection,\n\t\tfmt.Sprintf(\"%d\", 1)).\n\t\tWithCandidatesCut(c, 10)\n}",
+		"WithCandidates after a hint":       "func f(c []clierr.Candidate) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithHint(\"h\").WithCandidates(c) }",
+		"WithCandidates before a cause":     "func f(c []clierr.Candidate, e error) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithCandidates(c).WithCause(e) }",
+		"WithCandidates on a long chain":    "func f(c []clierr.Candidate) error {\n\treturn clierr.New(clierr.CodeAmbiguousSelection,\n\t\tfmt.Sprintf(\"%d\", 1)).\n\t\tWithCandidates(c)\n}",
+		"equality comparison":               "func f(e *clierr.Error) bool { return e.Code == clierr.CodeAmbiguousSelection }",
+		"inequality comparison":             "func f(e *clierr.Error) bool { return clierr.CodeAmbiguousSelection != e.Code }",
+		"switch case":                       "func f(e *clierr.Error) bool { switch e.Code { case clierr.CodeAmbiguousSelection: return true }; return false }",
+		"switch case among several":         "func f(e *clierr.Error) bool { switch e.Code { case clierr.CodeNotFound, clierr.CodeAmbiguousSelection: return true }; return false }",
+		"another string literal":            "var s = \"NOT_FOUND\"",
+		"another code":                      "func f() error { return clierr.New(clierr.CodeNotFound, \"m\") }",
+		"function literal with candidates":  "var g = func(c []clierr.Candidate) error { return clierr.New(clierr.CodeAmbiguousSelection, \"m\").WithCandidates(c) }",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

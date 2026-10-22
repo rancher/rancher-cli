@@ -255,11 +255,30 @@ func TestResolveSubjectBareNotFoundNearMatchCandidates(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
-	assert.Len(t, ce.Candidates, 10, "near matches capped at 10")
+	assert.Len(t, ce.Candidates, CandidateLimit, "the first 10 of the near matches")
+	assert.Equal(t, 15, ce.CandidatesTotal, "every near match is counted")
 	for _, cand := range ce.Candidates {
 		assert.NotEqual(t, "u-zzz", cand.ID, "non-matching users excluded from candidates")
 		assert.NotEmpty(t, cand.Name)
 	}
+}
+
+// TestResolveSubjectBareNotFoundNearMatchesAtTheLimitHaveNoTotal asserts a
+// near-match list of exactly 10 is shown whole with no total.
+func TestResolveSubjectBareNotFoundNearMatchesAtTheLimitHaveNoTotal(t *testing.T) {
+	t.Parallel()
+	var users []map[string]any
+	for i := range CandidateLimit {
+		users = append(users, userObj(fmt.Sprintf("u-jan%02d", i), fmt.Sprintf("Jan %d", i), fmt.Sprintf("jan%d", i), fmt.Sprintf("okta_user://%d", i)))
+	}
+	users = append(users, userObj("u-zzz", "Zed", "zed", "okta_user://z"))
+	c := &fakeClient{users: users}
+	_, err := ResolveSubject(t.Context(), fakeFactory{c: c}, Subject{Kind: SubjectUser, Bare: "jan"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Len(t, ce.Candidates, CandidateLimit)
+	assert.Zero(t, ce.CandidatesTotal)
 }
 
 func TestResolveSubjectBareCandidateNameFallsBackToUsername(t *testing.T) {
@@ -456,7 +475,7 @@ func TestResolveSubjectErrorPassthrough(t *testing.T) {
 
 // TestResolveSubjectNoNearMatchFallsBackToPool mirrors
 // TestGrantNoNearMatchRoleFallsBackToPool: a subject typo that shares no
-// substring with any seeded user falls back to the capped pool so the
+// substring with any seeded user falls back to the whole pool so the
 // NOT_FOUND always names valid options.
 func TestResolveSubjectNoNearMatchFallsBackToPool(t *testing.T) {
 	t.Parallel()
@@ -494,19 +513,56 @@ func (f fakeFactory) ImpersonatedCluster(ctx context.Context, id string, _ engin
 	return f.Cluster(ctx, id)
 }
 
-// TestSubjectCandidatesFallbackIsCappedInListOrder asserts a needle that
-// near-matches no user returns exactly the first 10 users, in list order.
-func TestSubjectCandidatesFallbackIsCappedInListOrder(t *testing.T) {
+// TestResolveSubjectBareNotFoundWholePoolIsCutInListOrder asserts a name that
+// near-matches no user lists the first 10 users in list order and counts the
+// whole pool.
+func TestResolveSubjectBareNotFoundWholePoolIsCutInListOrder(t *testing.T) {
 	t.Parallel()
-	var users []*unstructured.Unstructured
+	var users []map[string]any
 	for i := 1; i <= 12; i++ {
 		id := fmt.Sprintf("u-%02d", i)
-		users = append(users, &unstructured.Unstructured{Object: userObj(id, "", "member", "local://"+id)})
+		users = append(users, userObj(id, "", "member", "local://"+id))
 	}
-	cands := SubjectCandidates(users, "lx-no-such-user")
+	_, err := ResolveSubject(t.Context(), fakeFactory{c: &fakeClient{users: users}},
+		Subject{Kind: SubjectUser, Bare: "lx-no-such-user"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	var ids []string
-	for _, c := range cands {
+	for _, c := range ce.Candidates {
 		ids = append(ids, c.ID)
 	}
 	assert.Equal(t, []string{"u-01", "u-02", "u-03", "u-04", "u-05", "u-06", "u-07", "u-08", "u-09", "u-10"}, ids)
+	assert.Equal(t, 12, ce.CandidatesTotal)
+}
+
+// TestResolveSubjectBareNotFoundWholePoolAtTheLimitHasNoTotal asserts a pool
+// of exactly 10 users is shown whole with no total.
+func TestResolveSubjectBareNotFoundWholePoolAtTheLimitHasNoTotal(t *testing.T) {
+	t.Parallel()
+	var users []map[string]any
+	for i := range CandidateLimit {
+		id := fmt.Sprintf("u-%02d", i)
+		users = append(users, userObj(id, "", "member", "local://"+id))
+	}
+	_, err := ResolveSubject(t.Context(), fakeFactory{c: &fakeClient{users: users}},
+		Subject{Kind: SubjectUser, Bare: "lx-no-such-user"})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Len(t, ce.Candidates, CandidateLimit)
+	assert.Zero(t, ce.CandidatesTotal)
+}
+
+// TestSubjectCandidatesReturnsTheFullList asserts SubjectCandidates cuts
+// nothing: every near match, or the whole pool when none matches.
+func TestSubjectCandidatesReturnsTheFullList(t *testing.T) {
+	t.Parallel()
+	var users []*unstructured.Unstructured
+	for i := 1; i <= 15; i++ {
+		id := fmt.Sprintf("u-%02d", i)
+		users = append(users, &unstructured.Unstructured{Object: userObj(id, "", "member", "local://"+id)})
+	}
+	assert.Len(t, SubjectCandidates(users, "u-"), 15, "every near match")
+	assert.Len(t, SubjectCandidates(users, "lx-no-such-user"), 15, "the whole pool")
+	assert.Len(t, SubjectCandidates(users, "u-1"), 6, "a partial near match")
 }

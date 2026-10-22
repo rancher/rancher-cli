@@ -23,7 +23,9 @@ type ResolvedSubject struct {
 	Provision    bool
 }
 
-const candidateCap = 10
+// CandidateLimit is how many candidates a NOT_FOUND error lists; a longer
+// list is cut to its first entries and the error records the full size.
+const CandidateLimit = 10
 
 // IsSystemUser reports whether u is a system user. It mirrors rancher's
 // User.IsSystem: any principalIds entry matching the shared system-principal
@@ -190,7 +192,7 @@ func ResolveSubject(ctx context.Context, clients engine.ClusterClientFactory, su
 		return resolvedFromUser(nameMatches[0])
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+sub.Bare).
-			WithCandidates(SubjectCandidates(all, sub.Bare)).
+			WithCandidatesCut(SubjectCandidates(all, sub.Bare), CandidateLimit).
 			WithHint("rancher get users")
 	default:
 		cands := make([]clierr.Candidate, 0, len(nameMatches))
@@ -235,11 +237,13 @@ func principalOwned(pids []string, principal string) bool {
 }
 
 // SubjectCandidates builds the candidate slice for a user not-found error:
-// the users whose id, display name or username near-matches needle, else
-// the first few users. Each user's fields are extracted once: username for
-// the haystack and UserCandidate() for the display-name-fallback Candidate.
-// The haystack is id + candidate.Name + username; the display-name-fallback
-// rule is owned by UserCandidate(), so it is not restated here.
+// every user whose id, display name or username contains needle, else all
+// of the users. The list is not cut; the caller attaches it with
+// WithCandidatesCut and CandidateLimit. Each user's fields are extracted
+// once: username for the haystack and UserCandidate() for the
+// display-name-fallback Candidate. The haystack is id + candidate.Name +
+// username; the display-name-fallback rule is owned by UserCandidate(), so
+// it is not restated here.
 func SubjectCandidates(users []*unstructured.Unstructured, needle string) []clierr.Candidate {
 	type row struct {
 		haystack string

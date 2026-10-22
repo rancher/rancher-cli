@@ -127,7 +127,7 @@ func resolveInspectUserBare(ctx context.Context, client engine.ClusterClient, us
 		return resolvedInspectUser(matches[0]), nil
 	case 0:
 		return ResolvedSubject{}, clierr.New(clierr.CodeNotFound, "user not found: "+bare).
-			WithCandidates(SubjectCandidates(toPointerSlice(list.Items), bare)).
+			WithCandidatesCut(SubjectCandidates(toPointerSlice(list.Items), bare), CandidateLimit).
 			WithHint("rancher get users")
 	default:
 		cands := make([]clierr.Candidate, 0, len(matches))

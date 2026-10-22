@@ -304,3 +304,97 @@ func TestInterruptedShape(t *testing.T) {
 	assert.Empty(t, ce.Hint)
 	assert.Contains(t, AllCodes(), CodeInterrupted)
 }
+
+func candidateRange(n int) []Candidate {
+	out := make([]Candidate, n)
+	for i := range out {
+		out[i] = Candidate{ID: fmt.Sprintf("id-%d", i), Name: fmt.Sprintf("name-%d", i)}
+	}
+	return out
+}
+
+// TestWithCandidatesCutSetsTheTotalOnlyWhenEntriesWereDropped asserts the
+// helper shows the first limit entries and sets the total to the size of
+// the full list only when it is longer than the limit.
+func TestWithCandidatesCutSetsTheTotalOnlyWhenEntriesWereDropped(t *testing.T) {
+	cases := []struct {
+		name      string
+		full      []Candidate
+		limit     int
+		wantShown int
+		wantTotal int
+	}{
+		{name: "nil list", full: nil, limit: 10, wantShown: 0, wantTotal: 0},
+		{name: "empty list", full: []Candidate{}, limit: 10, wantShown: 0, wantTotal: 0},
+		{name: "below the limit", full: candidateRange(3), limit: 10, wantShown: 3, wantTotal: 0},
+		{name: "at the limit", full: candidateRange(10), limit: 10, wantShown: 10, wantTotal: 0},
+		{name: "one over the limit", full: candidateRange(11), limit: 10, wantShown: 10, wantTotal: 11},
+		{name: "far over the limit", full: candidateRange(37), limit: 10, wantShown: 10, wantTotal: 37},
+		{name: "zero limit", full: candidateRange(4), limit: 0, wantShown: 0, wantTotal: 4},
+		{name: "negative limit counts as zero", full: candidateRange(4), limit: -3, wantShown: 0, wantTotal: 4},
+		{name: "negative limit with an empty list", full: nil, limit: -1, wantShown: 0, wantTotal: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := New(CodeNotFound, "x").WithCandidatesCut(tc.full, tc.limit)
+			assert.Len(t, e.Candidates, tc.wantShown)
+			assert.Equal(t, tc.wantTotal, e.CandidatesTotal)
+			if tc.wantShown > 0 {
+				assert.Equal(t, tc.full[:tc.wantShown], e.Candidates, "the first entries, in order")
+			}
+		})
+	}
+}
+
+// TestWithCandidatesCutLeavesTheFullListAlone asserts appending to the cut
+// candidates does not write into the caller's full list.
+func TestWithCandidatesCutLeavesTheFullListAlone(t *testing.T) {
+	full := candidateRange(12)
+	want := full[10]
+	e := New(CodeNotFound, "x").WithCandidatesCut(full, 10)
+	e.Candidates = append(e.Candidates, Candidate{ID: "extra", Name: "extra"})
+	assert.Equal(t, want, full[10])
+}
+
+// TestWithCandidatesClearsTheTotal asserts setting a full list, or a cut
+// that dropped nothing, removes a total an earlier cut set.
+func TestWithCandidatesClearsTheTotal(t *testing.T) {
+	cut := New(CodeNotFound, "x").WithCandidatesCut(candidateRange(12), 10)
+	require.Equal(t, 12, cut.CandidatesTotal)
+
+	assert.Zero(t, cut.WithCandidates(candidateRange(2)).CandidatesTotal)
+
+	cut = New(CodeNotFound, "x").WithCandidatesCut(candidateRange(12), 10)
+	again := cut.WithCandidatesCut(candidateRange(4), 10)
+	assert.Zero(t, again.CandidatesTotal)
+	assert.Len(t, again.Candidates, 4)
+}
+
+// TestCandidatesTotalReachesTheEnvelopeOnlyWhenSet asserts the marshaled
+// error carries candidatesTotal for a cut list and omits it otherwise.
+func TestCandidatesTotalReachesTheEnvelopeOnlyWhenSet(t *testing.T) {
+	decode := func(e *Error) map[string]any {
+		raw, err := json.Marshal(e)
+		require.NoError(t, err)
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(raw, &got))
+		return got
+	}
+
+	cut := decode(New(CodeNotFound, "x").WithCandidatesCut(candidateRange(37), 10))
+	assert.EqualValues(t, 37, cut["candidatesTotal"])
+	assert.Len(t, cut["candidates"], 10)
+
+	full := decode(New(CodeNotFound, "x").WithCandidatesCut(candidateRange(10), 10))
+	assert.NotContains(t, full, "candidatesTotal")
+	assert.Len(t, full["candidates"], 10)
+}
+
+// TestWithMessageKeepsTheCandidatesTotal asserts re-messaging an error
+// keeps the total of its cut list.
+func TestWithMessageKeepsTheCandidatesTotal(t *testing.T) {
+	e := New(CodeNotFound, "x").WithCandidatesCut(candidateRange(12), 10)
+	got := e.WithMessage("y")
+	assert.Equal(t, 12, got.CandidatesTotal)
+	assert.Len(t, got.Candidates, 10)
+}

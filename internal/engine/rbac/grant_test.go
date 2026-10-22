@@ -559,6 +559,37 @@ func TestGrantProjectRoleAtClusterScopeRejected(t *testing.T) {
 	assert.NotContains(t, ids, "project-member")
 }
 
+// TestGrantRoleAtTheWrongScopeWholePoolIsCutAndCounted asserts a role of
+// another scope, with twelve roles usable at the requested scope, lists the
+// first 10 of them in list order and counts all twelve.
+func TestGrantRoleAtTheWrongScopeWholePoolIsCutAndCounted(t *testing.T) {
+	t.Parallel()
+	roles := []unstructured.Unstructured{
+		{Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},
+	}
+	for i := 1; i <= 12; i++ {
+		roles = append(roles, unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": fmt.Sprintf("cluster-role-%02d", i)}, "context": "cluster"}})
+	}
+	client := &fakeClient{
+		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
+		gets: map[string]*unstructured.Unstructured{
+			"/project-member": {Object: map[string]any{"metadata": map[string]any{"name": "project-member"}, "context": "project"}},
+		},
+		listsByGVR: map[string]*unstructured.UnstructuredList{"roletemplates": {Items: roles}},
+	}
+	_, _, err := planGrant(t, NewGrant(fakeFactory{c: client}), stubInput{
+		strings: map[string]string{"cluster": "c-x", "role": "project-member"},
+		args:    []string{"u-abc"},
+	})
+	ce, ok := errors.AsType[*clierr.Error](err)
+	require.True(t, ok, "want a *clierr.Error, got %v", err)
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, []string{"cluster-role-01", "cluster-role-02", "cluster-role-03", "cluster-role-04", "cluster-role-05",
+		"cluster-role-06", "cluster-role-07", "cluster-role-08", "cluster-role-09", "cluster-role-10"}, candidateIDs(ce))
+	assert.Equal(t, 12, ce.CandidatesTotal)
+}
+
 // TestGrantEmptyContextRoleRejected asserts a roletemplate without a
 // context is refused before the dry-run at both project and cluster
 // scope, with a message naming the missing context and the scope, the
@@ -733,7 +764,7 @@ func TestGrantBadRoleAtGlobalScope(t *testing.T) {
 func TestGrantNoNearMatchRoleFallsBackToPool(t *testing.T) {
 	t.Parallel()
 	// "lx-no-such-role" shares no substring with any seeded role name, so
-	// nearFilter returns zero candidates. The fallback must return the capped
+	// nearFilter returns zero candidates. The fallback must return the
 	// at-scope pool so both role-error shapes always name valid options.
 	client := &fakeClient{
 		users: []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
@@ -768,31 +799,75 @@ func TestGrantNoNearMatchRoleFallsBackToPool(t *testing.T) {
 	assert.NotContains(t, ids, "project-member")
 }
 
-func TestGrantNoNearMatchRoleFallbackIsCappedInListOrder(t *testing.T) {
-	t.Parallel()
-	// Twelve at-scope roles and a name that near-matches none: the error
-	// lists exactly the first 10, in list order.
+// grantRoleNotFound plans a cluster-scope grant of role against n cluster
+// roletemplates named by names(1) to names(n) and returns the NOT_FOUND
+// error.
+func grantRoleNotFound(t *testing.T, n int, names func(i int) string, role string) *clierr.Error {
+	t.Helper()
 	var roles []unstructured.Unstructured
-	for i := 1; i <= 12; i++ {
+	for i := 1; i <= n; i++ {
 		roles = append(roles, unstructured.Unstructured{Object: map[string]any{
-			"metadata": map[string]any{"name": fmt.Sprintf("role-%02d", i)}, "context": "cluster"}})
+			"metadata": map[string]any{"name": names(i)}, "context": "cluster"}})
 	}
 	client := &fakeClient{
 		users:      []map[string]any{userObj("u-abc", "Alice", "alice", "local://u-abc")},
 		listsByGVR: map[string]*unstructured.UnstructuredList{"roletemplates": {Items: roles}},
 	}
 	_, _, err := planGrant(t, NewGrant(fakeFactory{c: client}), stubInput{
-		strings: map[string]string{"cluster": "c-x", "role": "lx-no-such-role"},
+		strings: map[string]string{"cluster": "c-x", "role": role},
 		args:    []string{"u-abc"},
 	})
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "want a *clierr.Error, got %v", err)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	return ce
+}
+
+func candidateIDs(ce *clierr.Error) []string {
 	var ids []string
 	for _, c := range ce.Candidates {
 		ids = append(ids, c.ID)
 	}
-	assert.Equal(t, []string{"role-01", "role-02", "role-03", "role-04", "role-05", "role-06", "role-07", "role-08", "role-09", "role-10"}, ids)
+	return ids
+}
+
+// TestGrantNoNearMatchRoleWholePoolIsCutInListOrder asserts twelve at-scope
+// roles and a name that near-matches none list the first 10 in list order and
+// count the whole pool.
+func TestGrantNoNearMatchRoleWholePoolIsCutInListOrder(t *testing.T) {
+	t.Parallel()
+	ce := grantRoleNotFound(t, 12, func(i int) string { return fmt.Sprintf("role-%02d", i) }, "lx-no-such-role")
+	assert.Equal(t, []string{"role-01", "role-02", "role-03", "role-04", "role-05", "role-06", "role-07", "role-08", "role-09", "role-10"}, candidateIDs(ce))
+	assert.Equal(t, 12, ce.CandidatesTotal)
+}
+
+// TestGrantNoNearMatchRoleWholePoolAtTheLimitHasNoTotal asserts a pool of
+// exactly 10 roles is listed whole with no total.
+func TestGrantNoNearMatchRoleWholePoolAtTheLimitHasNoTotal(t *testing.T) {
+	t.Parallel()
+	ce := grantRoleNotFound(t, CandidateLimit, func(i int) string { return fmt.Sprintf("role-%02d", i) }, "lx-no-such-role")
+	assert.Len(t, ce.Candidates, CandidateLimit)
+	assert.Zero(t, ce.CandidatesTotal)
+}
+
+// TestGrantRoleNearMatchesAboveTheLimitAreCutAndCounted asserts fifteen
+// roles that contain the typed name list the first 10 in list order and count
+// all fifteen.
+func TestGrantRoleNearMatchesAboveTheLimitAreCutAndCounted(t *testing.T) {
+	t.Parallel()
+	ce := grantRoleNotFound(t, 15, func(i int) string { return fmt.Sprintf("team-role-%02d", i) }, "role")
+	assert.Equal(t, []string{"team-role-01", "team-role-02", "team-role-03", "team-role-04", "team-role-05",
+		"team-role-06", "team-role-07", "team-role-08", "team-role-09", "team-role-10"}, candidateIDs(ce))
+	assert.Equal(t, 15, ce.CandidatesTotal)
+}
+
+// TestGrantRoleNearMatchesAtTheLimitHaveNoTotal asserts exactly 10 near
+// matches are listed whole with no total.
+func TestGrantRoleNearMatchesAtTheLimitHaveNoTotal(t *testing.T) {
+	t.Parallel()
+	ce := grantRoleNotFound(t, CandidateLimit, func(i int) string { return fmt.Sprintf("team-role-%02d", i) }, "role")
+	assert.Len(t, ce.Candidates, CandidateLimit)
+	assert.Zero(t, ce.CandidatesTotal)
 }
 
 func TestGrantBadRoleTypoKeepsNarrowedCandidates(t *testing.T) {

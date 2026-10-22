@@ -219,34 +219,33 @@ func grantDiff(fields map[string]any) []safety.DiffEntry {
 	return out
 }
 
-// candidatesWithFallback builds a candidate slice in a single pass: it
-// simultaneously collects near-matches (case-insensitive substring of needle
-// in hay(i)) up to candidateCap and the first candidateCap items via cand(i)
-// as a fallback. Returns near-matches if any exist, else the fallback. An
-// empty needle matches every item, so the capped pool is returned directly.
+// candidatesWithFallback returns every item whose hay(i) contains needle
+// (case-insensitive substring, in list order) as candidates, or, when none
+// does, the whole pool. An empty needle matches every item, so the whole
+// pool is returned. The caller cuts the list to CandidateLimit with
+// WithCandidatesCut, which records how many entries it left out.
 func candidatesWithFallback(n int, hay func(i int) string, cand func(i int) clierr.Candidate, needle string) []clierr.Candidate {
 	lneedle := strings.ToLower(needle)
-	var near, fallback []clierr.Candidate
+	var near []clierr.Candidate
 	for i := range n {
-		if len(fallback) < candidateCap {
-			fallback = append(fallback, cand(i))
-		}
-		if len(near) < candidateCap && strings.Contains(strings.ToLower(hay(i)), lneedle) {
+		if strings.Contains(strings.ToLower(hay(i)), lneedle) {
 			near = append(near, cand(i))
-		}
-		if len(near) == candidateCap && len(fallback) == candidateCap {
-			break
 		}
 	}
 	if len(near) > 0 {
 		return near
 	}
-	return fallback
+	pool := make([]clierr.Candidate, n)
+	for i := range n {
+		pool[i] = cand(i)
+	}
+	return pool
 }
 
-// roleCandidates builds the candidate slice for a role error. An empty needle
-// matches every item, so the capped at-scope pool is returned directly (used
-// for scope-mismatch errors where any valid at-scope role is equally useful).
+// roleCandidates returns the candidates for a role error: the roles of pool
+// whose id or name contains needle, or the whole pool when none does. An
+// empty needle returns the whole at-scope pool (used for scope-mismatch
+// errors where any valid at-scope role is equally useful).
 func roleCandidates(pool []clierr.Candidate, needle string) []clierr.Candidate {
 	return candidatesWithFallback(len(pool),
 		func(i int) string { return pool[i].ID + " " + pool[i].Name },
@@ -288,7 +287,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 					msg = fmt.Sprintf("role %s has no context; Rancher binds only roletemplates whose context is %s", role, scope)
 				}
 				return clierr.New(clierr.CodeNotFound, msg).
-					WithCandidates(roleCandidates(pool, "")).
+					WithCandidatesCut(roleCandidates(pool, ""), CandidateLimit).
 					WithHint(hint)
 			}
 		}
@@ -313,7 +312,7 @@ func checkRole(ctx context.Context, client engine.ClusterClient, role string, sc
 		return perr
 	}
 	return clierr.New(clierr.CodeNotFound, "role not found: "+role).
-		WithCandidates(roleCandidates(pool, role)).
+		WithCandidatesCut(roleCandidates(pool, role), CandidateLimit).
 		WithHint(hint)
 }
 

@@ -213,14 +213,44 @@ func TestFindRancherUserBareNameMissListsNearMatches(t *testing.T) {
 	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "Alice A"}, {ID: "u-2", Name: "alicia"}}, ce.Candidates)
 }
 
-// TestFindRancherUserBareNameMissCapsTheFallback asserts a bare name with no
-// near match lists the first 10 users, not every user.
-func TestFindRancherUserBareNameMissCapsTheFallback(t *testing.T) {
+// TestFindRancherUserBareNameMissWholePoolIsCutAndCounted asserts a bare
+// name with no near match lists the first 10 of 12 users in list order and
+// counts all twelve.
+func TestFindRancherUserBareNameMissWholePoolIsCutAndCounted(t *testing.T) {
 	t.Parallel()
 	local := usersClient(numberedUsers(12, "member")...)
 	ce := findUserError(t, local, "zzz")
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, []string{"u-01", "u-02", "u-03", "u-04", "u-05", "u-06", "u-07", "u-08", "u-09", "u-10"}, candidateIDs(ce.Candidates))
+	assert.Equal(t, 12, ce.CandidatesTotal)
+}
+
+// TestFindRancherUserBareNameMissNearMatchesAreCutAndCounted asserts a bare
+// name that 15 users contain lists the first 10 of them in list order and
+// counts all fifteen.
+func TestFindRancherUserBareNameMissNearMatchesAreCutAndCounted(t *testing.T) {
+	t.Parallel()
+	users := numberedUsers(15, "member")
+	users = append(users, userObj("u-other", "other", "", "local://u-other"))
+	ce := findUserError(t, usersClient(users...), "memb")
+	assert.Equal(t, clierr.CodeNotFound, ce.Code)
+	assert.Equal(t, []string{"u-01", "u-02", "u-03", "u-04", "u-05", "u-06", "u-07", "u-08", "u-09", "u-10"}, candidateIDs(ce.Candidates))
+	assert.Equal(t, 15, ce.CandidatesTotal)
+}
+
+// TestFindRancherUserBareNameMissAtTheLimitHasNoTotal asserts a pool of
+// exactly 10 users, and exactly 10 near matches, are listed whole with no
+// total.
+func TestFindRancherUserBareNameMissAtTheLimitHasNoTotal(t *testing.T) {
+	t.Parallel()
+	for name, raw := range map[string]string{"whole pool": "zzz", "near matches": "memb"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ce := findUserError(t, usersClient(numberedUsers(10, "member")...), raw)
+			assert.Len(t, ce.Candidates, 10)
+			assert.Zero(t, ce.CandidatesTotal)
+		})
+	}
 }
 
 // TestResolveSubjectBareNameMissListsCandidates asserts the candidates reach
@@ -235,6 +265,7 @@ func TestResolveSubjectBareNameMissListsCandidates(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, []clierr.Candidate{{ID: "u-1", Name: "Alice A"}}, ce.Candidates)
+	assert.Zero(t, ce.CandidatesTotal)
 }
 
 // TestFindRancherUserSharedUsernameListsEveryMatch asserts a username that
