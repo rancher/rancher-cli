@@ -76,14 +76,37 @@ func commaSoContext(s string, start, end int) string {
 	return strings.ReplaceAll(s[from:to], commaSoGap, "...")
 }
 
-// commaSoHits lists "path:line: text" for every string literal or + chain
-// of literals in f that matches commaSoRE, with the line of the literal
-// that holds the match. Comments are never visited: the walk reads
-// expressions only. A chain is tested once as a whole, and the walk goes
-// on into its other operands (a call inside the chain), skipping the
-// literals the chain already covered.
-func commaSoHits(fset *token.FileSet, path string, f *ast.File) []string {
-	var hits []string
+// foldedChain is one string literal, or one + chain of operands, as
+// foldChain folds it.
+type foldedChain struct {
+	text  string
+	parts []foldedPart
+}
+
+// partAt is the literal part that holds byte offset off of the folded text:
+// the last literal that starts at or before it.
+func (c foldedChain) partAt(off int) foldedPart {
+	var at foldedPart
+	for _, p := range c.parts {
+		if p.lit != nil && (at.lit == nil || p.offset <= off) {
+			at = p
+		}
+	}
+	return at
+}
+
+// literalAt is the literal that holds byte offset off of the folded text.
+func (c foldedChain) literalAt(off int) *ast.BasicLit {
+	return c.partAt(off).lit
+}
+
+// foldedChains lists every string literal or + chain of literals in f, each
+// as one folded string. Comments are never visited: the walk reads
+// expressions only. A chain is listed once as a whole, and the walk goes on
+// into its other operands (a call inside the chain), skipping the literals
+// the chain already covered.
+func foldedChains(f *ast.File) []foldedChain {
+	var chains []foldedChain
 	covered := map[ast.Node]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch n.(type) {
@@ -103,21 +126,26 @@ func commaSoHits(fset *token.FileSet, path string, f *ast.File) []string {
 		if !foldChain(e, &folded, &parts) {
 			return true
 		}
-		var at *ast.BasicLit
 		for _, p := range parts {
 			covered[p.node] = true
 		}
-		s := folded.String()
-		if loc := commaSoRE.FindStringIndex(s); loc != nil {
-			for _, p := range parts {
-				if p.lit != nil && (at == nil || p.offset <= loc[0]) {
-					at = p.lit
-				}
-			}
-			hits = append(hits, path+":"+strconv.Itoa(fset.Position(at.Pos()).Line)+": "+commaSoContext(s, loc[0], loc[1]))
-		}
+		chains = append(chains, foldedChain{text: folded.String(), parts: parts})
 		return true
 	})
+	return chains
+}
+
+// commaSoHits lists "path:line: text" for every string literal or + chain
+// of literals in f that matches commaSoRE, with the line of the literal
+// that holds the match. A chain is tested once as a whole.
+func commaSoHits(fset *token.FileSet, path string, f *ast.File) []string {
+	var hits []string
+	for _, c := range foldedChains(f) {
+		if loc := commaSoRE.FindStringIndex(c.text); loc != nil {
+			at := c.literalAt(loc[0])
+			hits = append(hits, path+":"+strconv.Itoa(fset.Position(at.Pos()).Line)+": "+commaSoContext(c.text, loc[0], loc[1]))
+		}
+	}
 	return hits
 }
 
