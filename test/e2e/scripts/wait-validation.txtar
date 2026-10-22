@@ -1,8 +1,20 @@
 env RANCHER_CLI_URL=$TEST_RANCHER_URL
 env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
-# --for without --wait
-! exec rancher get pod whatever --for state=x
+# --for alone starts the wait, which finds no such pod
+! exec rancher get pod whatever --for state=x --cluster testcluster --namespace default
+stderr 'error \(NOT_FOUND\):'
+
+# --timeout alone starts the wait, which finds no such pod
+! exec rancher get pod whatever --timeout 1s --cluster testcluster --namespace default
+stderr 'error \(NOT_FOUND\):'
+
+# --wait=false conflicts with --for
+! exec rancher get pod whatever --wait=false --for state=x --cluster testcluster --namespace default
+stderr 'error \(VALIDATION\):'
+
+# --wait=false conflicts with --timeout
+! exec rancher get pod whatever --wait=false --timeout 1s --cluster testcluster --namespace default
 stderr 'error \(VALIDATION\):'
 
 # --wait on a list (no name)
@@ -14,5 +26,5 @@ stderr 'error \(VALIDATION\):'
 stderr 'error \(VALIDATION\):'
 
 # --for grammar is rejected (not JSONPath, not a bare word)
-! exec rancher get pod whatever --wait --for garbage --cluster testcluster --namespace default
+! exec rancher get pod whatever --for garbage --cluster testcluster --namespace default
 stderr 'error \(VALIDATION\):'

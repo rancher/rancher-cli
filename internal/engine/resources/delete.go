@@ -42,8 +42,9 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// deleteFlags is get's flag set with the flags a delete (always a named op)
-// requires marked Required so the pipeline rejects before Plan:
+// deleteFlags is get's flag set without the wait flags (--wait, --for and
+// --timeout: a delete never waits), with the flags a delete (always a named
+// op) requires marked Required so the pipeline rejects before Plan:
 //   - an NSCluster kind's --cluster (it becomes the namespace; an empty value
 //     must not fall through to the local cluster);
 //   - an NSPlain kind's --namespace (an empty value would 404 opaquely).
@@ -52,7 +53,7 @@ func (c deleteCmd) Describe() runtime.Descriptor {
 // DefaultNamespace satisfies the named-op rule. --project describes the
 // named object, never a list.
 func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
-	flags := getFlags(k)
+	flags := WithoutWaitFlags(getFlags(k))
 	for i := range flags {
 		switch {
 		case k.Policy == kinds.NSCluster && flags[i].Name == FlagCluster:

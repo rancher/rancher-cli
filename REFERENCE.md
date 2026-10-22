@@ -821,8 +821,10 @@ and the Kubernetes version must be one the server accepts
     rancher get cluster web --wait --timeout 15m
     rancher kubeconfig --cluster web > web.yaml
 
-`--wait` on `get <kind>` applies the kind's default readiness; for
-clusters that is `condition=Ready`.
+`--wait` on `get <kind>` applies the kind's default wait condition; for
+clusters that is `condition=Ready`. `--for <condition>` on its own also
+starts the wait; `--timeout` on its own waits for the kind's default wait
+condition, and a kind with none refuses it and asks for `--for`.
 
 `rancher kubeconfig` prints one context through the Rancher proxy and,
 when the cluster has the Authorized Cluster Endpoint enabled and the

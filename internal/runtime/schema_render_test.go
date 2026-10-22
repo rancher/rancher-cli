@@ -226,7 +226,7 @@ func TestSchemaKindCardFields(t *testing.T) {
 	assert.Contains(t, lines, "resource: gitrepos")
 	assert.Contains(t, lines, "scope: management")
 	assert.Contains(t, lines, "namespace: workspace; named ops take --namespace (default fleet-default)")
-	assert.Contains(t, lines, "wait: bare --wait waits for condition=Ready")
+	assert.Contains(t, lines, "wait: --wait or --timeout alone waits for condition=Ready")
 	assert.Contains(t, lines, "traits: sensitive · completable")
 
 	verbsAt := slices.Index(lines, "verbs:")

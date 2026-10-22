@@ -90,9 +90,9 @@ type getCRTCmd struct {
 // NewGetCRT builds the get override for the clusterregistrationtoken row: a
 // Steve /v1 read instead of the generic dynamic-client Get/List, since only
 // Steve splices the real token into the command/manifest fields. Its
-// Descriptor mirrors resources.NewGet(k, ...) exactly (same Name, args,
-// flags) so the row's schema output is unchanged - only
-// execution is overridden.
+// Descriptor mirrors resources.NewGet(k, ...) (same Name and args) and its
+// flags are the generic get's without the wait flags - only execution is
+// overridden.
 func NewGetCRT(k kinds.Kind, roots engine.RootClientFactory) runtime.Command {
 	return &getCRTCmd{k: k, roots: roots}
 }
@@ -104,13 +104,12 @@ func NewGetCRT(k kinds.Kind, roots engine.RootClientFactory) runtime.Command {
 // discipline alone. resources.NewGet's Describe() is a pure function of k -
 // it never touches its clients argument - so nil is safe to pass here.
 func (c *getCRTCmd) Describe() runtime.Descriptor {
-	return resources.NewGet(c.k, nil).Describe()
+	d := resources.NewGet(c.k, nil).Describe()
+	d.Flags = resources.WithoutWaitFlags(d.Flags)
+	return d
 }
 
 func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
-	if in.Bool("wait") {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait is not supported for "+c.k.Name)
-	}
 	ns := in.String(resources.FlagNamespace)
 	named := len(in.Args()) > 0 && in.Args()[0] != ""
 	// The descriptor is the generic get's, so --selector arrives here too;

@@ -343,14 +343,19 @@ func TestGetWaitRequiresName(t *testing.T) {
 	assert.ErrorContains(t, ce, "--wait requires a resource name")
 }
 
-func TestGetForWithoutWait(t *testing.T) {
-	t.Parallel()
-	k := mustKind(t, "pod")
-	cmd := NewGet(k, &recFactory{}).(runtime.ReadCommand)
-	_, err := cmd.Execute(t.Context(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "ns", "for": "state=active"}}, nil)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
+// TestGetForAloneStartsTheWait asserts --for with no --wait waits: the fake
+// satisfies state=active only on the second Get, so a plain read fails it.
+func TestGetForAloneStartsTheWait(t *testing.T) {
+	withFastPoll(t)
+	synctest.Test(t, func(t *testing.T) {
+		k := mustKind(t, "pod")
+		client := &seqClient{objs: []*unstructured.Unstructured{stateObj("pending", ""), stateObj("active", "")}}
+		cmd := NewGet(k, &recFactory{client: client}).(runtime.ReadCommand)
+		res, err := cmd.Execute(t.Context(), input{args: []string{"web"}, s: map[string]string{"cluster": "prod", "namespace": "ns", "for": "state=active"}}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, 2, client.calls, "the wait must poll to the state, not read once")
+		assert.Contains(t, res.Summary, "wait: state=active satisfied")
+	})
 }
 
 func TestGetWaitRejectsNonWaitableKindWithoutFor(t *testing.T) {

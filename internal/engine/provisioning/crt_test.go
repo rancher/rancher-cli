@@ -21,12 +21,11 @@ import (
 
 // crtInput is a minimal runtime.Input fake carrying exactly what
 // NewGetCRT/NewRefuseCRTPatch's Execute/Plan read: positional args, the
-// --namespace and --selector string flags, and the --wait bool flag.
+// --namespace and --selector string flags.
 type crtInput struct {
 	args     []string
 	ns       string
 	selector string
-	wait     bool
 }
 
 func (i crtInput) String(name string) string {
@@ -38,12 +37,7 @@ func (i crtInput) String(name string) string {
 	}
 	return ""
 }
-func (i crtInput) Bool(name string) bool {
-	if name == "wait" {
-		return i.wait
-	}
-	return false
-}
+func (i crtInput) Bool(string) bool        { return false }
 func (i crtInput) Strings(string) []string { return nil }
 func (i crtInput) IsSet(string) bool       { return false }
 func (i crtInput) Args() []string          { return i.args }
@@ -408,19 +402,49 @@ func TestNewRefuseCRTPatchRejectsAsReadOnly(t *testing.T) {
 
 // TestNewGetCRTDescribeMirrorsGenericGet asserts the schema-parity contract:
 // the override's Descriptor must be STRUCT-EQUAL to what the
-// LIVE resources.NewGet(k, ...) generates for this row - not to a
-// hand-duplicated literal that can silently drift out of sync with the
-// generator (resources/get.go's getFlags) while still passing. Mirrors
-// deletecluster_test.go's TestDeleteProvisioningClusterDescribeMirrorsGeneric
-// pattern. Describe() never touches its clients argument, so nil is safe
+// LIVE resources.NewGet(k, ...) generates for this row, apart from the
+// wait flags it drops - not to a hand-duplicated literal that can silently
+// drift out of sync with the generator (resources/get.go's getFlags) while
+// still passing. Mirrors the
+// TestDeleteProvisioningClusterDescribeMirrorsGeneric pattern of
+// deletecluster_test.go. Describe() never touches its clients argument, so nil is safe
 // here (verified by reading getCmd.Describe()/patchCmd.Describe()).
 func TestNewGetCRTDescribeMirrorsGenericGet(t *testing.T) {
 	t.Parallel()
 	k := crtKind(t)
 	generic := resources.NewGet(k, nil).Describe()
 	override := NewGetCRT(k, nil).Describe()
-	assert.Equal(t, generic, override)
 	assert.Equal(t, "get clusterregistrationtoken", override.Name)
+
+	var wantFlags []runtime.ArgSpec
+	for _, f := range generic.Flags {
+		if f.Name != "wait" && f.Name != "for" && f.Name != "timeout" {
+			wantFlags = append(wantFlags, f)
+		}
+	}
+	assert.Equal(t, wantFlags, override.Flags)
+	generic.Flags, override.Flags = nil, nil
+	assert.Equal(t, generic, override)
+}
+
+// TestNewGetCRTDescribeDeclaresNoWaitFlags asserts the descriptor lists
+// none of --wait, --for and --timeout, and that the generic get lists all
+// three, so the filter has something to drop.
+func TestNewGetCRTDescribeDeclaresNoWaitFlags(t *testing.T) {
+	t.Parallel()
+	k := crtKind(t)
+	names := func(d runtime.Descriptor) []string {
+		var out []string
+		for _, f := range d.Flags {
+			out = append(out, f.Name)
+		}
+		return out
+	}
+	assert.Subset(t, names(resources.NewGet(k, nil).Describe()), []string{"wait", "for", "timeout"})
+	got := names(NewGetCRT(k, nil).Describe())
+	for _, name := range []string{"wait", "for", "timeout"} {
+		assert.NotContains(t, got, name)
+	}
 }
 
 // TestNewRefuseCRTPatchDescribeMirrorsGenericPatch is a

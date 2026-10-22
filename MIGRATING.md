@@ -136,9 +136,10 @@ kubeconfig (same as the Dashboard's "Download KubeConfig") that needs no
 local `rancher` binary to authenticate - the output goes straight to stdout,
 with a shown-once notice on where its server-assigned name is.
 
-## `--wait` on named `get`
+## Waiting with a named `get`
 
-`rancher get <kind> <name> --wait [--for state=<value>|condition=<Type>[=<Status>]] [--timeout <duration>]`
+`rancher get <kind> <name> [--wait] [--for state=<value>|condition=<Type>[=<Status>]] [--timeout <duration>]`,
+with at least one of the three (any of them starts the wait),
 replaces the legacy standalone `wait` command. Unlike `kubectl wait`, it
 fails fast on a Rancher-reported provisioning error instead of burning the
 full timeout. For anything `--wait` doesn't cover well (arbitrary JSONPath

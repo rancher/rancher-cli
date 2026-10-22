@@ -220,7 +220,7 @@ func renderKindCard(m Manifest, k SchemaKind) string {
 	b.WriteString("scope: " + k.Scope + "\n")
 	b.WriteString(kindNamespaceLine(k) + "\n")
 	if k.WaitDefault != "" {
-		b.WriteString("wait: bare --wait waits for " + k.WaitDefault + "\n")
+		b.WriteString("wait: --wait or --timeout alone waits for " + k.WaitDefault + "\n")
 	}
 	var traits []string
 	if k.Sensitive {

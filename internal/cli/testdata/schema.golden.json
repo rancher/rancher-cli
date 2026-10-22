@@ -1800,21 +1800,6 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -1852,21 +1837,6 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -1902,21 +1872,6 @@
           "desc": "cluster `id|name` of the clusterroletemplatebinding",
           "name": "cluster",
           "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -1968,21 +1923,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -2031,21 +1971,6 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2097,21 +2022,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -2162,21 +2072,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -2213,21 +2108,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2266,21 +2146,6 @@
           "desc": "`namespace` to operate in",
           "name": "namespace",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -2310,23 +2175,6 @@
       "commandType": "mutating",
       "contract": "public",
       "destructive": "true",
-      "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        }
-      ],
       "gates": [
         "--apply",
         "--yes"
@@ -2361,21 +2209,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2427,21 +2260,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -2490,21 +2308,6 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2556,21 +2359,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -2600,23 +2388,6 @@
       "commandType": "mutating",
       "contract": "public",
       "destructive": "true",
-      "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        }
-      ],
       "gates": [
         "--apply",
         "--yes"
@@ -2647,23 +2418,6 @@
       "commandType": "mutating",
       "contract": "internal",
       "destructive": "true",
-      "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        }
-      ],
       "gates": [
         "--apply",
         "--yes",
@@ -2704,21 +2458,6 @@
           "desc": "the namespace must be one of the project's",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -2748,23 +2487,6 @@
       "commandType": "mutating",
       "contract": "internal",
       "destructive": "true",
-      "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        }
-      ],
       "gates": [
         "--apply",
         "--yes"
@@ -2814,21 +2536,6 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -2880,21 +2587,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -2930,21 +2622,6 @@
           "desc": "cluster `id|name` of the project",
           "name": "cluster",
           "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -2990,21 +2667,6 @@
           "name": "namespace",
           "required": true,
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -3042,21 +2704,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3108,21 +2755,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -3171,21 +2803,6 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3237,21 +2854,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -3301,21 +2903,6 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3367,21 +2954,6 @@
           "desc": "the object's namespace must be in this project",
           "name": "project",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "gates": [
@@ -3411,23 +2983,6 @@
       "commandType": "mutating",
       "contract": "public",
       "destructive": "true",
-      "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        }
-      ],
       "gates": [
         "--apply",
         "--yes"
@@ -3456,23 +3011,6 @@
       "commandType": "mutating",
       "contract": "public",
       "destructive": "true",
-      "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        }
-      ],
       "gates": [
         "--apply",
         "--yes"
@@ -3507,21 +3045,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         }
       ],
@@ -3568,17 +3091,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -3622,17 +3145,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -3676,17 +3199,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -3730,17 +3253,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -3785,17 +3308,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -3850,17 +3373,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -3904,17 +3427,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -3957,21 +3480,6 @@
           "desc": "filter a list by Kubernetes label `selector`, e.g. app=web,tier!=cache (kubectl's -l)",
           "name": "selector",
           "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
         }
       ],
       "group": "get",
@@ -4011,17 +3519,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4077,17 +3585,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4142,17 +3650,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4208,17 +3716,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4274,17 +3782,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4328,17 +3836,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4394,17 +3902,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4440,17 +3948,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4495,17 +4003,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4549,17 +4057,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4596,17 +4104,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4642,17 +4150,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4696,17 +4204,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4762,17 +4270,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4827,17 +4335,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4893,17 +4401,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -4939,17 +4447,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5006,17 +4514,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5060,17 +4568,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5114,17 +4622,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5163,17 +4671,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5221,17 +4729,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5273,17 +4781,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5320,17 +4828,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5366,17 +4874,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5421,17 +4929,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5487,17 +4995,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5553,17 +5061,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5605,17 +5113,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5660,17 +5168,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5715,17 +5223,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5781,17 +5289,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5828,17 +5336,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5893,17 +5401,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -5959,17 +5467,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -6025,17 +5533,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -6071,17 +5579,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -6137,17 +5645,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -6183,17 +5691,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -6231,17 +5739,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         },
@@ -6290,17 +5798,17 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
+          "desc": "wait for the resource to reach its default wait condition, or --for, before returning",
           "name": "wait",
           "type": "bool"
         },
         {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
+          "desc": "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)",
           "name": "for",
           "type": "string"
         },
         {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
+          "desc": "wait `timeout`, e.g. 5m (default 120s; starts the wait)",
           "name": "timeout",
           "type": "string"
         }
@@ -6853,21 +6361,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -6923,21 +6416,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -6999,21 +6477,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -7069,21 +6532,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -7146,21 +6594,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -7211,21 +6644,6 @@
       "contract": "internal",
       "destructive": "false",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -7282,21 +6700,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -7360,21 +6763,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -7429,21 +6817,6 @@
           "desc": "cluster `id|name` of the clusterroletemplatebinding",
           "name": "cluster",
           "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -7519,21 +6892,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -7601,21 +6959,6 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -7690,21 +7033,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -7776,21 +7104,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -7846,21 +7159,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -7935,21 +7233,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -7999,21 +7282,6 @@
       "contract": "internal",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -8072,21 +7340,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -8149,21 +7402,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -8215,21 +7453,6 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -8280,21 +7503,6 @@
       "contract": "public",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -8352,21 +7560,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -8441,21 +7634,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -8523,21 +7701,6 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -8612,21 +7775,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -8676,21 +7824,6 @@
       "contract": "public",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -8748,21 +7881,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -8824,21 +7942,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -8897,21 +8000,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -8964,21 +8052,6 @@
       "contract": "internal",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -9044,21 +8117,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -9115,21 +8173,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -9181,21 +8224,6 @@
       "destructive": "true",
       "flags": [
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -9246,21 +8274,6 @@
       "contract": "internal",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -9319,21 +8332,6 @@
           "desc": "target cluster `id|name`",
           "name": "cluster",
           "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -9408,21 +8406,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -9494,21 +8477,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -9563,21 +8531,6 @@
           "desc": "cluster `id|name` of the project",
           "name": "cluster",
           "required": true,
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -9641,21 +8594,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -9713,21 +8651,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -9803,21 +8726,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -9868,21 +8776,6 @@
       "contract": "public",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -9952,21 +8845,6 @@
         {
           "desc": "the object's namespace must be in this project",
           "name": "project",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {
@@ -10042,21 +8920,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -10128,21 +8991,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -10192,21 +9040,6 @@
       "contract": "internal",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -10280,21 +9113,6 @@
           "type": "string"
         },
         {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
-        {
           "aliases": [
             "p"
           ],
@@ -10344,21 +9162,6 @@
       "contract": "public",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -10411,21 +9214,6 @@
       "contract": "public",
       "destructive": "true",
       "flags": [
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
-          "type": "string"
-        },
         {
           "aliases": [
             "p"
@@ -10483,21 +9271,6 @@
           ],
           "desc": "`namespace` to operate in",
           "name": "namespace",
-          "type": "string"
-        },
-        {
-          "desc": "wait for the resource to reach --for before returning",
-          "name": "wait",
-          "type": "bool"
-        },
-        {
-          "desc": "wait `condition`, e.g. state=active or condition=Ready",
-          "name": "for",
-          "type": "string"
-        },
-        {
-          "desc": "wait `timeout`, e.g. 5m (default 120s)",
-          "name": "timeout",
           "type": "string"
         },
         {

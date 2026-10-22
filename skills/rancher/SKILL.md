@@ -433,10 +433,14 @@ Exit codes: `0` ok · `2` usage/validation/confirmation · `3` auth ·
 ### 6. Waits
 
 ```
-rancher get gitrepo main --wait --timeout 5m                       # kind's default readiness
+rancher get gitrepo main --wait --timeout 5m                       # kind's default wait condition
 rancher get cluster c-abc --wait --for condition=Ready --timeout 10m
 rancher get pod x --wait --for state=running
 ```
+
+`--for <condition>` on its own also starts the wait; `--timeout` on its own
+waits for the kind's default wait condition, and a kind with none refuses it
+and asks for `--for`.
 
 Grammar: `state=<value>` or `condition=<Type>[=<Status>]` (default Status
 `True`). JSONPath is deliberately unsupported - for that, use `kubectl wait`

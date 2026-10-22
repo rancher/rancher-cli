@@ -115,10 +115,11 @@ type Kind struct {
 	// "not available". Meaningless on Deletable: true rows; leave empty.
 	NoDeleteReason string
 	Sensitive      bool // patch on this kind is Destructive (parity branch 2)
-	// WaitDefault is the --for expression bare --wait applies; "" = no default
-	// (bare --wait rejects) - an explicit --for is honored regardless. Set only
-	// for kinds where the expression is grounded in a real, well-known
-	// status.state/status.conditions shape; when in doubt, leave empty.
+	// WaitDefault is the --for expression --wait or --timeout alone applies;
+	// "" = no default (--wait or --timeout alone rejects) - an explicit --for
+	// is honored regardless. Set only for kinds where the expression is
+	// grounded in a real, well-known status.state/status.conditions shape;
+	// when in doubt, leave empty.
 	WaitDefault string
 	// WaitFailsOnStalled marks the kind's controller as kstatus-conformant and
 	// gates BOTH consequences: the Stalled=True fail-fast (abort the wait even

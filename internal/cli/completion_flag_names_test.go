@@ -195,6 +195,28 @@ func TestPatchTypeCompletion(t *testing.T) {
 	assert.Equal(t, []string{"--type=json", "--type=merge"}, extractTokens(runNameLikeCompletion(t, []string{"patch", "pod"}, "--type=")))
 }
 
+// TestWaitFlagCompletion asserts `get pod --<TAB>` offers --wait, --for and
+// --timeout, and that `delete pod`, `patch pod` and `get
+// clusterregistrationtoken` offer none of them.
+func TestWaitFlagCompletion(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv(config.EnvConfigDir, t.TempDir())
+
+	waitFlags := []string{"--wait", "--for", "--timeout"}
+	tokens := extractTokens(runNameLikeCompletion(t, []string{"get", "pod"}, "--"))
+	for _, flag := range waitFlags {
+		assert.Contains(t, tokens, flag, "get pod")
+	}
+	for _, words := range [][]string{{"delete", "pod"}, {"patch", "pod"}, {"get", "clusterregistrationtoken"}} {
+		tokens := extractTokens(runNameLikeCompletion(t, words, "--"))
+		require.NotEmpty(t, tokens, strings.Join(words, " "))
+		for _, flag := range waitFlags {
+			assert.NotContains(t, tokens, flag, strings.Join(words, " "))
+		}
+	}
+}
+
 // TestFlagNameCompletionConfigSetCompletion is the user-reported reproduction:
 // `config set-completion --<TAB>` must return the set-completion leaf's flags
 // (--network, --timeout) plus --help. Before the fix, output was empty.

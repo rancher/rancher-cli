@@ -149,10 +149,30 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 		flags = append(flags, runtime.ProjectFlag(false, desc))
 	}
 	return append(flags,
-		runtime.ArgSpec{Name: flagWait, Type: "bool", Desc: "wait for the resource to reach --for before returning"},
-		runtime.ArgSpec{Name: flagFor, Type: "string", Desc: "wait `condition`, e.g. state=active or condition=Ready"},
-		runtime.ArgSpec{Name: flagTimeout, Type: "string", Desc: "wait `timeout`, e.g. 5m (default 120s)"},
+		runtime.ArgSpec{Name: flagWait, Type: "bool", Desc: "wait for the resource to reach its default wait condition, or --for, before returning"},
+		runtime.ArgSpec{Name: flagFor, Type: "string", Desc: "wait for `condition`, e.g. state=active or condition=Ready (starts the wait)"},
+		runtime.ArgSpec{Name: flagTimeout, Type: "string", Desc: "wait `timeout`, e.g. 5m (default 120s; starts the wait)"},
 	)
+}
+
+// WaitFlagNames lists the flags that start or tune a get's wait.
+var WaitFlagNames = []string{flagWait, flagFor, flagTimeout}
+
+// WithoutWaitFlags removes the wait flags from flags in place and returns
+// the shortened slice; callers pass a list they own.
+func WithoutWaitFlags(flags []runtime.ArgSpec) []runtime.ArgSpec {
+	return slices.DeleteFunc(flags, func(f runtime.ArgSpec) bool {
+		return slices.Contains(WaitFlagNames, f.Name)
+	})
+}
+
+// givenWaitFlag names the flag that starts a wait without --wait: --for when
+// it has a value, else --timeout.
+func givenWaitFlag(forExpr string) string {
+	if forExpr != "" {
+		return "--" + flagFor
+	}
+	return "--" + flagTimeout
 }
 
 func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompter) (runtime.Result, error) {
@@ -169,11 +189,20 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	if _, err := ParseListSelector(c.k.Name, named, labelSelector); err != nil {
 		return runtime.Result{}, err
 	}
-	if !wait && (forExpr != "" || timeoutStr != "") {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--for/--timeout require --wait")
+	if !wait && in.IsSet(flagWait) && (forExpr != "" || timeoutStr != "") {
+		return runtime.Result{}, clierr.New(clierr.CodeValidation,
+			"--wait=false conflicts with "+givenWaitFlag(forExpr)+"; drop one")
+	}
+	// --for and --timeout start the wait, as --wait does.
+	if forExpr != "" || timeoutStr != "" {
+		wait = true
 	}
 	if wait && !named {
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, "--wait requires a resource "+argName(c.k))
+		first := "--wait"
+		if !in.Bool(flagWait) {
+			first = givenWaitFlag(forExpr)
+		}
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, first+" requires a resource "+argName(c.k))
 	}
 	if wait && c.k.WaitDefault == "" && forExpr == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
