@@ -1,6 +1,9 @@
 package fidelity
 
-import "net/http"
+import (
+	"net/http"
+	"slices"
+)
 
 // projectNamespaceProbes records how Rancher maps a downstream namespace to
 // its project and what a project delete does to the project's namespaces,
@@ -81,11 +84,13 @@ func projectNamespaceProbes() []Probe {
 		}
 	}
 	teardown := func(project, created, kept string) []Step {
-		return []Step{
-			deleteFixture("namespace "+created, downstreamNS+created),
-			deleteFixture("namespace "+kept, downstreamNS+kept),
-			deleteFixture("project "+project, mgmtProjects+project),
-		}
+		return slices.Concat(
+			[]Step{
+				deleteFixture("namespace "+created, downstreamNS+created),
+				deleteFixture("namespace "+kept, downstreamNS+kept),
+			},
+			deleteProjectFixture(project),
+		)
 	}
 	// Each namespace keeps only the project label and the two annotations
 	// the outcome depends on; Rancher's other annotations carry timestamps

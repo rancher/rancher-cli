@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -351,14 +352,18 @@ func accessDownstreamProbes() []Probe {
 	}
 
 	explainTeardown := func() []Step {
-		return []Step{
-			deleteFixture("crtb", mgmtAPI+"/namespaces/{downstream}/clusterroletemplatebindings/"+explainCRTBName),
-			deleteFixture("prtb", mgmtAPI+"/namespaces/"+explainBackingNS+"/projectroletemplatebindings/"+explainPRTBName),
-			deleteFixture("namespace", downstreamCore+"namespaces/"+explainNamespace),
-			deleteFixture("project", mgmtAPI+"/namespaces/{downstream}/projects/"+explainProject),
-			deleteFixture("user global role binding", mgmtAPI+"/globalrolebindings/e2e-fid-explain-grb"),
-			deleteUserNamed(explainUser),
-		}
+		return slices.Concat(
+			[]Step{
+				deleteFixture("crtb", mgmtAPI+"/namespaces/{downstream}/clusterroletemplatebindings/"+explainCRTBName),
+				deleteFixture("prtb", mgmtAPI+"/namespaces/"+explainBackingNS+"/projectroletemplatebindings/"+explainPRTBName),
+				deleteFixture("namespace", downstreamCore+"namespaces/"+explainNamespace),
+			},
+			deleteProjectFixture(explainProject),
+			[]Step{
+				deleteFixture("user global role binding", mgmtAPI+"/globalrolebindings/e2e-fid-explain-grb"),
+				deleteUserNamed(explainUser),
+			},
+		)
 	}
 	explainFixtureChain := Probe{
 		// What access explain reads on a downstream behind a PRTB and a
@@ -1310,6 +1315,22 @@ func deleteFixture(name, pathTemplate string) Step {
 			}
 			return fmt.Errorf("cleanup %s: unexpected status %d", name, status)
 		},
+	}
+}
+
+// deleteProjectFixture returns the steps that delete the project named
+// project from the management cluster, then wait until the project and its
+// backing namespace on the local cluster both answer 404. Rancher removes a
+// project in the background after the delete answers; a probe that runs
+// next in the same cluster must not start before the project and its
+// backing namespace are gone.
+func deleteProjectFixture(project string) []Step {
+	gone := func(_ map[string]any, status int) bool { return status == http.StatusNotFound }
+	projectPath := mgmtAPI + "/namespaces/{downstream}/projects/" + project
+	return []Step{
+		deleteFixture("project "+project, projectPath),
+		waitFixture("project "+project+" gone", http.MethodGet, projectPath, "", gone),
+		waitFixture("backing namespace of project "+project+" gone", http.MethodGet, "/k8s/clusters/local/api/v1/namespaces/{downstream}-"+project, "", gone),
 	}
 }
 
