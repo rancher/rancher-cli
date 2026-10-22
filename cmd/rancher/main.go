@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/rancher/rancher-cli/internal/cli"
+	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/invocation"
 	"github.com/rancher/rancher-cli/internal/skillinstall"
 	"github.com/rancher/rancher-cli/skills"
 )
@@ -19,6 +21,7 @@ func main() {
 	if cli.OutdatedCompletionScript(os.Args[1:], os.Stderr) {
 		return
 	}
+	httpx.SetUserAgent(invocation.Detect(VERSION, os.Getenv).UserAgent())
 	root, err := cli.BuildRoot(VERSION)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "rancher:", err)

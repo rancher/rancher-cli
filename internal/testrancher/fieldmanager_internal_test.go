@@ -84,8 +84,9 @@ func TestFacadeRecordsAKubernetesWriteWithoutTheFieldManager(t *testing.T) {
 }
 
 // TestFacadeSkipsAWriteFromKubectl asserts a write whose User-Agent starts
-// with kubectl/ is not recorded while the same write from another client is.
-// Removing the User-Agent check fails it.
+// with kubectl/ is not recorded while the same write from the CLI, whose
+// User-Agent starts with cli.rancher.io/, is. Removing the User-Agent check, or
+// widening it to the CLI's value, fails it.
 func TestFacadeSkipsAWriteFromKubectl(t *testing.T) {
 	t.Parallel()
 	f := New(Options{})
@@ -93,7 +94,7 @@ func TestFacadeSkipsAWriteFromKubectl(t *testing.T) {
 	const target = "/k8s/clusters/c-1/api/v1/namespaces/x/configmaps"
 	send(f, http.MethodPost, target, "kubectl/v1.37.0 (darwin/arm64) kubernetes/abc")
 	assert.Empty(t, writesOf(f))
-	send(f, http.MethodPost, target, "rancher/v1.0.0 (darwin/arm64)")
+	send(f, http.MethodPost, target, "cli.rancher.io/v1.0.0 (darwin/arm64; exec-plugin)")
 	assert.Len(t, writesOf(f), 1, "the exec plugin kubectl starts is the CLI")
 }
 

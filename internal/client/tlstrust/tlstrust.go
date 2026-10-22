@@ -302,17 +302,7 @@ type classifyingTransport struct {
 func (t *classifyingTransport) WrappedRoundTripper() http.RoundTripper { return t.next }
 
 func (t *classifyingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// http.Client applies its Timeout to a transport it does not recognize
-	// through the deprecated Request.Cancel channel as well as the context
-	// deadline, and a transport that sees both may report either: "request
-	// canceled" instead of the deadline error the same client reports
-	// without this wrapper. The context carries the deadline, so the inner
-	// transport gets the request without the channel.
-	if req.Cancel != nil { //nolint:staticcheck // the channel is set by http.Client itself; this is the only way to withhold it
-		withoutCancel := *req
-		withoutCancel.Cancel = nil //nolint:staticcheck // see above
-		req = &withoutCancel
-	}
+	req = httpx.WithoutCancel(req)
 	resp, err := t.next.RoundTrip(req)
 	if err == nil {
 		return resp, nil

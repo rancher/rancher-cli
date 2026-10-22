@@ -21,6 +21,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Revoking the CLI's tokens](#revoking-the-clis-tokens)
 - [kubectl integration](#kubectl-integration)
 - [TLS & proxy](#tls--proxy)
+- [What the CLI sends to the server](#what-the-cli-sends-to-the-server)
 
 ## Platforms & credential stores
 
@@ -1958,3 +1959,116 @@ still verifies the real server's certificate end to end. A loopback target
 notwithstanding - the same rule Go's standard library applies everywhere.
 If the proxy itself is unreachable, the error names the proxy's address so
 it reads distinctly from a failure to reach the Rancher server itself.
+
+## What the CLI sends to the server
+
+Every request the CLI sends to Rancher or to a downstream cluster's direct
+endpoint carries a User-Agent that says which CLI version sent it, on which
+platform, and how the process was started:
+
+```
+cli.rancher.io/<version> (<os>/<arch>[; exec-plugin][; agent=<id>][; ci])
+```
+
+| Example | Meaning |
+|---|---|
+| `cli.rancher.io/v0.1.0-alpha.8 (darwin/arm64)` | a terminal or a script |
+| `cli.rancher.io/v0.1.0-alpha.8 (darwin/arm64; agent=claude-code)` | inside a Claude Code session |
+| `cli.rancher.io/v0.1.0-alpha.8 (linux/amd64; exec-plugin)` | kubectl's exec plugin |
+| `cli.rancher.io/v0.1.0-alpha.8 (linux/amd64; exec-plugin; agent=codex)` | kubectl run inside a Codex session |
+| `cli.rancher.io/v0.1.0-alpha.8 (linux/amd64; ci)` | CI |
+| `cli.rancher.io/dev-83a23a71 (darwin/arm64)` | a local build |
+
+The product, `cli.rancher.io`, is the name the CLI also uses as its Kubernetes
+field manager and in the `apiVersion` of its output envelope, so an
+administrator can match audit entries and managed fields by one name.
+
+The version is `unknown` when it is empty, longer than 64 bytes, has a
+character outside the HTTP token characters, or contains "mozilla" in any
+case (Rancher treats a User-Agent with it as a browser). The value is built
+once per process, from the environment only; no file, keychain, terminal or
+network is read.
+
+### What each part means
+
+- `exec-plugin`: `KUBERNETES_EXEC_INFO` is non-empty, which client-go sets on
+  every call of an exec credential plugin. It marks only the plugin's own
+  requests: creating the token at Rancher, and the check that the direct
+  endpoint accepts it, which goes to that endpoint and not to Rancher. The API
+  requests kubectl then sends carry kubectl's User-Agent. A hand-run
+  `rancher auth get-token` is not the plugin.
+- `ci`: `CI` is non-empty and not `false` or `0` (in any case), or
+  `JENKINS_URL`, `TEAMCITY_VERSION`, `TF_BUILD` or `CODEBUILD_BUILD_ARN` is
+  non-empty. `CODEX_CI` belongs to Codex and does not mean CI.
+- `agent=<id>`: the process ran inside that agent harness's session. It says
+  where the process ran; it does not show that the model chose the command.
+  The first row that matches decides:
+
+  | Order | Variables | Id |
+  |---|---|---|
+  | a | `CLAUDE_CODE_CHILD_SESSION=1`, or `CLAUDECODE=1` with `AI_AGENT` starting `claude-code` | `claude-code` |
+  | b | `CODEX_THREAD_ID` non-empty, or `CODEX_CI=1` | `codex` |
+  | c | `GEMINI_CLI=1` | `gemini-cli` |
+  | d | `COPILOT_CLI=1`, also when a Copilot `AI_AGENT` is set | `copilot-cli` |
+  | e | `OPENCODE=1` | `opencode` |
+  | f | `CLINE_ACTIVE=true` | `cline` |
+  | g | `ROO_ACTIVE=true` | `roo-code` |
+  | h | `AI_AGENT` non-empty | its normalized value when it is on the list, else `agent` |
+
+  The list: `claude-code`, `codex`, `gemini-cli`, `copilot-cli`, `opencode`,
+  `cline`, `roo-code`, `copilot-vscode`, `copilot-cloud`, `crush`, `pi`. No
+  environment value is ever copied into the User-Agent: an `AI_AGENT` that is
+  not on the list is reported as `agent`.
+
+  `AI_AGENT` is normalized first: lower case; cut at the first `@`;
+  `github_copilot_<x>_agent` becomes `copilot-<x>`; otherwise cut at the first
+  `_`. So `claude-code_2-1-308_agent` is `claude-code` and
+  `github_copilot_vscode_agent` is `copilot-vscode`. `CLAUDECODE=1` alone is
+  not detected: IDE extension terminals set it with no session.
+
+  The variables of rows a to g are set inside an agent session, also for a
+  command the user types there. When harnesses are nested, the first match
+  can name the outer one. A harness the CLI does not detect can set
+  `AI_AGENT` to its name.
+
+### The variables the CLI reads for this
+
+`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `AI_AGENT`, `CODEX_THREAD_ID`,
+`CODEX_CI`, `GEMINI_CLI`, `COPILOT_CLI`, `OPENCODE`, `CLINE_ACTIVE`,
+`ROO_ACTIVE`, `KUBERNETES_EXEC_INFO`, `CI`, `JENKINS_URL`, `TEAMCITY_VERSION`,
+`TF_BUILD` and `CODEBUILD_BUILD_ARN`. The CLI defines none of them and reads no
+other variable for this. A test checks that this section names every variable
+the CLI reads for this.
+
+### Limits
+
+- The value is self-reported by the caller's environment. It never selects a
+  credential, a server entry or a code path, and a server must not authorize
+  on it.
+- There is no way to turn it off in the CLI, and `DO_NOT_TRACK` does not
+  change it. An administrator who must not record the header redacts it with
+  a Rancher `AuditPolicy` (`additionalRedactions` with `headers:
+  ["User-Agent"]`).
+- Requests to an identity provider during a login carry Go's default
+  User-Agent, not this one.
+- The CONNECT request that sets up a tunnel to an `https://` server through an
+  HTTP proxy carries Go's default User-Agent; the requests inside the tunnel
+  carry this one.
+
+### Where it shows up on the server
+
+- Rancher's audit log, as `requestHeader["User-Agent"]`, when the audit log is
+  enabled (it is off by default) and either its level is 1 or higher or an
+  `AuditPolicy` keeps request headers. Level 0 records no headers, and an
+  `AuditPolicy` applies only when the audit log is enabled. This covers every
+  path through Rancher, including `/v3`, `/v1` and `/ext`.
+- The audit log of a downstream cluster's API server (and of Rancher's own
+  cluster), as `userAgent`, for `/k8s/clusters/<id>/api` and `/apis` requests,
+  and for requests to the direct endpoint. Rancher forwards the header
+  unchanged on those paths.
+- Not in a cluster's audit log for `/v1` requests (`/k8s/clusters/<id>/v1/...`,
+  and `/v1/...` for Rancher's own cluster): the cluster agent, or Rancher for
+  its own cluster, makes the request to the API server with its own
+  User-Agent, and a list may be answered from the agent's cache with no audit
+  entry there. Rancher's own audit log still records it.
+- Rancher stores it on no token or other object.

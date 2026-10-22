@@ -119,20 +119,18 @@ func RESTConfigImpersonating(eff config.Effective, cluster, user string) (*rest.
 
 // HTTPClient builds the http.Client every client-go client in this repo
 // rides on: rest.HTTPClientFor plus the same-origin redirect policy shared
-// with httpx. The User-Agent is defaulted first: client-go installs its
-// User-Agent round-tripper inside HTTPClientFor and only when the config
-// names one, and the *ForConfigAndClient constructors never revisit a
-// client they were handed, so an unset agent here would send Go's stdlib
-// default on every request. The client is copied before the policy is
-// set so it never lands on a client this package does not own:
-// HTTPClientFor can hand back a shared client (http.DefaultClient for a
-// config whose transport is the default), and client-go is free to widen
-// that sharing.
+// with httpx. The User-Agent is always set to httpx.UserAgent(), replacing
+// the config's: client-go installs its User-Agent round-tripper inside
+// HTTPClientFor and only when the config names one, and the
+// *ForConfigAndClient constructors never revisit a client they were
+// handed, so an unset agent here would send Go's stdlib default on every
+// request. The client is copied before the policy is set so it never lands
+// on a client this package does not own: HTTPClientFor can hand back a
+// shared client (http.DefaultClient for a config whose transport is the
+// default), and client-go is free to widen that sharing.
 func HTTPClient(rc *rest.Config) (*http.Client, error) {
 	cfg := *rc
-	if cfg.UserAgent == "" {
-		cfg.UserAgent = rest.DefaultKubernetesUserAgent()
-	}
+	cfg.UserAgent = httpx.UserAgent()
 	base, err := rest.HTTPClientFor(&cfg)
 	if err != nil {
 		return nil, err

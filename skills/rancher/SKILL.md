@@ -824,6 +824,11 @@ rancher oidc-client rotate-secret my-app --apply --yes
   never touches the operator's real config or OS keychain. A kubeconfig written
   in such a session records that directory and stops working when it is
   removed.
+- **Agent name in the User-Agent:** the CLI sends the Rancher server a
+  User-Agent that names the agent harness the session runs in. A harness the
+  CLI does not detect can set `AI_AGENT` to its name: a name on the list in
+  REFERENCE.md ("What the CLI sends to the server") is reported as is, any
+  other as `agent`.
 - **Read-only sessions:** `--read-only` (or config `readOnly: true` / a
   non-empty `RANCHER_CLI_READONLY` - including the literal `"false"`) refuses
   every mutating command before any network call, one-way with no

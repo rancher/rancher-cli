@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,7 +34,7 @@ func TestTableClientClassifiesCertificateFailuresOfTheServer(t *testing.T) {
 
 // TestTableClientDecodesATableAndSendsTheConfiguredCredentials asserts the
 // client reads a meta.k8s.io Table from the cluster proxy's path with the
-// config's bearer token and the Kubernetes User-Agent.
+// config's bearer token and the CLI's User-Agent.
 func TestTableClientDecodesATableAndSendsTheConfiguredCredentials(t *testing.T) {
 	t.Parallel()
 	var path, auth, agent string
@@ -55,5 +56,5 @@ func TestTableClientDecodesATableAndSendsTheConfiguredCredentials(t *testing.T) 
 	assert.Equal(t, []any{"a"}, table.Rows[0].Cells)
 	assert.Equal(t, "/k8s/clusters/c-1/api/v1/pods", path)
 	assert.Equal(t, "Bearer tok", auth)
-	assert.Equal(t, rest.DefaultKubernetesUserAgent(), agent)
+	assert.Equal(t, httpx.UserAgent(), agent)
 }

@@ -121,6 +121,7 @@ TARGETS=(
   "FuzzConfigLoad|./internal/config"
   "FuzzScrubPaths|./internal/engine"
   "FuzzTableRender|./internal/engine/resources"
+  "FuzzDetect|./internal/invocation"
 )
 
 run_fuzz_target() {

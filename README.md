@@ -172,6 +172,13 @@ vocabulary. The full catalog is [COMMANDS.md](COMMANDS.md), and
 [REFERENCE.md](REFERENCE.md#kinds--verbs); project scoping:
 [REFERENCE.md](REFERENCE.md#project-scope---project).
 
+Every request to Rancher carries a User-Agent that names the CLI version and
+platform, and whether the process ran inside an agent session, as kubectl's
+exec plugin or in CI. An administrator can see it in Rancher's audit log when
+that log is enabled (it is off by default) and records request headers;
+nothing in it selects a credential or grants access. What it holds and where it
+shows up: [REFERENCE.md](REFERENCE.md#what-the-cli-sends-to-the-server).
+
 ## Safety model
 
 Every server-mutating command runs one pipeline, in order:

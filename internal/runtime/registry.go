@@ -116,11 +116,13 @@ type EnvVar struct {
 	Flag string `json:"flag,omitempty"`
 }
 
-// EnvVars is the complete list of environment variables the CLI consumes,
-// discoverable via schema. The names are literals here because internal/runtime
-// must not import internal/config, where the consts live (see Schema); keep
-// this in sync with internal/config/env.go and the raw reads in the token and
-// editor code.
+// EnvVars is the complete list of the environment variables a user sets to
+// change how the CLI behaves, discoverable via schema. Variables the CLI only
+// reads to describe its caller or to find another tool (KUBERNETES_EXEC_INFO,
+// the agent and CI variables, CODEX_HOME, PATH) are not listed. The names
+// are literals here because internal/runtime must not import internal/config, where the consts live (see
+// Schema); keep this in sync with internal/config/env.go and the raw reads in
+// the token and editor code.
 func EnvVars() []EnvVar {
 	return []EnvVar{
 		{Name: "RANCHER_CLI_CONFIG_DIR", Flag: "-c/--config", Desc: "config directory"},

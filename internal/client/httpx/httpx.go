@@ -40,6 +40,8 @@ func SetDefaultTimeoutForTest(d time.Duration) (restore func()) {
 	return func() { DefaultTimeout = old }
 }
 
+// New builds the client for Rancher and downstream endpoints. Every request
+// it sends carries UserAgent(), whatever the caller set.
 func New(o Options) (*http.Client, error) {
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
@@ -55,7 +57,10 @@ func New(o Options) (*http.Client, error) {
 		tlsConfig.RootCAs = roots
 	}
 
-	var transport http.RoundTripper = newTransport(tlsConfig)
+	// The User-Agent transport sits inside the caller's wrapper, so a
+	// wrapper that classifies errors still sees every request, and the
+	// header is already on the request when the wrapper hands it down.
+	var transport http.RoundTripper = &userAgentTransport{next: newTransport(tlsConfig)}
 	if o.WrapTransport != nil {
 		transport = o.WrapTransport(transport)
 	}

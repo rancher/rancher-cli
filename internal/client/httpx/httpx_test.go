@@ -32,7 +32,7 @@ func TestNewExternalUsesOSRootsOnly(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 	t.Cleanup(srv.Close)
 	client := NewExternal(DefaultTimeout)
-	tr := client.Transport.(*http.Transport)
+	tr := baseTransport(t, client)
 	assert.Nil(t, tr.TLSClientConfig.RootCAs, "OS roots means no custom pool")
 	assert.False(t, tr.TLSClientConfig.InsecureSkipVerify)
 	assert.NotNil(t, client.CheckRedirect)
@@ -91,8 +91,7 @@ func TestNew(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, client)
 
-		tr, ok := client.Transport.(*http.Transport)
-		require.True(t, ok)
+		tr := baseTransport(t, client)
 		require.NotNil(t, tr.TLSClientConfig)
 		assert.Equal(t, uint16(tls.VersionTLS12), tr.TLSClientConfig.MinVersion)
 		assert.False(t, tr.TLSClientConfig.InsecureSkipVerify)
@@ -103,8 +102,7 @@ func TestNew(t *testing.T) {
 		client, err := New(Options{Insecure: true})
 		require.NoError(t, err)
 
-		tr, ok := client.Transport.(*http.Transport)
-		require.True(t, ok)
+		tr := baseTransport(t, client)
 		assert.True(t, tr.TLSClientConfig.InsecureSkipVerify)
 	})
 
@@ -114,8 +112,7 @@ func TestNew(t *testing.T) {
 		client, err := New(Options{CACert: certPEM})
 		require.NoError(t, err)
 
-		tr, ok := client.Transport.(*http.Transport)
-		require.True(t, ok)
+		tr := baseTransport(t, client)
 		require.NotNil(t, tr.TLSClientConfig.RootCAs)
 		assert.False(t, tr.TLSClientConfig.InsecureSkipVerify)
 	})
@@ -130,8 +127,7 @@ func TestNew(t *testing.T) {
 		client, err := New(Options{})
 		require.NoError(t, err)
 
-		tr, ok := client.Transport.(*http.Transport)
-		require.True(t, ok)
+		tr := baseTransport(t, client)
 		require.NotNil(t, tr.Proxy)
 	})
 
@@ -151,8 +147,7 @@ func TestNew(t *testing.T) {
 		client, err := New(Options{})
 		require.NoError(t, err)
 
-		tr, ok := client.Transport.(*http.Transport)
-		require.True(t, ok)
+		tr := baseTransport(t, client)
 		assert.True(t, tr.ForceAttemptHTTP2)
 		assert.Equal(t, 100, tr.MaxIdleConns)
 		assert.Equal(t, 10, tr.MaxIdleConnsPerHost)

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -165,11 +166,11 @@ func TestHTTPClientCarriesPolicyWithCustomTransport(t *testing.T) {
 	assert.Equal(t, 3*time.Second, hc.Timeout)
 }
 
-// TestHTTPClientSendsKubernetesUserAgent asserts that requests through a
+// TestHTTPClientSendsTheCLIUserAgent asserts that requests through a
 // kube-built client identify themselves: client-go installs its User-Agent
 // only inside HTTPClientFor and only when the config names one, so the
-// default must be applied before the client is built.
-func TestHTTPClientSendsKubernetesUserAgent(t *testing.T) {
+// value must be on the config before the client is built.
+func TestHTTPClientSendsTheCLIUserAgent(t *testing.T) {
 	t.Parallel()
 	var agent string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +185,7 @@ func TestHTTPClientSendsKubernetesUserAgent(t *testing.T) {
 	_ = resp.Body.Close()
 	assert.NotEmpty(t, agent)
 	assert.False(t, strings.HasPrefix(agent, "Go-http-client"), "the default Go agent must not leak: %q", agent)
-	assert.Equal(t, rest.DefaultKubernetesUserAgent(), agent)
+	assert.Equal(t, httpx.UserAgent(), agent)
 }
 
 // changeID is the id tokenlessWithChange names in config.yaml.

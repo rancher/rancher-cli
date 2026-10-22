@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -452,7 +453,7 @@ func TestTableReadsShareUserAgentAndRedirectPolicy(t *testing.T) {
 		listAgent := srv.last(t).UserAgent
 		_, err = tr.ListTable(t.Context(), nodesGVR, "", "")
 		require.NoError(t, err)
-		assert.Equal(t, rest.DefaultKubernetesUserAgent(), srv.last(t).UserAgent)
+		assert.Equal(t, httpx.UserAgent(), srv.last(t).UserAgent)
 		assert.Equal(t, listAgent, srv.last(t).UserAgent)
 		_, err = tr.GetTable(t.Context(), nodesGVR, "", "node-1")
 		require.NoError(t, err)

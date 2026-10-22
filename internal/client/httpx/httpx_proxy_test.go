@@ -185,7 +185,7 @@ func TestNewRoutesThroughConnectProxyWithPinnedCA(t *testing.T) {
 
 	client, err := New(Options{CACert: certPEM})
 	require.NoError(t, err)
-	tr := client.Transport.(*http.Transport)
+	tr := baseTransport(t, client)
 	tr.DisableKeepAlives = true
 	tr.DialContext = dialWithResolve(resolve)
 	tr.Proxy = asTransportProxy((&httpproxy.Config{HTTPSProxy: proxy.srv.URL}).ProxyFunc())
@@ -213,7 +213,7 @@ func TestNewNoProxyBypassesFixtureForNamedTarget(t *testing.T) {
 
 	client, err := New(Options{CACert: certPEM})
 	require.NoError(t, err)
-	tr := client.Transport.(*http.Transport)
+	tr := baseTransport(t, client)
 	tr.DisableKeepAlives = true
 	tr.DialContext = dialWithResolve(resolve)
 	tr.Proxy = asTransportProxy((&httpproxy.Config{HTTPSProxy: proxy.srv.URL, NoProxy: targetHost}).ProxyFunc())
@@ -236,7 +236,7 @@ func TestNewProxyUnreachableErrorNamesProxyAddress(t *testing.T) {
 
 	client, err := New(Options{})
 	require.NoError(t, err)
-	tr := client.Transport.(*http.Transport)
+	tr := baseTransport(t, client)
 	tr.Proxy = asTransportProxy((&httpproxy.Config{HTTPSProxy: "http://" + proxyAddr}).ProxyFunc())
 
 	req, err := http.NewRequest(http.MethodGet, "https://example.test/", nil)
@@ -324,7 +324,7 @@ func TestNewHTTPSProxyEnvVarRoutesThroughFixture(t *testing.T) {
 
 	client, err := New(Options{CACert: string(certPEM)})
 	require.NoError(t, err)
-	tr := client.Transport.(*http.Transport)
+	tr := baseTransport(t, client)
 	tr.DisableKeepAlives = true
 	tr.Proxy = asTransportProxy(httpproxy.FromEnvironment().ProxyFunc())
 
