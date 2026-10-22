@@ -294,6 +294,7 @@ graph TD
     extres --> runtime
     extres --> safety
     extres --> clierr
+    extres --> config
 
     oidcclient --> engine
     oidcclient --> kinds

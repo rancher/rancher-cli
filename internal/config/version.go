@@ -9,8 +9,10 @@ import (
 
 // MinRancherVersion is the CLI's declared minimum supported Rancher server
 // version (a warn-only floor). It moves forward deliberately, in a
-// commit, when the CLI starts depending on newer server API - no
-// per-feature version matrix.
+// commit, when the CLI starts depending on newer server API. It is the one
+// global floor; a command that a server below a named version is known to
+// fail refuses with a typed error that names that version (see
+// VersionBelow).
 const MinRancherVersion = "2.14"
 
 // UnknownServerVersionWarning is the warn-only text for when a server's
@@ -72,6 +74,20 @@ func compareVersions(a, b string) (cmp int, ok bool) {
 	default:
 		return sign(aPatch - bPatch), true
 	}
+}
+
+// VersionBelow reports whether the server version raw is below floor,
+// compared numerically on major.minor.patch as compareVersions does. known
+// is false when raw or floor has no parseable major.minor (a dev build, a
+// bare "head", or an empty value); below is then false, so an unknown
+// version is never treated as below. A release branch head such as
+// v2.14-head parses as 2.14.0.
+func VersionBelow(raw, floor string) (below, known bool) {
+	cmp, ok := compareVersions(raw, floor)
+	if !ok {
+		return false, false
+	}
+	return cmp < 0, true
 }
 
 // EvalMinVersionSupport evaluates raw (a server-version Setting value)

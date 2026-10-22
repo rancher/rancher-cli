@@ -231,6 +231,33 @@ func (f *clientFactory) ServerInfo(ctx context.Context) (provider.ServerInfo, er
 	return f.serverInfo, f.serverInfoErr
 }
 
+// ServerVersion implements engine.ServerVersionProvider on the memoized
+// ServerInfo.
+func (f *clientFactory) ServerVersion(ctx context.Context) (string, error) {
+	info, err := f.ServerInfo(ctx)
+	if err != nil {
+		return "", err
+	}
+	return info.Version, nil
+}
+
+// StoredLoginName implements engine.StoredLoginNamer: the current server
+// entry's name when its stored token is the bearer, "" when
+// RANCHER_CLI_TOKEN supplies the bearer or RANCHER_CLI_URL names another
+// server (which clears the entry's name).
+func (f *clientFactory) StoredLoginName() (string, error) {
+	eff, err := f.resolve()
+	if err != nil {
+		return "", err
+	}
+	// RANCHER_CLI_TOKEN takes precedence over the stored token, as in
+	// config.Effective.
+	if os.Getenv(config.EnvToken) != "" {
+		return "", nil
+	}
+	return eff.ServerName, nil
+}
+
 func (f *clientFactory) Identity() (string, error) {
 	eff, err := f.resolve()
 	if err != nil {

@@ -28,6 +28,8 @@ type fakeClient struct {
 	status map[string]any // merged into status on the real (non-dry-run) create
 
 	createErr error
+	// realCreateErr fails only the real (non-dry-run) create.
+	realCreateErr error
 }
 
 func (f *fakeClient) Get(context.Context, schema.GroupVersionResource, string, string) (*unstructured.Unstructured, error) {
@@ -51,6 +53,9 @@ func (f *fakeClient) Create(_ context.Context, _ schema.GroupVersionResource, ns
 	f.created, f.createdNS = obj, ns
 	if f.createErr != nil {
 		return nil, f.createErr
+	}
+	if f.realCreateErr != nil && !dryRun {
+		return nil, f.realCreateErr
 	}
 	out := obj.DeepCopy()
 	if !dryRun {

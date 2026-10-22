@@ -84,3 +84,43 @@ func TestEvalMinVersionSupport(t *testing.T) {
 		assert.Equal(t, UnknownServerVersionWarning, warning)
 	})
 }
+
+// TestVersionBelow asserts the below and known answers for released,
+// pre-release and prefixed forms, and that a version with no parseable
+// major.minor is unknown and never below.
+func TestVersionBelow(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		raw       string
+		floor     string
+		wantBelow bool
+		wantKnown bool
+	}{
+		{"patch below the floor", "2.14.5", "2.15", true, true},
+		{"first patch below the floor", "2.14.0", "2.15", true, true},
+		{"v prefix", "v2.14.5", "2.15", true, true},
+		{"v prefix and pre-release suffix", "v2.14.5-rc1", "2.15", true, true},
+		{"surrounding spaces", " v2.14.5 ", "2.15", true, true},
+		{"at the floor", "2.15.0", "2.15", false, true},
+		{"v prefix at the floor", "v2.15.0", "2.15", false, true},
+		{"pre-release of the floor reads as the floor", "v2.15.0-alpha1", "2.15", false, true},
+		{"above the floor", "v2.15.2", "2.15", false, true},
+		{"next minor", "v2.16.0-alpha1", "2.15", false, true},
+		{"floor with a patch, below it", "2.15.0", "2.15.1", true, true},
+		{"release branch head below the floor", "v2.14-head", "2.15", true, true},
+		{"release branch head above the floor", "v2.16-head", "2.15", false, true},
+		{"dev build is unknown", "dev", "2.15", false, false},
+		{"bare head is unknown", "head", "2.15", false, false},
+		{"empty is unknown", "", "2.15", false, false},
+		{"unparseable floor is unknown", "2.14.5", "dev", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			below, known := VersionBelow(tt.raw, tt.floor)
+			assert.Equal(t, tt.wantBelow, below)
+			assert.Equal(t, tt.wantKnown, known)
+		})
+	}
+}

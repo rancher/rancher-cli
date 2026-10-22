@@ -152,13 +152,13 @@ func (c createKubeconfigCmd) Plan(ctx context.Context, in runtime.Input) (safety
 	}
 	eff, _, err := engine.PlanCreate(ctx, client, kubeconfigKind.GVR, "", obj, engine.LocalCluster, kubeconfigKind.Name, "Kubeconfig", kubeconfigKind.Sensitive)
 	if err != nil {
-		return safety.Effect{}, nil, err
+		return safety.Effect{}, nil, refuseUnsupportedTokenLookup(ctx, c.clients, err)
 	}
 
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		created, err := client.Create(ctx, kubeconfigKind.GVR, "", obj, false)
 		if err != nil {
-			return runtime.Result{}, err
+			return runtime.Result{}, refuseUnsupportedTokenLookup(ctx, c.clients, err)
 		}
 		name := created.GetName()
 		recovery := fmt.Sprintf("delete kubeconfig %s, then create again", name)

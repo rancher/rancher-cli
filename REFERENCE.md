@@ -1300,6 +1300,17 @@ determined at all. An unreachable endpoint, a non-200 response, or an
 unparseable value (e.g. a dev/head build) all assume "supported" and warn
 instead of refusing. No RBAC permissions are required.
 
+One command refuses on a server below a named version. On Rancher before
+2.15, `create kubeconfig` with a token the CLI created for a login (or an ext
+token in `RANCHER_CLI_TOKEN`) ends in `CAPABILITY_UNSUPPORTED` (exit `11`),
+names Rancher 2.15 and the remedy: log in with an API token
+(`rancher auth login <name> --token-stdin`) or set `RANCHER_CLI_TOKEN` to one.
+The error carries the login command as its hint only when the stored login's
+server entry accepts `rancher auth login` (a plugin login entry does not);
+otherwise the message names `RANCHER_CLI_TOKEN`. A server whose version
+cannot be read, or that reports no version number, keeps the server's own
+error.
+
 Graduation intent, not implemented today: refuse-with-escape-hatch (e.g. a
 `--allow-unsupported-server`-style flag) once there's real-use feedback on
 the warn-only period.

@@ -192,6 +192,24 @@ type ServerBaseURLProvider interface {
 	ServerBaseURL() (string, error)
 }
 
+// ServerVersionProvider is implemented by a ClusterClientFactory that can
+// report the connected server's version exactly as the server's unauthenticated
+// version endpoint states it (for example "v2.14.5"; a dev or head build
+// states no number). The answer is fetched at most once per invocation; a
+// command that asks only after a request failed pays nothing on success.
+type ServerVersionProvider interface {
+	ServerVersion(ctx context.Context) (string, error)
+}
+
+// StoredLoginNamer is implemented by a ClusterClientFactory that knows which
+// stored login its requests use: the name of the server entry whose stored
+// token is the bearer. The name is empty when the bearer comes from
+// RANCHER_CLI_TOKEN or RANCHER_CLI_URL names a server other than the current
+// entry's, since no stored login is then in use.
+type StoredLoginNamer interface {
+	StoredLoginName() (string, error)
+}
+
 // SessionTokenNamer exposes the ID component of the current session's bearer
 // credential - the part before ":" in the stored "id:secret" token. Only the
 // ID (the token object name) is returned; the secret never crosses this
