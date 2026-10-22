@@ -98,3 +98,15 @@ func GetCluster(ctx context.Context, get Getter, id string) (*unstructured.Unstr
 	}
 	return obj, nil
 }
+
+// ObjectState returns the state steve serves for an object it returned. Steve
+// computes a state for every object it serves, from the object's fields and
+// conditions, and puts it in metadata.state; this returns its name. It is
+// empty when the object has no metadata.state or the name is not a string.
+func ObjectState(obj *unstructured.Unstructured) string {
+	if obj == nil {
+		return ""
+	}
+	name, _, _ := unstructured.NestedString(obj.Object, "metadata", "state", "name")
+	return name
+}

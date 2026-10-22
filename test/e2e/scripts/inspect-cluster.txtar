@@ -18,6 +18,7 @@ flipstatus local provisioning.cattle.io/v1/clusters fleet-default insp-custom {"
 exec rancher inspect cluster c-fixture --registration -o json
 jsonquery stdout data.cluster.id c-fixture
 jsonquery stdout data.cluster.kubernetesVersion v1.30.5+rke2r1
+jsonquery stdout data.cluster.state active
 jsonquery stdout data.status.ready true
 jsonquery stdout data.status.conditions.0.type Ready
 jsonquery stdout data.machinePools '[]'

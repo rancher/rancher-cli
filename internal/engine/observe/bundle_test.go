@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -615,4 +616,49 @@ func TestSupportBundleMissingOutputDirIsNotRefusedEarly(t *testing.T) {
 			}
 		})
 	}
+}
+
+// recordedClusterObservation reads the cluster object a Rancher v2.15.2
+// served as the observation named name in the recorded golden, with every
+// value that varies per run replaced by a placeholder.
+func recordedClusterObservation(t *testing.T, name string) *unstructured.Unstructured {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testrancher", "fidelity", "testdata", "downstream",
+		"access-downstream", "admin-steve-cluster-shape.json"))
+	require.NoError(t, err)
+	var golden struct {
+		Observations []struct {
+			Name   string         `json:"name"`
+			Status int            `json:"status"`
+			Body   map[string]any `json:"body"`
+		} `json:"observations"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &golden))
+	for _, o := range golden.Observations {
+		if o.Name == name {
+			require.Equal(t, http.StatusOK, o.Status)
+			return &unstructured.Unstructured{Object: o.Body}
+		}
+	}
+	require.FailNow(t, "the golden has no observation named "+name)
+	return nil
+}
+
+// TestSupportBundleClusterJSONStateIsWhatRancherServed asserts cluster.json
+// carries the metadata.state name of the cluster object a Rancher served.
+func TestSupportBundleClusterJSONStateIsWhatRancherServed(t *testing.T) {
+	t.Parallel()
+	downstream := newFakeClient().withListNS(podKind.GVR, "cattle-system", podList("agent-1"))
+	factory, _ := ownerFactory(downstream)
+	served := recordedClusterObservation(t, "steve")
+	served.SetName("c-abc")
+	factory.root = (&fakeRoot{}).withCluster(served)
+
+	path := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	_, err := execBundle(t, factory, input{s: map[string]string{flagOutputFile: path, flagTargets: "agent", flagClusters: "prod"}})
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal([]byte(readArchive(t, path)["clusters/c-abc/cluster.json"]), &doc))
+	assert.Equal(t, "active", doc["state"])
 }

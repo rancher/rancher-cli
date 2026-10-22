@@ -431,7 +431,7 @@ func collectCluster(ctx context.Context, clients engine.ClusterClientFactory, ge
 	if obj, err := steve.GetCluster(ctx, get, clusterID); err != nil {
 		items = append(items, manifestItem{Name: "cluster.json", Cluster: clusterID, Status: errorStatus(err)})
 	} else {
-		clusterState, _, _ := unstructured.NestedString(obj.Object, "status", "state")
+		clusterState := steve.ObjectState(obj)
 		clusterConds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
 		data, _ := json.Marshal(map[string]any{
 			"state":      clusterState,

@@ -76,8 +76,8 @@ func TestLocalManagementGateLetsAllowListedResourcesThrough(t *testing.T) {
 }
 
 // TestSteveClusterGetByID asserts the by-id route serves a cluster the
-// bearer sees, answers 403 for one it does not, and 401 for an unknown
-// bearer.
+// bearer sees with the metadata.state steve computes, answers 403 for one it
+// does not, and 401 for an unknown bearer.
 func TestSteveClusterGetByID(t *testing.T) {
 	t.Parallel()
 	_, srv := gatedFacade(t)
@@ -85,6 +85,7 @@ func TestSteveClusterGetByID(t *testing.T) {
 	require.Equal(t, http.StatusOK, status)
 	assert.Equal(t, "c-abc", body["id"])
 	assert.Equal(t, map[string]any{"displayName": "prod"}, body["spec"])
+	assert.Equal(t, "active", stateName(t, body))
 
 	status, _ = getDecoded(t, srv, testrancher.ClustersCollectionPath+"/local", gateMember)
 	assert.Equal(t, http.StatusForbidden, status)
@@ -94,4 +95,55 @@ func TestSteveClusterGetByID(t *testing.T) {
 
 	status, _ = getDecoded(t, srv, testrancher.ClustersCollectionPath+"/c-abc", "nobody:secret")
 	assert.Equal(t, http.StatusUnauthorized, status)
+}
+
+// stateName returns metadata.state.name of a decoded steve object.
+func stateName(t *testing.T, obj map[string]any) string {
+	t.Helper()
+	meta, ok := obj["metadata"].(map[string]any)
+	require.True(t, ok, "metadata is an object: %v", obj)
+	state, ok := meta["state"].(map[string]any)
+	require.True(t, ok, "metadata.state is an object: %v", meta)
+	name, _ := state["name"].(string)
+	return name
+}
+
+// TestSteveClusterGetByIDOfAStoredObjectCarriesState asserts the by-id route
+// adds metadata.state to the stored cluster the harness serves when it has
+// none, and keeps the one it has.
+func TestSteveClusterGetByIDOfAStoredObjectCarriesState(t *testing.T) {
+	t.Parallel()
+	_, srv := newFacade(t, testrancher.Options{
+		ClusterVisibility: func(string) ([]testrancher.ClusterFixture, bool) {
+			return []testrancher.ClusterFixture{{ID: "c-abc", DisplayName: "prod"}, {ID: "c-def", DisplayName: "stage"}}, true
+		},
+		ClusterObject: func(id string) (map[string]any, bool) {
+			meta := map[string]any{"name": id}
+			if id == "c-def" {
+				meta["state"] = map[string]any{"name": "provisioning"}
+			}
+			return map[string]any{"metadata": meta, "spec": map[string]any{"displayName": id}}, true
+		},
+	}, &recordingHandler{})
+	status, body := getDecoded(t, srv, testrancher.ClustersCollectionPath+"/c-abc", gateAdmin)
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "active", stateName(t, body))
+
+	status, body = getDecoded(t, srv, testrancher.ClustersCollectionPath+"/c-def", gateAdmin)
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "provisioning", stateName(t, body), "a state the object has stays")
+}
+
+// TestSteveClustersCollectionItemsCarryState asserts every item of the steve
+// clusters collection carries metadata.state, as steve serves it.
+func TestSteveClustersCollectionItemsCarryState(t *testing.T) {
+	t.Parallel()
+	_, srv := gatedFacade(t)
+	status, body := getDecoded(t, srv, testrancher.ClustersCollectionPath, gateAdmin)
+	require.Equal(t, http.StatusOK, status)
+	items := projectItems(t, body)
+	require.Len(t, items, 2)
+	for _, item := range items {
+		assert.Equal(t, "active", stateName(t, item), "%v", item["id"])
+	}
 }

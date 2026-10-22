@@ -87,7 +87,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		return runtime.Result{}, err
 	}
 	displayName, _, _ := unstructured.NestedString(obj.Object, "spec", "displayName")
-	state, _, _ := unstructured.NestedString(obj.Object, "status", "state")
+	state := steve.ObjectState(obj)
 	observedVersion, _, _ := unstructured.NestedString(obj.Object, "status", "version", "gitVersion")
 
 	res := clusterResult{Cluster: clusterIdentity{

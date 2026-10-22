@@ -340,12 +340,11 @@ func TestLogsExecuteTailFlag(t *testing.T) {
 func ownerFactory(downstream *fakeClient) (*fakeFactory, *fakeClient) {
 	local := newFakeClient().withDeniedKind(clusterKind.GVR, clierr.New(clierr.CodeRBAC, "forbidden"))
 	root := (&fakeRoot{}).withCluster(&unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": "c-abc"},
+		"metadata": map[string]any{"name": "c-abc", "state": map[string]any{"name": "active"}},
 		"spec": map[string]any{
 			"displayName":              "prod",
 			"localClusterAuthEndpoint": map[string]any{"enabled": true},
 		},
-		"status": map[string]any{"state": "active"},
 	}})
 	return &fakeFactory{
 		local:      local,

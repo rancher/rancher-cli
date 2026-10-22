@@ -2116,6 +2116,7 @@ func (f *Facade) handleClusterGet(w http.ResponseWriter, r *http.Request, id str
 	if f.opts.ClusterObject != nil {
 		if obj, ok := f.opts.ClusterObject(id); ok {
 			obj["id"], obj["type"] = id, "management.cattle.io.cluster"
+			addSteveState(obj)
 			writeJSON(w, http.StatusOK, obj)
 			return
 		}
@@ -2124,11 +2125,27 @@ func (f *Facade) handleClusterGet(w http.ResponseWriter, r *http.Request, id str
 }
 
 func steveClusterObject(c ClusterFixture) map[string]any {
-	return map[string]any{
+	obj := map[string]any{
 		"id":       c.ID,
 		"type":     "management.cattle.io.cluster",
 		"metadata": map[string]any{"name": c.ID},
 		"spec":     map[string]any{"displayName": c.DisplayName},
+	}
+	addSteveState(obj)
+	return obj
+}
+
+// addSteveState gives obj the metadata.state steve computes for every object
+// it serves, when obj has none. The test server stands in for steve; it adds
+// the field because the stored object it answers with has no state of its own.
+func addSteveState(obj map[string]any) {
+	meta, _ := obj["metadata"].(map[string]any)
+	if meta == nil {
+		meta = map[string]any{}
+		obj["metadata"] = meta
+	}
+	if _, ok := meta["state"]; !ok {
+		meta["state"] = map[string]any{"name": "active", "error": false, "transitioning": false, "message": ""}
 	}
 }
 

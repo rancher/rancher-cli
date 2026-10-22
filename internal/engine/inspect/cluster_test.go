@@ -10,6 +10,8 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -121,7 +123,7 @@ func mgmtClusterFixture(id, display, state, gitVersion string) *unstructured.Uns
 		"status":   map[string]any{},
 	}}
 	if state != "" {
-		_ = unstructured.SetNestedField(obj.Object, state, "status", "state")
+		_ = unstructured.SetNestedField(obj.Object, state, "metadata", "state", "name")
 	}
 	if gitVersion != "" {
 		_ = unstructured.SetNestedField(obj.Object, gitVersion, "status", "version", "gitVersion")
@@ -1990,4 +1992,48 @@ func TestInspectClusterAutoscaledPoolReportsMinMax(t *testing.T) {
 	assert.Contains(t, res.Text, "pool1: Amazonec2Config/mycfg quantity=2 roles=worker autoscaling=2-5 (quantity is the autoscaler's current count)")
 	assert.Contains(t, res.Text, "pool2: Amazonec2Config/mycfg quantity=1 roles=controlplane,etcd")
 	assert.NotContains(t, res.Text, "pool2: Amazonec2Config/mycfg quantity=1 roles=controlplane,etcd autoscaling=")
+}
+
+// recordedClusterObservation reads the cluster object a Rancher v2.15.2
+// served as the observation named name in the recorded golden, with every
+// value that varies per run replaced by a placeholder.
+func recordedClusterObservation(t *testing.T, name string) *unstructured.Unstructured {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testrancher", "fidelity", "testdata", "downstream",
+		"access-downstream", "admin-steve-cluster-shape.json"))
+	require.NoError(t, err)
+	var golden struct {
+		Observations []struct {
+			Name   string         `json:"name"`
+			Status int            `json:"status"`
+			Body   map[string]any `json:"body"`
+		} `json:"observations"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &golden))
+	for _, o := range golden.Observations {
+		if o.Name == name {
+			require.Equal(t, http.StatusOK, o.Status)
+			return &unstructured.Unstructured{Object: o.Body}
+		}
+	}
+	require.FailNow(t, "the golden has no observation named "+name)
+	return nil
+}
+
+// TestInspectClusterReportsTheStateRancherServed asserts inspect cluster
+// reports the metadata.state name of the cluster object a Rancher served.
+func TestInspectClusterReportsTheStateRancherServed(t *testing.T) {
+	t.Parallel()
+	client, root := inspectClusterFixture(t)
+	served := recordedClusterObservation(t, "steve")
+	served.SetName("c-abc")
+	root.cluster = served
+	cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
+	res, err := execRead(t, cmd, registrationInput("c-abc"))
+	require.NoError(t, err)
+
+	doc, _ := marshaledDoc(t, res.Data)
+	cluster, ok := doc["cluster"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "active", cluster["state"])
 }

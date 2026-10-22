@@ -1,12 +1,16 @@
 package steve
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
@@ -243,4 +247,79 @@ func TestGetCluster404IsNotFoundNamingTheCluster(t *testing.T) {
 	assert.Equal(t, clierr.CodeNotFound, ce.Code)
 	assert.Equal(t, "cluster not found: 'c-gone'", ce.Message)
 	assert.Equal(t, clierr.Rancher+" access clusters", ce.Hint)
+}
+
+// recordedClusterObservation reads the cluster object a Rancher v2.15.2
+// served as the observation named name in the recorded golden, with every
+// value that varies per run replaced by a placeholder.
+func recordedClusterObservation(t *testing.T, name string) *unstructured.Unstructured {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testrancher", "fidelity", "testdata", "downstream",
+		"access-downstream", "admin-steve-cluster-shape.json"))
+	require.NoError(t, err)
+	var golden struct {
+		Observations []struct {
+			Name   string         `json:"name"`
+			Status int            `json:"status"`
+			Body   map[string]any `json:"body"`
+		} `json:"observations"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &golden))
+	for _, o := range golden.Observations {
+		if o.Name == name {
+			require.Equal(t, http.StatusOK, o.Status)
+			return &unstructured.Unstructured{Object: o.Body}
+		}
+	}
+	require.FailNow(t, "the golden has no observation named "+name)
+	return nil
+}
+
+// TestObjectStateReadsTheRecordedSteveObject asserts the reader returns the
+// state a Rancher served in metadata.state, and nothing for the object its
+// Kubernetes proxy served, which has no metadata.state.
+func TestObjectStateReadsTheRecordedSteveObject(t *testing.T) {
+	t.Parallel()
+	served := recordedClusterObservation(t, "steve")
+	_, ok, err := unstructured.NestedMap(served.Object, "metadata", "state")
+	require.NoError(t, err)
+	require.True(t, ok, "the recorded steve object carries metadata.state")
+	assert.Equal(t, "active", ObjectState(served))
+
+	assert.Empty(t, ObjectState(recordedClusterObservation(t, "local")))
+}
+
+// TestObjectStateIgnoresStatusState asserts an object with only status.state
+// has no state: steve serves the state in metadata.state.
+func TestObjectStateIgnoresStatusState(t *testing.T) {
+	t.Parallel()
+	obj := &unstructured.Unstructured{Object: map[string]any{
+		"metadata": map[string]any{"name": "c-abc"},
+		"status":   map[string]any{"state": "active"},
+	}}
+	assert.Empty(t, ObjectState(obj))
+	assert.Empty(t, ObjectState(nil))
+}
+
+// TestObjectStateMalformedIsEmpty asserts a metadata.state that is not a map,
+// or whose name is not a string, reads as empty.
+func TestObjectStateMalformedIsEmpty(t *testing.T) {
+	t.Parallel()
+	for name, state := range map[string]any{
+		"not a map":        "active",
+		"name not string":  map[string]any{"name": 7},
+		"name absent":      map[string]any{"message": "Resource is Ready"},
+		"state is null":    nil,
+		"name is a map":    map[string]any{"name": map[string]any{"x": "y"}},
+		"name is null":     map[string]any{"name": nil},
+		"state is a slice": []any{"active"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			obj := &unstructured.Unstructured{Object: map[string]any{
+				"metadata": map[string]any{"name": "c-abc", "state": state},
+			}}
+			assert.NotPanics(t, func() { assert.Empty(t, ObjectState(obj)) })
+		})
+	}
 }
