@@ -772,6 +772,7 @@ func TestMain(m *testing.M) {
 
 	restore := testtransport.GuardDefaultTransport()
 	code := m.Run()
+	code = testrancher.FailOnWritesWithoutFieldManager(code, os.Stderr)
 	if err := restore(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		code = 1
@@ -893,7 +894,7 @@ func TestRouterValidatesSeedAndFacadeBearersAcrossRevocation(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, getClusters(testToken), "the seed token must still authorize through a per-script instance")
 
-	createReq, err := http.NewRequest(http.MethodPost, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens",
+	createReq, err := http.NewRequest(http.MethodPost, testrancher.WithFieldManager(http.MethodPost, srv.URL+"/k8s/clusters/local/apis/ext.cattle.io/v1/tokens"),
 		strings.NewReader(`{"spec":{}}`))
 	require.NoError(t, err)
 	createReq.Header.Set("Authorization", "Bearer "+testToken)
@@ -940,7 +941,7 @@ func TestSeedBearerHasOneOwner(t *testing.T) {
 	client := srv.Client()
 
 	post := func(path, bearer, body string) (int, []byte) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+path, strings.NewReader(body))
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testrancher.WithFieldManager(http.MethodPost, srv.URL+path), strings.NewReader(body))
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+bearer)
 		req.Header.Set("Content-Type", "application/json")

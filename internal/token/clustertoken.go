@@ -35,7 +35,7 @@ func createV3ClusterToken(ctx context.Context, client *http.Client, base, bearer
 	if clusterID == "" {
 		verb = "creating token"
 	}
-	r, resp, err := postTokenCreate(ctx, client, base+normanTokensPath, bearer, body, TokenKindV3, description, verb)
+	r, resp, err := postTokenCreate(ctx, client, http.NewRequestWithContext, base+normanTokensPath, bearer, body, TokenKindV3, description, verb)
 	if err != nil {
 		return r, err
 	}

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/envtestlog"
@@ -191,10 +192,10 @@ func TestFieldManagerIsRecordedInManagedFields(t *testing.T) {
 		}
 		return out
 	}
-	assert.Equal(t, []string{FieldManager + "/Update"}, managers(created))
+	assert.Equal(t, []string{kube.FieldManager + "/Update"}, managers(created))
 
 	created.Object["spec"] = map[string]any{"size": int64(2)}
 	updated, err := repo.Update(ctx, widgetGVR, "default", created, false)
 	require.NoError(t, err)
-	assert.Equal(t, []string{FieldManager + "/Update"}, managers(updated), "one manager keeps owning the fields it wrote")
+	assert.Equal(t, []string{kube.FieldManager + "/Update"}, managers(updated), "one manager keeps owning the fields it wrote")
 }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -272,7 +273,7 @@ const maxOwnerBody = 1 << 20
 // owner. The answer carries no uid; the name is compared.
 func requestOwner(ctx context.Context, client *http.Client, base, clusterID, bearer string) (string, error) {
 	body := []byte(`{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/k8s/clusters/"+url.PathEscape(clusterID)+selfSubjectReviewPath, bytes.NewReader(body))
+	req, err := kube.NewWriteRequest(ctx, http.MethodPost, base+"/k8s/clusters/"+url.PathEscape(clusterID)+selfSubjectReviewPath, bytes.NewReader(body))
 	if err != nil {
 		return "", clierr.New(clierr.CodeGeneric, "building the SelfSubjectReview request: "+err.Error())
 	}

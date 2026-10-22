@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/tlstrust"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
@@ -190,7 +191,7 @@ func TestFlatteningSitesReturnTheClassifiedError(t *testing.T) {
 	client := wrappedTokenClient(t, srv, tokenSlotRemedy)
 
 	t.Run("postTokenCreate", func(t *testing.T) {
-		_, _, err := postTokenCreate(t.Context(), client, srv.URL+ExtTokensPath, "ext/token-x:secret", map[string]any{}, TokenKindExt, "desc", "creating the token")
+		_, _, err := postTokenCreate(t.Context(), client, kube.NewWriteRequest, srv.URL+ExtTokensPath, "ext/token-x:secret", map[string]any{}, TokenKindExt, "desc", "creating the token")
 		_ = requireTypedTrust(t, err)
 	})
 	t.Run("pluginGetter", func(t *testing.T) {

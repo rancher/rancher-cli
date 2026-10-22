@@ -44,14 +44,6 @@ func opCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, requestTimeout)
 }
 
-// FieldManager is the name the server records in an object's managed
-// fields for every Create and Update this client performs. Without it the
-// apiserver derives a manager from the User-Agent's first token, which
-// changes with the binary name. The CLI's domain, unversioned, is a stable
-// identity: it survives a binary rename and an output-schema bump, and it
-// is the root any later server-side-apply manager names build on.
-const FieldManager = "cli.rancher.io"
-
 // bootstrapLocalDynamic builds a dynamic client bound to the LOCAL cluster's
 // proxy plus a request-bounded context, for the small `auth status` probes
 // (Identity, EffectiveTokenMetadata, V3TokenMetadata) that each read a
@@ -284,7 +276,7 @@ func (r *dynamicClient) Create(ctx context.Context, gvr schema.GroupVersionResou
 	}
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
-	opts := metav1.CreateOptions{FieldManager: FieldManager}
+	opts := metav1.CreateOptions{FieldManager: kube.FieldManager}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
@@ -299,7 +291,7 @@ func (r *dynamicClient) Update(ctx context.Context, gvr schema.GroupVersionResou
 	}
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
-	opts := metav1.UpdateOptions{FieldManager: FieldManager}
+	opts := metav1.UpdateOptions{FieldManager: kube.FieldManager}
 	if dryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
 	}

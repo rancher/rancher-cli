@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,5 +34,5 @@ func TestIdentityCreateNamesTheFieldManager(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "u-1", id)
 	assert.Equal(t, "/k8s/clusters/local/apis/ext.cattle.io/v1/selfusers", gotPath)
-	assert.Equal(t, FieldManager, gotManager)
+	assert.Equal(t, kube.FieldManager, gotManager)
 }

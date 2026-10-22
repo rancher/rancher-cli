@@ -61,7 +61,7 @@ func doJSON(t *testing.T, client *http.Client, method, url string, body any, bea
 		require.NoError(t, err)
 		reader = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, url, reader)
+	req, err := http.NewRequest(method, testrancher.WithFieldManager(method, url), reader)
 	require.NoError(t, err)
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
@@ -756,7 +756,7 @@ func TestFacadeForcedStatusCreatesOnlyAfterDeterministic4xx(t *testing.T) {
 			var req *http.Request
 			var err error
 			if tc.create {
-				req, err = http.NewRequest(http.MethodPost, srv.URL+extTokensPath, strings.NewReader(`{"spec":{}}`))
+				req, err = http.NewRequest(http.MethodPost, testrancher.WithFieldManager(http.MethodPost, srv.URL+extTokensPath), strings.NewReader(`{"spec":{}}`))
 				require.NoError(t, err)
 				req.Header.Set("Authorization", "Bearer seed:secret")
 			} else {
@@ -801,7 +801,7 @@ func TestFacadeDeleteFaultModesFollowTheRecordRole(t *testing.T) {
 				sessionKind = "ext"
 			}
 			sBearer := f.BearersOfKind(sessionKind)[0]
-			create, err := http.NewRequest(http.MethodPost, srv.URL+extTokensPath, strings.NewReader(`{"spec":{}}`))
+			create, err := http.NewRequest(http.MethodPost, testrancher.WithFieldManager(http.MethodPost, srv.URL+extTokensPath), strings.NewReader(`{"spec":{}}`))
 			require.NoError(t, err)
 			create.Header.Set("Authorization", "Bearer "+sBearer)
 			resp, err := srv.Client().Do(create)
@@ -869,7 +869,7 @@ func TestFacadeExtTokenListAndDryRunDelete(t *testing.T) {
 	f := testrancher.New(testrancher.Options{SeedToken: "seed:secret"})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	create, err := http.NewRequest(http.MethodPost, srv.URL+extTokensPath, strings.NewReader(`{"spec":{"description":"x [op:0123456789ab]"}}`))
+	create, err := http.NewRequest(http.MethodPost, testrancher.WithFieldManager(http.MethodPost, srv.URL+extTokensPath), strings.NewReader(`{"spec":{"description":"x [op:0123456789ab]"}}`))
 	require.NoError(t, err)
 	create.Header.Set("Authorization", "Bearer seed:secret")
 	resp, err := srv.Client().Do(create)
@@ -1121,7 +1121,7 @@ func TestSelfSubjectReviewNamesTheBearersOwner(t *testing.T) {
 	const path = "/k8s/clusters/c-1/apis/authentication.k8s.io/v1/selfsubjectreviews"
 	post := func(t *testing.T, srv *httptest.Server, bearer string) (int, map[string]any) {
 		t.Helper()
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+path,
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testrancher.WithFieldManager(http.MethodPost, srv.URL+path),
 			strings.NewReader(`{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}`))
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+bearer)

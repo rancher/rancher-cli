@@ -492,9 +492,8 @@ func TestDynamicRepoCreateAndUpdateNameTheFieldManager(t *testing.T) {
 	require.NoError(t, err)
 	_, err = r.Update(t.Context(), projectGVR, "c-x", project("c-x", "p-1"), true)
 	require.NoError(t, err)
-	assert.Equal(t, FieldManager, createManager)
-	assert.Equal(t, FieldManager, updateManager)
-	assert.Equal(t, "cli.rancher.io", FieldManager, "the identity is the CLI's domain, unversioned, so it survives a binary rename and a schema bump")
+	assert.Equal(t, kube.FieldManager, createManager)
+	assert.Equal(t, kube.FieldManager, updateManager)
 }
 
 // TestLogsKeepsTheServersRefusalMessage asserts that a refused log read

@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 )
@@ -46,7 +47,7 @@ func (r *dynamicClient) PostReview(ctx context.Context, req engine.ReviewRequest
 	url := r.host + "/apis/" + gvr.Group + "/" + gvr.Version + "/" + gvr.Resource
 	ctx, cancel := opCtx(ctx)
 	defer cancel()
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	hreq, err := kube.NewWriteRequest(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return engine.ReviewResponse{}, clierr.From(err)
 	}

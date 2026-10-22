@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/client/selfuser"
 	"github.com/rancher/rancher-cli/internal/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,7 +27,7 @@ func Identity(ctx context.Context, eff config.Effective) (string, error) {
 		return "", err
 	}
 	defer cancel()
-	created, err := dyn.Resource(selfuser.GVR).Create(ctx, selfuser.New(), metav1.CreateOptions{FieldManager: FieldManager})
+	created, err := dyn.Resource(selfuser.GVR).Create(ctx, selfuser.New(), metav1.CreateOptions{FieldManager: kube.FieldManager})
 	if err != nil {
 		return "", mapErr(err)
 	}

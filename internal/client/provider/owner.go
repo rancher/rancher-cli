@@ -27,7 +27,7 @@ func Owner(ctx context.Context, eff config.Effective) (string, error) {
 	}
 	gvr, _ := engine.ReviewGVR(engine.ReviewSelfSubjectIdentity)
 	review := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "authentication.k8s.io/v1", "kind": "SelfSubjectReview"}}
-	created, err := dyn.Resource(gvr).Create(ctx, review, metav1.CreateOptions{})
+	created, err := dyn.Resource(gvr).Create(ctx, review, metav1.CreateOptions{FieldManager: kube.FieldManager})
 	if err != nil {
 		return "", clierr.WrapUnlessCanceled(err, mapPreflightErr)
 	}

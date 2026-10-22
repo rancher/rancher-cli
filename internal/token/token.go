@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -1754,6 +1755,16 @@ var (
 // spec.ttl entirely (server default). This is the SAME derived-token path
 // `auth login` uses (via resolveProviderLoginToken in package auth), so
 // get-token's stored-credential path creates exactly the same shape of token.
+//
+// The create is a raw request, built by kube.NewWriteRequest so it carries
+// the field manager, and does not go through the provider's cluster client
+// for two reasons: it sends on the *http.Client its caller passes, built by
+// httpx.New for the Rancher server with the CA that caller resolved and, for
+// the token commands, the wrapper that words a certificate failure for the
+// command that ran, while the cluster client builds its own transport from
+// the connection settings; and it returns the sentinels and the partial
+// result described above, which every caller reads and answers with its own
+// fallback, while the cluster client returns neither.
 func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerToken, clusterID string, ttlMs int64, description string) (CreateResult, error) {
 	spec := map[string]any{
 		"description": description,
@@ -1764,7 +1775,7 @@ func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerTo
 	if clusterID != "" {
 		spec["clusterName"] = clusterID
 	}
-	r, resp, err := postTokenCreate(ctx, client, base+ExtTokensPath, bearerToken, map[string]any{"spec": spec}, TokenKindExt, description, extCreateVerb)
+	r, resp, err := postTokenCreate(ctx, client, kube.NewWriteRequest, base+ExtTokensPath, bearerToken, map[string]any{"spec": spec}, TokenKindExt, description, extCreateVerb)
 	if err != nil {
 		return r, err
 	}
@@ -1784,14 +1795,17 @@ func CreateDerivedToken(ctx context.Context, client *http.Client, base, bearerTo
 // stays recognizable as cancellation after cleanup wraps it), a 401 or a
 // 403 on the bearer, and any status other than 200, 201, and 404. The
 // caller is left with 404 and success, which mean different things on each
-// route.
-func postTokenCreate(ctx context.Context, client *http.Client, url, bearer string, body map[string]any, kind TokenKind, description, verb string) (CreateResult, *http.Response, error) {
+// route. newRequest builds the request: the ext route passes
+// kube.NewWriteRequest, so the create names the field manager, and the v3
+// route passes http.NewRequestWithContext because Rancher's own API takes no
+// field manager.
+func postTokenCreate(ctx context.Context, client *http.Client, newRequest func(ctx context.Context, method, rawURL string, body io.Reader) (*http.Request, error), url, bearer string, body map[string]any, kind TokenKind, description, verb string) (CreateResult, *http.Response, error) {
 	notAttempted := CreateResult{Outcome: CreateNotAttempted, Kind: kind, Marked: description != ""}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return notAttempted, nil, fmt.Errorf("building the token create request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	req, err := newRequest(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return notAttempted, nil, fmt.Errorf("building the token create request: %w", err)
 	}

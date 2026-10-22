@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/config"
+	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,6 +154,7 @@ func TestMain(m *testing.M) {
 	restore := testtransport.GuardDefaultTransport()
 	startSharedEnvtest()
 	code := m.Run()
+	code = testrancher.FailOnWritesWithoutFieldManager(code, os.Stderr)
 	stopSharedEnvtest()
 	if err := restore(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

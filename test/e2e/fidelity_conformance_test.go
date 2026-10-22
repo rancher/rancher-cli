@@ -48,7 +48,8 @@ func newCompositeTarget(t *testing.T) *compositeTarget {
 	router := newRouter(facadeIdentityResolver(shimIdentities, func(tok string) bool {
 		return facade != nil && facade.ValidBearer(tok)
 	}))
-	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken})
+	facade = testrancher.New(testrancher.Options{Fallthrough: router, SeedToken: testToken,
+		WritesWithoutFieldManager: "fidelity probes replay the requests recorded against a real Rancher"})
 	ct.facade = facade
 	ct.srv = httptest.NewTLSServer(facade)
 	t.Cleanup(ct.srv.Close)

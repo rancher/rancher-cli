@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/testrancher"
 	"github.com/rancher/rancher-cli/internal/testtransport"
 )
 
@@ -15,6 +16,7 @@ import (
 func TestMain(m *testing.M) {
 	restore := testtransport.GuardDefaultTransport()
 	code := m.Run()
+	code = testrancher.FailOnWritesWithoutFieldManager(code, os.Stderr)
 	if err := restore(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		code = 1

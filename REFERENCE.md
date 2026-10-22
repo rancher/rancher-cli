@@ -760,11 +760,19 @@ controller), instantly invalidating every live client secret.
 
 ### Field ownership
 
-Every `create` and `patch` the CLI performs names itself to the server as
-the field manager `cli.rancher.io`, so an object's managed fields
-(`kubectl get <kind> <name> -o yaml --show-managed-fields`) show which
-fields the CLI wrote. The name is the CLI's domain, unversioned, so it
-stays the same across releases and binary names.
+Every create, update and patch the CLI sends to a Kubernetes API names
+itself to the server as the field manager `cli.rancher.io`, the ext Token
+create and the access review requests included. For an object the CLI
+creates or changes, the managed fields (`kubectl get <kind> <name> -o yaml
+--show-managed-fields`) show which fields the CLI wrote. Rancher's token API
+does not keep the request's field manager, so an ext Token's managed fields
+name `rancher`; the access review requests store nothing. The name is the
+CLI's domain, unversioned, so it stays the same across releases and binary
+names.
+
+A delete carries no field manager: Kubernetes has none for deletes. Requests
+to Rancher's own endpoints (login, logout, the Norman token API) are not
+Kubernetes writes and have none.
 
 `patch` reads the same record before it changes anything. When a field the
 patch changes is owned by a manager that applies it (server-side apply, as

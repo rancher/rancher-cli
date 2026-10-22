@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/auth/exec"
 
+	"github.com/rancher/rancher-cli/internal/client/kube"
 	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
@@ -154,7 +155,7 @@ const (
 
 // probeDirect posts one SelfSubjectReview with bearer to server.
 func probeDirect(ctx context.Context, client *http.Client, server, bearer string) probeAnswer {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(server, "/")+"/apis/authentication.k8s.io/v1/selfsubjectreviews", strings.NewReader(selfSubjectReviewBody))
+	req, err := kube.NewWriteRequest(ctx, http.MethodPost, strings.TrimSuffix(server, "/")+"/apis/authentication.k8s.io/v1/selfsubjectreviews", strings.NewReader(selfSubjectReviewBody))
 	if err != nil {
 		return probeRetry
 	}

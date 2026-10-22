@@ -15,6 +15,7 @@ import (
 func TestMain(m *testing.M) {
 	restore := testtransport.GuardDefaultTransport()
 	code := m.Run()
+	code = FailOnWritesWithoutFieldManager(code, os.Stderr)
 	if err := restore(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		code = 1

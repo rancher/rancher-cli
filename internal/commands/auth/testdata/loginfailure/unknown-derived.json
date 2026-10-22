@@ -4,13 +4,13 @@
   "data": {
     "error": {
       "code": "GENERIC",
-      "message": "creating derived token: Post \"$SERVER/k8s/clusters/local/apis/ext.cattle.io/v1/tokens\": EOF",
+      "message": "creating derived token: Post \"$SERVER/k8s/clusters/local/apis/ext.cattle.io/v1/tokens?fieldManager=cli.rancher.io\": EOF",
       "hint": "rancher auth login 'prod'",
       "retryable": false,
       "details": {
         "primary": {
           "code": "GENERIC",
-          "message": "creating derived token: Post \"$SERVER/k8s/clusters/local/apis/ext.cattle.io/v1/tokens\": EOF",
+          "message": "creating derived token: Post \"$SERVER/k8s/clusters/local/apis/ext.cattle.io/v1/tokens?fieldManager=cli.rancher.io\": EOF",
           "retryable": false
         },
         "stage": "authentication",

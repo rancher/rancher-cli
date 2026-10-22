@@ -273,6 +273,11 @@ type Options struct {
 	// RequestHook runs on every request the facade handles, before
 	// dispatch.
 	RequestHook func(r *http.Request)
+	// WritesWithoutFieldManager, when non-empty, is the reason this Facade
+	// may receive a POST, PUT or PATCH to a Kubernetes path without the
+	// fieldManager query parameter; without it such a request is recorded
+	// and fails the test package at exit (FailOnWritesWithoutFieldManager).
+	WritesWithoutFieldManager string
 	// ClusterVisibility says which management Clusters a bearer sees on the
 	// steve clusters collection; a bearer it does not know is answered 401.
 	// nil leaves the collection unserved (404).
@@ -727,6 +732,7 @@ func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.opts.RequestHook != nil {
 		f.opts.RequestHook(r)
 	}
+	f.recordWriteWithoutFieldManager(r)
 	switch {
 	case f.opts.LocalManagementGate != nil && localManagementGated(r.URL.Path) && !f.opts.LocalManagementGate(bearerFromHeader(r)):
 		w.WriteHeader(http.StatusForbidden)
