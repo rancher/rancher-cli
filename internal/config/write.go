@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/rancher/rancher-cli/internal/fsacl"
 )
 
 // ReadRawConfig reads config YAML bytes verbatim from path - `config
@@ -26,12 +28,12 @@ func WriteRawConfig(path string, data []byte) error {
 	return atomicWriteFile(path, data, 0600)
 }
 
-// hardenACLHook is hardenACL behind a package var, so a test can inject a
+// hardenACLHook is fsacl.Harden behind a package var, so a test can inject a
 // failure to exercise atomicWriteFile's error-cleanup ordering without a
 // real Windows host.
-var hardenACLHook = hardenACL
+var hardenACLHook = fsacl.Harden
 
-// HardenTempFileACL exposes hardenACL to other internal packages whose own
+// HardenTempFileACL exposes fsacl.Harden to other internal packages whose own
 // temp files hold config/credential content but which don't go through
 // atomicWriteFile - e.g. the config-edit scratch file (newTempCopy), which
 // sits open in the editor for the duration of an edit and deserves the same

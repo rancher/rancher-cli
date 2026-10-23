@@ -87,7 +87,9 @@ what drifted the previous revision of this doc).
 | `internal/client/provider` | Concrete Rancher-proxied k8s adapter: dynamic `ClusterClient`, bespoke op→contract `Resolver`, connectivity `Preflight`, and request wording over clierr's status table. `ListTable` and `GetTable` ask the API server for a kind's Table (kubectl's Accept value) and return the Table, or, when the server answers with the ordinary list or object, those objects; their errors are `List`'s and `Get`'s. Discovery: `ServerResources` asks for aggregated discovery (two context-bound requests) and falls back to its own legacy walk where a server does not serve it (the local cluster of Rancher v2.15.0 and v2.15.1 through the proxy): the plain root documents, then each group's preferred version document, every request context-bound, subresource entries kept; a partial answer is returned as the partial list together with `engine.DiscoveryIncomplete` naming the groups the server could not describe, never as a silently smaller inventory. |
 | `internal/client/kube` | Builds client-go artifacts (`rest.Config`, dynamic + discovery + typed clients) aimed at the Rancher k8s proxy endpoint, every one over `HTTPClient`, the single client-go `http.Client` carrying the same-origin redirect policy; `TableClient` is the REST client of the table reads, over that same `HTTPClient`. Holds `FieldManager` and `NewWriteRequest`: every Kubernetes write the CLI builds by hand goes through it. |
 | `internal/client/httpx` | Constructs the hardened `*http.Client`s: `New` (TLS floor / CA / insecure, proxy, timeouts) for Rancher-origin callers (`internal/token`'s auth flows, `internal/client/provider`'s `/rancherversion` probe, `internal/cli`'s GET-only `engine.RootClient`), `NewExternal` (operating-system roots only) for identity-provider endpoints, the shared `RejectCrossOriginRedirect` policy every client carries, and the closed `Origin` tuple those decisions compare. `New` also sends the process's User-Agent (`SetUserAgent`, set once by `cmd/rancher`) on every request, replacing any the caller set. |
-| `internal/invocation` | Describes how the process was started (version, platform, agent harness session, exec plugin, CI) from the environment, in one place, and builds the User-Agent from it. Standard library only; `cmd/rancher` builds it and hands the string to `httpx`. |
+| `internal/invocation` | Describes how the process was started (version, platform, agent harness session, exec plugin, CI) from the environment, in one place, and builds the User-Agent from it. Standard library only; `cmd/rancher` builds it and hands the string to `httpx`, and `internal/telemetry` reads its agent, CI and exec plugin facts to describe the producer of a usage event. |
+| `internal/telemetry` | The usage event contract and the local recording package: the event types and normalizers (every value a closed list, a pattern, a count, a bucket or a random id), the flat JSON encoder, the generator of the published contract files (`telemetry/contract`), the on and off controls, and the store under `<config dir>/telemetry` (exclusive create of a random slot per event, an hourly compaction and age pass, one facts file per server). It imports the standard library without network packages, `internal/invocation` and `internal/fsacl` only; a conformance test checks the direct imports and the import closure on every release platform. It takes no lock and never creates the config directory. |
+| `internal/fsacl` | Owner-only access lists where the operating system ignores Unix mode bits: `Harden` for one file, `HardenInheritable` for a directory whose new entries inherit the list. Windows only does anything; every other platform is a no-op. Standard library and `golang.org/x/sys/windows` only; `internal/config` and `internal/telemetry` both call it. |
 | `internal/client/tlstrust` | Classifies a failed TLS handshake's certificate-verification error (unknown authority, hostname mismatch, expired, not-yet-valid, invalid chain) into a structured `clierr.Error`, attributes it to a request by normalized origin (`ClassifyForOrigin`, `KindOf`), and picks the candidate trust anchor from the chain the failed handshake itself already observed - no separate probe dial. `WrapTransport` is the `http.RoundTripper` wrapper that turns a certificate failure of a request to the Rancher server's origin into that error, wording its remedy per command (`Remedy`): `config` builds the wording for a resolved connection, and `kube`, `internal/cli` and `internal/token` install the wrapper on their Rancher clients (`rest.Config.WrapTransport`, `httpx.Options.WrapTransport`); the version probe, the auth-provider sign-in and the completion client are not wrapped. A failure to verify an `https://` proxy is never classified as the server's. |
 | `internal/output` | The versioned stdout envelope and multi-format renderer (table / json / yaml / name / template), including the error envelope. The render layer scrubs `metadata.managedFields` from all structured output formats (kubectl parity). It is also the terminal-safety boundary: `Printable` strips control and Unicode format characters and the line and paragraph separators from server-sourced text in every text format (table cells and headers, names; the runtime applies it to warning, error, and dry-run preview lines; text builders at each insertion), while json, yaml, and template stay verbatim. |
 | `internal/output/style` | Presentation-only ANSI wrap functions (bold/red/yellow/cyan) gated by an enable flag, plus a strip function that restores the exact unstyled bytes. |
@@ -155,6 +157,8 @@ graph TD
     kube["internal/client/kube"]
     httpx["internal/client/httpx"]
     invocation["internal/invocation"]
+    telemetry["internal/telemetry"]
+    fsacl["internal/fsacl"]
     tlstrust["internal/client/tlstrust"]
     output["internal/output"]
     outputstyle["internal/output/style"]
@@ -434,6 +438,9 @@ graph TD
     config --> clierr
     config --> tlstrust
     config --> credhelper
+    config --> fsacl
+    telemetry --> invocation
+    telemetry --> fsacl
 
     output --> clierr
     output --> outputstyle
@@ -888,7 +895,7 @@ command, and a details payload's command fields are emptied.
 OS keychain has no list API, and `auth list-tokens` needs enumeration, so the cache is
 file-backed regardless of policy. Accepted trade-off.
 
-**Config-directory lock inventory.** Four advisory cross-process locks guard their
+**Config-directory lock inventory.** Five advisory cross-process locks guard their
 respective files via `flock` (released by the OS on process exit):
 
 - `<dir>/config.lock` - guards `config.yaml` and `credentials.yaml` writes; taken at
@@ -923,6 +930,11 @@ outer one. `RANCHER_CLI_CONFIG_NO_LOCK`
 advisory locking - while the process-level semaphore still serializes in-process callers.
 Without the flock a concurrent command can replace or remove the one record of a store
 change, the same lost-update class the variable already accepts for `config.yaml`.
+
+Telemetry files take no lock. A recording process creates its event file exclusively at a random
+free slot and writes it once, the directory id is created exclusively, a facts file is replaced
+by rename, and the hourly pass creates each compacted file exclusively; a concurrent process
+either wins an exclusive create or sees the file already there.
 
 **A login that changes the credential store.** The store a login commits
 to, the store a reader resolves to before it and the one a reader

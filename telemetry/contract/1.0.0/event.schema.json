@@ -1,0 +1,437 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:io.rancher:telemetry:contract:1.0.0:event",
+  "title": "Rancher usage event, flat form, contract 1.0.0",
+  "description": "One event as the flat contract form: the fixed keys event.name, time and schema_version, then one key per attribute. Consumers accept keys they do not know.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/io.rancher.cli.command.run"
+    },
+    {
+      "$ref": "#/$defs/io.rancher.cli.events.dropped"
+    }
+  ],
+  "$defs": {
+    "io.rancher.cli.command.run": {
+      "type": "object",
+      "description": "One finished command run.",
+      "required": [
+        "event.name",
+        "time",
+        "schema_version",
+        "service.name",
+        "service.version",
+        "service.instance.id",
+        "log.record.uid"
+      ],
+      "properties": {
+        "event.name": {
+          "type": "string",
+          "const": "io.rancher.cli.command.run",
+          "description": "One finished command run."
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:00:00Z$",
+          "description": "The start of the UTC hour of the event, RFC 3339, as a whole hour."
+        },
+        "schema_version": {
+          "type": "string",
+          "const": "1.0.0",
+          "description": "The contract version the event follows."
+        },
+        "service.namespace": {
+          "type": "string",
+          "const": "io.rancher",
+          "description": "Groups every Rancher product's events under one namespace.",
+          "x-stability": "development",
+          "x-absent": "The producer did not state a namespace; every producer of this contract is in io.rancher."
+        },
+        "service.name": {
+          "type": "string",
+          "const": "io.rancher.cli",
+          "description": "Names the producer; the producer is identified by this attribute alone.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        },
+        "service.version": {
+          "type": "string",
+          "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+(?:-(?:alpha|beta|rc)\\.?[0-9]+|-hotfix)?|dev|dev-[0-9a-f]{1,40}|dev-unknown|unknown|_OTHER)$",
+          "maxLength": 64,
+          "description": "Tells which release of the producer wrote the event. A customer-specific hotfix id is removed; text that fits no form becomes _OTHER.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        },
+        "service.instance.id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "A random id for one process; ties together the events of one run. It names no person and no machine.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        },
+        "io.rancher.cli.config_directory.id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "A random id per CLI configuration directory. It is not a user and not a machine: agents use several directories at once, and CI and test runs use fresh ones.",
+          "x-stability": "development",
+          "x-absent": "The directory id did not exist yet, or another process was creating it; treat the event as from an unknown directory."
+        },
+        "os.type": {
+          "type": "string",
+          "enum": [
+            "aix",
+            "darwin",
+            "dragonflybsd",
+            "freebsd",
+            "linux",
+            "netbsd",
+            "openbsd",
+            "solaris",
+            "windows",
+            "z_os",
+            "_OTHER"
+          ],
+          "description": "Tells which operating systems the CLI runs on.",
+          "x-stability": "development",
+          "x-absent": "The producer did not report an operating system."
+        },
+        "host.arch": {
+          "type": "string",
+          "enum": [
+            "amd64",
+            "arm32",
+            "arm64",
+            "ppc64",
+            "s390x",
+            "x86",
+            "_OTHER"
+          ],
+          "description": "Tells which processor architectures the CLI runs on.",
+          "x-stability": "development",
+          "x-absent": "The producer did not report an architecture."
+        },
+        "io.rancher.client.type": {
+          "type": "string",
+          "enum": [
+            "person",
+            "agent",
+            "automation"
+          ],
+          "description": "A hint, never proof, of who ran the command: an AI agent, a person at a terminal, or automation (CI, scripts, kubectl calling the exec plugin, output piped to another program).",
+          "x-stability": "development",
+          "x-absent": "The producer did not classify the caller."
+        },
+        "io.rancher.client.agent": {
+          "type": "string",
+          "enum": [
+            "claude-code",
+            "codex",
+            "gemini-cli",
+            "copilot-cli",
+            "opencode",
+            "cline",
+            "roo-code",
+            "copilot-vscode",
+            "copilot-cloud",
+            "crush",
+            "pi",
+            "agent"
+          ],
+          "description": "Tells which AI agent harness ran the command, from a closed list; agent stands for a harness not on the list.",
+          "x-stability": "development",
+          "x-absent": "No agent harness was detected."
+        },
+        "io.rancher.client.ci": {
+          "type": "boolean",
+          "description": "True when a CI system's variable was set; reported beside the client type and never changes it.",
+          "x-stability": "development",
+          "x-absent": "Always written; never absent."
+        },
+        "io.rancher.cli.exec_plugin": {
+          "type": "boolean",
+          "description": "True when kubectl ran the command as its exec credential plugin.",
+          "x-stability": "development",
+          "x-absent": "Always written; never absent."
+        },
+        "log.record.uid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "A random id per event, never time-ordered; lets a receiver remove duplicates.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        },
+        "io.rancher.cli.command": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}( [a-z][a-z0-9-]{0,31}){0,2}$",
+          "maxLength": 98,
+          "description": "The registered command name (an alias resolves to it); never a positional value. Valid names are in the rancher schema manifest of the event's service.version.",
+          "x-stability": "development",
+          "x-absent": "The name did not follow the name rule and was left out."
+        },
+        "io.rancher.cli.command.flags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$",
+            "maxLength": 32
+          },
+          "maxItems": 32,
+          "description": "The long names, without dashes and sorted, of the flags typed on the command line; never values and never flags set from the environment. At most 32 are kept (the first 32 sorted).",
+          "x-stability": "development",
+          "x-absent": "Always written; an empty list means no flag was typed."
+        },
+        "io.rancher.cli.command.outcome": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ],
+          "description": "Whether the command succeeded. A declared success exit status counts as ok.",
+          "x-stability": "development",
+          "x-absent": "The producer did not report an outcome."
+        },
+        "error.type": {
+          "type": "string",
+          "enum": [
+            "NOT_LOGGED_IN",
+            "CONFIRMATION_REQUIRED",
+            "DRY_RUN_NOT_APPLICABLE",
+            "AMBIGUOUS_SELECTION",
+            "CONFLICT",
+            "LOCK_TIMEOUT",
+            "AUTH",
+            "CREDENTIAL_REPLACED",
+            "LOGIN_INCOMPLETE",
+            "CREDENTIAL_TRANSITION_INCOMPLETE",
+            "CREDENTIAL_STORE_UNAVAILABLE",
+            "NOT_FOUND",
+            "RBAC",
+            "VALIDATION",
+            "PRIME_REQUIRED",
+            "TLS_TRUST",
+            "CAPABILITY_UNSUPPORTED",
+            "INTERRUPTED",
+            "GENERIC",
+            "_OTHER"
+          ],
+          "description": "The CLI error code of a failed command, or _OTHER when it has none.",
+          "x-stability": "development",
+          "x-absent": "The command did not fail."
+        },
+        "process.exit.code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "description": "The exit status the process returns to its caller.",
+          "x-stability": "development",
+          "x-absent": "The producer did not report an exit status."
+        },
+        "io.rancher.cli.command.duration.bucket": {
+          "type": "string",
+          "enum": [
+            "lt1s",
+            "1to5s",
+            "gt5s"
+          ],
+          "description": "How long the command took, in three buckets; never an exact time.",
+          "x-stability": "development",
+          "x-absent": "The producer did not report a duration."
+        },
+        "io.rancher.manager.version": {
+          "type": "string",
+          "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+(?:-(?:alpha|beta|rc)\\.?[0-9]+|-hotfix)?|dev|dev-[0-9a-f]{1,40}|dev-unknown|unknown|_OTHER)$",
+          "maxLength": 64,
+          "description": "The version of the Rancher server the command targeted, by the same version rule.",
+          "x-stability": "development",
+          "x-absent": "The server version is unknown."
+        },
+        "io.rancher.manager.edition": {
+          "type": "string",
+          "enum": [
+            "community",
+            "prime"
+          ],
+          "description": "The edition of the Rancher server the command targeted.",
+          "x-stability": "development",
+          "x-absent": "The server edition is unknown."
+        },
+        "io.rancher.manager.install.id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "description": "The install id of the Rancher server the command targeted (its install-uuid setting), when the CLI could read it. It joins CLI use to a server installation.",
+          "x-stability": "development",
+          "x-absent": "The CLI did not have the id; io.rancher.cli.install_id.missing_reason says why."
+        },
+        "io.rancher.cli.install_id.missing_reason": {
+          "type": "string",
+          "enum": [
+            "no_server",
+            "not_permitted",
+            "not_fetched",
+            "invalid"
+          ],
+          "description": "Why the install id is absent: no_server (the run had no server), not_permitted (the server answered 403 or 404), not_fetched (no fresh answer yet), invalid (the value was not a UUID). Present exactly when the install id is absent.",
+          "x-stability": "development",
+          "x-absent": "The install id is present."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "io.rancher.manager.install.id"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "io.rancher.cli.install_id.missing_reason"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "io.rancher.cli.install_id.missing_reason"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "io.rancher.cli.command.outcome"
+            ],
+            "properties": {
+              "io.rancher.cli.command.outcome": {
+                "const": "ok"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "error.type"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "io.rancher.cli.events.dropped": {
+      "type": "object",
+      "description": "One finished hour that lost events: every slot the producer tried was taken.",
+      "required": [
+        "event.name",
+        "time",
+        "schema_version",
+        "service.name",
+        "service.version",
+        "service.instance.id",
+        "log.record.uid",
+        "io.rancher.cli.events.dropped.count"
+      ],
+      "properties": {
+        "event.name": {
+          "type": "string",
+          "const": "io.rancher.cli.events.dropped",
+          "description": "One finished hour that lost events: every slot the producer tried was taken."
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:00:00Z$",
+          "description": "The start of the UTC hour of the event, RFC 3339, as a whole hour."
+        },
+        "schema_version": {
+          "type": "string",
+          "const": "1.0.0",
+          "description": "The contract version the event follows."
+        },
+        "service.namespace": {
+          "type": "string",
+          "const": "io.rancher",
+          "description": "Groups every Rancher product's events under one namespace.",
+          "x-stability": "development",
+          "x-absent": "The producer did not state a namespace; every producer of this contract is in io.rancher."
+        },
+        "service.name": {
+          "type": "string",
+          "const": "io.rancher.cli",
+          "description": "Names the producer; the producer is identified by this attribute alone.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        },
+        "service.version": {
+          "type": "string",
+          "pattern": "^(?:[0-9]+\\.[0-9]+\\.[0-9]+(?:-(?:alpha|beta|rc)\\.?[0-9]+|-hotfix)?|dev|dev-[0-9a-f]{1,40}|dev-unknown|unknown|_OTHER)$",
+          "maxLength": 64,
+          "description": "Tells which release of the producer wrote the event. A customer-specific hotfix id is removed; text that fits no form becomes _OTHER.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        },
+        "service.instance.id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "A random id for one process; ties together the events of one run. It names no person and no machine.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        },
+        "io.rancher.cli.config_directory.id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "A random id per CLI configuration directory. It is not a user and not a machine: agents use several directories at once, and CI and test runs use fresh ones.",
+          "x-stability": "development",
+          "x-absent": "The directory id did not exist yet, or another process was creating it; treat the event as from an unknown directory."
+        },
+        "os.type": {
+          "type": "string",
+          "enum": [
+            "aix",
+            "darwin",
+            "dragonflybsd",
+            "freebsd",
+            "linux",
+            "netbsd",
+            "openbsd",
+            "solaris",
+            "windows",
+            "z_os",
+            "_OTHER"
+          ],
+          "description": "Tells which operating systems the CLI runs on.",
+          "x-stability": "development",
+          "x-absent": "The producer did not report an operating system."
+        },
+        "host.arch": {
+          "type": "string",
+          "enum": [
+            "amd64",
+            "arm32",
+            "arm64",
+            "ppc64",
+            "s390x",
+            "x86",
+            "_OTHER"
+          ],
+          "description": "Tells which processor architectures the CLI runs on.",
+          "x-stability": "development",
+          "x-absent": "The producer did not report an architecture."
+        },
+        "log.record.uid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "A random id per event, never time-ordered; lets a receiver remove duplicates.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        },
+        "io.rancher.cli.events.dropped.count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many events one finished hour lost because every try found a taken slot. Consumers report usage as lower bounds when this event exists.",
+          "x-stability": "development",
+          "x-absent": "Never absent; the event is invalid without it."
+        }
+      }
+    }
+  }
+}

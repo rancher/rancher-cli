@@ -1,0 +1,11 @@
+{
+  "versions": [
+    {
+      "version": "0.0.1",
+      "files": {
+        "event.schema.json": "sha256:812c70bc9a5970c656d2e3a8e1899bed0f5236c6e99e95ca0e86249ce64f1d71",
+        "examples/note.txt": "sha256:da8a7bc4ea49e87f865ff884d64037ccea855db906a47bae9382e601f4c151e9"
+      }
+    }
+  ]
+}

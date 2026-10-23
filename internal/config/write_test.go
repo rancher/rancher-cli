@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/rancher/rancher-cli/internal/fsacl"
 )
 
 func TestAtomicWriteFile(t *testing.T) {
@@ -25,7 +28,7 @@ func TestAtomicWriteFile(t *testing.T) {
 		require.NoError(t, err)
 		if runtime.GOOS != "windows" {
 			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
-			// of the real NTFS DACL (hardenACL is the enforcement there), so
+			// of the real NTFS DACL (fsacl.Harden is the enforcement there), so
 			// the 0600 assertion is meaningless on that platform.
 			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 		}
@@ -63,7 +66,7 @@ func TestAtomicWriteFile(t *testing.T) {
 		require.NoError(t, err)
 		if runtime.GOOS != "windows" {
 			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
-			// of the real NTFS DACL (hardenACL is the enforcement there), so
+			// of the real NTFS DACL (fsacl.Harden is the enforcement there), so
 			// the 0600 assertion is meaningless on that platform.
 			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 		}
@@ -84,19 +87,19 @@ func TestAtomicWriteFile(t *testing.T) {
 		require.NoError(t, err)
 		if runtime.GOOS != "windows" {
 			// On Windows os.FileInfo.Mode() synthesizes mode bits regardless
-			// of the real NTFS DACL (hardenACL is the enforcement there), so
+			// of the real NTFS DACL (fsacl.Harden is the enforcement there), so
 			// the 0600 assertion is meaningless on that platform.
 			assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
 		}
 	})
 
 	// TestAtomicWriteFileHardenACLFailureLeavesNoTempFile exercises the
-	// hardenACL failure path via hardenACLHook: the temp file must be
+	// fsacl.Harden failure path via hardenACLHook: the temp file must be
 	// closed before it is removed, or the removal silently fails on
 	// Windows (no FILE_SHARE_DELETE by default) and leaks the temp file.
 	// Close-before-remove is correct on every platform; this test just
 	// makes the ordering observable without a real Windows host.
-	t.Run("hardenACL failure leaves no temp file behind", func(t *testing.T) {
+	t.Run("owner-only ACL failure leaves no temp file behind", func(t *testing.T) {
 		orig := hardenACLHook
 		hardenACLHook = func(string) error { return fmt.Errorf("boom") }
 		t.Cleanup(func() { hardenACLHook = orig })
@@ -110,6 +113,13 @@ func TestAtomicWriteFile(t *testing.T) {
 
 		entries, rerr := os.ReadDir(dir)
 		require.NoError(t, rerr)
-		assert.Empty(t, entries, "no stray temp file must remain after a hardenACL failure")
+		assert.Empty(t, entries, "no stray temp file must remain after an owner-only ACL failure")
 	})
+}
+
+// TestHardenHookIsTheSharedACLCall asserts the hook every config file write
+// goes through is the shared owner-only access list call, so moving the
+// code did not leave a second copy behind.
+func TestHardenHookIsTheSharedACLCall(t *testing.T) {
+	assert.Equal(t, reflect.ValueOf(fsacl.Harden).Pointer(), reflect.ValueOf(hardenACLHook).Pointer())
 }

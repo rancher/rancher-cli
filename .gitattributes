@@ -1,1 +1,3 @@
 scripts/archive-sha export-subst
+telemetry/contract/** text eol=lf
+internal/telemetry/testdata/contract/** text eol=lf

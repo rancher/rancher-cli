@@ -1,0 +1,24 @@
+{
+  "event.name": "io.rancher.cli.command.run",
+  "time": "2026-10-23T14:00:00Z",
+  "schema_version": "1.0.0",
+  "service.name": "io.rancher.cli",
+  "service.version": "0.1.0-rc1",
+  "service.instance.id": "3f2a6c1e-8b7d-4e5a-9c10-2d4f6a8b0c1e",
+  "log.record.uid": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+  "io.rancher.cli.install_id.missing_reason": "no_server",
+  "service.namespace": "io.rancher",
+  "io.rancher.client.type": "automation",
+  "io.rancher.client.ci": false,
+  "io.rancher.cli.exec_plugin": true,
+  "io.rancher.cli.command": "auth get-token",
+  "io.rancher.cli.command.flags": [
+    "server",
+    "user-id"
+  ],
+  "io.rancher.cli.command.outcome": "ok",
+  "process.exit.code": 0,
+  "io.rancher.cli.command.duration.bucket": "lt1s",
+  "os.type": "darwin",
+  "host.arch": "arm64"
+}

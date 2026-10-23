@@ -1,0 +1,30 @@
+{
+  "event.name": "io.rancher.cli.command.run",
+  "time": "2026-10-23T14:00:00Z",
+  "schema_version": "1.0.0",
+  "service.namespace": "io.rancher",
+  "service.name": "io.rancher.cli",
+  "service.version": "0.1.0-alpha.8",
+  "service.instance.id": "3f2a6c1e-8b7d-4e5a-9c10-2d4f6a8b0c1e",
+  "io.rancher.cli.config_directory.id": "7b1d9e04-5a3c-4f68-8e21-c0d4a6b8e2f1",
+  "os.type": "linux",
+  "host.arch": "amd64",
+  "io.rancher.client.type": "agent",
+  "io.rancher.client.agent": "claude-code",
+  "io.rancher.client.ci": false,
+  "io.rancher.cli.exec_plugin": false,
+  "log.record.uid": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+  "io.rancher.cli.command": "get project",
+  "io.rancher.cli.command.flags": [
+    "cluster",
+    "output"
+  ],
+  "io.rancher.cli.command.outcome": "error",
+  "error.type": "RBAC",
+  "process.exit.code": 6,
+  "io.rancher.cli.command.duration.bucket": "lt1s",
+  "io.rancher.manager.version": "2.15.2",
+  "io.rancher.manager.edition": "prime",
+  "io.rancher.manager.install.id": "d3b07384-d9a0-4e7a-9c2b-5f6a7b8c9d0e",
+  "io.rancher.cli.install_id.missing_reason": "not_fetched"
+}
