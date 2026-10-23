@@ -14,8 +14,8 @@ import (
 // QuorumDelta is the etcd-member-count change a machinePools patch implies.
 type QuorumDelta struct {
 	Before, After int
-	// Crossing reports whether After drops enough to lose the OLD quorum
-	// majority (see ComputeQuorumDelta's comment for the exact rule).
+	// Crossing reports whether After drops enough to risk losing the OLD
+	// quorum (see ComputeQuorumDelta's comment for the exact rule).
 	Crossing bool
 	// Note is the readable line meant for Effect.Warnings.
 	Note string
@@ -27,9 +27,9 @@ type QuorumDelta struct {
 // not change - e.g. a patch that only touches a non-etcd pool, or the
 // cluster's kubernetesVersion - meaning the caller has nothing to warn
 // about. Note always states the before/after counts; it additionally notes
-// that an even etcd count does not improve fault tolerance over the next
-// odd count down, and separately that the drop loses the old quorum
-// majority, when each condition applies - the two are independent and may
+// that an even number of etcd members does not improve fault tolerance over
+// the next odd number down, and separately that the drop risks losing the
+// old quorum, when each condition applies - the two are independent and may
 // both fire (e.g. 3 -> 2).
 func ComputeQuorumDelta(orig, patched *unstructured.Unstructured) (QuorumDelta, bool) {
 	before := etcdMemberCount(orig)
@@ -41,15 +41,15 @@ func ComputeQuorumDelta(orig, patched *unstructured.Unstructured) (QuorumDelta, 
 	d := QuorumDelta{Before: before, After: after}
 	note := fmt.Sprintf("etcd member count changes from %d to %d", before, after)
 	if after%2 == 0 {
-		note += "; even etcd counts do not improve fault tolerance"
+		note += "; an even number of etcd members does not improve fault tolerance"
 	}
 	// Simplified crossing rule: a drop below the old
-	// majority threshold (floor(before/2)+1, using real division) loses
-	// quorum majority. Written as 2*after < before+2 to stay in integer
+	// majority threshold (floor(before/2)+1, using real division) risks
+	// losing quorum. Written as 2*after < before+2 to stay in integer
 	// arithmetic instead of computing a float.
 	if 2*after < before+2 {
 		d.Crossing = true
-		note += "; removing this many etcd members loses quorum majority"
+		note += "; removing this many etcd members risks losing quorum"
 	}
 	d.Note = note
 	return d, true

@@ -223,7 +223,7 @@ func TestStyledHelpPrimeRowWrapsAtSameColumnAsPlainRow(t *testing.T) {
 	nonPrimeLine := lineContaining(t, plain, "   scale:")
 
 	primeCol := strings.Index(primeLine, "[Prime]")
-	nonPrimeCol := strings.Index(nonPrimeLine, "Scale a machine")
+	nonPrimeCol := strings.Index(nonPrimeLine, "Change the number of nodes")
 	require.NotEqual(t, -1, primeCol)
 	require.NotEqual(t, -1, nonPrimeCol)
 	assert.Equal(t, nonPrimeCol, primeCol, "the usage column starts at the same offset for every row")

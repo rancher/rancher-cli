@@ -89,9 +89,9 @@ See also `create oidc-client` in [Create](#create), which creates the client its
 
 | Command | Purpose |
 |---|---|
-| `cluster scale <cluster> --pool <name> --nodes <n>` | Scale a machine pool's node count; refuses on an autoscaled, unpaused pool or a pool-less cluster - destructive; dry-run/apply --yes |
-| `cluster set-autoscaling <cluster> --pool <name> --min <n> --max <m>` | Turn on cluster-autoscaler management for a machine pool - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
-| `cluster clear-autoscaling <cluster> --pool <name>` | Return a machine pool to manual quantity; a no-op on an already-manual pool - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `cluster scale <cluster> --pool <name> --nodes <n>` | Change the number of nodes in a machine pool; refuses when the machine pool has autoscaling turned on and autoscaling is not paused, or when the cluster has no machine pools - destructive; dry-run/apply --yes |
+| `cluster set-autoscaling <cluster> --pool <name> --min <n> --max <m>` | Turn on autoscaling for a machine pool - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
+| `cluster clear-autoscaling <cluster> --pool <name>` | Turn off autoscaling for a machine pool; succeeds and changes nothing when the machine pool has no autoscaling - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
 | `cluster pause-autoscaling <cluster>` | Pause the cluster autoscaler cluster-wide - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
 | `cluster resume-autoscaling <cluster>` | Resume the cluster autoscaler cluster-wide - destructive; dry-run/apply --yes. A Rancher Prime capability; availability is decided by the connected server. |
 

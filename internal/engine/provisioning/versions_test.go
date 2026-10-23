@@ -185,17 +185,17 @@ func TestFetchVersionsDefaultMarking(t *testing.T) {
 			}
 			assert.Equal(t, tc.wantDefaults, gotDefaults)
 
-			unlisted := fmt.Sprintf("%s is %q on the server, which names no listed release; no default marked", rke2DefaultVersionSetting, tc.setting)
-			missing := fmt.Sprintf("no %s setting on the server; no default marked", rke2DefaultVersionSetting)
+			unlisted := fmt.Sprintf("%s is %q on the server, which is not one of the releases the server lists; no version is marked as the default", rke2DefaultVersionSetting, tc.setting)
+			missing := fmt.Sprintf("the %s setting is empty or missing on the server, or could not be read; no version is marked as the default", rke2DefaultVersionSetting)
 			assert.Equal(t, tc.wantUnlisted, slices.Contains(warnings, unlisted), "warnings: %v", warnings)
 			assert.Equal(t, tc.wantMissing, slices.Contains(warnings, missing), "warnings: %v", warnings)
 			var gotNotFound bool
 			for _, w := range warnings {
-				if strings.Contains(w, "not found (older server?)") {
+				if strings.Contains(w, "was not found on the server") {
 					gotNotFound = true
 				}
 				if !tc.wantUnlisted {
-					assert.NotContains(t, w, "names no listed release")
+					assert.NotContains(t, w, "is not one of the releases the server lists")
 				}
 			}
 			assert.Equal(t, tc.wantNotFound, gotNotFound, "warnings: %v", warnings)
@@ -334,9 +334,9 @@ func TestFetchVersionsDegradesEachDistroIndependently(t *testing.T) {
 }
 
 // TestFetchVersionsMalformedReleaseBody asserts the transport case:
-// a body that is not valid JSON must
-// decode to a typed CodeGeneric error naming "decoding" - never a panic,
-// never an empty rows slice standing in for the failure silently.
+// a body that is not valid JSON must decode to a typed CodeGeneric error
+// saying it cannot read the response - never a panic, never an empty rows
+// slice standing in for the failure silently.
 func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -358,13 +358,13 @@ func TestFetchVersionsMalformedReleaseBody(t *testing.T) {
 		ce, ok := err.(*clierr.Error)
 		require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
-		assert.Contains(t, ce.Message, "decoding")
+		assert.Contains(t, ce.Message, "cannot read the response from")
 		assert.Nil(t, rows)
 	})
 }
 
 // TestFetchVersionsDetailedBothDistrosHardFailSurfacesRKE2ErrorDeterministically
-// asserts that when BOTH distros' release fetch hard-fails at
+// asserts that when BOTH distros' release list requests hard-fail at
 // close to the same time (not a 404-degrade - a genuine 500), the returned
 // error must be rke2's (distroSpecs' fixed first entry), deterministically,
 // never whichever goroutine happened to race to completion first, and never

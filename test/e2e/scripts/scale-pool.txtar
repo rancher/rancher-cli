@@ -9,11 +9,11 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 # alone is refused.
 exec rancher create resource -f scale-cluster.yaml --apply --yes
 
-# scaling the etcd pool from 3 to 2 crosses the old quorum majority AND
+# scaling the etcd pool from 3 to 2 risks losing the old quorum AND
 # lands on an even count - both notes fire, and neither gates the dry run.
 exec rancher patch provisioning-cluster e2e-scale --patch '[{"op":"replace","path":"/spec/rkeConfig/machinePools/0/quantity","value":2}]' --dry-run -o json
 cp stdout scale-eff.json
-jsonquery scale-eff.json warnings.0 'etcd member count changes from 3 to 2; even etcd counts do not improve fault tolerance; removing this many etcd members loses quorum majority'
+jsonquery scale-eff.json warnings.0 'etcd member count changes from 3 to 2; an even number of etcd members does not improve fault tolerance; removing this many etcd members risks losing quorum'
 stdout quorum
 
 # a patch that doesn't touch the etcd pool carries no quorum warning.

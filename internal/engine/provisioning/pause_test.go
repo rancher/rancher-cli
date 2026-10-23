@@ -35,7 +35,7 @@ func TestPauseAutoscalingSetsAnnotation(t *testing.T) {
 	assert.Contains(t, res.Text, "cluster autoscaler paused for c1")
 }
 
-func TestPauseAutoscalingAlreadyPausedIsNoOp(t *testing.T) {
+func TestPauseAutoscalingAlreadyPausedChangesNothing(t *testing.T) {
 	t.Parallel()
 	client := &familyClient{obj: familyClusterObj("c1", "1", nil, true)}
 	cmd := NewPauseAutoscaling(fakeFactory{c: client})
@@ -71,7 +71,7 @@ func TestResumeAutoscalingClearsAnnotation(t *testing.T) {
 	assert.Contains(t, res.Text, "cluster autoscaler resumed for c1")
 }
 
-func TestResumeAutoscalingAlreadyRunningIsNoOp(t *testing.T) {
+func TestResumeAutoscalingNotPausedChangesNothing(t *testing.T) {
 	t.Parallel()
 	client := &familyClient{obj: familyClusterObj("c1", "1", nil, false)}
 	cmd := NewResumeAutoscaling(fakeFactory{c: client})
@@ -80,7 +80,7 @@ func TestResumeAutoscalingAlreadyRunningIsNoOp(t *testing.T) {
 	require.NoError(t, err)
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	assert.Contains(t, res.Text, "already running for c1")
+	assert.Contains(t, res.Text, "not paused for c1; nothing to resume")
 }
 
 func TestPauseAutoscalingClusterArgRequired(t *testing.T) {

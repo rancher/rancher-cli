@@ -31,10 +31,10 @@ const clusterAutoscalerPausedAnnotation = "provisioning.cattle.io/cluster-autosc
 // verb exposes, defaulting to clusterNamespace (fleet-default) when absent -
 // the same DefaultNamespace `delete provisioning-cluster` resolves against.
 // Unlike `create cluster`, which fixes the namespace with no flag, a family
-// verb's target may live in another fleet workspace.
+// verb's target may live in another Fleet workspace.
 func clusterNamespaceFlag() runtime.ArgSpec {
 	f := engine.NamespaceFlag(false)
-	f.Desc = "fleet workspace namespace of the provisioning cluster (default: fleet-default)"
+	f.Desc = "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)"
 	return f
 }
 
@@ -95,9 +95,10 @@ func findMachinePool(pools []any, poolName string) (index int, ok bool) {
 	return 0, false
 }
 
-// poolAutoscaled reports whether pool carries either autoscaling bound. The
-// CRD's write-side CEL requires both or neither, but a half-set pool (should
-// that CEL ever be bypassed) is still treated as autoscaled defensively.
+// poolAutoscaled reports whether pool has either autoscaling bound set. The
+// CRD's write-side CEL requires both or neither, but a pool with only one of
+// them (should that CEL ever be bypassed) is still treated as autoscaled
+// defensively.
 func poolAutoscaled(pool map[string]any) bool {
 	_, minFound, _ := unstructured.NestedInt64(pool, "autoscalingMinSize")
 	_, maxFound, _ := unstructured.NestedInt64(pool, "autoscalingMaxSize")
@@ -124,11 +125,12 @@ func autoscalingPaused(cluster *unstructured.Unstructured) bool {
 }
 
 // poolLessClusterError refuses a family verb against a cluster with no
-// machine pools to operate on - never the raw server 4xx or no-op an
-// absent-pools shape would otherwise produce. fieldPresent distinguishes a
-// wholly pool-less cluster (imported, custom, or local - the field itself
-// is absent) from one whose machinePools field exists but is currently
-// empty, which is never an imported/custom shape and must not claim to be.
+// machine pools to operate on - never the raw server 4xx or a success that
+// changes nothing, which an absent-pools shape would otherwise produce.
+// fieldPresent distinguishes a wholly pool-less cluster (imported, custom, or
+// local - the field itself is absent) from one whose machinePools field
+// exists but is currently empty, which is never an imported/custom shape and
+// must not claim to be.
 func poolLessClusterError(clusterName, verb string, fieldPresent bool) *clierr.Error {
 	if fieldPresent {
 		return clierr.New(clierr.CodeValidation, fmt.Sprintf(
@@ -136,7 +138,7 @@ func poolLessClusterError(clusterName, verb string, fieldPresent bool) *clierr.E
 			clusterName, verb))
 	}
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"cluster %q has no machine pools; %s applies only to a provisioned cluster with machine pools (imported and custom clusters carry none)",
+		"cluster %q has no machine pools; %s applies only to a cluster with machine pools (imported and custom clusters have none)",
 		clusterName, verb))
 }
 
@@ -148,15 +150,15 @@ func poolNotFoundError(clusterName, poolName string) *clierr.Error {
 		WithHint(fmt.Sprintf("rancher inspect cluster %s", clierr.ShellQuote(clusterName)))
 }
 
-// autoscaledPoolGuardError is cluster scale's CLI-only honesty guard: the
-// server accepts a manual quantity edit on an autoscaled pool and applies
-// it, but the autoscaler re-asserts its own count within its loop, so the
-// edit is silently reverted minutes later. Naming pause-autoscaling as the
-// sanctioned override keeps that override visible as state, not a flag
-// nobody can audit later.
+// autoscaledPoolGuardError is cluster scale's CLI-only check: the server
+// accepts a change to the quantity of an autoscaled machine pool and applies
+// it, but the cluster autoscaler sets the number of nodes back to its own
+// value minutes later. Naming pause-autoscaling as the way past the check
+// keeps the pause visible as state on the cluster, not a flag nobody can
+// audit later.
 func autoscaledPoolGuardError(clusterName, poolName string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-		"pool %q on cluster %q is managed by the cluster autoscaler; the server accepts a manual quantity edit but the autoscaler reasserts its own count minutes later - pause autoscaling first to scale manually",
+		"machine pool %q on cluster %q is managed by the cluster autoscaler; the server accepts a change to the number of nodes, but the cluster autoscaler sets it back to its own value minutes later - pause autoscaling first to scale it yourself",
 		poolName, clusterName)).
 		WithHint(fmt.Sprintf("rancher cluster pause-autoscaling %s", clierr.ShellQuote(clusterName)))
 }
@@ -224,7 +226,7 @@ func planClusterFamilyMutation(
 	pool, ok := pools[idx].(map[string]any)
 	if !ok {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-			"cluster %q pool %q is not a valid machine pool object", name, poolName))
+			"machine pool %q of cluster %q is not an object in spec.rkeConfig.machinePools", poolName, name))
 	}
 
 	warnings, err := mutate(obj, pool, name, poolName)

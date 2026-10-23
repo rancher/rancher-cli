@@ -51,14 +51,14 @@ exec rancher cluster clear-autoscaling e2e-family-scale --pool workers --apply -
 exec rancher get provisioning-cluster e2e-family-scale -o json
 jsonquery stdout data.spec.rkeConfig.machinePools.0.autoscalingMinSize ''
 
-# a pool that already carries neither bound converges rather than failing.
+# a machine pool that has neither bound succeeds and changes nothing.
 exec rancher cluster clear-autoscaling e2e-family-scale --pool workers --apply --yes
-stdout 'already manual; nothing to clear'
+stdout 'has no autoscaling; nothing to remove'
 
 exec rancher cluster resume-autoscaling e2e-family-scale --apply --yes
 stdout 'cluster autoscaler resumed'
 exec rancher cluster resume-autoscaling e2e-family-scale --apply --yes
-stdout 'already running'
+stdout 'not paused for e2e-family-scale; nothing to resume'
 
 # An imported cluster carries no machine pools at all - the same shape a
 # real "local" cluster has. Never named "local" here: this harness's other

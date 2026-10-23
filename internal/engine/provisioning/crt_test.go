@@ -130,7 +130,7 @@ func writeJSONFixture(t *testing.T, w http.ResponseWriter, v any) {
 }
 
 // TestNewGetCRTNamedReturnsSplicedFields proves the single-object path
-// carries the server-spliced fields straight through into the command
+// carries the fields the server filled in straight through into the command
 // Result: the real token, never the k8s proxy's own "{token}" placeholder.
 func TestNewGetCRTNamedReturnsSplicedFields(t *testing.T) {
 	t.Parallel()
@@ -180,7 +180,7 @@ func TestNewGetCRTPlaceholderGuardTable(t *testing.T) {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			status := splicedStatus("tok-aaa")
-			status[field] = placeholderToken // this one field never got spliced
+			status[field] = placeholderToken // the server did not replace this one field's placeholder
 			obj := crtObject("c-aaa", "default-token", status)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				writeJSONFixture(t, w, obj)
@@ -195,8 +195,8 @@ func TestNewGetCRTPlaceholderGuardTable(t *testing.T) {
 			ce, ok := err.(*clierr.Error)
 			require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
-			assert.Contains(t, ce.Message, field, "error must name the exact unspliced field")
-			assert.Equal(t, runtime.Result{}, res, "an unspliced placeholder must never surface as a Result")
+			assert.Equal(t, fmt.Sprintf("cluster registration token at %s/c-aaa/default-token: field %q still contains the {token} placeholder; the server did not replace it with the token", crtCollectionPath, field), ce.Message)
+			assert.Equal(t, runtime.Result{}, res, "a placeholder the server did not replace must never surface as a Result")
 
 			// The literal placeholder must never appear anywhere reachable as data.
 			b, _ := json.Marshal(res)
@@ -228,8 +228,8 @@ func TestNewGetCRTNotFound(t *testing.T) {
 
 // TestNewGetCRTMalformedBody asserts the transport case:
 // a body that is not valid JSON must decode to a typed CodeGeneric error
-// naming "decoding" and the path - never a panic, never an empty/zero
-// Result standing in for the failure silently.
+// saying it cannot read the response from the path - never a panic, never
+// an empty/zero Result standing in for the failure silently.
 func TestNewGetCRTMalformedBody(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +247,7 @@ func TestNewGetCRTMalformedBody(t *testing.T) {
 		ce, ok := err.(*clierr.Error)
 		require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
 		assert.Equal(t, clierr.CodeGeneric, ce.Code)
-		assert.Contains(t, ce.Message, "decoding")
+		assert.Contains(t, ce.Message, "cannot read the response from")
 		assert.Contains(t, ce.Message, crtCollectionPath)
 		assert.Equal(t, runtime.Result{}, res)
 	})
@@ -299,10 +299,10 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 	assert.NotContains(t, out, "c-bbb", "the other namespace must never leak into filtered output")
 }
 
-// TestNewGetCRTListDegradesBadRowInsteadOfAborting asserts that a
-// list containing one row with an unspliced "{token}" placeholder must NOT
-// abort the whole result (the pre-fix behavior - one bad row hid every
-// healthy row). Instead the bad row's offending field is blanked, a warning
+// TestNewGetCRTListDegradesBadRowInsteadOfAborting asserts that a list
+// containing one row with a "{token}" placeholder the server did not
+// replace must NOT abort the whole result (the pre-fix behavior - one bad
+// row hid every healthy row). Instead the bad row's offending field is blanked, a warning
 // names the row and field, and the two healthy rows survive untouched. The
 // placeholder itself must still never reach output as data anywhere in the
 // marshaled result - the fix changes the mechanism (abort -> blank+warn),
@@ -310,7 +310,7 @@ func TestNewGetCRTNamespaceFiltering(t *testing.T) {
 func TestNewGetCRTListDegradesBadRowInsteadOfAborting(t *testing.T) {
 	t.Parallel()
 	badStatus := splicedStatus("tok-bad")
-	badStatus["command"] = placeholderToken // this one field never got spliced
+	badStatus["command"] = placeholderToken // the server did not replace this one field's placeholder
 	objs := []map[string]any{
 		crtObject("c-aaa", "good-1", splicedStatus("tok-aaa")),
 		crtObject("c-bbb", "bad-1", badStatus),
@@ -343,18 +343,19 @@ func TestNewGetCRTListDegradesBadRowInsteadOfAborting(t *testing.T) {
 	assert.Contains(t, bad1.NodeCommand, "tok-bad", "only the offending field is blanked; the row's other healthy fields survive")
 
 	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "c-bbb/bad-1", "the warning must name the offending row")
-	assert.Contains(t, res.Warnings[0], "command", "the warning must name the offending field")
+	assert.Equal(t, "cluster registration token c-bbb/bad-1: the server did not replace the {token} placeholder in command; the field is shown empty", res.Warnings[0])
 
-	b, err := json.Marshal(res)
+	out := res
+	out.Warnings = nil // asserted exactly above; the warning names the placeholder on purpose
+	b, err := json.Marshal(out)
 	require.NoError(t, err)
 	assert.NotContains(t, string(b), placeholderToken, "the placeholder must never reach output as data")
 }
 
 // TestNewGetCRTNamedGetOnBadRowStaysStrict asserts the branch list degradation
 // must NOT touch: a single-object get ("named" branch, with a name arg) on a
-// row carrying an unspliced placeholder must still fail loud with the typed
-// CodeGeneric error - the list-degrade behavior above applies only to the
+// row carrying a placeholder the server did not replace must still fail
+// loud with the typed CodeGeneric error - the list-degrade behavior above applies only to the
 // no-name-arg list path. TestNewGetCRTPlaceholderGuardTable already exercises
 // this exhaustively over all seven guarded fields; this test asserts the same
 // contract narrowly so a future change to the list path can't accidentally
@@ -378,7 +379,7 @@ func TestNewGetCRTNamedGetOnBadRowStaysStrict(t *testing.T) {
 	require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
 	assert.Contains(t, ce.Message, "command")
-	assert.Equal(t, runtime.Result{}, res, "an unspliced placeholder must never surface as a Result on the named path")
+	assert.Equal(t, runtime.Result{}, res, "a placeholder the server did not replace must never surface as a Result on the named path")
 }
 
 // TestNewRefuseCRTPatchRejectsAsReadOnly proves the patch override never
@@ -395,7 +396,7 @@ func TestNewRefuseCRTPatchRejectsAsReadOnly(t *testing.T) {
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "read-only")
+	assert.Equal(t, "clusterregistrationtoken is read-only: patching a cluster registration token is not supported; create a new one instead", ce.Message)
 	assert.Nil(t, exec)
 	assert.Equal(t, "", eff.Target)
 }
@@ -467,7 +468,7 @@ func TestNewGetCRTSelectorFiltersTheDecodedList(t *testing.T) {
 	t.Parallel()
 	prod := crtObject("c-aaa", "default-token", splicedStatus("tok-aaa"))
 	prod["metadata"].(map[string]any)["labels"] = map[string]any{"env": "prod", "team": "a"}
-	// dev carries an unspliced command so the test can show that a row the
+	// dev carries a command whose placeholder the server did not replace so the test can show that a row the
 	// selector excludes never emits a placeholder warning, while a kept bad
 	// row still degrades in place.
 	devStatus := splicedStatus("tok-bbb")

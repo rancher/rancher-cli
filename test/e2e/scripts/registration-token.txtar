@@ -26,4 +26,4 @@ jsonquery stdout data.0.clusterName c-fixture
 # first for the wrong reason.
 ! exec rancher patch clusterregistrationtoken default-token --namespace c-fixture --patch '[]'
 stderr 'error \(VALIDATION\):'
-stderr 'read-only'
+stderr 'clusterregistrationtoken is read-only: patching a cluster registration token is not supported; create a new one instead'

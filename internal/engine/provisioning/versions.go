@@ -277,10 +277,10 @@ func versionSupported(rangeRaw, rawVersion string) *bool {
 // release envelope ({"data":[{"version": "..."}, ...]}, channelserver
 // model/config.go:22-30 - the collection key is "data", matched against the
 // fixture testrancher serves; a test against a real server would correct
-// this if the shape differs). A malformed body is a typed
-// CodeGeneric error naming "decoding" and path, mirroring decodeCRTCollection's
-// contract exactly - never a panic, never an empty slice
-// standing in for the failure silently. Any error root.GetJSON itself
+// this if the shape differs). A malformed body is a typed CodeGeneric
+// error saying it cannot read the response from path, mirroring
+// decodeCRTCollection's contract exactly - never a panic, never an empty
+// slice standing in for the failure silently. Any error root.GetJSON itself
 // returns (including a 404) is returned as-is, already clierr-mapped.
 func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path string) ([]string, error) {
 	body, err := root.GetJSON(ctx, path)
@@ -293,7 +293,7 @@ func fetchReleaseVersions(ctx context.Context, root engine.RootClient, path stri
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("decoding %s: %v", path, err))
+		return nil, clierr.New(clierr.CodeGeneric, fmt.Sprintf("cannot read the response from %s: %v", path, err))
 	}
 	versions := make([]string, 0, len(env.Data))
 	for _, d := range env.Data {
@@ -368,7 +368,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 		return nil, "", nil, err
 	}
 
-	// Each distro's release fetch and default-version setting read, plus
+	// Each distro's release list request and default-version setting read, plus
 	// the shared supported-range setting read, depend only on the
 	// already-resolved root/client above, never on each other, so they run
 	// concurrently via a PLAIN errgroup.Group - never errgroup.WithContext:
@@ -394,7 +394,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 			vs, err := fetchReleaseVersions(ctx, root, d.releasePath)
 			if err != nil {
 				if clierr.IsNotFound(err) {
-					results[i].warning = "channel server route " + d.releasePath + " not found (older server?): " + d.distro + " versions omitted"
+					results[i].warning = d.releasePath + " was not found on the server (it may be an older Rancher version); " + d.distro + " versions are left out"
 					return nil
 				}
 				results[i].err = err
@@ -427,7 +427,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 		err := results[i].err
 		for j := i + 1; j < len(distroSpecs); j++ {
 			if results[j].err != nil {
-				err = fmt.Errorf("%w (%s release fetch also failed: %v)", err, distroSpecs[j].distro, results[j].err)
+				err = fmt.Errorf("%w (fetching the %s releases also failed: %v)", err, distroSpecs[j].distro, results[j].err)
 			}
 		}
 		return nil, "", nil, err
@@ -448,7 +448,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 	for i, d := range distroSpecs {
 		vs := results[i].versions
 		if len(vs) > 0 && results[i].defaultVersion == "" {
-			warnings = append(warnings, fmt.Sprintf("no %s setting on the server; no default marked", d.defaultSetting))
+			warnings = append(warnings, fmt.Sprintf("the %s setting is empty or missing on the server, or could not be read; no version is marked as the default", d.defaultSetting))
 		}
 		start := len(rows)
 		defaultVersion := results[i].defaultVersion
@@ -459,7 +459,7 @@ func fetchVersionsDetailed(ctx context.Context, roots engine.RootClientFactory, 
 			rows = append(rows, Version{Distro: d.distro, Version: v, Default: isDefault, Supported: versionSupported(rangeRaw, v)})
 		}
 		if len(vs) > 0 && defaultVersion != "" && !defaultMarked {
-			warnings = append(warnings, fmt.Sprintf("%s is %q on the server, which names no listed release; no default marked", d.defaultSetting, defaultVersion))
+			warnings = append(warnings, fmt.Sprintf("%s is %q on the server, which is not one of the releases the server lists; no version is marked as the default", d.defaultSetting, defaultVersion))
 		}
 		if idx := newestVersionIndex(vs); idx >= 0 {
 			rows[start+idx].Newest = true
@@ -549,7 +549,7 @@ func (c *getKubernetesVersionsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:        "get kubernetes-versions",
 		Usage:       "List available Kubernetes versions (rke2/k3s)",
-		Desc:        "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting for a distro is absent, or names no listed release, no default is marked and a warning is emitted.",
+		Desc:        "Combines the releases the server lists with the server's default-version and supported-range settings. The output adds a newest field (NEWEST column) that marks the highest version of each distro in semver order. When the server's default-version setting for a distro is empty, missing or not one of the releases the server lists, no default is marked and the command warns.",
 		CommandType: runtime.ReadOnly,
 		Auth:        true,
 		Shape:       runtime.ShapeTabular,

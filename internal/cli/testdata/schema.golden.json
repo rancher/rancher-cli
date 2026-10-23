@@ -669,7 +669,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Removes spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize from the named pool, built from the fetched object so a half-set pool still clears cleanly. A pool that already carries neither field succeeds as a no-op; a retry always converges. provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
+      "desc": "Removes the autoscalingMinSize and autoscalingMaxSize fields (spec.rkeConfig.machinePools[]) from the machine pool named by --pool, also when only one of them is set. If the machine pool has neither field, the command succeeds and changes nothing; running it again is safe. Like every change to a provisioning cluster, it requires --yes with --apply.",
       "destructive": "true",
       "examples": [
         "rancher cluster clear-autoscaling my-cluster --pool pool1 --apply --yes"
@@ -685,7 +685,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -702,7 +702,7 @@
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
-      "usage": "Return a machine pool to manual quantity"
+      "usage": "Turn off autoscaling for a machine pool"
     },
     {
       "args": [
@@ -716,7 +716,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster. Pause is cluster-wide only - no per-pool pause exists server-side; this verb takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
+      "desc": "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning cluster. A pause applies to the whole cluster: the server has no per-pool pause, and this command has no --pool flag. Pausing scales the cluster autoscaler Deployment in the downstream cluster to zero and keeps every machine pool's autoscalingMinSize and autoscalingMaxSize; while paused, `cluster scale` can change the number of nodes of an autoscaled machine pool. If autoscaling is already paused, the command succeeds and changes nothing. Like every change to a provisioning cluster, it requires --yes with --apply.",
       "destructive": "true",
       "examples": [
         "rancher cluster pause-autoscaling my-cluster --apply --yes"
@@ -726,7 +726,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -757,7 +757,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning Cluster, restoring autoscaler management of every pool that carries min/max config. Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on the same object - dry-run/apply --yes.",
+      "desc": "Removes the provisioning.cattle.io/cluster-autoscaler-paused annotation from the provisioning cluster. The cluster autoscaler then manages again every machine pool that has autoscalingMinSize and autoscalingMaxSize set. If autoscaling is not paused, the command succeeds and changes nothing. Like every change to a provisioning cluster, it requires --yes with --apply.",
       "destructive": "true",
       "examples": [
         "rancher cluster resume-autoscaling my-cluster --apply --yes"
@@ -767,7 +767,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -798,7 +798,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Patches spec.rkeConfig.machinePools[].quantity on the named pool, resolved by name to its array index at patch-build time. Refuses when the pool carries autoscalingMinSize/MaxSize and autoscaling is not paused: the server would accept the edit and apply it, but the cluster autoscaler re-asserts its own count within its loop, silently reverting the change minutes later - pause-autoscaling is the sanctioned override. Refuses on a cluster with no machine pools (imported, custom, or local). provisioningcluster is a Sensitive kind; every scale is Destructive regardless of direction, the same as a generic patch on the same object - dry-run/apply --yes. --nodes 0 is schema-legal on every pool, including a control-plane/etcd pool; no invented floor.",
+      "desc": "Sets spec.rkeConfig.machinePools[].quantity on the machine pool named by --pool. Refuses when the machine pool has autoscalingMinSize or autoscalingMaxSize set and autoscaling is not paused: the server accepts the change, but the cluster autoscaler sets the number of nodes back to its own value minutes later. Run `cluster pause-autoscaling` first. Refuses on a cluster with no machine pools (imported, custom or local). Every scale, up or down, requires --yes with --apply, like any change to a provisioning cluster. --nodes 0 is allowed on every machine pool, including a control-plane or etcd machine pool; the CLI sets no minimum of its own.",
       "destructive": "true",
       "examples": [
         "rancher cluster scale my-cluster --pool pool1 --nodes 3 --apply --yes"
@@ -811,7 +811,7 @@
           "type": "string"
         },
         {
-          "desc": "target node `count`",
+          "desc": "target `number` of nodes",
           "name": "nodes",
           "required": true,
           "type": "string"
@@ -820,7 +820,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -835,7 +835,7 @@
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
-      "usage": "Scale a machine pool's node count"
+      "usage": "Change the number of nodes in a machine pool"
     },
     {
       "args": [
@@ -849,7 +849,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. Mirrors the CRD's validation client-side - --min and --max are both required and must both be >= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool; a bad value is rejected with flag names before the server round-trip; the server remains the authority. provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on the same object - dry-run/apply --yes. From this point the pool's quantity is managed by the cluster autoscaler, not the operator.",
+      "desc": "Sets autoscalingMinSize and autoscalingMaxSize (spec.rkeConfig.machinePools[]) on the machine pool named by --pool. Before it sends the change to the server, the command checks the CRD's validation rules: --min and --max are both required, --min must be <= --max, and --min must be > 0 on a control-plane or etcd machine pool. It also requires both to be whole numbers >= 0. An invalid value is rejected with an error that names the flag. The server still validates the request. Like every change to a provisioning cluster, it requires --yes with --apply. From then on the cluster autoscaler sets the number of nodes of the machine pool, not you.",
       "destructive": "true",
       "examples": [
         "rancher cluster set-autoscaling my-cluster --pool pool1 --min 2 --max 5 --apply --yes"
@@ -862,13 +862,13 @@
           "type": "string"
         },
         {
-          "desc": "minimum node `count`",
+          "desc": "minimum `number` of nodes",
           "name": "min",
           "required": true,
           "type": "string"
         },
         {
-          "desc": "maximum node `count`",
+          "desc": "maximum `number` of nodes",
           "name": "max",
           "required": true,
           "type": "string"
@@ -877,7 +877,7 @@
           "aliases": [
             "n"
           ],
-          "desc": "fleet workspace namespace of the provisioning cluster (default: fleet-default)",
+          "desc": "Fleet workspace (namespace) of the provisioning cluster (default: fleet-default)",
           "name": "namespace",
           "type": "string"
         }
@@ -894,7 +894,7 @@
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
-      "usage": "Turn on cluster-autoscaler management for a machine pool"
+      "usage": "Turn on autoscaling for a machine pool"
     },
     {
       "args": [
@@ -4474,7 +4474,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "internal",
-      "desc": "Merged with the server's default and supported-range settings. The response adds a newest field (NEWEST column) marking the highest semver-ordered version per distro; when the server's default-version setting for a distro is absent, or names no listed release, no default is marked and a warning is emitted.",
+      "desc": "Combines the releases the server lists with the server's default-version and supported-range settings. The output adds a newest field (NEWEST column) that marks the highest version of each distro in semver order. When the server's default-version setting for a distro is empty, missing or not one of the releases the server lists, no default is marked and the command warns.",
       "group": "get",
       "name": "get kubernetes-versions",
       "serverAccess": "read",
@@ -10515,7 +10515,7 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
-          "note": "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's node count with cluster scale), or outside Rancher for an imported, custom or local cluster",
+          "note": "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's number of nodes with cluster scale), or outside Rancher for an imported, custom or local cluster",
           "state": "absent"
         },
         "get": {
@@ -11506,7 +11506,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's node count with cluster scale",
+          "note": "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's number of nodes with cluster scale",
           "state": "absent"
         },
         "get": {
@@ -11535,7 +11535,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the pool's node count with cluster scale",
+          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with cluster scale",
           "state": "absent"
         },
         "get": {
@@ -11564,7 +11564,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the pool's node count with cluster scale",
+          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the machine pool's number of nodes with cluster scale",
           "state": "absent"
         },
         "get": {

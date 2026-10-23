@@ -1,6 +1,6 @@
 // autoscaling.go implements the prime-gated `cluster set-autoscaling` and
-// `cluster clear-autoscaling` verbs: turning cluster-autoscaler management
-// of a machine pool's quantity on and off.
+// `cluster clear-autoscaling` verbs: turning autoscaling of a machine pool
+// on and off.
 package provisioning
 
 import (
@@ -30,9 +30,9 @@ type setAutoscalingCmd struct {
 }
 
 // NewSetAutoscaling builds `cluster set-autoscaling <cluster> --pool <name>
-// --min <n> --max <m>` (mutating, prime): sets autoscalingMinSize/MaxSize on
-// the named pool, mirroring the CRD's CEL client-side before the server
-// round-trip.
+// --min <n> --max <m>` (mutating, prime): sets autoscalingMinSize and
+// autoscalingMaxSize on the named machine pool, checking the CRD's CEL rules
+// before it sends the change to the server.
 func NewSetAutoscaling(clients engine.ClusterClientFactory) runtime.Command {
 	return &setAutoscalingCmd{clients: clients}
 }
@@ -40,20 +40,20 @@ func NewSetAutoscaling(clients engine.ClusterClientFactory) runtime.Command {
 func (setAutoscalingCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "cluster set-autoscaling",
-		Usage: "Turn on cluster-autoscaler management for a machine pool",
-		Desc: "Sets spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize on the named pool. " +
-			"Mirrors the CRD's validation client-side - --min and --max are both required and must both be " +
-			">= 0, min must be <= max, and min must be > 0 on a control-plane or etcd pool; a bad " +
-			"value is rejected with flag names before the server round-trip; the server remains the " +
-			"authority. provisioningcluster is a Sensitive kind; this is Destructive like every other " +
-			"mutation on the same object - dry-run/apply --yes. From this point the pool's quantity is " +
-			"managed by the cluster autoscaler, not the operator.",
+		Usage: "Turn on autoscaling for a machine pool",
+		Desc: "Sets autoscalingMinSize and autoscalingMaxSize (spec.rkeConfig.machinePools[]) on the machine pool " +
+			"named by --pool. Before it sends the change to the server, the command checks the CRD's validation " +
+			"rules: --min and --max are both required, --min must be <= --max, and --min must be > 0 on a " +
+			"control-plane or etcd machine pool. It also requires both to be whole numbers >= 0. An invalid " +
+			"value is rejected with an error that names the flag. The server still validates the request. " +
+			"Like every change to a provisioning cluster, it requires --yes with --apply. From then on the " +
+			"cluster autoscaler sets the number of nodes of the machine pool, not you.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
 		Flags: []runtime.ArgSpec{
 			{Name: "pool", Type: "string", Required: true, Desc: "machine pool `name`"},
-			{Name: "min", Type: "string", Required: true, Desc: "minimum node `count`"},
-			{Name: "max", Type: "string", Required: true, Desc: "maximum node `count`"},
+			{Name: "min", Type: "string", Required: true, Desc: "minimum `number` of nodes"},
+			{Name: "max", Type: "string", Required: true, Desc: "maximum `number` of nodes"},
 			clusterNamespaceFlag(),
 		},
 		Examples:    []string{"rancher cluster set-autoscaling my-cluster --pool pool1 --min 2 --max 5 --apply --yes"},
@@ -85,11 +85,11 @@ func (c setAutoscalingCmd) Plan(ctx context.Context, in runtime.Input) (safety.E
 		func(cluster *unstructured.Unstructured, pool map[string]any, clusterName, poolName string) ([]string, error) {
 			if min == 0 && poolRequiresPositiveMin(pool) {
 				return nil, clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--min must be > 0 for pool %q: it carries a control-plane or etcd role", poolName))
+					fmt.Sprintf("--min must be > 0 for machine pool %q: it has a control-plane or etcd role", poolName))
 			}
 			pool["autoscalingMinSize"] = int64(min)
 			pool["autoscalingMaxSize"] = int64(max)
-			return []string{fmt.Sprintf("pool %q quantity is now managed by the cluster autoscaler", poolName)}, nil
+			return []string{fmt.Sprintf("the cluster autoscaler now manages the number of nodes of machine pool %q", poolName)}, nil
 		})
 }
 
@@ -100,11 +100,11 @@ type clearAutoscalingCmd struct {
 }
 
 // NewClearAutoscaling builds `cluster clear-autoscaling <cluster> --pool
-// <name>` (mutating, prime): returns the named pool to manual quantity. The
-// patch is built from the fetched object - remove ops only for the fields
-// actually present - so a half-set pool still clears cleanly, and a pool
-// that already carries neither field succeeds as a no-op rather than
-// surfacing a raw path-not-found error.
+// <name>` (mutating, prime): turns off autoscaling for the named machine
+// pool. The patch is built from the fetched object - remove operations only
+// for the fields present - so a machine pool with only one of the two fields
+// set is cleared too, and a machine pool with neither field succeeds and
+// changes nothing rather than surfacing a raw path-not-found error.
 func NewClearAutoscaling(clients engine.ClusterClientFactory) runtime.Command {
 	return &clearAutoscalingCmd{clients: clients}
 }
@@ -112,12 +112,11 @@ func NewClearAutoscaling(clients engine.ClusterClientFactory) runtime.Command {
 func (clearAutoscalingCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "cluster clear-autoscaling",
-		Usage: "Return a machine pool to manual quantity",
-		Desc: "Removes spec.rkeConfig.machinePools[].autoscalingMinSize/autoscalingMaxSize from the named " +
-			"pool, built from the fetched object so a half-set pool still clears cleanly. A pool that " +
-			"already carries neither field succeeds as a no-op; a retry always converges. " +
-			"provisioningcluster is a Sensitive kind; this is Destructive like every other mutation on " +
-			"the same object - dry-run/apply --yes.",
+		Usage: "Turn off autoscaling for a machine pool",
+		Desc: "Removes the autoscalingMinSize and autoscalingMaxSize fields (spec.rkeConfig.machinePools[]) from the " +
+			"machine pool named by --pool, also when only one of them is set. If the machine pool has neither " +
+			"field, the command succeeds and changes nothing; running it again is safe. Like every change to a " +
+			"provisioning cluster, it requires --yes with --apply.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
 		Flags: []runtime.ArgSpec{
@@ -141,11 +140,11 @@ func (c clearAutoscalingCmd) Plan(ctx context.Context, in runtime.Input) (safety
 			delete(pool, "autoscalingMinSize")
 			delete(pool, "autoscalingMaxSize")
 			if !hadMin && !hadMax {
-				contextLine = fmt.Sprintf("pool %s was already manual; nothing to clear", poolName)
+				contextLine = fmt.Sprintf("machine pool %s has no autoscaling; nothing to remove", poolName)
 				return nil, nil
 			}
 			quantity, _, _ := unstructured.NestedInt64(pool, "quantity")
-			contextLine = fmt.Sprintf("pool %s left at manual quantity %d", poolName, quantity)
+			contextLine = fmt.Sprintf("machine pool %s is no longer autoscaled; its number of nodes stays at %d", poolName, quantity)
 			return nil, nil
 		})
 	if err != nil {

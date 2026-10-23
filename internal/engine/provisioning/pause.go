@@ -28,12 +28,13 @@ func (pauseAutoscalingCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "cluster pause-autoscaling",
 		Usage: "Pause the cluster autoscaler cluster-wide",
-		Desc: "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning " +
-			"Cluster. Pause is cluster-wide only - no per-pool pause exists server-side; this verb " +
-			"takes no --pool flag. Scales the downstream autoscaler deployment to zero while preserving " +
-			"every pool's min/max config; while paused, `cluster scale` may scale an autoscaled pool. " +
-			"Already-paused succeeds as a no-op. provisioningcluster is a Sensitive kind; this is " +
-			"Destructive like every other mutation on the same object - dry-run/apply --yes.",
+		Desc: "Sets the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning cluster. " +
+			"A pause applies to the whole cluster: the server has no per-pool pause, and this command has no " +
+			"--pool flag. Pausing scales the cluster autoscaler Deployment in the downstream cluster to zero " +
+			"and keeps every machine pool's autoscalingMinSize and autoscalingMaxSize; while paused, " +
+			"`cluster scale` can change the number of nodes of an autoscaled machine pool. If autoscaling is " +
+			"already paused, the command succeeds and changes nothing. Like every change to a provisioning " +
+			"cluster, it requires --yes with --apply.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
 		Flags:       []runtime.ArgSpec{clusterNamespaceFlag()},
@@ -65,10 +66,11 @@ func (resumeAutoscalingCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "cluster resume-autoscaling",
 		Usage: "Resume the cluster autoscaler cluster-wide",
-		Desc: "Clears the provisioning.cattle.io/cluster-autoscaler-paused annotation on the provisioning " +
-			"Cluster, restoring autoscaler management of every pool that carries min/max config. " +
-			"Already-running succeeds as a no-op. provisioningcluster is a Sensitive kind; this is " +
-			"Destructive like every other mutation on the same object - dry-run/apply --yes.",
+		Desc: "Removes the provisioning.cattle.io/cluster-autoscaler-paused annotation from the provisioning " +
+			"cluster. The cluster autoscaler then manages again every machine pool that has " +
+			"autoscalingMinSize and autoscalingMaxSize set. If autoscaling is not paused, the command " +
+			"succeeds and changes nothing. Like every change to a provisioning cluster, it requires " +
+			"--yes with --apply.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "cluster", Type: "string", Required: true, Desc: "provisioning cluster `name`"}},
 		Flags:       []runtime.ArgSpec{clusterNamespaceFlag()},
@@ -87,9 +89,9 @@ func (c resumeAutoscalingCmd) Plan(ctx context.Context, in runtime.Input) (safet
 var _ runtime.MutatingCommand = (*resumeAutoscalingCmd)(nil)
 
 // planAutoscalerPause implements both pause and resume: set or clear the
-// pause annotation, converging (no-op success) when the cluster is already
-// in the target state - the same retry contract clear-autoscaling gives an
-// agent that finds nothing left to do.
+// pause annotation, succeeding and changing nothing when the cluster is
+// already in the target state - the same retry contract clear-autoscaling
+// gives an agent that finds nothing left to do.
 func planAutoscalerPause(ctx context.Context, clients engine.ClusterClientFactory, in runtime.Input, pause bool) (safety.Effect, runtime.ExecuteFunc, error) {
 	client, obj, ns, name, err := fetchClusterFamilyTarget(ctx, clients, in)
 	if err != nil {
@@ -118,7 +120,7 @@ func planAutoscalerPause(ctx context.Context, clients engine.ClusterClientFactor
 	case pause && already:
 		contextLine = fmt.Sprintf("cluster autoscaler already paused for %s", name)
 	case !pause && !already:
-		contextLine = fmt.Sprintf("cluster autoscaler already running for %s", name)
+		contextLine = fmt.Sprintf("cluster autoscaler not paused for %s; nothing to resume", name)
 	case pause:
 		contextLine = fmt.Sprintf("cluster autoscaler paused for %s", name)
 	default:

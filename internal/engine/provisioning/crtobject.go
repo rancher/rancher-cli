@@ -20,8 +20,8 @@ import (
 // CRTObject is the policy-neutral decoded view of one Steve
 // clusterregistrationtoken object: identity plus the seven formatter-
 // protected command/manifest fields and the token/expiry. Values are
-// carried exactly as decoded - including a still-unformatted "{token}"
-// placeholder - because deciding what to do about a placeholder is the
+// carried exactly as decoded - including a "{token}" placeholder the server
+// did not replace - because deciding what to do about a placeholder is the
 // caller's job, not the decoder's.
 type CRTObject struct {
 	Namespace   string
@@ -69,7 +69,7 @@ func (o *CRTObject) guardedFieldPtrs() []struct {
 
 // PlaceholderFields reports the JSON field names of o's protected fields
 // still carrying the literal "{token}" placeholder (the k8s proxy's own
-// unformatted value - the server never spliced in the real token).
+// value - the server did not replace it with the token).
 // Policy-neutral by design: it reports, the caller decides. Named get
 // rejects, list get blanks and warns, inspect cluster omits and warns.
 func PlaceholderFields(o CRTObject) []string {
@@ -139,10 +139,10 @@ type crtViewStatus struct {
 // alone would silently accept {} or an unrelated payload, and a caller
 // like FetchDefaultCRT would then treat a structurally invalid response
 // as a successful empty read instead of surfacing an error.
-func (v crtView) validate(path string) error {
+func (v crtView) validate(subject string) error {
 	if v.Metadata.Namespace == "" || v.Metadata.Name == "" || v.Status == nil {
 		return clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("decoding %s: valid JSON but not a clusterregistrationtoken object (metadata.namespace, metadata.name, and status are required)", path))
+			fmt.Sprintf("cannot read %s: it is valid JSON but not a ClusterRegistrationToken (metadata.namespace, metadata.name and status are required)", subject))
 	}
 	return nil
 }
@@ -181,40 +181,40 @@ func DecodeCRTObject(path string, body []byte) (CRTObject, error) {
 	var v crtView
 	if err := json.Unmarshal(body, &v); err != nil {
 		return CRTObject{}, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("decoding %s: %v", path, err))
+			fmt.Sprintf("cannot read the response from %s: %v", path, err))
 	}
-	if err := v.validate(path); err != nil {
+	if err := v.validate("the response from " + path); err != nil {
 		return CRTObject{}, err
 	}
 	return v.object(), nil
 }
 
-// DecodeCRTCollection decodes a Steve collection envelope ({"data": [...]}).
+// DecodeCRTCollection decodes a Rancher API collection ({"data": [...]}).
 // The ENVELOPE carries its own shape invariant: a JSON-ARRAY "data" field
 // must be present - {"data":[]} is a valid empty collection, while a
 // missing, null, or non-array data field is a typed wrong-shape error (a
 // bare {} or an error payload must never pass as a successful empty
 // collection). Data is a slice POINTER so absent/null are detectable (nil
 // pointer), and a non-array value fails json.Unmarshal itself - both land
-// in the same typed "decoding <path>" CodeGeneric contract. Element
-// decoding then applies DecodeCRTObject's per-object invariant: decode
-// failures abort the whole collection - only the PLACEHOLDER policy
-// degrades per row, and that lives in the callers.
+// in the same typed "cannot read the response from <path>" CodeGeneric
+// contract. Element decoding then applies DecodeCRTObject's per-object
+// invariant: decode failures abort the whole collection - only the
+// PLACEHOLDER policy degrades per row, and that lives in the callers.
 func DecodeCRTCollection(path string, body []byte) ([]CRTObject, error) {
 	var env struct {
 		Data *[]crtView `json:"data"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
 		return nil, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("decoding %s: %v", path, err))
+			fmt.Sprintf("cannot read the response from %s: %v", path, err))
 	}
 	if env.Data == nil {
 		return nil, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("decoding %s: valid JSON but not a Steve collection envelope (a %q array is required)", path, "data"))
+			fmt.Sprintf("cannot read the response from %s: it is valid JSON but not a Rancher API collection (a %q array is required)", path, "data"))
 	}
 	out := make([]CRTObject, 0, len(*env.Data))
 	for i, v := range *env.Data {
-		if err := v.validate(fmt.Sprintf("%s (object %d)", path, i)); err != nil {
+		if err := v.validate(fmt.Sprintf("the list item at index %d in the response from %s", i, path)); err != nil {
 			return nil, err
 		}
 		out = append(out, v.object())

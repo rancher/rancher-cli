@@ -1,9 +1,10 @@
 // crt.go implements the override for the clusterregistrationtoken row:
 // `get clusterregistrationtoken` reads Steve directly (the ONLY place the
-// real token is spliced into the command/manifest fields - the k8s proxy's
-// own object carries the literal "{token}" placeholder in those fields;
-// rancher's steve formatter clusterregistrationtoken.go:24-72 does the
-// ReplaceAll at :69 using the object's own status.token as the real value),
+// server replaces the {token} placeholder in the command/manifest fields -
+// the k8s proxy's own object carries the literal "{token}" placeholder in
+// those fields; rancher's steve formatter clusterregistrationtoken.go:24-72
+// does the ReplaceAll at :69 using the object's own status.token as the
+// real value),
 // and `patch clusterregistrationtoken` is refused outright (the row is
 // read-only surface).
 package provisioning
@@ -26,8 +27,8 @@ import (
 const crtCollectionPath = "/v1/management.cattle.io.clusterregistrationtokens"
 
 // placeholderToken is the literal string the k8s proxy's own object carries
-// in the seven command/manifest fields until Steve's formatter splices in
-// the real token. Surfacing it as data would hand back a non-functional
+// in the seven command/manifest fields until Steve's formatter replaces it
+// with the token. Surfacing it as data would hand back a non-functional
 // command, so the named get rejects it over PlaceholderFields.
 const placeholderToken = "{token}"
 
@@ -37,7 +38,7 @@ const placeholderToken = "{token}"
 // The list path degrades in place instead - see the Execute list loop.
 func placeholderError(path, field string) *clierr.Error {
 	return clierr.New(clierr.CodeGeneric,
-		fmt.Sprintf("clusterregistrationtoken at %s: field %q still carries the unformatted %s placeholder - the server never spliced in the real token",
+		fmt.Sprintf("cluster registration token at %s: field %q still contains the %s placeholder; the server did not replace it with the token",
 			path, field, placeholderToken))
 }
 
@@ -89,7 +90,7 @@ type getCRTCmd struct {
 
 // NewGetCRT builds the get override for the clusterregistrationtoken row: a
 // Steve /v1 read instead of the generic dynamic-client Get/List, since only
-// Steve splices the real token into the command/manifest fields. Its
+// Steve replaces the {token} placeholder in the command/manifest fields. Its
 // Descriptor mirrors resources.NewGet(k, ...) (same Name and args) and its
 // flags are the generic get's without the wait flags - only execution is
 // overridden.
@@ -168,10 +169,11 @@ func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 		}
 		// A bad row degrades in place - blank the offending
 		// field(s) and warn - rather than aborting the entire list, which
-		// would hide every healthy row behind one unspliced token.
+		// would hide every healthy row behind one token whose placeholder was not
+		// replaced.
 		for _, field := range clearPlaceholderFields(v) {
 			warnings = append(warnings, fmt.Sprintf(
-				"registration token %s/%s: %s not formatted by the server; omitted",
+				"cluster registration token %s/%s: the server did not replace the {token} placeholder in %s; the field is shown empty",
 				v.Namespace, v.Name, field))
 		}
 		rows = append(rows, crtRowFrom(*v))
@@ -206,8 +208,7 @@ func (c *refuseCRTPatchCmd) Describe() runtime.Descriptor {
 
 func (c *refuseCRTPatchCmd) Plan(_ context.Context, _ runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-		c.k.Name+" is read-only: patching a clusterregistrationtoken is not supported; "+
-			"registration tokens are consumed, not edited - create a new one instead")
+		c.k.Name+" is read-only: patching a cluster registration token is not supported; create a new one instead")
 }
 
 var _ runtime.MutatingCommand = (*refuseCRTPatchCmd)(nil)

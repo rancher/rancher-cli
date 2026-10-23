@@ -102,7 +102,7 @@ func TestDeleteProvisioningClusterRefusesLocal(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, "refusing to delete the local cluster; it is not a provisioning-cluster resource that can be removed this way", ce.Message)
+	assert.Equal(t, "refusing to delete the local cluster: it is the cluster Rancher runs on", ce.Message)
 
 	assert.Greater(t, client.getCalls, 0, "inner Plan must Get before the guard check")
 	assert.NotEmpty(t, client.deletes, "inner Plan's dry-run must have executed")

@@ -83,9 +83,15 @@ import (
 //   - ops: the replaced sense (an RFC 6902 entry, now "operation") cannot
 //     be told from "named ops" (the operations a kind supports) and
 //     "server ops" (the CLI's commands) by pattern.
-//   - cascades, consumed: other text still uses them in their own sense (a
-//     provisioning cluster's delete warning, a cluster registration
-//     token's read-only note).
+//   - cascades, consumed: other text still uses them in their own sense (the
+//     description of a user delete in skills/rancher/SKILL.md; the kind table's
+//     read-only note for a cluster registration token).
+//   - decoding: an ordinary word ("decoding the object of row 3"); the decode
+//     errors of the registration token commands now say "cannot read".
+//   - converges: an ordinary Kubernetes word.
+//   - Sensitive kind, dry-run/apply --yes: the command table in COMMANDS.md
+//     uses dry-run/apply --yes, and skills/rancher/SKILL.md uses Sensitive
+//     kind, as the names of the gate.
 //   - curated (alone): ordinary word here (curated logs and targets, curated
 //     commands and kinds); only "curated flag" is refused.
 //   - pool, probe (alone): "machine pool" and "SelfUser request" are the terms;
@@ -187,6 +193,8 @@ var rejectedWording = []wordingRow{
 	{[]string{"budget", "budgets"}, "time limit"},
 	{[]string{"caller identity"}, "your user ID"},
 	{[]string{"caller-scoped"}, "with your permissions"},
+	{[]string{"channel server route"}, "name the path: it was not found on the server"},
+	{[]string{"clears cleanly"}, "succeeds and changes nothing"},
 	{[]string{"command bug", "command bugs"}, "internal error"},
 	{[]string{"controller-owned"}, "a controller creates and manages it"},
 	{[]string{"credential store helper", "credential store helpers"}, "credential helper"},
@@ -198,24 +206,36 @@ var rejectedWording = []wordingRow{
 	{[]string{"escalates to", "escalate to"}, "requires"},
 	{[]string{"exec entry", "exec entries", "exec user entry"}, "exec block"},
 	{[]string{"executable", "executables"}, "binaries"},
+	{[]string{"fleet workspace namespace"}, "Fleet workspace (namespace)"},
 	{[]string{"floor", "floors", "version-floor", "version-floors"}, "minimum"},
+	{[]string{"half-set"}, "has only one of the two fields set"},
 	{[]string{"identity probe", "identity probes", "selfuser probe", "selfuser probes"}, "SelfUser request"},
 	{[]string{"junction", "junctions"}, "a Windows directory link (NTFS junction)"},
 	{[]string{"killed"}, "stopped"},
 	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},
+	{[]string{"manual quantity"}, "number of nodes"},
 	{[]string{"member namespaces", "member namespace"}, "the project's namespaces"},
 	{[]string{"named get", "named gets"}, "a get of one object"},
+	{[]string{"no-op"}, "changes nothing"},
+	{[]string{"node count"}, "number of nodes"},
 	{[]string{"node-driver pool", "node-driver pools"}, "machine pool"},
 	{[]string{"one read of its id"}, "gets it by its id"},
 	{[]string{"ordinary secret", "ordinary secrets"}, "a secret in a namespace"},
 	{[]string{"owning source object"}, "the object it was created from"},
 	{[]string{"principal form", "principal forms"}, "principal prefix"},
 	{[]string{"provider list", "provider lists"}, "list of auth configs"},
+	{[]string{"quorum majority"}, "quorum"},
+	{[]string{"re-asserts", "reasserts"}, "sets it back"},
+	{[]string{"release fetch", "release fetches"}, "fetching the releases"},
 	{[]string{"role vocabulary"}, "role templates and global roles"},
+	{[]string{"sanctioned override"}, "name the command to run first"},
 	{[]string{"schema vocabulary", "schema kind vocabulary"}, "the kinds rancher schema lists"},
+	{[]string{"schema-legal"}, "allowed"},
 	{[]string{"scriptblock", "scriptblocks"}, "script block"},
 	{[]string{"server dry run"}, "server-side dry-run"},
+	{[]string{"spliced", "splices"}, "replaced"},
 	{[]string{"stamped", "stamps", "unstamped"}, "set (an annotation)"},
+	{[]string{"steve collection envelope"}, "Rancher API collection"},
 	{[]string{"the pair"}, "the two binaries"},
 	{[]string{"the plan"}, "the dry-run preview"},
 	{[]string{"user record", "user records"}, "User object"},
@@ -229,7 +249,6 @@ type wordingPhrase struct {
 
 // wordingPhraseAllowlist: one entry per line, sorted by term, then phrase.
 var wordingPhraseAllowlist = []wordingPhrase{
-	{"floor", "no invented floor", "a minimum node count, not a version limit"},
 	{"junction", "(NTFS junction)", "names the Windows link type where the exact kind matters"},
 	{"the plan", "prints the plan without", "the installer's own --dry-run output, not the CLI's dry-run preview"},
 }
@@ -305,6 +324,8 @@ var wordingPathAllowlist = []wordingPath{
 	{"junction", "README.md", "Install", 1, "text not yet reworded"},
 	{"killed", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
 	{"named get", "internal/engine/resources/get.go", "", 2, "text not yet reworded"},
+	{"no-op", "CREDENTIAL_HELPERS.md", "Responses", 1, "text not yet reworded"},
+	{"node count", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
 	{"principal form", "internal/engine/inspect/user.go", "", 1, "text not yet reworded"},
 	{"provider list", "MIGRATING.md", "Changed in this CLI", 3, "text not yet reworded"},
 	{"provider list", "REFERENCE.md", "Auth configs (`--auth-provider`)", 2, "text not yet reworded"},

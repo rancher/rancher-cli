@@ -50,8 +50,8 @@ func TestComputeQuorumDelta(t *testing.T) {
 		assert.Equal(t, 3, delta.Before)
 		assert.Equal(t, 5, delta.After)
 		assert.False(t, delta.Crossing)
-		assert.NotContains(t, delta.Note, "even etcd counts")
-		assert.NotContains(t, delta.Note, "quorum majority")
+		assert.NotContains(t, delta.Note, "an even number of etcd members")
+		assert.NotContains(t, delta.Note, "risks losing quorum")
 		assert.Contains(t, delta.Note, "3 to 5")
 	})
 
@@ -65,7 +65,7 @@ func TestComputeQuorumDelta(t *testing.T) {
 		assert.Equal(t, 3, delta.Before)
 		assert.Equal(t, 2, delta.After)
 		assert.True(t, delta.Crossing)
-		assert.Contains(t, delta.Note, "quorum majority")
+		assert.Contains(t, delta.Note, "risks losing quorum")
 	})
 
 	t.Run("3 to 4 grows to an even count: even-count note, no crossing", func(t *testing.T) {
@@ -78,8 +78,8 @@ func TestComputeQuorumDelta(t *testing.T) {
 		assert.Equal(t, 3, delta.Before)
 		assert.Equal(t, 4, delta.After)
 		assert.False(t, delta.Crossing)
-		assert.Contains(t, delta.Note, "even etcd counts")
-		assert.NotContains(t, delta.Note, "quorum majority")
+		assert.Contains(t, delta.Note, "an even number of etcd members")
+		assert.NotContains(t, delta.Note, "risks losing quorum")
 	})
 
 	t.Run("etcd role flip true to false counts as removal of that pool's quantity", func(t *testing.T) {

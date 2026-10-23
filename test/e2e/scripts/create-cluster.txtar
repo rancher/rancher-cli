@@ -50,7 +50,7 @@ stderr 'error \(NOT_FOUND\):'
 # script's own imported cluster, created above).
 exec rancher delete provisioning-cluster imported-1 --dry-run -o json
 cp stdout delete-eff.json
-jsonquery delete-eff.json warnings.0 'deleting this provisioning cluster cascades: the provisioning controller removes the linked CAPI Cluster, which takes its Machines and RKEControlPlane with it, and separately removes the corresponding management Cluster'
+jsonquery delete-eff.json warnings.0 'deleting this provisioning cluster also deletes other objects: the provisioning controller deletes the linked CAPI Cluster, which deletes its Machines and RKEControlPlane, and it separately deletes the corresponding management.cattle.io Cluster'
 
 # the real delete, then confirm it is gone.
 exec rancher delete provisioning-cluster imported-1 --apply --yes

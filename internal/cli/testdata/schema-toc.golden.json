@@ -277,17 +277,17 @@
       "commands": [
         {
           "name": "cluster scale",
-          "usage": "Scale a machine pool's node count"
+          "usage": "Change the number of nodes in a machine pool"
         },
         {
           "name": "cluster set-autoscaling",
           "prime": true,
-          "usage": "Turn on cluster-autoscaler management for a machine pool"
+          "usage": "Turn on autoscaling for a machine pool"
         },
         {
           "name": "cluster clear-autoscaling",
           "prime": true,
-          "usage": "Return a machine pool to manual quantity"
+          "usage": "Turn off autoscaling for a machine pool"
         },
         {
           "name": "cluster pause-autoscaling",

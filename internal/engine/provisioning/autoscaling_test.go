@@ -26,7 +26,7 @@ func TestSetAutoscalingSetsBounds(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 	assert.True(t, eff.Destructive, "provisioningcluster is Sensitive: every family mutation is Destructive")
-	assert.Contains(t, eff.Warnings[0], "managed by the cluster autoscaler")
+	assert.Contains(t, eff.Warnings[0], "the cluster autoscaler now manages the number of nodes")
 
 	pools, _ := clusterMachinePools(client.updated)
 	pool := pools[0].(map[string]any)
@@ -149,13 +149,13 @@ func TestClearAutoscalingRemovesBounds(t *testing.T) {
 
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	assert.Contains(t, res.Text, "left at manual quantity 4")
+	assert.Contains(t, res.Text, "is no longer autoscaled; its number of nodes stays at 4")
 }
 
-// TestClearAutoscalingOnUnmanagedPoolIsNoOp asserts the convergence
-// contract: a pool that already carries neither bound succeeds, naming
-// nothing-to-clear rather than surfacing a raw path-not-found error.
-func TestClearAutoscalingOnUnmanagedPoolIsNoOp(t *testing.T) {
+// TestClearAutoscalingOnUnmanagedPoolChangesNothing asserts that a machine
+// pool that has neither bound succeeds, saying there is nothing to remove
+// rather than surfacing a raw path-not-found error.
+func TestClearAutoscalingOnUnmanagedPoolChangesNothing(t *testing.T) {
 	t.Parallel()
 	client := &familyClient{obj: familyClusterObj("c1", "1", []any{familyPool("pool1", 4, false, false, true, nil, nil)}, false)}
 	cmd := NewClearAutoscaling(fakeFactory{c: client})
@@ -167,13 +167,13 @@ func TestClearAutoscalingOnUnmanagedPoolIsNoOp(t *testing.T) {
 
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	assert.Contains(t, res.Text, "already manual; nothing to clear")
+	assert.Contains(t, res.Text, "has no autoscaling; nothing to remove")
 }
 
-// TestClearAutoscalingHalfSetPoolClearsCleanly asserts that clear removes
+// TestClearAutoscalingPoolWithOneBoundRemovesIt asserts that clear removes
 // whichever of the two fields is actually present, even when the write-side
 // both-or-neither CEL is somehow bypassed.
-func TestClearAutoscalingHalfSetPoolClearsCleanly(t *testing.T) {
+func TestClearAutoscalingPoolWithOneBoundRemovesIt(t *testing.T) {
 	t.Parallel()
 	client := &familyClient{obj: familyClusterObj("c1", "1",
 		[]any{familyPool("pool1", 4, false, false, true, new(int64(2)), nil)}, false)}
@@ -183,7 +183,7 @@ func TestClearAutoscalingHalfSetPoolClearsCleanly(t *testing.T) {
 	require.NoError(t, err)
 	res, err := exec(t.Context())
 	require.NoError(t, err)
-	assert.Contains(t, res.Text, "left at manual quantity 4")
+	assert.Contains(t, res.Text, "is no longer autoscaled; its number of nodes stays at 4")
 }
 
 func TestClearAutoscalingPoolNotFoundRefuses(t *testing.T) {

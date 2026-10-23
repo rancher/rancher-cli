@@ -169,9 +169,10 @@ resolves to the group card, which names the kind view - pass `--kind`
 for the kind card.
 Kind names have kubectl-style aliases (e.g. `get pods`,
 `get cm`). `get kubernetes-versions` always marks the newest release per
-distro (`newest`); when the server declares no default version, or one that
-names no listed release, that marker is the only pick-this signal and a
-warning says so.
+distro (`newest`); when the server's default version for a distro is empty
+or missing, or is not one of the releases the server lists, no version is
+marked as the default, `newest` is the only sign of which version to pick,
+and a warning says so.
 
 Kind lookups are two steps: `rancher schema <kind> -o json` returns the
 kind's row - routing, aliases, per-verb availability - and a verb's full

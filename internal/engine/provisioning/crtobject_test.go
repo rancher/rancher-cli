@@ -12,8 +12,8 @@ import (
 )
 
 // TestDecodeCRTObjectIsPolicyNeutral proves the decoder returns values
-// exactly as decoded - including a still-unformatted "{token}"
-// placeholder - and never errors on one: detection is PlaceholderFields'
+// exactly as decoded - including a "{token}" placeholder the server did not
+// replace - and never errors on one: detection is PlaceholderFields'
 // job, and deciding what to do about it is the caller's.
 func TestDecodeCRTObjectIsPolicyNeutral(t *testing.T) {
 	t.Parallel()
@@ -42,7 +42,7 @@ func TestDecodeCRTObjectMalformedBody(t *testing.T) {
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "decoding")
+	assert.Contains(t, ce.Message, "cannot read the response from")
 	assert.Contains(t, ce.Message, "/v1/broken")
 }
 
@@ -73,7 +73,7 @@ func TestDecodeCRTObjectWrongShape(t *testing.T) {
 			ce, ok := err.(*clierr.Error)
 			require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
-			assert.Contains(t, ce.Message, "decoding")
+			assert.Contains(t, ce.Message, "cannot read the response from")
 			assert.Contains(t, ce.Message, "/v1/shape")
 		})
 	}
@@ -108,7 +108,7 @@ func TestDecodeCRTCollectionWrongShapeElement(t *testing.T) {
 	ce, ok := derr.(*clierr.Error)
 	require.True(t, ok, "error must be a typed *clierr.Error, got %T", derr)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "decoding")
+	assert.Contains(t, ce.Message, "cannot read the list item at index 1 in the response from")
 	assert.Contains(t, ce.Message, crtCollectionPath)
 }
 
@@ -146,7 +146,7 @@ func TestDecodeCRTCollectionEnvelopeInvariant(t *testing.T) {
 			ce, ok := err.(*clierr.Error)
 			require.True(t, ok, "error must be a typed *clierr.Error, got %T", err)
 			assert.Equal(t, clierr.CodeGeneric, ce.Code)
-			assert.Contains(t, ce.Message, "decoding")
+			assert.Contains(t, ce.Message, "cannot read the response from")
 			assert.Contains(t, ce.Message, "/v1/coll")
 		})
 	}

@@ -117,7 +117,7 @@ func TestCLIKubernetesVersions(t *testing.T) {
 		if len(rows) == 0 {
 			continue
 		}
-		unlisted := fmt.Sprintf("%s is %q on the server, which names no listed release; no default marked", d.setting, value)
+		unlisted := fmt.Sprintf("%s is %q on the server, which is not one of the releases the server lists; no version is marked as the default", d.setting, value)
 		wantListed := slices.ContainsFunc(rows, func(r kubernetesVersionRow) bool { return namesRelease(r.Version, value) })
 		if wantListed {
 			for _, r := range rows {
@@ -127,9 +127,9 @@ func TestCLIKubernetesVersions(t *testing.T) {
 			continue
 		}
 		for _, r := range rows {
-			assert.False(t, r.Default, "%s release %q marked default; setting %q names no listed release", distro, r.Version, value)
+			assert.False(t, r.Default, "%s release %q marked default; setting %q is not one of the releases the server lists", distro, r.Version, value)
 		}
-		assert.Contains(t, env.Warnings, unlisted, "%s: setting %q names no listed release", distro, value)
+		assert.Contains(t, env.Warnings, unlisted, "%s: setting %q is not one of the releases the server lists", distro, value)
 	}
 
 	if supportedRange == "" {

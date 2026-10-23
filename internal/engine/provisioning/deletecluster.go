@@ -20,13 +20,13 @@ import (
 )
 
 // cascadeWarning is the advisory note appended to every non-refused
-// provisioning-cluster delete's Effect.Warnings (never a gate). It states the
-// real cascade: the provisioning controller's remove path deletes the linked
-// CAPI Cluster, which per cluster-api's own ownership graph takes down that
-// Cluster's Machines and (for an RKE2/K3s control plane) its RKEControlPlane
-// object, and separately removes the corresponding management.cattle.io Cluster
-// (rancher provisioningv2 remove paths).
-const cascadeWarning = "deleting this provisioning cluster cascades: the provisioning controller removes the linked CAPI Cluster, which takes its Machines and RKEControlPlane with it, and separately removes the corresponding management Cluster"
+// provisioning-cluster delete's Effect.Warnings (never a gate). It names the
+// objects the delete also deletes: the provisioning controller's remove path
+// deletes the linked CAPI Cluster, which per cluster-api's own ownership graph
+// deletes that Cluster's Machines and (for an RKE2/K3s control plane) its
+// RKEControlPlane object, and separately deletes the corresponding
+// management.cattle.io Cluster (rancher provisioningv2 remove paths).
+const cascadeWarning = "deleting this provisioning cluster also deletes other objects: the provisioning controller deletes the linked CAPI Cluster, which deletes its Machines and RKEControlPlane, and it separately deletes the corresponding management.cattle.io Cluster"
 
 // localClusterName is the literal argument value NewDeleteProvisioningCluster
 // refuses. A plain string comparison against the CLI argument; the guard runs
@@ -43,7 +43,7 @@ func NewDeleteProvisioningCluster(k kinds.Kind, clients engine.ClusterClientFact
 	guard := func(_ context.Context, in runtime.Input) error {
 		if args := in.Args(); len(args) > 0 && args[0] == localClusterName {
 			return clierr.New(clierr.CodeValidation,
-				"refusing to delete the local cluster; it is not a provisioning-cluster resource that can be removed this way")
+				"refusing to delete the local cluster: it is the cluster Rancher runs on")
 		}
 		return nil
 	}

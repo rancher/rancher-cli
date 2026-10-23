@@ -34,10 +34,10 @@ func TestScaleUpIsAlwaysDestructive(t *testing.T) {
 	assert.Equal(t, int64(5), gotQty)
 }
 
-// TestScaleMissingQuantityWarnsUnknown asserts that a pool with no recorded
-// quantity never silently reads as a current count of zero: the scale
-// still succeeds (Destructive regardless, per the Sensitive-kind rule
-// above), but the Effect names the current count as unknown.
+// TestScaleMissingQuantityWarnsUnknown asserts that a machine pool with no
+// quantity set never silently reads as a current number of nodes of zero: the
+// scale still succeeds (Destructive regardless, per the Sensitive-kind rule
+// above), but the Effect says the current number of nodes is unknown.
 func TestScaleMissingQuantityWarnsUnknown(t *testing.T) {
 	t.Parallel()
 	pool := familyPool("pool1", 0, false, false, true, nil, nil)
@@ -50,7 +50,7 @@ func TestScaleMissingQuantityWarnsUnknown(t *testing.T) {
 	require.NotNil(t, exec)
 	assert.True(t, eff.Destructive)
 	require.NotEmpty(t, eff.Warnings)
-	assert.Contains(t, eff.Warnings[0], "current count is unknown")
+	assert.Contains(t, eff.Warnings[0], "its current number of nodes is unknown")
 }
 
 func TestScaleDownIsDestructive(t *testing.T) {
@@ -65,8 +65,8 @@ func TestScaleDownIsDestructive(t *testing.T) {
 
 func TestScaleToZeroIsAllowedNoFloor(t *testing.T) {
 	t.Parallel()
-	// A control-plane/etcd pool has no invented floor: --nodes 0 is
-	// schema-legal, the Destructive gate is the only protection.
+	// The CLI sets no minimum for a control-plane or etcd machine pool:
+	// --nodes 0 is allowed, the Destructive gate is the only protection.
 	client := &familyClient{obj: familyClusterObj("c1", "1", []any{familyPool("pool1", 3, true, true, false, nil, nil)}, false)}
 	cmd := NewScale(fakeFactory{c: client})
 
@@ -123,7 +123,7 @@ func TestScalePoolLessClusterFieldPresentButEmptyRefuses(t *testing.T) {
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Contains(t, ce.Message, "no machine pools")
-	assert.NotContains(t, ce.Message, "imported and custom clusters carry none")
+	assert.NotContains(t, ce.Message, "imported and custom clusters have none")
 }
 
 func TestScalePoolNotFoundRefuses(t *testing.T) {
@@ -152,7 +152,7 @@ func TestScaleAutoscaledUnpausedPoolRefuses(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "cluster autoscaler")
+	assert.Equal(t, `machine pool "pool1" on cluster "c1" is managed by the cluster autoscaler; the server accepts a change to the number of nodes, but the cluster autoscaler sets it back to its own value minutes later - pause autoscaling first to scale it yourself`, ce.Message)
 	assert.Contains(t, ce.Hint, "cluster pause-autoscaling")
 	assert.Nil(t, client.updated, "the guard must refuse pre-Plan, before any Update dry-run")
 }
