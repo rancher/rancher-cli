@@ -139,7 +139,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
-		eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, backingNS, obj, cluster, secretKind.Name, "Secret", secretKind.Sensitive)
+		eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, backingNS, obj, secretKind.Redaction(), cluster, secretKind.Name, "Secret", secretKind.Sensitive)
 		if err != nil {
 			return safety.Effect{}, nil, err
 		}
@@ -177,7 +177,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, nsFlag, obj, cluster, secretKind.Name, "Secret", secretKind.Sensitive)
+	eff, exec, err := engine.PlanCreate(ctx, client, secretKind.GVR, nsFlag, obj, secretKind.Redaction(), cluster, secretKind.Name, "Secret", secretKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

@@ -2,12 +2,15 @@ package engine
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"sort"
 	"strings"
 
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // DiffObjects walks two decoded-JSON trees and emits one DiffEntry per
@@ -132,4 +135,68 @@ func unionKeys(a, b map[string]any) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// identityPointers are the paths of the identity fields: the object's
+// apiVersion, kind, name and generateName, which the preview's headline
+// (create <kind>/<name>) already shows. Only these exact paths are skipped:
+// a nested "kind" or "name" key, such as a machine pool's machineConfigRef,
+// is a field the command sets.
+var identityPointers = []string{"/apiVersion", "/kind", "/metadata/name", "/metadata/generateName"}
+
+// CreateDiff lists what a create sends: one entry per leaf of the submission
+// obj, with the RFC 6901 pointer as the path, a nil From and the submitted
+// value as To. The entries follow the order DiffObjects uses: keys sorted at
+// each level, list items by index. A leaf is a scalar, a null, a list that
+// is empty (at any depth) or a map that is empty below the top level. The
+// identity fields and ServerOwnedPaths are left out, and a map the skip
+// empties is not a leaf. A create that sets nothing past its identity has no
+// entries. The values the redaction covers are hidden (see RedactDiff).
+//
+// A redaction that is the zero value, or was built for another resource than
+// gvr, is an internal error: no preview of a create may be built without the
+// redaction of what it creates.
+func CreateDiff(gvr schema.GroupVersionResource, obj map[string]any, r kinds.Redaction) ([]safety.DiffEntry, error) {
+	if err := checkRedaction(gvr, r); err != nil {
+		return nil, err
+	}
+	return createDiff(obj, r), nil
+}
+
+// createDiff is CreateDiff for a caller that has checked the redaction.
+func createDiff(obj map[string]any, r kinds.Redaction) []safety.DiffEntry {
+	var out []safety.DiffEntry
+	walkSubmission(&out, "", 0, obj)
+	return RedactDiff(out, r)
+}
+
+// walkSubmission appends the entries for the value v at path, which sits
+// depth keys below the object root.
+func walkSubmission(out *[]safety.DiffEntry, path string, depth int, v any) {
+	if isSkippedPath(path) || slices.Contains(identityPointers, path) {
+		return
+	}
+	switch t := v.(type) {
+	case map[string]any:
+		if len(t) == 0 {
+			// An empty top-level map (metadata: {}, spec: {}) sets nothing.
+			if depth >= 2 {
+				*out = append(*out, safety.DiffEntry{Path: path, To: map[string]any{}})
+			}
+			return
+		}
+		for _, k := range slices.Sorted(maps.Keys(t)) {
+			walkSubmission(out, path+"/"+escapePointerToken(k), depth+1, t[k])
+		}
+	case []any:
+		if len(t) == 0 {
+			*out = append(*out, safety.DiffEntry{Path: path, To: []any{}})
+			return
+		}
+		for i, item := range t {
+			walkSubmission(out, fmt.Sprintf("%s/%d", path, i), depth+1, item)
+		}
+	default:
+		*out = append(*out, safety.DiffEntry{Path: path, To: v})
+	}
 }

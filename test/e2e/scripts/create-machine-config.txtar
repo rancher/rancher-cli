@@ -5,10 +5,11 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 ! exec rancher create machine-config digitaloceanconfig web-pool --region nyc3
 stderr 'error \(CONFIRMATION_REQUIRED\):'
 
-# dry-run: the diff-less create Effect.
+# dry-run: the create Effect lists the fields the command sends.
 exec rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --set backups=true --dry-run -o json
 jsonquery stdout data.action create
 jsonquery stdout data.target digitaloceanconfigs/web-pool
+jsonquery stdout data.diff.0.path /backups
 
 # a typo'd --set key is pruned by the (strict) DO CRD and warned about at
 # preview time, named exactly.

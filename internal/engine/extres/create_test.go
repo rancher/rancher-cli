@@ -2,6 +2,7 @@ package extres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -158,10 +159,9 @@ func TestCreateTokenIsDestructive(t *testing.T) {
 }
 
 // TestCreateTokenDryRunEffectDoesNotLeak asserts the shown-once discipline at
-// the Plan level: safety.Effect has no field that could carry spec/status
-// payload, so the dry-run preview structurally cannot surface a bearer
-// token even though PlanCreate's internal dry-run Create call round-trips
-// the full object through the fake client.
+// the Plan level: the preview's diff lists the fields the command sends
+// (the token submission holds no bearer token), never the server's dry-run
+// answer, so a bearer token in that answer cannot reach the preview.
 func TestCreateTokenDryRunEffectDoesNotLeak(t *testing.T) {
 	t.Parallel()
 	client := &fakeClient{status: map[string]any{"bearerToken": "ext/token-abc:should-not-leak"}}
@@ -172,6 +172,10 @@ func TestCreateTokenDryRunEffectDoesNotLeak(t *testing.T) {
 	assert.Equal(t, safety.ActionCreate, eff.Action)
 	assert.Equal(t, "tokens/", eff.Target, "no name assigned pre-create")
 	assert.NotContains(t, eff.Target, "should-not-leak")
+	rendered, err := json.Marshal(eff)
+	require.NoError(t, err)
+	assert.NotContains(t, string(rendered), "should-not-leak")
+	assert.Equal(t, []safety.DiffEntry{{Path: "/spec/description", To: "leak-check"}}, eff.Diff)
 	assert.True(t, len(client.dryRuns) >= 1 && client.dryRuns[0], "PlanCreate previews via dry-run")
 }
 

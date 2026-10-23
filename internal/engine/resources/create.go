@@ -159,7 +159,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	// namespace decision, so the object is normalized to it (cleared for a
 	// cluster-scoped kind).
 	obj.SetNamespace(ns)
-	eff, exec, err := engine.PlanCreate(ctx, client, k.GVR, ns, obj, effectCluster, k.Name, k.K8sKind, k.Sensitive)
+	eff, exec, err := engine.PlanCreate(ctx, client, k.GVR, ns, obj, k.Redaction(), effectCluster, k.Name, k.K8sKind, k.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

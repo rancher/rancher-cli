@@ -1,0 +1,12 @@
+internal/engine/extres.createKubeconfigCmd.Plan
+internal/engine/extres.createPasswordChangeRequestCmd.Plan
+internal/engine/extres.createTokenCmd.Plan
+internal/engine/oidcclient.createCmd.Plan
+internal/engine/projects.createCmd.Plan
+internal/engine/projects.createNamespaceCmd.Plan
+internal/engine/projects.createSecretCmd.Plan
+internal/engine/provisioning.createClusterCmd.Plan
+internal/engine/provisioning.createMachineConfigCmd.Plan
+internal/engine/rbac.grantCmd.Plan
+internal/engine/resources.createCmd.Plan
+internal/engine/user.createCmd.Plan

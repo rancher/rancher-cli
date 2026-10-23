@@ -415,7 +415,11 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 		stampedUserID = ann[creatorIDAnnotation]
 	}
 
-	eff, exec, err := engine.PlanCreate(ctx, client, provisioningClusterGVR, clusterNamespace, obj, engine.LocalCluster, provisioningClusterDisplayKind, "Cluster", false)
+	clusterKind, ok := kinds.Lookup("provisioningcluster")
+	if !ok {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: no kind row for provisioningcluster")
+	}
+	eff, exec, err := engine.PlanCreate(ctx, client, provisioningClusterGVR, clusterNamespace, obj, clusterKind.Redaction(), engine.LocalCluster, provisioningClusterDisplayKind, "Cluster", false)
 	if err != nil {
 		if stampWarning != "" {
 			// The pipeline's error normalization unwraps to the innermost

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,6 +14,19 @@ import (
 )
 
 var testGVR = schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "projects"}
+
+// redactionFor is a redaction that hides nothing, for a test resource gvr.
+func redactionFor(gvr schema.GroupVersionResource) kinds.Redaction {
+	return kinds.RowlessRedaction(gvr, "a test resource with no kind row")
+}
+
+// rowRedaction is the redaction of a registered kind row.
+func rowRedaction(tb testing.TB, key string) kinds.Redaction {
+	tb.Helper()
+	k, ok := kinds.ByKey(key)
+	require.True(tb, ok, key)
+	return k.Redaction()
+}
 
 // stubClient records the last call and returns canned results.
 type stubClient struct {
@@ -88,8 +102,8 @@ func (c *obsClient) Logs(context.Context, string, string, LogOptions) (string, e
 
 // TestPlanCreateObservedExposesDryRunResult asserts the dry-run seam: the
 // caller receives the SERVER's dry-run object (not its own submission),
-// the Effect stays the diff-less create shape, and the executor still
-// performs the real write.
+// the Effect's diff lists the submission's fields (not the server's
+// answer), and the executor still performs the real write.
 func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
 	t.Parallel()
 	serverView := &unstructured.Unstructured{Object: map[string]any{
@@ -108,7 +122,7 @@ func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
 		"regoin":     "typo",
 	}}
 
-	eff, dryRun, exec, err := PlanCreateObserved(t.Context(), client, gvr, "fleet-default", obj, LocalCluster, "digitaloceanconfig", "DigitaloceanConfig", false)
+	eff, dryRun, exec, err := PlanCreateObserved(t.Context(), client, gvr, "fleet-default", obj, redactionFor(gvr), LocalCluster, "digitaloceanconfig", "DigitaloceanConfig", false)
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 	assert.Equal(t, []bool{true}, client.dryRuns)
@@ -117,7 +131,11 @@ func TestPlanCreateObservedExposesDryRunResult(t *testing.T) {
 	assert.Equal(t, "digitaloceanconfigs/web-pool", eff.Target)
 	assert.Equal(t, "digitaloceanconfig", eff.DisplayKind)
 	assert.Equal(t, "web-pool", eff.DisplayName)
-	assert.Empty(t, eff.Diff, "create previews are diff-less")
+	assert.Equal(t, []safety.DiffEntry{
+		{Path: "/metadata/namespace", To: "fleet-default"},
+		{Path: "/region", To: "nyc3"},
+		{Path: "/regoin", To: "typo"},
+	}, eff.Diff, "the diff lists the submission, including the key the server drops")
 	assert.False(t, eff.Destructive)
 
 	res, err := exec(t.Context())
@@ -165,7 +183,7 @@ func TestPlanCreate(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
 	}}
-	eff, exec, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "project", "Project", false)
+	eff, exec, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, redactionFor(testGVR), "c-x", "project", "Project", false)
 	require.NoError(t, err)
 	assert.True(t, client.lastCreateDryRun, "Plan must call Create with dryRun=true")
 	assert.Equal(t, safety.ActionCreate, eff.Action)
@@ -224,7 +242,7 @@ func TestPlanUpdatePropagatesError(t *testing.T) {
 func TestPlanCreatePropagatesError(t *testing.T) {
 	client := &stubClient{createErr: assert.AnError}
 	_, _, err := PlanCreate(t.Context(), client, testGVR, "c-x",
-		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, "c-x", "project", "Project", false)
+		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}}, redactionFor(testGVR), "c-x", "project", "Project", false)
 	require.Error(t, err)
 }
 
@@ -237,7 +255,7 @@ func TestPlanCreateDestructiveParameter(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x"},
 	}}
-	eff, _, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, "c-x", "project", "Project", true)
+	eff, _, err := PlanCreate(t.Context(), client, testGVR, "c-x", obj, redactionFor(testGVR), "c-x", "project", "Project", true)
 	require.NoError(t, err)
 	assert.True(t, eff.Destructive)
 }

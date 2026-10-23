@@ -6,6 +6,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -19,6 +20,12 @@ import (
 // never support get/list/delete would only mislead the generic verb
 // machinery into offering commands the server always rejects.
 var passwordChangeRequestGVR = schema.GroupVersionResource{Group: "ext.cattle.io", Version: "", Resource: "passwordchangerequests"}
+
+// passwordChangeRequestRedaction hides the password fields of the submission
+// in the preview. The resource has no kind row to take them from.
+var passwordChangeRequestRedaction = kinds.RowlessRedaction(passwordChangeRequestGVR,
+	"the resource is create-only and has no kind row",
+	[]string{"spec", "newPassword"}, []string{"spec", "currentPassword"})
 
 type createPasswordChangeRequestCmd struct {
 	clients engine.ClusterClientFactory
@@ -84,6 +91,11 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 	// PlanCreate's generic Effect-building derives DisplayName from the
 	// dry-run response's name, which would be empty here - built by hand
 	// instead, naming the target user rather than the (nonexistent) object.
+	// The diff still comes from the same walk the planner uses.
+	diff, err := engine.CreateDiff(passwordChangeRequestGVR, obj.Object, passwordChangeRequestRedaction)
+	if err != nil {
+		return safety.Effect{}, nil, err
+	}
 	if _, err := client.Create(ctx, passwordChangeRequestGVR, "", obj, true); err != nil {
 		return safety.Effect{}, nil, engine.RefuseUnsupportedWorkflow(err,
 			"the ext.cattle.io password-change-request resource is absent",
@@ -95,6 +107,7 @@ func (c createPasswordChangeRequestCmd) Plan(ctx context.Context, in runtime.Inp
 		DisplayKind:       "password-change-request",
 		DisplayName:       userID,
 		Cluster:           engine.LocalCluster,
+		Diff:              diff,
 		ConflictDetection: true,
 		Reversible:        true,
 		Destructive:       true,

@@ -129,7 +129,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	// which the generic shape does not express. previewUser's dry-run
 	// generateName expansion is a preview only - the real committed name is
 	// not known until execute creates the User for real.
-	eff, previewUser, _, err := engine.PlanCreateObserved(ctx, client, k.GVR, "", userObj, engine.LocalCluster, k.Name, "User", k.Sensitive)
+	eff, previewUser, _, err := engine.PlanCreateObserved(ctx, client, k.GVR, "", userObj, k.Redaction(), engine.LocalCluster, k.Name, "User", k.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -142,13 +142,17 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	// previewUser's name is a placeholder only: a dry-run never persists, so
 	// there is no collision risk, and only the namespace/webhook's
 	// acceptance of the shape matters here.
+	secretKind, ok := kinds.Lookup("secret")
+	if !ok {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: no kind row for secret")
+	}
 	secretPreview := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "v1",
 		"kind":       "Secret",
 		"metadata":   map[string]any{"name": previewUser.GetName(), "namespace": secretNamespace},
 		"stringData": map[string]any{"password": password},
 	}}
-	if _, _, err := engine.PlanCreate(ctx, client, secretGVR, secretNamespace, secretPreview, engine.LocalCluster, "secret", "Secret", true); err != nil {
+	if _, _, err := engine.PlanCreate(ctx, client, secretGVR, secretNamespace, secretPreview, secretKind.Redaction(), engine.LocalCluster, "secret", "Secret", true); err != nil {
 		return safety.Effect{}, nil, engine.RefuseUnsupportedWorkflow(err,
 			"the cattle-local-user-passwords password-secret namespace is absent",
 			"upgrade the connected server to a version that carries this workflow, or restore the cattle-local-user-passwords namespace if it was removed")

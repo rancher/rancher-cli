@@ -140,12 +140,12 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// change). Computed before the RV is stamped, so the precondition never
 	// appears as a field change.
 	diff := engine.DiffObjects(orig.Object, patched.Object)
-	if c.k.Sensitive {
-		redactSensitiveDiff(diff)
+	redaction := c.k.Redaction()
+	if redaction.IsZero() {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric,
+			"internal error: patch preview of "+c.k.GVR.Resource+" has no redaction for its kind")
 	}
-	if len(c.k.RedactPaths) > 0 {
-		redactKindPaths(diff, c.k.RedactPaths)
-	}
+	diff = engine.RedactDiff(diff, redaction)
 
 	patched.SetResourceVersion(rv)
 	// PlanUpdate dry-runs the update for an admission preview and returns the
@@ -244,49 +244,6 @@ func valueCarries(op jsonpatch.Operation, path string, keys []string) bool {
 	depth := strings.Count(path, "/")
 	_, found, _ := unstructured.NestedFieldNoCopy(node, keys[depth:]...)
 	return found
-}
-
-// redactSensitiveDiff blanks From/To for diff entries under /data or
-// /stringData in place - the JSON path stays visible (so a caller can see
-// which keys changed) but the raw value never reaches the Effect. Gated on
-// c.k.Sensitive (the same flag that gates the --yes destructive gate on this
-// same command), not the literal "secret" kind, so redaction stays correct
-// by construction for any future Sensitive kind with a confidential payload
-// under these paths - today only `secret` has one.
-func redactSensitiveDiff(diff []safety.DiffEntry) {
-	for i, e := range diff {
-		if isSecretDataPath(e.Path) {
-			diff[i].From = "<redacted>"
-			diff[i].To = "<redacted>"
-		}
-	}
-}
-
-// isSecretDataPath compares against the RFC 6901 pointer as written, with
-// no unescaping: a Secret data key matches [-._a-zA-Z0-9]+ (the apiserver
-// rejects anything else), so it never contains "/" or "~", and the escaped
-// and unescaped spellings of every segment below /data or /stringData are
-// identical.
-func isSecretDataPath(path string) bool {
-	return path == "/data" || strings.HasPrefix(path, "/data/") ||
-		path == "/stringData" || strings.HasPrefix(path, "/stringData/")
-}
-
-// redactKindPaths blanks From/To for diff entries whose JSON Pointer path
-// matches any of the per-kind RedactPaths ([]string key sequence → JSON
-// Pointer "/key0/key1/..."). This covers credential fields declared on
-// individual kind rows (e.g. root-level "token" on management-token) that
-// the generic /data//stringData guard does not reach.
-func redactKindPaths(diff []safety.DiffEntry, paths [][]string) {
-	for i, e := range diff {
-		for _, path := range paths {
-			if matchesRedactPath(e.Path, path) {
-				diff[i].From = "<redacted>"
-				diff[i].To = "<redacted>"
-				break
-			}
-		}
-	}
 }
 
 // matchesRedactPath reports whether the JSON Pointer entryPath equals or is

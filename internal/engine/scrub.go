@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"maps"
+	"slices"
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 )
@@ -35,9 +36,11 @@ func ScrubPaths(obj map[string]any, paths [][]string) map[string]any {
 // returns one on a later read. It removes the kind's declared redactPaths
 // (a named field like User's root-level password) and, for a sensitive
 // kind, a Secret-shaped payload's data/stringData - the same two guards
-// the patch preview-diff redaction applies, so the seams cannot silently
-// diverge on what counts as a credential. Every executor that places a
-// server-echoed object in Result.Data wraps itself here.
+// the preview-diff redaction applies. The preview also matches field names
+// with case folded and hides the kubectl last-applied annotation and a
+// machine config's secret fields; this result scrub matches field names
+// exactly and removes neither. Every executor that places a server-echoed
+// object in Result.Data wraps itself here.
 func RedactMutationResult(exec runtime.ExecuteFunc, redactPaths [][]string, sensitive bool) runtime.ExecuteFunc {
 	return func(ctx context.Context) (runtime.Result, error) {
 		res, err := exec(ctx)
@@ -88,4 +91,41 @@ func deletePaths(m map[string]any, paths [][]string) {
 		deletePaths(copied, rest)
 		m[head] = copied
 	}
+}
+
+// replaceCovered returns v with every map value whose path (keys, extended
+// by the map keys below v) covered reports true replaced by with, and
+// whether anything was replaced. The maps along a replaced path are copied
+// before they change, so the original value, which a caller may share with
+// the objects a patch fetched, is never modified; an unchanged v is
+// returned as it is. A nil value stays nil. Arrays are not entered: a
+// covered path is a sequence of object keys and never addresses an array
+// item.
+func replaceCovered(keys []string, v any, covered func([]string) bool, with any) (any, bool) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return v, false
+	}
+	var out map[string]any
+	for k, child := range m {
+		if child == nil {
+			continue
+		}
+		childKeys := append(slices.Clone(keys), k)
+		next := with
+		if !covered(childKeys) {
+			var changed bool
+			if next, changed = replaceCovered(childKeys, child, covered, with); !changed {
+				continue
+			}
+		}
+		if out == nil {
+			out = maps.Clone(m)
+		}
+		out[k] = next
+	}
+	if out == nil {
+		return v, false
+	}
+	return out, true
 }

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -13,10 +14,15 @@ import (
 // the Effect, the SERVER's dry-run response, and the closure that performs
 // the real create. The dry-run response is exposed so a caller can compare
 // its submission against what the server accepted (create machine-config's
-// pruned-key warning); PlanCreate delegates here, so every existing
-// create keeps its Effect byte-for-byte. The Effect carries no
-// contract/stability - the resolver Binding drives the pipeline's gates and
-// the manifest is the only published source. resultKind names the Result
+// pruned-key warning); PlanCreate delegates here. The Effect's diff lists
+// the fields the command sends (CreateDiff), computed from obj and not from
+// the server's answer, with the values redaction hides; the server's dry-run
+// still decides whether the preview succeeds. redaction is the redaction of
+// the resource gvr names (kinds.Kind.Redaction of its row, or
+// kinds.RowlessRedaction): the zero value, or the redaction of another
+// resource, is an internal error refused before any request. The Effect
+// carries no contract/stability - the resolver Binding drives the
+// pipeline's gates and the manifest is the only published source. resultKind names the Result
 // envelope kind.
 // effectCluster is the cluster the mutation semantically targets - NOT the
 // proxy the client connects through.
@@ -24,7 +30,11 @@ import (
 // default-format text (never resultKind, which is the envelope Result.Kind
 // and may be a Kubernetes/API identity such as "Cluster" or "Secret").
 // destructive is the caller's per-kind policy.
-func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
+func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, redaction kinds.Redaction, effectCluster, displayKind, resultKind string, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
+	if err := checkRedaction(gvr, redaction); err != nil {
+		return safety.Effect{}, nil, nil, err
+	}
+	diff := createDiff(obj.Object, redaction)
 	out, err := client.Create(ctx, gvr, ns, obj, true)
 	if err != nil {
 		return safety.Effect{}, nil, nil, err
@@ -35,6 +45,7 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		DisplayKind:       displayKind,
 		DisplayName:       out.GetName(),
 		Cluster:           effectCluster,
+		Diff:              diff,
 		ConflictDetection: true,
 		Reversible:        true,
 		Destructive:       destructive,
@@ -60,8 +71,8 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 // Effect plus the closure that performs the real create - the observed
 // variant with the dry-run response discarded. See PlanCreateObserved for
 // the parameter contract.
-func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
-	eff, _, exec, err := PlanCreateObserved(ctx, client, gvr, ns, obj, effectCluster, displayKind, resultKind, destructive)
+func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, redaction kinds.Redaction, effectCluster, displayKind, resultKind string, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
+	eff, _, exec, err := PlanCreateObserved(ctx, client, gvr, ns, obj, redaction, effectCluster, displayKind, resultKind, destructive)
 	return eff, exec, err
 }
 

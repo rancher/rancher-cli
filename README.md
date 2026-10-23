@@ -183,8 +183,9 @@ shows up: [REFERENCE.md](REFERENCE.md#what-the-cli-sends-to-the-server).
 
 Every server-mutating command runs one pipeline, in order:
 
-1. `--dry-run` previews a server-computed effect (action, diff, warnings)
-   and changes nothing.
+1. `--dry-run` previews the effect (action, the fields the command sets or
+   changes, warnings) and changes nothing. The server's dry-run still decides
+   whether the preview succeeds.
 2. `--apply` executes. A bare mutating invocation - no `--dry-run`, no
    `--apply` - is refused with `CONFIRMATION_REQUIRED`, and the refusal
    names the exact flags required.

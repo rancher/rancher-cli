@@ -82,6 +82,23 @@ func planPatch(t *testing.T, cmd runtime.Command, in runtime.Input) (safety.Effe
 	return mc.Plan(t.Context(), in)
 }
 
+// TestPatchPlanRefusesAKindThatIsNotARow asserts a patch planned for a
+// kind that is not a registered row is refused before any write: its
+// redaction is the zero value, so the preview could not hide its secrets.
+func TestPatchPlanRefusesAKindThatIsNotARow(t *testing.T) {
+	t.Parallel()
+	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)
+	client := &patchClient{obj: orig}
+	fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+	k := mustKind(t, "deployment")
+	k.Key = "not-a-row"
+	_, _, err := planPatch(t, NewPatch(k, fac, nil), input{args: []string{"web"}, s: map[string]string{
+		"cluster": "prod", "namespace": "ns1",
+		"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
+	}})
+	require.ErrorContains(t, err, "internal error: patch preview of deployments has no redaction for its kind")
+}
+
 func TestPatchPlanDiffsAndExecUsesRV(t *testing.T) {
 	t.Parallel()
 	orig := objFromJSON(t, `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"web","resourceVersion":"7"},"spec":{"replicas":1}}`)
@@ -227,6 +244,34 @@ func TestValueCarriesEscapesSlashKey(t *testing.T) {
 	nested, err := jsonpatch.DecodePatch([]byte(`[{"op":"replace","path":"","value":{"a":{"b":"x"}}}]`))
 	require.NoError(t, err)
 	assert.False(t, valueCarries(nested[0], "", keys), "must not match the two-segment field a -> b")
+}
+
+// TestPatchDiffHidesFieldsInAnotherCase asserts the diff hides a field
+// whatever its case: a patch that adds or changes /StringData/k, /Data/k and
+// /Password keeps the path and shows <redacted>, a missing side staying null.
+func TestPatchDiffHidesFieldsInAnotherCase(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		kind, obj, patch string
+		want             []safety.DiffEntry
+	}{
+		{"secret",
+			`{"apiVersion":"v1","kind":"Secret","metadata":{"name":"db","namespace":"default","resourceVersion":"5"},"Data":{"a":"b2xk"},"StringData":{"a":"old"}}`,
+			`[{"op":"add","path":"/Data/k","value":"bmV3"},{"op":"add","path":"/StringData/k","value":"new"}]`,
+			[]safety.DiffEntry{{Path: "/Data/k", To: "<redacted>"}, {Path: "/StringData/k", To: "<redacted>"}}},
+		{"user",
+			`{"apiVersion":"management.cattle.io/v3","kind":"User","metadata":{"name":"u-test","resourceVersion":"1"},"username":"alice","Password":"hunter2"}`,
+			`[{"op":"replace","path":"/Password","value":"hunter3"}]`,
+			[]safety.DiffEntry{{Path: "/Password", From: "<redacted>", To: "<redacted>"}}},
+	} {
+		client := &patchClient{obj: objFromJSON(t, tc.obj)}
+		fac := &recFactory{client: client, resolve: map[string]string{"prod": "c-abc"}}
+		eff, _, err := planPatch(t, NewPatch(mustKind(t, tc.kind), fac, nil), input{args: []string{"x"}, s: map[string]string{
+			"cluster": "prod", "namespace": "default", "patch": tc.patch,
+		}})
+		require.NoError(t, err, tc.kind)
+		assert.Equal(t, tc.want, eff.Diff, tc.kind)
+	}
 }
 
 // TestPatchRedactsUserPasswordFromResult asserts the patch-response redaction

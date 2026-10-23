@@ -112,7 +112,7 @@ func TestGrantProjectUserByID(t *testing.T) {
 	gn, _, _ := unstructured.NestedString(client.created.Object, "metadata", "generateName")
 	assert.Equal(t, "project-member-", gn)
 
-	assert.Equal(t, []string{"/projectName", "/roleTemplateName", "/userName", "/userPrincipalName"}, diffPaths(eff.Diff))
+	assert.Equal(t, []string{"/metadata/namespace", "/projectName", "/roleTemplateName", "/userName", "/userPrincipalName"}, diffPaths(eff.Diff))
 	for _, e := range eff.Diff {
 		assert.Nil(t, e.From)
 	}
@@ -156,7 +156,7 @@ func TestGrantClusterScope(t *testing.T) {
 	ns, _, _ := unstructured.NestedString(client.created.Object, "metadata", "namespace")
 	assert.Equal(t, "c-x", ns)
 
-	assert.Equal(t, []string{"/clusterName", "/roleTemplateName", "/userName", "/userPrincipalName"}, diffPaths(eff.Diff))
+	assert.Equal(t, []string{"/clusterName", "/metadata/namespace", "/roleTemplateName", "/userName", "/userPrincipalName"}, diffPaths(eff.Diff))
 	for _, e := range eff.Diff {
 		assert.Nil(t, e.From)
 	}
@@ -284,7 +284,7 @@ func TestGrantProvisioningWarnsAndPredictsID(t *testing.T) {
 	upn, _, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
 	assert.Equal(t, "okta_user://ghost", upn)
 
-	assert.Equal(t, []string{"/projectName", "/roleTemplateName", "/userPrincipalName"}, diffPaths(eff.Diff))
+	assert.Equal(t, []string{"/metadata/namespace", "/projectName", "/roleTemplateName", "/userPrincipalName"}, diffPaths(eff.Diff))
 	for _, e := range eff.Diff {
 		assert.Nil(t, e.From)
 	}
@@ -322,7 +322,7 @@ func TestGrantGroupPassthrough(t *testing.T) {
 	_, upnFound, _ := unstructured.NestedString(client.created.Object, "userPrincipalName")
 	assert.False(t, upnFound, "group path: userPrincipalName must be absent")
 
-	assert.Equal(t, []string{"/groupPrincipalName", "/projectName", "/roleTemplateName"}, diffPaths(eff.Diff))
+	assert.Equal(t, []string{"/groupPrincipalName", "/metadata/namespace", "/projectName", "/roleTemplateName"}, diffPaths(eff.Diff))
 	for _, e := range eff.Diff {
 		assert.Nil(t, e.From)
 	}

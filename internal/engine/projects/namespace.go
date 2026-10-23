@@ -71,5 +71,5 @@ func (c createNamespaceCmd) Plan(ctx context.Context, in runtime.Input) (safety.
 		return safety.Effect{}, nil, err
 	}
 	nsKind, _ := kinds.Lookup("namespace")
-	return engine.PlanCreate(ctx, client, nsKind.GVR, "", obj, cluster, nsKind.Name, "Namespace", nsKind.Sensitive)
+	return engine.PlanCreate(ctx, client, nsKind.GVR, "", obj, nsKind.Redaction(), cluster, nsKind.Name, "Namespace", nsKind.Sensitive)
 }

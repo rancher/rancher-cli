@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -182,7 +181,7 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	if scope.Kind == ScopeGlobal {
 		effCluster = engine.LocalCluster
 	}
-	eff, exec, err := engine.PlanCreate(ctx, client, bindKind.GVR, scope.NS, obj, effCluster, bindKind.Name, bindKind.K8sKind, bindKind.Sensitive)
+	eff, exec, err := engine.PlanCreate(ctx, client, bindKind.GVR, scope.NS, obj, bindKind.Redaction(), effCluster, bindKind.Name, bindKind.K8sKind, bindKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
@@ -193,30 +192,12 @@ func (c grantCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// this preview override.
 	eff.Target = bindKind.GVR.Resource + "/" + prefix + "*"
 	eff.DisplayName = prefix + "*"
-	eff.Diff = grantDiff(fields)
 	if rs.Provision {
 		eff.Warnings = append(eff.Warnings, fmt.Sprintf(
 			"no user exists for principal %q; Rancher will provision user %q when the binding is created",
 			rs.Principal, ProvisionedUserID(rs.Principal)))
 	}
 	return eff, exec, nil
-}
-
-// grantDiff renders the authorization fields as create-diff entries:
-// JSON-pointer paths on the binding, From nil, To the submitted value -
-// EXACTLY the field set grant writes, nothing else (no /metadata,
-// /apiVersion, /kind), sorted for stable output.
-func grantDiff(fields map[string]any) []safety.DiffEntry {
-	paths := make([]string, 0, len(fields))
-	for k := range fields {
-		paths = append(paths, k)
-	}
-	sort.Strings(paths)
-	out := make([]safety.DiffEntry, 0, len(paths))
-	for _, k := range paths {
-		out = append(out, safety.DiffEntry{Path: engine.PointerFor([]string{k}), From: nil, To: fields[k]})
-	}
-	return out
 }
 
 // candidatesWithFallback returns every item whose hay(i) contains needle

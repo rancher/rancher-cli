@@ -10,6 +10,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -262,5 +263,9 @@ func (c createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, r
 	// The write goes through the management proxy (LocalCluster) because
 	// Project is a management.cattle.io resource namespaced by cluster ID,
 	// but the Effect targets the downstream cluster the project belongs to.
-	return engine.PlanCreate(ctx, client, gvr, cluster, obj, cluster, "project", "Project", false)
+	projectKind, ok := kinds.Lookup("project")
+	if !ok {
+		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric, "internal error: no kind row for project")
+	}
+	return engine.PlanCreate(ctx, client, gvr, cluster, obj, projectKind.Redaction(), cluster, "project", "Project", false)
 }

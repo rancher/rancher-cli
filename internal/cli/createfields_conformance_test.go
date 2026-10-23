@@ -683,8 +683,16 @@ func (r *fieldRecorder) Create(_ context.Context, gvr schema.GroupVersionResourc
 	return out, nil
 }
 
-// Get answers the cloud-credential lookup of create cluster.
+// Get answers the cloud-credential lookup of create cluster and the project
+// lookup of create secret --project.
 func (r *fieldRecorder) Get(_ context.Context, gvr schema.GroupVersionResource, ns, name string) (*unstructured.Unstructured, error) {
+	if gvr.Resource == "projects" {
+		return &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": "management.cattle.io/v3", "kind": "Project",
+			"metadata": map[string]any{"name": name, "namespace": ns},
+			"status":   map[string]any{"backingNamespace": ns + "-" + name},
+		}}, nil
+	}
 	if gvr.Resource == "secrets" {
 		return &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1", "kind": "Secret",

@@ -797,6 +797,14 @@ literal `~` inside a key; a domain-prefixed label or annotation key therefore
 renders as one escaped segment. The string is usable verbatim as the `path` of a
 JSON Patch operation.
 
+A create's dry-run lists the fields the command sends, one entry per field,
+with `from` null; it does not list the server's defaults. The fields that
+name the object (`apiVersion`, `kind`, `metadata.name`,
+`metadata.generateName`) are in the headline, not the list, and a create that
+sets nothing past its name has no `diff`. In the default text render a map or
+list value prints as compact JSON. A value that is hidden shows `<redacted>`
+in `from` or `to`, and a side that has no value stays null.
+
 `patch <kind>` takes an RFC 6902 JSON Patch (an array of operations) by default,
 and an RFC 7386 JSON merge patch (an object) with `--type merge`. In a merge
 patch, every list you include replaces the whole list in the object; kubectl's

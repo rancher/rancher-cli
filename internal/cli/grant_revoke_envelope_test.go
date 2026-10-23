@@ -435,7 +435,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		assert.Empty(t, env.Warnings)
 		assert.Equal(t, "create", env.Data.Action)
 		assert.True(t, env.Data.Destructive, "grant must be Destructive")
-		assert.Equal(t, []string{"/projectName", "/roleTemplateName", "/userName", "/userPrincipalName"},
+		assert.Equal(t, []string{"/metadata/namespace", "/projectName", "/roleTemplateName", "/userName", "/userPrincipalName"},
 			grDiffPaths(env.Data.Diff))
 		diffVals := grDiffToMap(env.Data.Diff)
 		assert.Equal(t, "c-x:p-x", diffVals["/projectName"])
@@ -461,7 +461,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		var env effectEnvelope
 		require.NoError(t, json.Unmarshal(stdout, &env))
 		assert.Equal(t, "Effect", env.Kind)
-		assert.Equal(t, []string{"/clusterName", "/roleTemplateName", "/userName", "/userPrincipalName"},
+		assert.Equal(t, []string{"/clusterName", "/metadata/namespace", "/roleTemplateName", "/userName", "/userPrincipalName"},
 			grDiffPaths(env.Data.Diff))
 		diffVals := grDiffToMap(env.Data.Diff)
 		assert.Equal(t, "c-x", diffVals["/clusterName"])
@@ -515,7 +515,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		require.NoError(t, json.Unmarshal(stdout, &env))
 		assert.Equal(t, "Effect", env.Kind)
 		// Exact complete Diff: scope, role, and subject entries; no /userName.
-		assert.Equal(t, []string{"/projectName", "/roleTemplateName", "/userPrincipalName"},
+		assert.Equal(t, []string{"/metadata/namespace", "/projectName", "/roleTemplateName", "/userPrincipalName"},
 			grDiffPaths(env.Data.Diff))
 		diffVals := grDiffToMap(env.Data.Diff)
 		assert.Equal(t, "c-x:p-x", diffVals["/projectName"])
@@ -540,7 +540,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		require.NoError(t, json.Unmarshal(stdout, &env))
 		assert.Equal(t, "Effect", env.Kind)
 		// Exact complete Diff: scope, role, and subject entries; no /userName.
-		assert.Equal(t, []string{"/clusterName", "/roleTemplateName", "/userPrincipalName"},
+		assert.Equal(t, []string{"/clusterName", "/metadata/namespace", "/roleTemplateName", "/userPrincipalName"},
 			grDiffPaths(env.Data.Diff))
 		diffVals := grDiffToMap(env.Data.Diff)
 		assert.Equal(t, "c-x", diffVals["/clusterName"])
@@ -654,7 +654,7 @@ func TestGrantRevokeEnvelope(t *testing.T) {
 		require.NoError(t, json.Unmarshal(stdout, &env))
 		assert.Equal(t, "Effect", env.Kind)
 		assert.Empty(t, env.Warnings, "group subject: no provisioning warning")
-		assert.Equal(t, []string{"/groupPrincipalName", "/projectName", "/roleTemplateName"},
+		assert.Equal(t, []string{"/groupPrincipalName", "/metadata/namespace", "/projectName", "/roleTemplateName"},
 			grDiffPaths(env.Data.Diff))
 		diffVals := grDiffToMap(env.Data.Diff)
 		assert.Equal(t, "okta_group://gid", diffVals["/groupPrincipalName"])

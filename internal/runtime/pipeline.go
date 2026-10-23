@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strings"
 	"text/template"
@@ -955,9 +956,10 @@ func dryRunText(eff safety.Effect) string {
 	for _, d := range eff.Diff {
 		// d.Path is an RFC 6901 JSON Pointer ("~1" for "/", "~0" for "~"),
 		// printed verbatim: it is valid as-is for a JSON Patch op's "path".
-		// The values are the server's dry-run answer: one line each, with
-		// control characters stripped so a value cannot forge a line.
-		lines = append(lines, output.Printable(fmt.Sprintf("%s: %v -> %v", d.Path, d.From, d.To)))
+		// The values are the fields the request sets or changes, computed
+		// by the command: one line each, with control characters stripped
+		// so a value cannot forge a line.
+		lines = append(lines, output.Printable(fmt.Sprintf("%s: %s -> %s", d.Path, diffValueText(d.From), diffValueText(d.To))))
 	}
 	lines = append(lines, ObjectLines(eff.Objects, eff.DisplayKind)...)
 	gate := "dry run - re-run with --apply"
@@ -967,6 +969,22 @@ func dryRunText(eff safety.Effect) string {
 	gate += " to execute"
 	lines = append(lines, gate)
 	return TextLines(fmt.Sprintf("%s %s/%s", eff.Action, eff.DisplayKind, eff.DisplayName), lines...).Text
+}
+
+// diffValueText renders one side of a diff entry for the text preview: a
+// map or a list as compact JSON ({"k":"v"}, ["a","b"]) with <, > and & as
+// typed, a missing side as <nil>, anything else as its plain text.
+func diffValueText(v any) string {
+	switch reflect.ValueOf(v).Kind() {
+	case reflect.Map, reflect.Slice:
+		var b strings.Builder
+		enc := json.NewEncoder(&b)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(v); err == nil {
+			return strings.TrimSuffix(b.String(), "\n")
+		}
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // renderErr writes ce to stderr in the invocation's requested format, after

@@ -83,11 +83,13 @@ const (
 	OutcomeNotAttempted    = "not attempted"
 )
 
-// Effect is the server-computed preview of a mutation (from Plan). Contract and
-// Stability are NOT serialized - the schema manifest is the single published
-// source for those; the internal Binding continues to drive the --allow-deprecated
-// gate in the pipeline. Server is stamped by the surface adapter (Branch 2);
-// Cluster is set by the command's Plan.
+// Effect is the preview of a mutation (from Plan): its Diff lists the fields
+// the request sets or changes, and the server's dry-run still decides whether
+// the preview succeeds. Contract and Stability are NOT serialized - the
+// schema manifest is the single published source for those; the internal
+// Binding continues to drive the --allow-deprecated gate in the pipeline.
+// Server is stamped by the surface adapter (Branch 2); Cluster is set by the
+// command's Plan.
 type Effect struct {
 	Action Action `json:"action"`
 	Target string `json:"target"`

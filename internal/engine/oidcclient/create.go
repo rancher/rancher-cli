@@ -138,7 +138,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	// wait/secret-read/discovery stages PlanCreate's generic shape does not
 	// express. The Effect it builds (server-side dry-run preview) is the
 	// part this command reuses.
-	eff, _, err := engine.PlanCreate(ctx, client, k.GVR, "", obj, engine.LocalCluster, k.Name, "OIDCClient", k.Sensitive)
+	eff, _, err := engine.PlanCreate(ctx, client, k.GVR, "", obj, k.Redaction(), engine.LocalCluster, k.Name, "OIDCClient", k.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

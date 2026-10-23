@@ -414,11 +414,12 @@ func TestDoCuratedFlagsMatchKindsCurated(t *testing.T) {
 	assert.ElementsMatch(t, meta.Curated, flagFields)
 }
 
-// TestCreateMachineConfigPlanDiffLessEffect asserts that one server-side
-// dry-run, action=create, identity-only target, no diff, non-destructive,
-// cluster local. All curated VALUE fields are set so the fallthrough warning
-// does not fire; bool fields are not set (they cannot go out of date).
-func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
+// TestCreateMachineConfigPlanEffectDiff asserts that one server-side
+// dry-run, action=create, identity-only target, a diff of the fields the
+// flags set (name and kind excluded), non-destructive, cluster local. All
+// curated VALUE fields are set so the fallthrough warning does not fire;
+// bool fields are not set (they cannot go out of date).
+func TestCreateMachineConfigPlanEffectDiff(t *testing.T) {
 	t.Parallel()
 	client := &mcRecClient{}
 	cmd := NewCreateMachineConfig(fakeFactory{c: client}).(*createMachineConfigCmd)
@@ -434,7 +435,13 @@ func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
 	assert.Equal(t, safety.ActionCreate, eff.Action)
 	assert.Equal(t, "digitaloceanconfigs/web-pool", eff.Target)
 	assert.Equal(t, "local", eff.Cluster)
-	assert.Empty(t, eff.Diff)
+	assert.Equal(t, []safety.DiffEntry{
+		{Path: "/image", To: "ubuntu-24-10-x64"},
+		{Path: "/metadata/namespace", To: "fleet-default"},
+		{Path: "/region", To: "nyc3"},
+		{Path: "/size", To: "s-2vcpu-4gb"},
+		{Path: "/tags", To: "web"},
+	}, eff.Diff)
 	assert.False(t, eff.Destructive)
 	assert.Empty(t, eff.Warnings, "no prune, all curated set → no warning")
 	assert.Equal(t, "fleet-default", client.createdNS)

@@ -316,6 +316,43 @@ func TestDryRunTextDiffLines(t *testing.T) {
 		"  dry run - re-run with --apply to execute\n", out.String())
 }
 
+// TestDryRunTextDiffValues asserts a map or list value prints as compact JSON
+// on its entry's one line (<, > and & as typed, a newline as the two
+// characters \n), and a missing side prints as <nil>, inside the map or
+// list as a null and as a side of the entry.
+func TestDryRunTextDiffValues(t *testing.T) {
+	t.Parallel()
+	cmd := fakeMutating{
+		d: mutatingDesc(),
+		eff: safety.Effect{
+			Action: safety.ActionCreate, Target: "x", DisplayKind: "project", DisplayName: "web",
+			Diff: []safety.DiffEntry{
+				{Path: "/spec/limit", To: map[string]any{"limitsCpu": "500m", "n": nil}},
+				{Path: "/spec/uris", To: []any{"https://a/?x=1&y=<2>", nil}},
+				{Path: "/spec/empty", To: map[string]any{}},
+				{Path: "/spec/none", To: []any{}},
+				{Path: "/spec/text", To: "a\nb"},
+				{Path: "/spec/json", To: map[string]any{"k": "line1\nline2"}},
+				{Path: "/spec/removed", From: []any{"a", "b"}},
+			},
+		},
+		exec: unusedExec(t),
+	}
+	var out bytes.Buffer
+	_, ce := Run(t.Context(), cmd, mapInput{},
+		IO{Out: &out, Err: io.Discard, Format: "", DryRun: true}, safety.Binding{})
+	require.Nil(t, ce)
+	assert.Equal(t, "create project/web\n"+
+		"  /spec/limit: <nil> -> {\"limitsCpu\":\"500m\",\"n\":null}\n"+
+		"  /spec/uris: <nil> -> [\"https://a/?x=1&y=<2>\",null]\n"+
+		"  /spec/empty: <nil> -> {}\n"+
+		"  /spec/none: <nil> -> []\n"+
+		"  /spec/text: <nil> -> ab\n"+
+		"  /spec/json: <nil> -> {\"k\":\"line1\\nline2\"}\n"+
+		"  /spec/removed: [\"a\",\"b\"] -> <nil>\n"+
+		"  dry run - re-run with --apply to execute\n", out.String())
+}
+
 // TestRenderEffectRawFormatsWarningsToStderr asserts that raw-output formats
 // (-o name, -o template=...) carry only the target field on stdout - the Effect
 // envelope's "warnings" key is never emitted - so renderEffect must mirror each

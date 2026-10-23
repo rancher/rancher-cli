@@ -83,7 +83,7 @@ func (c createTokenCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effe
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	eff, _, err := engine.PlanCreate(ctx, client, tokenKind.GVR, "", obj, engine.LocalCluster, tokenKind.Name, "Token", tokenKind.Sensitive)
+	eff, _, err := engine.PlanCreate(ctx, client, tokenKind.GVR, "", obj, tokenKind.Redaction(), engine.LocalCluster, tokenKind.Name, "Token", tokenKind.Sensitive)
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}

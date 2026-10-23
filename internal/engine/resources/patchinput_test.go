@@ -219,18 +219,69 @@ func TestPatchedObjectErrorsCarryNoData(t *testing.T) {
 }
 
 // TestPatchMergeSecretDiffIsRedacted asserts that a merge patch of a
-// Secret's data, whole-map removal included, shows paths only.
+// Secret's data shows paths only: each side that has a value reads
+// <redacted>, and a side the patch adds or removes stays null.
 func TestPatchMergeSecretDiffIsRedacted(t *testing.T) {
 	t.Parallel()
 	secret := `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"db","namespace":"default","resourceVersion":"5"},"data":{"password":"b2xk"}}`
-	for _, p := range []string{`{"data":null}`, `{"data":{"password":"bmV3"}}`, `{"stringData":{"k":"v"}}`} {
-		eff, _, err := planTyped(t, "secret", "db", secret, p, "merge")
-		require.NoError(t, err, p)
-		require.NotEmpty(t, eff.Diff, p)
-		for _, d := range eff.Diff {
-			assert.Equal(t, "<redacted>", d.From, p)
-			assert.Equal(t, "<redacted>", d.To, p)
-		}
+	for _, tc := range []struct {
+		patch    string
+		wantPath string
+		from, to any
+	}{
+		{`{"data":null}`, "/data", "<redacted>", nil},
+		{`{"data":{"password":"bmV3"}}`, "/data/password", "<redacted>", "<redacted>"},
+		{`{"stringData":{"k":"v"}}`, "/stringData", nil, "<redacted>"},
+	} {
+		eff, _, err := planTyped(t, "secret", "db", secret, tc.patch, "merge")
+		require.NoError(t, err, tc.patch)
+		require.Len(t, eff.Diff, 1, tc.patch)
+		assert.Equal(t, safety.DiffEntry{Path: tc.wantPath, From: tc.from, To: tc.to}, eff.Diff[0], tc.patch)
+	}
+}
+
+// TestPatchSecretDiffHidesTheLastAppliedAnnotation asserts a patch that adds
+// or removes the whole annotations map of a Secret, whose last-applied
+// annotation holds a copy of the applied object, shows that annotation as
+// <redacted> and the other annotations as they are.
+func TestPatchSecretDiffHidesTheLastAppliedAnnotation(t *testing.T) {
+	t.Parallel()
+	const lastApplied = "kubectl.kubernetes.io/last-applied-configuration"
+	withAnnotations := `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"db","namespace":"default","resourceVersion":"5","annotations":{"` + lastApplied + `":"copy-of-the-secret","owner":"team-a"}},"data":{"k":"b2xk"}}`
+	eff, _, err := planTyped(t, "secret", "db", withAnnotations, `{"metadata":{"annotations":null}}`, "merge")
+	require.NoError(t, err)
+	d, ok := diffAt(eff, "/metadata/annotations")
+	require.True(t, ok, "diff: %+v", eff.Diff)
+	assert.Equal(t, map[string]any{lastApplied: "<redacted>", "owner": "team-a"}, d.From)
+	assert.Nil(t, d.To)
+
+	withoutAnnotations := `{"apiVersion":"v1","kind":"Secret","metadata":{"name":"db","namespace":"default","resourceVersion":"5"},"data":{"k":"b2xk"}}`
+	eff, _, err = planTyped(t, "secret", "db", withoutAnnotations,
+		`{"metadata":{"annotations":{"`+lastApplied+`":"copy-of-the-secret","owner":"team-a"}}}`, "merge")
+	require.NoError(t, err)
+	d, ok = diffAt(eff, "/metadata/annotations")
+	require.True(t, ok, "diff: %+v", eff.Diff)
+	assert.Nil(t, d.From)
+	assert.Equal(t, map[string]any{lastApplied: "<redacted>", "owner": "team-a"}, d.To)
+}
+
+// TestPatchMachineConfigDiffHidesItsSecretFields asserts a patch of a
+// machine config shows the secret fields of its driver as <redacted> and the
+// other fields as they are.
+func TestPatchMachineConfigDiffHidesItsSecretFields(t *testing.T) {
+	t.Parallel()
+	obj := `{"apiVersion":"rke-machine-config.cattle.io/v1","kind":"Amazonec2Config","metadata":{"name":"aws","namespace":"default","resourceVersion":"5"},"region":"us-east-1","secretKey":"old-secret"}`
+	eff, _, err := planTyped(t, "amazonec2config", "aws", obj,
+		`{"region":"us-west-2","secretKey":"new-secret","SessionToken":"token"}`, "merge")
+	require.NoError(t, err)
+	for path, want := range map[string]safety.DiffEntry{
+		"/region":       {Path: "/region", From: "us-east-1", To: "us-west-2"},
+		"/secretKey":    {Path: "/secretKey", From: "<redacted>", To: "<redacted>"},
+		"/SessionToken": {Path: "/SessionToken", To: "<redacted>"},
+	} {
+		d, ok := diffAt(eff, path)
+		require.True(t, ok, "diff: %+v", eff.Diff)
+		assert.Equal(t, want, d, path)
 	}
 }
 

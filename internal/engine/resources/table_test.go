@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/rancher/rancher-cli/internal/output"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // TestTableRowsRenderBoolLeaves asserts the column renderer's typed leaf ladder
@@ -311,10 +313,10 @@ func TestTableMarshalJSONDoesNotMutateOriginal(t *testing.T) {
 		"the original unstructured object must not be mutated by engine.ScrubPaths")
 }
 
-// TestRedactKindPathsBlanksDiffEntries verifies that redactKindPaths replaces
-// From/To with "<redacted>" for diff entries whose path matches a RedactPaths
-// entry, and leaves unrelated entries intact.
-func TestRedactKindPathsBlanksDiffEntries(t *testing.T) {
+// TestRedactDiffBlanksKindPathEntries asserts that engine.RedactDiff replaces
+// From/To with "<redacted>" for diff entries at or under a RedactPaths
+// path, and leaves unrelated entries intact.
+func TestRedactDiffBlanksKindPathEntries(t *testing.T) {
 	t.Parallel()
 	diff := []safety.DiffEntry{
 		{Path: "/token", From: "old-cred", To: "new-cred"},
@@ -322,7 +324,7 @@ func TestRedactKindPathsBlanksDiffEntries(t *testing.T) {
 		{Path: "/description", From: "old-desc", To: "new-desc"},
 		{Path: "/tokenExtra", From: "keep-old", To: "keep-new"}, // prefix match must not fire
 	}
-	redactKindPaths(diff, [][]string{{"token"}})
+	diff = engine.RedactDiff(diff, kinds.RowlessRedaction(schema.GroupVersionResource{}, "a test resource with no kind row", []string{"token"}))
 
 	assert.Equal(t, "<redacted>", diff[0].From, "/token From must be redacted")
 	assert.Equal(t, "<redacted>", diff[0].To, "/token To must be redacted")

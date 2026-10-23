@@ -182,10 +182,9 @@ func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 }
 
-// TestCreateSecretDryRunEffectNeverLeaksLiteralValue asserts that
-// engine.PlanCreate builds Target-only Effects (no diff, no object payload),
-// so a dry-run of a create secret leaks nothing - this test proves it by
-// rendering the Effect to JSON and checking the literal never appears.
+// TestCreateSecretDryRunEffectNeverLeaksLiteralValue asserts that the diff of
+// a create secret preview lists the literal's path with the value hidden:
+// rendering the Effect to JSON, the literal never appears and the path does.
 func TestCreateSecretDryRunEffectNeverLeaksLiteralValue(t *testing.T) {
 	t.Parallel()
 	const literal = "sekret-value-xyz"
@@ -201,6 +200,11 @@ func TestCreateSecretDryRunEffectNeverLeaksLiteralValue(t *testing.T) {
 	rendered, err := json.Marshal(eff)
 	require.NoError(t, err)
 	assert.NotContains(t, string(rendered), literal)
+	assert.Equal(t, []safety.DiffEntry{
+		{Path: "/metadata/namespace", To: "team-a"},
+		{Path: "/stringData/password", To: "<redacted>"},
+		{Path: "/type", To: "Opaque"},
+	}, eff.Diff)
 }
 
 // TestCreateSecretIsDestructive asserts the confirmation gate for both routing

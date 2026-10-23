@@ -59,7 +59,7 @@ what drifted the previous revision of this doc).
 | `internal/runtime/safety` | Safety value types: closed `Action` vocabulary, `Contract`/`Stability` `Binding`, and the `Effect` mutation-preview model. |
 | `internal/runtime/completion` | The live shell-completion seam: a source's `Claim`/`Complete` contract (`Source`, `Request`, `Requirements`, `Result`, the optional `Completer` interface), the description channel (`Result.Descriptions`, a raw text per bare name) with the sanitizer the surface applies to every description, the request capability the surface builds (`Connection`: private client and bearer, none for a source that needs no credential, counted allowance, sticky refusal), and the opaque `Path` builders that admit user-derived segments only through `ValidSegment`. A leaf of the standard library. |
 | `internal/runtime/completion/completiontest` | Test doubles the live completion sources' tests share: a server answering fixed bodies by path that records every request URI and Accept header, and the fixture documents more than one package asserts against (cloud credentials, the two discovery roots, the subject users). Imported by test code only. |
-| `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, the optional `TableReader` port (the cluster's API server's table, as kubectl asks for it), downstream-cluster resolution, and reusable plan/execute helpers; depends only on runtime + safety + clierr contracts. |
+| `internal/engine` | Pure domain layer: `ClusterClient`/`ClusterClientFactory` ports, the optional `TableReader` port (the cluster's API server's table, as kubectl asks for it), downstream-cluster resolution, and reusable plan/execute helpers, including the diff a create preview lists and the hiding of secret values in every preview diff; depends only on runtime + safety + clierr contracts and the kind table (`kinds`), which supplies the paths a preview hides. |
 | `internal/engine/kinds` | Single source of kind knowledge for generic verbs: MCP keys, CLI names/aliases, GVRs, scope, deletability, contract bindings, table columns (or `ServerTable`, for a built-in kind whose table the cluster's API server serves). |
 | `internal/engine/kinds/complete` | The generic live completion source of the kind table: for any Completable kind, its objects' names derived from the row's group, version, resource, namespace policy and scope, each described by the fields of the row's `Handle.Lookup` when it has one (`KindSource`), plus the shared `--namespace` and `--node` sources, which are that derivation for the namespace and node kinds. A restricted `complete` package under the import and declaration fences. |
 | `internal/engine/resources` | Generic table-driven verbs (`get`, `delete`) parameterized by a `kinds.Kind`, including scope-based routing (`Route`, given the operation: cluster/namespace, plus the `--project` refusal for a kind or operation it does not apply to and membership validation against the project the pipeline resolved) and table projection: a kind's own columns, or, for a `ServerTable` kind rendered as a text table, the table the API server answered with. |
@@ -238,6 +238,7 @@ graph TD
     engine --> runtime
     engine --> safety
     engine --> clierr
+    engine --> kinds
 
     kinds --> clierr
     kinds --> safety
