@@ -19,6 +19,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 )
 
 // clustersServer serves one steve page of clusters.
@@ -449,7 +450,7 @@ func TestClustersBudgetExpiryDuringDiscoveryIsTerminal(t *testing.T) {
 	fanOutBudget = 50 * time.Millisecond
 	t.Cleanup(func() { fanOutBudget = old })
 	cmd, _ := callerFixture(t)
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) }))
 	t.Cleanup(srv.Close)
 	cmd.roots = fakeRootFactory{fakeRootClient{srv}}
 	_, err := cmd.Execute(t.Context(), clustersInput("", ""), nil)
@@ -463,7 +464,7 @@ func TestClustersBudgetExpiryDuringDiscoveryIsTerminal(t *testing.T) {
 func TestClustersTimeoutFlagIsTheBudget(t *testing.T) {
 	t.Parallel()
 	cmd, _ := callerFixture(t)
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { testtransport.HangAndAbort(r) }))
 	t.Cleanup(srv.Close)
 	cmd.roots = fakeRootFactory{fakeRootClient{srv}}
 	_, err := cmd.Execute(t.Context(), fakeInput{strs: map[string]string{flagTimeout: "50ms"}}, nil)

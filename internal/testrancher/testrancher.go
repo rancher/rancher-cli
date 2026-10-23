@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
@@ -271,7 +272,10 @@ type Options struct {
 	// (deleted or expired); an admin's bearer deletes the token.
 	V3DeleteForbiddenForNonAdmin bool
 	// RequestHook runs on every request the facade handles, before
-	// dispatch.
+	// dispatch. A hook that waits for the client to leave uses
+	// testtransport.WaitUntilGone; the facade then finishes its state change
+	// and aborts its answer. A hook that cancels a context the request was
+	// not sent on needs no wait.
 	RequestHook func(r *http.Request)
 	// WritesWithoutFieldManager, when non-empty, is the reason this Facade
 	// may receive a POST, PUT or PATCH to a Kubernetes path without the
@@ -361,8 +365,10 @@ type Options struct {
 	// about when the record is created.
 	DerivedCreateStatus int
 	// DerivedCreateHook runs when a derived token create POST arrives, before the record is created
-	// or answered. A hook that cancels the client's context must then block
-	// on the request context so the answer cannot race the cancellation.
+	// or answered. A hook that waits for the client to leave uses
+	// testtransport.WaitUntilGone; the facade then finishes its state change
+	// and aborts its answer. A hook that cancels a context the request was
+	// not sent on needs no wait.
 	DerivedCreateHook func(r *http.Request)
 
 	// ForcedSingleLogout makes POST /v1/logout answer 500 and delete nothing
@@ -727,8 +733,18 @@ func (f *Facade) ValidBearer(bearer string) bool {
 
 // ServeHTTP dispatches auth paths to the facade's own handlers; everything else
 // falls through to opts.Fallthrough (the facade is a layer in front of the
-// existing router; it does not grow into a full fake).
+// existing router; it does not grow into a full fake). When the request's
+// context has ended and an answer was dropped or never sent, the connection
+// is aborted after the handler has made its state change; a hook that waits
+// for the client to leave uses testtransport.WaitUntilGone.
 func (f *Facade) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ew := &endedRequestWriter{ResponseWriter: w, ctx: r.Context()}
+	f.dispatch(ew, r)
+	ew.abortEndedRequest()
+}
+
+// dispatch runs the hooks and the handler for r.
+func (f *Facade) dispatch(w http.ResponseWriter, r *http.Request) {
 	if f.opts.RequestHook != nil {
 		f.opts.RequestHook(r)
 	}
@@ -1592,7 +1608,7 @@ func (f *Facade) handleDelete(w http.ResponseWriter, r *http.Request, kind, name
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	case "hang":
-		<-r.Context().Done()
+		testtransport.HangAndAbort(r)
 		return
 	}
 
@@ -1661,7 +1677,7 @@ func (f *Facade) handleLogout(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	case "hang":
-		<-r.Context().Done()
+		testtransport.HangAndAbort(r)
 		return
 	}
 

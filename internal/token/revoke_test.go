@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/testrancher"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -138,8 +139,7 @@ func TestRevokeCreatedUsesTheCredentialAsBearerAndBoundsItself(t *testing.T) {
 				// request's write to gotPath would race it. It aborts the
 				// connection rather than returning, so the caller can never
 				// decode an empty 200 that raced its own deadline.
-				<-r.Context().Done()
-				panic(http.ErrAbortHandler)
+				testtransport.HangAndAbort(r)
 			}
 			gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
 			w.WriteHeader(http.StatusOK)
@@ -400,8 +400,7 @@ func TestRevokeTokenLogoutAndFallbackShareOneBound(t *testing.T) {
 		var requests atomic.Int32
 		srv := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requests.Add(1)
-			<-r.Context().Done()
-			panic(http.ErrAbortHandler)
+			testtransport.HangAndAbort(r)
 		}))
 		ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
 		defer cancel()

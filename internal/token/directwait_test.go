@@ -24,6 +24,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/testrancher"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
@@ -121,10 +122,7 @@ func (d *directEndpoint) handle(w http.ResponseWriter, r *http.Request) {
 		case "unavailable":
 			w.WriteHeader(http.StatusServiceUnavailable)
 		case "hang":
-			select {
-			case <-d.release:
-			case <-r.Context().Done():
-			}
+			testtransport.HangUntilReleased(r, d.release)
 		}
 	}
 }

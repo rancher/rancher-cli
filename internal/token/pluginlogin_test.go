@@ -22,6 +22,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -977,7 +978,7 @@ func TestPluginLoginCancelledWinnerRevokesWhatItCreated(t *testing.T) {
 		x := newInMemoryPluginFixture(t, true, testrancher.Options{DerivedCreateHook: func(r *http.Request) {
 			if creates.Add(1) == 2 {
 				cancel()
-				<-r.Context().Done()
+				testtransport.WaitUntilGone(r)
 			}
 		}})
 		_, err := x.command(x.store).Execute(ctx, x.input("c-test", "n"), localPrompter())

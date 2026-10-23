@@ -1,5 +1,9 @@
-// Package testtransport is test support that keeps a test binary off
-// http.DefaultTransport. Tests only; no production package imports it.
+// Package testtransport is test support for HTTP tests. Tests only; no
+// production package imports it. It has two purposes: keeping a test binary
+// off http.DefaultTransport, and standing in for a server that never
+// answers (HangAndAbort, HangUntilReleased and WaitUntilGone).
+//
+// Keeping off http.DefaultTransport:
 //
 // httptest.Server.Close closes the idle connections of
 // http.DefaultTransport, so a request that goes through it fails with
@@ -10,6 +14,12 @@
 // GuardDefaultTransport from its TestMain so a request that still reaches
 // the default transport fails at once, on every run, instead of on a rare
 // one.
+//
+// Standing in for a server that never answers: a test server waits on its
+// request's context, which ends when the client gives up and closes its
+// connection. The wait must end by aborting the connection, never by
+// returning, and the helpers of this package do that; the reason is in the
+// doc comment of HangAndAbort.
 package testtransport
 
 import (

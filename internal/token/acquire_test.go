@@ -16,6 +16,7 @@ import (
 
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/rancher/rancher-cli/internal/ui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -132,7 +133,7 @@ func TestAcquireDerivedCreateFailuresRevokeSessionBeforeReturn(t *testing.T) {
 func TestAcquireCancellationDuringDerivedCreateStillRevokesSession(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
-	f := testrancher.New(testrancher.Options{DerivedCreateHook: func(r *http.Request) { cancel(); <-r.Context().Done() }})
+	f := testrancher.New(testrancher.Options{DerivedCreateHook: func(r *http.Request) { cancel(); testtransport.WaitUntilGone(r) }})
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	var notices bytes.Buffer

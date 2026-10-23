@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/rancher/rancher-cli/internal/engine"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 )
 
 const aggregatedContentType = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList"
@@ -208,7 +209,7 @@ func TestServerResourcesCancelledMidFlightDoesNotFallBack(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		cancel()
-		<-r.Context().Done()
+		testtransport.HangAndAbort(r)
 	}))
 	defer srv.Close()
 	_, err := discoveryClient(t, srv).ServerResources(ctx)
@@ -291,7 +292,7 @@ func TestServerResourcesLegacyWalkEndsWithItsContext(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/apis/a.example/v1" {
 			cancel()
-			<-r.Context().Done()
+			testtransport.HangAndAbort(r)
 			return
 		}
 		if !legacyDiscovery(w, r) {

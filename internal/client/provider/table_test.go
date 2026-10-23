@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -387,10 +388,7 @@ func TestTableReadsFailLikeListAndGet(t *testing.T) {
 		restore := SetRequestTimeoutForTest(50 * time.Millisecond)
 		defer restore()
 		srv := newTableServer(t, func(w http.ResponseWriter, r *http.Request) {
-			select {
-			case <-r.Context().Done():
-			case <-time.After(5 * time.Second):
-			}
+			testtransport.HangAndAbort(r)
 		})
 		c := tableClientFor(t, srv.Server)
 		tr := tableReader(t, c)

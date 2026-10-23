@@ -21,6 +21,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/testrancher"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/rancher/rancher-cli/internal/ui"
 )
 
@@ -139,7 +140,7 @@ func clusterCleanup(t *testing.T, d clierr.LoginFailureDetails) clierr.RevokeRes
 func blockUntilGone(cancel context.CancelFunc) func(r *http.Request) {
 	return func(r *http.Request) {
 		cancel()
-		<-r.Context().Done()
+		testtransport.WaitUntilGone(r)
 	}
 }
 

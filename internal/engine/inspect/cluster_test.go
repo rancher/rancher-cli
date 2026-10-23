@@ -27,6 +27,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/output/style"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/safety"
+	"github.com/rancher/rancher-cli/internal/testtransport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -518,12 +519,7 @@ func TestInspectClusterCancellationThroughRealProviderClient(t *testing.T) {
 			// Abort the caller mid-LIST; the client tears the request down,
 			// which unblocks the handler via the server-side request context.
 			cancel()
-			<-r.Context().Done()
-			// Abort the connection instead of returning: a handler that
-			// returns sends an empty 200, and a client whose cancellation
-			// lands in the same instant can decode that body instead of
-			// seeing its own error.
-			panic(http.ErrAbortHandler)
+			testtransport.HangAndAbort(r)
 		default:
 			http.NotFound(w, r)
 		}
