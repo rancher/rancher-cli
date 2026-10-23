@@ -366,9 +366,12 @@ cannot touch your real config or OS keychain. Contributor guide:
 ## Support & community
 
 Questions and discussion: the [Rancher forums](http://forums.rancher.com/)
-and [Rancher Slack](https://slack.rancher.io/). Bugs and feature requests:
-[rancher/rancher issues](https://github.com/rancher/rancher/issues) - the
-central hub for Rancher product issues.
+and [Rancher Slack](https://slack.rancher.io/). Bugs and feature requests
+for the CLI, the agent skill, the install script, the credential helper or
+this documentation:
+[rancher/rancher-cli issues](https://github.com/rancher/rancher-cli/issues/new/choose).
+A problem in the Rancher server itself goes to
+[rancher/rancher issues](https://github.com/rancher/rancher/issues).
 
 For security issues, check the
 [security policy](https://github.com/rancher/rancher/security) and email
