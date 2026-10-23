@@ -300,7 +300,7 @@ func TestRouteCreateNamespaceWithProjectIsRefused(t *testing.T) {
 
 // TestRouteCreateNamespacedKindWithProjectChecksMembership asserts a
 // create of a project scopable namespaced kind takes --project: its
-// namespace must be one of the project's.
+// namespace must be in this project.
 func TestRouteCreateNamespacedKindWithProjectChecksMembership(t *testing.T) {
 	t.Parallel()
 	_, fac := newRouteProjectFixture()

@@ -23,7 +23,7 @@ func TestHandleRowsAndTheirDescriptions(t *testing.T) {
 		"user": {[]HandleField{{Path: []string{"username"}, Label: "username"}, display},
 			"user id (the NAME column of rancher get users), not the username or display name"},
 		"project": {[]HandleField{specDisplay},
-			"project id (p-xxxxx; a project made with rancher create project uses the typed name)"},
+			"project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)"},
 		"roletemplate": {[]HandleField{display},
 			"role template id (the NAME column of rancher get roletemplates), not the display name"},
 		"globalrole": {[]HandleField{display},
@@ -188,7 +188,7 @@ func TestHandleGuardRejectsAPlantedRow(t *testing.T) {
 
 	cluster, ok := ByKey("managementcluster")
 	require.True(t, ok)
-	assert.True(t, slices.ContainsFunc(cluster.Columns, func(c Column) bool { return c.Header == "DISPLAY" }))
+	assert.True(t, slices.ContainsFunc(cluster.Columns, func(c Column) bool { return c.Header == "DISPLAY NAME" }))
 	assert.Empty(t, handleViolations([]Kind{cluster}, nil))
 }
 

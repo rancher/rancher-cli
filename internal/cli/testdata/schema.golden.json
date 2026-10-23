@@ -2455,7 +2455,7 @@
           "type": "string"
         },
         {
-          "desc": "the namespace must be one of the project's",
+          "desc": "the namespace must be in this project",
           "name": "project",
           "type": "string"
         }
@@ -2607,7 +2607,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
+          "desc": "project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)",
           "name": "id",
           "required": true,
           "type": "string"
@@ -3506,7 +3506,7 @@
       "contract": "public",
       "flags": [
         {
-          "desc": "cluster `id|name`; required to address a clusterroletemplatebinding by name, omit to list across clusters",
+          "desc": "cluster `id|name`; required to get one clusterroletemplatebinding by name; leave it out to list clusterroletemplatebindings in every cluster",
           "name": "cluster",
           "type": "string"
         },
@@ -3572,7 +3572,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -3637,7 +3637,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -3703,7 +3703,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -3769,7 +3769,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -3889,7 +3889,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -4257,7 +4257,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -4322,7 +4322,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -4388,7 +4388,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -4716,7 +4716,7 @@
           "type": "string"
         },
         {
-          "desc": "list the project's namespaces; a named namespace must be one of them",
+          "desc": "list only the project's namespaces; a namespace you name must be one of them",
           "name": "project",
           "type": "string"
         },
@@ -4982,7 +4982,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -5048,7 +5048,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -5090,7 +5090,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
+          "desc": "project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)",
           "name": "id",
           "type": "string"
         }
@@ -5100,7 +5100,7 @@
       "contract": "public",
       "flags": [
         {
-          "desc": "cluster `id|name`; required to address a project by id, omit to list across clusters",
+          "desc": "cluster `id|name`; required to get one project by id; leave it out to list projects in every cluster",
           "name": "cluster",
           "type": "string"
         },
@@ -5276,7 +5276,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -5388,7 +5388,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -5454,7 +5454,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -5520,7 +5520,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -5632,7 +5632,7 @@
           "type": "string"
         },
         {
-          "desc": "list only the project's namespaces; a named object must be in one of them",
+          "desc": "list only objects in the project's namespaces; an object you name must be in one of them",
           "name": "project",
           "type": "string"
         },
@@ -5728,7 +5728,7 @@
       "auth": true,
       "commandType": "readOnly",
       "contract": "public",
-      "desc": "users hide system accounts by default; pass --include-system to show them. Naming a user always returns it, hidden or not.",
+      "desc": "A list of users leaves out system accounts by default; pass --include-system to show them. Getting one user always returns it, hidden or not.",
       "flags": [
         {
           "aliases": [
@@ -6364,7 +6364,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6374,7 +6374,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6422,7 +6422,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6432,7 +6432,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6480,7 +6480,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6490,7 +6490,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6538,7 +6538,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6548,7 +6548,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6597,7 +6597,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6607,7 +6607,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6648,7 +6648,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6658,7 +6658,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6706,7 +6706,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6716,7 +6716,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6766,7 +6766,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6776,7 +6776,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6823,7 +6823,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6833,7 +6833,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6895,7 +6895,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6905,7 +6905,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -6965,7 +6965,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -6975,7 +6975,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7036,7 +7036,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7046,7 +7046,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7107,7 +7107,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7117,7 +7117,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7165,7 +7165,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7175,7 +7175,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7236,7 +7236,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7246,7 +7246,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7286,7 +7286,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7296,7 +7296,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7346,7 +7346,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7356,7 +7356,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7405,7 +7405,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7415,7 +7415,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7456,7 +7456,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7466,7 +7466,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7507,7 +7507,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7517,7 +7517,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7566,7 +7566,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7576,7 +7576,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7637,7 +7637,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7647,7 +7647,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7707,7 +7707,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7717,7 +7717,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7778,7 +7778,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7788,7 +7788,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7828,7 +7828,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7838,7 +7838,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7887,7 +7887,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7897,7 +7897,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -7945,7 +7945,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -7955,7 +7955,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8003,7 +8003,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8013,7 +8013,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8056,7 +8056,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8066,7 +8066,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8112,7 +8112,7 @@
           "type": "string"
         },
         {
-          "desc": "the namespace must be one of the project's",
+          "desc": "the namespace must be in this project",
           "name": "project",
           "type": "string"
         },
@@ -8120,7 +8120,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8130,7 +8130,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8176,7 +8176,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8186,7 +8186,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8227,7 +8227,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8237,7 +8237,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8278,7 +8278,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8288,7 +8288,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8338,7 +8338,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8348,7 +8348,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8409,7 +8409,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8419,7 +8419,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8480,7 +8480,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8490,7 +8490,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8516,7 +8516,7 @@
       ],
       "args": [
         {
-          "desc": "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
+          "desc": "project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)",
           "name": "id",
           "required": true,
           "type": "string"
@@ -8537,7 +8537,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8547,7 +8547,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8597,7 +8597,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8607,7 +8607,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8657,7 +8657,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8667,7 +8667,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8729,7 +8729,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8739,7 +8739,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8780,7 +8780,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8790,7 +8790,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8851,7 +8851,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8861,7 +8861,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8923,7 +8923,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -8933,7 +8933,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -8994,7 +8994,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -9004,7 +9004,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -9044,7 +9044,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -9054,7 +9054,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -9116,7 +9116,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -9126,7 +9126,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -9166,7 +9166,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -9176,7 +9176,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -9218,7 +9218,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -9228,7 +9228,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -9277,7 +9277,7 @@
           "aliases": [
             "p"
           ],
-          "desc": "inline `patch`: RFC 6902 ops, or a JSON object with --type merge",
+          "desc": "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge",
           "name": "patch",
           "type": "string"
         },
@@ -9287,7 +9287,7 @@
           "type": "string"
         },
         {
-          "desc": "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)",
+          "desc": "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)",
           "enum": [
             "json",
             "merge"
@@ -10456,7 +10456,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "cluster deletion goes through delete provisioning-cluster",
+          "note": "to delete a cluster, use delete provisioning-cluster",
           "state": "absent"
         },
         "get": {
@@ -10515,7 +10515,7 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
-          "note": "owned by the cluster lifecycle; remove the machine instead",
+          "note": "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's node count with cluster scale), or outside Rancher for an imported, custom or local cluster",
           "state": "absent"
         },
         "get": {
@@ -10903,7 +10903,7 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
-          "note": "released through its claim; delete the persistentvolumeclaim instead",
+          "note": "a persistent volume is released when its claim is deleted; delete the persistentvolumeclaim instead",
           "state": "absent"
         },
         "get": {
@@ -10989,7 +10989,7 @@
       "scope": "downstream",
       "verbs": {
         "delete": {
-          "note": "expires on its own TTL",
+          "note": "an event is deleted when its TTL runs out",
           "state": "absent"
         },
         "get": {
@@ -11049,7 +11049,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "controller-owned; delete the owning source object",
+          "note": "this CLI does not delete bundles; deleting a GitRepo deletes the bundles Fleet created from it",
           "state": "absent"
         },
         "get": {
@@ -11079,7 +11079,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "controller-owned; delete the owning source object",
+          "note": "Fleet creates and manages it from a bundle; deleting a GitRepo deletes its bundles and their bundle deployments",
           "state": "absent"
         },
         "get": {
@@ -11108,7 +11108,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "controller-owned; delete the owning source object",
+          "note": "this CLI does not delete cluster groups",
           "state": "absent"
         },
         "get": {
@@ -11139,7 +11139,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "controller-owned; delete the owning source object",
+          "note": "a controller creates and manages it; delete the object it was created from",
           "state": "absent"
         },
         "get": {
@@ -11169,7 +11169,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "server configuration - tune, never remove",
+          "note": "a Rancher setting or feature flag is changed with patch, not deleted",
           "state": "absent"
         },
         "get": {
@@ -11198,7 +11198,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "server configuration - tune, never remove",
+          "note": "a Rancher setting or feature flag is changed with patch, not deleted",
           "state": "absent"
         },
         "get": {
@@ -11259,7 +11259,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "role vocabulary consumed by grant/revoke",
+          "note": "role templates and global roles are the roles that grant gives and revoke takes away",
           "state": "absent"
         },
         "get": {
@@ -11289,7 +11289,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "role vocabulary consumed by grant/revoke",
+          "note": "role templates and global roles are the roles that grant gives and revoke takes away",
           "state": "absent"
         },
         "get": {
@@ -11477,7 +11477,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "controller-owned; delete the owning source object",
+          "note": "a controller creates and manages it; delete the object it was created from",
           "state": "absent"
         },
         "get": {
@@ -11506,7 +11506,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "controller-owned; delete the owning source object",
+          "note": "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's node count with cluster scale",
           "state": "absent"
         },
         "get": {
@@ -11535,7 +11535,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "controller-owned; delete the owning source object",
+          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the pool's node count with cluster scale",
           "state": "absent"
         },
         "get": {
@@ -11564,7 +11564,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "controller-owned; delete the owning source object",
+          "note": "a controller creates and manages it from a machine pool of a provisioning cluster; change the pool's node count with cluster scale",
           "state": "absent"
         },
         "get": {
@@ -11657,7 +11657,7 @@
       "verbs": {
         "create": {
           "contract": "internal",
-          "note": "token creation must go through Rancher's auth lifecycle - use 'rancher create token' (the ext.cattle.io kind) for new tokens",
+          "note": "create tokens with 'rancher create token' (it creates an ext.cattle.io Token)",
           "stability": "deprecated",
           "state": "refused"
         },
@@ -11873,7 +11873,7 @@
       "sensitive": true,
       "verbs": {
         "delete": {
-          "note": "drivers are deactivated via spec.active, not deleted; builtin drivers are Rancher-managed",
+          "note": "a node driver is deactivated by setting spec.active to false, not deleted; Rancher manages the built-in drivers",
           "state": "absent"
         },
         "get": {
@@ -11902,7 +11902,7 @@
       "scope": "management",
       "verbs": {
         "delete": {
-          "note": "consumed, not deleted",
+          "note": "this CLI does not delete cluster registration tokens",
           "state": "absent"
         },
         "get": {

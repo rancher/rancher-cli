@@ -391,10 +391,10 @@ var table = []Kind{
 
 		ArgDesc: "cluster id or display name",
 
-		NoDeleteReason: "cluster deletion goes through delete provisioning-cluster",
+		NoDeleteReason: "to delete a cluster, use delete provisioning-cluster",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
-		Columns:        []Column{{Header: "DISPLAY", Path: []string{"spec", "displayName"}}, {Header: "READY", Condition: "Ready"}},
+		Columns:        []Column{{Header: "DISPLAY NAME", Path: []string{"spec", "displayName"}}, {Header: "READY", Condition: "Ready"}},
 	},
 	{
 		Key: "project", Name: "project", Aliases: []string{"projects"},
@@ -402,16 +402,16 @@ var table = []Kind{
 		Policy: NSCluster, K8sKind: "Project", Scope: Management, Deletable: true,
 
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
-		ArgDesc: "project id (p-xxxxx; a project made with rancher create project uses the typed name)",
+		ArgDesc: "project id (p-xxxxx; a project created with rancher create project has the name you gave as its id)",
 
 		// Rancher deletes the namespaces of the project that carry
 		// field.cattle.io/creatorId and keeps the rest, removing their project
 		// annotation; role bindings and project-scoped secrets go regardless.
-		DeleteCascadeWarning: "deleting this project keeps its namespaces and their workloads, except a namespace with the field.cattle.io/creatorId annotation (which Rancher writes on namespaces created through its v3 API), which is deleted with everything in it; Rancher removes the project annotation from each kept namespace; the project's role bindings and project-scoped secrets are removed",
+		DeleteCascadeWarning: "deleting this project keeps its namespaces and their workloads, except a namespace with the field.cattle.io/creatorId annotation (which Rancher writes on namespaces created through its v3 API): that namespace is deleted with everything in it. Rancher removes the project annotation from each kept namespace and deletes the project's role bindings and project-scoped secrets.",
 		Completable:          true,
 		Binding:              safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 		Columns: []Column{
-			{Header: "DISPLAY", Path: []string{"spec", "displayName"}},
+			{Header: "DISPLAY NAME", Path: []string{"spec", "displayName"}},
 			{Header: "CLUSTER", Path: []string{"spec", "clusterName"}},
 			{Header: "BACKING-NS", Path: []string{"status", "backingNamespace"}},
 			{Header: "DESCRIPTION", Path: []string{"spec", "description"}, Wide: true},
@@ -421,7 +421,7 @@ var table = []Kind{
 		Key: "node", Name: "node", Aliases: []string{"nodes"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"},
 		Policy: NSNone, K8sKind: "Node", Scope: Downstream, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "owned by the cluster lifecycle; remove the machine instead",
+		NoDeleteReason: "nodes are created and deleted by the machine pools of a cluster that has them (change a machine pool's node count with cluster scale), or outside Rancher for an imported, custom or local cluster",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable:    true,
@@ -518,7 +518,7 @@ var table = []Kind{
 		Key: "persistentvolume", Name: "persistentvolume", Aliases: []string{"persistentvolumes", "pv"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"},
 		Policy: NSNone, K8sKind: "PersistentVolume", Scope: Downstream, Deletable: false,
-		NoDeleteReason: "released through its claim; delete the persistentvolumeclaim instead",
+		NoDeleteReason: "a persistent volume is released when its claim is deleted; delete the persistentvolumeclaim instead",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable:    true,
 	},
@@ -540,7 +540,7 @@ var table = []Kind{
 		Key: "event", Name: "event", Aliases: []string{"events", "ev"},
 		GVR:    schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"},
 		Policy: NSPlain, K8sKind: "Event", Scope: Downstream, Deletable: false,
-		NoDeleteReason: "expires on its own TTL",
+		NoDeleteReason: "an event is deleted when its TTL runs out",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		ServerTable:    true,
 	},
@@ -550,7 +550,7 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "gitrepos"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "GitRepo", Scope: Management, Deletable: true, WaitDefault: "condition=Ready",
 		WaitFailsOnStalled:   true,
-		DeleteCascadeWarning: "deleting this GitRepo cascades: Fleet removes its Bundles and their BundleDeployments, which uninstalls the deployed workloads from every target cluster",
+		DeleteCascadeWarning: "deleting this GitRepo makes Fleet delete its Bundles and their BundleDeployments, which uninstalls the deployed workloads from every target cluster",
 		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
@@ -558,21 +558,21 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundles"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Bundle", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
 		WaitFailsOnStalled: true,
-		NoDeleteReason:     "controller-owned; delete the owning source object",
+		NoDeleteReason:     "this CLI does not delete bundles; deleting a GitRepo deletes the bundles Fleet created from it",
 		Binding:            safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "bundledeployment", Name: "bundledeployment", Aliases: []string{"bundledeployments"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "bundledeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "BundleDeployment", Scope: Management, Deletable: false,
-		NoDeleteReason: "controller-owned; delete the owning source object",
+		NoDeleteReason: "Fleet creates and manages it from a bundle; deleting a GitRepo deletes its bundles and their bundle deployments",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "clustergroup", Name: "clustergroup", Aliases: []string{"clustergroups"},
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clustergroups"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "ClusterGroup", Scope: Management, Deletable: false,
-		NoDeleteReason: "controller-owned; delete the owning source object",
+		NoDeleteReason: "this CLI does not delete cluster groups",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
@@ -582,7 +582,7 @@ var table = []Kind{
 		GVR:    schema.GroupVersionResource{Group: "fleet.cattle.io", Version: "v1alpha1", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, Sensitive: true, WaitDefault: "condition=Ready",
 		WaitFailsOnStalled: true,
-		NoDeleteReason:     "controller-owned; delete the owning source object",
+		NoDeleteReason:     "a controller creates and manages it; delete the object it was created from",
 		Binding:            safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns:            []Column{{Header: "LAST-SEEN", Path: []string{"status", "agent", "lastSeen"}}},
 	},
@@ -604,7 +604,7 @@ var table = []Kind{
 		Key: "setting", Name: "setting", Aliases: []string{"settings"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "settings"},
 		Policy: NSNone, K8sKind: "Setting", Scope: Management, Deletable: false, Sensitive: true,
-		NoDeleteReason: "server configuration - tune, never remove",
+		NoDeleteReason: "a Rancher setting or feature flag is changed with patch, not deleted",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			{Header: "CUSTOMIZED", Path: []string{"customized"}},
@@ -623,7 +623,7 @@ var table = []Kind{
 		Key: "feature", Name: "feature", Aliases: []string{"features"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "features"},
 		Policy: NSNone, K8sKind: "Feature", Scope: Management, Deletable: false, Sensitive: true,
-		NoDeleteReason: "server configuration - tune, never remove",
+		NoDeleteReason: "a Rancher setting or feature flag is changed with patch, not deleted",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
 			// VALUE is the merged effective value: spec.value (*bool,
@@ -680,7 +680,7 @@ var table = []Kind{
 		// ENABLED: v3 User.enabled is an omitempty *bool whose absence
 		// means enabled - Default carries that.
 		Columns: []Column{
-			{Header: "DISPLAY", Path: []string{"displayName"}},
+			{Header: "DISPLAY NAME", Path: []string{"displayName"}},
 			{Header: "USERNAME", Path: []string{"username"}},
 			{Header: "ENABLED", Path: []string{"enabled"}, Default: "true"},
 			{Header: "PRINCIPALS", Path: []string{"principalIds"}, Join: true},
@@ -694,9 +694,9 @@ var table = []Kind{
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
 		ArgDesc: "role template id (the NAME column of rancher get roletemplates), not the display name",
 
-		NoDeleteReason: "role vocabulary consumed by grant/revoke",
+		NoDeleteReason: "role templates and global roles are the roles that grant gives and revoke takes away",
 		Binding:        safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
-		Columns:        []Column{{Header: "CONTEXT", Path: []string{"context"}}, {Header: "DISPLAY", Path: []string{"displayName"}}},
+		Columns:        []Column{{Header: "CONTEXT", Path: []string{"context"}}, {Header: "DISPLAY NAME", Path: []string{"displayName"}}},
 	},
 	{
 		Key: "globalrole", Name: "globalrole", Aliases: []string{"globalroles"},
@@ -706,7 +706,7 @@ var table = []Kind{
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"displayName"}, Label: "display name"}}},
 		ArgDesc: "global role id (the NAME column of rancher get globalroles), not the display name",
 
-		NoDeleteReason: "role vocabulary consumed by grant/revoke",
+		NoDeleteReason: "role templates and global roles are the roles that grant gives and revoke takes away",
 		Binding:        safety.Binding{Contract: safety.ContractPublic, Stability: safety.Stable}, // Rancher Kubernetes Public API (semi-official list, 2026-07-30)
 	},
 	{
@@ -766,15 +766,15 @@ var table = []Kind{
 		Key: "oidcclient", Name: "oidcclient", Aliases: []string{"oidcclients"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "oidcclients"},
 		Policy: NSNone, K8sKind: "OIDCClient", Scope: Management, Deletable: true, Sensitive: true,
-		DeleteCascadeWarning: "deleting this OIDC client removes its secrets; every relying application using them loses access",
+		DeleteCascadeWarning: "deleting this OIDC client also deletes its Secret, which invalidates every client secret; every application that uses one loses access",
 		Completable:          true,
 		Binding:              safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Capability:           runtime.CapabilityRequirement{Tier: runtime.CapabilityPrime, Feature: "oidc-provider"},
 		Columns: []Column{
 			{Header: "CLIENT-ID", Path: []string{"status", "clientID"}},
 			{Header: "SECRETS", Count: []string{"status", "clientSecrets"}},
-			{Header: "TOKEN-TTL", Path: []string{"spec", "tokenExpirationSeconds"}},
-			{Header: "REFRESH-TTL", Path: []string{"spec", "refreshTokenExpirationSeconds"}},
+			{Header: "TOKEN-EXPIRATION", Path: []string{"spec", "tokenExpirationSeconds"}},
+			{Header: "REFRESH-EXPIRATION", Path: []string{"spec", "refreshTokenExpirationSeconds"}},
 		},
 	},
 
@@ -798,28 +798,28 @@ var table = []Kind{
 		Key: "capicluster", Name: "capi-cluster", Aliases: []string{"capiclusters", "capi-clusters"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "clusters"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Cluster", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "controller-owned; delete the owning source object",
+		NoDeleteReason: "a controller creates and manages it; delete the object it was created from",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachine", Name: "machine", Aliases: []string{"machines"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machines"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "Machine", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "controller-owned; delete the owning source object",
+		NoDeleteReason: "a controller creates and manages it; to delete a machine of a machine pool, change the machine pool's node count with cluster scale",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachineset", Name: "machineset", Aliases: []string{"machinesets"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinesets"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineSet", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "controller-owned; delete the owning source object",
+		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster; change the pool's node count with cluster scale",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
 		Key: "capimachinedeployment", Name: "machinedeployment", Aliases: []string{"machinedeployments"},
 		GVR:    schema.GroupVersionResource{Group: "cluster.x-k8s.io", Version: "", Resource: "machinedeployments"},
 		Policy: NSWorkspace, DefaultNamespace: "fleet-default", K8sKind: "MachineDeployment", Scope: Management, Deletable: false, WaitDefault: "condition=Ready",
-		NoDeleteReason: "controller-owned; delete the owning source object",
+		NoDeleteReason: "a controller creates and manages it from a machine pool of a provisioning cluster; change the pool's node count with cluster scale",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 	},
 	{
@@ -869,10 +869,10 @@ var table = []Kind{
 		// feature is off, which is the default). Scrub it from every serialized
 		// representation - get/list JSON/YAML output and patch diff entries.
 		RedactPaths: [][]string{{"token"}},
-		// Token creation must go through Rancher's auth lifecycle (key
-		// generation, TTL clamp, identity derivation). Use `create token` (the
-		// ext.cattle.io kind) for new tokens instead.
-		NoCreateViaManifest: "token creation must go through Rancher's auth lifecycle - use '" + clierr.Rancher + " create token' (the ext.cattle.io kind) for new tokens",
+		// A manifest cannot create a token: `create token` (the ext.cattle.io
+		// kind) applies the key generation, TTL clamp and identity derivation
+		// a new token needs.
+		NoCreateViaManifest: "create tokens with '" + clierr.Rancher + " create token' (it creates an ext.cattle.io Token)",
 	},
 	{
 		Key: "kubeconfig", Name: "kubeconfig", Aliases: []string{"kubeconfigs"},
@@ -957,11 +957,11 @@ var table = []Kind{
 		Handle:  &Handle{Arg: "id", Lookup: []HandleField{{Path: []string{"spec", "displayName"}, Label: "display name"}}},
 		ArgDesc: "node driver id (the NAME column of rancher get nodedrivers), not the display name",
 
-		NoDeleteReason: "drivers are deactivated via spec.active, not deleted; builtin drivers are Rancher-managed",
+		NoDeleteReason: "a node driver is deactivated by setting spec.active to false, not deleted; Rancher manages the built-in drivers",
 		Completable:    true,
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns: []Column{
-			{Header: "DISPLAYNAME", Path: []string{"spec", "displayName"}},
+			{Header: "DISPLAY NAME", Path: []string{"spec", "displayName"}},
 			{Header: "ACTIVE", Path: []string{"spec", "active"}, Bool: true},
 			{Header: "BUILTIN", Path: []string{"spec", "builtin"}, Bool: true},
 			{Header: "URL", Path: []string{"spec", "url"}, Wide: true},
@@ -970,13 +970,13 @@ var table = []Kind{
 
 	{
 		// Namespace = the cluster's management namespace; NSPlain gives the
-		// --namespace flag. Deletable: false - CRTs are consumed, not deleted, in
-		// the generic verb surface. This row carries identity only: its get is
+		// --namespace flag. Deletable: false - the generic verb surface does not
+		// delete CRTs. This row carries identity only: its get is
 		// overridden to a Steve read and its patch is refused.
 		Key: "clusterregistrationtoken", Name: "clusterregistrationtoken", Aliases: []string{"clusterregistrationtokens", "crt"},
 		GVR:    schema.GroupVersionResource{Group: "management.cattle.io", Version: "v3", Resource: "clusterregistrationtokens"},
 		Policy: NSPlain, K8sKind: "ClusterRegistrationToken", Scope: Management, Deletable: false,
-		NoDeleteReason: "consumed, not deleted",
+		NoDeleteReason: "this CLI does not delete cluster registration tokens",
 		Binding:        safety.Binding{Contract: safety.ContractInternal, Stability: safety.Beta},
 		Columns:        []Column{{Header: "CLUSTER", Path: []string{"spec", "clusterName"}}},
 	},

@@ -74,10 +74,10 @@ func (c patchCmd) Describe() runtime.Descriptor {
 func patchFlags(k kinds.Kind) []runtime.ArgSpec {
 	flags := deleteFlags(k)
 	return append(flags,
-		runtime.ArgSpec{Name: flagPatch, Type: "string", Aliases: []string{"p"}, Desc: "inline `patch`: RFC 6902 ops, or a JSON object with --type merge"},
+		runtime.ArgSpec{Name: flagPatch, Type: "string", Aliases: []string{"p"}, Desc: "inline `patch`: a list of RFC 6902 operations, or a JSON object with --type merge"},
 		runtime.ArgSpec{Name: flagPatchFile, Type: "string", Desc: "patch `file`, or - for stdin"},
 		runtime.ArgSpec{Name: flagPatchType, Type: "string", Enum: []string{patchTypeJSON, patchTypeMerge},
-			Desc: "patch type: json (RFC 6902 ops, the default) or merge (RFC 7386 JSON merge patch)"},
+			Desc: "patch type: json (RFC 6902 operations, the default) or merge (RFC 7386 JSON merge patch)"},
 	)
 }
 

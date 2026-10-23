@@ -341,7 +341,7 @@ func TestDeleteCarriesRowCascadeWarning(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 	assert.Equal(t, []string{gitrepo.DeleteCascadeWarning}, eff.Warnings)
-	assert.Contains(t, gitrepo.DeleteCascadeWarning, "cascades")
+	assert.Contains(t, gitrepo.DeleteCascadeWarning, "makes Fleet delete")
 
 	plain := &delClient{obj: objWithRV("web", "1")}
 	eff2, _, err := planDelete(t, NewDelete(mustKind(t, "pod"), &recFactory{client: plain, resolve: map[string]string{"prod": "c-abc"}}),
@@ -424,7 +424,7 @@ func TestDeleteAndPatchRequiredClusterDescDropsTheListAdvice(t *testing.T) {
 			if flags[i].Required {
 				assert.Equal(t, "cluster `id|name` of the "+name, flags[i].Desc)
 			} else {
-				assert.Equal(t, "cluster `id|name`; required to address a "+name+" by "+by+", omit to list across clusters", flags[i].Desc)
+				assert.Equal(t, "cluster `id|name`; required to get one "+name+" by "+by+"; leave it out to list "+kinds.Plural(name)+" in every cluster", flags[i].Desc)
 			}
 		}
 	}

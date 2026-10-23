@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	textKeepWarning = "deleting this project keeps its namespaces and their workloads, except a namespace with the field.cattle.io/creatorId annotation (which Rancher writes on namespaces created through its v3 API), which is deleted with everything in it; Rancher removes the project annotation from each kept namespace; the project's role bindings and project-scoped secrets are removed"
+	textKeepWarning = "deleting this project keeps its namespaces and their workloads, except a namespace with the field.cattle.io/creatorId annotation (which Rancher writes on namespaces created through its v3 API): that namespace is deleted with everything in it. Rancher removes the project annotation from each kept namespace and deletes the project's role bindings and project-scoped secrets."
 	textFlagWarning = `deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project's role bindings and project-scoped secrets are removed`
 	textFlagHelp    = "also delete the project's namespaces and everything in them"
 )

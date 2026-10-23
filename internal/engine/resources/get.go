@@ -91,8 +91,8 @@ func (c getCmd) Describe() runtime.Descriptor {
 	if c.k.SystemFilter != nil {
 		flags = append(flags, runtime.ArgSpec{Name: flagIncludeSystem, Type: "bool",
 			Desc: "include " + kinds.Plural(c.k.SystemFilter.Label) + " (hidden by default)"})
-		desc = kinds.Plural(c.k.Name) + " hide " + kinds.Plural(c.k.SystemFilter.Label) +
-			" by default; pass --include-system to show them. Naming a " + c.k.Name +
+		desc = "A list of " + kinds.Plural(c.k.Name) + " leaves out " + kinds.Plural(c.k.SystemFilter.Label) +
+			" by default; pass --include-system to show them. Getting one " + c.k.Name +
 			" always returns it, hidden or not."
 	}
 	return runtime.Descriptor{
@@ -126,7 +126,7 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 	switch k.Policy {
 	case kinds.NSCluster:
 		f := engine.ClusterFlag(false, false)
-		f.Desc = "cluster `id|name`; required to address a " + k.Name + " by " + argName(k) + ", omit to list across clusters"
+		f.Desc = "cluster `id|name`; required to get one " + k.Name + " by " + argName(k) + "; leave it out to list " + kinds.Plural(k.Name) + " in every cluster"
 		flags = []runtime.ArgSpec{f}
 	case kinds.NSWorkspace:
 		flags = []runtime.ArgSpec{engine.NamespaceFlag(false)}
@@ -142,9 +142,9 @@ func getFlags(k kinds.Kind) []runtime.ArgSpec {
 		}
 	}
 	if kinds.ProjectScopable(k) {
-		desc := "list only the project's namespaces; a named object must be in one of them"
+		desc := "list only objects in the project's namespaces; an object you name must be in one of them"
 		if k.Policy == kinds.NSNone {
-			desc = "list the project's namespaces; a named namespace must be one of them"
+			desc = "list only the project's namespaces; a namespace you name must be one of them"
 		}
 		flags = append(flags, runtime.ProjectFlag(false, desc))
 	}

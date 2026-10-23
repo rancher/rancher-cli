@@ -23,9 +23,9 @@ import (
 )
 
 // cascadeWarning: deleting a user deletes the User object and Rancher's
-// controllers also delete the user's role bindings (cluster and project
-// memberships, global role bindings).
-const userCascadeWarning = "deleting this user deletes the User object; Rancher's controllers also delete the user's role bindings (cluster memberships, project memberships, global role bindings)"
+// controllers also delete the user's role bindings (cluster role template
+// bindings, project role template bindings, global role bindings).
+const userCascadeWarning = "deleting this user deletes the User object; Rancher's controllers also delete the user's role bindings (cluster role template bindings, project role template bindings, global role bindings)"
 
 // NewDeleteUser builds the delete override for the user kind row. clients is
 // passed straight through to resources.NewGuardedDeletePrePlan, which runs the

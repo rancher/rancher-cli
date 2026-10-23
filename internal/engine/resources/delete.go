@@ -62,7 +62,7 @@ func deleteFlags(k kinds.Kind) []runtime.ArgSpec {
 		case k.Policy == kinds.NSPlain && flags[i].Name == FlagNamespace:
 			flags[i].Required = true
 		case flags[i].Name == FlagProject && k.Policy == kinds.NSNone:
-			flags[i].Desc = "the namespace must be one of the project's"
+			flags[i].Desc = "the namespace must be in this project"
 		case flags[i].Name == FlagProject:
 			flags[i].Desc = "the object's namespace must be in this project"
 		}

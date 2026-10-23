@@ -215,7 +215,7 @@ func TestGetClusterListsWithColumns(t *testing.T) {
 	assert.Equal(t, "ClusterList", res.Kind)
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)
-	assert.Equal(t, []string{"NAME", "DISPLAY", "READY", "AGE"}, tab.Columns())
+	assert.Equal(t, []string{"NAME", "DISPLAY NAME", "READY", "AGE"}, tab.Columns())
 	require.Len(t, tab.Rows(), 2)
 	assert.Equal(t, []string{"c-m-abc", "prod", "Ready", ""}, tab.Rows()[1])
 }
@@ -232,7 +232,7 @@ func TestGetRoleTemplateListsWithColumns(t *testing.T) {
 	assert.Equal(t, "RoleTemplateList", res.Kind)
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)
-	assert.Equal(t, []string{"NAME", "CONTEXT", "DISPLAY", "AGE"}, tab.Columns())
+	assert.Equal(t, []string{"NAME", "CONTEXT", "DISPLAY NAME", "AGE"}, tab.Columns())
 	require.Len(t, tab.Rows(), 2)
 	assert.Equal(t, []string{"cluster-owner", "cluster", "Cluster Owner", ""}, tab.Rows()[1])
 }
@@ -258,7 +258,7 @@ func TestGetNodeDriverListsWithColumns(t *testing.T) {
 	assert.Equal(t, "NodeDriverList", res.Kind)
 	tab, ok := res.Data.(output.Tabular)
 	require.True(t, ok)
-	assert.Equal(t, []string{"NAME", "DISPLAYNAME", "ACTIVE", "BUILTIN", "AGE"}, tab.Columns())
+	assert.Equal(t, []string{"NAME", "DISPLAY NAME", "ACTIVE", "BUILTIN", "AGE"}, tab.Columns())
 	require.Len(t, tab.Rows(), 2)
 	assert.Equal(t, []string{"amazonec2", "Amazon EC2", "true", "true", ""}, tab.Rows()[0])
 	assert.Equal(t, []string{"custom-driver", "My Driver", "false", "false", ""}, tab.Rows()[1])

@@ -355,10 +355,10 @@ func TestCreateResourceRejectsNoCreateViaManifestKind(t *testing.T) {
 	requireValidation(t, err)
 	// Verify no network call was made.
 	assert.Empty(t, fac.clusterCalls, "no network call should be made when the kind is rejected")
-	// Verify the message references the ext kind path.
+	// Verify the message names the kind and the ext kind path.
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
-	assert.Contains(t, ce.Message, "create token")
+	assert.Equal(t, "cannot create a management-token from a manifest; create tokens with '"+clierr.Rancher+" create token' (it creates an ext.cattle.io Token)", ce.Message)
 	assert.Empty(t, ce.Hint)
 }
 

@@ -76,6 +76,16 @@ import (
 //     HTTP create request).
 //   - the helper, caller, key, request, secret, note, token, files:
 //     ordinary nouns in this repository.
+//   - DISPLAYNAME: matching is case-insensitive, so a row would also
+//     refuse the API field name displayName, which prose literals name as a
+//     field. The table headers are checked by
+//     TestDisplayNameColumnsAreHeadedDisplayName in internal/engine/kinds.
+//   - ops: the replaced sense (an RFC 6902 entry, now "operation") cannot
+//     be told from "named ops" (the operations a kind supports) and
+//     "server ops" (the CLI's commands) by pattern.
+//   - cascades, consumed: other text still uses them in their own sense (a
+//     provisioning cluster's delete warning, a cluster registration
+//     token's read-only note).
 func TestRejectedWordingStaysOut(t *testing.T) {
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -153,12 +163,14 @@ type wordingRow struct {
 // form.
 var rejectedWording = []wordingRow{
 	{[]string{"as you"}, "with your permissions"},
+	{[]string{"auth lifecycle"}, "name the steps (key generation, TTL clamp, identity derivation)"},
 	{[]string{"backing secret", "backing secrets"}, "Secret"},
 	{[]string{"bare command", "bare commands"}, "the exec plugin's command"},
 	{[]string{"bin-dir", "bin-dirs", "bin dir", "bin dirs"}, "bin directory"},
 	{[]string{"budget", "budgets"}, "time limit"},
 	{[]string{"caller-scoped"}, "with your permissions"},
 	{[]string{"command bug", "command bugs"}, "internal error"},
+	{[]string{"controller-owned"}, "a controller creates and manages it"},
 	{[]string{"credential store helper", "credential store helpers"}, "credential helper"},
 	{[]string{"degrades to", "degrade to", "degraded to"}, "say what the command shows instead"},
 	{[]string{"executable", "executables"}, "binaries"},
@@ -167,8 +179,10 @@ var rejectedWording = []wordingRow{
 	{[]string{"killed"}, "stopped"},
 	{[]string{"one read of its id"}, "gets it by its id"},
 	{[]string{"ordinary secret", "ordinary secrets"}, "a secret in a namespace"},
+	{[]string{"owning source object"}, "the object it was created from"},
 	{[]string{"principal form", "principal forms"}, "principal prefix"},
 	{[]string{"provider list", "provider lists"}, "list of auth configs"},
+	{[]string{"role vocabulary"}, "role templates and global roles"},
 	{[]string{"scriptblock", "scriptblocks"}, "script block"},
 	{[]string{"server dry run"}, "server-side dry-run"},
 	{[]string{"the pair"}, "the two binaries"},
@@ -203,6 +217,8 @@ var wordingPathAllowlist = []wordingPath{
 	{"as you", "internal/engine/access/explain.go", "", 1, "text not yet reworded"},
 	{"as you", "internal/engine/access/list.go", "", 1, "text not yet reworded"},
 	{"as you", "internal/engine/access/whocan.go", "", 1, "text not yet reworded"},
+	{"auth lifecycle", "internal/cli/root.go", "", 1, "text not yet reworded"},
+	{"auth lifecycle", "internal/engine/managementtoken/managementtoken.go", "", 1, "text not yet reworded"},
 	{"backing secret", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
 	{"bin-dir", "README.md", "Install", 1, "text not yet reworded"},
 	{"budget", "COMMANDS.md", "Servers & configuration", 1, "text not yet reworded"},
@@ -222,6 +238,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"command bug", "internal/engine/resources/servertable.go", "", 1, "text not yet reworded"},
 	{"command bug", "internal/runtime/pipeline.go", "", 16, "text not yet reworded"},
 	{"command bug", "internal/runtime/project.go", "", 4, "text not yet reworded"},
+	{"controller-owned", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
 	{"degrades to", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"degrades to", "internal/engine/inspect/images.go", "", 1, "text not yet reworded"},
 	{"degrades to", "skills/rancher/SKILL.md", "9. Observability & support", 1, "text not yet reworded"},
@@ -230,6 +247,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"floor", "skills/rancher/SKILL.md", "1. Verify auth before anything else", 1, "text not yet reworded"},
 	{"junction", "README.md", "Install", 1, "text not yet reworded"},
 	{"killed", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
+	{"owning source object", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
 	{"principal form", "internal/engine/inspect/user.go", "", 1, "text not yet reworded"},
 	{"provider list", "MIGRATING.md", "Changed in this CLI", 3, "text not yet reworded"},
 	{"provider list", "REFERENCE.md", "Auth configs (`--auth-provider`)", 2, "text not yet reworded"},

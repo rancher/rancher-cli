@@ -139,7 +139,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	}
 	if k.NoCreateViaManifest != "" {
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("cannot create %s via manifest: %s", k.Name, k.NoCreateViaManifest))
+			fmt.Sprintf("cannot create a %s from a manifest; %s", k.Name, k.NoCreateViaManifest))
 	}
 
 	overrides, err := c.reconcile(ctx, k, in, obj.GetNamespace())

@@ -15,7 +15,7 @@ jsonquery stdout data.displayName e2euser
 # absent, guard skips - and the inner Plan proceeds unchanged.
 exec rancher delete user u-e2e --dry-run -o json
 jsonquery stdout data.action delete
-jsonquery stdout warnings.0 'deleting this user deletes the User object; Rancher''s controllers also delete the user''s role bindings (cluster memberships, project memberships, global role bindings)'
+jsonquery stdout warnings.0 'deleting this user deletes the User object; Rancher''s controllers also delete the user''s role bindings (cluster role template bindings, project role template bindings, global role bindings)'
 
 # Gate: --apply alone is refused because delete is destructive (needs --yes).
 ! exec rancher delete user u-e2e --apply -o json

@@ -3,6 +3,7 @@ package kinds
 import (
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -705,4 +706,39 @@ func TestForbiddenHint(t *testing.T) {
 	} {
 		assert.Equal(t, tc.want, ForbiddenHint(tc.k, tc.verb, tc.namespace, tc.name), "%s %s", tc.k.Key, tc.verb)
 	}
+}
+
+// TestDisplayNameColumnsAreHeadedDisplayName asserts every column of every
+// kind row that reads a displayName field, from its path or any alternate
+// path, has the header DISPLAY NAME.
+func TestDisplayNameColumnsAreHeadedDisplayName(t *testing.T) {
+	t.Parallel()
+	endsInDisplayName := func(path []string) bool {
+		return len(path) > 0 && path[len(path)-1] == "displayName"
+	}
+	var seen int
+	for _, k := range All() {
+		for _, c := range k.Columns {
+			if !endsInDisplayName(c.Path) && !slices.ContainsFunc(c.AltPaths, endsInDisplayName) {
+				continue
+			}
+			seen++
+			assert.Equal(t, "DISPLAY NAME", c.Header, "column of %s", k.Key)
+		}
+	}
+	assert.Positive(t, seen, "no kind row has a display name column")
+}
+
+// TestOIDCClientRowTexts asserts the oidcclient row's column headers and
+// its delete warning word for word; no table or golden test shows them.
+func TestOIDCClientRowTexts(t *testing.T) {
+	t.Parallel()
+	k, ok := ByKey("oidcclient")
+	require.True(t, ok)
+	var headers []string
+	for _, c := range k.Columns {
+		headers = append(headers, c.Header)
+	}
+	assert.Equal(t, []string{"CLIENT-ID", "SECRETS", "TOKEN-EXPIRATION", "REFRESH-EXPIRATION"}, headers)
+	assert.Equal(t, "deleting this OIDC client also deletes its Secret, which invalidates every client secret; every application that uses one loses access", k.DeleteCascadeWarning)
 }
