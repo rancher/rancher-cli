@@ -259,6 +259,7 @@ func TestKindClaimsMatchTable(t *testing.T) {
 		"token":                      true,
 		"kubeconfig":                 true,
 		"cluster":                    false,
+		"clustergroup":               false,
 		"setting":                    false,
 		"feature":                    false,
 		"nodedriver":                 false,

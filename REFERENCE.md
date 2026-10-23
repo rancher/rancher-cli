@@ -557,18 +557,17 @@ permissions (`rancher access clusters`, `rancher inspect cluster <id>`,
 
 ## Project scope (--project)
 
-`--project <id-or-name>` names a project on the cluster `--cluster` names.
-Only the commands that take it accept it: `get`, `delete` and `patch` of
-namespaced kinds on downstream clusters and of namespaces, `create resource`,
+`--project <id-or-name>` selects a project on the cluster that `--cluster`
+selects. Only these commands accept `--project`: `get`, `delete` and `patch` for
+namespaced kinds on downstream clusters and for namespaces, `create resource`,
 `create namespace`, `create secret`, `project add-namespace`, `grant`, `revoke`,
-`usage`, and `access can`/`list`/`who-can`; `rancher schema` lists `project`
-among each such command's flags. Every other command refuses a
-typed `--project` with `VALIDATION` before it sends a request, whether the
-flag is typed before or after the command name.
+`usage`, and `access can`/`list`/`who-can`; `rancher schema` shows `project`
+among the flags of each of them. Every other command refuses a typed `--project`
+with `VALIDATION` before it sends a request, whether the flag is typed before or
+after the command name.
 
-`rancher project remove-namespace` also accepts a namespace that has the
-project label and no project annotation, and makes sure its project label
-is removed.
+`rancher project remove-namespace` also accepts a namespace that has the project
+label and no project annotation, and removes its project label.
 
 The project is looked up once per command with your permissions: among the
 projects Rancher lists for you on that cluster, by id or display name. An id
@@ -620,192 +619,196 @@ you typed after it; a wrong name never shows up as a flag error. An empty name
 
 Every command that takes `--namespace` also takes `-n`, as kubectl does.
 
-Every kind in the schema vocabulary gets its generated verbs by these rules:
+Every kind that `rancher schema` lists gets its generated verbs by these rules:
 
-- `get` and `patch` exist for every kind in the schema kind vocabulary.
-  One exception: `patch clusterregistrationtoken` is refused - the kind is
-  read-only. A `get` list accepts `--selector` (`-l`), a Kubernetes label
-  selector the server applies (the same grammar as kubectl's `-l`:
-  `app=web`, `tier!=cache`, `env in (a,b)`, `!legacy`); it is validated
-  before the request and refused on a named get. Under `--project` both
-  apply: `get namespaces` sends the two selectors as one conjunction and
-  keeps the namespaces whose annotation names the project; for
-  every other kind the server filters by `--selector` and the CLI keeps
-  only the project's namespaces. `get clusterregistrationtoken` reads
-  through Steve and applies the selector to the decoded list itself.
-- `delete` exists only where removal is a sane operator action.
-  Controller-owned objects (Fleet bundles, CAPI machines), server config
-  (`setting`, `feature`), and role definitions (`roletemplate`, `globalrole`)
-  are not deletable - delete the owning source object instead. The management
-  `cluster` kind is not deletable either; cluster removal goes through
+- `get` and `patch` exist for every kind that `rancher schema` lists. One
+  exception: `patch clusterregistrationtoken` is refused - the kind is
+  read-only. A `get` that lists objects accepts `--selector` (`-l`), a
+  Kubernetes label selector the server applies (the same grammar as kubectl's
+  `-l`: `app=web`, `tier!=cache`, `env in (a,b)`, `!legacy`); it is checked
+  before the request and refused on a `get` of one object. With `--project` and
+  `--selector` together, `get namespaces` sends the project's label selector and
+  your selector as one selector that requires both, and keeps the namespaces
+  whose annotation names the project; for every other kind the server filters by
+  `--selector` and the CLI keeps only the objects in the project's namespaces.
+  `get clusterregistrationtoken` reads through the Steve API and applies the
+  selector itself to the list it gets back.
+- `delete` exists only for kinds where deleting an object makes sense. Rancher
+  settings and feature flags (`setting`, `feature`), role templates and global
+  roles (`roletemplate`, `globalrole`), and objects a controller creates and
+  manages (Fleet bundle deployments, CAPI machines) are not deletable. Deleting
+  a GitRepo deletes its bundles and their bundle deployments; lowering a machine
+  pool's node count with `cluster scale` deletes machines; deleting a
+  provisioning cluster deletes its Fleet cluster and CAPI cluster. Fleet bundles
+  and cluster groups have no `delete` in this CLI either. The `cluster` kind
+  (management.cattle.io) cannot be deleted either; to delete a cluster, use
   `delete provisioning-cluster`. `delete user` is destructive (requires
-  `--yes`): deleting a user removes the identity record and Rancher's
-  controllers cascade-remove the user's role bindings (cluster memberships,
-  project memberships, global role bindings) with it.
-- `delete project` is destructive and lists the project's namespaces before
-  it deletes anything. It reads them on the project's cluster: the
-  namespace list narrowed by the project label, or, for a caller refused
-  that list (a project owner), the namespaces steve lists for the caller;
-  either way the members are the namespaces whose annotation names the
-  project. Rancher deletes the member namespaces that carry the
-  `field.cattle.io/creatorId` annotation, with everything in them, and
-  keeps the others, removing the project annotation from each; it also
-  removes the project's role bindings and project-scoped secrets. The
-  dry-run Effect and the result carry the list in `data.objects`: one
-  item per namespace with `kind`, `name`, `outcome` and, for a failure,
-  `code` and `message` (a `not deleted` item gives its reason in
-  `message`). Text output shows at most five names per outcome and a count
-  of the rest; JSON carries every item. Without the flag the outcomes say
-  what Rancher will do: `rancher deletes`, `rancher keeps`, `being deleted`
-  (the namespace already has a deletion timestamp or the Terminating
-  phase) and `unknown` (the caller cannot get the namespace, so the
-  creatorId annotation is not visible). The CLI deletes no namespace
-  without the flag. If the namespaces cannot be read, the dry-run warns
-  and the delete goes on. When a namespace is kept, the dry-run sends one
-  `SelfSubjectAccessReview` to the project's cluster (verb `get`, resource
-  `namespaces`, no name); if the cluster denies it, the caller can see
-  namespaces only through their project and a warning names the kept
-  namespaces the caller will not see after the delete. A failed review gives
-  no warning.
-  `--delete-namespaces` also deletes the member namespaces: one at a time,
-  in name order, each with the resourceVersion it was read with, then the
-  project. Every namespace is dry-run deleted first; a namespace refused
-  there, a namespace the caller cannot get, or a failed read refuses the
-  command before anything is deleted. Namespaces already being deleted are
-  listed and left alone. Nobody may delete `default`, `kube-system` and
-  `kube-public` on any cluster, nor `local` and `fleet-local` on the local
-  cluster: they are listed as `not deleted` with the reason and skipped.
-  The outcomes under the flag are `will be deleted` (dry-run), `deletion
-  started`, `already gone` (the namespace was gone when the delete was
-  sent), `not deleted`, `being deleted`, `failed` and `not attempted`; the
-  project is the last item. A failed namespace delete stops the run and
-  keeps the project: the error carries the failing call's code and
-  `data.error.details.objects` holds every item with its outcome. When the
-  project changes while its namespaces are being deleted, the project
-  delete is retried up to three times with the new resourceVersion if only
-  its used quota (`spec.resourceQuota.usedLimit`) and its status changed;
-  any other change, or a fourth conflict, is `CONFLICT` with the project
-  kept. Re-run the same command after any partial result: it reads the
-  project's namespaces again and skips the ones already being deleted.
-  The result kind stays `ProjectDelete`; its `data` is `deleted` and
-  `objects`.
+  `--yes`): it deletes the User object, and Rancher's controllers then delete
+  the user's role bindings (cluster role template bindings, project role
+  template bindings, global role bindings).
+- `delete project` is destructive and lists the project's namespaces before it
+  deletes anything. It reads them on the project's cluster: from the namespace
+  list narrowed by the project label or, if Rancher refuses you that list (as it
+  does a project owner), from the namespaces the Steve API lists for you; either
+  way the project's namespaces are the ones whose annotation names the project.
+  Rancher deletes the project's namespaces that have the
+  `field.cattle.io/creatorId` annotation, with everything in them, and keeps the
+  others, removing the project annotation from each; it also deletes the
+  project's role bindings and project-scoped secrets. The dry-run preview and
+  the result carry the list in `data.objects`: one item per namespace with
+  `kind`, `name`, `outcome` and, for a failure, `code` and `message` (a `not
+  deleted` item gives its reason in `message`). Text output shows at most five
+  names per outcome and a count of the rest; JSON carries every item. Without
+  `--delete-namespaces` the outcomes say what Rancher will do: `rancher
+  deletes`, `rancher keeps`, `being deleted` (the namespace already has a
+  deletion timestamp or the Terminating phase) and `unknown` (you cannot get the
+  namespace, which hides its `field.cattle.io/creatorId` annotation). The CLI
+  deletes namespaces only when you pass `--delete-namespaces`. If the namespaces
+  cannot be read, the dry-run warns and the delete goes on. When a namespace is
+  kept, the dry-run sends one `SelfSubjectAccessReview` to the project's cluster
+  (verb `get`, resource `namespaces`, no name); if the cluster denies it, you
+  can see namespaces only through your project, and a warning names the kept
+  namespaces you will not see after the delete. A failed review gives no
+  warning. `--delete-namespaces` also deletes the project's namespaces: one at a
+  time, in name order, each with the resourceVersion it was read with, then the
+  project. Each namespace the command will delete gets a server-side dry-run
+  delete first; the namespaces left alone, described next, get none. The command
+  is refused before anything is deleted if the server refuses a dry-run delete,
+  if you cannot get one of the namespaces it will delete, or if reading the
+  project's namespaces fails. Namespaces already being deleted are listed and
+  left alone. Kubernetes never deletes `default`, `kube-system` and
+  `kube-public` on any cluster, and Rancher never deletes `local` and
+  `fleet-local` on the local cluster: they are listed as `not deleted` with that
+  reason and skipped. With `--delete-namespaces` the outcomes are `will be
+  deleted` (dry-run), `deletion started`, `already gone` (the namespace was gone
+  when the delete was sent), `not deleted`, `being deleted`, `failed` and `not
+  attempted`; the project comes last in the list. A failed namespace delete
+  stops the run and keeps the project: the error carries the failing call's code
+  and `data.error.details.objects` holds every item with its outcome. When the
+  project changes while its namespaces are being deleted, the project delete is
+  retried up to three times with the new resourceVersion if only its used
+  resource quota (`spec.resourceQuota.usedLimit`) and its status changed; any
+  other change, or a fourth conflict, is `CONFLICT` with the project kept.
+  Re-run the same command after any partial result: it reads the project's
+  namespaces again and skips the ones already being deleted. The result's `kind`
+  stays `ProjectDelete`; its `data` has the fields `deleted` and `objects`.
 - `user`, `project`, `roletemplate`, `globalrole` and `nodedriver` take the
   object's id as the argument, named `id` in help and the schema: the NAME
-  column of `get`, not the username or display name. When a named `get`,
-  `patch` or `delete` misses and the typed text is exactly the username or
-  display name of an object, the error message says which id that is, the
-  object is listed in `data.error.candidates`, and the hint is `rancher get
-  <kind> '<id>'`; several objects with that text stay `NOT_FOUND` with every
-  candidate listed. The lookup is one more read with the caller's own
-  credential and a 10 s limit, only after a miss; any failure leaves the
-  original error. Nothing acts on a match. A project is looked up among the
-  projects the caller can read on the `--cluster` cluster, and also after a
-  refusal (RBAC), because a project member's role allows a get by id only;
-  the error keeps its code and message. `get cluster` and `patch cluster`
-  take an id or a display name.
-- `create` is bespoke per kind where a real creation UX exists (`project`,
-  `namespace`, `secret`, `token`, `kubeconfig`, `cluster`); `create
-  resource -f` covers any supported kind from a manifest.
-- RBAC bindings (`projectroletemplatebinding`, `clusterroletemplatebinding`,
-  `globalrolebinding`): prefer `grant`/`revoke` - subject resolution,
-  duplicate detection, partial-failure reporting. The raw verbs exist for
-  manifest-driven and declarative flows.
+  column of `get`, not the username or display name. When `get`, `patch` or
+  `delete` finds no object with the id you typed, and the text you typed is
+  exactly the username or display name of an object, the error message says
+  which id that is, the object is listed in `data.error.candidates`, and the
+  hint is `rancher get <kind> '<id>'`; several objects with that text stay
+  `NOT_FOUND` with every candidate listed. The lookup is one more read, made
+  with your permissions and a 10 s limit, only after the first read finds no
+  object; any failure leaves the original error. The CLI only reports a match;
+  it never runs the command again with that id. A project is looked up among the
+  projects you can read on the cluster that `--cluster` selects, and also after
+  Rancher refuses the read (RBAC), because a project member's role allows
+  getting a project only by its id. The error keeps its code; its message,
+  candidates and hint change only when the lookup finds a match. `get cluster`
+  and `patch cluster` take an id or a display name.
+- `create` has a dedicated command for kinds such as `project`, `namespace`,
+  `secret`, `token`, `kubeconfig` and `cluster`; `create resource -f` covers any
+  supported kind from a manifest.
+- Rancher role bindings (`projectroletemplatebinding`,
+  `clusterroletemplatebinding`, `globalrolebinding`): prefer `grant`/`revoke`,
+  which resolve the subject, detect duplicates and report partial failures. The
+  generated verbs are for working from manifests or with declarative tools.
 
-`rancher schema <kind>` shows one kind's effective verb table - available
-(with contract and stability), refused (with the reason), or not available
-(with the reason removal is routed elsewhere).
+`rancher schema <kind>` shows the verbs of one kind: available (with contract
+and stability), refused (with the reason), or not available (with the reason).
 
-`feature` (Rancher's `management.cattle.io/v3` Feature flags) is one of
-those generated kinds - not deletable, sensitive (flipping a flag via
-`patch feature` escalates to `--yes`). Its interesting fields
-(`spec.value`, `status.default`, `status.lockedValue`) are tri-state
-booleans (an absent `spec.value` means "follow the default"), which a
-table cell would misread - `-o json` is the real read for a feature's
-actual state.
+`feature` (Rancher's `management.cattle.io/v3` Feature flags) is one of those
+generated kinds - not deletable, sensitive (`patch feature` flips a flag and
+requires `--yes`). Its main fields (`spec.value`, `status.default`,
+`status.lockedValue`) can be true, false or unset (an unset `spec.value` means
+"follow the default"), and a table cell can hide which of the three applies; use
+`-o json` to read a feature's actual state.
 
-`nodedriver` (Rancher's `management.cattle.io/v3` NodeDriver registry - the
-server side of `create cluster`'s node-driver mode) is a read-mostly
-generated kind: not deletable, sensitive (`patch nodedriver` toggles a
-driver's platform-wide availability and escalates to `--yes`). `get
-nodedrivers` lists NAME, DISPLAYNAME, ACTIVE, and BUILTIN.
+`nodedriver` (Rancher's `management.cattle.io/v3` NodeDriver resource - the
+server side of `create cluster`'s node-driver mode) is a generated kind that is
+mostly read-only: not deletable, sensitive (`patch nodedriver` activates or
+deactivates a driver for all of Rancher and requires `--yes`). `get nodedrivers`
+lists NAME, DISPLAY NAME, ACTIVE and BUILTIN.
 
-`token` and `kubeconfig` are registered with an empty GVR version, resolved
-via discovery at call time (the same mechanism the CAPI kinds use) - on a
-Rancher older than 2.14 (the CLI's supported minimum), the generated
-`get`/`patch`/`delete` ops on these two kinds fail with a friendly `NOT_FOUND`
-(`requires Rancher >= 2.14, the supported minimum`) pointing at `auth
-list-tokens` and the exec-credential `kubeconfig` instead.
-Every operation on these two kinds is also plain Kubernetes API - `kubectl
-get/create tokens.ext.cattle.io` / `kubeconfigs.ext.cattle.io` works too (with
-`--validate=false` for a standard user, since kubectl's CRD-schema validation
-fallback needs list rights most users lack). The CLI adds the auth bootstrap,
-the token-vs-kubeconfig TTL unit conversion (`--ttl` takes a duration; the
-underlying spec fields are milliseconds and seconds respectively - the CLI
-never exposes the raw units), and shown-once handling for the created secret.
+On a Rancher older than 2.14 (the CLI's supported minimum), the generated `get`,
+`patch` and `delete` of `token` and `kubeconfig` fail with `NOT_FOUND` (the
+message includes `requires Rancher >= 2.14, the supported minimum`) and point to
+`auth list-tokens` for tokens and to the default exec-credential mode of
+`rancher kubeconfig` for kubeconfigs. These two kinds are registered with an
+empty API version, which the CLI resolves through discovery when the command
+runs, as it does for the CAPI kinds. You can do the same operations with kubectl
+on these two kinds: `kubectl get/create tokens.ext.cattle.io` /
+`kubeconfigs.ext.cattle.io`. A standard user needs `--validate=false`, because
+kubectl falls back to reading the CRD schema for validation, which requires list
+permission that most users lack. The CLI adds authentication with your stored
+login (or `RANCHER_CLI_TOKEN`), the conversion of `--ttl` (a duration) to the
+unit of `spec.ttl` (milliseconds for a token, seconds for a kubeconfig), and
+showing the created secret only once.
 
-`oidcclient` (Rancher's `management.cattle.io/v3` OIDCClient - the server
-side of the embedded OIDC provider) is the first generated kind gated behind
-a Rancher Prime capability requirement (feature `oidc-provider`): `rancher
-schema oidcclient` and `--help` mark it accordingly. On a server where the
-feature is explicitly disabled, the verbs refuse with a `VALIDATION`
-"feature is disabled on this server" message on every edition, before
-reaching the server's data; `PRIME_REQUIRED` (exit 9) is reserved for a
-Prime-tiered feature on a server whose edition cannot enable it. Sensitive (`patch oidcclient`
-escalates to `--yes`) - the generic patch path can set the same client-secret
-lifecycle annotations the curated `create oidc-client` / `oidc-client
-add-secret|rotate-secret|remove-secret` commands gate behind confirmation,
-waiting, and one-time delivery; prefer the curated commands. Deleting a
-client cascades: its backing secret is removed (Kubernetes garbage
-collection via an owner reference, independent of the `oidc-provider`
-controller), instantly invalidating every live client secret.
+`oidcclient` (Rancher's `management.cattle.io/v3` OIDCClient - the server side
+of the embedded OIDC provider) is the first generated kind that requires a
+Rancher Prime capability (feature `oidc-provider`): `rancher schema oidcclient`
+and `--help` say so. On a server where the feature is explicitly disabled, the
+verbs refuse with `VALIDATION` and a message that says the feature is disabled,
+on every edition, before the verb makes any read or server-side dry-run of its
+own; `PRIME_REQUIRED` (exit 9) is used only for a Rancher Prime feature on a
+server whose edition cannot enable it. Sensitive (`patch oidcclient` requires
+`--yes`): `patch` can set the same client secret annotations that the dedicated
+commands `create oidc-client` and `oidc-client
+add-secret|rotate-secret|remove-secret` protect with confirmation, waiting and a
+secret shown once; prefer the dedicated commands. Deleting a client also deletes
+its Secret (Kubernetes garbage collection through an owner reference,
+independent of the `oidc-provider` controller), which invalidates every client
+secret at once.
 
 ### Field ownership
 
-Every create, update and patch the CLI sends to a Kubernetes API names
-itself to the server as the field manager `cli.rancher.io`, the ext Token
-create and the access review requests included. For an object the CLI
-creates or changes, the managed fields (`kubectl get <kind> <name> -o yaml
---show-managed-fields`) show which fields the CLI wrote. Rancher's token API
-does not keep the request's field manager, so an ext Token's managed fields
-name `rancher`; the access review requests store nothing. The name is the
-CLI's domain, unversioned, so it stays the same across releases and binary
-names.
+Every create, update and patch request the CLI sends to a Kubernetes API sets
+the field manager to `cli.rancher.io`, including the ext Token create and the
+access review requests. For an object the CLI creates or changes, the managed
+fields (`kubectl get <kind> <name> -o yaml --show-managed-fields`) show which
+fields the CLI wrote. Rancher's token API does not keep the request's field
+manager: the managed fields of an ext Token show `rancher`, and the access
+review requests are not stored. The field manager has no version in it; it stays
+the same across releases and binary names.
 
 A delete carries no field manager: Kubernetes has none for deletes. Requests
 to Rancher's own endpoints (login, logout, the Norman token API) are not
 Kubernetes writes and have none.
 
-`patch` reads the same record before it changes anything. When a field the
-patch changes is owned by a manager that applies it (server-side apply, as
-Flux and Argo CD do), the plan carries a warning naming that manager: it
-may put the old value back on its next reconcile. Fields owned by managers
-that merely updated them (Rancher's controllers, `kubectl edit`) are not
-flagged. The warning informs; it never gates. A patch op whose `path` (or
-`from`) is `/metadata/managedFields` or `/metadata/resourceVersion`, or
-anything under them, is refused with `VALIDATION`; so is a replace of
-`/metadata` or of the whole object whose value carries them. A merge
-patch (`--type merge`) that sets or removes either field is refused the
-same way. The server sets both fields; the CLI always sends them back
-exactly as fetched.
+`patch` reads the object's managed fields before it changes anything. When a
+field the patch changes is owned by a manager that applies it (server-side
+apply, as Flux and Argo CD do), the dry-run preview carries a warning naming
+that manager: it may put the old value back on its next reconcile. Fields owned
+by managers that merely updated them (Rancher's controllers, `kubectl edit`) are
+not flagged. The warning is informational; it never blocks the patch. A patch
+operation whose `path` (or `from`) is `/metadata/managedFields` or
+`/metadata/resourceVersion`, or anything under them, is refused with
+`VALIDATION`; so is a replace of `/metadata` or of the whole object whose value
+carries them. A merge patch (`--type merge`) that sets or removes either field
+is refused the same way. The server sets both fields; the CLI always sends them
+back exactly as fetched.
 
 Every `diff[].path` a dry-run reports (in `-o json` and in the default text
-render) is an RFC 6901 JSON Pointer - `~1` for a literal `/` and `~0` for a
-literal `~` inside a key, so a domain-prefixed label or annotation key
-renders as one escaped segment. The string is usable verbatim as a JSON
-Patch op's `path`.
+output) is an RFC 6901 JSON Pointer - `~1` for a literal `/` and `~0` for a
+literal `~` inside a key; a domain-prefixed label or annotation key therefore
+renders as one escaped segment. The string is usable verbatim as the `path` of a
+JSON Patch operation.
 
-`patch <kind>` takes an RFC 6902 JSON Patch (an array of ops) by default,
-and an RFC 7386 JSON merge patch (an object) with `--type merge`. A merge
-patch replaces each list it names as a whole; kubectl's default strategic
-merge patch merges some lists by key instead, and the CLI does not offer
-it. When a merge patch drops entries of a list the object has, the plan
-carries a warning naming the list.
+`patch <kind>` takes an RFC 6902 JSON Patch (an array of operations) by default,
+and an RFC 7386 JSON merge patch (an object) with `--type merge`. In a merge
+patch, every list you include replaces the whole list in the object; kubectl's
+default strategic merge patch merges some lists by key, and the CLI does not
+support strategic merge patch. When a merge patch drops entries of a list the
+object has, the dry-run preview carries a warning naming the list.
 
 ## Cluster provisioning
 
-Rancher's provisioning model (node drivers, machine pools, imported and
-custom clusters) is documented in the
-[Rancher manual](https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/launch-kubernetes-with-rancher).
+Rancher's provisioning model (node drivers, machine pools, imported and custom
+clusters) is documented in the
+[Rancher Manager documentation](https://ranchermanager.docs.rancher.com/how-to-guides/new-user-guides/launch-kubernetes-with-rancher).
 
 Node-driver clusters take a machine config plus a cloud credential. Two
 prerequisites before the example below: a cloud credential must already
@@ -827,70 +830,72 @@ clusters that is `condition=Ready`. `--for <condition>` on its own also
 starts the wait; `--timeout` on its own waits for the kind's default wait
 condition, and a kind with none refuses it and asks for `--for`.
 
-`rancher kubeconfig` prints one context through the Rancher proxy and,
-when the cluster has the Authorized Cluster Endpoint enabled and the
-multi-cluster-management feature is on, the direct contexts Rancher's own
-kubeconfig carries: `<entry>-fqdn` when the endpoint names an fqdn (its
-`caCerts` as the CA), else one `<entry>-<node>` per control-plane node at
-`https://<address>:6443` with the cluster's CA; every context shares the
-one exec user entry. The fqdn context, else the first Ready node, is
-current; with no Ready node the proxy stays current. When the direct
-contexts cannot be derived (the feature off or unreadable, the nodes not
-readable, no control-plane node with an address, a malformed CA or
+`rancher kubeconfig` prints one context through the Rancher proxy and, when the
+cluster has the Authorized Cluster Endpoint enabled and the
+multi-cluster-management feature is on, the Authorized Cluster Endpoint contexts
+Rancher's own kubeconfig carries: `<entry>-fqdn` when the endpoint names an fqdn
+(its `caCerts` as the CA), else one `<entry>-<node>` per control-plane node at
+`https://<address>:6443` with the cluster's CA; every context uses the one user
+whose `exec` block runs the plugin. The fqdn context, else the first Ready node,
+is current; with no Ready node the proxy stays current. When the Authorized
+Cluster Endpoint contexts cannot be derived (the feature off or unreadable, the
+nodes not readable, no control-plane node with an address, a malformed CA or
 address) the proxy-only file is printed and one stderr notice says why; when
 Rancher refuses the credential (401) at any of those reads, the command fails
-with `AUTH` (exit 3) and prints no file.
-The exec block then sets `provideClusterInfo`, so the plugin learns which
-endpoint kubectl is about to use: a cluster token it has just created is
-accepted by the direct endpoint only after Rancher has synced it there,
-so the plugin waits, up to ten seconds, until that endpoint authenticates
-the token (a SelfSubjectReview; a Forbidden answer counts, a 401 does
-not) and remembers the endpoint in the cache; on timeout the credential
-is returned with a warning naming the proxy context as the fallback, and
-a cancellation revokes the token it created. Two limits: the plugin needs
-Rancher to create or refresh the token, so a direct context works while
-Rancher is unreachable only as long as the cached credential lasts; and
-the identity the direct endpoint sees carries the user and
-`system:authenticated` only, without the `system:cattle:authenticated`
-group and the principal extras the proxy adds, so a binding on those
-groups decides differently on the two paths.
+with `AUTH` (exit 3) and prints no file. The `exec` block then sets
+`provideClusterInfo`, which tells the plugin which endpoint kubectl is about to
+use. A cluster token the plugin has just created is accepted by the Authorized
+Cluster Endpoint only after Rancher has synced it there. The plugin therefore
+waits up to ten seconds until that endpoint accepts the token (it sends a
+SelfSubjectReview; a Forbidden answer counts as accepted, a 401 does not), and
+records in its cache that this endpoint accepts it. If the wait times out, the
+plugin returns the credential with a warning that names the proxy context as the
+fallback. If you cancel, the plugin revokes the token it created. There are two
+limits. First, the plugin needs Rancher to create or refresh the token; an
+Authorized Cluster Endpoint context therefore keeps working while Rancher is
+unreachable only until the cached credential expires. Second, the identity the
+Authorized Cluster Endpoint sees has only the user and `system:authenticated`,
+without the `system:cattle:authenticated` group and the `principalid` and
+`username` extra attributes the proxy adds; a binding on the groups the proxy
+adds therefore gives different access on the two paths.
 
-The exec entry records what the file depends on. Its `env` sets
-`RANCHER_CLI_CONFIG_DIR` to the config directory `rancher kubeconfig` ran
-against, absolute, the default included, and `RANCHER_CLI_CREDENTIAL_STORE`
-to the empty value when that directory declares its store, else to the value
-set when it ran (or empty); kubectl adds the entry's `env` after its own
-environment, so the plugin opens that directory and store from any shell or
-working directory. The file therefore works for this user on this machine
-only, and every run says so on stderr. A directory that is moved, renamed or
-deleted strands its kubeconfigs: the plugin opens the recorded path, which
-is then empty (a sign-in there starts a new directory), so write the
-kubeconfig again from the directory's new place. `--exec-command <command>`
-names the command the exec entry runs, default `rancher`: a bare name kubectl
-looks up on its PATH, or a path, made absolute from the working directory (a
-leading `~` or `~/` is the home directory; `~user` is refused). `installHint`,
-which kubectl prints when the command cannot be run, names the install URL
-for the default command, and for another the steps that write the kubeconfig
-again from the entry it was written from (`rancher --config <dir> config
-use-server <entry>`, then `rancher --config <dir> kubeconfig --cluster
-<id>`); a file written in an environment-only session, which has no entry,
-names the variables to set instead (`RANCHER_CLI_URL`, `RANCHER_CLI_CACERT`
-when the file carries a CA, and `RANCHER_CLI_TOKEN`) before `rancher --config
-<dir> kubeconfig --cluster <id>`. When the directory's path holds characters
-a terminal line cannot show, no command is offered, in `installHint` or in any
-remedy: the text says the path cannot be printed. A second stderr notice comes from the exec plugin's own lookup over
-the store it will open: which stored login kubectl will use when it is not
-this session's (under `RANCHER_CLI_TOKEN`, the plugin's own login entry, or
-an entry named `<current>-<id>`), how to get one when none answers, that the
-plugin will refuse the file and why, or that the store could not be read.
-The notices are a snapshot: a later login or logout changes the answer.
+The `exec` block records the config directory and the credential store the
+kubeconfig depends on. Its `env` sets `RANCHER_CLI_CONFIG_DIR` to the config
+directory `rancher kubeconfig` ran against, absolute, the default included, and
+`RANCHER_CLI_CREDENTIAL_STORE` to the empty value when that directory's config
+file sets `credentialStore`, else to the value set when it ran (or empty);
+kubectl adds the `exec` block's `env` after its own environment; the plugin
+therefore opens that directory and credential store from any shell or working
+directory. The file therefore works for this user on this machine only, and
+every run says so on stderr. If a config directory is moved, renamed or deleted,
+its kubeconfigs stop working: the plugin opens the recorded path, which is then
+empty (signing in there creates a new directory); write the kubeconfig again
+from the directory's new location. `--exec-command <command>` names the command
+the `exec` block runs, default `rancher`: a bare name kubectl looks up on its
+PATH, or a path, made absolute from the working directory (a leading `~` or `~/`
+is the home directory; `~user` is refused). `installHint`, which kubectl prints
+when it cannot run the command, gives the install URL for the default command.
+For another command it gives the steps that write the kubeconfig again from the
+entry it was written from (`rancher --config <dir> config use-server <entry>`,
+then `rancher --config <dir> kubeconfig --cluster <id>`). A file written in a
+session that used only environment variables, which has no entry, tells you
+which variables to set (`RANCHER_CLI_URL`, `RANCHER_CLI_CACERT` when the file
+carries a CA, and `RANCHER_CLI_TOKEN`) before `rancher --config <dir> kubeconfig
+--cluster <id>`. When the directory's path holds characters a terminal line
+cannot show, no command is offered, in `installHint` or in any remedy: the text
+says the path cannot be printed. A second stderr notice comes from the exec
+plugin's own lookup in the credential store it will open: which stored login
+kubectl will use when it is not this session's (under `RANCHER_CLI_TOKEN`, the
+plugin's own login, or an entry named `<current>-<id>`), how to get one when
+none answers, that the plugin will refuse the file and why, or that the
+credential store could not be read. The notices are a snapshot: a later login or
+logout changes the answer.
 
-`create machine-config` curates driver flags for `digitaloceanconfig`
-(`--region`, `--size`, `--image`, `--monitoring`, `--ipv6`,
-`--private-networking`, `--tags`); all other kinds take
-`--set field=value` for driver-specific fields; credential fields are
-always rejected. Multi-pool node-driver clusters go through
-`create resource -f`.
+`create machine-config` has its own flags for `digitaloceanconfig` (`--region`,
+`--size`, `--image`, `--monitoring`, `--ipv6`, `--private-networking`,
+`--tags`); every other kind takes `--set field=value` for driver-specific
+fields; credential fields are always rejected. Multi-pool node-driver clusters
+go through `create resource -f`.
 
 Imported and custom clusters need no machine config: `create cluster
 <name> --import` or `--custom`. Custom-cluster nodes join with the
@@ -908,34 +913,34 @@ retry.
 
 ## Composite commands
 
-`inspect cluster` is a composite read: management identity + agent
-connectivity (management Connected/Ready conditions; a disconnect warns) +
-provisioning status/conditions (ready derived from the Ready condition),
-machine pools, members (ClusterRoleTemplateBindings with display names
-resolved), machines ([Cluster API](https://cluster-api.sigs.k8s.io/)
-Machines with phase and first failing condition
-message - surfacing provider errors invisible to other commands), and
-node-join/import registration commands. Registration commands are withheld
-by default - they contain join credentials; pass `--registration` to fetch
-them, or use `get clusterregistrationtoken default-token --namespace
-<cluster-id>`. The management read is mandatory (unknown/ambiguous cluster
-or a failed read is a structured error, non-zero exit); provisioning,
-members, machines, and registration sections degrade independently to
-notes/warnings.
+`inspect cluster` is a composite read: the management cluster's id, name, state
+and Kubernetes version + agent connectivity (management Connected/Ready
+conditions; a disconnected agent adds a warning) + provisioning
+status/conditions (ready derived from the Ready condition), machine pools,
+members (ClusterRoleTemplateBindings with display names resolved), machines
+([Cluster API](https://cluster-api.sigs.k8s.io/) Machines with phase and the
+message of the first failing condition, preferring a condition whose reason
+contains `Error`), and node-join/import registration commands. Registration
+commands are not fetched by default - they contain a registration token; pass
+`--registration` to fetch them, or use `get clusterregistrationtoken
+default-token --namespace <cluster-id>`. The management read is mandatory
+(unknown/ambiguous cluster or a failed read is a structured error, non-zero
+exit); if reading the provisioning, members, machines or registration section
+fails, the command shows a note or warning for that section and the other
+sections still show.
 
-`inspect project` renders a sectioned text card (PROJECT, NAMESPACES,
-MEMBERS, QUOTA, USAGE); members are ProjectRoleTemplateBindings with
-display names resolved from Users/UserAttributes; the members section
-degrades independently to a warning.
+`inspect project` prints text in sections (PROJECT, NAMESPACES, MEMBERS, QUOTA,
+USAGE); members are ProjectRoleTemplateBindings with display names resolved from
+Users/UserAttributes; if the members section cannot be read, it shows a warning
+and the other sections still show.
 
-`inspect user <id|username|displayName|principal>` answers who a user is
-and what roles they hold everywhere - never what they can actually do
-(that is a permissions question, answered only by the server; no command
-in this CLI computes it). Identity, group memberships (as last synced by
-Rancher, refreshed at login), and roles at global/cluster/project scope
-are joined into one document; a failed group-memberships read blocks the
-role sections too, since their completeness cannot be verified without
-knowing the user's groups.
+`inspect user <id|username|displayName|principal>` answers who a user is and
+what roles they have at every scope - never what they can actually do (that is a
+permissions question, answered only by the server; no command in this CLI
+computes it). The output puts identity, group memberships (as last synced by
+Rancher, refreshed at login) and roles at global, cluster and project scope into
+one document. If reading group memberships fails, the role sections are left out
+too, because without the groups the CLI cannot confirm the roles are complete.
 
 ## Access management
 

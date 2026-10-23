@@ -97,6 +97,10 @@ import (
 //   - collides with: an exit code collision is the plain sense.
 //   - envelope (alone): the CLI's name for its JSON output; only "envelope key"
 //     is refused.
+//   - effect, Effect: the ordinary word ("no effect", "takes effect", a
+//     table header); the rejected compound is the row dry-run effect.
+//   - members (for the namespaces of a project): the word also means
+//     people, so only the phrase member namespaces is refused.
 func TestRejectedWordingStaysOut(t *testing.T) {
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -174,9 +178,11 @@ type wordingRow struct {
 // form.
 var rejectedWording = []wordingRow{
 	{[]string{"as you"}, "with your permissions"},
+	{[]string{"auth bootstrap"}, "authentication with your stored login"},
 	{[]string{"auth lifecycle"}, "name the steps (key generation, TTL clamp, identity derivation)"},
 	{[]string{"backing secret", "backing secrets"}, "Secret"},
 	{[]string{"bare command", "bare commands"}, "the exec plugin's command"},
+	{[]string{"bespoke"}, "dedicated"},
 	{[]string{"bin-dir", "bin-dirs", "bin dir", "bin dirs"}, "bin directory"},
 	{[]string{"budget", "budgets"}, "time limit"},
 	{[]string{"caller identity"}, "your user ID"},
@@ -186,13 +192,19 @@ var rejectedWording = []wordingRow{
 	{[]string{"credential store helper", "credential store helpers"}, "credential helper"},
 	{[]string{"curated flag", "curated flags"}, "the command's own flags"},
 	{[]string{"degrades to", "degrade to", "degraded to"}, "say what the command shows instead"},
+	{[]string{"direct context", "direct contexts", "direct endpoint", "direct endpoints"}, "Authorized Cluster Endpoint"},
+	{[]string{"dry-run effect", "dry-run effects"}, "dry-run preview"},
 	{[]string{"envelope key", "envelope keys"}, "top-level Kubernetes object field"},
+	{[]string{"escalates to", "escalate to"}, "requires"},
+	{[]string{"exec entry", "exec entries", "exec user entry"}, "exec block"},
 	{[]string{"executable", "executables"}, "binaries"},
 	{[]string{"floor", "floors", "version-floor", "version-floors"}, "minimum"},
 	{[]string{"identity probe", "identity probes", "selfuser probe", "selfuser probes"}, "SelfUser request"},
 	{[]string{"junction", "junctions"}, "a Windows directory link (NTFS junction)"},
 	{[]string{"killed"}, "stopped"},
 	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},
+	{[]string{"member namespaces", "member namespace"}, "the project's namespaces"},
+	{[]string{"named get", "named gets"}, "a get of one object"},
 	{[]string{"node-driver pool", "node-driver pools"}, "machine pool"},
 	{[]string{"one read of its id"}, "gets it by its id"},
 	{[]string{"ordinary secret", "ordinary secrets"}, "a secret in a namespace"},
@@ -200,10 +212,12 @@ var rejectedWording = []wordingRow{
 	{[]string{"principal form", "principal forms"}, "principal prefix"},
 	{[]string{"provider list", "provider lists"}, "list of auth configs"},
 	{[]string{"role vocabulary"}, "role templates and global roles"},
+	{[]string{"schema vocabulary", "schema kind vocabulary"}, "the kinds rancher schema lists"},
 	{[]string{"scriptblock", "scriptblocks"}, "script block"},
 	{[]string{"server dry run"}, "server-side dry-run"},
 	{[]string{"stamped", "stamps", "unstamped"}, "set (an annotation)"},
 	{[]string{"the pair"}, "the two binaries"},
+	{[]string{"the plan"}, "the dry-run preview"},
 	{[]string{"user record", "user records"}, "User object"},
 	{[]string{"wins over", "win over", "won over"}, "takes precedence over"},
 }
@@ -217,6 +231,7 @@ type wordingPhrase struct {
 var wordingPhraseAllowlist = []wordingPhrase{
 	{"floor", "no invented floor", "a minimum node count, not a version limit"},
 	{"junction", "(NTFS junction)", "names the Windows link type where the exact kind matters"},
+	{"the plan", "prints the plan without", "the installer's own --dry-run output, not the CLI's dry-run preview"},
 }
 
 // wordingPath allows count uses of a term in a file and, for a document,
@@ -235,9 +250,10 @@ var wordingPathAllowlist = []wordingPath{
 	{"as you", "internal/engine/access/explain.go", "", 1, "text not yet reworded"},
 	{"as you", "internal/engine/access/list.go", "", 1, "text not yet reworded"},
 	{"as you", "internal/engine/access/whocan.go", "", 1, "text not yet reworded"},
+	{"auth bootstrap", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
 	{"auth lifecycle", "internal/cli/root.go", "", 1, "text not yet reworded"},
 	{"auth lifecycle", "internal/engine/managementtoken/managementtoken.go", "", 1, "text not yet reworded"},
-	{"backing secret", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
+	{"bespoke", "internal/cli/capability_coverage.go", "", 4, "text not yet reworded"},
 	{"bin-dir", "README.md", "Install", 1, "text not yet reworded"},
 	{"budget", "COMMANDS.md", "Servers & configuration", 1, "text not yet reworded"},
 	{"budget", "MIGRATING.md", "Changed in this CLI", 1, "text not yet reworded"},
@@ -256,18 +272,39 @@ var wordingPathAllowlist = []wordingPath{
 	{"command bug", "internal/engine/resources/servertable.go", "", 1, "text not yet reworded"},
 	{"command bug", "internal/runtime/pipeline.go", "", 16, "text not yet reworded"},
 	{"command bug", "internal/runtime/project.go", "", 4, "text not yet reworded"},
-	{"controller-owned", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
 	{"curated flag", "internal/cli/root.go", "", 1, "text not yet reworded"},
 	{"degrades to", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"degrades to", "internal/engine/inspect/images.go", "", 1, "text not yet reworded"},
 	{"degrades to", "skills/rancher/SKILL.md", "9. Observability & support", 1, "text not yet reworded"},
+	{"direct context", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
+	{"direct context", "REFERENCE.md", "What each part means", 1, "text not yet reworded"},
+	{"direct context", "REFERENCE.md", "What the CLI sends to the server", 1, "text not yet reworded"},
+	{"direct context", "REFERENCE.md", "Where it shows up on the server", 1, "text not yet reworded"},
+	{"direct context", "internal/engine/kubeconfig/command.go", "", 4, "text not yet reworded"},
+	{"direct context", "internal/token/directwait.go", "", 1, "text not yet reworded"},
+	{"direct context", "internal/token/token.go", "", 3, "text not yet reworded"},
+	{"direct context", "skills/rancher/SKILL.md", "8. kubectl interop", 2, "text not yet reworded"},
+	{"dry-run effect", "skills/rancher/SKILL.md", "4. Mutation safety loop - never skip", 2, "text not yet reworded"},
+	{"escalates to", "skills/rancher/SKILL.md", "11. OIDC clients", 1, "text not yet reworded"},
+	{"exec entry", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
+	{"exec entry", "REFERENCE.md", "Environment variables", 2, "text not yet reworded"},
+	{"exec entry", "REFERENCE.md", "The user a kubeconfig names (`--user-id`)", 3, "text not yet reworded"},
+	{"exec entry", "REFERENCE.md", "kubectl integration", 3, "text not yet reworded"},
+	{"exec entry", "internal/config/config.go", "", 1, "text not yet reworded"},
+	{"exec entry", "internal/engine/kubeconfig/command.go", "", 1, "text not yet reworded"},
+	{"exec entry", "internal/token/entry.go", "", 6, "text not yet reworded"},
+	{"exec entry", "internal/token/noterminal.go", "", 3, "text not yet reworded"},
+	{"exec entry", "internal/token/owner.go", "", 8, "text not yet reworded"},
+	{"exec entry", "internal/token/regenerate.go", "", 1, "text not yet reworded"},
+	{"exec entry", "internal/token/signin.go", "", 1, "text not yet reworded"},
+	{"exec entry", "skills/rancher/SKILL.md", "8. kubectl interop", 4, "text not yet reworded"},
 	{"floor", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"floor", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"floor", "skills/rancher/SKILL.md", "1. Verify auth before anything else", 1, "text not yet reworded"},
 	{"identity probe", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"junction", "README.md", "Install", 1, "text not yet reworded"},
 	{"killed", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
-	{"owning source object", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
+	{"named get", "internal/engine/resources/get.go", "", 2, "text not yet reworded"},
 	{"principal form", "internal/engine/inspect/user.go", "", 1, "text not yet reworded"},
 	{"provider list", "MIGRATING.md", "Changed in this CLI", 3, "text not yet reworded"},
 	{"provider list", "REFERENCE.md", "Auth configs (`--auth-provider`)", 2, "text not yet reworded"},
@@ -275,6 +312,8 @@ var wordingPathAllowlist = []wordingPath{
 	{"scriptblock", "README.md", "Install", 1, "text not yet reworded"},
 	{"stamped", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
 	{"stamped", "internal/skillinstall/ops.go", "", 1, "text not yet reworded"},
+	{"the plan", "README.md", "Safety model", 1, "text not yet reworded"},
+	{"the plan", "skills/rancher/SKILL.md", "4. Mutation safety loop - never skip", 1, "text not yet reworded"},
 	{"wins over", "REFERENCE.md", "Access management", 1, "text not yet reworded"},
 	{"wins over", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
 }
