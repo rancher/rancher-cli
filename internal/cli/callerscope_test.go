@@ -509,7 +509,7 @@ func TestEveryClusterCommandResolvesAsTheCaller(t *testing.T) {
 				r := h.run(t, strings.Fields("get pod --cluster prod --project p-1 -o json"))
 				require.Nil(t, r.err, r.stderr)
 				assert.Equal(t, []string{
-					"--project 'p-1' is the id of project 'p-1'; project 'p-2' also has the display name 'p-1' - pass --project 'p-2' for that one",
+					"--project 'p-1' is the id of project 'p-1' and the display name of project 'p-2'; the command uses the one with that id. To use the other one, pass --project 'p-2'",
 					callerClusterWarning,
 				}, r.warnings, "the project's warning first, then the cluster's")
 			})
@@ -520,7 +520,7 @@ func TestEveryClusterCommandResolvesAsTheCaller(t *testing.T) {
 				r := h.run(t, strings.Fields("get pod --cluster prod --project p-1 -o json"))
 				require.Nil(t, r.err, r.stderr)
 				assert.Equal(t, []string{
-					"--project 'p-1' is the id of project 'p-1'; project 'p-2' also has the display name 'p-1' - pass --project 'p-2' for that one",
+					"--project 'p-1' is the id of project 'p-1' and the display name of project 'p-2'; the command uses the one with that id. To use the other one, pass --project 'p-2'",
 					callerClusterWarning,
 					creds + " is group/world-readable (644); run: chmod 600 " + creds,
 				}, r.warnings, "the project's warning, then the cluster's, then the store's")
@@ -553,11 +553,11 @@ func TestEveryClusterCommandResolvesAsTheCaller(t *testing.T) {
 
 // callerClusterWarning is the collision pass's warning: the id prod wins
 // over c-abc's display name.
-const callerClusterWarning = "--cluster 'prod' is the id of cluster 'prod'; cluster 'c-abc' also has the display name 'prod' - pass --cluster 'c-abc' for that one"
+const callerClusterWarning = "--cluster 'prod' is the id of cluster 'prod' and the display name of cluster 'c-abc'; the command uses the one with that id. To use the other one, pass --cluster 'c-abc'"
 
 // callerPositionalWarning is callerClusterWarning for a cluster named by
 // the command's positional argument.
-const callerPositionalWarning = "'prod' is the id of cluster 'prod'; cluster 'c-abc' also has the display name 'prod' - pass 'c-abc' for that one"
+const callerPositionalWarning = "'prod' is the id of cluster 'prod' and the display name of cluster 'c-abc'; the command uses the one with that id. To use the other one, pass 'c-abc'"
 
 // checkRow runs row and asserts it resolved its cluster value to id as
 // the caller and reached its target there.

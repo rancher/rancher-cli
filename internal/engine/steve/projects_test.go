@@ -263,13 +263,13 @@ func TestResolveProjectIDWinsOverAnotherProjectsDisplayName(t *testing.T) {
 	p, warning, err := ResolveProject(t.Context(), get, &fakeCluster{}, "c-abc", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, Project{Cluster: "c-abc", ID: "p-1", DisplayName: "first"}, p)
-	assert.Equal(t, "--project 'p-1' is the id of project 'p-1'; project 'p-2' also has the display name 'p-1' - pass --project 'p-2' for that one", warning)
+	assert.Equal(t, "--project 'p-1' is the id of project 'p-1' and the display name of project 'p-2'; the command uses the one with that id. To use the other one, pass --project 'p-2'", warning)
 
 	_, get = projectFixture(t, steveProject("c-abc", "p-1", "first"), steveProject("c-abc", "p-3", "p-1"), steveProject("c-abc", "p-2", "p-1"))
 	p, warning, err = ResolveProject(t.Context(), get, &fakeCluster{}, "c-abc", "p-1")
 	require.NoError(t, err)
 	assert.Equal(t, "p-1", p.ID)
-	assert.Equal(t, "--project 'p-1' is the id of project 'p-1'; projects 'p-2', 'p-3' also have the display name 'p-1' - pass --project with the id of the one you mean", warning)
+	assert.Equal(t, "--project 'p-1' is the id of project 'p-1' and the display name of projects 'p-2', 'p-3'; the command uses the one with that id. To use one of the others, pass --project with its id", warning)
 }
 
 func TestResolveProjectDuplicateDisplayNameIsAmbiguous(t *testing.T) {

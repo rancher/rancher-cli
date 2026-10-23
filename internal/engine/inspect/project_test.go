@@ -205,7 +205,7 @@ func TestInspectProjectIDWinsWarningComesFirst(t *testing.T) {
 	data := res.Data.(projectResult)
 	assert.Equal(t, "p-1", data.ID)
 	assert.Equal(t, []string{
-		"'p-1' is the id of project 'p-1'; project 'p-2' also has the display name 'p-1' - pass 'p-2' for that one",
+		"'p-1' is the id of project 'p-1' and the display name of project 'p-2'; the command uses the one with that id. To use the other one, pass 'p-2'",
 		"could not list users; user display names are not shown: users is forbidden",
 	}, res.Warnings)
 	assert.NotContains(t, res.Warnings[0], "--project")

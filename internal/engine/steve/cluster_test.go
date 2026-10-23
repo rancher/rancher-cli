@@ -64,7 +64,7 @@ func TestMatchClusterIDWinsWithAWarning(t *testing.T) {
 	id, warning, err := MatchCluster(list, "prod", cliText("prod"))
 	require.NoError(t, err)
 	assert.Equal(t, "prod", id)
-	assert.Equal(t, "--cluster 'prod' is the id of cluster 'prod'; cluster 'c-abc' also has the display name 'prod' - pass --cluster 'c-abc' for that one", warning)
+	assert.Equal(t, "--cluster 'prod' is the id of cluster 'prod' and the display name of cluster 'c-abc'; the command uses the one with that id. To use the other one, pass --cluster 'c-abc'", warning)
 }
 
 func TestMatchClusterDuplicateDisplayNameIsAmbiguous(t *testing.T) {

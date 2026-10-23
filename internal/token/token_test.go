@@ -776,7 +776,7 @@ func TestGetTokenClusterIDWinsOverAnotherClustersDisplayName(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "c-1", gotCluster, "the id wins")
 	assert.Equal(t, int32(1), listHits.Load())
-	assert.Contains(t, stderr.String(), "--cluster 'c-1' is the id of cluster 'c-1'; cluster 'c-2' also has the display name 'c-1' - pass --cluster 'c-2' for that one")
+	assert.Contains(t, stderr.String(), "--cluster 'c-1' is the id of cluster 'c-1' and the display name of cluster 'c-2'; the command uses the one with that id. To use the other one, pass --cluster 'c-2'")
 	assert.Empty(t, res.Warnings, "the ExecCredential result carries no warning")
 }
 

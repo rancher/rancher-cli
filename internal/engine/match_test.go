@@ -59,10 +59,10 @@ func TestMatchOneIDMatchWinsOverDisplayNameMatches(t *testing.T) {
 		t    MatchText
 		want string
 	}{
-		"one other, flag":          {one, projectText, "--project 'p-1' is the id of project 'p-1'; project 'p-2' also has the display name 'p-1' - pass --project 'p-2' for that one"},
-		"one other, positional":    {one, positional, "'p-1' is the id of project 'p-1'; project 'p-2' also has the display name 'p-1' - pass 'p-2' for that one"},
-		"several others, flag":     {several, projectText, "--project 'p-1' is the id of project 'p-1'; projects 'p-2', 'p-3' also have the display name 'p-1' - pass --project with the id of the one you mean"},
-		"several others, position": {several, positional, "'p-1' is the id of project 'p-1'; projects 'p-2', 'p-3' also have the display name 'p-1' - pass the id of the one you mean"},
+		"one other, flag":          {one, projectText, "--project 'p-1' is the id of project 'p-1' and the display name of project 'p-2'; the command uses the one with that id. To use the other one, pass --project 'p-2'"},
+		"one other, positional":    {one, positional, "'p-1' is the id of project 'p-1' and the display name of project 'p-2'; the command uses the one with that id. To use the other one, pass 'p-2'"},
+		"several others, flag":     {several, projectText, "--project 'p-1' is the id of project 'p-1' and the display name of projects 'p-2', 'p-3'; the command uses the one with that id. To use one of the others, pass --project with its id"},
+		"several others, position": {several, positional, "'p-1' is the id of project 'p-1' and the display name of projects 'p-2', 'p-3'; the command uses the one with that id. To use one of the others, pass its id"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -897,9 +897,14 @@ Imported and custom clusters need no machine config: `create cluster
 registration commands that `inspect cluster <name> --registration`
 fetches.
 
-A `creatorId not stamped` warning from `create cluster` means the
-identity probe failed - dry-run may be denied, but `--apply` is still
-expected to succeed.
+A `creatorId annotation not set` warning from `create cluster` means the
+CLI could not set the `field.cattle.io/creatorId` annotation: the
+SelfUser request for your user ID failed or returned no valid user ID, or
+the CLI could not add the annotation to the cluster object it builds.
+rancher-webhook may then reject the server-side dry-run, and a rejected
+dry-run also stops `--apply`, which runs the same dry-run first. Log in
+again, or check that you may create `selfusers.ext.cattle.io`, then
+retry.
 
 ## Composite commands
 

@@ -86,6 +86,17 @@ import (
 //   - cascades, consumed: other text still uses them in their own sense (a
 //     provisioning cluster's delete warning, a cluster registration
 //     token's read-only note).
+//   - curated (alone): ordinary word here (curated logs and targets, curated
+//     commands and kinds); only "curated flag" is refused.
+//   - pool, probe (alone): "machine pool" and "SelfUser request" are the terms;
+//     the bare words name flags, names and the fidelity vocabulary.
+//   - stamp (the noun): the cache binding stamp and the logged-out stamp are
+//     named values; only "stamped", "stamps" and "unstamped" are refused.
+//   - discovered: the Kubernetes API discovery sense ("discovered: <list>").
+//   - stale: an ordinary adjective for a token or an owner reference.
+//   - collides with: an exit code collision is the plain sense.
+//   - envelope (alone): the CLI's name for its JSON output; only "envelope key"
+//     is refused.
 func TestRejectedWordingStaysOut(t *testing.T) {
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -168,15 +179,21 @@ var rejectedWording = []wordingRow{
 	{[]string{"bare command", "bare commands"}, "the exec plugin's command"},
 	{[]string{"bin-dir", "bin-dirs", "bin dir", "bin dirs"}, "bin directory"},
 	{[]string{"budget", "budgets"}, "time limit"},
+	{[]string{"caller identity"}, "your user ID"},
 	{[]string{"caller-scoped"}, "with your permissions"},
 	{[]string{"command bug", "command bugs"}, "internal error"},
 	{[]string{"controller-owned"}, "a controller creates and manages it"},
 	{[]string{"credential store helper", "credential store helpers"}, "credential helper"},
+	{[]string{"curated flag", "curated flags"}, "the command's own flags"},
 	{[]string{"degrades to", "degrade to", "degraded to"}, "say what the command shows instead"},
+	{[]string{"envelope key", "envelope keys"}, "top-level Kubernetes object field"},
 	{[]string{"executable", "executables"}, "binaries"},
 	{[]string{"floor", "floors", "version-floor", "version-floors"}, "minimum"},
+	{[]string{"identity probe", "identity probes", "selfuser probe", "selfuser probes"}, "SelfUser request"},
 	{[]string{"junction", "junctions"}, "a Windows directory link (NTFS junction)"},
 	{[]string{"killed"}, "stopped"},
+	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},
+	{[]string{"node-driver pool", "node-driver pools"}, "machine pool"},
 	{[]string{"one read of its id"}, "gets it by its id"},
 	{[]string{"ordinary secret", "ordinary secrets"}, "a secret in a namespace"},
 	{[]string{"owning source object"}, "the object it was created from"},
@@ -185,6 +202,7 @@ var rejectedWording = []wordingRow{
 	{[]string{"role vocabulary"}, "role templates and global roles"},
 	{[]string{"scriptblock", "scriptblocks"}, "script block"},
 	{[]string{"server dry run"}, "server-side dry-run"},
+	{[]string{"stamped", "stamps", "unstamped"}, "set (an annotation)"},
 	{[]string{"the pair"}, "the two binaries"},
 	{[]string{"user record", "user records"}, "User object"},
 	{[]string{"wins over", "win over", "won over"}, "takes precedence over"},
@@ -239,12 +257,14 @@ var wordingPathAllowlist = []wordingPath{
 	{"command bug", "internal/runtime/pipeline.go", "", 16, "text not yet reworded"},
 	{"command bug", "internal/runtime/project.go", "", 4, "text not yet reworded"},
 	{"controller-owned", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
+	{"curated flag", "internal/cli/root.go", "", 1, "text not yet reworded"},
 	{"degrades to", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"degrades to", "internal/engine/inspect/images.go", "", 1, "text not yet reworded"},
 	{"degrades to", "skills/rancher/SKILL.md", "9. Observability & support", 1, "text not yet reworded"},
 	{"floor", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"floor", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"floor", "skills/rancher/SKILL.md", "1. Verify auth before anything else", 1, "text not yet reworded"},
+	{"identity probe", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"junction", "README.md", "Install", 1, "text not yet reworded"},
 	{"killed", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
 	{"owning source object", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
@@ -253,6 +273,8 @@ var wordingPathAllowlist = []wordingPath{
 	{"provider list", "REFERENCE.md", "Auth configs (`--auth-provider`)", 2, "text not yet reworded"},
 	{"provider list", "internal/token/token.go", "", 2, "text not yet reworded"},
 	{"scriptblock", "README.md", "Install", 1, "text not yet reworded"},
+	{"stamped", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
+	{"stamped", "internal/skillinstall/ops.go", "", 1, "text not yet reworded"},
 	{"wins over", "REFERENCE.md", "Access management", 1, "text not yet reworded"},
 	{"wins over", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
 }

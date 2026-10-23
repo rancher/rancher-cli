@@ -235,11 +235,11 @@ func rowFrom(obj *unstructured.Unstructured) cloudCredRow {
 }
 
 // cloudCredRows is `get cloud-credential`'s payload; it implements
-// output.Tabular so `-o table` shows NAME/DISPLAY/DRIVER/AGE - secret
+// output.Tabular so `-o table` shows NAME/DISPLAY NAME/DRIVER/AGE - secret
 // material never appears in a column.
 type cloudCredRows []cloudCredRow
 
-func (r cloudCredRows) Columns() []string { return []string{"NAME", "DISPLAY", "DRIVER", "AGE"} }
+func (r cloudCredRows) Columns() []string { return []string{"NAME", "DISPLAY NAME", "DRIVER", "AGE"} }
 
 func (r cloudCredRows) Rows() [][]string {
 	out := make([][]string, 0, len(r))

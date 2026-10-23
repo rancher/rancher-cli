@@ -98,7 +98,7 @@ func storedLoginCLIDir(t *testing.T, url string) string {
 func TestStoredLoginMissCreatesTheTokenForTheResolvedClusterUnderTheGate(t *testing.T) {
 	for _, tc := range []struct{ value, warning string }{
 		{"prod", ""},
-		{"c-abc", "--cluster 'c-abc' is the id of cluster 'c-abc'; cluster 'c-def' also has the display name 'c-abc' - pass --cluster 'c-def' for that one"},
+		{"c-abc", "--cluster 'c-abc' is the id of cluster 'c-abc' and the display name of cluster 'c-def'; the command uses the one with that id. To use the other one, pass --cluster 'c-def'"},
 	} {
 		t.Run(tc.value, func(t *testing.T) {
 			g := newGatedCLIFacade(t)

@@ -228,11 +228,11 @@
         },
         {
           "name": "create cluster",
-          "usage": "Create a provisioning cluster (--import, --custom, or node-driver)"
+          "usage": "Create a provisioning cluster (--import, --custom, or --machine-config for a node-driver cluster)"
         },
         {
           "name": "create machine-config",
-          "usage": "Create a machine config for a node-driver cluster pool"
+          "usage": "Create a machine config for the machine pool of a node-driver cluster"
         }
       ],
       "desc": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",

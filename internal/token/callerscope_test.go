@@ -161,6 +161,6 @@ func TestPluginCreatedLoginCreatesTheTokenForTheResolvedClusterUnderTheGate(t *t
 	require.NoError(t, err)
 	assert.Equal(t, "ExecCredential", res.Kind)
 	assert.Equal(t, []string{"c-abc"}, g.clusterCreates())
-	assert.Contains(t, notices.String(), "--cluster 'c-abc' is the id of cluster 'c-abc'; cluster 'c-def' also has the display name 'c-abc'")
+	assert.Contains(t, notices.String(), "--cluster 'c-abc' is the id of cluster 'c-abc' and the display name of cluster 'c-def'; the command uses the one with that id")
 	assert.Empty(t, res.Warnings)
 }

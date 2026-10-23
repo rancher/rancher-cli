@@ -49,18 +49,19 @@ var provisioningClusterDisplayKind = func() string {
 	return row.Name
 }()
 
-// creatorIDAnnotation is rancher-webhook's creator identity annotation.
-// The webhook's mutator stamps it from userInfo on real creates but skips
-// dry-run, while its validator requires the match on dry-run too - so the
-// CLI pre-stamps it to keep server-side dry-run honest. On a real create
-// the mutator overwrites it with the same value.
+// creatorIDAnnotation is the annotation rancher-webhook uses for the user
+// who created a cluster. The mutating webhook sets it from userInfo on real
+// creates but skips dry-run, while the validating webhook requires the match
+// on dry-run too - so the CLI sets it first to keep server-side dry-run
+// honest. On a real create the mutating webhook overwrites it with the same
+// value.
 const creatorIDAnnotation = "field.cattle.io/creatorId"
 
-// stampWarningPrefix is the shared prefix for all creatorId stamping
-// degrade warnings. Test assertions and the e2e txtar substrings are
-// anchored by this const on the code side, so a rename propagates
-// everywhere without a silent golden drift.
-const stampWarningPrefix = "creatorId not stamped"
+// stampWarningPrefix is the shared prefix of every warning for a creatorId
+// annotation the command could not set. Test assertions and the e2e txtar
+// substrings are anchored by this const on the code side, so a rename
+// propagates everywhere without a silent golden drift.
+const stampWarningPrefix = "creatorId annotation not set"
 
 // validUserIDRe is DNS-1123-ish: lowercase alphanumerics, dots, and
 // hyphens, starting with a lowercase alphanumeric - the shape of Rancher
@@ -157,17 +158,20 @@ func NewCreateCluster(clients engine.ClusterClientFactory, roots engine.RootClie
 func (createClusterCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "create cluster",
-		Usage: "Create a provisioning cluster (--import, --custom, or node-driver)",
-		Desc: "Creates a single machine pool; repeatable pool flags are not supported " +
-			"yet; a multi-pool cluster must go through `create resource -f` with a " +
-			"full manifest. Before the server-side dry-run, the command resolves the " +
-			"caller's identity via the ext.cattle.io SelfUser probe and stamps it into " +
-			"the creatorId annotation (rancher-webhook's validator requires the annotation " +
-			"on dry-run even though its mutator only stamps it on real creates). If the " +
-			"probe fails, a \"" + stampWarningPrefix + "\" warning is emitted and the " +
-			"create proceeds unstamped - rancher-webhook may then deny the dry-run, but " +
-			"a real --apply create is still expected to succeed (the mutator stamps " +
-			"identity server-side on real creates).",
+		Usage: "Create a provisioning cluster (--import, --custom, or --machine-config for a node-driver cluster)",
+		Desc: "A node-driver cluster is created with one machine pool; the machine pool " +
+			"flags cannot be repeated yet. For a cluster with several machine pools, " +
+			"use `create resource -f` with a full manifest. Before the server-side " +
+			"dry-run, the command gets your user ID with a SelfUser request " +
+			"(ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it: " +
+			"the rancher-webhook validating webhook requires the annotation on a " +
+			"dry-run, and its mutating webhook sets it only on a real create. If the " +
+			"command cannot set the annotation (the request fails or returns no valid " +
+			"user ID), it warns \"" + stampWarningPrefix + "\" and continues without " +
+			"the annotation. rancher-webhook may then reject the dry-run, and a " +
+			"rejected dry-run also stops --apply, which runs the same dry-run first. " +
+			"Log in again, or check that you may create selfusers.ext.cattle.io, then " +
+			"retry.",
 		CommandType: runtime.Mutating,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{
@@ -178,14 +182,14 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 			// kinds.MachineConfigGroup), so schema and hint can never drift.
 			// Deliberately NOT ArgSpec.Enum: the flag's values are kind/name
 			// composites, so the runtime enum validator would reject them all.
-			{Name: "machine-config", Type: "string", Desc: "machine config `kind/name` for a node-driver pool; kinds: " + machineConfigKindsHint()},
-			{Name: "cloud-credential", Type: "string", Desc: "cloud credential `id|name` for a node-driver pool"},
-			{Name: "k8s-version", Type: "string", Desc: "Kubernetes `version`; required for --custom and node-driver, optional for --import"},
-			{Name: "pool-name", Type: "string", Desc: "node-driver pool name (default: pool1)"},
-			{Name: "etcd", Type: "bool", Desc: "node-driver pool: etcd role"},
-			{Name: "controlplane", Type: "bool", Desc: "node-driver pool: control-plane role"},
-			{Name: "worker", Type: "bool", Desc: "node-driver pool: worker role"},
-			{Name: "quantity", Type: "string", Desc: "node-driver pool size (default: 1)"},
+			{Name: "machine-config", Type: "string", Desc: "machine config `kind/name` for the machine pool of a node-driver cluster; kinds: " + machineConfigKindsHint()},
+			{Name: "cloud-credential", Type: "string", Desc: "cloud credential `id|display name` for a node-driver cluster"},
+			{Name: "k8s-version", Type: "string", Desc: "Kubernetes `version`; required for --custom and for a node-driver cluster, optional for --import"},
+			{Name: "pool-name", Type: "string", Desc: "machine pool name (default: pool1)"},
+			{Name: "etcd", Type: "bool", Desc: "machine pool: etcd role"},
+			{Name: "controlplane", Type: "bool", Desc: "machine pool: control-plane role"},
+			{Name: "worker", Type: "bool", Desc: "machine pool: worker role"},
+			{Name: "quantity", Type: "string", Desc: "number of nodes in the machine pool (default: 1)"},
 		},
 		Examples: []string{
 			"rancher create cluster imported-1 --import --apply",
@@ -218,12 +222,12 @@ func (createClusterCmd) build(in runtime.Input) (*unstructured.Unstructured, clu
 
 	if importFlag && customFlag {
 		return nil, 0, clierr.New(clierr.CodeValidation,
-			"--import and --custom are mutually exclusive; pass exactly one of --import, --custom, or the node-driver flags")
+			"--import and --custom cannot be used together; pass exactly one of --import, --custom, or --machine-config with --cloud-credential")
 	}
 	if (importFlag || customFlag) && nodeDriverFlags {
 		return nil, 0, clierr.New(clierr.CodeValidation,
-			"--import/--custom cannot be combined with --machine-config/--cloud-credential; "+
-				"pass exactly one of --import, --custom, or the node-driver flags")
+			"--import or --custom cannot be used with --machine-config or --cloud-credential; "+
+				"pass exactly one of --import, --custom, or --machine-config with --cloud-credential")
 	}
 
 	var mode clusterMode
@@ -291,7 +295,7 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	}
 	if !machineConfigKinds()[cfgKind] {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--machine-config kind %q is not a recognized machine-config kind; one of: %s", cfgKind, machineConfigKindsHint()))
+			fmt.Sprintf("--machine-config kind %q is not a recognized machine config kind; one of: %s", cfgKind, machineConfigKindsHint()))
 	}
 	// machineConfigKinds() is a strict subset of the kind table (every row
 	// whose GVR.Group is rke-machine-config.cattle.io), so this lookup always
@@ -301,7 +305,7 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	cfgTableKind, found := kinds.Lookup(cfgKind)
 	if !found {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("--machine-config kind %q is not a recognized machine-config kind; one of: %s", cfgKind, machineConfigKindsHint()))
+			fmt.Sprintf("--machine-config kind %q is not a recognized machine config kind; one of: %s", cfgKind, machineConfigKindsHint()))
 	}
 
 	poolName := in.String("pool-name")
@@ -316,7 +320,7 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	// the same reason and is left for the future multi-pool path.
 	if !etcd && !controlplane && !worker {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("pool %q must have at least one role (--etcd/--controlplane/--worker)", poolName))
+			fmt.Sprintf("machine pool %q must have at least one role (--etcd/--controlplane/--worker)", poolName))
 	}
 
 	quantity, qerr := parseQuantity(in.String("quantity"))
@@ -342,12 +346,13 @@ func buildNodeDriverSpec(obj *unstructured.Unstructured, in runtime.Input, machi
 	return unstructured.SetNestedSlice(obj.Object, []any{pool}, "spec", "rkeConfig", "machinePools")
 }
 
-// stampCreatorID resolves the caller's identity and stamps the creatorId
-// annotation onto obj. It returns "" on success, or a degrade warning -
-// stamping is advisory: failure never blocks the command. The SelfUser
-// probe is a real (non-dry-run) create - the resource is a create-only
-// "whoami" virtual object - making this the file's one deliberate
-// network write during Plan, before any --apply gate.
+// stampCreatorID gets the user ID with a SelfUser request and sets the
+// creatorId annotation on obj to it. It returns "" on success, or a
+// warning - setting the annotation is advisory: failure never blocks the
+// command. The SelfUser request is a real (non-dry-run) create - the
+// resource is a create-only "whoami" virtual object - making this the
+// file's one deliberate network write during Plan, before any --apply
+// gate.
 func stampCreatorID(ctx context.Context, client engine.ClusterClient, obj *unstructured.Unstructured) string {
 	probeResult, err := client.Create(ctx, selfuser.GVR, "", selfuser.New(), false)
 	if err != nil {
@@ -355,26 +360,27 @@ func stampCreatorID(ctx context.Context, client engine.ClusterClient, obj *unstr
 	}
 	userID := selfuser.UserID(probeResult)
 	if userID == "" {
-		return stampContext("identity probe returned no user id")
+		return stampContext("the SelfUser response has no user ID")
 	}
 	if !validUserIDRe.MatchString(userID) {
-		return stampContext("identity probe returned a malformed user id")
+		return stampContext("the SelfUser response has an invalid user ID")
 	}
 	if err := unstructured.SetNestedField(obj.Object, userID, "metadata", "annotations", creatorIDAnnotation); err != nil {
-		return stampContext("annotation write failed: " + err.Error())
+		return stampContext("could not add it to the cluster object: " + err.Error())
 	}
 	return ""
 }
 
-// stampContext is the warning a failed identity probe earns. It states the
-// consequence exactly: rancher-webhook may deny the dry-run for the
-// missing annotation, and --apply runs the same dry-run first, so the
-// create cannot proceed until the probe succeeds - there is no path on
-// which a real create reaches the server past a denied dry-run.
+// stampContext is the warning for a creatorId annotation the command could
+// not set. It states the consequence exactly: rancher-webhook may reject
+// the dry-run for the missing annotation, and --apply runs the same
+// dry-run first. The create cannot proceed until the annotation is set -
+// there is no path on which a real create reaches the server past a
+// rejected dry-run.
 func stampContext(cause string) string {
-	return stampWarningPrefix + " (" + cause + "): rancher-webhook may deny the dry-run for the missing " +
-		creatorIDAnnotation + " annotation, and --apply repeats the dry-run first; fix the identity probe " +
-		"(log in again, or check that you may create selfusers.ext.cattle.io) before retrying"
+	return stampWarningPrefix + " (" + cause + "): rancher-webhook may reject the dry-run because the " +
+		creatorIDAnnotation + " annotation is missing, and --apply runs the same dry-run first; " +
+		"log in again, or check that you may create selfusers.ext.cattle.io, then retry"
 }
 
 func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
@@ -400,8 +406,9 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 
 	stampWarning := stampCreatorID(ctx, client, obj)
 
-	// Capture the stamped id before the dry-run for post-apply verification.
-	// An empty stampWarning means the annotation was successfully written.
+	// Capture the user ID set on the annotation before the dry-run for
+	// post-apply verification. An empty stampWarning means the annotation
+	// was set.
 	var stampedUserID string
 	if stampWarning == "" {
 		ann := obj.GetAnnotations()
@@ -414,8 +421,9 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 			// The pipeline's error normalization unwraps to the innermost
 			// *clierr.Error and renders ONLY its own fields - a fmt.Errorf
 			// wrapper's text never reaches the envelope. Real client errors
-			// are always clierr-mapped, so the stamping context rides the
-			// error's warnings (the envelope's top-level warnings), never
+			// are always clierr-mapped, so the context of the unset
+			// annotation rides the error's warnings (the envelope's
+			// top-level warnings), never
 			// the hint, which is reserved for a paste-valid command; the
 			// string wrapper remains only for plain errors (test fakes,
 			// unexpected paths).
@@ -445,7 +453,7 @@ func (c createClusterCmd) Plan(ctx context.Context, in runtime.Input) (safety.Ef
 				// emit a false mismatch.
 				if gotID != "" && gotID != wantID {
 					result.Warnings = append(result.Warnings,
-						fmt.Sprintf("creatorId on the created cluster (%s) differs from the caller identity (%s): verify rancher-webhook is mutating creates", gotID, wantID))
+						fmt.Sprintf("the creatorId annotation on the created cluster (%s) differs from your user ID (%s): check that the rancher-webhook mutating webhook runs on create requests", gotID, wantID))
 				}
 			}
 			return result, nil
@@ -483,12 +491,12 @@ func (c createClusterCmd) versionWarnings(ctx context.Context, k8sVersion string
 			return nil
 		}
 		if v.Default {
-			defaults = append(defaults, v.Distro+" default "+v.Version)
+			defaults = append(defaults, v.Distro+" "+v.Version)
 		}
 	}
-	msg := fmt.Sprintf("kubernetes version %q was not found among the discovered rke2/k3s releases", k8sVersion)
+	msg := fmt.Sprintf("Kubernetes version %q is not among the rke2 and k3s releases the server lists", k8sVersion)
 	if len(defaults) > 0 {
-		msg += " (" + strings.Join(defaults, ", ") + ")"
+		msg += " (default versions: " + strings.Join(defaults, ", ") + ")"
 	}
 	return []string{msg}
 }

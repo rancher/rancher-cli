@@ -329,16 +329,17 @@ which may be stale (a retired image slug will loop provisioning forever). The
 `create machine-config` dry-run preview lists the unset value fields in its
 `warnings`; set them explicitly rather than trusting the driver's defaults.
 
-A `creatorId not stamped` warning on `create cluster` means the identity
-probe (an ext.cattle.io SelfUser create) failed before the server-side
-dry-run, so the `field.cattle.io/creatorId` annotation was not set.
-rancher-webhook may then deny the dry-run with an admission error. That
-denial is final for this invocation and for `--apply` alike: every
-invocation plans first, and the plan repeats the probe and the dry-run, so
-`--apply` returns the same denial before any real create is attempted.
-Recover by fixing the probe - log in again, or check that the account may
-create `selfusers.ext.cattle.io` - then re-run. When the dry-run passes
-despite the warning, the create proceeds and the warning rides along.
+A `creatorId annotation not set` warning on `create cluster` means the
+command could not set the `field.cattle.io/creatorId` annotation before the
+server-side dry-run (the SelfUser request in ext.cattle.io failed or
+returned no valid user ID). rancher-webhook may then reject the dry-run
+with an admission error. That denial is final for this invocation and for
+`--apply` alike: every invocation plans first, and the plan repeats the
+SelfUser request and the dry-run, so `--apply` returns the same denial
+before any real create is attempted. Recover by logging in again, or
+checking that the account may create `selfusers.ext.cattle.io`, then
+re-run. When the dry-run passes despite the warning, the create proceeds
+and the warning rides along.
 
 Follow through to readiness and access - and read the registration
 (join) commands from `inspect cluster --registration`, never from the UI:

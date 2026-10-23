@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -229,10 +230,11 @@ func TestCreateMachineConfigSetMalformed(t *testing.T) {
 	}
 }
 
-// TestCreateMachineConfigSetEnvelopeKeysRejected asserts the envelope
-// guard: apiVersion, kind, metadata, and status via --set are VALIDATION
-// before any overlay - they are object identity (or server-owned status),
-// never driver fields, and must not overwrite what build assembles.
+// TestCreateMachineConfigSetEnvelopeKeysRejected asserts the guard for
+// top-level Kubernetes object fields: apiVersion, kind, metadata, and
+// status via --set are VALIDATION before any overlay - they are object
+// identity (or server-owned status), never driver fields, and must not
+// overwrite what build assembles.
 func TestCreateMachineConfigSetEnvelopeKeysRejected(t *testing.T) {
 	t.Parallel()
 	for _, key := range []string{"apiVersion", "kind", "metadata", "status"} {
@@ -242,7 +244,7 @@ func TestCreateMachineConfigSetEnvelopeKeysRejected(t *testing.T) {
 				a: []string{"amazonec2config", "x"}, sl: []string{key + "=hijack"},
 			})
 			ce := requireValidation(t, err)
-			assert.Contains(t, ce.Message, key)
+			assert.Contains(t, ce.Message, fmt.Sprintf("--set %q names a top-level Kubernetes object field, not a driver field", key))
 		})
 	}
 }
@@ -267,8 +269,7 @@ func TestCreateMachineConfigSetCuratedCollision(t *testing.T) {
 		a: []string{"digitaloceanconfig", "x"}, sl: []string{"region=nyc3"},
 	})
 	ce := requireValidation(t, err)
-	assert.Contains(t, ce.Message, "region")
-	assert.Contains(t, ce.Message, "--region")
+	assert.Equal(t, "--set region sets the same field as --region; pass --region instead", ce.Message)
 }
 
 // TestCreateMachineConfigCuratedFlagForeignKind asserts, for one flag of
@@ -328,8 +329,7 @@ func TestCreateMachineConfigCredentialRejectedPerKind(t *testing.T) {
 			t.Parallel()
 			_, err := buildMachineConfig(t, mcInput{a: []string{kind, "x"}, sl: []string{key + "=dummy"}})
 			ce := requireValidation(t, err)
-			assert.Contains(t, ce.Message, key)
-			assert.Contains(t, ce.Message, "cloud credential")
+			assert.Equal(t, fmt.Sprintf("%q holds a credential and cannot be set on a machine config", key)+credentialGuidance, ce.Message)
 		})
 	}
 }
@@ -356,11 +356,13 @@ func TestCreateMachineConfigCredentialRejectedCaseInsensitive(t *testing.T) {
 			t.Parallel()
 			_, err := buildMachineConfig(t, mcInput{a: []string{tc.kind, "x"}, sl: []string{tc.key + "=dummy"}})
 			ce := requireValidation(t, err)
-			assert.Contains(t, ce.Message, `"`+tc.canonical+`"`, "names the canonical casing")
-			assert.Contains(t, ce.Message, "cloud credential")
+			assert.Equal(t, fmt.Sprintf("%q is the credential field %q and cannot be set on a machine config", tc.key, tc.canonical)+credentialGuidance, ce.Message, "names the canonical casing")
 		})
 	}
 }
+
+// credentialGuidance is the tail of every refusal of a credential key.
+const credentialGuidance = "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential to create cluster with --cloud-credential"
 
 // TestCreateMachineConfigArgValidation asserts the pipeline's refusal of a
 // missing kind or name (with the allowed kinds listed), and that build
@@ -390,7 +392,7 @@ func TestCreateMachineConfigArgValidation(t *testing.T) {
 
 	_, err := buildMachineConfig(t, mcInput{a: []string{"pod", "x"}})
 	ce := requireValidation(t, err)
-	assert.Contains(t, ce.Message, "pod")
+	assert.Contains(t, ce.Message, `argument <kind>="pod" is not a machine config kind; one of: `)
 }
 
 // TestDoCuratedFlagsMatchKindsCurated guards against drift between the two
@@ -415,7 +417,7 @@ func TestDoCuratedFlagsMatchKindsCurated(t *testing.T) {
 // TestCreateMachineConfigPlanDiffLessEffect asserts that one server-side
 // dry-run, action=create, identity-only target, no diff, non-destructive,
 // cluster local. All curated VALUE fields are set so the fallthrough warning
-// does not fire; bool fields are not set (they can't go stale).
+// does not fire; bool fields are not set (they cannot go out of date).
 func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
 	t.Parallel()
 	client := &mcRecClient{}
@@ -439,9 +441,9 @@ func TestCreateMachineConfigPlanDiffLessEffect(t *testing.T) {
 }
 
 // TestCreateMachineConfigPrunedKeyWarning asserts that a top-level key the
-// dry-run response dropped (minus the k8s envelope) is warned about BY
-// NAME; envelope keys never trigger it. Uses amazonec2config (no curated
-// fields) so only the prune warning fires.
+// dry-run response dropped (minus apiVersion, kind, metadata and status) is
+// warned about BY NAME; those four keys never trigger it. Uses
+// amazonec2config (no curated fields) so only the prune warning fires.
 func TestCreateMachineConfigPrunedKeyWarning(t *testing.T) {
 	t.Parallel()
 	client := &mcRecClient{dryRunResult: &unstructured.Unstructured{Object: map[string]any{
@@ -459,7 +461,7 @@ func TestCreateMachineConfigPrunedKeyWarning(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, eff.Warnings, 1)
-	assert.Equal(t, "field(s) pruned by the server: regoin - unknown field?", eff.Warnings[0])
+	assert.Equal(t, "the server removed these fields, possibly because it does not recognize them: regoin; check the field names", eff.Warnings[0])
 }
 
 // TestCreateMachineConfigNullValuePruned asserts the --set field=null edge:
@@ -488,7 +490,7 @@ func TestCreateMachineConfigNullValuePruned(t *testing.T) {
 	assert.True(t, submitted, "null value still submits the key")
 	assert.Nil(t, v)
 	require.Len(t, eff.Warnings, 1)
-	assert.Equal(t, "field(s) pruned by the server: keypairName - unknown field?", eff.Warnings[0])
+	assert.Equal(t, "the server removed these fields, possibly because it does not recognize them: keypairName; check the field names", eff.Warnings[0])
 }
 
 // TestCreateMachineConfigNullValueKept asserts the other half of the null
@@ -596,9 +598,9 @@ func TestCreateMachineConfigExecutePropagatesError(t *testing.T) {
 // TestCreateMachineConfigFallthroughWarning asserts the driver-default
 // fallthrough warning: Plan appends a warning when any curated VALUE field
 // is left unset, listing only those unset fields sorted. Bool fields
-// (monitoring, ipv6, privateNetworking) are excluded - they can't go stale
-// like value defaults. No warning when all value fields are set (bools may
-// still be unset); no warning for non-curated kinds.
+// (monitoring, ipv6, privateNetworking) are excluded - they cannot go out
+// of date like value defaults. No warning when all value fields are set
+// (bools may still be unset); no warning for non-curated kinds.
 func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 	t.Parallel()
 
@@ -619,9 +621,9 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, eff.Warnings, 1)
 		assert.Equal(t,
-			"unset field(s) inherit the node driver's declared defaults, which may be stale: "+
+			"fields you did not set use the node driver's default values, which may be out of date: "+
 				"image, region, size, tags"+
-				" - set them explicitly (a stale default, such as a retired image, makes provisioning fail)",
+				"; set them yourself (an out-of-date default, such as an image that no longer exists, makes provisioning fail)",
 			eff.Warnings[0])
 	})
 
@@ -637,9 +639,9 @@ func TestCreateMachineConfigFallthroughWarning(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, eff.Warnings, 1)
 		assert.Equal(t,
-			"unset field(s) inherit the node driver's declared defaults, which may be stale: "+
+			"fields you did not set use the node driver's default values, which may be out of date: "+
 				"size, tags"+
-				" - set them explicitly (a stale default, such as a retired image, makes provisioning fail)",
+				"; set them yourself (an out-of-date default, such as an image that no longer exists, makes provisioning fail)",
 			eff.Warnings[0])
 	})
 

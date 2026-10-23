@@ -192,13 +192,13 @@ func TestResolveCloudCredentialIDWinsWithAWarning(t *testing.T) {
 	ref, warning, err := ResolveCloudCredential(t.Context(), factory, "cc-abc12")
 	require.NoError(t, err)
 	assert.Equal(t, "cc-abc12", ref.SecretName)
-	assert.Equal(t, "--cloud-credential 'cc-abc12' is the id of cloud credential 'cc-abc12'; cloud credential 'cc-zzz99' also has the display name 'cc-abc12' - pass --cloud-credential 'cc-zzz99' for that one", warning)
+	assert.Equal(t, "--cloud-credential 'cc-abc12' is the id of cloud credential 'cc-abc12' and the display name of cloud credential 'cc-zzz99'; the command uses the one with that id. To use the other one, pass --cloud-credential 'cc-zzz99'", warning)
 
 	cmd, ok := NewGetCloudCredential(factory).(runtime.ReadCommand)
 	require.True(t, ok)
 	res, err := cmd.Execute(t.Context(), in{args: []string{"cc-abc12"}}, nil)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"'cc-abc12' is the id of cloud credential 'cc-abc12'; cloud credential 'cc-zzz99' also has the display name 'cc-abc12' - pass 'cc-zzz99' for that one"}, res.Warnings)
+	assert.Equal(t, []string{"'cc-abc12' is the id of cloud credential 'cc-abc12' and the display name of cloud credential 'cc-zzz99'; the command uses the one with that id. To use the other one, pass 'cc-zzz99'"}, res.Warnings)
 }
 
 // TestResolveCloudCredentialMissResolvesThroughOneGet asserts a credential
@@ -462,6 +462,13 @@ func TestGetCloudCredentialByNameResolvesOne(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, rows, 1)
 	assert.Equal(t, "cc-abc12", rows[0].SecretName)
+}
+
+// TestCloudCredentialTableColumns asserts the table header: the column that
+// shows a display name is DISPLAY NAME.
+func TestCloudCredentialTableColumns(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, []string{"NAME", "DISPLAY NAME", "DRIVER", "AGE"}, cloudCredRows{}.Columns())
 }
 
 // TestResolveCloudCredentialNeverLeaksSecretValue is the non-negotiable

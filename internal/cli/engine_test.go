@@ -279,7 +279,7 @@ func TestResolveClusterIDWinsWithOneNotice(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "foo", got)
 	}
-	assert.Equal(t, []string{"--cluster 'foo' is the id of cluster 'foo'; cluster 'c-abc' also has the display name 'foo' - pass --cluster 'c-abc' for that one"},
+	assert.Equal(t, []string{"--cluster 'foo' is the id of cluster 'foo' and the display name of cluster 'c-abc'; the command uses the one with that id. To use the other one, pass --cluster 'c-abc'"},
 		f.DrainNotices())
 	assert.Empty(t, f.DrainNotices(), "drained once")
 }

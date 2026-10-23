@@ -815,7 +815,7 @@ func TestSignInSendsTheClusterLookupWarningToTheNotices(t *testing.T) {
 	_, _, si, err := signInWith(t, t.Context(), testrancher.Options{ClusterVisibility: clusters}, "c-1", p)
 	require.NoError(t, err)
 	assert.Equal(t, "c-1", si.Cluster.ClusterName, "the id wins")
-	assert.Contains(t, notices.String(), "--cluster 'c-1' is the id of cluster 'c-1'; cluster 'c-2' also has the display name 'c-1' - pass --cluster 'c-2' for that one")
+	assert.Contains(t, notices.String(), "--cluster 'c-1' is the id of cluster 'c-1' and the display name of cluster 'c-2'; the command uses the one with that id. To use the other one, pass --cluster 'c-2'")
 }
 
 // TestWithSignInFateKeepsTheWarningsItIsGiven asserts the error built after the

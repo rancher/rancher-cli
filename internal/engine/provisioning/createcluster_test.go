@@ -398,7 +398,7 @@ func TestCreateClusterNodeDriverUnrecognizedMachineConfigKindIsValidation(t *tes
 		b: map[string]bool{"worker": true},
 	})
 	ce := requireValidation(t, err)
-	assert.Contains(t, ce.Message, "pod")
+	assert.Contains(t, ce.Message, `--machine-config kind "pod" is not a recognized machine config kind; one of: `)
 }
 
 func TestCreateClusterNodeDriverMalformedMachineConfigIsValidation(t *testing.T) {
@@ -460,7 +460,7 @@ func TestMachineConfigFlagDescListsClosedKindSet(t *testing.T) {
 		}
 	}
 	assert.Equal(t,
-		"machine config `kind/name` for a node-driver pool; kinds: "+
+		"machine config `kind/name` for the machine pool of a node-driver cluster; kinds: "+
 			"amazonec2config, azureconfig, digitaloceanconfig, harvesterconfig, vmwarevsphereconfig",
 		desc)
 }
@@ -527,13 +527,13 @@ func TestCreateClusterVersionWarningPresentWhenNotDiscovered(t *testing.T) {
 		s: map[string]string{
 			"machine-config":   "amazonec2config/mycfg",
 			"cloud-credential": "cc-abc12",
-			"k8s-version":      "v1.99.9+rke2r1", // not among the discovered rke2 releases
+			"k8s-version":      "v1.99.9+rke2r1", // not among the rke2 releases the server lists
 		},
 		b: map[string]bool{"worker": true},
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, eff.Warnings)
-	assert.Equal(t, `kubernetes version "v1.99.9+rke2r1" was not found among the discovered rke2/k3s releases (rke2 default v1.30.5+rke2r1)`, eff.Warnings[0])
+	assert.Equal(t, `Kubernetes version "v1.99.9+rke2r1" is not among the rke2 and k3s releases the server lists (default versions: rke2 v1.30.5+rke2r1)`, eff.Warnings[0])
 }
 
 // TestCreateClusterVersionWarningAbsentWhenDiscovered proves the converse:
@@ -617,14 +617,15 @@ func TestNewCreateClusterDescribe(t *testing.T) {
 	assert.True(t, d.Args[0].Required)
 }
 
-// TestCreateClusterCreatorID covers all creatorId stamping outcomes in one
-// table, following the TestCreateClusterModeExclusivity convention.
+// TestCreateClusterCreatorID covers all outcomes of setting the creatorId
+// annotation in one table, following the TestCreateClusterModeExclusivity
+// convention.
 //
-// Cases: stamped-success (probe returns a valid id), error-degrade (probe
-// errors), empty-id-degrade (probe returns no status.userID), malformed-id-
-// degrade (probe returns an id failing the DNS-1123-ish pattern), and
-// ordering (both a version warning and the stamp warning present - stamp
-// comes last).
+// Cases: stamped-success (the SelfUser request returns a valid id),
+// error-degrade (the request errors), empty-id-degrade (the response has no
+// status.userID), malformed-id-degrade (the response has an id failing the
+// DNS-1123-ish pattern), and ordering (both a version warning and the
+// annotation warning present - the annotation warning comes last).
 func TestCreateClusterCreatorID(t *testing.T) {
 	t.Parallel()
 
@@ -746,8 +747,8 @@ func TestCreateClusterCreatorID(t *testing.T) {
 }
 
 // TestCreateClusterStampWarningFoldedIntoPlanCreateError proves that when
-// the identity probe fails AND the server-side dry-run also errors, the
-// stamp warning survives to what the pipeline actually renders. Real
+// the SelfUser request fails AND the server-side dry-run also errors, the
+// annotation warning survives to what the pipeline actually renders. Real
 // client errors are ALWAYS clierr-mapped, and the pipeline's toClierr
 // unwraps to the innermost *clierr.Error, discarding any fmt.Errorf
 // wrapper text - so for the production shape the context must ride the
@@ -772,7 +773,7 @@ func TestCreateClusterStampWarningFoldedIntoPlanCreateError(t *testing.T) {
 		assert.Empty(t, ce.Hint, "a hint is a paste-valid command; diagnostic prose never rides it")
 		require.Len(t, ce.Warnings(), 1)
 		assert.Contains(t, ce.Warnings()[0], stampWarningPrefix)
-		assert.Contains(t, ce.Warnings()[0], "--apply repeats the dry-run first")
+		assert.Contains(t, ce.Warnings()[0], "--apply runs the same dry-run first")
 	})
 
 	t.Run("plain error keeps the string wrapper", func(t *testing.T) {
@@ -843,21 +844,21 @@ func TestCreateClusterPostApplyCreatorIDVerification(t *testing.T) {
 
 			if tc.wantWarning {
 				require.NotEmpty(t, result.Warnings, "expected a creatorId mismatch warning")
-				assert.Contains(t, result.Warnings[0], "creatorId on the created cluster")
+				assert.Contains(t, result.Warnings[0], "the creatorId annotation on the created cluster")
 				assert.Contains(t, result.Warnings[0], "u-stamped")
 				assert.Contains(t, result.Warnings[0], "u-wrong")
 			} else {
 				for _, w := range result.Warnings {
-					assert.NotContains(t, w, "creatorId on the created cluster")
+					assert.NotContains(t, w, "the creatorId annotation on the created cluster")
 				}
 			}
 		})
 	}
 }
 
-// stampWarningCount counts warnings from the creatorId stamping degrade
-// path, so tests don't couple to the total warning count (version warnings
-// may legitimately appear alongside).
+// stampWarningCount counts warnings for a creatorId annotation the command
+// could not set, so tests don't couple to the total warning count
+// (version warnings may legitimately appear alongside).
 func stampWarningCount(warnings []string) int {
 	n := 0
 	for _, w := range warnings {
@@ -878,7 +879,7 @@ func (*ccRecClient) ServerResources(context.Context) ([]engine.APIResource, erro
 
 // TestCreateClusterDeniedDryRunBlocksApplyToo asserts the recovery the
 // documentation states: after a denied dry-run, --apply is not a way past
-// it. Every invocation plans first, the plan repeats the identity probe and
+// it. Every invocation plans first, the plan repeats the SelfUser request and
 // the dry-run, and the same denial returns before any real create is
 // attempted. The fake denies dry-run creates only, so a real create would
 // have succeeded had one been attempted.
@@ -923,5 +924,5 @@ func TestCreateClusterCredentialIDWinsWarningIsInThePreview(t *testing.T) {
 	require.NoError(t, err)
 	credSecretName, _, _ := unstructured.NestedString(client.created.Object, "spec", "cloudCredentialSecretName")
 	assert.Equal(t, "cattle-global-data:cc-abc12", credSecretName)
-	assert.Contains(t, eff.Warnings, "--cloud-credential 'cc-abc12' is the id of cloud credential 'cc-abc12'; cloud credential 'cc-zzz99' also has the display name 'cc-abc12' - pass --cloud-credential 'cc-zzz99' for that one")
+	assert.Contains(t, eff.Warnings, "--cloud-credential 'cc-abc12' is the id of cloud credential 'cc-abc12' and the display name of cloud credential 'cc-zzz99'; the command uses the one with that id. To use the other one, pass --cloud-credential 'cc-zzz99'")
 }

@@ -230,7 +230,7 @@ func TestProjectsClusterFlagIDWinsWithAWarning(t *testing.T) {
 	res, err := cmd.Execute(t.Context(), projectsInput("c-1", "", ""), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "c-1", decodeProjects(t, res).Cluster)
-	assert.Equal(t, []string{"--cluster 'c-1' is the id of cluster 'c-1'; cluster 'c-2' also has the display name 'c-1' - pass --cluster 'c-2' for that one"}, res.Warnings)
+	assert.Equal(t, []string{"--cluster 'c-1' is the id of cluster 'c-1' and the display name of cluster 'c-2'; the command uses the one with that id. To use the other one, pass --cluster 'c-2'"}, res.Warnings)
 }
 
 // TestResolveClusterArgLocalIsTheManagementRow asserts "local" selects the

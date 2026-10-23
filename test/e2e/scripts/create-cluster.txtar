@@ -3,15 +3,16 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 
 # imported: spec.rkeConfig is OMITTED entirely (nil, not {}) - the pin.
 exec rancher create cluster imported-1 --import --apply
-# The envtest harness has no SelfUser store, so creatorId stamping degrades
-# to a warning. This assertion asserts the degrade path on every create.
-stderr 'creatorId not stamped'
+# The envtest harness has no SelfUser store, so setting the creatorId
+# annotation degrades to a warning. This assertion asserts the degrade
+# path on every create.
+stderr 'creatorId annotation not set'
 exec rancher get provisioning-cluster imported-1 -o json
 jsonquery stdout data.spec.rkeConfig ''
 
 # custom: spec.rkeConfig is present, as an empty map, with no machine pools.
 exec rancher create cluster custom-1 --custom --k8s-version v1.30.5+rke2r1 --apply
-stderr 'creatorId not stamped'
+stderr 'creatorId annotation not set'
 exec rancher get provisioning-cluster custom-1 -o json
 jsonquery stdout data.spec.rkeConfig '{}'
 
@@ -20,7 +21,7 @@ jsonquery stdout data.spec.rkeConfig '{}'
 # exist), resolving --cloud-credential by display name against the fixture
 # seeded once globally in cattle-global-data (test/e2e/harness_test.go).
 exec rancher create cluster node-1 --machine-config amazonec2config/mycfg --cloud-credential e2e-cred --k8s-version v1.30.5+rke2r1 --etcd --controlplane --worker --apply
-stderr 'creatorId not stamped'
+stderr 'creatorId annotation not set'
 exec rancher get provisioning-cluster node-1 -o json
 jsonquery stdout data.spec.cloudCredentialSecretName cattle-global-data:cc-e2etest
 jsonquery stdout data.spec.rkeConfig.machinePools.0.machineConfigRef.kind Amazonec2Config

@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-// doKind is the one machine-config kind with curated flags.
+// doKind is the one machine config kind with its own flags.
 const doKind = "digitaloceanconfig"
 
 // doCuratedFlag maps one curated CLI flag to its DigitaloceanConfig driver
@@ -67,14 +67,16 @@ func NewCreateMachineConfig(clients engine.ClusterClientFactory) runtime.Command
 func (createMachineConfigCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "create machine-config",
-		Usage: "Create a machine config for a node-driver cluster pool",
-		Desc: "Creates a standalone rke-machine-config.cattle.io CR in fleet-default; " +
-			"reference it afterwards with `create cluster --machine-config <kind>/<name>` " +
-			"(the two-step node-driver flow). Driver fields sit at the CR root - there is " +
-			"no spec wrapper. digitaloceanconfig has curated flags; amazonec2config, " +
-			"azureconfig, harvesterconfig, and vmwarevsphereconfig take their fields via " +
-			"--set key=value. Credential-carried fields are rejected: credentials belong " +
-			"on a cloud credential (cc-* secret), never on a machine config.",
+		Usage: "Create a machine config for the machine pool of a node-driver cluster",
+		Desc: "Creates a machine config (an rke-machine-config.cattle.io custom resource) " +
+			"in the fleet-default namespace. Pass it to " +
+			"`create cluster --machine-config <kind>/<name>` afterwards. Driver fields " +
+			"are top-level fields of the object, not under spec. digitaloceanconfig " +
+			"has its own flags for common fields; amazonec2config, azureconfig, " +
+			"harvesterconfig and vmwarevsphereconfig take their fields with " +
+			"--set key=value. A field that holds a credential is rejected: put " +
+			"credentials in a cloud credential (a cc-* Secret), never in a machine " +
+			"config.",
 		CommandType: runtime.Mutating,
 		Args: []runtime.ArgSpec{
 			{Name: "kind", Type: "string", Required: true, Enum: machineConfigKindNames()},
@@ -88,7 +90,7 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 			{Name: "ipv6", Type: "bool", Desc: "digitaloceanconfig: enable IPv6 (omit to keep the driver default)"},
 			{Name: "private-networking", Type: "bool", Desc: "digitaloceanconfig: enable private networking (omit to keep the driver default)"},
 			{Name: "tags", Type: "string", Desc: "digitaloceanconfig: comma-separated droplet `tags`"},
-			{Name: "set", Type: "stringSlice", Desc: "driver `field=value`, repeatable; true and [\"a\"] parse as JSON, numbers and everything else submit as strings (Rancher publishes numeric driver fields as strings)"},
+			{Name: "set", Type: "stringSlice", Desc: "driver `field=value`; repeat the flag for more fields. Values such as true and [\"a\"] are read as JSON; numbers and other values are sent as strings (Rancher's schema types numeric driver fields as strings)"},
 		},
 		Examples: []string{
 			"rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --dry-run",
@@ -104,9 +106,9 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 // ctx, no network. The runtime layer has already checked that both
 // arguments are present. Validation order: kind (the runtime layer's
 // Enum already guards it once registered; build re-checks defensively),
-// --set key=value shape, Kubernetes envelope-key rejection
+// --set key=value shape, rejection of top-level Kubernetes object fields
 // (apiVersion/kind/metadata/status are object identity, not driver fields -
-// refused before any overlay), duplicates, curated collisions and
+// refused before any overlay), duplicates, fields that a flag sets and
 // kind-scoping, credential-field rejection.
 func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructured, kinds.Kind, error) {
 	args := in.Args()
@@ -115,7 +117,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	k, found := kinds.Lookup(kindName)
 	if !found || k.GVR.Group != kinds.MachineConfigGroup {
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("argument <kind>=%q is not a machine-config kind; one of: %s", kindName, machineConfigKindsHint()))
+			fmt.Sprintf("argument <kind>=%q is not a machine config kind; one of: %s", kindName, machineConfigKindsHint()))
 	}
 
 	// Credential rejection folds case - lowercased key → the
@@ -131,9 +133,9 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		curatedFieldFlag[cf.field] = cf.flag
 	}
 
-	// --set entries: shape, envelope-key rejection, and duplicates first
-	// (in that order), values held raw until the collision/credential checks
-	// pass.
+	// --set entries: shape, rejection of top-level Kubernetes object
+	// fields, and duplicates first (in that order), values held raw until
+	// the collision/credential checks pass.
 	type setEntry struct {
 		key string
 		raw string
@@ -156,8 +158,8 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		}
 		if key == "apiVersion" || key == "kind" || key == "metadata" || key == "status" {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--set %q is a Kubernetes envelope key, not a driver field; "+
-					"apiVersion/kind/metadata are set by the CLI and status by the server; pass driver fields only", key))
+				fmt.Sprintf("--set %q names a top-level Kubernetes object field, not a driver field; "+
+					"the CLI sets apiVersion, kind and metadata, and the server sets status; pass driver fields only", key))
 		}
 		if seen[key] {
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
@@ -190,15 +192,15 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 		if k.Name == doKind {
 			if flag, collides := curatedFieldFlag[e.key]; collides {
 				return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--set %s collides with the curated --%s flag; pass --%s instead", e.key, flag, flag))
+					fmt.Sprintf("--set %s sets the same field as --%s; pass --%s instead", e.key, flag, flag))
 			}
 		}
 		if canonical, isCredential := credential[strings.ToLower(e.key)]; isCredential {
-			msg := fmt.Sprintf("%q is a credential field and never belongs on a machine config", canonical)
+			msg := fmt.Sprintf("%q holds a credential and cannot be set on a machine config", canonical)
 			if e.key != canonical {
-				msg = fmt.Sprintf("%q is the credential field %q and never belongs on a machine config", e.key, canonical)
+				msg = fmt.Sprintf("%q is the credential field %q and cannot be set on a machine config", e.key, canonical)
 			}
-			msg += "; credentials live on a cloud credential (cc-* secret); reference it via create cluster --cloud-credential"
+			msg += "; put credentials in a cloud credential (a cc-* Secret) and pass that cloud credential to create cluster with --cloud-credential"
 			return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, msg)
 		}
 		fields[e.key] = parseSetValue(e.raw)
@@ -236,7 +238,7 @@ func (c createMachineConfigCmd) Plan(ctx context.Context, in runtime.Input) (saf
 }
 
 // prunedKeyWarning compares the submitted TOP-LEVEL driver keys (minus the
-// Kubernetes envelope: apiVersion, kind, metadata, status) against the
+// Kubernetes object fields: apiVersion, kind, metadata, status) against the
 // dry-run response's top-level keys and names every key the server
 // silently dropped - rke-machine-config CRDs may prune unknown fields, so
 // a typo surfaces at preview time rather than as a silently thinner CR.
@@ -258,15 +260,15 @@ func prunedKeyWarning(submitted, dryRun map[string]any) string {
 		return ""
 	}
 	sort.Strings(pruned)
-	return fmt.Sprintf("field(s) pruned by the server: %s - unknown field?", strings.Join(pruned, ", "))
+	return fmt.Sprintf("the server removed these fields, possibly because it does not recognize them: %s; check the field names", strings.Join(pruned, ", "))
 }
 
 // fallthroughWarning returns a warning when the kind has curated VALUE fields
 // (non-bool) that were left unset. Bool fields (monitoring, ipv6,
-// privateNetworking) carry tri-state semantics and can't go stale like
-// value defaults - they are excluded. Returns "" when all value fields are
-// set or the kind has none. The unset field names are sorted for a stable
-// message.
+// privateNetworking) carry tri-state semantics and cannot go out of date
+// like value defaults - they are excluded. Returns "" when all value
+// fields are set or the kind has none. The unset field names are sorted
+// for a stable message.
 func fallthroughWarning(kindName string, in runtime.Input) string {
 	meta, ok := kinds.MachineConfigFieldsFor(kindName)
 	if !ok || len(meta.Curated) == 0 {
@@ -301,9 +303,9 @@ func fallthroughWarning(kindName string, in runtime.Input) string {
 		return ""
 	}
 	sort.Strings(unset)
-	return "unset field(s) inherit the node driver's declared defaults, which may be stale: " +
+	return "fields you did not set use the node driver's default values, which may be out of date: " +
 		strings.Join(unset, ", ") +
-		" - set them explicitly (a stale default, such as a retired image, makes provisioning fail)"
+		"; set them yourself (an out-of-date default, such as an image that no longer exists, makes provisioning fail)"
 }
 
 // articleFor returns "an" when s starts with a vowel, "a" otherwise.

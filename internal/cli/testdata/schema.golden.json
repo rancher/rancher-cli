@@ -1155,7 +1155,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Creates a single machine pool; repeatable pool flags are not supported yet; a multi-pool cluster must go through `create resource -f` with a full manifest. Before the server-side dry-run, the command resolves the caller's identity via the ext.cattle.io SelfUser probe and stamps it into the creatorId annotation (rancher-webhook's validator requires the annotation on dry-run even though its mutator only stamps it on real creates). If the probe fails, a \"creatorId not stamped\" warning is emitted and the create proceeds unstamped - rancher-webhook may then deny the dry-run, but a real --apply create is still expected to succeed (the mutator stamps identity server-side on real creates).",
+      "desc": "A node-driver cluster is created with one machine pool; the machine pool flags cannot be repeated yet. For a cluster with several machine pools, use `create resource -f` with a full manifest. Before the server-side dry-run, the command gets your user ID with a SelfUser request (ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it: the rancher-webhook validating webhook requires the annotation on a dry-run, and its mutating webhook sets it only on a real create. If the command cannot set the annotation (the request fails or returns no valid user ID), it warns \"creatorId annotation not set\" and continues without the annotation. rancher-webhook may then reject the dry-run, and a rejected dry-run also stops --apply, which runs the same dry-run first. Log in again, or check that you may create selfusers.ext.cattle.io, then retry.",
       "destructive": "false",
       "examples": [
         "rancher create cluster imported-1 --import --apply",
@@ -1174,42 +1174,42 @@
           "type": "bool"
         },
         {
-          "desc": "machine config `kind/name` for a node-driver pool; kinds: amazonec2config, azureconfig, digitaloceanconfig, harvesterconfig, vmwarevsphereconfig",
+          "desc": "machine config `kind/name` for the machine pool of a node-driver cluster; kinds: amazonec2config, azureconfig, digitaloceanconfig, harvesterconfig, vmwarevsphereconfig",
           "name": "machine-config",
           "type": "string"
         },
         {
-          "desc": "cloud credential `id|name` for a node-driver pool",
+          "desc": "cloud credential `id|display name` for a node-driver cluster",
           "name": "cloud-credential",
           "type": "string"
         },
         {
-          "desc": "Kubernetes `version`; required for --custom and node-driver, optional for --import",
+          "desc": "Kubernetes `version`; required for --custom and for a node-driver cluster, optional for --import",
           "name": "k8s-version",
           "type": "string"
         },
         {
-          "desc": "node-driver pool name (default: pool1)",
+          "desc": "machine pool name (default: pool1)",
           "name": "pool-name",
           "type": "string"
         },
         {
-          "desc": "node-driver pool: etcd role",
+          "desc": "machine pool: etcd role",
           "name": "etcd",
           "type": "bool"
         },
         {
-          "desc": "node-driver pool: control-plane role",
+          "desc": "machine pool: control-plane role",
           "name": "controlplane",
           "type": "bool"
         },
         {
-          "desc": "node-driver pool: worker role",
+          "desc": "machine pool: worker role",
           "name": "worker",
           "type": "bool"
         },
         {
-          "desc": "node-driver pool size (default: 1)",
+          "desc": "number of nodes in the machine pool (default: 1)",
           "name": "quantity",
           "type": "string"
         }
@@ -1223,7 +1223,7 @@
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
-      "usage": "Create a provisioning cluster (--import, --custom, or node-driver)"
+      "usage": "Create a provisioning cluster (--import, --custom, or --machine-config for a node-driver cluster)"
     },
     {
       "auth": true,
@@ -1303,7 +1303,7 @@
       "auth": true,
       "commandType": "mutating",
       "contract": "internal",
-      "desc": "Creates a standalone rke-machine-config.cattle.io CR in fleet-default; reference it afterwards with `create cluster --machine-config <kind>/<name>` (the two-step node-driver flow). Driver fields sit at the CR root - there is no spec wrapper. digitaloceanconfig has curated flags; amazonec2config, azureconfig, harvesterconfig, and vmwarevsphereconfig take their fields via --set key=value. Credential-carried fields are rejected: credentials belong on a cloud credential (cc-* secret), never on a machine config.",
+      "desc": "Creates a machine config (an rke-machine-config.cattle.io custom resource) in the fleet-default namespace. Pass it to `create cluster --machine-config <kind>/<name>` afterwards. Driver fields are top-level fields of the object, not under spec. digitaloceanconfig has its own flags for common fields; amazonec2config, azureconfig, harvesterconfig and vmwarevsphereconfig take their fields with --set key=value. A field that holds a credential is rejected: put credentials in a cloud credential (a cc-* Secret), never in a machine config.",
       "destructive": "false",
       "examples": [
         "rancher create machine-config digitaloceanconfig web-pool --region nyc3 --size s-2vcpu-4gb --monitoring --dry-run",
@@ -1346,7 +1346,7 @@
           "type": "string"
         },
         {
-          "desc": "driver `field=value`, repeatable; true and [\"a\"] parse as JSON, numbers and everything else submit as strings (Rancher publishes numeric driver fields as strings)",
+          "desc": "driver `field=value`; repeat the flag for more fields. Values such as true and [\"a\"] are read as JSON; numbers and other values are sent as strings (Rancher's schema types numeric driver fields as strings)",
           "name": "set",
           "type": "stringSlice"
         }
@@ -1360,7 +1360,7 @@
       "shape": "text",
       "stability": "beta",
       "toolset": "core",
-      "usage": "Create a machine config for a node-driver cluster pool"
+      "usage": "Create a machine config for the machine pool of a node-driver cluster"
     },
     {
       "args": [

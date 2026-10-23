@@ -74,13 +74,13 @@ func idWinsWarning(v string, others []string, t MatchText) string {
 		quoted[i] = clierr.ShellQuote(o)
 	}
 	if len(others) == 1 {
-		return fmt.Sprintf("%s%s is the id of %s %s; %s %s also has the display name %s - pass %s%s for that one",
-			flag, q, t.Noun, q, t.Noun, quoted[0], q, flag, quoted[0])
+		return fmt.Sprintf("%s%s is the id of %s %s and the display name of %s %s; the command uses the one with that id. To use the other one, pass %s%s",
+			flag, q, t.Noun, q, t.Noun, quoted[0], flag, quoted[0])
 	}
-	pass := "pass the id of the one you mean"
+	pass := "pass its id"
 	if t.Flag != "" {
-		pass = "pass " + t.Flag + " with the id of the one you mean"
+		pass = "pass " + t.Flag + " with its id"
 	}
-	return fmt.Sprintf("%s%s is the id of %s %s; %s %s also have the display name %s - %s",
-		flag, q, t.Noun, q, t.Plural, strings.Join(quoted, ", "), q, pass)
+	return fmt.Sprintf("%s%s is the id of %s %s and the display name of %s %s; the command uses the one with that id. To use one of the others, %s",
+		flag, q, t.Noun, q, t.Plural, strings.Join(quoted, ", "), pass)
 }
