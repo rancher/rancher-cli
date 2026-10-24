@@ -50,11 +50,11 @@ var provisioningClusterDisplayKind = func() string {
 }()
 
 // creatorIDAnnotation is the annotation rancher-webhook uses for the user
-// who created a cluster. The mutating webhook sets it from userInfo on real
-// creates but skips dry-run, while the validating webhook requires the match
-// on dry-run too - so the CLI sets it first to keep server-side dry-run
-// honest. On a real create the mutating webhook overwrites it with the same
-// value.
+// who created a cluster. The validating webhook requires it to match the
+// requesting user on every create, dry-run included. Older rancher-webhook
+// releases set it only on real creates, not on a dry-run: the CLI sets it
+// first to keep server-side dry-run honest on those. On a real create the
+// mutating webhook overwrites it with the same value.
 const creatorIDAnnotation = "field.cattle.io/creatorId"
 
 // stampWarningPrefix is the shared prefix of every warning for a creatorId
@@ -165,9 +165,10 @@ func (createClusterCmd) Describe() runtime.Descriptor {
 			"dry-run, the command gets your user ID with a SelfUser request " +
 			"(ext.cattle.io) and sets the field.cattle.io/creatorId annotation to it: " +
 			"the rancher-webhook validating webhook requires the annotation on a " +
-			"dry-run, and its mutating webhook sets it only on a real create. If the " +
-			"command cannot set the annotation (the request fails or returns no valid " +
-			"user ID), it warns \"" + stampWarningPrefix + "\" and continues without " +
+			"dry-run, and older rancher-webhook releases set it only on a real " +
+			"create. If the command cannot set the annotation (the request fails " +
+			"or returns no valid user ID), it warns \"" + stampWarningPrefix + "\" " +
+			"and continues without " +
 			"the annotation. rancher-webhook may then reject the dry-run, and a " +
 			"rejected dry-run also stops --apply, which runs the same dry-run first. " +
 			"Log in again, or check that you may create selfusers.ext.cattle.io, then " +

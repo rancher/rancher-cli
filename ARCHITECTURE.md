@@ -522,8 +522,9 @@ read-only permissions gets an `RBAC` error (exit code 6) from `--dry-run` - that
 Before the server-side dry-run, `create cluster` gets the caller's user ID with an
 ext.cattle.io/v1 SelfUser request - a real (non-dry-run) Create - and sets the
 `field.cattle.io/creatorId` annotation to it. rancher-webhook's mutating webhook sets
-this annotation from `userInfo` on real creates but skips dry-run, while its validating
-webhook requires the annotation on dry-run; setting it first makes the dry-run honest.
+this annotation from `userInfo`, and older releases skip it on dry-run, while its
+validating webhook requires the annotation on dry-run; setting it first makes the
+dry-run honest on those releases.
 If the command cannot set the annotation, a `"creatorId annotation not set"` warning is
 emitted and the create continues without it - rancher-webhook may then deny the
 dry-run, and `--apply` runs the same dry-run first and fails with it.
