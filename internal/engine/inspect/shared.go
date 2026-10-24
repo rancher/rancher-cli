@@ -163,7 +163,7 @@ func (s *sections) Partial(section, target string, err error) error {
 // separate parameter so callers never pre-wrap the error.
 func (s *sections) Blocked(section, blockedBy string, err error) error {
 	return s.record(section, stateUnavailable, "", err,
-		fmt.Sprintf("%s unavailable: %s unknown (%s)", section, blockedBy, err.Error()))
+		fmt.Sprintf("%s unavailable: it depends on %s, which is unavailable (%s)", section, blockedBy, err.Error()))
 }
 
 func (s *sections) record(section, state, target string, err error, warning string) error {
@@ -413,7 +413,7 @@ func ownerChain(ctx context.Context, client engine.ClusterClient, sec *sections,
 			case err != nil:
 				walkErr = err
 			case string(next.GetUID()) != ref.uid:
-				walkErr = errors.New("uid mismatch (stale owner reference)")
+				walkErr = errors.New("uid mismatch (the owner reference is out of date)")
 			default:
 				current = next
 			}
@@ -482,4 +482,4 @@ func kindGroupName(apiVersion, kind, name string) string {
 // degradedContractDesc is the schema-desc sentence every composite carries
 // verbatim - one source, so the documented degraded contract cannot drift
 // per command when the payload shape evolves.
-const degradedContractDesc = "Partial access degrades rather than fails: a collector this caller cannot read is named in data.degraded ({section, state, code, target}) with one paired warning each, and the command still exits 0. "
+const degradedContractDesc = "If you cannot read part of the data, the command still exits 0: each section it could not read in full is named in data.degraded ({section, state, code, target}), and each entry has one warning. "

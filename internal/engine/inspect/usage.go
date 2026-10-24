@@ -45,21 +45,24 @@ func (c *usageCmd) Describe() runtime.Descriptor {
 		Usage: "Show CPU/memory requests, limits, and usage for namespaces, projects, nodes, or pods",
 		Desc: "Groups results by --by (namespace|project|node|pod). " +
 			"--namespace, --project, and --node are filters that narrow every grouping: " +
-			"--node keeps only pods scheduled on that node; --namespace with --project requires a project namespace. " +
+			"--node keeps only pods scheduled on that node; --namespace with --project requires one of the project's namespaces. " +
 			"--by node accepts only --node; combining --by node with --namespace or --project is a validation error. " +
-			"--project without --by returns project-namespace rows (namespace grouping filtered to the project). " +
-			"--by project --project X returns a single project bucket. " +
-			"When --namespace or --node matches no pods, the namespace or node is read: a missing one is NOT_FOUND, " +
-			"and one the caller cannot read leaves the result as it is with a warning " +
+			"--project without --by returns one row for each of the project's namespaces (namespace grouping filtered to the project). " +
+			"--by project --project X returns a single row for that project. " +
+			"If no pods match --namespace or --node, the command reads the namespace or node you named: " +
+			"a missing one is NOT_FOUND, and one you are not allowed to read adds a warning to the result " +
 			"(with --project, a namespace outside the project is a validation error; " +
 			"--by node --node reads the node first, and an unreadable node there is an error; " +
 			"--by project reads the namespace list, and an unreadable list is an error). " +
 			degradedContractDesc +
-			"Required collectors hard-error: cluster resolution and the pod list always; project " +
-			"resolution and the membership list with --project; the namespace map with --by project, " +
-			"and the project map with --by project and no --project; the node list with --by node, or the named node GET with --by node --node N. " +
-			"Degradable section: metrics (unavailable - requests and limits stay). A scope that resolves " +
-			"to zero namespaces is verified empty: no pod or metrics read is issued.",
+			"The command fails when any of these required reads fails: finding the cluster by id or name and listing " +
+			"the pods always; finding the project by id or name and listing the project's namespaces with --project; " +
+			"listing the namespaces with --by project, and listing the projects with --by project and no --project; " +
+			"listing the nodes with --by node, or reading the named node with --by node --node N. " +
+			"Section that can degrade: metrics (unavailable - the CPU and memory usage figures are left out; " +
+			"the request and limit totals are still shown). " +
+			"With --project, if the project has no namespaces, the command reads no pods or metrics: " +
+			"the result has no rows (with --by project --project X, a single row with zero requests and limits).",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			engine.ClusterFlag(true, true),
@@ -135,7 +138,7 @@ func usageResult(by string, rows usageRows, names map[string]string, sec *sectio
 // when it found no pods, so a name that does not exist is a NOT_FOUND error
 // instead of an empty result. A caller who may list pods there but not read
 // the namespace or the node gets the empty result and a warning that it could
-// not be checked; any other error is returned. An empty namespace or node name
+// not be read; any other error is returned. An empty namespace or node name
 // skips that read; the namespace is read first, so a missing namespace ends
 // the check before the node read.
 func checkEmptyScope(ctx context.Context, client engine.ClusterClient, namespace, nodeName string) ([]string, error) {
@@ -150,7 +153,7 @@ func checkEmptyScope(ctx context.Context, client engine.ClusterClient, namespace
 			continue
 		}
 		if ce, ok := errors.AsType[*clierr.Error](err); ok && ce.Code == clierr.CodeRBAC {
-			warnings = append(warnings, fmt.Sprintf("%s %q could not be checked: %s; no pods were found", scope.kind, scope.name, ce.Message))
+			warnings = append(warnings, fmt.Sprintf("%s %q could not be read: %s; no pods were found", scope.kind, scope.name, ce.Message))
 			continue
 		}
 		return nil, err
@@ -205,7 +208,7 @@ func (c *usageCmd) collectByNamespace(ctx context.Context, client engine.Cluster
 	case namespace != "" && projectID != "":
 		if !members[namespace] {
 			return runtime.Result{}, projects.NotMemberError(namespace, projectID,
-				"pass a project namespace, or omit --namespace to cover every namespace of the project")
+				"pass one of the project's namespaces, or omit --namespace to cover every namespace of the project")
 		}
 		namespaces = []string{namespace}
 		l, lerr := client.List(ctx, podKind.GVR, namespace, "")
@@ -401,11 +404,13 @@ type resourceTotals struct {
 }
 
 // usageRows is `usage`'s payload, keyed by namespace (or by project id under
-// --by project). It implements output.Tabular for `-o table`.
+// --by project). usageEnvelope renders it as a table for `-o table`.
 type usageRows map[string]resourceTotals
 
-func (u usageRows) Columns() []string {
-	return []string{"SCOPE", "CPU_REQUEST", "CPU_LIMIT", "CPU_USAGE", "MEMORY_REQUEST", "MEMORY_LIMIT", "MEMORY_USAGE"}
+// columns returns the table headers: first names the grouping the row keys
+// belong to, the rest are the CPU and memory columns.
+func (u usageRows) columns(first string) []string {
+	return []string{first, "CPU_REQUEST", "CPU_LIMIT", "CPU_USAGE", "MEMORY_REQUEST", "MEMORY_LIMIT", "MEMORY_USAGE"}
 }
 
 func (u usageRows) Rows() [][]string {
@@ -466,7 +471,7 @@ func parseCell(s string) (resource.Quantity, bool) {
 // wraps the bare usageRows with a "by" discriminator so agents know the
 // grouping without re-deriving it from flags. aggregateUsage still returns
 // bare usageRows so project.go's type-assert is untouched. names,
-// when non-nil, maps a row key to the label the table SCOPE column shows
+// when non-nil, maps a row key to the label the first table column shows
 // (the project grouping keys rows by project id but displays the project
 // name); it is unexported so the JSON shape stays {"by","rows"}.
 type usageEnvelope struct {
@@ -478,7 +483,13 @@ type usageEnvelope struct {
 	names    map[string]string
 }
 
-func (e usageEnvelope) Columns() []string { return e.Data.Columns() }
+// usageFirstHeader is the first table header for each grouping: the thing a
+// row key names. A pod row reads <namespace>/<pod>.
+var usageFirstHeader = map[string]string{
+	byNamespace: "NAMESPACE", byProject: "PROJECT", byNode: "NODE", byPod: "NAMESPACE/POD",
+}
+
+func (e usageEnvelope) Columns() []string { return e.Data.columns(usageFirstHeader[e.By]) }
 
 func (e usageEnvelope) Rows() [][]string {
 	rows := e.Data.Rows()

@@ -345,11 +345,11 @@
         },
         {
           "name": "inspect project",
-          "usage": "Inspect a project: namespaces, members, quota, and usage"
+          "usage": "Inspect a project: namespaces, members, resource quota, and usage"
         },
         {
           "name": "inspect user",
-          "usage": "Inspect a user: identity, groups, and roles across scopes"
+          "usage": "Inspect a user: id and names, groups, and role bindings at global, cluster and project level"
         }
       ],
       "desc": "Deep-inspect a cluster, workload, or project for live state, events, and related objects.",
@@ -431,7 +431,7 @@
         },
         {
           "name": "logs",
-          "usage": "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)"
+          "usage": "Show logs of Rancher components (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)"
         },
         {
           "name": "support-bundle",

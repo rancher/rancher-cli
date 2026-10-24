@@ -36,7 +36,7 @@ func (c *usageCmd) collectByPod(ctx context.Context, client engine.ClusterClient
 		}
 		if namespace != "" && !members[namespace] {
 			return runtime.Result{}, projects.NotMemberError(namespace, projectID,
-				"pass a project namespace, or omit --namespace to cover every namespace of the project")
+				"pass one of the project's namespaces, or omit --namespace to cover every namespace of the project")
 		}
 		// A membership list the caller was authorized to read, returning zero
 		// namespaces, is a verified-empty scope: no pod could belong to it, so

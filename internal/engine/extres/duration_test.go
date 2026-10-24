@@ -111,7 +111,7 @@ func TestTTLSecondsZeroWhenTTLAbsent(t *testing.T) {
 func TestDurationErrorsNameTheCallersFlag(t *testing.T) {
 	t.Parallel()
 	for _, flag := range []string{"ttl", "since"} {
-		generic := fmt.Sprintf("invalid --%s %%q: use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)", flag)
+		generic := fmt.Sprintf("invalid --%s %%q: use a duration such as 90m or 12h; it can start with a number of days, as in 90d or 1d12h", flag)
 		for _, in := range []string{"garbage", "-12h", "12h1d", "a--ttl", "1dgarbage"} {
 			_, err := ParseTTL(flag, in)
 			require.Error(t, err, in)
@@ -120,12 +120,12 @@ func TestDurationErrorsNameTheCallersFlag(t *testing.T) {
 
 		_, err := ParseTTL(flag, "213504d")
 		require.Error(t, err)
-		require.EqualError(t, err, fmt.Sprintf("invalid --%s \"213504d\": days must be at most %d (a larger value overflows the internal duration)", flag, maxDays))
+		require.EqualError(t, err, fmt.Sprintf("invalid --%s \"213504d\": days must be at most %d (about 292 years)", flag, maxDays))
 
 		_, err = TTLMilliseconds(flag, 500*time.Microsecond, "500us")
 		require.EqualError(t, err, fmt.Sprintf("invalid --%s \"500us\": too small to represent in milliseconds; pass at least 1ms", flag))
 
 		_, err = TTLSeconds(flag, 500*time.Millisecond, "500ms")
-		require.EqualError(t, err, fmt.Sprintf("invalid --%s \"500ms\": too small to represent in seconds; pass at least 1s", flag))
+		require.EqualError(t, err, fmt.Sprintf("invalid --%s \"500ms\": the duration is shorter than one second; pass at least 1s", flag))
 	}
 }

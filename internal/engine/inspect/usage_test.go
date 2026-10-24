@@ -835,8 +835,8 @@ func TestUsageEmptyScopeReadsNamespaceAndNode(t *testing.T) {
 	forbidden := clierr.New(clierr.CodeRBAC, "forbidden")
 	nsMissing := kinds.NotFoundCurated(nsKind, "web", "c-abc")
 	nodeMissing := kinds.NotFoundCurated(nodeKind, "n1", "c-abc")
-	nsWarning := `namespace "web" could not be checked: forbidden; no pods were found`
-	nodeWarning := `node "n1" could not be checked: forbidden; no pods were found`
+	nsWarning := `namespace "web" could not be read: forbidden; no pods were found`
+	nodeWarning := `node "n1" could not be read: forbidden; no pods were found`
 	webPod := func() unstructured.Unstructured { return *podOnNode("web", "p1", "n1", "10m", "10Mi", "20m", "20Mi") }
 	otherNodePod := func() unstructured.Unstructured { return *podOnNode("web", "p2", "n2", "10m", "10Mi", "20m", "20Mi") }
 	elsewherePod := func() unstructured.Unstructured { return *podOnNode("other", "p3", "n2", "10m", "10Mi", "20m", "20Mi") }
@@ -938,7 +938,7 @@ func TestUsageByProjectEmptyScope(t *testing.T) {
 	podKind, nsKind, nodeKind := mustKind(t, "pod"), mustKind(t, "namespace"), mustKind(t, "node")
 	forbidden := clierr.New(clierr.CodeRBAC, "forbidden")
 	nodeMissing := kinds.NotFoundCurated(nodeKind, "n1", "c-abc")
-	nodeWarning := `node "n1" could not be checked: forbidden; no pods were found`
+	nodeWarning := `node "n1" could not be read: forbidden; no pods were found`
 	pod := func(ns, node string) unstructured.Unstructured {
 		return *podOnNode(ns, "p1", node, "10m", "10Mi", "20m", "20Mi")
 	}
@@ -961,7 +961,7 @@ func TestUsageByProjectEmptyScope(t *testing.T) {
 		{name: "namespace of a project with pods", flags: map[string]string{"namespace": "ns1"},
 			pods: []unstructured.Unstructured{pod("ns1", "n1")}, wantPodList: true},
 		{name: "project and a missing namespace keep the membership error", flags: map[string]string{"namespace": "missing"}, scoped: true,
-			wantCode: clierr.CodeValidation, wantMessage: `namespace "missing" is not in project "p-x"; pass a project namespace, or omit --namespace to cover every namespace of the project`},
+			wantCode: clierr.CodeValidation, wantMessage: `namespace "missing" is not in project "p-x"; pass one of the project's namespaces, or omit --namespace to cover every namespace of the project`},
 		{name: "node without pods exists", flags: map[string]string{"node": "n1"}, node: getOK, wantGets: []string{"nodes/n1"}, wantPodList: true},
 		{name: "node without pods is missing", flags: map[string]string{"node": "n1"}, node: getErr(nodeMissing),
 			wantCode: clierr.CodeNotFound, wantMessage: "node not found: n1", wantGets: []string{"nodes/n1"}, wantPodList: true},
@@ -1052,7 +1052,7 @@ func TestUsageEmptyProjectScopeReadsNothingForTheNamespace(t *testing.T) {
 func TestUsageProjectNodeWithPodsOnlyOutsideTheProject(t *testing.T) {
 	t.Parallel()
 	nsKind := mustKind(t, "namespace")
-	nodeWarning := `node "n1" could not be checked: forbidden; no pods were found`
+	nodeWarning := `node "n1" could not be read: forbidden; no pods were found`
 	for _, by := range []string{byNamespace, byPod, byProject} {
 		for _, tc := range []struct {
 			name         string
@@ -1078,5 +1078,28 @@ func TestUsageProjectNodeWithPodsOnlyOutsideTheProject(t *testing.T) {
 				assert.Equal(t, tc.wantWarnings, res.Warnings)
 			})
 		}
+	}
+}
+
+// TestUsageTableFirstHeaderNamesTheGrouping asserts the first table header
+// names what each row key is for the grouping in the envelope (a pod row key
+// is <namespace>/<pod>), and that the CPU and memory headers stay the same.
+func TestUsageTableFirstHeaderNamesTheGrouping(t *testing.T) {
+	t.Parallel()
+	for by, first := range map[string]string{
+		byNamespace: "NAMESPACE",
+		byProject:   "PROJECT",
+		byNode:      "NODE",
+		byPod:       "NAMESPACE/POD",
+	} {
+		t.Run(by, func(t *testing.T) {
+			t.Parallel()
+			res := usageResult(by, usageRows{}, nil, newSections(t.Context()))
+			env, ok := res.Data.(usageEnvelope)
+			require.True(t, ok)
+			assert.Equal(t,
+				[]string{first, "CPU_REQUEST", "CPU_LIMIT", "CPU_USAGE", "MEMORY_REQUEST", "MEMORY_LIMIT", "MEMORY_USAGE"},
+				env.Columns())
+		})
 	}
 }

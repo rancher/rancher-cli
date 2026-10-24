@@ -78,7 +78,7 @@ func TestInspectUserNeverLoggedInVerifiedEmpty(t *testing.T) {
 	assert.Empty(t, *r.Roles.Clusters)
 	require.NotNil(t, r.Roles.Projects)
 	assert.Empty(t, *r.Roles.Projects)
-	assert.Contains(t, res.Text, "ROLES")
+	assert.Contains(t, res.Text, "ROLE BINDINGS")
 	assert.Contains(t, res.Text, "\n  none\n")
 }
 
@@ -360,12 +360,12 @@ func TestInspectUserAttributesAllFields(t *testing.T) {
 
 	userBlock, rest, found := strings.Cut(res.Text, "\nGROUPS\n")
 	require.True(t, found)
-	groupsBlock, _, _ := strings.Cut(rest, "\nROLES\n")
+	groupsBlock, _, _ := strings.Cut(rest, "\nROLE BINDINGS\n")
 	assert.Contains(t, userBlock, "lastLogin: 2026-08-01T00:00:00Z")
 	assert.Contains(t, userBlock, "disableAfter: 720h0m0s")
 	assert.Contains(t, userBlock, "deleteAfter: 1440h0m0s")
-	assert.Contains(t, userBlock, "extra[local]: principalid=local://u-abc  username=jane")
-	assert.Contains(t, userBlock, "extra[okta]: principalid=okta_user://jane@example.com  username=jane@example.com")
+	assert.Contains(t, userBlock, "extra (local): principalid=local://u-abc  username=jane")
+	assert.Contains(t, userBlock, "extra (okta): principalid=okta_user://jane@example.com  username=jane@example.com")
 	assert.Contains(t, groupsBlock, "lastRefresh: 2026-08-02T00:00:00Z")
 	assert.Contains(t, groupsBlock, "needsRefresh: false")
 	assert.NotContains(t, groupsBlock, "lastLogin", "lastLogin renders in the USER block, never GROUPS")
@@ -396,7 +396,7 @@ func TestInspectUserAttributesAbsentStayAbsent(t *testing.T) {
 	assert.NotContains(t, res.Text, "needsRefresh")
 	assert.NotContains(t, res.Text, "disableAfter")
 	assert.NotContains(t, res.Text, "deleteAfter")
-	assert.NotContains(t, res.Text, "extra[")
+	assert.NotContains(t, res.Text, "extra (")
 	assert.NotContains(t, res.Text, "unavailable")
 }
 
@@ -516,13 +516,13 @@ func TestInspectUserMalformedProjectBindingSurfacesWarning(t *testing.T) {
 	require.NotNil(t, r.Roles.Projects)
 	require.Len(t, *r.Roles.Projects, 1, "only the well-formed project renders")
 	assert.Equal(t, "c-1:p-1", (*r.Roles.Projects)[0].Project)
-	assert.Contains(t, res.Warnings, "1 project role binding(s) with no scope id omitted: prtb-broken")
+	assert.Contains(t, res.Warnings, "1 project role binding(s) left out because they name no project: prtb-broken")
 	assert.NotContains(t, res.Text, "PROJECT \n", "no blank project heading")
 }
 
 // TestStyleUserTextStripInvariant asserts inspect user's bold spans: the
 // dynamic USER header (by prefix, since it carries [system]/[disabled]
-// qualifiers), the GROUPS/ROLES headers (exact), and each dynamic role
+// qualifiers), the GROUPS/ROLE BINDINGS headers (exact), and each dynamic role
 // sub-header (by prefix, since it carries a scope label) - all bold, whole
 // line - plus the strip invariant and the inactive-style identity.
 func TestStyleUserTextStripInvariant(t *testing.T) {
@@ -552,7 +552,7 @@ func TestStyleUserTextStripInvariant(t *testing.T) {
 
 	assert.Contains(t, styled, "\x1b[1mUSER [system] [disabled]\x1b[0m\n")
 	assert.Contains(t, styled, "\x1b[1mGROUPS\x1b[0m\n")
-	assert.Contains(t, styled, "\x1b[1mROLES\x1b[0m\n")
+	assert.Contains(t, styled, "\x1b[1mROLE BINDINGS\x1b[0m\n")
 	assert.Contains(t, styled, "\x1b[1m  GLOBAL\x1b[0m\n")
 	assert.Contains(t, styled, "\x1b[1m  CLUSTER prod (c-1)\x1b[0m\n")
 	assert.Contains(t, styled, "\x1b[1m  PROJECT p-1\x1b[0m\n")
@@ -560,9 +560,10 @@ func TestStyleUserTextStripInvariant(t *testing.T) {
 }
 
 // TestStyleUserTextGroupRowNeverTakesSubheaderBold asserts the role
-// sub-header prefixes are scoped below the ROLES header: a GROUPS row whose
-// provider-owned display name begins with a sub-header word (GLOBAL-ADMINS)
-// stays plain, while the real GLOBAL sub-header below ROLES is bold.
+// sub-header prefixes are scoped below the ROLE BINDINGS header: a GROUPS row
+// whose provider-owned display name begins with a sub-header word
+// (GLOBAL-ADMINS) stays plain, while the real GLOBAL sub-header below ROLE
+// BINDINGS is bold.
 func TestStyleUserTextGroupRowNeverTakesSubheaderBold(t *testing.T) {
 	t.Parallel()
 	text := strings.Join([]string{
@@ -572,7 +573,7 @@ func TestStyleUserTextGroupRowNeverTakesSubheaderBold(t *testing.T) {
 		"GROUPS",
 		"  GLOBAL-ADMINS (activedirectory)  [ad_group://cn=ga]",
 		"",
-		"ROLES",
+		"ROLE BINDINGS",
 		"  GLOBAL",
 		"    admin  [grb-x]",
 	}, "\n") + "\n"
@@ -581,5 +582,5 @@ func TestStyleUserTextGroupRowNeverTakesSubheaderBold(t *testing.T) {
 	assert.Contains(t, styled, "\x1b[1mUSER [system]\x1b[0m")
 	assert.Contains(t, styled, "  GLOBAL-ADMINS (activedirectory)  [ad_group://cn=ga]\n", "the group row stays plain")
 	assert.NotContains(t, styled, "\x1b[1m  GLOBAL-ADMINS")
-	assert.Contains(t, styled, "\x1b[1m  GLOBAL\x1b[0m\n", "the real sub-header below ROLES is bold")
+	assert.Contains(t, styled, "\x1b[1m  GLOBAL\x1b[0m\n", "the real sub-header below ROLE BINDINGS is bold")
 }

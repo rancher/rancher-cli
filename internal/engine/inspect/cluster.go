@@ -42,7 +42,7 @@ type clusterCmd struct {
 // Cluster identity (the one hard requirement), the provisioning
 // Cluster CR correlated by status.clusterName in fleet-default (ready +
 // conditions + machine pools), and the default registration token's
-// node-join and import commands, joined into one document. Every section
+// node and import commands, joined into one document. Every section
 // but the first degrades: confirmed provisioning absence sets
 // provisioningNote, an unavailable or ambiguous lookup and a failed
 // registration read each omit their section(s) with a warning.
@@ -53,16 +53,56 @@ func NewInspectCluster(clients engine.ClusterClientFactory, roots engine.RootCli
 func (c *clusterCmd) Describe() runtime.Descriptor {
 	k, _ := kinds.Lookup("cluster")
 	return runtime.Descriptor{
-		Name:        "inspect cluster",
-		Aliases:     k.Aliases,
-		Usage:       "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration",
-		Desc:        "One document answering what state a cluster is in, what it is made of, and how nodes join it: the management cluster identity (id, name, state, kubernetesVersion - observed version first, the provisioning spec's desired version for pending clusters, empty when neither exists), its agent connectivity (agent.connected and agent.ready from the management Cluster's Connected and Ready conditions with the failing condition's message, preferring Connected's; the section is present only when those conditions report an explicit True or False (Unknown is not a verdict and never reads as disconnected) and each field only when its own condition does; a disconnected agent or a False Ready condition adds a warning - the provisioning-derived status cannot see an agent outage), the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, each row reporting principal, displayName, role, binding (the CRD object name), and system; a failed binding read omits the members field from JSON while the text card renders a members-unavailable marker, with a warning naming the cause; enrichment failure only drops display names, never rows; entries whose principal id is system-prefixed (Rancher's system principals, e.g. system://provisioning/...) carry system: true (Rancher-internal accounts, not operator grants)), its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; each entry reports name, phase, and the first failing condition message - preferring conditions whose reason contains \"Error\"; a failed LIST omits the machines field from JSON while the text card renders a machines-unavailable marker, with a warning naming the cause; absent when the provisioning cluster was not found), and the default registration token's node-join pair (nodeCommand/insecureNodeCommand), import pair (command/insecureCommand), and manifestUrl (on an imported cluster - provisioning spec.rkeConfig absent - notApplicable lists the node-join fields that are present but do not apply; fields are annotated, never dropped). The registration section is withheld by default because it embeds a live cluster join token (a credential that lets anyone add nodes to the cluster); pass --registration to fetch and show it. Sections degrade independently: provisioningNote marks a confirmed missing provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read omit their sections with a warning naming the cause. " + degradedContractDesc + "Cluster resolution and the management Cluster GET are required and hard-error. Degradable sections: provisioning (unavailable - the correlation, one entry covering the status, machinePools, and machines it leaves absent), machines (unavailable - a machine list that failed after a successful correlation), members (unavailable - the binding list; display-name enrichment failures stay advisory warnings), registration (unavailable - the token read).",
+		Name:    "inspect cluster",
+		Aliases: k.Aliases,
+		Usage:   "Inspect a cluster: status, agent connectivity, machine pools, members, machines, and registration",
+		Desc: "One document answering what state a cluster is in, what it is made of, and how nodes join it: " +
+			"the management.cattle.io Cluster's id, name, state, and kubernetesVersion (the observed version first, " +
+			"then the provisioning spec's desired version for pending clusters, empty when neither exists), " +
+			"its agent connectivity (agent.connected and agent.ready from the management.cattle.io Cluster's " +
+			"Connected and Ready conditions with the failing condition's message, preferring Connected's; " +
+			"the section is present only when those conditions report an explicit True or False " +
+			"(a condition with status Unknown is ignored and never shows the agent as not connected) " +
+			"and each field only when its own condition does; an agent that is not connected or a False Ready " +
+			"condition adds a warning - the status of the provisioning.cattle.io Cluster cannot show an agent outage), " +
+			"the provisioning.cattle.io Cluster's ready flag (derived from the Ready condition when present; " +
+			"falls back to status.ready) and conditions, its machine pools (name, machineConfigRef, quantity, roles), " +
+			"its members (ClusterRoleTemplateBindings with display names resolved from Users and UserAttributes, " +
+			"each row reporting principal, displayName, role, binding (the name of the ClusterRoleTemplateBinding), " +
+			"and system; a failed binding read leaves the members field out of the JSON while the text output shows " +
+			"members: unavailable, with a warning naming the cause; a failure to look up display names leaves out only " +
+			"the display names, never rows; entries whose principal id starts with system: " +
+			"(Rancher's system principals, e.g. system://provisioning/...) carry system: true " +
+			"(accounts Rancher uses internally, not bindings an administrator added)), " +
+			"its machines (CAPI Machine objects in fleet-default filtered by the cluster.x-k8s.io/cluster-name label; " +
+			"each entry reports name, phase, and the first failing condition message - " +
+			"preferring conditions whose reason contains \"Error\"; a failed list leaves the machines field out of the JSON " +
+			"while the text output shows machines: unavailable, with a warning naming the cause; " +
+			"left out when the provisioning cluster was not found), " +
+			"and the commands in the default cluster registration token: nodeCommand and insecureNodeCommand (to add nodes), " +
+			"command and insecureCommand (to import a cluster), and manifestUrl. " +
+			"On an imported cluster (provisioning spec.rkeConfig absent), notApplicable lists the node command fields " +
+			"that are present but do not apply; such fields are marked, never left out. " +
+			"By default the registration section holds only a message and a hint, and the commands are left out, " +
+			"because they contain the cluster registration token (a credential that lets anyone add nodes to the cluster); " +
+			"pass --registration to fetch and show them. " +
+			"Each section can be missing without affecting the others: provisioningNote marks a confirmed missing " +
+			"provisioning Cluster; an unavailable or ambiguous lookup and a failed registration read leave out their " +
+			"sections with a warning naming the cause. " +
+			degradedContractDesc +
+			"Finding the cluster by id or name and reading its management.cattle.io Cluster are required: " +
+			"the command fails when any of them fails. " +
+			"Sections that can degrade: provisioning (unavailable - the lookup of the provisioning.cattle.io Cluster " +
+			"that matches this cluster, one entry covering the status, machinePools, and machines, " +
+			"which are then left out), machines (unavailable - a machine list that failed after that Cluster was found), " +
+			"members (unavailable - the binding list; a failure to look up display names stays a warning), " +
+			"registration (unavailable - reading the cluster registration token).",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true, Desc: "cluster `id|name`"}},
 		Flags: []runtime.ArgSpec{{
 			Name: "registration",
 			Type: "bool",
-			Desc: "show registration section (contains join credentials; withheld by default); also available via: rancher get clusterregistrationtoken default-token --namespace <cluster-id>",
+			Desc: "show the registration commands (they contain the cluster registration token and are left out by default); also available with: rancher get clusterregistrationtoken default-token --namespace <cluster-id>",
 		}},
 		Auth:  true,
 		Shape: runtime.ShapeText,
@@ -119,7 +159,7 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 
 	// The two independent legs fan out concurrently (the errgroup pattern
 	// images --all-clusters already uses; the accumulator is mutex-guarded
-	// for exactly this): the provisioning correlation with its dependent
+	// for exactly this): the provisioning Cluster lookup with its dependent
 	// machine lookup, and the member list. Each leg writes only its own
 	// variables; a non-nil leg error is the caller's cancellation, which
 	// aborts the group. The registration fetch stays AFTER the join: it
@@ -186,17 +226,17 @@ func (c *clusterCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pr
 		case imported && reg != nil:
 			reg.markNodeCommandsInapplicable()
 		case lookup == provUnavailable && reg != nil:
-			// imported is UNKNOWN, not false: the provisioning correlation
-			// was unreadable, so the node-join fields cannot be annotated
+			// imported is UNKNOWN, not false: the provisioning Cluster lookup
+			// was unavailable: the node command fields cannot be annotated
 			// either way. Advisory - the section itself is present and
 			// usable, only its applicability verdict is missing.
 			warnings = append(warnings,
-				"cannot determine whether the node-join commands apply: the provisioning correlation was unavailable")
+				"cannot determine whether the node commands apply: the provisioning.cattle.io Cluster for this cluster is unavailable")
 		}
 		res.Registration = reg
 	} else {
-		// Structural gate: the registration section embeds a live cluster
-		// join token. No fetch is issued when --registration is absent.
+		// Structural gate: the registration section embeds the cluster
+		// registration token. No fetch is issued when --registration is absent.
 		res.Registration = &registration{
 			Withheld: true,
 			Message:  withheldMessage(),
@@ -236,7 +276,7 @@ const (
 // neither correlates reliably. Zero matches is confirmed absence;
 // a list failure or multiple matches is "could not determine",
 // each recorded as one `provisioning` degraded entry: the
-// correlation is why status, machinePools, and the dependent machine
+// lookup is why status, machinePools, and the dependent machine
 // lookup are all absent, so its fan-out gets one entry and one warning,
 // not one per missing key. The third return is the confirmed-absence
 // note (non-empty only when provAbsent), scoped to the namespace that was
@@ -263,7 +303,7 @@ func correlateProvisioningCluster(ctx context.Context, mgmt engine.ClusterClient
 		return matches[0], provFound, "", nil
 	default:
 		ambiguous := clierr.New(clierr.CodeAmbiguousSelection, fmt.Sprintf(
-			"%d provisioning.cattle.io Clusters report status.clusterName %q; the correlation is ambiguous",
+			"%d provisioning.cattle.io Clusters report status.clusterName %q; cannot tell which one belongs to this cluster",
 			len(matches), clusterID))
 		return nil, provUnavailable, "", sec.Unavailable(sectionProvisioning, ambiguous)
 	}
@@ -631,7 +671,7 @@ var registrationSurfacedFields = map[string]bool{
 // fields when --registration is absent: rerunning with --registration is
 // the alternative to withheldHint's token lookup.
 func withheldMessage() string {
-	return "registration was withheld because it carries a live cluster join token; rerun with --registration to include it"
+	return "registration was left out because it contains the cluster registration token; rerun with --registration to include it"
 }
 
 // withheldHint builds the machine-readable rerun suggestion carried by the
@@ -665,7 +705,7 @@ type registration struct {
 	ManifestURL         string `json:"manifestUrl,omitempty"`
 	// NotApplicable names registration fields that are present but do not
 	// apply to this cluster's creation mode: an imported cluster
-	// (provisioning spec.rkeConfig absent) has no node-join workflow, so
+	// (provisioning spec.rkeConfig absent) has no node command workflow:
 	// nodeCommand/insecureNodeCommand are annotated rather than dropped -
 	// the JSON contract is additive and consumers may rely on field presence.
 	// Never names a field the payload does not carry.
@@ -687,7 +727,7 @@ const (
 	regFieldInsecureNodeCommand = "insecureNodeCommand"
 )
 
-// markNodeCommandsInapplicable annotates the node-join pair as not
+// markNodeCommandsInapplicable annotates the node command pair as not
 // applicable (imported cluster). A placeholder-dropped or server-empty
 // command stays unannotated - the list never names an absent field.
 func (r *registration) markNodeCommandsInapplicable() {
@@ -727,14 +767,14 @@ func renderClusterText(r clusterResult) string {
 	b.WriteString("\nREGISTRATION\n")
 	switch {
 	case r.Registration != nil && r.Registration.Withheld:
-		b.WriteString("  registration: withheld (contains join credentials) - rerun with --registration\n")
+		b.WriteString("  registration: left out (contains the cluster registration token) - rerun with --registration\n")
 	case r.Registration == nil:
-		b.WriteString("  registration: not available\n")
+		b.WriteString("  registration: unavailable\n")
 	default:
-		writeRegistrationField(&b, regLabel("node join", slices.Contains(r.Registration.NotApplicable, regFieldNodeCommand)), r.Registration.NodeCommand)
-		writeRegistrationField(&b, regLabel("node join (insecure)", slices.Contains(r.Registration.NotApplicable, regFieldInsecureNodeCommand)), r.Registration.InsecureNodeCommand)
-		writeRegistrationField(&b, "import", r.Registration.Command)
-		writeRegistrationField(&b, "import (insecure)", r.Registration.InsecureCommand)
+		writeRegistrationField(&b, regLabel("node command", slices.Contains(r.Registration.NotApplicable, regFieldNodeCommand)), r.Registration.NodeCommand)
+		writeRegistrationField(&b, regLabel("node command (insecure)", slices.Contains(r.Registration.NotApplicable, regFieldInsecureNodeCommand)), r.Registration.InsecureNodeCommand)
+		writeRegistrationField(&b, "import command", r.Registration.Command)
+		writeRegistrationField(&b, "import command (insecure)", r.Registration.InsecureCommand)
 		writeRegistrationField(&b, "manifestUrl", r.Registration.ManifestURL)
 	}
 	return b.String()
@@ -769,13 +809,13 @@ func renderAgentLine(b *strings.Builder, ag *agentStatus) {
 	}
 	switch ag.verdict() {
 	case agentDisconnected:
-		b.WriteString("  agent: disconnected" + msg + "\n")
+		b.WriteString("  agent: not connected" + msg + "\n")
 	case agentConnectedNotReady:
-		b.WriteString("  agent: connected (not ready" + msg + ")\n")
+		b.WriteString("  agent: connected, cluster not ready" + msg + "\n")
 	case agentConnected:
 		b.WriteString("  agent: connected\n")
 	case agentNotReady:
-		b.WriteString("  agent: not ready" + msg + "\n")
+		b.WriteString("  agent: connection not reported, cluster not ready" + msg + "\n")
 	}
 }
 

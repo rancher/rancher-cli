@@ -36,8 +36,9 @@ func (c *podCmd) Describe() runtime.Descriptor {
 		Aliases: k.Aliases,
 		Usage:   "Inspect a pod: owners, metrics, and container logs",
 		Desc: degradedContractDesc +
-			"Cluster resolution, the namespace, and the pod GET are required and hard-error. " +
-			"Degradable sections: owners (partial, target = the canonical owner identity " +
+			"Finding the cluster by id or name, giving --namespace, and reading the pod are required: " +
+			"the command fails when any of them fails. " +
+			"Sections that can degrade: owners (partial, target = the owner's " +
 			"apiVersion|kind|namespace|name|uid), metrics (unavailable), logs (partial, target = " +
 			"container name, one entry per container whose log read failed).",
 		CommandType: runtime.ReadOnly,

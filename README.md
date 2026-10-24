@@ -154,7 +154,7 @@ or point any other agent's instructions file at it.
 | [Cluster scaling & autoscaling](COMMANDS.md#cluster-scaling--autoscaling) | machine-pool scale, cluster-autoscaler set/clear/pause/resume |
 | [Read & inspect](COMMANDS.md#read--inspect) | cloud credentials, Kubernetes versions, composite cluster/pod/deployment/project/user reads, images, usage |
 | [Access](COMMANDS.md#access) | who can do what, as the cluster's authorizer answers it (`access can`, `access list`, `access who-can`, `access explain`), and where Rancher's proxy lets a subject in (`access clusters`) and which projects it can see into and is a member of (`access projects`) |
-| [Logs & support](COMMANDS.md#logs--support) | curated logs, support bundle |
+| [Logs & support](COMMANDS.md#logs--support) | logs of Rancher components, support bundle |
 | [kubectl integration](COMMANDS.md#kubectl-integration) | exec-credential kubeconfig, legacy token shim |
 | [Telemetry](COMMANDS.md#telemetry) | status, on, off, reset and show for local usage recording |
 | [Discovery & tooling](COMMANDS.md#discovery--tooling) | schema, shell completion, agent-skill install |
@@ -163,9 +163,9 @@ Kubeconfigs that authenticate through the exec plugin log in once per cluster by
 
 A kubeconfig from `rancher kubeconfig` records its config directory, so kubectl authenticates through that directory from any shell or working directory; it works for this user on this machine, and a directory that moves needs its kubeconfigs written again. It also names, with `--user-id`, the Rancher user its login belongs to, and the exec plugin then refuses rather than hand kubectl another user's token. The kubeconfigs Rancher writes name that user too, with `--user-id` and no `--name`, and the auth config its login was made through with `--auth-provider`: the plugin then uses the stored login that records that user (and auth config), hands kubectl only tokens made through that auth config, and, with no `--cluster`, creates a token that is not tied to one cluster. A login that recorded no auth config records it from the first token the plugin creates from it for a call that names one, and `rancher kubeconfig` writes `--auth-provider` once the login records one. `--exec-command` names the binary kubectl runs when `rancher` is not on its PATH.
 
-Composite reads (`inspect *`, `images`, `usage`) answer with what the caller
-can see: a collector they cannot read is named in the payload's `degraded`
-field with a paired warning, and the command still exits 0.
+Composite reads (`inspect *`, `images`, `usage`) answer with what you can
+see: each section you cannot read in full is named in the payload's `degraded`
+field, and each entry has one warning. The command still exits 0.
 
 Generated `get`/`patch`/`delete` commands cover every kind in the 49-kind
 vocabulary. The full catalog is [COMMANDS.md](COMMANDS.md), and

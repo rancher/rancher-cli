@@ -120,7 +120,7 @@ func TestResolveServerFallbackChain(t *testing.T) {
 		_, err := Resolve(t.Context(), factory, factory.getter(), target, input{})
 		require.Error(t, err)
 		assert.Equal(t, clierr.CodeNotFound, clierrCode(t, err))
-		require.ErrorContains(t, err, "single-node Docker install")
+		require.ErrorContains(t, err, "single Docker container")
 		require.ErrorContains(t, err, "docker logs")
 	})
 }
@@ -182,7 +182,7 @@ func TestResolveKubeAPIAuth(t *testing.T) {
 		_, err := Resolve(t.Context(), factory, factory.getter(), target, input{s: map[string]string{engine.FlagCluster: "c-2"}})
 		require.Error(t, err)
 		assert.Equal(t, clierr.CodeNotFound, clierrCode(t, err))
-		assert.ErrorContains(t, err, "authorized cluster endpoint")
+		assert.ErrorContains(t, err, "Authorized Cluster Endpoint")
 	})
 }
 

@@ -98,8 +98,8 @@ import (
 //   - Sensitive kind, dry-run/apply --yes: the command table in COMMANDS.md
 //     uses dry-run/apply --yes, and skills/rancher/SKILL.md uses Sensitive
 //     kind, as the names of the gate.
-//   - curated (alone): ordinary word here (curated logs and targets, curated
-//     commands and kinds); only "curated flag" is refused.
+//   - curated (alone): ordinary word here (curated commands and kinds); the
+//     phrases for logs and targets of Rancher components are refused.
 //   - pool, probe (alone): "machine pool" and "SelfUser request" are the terms;
 //     the bare words name flags, names and the fidelity vocabulary.
 //   - stamp (the noun): the cache binding stamp and the logged-out stamp are
@@ -121,6 +121,15 @@ import (
 //   - authenticated gh: the document phrases hold a code span, which the
 //     document scan blanks: no form could match them.
 //   - capable (alone), violates, this means: ordinary words.
+//   - collector: "node collector" is the plain name of the support-tools
+//     component; comments and one internal string name the code's own
+//     collectors.
+//   - management plane, identity, scope: ordinary words with other uses.
+//   - enrichment, annotated, verdict, advisory, disconnected, not available,
+//     unknown, marker, scan: ordinary words with other uses.
+//   - rancher cli: the term is rancher-cli, and other text still says
+//     rancher cli.
+//   - whole value: an ordinary phrase.
 func TestRejectedWordingStaysOut(t *testing.T) {
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -212,7 +221,11 @@ type wordingRow struct {
 // rejectedWording is the term table: one row per line, sorted by the first
 // form.
 var rejectedWording = []wordingRow{
+	{[]string{"ace clusters"}, "clusters with an Authorized Cluster Endpoint"},
+	{[]string{"allowlisted"}, "a fixed list of"},
+	{[]string{"api-reachable"}, "what Rancher's Kubernetes API can reach"},
 	{[]string{"as you"}, "with your permissions"},
+	{[]string{"audit extras"}, "extra information for audit logs"},
 	{[]string{"auth bootstrap"}, "authentication with your stored login"},
 	{[]string{"auth lifecycle"}, "name the steps (key generation, TTL clamp, identity derivation)"},
 	{[]string{"backing secret", "backing secrets"}, "Secret"},
@@ -222,47 +235,72 @@ var rejectedWording = []wordingRow{
 	{[]string{"budget", "budgets"}, "time limit"},
 	{[]string{"caller identity"}, "your user ID"},
 	{[]string{"caller-scoped"}, "with your permissions"},
+	{[]string{"canonical owner identity"}, "the owner's apiVersion|kind|namespace|name|uid"},
 	{[]string{"capable authenticated"}, "a gh CLI that is logged in and whose 'gh attestation verify' supports --signer-workflow"},
 	{[]string{"cdn fetch", "storage fetch"}, "could not download from the redirect URL"},
 	{[]string{"channel server route"}, "name the path: it was not found on the server"},
 	{[]string{"clears cleanly"}, "succeeds and changes nothing"},
 	{[]string{"command bug", "command bugs"}, "internal error"},
+	{[]string{"computed statement"}, "say that the bindings do not show what a user can do"},
 	{[]string{"controller-owned"}, "a controller creates and manages it"},
+	{[]string{"correlation"}, "the lookup of the provisioning Cluster"},
+	{[]string{"could not be checked"}, "could not be read"},
 	{[]string{"credential store helper", "credential store helpers"}, "credential helper"},
+	{[]string{"curated component logs", "curated logs", "curated rancher-component logs", "curated target", "curated targets"}, "logs of Rancher components"},
 	{[]string{"curated flag", "curated flags"}, "the command's own flags"},
 	{[]string{"current switch"}, "the 'current' symlink does not point to the installed version"},
+	{[]string{"degradable"}, "that can degrade"},
+	{[]string{"degrades rather than fails"}, "the command still exits 0 and names what it could not read"},
 	{[]string{"degrades to", "degrade to", "degraded to"}, "say what the command shows instead"},
 	{[]string{"direct context", "direct contexts", "direct endpoint", "direct endpoints"}, "Authorized Cluster Endpoint"},
 	{[]string{"do not resolve"}, "are broken or not executable"},
+	{[]string{"downstream-client"}, "a failure to connect to the downstream cluster"},
 	{[]string{"dry-run effect", "dry-run effects"}, "dry-run preview"},
 	{[]string{"envelope key", "envelope keys"}, "top-level Kubernetes object field"},
 	{[]string{"escalates to", "escalate to"}, "requires"},
 	{[]string{"exec entry", "exec entries", "exec user entry"}, "exec block"},
 	{[]string{"executable", "executables"}, "binaries"},
+	{[]string{"first-level reference"}, "the pod's direct owner"},
 	{[]string{"fleet workspace namespace"}, "Fleet workspace (namespace)"},
 	{[]string{"floor", "floors", "version-floor", "version-floors"}, "minimum"},
+	{[]string{"go duration"}, "a duration such as 90m or 12h"},
+	{[]string{"group-sync cache"}, "the group memberships Rancher last refreshed"},
 	{[]string{"half-set"}, "has only one of the two fields set"},
+	{[]string{"hard-error", "hard-errors"}, "fails"},
 	{[]string{"id extraction"}, "reads the asset ids"},
 	{[]string{"identity probe", "identity probes", "selfuser probe", "selfuser probes"}, "SelfUser request"},
+	{[]string{"internal duration"}, "state the limit"},
+	{[]string{"join credentials", "join token"}, "cluster registration token"},
 	{[]string{"junction", "junctions"}, "a Windows directory link (NTFS junction)"},
 	{[]string{"killed"}, "stopped"},
 	{[]string{"layout is corrupt"}, "the data directory is damaged"},
 	{[]string{"listing is exhausted"}, "no published release found in the release listing"},
 	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},
+	{[]string{"main container"}, "the containers and init containers of each pod"},
 	{[]string{"manual quantity"}, "number of nodes"},
 	{[]string{"member namespaces", "member namespace"}, "the project's namespaces"},
+	{[]string{"membership set"}, "the project's namespaces"},
 	{[]string{"named get", "named gets"}, "a get of one object"},
+	{[]string{"namespace map", "project map"}, "the list of namespaces or projects"},
 	{[]string{"needs auth"}, "needs a GitHub token"},
 	{[]string{"no-follow replace"}, "replace a symlink without following it"},
 	{[]string{"no-op"}, "changes nothing"},
 	{[]string{"node count"}, "number of nodes"},
+	{[]string{"node join", "node-join"}, "node command"},
 	{[]string{"node-driver pool", "node-driver pools"}, "machine pool"},
 	{[]string{"observe the following output"}, "see this output"},
+	{[]string{"oci normalization"}, "a short reference is not expanded to a full registry name"},
+	{[]string{"one fate"}, "are read together"},
 	{[]string{"one read of its id"}, "gets it by its id"},
 	{[]string{"ordinary secret", "ordinary secrets"}, "a secret in a namespace"},
+	{[]string{"owner chain"}, "the pod's owners"},
 	{[]string{"owning source object"}, "the object it was created from"},
 	{[]string{"page cap"}, "stopped after 100 pages"},
+	{[]string{"paired warning", "paired warnings"}, "one warning for each entry"},
+	{[]string{"pass a project namespace"}, "pass one of the project's namespaces"},
+	{[]string{"per-replica"}, "of a single replica"},
 	{[]string{"principal form", "principal forms"}, "principal prefix"},
+	{[]string{"project bucket", "project-namespace rows"}, "one row for the project"},
 	{[]string{"provider list", "provider lists"}, "list of auth configs"},
 	{[]string{"quorum majority"}, "quorum"},
 	{[]string{"re-asserts", "reasserts"}, "sets it back"},
@@ -270,22 +308,31 @@ var rejectedWording = []wordingRow{
 	{[]string{"release fetch", "release fetches"}, "fetching the releases"},
 	{[]string{"release resolution", "prerelease resolution"}, "look up the latest stable release"},
 	{[]string{"role vocabulary"}, "role templates and global roles"},
+	{[]string{"roles across scopes"}, "role bindings at global, cluster and project level"},
 	{[]string{"runaway loop"}, "the listing never ends"},
 	{[]string{"sanctioned override"}, "name the command to run first"},
+	{[]string{"scanned"}, "read"},
 	{[]string{"schema vocabulary", "schema kind vocabulary"}, "the kinds rancher schema lists"},
 	{[]string{"schema-legal"}, "allowed"},
+	{[]string{"scope id"}, "the cluster or project it names"},
+	{[]string{"scope instance"}, "cluster or project"},
 	{[]string{"scope/sso"}, "missing scope or SSO authorization"},
 	{[]string{"scriptblock", "scriptblocks"}, "script block"},
+	{[]string{"selector-scoped"}, "the pods its selector matches"},
 	{[]string{"server dry run"}, "server-side dry-run"},
+	{[]string{"single-node docker install"}, "Rancher running as a single Docker container"},
 	{[]string{"spliced", "splices"}, "replaced"},
 	{[]string{"stamped", "stamps", "unstamped"}, "set (an annotation)"},
 	{[]string{"steve collection envelope"}, "Rancher API collection"},
 	{[]string{"tag grammar"}, "a valid release tag"},
 	{[]string{"tag redirect"}, "redirect to a release tag URL"},
+	{[]string{"text card"}, "text output"},
 	{[]string{"the pair"}, "the two binaries"},
 	{[]string{"the plan"}, "the dry-run preview"},
 	{[]string{"user record", "user records"}, "User object"},
+	{[]string{"verified empty", "verified-empty"}, "the result has no rows"},
 	{[]string{"wins over", "win over", "won over"}, "takes precedence over"},
+	{[]string{"withheld"}, "left out"},
 }
 
 // wordingPhrase allows a longer phrase that contains the term of a row.
@@ -334,6 +381,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"budget", "internal/token/retire.go", "", 1, "text not yet reworded"},
 	{"budget", "skills/rancher/SKILL.md", "10. Role grants and secrets", 2, "text not yet reworded"},
 	{"budget", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
+	{"canonical owner identity", "internal/engine/inspect/shared.go", "", 1, "a panic text no user sees"},
 	{"command bug", "internal/engine/resources/create.go", "", 1, "text not yet reworded"},
 	{"command bug", "internal/engine/resources/get.go", "", 1, "text not yet reworded"},
 	{"command bug", "internal/engine/resources/servertable.go", "", 1, "text not yet reworded"},
@@ -341,7 +389,6 @@ var wordingPathAllowlist = []wordingPath{
 	{"command bug", "internal/runtime/project.go", "", 4, "text not yet reworded"},
 	{"curated flag", "internal/cli/root.go", "", 1, "text not yet reworded"},
 	{"degrades to", "README.md", "Shell completion", 1, "text not yet reworded"},
-	{"degrades to", "internal/engine/inspect/images.go", "", 1, "text not yet reworded"},
 	{"degrades to", "skills/rancher/SKILL.md", "9. Observability & support", 1, "text not yet reworded"},
 	{"direct context", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
 	{"direct context", "REFERENCE.md", "What each part means", 1, "text not yet reworded"},
@@ -369,6 +416,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"floor", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"floor", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"floor", "skills/rancher/SKILL.md", "1. Verify auth before anything else", 1, "text not yet reworded"},
+	{"hard-error", "CREDENTIAL_HELPERS.md", "Responses", 1, "text not yet reworded"},
 	{"identity probe", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"junction", "README.md", "Install", 1, "text not yet reworded"},
 	{"junction", "install.ps1", "", 2, "not prose: the LinkType value and the New-Item parameter"},
@@ -376,7 +424,7 @@ var wordingPathAllowlist = []wordingPath{
 	{"named get", "internal/engine/resources/get.go", "", 2, "text not yet reworded"},
 	{"no-op", "CREDENTIAL_HELPERS.md", "Responses", 1, "text not yet reworded"},
 	{"node count", "REFERENCE.md", "Kinds & verbs", 1, "text not yet reworded"},
-	{"principal form", "internal/engine/inspect/user.go", "", 1, "text not yet reworded"},
+	{"pass a project namespace", "internal/engine/resources/get.go", "", 2, "text not yet reworded"},
 	{"provider list", "MIGRATING.md", "Changed in this CLI", 3, "text not yet reworded"},
 	{"provider list", "REFERENCE.md", "Auth configs (`--auth-provider`)", 2, "text not yet reworded"},
 	{"provider list", "internal/token/token.go", "", 2, "text not yet reworded"},

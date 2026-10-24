@@ -57,7 +57,7 @@ func TestOwnerChainUIDMismatchStopsWalk(t *testing.T) {
 	assert.Equal(t, "apps/v1", owners[0]["apiVersion"])
 	require.Len(t, warnings, 1)
 	assert.Equal(t,
-		"owners unavailable for apps/v1|ReplicaSet|web|web-7d9f8b|rs-uid-OLD: uid mismatch (stale owner reference)",
+		"owners unavailable for apps/v1|ReplicaSet|web|web-7d9f8b|rs-uid-OLD: uid mismatch (the owner reference is out of date)",
 		warnings[0])
 }
 
@@ -122,7 +122,7 @@ func TestSectionsBlockedNamesTheDependency(t *testing.T) {
 	// The code comes from the ORIGINAL error, not from the dependency context.
 	assert.Equal(t, clierr.CodeRBAC, entries[0].Code)
 	assert.Equal(t, stateUnavailable, entries[0].State)
-	assert.Equal(t, []string{"usage unavailable: namespaces unknown (denied)"}, warnings)
+	assert.Equal(t, []string{"usage unavailable: it depends on namespaces, which is unavailable (denied)"}, warnings)
 }
 
 func TestSectionsPartialCarriesTarget(t *testing.T) {

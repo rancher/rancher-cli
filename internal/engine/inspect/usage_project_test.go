@@ -51,7 +51,7 @@ func TestUsageByProjectGroupsByProject(t *testing.T) {
 	for _, row := range tabular.Rows() {
 		scopes = append(scopes, row[0])
 	}
-	assert.Contains(t, scopes, "web", "table SCOPE shows the project display name, not the id")
+	assert.Contains(t, scopes, "web", "the first table column shows the project display name, not the id")
 	assert.Contains(t, scopes, "api")
 	assert.NotContains(t, scopes, "p-x")
 

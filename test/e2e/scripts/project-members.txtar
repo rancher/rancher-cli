@@ -97,7 +97,7 @@ exec rancher inspect project members-proj --cluster testcluster
 stdout 'PROJECT'
 stdout 'NAMESPACES'
 stdout 'MEMBERS'
-stdout 'QUOTA'
+stdout 'RESOURCE QUOTA'
 stdout 'USAGE'
 stdout 'alice \(local://u-alice\)  project-member'
 

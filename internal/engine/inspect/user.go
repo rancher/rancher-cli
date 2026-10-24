@@ -49,31 +49,34 @@ func (c *userCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:    "inspect user",
 		Aliases: k.Aliases,
-		Usage:   "Inspect a user: identity, groups, and roles across scopes",
+		Usage:   "Inspect a user: id and names, groups, and role bindings at global, cluster and project level",
 		Desc: degradedContractDesc +
-			"The user is required and hard-errors when unreadable; every other section degrades. " +
-			"The positional accepts a user id, username, displayName, or a fully qualified user " +
-			"principal (local://…, <provider>_user://…) - the principal form is the one way to name " +
+			"Finding the user and reading it are required: the command fails when any of them fails; " +
+			"every other section can be unavailable. " +
+			"The argument accepts a user id, username, displayName, or a fully qualified user " +
+			"principal (local://<id>, <provider>_user://<id>) - a fully qualified principal is the one way to name " +
 			"a user unambiguously when ids and display names collide. " +
-			"data.user carries identity (id, username, displayName, enabled, principals, created, " +
-			"system) plus everything Rancher records per user in UserAttributes: groups (memberships " +
-			"as last synced by Rancher, refreshed at login, a flat array of {principal, displayName, " +
-			"provider}), lastLogin, lastRefresh and needsRefresh (the group-sync cache's own state), " +
-			"disableAfter and deleteAfter (per-user inactivity overrides), and extra (per-provider " +
-			"audit extras, [provider][key] -> values; Rancher writes principalid and username today). " +
-			"All of them share one fate: when the UserAttributes read failed for any reason other " +
-			"than a verified absence (a user who has never logged in has none), every one is omitted " +
-			"from the wire - never an empty list - with the failure recorded in data.degraded; an " +
-			"omitted optional field on a healthy read simply is not set. " +
-			"data.roles.{global,clusters,projects} lists role bindings that EXIST for the user or any " +
-			"of their group principals. Roles are facts about bindings - never a computed statement " +
-			"of what the user can do (that is a permissions question, answered only by the server, " +
-			"and this command never asks it). Each row is the shared member shape (principal, " +
-			"displayName, role, binding, system); clusters and projects group rows by scope instance, " +
-			"with a best-effort displayName looked up per entry. Because the completeness of the role " +
-			"sections depends on the user's group principals, a failed groups read blocks all three " +
-			"too (their completeness would otherwise be unverifiable) - recorded in data.degraded " +
-			"alongside groups.",
+			"data.user carries id, username, displayName, enabled, principals, created, and system, " +
+			"plus everything Rancher records per user in UserAttributes: groups (the group memberships " +
+			"as Rancher last refreshed them, which also happens at login; a flat array of {principal, displayName, " +
+			"provider}), lastLogin, lastRefresh and needsRefresh (when Rancher last refreshed the user's group " +
+			"memberships, and whether they need a refresh), disableAfter and deleteAfter (per-user values that " +
+			"override the disable-inactive-user-after and delete-inactive-user-after settings), and extra " +
+			"(extra information for audit logs, listed by provider, then key, with a list of values for each key; " +
+			"Rancher writes principalid and username today). " +
+			"These fields are read together: when reading the UserAttributes fails for any reason other " +
+			"than the object not existing (a user who has never logged in has none), all of them are left out " +
+			"of the output - never shown as an empty list - and the failure is recorded in data.degraded; " +
+			"on a successful read, an optional field that is left out was not set. " +
+			"data.roles.{global,clusters,projects} lists the role bindings that exist for the user or any " +
+			"of their group principals. They show which role bindings exist and do not say what the user can do; " +
+			"only the server can answer that, and this command does not ask it. " +
+			"Each row has the same fields as a member row in inspect cluster and inspect project " +
+			"(principal, displayName, role, binding (the name of the GlobalRoleBinding, ClusterRoleTemplateBinding " +
+			"or ProjectRoleTemplateBinding), and system); clusters and projects group the rows by cluster or project, " +
+			"with a displayName when it can be looked up for that entry. " +
+			"Roles can be bound to the user's groups; when reading the groups fails, all three role sections " +
+			"are left out too (they could not be complete) and are recorded in data.degraded with groups.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "user", Type: "string", Required: true, Desc: "id|username|displayName|principal"}},
 		Auth:        true,
@@ -240,16 +243,16 @@ func parseUserAttributeGroups(obj *unstructured.Unstructured) []userGroup {
 	return rows
 }
 
-// droppedScopeWarning names role bindings omitted because their scope id
-// was empty (a malformed binding with no projectName/namespace): the roles
+// droppedScopeWarning names role bindings left out because the cluster or
+// project they name is empty (a malformed binding with no projectName/namespace): the roles
 // are real but unattributable to a scope - dropping them silently would
 // misreport, merging them under a blank heading would be worse.
 func droppedScopeWarning(scope string, bindings []string) []string {
 	if len(bindings) == 0 {
 		return nil
 	}
-	return []string{fmt.Sprintf("%d %s role binding(s) with no scope id omitted: %s",
-		len(bindings), scope, strings.Join(bindings, ", "))}
+	return []string{fmt.Sprintf("%d %s role binding(s) left out because they name no %s: %s",
+		len(bindings), scope, scope, strings.Join(bindings, ", "))}
 }
 
 // roleDisplayNames builds the enrichment map heldRow consumes: the user's
@@ -470,7 +473,7 @@ type userResult struct {
 }
 
 // renderUserText is the default rendering: an IDENTITY block, a GROUPS
-// block, then a tri-state ROLES block per collector.
+// block, then a tri-state ROLE BINDINGS block per collector.
 // renderUserText receives the RESOLVE-TIME own-identity set - the same
 // snapshot heldRow classified against - never a set rebuilt from the
 // identity section's own, later Get: two reads of the same user can
@@ -485,12 +488,12 @@ func renderUserText(r userResult, own map[string]bool) string {
 }
 
 // userSectionHeaders is the fixed, always-present exact header set
-// renderUserText emits: GROUPS and ROLES render unconditionally, every
+// renderUserText emits: GROUPS and ROLE BINDINGS render unconditionally, every
 // call. The USER header (always line 0, with optional bracketed
 // qualifiers) and the role sub-headers (dynamic scope labels, matched by
-// prefix below the ROLES header - see userRoleSubheaderPrefixes) are
+// prefix below the ROLE BINDINGS header - see userRoleSubheaderPrefixes) are
 // handled separately in styleUserText.
-var userSectionHeaders = map[string]bool{"GROUPS": true, "ROLES": true}
+var userSectionHeaders = map[string]bool{"GROUPS": true, "ROLE BINDINGS": true}
 
 // userRoleSubheaderPrefixes are the literal tokens renderRoles always emits
 // first for a role sub-header, whose full line varies (a scope label after
@@ -502,18 +505,18 @@ var userRoleSubheaderPrefixes = []string{"  GLOBAL", "  CLUSTER", "  PROJECT"}
 // styleUserText applies inspect user's bold spans to text, the plain
 // rendering renderUserText already produced: the USER header (always the
 // first line; its full text varies with " [system]"/" [disabled]"
-// qualifiers), the GROUPS/ROLES headers (exact), and each role sub-header -
+// qualifiers), the GROUPS/ROLE BINDINGS headers (exact), and each role sub-header -
 // bold, whole line. Sub-header prefix matching is scoped to the lines BELOW
-// the ROLES header: the GROUPS block shares the two-space indent and its
+// the ROLE BINDINGS header: the GROUPS block shares the two-space indent and its
 // rows carry provider-owned display names, so a group named "GLOBAL-…"
-// above ROLES must stay plain.
+// above ROLE BINDINGS must stay plain.
 func styleUserText(text string, s style.Style) string {
 	if !s.Enabled || text == "" {
 		return text
 	}
 	rolesAt := -1
 	for i, line := range strings.SplitAfter(text, "\n") {
-		if body, _ := strings.CutSuffix(line, "\n"); body == "ROLES" {
+		if body, _ := strings.CutSuffix(line, "\n"); body == "ROLE BINDINGS" {
 			rolesAt = i
 			break
 		}
@@ -574,7 +577,7 @@ func renderUserIdentity(b *strings.Builder, u userIdentity) {
 		for _, key := range slices.Sorted(maps.Keys(inner)) {
 			pairs = append(pairs, fmt.Sprintf("%s=%s", key, strings.Join(inner[key], ",")))
 		}
-		fmt.Fprintf(b, "  extra[%s]: %s\n", output.Printable(provider), output.Printable(strings.Join(pairs, "  ")))
+		fmt.Fprintf(b, "  extra (%s): %s\n", output.Printable(provider), output.Printable(strings.Join(pairs, "  ")))
 	}
 }
 
@@ -604,7 +607,7 @@ func renderUserGroups(b *strings.Builder, u userIdentity) {
 }
 
 func renderRoles(b *strings.Builder, r userResult, own map[string]bool) {
-	b.WriteString("\nROLES\n")
+	b.WriteString("\nROLE BINDINGS\n")
 	allKnown := r.Roles.Global != nil && r.Roles.Clusters != nil && r.Roles.Projects != nil
 	allEmpty := allKnown && len(*r.Roles.Global) == 0 && len(*r.Roles.Clusters) == 0 && len(*r.Roles.Projects) == 0
 	if allEmpty {

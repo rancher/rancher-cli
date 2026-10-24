@@ -75,9 +75,9 @@ const (
 	fleetNamespaceDownstream = "cattle-fleet-system"
 	fleetNamespaceLegacy     = "fleet-system"
 
-	dockerInstallHint = "no rancher pods on the local cluster - single-node Docker install? " +
-		"server logs live in `docker logs <container>`"
-	nonACEHint = "cluster has no authorized cluster endpoint (kube-api-auth runs only on ACE clusters)"
+	dockerInstallHint = "no Rancher pods found on the local cluster; if Rancher runs as a single Docker container, " +
+		"read the server logs with `docker logs <container>`"
+	nonACEHint = "cluster has no Authorized Cluster Endpoint (kube-api-auth runs only on clusters that have one)"
 )
 
 // Resolve maps a Target and the invocation's --cluster flag onto a concrete

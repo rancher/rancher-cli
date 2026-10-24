@@ -25,7 +25,7 @@ var leadingDaysRe = regexp.MustCompile(`^(\d+)d(.*)$`)
 const maxDays = int64(math.MaxInt64) / int64(24*time.Hour)
 
 // ParseTTL parses the value of the --<flag> flag (pass flag without
-// dashes; its errors name --<flag>): Go duration syntax (90m, 12h),
+// dashes; its errors name --<flag>): duration syntax such as 90m or 12h,
 // optionally prefixed by a leading "<integer>d" days segment (1d = 24h)
 // that may itself be followed by a plain Go duration ("1d12h"). At most
 // one days segment is accepted, and only as the leading token - "12h1d"
@@ -46,7 +46,7 @@ func ParseTTL(flag, s string) (time.Duration, error) {
 		}
 		if days > maxDays {
 			return 0, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("invalid --%s %q: days must be at most %d (a larger value overflows the internal duration)", flag, s, maxDays))
+				fmt.Sprintf("invalid --%s %q: days must be at most %d (about 292 years)", flag, s, maxDays))
 		}
 		d = time.Duration(days) * 24 * time.Hour
 		if rest := m[2]; rest != "" {
@@ -71,7 +71,7 @@ func ParseTTL(flag, s string) (time.Duration, error) {
 
 func invalidTTL(flag, s string) error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("invalid --%s %q: use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)", flag, s))
+		fmt.Sprintf("invalid --%s %q: use a duration such as 90m or 12h; it can start with a number of days, as in 90d or 1d12h", flag, s))
 }
 
 // TTLMilliseconds converts a parsed, positive TTL to the milliseconds the
@@ -101,7 +101,7 @@ func TTLSeconds(flag string, ttl time.Duration, raw string) (int64, error) {
 	secs := int64(ttl.Seconds())
 	if secs == 0 {
 		return 0, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("invalid --%s %q: too small to represent in seconds; pass at least 1s", flag, raw))
+			fmt.Sprintf("invalid --%s %q: the duration is shorter than one second; pass at least 1s", flag, raw))
 	}
 	return secs, nil
 }

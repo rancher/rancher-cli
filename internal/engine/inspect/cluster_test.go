@@ -406,7 +406,7 @@ func TestInspectClusterProvisioningAmbiguous(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "ambiguous")
+	assert.Contains(t, res.Warnings[0], "cannot tell which one belongs to this cluster")
 	assert.Contains(t, res.Warnings[0], "c-abc")
 
 	doc, _ := marshaledDoc(t, res.Data)
@@ -600,11 +600,11 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err, "an adapter-owned timeout with an active caller context degrades, never errors")
 
-		// Two warnings: the node-join applicability advisory (the correlation
-		// that decides imported-vs-not is the thing that just degraded) and the
+		// Two warnings: the node command applicability advisory (the provisioning
+		// Cluster lookup that decides imported-vs-not is the thing that just degraded) and the
 		// provisioning degrade itself.
 		require.Len(t, res.Warnings, 2)
-		assert.Contains(t, res.Warnings[0], "cannot determine whether the node-join commands apply")
+		assert.Contains(t, res.Warnings[0], "cannot determine whether the node commands apply")
 		assert.Contains(t, res.Warnings[1], "provisioning unavailable")
 		assert.Contains(t, strings.ToLower(res.Warnings[1]), "deadline",
 			"the warning carries the adapter's timeout wording so an agent can tell timeout from RBAC")
@@ -620,7 +620,7 @@ func TestInspectClusterProviderTimeoutDegradesWithActiveCallerContext(t *testing
 		regMap, _ := reg.(map[string]any)
 		_, hasNA := regMap["notApplicable"]
 		assert.False(t, hasNA,
-			"imported is UNKNOWN under a degraded correlation - the node-join fields are neither annotated nor claimed applicable; the advisory warning carries the uncertainty")
+			"imported is UNKNOWN when the provisioning Cluster lookup degraded - the node command fields are neither annotated nor claimed applicable; the advisory warning carries the uncertainty")
 		assert.Equal(t, "/v1/management.cattle.io.clusterregistrationtokens/c-abc/default-token", root.path,
 			"the registration fetch was issued despite the provisioning timeout")
 	})
@@ -661,7 +661,7 @@ func TestInspectClusterRegistrationPlaceholderFieldDropped(t *testing.T) {
 // server returned all five empty - the registration key is ABSENT from
 // the wire, never "registration":{}. The per-field placeholder warnings
 // are unchanged; an all-empty successful response adds no warning. Text
-// mode renders the existing "registration: not available" marker.
+// mode renders the existing "registration: unavailable" marker.
 func TestInspectClusterRegistrationNothingUsableOmitsSection(t *testing.T) {
 	t.Parallel()
 
@@ -695,7 +695,7 @@ func TestInspectClusterRegistrationNothingUsableOmitsSection(t *testing.T) {
 		_, hasReg := doc["registration"]
 		assert.False(t, hasReg, "registration must be ABSENT from the wire, never {}")
 		assert.NotContains(t, raw, "{token}", "the placeholder never reaches output as data")
-		assert.Contains(t, res.Text, "registration: not available")
+		assert.Contains(t, res.Text, "registration: unavailable")
 	})
 
 	t.Run("successful response with all fields empty", func(t *testing.T) {
@@ -709,7 +709,7 @@ func TestInspectClusterRegistrationNothingUsableOmitsSection(t *testing.T) {
 		assert.Empty(t, res.Warnings, "server-empty is not a placeholder - no new warning")
 		_, hasReg := doc["registration"]
 		assert.False(t, hasReg, "registration must be ABSENT from the wire, never {}")
-		assert.Contains(t, res.Text, "registration: not available")
+		assert.Contains(t, res.Text, "registration: unavailable")
 	})
 }
 
@@ -885,7 +885,7 @@ func TestInspectClusterTextAvailabilityMarkers(t *testing.T) {
 		res, err := execRead(t, cmd, registrationInput("c-abc"))
 		require.NoError(t, err)
 		assert.Contains(t, res.Text, "no provisioning.cattle.io Cluster for this cluster in fleet-default")
-		assert.Contains(t, res.Text, "registration: not available")
+		assert.Contains(t, res.Text, "registration: unavailable")
 		assert.NotContains(t, res.Text, "no token", "the detailed cause lives ONLY in Warnings")
 	})
 
@@ -1239,7 +1239,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 
 		stdout, stderr := out.String(), errBuf.String()
 		assert.Contains(t, stdout, "CLUSTER\n")
-		assert.Contains(t, stdout, "registration: withheld (contains join credentials)")
+		assert.Contains(t, stdout, "registration: left out (contains the cluster registration token)")
 		assert.NotContains(t, stdout, "default-token vanished", "the cause of any fetch failure never prints to stdout")
 		assert.NotContains(t, stderr, "registration unavailable", "no fetch was attempted; no warning")
 	})
@@ -1255,7 +1255,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 
 		assert.Equal(t, "", root.path, "no fetch issued when --registration absent")
 		assert.NotContains(t, out.String(), "tok-abc", "token never appears without --registration")
-		assert.Contains(t, out.String(), "registration: withheld (contains join credentials)")
+		assert.Contains(t, out.String(), "registration: left out (contains the cluster registration token)")
 	})
 
 	t.Run("with --registration: unavailable marker on stdout, cause on stderr", func(t *testing.T) {
@@ -1269,7 +1269,7 @@ func TestInspectClusterStdoutStderrSplit(t *testing.T) {
 
 		stdout, stderr := out.String(), errBuf.String()
 		assert.Contains(t, stdout, "CLUSTER\n")
-		assert.Contains(t, stdout, "registration: not available")
+		assert.Contains(t, stdout, "registration: unavailable")
 		assert.NotContains(t, stdout, "# warning:", "warnings never print to stdout")
 		assert.NotContains(t, stdout, "default-token vanished", "the cause never prints to stdout")
 		assert.Contains(t, stderr, "# warning: registration unavailable")
@@ -1359,7 +1359,7 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 		return client, root
 	}
 
-	t.Run("imported cluster annotates the node-join pair", func(t *testing.T) {
+	t.Run("imported cluster annotates the node command pair", func(t *testing.T) {
 		t.Parallel()
 		client, root := importedFixture(t)
 		cmd := NewInspectCluster(&fakeFactory{client: client}, fakeRoots{rc: root})
@@ -1374,8 +1374,8 @@ func TestInspectClusterImportedRegistrationNotApplicable(t *testing.T) {
 			assert.Contains(t, reg, field, "no field is dropped - additive contract")
 		}
 
-		assert.Contains(t, res.Text, "node join [not applicable: imported cluster]:")
-		assert.Contains(t, res.Text, "node join (insecure) [not applicable: imported cluster]:")
+		assert.Contains(t, res.Text, "node command [not applicable: imported cluster]:")
+		assert.Contains(t, res.Text, "node command (insecure) [not applicable: imported cluster]:")
 		assert.NotContains(t, res.Text, "import [not applicable")
 	})
 
@@ -1444,7 +1444,7 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 		assert.Equal(t, false, agent["ready"])
 		assert.Equal(t, "Cluster agent is not connected", agent["message"])
 
-		assert.Contains(t, res.Text, "agent: disconnected - Cluster agent is not connected")
+		assert.Contains(t, res.Text, "agent: not connected - Cluster agent is not connected")
 		require.NotEmpty(t, res.Warnings)
 		assert.Equal(t, "cluster agent is not connected: Cluster agent is not connected", res.Warnings[0])
 	})
@@ -1538,7 +1538,7 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 
 		require.NotEmpty(t, res.Warnings)
 		assert.Equal(t, "cluster is not ready: provisioning", res.Warnings[0])
-		assert.Contains(t, res.Text, "agent: not ready - provisioning")
+		assert.Contains(t, res.Text, "agent: connection not reported, cluster not ready - provisioning")
 	})
 
 	t.Run("connected but not ready renders the variant", func(t *testing.T) {
@@ -1551,7 +1551,7 @@ func TestInspectClusterAgentConnectivity(t *testing.T) {
 		res, err := execRead(t, cmd, input{args: []string{"c-abc"}})
 		require.NoError(t, err)
 
-		assert.Contains(t, res.Text, "agent: connected (not ready - kubelet down)")
+		assert.Contains(t, res.Text, "agent: connected, cluster not ready - kubelet down")
 		require.NotEmpty(t, res.Warnings)
 		assert.Equal(t, "cluster is not ready: kubelet down", res.Warnings[0])
 	})
@@ -1679,7 +1679,7 @@ func TestRenderClusterTextSystemMemberTag(t *testing.T) {
 // TestInspectClusterRegistrationWithheldByDefault asserts the gate: without
 // --registration the section is withheld (no fetch issued), the text view
 // shows the withheld line, the JSON shape is {"withheld":true,...}, and
-// the real join token is absent from both outputs.
+// the real cluster registration token is absent from both outputs.
 func TestInspectClusterRegistrationWithheldByDefault(t *testing.T) {
 	t.Parallel()
 	client, root := inspectClusterFixture(t)
@@ -1706,10 +1706,10 @@ func TestInspectClusterRegistrationWithheldByDefault(t *testing.T) {
 		assert.False(t, has, "registration.%s must be absent from the withheld shape", field)
 	}
 
-	assert.NotContains(t, raw, "tok-abc", "join token must not appear in the JSON output when withheld")
-	assert.Contains(t, res.Text, "registration: withheld (contains join credentials)")
+	assert.NotContains(t, raw, "tok-abc", "the cluster registration token must not appear in the JSON output when left out")
+	assert.Contains(t, res.Text, "registration: left out (contains the cluster registration token)")
 	assert.Contains(t, res.Text, "--registration")
-	assert.NotContains(t, res.Text, "tok-abc", "join token must not appear in the text output when withheld")
+	assert.NotContains(t, res.Text, "tok-abc", "the cluster registration token must not appear in the text output when left out")
 }
 
 // TestInspectClusterRegistrationFlagRestoresSection asserts the --registration
@@ -1736,7 +1736,7 @@ func TestInspectClusterRegistrationFlagRestoresSection(t *testing.T) {
 		assert.Contains(t, v, "tok-abc", "registration.%s must carry the real token", field)
 	}
 
-	assert.Contains(t, res.Text, "node join:")
+	assert.Contains(t, res.Text, "node command:")
 	assert.Contains(t, res.Text, "tok-abc")
 }
 

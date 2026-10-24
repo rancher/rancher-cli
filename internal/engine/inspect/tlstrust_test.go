@@ -63,5 +63,5 @@ func TestImagesFleetScanFailureOfTheCertificateExitsTen(t *testing.T) {
 	require.True(t, ok, "got %v", err)
 	assert.Equal(t, clierr.CodeTLSTrust, ce.Code)
 	assert.Equal(t, 10, ce.ExitCode())
-	assert.Contains(t, ce.Message, "no cluster could be scanned: c-a: ")
+	assert.Contains(t, ce.Message, "no cluster could be read: c-a: ")
 }

@@ -507,12 +507,12 @@ func TestParseTargetsFlag(t *testing.T) {
 		{"x", `--targets="x" is not one of ` + oneOf},
 		{"agent,x", `--targets="x" is not one of ` + oneOf},
 		{"x,all", `--targets="x" is not one of ` + oneOf},
-		{"all,x", "--targets: pass all as the whole value, or list targets without it"},
-		{"all,agent", "--targets: pass all as the whole value, or list targets without it"},
-		{"agent,all", "--targets: pass all as the whole value, or list targets without it"},
-		{"all,all", "--targets: pass all as the whole value, or list targets without it"},
-		{" all", "--targets: pass all as the whole value, or list targets without it"},
-		{"all,", "--targets: pass all as the whole value, or list targets without it"},
+		{"all,x", "--targets: pass all by itself, or list targets without all"},
+		{"all,agent", "--targets: pass all by itself, or list targets without all"},
+		{"agent,all", "--targets: pass all by itself, or list targets without all"},
+		{"all,all", "--targets: pass all by itself, or list targets without all"},
+		{" all", "--targets: pass all by itself, or list targets without all"},
+		{"all,", "--targets: pass all by itself, or list targets without all"},
 	} {
 		_, err := parseTargetsFlag(tc.raw)
 		require.EqualError(t, err, tc.want, tc.raw)

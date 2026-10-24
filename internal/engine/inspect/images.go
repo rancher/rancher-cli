@@ -91,7 +91,7 @@ type imagesCmd struct {
 // container+init-container image across a cluster's pods, deduplicated and
 // counted. --all-clusters fans out per management cluster and degrades a
 // single cluster's failure to a warning - partial results beat none for a
-// fleet-wide scan. The clusters are the ones the caller can read, as steve
+// fleet-wide read. The clusters are the ones the caller can read, as steve
 // lists them.
 func NewImages(clients engine.ClusterClientFactory, roots engine.RootClientFactory) runtime.Command {
 	return &imagesCmd{clients: clients, roots: roots}
@@ -102,27 +102,34 @@ func (c *imagesCmd) Describe() runtime.Descriptor {
 		Name:  "images",
 		Usage: "List container images in use, grouped by image or owning workload",
 		Desc: "Lists container images referenced by active pods (status.phase Running or Pending; " +
-			"Succeeded and Failed pods are excluded, terminating pods remain until removed), " +
+			"Succeeded and Failed pods are excluded, terminating pods are included until they are deleted), " +
 			"reading spec.containers, spec.initContainers, and spec.ephemeralContainers. " +
-			"--match filters by case-sensitive substring over the image reference exactly as " +
-			"written in the pod spec: repeatable, values OR, no OCI normalization (a bare " +
-			"nginx:1.25 does not match docker.io); anchor with delimiters, e.g. " +
-			"--match registry.old.corp/ for a registry. --match never inspects image contents. " +
-			"--by workload resolves each pod's controller owner chain and reports one row per " +
-			"image and owning workload object (apiVersion, kind, name, uid) with the count of " +
-			"pods controlled by exactly that object; owner-resolution failures degrade to the " +
-			"first-level reference plus a warning. " +
+			"--match filters by case-sensitive substring over the image reference exactly as written " +
+			"in the pod spec. It is repeatable, and an image matches when it contains any of the values. " +
+			"A short reference is not expanded to a full registry name (a bare nginx:1.25 does not match docker.io). " +
+			"End a value with / or : to avoid matching a longer name that starts the same way: " +
+			"--match registry.old.corp/ does not match registry.old.corp.example/app:1. " +
+			"--match never inspects image contents. " +
+			"--by workload starts at each pod's ownerReferences entry with controller: true " +
+			"(the first entry when none is marked) and moves up: from a ReplicaSet, StatefulSet, DaemonSet or Job " +
+			"it continues to that object's own owner (for example pod to ReplicaSet to Deployment), " +
+			"and it stops at an owner of any other kind. " +
+			"It reports one row per image and owning workload object (apiVersion, kind, name, uid), " +
+			"the last owner it reaches, with the count of pods controlled by exactly that object. " +
+			"When an owner cannot be read, its reference has no uid, or its uid differs from the reference, " +
+			"the row names the pod's direct owner instead and a warning is added. " +
 			degradedContractDesc +
-			"Cluster resolution and the pod list are required and hard-error; with --all-clusters the " +
-			"management cluster list is required, zero listed clusters is a verified-empty success, and " +
-			"every listed cluster failing its scan is an error. Degradable sections: ownerResolution " +
-			"(partial, target = the canonical owner identity apiVersion|kind|namespace|name|uid, " +
-			"cluster-id prefixed under --all-clusters), clusters (partial, target = cluster id, " +
-			"--all-clusters only).",
+			"With --cluster, finding the cluster by id or name and listing the pods are required: " +
+			"the command fails when any of them fails. " +
+			"With --all-clusters, listing the clusters is required, a list with no clusters succeeds with no rows, " +
+			"and the command fails when none of the listed clusters can be read. " +
+			"Sections that can degrade: ownerResolution (partial, target = the owner's apiVersion|kind|namespace|name|uid, " +
+			"prefixed with the cluster id under --all-clusters), " +
+			"clusters (partial, target = cluster id, --all-clusters only).",
 		CommandType: runtime.ReadOnly,
 		Flags: []runtime.ArgSpec{
 			{Name: resources.FlagCluster, Type: "string", Desc: "target cluster `id|name`; pass exactly one of --cluster or --all-clusters"},
-			{Name: flagAllClusters, Type: "bool", Desc: "scan every cluster you can list"},
+			{Name: flagAllClusters, Type: "bool", Desc: "read the pods of every cluster you can list"},
 			{Name: flagBy, Type: "string", Enum: []string{byImage, byWorkload},
 				Desc: "Group by unique image or by owning workload (default: image)"},
 			{Name: flagMatch, Type: "stringSlice",
@@ -202,7 +209,7 @@ func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string
 	perWorkloads := clusterImageWorkloads{}
 	failures := map[string]error{}
 	// Degrade the cluster, never abort the group: partial results beat none
-	// for a fleet-wide scan. The accumulator returns the error only when the
+	// for a fleet-wide read. The accumulator returns the error only when the
 	// caller canceled, which is the group's abort.
 	scanFailed := func(id string, err error) error {
 		if herr := sec.Partial(sectionClusters, id, err); herr != nil {
@@ -242,7 +249,7 @@ func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string
 	if werr := g.Wait(); werr != nil {
 		return runtime.Result{}, werr
 	}
-	// A scan that ended because the caller went away is not a fleet-wide
+	// A read that ended because the caller went away is not a fleet-wide
 	// availability answer, whatever the individual errors said.
 	if ctx.Err() != nil {
 		return runtime.Result{}, ctx.Err()
@@ -262,7 +269,7 @@ func (c *imagesCmd) allClusters(ctx context.Context, by string, needles []string
 		Data: imagesResult{By: byImage, Clusters: perImages, Degraded: degraded}, Warnings: warns}, nil
 }
 
-// everyScanFailed is the hard error for a fleet-wide scan that reached no
+// everyScanFailed is the hard error for a fleet-wide read that reached no
 // cluster at all: partial results beat none, but here there are none. The
 // shape is deterministic - the shared code when every cluster failed the
 // same way, GENERIC when they disagree, and causes in cluster id order.
@@ -283,7 +290,7 @@ func everyScanFailed(failures map[string]error) error {
 	for _, id := range ids {
 		causes = append(causes, id+": "+failures[id].Error())
 	}
-	return clierr.New(code, "no cluster could be scanned: "+strings.Join(causes, "; "))
+	return clierr.New(code, "no cluster could be read: "+strings.Join(causes, "; "))
 }
 
 // podActive reports whether a pod counts toward the image inventory. Only
@@ -355,7 +362,7 @@ type imageCount struct {
 // image/count list. It implements output.Tabular for `-o table`.
 type imageRows []imageCount
 
-func (r imageRows) Columns() []string { return []string{"IMAGE", "COUNT"} }
+func (r imageRows) Columns() []string { return []string{"IMAGE", "CONTAINERS"} }
 
 func (r imageRows) Rows() [][]string {
 	out := make([][]string, 0, len(r))
@@ -368,7 +375,7 @@ func (r imageRows) Rows() [][]string {
 // clusterImages is --all-clusters' payload: per-cluster image/count lists.
 type clusterImages map[string]imageRows
 
-func (c clusterImages) Columns() []string { return []string{"CLUSTER", "IMAGE", "COUNT"} }
+func (c clusterImages) Columns() []string { return []string{"CLUSTER", "IMAGE", "CONTAINERS"} }
 
 func (c clusterImages) Rows() [][]string {
 	ids := make([]string, 0, len(c))

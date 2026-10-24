@@ -596,7 +596,7 @@ node` (a node row mixing project-scoped requests with whole-node metrics would
 be misleading). When a `--namespace` or `--node` matches no pods, `usage` gets
 that namespace or node; a name that does not exist gives NOT_FOUND instead of an
 empty result. If you can list pods there but cannot read the namespace or node,
-you get the result with a warning that it could not be checked; if you cannot
+you get the result with a warning that it could not be read; if you cannot
 list pods there, you get the RBAC error from the pod list.
 
 A flag typed with an empty or blank value (`--project ''`, `--namespace=`,
@@ -931,34 +931,35 @@ retry.
 
 ## Composite commands
 
-`inspect cluster` is a composite read: the management cluster's id, name, state
-and Kubernetes version + agent connectivity (management Connected/Ready
-conditions; a disconnected agent adds a warning) + provisioning
+`inspect cluster` is a composite read: the management cluster's id, name,
+state and Kubernetes version + agent connectivity (management Connected/Ready
+conditions; an agent that is not connected adds a warning) + provisioning
 status/conditions (ready derived from the Ready condition), machine pools,
 members (ClusterRoleTemplateBindings with display names resolved), machines
 ([Cluster API](https://cluster-api.sigs.k8s.io/) Machines with phase and the
 message of the first failing condition, preferring a condition whose reason
-contains `Error`), and node-join/import registration commands. Registration
-commands are not fetched by default - they contain a registration token; pass
-`--registration` to fetch them, or use `get clusterregistrationtoken
-default-token --namespace <cluster-id>`. The management read is mandatory
-(unknown/ambiguous cluster or a failed read is a structured error, non-zero
-exit); if reading the provisioning, members, machines or registration section
-fails, the command shows a note or warning for that section and the other
-sections still show.
+contains `Error`), and the registration commands (node command and import
+command). Registration commands are not fetched by default - they contain the
+cluster registration token; pass `--registration` to fetch them, or use `get
+clusterregistrationtoken default-token --namespace <cluster-id>`. The
+management read is mandatory (unknown/ambiguous cluster or a failed read is a
+structured error, non-zero exit); if reading the provisioning, members,
+machines or registration section fails, the command shows a note or warning
+for that section and the other sections still show.
 
-`inspect project` prints text in sections (PROJECT, NAMESPACES, MEMBERS, QUOTA,
-USAGE); members are ProjectRoleTemplateBindings with display names resolved from
-Users/UserAttributes; if the members section cannot be read, it shows a warning
-and the other sections still show.
+`inspect project` prints text in sections (PROJECT, NAMESPACES, MEMBERS,
+RESOURCE QUOTA, USAGE); members are ProjectRoleTemplateBindings with display
+names resolved from Users/UserAttributes; if the members section cannot be
+read, it shows a warning and the other sections still show.
 
 `inspect user <id|username|displayName|principal>` answers who a user is and
-what roles they have at every scope - never what they can actually do (that is a
-permissions question, answered only by the server; no command in this CLI
-computes it). The output puts identity, group memberships (as last synced by
-Rancher, refreshed at login) and roles at global, cluster and project scope into
-one document. If reading group memberships fails, the role sections are left out
-too, because without the groups the CLI cannot confirm the roles are complete.
+what role bindings they have at global, cluster and project level - never what
+they can actually do (only the server can answer that, and no command in this
+CLI asks it). The output puts the user's id and names, group memberships (as
+Rancher last refreshed them, which also happens at login) and role bindings at
+global, cluster and project level into one document. If reading group
+memberships fails, the role binding sections are left out too, because without
+the groups the CLI cannot confirm the role bindings are complete.
 
 ## Access management
 
@@ -1134,15 +1135,16 @@ namespace answered, 13 when any is `unknown`.
 `logs`/`support-bundle` cover only what Rancher's own Kubernetes API can reach.
 `rancher-system-agent` is a node systemd unit, not a pod - its logs are
 `journalctl -u rancher-system-agent` on the node itself, and generic pod
-logs outside the curated targets stay with `inspect pod` and kubectl.
+logs outside the Rancher components that `logs` covers stay with `inspect pod`
+and kubectl.
 A log the server refuses is missing evidence, not an absent artifact: the
 target's `manifest.json` item becomes an `error:` status naming the pod and
 container, the result's `errors` count includes it, and a warning names
 it, so `errors: 0` means every requested log is in the archive. A
 previous-container log that does not exist stays silent (the container
 never restarted); a refused one is a warning.
-`support-bundle` is deliberately the API-reachable half of a two-bundle
-story: pair it with
+`support-bundle` is deliberately the half of a two-bundle story that covers
+only what Rancher's Kubernetes API can reach: pair it with
 [rancherlabs/support-tools](https://github.com/rancherlabs/support-tools)'
 node collector for the
 node-level half (journald, the system-agent unit, OS state) that no API

@@ -489,7 +489,7 @@ func TestImagesAllClustersEveryScanFailedIsHardError(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
-	assert.Equal(t, "no cluster could be scanned: c-a: forbidden on a; c-b: forbidden on b", ce.Message)
+	assert.Equal(t, "no cluster could be read: c-a: forbidden on a; c-b: forbidden on b", ce.Message)
 }
 
 // TestImagesAllClustersEveryScanFailedDifferentlyIsGeneric asserts failures
@@ -507,7 +507,7 @@ func TestImagesAllClustersEveryScanFailedDifferentlyIsGeneric(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Equal(t, "no cluster could be scanned: c-a: forbidden; c-b: connection refused", ce.Message)
+	assert.Equal(t, "no cluster could be read: c-a: forbidden; c-b: connection refused", ce.Message)
 }
 
 // TestImagesAllClustersOwnerWalkFailureIsNotAScanFailure asserts an owner
@@ -588,4 +588,12 @@ func TestImagesAllClustersDegradedEntriesAreDeterministic(t *testing.T) {
 			"clusters unavailable for c-c: forbidden",
 		}, res.Warnings)
 	}
+}
+
+// TestImagesTableColumnsCountContainers asserts the count column is headed
+// CONTAINERS in both table shapes: it counts container references, not pods.
+func TestImagesTableColumnsCountContainers(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, []string{"IMAGE", "CONTAINERS"}, imageRows{}.Columns())
+	assert.Equal(t, []string{"CLUSTER", "IMAGE", "CONTAINERS"}, clusterImages{}.Columns())
 }

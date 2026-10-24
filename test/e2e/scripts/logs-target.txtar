@@ -15,7 +15,7 @@ jsonquery stdout 'data.entries.#' 1
 jsonquery stdout data.entries.0.pod agent-pod
 jsonquery stdout data.entries.0.container cluster-register
 
-# --pod narrows to the one named pod (per-replica attribution).
+# --pod narrows to the one named pod (to read the logs of a single replica).
 exec rancher logs agent --cluster testcluster --pod agent-pod -o json
 jsonquery stdout 'data.entries.#' 1
 jsonquery stdout data.entries.0.pod agent-pod
@@ -30,14 +30,14 @@ jsonquery stderr data.error.candidates.0.id agent-pod
 # honest assertion available without a running Rancher server.
 ! exec rancher logs server -o json
 jsonquery stderr data.error.code NOT_FOUND
-jsonquery stderr data.error.message 'no rancher pods on the local cluster - single-node Docker install? server logs live in `docker logs <container>`'
+jsonquery stderr data.error.message 'no Rancher pods found on the local cluster; if Rancher runs as a single Docker container, read the server logs with `docker logs <container>`'
 
 # kube-api-auth: the seeded management Cluster c-test has no
 # spec.localClusterAuthEndpoint.enabled - non-ACE, so the ACE precheck must
 # reject before any pod fetch is attempted.
 ! exec rancher logs kube-api-auth --cluster testcluster -o json
 jsonquery stderr data.error.code NOT_FOUND
-jsonquery stderr data.error.message 'cluster has no authorized cluster endpoint (kube-api-auth runs only on ACE clusters)'
+jsonquery stderr data.error.message 'cluster has no Authorized Cluster Endpoint (kube-api-auth runs only on clusters that have one)'
 
 -- agent-pod.yaml --
 apiVersion: v1

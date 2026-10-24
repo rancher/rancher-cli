@@ -369,27 +369,26 @@ rancher kubeconfig --cluster web > kc.yaml
 ```
 
 `inspect cluster <name-or-id>` is the one-call cluster triage: management
-identity and version, the provisioning CR's ready flag and conditions,
-machine pools, and both registration pairs (node join and import) plus
+identity and version, the provisioning CR's ready flag and conditions, machine
+pools, and the registration commands (node command and import command) plus
 `manifestUrl`. The management read is mandatory: an unknown or ambiguous
-cluster, or a failed management read, is a structured error with a
-non-zero exit. Only the provisioning and registration sections degrade -
-to `warnings`, or a `provisioningNote` for a confirmed missing
-provisioning CR. Check `data.status` presence before reading conditions.
-`data.agent` carries the management Cluster's agent connectivity
-(`connected`/`ready` + failing message) - a disconnected or not-ready agent also lands
-in `warnings`, so check it before trusting `data.status.ready`. The
-registration section is withheld by default (it contains live join
-credentials); pass `--registration` to fetch and show it. The credential
-is also available via `rancher get clusterregistrationtoken default-token
---namespace <cluster-id>`.
-Without the
-flag `data.registration` carries `{"withheld":true,"hint":"..."}` - check
-`data.registration.withheld` before reading `nodeCommand`. On an
-imported cluster `data.registration.notApplicable` names the node-join
+cluster, or a failed management read, is a structured error with a non-zero
+exit. Only the provisioning and registration sections degrade - to `warnings`,
+or a `provisioningNote` for a confirmed missing provisioning CR. Check
+`data.status` presence before reading conditions. `data.agent` carries the
+management Cluster's agent connectivity (`connected`/`ready` + failing
+message) - an agent that is not connected or a cluster that is not ready also
+lands in `warnings`, so check it before trusting `data.status.ready`. The
+registration section holds only a message and a hint by default, and the
+commands are left out (they contain the cluster registration token); pass
+`--registration` to fetch and show them. The commands are also available with
+`rancher get clusterregistrationtoken default-token --namespace <cluster-id>`.
+Without the flag `data.registration` carries `{"withheld":true,"hint":"..."}`
+- check `data.registration.withheld` before reading `nodeCommand`. On an
+imported cluster `data.registration.notApplicable` names the node command
 fields that do not apply (they stay present - pick the import
-`command`/`manifestUrl` instead), and member entries with `system: true`
-are Rancher-internal accounts, not operator grants.
+`command`/`manifestUrl` instead), and member entries with `system: true` are
+accounts Rancher uses internally, not bindings an administrator added.
 
 ### 5. Branch on structured errors, not text
 
@@ -480,20 +479,20 @@ the bare resource name - no need to receive or parse the full object.
 One call each, with graceful degradation (missing metrics/logs become
 `warnings`, never failures).
 
-A composite answers with what you can read. A collector you lack access to
+A composite answers with what you can read. A section you cannot read
 is named in `data.degraded` - `{section, state: unavailable|partial, code,
 target?}` - with one matching `warnings` entry, and the command still exits
 0. Exit 0 therefore does not mean "complete": read `data.degraded` (and
 `warnings`) before concluding a section is empty, absent, or zero. Only a
-command's required collectors - its identity, scope, and substance reads,
+command's required reads - its identity, scope, and substance reads,
 listed in each command's `rancher schema <command>` card - fail the command
 outright.
 
 - `rancher inspect pod <name>` - status, owners, events, logs, metrics
-- `rancher inspect deployment <name>` - rollout + its pods (selector-scoped)
-- `rancher inspect project <name-or-id>` - project namespaces, workload counts, members, quota, usage
-- `rancher inspect user <id|username|displayName|principal>` - identity, groups, and roles across scopes; bindings that exist only, never permissions
-- `rancher usage` - capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`; a `--namespace` or `--node` that matches no pods is read, so a missing one is NOT_FOUND (a warning when the caller cannot read it, an RBAC error when the caller cannot list pods there)
+- `rancher inspect deployment <name>` - rollout + its pods (the pods its selector matches)
+- `rancher inspect project <name-or-id>` - project namespaces, workload counts, members, resource quota, usage
+- `rancher inspect user <id|username|displayName|principal>` - id and names, groups, and role bindings at global, cluster and project level; bindings that exist only, never permissions
+- `rancher usage` - capacity and consumption, grouped by `--by namespace|project|node|pod` and narrowed by `--namespace`/`--project`/`--node`; a `--namespace` or `--node` that matches no pods is read; a missing one is NOT_FOUND (a warning when you cannot read it, an RBAC error when you cannot list pods there)
 - `rancher images [--by image|workload] [--match substr]` - active-pod image inventory; repeatable `--match` substring-filters (OR), `--by workload` maps each image to its owning workload (CVE blast radius: `--match <affected-repo>: --by workload --all-clusters`)
 
 ### 8. kubectl interop
@@ -609,22 +608,22 @@ run under config or environment read-only mode too.
 ### 9. Observability & support
 
 - `rancher logs <target> [--cluster <c>] [--tail 200] [--since <dur>]
-  [--previous] [--container <name>] [--timestamps] [--pod <name>]` - curated,
-  verified-location logs for `server`, `agent`, `fleet-agent`,
-  `kube-api-auth`, `webhook`, or `api-extension` (the imperative API
-  extension server that backs `ext.cattle.io` tokens and kubeconfigs - read
-  it when a token or kubeconfig operation misbehaves). Multi-pod targets
-  merge every matched
-  pod/container into one `[pod/container]`-prefixed body; `--tail` defaults
-  to 200 lines, `--since` takes a duration (`30m`, `2h`), `--previous` reads
-  the last-terminated container instance, and `--container` narrows a
-  multi-container pod, and `--pod` selects ONE pod of a multi-pod target
-  (per-replica log attribution - e.g. reading a single Rancher
-  server replica during HA triage; an unknown pod name is NOT_FOUND
-  listing the real ones). A missing target degrades to an honest `NOT_FOUND`
-  (a single-node Docker install's server logs live in `docker logs
-  <container>`; a non-ACE cluster has no `kube-api-auth`). Triage example:
-  `rancher logs server --since 1h --timestamps`. Real `-o json` shape:
+  [--previous] [--container <name>] [--timestamps] [--pod <name>]` -
+  verified-location logs of Rancher components for `server`, `agent`,
+  `fleet-agent`, `kube-api-auth`, `webhook`, or `api-extension` (the
+  imperative API extension server that backs `ext.cattle.io` tokens and
+  kubeconfigs - read it when a token or kubeconfig operation misbehaves).
+  Multi-pod targets merge every matched pod/container into one
+  `[pod/container]`-prefixed body; `--tail` defaults to 200 lines, `--since`
+  takes a duration (`30m`, `2h`), `--previous` reads the last-terminated
+  container instance, and `--container` narrows a multi-container pod, and
+  `--pod` selects ONE pod of a multi-pod target (to read the logs of a single
+  replica - e.g. one Rancher server replica during HA triage; an unknown pod
+  name is NOT_FOUND listing the real ones). A missing target degrades to an
+  honest `NOT_FOUND` (if Rancher runs as a single Docker container, read the
+  server logs with `docker logs <container>`; a cluster with no Authorized
+  Cluster Endpoint has no `kube-api-auth`). Triage example: `rancher logs
+  server --since 1h --timestamps`. Real `-o json` shape:
 
   ```json
   {
@@ -642,15 +641,16 @@ run under config or environment read-only mode too.
     }
   }
   ```
-- `rancher support-bundle --output-file bundle.tar.gz [--targets ...] [--clusters ...]` -
-  packs every curated target's logs plus cluster/node state, events, and an
-  allowlisted settings/features/schema snapshot into one tar.gz;
-  `manifest.json` inside records each item as collected, skipped (not
-  applicable), or errored, and partial bundles are normal - read `errors`
-  and `warnings` before treating the archive as complete: a log the server
-  refused is an error item and a warning naming the pod and container, and
-  `errors: 0` means every requested log is inside. Complements
-  rancherlabs/support-tools' node-level collector, not a replacement for it.
+- `rancher support-bundle --output-file bundle.tar.gz [--targets ...]
+  [--clusters ...]` - packs the logs of every Rancher component target plus
+  cluster/node state, events, and a snapshot of a fixed list of settings,
+  feature flags and the schema into one tar.gz; `manifest.json` inside records
+  each item as collected, skipped (not applicable), or errored, and partial
+  bundles are normal - read `errors` and `warnings` before treating the
+  archive as complete: a log the server refused is an error item and a warning
+  naming the pod and container, and `errors: 0` means every requested log is
+  inside. Complements rancherlabs/support-tools' node-level collector, not a
+  replacement for it.
 - `rancher patch feature <name> --patch '[{"op":"replace","path":"/spec/value","value":true}]' --apply --yes` -
   flip a Rancher feature flag (an RFC 6902 JSON Patch, the default type of
   every `patch <kind>`).
@@ -663,7 +663,7 @@ run under config or environment read-only mode too.
 
 Roles are facts about bindings that exist - what `grant`/`revoke` create and
 delete, what the `inspect project`/`inspect cluster` MEMBERS sections list,
-and what `inspect user`'s ROLES section enumerates across every scope for one
+and what `inspect user`'s ROLE BINDINGS section enumerates across every scope for one
 subject. Permissions are what a subject can actually do, and only the server
 can answer that (a warning starting "discovery for API group(s)" means the
 resource name was resolved while some API groups could not be read; qualify

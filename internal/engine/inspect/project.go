@@ -41,16 +41,21 @@ func (c *projectCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:    "inspect project",
 		Aliases: k.Aliases,
-		Usage:   "Inspect a project: namespaces, members, quota, and usage",
+		Usage:   "Inspect a project: namespaces, members, resource quota, and usage",
 		Desc: degradedContractDesc +
-			"Cluster resolution and the project resolve plus GET are required and hard-error. " +
-			"Degradable sections: namespaces (unavailable - the namespace rows, whose integer counts " +
-			"cannot represent an unknown), members (each row reports principal, displayName, role, binding, " +
-			"and system; unavailable - collected independently from the " +
-			"management plane - downstream failures leave it intact), usage (unavailable - blocked by " +
-			"a downstream-client, membership, or pod-list failure), metrics (unavailable - request and " +
-			"limit totals stay). A membership set that resolves to zero namespaces is a verified-empty " +
-			"scope: no workload or usage read is issued and nothing degrades.",
+			"Finding the cluster and the project by id or name, and reading the project, are required: " +
+			"the command fails when any of them fails. " +
+			"Sections that can degrade: namespaces (unavailable - a failure to connect to the downstream cluster, " +
+			"to read the project's namespaces, or to list pods or deployments; the namespaces field is then null, " +
+			"because the counts in its rows are numbers and cannot say \"unknown\"), " +
+			"members (each row reports principal, displayName, role, binding " +
+			"(the name of the ProjectRoleTemplateBinding), and system; unavailable - a failure to read " +
+			"the project's role bindings from the local cluster; a failure reading the downstream cluster " +
+			"does not affect it), usage (unavailable - a failure to connect to the downstream cluster, " +
+			"to read the project's namespaces, or to list pods), metrics (unavailable - the CPU and memory " +
+			"usage figures are left out; the request and limit totals are still shown). " +
+			"If the project has zero namespaces, there is nothing more to read: no workload or usage read is made, " +
+			"and namespaces, usage and metrics are not named in data.degraded.",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags:       []runtime.ArgSpec{engine.ClusterFlag(true, false)},
@@ -306,7 +311,7 @@ type projectResult struct {
 // availability marker; detailed causes live in Result.Warnings (stderr).
 func renderProjectText(r projectResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "PROJECT\n  id: %s\n  display: %s\n  cluster: %s\n", r.ID, r.DisplayName, r.Cluster)
+	fmt.Fprintf(&b, "PROJECT\n  id: %s\n  displayName: %s\n  cluster: %s\n", r.ID, r.DisplayName, r.Cluster)
 
 	b.WriteString("\nNAMESPACES\n")
 	switch {
@@ -340,7 +345,7 @@ func renderProjectText(r projectResult) string {
 		}
 	}
 
-	b.WriteString("\nQUOTA\n")
+	b.WriteString("\nRESOURCE QUOTA\n")
 	if len(r.ResourceQuota) == 0 {
 		b.WriteString("  none\n")
 	} else {
@@ -375,7 +380,7 @@ func renderProjectText(r projectResult) string {
 // renderProjectText emits - every one of them, every call, regardless of
 // which sub-objects came back unavailable.
 var projectSectionHeaders = map[string]bool{
-	"PROJECT": true, "NAMESPACES": true, "MEMBERS": true, "QUOTA": true, "USAGE": true,
+	"PROJECT": true, "NAMESPACES": true, "MEMBERS": true, "RESOURCE QUOTA": true, "USAGE": true,
 }
 
 // styleProjectText applies inspect project's bold spans to text, the plain

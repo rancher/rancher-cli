@@ -83,11 +83,11 @@ func TestStrictTTLSecondsNamesItsOwnFlag(t *testing.T) {
 		want string
 	}{
 		{"malformed duration", "refresh-ttl", "not-a-duration",
-			`invalid --refresh-ttl "not-a-duration": use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)`},
+			`invalid --refresh-ttl "not-a-duration": use a duration such as 90m or 12h; it can start with a number of days, as in 90d or 1d12h`},
 		{"day-count overflow", "refresh-ttl", "9223372036855d",
-			`invalid --refresh-ttl "9223372036855d": days must be at most 106751 (a larger value overflows the internal duration)`},
+			`invalid --refresh-ttl "9223372036855d": days must be at most 106751 (about 292 years)`},
 		{"the value holds another flag name", "token-ttl", "a--ttl",
-			`invalid --token-ttl "a--ttl": use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)`},
+			`invalid --token-ttl "a--ttl": use a duration such as 90m or 12h; it can start with a number of days, as in 90d or 1d12h`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

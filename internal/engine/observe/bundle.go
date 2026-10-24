@@ -306,7 +306,7 @@ func parseTargetsFlag(raw string) ([]Target, error) {
 		}
 		if tok == "all" {
 			return nil, clierr.New(clierr.CodeValidation,
-				"--"+flagTargets+": pass all as the whole value, or list targets without it")
+				"--"+flagTargets+": pass all by itself, or list targets without all")
 		}
 		t, ok := Lookup(tok)
 		if !ok {
@@ -619,23 +619,24 @@ func eventTimestamp(u unstructured.Unstructured) time.Time {
 	return time.Time{}
 }
 
-const readmeText = `This is a Rancher CLI support bundle.
+const readmeText = `This is a rancher-cli support bundle.
 
 Contents:
   manifest.json            what was collected, skipped, or failed, and why
                             (a target whose container logs could not all be
                             read is an error item naming the first failure)
-  logs/<cluster>/<target>/ curated component logs (see "rancher logs")
+  logs/<cluster>/<target>/ logs of Rancher components (see "rancher logs")
   clusters/<cluster>/      cluster/node state and per-namespace events
-  rancher/                 CLI version, an allowlisted settings snapshot,
-                            feature flags, and this CLI's own schema manifest
+  rancher/                 CLI version, a snapshot of a fixed list of
+                            settings, feature flags, and this CLI's own
+                            schema manifest
 
 This bundle may contain sensitive log content (application output,
 identifiers, timestamps) from the collected components. Review before
 sharing outside your organization.
 
-This bundle covers the API-reachable plane only. For node-level diagnostics
-(journald, the rancher-system-agent unit, OS state) see
-rancherlabs/support-tools' node collector - the two bundles are
-complementary by design.
+This bundle covers only what Rancher's Kubernetes API can reach. For
+node-level diagnostics (journald, the rancher-system-agent unit, OS state)
+see rancherlabs/support-tools' node collector; the two bundles complement
+each other.
 `

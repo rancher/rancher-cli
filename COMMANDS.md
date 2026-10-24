@@ -105,11 +105,11 @@ for lifecycle; `get provisioning-cluster` for reads.
 |---|---|
 | `get cloud-credential [name]` | List cloud credentials or show one - secret values never shown |
 | `get kubernetes-versions` | List available Kubernetes versions (rke2/k3s), merged with the server's default and supported-range settings |
-| `inspect cluster <name-or-id>` | Composite cluster read: identity, connectivity, provisioning, machine pools, members, machines, node-join registration (gated behind `--registration`) |
+| `inspect cluster <name-or-id>` | Composite cluster read: identity, connectivity, provisioning, machine pools, members, machines, registration commands (node command and import command; gated behind `--registration`) |
 | `inspect pod <name>` | Composite pod read: describe + recent logs |
 | `inspect deployment <name>` | Composite deployment read |
-| `inspect project <name-or-id> [--cluster]` | Composite project read: project, namespaces, members, quota, usage |
-| `inspect user <id\|username\|displayName\|principal>` | Composite user read: identity, groups, and roles across scopes - bindings that exist only, never permissions |
+| `inspect project <name-or-id> [--cluster]` | Composite project read: project, namespaces, members, resource quota, usage |
+| `inspect user <id\|username\|displayName\|principal>` | Composite user read: id and names, groups, and role bindings at global, cluster and project level - bindings that exist only, never permissions |
 | `images` | Active-pod container images, grouped by image or owning workload, fleet-wide |
 | `usage` | Resource usage composite (grouped by `--by`, filtered by scope flags) |
 
@@ -128,8 +128,8 @@ for lifecycle; `get provisioning-cluster` for reads.
 
 | Command | Purpose |
 |---|---|
-| `logs <target>` | Curated, verified-location logs for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook`/`api-extension` |
-| `support-bundle` | Pack the API-reachable triage plane (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
+| `logs <target>` | Verified-location logs of Rancher components for `server`/`agent`/`fleet-agent`/`kube-api-auth`/`webhook`/`api-extension` |
+| `support-bundle` | Pack what Rancher's Kubernetes API can reach (logs, cluster/node state, events, settings/features/schema) into one tar.gz for support |
 
 ## kubectl integration
 

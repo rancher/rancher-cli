@@ -41,16 +41,16 @@ func NewLogs(clients engine.ClusterClientFactory, roots engine.RootClientFactory
 func (c *logsCmd) Describe() runtime.Descriptor {
 	return runtime.Descriptor{
 		Name:  "logs",
-		Usage: "Show curated Rancher-component logs (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)",
+		Usage: "Show logs of Rancher components (server, agent, fleet-agent, kube-api-auth, webhook, api-extension)",
 		Args:  []runtime.ArgSpec{{Name: "target", Type: "string", Required: true, Enum: Names()}},
 		Flags: []runtime.ArgSpec{
 			{Name: engine.FlagCluster, Type: "string", Desc: "target cluster `id|name`"},
 			{Name: flagTail, Type: "string", Desc: "max `lines` (default 200)"},
 			{Name: flagSince, Type: "string", Desc: "logs newer than this `duration`, e.g. 30m, 2h; omit for no limit"},
 			{Name: flagPrevious, Type: "bool", Desc: "logs from the previous container instance"},
-			{Name: flagContainer, Type: "string", Desc: "`container` name (defaults to the main container)"},
+			{Name: flagContainer, Type: "string", Desc: "`container` name (default: the containers and init containers of each pod)"},
 			{Name: flagTimestamps, Type: "bool", Desc: "prefix each line with a timestamp"},
-			{Name: flagPod, Type: "string", Desc: "restrict to one `pod` name, for per-replica attribution"},
+			{Name: flagPod, Type: "string", Desc: "restrict to one `pod` name, to read the logs of a single replica"},
 		},
 		CommandType: runtime.ReadOnly,
 		Examples: []string{
@@ -122,7 +122,7 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 			opts.Container = cname
 			out, lerr := resolved.Client.Logs(ctx, resolved.Namespace, podName, opts)
 			if lerr != nil {
-				warnings = append(warnings, fmt.Sprintf("%s/%s: %v", podName, cname, lerr))
+				warnings = append(warnings, fmt.Sprintf("could not read the logs of %s/%s: %v", podName, cname, lerr))
 				refusals = append(refusals, clierr.From(lerr))
 				continue
 			}
@@ -135,7 +135,7 @@ func (c *logsCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Promp
 			return runtime.Result{}, ce.WithWarnings(warnings...)
 		}
 		return runtime.Result{}, clierr.New(clierr.CodeNotFound,
-			fmt.Sprintf("no logs available for target %q in namespace %s on cluster %s; confirm the target is running, or check the warnings for per-pod fetch failures",
+			fmt.Sprintf("no logs available for target %q in namespace %s on cluster %s; confirm the target is running, or check the warnings for the pods and containers whose logs could not be read",
 				target.Name, resolved.Namespace, resolved.ClusterID))
 	}
 
@@ -237,7 +237,7 @@ type logsResult struct {
 }
 
 // selectPod narrows a target's resolved pods to the one named pod, for
-// per-replica log attribution (the HA-triage case: grep one replica's logs,
+// reading the logs of a single replica (the HA-triage case: grep one replica's logs,
 // not the merged stream). An unknown name is a NOT_FOUND naming the target's
 // actual pod names as candidates, as engine.MatchOne's NOT_FOUND does.
 func selectPod(pods []unstructured.Unstructured, name string) (unstructured.Unstructured, error) {

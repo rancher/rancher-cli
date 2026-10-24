@@ -86,7 +86,7 @@ stdout e2e-crt-real-token-c-import
 
 exec rancher inspect cluster c-import --registration
 stdout 'none \(imported or custom cluster\)'
-stdout 'node join \[not applicable: imported cluster\]:'
+stdout 'node command \[not applicable: imported cluster\]:'
 
 # system member: seed the c-import namespace (required for namespaced CRTBs)
 # then create a system:// CRTB - follows the project-members.txtar pattern.

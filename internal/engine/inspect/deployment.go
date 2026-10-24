@@ -29,8 +29,10 @@ func (c *deploymentCmd) Describe() runtime.Descriptor {
 		Aliases: k.Aliases,
 		Usage:   "Inspect a deployment and the pods it selects",
 		Desc: degradedContractDesc +
-			"Cluster resolution, the namespace, and the deployment GET are required and hard-error. " +
-			"Degradable section: pods (unavailable - the selector-scoped pod list; the pods field is null).",
+			"Finding the cluster by id or name, giving --namespace, and reading the deployment are required: " +
+			"the command fails when any of them fails. " +
+			"Section that can degrade: pods (unavailable - the list of pods the deployment's selector matches; " +
+			"the pods field is null).",
 		CommandType: runtime.ReadOnly,
 		Args:        []runtime.ArgSpec{{Name: "name", Type: "string", Required: true}},
 		Flags: []runtime.ArgSpec{

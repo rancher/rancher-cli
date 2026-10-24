@@ -78,7 +78,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	// --project must name a member namespace.
 	if namespace != "" && filterID != "" && nsByProject[namespace] != filterID {
 		return runtime.Result{}, projects.NotMemberError(namespace, filterID,
-			"pass a project namespace, or omit --namespace to cover every namespace of the project")
+			"pass one of the project's namespaces, or omit --namespace to cover every namespace of the project")
 	}
 
 	// An ownership map the caller was authorized to read, showing the named
@@ -148,7 +148,7 @@ func (c *usageCmd) collectByProject(ctx context.Context, client engine.ClusterCl
 	if err != nil {
 		return runtime.Result{}, err
 	}
-	// names makes the table SCOPE column show project display names while
+	// names makes the first table column show project display names while
 	// JSON row keys stay project ids. "<none>" has no entry
 	// and renders as-is.
 	return withCheckWarnings(usageResult(byProject, rows, displayByID, sec), warnings), nil

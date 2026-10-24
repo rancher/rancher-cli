@@ -232,8 +232,8 @@ func TestLogsExecuteEveryReadRefusedKeepsTheRefusal(t *testing.T) {
 			assert.Equal(t, tc.code, ce.Code)
 			assert.Equal(t, tc.message, ce.Message)
 			assert.Equal(t, []string{
-				"agent-1/main: " + tc.main.Error(),
-				"agent-2/side: " + tc.side.Error(),
+				"could not read the logs of agent-1/main: " + tc.main.Error(),
+				"could not read the logs of agent-2/side: " + tc.side.Error(),
 			}, ce.Warnings())
 		})
 	}
@@ -390,14 +390,14 @@ func TestLogsKubeAPIAuthPropagatesSteveError(t *testing.T) {
 // --ttl), before any request, by both commands that take it.
 func TestLogsAndBundleSinceRefusalsNameTheFlag(t *testing.T) {
 	t.Parallel()
-	const grammar = "use a Go duration (90m, 12h), optionally prefixed by <n>d (90d, 1d12h)"
+	const grammar = "use a duration such as 90m or 12h; it can start with a number of days, as in 90d or 1d12h"
 	for _, tc := range []struct {
 		raw  string
 		want string
 	}{
 		{"bogus", `invalid --since "bogus": ` + grammar},
-		{"500us", `invalid --since "500us": too small to represent in seconds; pass at least 1s`},
-		{"213504d", `invalid --since "213504d": days must be at most 106751 (a larger value overflows the internal duration)`},
+		{"500us", `invalid --since "500us": the duration is shorter than one second; pass at least 1s`},
+		{"213504d", `invalid --since "213504d": days must be at most 106751 (about 292 years)`},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
 			t.Parallel()

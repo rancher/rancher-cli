@@ -242,7 +242,7 @@ func TestInspectProjectMemberShapedAccess(t *testing.T) {
 	refused := "Rancher refused access to cluster 'c-test' (401 with no body, its answer to a user with no role on that cluster)"
 	assert.Equal(t, []string{
 		"namespaces unavailable: " + refused,
-		"usage unavailable: namespaces unknown (" + refused + ")",
+		"usage unavailable: it depends on namespaces, which is unavailable (" + refused + ")",
 	}, res.Warnings)
 
 	// A lost membership set makes the workload lists meaningless; they are
@@ -389,7 +389,7 @@ func TestInspectProjectPodListDeniedBlocksUsage(t *testing.T) {
 		{Section: sectionNamespaces, State: stateUnavailable, Code: clierr.CodeRBAC},
 		{Section: sectionUsage, State: stateUnavailable, Code: clierr.CodeRBAC},
 	}, data.Degraded)
-	assert.Equal(t, "usage unavailable: pods unknown (pods is forbidden)", res.Warnings[1])
+	assert.Equal(t, "usage unavailable: it depends on pods, which is unavailable (pods is forbidden)", res.Warnings[1])
 	// The deployment list runs concurrently with the pod list and SUCCEEDS
 	// here - a readable deployment list must not restore a namespace section
 	// whose pod counts are unknown.
@@ -534,11 +534,11 @@ func TestRenderProjectTextSections(t *testing.T) {
 		Usage:         &resourceTotals{CPURequest: "500m", CPULimit: "1", CPUUsage: "250m", MemoryRequest: "1Gi", MemoryLimit: "2Gi"},
 	}
 	text := renderProjectText(r)
-	assert.Contains(t, text, "PROJECT\n  id: p-cvrp4\n  display: Default\n  cluster: c-phmj7\n")
+	assert.Contains(t, text, "PROJECT\n  id: p-cvrp4\n  displayName: Default\n  cluster: c-phmj7\n")
 	assert.Contains(t, text, "NAMESPACES\n  default (pods: 3, deployments: 1)\n")
 	assert.Contains(t, text, "MEMBERS\n  DevOps Team (github_org://8341)  project-member\n  Alice Ann (local://u-alice)  project-owner\n")
 	// quota keys render recursively sorted: configMaps before pods.
-	assert.Contains(t, text, "QUOTA\n  limit:\n    configMaps: 5\n    pods: 10\n")
+	assert.Contains(t, text, "RESOURCE QUOTA\n  limit:\n    configMaps: 5\n    pods: 10\n")
 	// measured usage renders when present; absent measurements stay off the line.
 	assert.Contains(t, text, "USAGE\n  cpu: request=500m limit=1000m usage=250m\n  memory: request=1024Mi limit=2048Mi\n")
 }
@@ -556,7 +556,7 @@ func TestStyleProjectTextStripInvariant(t *testing.T) {
 	assert.Equal(t, text, style.Strip(styled))
 	assert.Equal(t, text, styleProjectText(text, style.Style{}), "disabled style returns text unchanged")
 
-	for _, header := range []string{"PROJECT", "NAMESPACES", "MEMBERS", "QUOTA", "USAGE"} {
+	for _, header := range []string{"PROJECT", "NAMESPACES", "MEMBERS", "RESOURCE QUOTA", "USAGE"} {
 		assert.Contains(t, styled, "\x1b[1m"+header+"\x1b[0m\n", "%s must be bold, whole line", header)
 	}
 	assert.NotContains(t, styled, "\x1b[1mid: p-cvrp4", "a data line must not be styled")
@@ -569,7 +569,7 @@ func TestRenderProjectTextEmptyAndUnavailable(t *testing.T) {
 	text := renderProjectText(r)
 	assert.Contains(t, text, "NAMESPACES\n  namespaces: unavailable\n")
 	assert.Contains(t, text, "MEMBERS\n  members: unavailable\n")
-	assert.Contains(t, text, "QUOTA\n  none\n")
+	assert.Contains(t, text, "RESOURCE QUOTA\n  none\n")
 	assert.Contains(t, text, "USAGE\n  usage: unavailable\n")
 
 	// zero namespaces read successfully → verified-empty usage, NOT unavailable.
