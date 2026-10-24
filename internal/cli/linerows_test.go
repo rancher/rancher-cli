@@ -107,10 +107,9 @@ const droppedWordsRule = " after a - on its own; a - on its own ends the command
 // whitespace around it, the help flag or the version flag among them, each
 // run as the process runs it: the error and its hint, or the help card or
 // version printed, and the requests made. Not parallel: it sets the process
-// environment, the exit function and the captured command line.
+// environment and the captured command line.
 func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 	restoreRawArgv(t)
-	exited := stubExit(t)
 	rec := bodyRecorderEnv(t)
 
 	const (
@@ -223,13 +222,9 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {
 			rec.take()
-			*exited = 0
 			cmd, err := BuildRoot("v-test")
 			require.NoError(t, err)
 			stdout, stderr, code := runCaptured(t, cmd, row.argv)
-			if code == 0 {
-				code = *exited
-			}
 			requests, _ := rec.take()
 			assert.Equal(t, row.want.exit, code, "rancher %q: stdout %q, stderr %q", row.argv, stdout, stderr)
 			assert.Equal(t, row.want.requests, requests, "rancher %q", row.argv)
@@ -278,11 +273,10 @@ func TestADashLastIsTheNameToCreateAsTyped(t *testing.T) {
 // with whitespace as its value, typed as the separate value of a value flag,
 // is that flag's value, not a bool flag with a blank value: the command
 // runs and looks the cluster up by that name, which the server does not
-// have. Not parallel: it sets the process environment, the exit function and
-// the captured command line.
+// have. Not parallel: it sets the process environment and the
+// captured command line.
 func TestAValueFlagTakesABlankBoolWordAsItsValue(t *testing.T) {
 	restoreRawArgv(t)
-	stubExit(t)
 	rec := bodyRecorderEnv(t)
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -310,8 +304,7 @@ func TestAPaddedBoolValueIsRefusedBeforeThePasswordIsRead(t *testing.T) {
 	root.Writer, root.ErrWriter = &out, &errOut
 	input := strings.NewReader("a-password\n")
 	root.Reader = input
-	err = Run(t.Context(), root, []string{"rancher", "create", "user", "--yes", "--apply", " false", "--password-stdin", "-o", "json"})
-	assert.Equal(t, 2, exitCodeOf(err))
+	assert.Equal(t, 2, runMain(t, root, "create", "user", "--yes", "--apply", " false", "--password-stdin", "-o", "json"))
 	ce := renderedError(t, "json", errOut.String())
 	assert.Equal(t, "create user: ' false' after the bool flag --apply"+boolRule, ce.Message)
 	assert.Equal(t, "rancher create user --help", ce.Hint)
@@ -327,10 +320,9 @@ func TestAPaddedBoolValueIsRefusedBeforeThePasswordIsRead(t *testing.T) {
 // neither does an error urfave reports before they are typed, nor a root or
 // group line that ends at an unknown command, help or the version; for
 // those the line scan finds them. Not parallel: it sets the process
-// environment, the exit function and the captured command line.
+// environment and the captured command line.
 func TestBoolRefusalsRenderInTheFormatAndColorTheLineSelects(t *testing.T) {
 	restoreRawArgv(t)
-	stubExit(t)
 	bodyRecorderEnv(t)
 	ansi := regexp.MustCompile("\x1b\\[[0-9;]*m")
 	const create = "create"

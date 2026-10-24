@@ -341,7 +341,6 @@ func TestCreateFieldFlagsRefuseEmptyAndSeparateBoolValues(t *testing.T) {
 // parallel: it sets the process environment and the captured command line.
 func TestCompletionOffersNothingOnALineWithAOnceFlagTwice(t *testing.T) {
 	restoreRawArgv(t)
-	stubExit(t)
 	rec := extraArgsEnv(t)
 	cfg := &config.Config{
 		CurrentServer: "srv",

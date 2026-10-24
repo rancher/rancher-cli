@@ -12,13 +12,13 @@ import (
 
 // runCompletionRequest runs on root the completion request the shipped
 // scripts send for typed, the words before the cursor, and current, the word
-// being completed, through Run as main does. The argv globals are restored
+// being completed, through Run as main does. It returns the exit code. The argv globals are restored
 // when the test ends.
-func runCompletionRequest(t *testing.T, root *ucli.Command, typed []string, current string) error {
+func runCompletionRequest(t *testing.T, root *ucli.Command, typed []string, current string) int {
 	t.Helper()
 	restoreRawArgv(t)
 	argv := append(append([]string{protoSentinel}, typed...), curPrefix+current, completionFlag)
-	return Run(t.Context(), root, append([]string{"rancher"}, argv...))
+	return runMain(t, root, argv...)
 }
 
 // testLeaf is a minimal descriptor used across ParseArgTail tests.

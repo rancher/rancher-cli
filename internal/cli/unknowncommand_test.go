@@ -23,16 +23,11 @@ type lineOutcome struct {
 }
 
 // runLine runs argv, which carries -o json when an envelope is wanted,
-// through a fresh root. The exit code is the one Run returns for a flag
-// error, or the one the unknown-command path passes to the exit function.
-func runLine(t *testing.T, gotCode *int, argv []string) lineOutcome {
+// through a fresh root. The exit code is the one Run returns.
+func runLine(t *testing.T, argv []string) lineOutcome {
 	t.Helper()
-	*gotCode = 0
-	stdout, stderr, err := runHelpArgvAsMain(t, argv...)
-	out := lineOutcome{stdout: stdout, stderr: stderr, exit: exitCodeOf(err)}
-	if out.exit == 0 {
-		out.exit = *gotCode
-	}
+	stdout, stderr, code := runHelpArgvAsMain(t, argv...)
+	out := lineOutcome{stdout: stdout, stderr: stderr, exit: code}
 	if stderr != "" {
 		var env errEnvelope
 		if json.Unmarshal([]byte(stderr), &env) == nil {
@@ -50,11 +45,9 @@ func runLine(t *testing.T, gotCode *int, argv []string) lineOutcome {
 // blank first word keeps being reported, and that --help before an empty
 // word still shows the command's own help. Every command in the tree must
 // stop flag parsing after its first word, which is what makes the first
-// word win. Not parallel: the exit function and the captured argv are
-// process-wide.
+// word win. Not parallel: the captured argv is process-wide.
 func TestUnknownCommandIsReportedBeforeAnythingAfterIt(t *testing.T) {
 	restoreRawArgv(t)
-	gotCode := stubExit(t)
 
 	nodes := levelCommands(t)
 	paths := []string{}
@@ -104,7 +97,7 @@ func TestUnknownCommandIsReportedBeforeAnythingAfterIt(t *testing.T) {
 					quoted[i] = strconv.Quote(word)
 				}
 				t.Run(strings.Join(quoted, " "), func(t *testing.T) {
-					got := runLine(t, gotCode, append(slices.Clone(prefix), row.words...))
+					got := runLine(t, append(slices.Clone(prefix), row.words...))
 					if row.message == "" {
 						assert.Equal(t, 0, got.exit)
 						assert.Empty(t, got.stderr)
@@ -127,10 +120,9 @@ func TestUnknownCommandIsReportedBeforeAnythingAfterIt(t *testing.T) {
 // they were: flag errors from a leaf and from before the first word, the
 // -A detail, a leaf run after --, an unknown word after --, the version, the
 // help cards and the refusal of a bare - before more words. Not parallel:
-// the exit function and the captured argv are process-wide.
+// the captured argv is process-wide.
 func TestKnownCommandLinesKeepTheirResult(t *testing.T) {
 	restoreRawArgv(t)
-	gotCode := stubExit(t)
 
 	const flagError = "flag provided but not defined: -madeupflag; pass --help for usage"
 	const allNamespaces = "flag provided but not defined: -A; pass --help for usage; there is no all-namespaces flag"
@@ -163,7 +155,7 @@ func TestKnownCommandLinesKeepTheirResult(t *testing.T) {
 			name = "no words"
 		}
 		t.Run(name, func(t *testing.T) {
-			got := runLine(t, gotCode, row.argv)
+			got := runLine(t, row.argv)
 			assert.Equal(t, row.exit, got.exit)
 			if row.message != "" {
 				assert.Empty(t, got.stdout)

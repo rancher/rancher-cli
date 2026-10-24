@@ -52,7 +52,7 @@ func runRootJSON(t *testing.T, args ...string) (int, string, string) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	runErr := root.Run(ctx, append(append([]string{"rancher"}, args...), "-o", "json"))
-	return exitCodeOf(runErr), out.String(), errOut.String()
+	return exitCodeOf(root, runErr), out.String(), errOut.String()
 }
 
 // TestCommandsFailAsCredentialStoreUnavailable asserts, through the real

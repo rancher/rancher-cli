@@ -985,6 +985,11 @@ func (wr wiredRegistry) root(version string) *ucli.Command {
 		}, GlobalFlags()...),
 		CommandNotFound: commandNotFound,
 		OnUsageError:    onUsageError,
+		// urfave reads the exit handler only from the root, and by default
+		// ends the process for an error that carries an exit code. This
+		// one does nothing, so every such error returns from Run and the
+		// caller decides how the process ends.
+		ExitErrHandler: func(context.Context, *ucli.Command, error) {},
 		// With StopOnNthArg 1 the root parses no flag after its first word:
 		// a known command parses the rest itself, and an unknown first word
 		// is reported before any flag typed after it.

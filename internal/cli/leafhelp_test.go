@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"slices"
 	"strings"
@@ -49,21 +49,8 @@ func restoreRawArgv(t *testing.T) {
 	t.Cleanup(func() { rawArgv, rawCurrentWord, rawCompleting = orig, origW, origP })
 }
 
-// stubExit replaces urfave's exit function, which unknown-command errors
-// call, with one that records the code, and restores it when the test
-// ends. The code is 0 until something exits.
-func stubExit(t *testing.T) *int {
-	t.Helper()
-	orig := ucli.OsExiter
-	code := new(int)
-	ucli.OsExiter = func(c int) { *code = c }
-	t.Cleanup(func() { ucli.OsExiter = orig })
-	return code
-}
-
 // helpRoot returns a freshly built root with its output captured in out and
-// errOut and an exit handler that does nothing, so an error a real process
-// would exit with comes back as the return value of Run.
+// errOut.
 func helpRoot(t *testing.T) (root *ucli.Command, out, errOut *bytes.Buffer) {
 	t.Helper()
 	root, err := BuildRoot("v-test")
@@ -72,7 +59,6 @@ func helpRoot(t *testing.T) (root *ucli.Command, out, errOut *bytes.Buffer) {
 	root.Writer = out
 	root.ErrWriter = errOut
 	root.Reader = strings.NewReader("")
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	return root, out, errOut
 }
 
@@ -87,13 +73,23 @@ func runHelpArgv(t *testing.T, argv ...string) (stdout, stderr string, err error
 	return out.String(), errOut.String(), err
 }
 
-// runHelpArgvAsMain is runHelpArgv through Run, as the process entry point
-// runs a line, with the command line captured. Not for a parallel test.
-func runHelpArgvAsMain(t *testing.T, argv ...string) (stdout, stderr string, err error) {
+// runHelpCode is runHelpArgv with the exit code a process would have:
+// the code of the error Run returned, else the code of the unknown-command
+// error recorded during the run, else 0.
+func runHelpCode(t *testing.T, argv ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	root, out, errOut := helpRoot(t)
-	err = Run(t.Context(), root, append([]string{"rancher"}, argv...))
-	return out.String(), errOut.String(), err
+	err := root.Run(t.Context(), append([]string{"rancher"}, argv...))
+	return out.String(), errOut.String(), exitCodeOf(root, err)
+}
+
+// runHelpArgvAsMain is runHelpCode through Run, as the process entry point
+// runs a line, with the command line captured. Not for a parallel test.
+func runHelpArgvAsMain(t *testing.T, argv ...string) (stdout, stderr string, code int) {
+	t.Helper()
+	root, out, errOut := helpRoot(t)
+	code = runMain(t, root, argv...)
+	return out.String(), errOut.String(), code
 }
 
 // TestLeafHelpShowsOwnHelpWithPositionalArgument asserts that for every
@@ -158,25 +154,37 @@ func TestLeafReceivesPositionalNamedHelp(t *testing.T) {
 	mask := func(s string) string { return strings.ReplaceAll(s, "help", "zzz") }
 	for _, leaf := range leaves {
 		t.Run(strings.Join(leaf, " "), func(t *testing.T) {
-			helpOut, helpErr, helpRunErr := runHelpArgv(t, append(slices.Clone(leaf), "help")...)
-			zzzOut, zzzErr, zzzRunErr := runHelpArgv(t, append(slices.Clone(leaf), "zzz")...)
+			helpOut, helpErr, helpCode := runHelpCode(t, append(slices.Clone(leaf), "help")...)
+			zzzOut, zzzErr, zzzCode := runHelpCode(t, append(slices.Clone(leaf), "zzz")...)
 			assert.Equal(t, mask(zzzOut), mask(helpOut), "stdout")
 			assert.Equal(t, mask(zzzErr), mask(helpErr), "stderr")
-			assert.Equal(t, exitCodeOf(zzzRunErr), exitCodeOf(helpRunErr), "exit")
+			assert.Equal(t, zzzCode, helpCode, "exit")
 		})
 	}
 }
 
-// exitCodeOf returns the process exit code an error returned from Run
-// stands for: 0 for nil, the ExitCoder's code, else 1.
-func exitCodeOf(err error) int {
-	if err == nil {
-		return 0
-	}
-	if ec, ok := errors.AsType[ucli.ExitCoder](err); ok {
-		return ec.ExitCode()
-	}
-	return 1
+// exitCodeOf returns the process exit code a root.Run call that returned
+// err ends with, as run computes it: resolveExit over err and the
+// unknown-command error recorded on root during the call. It clears the
+// record after reading it, so a root can run another line next. It renders
+// an error that nothing rendered, as run does, to a discarding writer: the
+// caller's stderr stays as the run left it.
+func exitCodeOf(root *ucli.Command, err error) int {
+	errWriter := root.ErrWriter
+	root.ErrWriter = io.Discard
+	defer func() { root.ErrWriter = errWriter }()
+	code := resolveExit(root, err, recordedUnknownCommand(root)).code
+	clearUnknownCommand(root)
+	return code
+}
+
+// runMain runs argv, the words after the program name, on root through Run
+// as main does, with the command line captured, and returns the exit code.
+// Every test that needs the code of a whole run uses it. Not for a parallel
+// test.
+func runMain(t *testing.T, root *ucli.Command, argv ...string) int {
+	t.Helper()
+	return Run(t.Context(), root, append([]string{"rancher"}, argv...))
 }
 
 // TestGroupHelpWithUnknownNameKeepsValidationError asserts that the leaf
@@ -185,7 +193,6 @@ func exitCodeOf(err error) int {
 // error at exit 2, not a help page and not urfave's exit 3.
 func TestGroupHelpWithUnknownNameKeepsValidationError(t *testing.T) {
 	restoreRawArgv(t)
-	gotCode := stubExit(t)
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -194,11 +201,9 @@ func TestGroupHelpWithUnknownNameKeepsValidationError(t *testing.T) {
 
 	for _, group := range groups {
 		argv := append(slices.Clone(group), "x", "--help")
-		*gotCode = 0
 		CaptureArgv(argv)
-		stdout, stderr, err := runHelpArgv(t, argv...)
-		require.NoError(t, err, "rancher %s", strings.Join(argv, " "))
-		assert.Equal(t, 2, *gotCode, "rancher %s", strings.Join(argv, " "))
+		stdout, stderr, code := runHelpCode(t, argv...)
+		assert.Equal(t, 2, code, "rancher %s", strings.Join(argv, " "))
 		assert.Empty(t, stdout, "rancher %s", strings.Join(argv, " "))
 		assert.Contains(t, stderr, `error (VALIDATION): unknown command "x"`, "rancher %s", strings.Join(argv, " "))
 	}
@@ -223,11 +228,9 @@ func TestHelpForHiddenChildOfGroupWithoutNotFoundSeam(t *testing.T) {
 // TestHelpWalkShowsHiddenChildCard asserts that `--help <group> <hidden>`
 // shows the hidden subcommand's card, as `<group> <hidden> --help` does,
 // not an unknown command error: below the first word of the walk a hidden
-// subcommand is a topic too. Not parallel: an unknown command error would
-// reach the exit function.
+// subcommand is a topic too. Not parallel: it reads the captured argv.
 func TestHelpWalkShowsHiddenChildCard(t *testing.T) {
 	restoreRawArgv(t)
-	gotCode := stubExit(t)
 	noop := func(context.Context, *ucli.Command) error { return nil }
 	hidden := &ucli.Command{Name: "hid", Hidden: true, Usage: "hidden child", Action: noop}
 	visible := &ucli.Command{Name: "vis", Usage: "visible child", Action: noop}
@@ -238,7 +241,7 @@ func TestHelpWalkShowsHiddenChildCard(t *testing.T) {
 	root.ErrWriter = &out
 	CaptureArgv([]string{"--help", "grp", "hid"})
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--help", "grp", "hid"}))
-	assert.Equal(t, 0, *gotCode)
+	assert.Nil(t, recordedUnknownCommand(root))
 	assert.Regexp(t, `(?m)^USAGE:\n\s+rancher grp hid( |$)`, out.String())
 }
 
@@ -280,11 +283,9 @@ func TestEveryCommandHandlesUsageErrors(t *testing.T) {
 // ordinary unknown command: VALIDATION, exit 2, message `unknown command
 // "help"`, and a hint that is the runnable --help command for the words
 // typed around it, cut back to the deepest command that exists. Not
-// parallel: commandNotFound exits through urfave's exit function and reads
-// the captured argv.
+// parallel: it reads the captured argv.
 func TestHelpIsUnknownCommandWithHelpFlagHint(t *testing.T) {
 	restoreRawArgv(t)
-	gotCode := stubExit(t)
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -335,11 +336,9 @@ func TestHelpIsUnknownCommandWithHelpFlagHint(t *testing.T) {
 			if !slices.Contains(argv, "json") {
 				argv = append([]string{"-o", "json"}, argv...)
 			}
-			*gotCode = 0
 			CaptureArgv(argv)
-			_, stderr, err := runHelpArgv(t, argv...)
-			require.NoError(t, err)
-			assert.Equal(t, 2, *gotCode)
+			_, stderr, code := runHelpCode(t, argv...)
+			assert.Equal(t, 2, code)
 			var env errEnvelope
 			require.NoError(t, json.Unmarshal([]byte(stderr), &env))
 			assert.Equal(t, "VALIDATION", env.Data.Error.Code)
@@ -349,11 +348,9 @@ func TestHelpIsUnknownCommandWithHelpFlagHint(t *testing.T) {
 	}
 
 	t.Run("text output", func(t *testing.T) {
-		*gotCode = 0
 		CaptureArgv([]string{"help", "get"})
-		_, stderr, err := runHelpArgv(t, "help", "get")
-		require.NoError(t, err)
-		assert.Equal(t, 2, *gotCode)
+		_, stderr, code := runHelpCode(t, "help", "get")
+		assert.Equal(t, 2, code)
 		assert.Equal(t, "error (VALIDATION): unknown command \"help\"\n  hint: rancher get --help\n", stderr)
 	})
 }
@@ -361,12 +358,9 @@ func TestHelpIsUnknownCommandWithHelpFlagHint(t *testing.T) {
 // TestHelpWalkStopsAtFlag asserts where the `--help <words>` walk ends: at
 // a flag token, with the card of the command reached so far and exit 0.
 // The root leaves a flag that comes after the first command word in the
-// arguments, so the walk sees it. Not parallel: a walk that failed to stop
-// would reach the exit function, which is replaced here so the failure is
-// an assertion, not a process exit.
+// arguments, so the walk sees it. Not parallel: it reads the captured argv.
 func TestHelpWalkStopsAtFlag(t *testing.T) {
 	restoreRawArgv(t)
-	gotCode := stubExit(t)
 	usage := regexp.MustCompile(`(?m)^USAGE:\n\s+rancher get( |$)`)
 	for _, argv := range [][]string{
 		{"--help", "get", "--help"},
@@ -374,11 +368,9 @@ func TestHelpWalkStopsAtFlag(t *testing.T) {
 		{"--help", "get", "--bogus", "pod"},
 	} {
 		t.Run(strings.Join(argv, " "), func(t *testing.T) {
-			*gotCode = 0
 			CaptureArgv(argv)
-			stdout, stderr, err := runHelpArgv(t, argv...)
-			require.NoError(t, err)
-			assert.Equal(t, 0, *gotCode)
+			stdout, stderr, code := runHelpCode(t, argv...)
+			assert.Equal(t, 0, code)
 			assert.Empty(t, stderr)
 			assert.Regexp(t, usage, stdout)
 		})
@@ -392,11 +384,10 @@ func TestHelpWalkStopsAtFlag(t *testing.T) {
 // envelope), and a flag (the walk ends and the group card is shown, exit
 // 0). The group was never run by urfave when the walk reaches the word, so
 // the error must be built from the words the walk holds, not from the
-// group's parsed arguments. Not parallel: the exit function and the
-// captured argv are process-wide.
+// group's parsed arguments. Not parallel: the captured argv is
+// process-wide.
 func TestHelpWalkUnknownWordUnderEveryGroup(t *testing.T) {
 	restoreRawArgv(t)
-	gotCode := stubExit(t)
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -411,26 +402,24 @@ func TestHelpWalkUnknownWordUnderEveryGroup(t *testing.T) {
 					argv := append([]string{"-o", mode, flag}, group...)
 					argv = append(argv, word)
 					name := strings.Join(argv, " ")
-					*gotCode = 0
 					CaptureArgv(argv)
 					var stdout, stderr string
-					var runErr error
+					var code int
 					func() {
 						defer func() {
 							if r := recover(); r != nil {
 								t.Errorf("rancher %s panicked: %v", name, r)
 							}
 						}()
-						stdout, stderr, runErr = runHelpArgv(t, argv...)
+						stdout, stderr, code = runHelpCode(t, argv...)
 					}()
-					require.NoError(t, runErr, "rancher %s", name)
 					if word == "--bogus" {
-						assert.Equal(t, 0, *gotCode, "rancher %s", name)
+						assert.Equal(t, 0, code, "rancher %s", name)
 						assert.Empty(t, stderr, "rancher %s", name)
 						assert.Regexp(t, `(?m)^USAGE:\n\s+rancher `+regexp.QuoteMeta(path)+`( |$)`, stdout, "rancher %s", name)
 						continue
 					}
-					assert.Equal(t, 2, *gotCode, "rancher %s", name)
+					assert.Equal(t, 2, code, "rancher %s", name)
 					assert.Empty(t, stdout, "rancher %s", name)
 					if mode != "json" {
 						assert.Contains(t, stderr, "error (VALIDATION): unknown command", "rancher %s", name)

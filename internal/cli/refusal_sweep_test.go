@@ -303,7 +303,7 @@ func TestEveryNetworkCommandReportsARefusal(t *testing.T) {
 					root.Reader = strings.NewReader("token-x:y\n")
 					CaptureArgv(argv)
 					before, deletesBefore := srv.n.Load(), srv.deletes.Load()
-					code := exitCodeOf(root.Run(t.Context(), append([]string{"rancher"}, argv...)))
+					code := exitCodeOf(root, root.Run(t.Context(), append([]string{"rancher"}, argv...)))
 					label := "rancher " + strings.Join(argv, " ")
 					if ex, ok := refusalExemptions[c.Name]; ok && ex.applies(v.status, cluster) {
 						assert.Equal(t, ex.exit, code, "%s: %s", label, ex.reason)

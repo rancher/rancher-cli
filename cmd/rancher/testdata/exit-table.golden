@@ -1,0 +1,436 @@
+$ rancher 
+exit: 0
+stderr: (empty)
+
+$ rancher ""
+exit: 2
+stderr:
+> error (VALIDATION): unknown command ""
+>   hint: rancher schema
+
+$ rancher -h
+exit: 0
+stderr: (empty)
+
+$ rancher -v
+exit: 0
+stderr: (empty)
+
+$ rancher --help
+exit: 0
+stderr: (empty)
+
+$ rancher --version
+exit: 0
+stderr: (empty)
+
+$ rancher get --help
+exit: 0
+stderr: (empty)
+
+$ rancher get pod --help
+exit: 0
+stderr: (empty)
+
+$ rancher get pod -h
+exit: 0
+stderr: (empty)
+
+$ rancher help
+exit: 2
+stderr:
+> error (VALIDATION): unknown command "help"
+>   hint: rancher --help
+
+$ rancher config path
+exit: 0
+stderr: (empty)
+
+$ rancher config status
+exit: 0
+stderr: (empty)
+
+$ rancher schema
+exit: 0
+stderr: (empty)
+
+$ rancher skill status
+exit: 0
+stderr:
+> # warning: no coding-agent harness detected; nothing to report
+
+$ rancher completion bash
+exit: 0
+stderr: (empty)
+
+$ rancher completion bogus
+exit: 2
+stderr:
+> error (VALIDATION): argument <shell>="bogus" is not one of bash|zsh|fish|pwsh
+
+$ rancher skill status --agent claude --require-installed
+exit: 7
+stderr: (empty)
+
+$ rancher skill status --agent claude --require-installed -o json
+exit: 7
+stderr: (empty)
+
+$ rancher auth get-token
+exit: 2
+stderr:
+> error (VALIDATION): --cluster is required
+
+$ rancher auth get-token --server https://127.0.0.1:1 --cluster c-1
+exit: 1
+stderr:
+> caching disabled: no --name; each call re-authenticates
+> error (GENERIC): error listing auth providers: Get "https://127.0.0.1:1/v1-public/authproviders": dial tcp 127.0.0.1:1: <dial error>
+
+$ rancher token
+exit: 2
+stderr:
+> error (VALIDATION): --server is required
+
+$ rancher token --server https://127.0.0.1:1
+exit: 2
+stderr:
+> error (VALIDATION): --user is required
+
+$ rancher bogus
+exit: 2
+stderr:
+> error (VALIDATION): unknown command "bogus"
+>   hint: rancher schema
+
+$ rancher bogus -o json
+exit: 2
+stderr:
+> {
+>   "apiVersion": "cli.rancher.io/v1",
+>   "kind": "Error",
+>   "data": {
+>     "error": {
+>       "code": "VALIDATION",
+>       "message": "unknown command \"bogus\"",
+>       "hint": "rancher schema",
+>       "retryable": false
+>     }
+>   }
+> }
+
+$ rancher bogus --help
+exit: 2
+stderr:
+> error (VALIDATION): unknown command "bogus"
+>   hint: rancher schema
+
+$ rancher help bogus
+exit: 2
+stderr:
+> error (VALIDATION): unknown command "help"
+>   hint: rancher --help
+
+$ rancher get bogus
+exit: 2
+stderr:
+> error (VALIDATION): unknown command "bogus"
+>   hint: rancher schema
+
+$ rancher get bogus -o json
+exit: 2
+stderr:
+> {
+>   "apiVersion": "cli.rancher.io/v1",
+>   "kind": "Error",
+>   "data": {
+>     "error": {
+>       "code": "VALIDATION",
+>       "message": "unknown command \"bogus\"",
+>       "hint": "rancher schema",
+>       "retryable": false
+>     }
+>   }
+> }
+
+$ rancher get bogus --help
+exit: 2
+stderr:
+> error (VALIDATION): unknown command "bogus"
+>   hint: rancher schema
+
+$ rancher help get bogus
+exit: 2
+stderr:
+> error (VALIDATION): unknown command "help"
+>   hint: rancher get --help
+
+$ rancher --bogus
+exit: 2
+stderr:
+> error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage
+>   hint: rancher schema
+
+$ rancher get --bogus
+exit: 2
+stderr:
+> error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage
+>   hint: rancher schema
+
+$ rancher get pod --bogus
+exit: 2
+stderr:
+> error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage
+>   hint: rancher schema
+
+$ rancher get pod --bogus -o json
+exit: 2
+stderr:
+> {
+>   "apiVersion": "cli.rancher.io/v1",
+>   "kind": "Error",
+>   "data": {
+>     "error": {
+>       "code": "VALIDATION",
+>       "message": "flag provided but not defined: -bogus; pass --help for usage",
+>       "hint": "rancher schema",
+>       "retryable": false
+>     }
+>   }
+> }
+
+$ rancher __completion --bogus
+exit: 2
+stderr:
+> error (VALIDATION): flag provided but not defined: -bogus; pass --help for usage
+>   hint: rancher schema
+
+$ rancher get pod --output
+exit: 2
+stderr:
+> error (VALIDATION): flag needs an argument: --output; pass --help for usage
+>   hint: rancher schema
+
+$ rancher get pod --cluster local --config
+exit: 2
+stderr:
+> error (VALIDATION): flag needs an argument: --config; pass --help for usage
+>   hint: rancher schema
+
+$ rancher get pod a b c
+exit: 2
+stderr:
+> error (VALIDATION): get pod takes at most 1 argument ([name]); unexpected arguments 'b' 'c'
+>   hint: rancher get pod --help
+
+$ rancher get pod a b c -o json
+exit: 2
+stderr:
+> {
+>   "apiVersion": "cli.rancher.io/v1",
+>   "kind": "Error",
+>   "data": {
+>     "error": {
+>       "code": "VALIDATION",
+>       "message": "get pod takes at most 1 argument ([name]); unexpected arguments 'b' 'c'",
+>       "hint": "rancher get pod --help",
+>       "retryable": false
+>     }
+>   }
+> }
+
+$ rancher delete pod
+exit: 2
+stderr:
+> error (VALIDATION): argument <name> is required
+
+$ rancher get pod
+exit: 2
+stderr:
+> error (VALIDATION): --cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local
+>   hint: rancher access clusters
+
+$ rancher --config "" config path
+exit: 2
+stderr:
+> error (VALIDATION): --config is empty; pass a value or omit --config
+
+$ rancher --config " " get pod --cluster local
+exit: 2
+stderr:
+> error (VALIDATION): --config is empty; pass a value or omit --config
+
+$ rancher -o bogus config path
+exit: 2
+stderr:
+> error (VALIDATION): --output="bogus" is not one of table|wide|json|yaml|name|template=<go-template>
+
+$ rancher --color bogus config path
+exit: 2
+stderr:
+> error (VALIDATION): --color="bogus" is not one of auto|always|never
+
+$ rancher get pod - x
+exit: 2
+stderr:
+> error (VALIDATION): 'x' after a - on its own; a - on its own ends the command line
+>   hint: put - last, or after -- when it is meant as an argument
+
+$ rancher - get pod
+exit: 2
+stderr:
+> error (VALIDATION): 'get' 'pod' after a - on its own; a - on its own ends the command line
+>   hint: put - last, or after -- when it is meant as an argument
+
+$ rancher config path --yes=
+exit: 2
+stderr:
+> error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false
+>   hint: write --yes or --yes=true|false
+
+$ rancher delete pod x --cluster local --apply "--yes= "
+exit: 2
+stderr:
+> error (VALIDATION): --yes= has an empty value; a bool flag typed with = takes true or false
+>   hint: write --yes or --yes=true|false
+
+$ rancher config path --read-only
+exit: 2
+stderr:
+> error (VALIDATION): config path is a local command and --read-only does not govern it; run it without --read-only and any value typed with it (RANCHER_CLI_READONLY or config readOnly is the session-wide form and leaves local commands usable)
+
+$ rancher delete pod x --cluster local --apply --yes
+env: RANCHER_CLI_READONLY=1
+exit: 2
+stderr:
+> error (VALIDATION): read-only mode: delete pod is a mutating command; enabled by RANCHER_CLI_READONLY
+
+$ rancher get cluster
+exit: 2
+stderr:
+> error (NOT_LOGGED_IN): not logged in and no RANCHER_CLI_URL set; add a server with: rancher auth login --url <url>
+
+$ rancher get cluster
+config.yaml: "not: [valid yaml\n"
+exit: 1
+stderr:
+> error (GENERIC): parsing <TMP>/cfg/config.yaml: error converting YAML to JSON: yaml: line 1: did not find expected ',' or ']'
+
+$ rancher get cluster
+env: RANCHER_CLI_URL=https://127.0.0.1:1
+env: RANCHER_CLI_TOKEN=id:secret
+exit: 1
+stderr:
+> error (GENERIC): Get "https://127.0.0.1:1/k8s/clusters/local/apis/management.cattle.io/v3/clusters": dial tcp 127.0.0.1:1: <dial error>
+
+$ rancher --rancher-completion-proto=2 --rancher-completion-cur=g
+exit: 0
+stderr: (empty)
+
+$ rancher --rancher-completion-proto=2 --rancher-completion-cur= get pod --
+exit: 0
+stderr: (empty)
+
+$ rancher access
+exit: 0
+stderr: (empty)
+
+$ rancher auth
+exit: 0
+stderr: (empty)
+
+$ rancher cluster
+exit: 0
+stderr: (empty)
+
+$ rancher completion
+exit: 2
+stderr:
+> error (VALIDATION): argument <shell> is required; one of bash|zsh|fish|pwsh
+
+$ rancher config
+exit: 0
+stderr: (empty)
+
+$ rancher create
+exit: 0
+stderr: (empty)
+
+$ rancher delete
+exit: 0
+stderr: (empty)
+
+$ rancher get
+exit: 0
+stderr: (empty)
+
+$ rancher grant
+exit: 2
+stderr:
+> error (VALIDATION): argument <subject> is required
+
+$ rancher images
+exit: 2
+stderr:
+> error (VALIDATION): --cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list
+>   hint: rancher access clusters
+
+$ rancher inspect
+exit: 0
+stderr: (empty)
+
+$ rancher kubeconfig
+exit: 2
+stderr:
+> error (VALIDATION): --cluster is required; pass a cluster id or name
+>   hint: rancher --config '<TMP>/cfg' access clusters
+
+$ rancher logs
+exit: 2
+stderr:
+> error (VALIDATION): argument <target> is required; one of server|agent|fleet-agent|kube-api-auth|webhook|api-extension
+
+$ rancher oidc-client
+exit: 0
+stderr: (empty)
+
+$ rancher patch
+exit: 0
+stderr: (empty)
+
+$ rancher project
+exit: 0
+stderr: (empty)
+
+$ rancher revoke
+exit: 2
+stderr:
+> error (VALIDATION): argument <subject> is required
+
+$ rancher schema
+exit: 0
+stderr: (empty)
+
+$ rancher skill
+exit: 0
+stderr: (empty)
+
+$ rancher support-bundle
+exit: 2
+stderr:
+> error (NOT_LOGGED_IN): not logged in and no RANCHER_CLI_URL set; add a server with: rancher auth login --url <url>
+
+$ rancher telemetry
+exit: 0
+stderr: (empty)
+
+$ rancher token
+exit: 2
+stderr:
+> error (VALIDATION): --server is required
+
+$ rancher usage
+exit: 2
+stderr:
+> error (VALIDATION): --cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local
+>   hint: rancher access clusters

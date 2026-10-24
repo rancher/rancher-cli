@@ -2,9 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 
@@ -14,117 +11,47 @@ import (
 	ucli "github.com/urfave/cli/v3"
 )
 
-// reportTo runs ReportRunError for err on a root whose error writer is a
-// buffer, with argv captured as the process would, and returns the exit
-// code and what reached stderr.
-func reportTo(t *testing.T, err error, argv ...string) (int, string) {
-	t.Helper()
-	root, buildErr := cli.BuildRoot("v-test")
-	require.NoError(t, buildErr)
-	var stderr bytes.Buffer
-	root.ErrWriter = &stderr
-	cli.CaptureArgv(argv)
-	return cli.ReportRunError(root, err), stderr.String()
-}
-
-// TestReportRunError asserts the exit code and the stderr text for each
-// shape of error Run can return: a message is rendered once as a GENERIC
-// error in the requested output format with exit 1 (never a code urfave
-// chose, such as its help error's 3), an empty message writes nothing and
-// keeps its exit code, and a plain error exits 1. Not parallel: the
-// renderer reads the captured argv.
-func TestReportRunError(t *testing.T) {
-	t.Cleanup(func() { cli.CaptureArgv(nil) })
-
-	code, stderr := reportTo(t, ucli.Exit("No help topic for 'x'", 3))
-	assert.Equal(t, 1, code, "urfave's own exit code must not reach the caller")
-	assert.Equal(t, "error (GENERIC): No help topic for 'x'\n", stderr)
-
-	code, stderr = reportTo(t, errors.New("boom"))
-	assert.Equal(t, 1, code)
-	assert.Equal(t, "error (GENERIC): boom\n", stderr)
-
-	code, stderr = reportTo(t, ucli.Exit("", 5))
-	assert.Equal(t, 5, code)
-	assert.Empty(t, stderr)
-
-	code, stderr = reportTo(t, ucli.Exit("No help topic for 'x'", 3), "-o", "json", "get", "pod")
-	assert.Equal(t, 1, code)
-	var env struct {
-		Data struct {
-			Error struct {
-				Code    string `json:"code"`
-				Message string `json:"message"`
-			} `json:"error"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(stderr), &env))
-	assert.Equal(t, "GENERIC", env.Data.Error.Code)
-	assert.Equal(t, "No help topic for 'x'", env.Data.Error.Message)
-}
-
-// TestRenderedErrorReachesMainWithEmptyMessage asserts the premise that
-// keeps ReportRunError from printing twice: a command failure the pipeline has
-// already rendered to stderr returns from Run with an empty message.
+// TestRenderedErrorReachesMainWithEmptyMessage asserts that a command
+// failure the pipeline has already rendered to stderr is not rendered
+// again: Run returns its exit code and the error text reaches stderr once.
 func TestRenderedErrorReachesMainWithEmptyMessage(t *testing.T) {
-	t.Parallel()
+	t.Cleanup(func() { cli.CaptureArgv(nil) })
 	root, err := cli.BuildRoot("v-test")
 	require.NoError(t, err)
 	var out, errOut bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &errOut
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 
-	runErr := root.Run(t.Context(), []string{"rancher", "get", "pod", "--no-such-flag"})
-	require.Error(t, runErr)
-	assert.Contains(t, errOut.String(), "no-such-flag")
-	assert.Empty(t, runErr.Error(), "a rendered error must carry no message")
-	var w bytes.Buffer
-	root.ErrWriter = &w
-	assert.Equal(t, 2, cli.ReportRunError(root, runErr))
-	assert.Empty(t, w.String())
+	code := cli.Run(t.Context(), root, []string{"rancher", "get", "pod", "--no-such-flag"})
+	assert.Equal(t, 2, code)
+	assert.Equal(t, 1, strings.Count(errOut.String(), "no-such-flag"), "stderr:\n%s", errOut.String())
+	assert.NotContains(t, errOut.String(), "error (GENERIC)")
 }
 
-type exitSignal struct{ code int }
-
 // runAsMain runs argv the way main does and returns everything written to
-// stderr. A call to urfave's exit function ends the run with a panic that
-// is recovered here, standing in for the process exiting: nothing after it
-// (including the backstop) runs, as in a real process.
-func runAsMain(t *testing.T, argv ...string) string {
+// stderr and the exit code Run returned.
+func runAsMain(t *testing.T, argv ...string) (string, int) {
 	t.Helper()
 	root, err := cli.BuildRoot("v-test")
 	require.NoError(t, err)
 	var stderr bytes.Buffer
 	root.Writer = &bytes.Buffer{}
 	root.ErrWriter = &stderr
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				if _, ok := r.(exitSignal); !ok {
-					panic(r)
-				}
-			}
-		}()
-		if runErr := cli.Run(t.Context(), root, append([]string{"rancher"}, argv...)); runErr != nil {
-			cli.ReportRunError(root, runErr)
-		}
-	}()
-	return stderr.String()
+	code := cli.Run(t.Context(), root, append([]string{"rancher"}, argv...))
+	return stderr.String(), code
 }
 
 // TestFailingInvocationsWriteTheirErrorOnce asserts that for each failing
 // invocation the error text reaches stderr exactly once, counting what
-// urfave writes, what the command pipeline renders and what main's
-// backstop writes. Not parallel: it replaces urfave's exit function and
-// error writer.
+// urfave writes, what the command pipeline renders and what Run writes for
+// an error nothing rendered. Not parallel: it replaces urfave's error
+// writer.
 func TestFailingInvocationsWriteTheirErrorOnce(t *testing.T) {
-	origExiter, origWriter := ucli.OsExiter, ucli.ErrWriter
+	origWriter := ucli.ErrWriter
 	t.Cleanup(func() {
-		ucli.OsExiter, ucli.ErrWriter = origExiter, origWriter
+		ucli.ErrWriter = origWriter
 		cli.CaptureArgv(nil)
 	})
-	ucli.OsExiter = func(code int) { panic(exitSignal{code}) }
 
 	const flagErr = "flag provided but not defined"
 	tests := []struct {
@@ -153,10 +80,16 @@ func TestFailingInvocationsWriteTheirErrorOnce(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stderr bytes.Buffer
 			ucli.ErrWriter = &stderr
-			got := runAsMain(t, tt.argv...) + stderr.String()
+			runErr, code := runAsMain(t, tt.argv...)
+			got := runErr + stderr.String()
+			wantCode := 2
+			if tt.want == 0 {
+				wantCode = 0
+			}
+			assert.Equal(t, wantCode, code)
 			assert.Equal(t, tt.want, strings.Count(got, tt.needle), "stderr:\n%s", got)
 			assert.NotContains(t, got, "Incorrect Usage")
-			assert.NotContains(t, got, "error (GENERIC)", "nothing reaches the exit path backstop")
+			assert.NotContains(t, got, "error (GENERIC)", "nothing reaches Run's rendering of an unrendered error")
 		})
 	}
 }

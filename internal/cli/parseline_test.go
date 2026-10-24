@@ -478,15 +478,14 @@ func allCommands(root *ucli.Command, path []string) (out []struct {
 // lines run on a new root through root.Run directly, with the actions and
 // hooks of every command replaced by recorders, so what urfave does with
 // the line is not changed by the checks of the entry point. Not parallel:
-// it replaces urfave's exit function, help and version printers, and sets
+// it replaces urfave's help and version printers, and sets
 // the process environment and the captured command line.
 func TestParseLineAgreesWithUrfave(t *testing.T) {
 	restoreRawArgv(t)
 	t.Setenv(config.EnvConfigDir, "")
 	require.NoError(t, os.Unsetenv(config.EnvConfigDir))
-	origExiter, origHelp, origVersion := ucli.OsExiter, ucli.HelpPrinter, ucli.VersionPrinter
-	t.Cleanup(func() { ucli.OsExiter, ucli.HelpPrinter, ucli.VersionPrinter = origExiter, origHelp, origVersion })
-	ucli.OsExiter = func(int) {}
+	origHelp, origVersion := ucli.HelpPrinter, ucli.VersionPrinter
+	t.Cleanup(func() { ucli.HelpPrinter, ucli.VersionPrinter = origHelp, origVersion })
 	ucli.HelpPrinter = func(w io.Writer, _ string, data any) {
 		if c, ok := data.(*ucli.Command); ok {
 			_, _ = fmt.Fprintf(w, "help %s\n", c.FullName())

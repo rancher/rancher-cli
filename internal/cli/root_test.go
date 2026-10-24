@@ -941,10 +941,6 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
 	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
-	origExiter := ucli.OsExiter
-	var gotCode int
-	ucli.OsExiter = func(code int) { gotCode = code }
-	defer func() { ucli.OsExiter = origExiter }()
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -954,17 +950,17 @@ func TestUnknownCommandIsValidationNotExitThree(t *testing.T) {
 
 	CaptureArgv([]string{"-o", "json", "bogus-command-xyz"})
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "bogus-command-xyz"}))
-	assert.Equal(t, 2, gotCode)
+	assert.Equal(t, 2, exitCodeOf(root, nil))
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))
 	assert.Equal(t, "VALIDATION", env.Data.Error.Code)
 	assert.Contains(t, env.Data.Error.Message, "bogus-command-xyz")
 
-	gotCode, errOut = 0, bytes.Buffer{}
+	errOut = bytes.Buffer{}
 	root.ErrWriter = &errOut
 	CaptureArgv([]string{"-o", "json", "get", "bogus-kind-xyz"})
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "-o", "json", "get", "bogus-kind-xyz"}))
-	assert.Equal(t, 2, gotCode)
+	assert.Equal(t, 2, exitCodeOf(root, nil))
 	var env2 errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env2))
 	assert.Equal(t, "VALIDATION", env2.Data.Error.Code)
@@ -978,9 +974,6 @@ func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
 	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
-	origExiter := ucli.OsExiter
-	ucli.OsExiter = func(int) {}
-	defer func() { ucli.OsExiter = origExiter }()
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -1003,9 +996,6 @@ func TestUnknownCommandRendersTextWithoutOutputFlag(t *testing.T) {
 func TestCommandNotFoundStyledWithColorAlways(t *testing.T) {
 	orig := rawArgv
 	t.Cleanup(func() { rawArgv = orig })
-	origExiter := ucli.OsExiter
-	ucli.OsExiter = func(int) {}
-	t.Cleanup(func() { ucli.OsExiter = origExiter })
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -1034,9 +1024,6 @@ func TestCommandNotFoundStyledWithColorAlways(t *testing.T) {
 func TestUsageErrorStyledWithColorAlways(t *testing.T) {
 	orig := rawArgv
 	t.Cleanup(func() { rawArgv = orig })
-	origExiter := ucli.OsExiter
-	ucli.OsExiter = func(int) {}
-	t.Cleanup(func() { ucli.OsExiter = origExiter })
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -1079,9 +1066,6 @@ func TestUnknownCommandRendersYAMLEnvelope(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
 	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
-	origExiter := ucli.OsExiter
-	ucli.OsExiter = func(int) {}
-	defer func() { ucli.OsExiter = origExiter }()
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -1103,9 +1087,6 @@ func TestUnknownVersionCommandHintsAtFlag(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
 	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
-	origExiter := ucli.OsExiter
-	ucli.OsExiter = func(int) {}
-	defer func() { ucli.OsExiter = origExiter }()
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -1139,9 +1120,6 @@ func TestDeleteClusterHintsAtProvisioningCluster(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
 	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
-	origExiter := ucli.OsExiter
-	ucli.OsExiter = func(int) {}
-	defer func() { ucli.OsExiter = origExiter }()
 
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
@@ -1428,7 +1406,7 @@ func TestCorruptConfigDoesNotBreakSchemaOrCompletionCallback(t *testing.T) {
 	assert.False(t, env.Data.ReadOnly, "a corrupt config must degrade to not-read-only, not fail schema")
 
 	out.Reset()
-	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, ""))
+	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, ""))
 	assert.NotEmpty(t, out.String(), "the completion callback must still emit candidates on a corrupt config, not fail")
 }
 
@@ -1444,7 +1422,7 @@ func TestGenerateShellCompletionListsTopLevelCommandNames(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir}, ""))
+	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir}, ""))
 	assert.Contains(t, out.String(), "get")
 	assert.Contains(t, out.String(), "auth")
 }
@@ -1464,10 +1442,6 @@ func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 	orig := rawArgv
 	origW, origP := rawCurrentWord, rawCompleting
 	t.Cleanup(func() { rawArgv = orig; rawCurrentWord = origW; rawCompleting = origP })
-	origExiter := ucli.OsExiter
-	var gotCode int
-	ucli.OsExiter = func(code int) { gotCode = code }
-	defer func() { ucli.OsExiter = origExiter }()
 
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
 	dir := t.TempDir()
@@ -1479,7 +1453,7 @@ func TestHiddenCompletionCommandEmitsNoScriptMarkers(t *testing.T) {
 
 	CaptureArgv([]string{"--config", dir, "-o", "json", "__completion", "bash"})
 	require.NoError(t, root.Run(t.Context(), []string{"rancher", "--config", dir, "-o", "json", "__completion", "bash"}))
-	assert.Equal(t, 2, gotCode, "an unmatched subcommand name is VALIDATION, exit 2, not urfave's own exit 3")
+	assert.Equal(t, 2, exitCodeOf(root, nil), "an unmatched subcommand name is VALIDATION, exit 2, not urfave's own exit 3")
 
 	var env errEnvelope
 	require.NoError(t, json.Unmarshal(errOut.Bytes(), &env))

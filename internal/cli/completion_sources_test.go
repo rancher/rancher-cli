@@ -20,7 +20,7 @@ func TestGetGroupCompletionListsAliases(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, ""))
+	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, ""))
 	assert.Contains(t, out.String(), "pod:")
 	assert.Contains(t, out.String(), "pods:")
 	assert.Contains(t, out.String(), "po:")
@@ -39,7 +39,7 @@ func TestGetGroupCompletionFlagBranchPreserved(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, "--dr"))
+	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir, "get"}, "--dr"))
 	assert.Contains(t, out.String(), "--dry-run")
 	assert.NotContains(t, out.String(), "pod:", "a flag-prefixed current word must not fall through to alias listing")
 }
@@ -68,7 +68,7 @@ func TestInspectGroupCompletionListsAliases(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "inspect"}, ""))
+	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir, "inspect"}, ""))
 	assert.Contains(t, out.String(), "pod:")
 	assert.Contains(t, out.String(), "po:")
 	assert.Contains(t, out.String(), "deploy:")

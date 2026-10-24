@@ -70,7 +70,6 @@ func TestALeafWithoutADescriptorIsAnInternalError(t *testing.T) {
 	var errOut bytes.Buffer
 	root := newRoot()
 	root.Writer, root.ErrWriter = &bytes.Buffer{}, &errOut
-	err := Run(t.Context(), root, []string{"rancher", "bare"})
-	assert.Equal(t, 1, exitCodeOf(err))
+	assert.Equal(t, 1, runMain(t, root, "bare"))
 	assert.Contains(t, errOut.String(), "rancher bare has no command descriptor")
 }

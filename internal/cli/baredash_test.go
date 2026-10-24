@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"os"
 	"regexp"
@@ -16,7 +15,6 @@ import (
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ucli "github.com/urfave/cli/v3"
 	"sigs.k8s.io/yaml"
 )
 
@@ -122,7 +120,6 @@ func TestEveryLeafRefusesWordsAfterABareDash(t *testing.T) {
 // captured command line.
 func TestWordsAfterABareDashAreRefused(t *testing.T) {
 	restoreRawArgv(t)
-	exited := stubExit(t)
 	rec := methodRecorderEnv(t)
 	dirs := emptyDirs(t)
 	create := []string{"create", "namespace", "--cluster", "local", "--apply", "-o", "json"}
@@ -154,13 +151,7 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
 			require.NoError(t, err)
-			*exited = 0
 			stderr, code := runAsMain(t, root, tc.argv)
-			if code == 0 {
-				// A line with no command name read exits through
-				// urfave's exit function.
-				code = *exited
-			}
 			assert.Equal(t, 2, code)
 			assert.Empty(t, rec.take(), "no request")
 			assertNoFiles(t, tc.name, dirs...)
@@ -184,11 +175,7 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
 			require.NoError(t, err)
-			*exited = 0
 			stderr, code := runAsMain(t, root, tc.argv)
-			if code == 0 {
-				code = *exited
-			}
 			assert.Equal(t, 2, code)
 			assert.Empty(t, rec.take(), "no request")
 			ce := renderedError(t, "json", stderr)
@@ -207,9 +194,8 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 		t.Run("an unknown command name "+tc.name+" ahead of the dash", func(t *testing.T) {
 			root, err := BuildRoot("v-test")
 			require.NoError(t, err)
-			*exited = 0
-			stderr, _ := runAsMain(t, root, tc.argv)
-			assert.Equal(t, 2, *exited)
+			stderr, code := runAsMain(t, root, tc.argv)
+			assert.Equal(t, 2, code)
 			assert.Empty(t, rec.take(), "no request")
 			ce := renderedError(t, "json", stderr)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
@@ -223,10 +209,9 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 // group of the built tree, given a bare "-", a word and -o json, refuse the
 // words after the "-" with VALIDATION at exit 2, naming them as typed, in
 // the JSON the line selects, with no request. Not parallel: it sets the
-// process environment, the exit function and the captured command line.
+// process environment and the captured command line.
 func TestEveryGroupRefusesWordsAfterABareDash(t *testing.T) {
 	restoreRawArgv(t)
-	exited := stubExit(t)
 	rec := methodRecorderEnv(t)
 	dirs := emptyDirs(t)
 	tree, err := BuildRoot("v-test")
@@ -242,11 +227,7 @@ func TestEveryGroupRefusesWordsAfterABareDash(t *testing.T) {
 			root, err := BuildRoot("v-test")
 			require.NoError(t, err)
 			argv := append(slices.Clone(path), "-", "word", "-o", "json")
-			*exited = 0
 			stderr, code := runAsMain(t, root, argv)
-			if code == 0 {
-				code = *exited
-			}
 			assert.Equal(t, 2, code)
 			assert.Empty(t, rec.take(), "no request")
 			assertNoFiles(t, name, dirs...)
@@ -292,11 +273,10 @@ func TestBareDashLinesTheRuleLeavesAlone(t *testing.T) {
 		t.Helper()
 		root, err := BuildRoot("v-test")
 		require.NoError(t, err)
-		root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 		var out, errOut bytes.Buffer
 		root.Writer, root.ErrWriter, root.Reader = &out, &errOut, strings.NewReader(stdin)
-		err = Run(t.Context(), root, append([]string{"rancher"}, argv...))
-		return errOut.String(), exitCodeOf(err), rec.take()
+		code := runMain(t, root, argv...)
+		return errOut.String(), code, rec.take()
 	}
 	const manifest = "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: ns1\n"
 	const dryRun = "POST /k8s/clusters/local/api/v1/namespaces?dryRun=All&fieldManager=cli.rancher.io"
@@ -374,7 +354,6 @@ func TestScanTailStopsAtABareDash(t *testing.T) {
 // environment and the captured command line.
 func TestBareDashCompletesNothing(t *testing.T) {
 	restoreRawArgv(t)
-	stubExit(t)
 	rec := extraArgsEnv(t)
 	cfg := &config.Config{
 		CurrentServer: "srv",
@@ -429,7 +408,6 @@ func TestBareDashCompletesNothing(t *testing.T) {
 // it sets the process environment and the captured command line.
 func TestWordsAfterABareDashRenderInTheColorTyped(t *testing.T) {
 	restoreRawArgv(t)
-	exited := stubExit(t)
 	rec := methodRecorderEnv(t)
 	for _, tc := range []struct {
 		name   string
@@ -446,13 +424,7 @@ func TestWordsAfterABareDashRenderInTheColorTyped(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
 			require.NoError(t, err)
-			*exited = 0
 			stderr, code := runAsMain(t, root, tc.argv)
-			if code == 0 {
-				// A line with no command name read exits through
-				// urfave's exit function.
-				code = *exited
-			}
 			assert.Equal(t, 2, code)
 			assert.Empty(t, rec.take(), "no request")
 			assert.Equal(t, tc.styled, strings.Contains(stderr, "\x1b["), "styled: %q", stderr)

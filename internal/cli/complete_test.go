@@ -361,7 +361,7 @@ func TestSchemaPositionalCompletionSurfaces(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "schema"}, ""))
+	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir, "schema"}, ""))
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 	require.NotEmpty(t, lines)
 

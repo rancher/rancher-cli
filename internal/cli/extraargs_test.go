@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -113,13 +112,12 @@ func runOnce(t *testing.T, root *ucli.Command, argv []string) (stderr string, co
 // runCaptured is runOnce that also returns stdout.
 func runCaptured(t *testing.T, root *ucli.Command, argv []string) (stdout, stderr string, code int) {
 	t.Helper()
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var out, errOut bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &errOut
 	root.Reader = strings.NewReader("")
-	err := Run(t.Context(), root, append([]string{"rancher"}, argv...))
-	return out.String(), errOut.String(), exitCodeOf(err)
+	code = runMain(t, root, argv...)
+	return out.String(), errOut.String(), code
 }
 
 // argValues returns a value for each positional argument args declares:
@@ -452,7 +450,6 @@ func TestJoinedFormHintRunsVerbatim(t *testing.T) {
 // sets the process environment and the captured command line.
 func TestEveryLeafCompletesNothingPastItsArguments(t *testing.T) {
 	restoreRawArgv(t)
-	stubExit(t)
 	rec := extraArgsEnv(t)
 	cfg := &config.Config{
 		CurrentServer: "srv",
@@ -507,7 +504,6 @@ func TestEveryLeafCompletesNothingPastItsArguments(t *testing.T) {
 // the captured command line.
 func TestSchemaSecondWordCompletesThroughTheBuiltRoot(t *testing.T) {
 	restoreRawArgv(t)
-	stubExit(t)
 	extraArgsEnv(t)
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)
@@ -545,7 +541,6 @@ func TestSchemaSecondWordCompletesThroughTheBuiltRoot(t *testing.T) {
 // command line.
 func TestSchemaKindCompletesKindsOnly(t *testing.T) {
 	restoreRawArgv(t)
-	stubExit(t)
 	extraArgsEnv(t)
 	wr, err := buildWiredRegistry("v-test", config.ReadOnlyOverride)
 	require.NoError(t, err)

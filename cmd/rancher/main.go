@@ -28,8 +28,8 @@ func main() {
 		os.Exit(1)
 	}
 	ctx, stop := cli.InterruptContext(context.Background(), os.Exit)
-	defer stop()
-	if err := cli.Run(ctx, root, os.Args); err != nil {
-		os.Exit(cli.ReportRunError(root, err))
-	}
+	code := cli.Run(ctx, root, os.Args)
+	// os.Exit skips deferred calls, so stop is called here.
+	stop()
+	os.Exit(code)
 }

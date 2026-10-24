@@ -85,10 +85,6 @@ func TestSkillStatusRunsWithInvalidConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(badCfg, []byte("dummy"), 0o600))
 	t.Setenv(config.EnvConfigDir, badCfg)
 
-	orig := ucli.OsExiter
-	ucli.OsExiter = func(int) {}
-	defer func() { ucli.OsExiter = orig }()
-
 	root, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	var out bytes.Buffer

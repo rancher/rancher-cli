@@ -41,7 +41,7 @@ what drifted the previous revision of this doc).
 
 | Package | Responsibility |
 |---|---|
-| `cmd/rancher` | Process entrypoint: install the embedded skill source, build the root command, run it, honor the adapter's exit code. |
+| `cmd/rancher` | Process entrypoint: install the embedded skill source, build the root command, run it with `cli.Run`, and exit with the code it returns. Two other exits stay in `main`: the failure to build the command tree, and the forced exit on a second interrupt, passed to `cli.InterruptContext`. A source scan over `internal/`, `credhelper/`, `skills/` and `cmd/rancher` refuses the calls that end the process (`os.Exit`, `log.Fatal` and the like) outside those exits and the credential helper's serve mode. |
 | `cmd/rancher-credential-vault` | The Vault credential helper binary over `credhelper`. |
 | `skills` | The agent skills this repository maintains, embedded as a tree (`go:embed` cannot climb out of its package directory) and read by `cmd/rancher`. |
 | `internal/cli` | urfave/cli/v3 surface: declarative entry table, per-invocation cluster-client factory, adapts commands into the runtime pipeline; owns the `completion` command and its embedded shell scripts (`internal/cli/completions`). |
@@ -581,8 +581,9 @@ MCP identity.
 - Management + Namespaced, addressing a resource *by name* → `--cluster` required.
 - Downstream + Namespaced, by name → `--namespace` required (`--cluster` is also
   required; omitting it is a `VALIDATION` error).
-- Nameless *list* requests may omit both. `delete` marks the required flags at the
-  urfave layer, so they fail with `VALIDATION` before Plan runs.
+- Nameless *list* requests may omit both. Required flags are checked by
+  `runtime.validateInput` inside `runtime.Run`, before Plan runs, and refused as
+  `VALIDATION`; urfave sees no required flag.
 
 **Binding ownership - one source per op.** The kind table owns bindings for the
 *generated* generic ops (`get <kind>` for every kind, `delete <kind>` for deletable

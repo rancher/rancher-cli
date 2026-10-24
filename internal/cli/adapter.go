@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -404,9 +403,11 @@ func renderDepsError(c *ucli.Command, io runtime.IO, err error) error {
 	return exit(ce)
 }
 
-// exit converts a structured error into a urfave exit with the right code.
+// exit ends a run with ce's exit code. The returned error has no message,
+// because the caller has rendered ce already, and it names ce so that run
+// can report which error ended the run.
 func exit(ce *clierr.Error) error {
-	return ucli.Exit("", ce.ExitCode())
+	return &exitError{ce: ce}
 }
 
 // hintEntry pairs a matcher with the extra MESSAGE-body detail it selects
@@ -619,17 +620,18 @@ func usageErrorGuidance(c *ucli.Command, err error) (detail, hint string) {
 // urfave's own DefaultShowCommandHelp hard-codes a plain-text "No help topic
 // for '<name>'" on stderr and exits 3 - indistinguishable from the AUTH exit
 // code documented for exit 3, and with no structured error for a script to
-// parse. CommandNotFoundFunc has no error return, so rendering and the
-// process exit both happen here directly, mirroring how urfave's own
-// ShowRootCommandHelpAndExit calls OsExiter. No flag has parsed successfully
-// yet at this point, so the rendering format comes from a raw-argv scan
-// (scanOutputFormat), not a parsed --output value.
+// parse. CommandNotFoundFunc has no error return, so the error is rendered
+// here and recorded on the root for Run to read (see reportUnknownCommand);
+// the command carries on and urfave returns nil. No flag has parsed
+// successfully yet at this point, so the rendering format comes from a
+// raw-argv scan (scanOutputFormat), not a parsed --output value.
 func commandNotFound(_ context.Context, c *ucli.Command, name string) {
 	reportUnknownCommand(c, name, c.Args().Tail())
 }
 
 // reportUnknownCommand renders the unknown-command error for name under c
-// and exits. after is the words typed after name (see notFoundInput).
+// and records it on the root, where Run reads it once urfave returns. after
+// is the words typed after name (see notFoundInput).
 func reportUnknownCommand(c *ucli.Command, name string, after []string) {
 	msg := fmt.Sprintf("unknown command %q", name)
 	detail, hint := notFoundGuidance(c, name, after)
@@ -638,7 +640,7 @@ func reportUnknownCommand(c *ucli.Command, name string, after []string) {
 	}
 	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
 	renderRawArgvError(c, ce)
-	ucli.OsExiter(ce.ExitCode())
+	recordUnknownCommand(c, ce)
 }
 
 // renderRawArgvError writes ce to the root's error writer in the format and
@@ -647,34 +649,6 @@ func reportUnknownCommand(c *ucli.Command, name string, after []string) {
 // failure) or that no command rendered (an error urfave returns itself).
 func renderRawArgvError(c *ucli.Command, ce *clierr.Error) {
 	_ = runtime.RenderErrorStyled(c.Root().ErrWriter, scanOutputFormat(rawArgv), ce, errStyle(c, scanColorFlag(rawArgv)))
-}
-
-// ReportRunError handles an error Run returned to the process entry point
-// and returns the process exit code. It renders an error only when nothing
-// else has:
-//   - An error the command pipeline rendered comes back from Run with an
-//     empty message; it keeps its exit code.
-//   - urfave writes an error's text itself in two ways. "Incorrect Usage"
-//     is written only by a command with no OnUsageError handler, and every
-//     command has one (the command tree test asserts it). An error passed
-//     to its exit handler is written and then followed by an immediate
-//     process exit, so it never returns here.
-//
-// A non-empty message that does return was therefore written by nobody. It
-// is rendered as a GENERIC error in the requested output format, and its
-// exit code is GENERIC's: a code urfave chose (its help error uses 3, the
-// AUTH code) must not reach the caller. An error with no message that is
-// not an exit code exits 1.
-func ReportRunError(root *ucli.Command, err error) int {
-	if msg := err.Error(); msg != "" {
-		ce := clierr.New(clierr.CodeGeneric, msg)
-		renderRawArgvError(root, ce)
-		return ce.ExitCode()
-	}
-	if ec, ok := errors.AsType[ucli.ExitCoder](err); ok {
-		return ec.ExitCode()
-	}
-	return clierr.ExitCode(clierr.CodeGeneric)
 }
 
 // onUsageError is urfave/cli's seam for a flag-parse failure (unknown flag,

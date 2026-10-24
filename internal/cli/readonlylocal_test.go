@@ -36,7 +36,7 @@ func runBounded(t *testing.T, root *ucli.Command, argv []string) (stdout, stderr
 	root.Reader = strings.NewReader("")
 	CaptureArgv(argv)
 	err := root.Run(ctx, append([]string{"rancher"}, argv...))
-	return out.String(), errOut.String(), exitCodeOf(err)
+	return out.String(), errOut.String(), exitCodeOf(root, err)
 }
 
 // localCommands returns every command of the built tree whose command type
@@ -311,7 +311,7 @@ func TestCompletionWithReadOnlyOnTheLineIsUnchanged(t *testing.T) {
 			var out, errOut bytes.Buffer
 			root.Writer = &out
 			root.ErrWriter = &errOut
-			require.NoError(t, runCompletionRequest(t, root, typed, ""))
+			require.Zero(t, runCompletionRequest(t, root, typed, ""))
 			assert.Equal(t, "bash\nfish\npwsh\nzsh\n", out.String())
 			assert.Empty(t, errOut.String())
 		})

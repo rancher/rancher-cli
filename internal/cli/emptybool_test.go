@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -173,13 +172,12 @@ func methodRecorderEnv(t *testing.T) *methodRecorder {
 // stderr and the exit code. root must be one no earlier run has used.
 func runAsMain(t *testing.T, root *ucli.Command, argv []string) (stderr string, code int) {
 	t.Helper()
-	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var out, errOut bytes.Buffer
 	root.Writer = &out
 	root.ErrWriter = &errOut
 	root.Reader = strings.NewReader("")
-	err := Run(t.Context(), root, append([]string{"rancher"}, argv...))
-	return errOut.String(), exitCodeOf(err)
+	code = runMain(t, root, argv...)
+	return errOut.String(), code
 }
 
 // TestEmptyBoolValueIsRefused asserts the refusal of a bool flag typed with
@@ -378,7 +376,6 @@ func TestIsEmptyBool(t *testing.T) {
 // process environment and the captured command line.
 func TestEmptyBoolValueCompletesNothing(t *testing.T) {
 	restoreRawArgv(t)
-	stubExit(t)
 	rec := extraArgsEnv(t)
 	cfg := &config.Config{
 		CurrentServer: "srv",

@@ -79,11 +79,7 @@ func runInTree(t *testing.T, words []string) (ran, configDir string) {
 	root.ExitErrHandler = func(context.Context, *ucli.Command, error) {}
 	var stderr bytes.Buffer
 	root.ErrWriter = &stderr
-	// An unknown command exits the process through OsExiter; report it
-	// as this command's failure instead.
-	origExiter := ucli.OsExiter
-	ucli.OsExiter = func(code int) { t.Fatalf("%v exited %d: %s", words, code, stderr.String()) }
-	t.Cleanup(func() { ucli.OsExiter = origExiter })
+	t.Cleanup(func() { cli.CaptureArgv(nil) })
 	var record func(cmds []*ucli.Command, prefix string)
 	record = func(cmds []*ucli.Command, prefix string) {
 		for _, c := range cmds {
@@ -99,7 +95,10 @@ func runInTree(t *testing.T, words []string) (ran, configDir string) {
 		}
 	}
 	record(root.Commands, "")
-	require.NoError(t, root.Run(t.Context(), words), "stderr: %s", stderr.String())
+	// words start with the program name. An unknown command is reported
+	// through the exit code, with no error.
+	code := cli.Run(t.Context(), root, words)
+	require.Zero(t, code, "%v exited %d: %s", words, code, stderr.String())
 	require.Empty(t, stderr.String())
 	return ran, configDir
 }

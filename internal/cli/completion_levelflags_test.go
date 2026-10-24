@@ -93,10 +93,7 @@ func completionLevels(t *testing.T) (root *ucli.Command, groups, leaves [][]stri
 // each group. NOT parallel: mutates rawArgv and env.
 func TestCompletionRejectedAndAcceptedLinesAtEveryLevel(t *testing.T) {
 	completionServer(t, false)
-	// A word that names no command reaches urfave's exit function.
-	origExiter := ucli.OsExiter
-	ucli.OsExiter = func(int) {}
-	t.Cleanup(func() { ucli.OsExiter = origExiter })
+	// A word that names no command is recorded as an unknown command.
 	root, groups, leaves := completionLevels(t)
 	require.NotEmpty(t, groups)
 	require.NotEmpty(t, leaves)

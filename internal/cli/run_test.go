@@ -30,8 +30,7 @@ func TestRunRefusesALineBeforeUrfaveSetsTheWriters(t *testing.T) {
 	require.Nil(t, root.Writer)
 	require.Nil(t, root.ErrWriter)
 
-	err = Run(t.Context(), root, []string{"rancher", "get", "pods", "-", "x", "-o", "json"})
-	assert.Equal(t, 2, exitCodeOf(err))
+	assert.Equal(t, 2, runMain(t, root, "get", "pods", "-", "x", "-o", "json"))
 	ce := renderedError(t, "json", errOut.String())
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
 	assert.Equal(t, bareDashMessage(0, "x", "-o", "json"), ce.Message)
@@ -39,7 +38,7 @@ func TestRunRefusesALineBeforeUrfaveSetsTheWriters(t *testing.T) {
 
 // TestRunWithNoArgumentsRunsTheRootUnchanged asserts that Run called with a
 // nil or an empty argument list, with no program name to check, does what
-// root.Run does with it: the same error and the same output.
+// root.Run does with it: the same exit code and the same output.
 func TestRunWithNoArgumentsRunsTheRootUnchanged(t *testing.T) {
 	restoreRawArgv(t)
 	for name, args := range map[string][]string{"nil": nil, "empty": {}} {
@@ -52,7 +51,7 @@ func TestRunWithNoArgumentsRunsTheRootUnchanged(t *testing.T) {
 			require.NoError(t, err)
 			want.Writer, want.ErrWriter = &wantOut, &wantErr
 
-			assert.Equal(t, want.Run(t.Context(), args), Run(t.Context(), got, args))
+			assert.Equal(t, exitCodeOf(want, want.Run(t.Context(), args)), Run(t.Context(), got, args))
 			assert.Equal(t, wantOut.String(), gotOut.String())
 			assert.Equal(t, wantErr.String(), gotErr.String())
 		})
@@ -64,10 +63,9 @@ func TestRunWithNoArgumentsRunsTheRootUnchanged(t *testing.T) {
 // and an empty value, or a bool value as its own word, is not refused by
 // Run: nothing is written to stderr, and completion offers nothing, as it
 // does on a line that is refused when it runs. Not parallel: it sets the
-// process environment, the exit function and the captured command line.
+// process environment and the captured command line.
 func TestRunLeavesACompletionRequestToCompletion(t *testing.T) {
 	extraArgsEnv(t)
-	stubExit(t)
 	for _, typed := range [][]string{
 		{"get", "pods", "-", "x"},
 		{"get", "pods", "--yes="},
@@ -79,7 +77,7 @@ func TestRunLeavesACompletionRequestToCompletion(t *testing.T) {
 		var out, errOut bytes.Buffer
 		root.Writer, root.ErrWriter = &out, &errOut
 		label := "rancher " + strings.Join(typed, " ") + " <TAB>"
-		require.NoError(t, runCompletionRequest(t, root, typed, ""), label)
+		require.Zero(t, runCompletionRequest(t, root, typed, ""), label)
 		assert.Empty(t, errOut.String(), "%s: stderr", label)
 		assert.Empty(t, out.String(), "%s: candidates", label)
 	}

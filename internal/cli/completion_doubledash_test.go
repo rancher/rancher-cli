@@ -153,7 +153,7 @@ func listDir(t *testing.T, dir string) []string {
 }
 
 // buildRoot builds the command tree. A command that runs ends with an error
-// the assertions print, never with the process exit urfave makes by default.
+// the assertions print.
 func buildRoot(t *testing.T) *ucli.Command {
 	t.Helper()
 	root, err := cli.BuildRoot("test")

@@ -83,6 +83,6 @@ func TestCompletionSelfCompletesShellArgument(t *testing.T) {
 	var out bytes.Buffer
 	root.Writer = &out
 
-	require.NoError(t, runCompletionRequest(t, root, []string{"--config", dir, "completion"}, ""))
+	require.Zero(t, runCompletionRequest(t, root, []string{"--config", dir, "completion"}, ""))
 	assert.Equal(t, "bash\nfish\npwsh\nzsh\n", out.String())
 }
