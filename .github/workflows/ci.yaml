@@ -184,8 +184,9 @@ jobs:
       # The usage event store and the file access list code: the access
       # list a new telemetry file inherits, the rename and removal rules
       # NTFS applies to files other handles hold open, and the committed
-      # contract files read from a Windows checkout.
-      - run: go test -race -count=1 ./internal/telemetry/ ./internal/fsacl/
+      # contract files read from a Windows checkout. The telemetry commands
+      # list and delete that store, so their tests run here too.
+      - run: go test -race -count=1 ./internal/telemetry/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
       # The rename, removal and read retry tests log what Windows
       # returns: errors by errno with the retry off, and what plain reads
       # hit while a file is replaced. -v prints those lines when the

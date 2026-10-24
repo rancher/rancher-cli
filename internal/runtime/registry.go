@@ -140,6 +140,7 @@ func EnvVars() []EnvVar {
 		{Name: "RANCHER_CLI_OAUTH_CALLBACK_PORT", Desc: "local callback port for the authcode OAuth flow"},
 		{Name: "CATTLE_OAUTH_AUTH_FLOW", Flag: "--auth-flow", Desc: "legacy spelling honored after RANCHER_CLI_OAUTH_AUTH_FLOW"},
 		{Name: "CATTLE_OAUTH_CALLBACK_PORT", Desc: "legacy spelling honored after RANCHER_CLI_OAUTH_CALLBACK_PORT"},
+		{Name: "RANCHER_CLI_TELEMETRY", Desc: "true or false: turns usage recording on or off over the config key; empty counts as unset and any other value is ignored"},
 		{Name: "XDG_CONFIG_HOME", Desc: "base directory for the default config location"},
 		{Name: "VISUAL", Desc: "preferred editor for config edit"},
 		{Name: "EDITOR", Desc: "fallback editor for config edit"},
@@ -303,7 +304,10 @@ type Manifest struct {
 	GlobalFlags  []GlobalFlag      `json:"globalFlags"`
 	EnvVars      []EnvVar          `json:"envVars"`
 	EffectSchema EffectSchema      `json:"effectSchema"`
-	Commands     []SchemaCommand   `json:"commands"`
+	// Telemetry is the usage contract version and the controls that decide
+	// whether recording is on; fixed text, the same on every machine.
+	Telemetry TelemetryManifest `json:"telemetry"`
+	Commands  []SchemaCommand   `json:"commands"`
 	// Kinds is the kind vocabulary with its effective verb surface;
 	// Groups are the root's ordered sections. Both are set
 	// by BuildRoot via SetKinds/SetGroups; registries built without them
@@ -540,6 +544,7 @@ func (reg *Registry) Schema(cliVersion, minRancherVersion string) Manifest {
 		GlobalFlags:       GlobalFlags(),
 		EnvVars:           EnvVars(),
 		EffectSchema:      effectSchema(),
+		Telemetry:         telemetryManifest(),
 		ShellCompletion:   ShellCompletionShells(),
 		Kinds:             reg.kinds,
 		Groups:            reg.groups,

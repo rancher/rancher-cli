@@ -1,0 +1,53 @@
+# telemetry off writes the key first, then deletes the events, the server
+# facts and the config directory id. A variable that decides on does not stop
+# the deletes; the command warns.
+env RANCHER_CLI_TELEMETRY=
+
+mkdir $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102010
+mkdir $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102011
+mkdir $RANCHER_CLI_CONFIG_DIR/telemetry/servers
+cp event-1.json $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102010/0001.json
+cp event-2.json $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102011/0002.json
+cp facts.json $RANCHER_CLI_CONFIG_DIR/telemetry/servers/0123456789abcdef0123456789abcdef.json
+cp id.txt $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id
+exec rancher telemetry off -o json
+jsonquery stdout data.configKey false
+jsonquery stdout data.state off
+jsonquery stdout 'data.cleared.#' 3
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/events
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/servers
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id
+grep 'telemetry: "false"' $RANCHER_CLI_CONFIG_DIR/config.yaml
+exec rancher telemetry status -o json
+jsonquery stdout data.state off
+jsonquery stdout data.decidedBy config
+jsonquery stdout data.events 0
+! jsonquery stdout data.configDirectoryId 11111111-1111-4111-8111-111111111111
+
+# RANCHER_CLI_TELEMETRY=true keeps recording on, yet off still deletes and
+# warns that the variable decides.
+env RANCHER_CLI_TELEMETRY=true
+mkdir $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102010
+mkdir $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102011
+mkdir $RANCHER_CLI_CONFIG_DIR/telemetry/servers
+cp event-1.json $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102010/0001.json
+cp event-2.json $RANCHER_CLI_CONFIG_DIR/telemetry/events/2026102011/0002.json
+cp facts.json $RANCHER_CLI_CONFIG_DIR/telemetry/servers/0123456789abcdef0123456789abcdef.json
+cp id.txt $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id
+exec rancher telemetry off -o json
+jsonquery stdout data.state on
+jsonquery stdout data.decidedBy RANCHER_CLI_TELEMETRY
+jsonquery stdout 'warnings.#' 1
+jsonquery stdout 'warnings.0' 'recording stays on: RANCHER_CLI_TELEMETRY decides'
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/events
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/servers
+! exists $RANCHER_CLI_CONFIG_DIR/telemetry/config-directory-id
+
+-- event-1.json --
+{"event.name":"io.rancher.cli.command.run","time":"2026-10-20T10:00:00Z","schema_version":"1.0.0","log.record.uid":"00000000-0000-4000-8000-000000000001","io.rancher.cli.command":"get project","io.rancher.cli.command.outcome":"ok","process.exit.code":0}
+-- event-2.json --
+{"event.name":"io.rancher.cli.command.run","time":"2026-10-20T11:00:00Z","schema_version":"1.0.0","log.record.uid":"00000000-0000-4000-8000-000000000002","io.rancher.cli.command":"auth login","io.rancher.cli.command.outcome":"error","process.exit.code":1}
+-- facts.json --
+{"version":"2.15.2"}
+-- id.txt --
+11111111-1111-4111-8111-111111111111

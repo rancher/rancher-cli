@@ -265,6 +265,21 @@ func TestSubcommandCompletionConfigGroup(t *testing.T) {
 	assert.Contains(t, got, "set-completion")
 }
 
+// TestSubcommandCompletionTelemetryGroup: `telemetry <TAB>` (cur "") must
+// list the five telemetry commands. None takes a value, so nothing else
+// completes.
+func TestSubcommandCompletionTelemetryGroup(t *testing.T) {
+	// NOT parallel: mutates rawArgv/rawCurrentWord globals and env.
+	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+	dir := t.TempDir()
+	t.Setenv(config.EnvConfigDir, dir)
+
+	got := runNameLikeCompletion(t, []string{"telemetry"}, "")
+	for _, verb := range []string{"status", "on", "off", "reset", "show"} {
+		assert.Contains(t, got, verb)
+	}
+}
+
 // TestFlagNameCompletionFormatColonSeparated asserts the "name:usage" line format:
 // a flag with non-empty usage must be emitted as "token:usage" (colon-separated),
 // and a subcommand with non-empty usage must be emitted as "name:usage".

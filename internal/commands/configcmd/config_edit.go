@@ -15,6 +15,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/telemetry"
 )
 
 // configEditSkeleton seeds the temp buffer when no config file exists yet -
@@ -344,6 +345,17 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 		}
 		offenses = append(offenses, "tokenReuse changed (use: rancher config set-token-reuse "+state+")")
 	}
+	// Whether recording is on is judged by the effective value: only the
+	// exact text "false" turns it off, and an absent or invalid key leaves it
+	// on. An edit that changes it would skip the deletion that
+	// `telemetry off` performs, so it is refused.
+	if wasOff, nowOff := telemetryOff(before), telemetryOff(edited); wasOff != nowOff {
+		state := "on"
+		if nowOff {
+			state = "off"
+		}
+		offenses = append(offenses, "telemetry changed (use: rancher telemetry "+state+")")
+	}
 	// The binding stamp is how a cache reader tells a load that was
 	// overtaken from one that was not. Editing it by hand makes records
 	// from before a login look current again, which is the stale-credential
@@ -369,4 +381,9 @@ func checkEditRestrictions(baseline []byte, baselineExisted bool, edited *config
 		return nil
 	}
 	return clierr.New(clierr.CodeValidation, "config edit cannot change: "+strings.Join(offenses, "; "))
+}
+
+// telemetryOff reports whether the config turns recording off.
+func telemetryOff(c *config.Config) bool {
+	return telemetry.ConfigSettingOf(c.Telemetry) == telemetry.ConfigOff
 }

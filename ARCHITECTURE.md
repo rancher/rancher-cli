@@ -49,6 +49,7 @@ what drifted the previous revision of this doc).
 | `internal/commands/configcmd` | The `config` group: server entries (`add-server`, `update-server`, `delete-server`, `use-server`, `ls`), `path`, `info`, `edit`, `set-completion`, `set-token-reuse`. |
 | `internal/commands/register` | Server registration shared by `auth login` and `config add-server/update-server`: URL canonicalization, TLS preflight, CA selection, create and update under the config lock. |
 | `internal/commands/skill` | `skill install/uninstall/status` over `internal/skillinstall`. |
+| `internal/commands/telemetrycmd` | The `telemetry` group: `status`, `on`, `off`, `reset` and `show`, as local commands over `internal/telemetry` and the config file's `telemetry` key. They make no request, read no credential and import no client; a conformance test limits their direct imports and their use of `internal/config`. |
 | `internal/remedytest` | Test-only: the top-level commands that read a config directory, from the schema manifest golden, which the checks that every remedy command names the directory share. No production importer. |
 | `internal/testtransport` | Test-only: `GuardDefaultTransport`, which a test binary that starts httptest servers installs in `TestMain` so a request through `http.DefaultTransport` fails (an httptest server's `Close` closes that transport's idle connections, which breaks such a request in another test). A test sends requests through the server's own client instead. It also holds the helpers a test server uses to stand in for a server that never answers: they wait for the request's context to end, then abort the connection with no response, because a handler that returns sends an implicit 200 that a client whose cancellation lands in the same instant can read. No production importer; `internal/testrancher` imports it. |
 | `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness, an exec-plugin process and the harness that holds one mid-call while a command runs. No production importer. |
@@ -117,6 +118,7 @@ graph TD
     configcmd["internal/commands/configcmd"]
     register["internal/commands/register"]
     skill["internal/commands/skill"]
+    telemetrycmd["internal/commands/telemetrycmd"]
     cmdtest["internal/commands/cmdtest"]
     token["internal/token"]
     tokencomplete["internal/token/complete"]
@@ -179,6 +181,7 @@ graph TD
     cli --> auth
     cli --> configcmd
     cli --> skill
+    cli --> telemetrycmd
     cli --> kubeconfigengine
     cli --> completions
     cli --> token
@@ -234,6 +237,7 @@ graph TD
     runtime --> outputstyle
     runtime --> ui
     runtime --> clierr
+    runtime --> telemetry
 
     engine --> runtime
     engine --> safety
@@ -391,6 +395,7 @@ graph TD
     configcmd --> outputstyle
     configcmd --> runtime
     configcmd --> token
+    configcmd --> telemetry
     register --> credhelper
     register --> httpx
     register --> provider
@@ -400,6 +405,10 @@ graph TD
     skill --> clierr
     skill --> runtime
     skill --> skillinstall
+    telemetrycmd --> clierr
+    telemetrycmd --> config
+    telemetrycmd --> runtime
+    telemetrycmd --> telemetry
     cmdtest --> clierr
     cmdtest --> config
     cmdtest --> runtime
@@ -923,6 +932,11 @@ respective files via `flock` (released by the OS on process exit):
   its own process until the deadline. The other credential-mutating
   commands take it only while a change record is active or abandoned. A
   cold path only; no reader ever touches it.
+
+The files under `<dir>/telemetry` take no lock. `telemetry on` and `telemetry off` write
+the `telemetry` key of `config.yaml` under the config lock, as every other config
+writer does; `telemetry off` deletes the recorded files after that lock is
+released, and `telemetry reset` takes no lock.
 
 One ordering rule holds across all five: the config lock is always outermost, then
 the transition lock, then exactly one of `credstore-id.lock` or the helper-records

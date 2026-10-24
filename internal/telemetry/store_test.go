@@ -61,8 +61,7 @@ func TestRecordTouchesNothingWhileOff(t *testing.T) {
 		noDirectory bool
 	}{
 		{name: "test binary", testBinary: true},
-		{name: "do not track", opts: Options{Getenv: envOf(map[string]string{EnvDoNotTrack: "1"})}},
-		{name: "variable off", opts: Options{Getenv: envOf(map[string]string{EnvTelemetry: "off"})}},
+		{name: "variable false", opts: Options{Getenv: envOf(map[string]string{EnvTelemetry: "false"})}},
 		{name: "config off", opts: Options{Config: ConfigOff}},
 		{name: "config unreadable", opts: Options{Config: ConfigUnreadable}},
 		{name: "no configuration directory", noDirectory: true},
@@ -216,7 +215,7 @@ func TestSymlinkedTelemetryDirectoryIsRefused(t *testing.T) {
 	assert.Empty(t, readNames(t, outside))
 
 	_, err := OpenStore(dir)
-	require.ErrorIs(t, err, errUnsafeDir)
+	require.ErrorIs(t, err, ErrUnsafeDir)
 	assert.Empty(t, readNames(t, outside))
 }
 
@@ -384,17 +383,15 @@ func TestInjectedWriteFailuresReturnNoErrorAndPrintNothing(t *testing.T) {
 	assert.Empty(t, read(), "nothing is written to standard output or error")
 }
 
-// TestDoNotTrackDeletesNothing asserts a process that is off through a
+// TestVariableOffDeletesNothing asserts a process that is off through the
 // variable leaves every recorded event where it was.
-func TestDoNotTrackDeletesNothing(t *testing.T) {
+func TestVariableOffDeletesNothing(t *testing.T) {
 	enable(t)
 	useClock(t, fixedNoon)
 	dir := t.TempDir()
 	require.Equal(t, StatusRecorded, record(t, dir, runEvent(fixedNoon)))
 	before := listTree(t, dir)
-	for _, env := range []map[string]string{{EnvDoNotTrack: "1"}, {EnvTelemetry: "off"}} {
-		assert.Equal(t, StatusOff, Record(runEvent(fixedNoon), Options{ConfigDir: dir, DirExisted: true, Getenv: envOf(env)}))
-	}
+	assert.Equal(t, StatusOff, Record(runEvent(fixedNoon), Options{ConfigDir: dir, DirExisted: true, Getenv: envOf(map[string]string{EnvTelemetry: "false"})}))
 	assert.Equal(t, before, listTree(t, dir))
 }
 

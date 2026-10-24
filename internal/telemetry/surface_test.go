@@ -27,7 +27,7 @@ var realSurface = surfaceRules{
 	events: []string{"CommandRun", "EventsDropped"},
 	funcs: []string{
 		"NormalizeVersion", "NormalizeUUID", "NormalizeRandomID", "NormalizeOS", "NormalizeArch", "NormalizeCommand",
-		"NormalizeFlags", "NormalizeErrorType", "NormalizeAgent", "ParseConfigSetting",
+		"NormalizeFlags", "NormalizeErrorType", "NormalizeAgent", "ConfigSettingOf",
 		"NewCommandRun", "NewEventsDropped", "ClientTypeFor",
 		"FactsFileName", "SetServer", "OpenStore", "Record", "ContractFiles", "Resolve",
 		"AttributesOf", "SortedNames",

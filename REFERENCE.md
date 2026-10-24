@@ -20,6 +20,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Supported server version](#supported-server-version)
 - [Revoking the CLI's tokens](#revoking-the-clis-tokens)
 - [kubectl integration](#kubectl-integration)
+- [Usage recording](#usage-recording)
 - [TLS & proxy](#tls--proxy)
 - [What the CLI sends to the server](#what-the-cli-sends-to-the-server)
 
@@ -124,7 +125,9 @@ the edit put nothing in. Change it with the login above; no command
 removes a declaration, and a different `--config` starts a fresh
 directory. It also refuses a change of `tokenReuse`, which a cached
 kubectl credential is judged against: use `rancher config set-token-reuse
-on` or `off`.
+on` or `off`. An edit that changes whether usage recording is on is refused
+too, because only `rancher telemetry off` deletes what is recorded: use
+`rancher telemetry on` or `off`.
 
 A directory whose backend is the keychain reads only the keychain: on a
 headless machine (no D-Bus, locked keychain) every command fails with the
@@ -233,6 +236,7 @@ precedence is flag > environment > file.
 | `RANCHER_CLI_CONFIG_DIR` | config directory; `rancher kubeconfig` sets it, absolute, in every exec entry it writes |
 | `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
 | `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |
+| `RANCHER_CLI_TELEMETRY` | `true` or `false`; turns usage recording on or off over the `telemetry` config key, see [Usage recording](#usage-recording); empty counts as unset and any other value is ignored |
 | `RANCHER_CLI_CONFIG_NO_LOCK` | disables the config directory's cross-process write lock; escape hatch for filesystems with broken file locking |
 | `RANCHER_CLI_COMPLETION_DEBUG` | when non-empty, traces each phase of a shell completion request to stderr; stdout is unchanged |
 
@@ -1917,6 +1921,51 @@ login holds a per-server lock across the whole interactive wait. A
 concurrent kubectl blocked behind it waits up to 60 seconds and then fails
 with `LOCK_TIMEOUT` (exit 8), which is retryable: the message names the
 server being logged in to; retry once that login completes.
+
+## Usage recording
+
+`rancher telemetry` shows, turns on, turns off and deletes the usage data
+stored in `<config dir>/telemetry`. No recorded event leaves the machine, and
+the CLI has no upload code.
+
+| Command | What it does |
+|---|---|
+| `rancher telemetry status` | Shows whether recording is on and which control decided, the counts of recorded and dropped events, the contract version and the config directory id. Creates nothing and works while recording is off. |
+| `rancher telemetry on` | Writes `telemetry: "true"` to config.yaml. Creates the config directory when it is missing and deletes nothing. |
+| `rancher telemetry off` | Writes `telemetry: "false"`, then deletes the recorded events, the server facts and the config directory id. Creates the config directory when it is missing. |
+| `rancher telemetry reset` | Deletes the recorded events, the server facts and the config directory id, and keeps the setting. |
+| `rancher telemetry show` | Lists the recorded events, oldest first; `-o json` carries every stored field of each event. |
+
+None of them makes a request to a server or reads a credential.
+
+The config directory id is a random id stored for this config directory,
+shown by `rancher telemetry status`. The contract version is the version of
+the event format. The server facts are stored details about Rancher servers:
+version, edition and install id.
+
+Recording is on by default. The first of these controls that applies decides,
+in this order, and `rancher telemetry status` names it as `decidedBy`:
+
+1. `RANCHER_CLI_TELEMETRY`: `true` turns recording on and `false` turns it
+   off, whatever the key says. An empty value counts as unset. Any other
+   value is ignored: the key or the default decides, and the telemetry
+   commands warn.
+2. The `telemetry` key of config.yaml: `telemetry: true` turns recording on
+   and `telemetry: false` turns it off. The commands above write them, and
+   YAML's own boolean spellings (`on`, `off`, `yes`, `no`) load as `true` and
+   `false`. A missing key means the default. Any other value is ignored, the
+   default applies, and `telemetry status`, `show` and `reset` warn.
+3. The default: on.
+
+`rancher telemetry off` and `reset` delete what is recorded and keep
+config.yaml and the `pruned` marker in the telemetry directory.
+`RANCHER_CLI_TELEMETRY=false` turns recording off and deletes nothing.
+`RANCHER_CLI_TELEMETRY=true` turns it on whatever the key says, and
+`rancher telemetry off` still deletes what is recorded and warns that the
+variable keeps recording on.
+
+A config.yaml the CLI cannot load stops these commands like every config
+command: repair the file first, or choose another config directory.
 
 ## TLS & proxy
 

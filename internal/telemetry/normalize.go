@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/invocation"
@@ -16,15 +17,24 @@ const Other = "_OTHER"
 // maxVersionLen is the longest version text the version rule accepts.
 const maxVersionLen = 64
 
-var (
-	releaseVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta|rc)\.?[0-9]+)?$`)
-	hotfixVersionRe  = regexp.MustCompile(`^([0-9]+\.[0-9]+\.[0-9]+)-hotfix(?:-[A-Za-z0-9._-]+)?$`)
-	devVersionRe     = regexp.MustCompile(`^dev-[0-9a-f]{1,40}$`)
-	uuidRe           = regexp.MustCompile(uuidPattern)
-	randomIDRe       = regexp.MustCompile(randomIDPattern)
-	commandRe        = regexp.MustCompile(commandPattern)
-	flagRe           = regexp.MustCompile(flagPattern)
-)
+// patternSet holds the compiled regular expressions of the normalizers.
+type patternSet struct {
+	releaseVersion, hotfixVersion, devVersion, uuid, randomID, command, flag *regexp.Regexp
+}
+
+// patterns compiles the set on first use, so a process that never
+// normalizes a value pays nothing at start.
+var patterns = sync.OnceValue(func() *patternSet {
+	return &patternSet{
+		releaseVersion: regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta|rc)\.?[0-9]+)?$`),
+		hotfixVersion:  regexp.MustCompile(`^([0-9]+\.[0-9]+\.[0-9]+)-hotfix(?:-[A-Za-z0-9._-]+)?$`),
+		devVersion:     regexp.MustCompile(`^dev-[0-9a-f]{1,40}$`),
+		uuid:           regexp.MustCompile(uuidPattern),
+		randomID:       regexp.MustCompile(randomIDPattern),
+		command:        regexp.MustCompile(commandPattern),
+		flag:           regexp.MustCompile(flagPattern),
+	}
+})
 
 // NormalizeVersion applies the version rule to a version text: MAJOR.MINOR.PATCH
 // with a leading v removed, optionally followed by -alphaN, -betaN or -rcN
@@ -44,10 +54,10 @@ func NormalizeVersion(raw string) string {
 	switch {
 	case v == "dev", v == "dev-unknown", v == "unknown":
 		return v
-	case devVersionRe.MatchString(v), releaseVersionRe.MatchString(v):
+	case patterns().devVersion.MatchString(v), patterns().releaseVersion.MatchString(v):
 		return v
 	}
-	if m := hotfixVersionRe.FindStringSubmatch(v); m != nil {
+	if m := patterns().hotfixVersion.FindStringSubmatch(v); m != nil {
 		return m[1] + "-hotfix"
 	}
 	return Other
@@ -57,7 +67,7 @@ func NormalizeVersion(raw string) string {
 // returns it. Anything else, an uppercase or unhyphenated form included,
 // is rejected.
 func NormalizeUUID(s string) (string, bool) {
-	if !uuidRe.MatchString(s) {
+	if !patterns().uuid.MatchString(s) {
 		return "", false
 	}
 	return s, true
@@ -69,7 +79,7 @@ func NormalizeUUID(s string) (string, bool) {
 // each record id). A server's install id is not one of them; it goes
 // through NormalizeUUID.
 func NormalizeRandomID(s string) (string, bool) {
-	if !randomIDRe.MatchString(s) {
+	if !patterns().randomID.MatchString(s) {
 		return "", false
 	}
 	return s, true
@@ -139,7 +149,7 @@ func sortedValues(m map[string]string) []string {
 // to three words of lowercase letters, digits and hyphens, each starting
 // with a letter and at most 32 characters.
 func NormalizeCommand(name string) (string, bool) {
-	if !commandRe.MatchString(name) {
+	if !patterns().command.MatchString(name) {
 		return "", false
 	}
 	return name, true
@@ -151,7 +161,7 @@ func NormalizeCommand(name string) (string, bool) {
 func NormalizeFlags(names []string) []string {
 	out := make([]string, 0, len(names))
 	for _, n := range names {
-		if flagRe.MatchString(n) {
+		if patterns().flag.MatchString(n) {
 			out = append(out, n)
 		}
 	}

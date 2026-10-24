@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/commands/auth"
 	"github.com/rancher/rancher-cli/internal/commands/configcmd"
 	"github.com/rancher/rancher-cli/internal/commands/skill"
+	"github.com/rancher/rancher-cli/internal/commands/telemetrycmd"
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/engine"
 	"github.com/rancher/rancher-cli/internal/engine/access"
@@ -79,6 +80,11 @@ func buildEntries() []entry {
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewInstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewUninstall(d.version) }},
 		{group: "skill", bare: true, make: func(d runDeps) runtime.Command { return skill.NewStatus(d.version) }},
+		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewStatus(d.dir) }},
+		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewOn(d.dir) }},
+		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewOff(d.dir) }},
+		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewReset(d.dir) }},
+		{group: "telemetry", make: func(d runDeps) runtime.Command { return telemetrycmd.NewShow(d.dir) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreate(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateNamespace(d.clients) }},
 		{group: "create", make: func(d runDeps) runtime.Command { return projects.NewCreateSecret(d.clients) }},
@@ -424,6 +430,7 @@ var groupUsages = map[string]string{
 	"inspect":     "Inspect related resources together",
 	"project":     "Project namespace operations (membership is managed by 'rancher grant' and 'rancher revoke')",
 	"skill":       "Agents-skill installation for coding-agent harnesses",
+	"telemetry":   "Local usage recording: status, on, off, reset and show",
 	"oidc-client": "OIDC client secret lifecycle (create oidc-client creates the client itself)",
 	"cluster":     "Cluster scaling and autoscaling (lifecycle is 'create cluster' and 'delete provisioning-cluster')",
 	"access":      "Where a subject can go, which projects it can see into, and what it can do, as the server answers (never inferred from bindings)",
@@ -858,6 +865,8 @@ func buildWiredRegistry(version string, readOnly func() (bool, []string)) (wired
 		"auth":   "Authenticate with a Rancher server, manage API tokens, and inspect the session.",
 		"config": "Manage local CLI configuration: server list, active context, credential store, editor, and shell completion.",
 		"skill":  "Install, remove, and inspect agent skills packaged with this CLI.",
+		"telemetry": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. " +
+			"Recorded events stay on this machine.",
 		"create": "Create Rancher resources. Most sub-commands expose curated flags for one resource type; `create resource -f <file|->` is the generic path for kinds the kind table knows (one document per invocation; a few kinds require their curated command and say so when rejected).",
 		// "project" is both a command group and a kind. Resolution order is
 		// command → group → kind, so rancher schema

@@ -17,6 +17,7 @@ in detail.
 [Access](#access) ·
 [Logs & support](#logs--support) ·
 [kubectl integration](#kubectl-integration) ·
+[Telemetry](#telemetry) ·
 [Discovery & tooling](#discovery--tooling)
 
 <!-- conformance:commands-table -->
@@ -137,6 +138,16 @@ for lifecycle; `get provisioning-cluster` for reads.
 | `token` | Legacy exec-credential shim for Rancher-generated kubeconfigs (deprecated; new kubeconfigs use `auth get-token`) |
 | `kubeconfig` | Emit a LOCAL exec-credential kubeconfig for a cluster (no embedded secret), with the direct endpoint contexts when the cluster has the Authorized Cluster Endpoint; the exec entry records its config directory and, with `--user-id`, the owner its login records, and `--exec-command` names the binary kubectl runs - see `create kubeconfig` for the server-created, embedded alternative |
 
+## Telemetry
+
+| Command | Purpose |
+|---|---|
+| `telemetry status` | Show whether usage recording is on, which control decided (the `RANCHER_CLI_TELEMETRY` variable, the `telemetry` key of `config.yaml`, or the default), the counts of recorded and dropped events, the contract version and the config directory id; creates nothing and works while recording is off |
+| `telemetry on` | Set the `telemetry` key to `true`; creates the config directory when it is missing and deletes nothing |
+| `telemetry off` | Set the `telemetry` key to `false`, then delete the recorded events, the server facts and the config directory id; creates the config directory when it is missing |
+| `telemetry reset` | Delete the recorded events, the server facts and the config directory id; keeps the `telemetry` key |
+| `telemetry show` | List the recorded events, oldest first; `-o json` carries every stored field of each event |
+
 ## Discovery & tooling
 
 | Command | Purpose |
@@ -169,6 +180,6 @@ Per-kind verb rules and kind notes:
 Generated per kind from the 49-kind table: `get <kind>` (49), `patch <kind>`
 (49), `delete <kind>` (31 - 30 deletable kinds, including the RBAC binding
 kinds, `token`, `kubeconfig`, `management-token`, `user`, and `oidcclient`, plus a `provisioning-cluster` override) -
-129 generated commands, 192 total together with the fixed commands above. The authoritative, always-current list is
+129 generated commands, 197 total together with the fixed commands above. The authoritative, always-current list is
 `rancher schema --all -o json`.
 <!-- /conformance:surface-counts -->

@@ -38,6 +38,9 @@ const (
 	// maxEventSize is the most bytes a stored event may have; a bigger file
 	// is not an event.
 	maxEventSize = 16 * 1024
+	// maxIDSize is the most bytes read from the id file; a longer file is
+	// not an id.
+	maxIDSize = 256
 	// maxHourFileSize is the most bytes read from one compacted file.
 	maxHourFileSize = 24 * 1024 * 1024
 	// factsTempAge is how old a facts temporary file must be before the

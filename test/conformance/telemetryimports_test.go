@@ -65,6 +65,17 @@ var directRules = map[string]directRule{
 		standard: func(string) bool { return true },
 		others:   []string{windowsSys},
 	},
+	// The telemetry commands make no request and read no credential: the
+	// standard library without network packages, the error type, the config
+	// package (its use is limited by TestTelemetryCommandsUseOnlyTheAllowedConfigNames),
+	// the command runtime and the telemetry package.
+	telemetrycmdDir: {
+		standard: func(p string) bool { return !isNetworkPath(p) },
+		others: []string{
+			modulePrefix + "internal/clierr", modulePrefix + "internal/config",
+			modulePrefix + "internal/runtime", modulePrefix + "internal/telemetry",
+		},
+	},
 }
 
 // directImportFindings parses every Go file of dir, whatever its build
@@ -151,8 +162,11 @@ func closureFindings(t *testing.T, goos, goarch string, patterns ...string) []st
 
 // TestTelemetryDirectImportsAreClosed asserts internal/telemetry imports the
 // standard library without network packages, internal/invocation and
-// internal/fsacl, and internal/fsacl imports the standard library and
-// golang.org/x/sys/windows, in every file whatever its build constraint.
+// internal/fsacl, internal/fsacl imports the standard library and
+// golang.org/x/sys/windows, and the telemetry commands import the standard
+// library without network packages, internal/clierr, internal/config,
+// internal/runtime and internal/telemetry, in every file whatever its build
+// constraint.
 func TestTelemetryDirectImportsAreClosed(t *testing.T) {
 	for dir, rule := range directRules {
 		assert.Empty(t, directImportFindings(t, dir, rule), dir)
@@ -170,6 +184,11 @@ func TestDirectImportCheckCatchesFixtures(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.True(t, strings.HasSuffix(got[0], "imports "+modulePrefix+"internal/config"), got)
 	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/clean", rule))
+
+	got = directImportFindings(t, "test/conformance/testdata/importguard/httpx", directRules[telemetrycmdDir])
+	require.Len(t, got, 1)
+	assert.True(t, strings.HasSuffix(got[0], "imports "+modulePrefix+"internal/client/httpx"), got)
+	assert.Empty(t, directImportFindings(t, "test/conformance/testdata/importguard/clean", directRules[telemetrycmdDir]))
 }
 
 // TestTelemetryImportClosureHasNoNetworkOrCredentialPackage asserts, for

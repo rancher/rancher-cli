@@ -653,3 +653,47 @@ func TestConfigEditRejectsChangingTokenReuse(t *testing.T) {
 		})
 	}
 }
+
+// TestConfigEditJudgesTheTelemetryKeyByItsEffectiveValue asserts an edit that
+// changes whether recording is on is refused with the command that makes the
+// change, and an edit that keeps it as it was is accepted. Only the exact
+// text false turns recording off; an absent or invalid key leaves it on, and
+// YAML's unquoted false and the quoted text load the same.
+func TestConfigEditJudgesTheTelemetryKeyByItsEffectiveValue(t *testing.T) {
+	const servers = "servers:\n  prod:\n    url: https://rancher.example.com\n"
+	for _, tc := range []struct {
+		name, before, after, remedy string
+	}{
+		{name: "true to false", before: `telemetry: "true"`, after: `telemetry: "false"`, remedy: "rancher telemetry off"},
+		{name: "absent to false", before: "", after: "telemetry: false", remedy: "rancher telemetry off"},
+		{name: "false to absent", before: `telemetry: "false"`, after: "", remedy: "rancher telemetry on"},
+		{name: "false to maybe", before: `telemetry: "false"`, after: "telemetry: maybe", remedy: "rancher telemetry on"},
+		{name: "false to true", before: `telemetry: "false"`, after: "telemetry: true", remedy: "rancher telemetry on"},
+		{name: "true to absent", before: `telemetry: "true"`},
+		{name: "absent to true", before: "", after: "telemetry: true"},
+		{name: "absent to invalid", before: "", after: "telemetry: maybe"},
+		{name: "false to unquoted false", before: `telemetry: "false"`, after: "telemetry: false"},
+		{name: "false to off", before: `telemetry: "false"`, after: "telemetry: off"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("EDITOR", "fake-editor")
+			dir := t.TempDir()
+			seeded := tc.before + "\n" + servers
+			seedConfigFile(t, dir, seeded)
+
+			cmd := &configEditCmd{dir: dir, launchEditor: writesContent(tc.after + "\n" + servers)}
+			_, err := cmd.Execute(t.Context(), cmdtest.Input{}, &fakePrompter{canPrompt: true, answers: []string{"n"}})
+			got, readErr := os.ReadFile(config.FilePath(dir))
+			require.NoError(t, readErr)
+			if tc.remedy == "" {
+				require.NoError(t, err)
+				return
+			}
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Contains(t, ce.Message, "telemetry changed (use: "+tc.remedy+")")
+			assert.YAMLEq(t, seeded, string(got), "the real config file must be untouched")
+		})
+	}
+}

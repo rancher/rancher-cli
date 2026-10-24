@@ -362,6 +362,12 @@ type Config struct {
 	// Default off; set via `config set-token-reuse`. Governs only entries
 	// whose provenance is execLogin.
 	TokenReuse bool `json:"tokenReuse,omitempty"`
+	// Telemetry is the text of the telemetry key: only "true" and "false"
+	// count, and YAML's own boolean forms arrive as those texts. Any other
+	// text is kept as written (nothing here rewrites it) and leaves recording
+	// at its default. Nil means the key is absent. Set by `telemetry on` and
+	// `telemetry off`.
+	Telemetry *string `json:"telemetry,omitempty"`
 	// Completion holds per-machine completion preferences (not user config -
 	// live completion is inherently machine-dependent). Stored inline in
 	// config.yaml for discoverability; see `config set-completion`.

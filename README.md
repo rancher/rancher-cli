@@ -156,6 +156,7 @@ or point any other agent's instructions file at it.
 | [Access](COMMANDS.md#access) | who can do what, as the cluster's authorizer answers it (`access can`, `access list`, `access who-can`, `access explain`), and where Rancher's proxy lets a subject in (`access clusters`) and which projects it can see into and is a member of (`access projects`) |
 | [Logs & support](COMMANDS.md#logs--support) | curated logs, support bundle |
 | [kubectl integration](COMMANDS.md#kubectl-integration) | exec-credential kubeconfig, legacy token shim |
+| [Telemetry](COMMANDS.md#telemetry) | status, on, off, reset and show for local usage recording |
 | [Discovery & tooling](COMMANDS.md#discovery--tooling) | schema, shell completion, agent-skill install |
 
 Kubeconfigs that authenticate through the exec plugin log in once per cluster by default; `rancher config set-token-reuse on` lets the plugin keep one login credential per server instead (see REFERENCE.md, Token reuse for kubectl).
@@ -284,7 +285,7 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
 
 - **File:** `${XDG_CONFIG_HOME:-~/.config}/rancher/config.yaml` (mode `0600`):
   `servers`, `currentServer` (pointer to the active server), `credentialStore`,
-  `completion`, `readOnly`. Secrets are NOT stored here.
+  `completion`, `readOnly`, `telemetry`. Secrets are NOT stored here.
 - **Directory precedence:** `--config <dir>` > `RANCHER_CLI_CONFIG_DIR` >
   `$XDG_CONFIG_HOME/rancher` > `~/.config/rancher`.
 - **Credential store:** OS keychain or a `0600` file; custom backends plug

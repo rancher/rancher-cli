@@ -232,7 +232,7 @@ func TestEveryGroupRefusesWordsAfterABareDash(t *testing.T) {
 	tree, err := BuildRoot("v-test")
 	require.NoError(t, err)
 	_, groups := commandPaths(tree, nil)
-	require.Len(t, groups, 12, "the groups of the tree")
+	require.Len(t, groups, 13, "the groups of the tree")
 	for _, path := range append([][]string{nil}, groups...) {
 		name := "root"
 		if len(path) > 0 {

@@ -9495,6 +9495,7 @@
             "schema",
             "skill",
             "support-bundle",
+            "telemetry",
             "token",
             "usage"
           ],
@@ -9697,6 +9698,78 @@
       "stability": "beta",
       "toolset": "core",
       "usage": "Collect diagnostics reachable through the API into one tar.gz for support"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "desc": "Sets the telemetry key of config.yaml to false, then deletes the recorded events, the server facts and the config directory id, which leaves nothing recorded. Keeps config.yaml. Creates the config directory when it is missing, to hold the key. The RANCHER_CLI_TELEMETRY variable overrides the key; the command warns when it does. Deletes even when RANCHER_CLI_TELEMETRY is set.",
+      "examples": [
+        "rancher telemetry off"
+      ],
+      "group": "telemetry",
+      "name": "telemetry off",
+      "serverAccess": "none",
+      "shape": "text",
+      "toolset": "core",
+      "usage": "Turn usage recording off and delete what is recorded"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "desc": "Sets the telemetry key of config.yaml to true. Creates the config directory when it is missing and deletes nothing. The RANCHER_CLI_TELEMETRY variable overrides the key; the command warns when it does.",
+      "examples": [
+        "rancher telemetry on"
+      ],
+      "group": "telemetry",
+      "name": "telemetry on",
+      "serverAccess": "none",
+      "shape": "text",
+      "toolset": "core",
+      "usage": "Turn usage recording on"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "desc": "Deletes the recorded events, the server facts and the config directory id, and keeps the telemetry key and the rest of config.yaml. Creates nothing; with no config directory there is nothing to delete.",
+      "examples": [
+        "rancher telemetry reset"
+      ],
+      "group": "telemetry",
+      "name": "telemetry reset",
+      "serverAccess": "none",
+      "shape": "text",
+      "toolset": "core",
+      "usage": "Delete what is recorded and keep the setting"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "desc": "Lists the recorded events, oldest first. The table shows the time, event name, command, outcome and exit code; -o json and -o yaml carry every stored field of each event. Events that cannot be read are skipped. Creates nothing and works while recording is off.",
+      "examples": [
+        "rancher telemetry show",
+        "rancher telemetry show -o json"
+      ],
+      "group": "telemetry",
+      "name": "telemetry show",
+      "serverAccess": "none",
+      "shape": "tabular",
+      "toolset": "core",
+      "usage": "List the recorded usage events"
+    },
+    {
+      "auth": false,
+      "commandType": "local",
+      "desc": "Shows whether recording is on, which control decided (the RANCHER_CLI_TELEMETRY variable, the telemetry key of config.yaml, or the default), the number of recorded events, the number of dropped events, the contract version (the version of the event format) and the config directory id (a random id stored for this config directory). Recorded events stay on this machine. Creates nothing and works while recording is off.",
+      "examples": [
+        "rancher telemetry status",
+        "rancher telemetry status -o json"
+      ],
+      "group": "telemetry",
+      "name": "telemetry status",
+      "serverAccess": "none",
+      "shape": "text",
+      "toolset": "core",
+      "usage": "Show whether usage recording is on and what is recorded"
     },
     {
       "auth": true,
@@ -9943,6 +10016,10 @@
     {
       "desc": "legacy spelling honored after RANCHER_CLI_OAUTH_CALLBACK_PORT",
       "name": "CATTLE_OAUTH_CALLBACK_PORT"
+    },
+    {
+      "desc": "true or false: turns usage recording on or off over the config key; empty counts as unset and any other value is ignored",
+      "name": "RANCHER_CLI_TELEMETRY"
     },
     {
       "desc": "base directory for the default config location",
@@ -10210,6 +10287,17 @@
       ],
       "desc": "Install, remove, and inspect agent skills packaged with this CLI.",
       "name": "skill"
+    },
+    {
+      "commands": [
+        "telemetry status",
+        "telemetry on",
+        "telemetry off",
+        "telemetry reset",
+        "telemetry show"
+      ],
+      "desc": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. Recorded events stay on this machine.",
+      "name": "telemetry"
     },
     {
       "commands": [
@@ -11940,5 +12028,37 @@
     "zsh",
     "fish",
     "pwsh"
-  ]
+  ],
+  "telemetry": {
+    "contractVersion": "1.0.0",
+    "controls": [
+      {
+        "desc": "true or false; empty counts as unset; any other value is ignored",
+        "name": "RANCHER_CLI_TELEMETRY",
+        "source": "environment",
+        "values": [
+          "true",
+          "false"
+        ]
+      },
+      {
+        "desc": "the config.yaml key, written by telemetry on and telemetry off; any other value leaves the default",
+        "key": "telemetry",
+        "name": "config",
+        "source": "config",
+        "values": [
+          "true",
+          "false"
+        ]
+      },
+      {
+        "desc": "applies when nothing above decides",
+        "name": "default",
+        "source": "default",
+        "values": [
+          "on"
+        ]
+      }
+    ]
+  }
 }

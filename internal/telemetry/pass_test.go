@@ -479,12 +479,10 @@ func TestRecordPrunesOnlyWhileOn(t *testing.T) {
 	require.NoError(t, os.MkdirAll(p, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(p, hourName(h)+".jsonl"), []byte("\n"), 0o600))
 
-	for _, env := range []map[string]string{{EnvDoNotTrack: "1"}, {EnvTelemetry: "off"}} {
-		Record(runEvent(c.now()), Options{ConfigDir: dir, DirExisted: true, Getenv: envOf(env)})
-		_, err := os.Stat(p)
-		require.NoError(t, err, "off: nothing pruned")
-	}
-	require.Equal(t, StatusRecorded, record(t, dir, runEvent(c.now())))
+	Record(runEvent(c.now()), Options{ConfigDir: dir, DirExisted: true, Getenv: envOf(map[string]string{EnvTelemetry: "false"})})
 	_, err := os.Stat(p)
+	require.NoError(t, err, "off: nothing pruned")
+	require.Equal(t, StatusRecorded, record(t, dir, runEvent(c.now())))
+	_, err = os.Stat(p)
 	require.ErrorIs(t, err, os.ErrNotExist, "on: the old hour is pruned")
 }

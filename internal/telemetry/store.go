@@ -29,7 +29,9 @@ const (
 	jsonlSuffix   = ".jsonl"
 )
 
-var errUnsafeDir = errors.New("telemetry path is not a plain directory")
+// ErrUnsafeDir is the error OpenStore returns for a telemetry path that is a
+// symlink or is not a directory.
+var ErrUnsafeDir = errors.New("telemetry path is not a plain directory")
 
 // Status is what Record did.
 type Status int
@@ -118,7 +120,7 @@ func OpenStore(configDir string) (*Store, error) {
 	case err == nil:
 		if info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
 			_ = cfg.Close()
-			return nil, errUnsafeDir
+			return nil, ErrUnsafeDir
 		}
 		tel, err := cfg.OpenRoot(dirTelemetry)
 		if err != nil {
@@ -300,6 +302,20 @@ func (s *Store) directoryID(now time.Time) string {
 		return s.createID()
 	}
 	return ""
+}
+
+// ReadDirectoryID returns the configuration directory id for a caller that
+// only looks: it never creates, replaces or removes a file. A missing,
+// empty, partial or invalid file, or no telemetry directory, is absent.
+func (s *Store) ReadDirectoryID() (string, bool) {
+	if s.tel == nil {
+		return "", false
+	}
+	data, big, err := s.readLimited(fileID, maxIDSize)
+	if err != nil || big {
+		return "", false
+	}
+	return NormalizeRandomID(strings.TrimSpace(string(data)))
 }
 
 func (s *Store) replaceStaleID(now time.Time) string {

@@ -10,6 +10,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 )
 
 func TestWriteThenLoadRoundTrip(t *testing.T) {
@@ -219,4 +220,54 @@ func TestRecordOwnerState(t *testing.T) {
 	assert.Equal(t, OwnerUnknown, RecordOwnerState(rec(""), "user-b"))
 	assert.Equal(t, OwnerUnknown, RecordOwnerState(rec("user-a"), ""))
 	assert.Equal(t, OwnerUnknown, RecordOwnerState(rec(""), ""))
+}
+
+// TestTelemetryKeyWrites asserts Write keeps the telemetry key as the text
+// it holds: "true" and "false" as quoted texts, an invalid text unchanged,
+// and nothing for an absent key, whatever else is written.
+func TestTelemetryKeyWrites(t *testing.T) {
+	text := func(s string) *string { return &s }
+	for _, tc := range []struct {
+		name   string
+		value  *string
+		want   any
+		absent bool
+	}{
+		{name: "absent", absent: true},
+		{name: "true", value: text("true"), want: "true"},
+		{name: "false", value: text("false"), want: "false"},
+		{name: "invalid", value: text("maybe"), want: "maybe"},
+		{name: "empty", value: text(""), want: ""},
+		{name: "spelled off", value: text("off"), want: "off"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := FilePath(t.TempDir())
+			c := &Config{Telemetry: tc.value, TokenReuse: true, Servers: map[string]Server{}, path: path}
+			require.NoError(t, c.Write())
+
+			raw, err := os.ReadFile(path)
+			require.NoError(t, err)
+			var decoded map[string]any
+			require.NoError(t, yaml.Unmarshal(raw, &decoded))
+			got, present := decoded["telemetry"]
+			assert.Equal(t, !tc.absent, present)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, true, decoded["tokenReuse"])
+
+			loaded, err := Load(path)
+			require.NoError(t, err)
+			if tc.absent {
+				assert.Nil(t, loaded.Telemetry)
+				return
+			}
+			require.NotNil(t, loaded.Telemetry)
+			assert.Equal(t, tc.want, *loaded.Telemetry)
+
+			require.NoError(t, loaded.Write())
+			again, err := Load(path)
+			require.NoError(t, err)
+			require.NotNil(t, again.Telemetry)
+			assert.Equal(t, tc.want, *again.Telemetry, "a second write keeps the text")
+		})
+	}
 }

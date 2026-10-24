@@ -1,6 +1,6 @@
 {
   "cliVersion": "golden",
-  "commandCount": 192,
+  "commandCount": 197,
   "effectSchema": {
     "actions": [
       "create",
@@ -186,6 +186,32 @@
       ],
       "desc": "Install, remove, and inspect agent skills packaged with this CLI.",
       "name": "skill"
+    },
+    {
+      "commands": [
+        {
+          "name": "telemetry status",
+          "usage": "Show whether usage recording is on and what is recorded"
+        },
+        {
+          "name": "telemetry on",
+          "usage": "Turn usage recording on"
+        },
+        {
+          "name": "telemetry off",
+          "usage": "Turn usage recording off and delete what is recorded"
+        },
+        {
+          "name": "telemetry reset",
+          "usage": "Delete what is recorded and keep the setting"
+        },
+        {
+          "name": "telemetry show",
+          "usage": "List the recorded usage events"
+        }
+      ],
+      "desc": "Control and inspect local usage recording: status, turn on, turn off, delete and list events. Recorded events stay on this machine.",
+      "name": "telemetry"
     },
     {
       "commands": [
