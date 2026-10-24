@@ -235,6 +235,50 @@ func TestPlanCreateRefusesAMissingOrForeignRedaction(t *testing.T) {
 	}
 }
 
+// TestPlanUpdateRefusesAMissingOrForeignRedaction asserts both update
+// planners refuse a zero redaction and the redaction of another resource
+// before any request: the client sees no call.
+func TestPlanUpdateRefusesAMissingOrForeignRedaction(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		redaction kinds.Redaction
+		want      string
+	}{
+		"zero":    {kinds.Redaction{}, "internal error: update preview of projects has no redaction for its kind"},
+		"foreign": {rowRedaction(t, "secret"), "internal error: update preview of projects has the redaction of secrets"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			client := &obsClient{}
+			obj := newObj(map[string]any{"metadata": map[string]any{"name": "p"}})
+			_, _, _, err := PlanUpdateObserved(t.Context(), client, testGVR, "c-x", obj, tc.redaction, "c-x", "project", "Project", nil, false)
+			require.ErrorContains(t, err, tc.want)
+			assert.Empty(t, client.dryRuns, "no request before the refusal")
+			_, _, err = PlanUpdate(t.Context(), client, testGVR, "c-x", obj, tc.redaction, "c-x", "project", "Project", nil, false)
+			require.ErrorContains(t, err, tc.want)
+			assert.Empty(t, client.dryRuns)
+		})
+	}
+}
+
+// TestPlanUpdateHidesTheRedactedValuesInTheDiff asserts the update planner
+// hides, in the diff it receives, the values the redaction covers and keeps
+// the others.
+func TestPlanUpdateHidesTheRedactedValuesInTheDiff(t *testing.T) {
+	t.Parallel()
+	obj := newObj(map[string]any{"metadata": map[string]any{"name": "s"}})
+	diff := []safety.DiffEntry{
+		{Path: "/data/key", From: "old", To: "new"},
+		{Path: "/spec/replicas", From: 1, To: 2},
+	}
+	eff, _, err := PlanUpdate(t.Context(), &obsClient{}, secretRedaction.GVR(), "ns", obj, secretRedaction, "c-x", "secret", "Secret", diff, true)
+	require.NoError(t, err)
+	assert.Equal(t, []safety.DiffEntry{
+		{Path: "/data/key", From: Redacted, To: Redacted},
+		{Path: "/spec/replicas", From: 1, To: 2},
+	}, eff.Diff)
+}
+
 // TestPlanCreateSetsTheDiffFromTheSubmission asserts the planner's diff
 // comes from the submission, not from the server's answer: a field only the
 // answer holds is absent, and a field only the submission holds is listed.

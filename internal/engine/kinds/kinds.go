@@ -153,11 +153,12 @@ type Kind struct {
 	// is, so the row carries no SystemFilter or RedactPaths either.
 	ServerTable bool
 	// RedactPaths lists dot-path field paths (each as a []string key sequence)
-	// scrubbed from every serialized representation - list/get JSON/YAML output
-	// and patch diff From/To entries - because they carry live credentials. The
-	// root-level token field on management.cattle.io/v3 Token is the canonical
-	// example. Scrubbing is removal in JSON/YAML output and "<redacted>" in diff
-	// entries (matching the existing sensitive-diff convention).
+	// hidden from every serialized representation - list/get JSON/YAML output,
+	// the result of a create or patch, and diff From/To entries - because they
+	// carry live credentials. The root-level token field on
+	// management.cattle.io/v3 Token is the canonical example. Hiding is removal
+	// in JSON/YAML output (get and mutation results) and "<redacted>" in diff
+	// entries.
 	RedactPaths [][]string
 	// NoCreateViaManifest, when non-empty, prevents `create resource` from
 	// accepting a manifest whose resolved kind matches this row. The value is
@@ -846,6 +847,12 @@ var table = []Kind{
 			{Header: "EXPIRES", Path: []string{"status", "expiresAt"}},
 			{Header: "DESCRIPTION", Path: []string{"spec", "description"}},
 		},
+		// The create answer carries the token's value once, in status.bearerToken
+		// and status.value; no other answer of the object does.
+		RedactPaths: [][]string{{"status", "bearerToken"}, {"status", "value"}},
+		// A manifest cannot create a token: `create token` shows the value
+		// once under the once-only output rules.
+		NoCreateViaManifest: "create tokens with '" + clierr.Rancher + " create token' (it shows the token's value once)",
 	},
 	{
 		// Not on the Rancher Kubernetes Public API list; deprecated in favor of
@@ -889,6 +896,11 @@ var table = []Kind{
 			// USER/CLUSTERS) as wide-only material too.
 			{Header: "DESCRIPTION", Path: []string{"spec", "description"}, Wide: true},
 		},
+		// The create answer carries the kubeconfig once, in status.value.
+		RedactPaths: [][]string{{"status", "value"}},
+		// A manifest cannot create a kubeconfig: `create kubeconfig` prints it
+		// once under the once-only output rules.
+		NoCreateViaManifest: "create kubeconfigs with '" + clierr.Rancher + " create kubeconfig' (it prints the kubeconfig once)",
 	},
 
 	{

@@ -166,7 +166,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	exec := func(ctx context.Context) (runtime.Result, error) {
 		return c.execute(ctx, client, k, username, displayName, userObj, password)
 	}
-	return eff, engine.RedactMutationResult(exec, k.RedactPaths, true), nil
+	return eff, exec, nil
 }
 
 // execute runs strictly in this order: User create -> Secret create. A
@@ -224,8 +224,7 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		// The server's create response echoes the hashed payload
 		// (data/salt); none of it belongs in output, so the map is built
 		// from identity fields only and never copies the Secret's
-		// data/stringData. The RedactMutationResult wrapper stays on the
-		// executor as the backstop for anything a future edit adds here.
+		// data/stringData.
 		"passwordSecret": createdSecret.GetName(),
 	}
 	res := runtime.MutationText("user", username, "created",

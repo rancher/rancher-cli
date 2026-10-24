@@ -96,7 +96,7 @@ func TestPatchPlanRefusesAKindThatIsNotARow(t *testing.T) {
 		"cluster": "prod", "namespace": "ns1",
 		"patch": `[{"op":"replace","path":"/spec/replicas","value":3}]`,
 	}})
-	require.ErrorContains(t, err, "internal error: patch preview of deployments has no redaction for its kind")
+	require.ErrorContains(t, err, "internal error: update preview of deployments has no redaction for its kind")
 }
 
 func TestPatchPlanDiffsAndExecUsesRV(t *testing.T) {

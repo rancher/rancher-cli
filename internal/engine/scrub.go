@@ -1,11 +1,10 @@
 package engine
 
 import (
-	"context"
 	"maps"
 	"slices"
 
-	"github.com/rancher/rancher-cli/internal/runtime"
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 )
 
 // ScrubPaths returns a shallow copy of obj with every listed path deleted.
@@ -30,34 +29,54 @@ func ScrubPaths(obj map[string]any, paths [][]string) map[string]any {
 	return out
 }
 
-// RedactMutationResult scrubs sensitive fields from a mutation's rendered
-// response before it reaches output: the server can echo a submitted
-// credential back verbatim on the commit response even though it never
-// returns one on a later read. It removes the kind's declared redactPaths
-// (a named field like User's root-level password) and, for a sensitive
-// kind, a Secret-shaped payload's data/stringData - the same two guards
-// the preview-diff redaction applies. The preview also matches field names
-// with case folded and hides the kubectl last-applied annotation and a
-// machine config's secret fields; this result scrub matches field names
-// exactly and removes neither. Every executor that places a server-echoed
-// object in Result.Data wraps itself here.
-func RedactMutationResult(exec runtime.ExecuteFunc, redactPaths [][]string, sensitive bool) runtime.ExecuteFunc {
-	return func(ctx context.Context) (runtime.Result, error) {
-		res, err := exec(ctx)
-		if err != nil {
-			return res, err
-		}
-		obj, ok := res.Data.(map[string]any)
-		if !ok {
-			return res, nil
-		}
-		obj = ScrubPaths(obj, redactPaths)
-		if sensitive {
-			obj = ScrubPaths(obj, [][]string{{"data"}, {"stringData"}})
-		}
-		res.Data = obj
-		return res, nil
+// scrubResult returns obj without every map entry whose path the redaction
+// covers: the values a preview hides, so a result built from the committed
+// object never shows what the preview of the same command hides. The maps
+// along a removed entry are copied before they change, so obj, which the
+// client may share, is never modified; an object with nothing to remove is
+// returned as it is. A nil value stays and arrays are not entered: a hidden
+// path is a sequence of object keys and never addresses an array item.
+func scrubResult(obj map[string]any, r kinds.Redaction) map[string]any {
+	if !r.Hides() {
+		return obj
 	}
+	out, _ := removeCovered(nil, obj, r.Covers)
+	return out
+}
+
+// removeCovered returns m with every entry whose path (keys, extended by the
+// entry's key) covered reports true removed, and whether anything changed.
+func removeCovered(keys []string, m map[string]any, covered func([]string) bool) (map[string]any, bool) {
+	var out map[string]any
+	for k, child := range m {
+		if child == nil {
+			continue
+		}
+		childKeys := append(slices.Clone(keys), k)
+		if covered(childKeys) {
+			if out == nil {
+				out = maps.Clone(m)
+			}
+			delete(out, k)
+			continue
+		}
+		childMap, ok := child.(map[string]any)
+		if !ok {
+			continue
+		}
+		next, changed := removeCovered(childKeys, childMap, covered)
+		if !changed {
+			continue
+		}
+		if out == nil {
+			out = maps.Clone(m)
+		}
+		out[k] = next
+	}
+	if out == nil {
+		return m, false
+	}
+	return out, true
 }
 
 // deletePaths removes every leaf addressed by paths from m, copying each

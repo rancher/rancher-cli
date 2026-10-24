@@ -484,11 +484,18 @@ func countGenerated(cmds []SchemaCommand, generated map[string]bool) int {
 
 // generatedCommandNames derives the generated command set from the kind
 // vocabulary (available and refused verbs are registered
-// commands, absent verbs are not) - never from name-shape guessing.
+// commands, absent verbs are not) - never from name-shape guessing. A
+// refused create verb is skipped: it is a manifest restriction for create
+// resource (NoCreateViaManifest), not a registered command, and a dedicated
+// command such as create token can share its name. An available create
+// would be a registered command and stays counted.
 func generatedCommandNames(ks []SchemaKind) map[string]bool {
 	out := map[string]bool{}
 	for _, k := range ks {
 		for verb, vs := range k.Verbs {
+			if verb == "create" && vs.State == VerbRefused {
+				continue
+			}
 			if vs.State == VerbAvailable || vs.State == VerbRefused {
 				out[verb+" "+k.Name] = true
 			}

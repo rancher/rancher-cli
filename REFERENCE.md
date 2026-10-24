@@ -710,7 +710,8 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   and `patch cluster` take an id or a display name.
 - `create` has a dedicated command for kinds such as `project`, `namespace`,
   `secret`, `token`, `kubeconfig` and `cluster`; `create resource -f` covers any
-  supported kind from a manifest.
+  supported kind from a manifest, except a token or a kubeconfig: `create
+  token` and `create kubeconfig` create those and show the value once.
 - Rancher role bindings (`projectroletemplatebinding`,
   `clusterroletemplatebinding`, `globalrolebinding`): prefer `grant`/`revoke`,
   which resolve the subject, detect duplicates and report partial failures. The
@@ -804,6 +805,11 @@ name the object (`apiVersion`, `kind`, `metadata.name`,
 sets nothing past its name has no `diff`. In the default text render a map or
 list value prints as compact JSON. A value that is hidden shows `<redacted>`
 in `from` or `to`, and a side that has no value stays null.
+The `--apply` result of a mutating command in json, yaml and template leaves
+out the same values. The exceptions are the commands that show a secret once on
+purpose: `create token`, `create oidc-client`, `oidc-client add-secret` and
+`oidc-client rotate-secret`. `create kubeconfig` prints its kubeconfig and
+accepts only table output.
 
 `patch <kind>` takes an RFC 6902 JSON Patch (an array of operations) by default,
 and an RFC 7386 JSON merge patch (an object) with `--type merge`. In a merge

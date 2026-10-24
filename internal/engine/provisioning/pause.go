@@ -110,7 +110,7 @@ func planAutoscalerPause(ctx context.Context, clients engine.ClusterClientFactor
 	after.SetResourceVersion(obj.GetResourceVersion())
 
 	diff := engine.DiffObjects(obj.Object, after.Object)
-	eff, exec, err := engine.PlanUpdate(ctx, client, provisioningClusterGVR, ns, after, engine.LocalCluster, provisioningClusterDisplayKind, "Cluster", diff, provisioningClusterSensitive())
+	eff, exec, err := engine.PlanUpdate(ctx, client, provisioningClusterGVR, ns, after, provisioningClusterRedaction(), engine.LocalCluster, provisioningClusterDisplayKind, "Cluster", diff, provisioningClusterSensitive())
 	if err != nil {
 		return eff, exec, err
 	}

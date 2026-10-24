@@ -36,6 +36,45 @@ func TestCountGenerated(t *testing.T) {
 	assert.Equal(t, 0, countGenerated([]SchemaCommand{{Name: "schema"}}, generated))
 }
 
+// TestGeneratedSetLeavesOutACreateWithTheNameOfACommand asserts a kind's
+// refused create verb is no generated command: a hand-written command that
+// shares its name (create token) stays out of the generated set and the
+// count, and the other verbs of the kind stay in. An available create stays
+// generated.
+func TestGeneratedSetLeavesOutACreateWithTheNameOfACommand(t *testing.T) {
+	t.Parallel()
+	ks := []SchemaKind{
+		{Name: "token", Verbs: map[string]VerbState{
+			"create": {State: VerbRefused, Note: "use create token"},
+			"get":    {State: VerbAvailable},
+			"patch":  {State: VerbRefused},
+		}},
+	}
+	generated := generatedCommandNames(ks)
+	assert.False(t, generated["create token"])
+	assert.True(t, generated["get token"])
+	assert.True(t, generated["patch token"])
+	cmds := []SchemaCommand{{Name: "create token"}, {Name: "get token"}, {Name: "patch token"}}
+	assert.Equal(t, 2, countGenerated(cmds, generated))
+
+	// An available create is a registered command: it stays generated.
+	available := generatedCommandNames([]SchemaKind{{Name: "widget", Verbs: map[string]VerbState{"create": {State: VerbAvailable}}}})
+	assert.True(t, available["create widget"])
+
+	m := Manifest{
+		Commands: cmds,
+		Groups:   []SchemaGroup{{Name: "create", Commands: []string{"create token"}}, {Name: "get", Commands: []string{"get token"}}},
+		Kinds:    ks,
+	}
+	toc := newTOCView(m, true).toc()
+	assert.Equal(t, 2, toc.GeneratedCommandCount)
+	require.NotEmpty(t, toc.Groups)
+	assert.Equal(t, "create", toc.Groups[0].Name)
+	require.Len(t, toc.Groups[0].Commands, 1)
+	assert.Equal(t, "create token", toc.Groups[0].Commands[0].Name)
+	assert.Nil(t, toc.Groups[0].Generated)
+}
+
 // TestSchemaGateLineMatrix asserts that the gate line is a
 // total function of (commandType, destructive, stability) with exact wordings,
 // enumerated over every combination. The expected strings restate the wording

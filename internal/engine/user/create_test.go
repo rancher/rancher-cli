@@ -178,10 +178,10 @@ func TestCreatePasswordStdinRequired(t *testing.T) {
 }
 
 // TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity
-// proves the composite's result path passes through
-// engine.RedactMutationResult (the hashed password/salt never reach -o
-// json/yaml) and that the committed identity is the REAL server-assigned
-// name - never the dry-run preview's placeholder.
+// asserts the composite's result is built from identity fields only (the
+// hashed password/salt never reach -o json/yaml) and that the committed
+// identity is the REAL server-assigned name - never the dry-run preview's
+// placeholder.
 func TestCreateExecuteRedactsSecretPayloadAndReturnsRealCommittedIdentity(t *testing.T) {
 	t.Parallel()
 	client := &fakeUserClient{userPreviewName: "u-preview1", userRealName: "u-real2"}

@@ -345,21 +345,43 @@ func TestCreateResourceWithoutClusterGetsTheTextThatFits(t *testing.T) {
 // whose resolved kind has NoCreateViaManifest set is rejected with a
 // VALIDATION error before any network call, and that the guidance is
 // surfaced in the message (NoCreateViaManifest is prose, not a command, so
-// it is folded into the message rather than carried as a hint).
+// it is folded into the message rather than carried as a hint). The three
+// rows are the two ext kinds and the v3 token, each created by a command
+// that shows its value once.
 func TestCreateResourceRejectsNoCreateViaManifestKind(t *testing.T) {
 	t.Parallel()
-	const manifest = "apiVersion: management.cattle.io/v3\nkind: Token\nmetadata:\n  name: t\n"
-	fac := &recFactory{client: &createClient{}}
-	_, _, err := planCreate(t, NewCreate(fac, mapFileSource{"m.yaml": []byte(manifest)}),
-		input{s: map[string]string{"filename": "m.yaml"}})
-	requireValidation(t, err)
-	// Verify no network call was made.
-	assert.Empty(t, fac.clusterCalls, "no network call should be made when the kind is rejected")
-	// Verify the message names the kind and the ext kind path.
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, "cannot create a management-token from a manifest; create tokens with '"+clierr.Rancher+" create token' (it creates an ext.cattle.io Token)", ce.Message)
-	assert.Empty(t, ce.Hint)
+	for name, tc := range map[string]struct {
+		manifest string
+		want     string
+	}{
+		"management token": {
+			"apiVersion: management.cattle.io/v3\nkind: Token\nmetadata:\n  name: t\n",
+			"cannot create a management-token from a manifest; create tokens with '" + clierr.Rancher + " create token' (it creates an ext.cattle.io Token)",
+		},
+		"token": {
+			"apiVersion: ext.cattle.io/v1\nkind: Token\nmetadata:\n  name: t\nspec:\n  userID: u-1\n",
+			"cannot create a token from a manifest; create tokens with '" + clierr.Rancher + " create token' (it shows the token's value once)",
+		},
+		"kubeconfig": {
+			"apiVersion: ext.cattle.io/v1\nkind: Kubeconfig\nmetadata:\n  name: k\n",
+			"cannot create a kubeconfig from a manifest; create kubeconfigs with '" + clierr.Rancher + " create kubeconfig' (it prints the kubeconfig once)",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			client := &createClient{}
+			fac := &recFactory{client: client}
+			_, _, err := planCreate(t, NewCreate(fac, mapFileSource{"m.yaml": []byte(tc.manifest)}),
+				input{s: map[string]string{"filename": "m.yaml"}})
+			requireValidation(t, err)
+			// Verify no network call was made.
+			assert.Empty(t, fac.clusterCalls, "no network call should be made when the kind is rejected")
+			var ce *clierr.Error
+			require.ErrorAs(t, err, &ce)
+			assert.Equal(t, tc.want, ce.Message)
+			assert.Empty(t, ce.Hint)
+		})
+	}
 }
 
 // requestFactory is recFactory that also records every cluster

@@ -41,17 +41,18 @@ func redactedSide(v any) any {
 	return Redacted
 }
 
-// checkRedaction refuses a create preview built without the redaction of
-// the resource it previews: a zero redaction, or the redaction of another
-// resource. Both are programming errors, refused before any request.
-func checkRedaction(gvr schema.GroupVersionResource, r kinds.Redaction) error {
+// checkRedaction refuses a preview of action (create or update) built
+// without the redaction of the resource it previews: a zero redaction, or
+// the redaction of another resource. Both are programming errors, refused
+// before any request.
+func checkRedaction(gvr schema.GroupVersionResource, r kinds.Redaction, action string) error {
 	switch {
 	case r.IsZero():
 		return clierr.New(clierr.CodeGeneric,
-			"internal error: create preview of "+gvr.Resource+" has no redaction for its kind")
+			"internal error: "+action+" preview of "+gvr.Resource+" has no redaction for its kind")
 	case r.GVR() != gvr:
 		return clierr.New(clierr.CodeGeneric,
-			"internal error: create preview of "+gvr.Resource+" has the redaction of "+r.GVR().Resource)
+			"internal error: "+action+" preview of "+gvr.Resource+" has the redaction of "+r.GVR().Resource)
 	}
 	return nil
 }

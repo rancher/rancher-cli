@@ -66,7 +66,7 @@ func planAnnotationUpdate(ctx context.Context, client engine.ClusterClient, k ki
 	_ = unstructured.SetNestedField(patched.Object, annotationValue, "metadata", "annotations", annotationKey)
 	patched.SetResourceVersion(orig.GetResourceVersion())
 	diff := engine.DiffObjects(orig.Object, patched.Object)
-	eff, _, err := engine.PlanUpdate(ctx, client, k.GVR, "", patched, engine.LocalCluster, k.Name, "OIDCClient", diff, k.Sensitive)
+	eff, _, err := engine.PlanUpdate(ctx, client, k.GVR, "", patched, k.Redaction(), engine.LocalCluster, k.Name, "OIDCClient", diff, k.Sensitive)
 	return patched, eff, err
 }
 

@@ -231,7 +231,7 @@ func planMembershipUpdate(ctx context.Context, client engine.ClusterClient, befo
 	rv := before.GetResourceVersion()
 	after.SetResourceVersion(rv)
 	nsKind, _ := kinds.Lookup("namespace")
-	eff, exec, err := engine.PlanUpdate(ctx, client, nsKind.GVR, "", after, cluster, nsKind.Name, "Namespace", diff, false)
+	eff, exec, err := engine.PlanUpdate(ctx, client, nsKind.GVR, "", after, nsKind.Redaction(), cluster, nsKind.Name, "Namespace", diff, false)
 	if err != nil {
 		return eff, exec, err
 	}

@@ -140,18 +140,12 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	// change). Computed before the RV is stamped, so the precondition never
 	// appears as a field change.
 	diff := engine.DiffObjects(orig.Object, patched.Object)
-	redaction := c.k.Redaction()
-	if redaction.IsZero() {
-		return safety.Effect{}, nil, clierr.New(clierr.CodeGeneric,
-			"internal error: patch preview of "+c.k.GVR.Resource+" has no redaction for its kind")
-	}
-	diff = engine.RedactDiff(diff, redaction)
 
 	patched.SetResourceVersion(rv)
 	// PlanUpdate dry-runs the update for an admission preview and returns the
 	// executor; the Effect carries the field diff, the RV precondition, and the
 	// per-kind destructiveness.
-	eff, stored, exec, err := engine.PlanUpdateObserved(ctx, client, c.k.GVR, ns, patched, effectCluster, c.k.Name, resultKind(c.k), diff, c.k.Sensitive)
+	eff, stored, exec, err := engine.PlanUpdateObserved(ctx, client, c.k.GVR, ns, patched, c.k.Redaction(), effectCluster, c.k.Name, resultKind(c.k), diff, c.k.Sensitive)
 	if err != nil {
 		return eff, exec, err
 	}
@@ -174,7 +168,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 	for _, e := range c.enrich {
 		e(orig, patched, &eff)
 	}
-	return eff, engine.RedactMutationResult(exec, c.k.RedactPaths, c.k.Sensitive), nil
+	return eff, exec, nil
 }
 
 // decodePatch enforces the exactly-one-of-{--patch,--patch-file} rule and

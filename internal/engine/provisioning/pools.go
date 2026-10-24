@@ -177,6 +177,17 @@ func provisioningClusterSensitive() bool {
 	return row.Sensitive
 }
 
+// provisioningClusterRedaction is the provisioningcluster kind row's
+// redaction, which every family mutation passes to PlanUpdate so its diff
+// and its result hide what the row's preview hides.
+func provisioningClusterRedaction() kinds.Redaction {
+	row, ok := kinds.Lookup("provisioningcluster")
+	if !ok {
+		panic("provisioningcluster kind row not found in kinds.go - renamed or removed without updating internal/engine/provisioning")
+	}
+	return row.Redaction()
+}
+
 // wrapWithContextLine wraps exec to append contextLine as an indented detail
 // line after the base "<kind>/<name> <verb>" success text - the shape
 // clear-autoscaling and pause/resume-autoscaling each need beyond the plain
@@ -241,7 +252,7 @@ func planClusterFamilyMutation(
 	after.SetResourceVersion(obj.GetResourceVersion())
 
 	diff := engine.DiffObjects(obj.Object, after.Object)
-	eff, exec, err := engine.PlanUpdate(ctx, client, provisioningClusterGVR, ns, after, engine.LocalCluster, provisioningClusterDisplayKind, "Cluster", diff, provisioningClusterSensitive())
+	eff, exec, err := engine.PlanUpdate(ctx, client, provisioningClusterGVR, ns, after, provisioningClusterRedaction(), engine.LocalCluster, provisioningClusterDisplayKind, "Cluster", diff, provisioningClusterSensitive())
 	if err != nil {
 		return eff, exec, err
 	}

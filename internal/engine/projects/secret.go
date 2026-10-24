@@ -157,7 +157,7 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 				return res, nil
 			}
 		}
-		return eff, engine.RedactMutationResult(exec, secretKind.RedactPaths, secretKind.Sensitive), nil
+		return eff, exec, nil
 	}
 
 	cluster, err := engine.ResolveDownstreamCluster(ctx, c.clients, in, true)
@@ -181,5 +181,5 @@ func (c createSecretCmd) Plan(ctx context.Context, in runtime.Input) (safety.Eff
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	return eff, engine.RedactMutationResult(exec, secretKind.RedactPaths, secretKind.Sensitive), nil
+	return eff, exec, nil
 }

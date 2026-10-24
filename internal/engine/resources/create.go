@@ -163,7 +163,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 	if err != nil {
 		return safety.Effect{}, nil, err
 	}
-	return eff, engine.RedactMutationResult(exec, k.RedactPaths, k.Sensitive), nil
+	return eff, exec, nil
 }
 
 // parseManifest returns the memoized parse of the manifest named by the

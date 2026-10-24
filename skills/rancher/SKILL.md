@@ -291,13 +291,19 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
 - A preview hides secret values by design: the entry keeps its path and each
   side that has a value reads `<redacted>`; a side that has no value stays
   null. Hidden values are a secret's `data` and `stringData`, a user's
-  `password`, a management token's `token`, a password change request's
-  `spec.newPassword` and the password and key fields of a machine config (for
-  example `secretKey`, `sshKeyContents`, `sessionToken`, `sshPassword`). The
-  `kubectl.kubernetes.io/last-applied-configuration` annotation, which holds a
-  copy of the applied object, is hidden too for every sensitive kind and every
-  kind with hidden fields. Field names match in any case. Other fields print
-  as given, so a description or a cloud-init text shows in full.
+  `password`, a management token's `token`, an ext token's `status.bearerToken`
+  and `status.value`, an ext kubeconfig's `status.value`, a password change
+  request's `spec.newPassword` and the password and key fields of a machine
+  config (for example `secretKey`, `sshKeyContents`, `sessionToken`,
+  `sshPassword`). The `kubectl.kubernetes.io/last-applied-configuration`
+  annotation, which holds a copy of the applied object, is hidden too for every
+  sensitive kind and every kind with hidden fields. Field names match in any
+  case. Other fields print as given, so a description or a cloud-init text shows
+  in full. The `--apply` result in json, yaml and template leaves out the same
+  values. The exceptions are the commands that show a secret once on purpose:
+  `create token`, `create oidc-client`, `oidc-client add-secret` and
+  `oidc-client rotate-secret`; `create kubeconfig` prints its kubeconfig and
+  accepts only table output.
 - `--allow-deprecated` is required to write through a deprecated-stability API.
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
   write. An `RBAC` error on dry-run means the write would be denied too.

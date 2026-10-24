@@ -157,7 +157,7 @@ var identityPointers = []string{"/apiVersion", "/kind", "/metadata/name", "/meta
 // gvr, is an internal error: no preview of a create may be built without the
 // redaction of what it creates.
 func CreateDiff(gvr schema.GroupVersionResource, obj map[string]any, r kinds.Redaction) ([]safety.DiffEntry, error) {
-	if err := checkRedaction(gvr, r); err != nil {
+	if err := checkRedaction(gvr, r, "create"); err != nil {
 		return nil, err
 	}
 	return createDiff(obj, r), nil

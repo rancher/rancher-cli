@@ -164,7 +164,7 @@ func TestPlanUpdateObservedExposesDryRunResult(t *testing.T) {
 	}}
 	diff := []safety.DiffEntry{{Path: "/data/a", From: "0", To: "1"}}
 
-	eff, dryRun, exec, err := PlanUpdateObserved(t.Context(), client, gvr, "default", obj, "c-x", "configmap", "ConfigMap", diff, false)
+	eff, dryRun, exec, err := PlanUpdateObserved(t.Context(), client, gvr, "default", obj, redactionFor(gvr), "c-x", "configmap", "ConfigMap", diff, false)
 	require.NoError(t, err)
 	require.NotNil(t, exec)
 	assert.Equal(t, []bool{true}, client.dryRuns)
@@ -210,7 +210,7 @@ func TestPlanUpdate(t *testing.T) {
 		"metadata": map[string]any{"name": "p-1", "namespace": "c-x", "resourceVersion": "9"},
 	}}
 	diff := []safety.DiffEntry{{Path: "/spec/x", From: nil, To: "y"}}
-	eff, exec, err := PlanUpdate(t.Context(), client, testGVR, "c-x", obj, "c-x", "project", "Project", diff, true)
+	eff, exec, err := PlanUpdate(t.Context(), client, testGVR, "c-x", obj, redactionFor(testGVR), "c-x", "project", "Project", diff, true)
 	require.NoError(t, err)
 	assert.True(t, client.lastUpdateDryRun, "Plan must call Update with dryRun=true")
 	assert.Equal(t, safety.ActionUpdate, eff.Action)
@@ -235,7 +235,7 @@ func TestPlanUpdatePropagatesError(t *testing.T) {
 	client := &stubClient{updateErr: assert.AnError}
 	_, _, err := PlanUpdate(t.Context(), client, testGVR, "c-x",
 		&unstructured.Unstructured{Object: map[string]any{"metadata": map[string]any{"name": "p-1"}}},
-		"c-x", "project", "Project", nil, false)
+		redactionFor(testGVR), "c-x", "project", "Project", nil, false)
 	require.Error(t, err)
 }
 

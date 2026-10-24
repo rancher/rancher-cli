@@ -7,12 +7,20 @@ env RANCHER_CLI_TOKEN=$TEST_RANCHER_TOKEN
 exec rancher get tokens -o json
 jsonquery stdout 'data.#' 0
 
-exec rancher create resource -f token.yaml --apply --yes
-exec rancher get token ext-kinds-token -o json
-jsonquery stdout data.spec.userID u-ext-1
+# A manifest cannot create a token: `create token` does, and shows its value
+# once. The scenario seeds its own token with it; the facade names the token
+# and takes the user from the caller, so the name is read from the result.
+! exec rancher create resource -f token.yaml --apply --yes
+stderr 'error \(VALIDATION\):'
+stderr 'cannot create a token from a manifest; create tokens with'
+exec rancher create token --description ext-kinds-token-desc --apply --yes -o json
+jsonget stdout data.name tkname.txt
+setenvfrom TKNAME tkname.txt
+
+exec rancher get token $TKNAME -o json
 jsonquery stdout data.spec.description ext-kinds-token-desc
 
-exec rancher delete token ext-kinds-token --apply --yes
+exec rancher delete token $TKNAME --apply --yes
 
 exec rancher get kubeconfigs -o json
 
@@ -22,12 +30,21 @@ exec rancher get kubeconfigs -o json
 # the facade's forwardNamedCreate (so a get/delete by the generated name
 # works end to end), and testscript scenarios share one envtest cluster
 # and run concurrently - the same reason the Feature list below is not
-# asserted empty either.
-exec rancher create resource -f kubeconfig.yaml --apply --yes
-exec rancher get kubeconfig ext-kinds-kubeconfig -o json
+# asserted empty either. A manifest cannot create a kubeconfig either:
+# `create kubeconfig` does. This scenario seeds its own copy and finds it
+# by its own description, never by another scenario's object.
+! exec rancher create resource -f kubeconfig.yaml --apply --yes
+stderr 'error \(VALIDATION\):'
+stderr 'cannot create a kubeconfig from a manifest; create kubeconfigs with'
+exec rancher create kubeconfig --clusters testcluster --description ext-kinds-kubeconfig-desc --apply --yes
+exec rancher get kubeconfigs -o json
+jsonget stdout 'data.#(spec.description=="ext-kinds-kubeconfig-desc").metadata.name' kcname.txt
+setenvfrom KCNAME kcname.txt
+
+exec rancher get kubeconfig $KCNAME -o json
 jsonquery stdout data.spec.description ext-kinds-kubeconfig-desc
 
-exec rancher delete kubeconfig ext-kinds-kubeconfig --apply --yes
+exec rancher delete kubeconfig $KCNAME --apply --yes
 
 # feature (management.cattle.io/v3, NSNone/Management, Deletable: false): the
 # generic `get`/`patch` pair, no `delete` generated. Feature's interesting

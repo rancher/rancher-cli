@@ -12,7 +12,9 @@ import (
 
 // PlanCreateObserved previews a create via server-side dry-run and returns
 // the Effect, the SERVER's dry-run response, and the closure that performs
-// the real create. The dry-run response is exposed so a caller can compare
+// the real create. The result the closure returns carries the committed
+// object without the values redaction hides, the same values the preview
+// hides. The dry-run response is exposed so a caller can compare
 // its submission against what the server accepted (create machine-config's
 // pruned-key warning); PlanCreate delegates here. The Effect's diff lists
 // the fields the command sends (CreateDiff), computed from obj and not from
@@ -31,7 +33,7 @@ import (
 // and may be a Kubernetes/API identity such as "Cluster" or "Secret").
 // destructive is the caller's per-kind policy.
 func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, redaction kinds.Redaction, effectCluster, displayKind, resultKind string, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
-	if err := checkRedaction(gvr, redaction); err != nil {
+	if err := checkRedaction(gvr, redaction, "create"); err != nil {
 		return safety.Effect{}, nil, nil, err
 	}
 	diff := createDiff(obj.Object, redaction)
@@ -61,7 +63,7 @@ func PlanCreateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		// caller (grant) may have rewritten to a "prefix*" placeholder.
 		res := runtime.MutationText(displayKind, created.GetName(), "created")
 		res.Kind = resultKind
-		res.Data = created.Object
+		res.Data = scrubResult(created.Object, redaction)
 		return res, nil
 	}
 	return eff, out, exec, nil
@@ -81,18 +83,25 @@ func PlanCreate(ctx context.Context, client ClusterClient, gvr schema.GroupVersi
 // by the caller: obj is the already-transformed object carrying the
 // resourceVersion precondition, diff is the precomputed field-level change, and
 // destructive is the caller's per-kind policy. displayKind is the kind table's
-// canonical CLI name (see PlanCreateObserved). The Effect carries no
+// canonical CLI name (see PlanCreateObserved). redaction is the redaction of
+// the resource gvr names, as for PlanCreateObserved: the Effect's diff and
+// the result's object hide what it covers. The Effect carries no
 // contract/stability (see PlanCreateObserved). Mirrors PlanCreate so create
 // and update share one shape.
-func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
-	eff, _, exec, err := PlanUpdateObserved(ctx, client, gvr, ns, obj, effectCluster, displayKind, resultKind, diff, destructive)
+func PlanUpdate(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, redaction kinds.Redaction, effectCluster, displayKind, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, runtime.ExecuteFunc, error) {
+	eff, _, exec, err := PlanUpdateObserved(ctx, client, gvr, ns, obj, redaction, effectCluster, displayKind, resultKind, diff, destructive)
 	return eff, exec, err
 }
 
 // PlanUpdateObserved is PlanUpdate that also returns the server's dry-run
 // answer: the object as the update would store it, with the server's
-// defaults and admission changes applied.
-func PlanUpdateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, effectCluster, displayKind, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
+// defaults and admission changes applied. A zero redaction, or the
+// redaction of another resource, is an internal error refused before any
+// request. The planner hides, in place, the values redaction covers in diff.
+func PlanUpdateObserved(ctx context.Context, client ClusterClient, gvr schema.GroupVersionResource, ns string, obj *unstructured.Unstructured, redaction kinds.Redaction, effectCluster, displayKind, resultKind string, diff []safety.DiffEntry, destructive bool) (safety.Effect, *unstructured.Unstructured, runtime.ExecuteFunc, error) {
+	if err := checkRedaction(gvr, redaction, "update"); err != nil {
+		return safety.Effect{}, nil, nil, err
+	}
 	out, err := client.Update(ctx, gvr, ns, obj, true)
 	if err != nil {
 		return safety.Effect{}, nil, nil, err
@@ -103,7 +112,7 @@ func PlanUpdateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		DisplayKind:       displayKind,
 		DisplayName:       obj.GetName(),
 		Cluster:           effectCluster,
-		Diff:              diff,
+		Diff:              RedactDiff(diff, redaction),
 		ResourceVersion:   obj.GetResourceVersion(),
 		ConflictDetection: true,
 		Reversible:        true,
@@ -116,7 +125,7 @@ func PlanUpdateObserved(ctx context.Context, client ClusterClient, gvr schema.Gr
 		}
 		res := runtime.MutationText(displayKind, updated.GetName(), "patched")
 		res.Kind = resultKind
-		res.Data = updated.Object
+		res.Data = scrubResult(updated.Object, redaction)
 		return res, nil
 	}
 	return eff, out, exec, nil

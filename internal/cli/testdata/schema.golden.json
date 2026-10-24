@@ -11623,6 +11623,12 @@
       "scope": "management",
       "sensitive": true,
       "verbs": {
+        "create": {
+          "contract": "public",
+          "note": "create tokens with 'rancher create token' (it shows the token's value once)",
+          "stability": "stable",
+          "state": "refused"
+        },
         "delete": {
           "contract": "public",
           "stability": "stable",
@@ -11692,6 +11698,12 @@
       "scope": "management",
       "sensitive": true,
       "verbs": {
+        "create": {
+          "contract": "public",
+          "note": "create kubeconfigs with 'rancher create kubeconfig' (it prints the kubeconfig once)",
+          "stability": "stable",
+          "state": "refused"
+        },
         "delete": {
           "contract": "public",
           "stability": "stable",

@@ -138,6 +138,32 @@ func TestRedactionCovers(t *testing.T) {
 	}
 }
 
+// TestExtTokenAndKubeconfigHideTheirValue asserts the two ext rows hide the
+// value the server returns once on create: a token's status.bearerToken and
+// status.value, and a kubeconfig's status.value, in any letter case.
+func TestExtTokenAndKubeconfigHideTheirValue(t *testing.T) {
+	t.Parallel()
+	token, _ := Lookup("token")
+	kubeconfig, _ := Lookup("kubeconfig")
+	for _, tc := range []struct {
+		name string
+		k    Kind
+		keys []string
+		want bool
+	}{
+		{"token bearerToken", token, []string{"status", "bearerToken"}, true},
+		{"token BEARERTOKEN", token, []string{"STATUS", "BEARERTOKEN"}, true},
+		{"token value", token, []string{"status", "value"}, true},
+		{"token expiresAt", token, []string{"status", "expiresAt"}, false},
+		{"token description", token, []string{"spec", "description"}, false},
+		{"kubeconfig value", kubeconfig, []string{"status", "value"}, true},
+		{"kubeconfig Value", kubeconfig, []string{"Status", "Value"}, true},
+		{"kubeconfig summary", kubeconfig, []string{"status", "summary"}, false},
+	} {
+		assert.Equal(t, tc.want, tc.k.Redaction().Covers(tc.keys), tc.name)
+	}
+}
+
 // TestMachineConfigSecretListsAreComplete asserts every machine config kind
 // carries a secret list, with each name once whatever its case, and that the
 // names the drivers publish beyond Rancher's password typing are listed.
