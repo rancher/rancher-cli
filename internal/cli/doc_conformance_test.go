@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
 	"github.com/rancher/rancher-cli/internal/engine/kinds"
@@ -435,4 +439,391 @@ func TestReferenceErrorCodesTableMatchesManifest(t *testing.T) {
 	m, err := buildManifest("v-test")
 	require.NoError(t, err)
 	assert.Equal(t, m.ErrorCodes, rows)
+}
+
+// contentsEntry is one bullet of REFERENCE.md's contents list.
+type contentsEntry struct {
+	label  string
+	anchor string
+}
+
+var contentsBullet = regexp.MustCompile(`^- \[(.+)\]\(#([^)]+)\)$`)
+
+// isFenceLine reports whether a line opens or closes a fenced code block and
+// returns the fence marker.
+func isFenceLine(line string) (string, bool) {
+	trimmed := strings.TrimLeft(line, " ")
+	for _, marker := range []string{"```", "~~~"} {
+		if strings.HasPrefix(trimmed, marker) {
+			return marker, true
+		}
+	}
+	return "", false
+}
+
+// linesOutsideFences returns every line of doc that is not inside a fenced
+// code block, fence lines excluded.
+func linesOutsideFences(doc string) []string {
+	var out []string
+	open := ""
+	for line := range strings.SplitSeq(doc, "\n") {
+		if marker, ok := isFenceLine(line); ok {
+			switch open {
+			case "":
+				open = marker
+			case marker:
+				open = ""
+			}
+			continue
+		}
+		if open == "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// headingAnchor renders a heading's text as the anchor GitHub gives it:
+// lowercase, spaces to hyphens, every other character that is not a letter,
+// digit, underscore or hyphen dropped.
+func headingAnchor(text string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		switch {
+		case r == ' ':
+			b.WriteRune('-')
+		case r == '-' || r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// contentsProblems compares the contents list at the top of a document with
+// the document's `## ` headings outside fenced blocks: same entries, same
+// order, each label equal to its heading's text and each anchor equal to the
+// heading's anchor. It returns one message per difference.
+func contentsProblems(doc string) []string {
+	var headings []string
+	var entries []contentsEntry
+	for _, line := range linesOutsideFences(doc) {
+		if text, ok := strings.CutPrefix(line, "## "); ok {
+			headings = append(headings, text)
+			continue
+		}
+		if len(headings) > 0 {
+			continue
+		}
+		if m := contentsBullet.FindStringSubmatch(line); m != nil {
+			entries = append(entries, contentsEntry{label: m[1], anchor: m[2]})
+		}
+	}
+	var problems []string
+	if len(entries) != len(headings) {
+		problems = append(problems, fmt.Sprintf("the contents list has %d entries; the document has %d headings", len(entries), len(headings)))
+	}
+	for i, heading := range headings {
+		if i >= len(entries) {
+			problems = append(problems, fmt.Sprintf("heading %q has no contents entry", heading))
+			continue
+		}
+		if entries[i].label != heading {
+			problems = append(problems, fmt.Sprintf("contents entry %d is labeled %q; the heading is %q", i+1, entries[i].label, heading))
+		}
+		if want := headingAnchor(heading); entries[i].anchor != want {
+			problems = append(problems, fmt.Sprintf("contents entry %q links #%s; the heading's anchor is #%s", entries[i].label, entries[i].anchor, want))
+		}
+	}
+	for _, extra := range entries[min(len(headings), len(entries)):] {
+		problems = append(problems, fmt.Sprintf("contents entry %q has no heading", extra.label))
+	}
+	return problems
+}
+
+// TestReferenceContentsListsEveryHeading asserts that REFERENCE.md's contents
+// list names every `## ` heading outside fenced blocks, once and in order,
+// with the heading's text as the label and the heading's anchor as the link.
+// A failure here means REFERENCE.md went stale - update REFERENCE.md, not
+// this test.
+func TestReferenceContentsListsEveryHeading(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(docPath(t, "REFERENCE.md"))
+	require.NoError(t, err)
+	assert.Empty(t, contentsProblems(string(raw)))
+}
+
+const contentsFixture = `# Title
+
+- [First & second](#first--second)
+- [Third (--flag)](#third---flag)
+- [Fourth](#fourth)
+
+## First & second
+
+` + "```" + `
+## Not a heading
+` + "```" + `
+
+## Third (--flag)
+
+## Fourth
+`
+
+// TestContentsProblemsFixture asserts that contentsProblems ignores a heading
+// line inside a fenced block and reports each kind of difference between the
+// contents list and the headings.
+func TestContentsProblemsFixture(t *testing.T) {
+	t.Parallel()
+	require.Empty(t, contentsProblems(contentsFixture), "a heading line inside a fenced block is not counted")
+
+	tests := []struct {
+		name   string
+		mutate func(string) string
+	}{
+		{"missing entry", func(s string) string { return strings.Replace(s, "- [Fourth](#fourth)\n", "", 1) }},
+		{"extra heading", func(s string) string { return s + "\n## Fifth\n" }},
+		{"extra entry", func(s string) string {
+			return strings.Replace(s, "- [Fourth](#fourth)\n", "- [Fourth](#fourth)\n- [Fifth](#fifth)\n", 1)
+		}},
+		{"swapped entries", func(s string) string {
+			return strings.Replace(s, "- [Third (--flag)](#third---flag)\n- [Fourth](#fourth)\n", "- [Fourth](#fourth)\n- [Third (--flag)](#third---flag)\n", 1)
+		}},
+		{"wrong anchor", func(s string) string { return strings.Replace(s, "#first--second", "#first-second", 1) }},
+		{"wrong label", func(s string) string { return strings.Replace(s, "[Fourth]", "[Fourth part]", 1) }},
+		{"fenced line counted by mistake is a heading the list lacks", func(s string) string {
+			return strings.Replace(s, "```\n## Not a heading\n```", "## Not a heading", 1)
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mutated := tc.mutate(contentsFixture)
+			require.NotEqual(t, contentsFixture, mutated)
+			assert.NotEmpty(t, contentsProblems(mutated))
+		})
+	}
+}
+
+// TestHeadingAnchor asserts the anchor rule on headings with ampersands,
+// parentheses, backticks and an apostrophe.
+func TestHeadingAnchor(t *testing.T) {
+	t.Parallel()
+	tests := map[string]string{
+		"Platforms & credential stores":              "platforms--credential-stores",
+		"Project scope (--project)":                  "project-scope---project",
+		"Revoking the CLI's tokens":                  "revoking-the-clis-tokens",
+		"Auth configs (`--auth-provider`)":           "auth-configs---auth-provider",
+		"Token reuse for kubectl (opt-in)":           "token-reuse-for-kubectl-opt-in",
+		"When login fails after a token was created": "when-login-fails-after-a-token-was-created",
+	}
+	for heading, want := range tests {
+		assert.Equal(t, want, headingAnchor(heading), heading)
+	}
+}
+
+// splitTableCells splits one markdown table row into trimmed cells. A pipe
+// preceded by a backslash belongs to its cell and is kept with the backslash.
+func splitTableCells(line string) []string {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "|")
+	if strings.HasSuffix(line, "|") && !strings.HasSuffix(line, `\|`) {
+		line = strings.TrimSuffix(line, "|")
+	}
+	var cells []string
+	var cell strings.Builder
+	for i := 0; i < len(line); i++ {
+		switch {
+		case line[i] == '\\' && i+1 < len(line) && line[i+1] == '|':
+			cell.WriteString(`\|`)
+			i++
+		case line[i] == '|':
+			cells = append(cells, strings.TrimSpace(cell.String()))
+			cell.Reset()
+		default:
+			cell.WriteByte(line[i])
+		}
+	}
+	return append(cells, strings.TrimSpace(cell.String()))
+}
+
+// firstTableAfterHeading returns the rows of the first table under the named
+// `## ` heading (outside fenced blocks): the run of lines starting with a
+// pipe, ending at the first line that does not. The header and separator rows
+// are included.
+func firstTableAfterHeading(doc, heading string) []string {
+	var rows []string
+	inSection, inTable := false, false
+	for _, line := range linesOutsideFences(doc) {
+		switch {
+		case !inSection:
+			inSection = line == "## "+heading
+		case strings.HasPrefix(line, "|"):
+			inTable = true
+			rows = append(rows, line)
+		case inTable:
+			return rows
+		}
+	}
+	return rows
+}
+
+// envTableRow is one data row of the environment variable table, with the
+// code spans removed: Flag is empty for a row whose cell is a bare hyphen.
+type envTableRow struct {
+	Name string
+	Flag string
+}
+
+// codeSpanText returns the text of a cell that is exactly one code span.
+func codeSpanText(cell string) (string, bool) {
+	if len(cell) > 2 && strings.HasPrefix(cell, "`") && strings.HasSuffix(cell, "`") && strings.Count(cell, "`") == 2 {
+		return cell[1 : len(cell)-1], true
+	}
+	return "", false
+}
+
+// parseEnvTable reads the first table under the Environment variables
+// heading: columns Var, Flag, Effect.
+func parseEnvTable(doc string) ([]envTableRow, error) {
+	table := firstTableAfterHeading(doc, "Environment variables")
+	if len(table) < 2 {
+		return nil, errors.New("no table under the Environment variables heading")
+	}
+	if header := splitTableCells(table[0]); !slices.Equal(header, []string{"Var", "Flag", "Effect"}) {
+		return nil, fmt.Errorf("the table's columns are %q; want Var, Flag, Effect", header)
+	}
+	var rows []envTableRow
+	for _, line := range table[2:] {
+		cells := splitTableCells(line)
+		if len(cells) != 3 {
+			return nil, fmt.Errorf("row %q has %d cells; want 3", line, len(cells))
+		}
+		name, ok := codeSpanText(cells[0])
+		if !ok {
+			return nil, fmt.Errorf("row %q: the Var cell is not one code span", line)
+		}
+		row := envTableRow{Name: name}
+		if cells[1] != "-" {
+			if row.Flag, ok = codeSpanText(cells[1]); !ok {
+				return nil, fmt.Errorf("row %q: the Flag cell is neither one code span nor a bare hyphen", line)
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+// envTableProblems compares the environment variable table with the declared
+// variables: the same names (each once) and, per variable, the declared flag.
+func envTableProblems(doc string, vars []runtime.EnvVar) []string {
+	rows, err := parseEnvTable(doc)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	declared := map[string]string{}
+	for _, v := range vars {
+		declared[v.Name] = v.Flag
+	}
+	var problems []string
+	seen := map[string]bool{}
+	for _, row := range rows {
+		flag, ok := declared[row.Name]
+		switch {
+		case seen[row.Name]:
+			problems = append(problems, fmt.Sprintf("%s has more than one row", row.Name))
+		case !ok:
+			problems = append(problems, fmt.Sprintf("%s has a row but is not declared by EnvVars()", row.Name))
+		case row.Flag != flag:
+			problems = append(problems, fmt.Sprintf("%s has Flag %q; EnvVars() declares %q", row.Name, row.Flag, flag))
+		}
+		seen[row.Name] = true
+	}
+	for _, v := range vars {
+		if !seen[v.Name] {
+			problems = append(problems, fmt.Sprintf("%s is declared by EnvVars() and has no row", v.Name))
+		}
+	}
+	return problems
+}
+
+// TestReferenceEnvTableMatchesEnvVars asserts that the environment variable
+// table in REFERENCE.md has one row for each variable runtime.EnvVars()
+// declares, and that each row's Flag cell is the declared flag. A failure
+// here means REFERENCE.md went stale - update REFERENCE.md, not this test.
+func TestReferenceEnvTableMatchesEnvVars(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(docPath(t, "REFERENCE.md"))
+	require.NoError(t, err)
+	assert.Empty(t, envTableProblems(string(raw), runtime.EnvVars()))
+}
+
+const envTableFixture = `## Environment variables
+
+Intro text.
+
+| Var | Flag | Effect |
+|---|---|---|
+| ` + "`A_VAR`" + ` | ` + "`-c/--config`" + ` | one ` + "`x`" + ` \| two \| three |
+| ` + "`B_VAR`" + ` | - | plain |
+
+### Which CA
+
+| Var | Flag | Effect |
+|---|---|---|
+| ` + "`C_VAR`" + ` | ` + "`--other`" + ` | second table |
+
+` + "```" + `
+| ` + "`D_VAR`" + ` | - | in a fence |
+` + "```" + `
+`
+
+var envFixtureVars = []runtime.EnvVar{
+	{Name: "A_VAR", Flag: "-c/--config"},
+	{Name: "B_VAR"},
+}
+
+// TestEnvTableProblemsFixture asserts that envTableProblems reads an escaped
+// pipe, a backticked Flag cell, a bare hyphen and a second table correctly,
+// and reports each kind of difference from the declared variables.
+func TestEnvTableProblemsFixture(t *testing.T) {
+	t.Parallel()
+	require.Empty(t, envTableProblems(envTableFixture, envFixtureVars),
+		"an escaped pipe, a backticked Flag cell, a bare hyphen and a second table are all read correctly")
+
+	tests := []struct {
+		name   string
+		mutate func(string) string
+		vars   []runtime.EnvVar
+	}{
+		{"missing row", func(s string) string { return strings.Replace(s, "| `B_VAR` | - | plain |\n", "", 1) }, envFixtureVars},
+		{"undeclared row", func(s string) string {
+			return strings.Replace(s, "| `B_VAR` | - | plain |\n", "| `B_VAR` | - | plain |\n| `E_VAR` | - | extra |\n", 1)
+		}, envFixtureVars},
+		{"duplicate row", func(s string) string {
+			return strings.Replace(s, "| `B_VAR` | - | plain |\n", "| `B_VAR` | - | plain |\n| `B_VAR` | - | again |\n", 1)
+		}, envFixtureVars},
+		{"wrong flag", func(s string) string { return strings.Replace(s, "`-c/--config`", "`--config`", 1) }, envFixtureVars},
+		{"flag on a variable that declares none", func(s string) string { return strings.Replace(s, "| `B_VAR` | - |", "| `B_VAR` | `--b` |", 1) }, envFixtureVars},
+		{"bare hyphen for a declared flag", func(s string) string { return strings.Replace(s, "`-c/--config`", "-", 1) }, envFixtureVars},
+		{"variable declared without a row", func(s string) string { return s }, append([]runtime.EnvVar{{Name: "F_VAR"}}, envFixtureVars...)},
+		{"unescaped pipe in a cell", func(s string) string { return strings.Replace(s, `\| two`, `| two`, 1) }, envFixtureVars},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mutated := tc.mutate(envTableFixture)
+			if tc.name != "variable declared without a row" {
+				require.NotEqual(t, envTableFixture, mutated)
+			}
+			assert.NotEmpty(t, envTableProblems(mutated, tc.vars))
+		})
+	}
+}
+
+// TestSplitTableCells asserts that a pipe preceded by a backslash stays in its
+// cell.
+func TestSplitTableCells(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, []string{"`A`", "-", `x \| y`}, splitTableCells("| `A` | - | x \\| y |"))
+	assert.Equal(t, []string{"a", "b"}, splitTableCells("|a|b|"))
 }

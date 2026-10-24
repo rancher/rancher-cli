@@ -9969,6 +9969,7 @@
     },
     {
       "desc": "credential store backend: auto, keychain, or file",
+      "flag": "--credential-store",
       "name": "RANCHER_CLI_CREDENTIAL_STORE"
     },
     {

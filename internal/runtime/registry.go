@@ -109,7 +109,8 @@ func GlobalFlags() []GlobalFlag {
 }
 
 // EnvVar documents an environment variable the CLI reads. Flag names the flag
-// it backs, if any; env-only variables leave it empty.
+// for the same setting, on the commands that take it; env-only variables
+// leave it empty.
 type EnvVar struct {
 	Name string `json:"name"`
 	Desc string `json:"desc,omitempty"`
@@ -129,7 +130,7 @@ func EnvVars() []EnvVar {
 		{Name: "RANCHER_CLI_URL", Flag: "--server", Desc: "Rancher server URL, used when --server is omitted"},
 		{Name: "RANCHER_CLI_TOKEN", Desc: "API token (id:secret) for non-interactive auth"},
 		{Name: "RANCHER_CLI_CACERT", Flag: "--cacert", Desc: "PEM CA bundle, a path or the literal PEM"},
-		{Name: "RANCHER_CLI_CREDENTIAL_STORE", Desc: "credential store backend: auto, keychain, or file"},
+		{Name: "RANCHER_CLI_CREDENTIAL_STORE", Flag: "--credential-store", Desc: "credential store backend: auto, keychain, or file"},
 		{Name: "RANCHER_CLI_READONLY", Flag: "--read-only", Desc: "when non-empty, refuse mutating commands for the session; local commands stay usable"},
 		{Name: "NO_COLOR", Flag: "--color", Desc: "when non-empty, turn off styling under --color=auto"},
 		{Name: "CLICOLOR_FORCE", Flag: "--color", Desc: "when set to a value other than \"0\", turn on styling under --color=auto"},

@@ -8,6 +8,7 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Environment variables](#environment-variables)
 - [Install internals](#install-internals)
 - [Shell completion](#shell-completion)
+- [Cluster scope (--cluster)](#cluster-scope---cluster)
 - [Project scope (--project)](#project-scope---project)
 - [Kinds & verbs](#kinds--verbs)
 - [Cluster provisioning](#cluster-provisioning)
@@ -15,11 +16,16 @@ This reference expands [README.md](README.md) with the full operational detail.
 - [Access management](#access-management)
 - [Diagnostics & support](#diagnostics--support)
 - [Output formats](#output-formats)
+- [Color](#color)
 - [Error codes](#error-codes)
+- [Machine hints](#machine-hints)
 - [Read-only mode](#read-only-mode)
 - [Supported server version](#supported-server-version)
+- [When login fails after a token was created](#when-login-fails-after-a-token-was-created)
 - [Revoking the CLI's tokens](#revoking-the-clis-tokens)
+- [Auth configs (`--auth-provider`)](#auth-configs---auth-provider)
 - [kubectl integration](#kubectl-integration)
+- [Token reuse for kubectl (opt-in)](#token-reuse-for-kubectl-opt-in)
 - [Usage recording](#usage-recording)
 - [TLS & proxy](#tls--proxy)
 - [What the CLI sends to the server](#what-the-cli-sends-to-the-server)
@@ -224,21 +230,48 @@ examples: [CREDENTIAL_HELPERS.md](CREDENTIAL_HELPERS.md).
 
 ## Environment variables
 
-Every variable below can also be set by a flag or the config file;
-precedence is flag > environment > file.
+The Flag column names the flag for the same setting, on the commands that
+take it; `-` means no flag. A variable and its flag relate in different ways:
 
-| Var | Effect |
-|---|---|
-| `RANCHER_CLI_URL` | server URL |
-| `RANCHER_CLI_TOKEN` | token, used directly and never persisted |
-| `RANCHER_CLI_CACERT` | CA bundle (PEM), a path or the PEM text; which commands apply it is in [Which CA a command trusts](#which-ca-a-command-trusts) |
-| `RANCHER_CLI_CREDENTIAL_STORE` | `keychain` \| `file` \| `auto` \| `exec:<name>`; chooses the store for a directory that has not declared one, and must not disagree with one that has (a different value is a VALIDATION error, not an override); a keychain directory reads the keychain only, so set `file` where no keychain is reachable. `rancher kubeconfig` sets it in the exec entry: empty for a directory that declares its store, else the value set when it ran |
-| `RANCHER_CLI_CONFIG_DIR` | config directory; `rancher kubeconfig` sets it, absolute, in every exec entry it writes |
-| `RANCHER_CLI_OAUTH_AUTH_FLOW` | OAuth flow: `devicecode` \| `authcode` |
-| `RANCHER_CLI_OAUTH_CALLBACK_PORT` | local callback port for the `authcode` flow |
-| `RANCHER_CLI_TELEMETRY` | `true` or `false`; turns usage recording on or off over the `telemetry` config key, see [Usage recording](#usage-recording); empty counts as unset and any other value is ignored |
-| `RANCHER_CLI_CONFIG_NO_LOCK` | disables the config directory's cross-process write lock; escape hatch for filesystems with broken file locking |
-| `RANCHER_CLI_COMPLETION_DEBUG` | when non-empty, traces each phase of a shell completion request to stderr; stdout is unchanged |
+- Config directory: `--config` > `RANCHER_CLI_CONFIG_DIR` >
+  `$XDG_CONFIG_HOME/rancher` > the platform's default, see
+  [Platforms & credential stores](#platforms--credential-stores).
+- `--server`, `--cacert` and `--auth-flow` take precedence over their
+  variables on the commands that read both. `config add-server` and
+  `config update-server` take `--cacert` and never read `RANCHER_CLI_CACERT`;
+  see [Which CA a command trusts](#which-ca-a-command-trusts).
+- `--credential-store` (on `auth login`) must agree with
+  `RANCHER_CLI_CREDENTIAL_STORE`; a difference is refused. The variable never
+  overrides the store a directory has declared.
+- Any one of `RANCHER_CLI_READONLY` (any non-empty value, `0` and `false`
+  included), `--read-only` and the `readOnly` config key turns read-only mode
+  on; none of them turns it off. Local commands refuse a typed `--read-only`.
+- `--color=always` and `--color=never` take precedence over the color
+  variables; under `--color=auto` the variables decide.
+- `RANCHER_CLI_TELEMETRY` set to `true` or `false` takes precedence over the
+  `telemetry` config key; any other value is ignored. It has no flag.
+
+| Var | Flag | Effect |
+|---|---|---|
+| `RANCHER_CLI_URL` | `--server` | server URL |
+| `RANCHER_CLI_TOKEN` | - | token, used directly and never persisted |
+| `RANCHER_CLI_CACERT` | `--cacert` | CA bundle (PEM), a path or the PEM text; which commands apply it is in [Which CA a command trusts](#which-ca-a-command-trusts) |
+| `RANCHER_CLI_CREDENTIAL_STORE` | `--credential-store` | `keychain` \| `file` \| `auto` \| `exec:<name>`; chooses the store for a directory that has not declared one, and must not disagree with one that has (a different value is a VALIDATION error, not an override); a keychain directory reads the keychain only, so set `file` where no keychain is reachable. `rancher kubeconfig` sets it in the exec entry: empty for a directory that declares its store, else the value set when it ran |
+| `RANCHER_CLI_CONFIG_DIR` | `-c/--config` | config directory; `rancher kubeconfig` sets it, absolute, in every exec entry it writes |
+| `XDG_CONFIG_HOME` | - | base of the default config directory, `$XDG_CONFIG_HOME/rancher`, used when neither `--config` nor `RANCHER_CLI_CONFIG_DIR` is set |
+| `RANCHER_CLI_OAUTH_AUTH_FLOW` | `--auth-flow` | OAuth flow: `devicecode` \| `authcode` |
+| `RANCHER_CLI_OAUTH_CALLBACK_PORT` | - | local callback port for the `authcode` flow |
+| `CATTLE_OAUTH_AUTH_FLOW` | `--auth-flow` | legacy spelling of `RANCHER_CLI_OAUTH_AUTH_FLOW`, read when that one is empty |
+| `CATTLE_OAUTH_CALLBACK_PORT` | - | legacy spelling of `RANCHER_CLI_OAUTH_CALLBACK_PORT`, read when that one is empty |
+| `RANCHER_CLI_TELEMETRY` | - | `true` or `false`; turns usage recording on or off over the `telemetry` config key, see [Usage recording](#usage-recording); empty counts as unset and any other value is ignored |
+| `RANCHER_CLI_READONLY` | `--read-only` | when non-empty, refuses mutating commands for the session; local commands stay usable; see [Read-only mode](#read-only-mode) |
+| `NO_COLOR` | `--color` | when non-empty, turns off styling under `--color=auto`; see [Color](#color) |
+| `CLICOLOR_FORCE` | `--color` | when non-empty and not `0`, turns on styling under `--color=auto` unless `NO_COLOR` is set; see [Color](#color) |
+| `FORCE_COLOR` | `--color` | same as `CLICOLOR_FORCE`; see [Color](#color) |
+| `RANCHER_CLI_CONFIG_NO_LOCK` | - | disables the config directory's cross-process write lock; escape hatch for filesystems with broken file locking |
+| `RANCHER_CLI_COMPLETION_DEBUG` | - | when non-empty, traces each phase of a shell completion request to stderr; stdout is unchanged |
+| `VISUAL` | - | editor that `config edit` runs, read before `EDITOR` |
+| `EDITOR` | - | editor that `config edit` runs when `VISUAL` is empty |
 
 Scope is per-invocation: `--cluster` routes to a downstream cluster; `--project`
 names a project on it, for the commands that take it. No scope is persisted

@@ -295,8 +295,8 @@ Formats: `-o table` (default) · `wide` · `json` · `yaml` · `name` ·
   A change takes only that entry's credential, and asks for the other
   entries to be logged out of the store being left first. Precedence and probe/pin semantics:
   [REFERENCE.md](REFERENCE.md#platforms--credential-stores).
-- **Environment overrides** (precedence flag > env > file): the full table
-  of available environment overrides is in
+- **Environment variables:** the full table, with each variable's flag and
+  how the variable and the flag interact, is in
   [REFERENCE.md](REFERENCE.md#environment-variables).
 - **Migration:** config and credentials are not imported - run `rancher auth
   login` once per server.
