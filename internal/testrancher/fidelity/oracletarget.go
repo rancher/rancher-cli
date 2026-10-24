@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/client/httpx"
@@ -100,6 +101,35 @@ func NewOracleTargetFromEnv() (*OracleTarget, error) {
 		client:     client,
 		downstream: os.Getenv("E2E_FIDELITY_DOWNSTREAM"),
 	}, nil
+}
+
+// NewOracleTargetForTest is NewOracleTargetFromEnv for a test: it fails the
+// test when the environment is incomplete and registers a cleanup that
+// removes the users the target provisioned, so a test never leaves the
+// oracle changed. It is the one way a test builds an oracle target.
+func NewOracleTargetForTest(tb testing.TB) *OracleTarget {
+	tb.Helper()
+	tgt, err := NewOracleTargetFromEnv()
+	if err != nil {
+		tb.Fatalf("building the oracle target: %v", err)
+	}
+	tb.Cleanup(func() {
+		// The test's own context is already canceled when cleanups run.
+		ctx, cancel := context.WithTimeout(context.Background(), oracleCleanupTimeout())
+		defer cancel()
+		if err := tgt.Cleanup(ctx); err != nil {
+			tb.Errorf("cleaning up the fidelity identities: %v", err)
+		}
+	})
+	return tgt
+}
+
+// oracleCleanupTimeout bounds Cleanup for the two users it removes: each
+// waits up to standardUserGoneTimeout for the delete and up to
+// bindingsGoneTimeout for the bindings, plus a margin for the requests, so
+// a slow but healthy server never fails the cleanup.
+func oracleCleanupTimeout() time.Duration {
+	return 2*(standardUserGoneTimeout+bindingsGoneTimeout) + 30*time.Second
 }
 
 // BaseURL is the oracle server root without a trailing slash.

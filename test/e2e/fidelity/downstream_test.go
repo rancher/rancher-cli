@@ -31,15 +31,7 @@ func TestDownstream(t *testing.T) {
 	if downstream == "" {
 		t.Skip("E2E_FIDELITY_DOWNSTREAM is unset; no downstream cluster to probe")
 	}
-	tgt, err := fidelity.NewOracleTargetFromEnv()
-	require.NoError(t, err)
-	// The member identity provisions a user and bindings on the oracle;
-	// leave the server as it was found, on every exit path.
-	t.Cleanup(func() {
-		if err := tgt.Cleanup(context.Background()); err != nil {
-			t.Errorf("cleaning up the fidelity identities: %v", err)
-		}
-	})
+	tgt := fidelity.NewOracleTargetForTest(t)
 
 	image, err := recordedImage(t.Context(), tgt)
 	require.NoError(t, err)

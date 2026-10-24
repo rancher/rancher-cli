@@ -75,10 +75,20 @@ func callerScopeProbes() []Probe {
 	// a run, a host or a deployment chooses becomes a placeholder, so the
 	// golden shows every key each object carries, the same on any server
 	// whose downstream is an imported k3s cluster on the same Rancher
-	// minor, and keeps only the values the readers branch on:
-	// status.state, each condition's type and status, and
-	// spec.localClusterAuthEndpoint.enabled. A condition's optional fields
-	// are removed, and the keys of annotations, status.info,
+	// minor. The steve object keeps metadata.state whole (name, message,
+	// error, transitioning); neither object has a status.state, and the
+	// Kubernetes Cluster object has no state at all. Both objects keep each
+	// condition's type and status (the rules drop the PreBootstrapped
+	// condition whole), the steve object's also error and
+	// transitioning (the rules drop only lastUpdateTime,
+	// lastTransitionTime, message and reason), and both keep
+	// spec.localClusterAuthEndpoint.enabled. The readers branch on
+	// metadata.state.name (steve.ObjectState: the cluster's state in
+	// inspect cluster), the status of the Connected and Ready conditions
+	// (the agent verdict in inspect cluster, the Ready column and the
+	// default wait condition) and spec.localClusterAuthEndpoint.enabled
+	// (the direct kubeconfig and the observe targets); the rest of what is
+	// kept shows the shape. The keys of annotations, status.info,
 	// status.requested and status.limits are not kept: controllers fill
 	// them some time after a boot.
 	clusterShapeRules := []NormalizeRule{

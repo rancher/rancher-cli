@@ -22,8 +22,7 @@ var update = flag.Bool("update", false, "record oracle goldens from the real ser
 
 func TestOracle(t *testing.T) {
 	recordDriftTest(t)
-	tgt, err := fidelity.NewOracleTargetFromEnv()
-	require.NoError(t, err)
+	tgt := fidelity.NewOracleTargetForTest(t)
 	oracleImage := os.Getenv("E2E_FIDELITY_ORACLE_IMAGE")
 	require.NotEmpty(t, oracleImage, "E2E_FIDELITY_ORACLE_IMAGE must be set (run via scripts/e2e-fidelity)")
 
