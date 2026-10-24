@@ -91,7 +91,7 @@ func TestWindowsDryRunNoStableRelease(t *testing.T) {
 	_, errOut, code := runInstallPs(t, s, sh, newWinHome(t), nil, "-DryRun")
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "no stable release found")
-	assert.Contains(t, errOut, "gh auth login or GH_TOKEN")
+	assert.Contains(t, errOut, "log in with gh auth login, or set GH_TOKEN")
 	assert.Contains(t, errOut, "use -Pre or -Version")
 }
 
@@ -103,7 +103,7 @@ func TestWindowsLatestHTTPErrorIsNotNoStableRelease(t *testing.T) {
 		s.setLatestStatus(status)
 		_, errOut, code := runInstallPs(t, s, sh, newWinHome(t), nil, "-DryRun")
 		require.NotEqualf(t, 0, code, "HTTP %d must fail", status)
-		assert.Contains(t, errOut, "release resolution failed (HTTP")
+		assert.Contains(t, errOut, "could not look up the latest stable release (HTTP")
 		assert.NotContains(t, errOut, "no stable release", "only GitHub's 404 means release absence")
 	}
 }
@@ -128,7 +128,7 @@ func TestWindowsTagGrammar(t *testing.T) {
 			s := newStub(t)
 			_, errOut, code := runInstallPs(t, s, sh, newWinHome(t), nil, "-DryRun", "-Version", tag)
 			require.NotEqualf(t, 0, code, "tag %s must be rejected", tag)
-			assert.Contains(t, errOut, "tag grammar")
+			assert.Contains(t, errOut, "is not a valid release tag")
 		})
 	}
 }
@@ -231,7 +231,7 @@ func TestWindowsPreRejectsNonListingBodies(t *testing.T) {
 					require.NotEqual(t, 0, code)
 					assert.Contains(t, errOut, "release listing parse failed")
 					assert.Contains(t, errOut, "unexpected response")
-					assert.NotContains(t, errOut, "tag grammar")
+					assert.NotContains(t, errOut, "is not a valid release tag")
 				})
 			}
 		})
@@ -402,9 +402,9 @@ func TestWindowsInternalRepoTokenModeInstalls(t *testing.T) {
 			require.Equalf(t, 0, code, "stderr: %s", errOut)
 			assert.Contains(t, out, "installed: rancher version v1.2.3")
 			assert.Equal(t, "Bearer test-internal-token", s.lastAuthHeader(), "the API asset endpoint must receive the token")
-			assert.Empty(t, s.lastCDNAuthHeader(), "the token must not be forwarded to the storage redirect target")
+			assert.Empty(t, s.lastCDNAuthHeader(), "the token must not be forwarded to the redirect URL")
 			assert.Equal(t, 3, s.apiAssetRequestCount(), "one API request per asset")
-			assert.Equal(t, 3, s.cdnAssetRequestCount(), "one storage fetch per asset")
+			assert.Equal(t, 3, s.cdnAssetRequestCount(), "one redirect URL request per asset")
 			assert.NotContains(t, out+errOut, "test-internal-token", "the token must never appear in installer output")
 			assert.Equal(t, "v1.2.3", readReceipt(t, home)["tag"])
 		})
@@ -445,7 +445,7 @@ func TestWindowsScopedTokenFallsBackToDirectDownload(t *testing.T) {
 	s.setReleaseTagStatus(403)
 	out, errOut, code := runInstallPs(t, s, sh, newWinHome(t), []string{"GH_TOKEN=scoped-token"})
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
-	assert.Contains(t, errOut, "falling back to direct download")
+	assert.Contains(t, errOut, "falling back to the release download URL")
 	assert.Contains(t, out, "installed: rancher version v1.2.3")
 }
 
@@ -568,7 +568,7 @@ func TestWindowsVerifyAttestationWithoutGhIsFatal(t *testing.T) {
 	home := newWinHome(t)
 	_, errOut, code := runInstallPs(t, s, sh, home, nil, "-VerifyAttestation")
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, errOut, "no capable authenticated gh")
+	assert.Contains(t, errOut, "-VerifyAttestation needs a gh CLI whose 'gh attestation verify' supports --signer-workflow")
 	_, err := os.Lstat(home.binDir())
 	assert.True(t, os.IsNotExist(err), "a refused attestation must install nothing")
 }
@@ -582,7 +582,7 @@ func TestWindowsCapableGhAttestationRuns(t *testing.T) {
 	dir, ghLog, ghEnv := ghStubDir(t, "capable")
 	out, errOut, code := runInstallPs(t, s, sh, newWinHome(t), append(ghEnv, "PATH="+hermeticPath(dir)), "-VerifyAttestation")
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
-	assert.Contains(t, out, "build provenance verified")
+	assert.Contains(t, out, "build provenance attestation verified")
 	raw, err := os.ReadFile(ghLog)
 	require.NoError(t, err)
 	var verified []string
@@ -724,8 +724,8 @@ func TestWindowsCustomBinDirIsJunction(t *testing.T) {
 }
 
 // TestWindowsRefusesDriveRootBinDir asserts that a drive root cannot serve as
-// the bin dir: the run fails during argument validation, before any request
-// leaves the process and before anything is written.
+// the bin directory: the run fails during argument validation, before any
+// request leaves the process and before anything is written.
 func TestWindowsRefusesDriveRootBinDir(t *testing.T) {
 	t.Parallel()
 	for _, sh := range powerShells(t) {
@@ -736,8 +736,8 @@ func TestWindowsRefusesDriveRootBinDir(t *testing.T) {
 			before := digestInstallTree(t, home)
 			_, errOut, code := runInstallPs(t, s, sh, home, nil, "-BinDir", `C:\`)
 			require.NotEqual(t, 0, code)
-			assert.Contains(t, errOut, "bin dir must be a directory, not a drive root")
-			assert.NotContains(t, errOut, "no stable release", "the refusal must precede release resolution")
+			assert.Contains(t, errOut, "the bin directory cannot be a drive root")
+			assert.NotContains(t, errOut, "no stable release", "the refusal must precede the release lookup")
 			assert.Zero(t, s.apiAssetRequestCount(), "no asset may be requested")
 			assert.Zero(t, s.cdnAssetRequestCount(), "no asset may be requested")
 			assert.Equal(t, before, digestInstallTree(t, home), "the refusal must write nothing")
@@ -823,7 +823,7 @@ func TestWindowsForeignJunctionBinDirIsReplacedWithNotice(t *testing.T) {
 
 			out, errOut, code := runInstallPs(t, s, sh, home, nil)
 			require.Equalf(t, 0, code, "stderr: %s", errOut)
-			assert.Contains(t, out, "notice: replacing existing junction "+home.binDir())
+			assert.Contains(t, out, "notice: replacing existing Windows directory link (NTFS junction) "+home.binDir())
 			assertJunctionTo(t, home.binDir(), filepath.Join(home.versionsDir(), "v1.2.3"))
 			assert.Equal(t, before, digestTree(t, foreign), "the foreign target's contents must be untouched")
 			for _, name := range []string{"rancher", "rancher-credential-vault"} {
@@ -948,7 +948,7 @@ func TestWindowsMigrationSurvivesLockedStaleAside(t *testing.T) {
 			assertJunctionTo(t, home.binDir(), filepath.Join(home.versionsDir(), "v1.2.3"))
 			assert.Contains(t, runExe(t, filepath.Join(home.binDir(), "rancher.exe"), "--version"), "rancher version v1.2.3")
 			assert.Equal(t, 2, strings.Count(out, "notice: replacing existing file"))
-			assert.Contains(t, out, "warning: cannot remove replaced "+stale)
+			assert.Contains(t, out, "warning: cannot remove the moved-aside bin directory "+stale)
 			assert.Equal(t, []string{stale}, asidesBeside(t, home.binDir()), "only the locked stale aside may remain")
 
 			require.NoError(t, locked.Close())
@@ -1362,7 +1362,7 @@ func TestWindowsBootstrapPropagatesInstallerFailure(t *testing.T) {
 	cmd.Env = psEnv(s, home, "RANCHER_CLI_VERSION=v1/evil")
 	out, runErr := cmd.CombinedOutput()
 	require.Errorf(t, runErr, "installer failure must propagate through the pipe, output: %s", out)
-	assert.Contains(t, string(out), "tag grammar")
+	assert.Contains(t, string(out), "is not a valid release tag")
 }
 
 // shortPathName returns the 8.3 short form of an existing path - the form
@@ -1419,7 +1419,7 @@ func TestWindowsShortPathEnvironmentInstallsAndReruns(t *testing.T) {
 
 	out2, errOut2, code2 := runInstallPs(t, s, sh, home, nil)
 	require.Equalf(t, 0, code2, "rerun stderr: %s", errOut2)
-	assert.NotContains(t, out2, "replacing existing junction",
+	assert.NotContains(t, out2, "replacing existing Windows directory link",
 		"the rerun must recognize its own junction under a short-path environment")
 	assert.DirExists(t, filepath.Join(long.versionsDir(), "v1.2.3"),
 		"the version directory the live junction points at must survive the rerun's GC")

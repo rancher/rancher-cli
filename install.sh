@@ -33,10 +33,11 @@ CLI_ASSET_ID=""
 HELPER_ASSET_ID=""
 SHA256SUMS_ASSET_ID=""
 
-# METADATA_FAIL_CODE: HTTP code from a failed fetch_asset_ids() metadata GET.
-# Set when TOKEN is non-empty but the tags endpoint returns non-200; consulted
-# by download()'s browser-URL error path to produce an enriched message.
-METADATA_FAIL_CODE=""
+# METADATA_FAIL_STATE: how a failed fetch_asset_ids() metadata GET ended, as
+# "HTTP <status>" or "no HTTP status" when curl printed no status. Set when
+# TOKEN is non-empty but the tags endpoint returns non-200; consulted by
+# download()'s browser-URL error path to produce an enriched message.
+METADATA_FAIL_STATE=""
 
 # REL_JSON: winning release JSON cached by resolve_pre_tag() so
 # fetch_asset_ids() can skip a redundant GET on the --pre path.
@@ -122,7 +123,7 @@ fetch_asset() {
       [ -n "$_location" ] || err "download failed: $_name (asset id $_id, redirect with no Location)"
       curl --proto '=https' --tlsv1.2 -fsS \
         -o "$_out" "$_location" || \
-        err "download failed: $_name (asset id $_id, CDN fetch)"
+        err "download failed: $_name (asset id $_id, could not download from the redirect URL)"
       ;;
     *)
       err "download failed: $_name (asset id $_id, HTTP $_code)"
@@ -137,7 +138,7 @@ fetch_asset() {
 # available; otherwise fetches via $API_URL/repos/$REPO/releases/tags/$TAG and
 # captures the HTTP code so failures can be diagnosed in the download() error.
 #
-# On metadata fetch failure: stores the code in METADATA_FAIL_CODE, warns to
+# On metadata fetch failure: stores the state in METADATA_FAIL_STATE, warns to
 # stderr, and returns 0 so download() falls back to browser URLs.  Only a
 # metadata-success + missing-asset is a broken release.
 #
@@ -167,8 +168,12 @@ fetch_asset_ids() {
     _meta_body="${_meta_resp%
 *}"
     if [ "$_meta_rc" -ne 0 ] || [ "$_meta_code" != "200" ]; then
-      METADATA_FAIL_CODE="${_meta_code:-error}"
-      warn "release metadata not readable with this token (HTTP ${_meta_code:-error}) - falling back to direct download"
+      if [ -n "$_meta_code" ]; then
+        METADATA_FAIL_STATE="HTTP $_meta_code"
+      else
+        METADATA_FAIL_STATE="no HTTP status"
+      fi
+      warn "release metadata not readable with this GitHub token ($METADATA_FAIL_STATE) - falling back to the release download URL"
       return 0
     fi
     _rel_json="$_meta_body"
@@ -212,7 +217,7 @@ EOF
     SHA256SUMS_ASSET_ID="${_ids_rest##* }"
   fi
   _awk_note=""
-  [ -z "${_used_awk:-}" ] || _awk_note=" - note: id extraction without jq or python3 is best-effort; install one of them if the release assets look correct"
+  [ -z "${_used_awk:-}" ] || _awk_note=" - without jq or python3 the installer reads the asset ids with awk and can miss them; if the release lists this asset, install jq or python3 and run the installer again"
   [ -n "$CLI_ASSET_ID" ] || \
     err "asset not found in release $TAG: $CLI_ASSET - verify the release assets exist${_awk_note}"
   [ -n "$HELPER_ASSET_ID" ] || \
@@ -223,7 +228,7 @@ EOF
 
 validate_tag() {
   printf '%s' "$1" | grep -Eq "$TAG_RE" || \
-    err "tag '$1' violates the release tag grammar (vX.Y.Z or vX.Y.Z-{alpha|beta|rc}.N)"
+    err "tag '$1' is not a valid release tag (vX.Y.Z or vX.Y.Z-{alpha|beta|rc}.N)"
 }
 
 # tag_rank <tag>: prints "MAJ MIN PAT PRERANK PREN" for a grammar-valid tag.
@@ -247,7 +252,7 @@ tag_rank() {
 }
 
 # tag_older_than <a> <b>: true when a orders strictly before b. Both tags
-# must already satisfy the tag grammar (callers validate).
+# must already be valid release tags (callers validate).
 tag_older_than() {
   # shellcheck disable=SC2046 # tag_rank output is exactly five integers
   set -- $(tag_rank "$1") $(tag_rank "$2")
@@ -283,7 +288,7 @@ resolve_tag() {
     _probe="$(curl --proto '=https' --tlsv1.2 -sI -o /dev/null \
       -w '%{http_code} %{redirect_url}' "$BASE_URL/$REPO/releases/latest")" || _rc=$?
   fi
-  [ "$_rc" -eq 0 ] || err "release resolution request failed (curl exit $_rc) - network, TLS, or proxy problem"
+  [ "$_rc" -eq 0 ] || err "could not look up the latest stable release (curl exit $_rc) - network, TLS, or proxy problem"
   _code="${_probe%% *}"
   _redirect="${_probe#* }"
   # Only GitHub's first-release 404 means "no stable release"; 401/403/429/
@@ -292,15 +297,15 @@ resolve_tag() {
     30?) : ;;
     404)
       if [ -z "$TOKEN" ]; then
-        err "no stable release found - an internal repository needs auth (gh auth login or GH_TOKEN); on a public repository this means: use --pre or --version <tag>"
+        err "no stable release found - an internal repository needs a GitHub token (log in with gh auth login, or set GH_TOKEN); on a public repository there is no stable release yet - use --pre or --version <tag>"
       fi
-      err "no stable release yet - use --pre or --version <tag>; with a token set this can also mean the token lacks access to an internal repository (scope/SSO)"
+      err "no stable release yet - use --pre or --version <tag>; with a GitHub token set this can also mean the GitHub token lacks access to an internal repository (missing scope or SSO authorization)"
       ;;
-    *) err "release resolution failed (HTTP $_code) - check token/rate limits and retry" ;;
+    *) err "could not look up the latest stable release (HTTP $_code) - check the GitHub token and the rate limit, then retry" ;;
   esac
   case "$_redirect" in
     */tag/*) TAG="${_redirect##*/tag/}" ;;
-    *) err "release resolution returned no tag redirect (HTTP $_code)" ;;
+    *) err "could not look up the latest stable release - the response (HTTP $_code) did not redirect to a release tag URL" ;;
   esac
   validate_tag "$TAG"
 }
@@ -322,12 +327,12 @@ resolve_pre_tag() {
   fi
   _page=1
   while :; do
-    # Page cap: runaway-loop backstop against non-API responses (captive portal,
+    # Stop after 100 pages: a backstop against non-API responses (captive portal,
     # JSON object); not a release search window limit.
-    [ "$_page" -gt 100 ] && err "release listing: page cap reached (100 pages) - non-API response or runaway loop"
+    [ "$_page" -gt 100 ] && err "release listing: stopped after 100 pages - the response may not come from the GitHub API, or the listing never ends"
     if ! _body="$(fetch "$API_URL/repos/$REPO/releases?per_page=100&page=$_page")"; then
       if [ -z "$TOKEN" ]; then
-        err "release listing request failed (page $_page) - an internal repository needs auth: authenticate gh (gh auth login) or set GH_TOKEN"
+        err "release listing request failed (page $_page) - an internal repository needs a GitHub token: log in with gh auth login, or set GH_TOKEN"
       fi
       err "release listing request failed (page $_page)"
     fi
@@ -335,7 +340,7 @@ resolve_pre_tag() {
     case "$_n" in
       ''|*[!0-9]*) err "release listing parse failed (page $_page) - unexpected response (captive portal?)" ;;
     esac
-    [ "$_n" -eq 0 ] && err "no published release found - the listing is exhausted"
+    [ "$_n" -eq 0 ] && err "no published release found in the release listing"
     TAG="$(printf '%s' "$_body" | _parse)"
     if [ -n "$TAG" ]; then
       validate_tag "$TAG"
@@ -360,9 +365,10 @@ verify_checksums() {
   done
 }
 
-# Attestation: capability probe, then verify. Anything short of a capable,
-# authenticated gh takes the unavailable path (notice; fatal only with
-# --verify-attestation). A capable client's verification failure is fatal.
+# Attestation: capability probe, then verify. Anything short of a gh that is
+# installed, supports --signer-workflow and is logged in takes the
+# unavailable path (notice; fatal only with --verify-attestation). A capable
+# client's verification failure is fatal.
 #
 # Attestation verification talks to github.com regardless of BASE_URL -
 # that is where release attestations live. The auth check here is
@@ -453,21 +459,21 @@ has_raw_controls() {
 write_receipt() {
   for _v in "$TAG" "$BIN_DIR" "$DATA_DIR"; do
     if has_raw_controls "$_v"; then
-      warn "receipt skipped: value contains unsupported control bytes"
+      warn "install receipt not written: the tag, bin directory or data directory contains a newline or another unsupported control character"
       return 0
     fi
   done
-  mkdir -p "$CONFIG_DIR" || { warn "receipt skipped: cannot create $CONFIG_DIR"; return 0; }
+  mkdir -p "$CONFIG_DIR" || { warn "install receipt not written: cannot create $CONFIG_DIR"; return 0; }
   _tmp="$CONFIG_DIR/.receipt.$$"
   printf '{"version":"%s","tag":"%s","binDir":"%s","dataDir":"%s","layout":"versioned-dir","channel":"script","installedAt":"%s"}\n' \
     "$(json_escape "${TAG#v}")" "$(json_escape "$TAG")" "$(json_escape "$BIN_DIR")" \
     "$(json_escape "$DATA_DIR")" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_tmp" || \
-    { warn "receipt skipped: cannot write $_tmp"; rm -f "$_tmp"; return 0; }
-  # No-follow replace, like current and the public links: plain mv would
-  # follow a pre-existing receipt symlink-to-directory and drop the temp
-  # file INSIDE it while reporting success.
+    { warn "install receipt not written: cannot write $_tmp"; rm -f "$_tmp"; return 0; }
+  # Replace without following a symlink, like current and the public links:
+  # plain mv would follow a pre-existing receipt symlink-to-directory and
+  # drop the temp file INSIDE it while reporting success.
   $MV_REPLACE "$_tmp" "$CONFIG_DIR/install-receipt.json" || \
-    { warn "receipt skipped: cannot move into place"; rm -f "$_tmp"; return 0; }
+    { warn "install receipt not written: cannot rename the temporary file to install-receipt.json"; rm -f "$_tmp"; return 0; }
 }
 
 cleanup() {
@@ -497,7 +503,7 @@ parse_args() {
   CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rancher-cli"
 }
 
-# grep/awk/tr are load-bearing (tag grammar, checksum selection, receipt
+# grep/awk/tr are load-bearing (tag validation, checksum selection, receipt
 # guard - a missing tr would fail the control-byte guard OPEN), so they are
 # preflighted like the rest.
 preflight_tools() {
@@ -569,7 +575,7 @@ download() {
   ln -s /dev/null "$_mv_probe/a"
   ln -s /dev/null "$_mv_probe/b"
   $MV_REPLACE "$_mv_probe/b" "$_mv_probe/a" 2>/dev/null || \
-    err "mv does not support the required no-follow replace (-T/-h) - unsupported mv implementation (BusyBox?)"
+    err "mv cannot replace a symlink without following it (needs -T on Linux, -h on macOS) - this mv is not supported (BusyBox?)"
   rm -rf "$_mv_probe"
 
   WORK="$(mktemp -d)"
@@ -590,8 +596,8 @@ download() {
   else
     if ! fetch "$DL_BASE/$CLI_ASSET" "$WORK/$CLI_ASSET"; then
       _dlmsg="download failed: $DL_BASE/$CLI_ASSET (404 = tag '$TAG' has no such asset)"
-      if [ -n "$TOKEN" ] && [ -n "$METADATA_FAIL_CODE" ]; then
-        _dlmsg="$_dlmsg - or the token lacks access to an internal repository (scope/SSO); release metadata was also unreadable (HTTP $METADATA_FAIL_CODE)"
+      if [ -n "$TOKEN" ] && [ -n "$METADATA_FAIL_STATE" ]; then
+        _dlmsg="$_dlmsg - or the GitHub token lacks access to an internal repository (missing scope or SSO authorization); release metadata was also unreadable ($METADATA_FAIL_STATE)"
       fi
       err "$_dlmsg"
     fi
@@ -606,21 +612,21 @@ verify() {
     for _b in "$WORK/$CLI_ASSET" "$WORK/$HELPER_ASSET"; do
       gh attestation verify "$_b" --repo "$REPO" \
         --signer-workflow "$REPO/.github/workflows/release.yaml" >/dev/null 2>&1 || \
-        err "build provenance attestation FAILED for $_b"
+        err "build provenance attestation failed for $_b"
     done
-    note "build provenance verified"
+    note "build provenance attestation verified"
   else
     if [ -n "$REQUIRE_ATTESTATION" ]; then
-      err "--verify-attestation: no capable authenticated gh CLI available"
+      err "--verify-attestation needs a gh CLI whose 'gh attestation verify' supports --signer-workflow, and a gh login (gh auth login)"
     fi
-    note "notice: attestation skipped (no capable authenticated gh CLI)"
+    note "notice: attestation skipped (gh is not installed, its 'gh attestation verify' does not support --signer-workflow, or gh is not logged in)"
   fi
 }
 
 stage() {
-  mkdir -p "$BIN_DIR" || err "cannot create bin dir $BIN_DIR"
-  [ -w "$BIN_DIR" ] || err "bin dir $BIN_DIR is not writable"
-  mkdir -p "$DATA_DIR/versions" || err "cannot create data dir $DATA_DIR"
+  mkdir -p "$BIN_DIR" || err "cannot create bin directory $BIN_DIR"
+  [ -w "$BIN_DIR" ] || err "bin directory $BIN_DIR is not writable"
+  mkdir -p "$DATA_DIR/versions" || err "cannot create data directory $DATA_DIR"
 
   _lock_path="$DATA_DIR/.install.lock"
   if ! mkdir "$_lock_path" 2>/dev/null; then
@@ -632,7 +638,7 @@ stage() {
   # delete every version dir (CURRENT_TARGET="" matches nothing) and the
   # atomic switch would nest inside it instead of replacing it.
   if [ -e "$DATA_DIR/current" ] && [ ! -L "$DATA_DIR/current" ]; then
-    err "$DATA_DIR/current exists but is not a symlink - the layout is corrupt; remove it and rerun"
+    err "$DATA_DIR/current exists but is not a symlink - the data directory is damaged; remove $DATA_DIR/current and rerun the installer"
   fi
 
   # Preflight BOTH public paths before ANY layout mutation (staging, switch,
@@ -689,13 +695,14 @@ link() {
     fi
   fi
 
-  # Atomic current switch: temp symlink + rename over the link itself.
+  # Atomic switch of the current link: temp symlink + rename over the
+  # link itself.
   # Plain mv would move the temp link INTO the directory current points at.
   _tmp_link="$DATA_DIR/.current.$$"
   ln -s "versions/${VDIR##*/}" "$_tmp_link"
   $MV_REPLACE "$_tmp_link" "$DATA_DIR/current"
   [ "$(readlink "$DATA_DIR/current")" = "versions/${VDIR##*/}" ] || \
-    err "current switch failed verification - rerun the installer"
+    err "the 'current' symlink in the data directory does not point to the installed version - rerun the installer"
   hold_at "${RANCHER_CLI_INSTALL_HOLD_AFTER_SWITCH:-}"
 
   # Post-switch GC: the pre-staging pass necessarily kept the then-current old
@@ -713,7 +720,7 @@ link() {
 epilogue() {
   # Epilogue: verify the links resolve, prove the install, print next steps.
   if [ ! -x "$BIN_DIR/rancher" ] || [ ! -x "$BIN_DIR/rancher-credential-vault" ]; then
-    err "installed links do not resolve - rerun the installer"
+    err "the links in the bin directory are broken or not executable - rerun the installer"
   fi
   note "installed: $("$BIN_DIR/rancher" --version)"
   case ":$PATH:" in
@@ -776,8 +783,8 @@ epilogue() {
   IFS="$_oldifs"
   note "next steps:"
   note "  rancher completion <bash|zsh|fish|pwsh>   # shell completion"
-  note "  rancher skill install                     # agent harnesses"
-  note "  rancher auth login <name> --url <url>     # authenticate"
+  note "  rancher skill install                     # skill for coding-agent harnesses"
+  note "  rancher auth login <name> --url <url>     # log in to a Rancher server"
 }
 
 main() {

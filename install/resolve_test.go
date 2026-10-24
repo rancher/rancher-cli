@@ -33,7 +33,8 @@ func TestDryRunResolvesStableLatest(t *testing.T) {
 
 // TestStable404WithTokenHintsAtScope covers the case where a token is present
 // and the stable-latest endpoint returns 404, the error must suggest the token
-// may lack access (scope/SSO) - not just steer the user toward --pre.
+// may lack access (missing scope or SSO authorization) - not just steer the
+// user toward --pre.
 func TestStable404WithTokenHintsAtScope(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
@@ -44,8 +45,8 @@ func TestStable404WithTokenHintsAtScope(t *testing.T) {
 	}, "--dry-run")
 	require.NotEqual(t, 0, code)
 	assert.Contains(t, errOut, "use --pre or --version")
-	assert.Contains(t, errOut, "token lacks access",
-		"404 with a token set must hint at scope/SSO as a possible cause")
+	assert.Contains(t, errOut, "GitHub token lacks access",
+		"404 with a token set must hint at missing scope or SSO authorization as a possible cause")
 }
 
 func TestDryRunNoStableRelease(t *testing.T) {
@@ -57,7 +58,7 @@ func TestDryRunNoStableRelease(t *testing.T) {
 	// internal repo); the message must name both readings and the way out
 	// of each.
 	assert.Contains(t, errOut, "no stable release found")
-	assert.Contains(t, errOut, "gh auth login or GH_TOKEN")
+	assert.Contains(t, errOut, "log in with gh auth login, or set GH_TOKEN")
 	assert.Contains(t, errOut, "use --pre or --version")
 }
 
@@ -98,7 +99,7 @@ func TestTagGrammar(t *testing.T) {
 		s := newStub(t)
 		_, errOut, code := runInstall(t, s, nil, "--dry-run", "--version", tag)
 		assert.NotEqualf(t, 0, code, "tag %s must be rejected", tag)
-		assert.Contains(t, errOut, "tag grammar")
+		assert.Contains(t, errOut, "is not a valid release tag")
 	}
 }
 
@@ -179,7 +180,7 @@ func TestLatestTransportFailureIsNotNoStableRelease(t *testing.T) {
 	_, errOut, code := runInstall(t, s,
 		[]string{"RANCHER_CLI_INSTALL_BASE_URL=https://127.0.0.1:1"}, "--dry-run")
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, errOut, "release resolution request failed")
+	assert.Contains(t, errOut, "could not look up the latest stable release (curl exit")
 	assert.NotContains(t, errOut, "no stable release",
 		"a network error must never masquerade as release absence")
 }
@@ -191,7 +192,7 @@ func TestLatestHTTPErrorIsNotNoStableRelease(t *testing.T) {
 		s.setLatestStatus(status)
 		_, errOut, code := runInstall(t, s, nil, "--dry-run")
 		require.NotEqualf(t, 0, code, "HTTP %d must fail", status)
-		assert.Contains(t, errOut, "release resolution failed (HTTP")
+		assert.Contains(t, errOut, "could not look up the latest stable release (HTTP")
 		assert.NotContains(t, errOut, "no stable release",
 			"only GitHub's 404 means release absence")
 	}
@@ -206,7 +207,7 @@ func TestNewlineBinDirSkipsReceiptWithWarning(t *testing.T) {
 	binDir := filepath.Join(home, "line1\nline2")
 	_, errOut, code := runInstall(t, s, envHome(home), "--bin-dir", binDir)
 	require.Equal(t, 0, code, "newline bin-dir installs fine, only the receipt is skipped")
-	assert.Contains(t, errOut, "receipt skipped: value contains unsupported control bytes")
+	assert.Contains(t, errOut, "install receipt not written: the tag, bin directory or data directory contains a newline or another unsupported control character")
 	assert.NotContains(t, errOut, "not found",
 		"the guard branch must be reached by detection, not by a missing tool failing open")
 	_, err := os.Stat(filepath.Join(home, ".config", "rancher-cli", "install-receipt.json"))
@@ -320,7 +321,7 @@ func TestMvCapabilityProbePrecedesAnyMutation(t *testing.T) {
 	before := digestTree(t, home)
 	_, errOut, code := runInstall(t, s, env)
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, errOut, "mv does not support the required no-follow replace")
+	assert.Contains(t, errOut, "mv cannot replace a symlink without following it")
 	assert.Equal(t, before, digestTree(t, home),
 		"the probe must refuse before staging, links, or the receipt exist")
 	_, errOut, code = runInstall(t, s, env, "--dry-run")
@@ -460,7 +461,7 @@ func TestBootstrapPropagatesInstallerFailure(t *testing.T) {
 		"TMPDIR=" + tmp, "CURL_CA_BUNDLE=" + bundle}
 	out, runErr := cmd.CombinedOutput()
 	require.Errorf(t, runErr, "installer failure must propagate through the pipe, output: %s", out)
-	assert.Contains(t, string(out), "tag grammar")
+	assert.Contains(t, string(out), "is not a valid release tag")
 	entries, readErr := os.ReadDir(tmp)
 	require.NoError(t, readErr)
 	assert.Empty(t, entries, "the installer must clean up its work dir on failure")
@@ -636,9 +637,9 @@ func TestGhTokenFallback(t *testing.T) {
 	}
 }
 
-// The grammar has two executable homes (scripts/check-release-tag and the
-// standalone install.sh); this asserts them byte-identical and runs the
-// conformance table through the guard script too.
+// The release tag pattern is defined in two scripts (scripts/check-release-tag
+// and the standalone install.sh); this asserts them byte-identical and runs
+// the conformance table through the guard script too.
 func TestTagGrammarSharedSource(t *testing.T) {
 	t.Parallel()
 	extract := func(path string) string {
@@ -653,7 +654,7 @@ func TestTagGrammarSharedSource(t *testing.T) {
 		return ""
 	}
 	assert.Equal(t, extract("../scripts/check-release-tag"), extract("../install.sh"),
-		"the tag grammar must stay byte-identical in both scripts")
+		"the release tag pattern must stay byte-identical in both scripts")
 
 	accept := []string{"v0.1.0", "v1.0.0", "v10.2.30", "v1.0.0-alpha.1", "v1.0.0-rc.2"}
 	reject := []string{"v01.0.0", "v1.0.0-.", "v1.0.0-alpha..1", "v1.0.0-alpha-1",

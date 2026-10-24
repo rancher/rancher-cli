@@ -152,14 +152,14 @@ namespace RancherCliInstall
                     {
                         int err = Marshal.GetLastWin32Error();
                         // FileRenameInfoEx with POSIX semantics needs Windows 10
-                        // version 1607 / Windows Server 2016; an older kernel
+                        // version 1607 or Windows Server 2016; an older kernel
                         // rejects the info class or the flag with one of these
                         // two codes. Failing here is safe: the previous bin dir
                         // is still intact, and a non-atomic fallback would break
                         // the installer's kill-safety.
                         if (err == ERROR_INVALID_PARAMETER || err == ERROR_NOT_SUPPORTED)
                         {
-                            throw new IOException("this OS lacks support for the atomic directory rename the installer requires (error " + err + ") - Windows 10 version 1607 / Windows Server 2016 or later is required");
+                            throw new IOException("this OS lacks support for the atomic directory rename the installer requires (error " + err + ") - it needs Windows 10 version 1607 or Windows Server 2016 or later");
                         }
                         throw new IOException("cannot rename " + source + " over " + destination + " (error " + err + ")");
                     }
@@ -359,11 +359,11 @@ namespace RancherCliInstall
 
     function Test-Tag([string]$Candidate) {
         if ($Candidate -notmatch $TagRe) {
-            Fail "tag '$Candidate' violates the release tag grammar (vX.Y.Z or vX.Y.Z-{alpha|beta|rc}.N)"
+            Fail "tag '$Candidate' is not a valid release tag (vX.Y.Z or vX.Y.Z-{alpha|beta|rc}.N)"
         }
     }
 
-    # Get-TagRank <tag>: MAJ MIN PAT PRERANK PREN for a grammar-valid tag.
+    # Get-TagRank <tag>: MAJ MIN PAT PRERANK PREN for a valid release tag.
     # Prerelease classes order alpha < beta < rc < stable (stable rank 3).
     function Get-TagRank([string]$T) {
         $t = $T.Substring(1)
@@ -430,15 +430,15 @@ namespace RancherCliInstall
         $r = Invoke-Http 'HEAD' "$($S.BaseUrl)/$Repo/releases/latest" -Auth
         if ($r.Code -eq 404) {
             if (-not $S.Token) {
-                Fail "no stable release found - an internal repository needs auth (gh auth login or GH_TOKEN); on a public repository this means: use -Pre or -Version <tag>"
+                Fail "no stable release found - an internal repository needs a GitHub token (log in with gh auth login, or set GH_TOKEN); on a public repository there is no stable release yet - use -Pre or -Version <tag>"
             }
-            Fail "no stable release yet - use -Pre or -Version <tag>; with a token set this can also mean the token lacks access to an internal repository (scope/SSO)"
+            Fail "no stable release yet - use -Pre or -Version <tag>; with a GitHub token set this can also mean the GitHub token lacks access to an internal repository (missing scope or SSO authorization)"
         }
         if ($r.Code -lt 300 -or $r.Code -gt 399) {
-            Fail "release resolution failed (HTTP $($r.Code)) - check token/rate limits and retry"
+            Fail "could not look up the latest stable release (HTTP $($r.Code)) - check the GitHub token and the rate limit, then retry"
         }
         if (-not $r.Location -or $r.Location -notmatch '/tag/([^/]+)$') {
-            Fail "release resolution returned no tag redirect (HTTP $($r.Code))"
+            Fail "could not look up the latest stable release - the response (HTTP $($r.Code)) did not redirect to a release tag URL"
         }
         $S.Tag = $Matches[1]
         Test-Tag $S.Tag
@@ -448,13 +448,13 @@ namespace RancherCliInstall
     function Resolve-PreTag {
         $page = 1
         while ($true) {
-            # Page cap: runaway-loop backstop against non-API responses
+            # Stop after 100 pages: a backstop against non-API responses
             # (captive portal, JSON object); not a release search window.
-            if ($page -gt 100) { Fail "release listing: page cap reached (100 pages) - non-API response or runaway loop" }
+            if ($page -gt 100) { Fail "release listing: stopped after 100 pages - the response may not come from the GitHub API, or the listing never ends" }
             $r = Invoke-Http 'GET' "$($S.ApiUrl)/repos/$Repo/releases?per_page=100&page=$page" -Auth -Accept 'application/vnd.github+json'
             if ($r.Code -ne 200) {
                 if (-not $S.Token) {
-                    Fail "release listing request failed (page $page, HTTP $($r.Code)) - an internal repository needs auth: authenticate gh (gh auth login) or set GH_TOKEN"
+                    Fail "release listing request failed (page $page, HTTP $($r.Code)) - an internal repository needs a GitHub token: log in with gh auth login, or set GH_TOKEN"
                 }
                 Fail "release listing request failed (page $page, HTTP $($r.Code))"
             }
@@ -467,7 +467,7 @@ namespace RancherCliInstall
             } catch { $parsed = $null }
             if ($null -eq $parsed) { Fail "release listing parse failed (page $page) - unexpected response (captive portal?)" }
             $list = @($parsed)
-            if ($list.Count -eq 0) { Fail "no published release found - the listing is exhausted" }
+            if ($list.Count -eq 0) { Fail "no published release found in the release listing" }
             foreach ($rel in $list) {
                 if ($rel.draft) { continue }
                 Test-Tag ([string]$rel.tag_name)
@@ -481,7 +481,7 @@ namespace RancherCliInstall
 
     # Resolve-AssetIds: with a token, the numeric asset ids the API download
     # endpoint needs. A metadata failure is remembered for the download error
-    # and the install falls back to the direct download URLs.
+    # and the install falls back to the release download URLs.
     function Resolve-AssetIds {
         if (-not $S.Token) { return }
         $rel = $S.ReleaseJson
@@ -489,7 +489,7 @@ namespace RancherCliInstall
             $r = Invoke-Http 'GET' "$($S.ApiUrl)/repos/$Repo/releases/tags/$($S.Tag)" -Auth -Accept 'application/vnd.github+json'
             if ($r.Code -ne 200) {
                 $S.MetadataFailCode = $r.Code
-                Write-Warn "release metadata not readable with this token (HTTP $($r.Code)) - falling back to direct download"
+                Write-Warn "release metadata not readable with this GitHub token (HTTP $($r.Code)) - falling back to the release download URL"
                 return
             }
             $rel = ConvertFrom-Json $r.Body
@@ -518,7 +518,7 @@ namespace RancherCliInstall
         if ($r.Code -ge 300 -and $r.Code -le 399) {
             if (-not $r.Location) { Fail "download failed: $Name (asset id $Id, redirect with no Location)" }
             $cdn = Invoke-Http 'GET' $r.Location -OutFile $Out
-            if ($cdn.Code -ne 200) { Fail "download failed: $Name (asset id $Id, storage fetch HTTP $($cdn.Code))" }
+            if ($cdn.Code -ne 200) { Fail "download failed: $Name (asset id $Id, the redirect URL answered HTTP $($cdn.Code))" }
             return
         }
         Fail "download failed: $Name (asset id $Id, HTTP $($r.Code))"
@@ -576,9 +576,10 @@ namespace RancherCliInstall
         Write-Note "checksums verified against SHA256SUMS: $($S.CliAsset), $($S.HelperAsset)"
     }
 
-    # Attestation: capability probe, then verify. Anything short of a capable,
-    # authenticated gh takes the unavailable path (notice; fatal only with
-    # -VerifyAttestation). A capable client's verification failure is fatal.
+    # Attestation: capability probe, then verify. Anything short of a gh that
+    # is installed, supports --signer-workflow and is logged in takes the
+    # unavailable path (notice; fatal only with -VerifyAttestation). A capable
+    # client's verification failure is fatal.
     function Test-GhCapable {
         $gh = Find-Command 'gh'
         if (-not $gh) { return $null }
@@ -694,7 +695,7 @@ namespace RancherCliInstall
             [IO.File]::WriteAllText($tmp, (ConvertTo-Json $receipt -Compress) + "`n")
             if (Test-Path -LiteralPath $dest) { [IO.File]::Replace($tmp, $dest, [NullString]::Value) } else { [IO.File]::Move($tmp, $dest) }
         } catch {
-            Write-Warn "receipt skipped: $($_.Exception.Message)"
+            Write-Warn "install receipt not written: $($_.Exception.Message)"
         }
     }
 
@@ -710,7 +711,7 @@ namespace RancherCliInstall
         $S.VersionsDir = Join-Path $S.DataDir 'versions'
         if (-not $S.BinDir) { $S.BinDir = Join-Path $S.DataDir 'bin' }
         $S.BinDir = (Get-FullPath $S.BinDir).TrimEnd('\')
-        if ([IO.Path]::GetPathRoot($S.BinDir).TrimEnd('\') -ieq $S.BinDir) { Fail "bin dir must be a directory, not a drive root: $($S.BinDir)" }
+        if ([IO.Path]::GetPathRoot($S.BinDir).TrimEnd('\') -ieq $S.BinDir) { Fail "the bin directory cannot be a drive root: $($S.BinDir)" }
     }
 
     function Resolve-Release {
@@ -744,7 +745,7 @@ namespace RancherCliInstall
         [IO.Directory]::CreateDirectory($S.Work) | Out-Null
         Write-Note "downloading $($S.Tag) for $Os/$($S.Arch)"
         if ($S.CliAssetId) {
-            # Internal repositories serve nothing on the direct download URLs;
+            # Internal repositories serve nothing on the release download URLs;
             # the API asset endpoint is the path that works with a token.
             Get-ReleaseAsset $S.CliAssetId (Join-Path $S.Work $S.CliAsset) $S.CliAsset
             Get-ReleaseAsset $S.HelperAssetId (Join-Path $S.Work $S.HelperAsset) $S.HelperAsset
@@ -755,7 +756,7 @@ namespace RancherCliInstall
         if (-not (Get-DirectAsset "$dl/$($S.CliAsset)" (Join-Path $S.Work $S.CliAsset))) {
             $msg = "download failed: $dl/$($S.CliAsset) (404 = tag '$($S.Tag)' has no such asset)"
             if ($S.Token -and $S.MetadataFailCode) {
-                $msg += " - or the token lacks access to an internal repository (scope/SSO); release metadata was also unreadable (HTTP $($S.MetadataFailCode))"
+                $msg += " - or the GitHub token lacks access to an internal repository (missing scope or SSO authorization); release metadata was also unreadable (HTTP $($S.MetadataFailCode))"
             }
             Fail $msg
         }
@@ -770,20 +771,21 @@ namespace RancherCliInstall
         if ($gh) {
             foreach ($b in @((Join-Path $S.Work $S.CliAsset), (Join-Path $S.Work $S.HelperAsset))) {
                 $r = Invoke-Process $gh @('attestation', 'verify', $b, '--repo', $Repo, '--signer-workflow', "$Repo/.github/workflows/release.yaml")
-                if ($r.Code -ne 0) { Fail "build provenance attestation FAILED for $b" }
+                if ($r.Code -ne 0) { Fail "build provenance attestation failed for $b" }
             }
-            Write-Note "build provenance verified"
+            Write-Note "build provenance attestation verified"
         } elseif ($VerifyAttestation) {
-            Fail "-VerifyAttestation: no capable authenticated gh CLI available"
+            Fail "-VerifyAttestation needs a gh CLI whose 'gh attestation verify' supports --signer-workflow, and a gh login (gh auth login)"
         } else {
-            Write-Note "notice: attestation skipped (no capable authenticated gh CLI)"
+            Write-Note "notice: attestation skipped (gh is not installed, its 'gh attestation verify' does not support --signer-workflow, or gh is not logged in)"
         }
     }
 
-    # The bin dir is the installer's junction to the current version. Before
-    # any layout mutation it may be absent, a junction (ours or foreign), an
-    # empty directory, or a directory holding only a prior by-hand
-    # rancher.exe/rancher-credential-vault.exe pair; anything else is refused.
+    # The bin directory is the installer's Windows directory link (NTFS
+    # junction) to the current version. Before any layout mutation it may be
+    # absent, a Windows directory link (ours or foreign), an empty directory,
+    # or a directory holding only a prior by-hand rancher.exe/
+    # rancher-credential-vault.exe pair; anything else is refused.
     function Confirm-BinDir {
         Restore-BinDir
         if (-not (Test-Path -LiteralPath $S.BinDir)) { return }
@@ -798,14 +800,14 @@ namespace RancherCliInstall
             if ($resolved.StartsWith("$(Get-FinalPath $S.VersionsDir)\", [StringComparison]::OrdinalIgnoreCase)) {
                 $S.CurrentTarget = $resolved
             } else {
-                Write-Note "notice: replacing existing junction $($S.BinDir) -> $(Get-JunctionTarget $S.BinDir)"
+                Write-Note "notice: replacing existing Windows directory link (NTFS junction) $($S.BinDir) -> $(Get-JunctionTarget $S.BinDir)"
             }
             return
         }
         if (Test-ReparsePoint $S.BinDir) { Fail "$($S.BinDir) is a symbolic link - refusing to replace it" }
         foreach ($e in @(Get-ChildItem -LiteralPath $S.BinDir -Force)) {
             if ($e.PSIsContainer -or ($e.Name -ine $CliName -and $e.Name -ine $HelperName)) {
-                Fail "$($S.BinDir) holds other files - the installer makes the bin dir a junction to the current version; pick an empty or new directory with -BinDir"
+                Fail "$($S.BinDir) holds other files - the installer makes the bin directory a Windows directory link (NTFS junction) to the current version; pick an empty or new directory with -BinDir"
             }
         }
     }
@@ -834,7 +836,7 @@ namespace RancherCliInstall
         $asides = Get-BinDirAsides
         if ($asides.Count -eq 0) { return }
         $aside = Join-Path (Split-Path -Parent $S.BinDir) $asides[$asides.Count - 1].Name
-        Write-Note "notice: restoring $aside to $($S.BinDir) - an earlier install was interrupted"
+        Write-Note "notice: restoring $aside to $($S.BinDir) - an earlier install was stopped"
         [IO.Directory]::Move($aside, $S.BinDir)
     }
 
@@ -891,7 +893,7 @@ namespace RancherCliInstall
         }
 
         if ($intact) {
-            Write-Note "version $($S.Tag) already present and intact - repairing links"
+            Write-Note "version $($S.Tag) already present and intact - making the bin directory a Windows directory link (NTFS junction) to it"
             return
         }
         if (Test-Path -LiteralPath $S.VDir) { $S.VDir = Join-Path $S.VersionsDir "$($S.Tag).2" }
@@ -949,7 +951,7 @@ namespace RancherCliInstall
         [RancherCliInstall.Native]::ReplaceDirectory($S.StagingLink, $S.BinDir)
         $S.StagingLink = $null
         if (-not (Test-Junction $S.BinDir) -or (Get-FinalPath $S.BinDir) -ine (Get-FinalPath $S.VDir)) {
-            Fail "current switch failed verification - rerun the installer"
+            Fail "the bin directory is not a Windows directory link (NTFS junction) to the installed version - rerun the installer"
         }
         Wait-Hold $env:RANCHER_CLI_INSTALL_HOLD_AFTER_SWITCH
 
@@ -960,11 +962,11 @@ namespace RancherCliInstall
         foreach ($d in @(Get-ChildItem -LiteralPath $S.VersionsDir -Force)) {
             $full = Join-Path $S.VersionsDir $d.Name
             if ($full -ieq $S.VDir) { continue }
-            try { Remove-Tree $full } catch { Write-Warn "cannot remove superseded $full (still running?) - the next install will retry" }
+            try { Remove-Tree $full } catch { Write-Warn "cannot remove old version directory $full (a program from it may still be running) - the next install will retry" }
         }
         foreach ($d in (Get-BinDirAsides)) {
             $full = Join-Path (Split-Path -Parent $S.BinDir) $d.Name
-            try { Remove-Tree $full } catch { Write-Warn "cannot remove replaced $full (still running?) - the next install will retry" }
+            try { Remove-Tree $full } catch { Write-Warn "cannot remove the moved-aside bin directory $full (a program from it may still be running) - the next install will retry" }
         }
         $S.Aside = $null
         $stale = ".$(Split-Path -Leaf $S.BinDir).*"
@@ -975,7 +977,7 @@ namespace RancherCliInstall
 
     function Write-Epilogue {
         foreach ($n in @($CliName, $HelperName)) {
-            if (-not (Test-Path -LiteralPath (Join-Path $S.BinDir $n) -PathType Leaf)) { Fail "installed binaries do not resolve - rerun the installer" }
+            if (-not (Test-Path -LiteralPath (Join-Path $S.BinDir $n) -PathType Leaf)) { Fail "an installed binary is missing from the bin directory - rerun the installer" }
         }
         $r = Invoke-Process (Join-Path $S.BinDir $CliName) @('--version')
         if ($r.Code -ne 0) { Fail "installed rancher.exe failed to run: $($r.Err.Trim())" }
@@ -1010,8 +1012,8 @@ namespace RancherCliInstall
         }
         Write-Note "next steps:"
         Write-Note "  rancher completion pwsh | Out-String | Invoke-Expression   # shell completion"
-        Write-Note "  rancher skill install                                     # agent harnesses"
-        Write-Note "  rancher auth login <name> --url <url>                     # authenticate"
+        Write-Note "  rancher skill install                                      # skill for coding-agent harnesses"
+        Write-Note "  rancher auth login <name> --url <url>                      # log in to a Rancher server"
     }
 
     try {

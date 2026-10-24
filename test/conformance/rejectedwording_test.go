@@ -38,8 +38,14 @@ import (
 //     below it. Inline code spans and fenced code blocks (at any indent)
 //     are not read. A fence that never closes fails the test, because it
 //     hides everything below it. Indented (four-space) code blocks are read
-//     as prose. install.sh, install.ps1 and the GitHub issue forms are not
-//     read.
+//     as prose.
+//   - install.sh, install.ps1, .github/ISSUE_TEMPLATE/bug.yml,
+//     .github/ISSUE_TEMPLATE/feature.yml and scripts/check-release-tag, one
+//     line at a time. A line whose first non-blank characters are # or // is
+//     a comment and is not read, as Go comments are not; every other line is
+//     one unit: a phrase wrapped across two lines is not found. Code
+//     spans are not blanked. A hit reports file:line. The completion
+//     scripts and .github/ISSUE_TEMPLATE/config.yml (no prose) are not read.
 //
 // Matching is case-insensitive and whole-word: the characters on each side
 // of a match are not a letter, a digit, a hyphen or an underscore, and the
@@ -107,6 +113,14 @@ import (
 //     table header); the rejected compound is the row dry-run effect.
 //   - members (for the namespaces of a project): the word also means
 //     people, so only the phrase member namespaces is refused.
+//   - best-effort, superseded, authenticated, resolution, receipt, harness,
+//     interrupted, redact: ordinary words in other text ("mandatory instead
+//     of best-effort", "a superseded token", "system:authenticated",
+//     "Credential-store resolution", "install receipt", "coding-agent
+//     harnesses"); only the compounds in the table are refused.
+//   - authenticated gh: the document phrases hold a code span, which the
+//     document scan blanks: no form could match them.
+//   - capable (alone), violates, this means: ordinary words.
 func TestRejectedWordingStaysOut(t *testing.T) {
 	tree := parseSourceTree()
 	require.NoError(t, tree.err)
@@ -124,6 +138,11 @@ func TestRejectedWordingStaysOut(t *testing.T) {
 			continue
 		}
 		units = append(units, docUnits...)
+	}
+	for _, path := range wordingScripts {
+		src, err := os.ReadFile(path)
+		require.NoError(t, err)
+		units = append(units, readWordingScript(path, string(src))...)
 	}
 	if unreadable {
 		return
@@ -153,6 +172,16 @@ var wordingDocs = []string{
 	"MIGRATING.md",
 	"skills/rancher/SKILL.md",
 	"CREDENTIAL_HELPERS.md",
+}
+
+// wordingScripts are the install scripts, the issue forms and the release tag
+// check the scan reads, one line at a time.
+var wordingScripts = []string{
+	"install.sh",
+	"install.ps1",
+	".github/ISSUE_TEMPLATE/bug.yml",
+	".github/ISSUE_TEMPLATE/feature.yml",
+	"scripts/check-release-tag",
 }
 
 // wordingSkippedPrefixes are packages that only support tests; the walk
@@ -193,14 +222,18 @@ var rejectedWording = []wordingRow{
 	{[]string{"budget", "budgets"}, "time limit"},
 	{[]string{"caller identity"}, "your user ID"},
 	{[]string{"caller-scoped"}, "with your permissions"},
+	{[]string{"capable authenticated"}, "a gh CLI that is logged in and whose 'gh attestation verify' supports --signer-workflow"},
+	{[]string{"cdn fetch", "storage fetch"}, "could not download from the redirect URL"},
 	{[]string{"channel server route"}, "name the path: it was not found on the server"},
 	{[]string{"clears cleanly"}, "succeeds and changes nothing"},
 	{[]string{"command bug", "command bugs"}, "internal error"},
 	{[]string{"controller-owned"}, "a controller creates and manages it"},
 	{[]string{"credential store helper", "credential store helpers"}, "credential helper"},
 	{[]string{"curated flag", "curated flags"}, "the command's own flags"},
+	{[]string{"current switch"}, "the 'current' symlink does not point to the installed version"},
 	{[]string{"degrades to", "degrade to", "degraded to"}, "say what the command shows instead"},
 	{[]string{"direct context", "direct contexts", "direct endpoint", "direct endpoints"}, "Authorized Cluster Endpoint"},
+	{[]string{"do not resolve"}, "are broken or not executable"},
 	{[]string{"dry-run effect", "dry-run effects"}, "dry-run preview"},
 	{[]string{"envelope key", "envelope keys"}, "top-level Kubernetes object field"},
 	{[]string{"escalates to", "escalate to"}, "requires"},
@@ -209,33 +242,46 @@ var rejectedWording = []wordingRow{
 	{[]string{"fleet workspace namespace"}, "Fleet workspace (namespace)"},
 	{[]string{"floor", "floors", "version-floor", "version-floors"}, "minimum"},
 	{[]string{"half-set"}, "has only one of the two fields set"},
+	{[]string{"id extraction"}, "reads the asset ids"},
 	{[]string{"identity probe", "identity probes", "selfuser probe", "selfuser probes"}, "SelfUser request"},
 	{[]string{"junction", "junctions"}, "a Windows directory link (NTFS junction)"},
 	{[]string{"killed"}, "stopped"},
+	{[]string{"layout is corrupt"}, "the data directory is damaged"},
+	{[]string{"listing is exhausted"}, "no published release found in the release listing"},
 	{[]string{"machine-config kind", "machine-config kinds"}, "machine config kind"},
 	{[]string{"manual quantity"}, "number of nodes"},
 	{[]string{"member namespaces", "member namespace"}, "the project's namespaces"},
 	{[]string{"named get", "named gets"}, "a get of one object"},
+	{[]string{"needs auth"}, "needs a GitHub token"},
+	{[]string{"no-follow replace"}, "replace a symlink without following it"},
 	{[]string{"no-op"}, "changes nothing"},
 	{[]string{"node count"}, "number of nodes"},
 	{[]string{"node-driver pool", "node-driver pools"}, "machine pool"},
+	{[]string{"observe the following output"}, "see this output"},
 	{[]string{"one read of its id"}, "gets it by its id"},
 	{[]string{"ordinary secret", "ordinary secrets"}, "a secret in a namespace"},
 	{[]string{"owning source object"}, "the object it was created from"},
+	{[]string{"page cap"}, "stopped after 100 pages"},
 	{[]string{"principal form", "principal forms"}, "principal prefix"},
 	{[]string{"provider list", "provider lists"}, "list of auth configs"},
 	{[]string{"quorum majority"}, "quorum"},
 	{[]string{"re-asserts", "reasserts"}, "sets it back"},
+	{[]string{"receipt skipped"}, "install receipt not written"},
 	{[]string{"release fetch", "release fetches"}, "fetching the releases"},
+	{[]string{"release resolution", "prerelease resolution"}, "look up the latest stable release"},
 	{[]string{"role vocabulary"}, "role templates and global roles"},
+	{[]string{"runaway loop"}, "the listing never ends"},
 	{[]string{"sanctioned override"}, "name the command to run first"},
 	{[]string{"schema vocabulary", "schema kind vocabulary"}, "the kinds rancher schema lists"},
 	{[]string{"schema-legal"}, "allowed"},
+	{[]string{"scope/sso"}, "missing scope or SSO authorization"},
 	{[]string{"scriptblock", "scriptblocks"}, "script block"},
 	{[]string{"server dry run"}, "server-side dry-run"},
 	{[]string{"spliced", "splices"}, "replaced"},
 	{[]string{"stamped", "stamps", "unstamped"}, "set (an annotation)"},
 	{[]string{"steve collection envelope"}, "Rancher API collection"},
+	{[]string{"tag grammar"}, "a valid release tag"},
+	{[]string{"tag redirect"}, "redirect to a release tag URL"},
 	{[]string{"the pair"}, "the two binaries"},
 	{[]string{"the plan"}, "the dry-run preview"},
 	{[]string{"user record", "user records"}, "User object"},
@@ -274,6 +320,8 @@ var wordingPathAllowlist = []wordingPath{
 	{"auth lifecycle", "internal/engine/managementtoken/managementtoken.go", "", 1, "text not yet reworded"},
 	{"bespoke", "internal/cli/capability_coverage.go", "", 4, "text not yet reworded"},
 	{"bin-dir", "README.md", "Install", 1, "text not yet reworded"},
+	{"bin-dir", "install.ps1", "", 1, "the dry-run output key, kept because a test asserts it"},
+	{"bin-dir", "install.sh", "", 1, "the dry-run output key, kept because a test asserts it"},
 	{"budget", "COMMANDS.md", "Servers & configuration", 1, "text not yet reworded"},
 	{"budget", "MIGRATING.md", "Changed in this CLI", 1, "text not yet reworded"},
 	{"budget", "REFERENCE.md", "Access management", 3, "text not yet reworded"},
@@ -317,11 +365,13 @@ var wordingPathAllowlist = []wordingPath{
 	{"exec entry", "internal/token/regenerate.go", "", 1, "text not yet reworded"},
 	{"exec entry", "internal/token/signin.go", "", 1, "text not yet reworded"},
 	{"exec entry", "skills/rancher/SKILL.md", "8. kubectl interop", 4, "text not yet reworded"},
+	{"executable", "install.sh", "", 1, "a file permission in an error message, not a program"},
 	{"floor", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"floor", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"floor", "skills/rancher/SKILL.md", "1. Verify auth before anything else", 1, "text not yet reworded"},
 	{"identity probe", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"junction", "README.md", "Install", 1, "text not yet reworded"},
+	{"junction", "install.ps1", "", 2, "not prose: the LinkType value and the New-Item parameter"},
 	{"killed", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
 	{"named get", "internal/engine/resources/get.go", "", 2, "text not yet reworded"},
 	{"no-op", "CREDENTIAL_HELPERS.md", "Responses", 1, "text not yet reworded"},
@@ -565,6 +615,27 @@ func readWordingDoc(path, src string) ([]wordingUnit, error) {
 		return nil, &wordingFenceError{path: path, line: fenceLine}
 	}
 	return units, nil
+}
+
+// readWordingScript splits an install script, an issue form or a shell script
+// into one unit per line, skipping a comment line (its first non-blank
+// characters are # or //). A hit reports the line it sits on.
+func readWordingScript(path, src string) []wordingUnit {
+	var units []wordingUnit
+	for i, line := range strings.Split(src, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		trimmed := strings.TrimLeft(line, " \t")
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		n := i + 1
+		units = append(units, wordingUnit{
+			path:   path,
+			text:   line,
+			lineOf: func(int) int { return n },
+		})
+	}
+	return units
 }
 
 type wordingFenceError struct {
@@ -1086,4 +1157,28 @@ func TestRejectedWordingGoLines(t *testing.T) {
 		`p.go:8: "budget" - use "time limit"`,
 		`p.go:11: "budget" - use "time limit"`,
 	}, checkWording(rows, nil, nil, goWordingUnits(fset, "p.go", f)))
+}
+
+// TestRejectedWordingScriptLines asserts which lines of an install script or
+// an issue form the scan reads: a comment line (# or //, after any indent) is
+// skipped, a line that holds a # after its text is read, and a hit reports the
+// file and the line.
+func TestRejectedWordingScriptLines(t *testing.T) {
+	src := "#!/bin/sh\n" + // line 1
+		"# a bin dir in a comment\n" + // line 2
+		"    // wins over in a comment\n" + // line 3
+		"\t# wins over, indented\n" + // line 4
+		"err \"the bin dir is full\"\n" + // line 5
+		"note \"  rancher skill install   # a bin dir\"\n" + // line 6
+		"\n" + // line 7
+		"description: this wins over that\r\n" // line 8
+	units := readWordingScript("script.sh", src)
+	assert.Equal(t, []string{
+		`script.sh:5: "bin dir" - use "bin directory"`,
+		`script.sh:6: "bin dir" - use "bin directory"`,
+		`script.sh:8: "wins over" - use "takes precedence over"`,
+	}, checkWording(probeRows, nil, nil, units))
+
+	assert.Empty(t, checkWording(probeRows, nil, nil, readWordingScript("script.sh", "# only a bin dir comment\n// wins over\n")),
+		"a rejected phrase in a comment line is skipped")
 }

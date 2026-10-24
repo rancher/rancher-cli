@@ -315,12 +315,12 @@ files, or a directory link it did not create, with a notice. Unlike
 directory becomes the Windows directory link to the current version.
 
 Checksums (`SHA256SUMS`) are always verified. Build provenance is
-verified when an authenticated `gh` CLI is available, and
+verified when a `gh` CLI that is logged in is available, and
 `--verify-attestation` makes that verification mandatory instead of
 best-effort.
 
 GitHub token lookup order: `GH_TOKEN` > `GITHUB_TOKEN` > `gh auth token` (when
-`gh` is on PATH and authenticated) > anonymous.
+`gh` is on PATH and logged in) > anonymous.
 
 When the installer has a GitHub token, it downloads assets through the GitHub
 API asset endpoint (internal repositories require it, because their plain
@@ -401,11 +401,11 @@ installer (PowerShell 7 or Windows PowerShell 5.1):
     irm https://raw.githubusercontent.com/rancher/rancher-cli/main/install.ps1 | iex
 
 It verifies both binaries against `SHA256SUMS`, verifies build provenance
-when an authenticated `gh` is available (`-VerifyAttestation` makes that
-mandatory), installs under `%LOCALAPPDATA%\rancher-cli`, and prints the
-`PATH` line to add - it never edits `PATH` itself. Its atomic switch
+when a `gh` that is logged in is available (`-VerifyAttestation` makes
+that mandatory), installs under `%LOCALAPPDATA%\rancher-cli`, and prints
+the `PATH` line to add - it never edits `PATH` itself. Its atomic switch
 to a new version relies on a directory rename that requires Windows 10
-version 1607 / Windows Server 2016 or later. To pass parameters
+version 1607 or Windows Server 2016 or later. To pass parameters
 (`-Version <tag>`, `-Pre`, `-BinDir <dir>`, `-VerifyAttestation`, `-DryRun`,
 `-Quiet`), run the downloaded script as a script block:
 

@@ -48,7 +48,7 @@ PowerShell:
 
 `--pre` (`-Pre` in PowerShell) selects the newest prerelease - early
 access ships prereleases only; drop it once a stable release exists.
-Prerelease resolution on Linux and macOS needs `jq` or `python3` on PATH.
+Looking up a prerelease on Linux and macOS needs `jq` or `python3` on PATH.
 
 Without `gh`, the token-authenticated download-then-run form is in
 [REFERENCE.md](REFERENCE.md#downloading-and-running-the-installer-safely).
@@ -57,7 +57,7 @@ On Linux and macOS both forms install the `rancher` CLI and its credential
 helper to `~/.local/bin`; on Windows to `%LOCALAPPDATA%\rancher-cli\bin`
 (rootless, no admin rights, no profile or `PATH` edits; the script prints
 the `PATH` line if needed). Checksums are always verified; build
-provenance is verified when an authenticated `gh` CLI is available. The
+provenance is verified when a `gh` CLI that is logged in is available. The
 by-hand Windows steps stay in [REFERENCE.md](REFERENCE.md#windows) as a
 fallback. The CLI supports Rancher `>= 2.14`
 ([details](REFERENCE.md#supported-server-version)); install internals and
@@ -87,7 +87,7 @@ in a scriptblock instead:
 <details>
 <summary>Update, rollback &amp; uninstall</summary>
 
-To update, rerun the install command - resolution finds the newer release
+To update, rerun the install command - it looks up the newer release
 and the switch is atomic. To downgrade or roll back, rerun with
 `--version <tag>` (`-Version <tag>`).
 

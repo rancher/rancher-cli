@@ -137,7 +137,7 @@ func TestVerifyAttestationWithoutGhIsFatal(t *testing.T) {
 	// probe fails deterministically regardless of the host.
 	_, errOut, code := runInstall(t, s, []string{"PATH=" + toolPath(t, baseTools...)}, "--verify-attestation")
 	require.NotEqual(t, 0, code)
-	assert.Contains(t, errOut, "no capable authenticated gh")
+	assert.Contains(t, errOut, "--verify-attestation needs a gh CLI whose 'gh attestation verify' supports --signer-workflow")
 }
 
 func TestReceiptSymlinkToDirectoryIsReplacedNotEntered(t *testing.T) {
@@ -154,7 +154,7 @@ func TestReceiptSymlinkToDirectoryIsReplacedNotEntered(t *testing.T) {
 	fi, err := os.Lstat(filepath.Join(cfg, "install-receipt.json"))
 	require.NoError(t, err)
 	assert.True(t, fi.Mode().IsRegular(),
-		"the receipt path must be REPLACED (no-follow), not written inside the symlinked directory")
+		"the receipt path must be replaced without following the symlink, not written inside the symlinked directory")
 	entries, err := os.ReadDir(filepath.Join(cfg, "trap-dir"))
 	require.NoError(t, err)
 	assert.Empty(t, entries, "nothing may be dropped inside the trap directory")
@@ -178,7 +178,7 @@ func TestReceiptFailurePreservesPriorReceipt(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(filepath.Dir(receiptPath), 0o755) })
 	_, errOut, code := runInstall(t, s, envHome(home))
 	require.Equal(t, 0, code, "receipt failure must not fail the install")
-	assert.Contains(t, errOut, "receipt skipped")
+	assert.Contains(t, errOut, "install receipt not written")
 	after, err := os.ReadFile(receiptPath)
 	require.NoError(t, err)
 	assert.Equal(t, prior, after, "prior receipt must be unchanged")
@@ -404,8 +404,36 @@ func TestScopedTokenPublicRepoFallsBackToBrowserPath(t *testing.T) {
 		"PATH="+toolPath(t, baseTools...),
 	))
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
-	assert.Contains(t, errOut, "falling back to direct download",
+	assert.Contains(t, errOut, "falling back to the release download URL",
 		"scoped-token metadata failure must produce the fallback warning on stderr")
+	assert.Contains(t, errOut, "release metadata not readable with this GitHub token (HTTP 403)",
+		"the warning must name the HTTP status of the metadata request")
+	assert.Contains(t, out, "rancher version v1.2.3",
+		"install must succeed via the browser download path")
+}
+
+// TestMetadataRequestWithNoStatusFallsBackToBrowserPath covers a present token
+// whose releases/tags request ends with no HTTP status at all (curl prints
+// nothing and fails): the warning says "no HTTP status" and the install
+// succeeds through the browser URL on a public repository.
+func TestMetadataRequestWithNoStatusFallsBackToBrowserPath(t *testing.T) {
+	t.Parallel()
+	s := newStub(t)
+	writeRelease(s, "v1.2.3", false)
+	s.setLatest("v1.2.3")
+	wrapDir, wrapEnv := curlFailingReleaseTag(t)
+
+	home := t.TempDir()
+	env := append(envHome(home),
+		"GH_TOKEN=scoped-token",
+		"PATH="+wrapDir+":"+toolPath(t, baseTools...),
+	)
+	out, errOut, code := runInstall(t, s, append(env, wrapEnv...))
+	require.Equalf(t, 0, code, "stderr: %s", errOut)
+	assert.Contains(t, errOut,
+		"release metadata not readable with this GitHub token (no HTTP status) - falling back to the release download URL")
+	assert.NotContains(t, errOut, "(HTTP error)",
+		"a request with no status must not print a made-up status")
 	assert.Contains(t, out, "rancher version v1.2.3",
 		"install must succeed via the browser download path")
 }
@@ -471,18 +499,20 @@ func TestPrivateRepoTokenModeWith302Redirect(t *testing.T) {
 	assert.NotContains(t, string(argv), "test-302-token",
 		"token must never appear in any curl argv")
 
-	// 302 path: one API probe and one CDN fetch per asset - three of each.
+	// 302 path: one API probe and one redirect URL request per asset -
+	// three of each.
 	assert.Equal(t, 3, s.apiAssetRequestCount(),
 		"302 mode: exactly one API request per asset")
 	assert.Equal(t, 3, s.cdnAssetRequestCount(),
-		"302 mode: exactly one CDN fetch per asset")
+		"302 mode: exactly one redirect URL request per asset")
 }
 
 // TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage covers the case
-// where TOKEN is present but the metadata endpoint returns 403 (scope/SSO
-// denied) and the repo is private: download falls back to browser URLs which
-// 404, and the error must name BOTH the asset failure AND the metadata failure
-// code - so the user knows the real cause is their token, not a missing asset.
+// where TOKEN is present but the metadata endpoint returns 403 (missing scope
+// or SSO authorization) and the repo is private: download falls back to
+// browser URLs which 404, and the error must name BOTH the asset failure AND
+// the metadata failure code - so the user knows the real cause is their
+// token, not a missing asset.
 func TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage(t *testing.T) {
 	t.Parallel()
 	s := newStub(t)
@@ -503,6 +533,32 @@ func TestPrivateRepoTokenWithMetadata403FailsWithEnrichedMessage(t *testing.T) {
 		"enriched message must name the metadata HTTP code")
 	assert.NotContains(t, errOut, "asset not found",
 		"error must not mis-diagnose the cause as a missing release asset")
+}
+
+// TestPrivateRepoTokenWithNoMetadataStatusFailsWithEnrichedMessage covers the
+// private repository case where the releases/tags request ends with no HTTP
+// status at all: download falls back to browser URLs which 404, and the error
+// must say the metadata request had "no HTTP status".
+func TestPrivateRepoTokenWithNoMetadataStatusFailsWithEnrichedMessage(t *testing.T) {
+	t.Parallel()
+	s := newStub(t)
+	s.setPrivate(true)
+	writeRelease(s, "v1.2.3", false)
+	s.setLatest("v1.2.3")
+	wrapDir, wrapEnv := curlFailingReleaseTag(t)
+
+	env := append([]string{
+		"GH_TOKEN=test-token",
+		"PATH=" + wrapDir + ":" + toolPath(t, baseTools...),
+	}, wrapEnv...)
+	_, errOut, code := runInstall(t, s, env)
+	require.NotEqual(t, 0, code)
+	assert.Contains(t, errOut, "download failed",
+		"download must fail because browser URLs 404 on a private repo")
+	assert.Contains(t, errOut, "release metadata was also unreadable (no HTTP status)",
+		"enriched message must say the metadata request had no HTTP status")
+	assert.NotContains(t, errOut, "(HTTP error)",
+		"a request with no status must not print a made-up status")
 }
 
 // TestDryRunWithTokenShowsAPIAssetURLs covers --dry-run with a token runs

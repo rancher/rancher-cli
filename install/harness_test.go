@@ -387,7 +387,7 @@ func runInstall(t *testing.T, s *stub, extraEnv []string, args ...string) (strin
 	before := packageDirNames(t)
 	cmd := exec.Command("sh", append([]string{script}, args...)...)
 	// Hermetic PATH by default: baseTools only, so a developer's real
-	// authenticated gh (or stray jq) can never leak into a test - a capable
+	// logged-in gh (or stray jq) can never leak into a test - a capable
 	// real gh would attempt live attestation calls against stub assets.
 	// Tests needing optional tools pass their own PATH via extraEnv
 	// (last duplicate wins).
@@ -437,8 +437,8 @@ func envHome(dir string) []string { return []string{"HOME=" + dir} }
 // on what install.sh wrote outside HOME.
 func envTmpDir(dir string) []string { return []string{"TMPDIR=" + dir} }
 
-// mvWithoutNoFollow returns a PATH dir whose mv rejects the no-follow replace
-// flags (-T/-h) like BusyBox's does, delegating every other invocation to the
+// mvWithoutNoFollow returns a PATH dir whose mv rejects the flags that
+// replace a symlink without following it (-T/-h), like BusyBox's does, delegating every other invocation to the
 // real mv named by REAL_MV - the seam for the capability probe. The returned
 // env carries REAL_MV and must be passed to runInstall.
 func mvWithoutNoFollow(t *testing.T) (string, []string) {
@@ -490,6 +490,27 @@ func recordingCurlWrapper(t *testing.T) (dir, argvLog string, env []string) {
 		"RANCHER_TEST_REAL_CURL=" + realCurl,
 	}
 	return
+}
+
+// curlFailingReleaseTag builds a dir containing a curl script that prints
+// nothing and fails for the request of a release by tag, and runs the real
+// curl (named by RANCHER_TEST_REAL_CURL) for every other request. That
+// request ends with no HTTP status at all, which a closed port does not (it
+// gives 000). Returns the dir and the env slice that names the real curl.
+func curlFailingReleaseTag(t *testing.T) (dir string, env []string) {
+	t.Helper()
+	realCurl, err := exec.LookPath("curl")
+	require.NoError(t, err)
+	dir = t.TempDir()
+	wrapper := "#!/bin/sh\n" +
+		"for a in \"$@\"; do\n" +
+		"  case \"$a\" in\n" +
+		"    */releases/tags/*) exit 22 ;;\n" +
+		"  esac\n" +
+		"done\n" +
+		"exec \"$RANCHER_TEST_REAL_CURL\" \"$@\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "curl"), []byte(wrapper), 0o755))
+	return dir, []string{"RANCHER_TEST_REAL_CURL=" + realCurl}
 }
 
 // docSnippet reads a markdown documentation file relative to the module

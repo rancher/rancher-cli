@@ -6,7 +6,7 @@ body:
     id: problem
     attributes:
       label: What happened?
-      description: Redact tokens and passwords. `-o json` output carries the error code, hint, and exit code.
+      description: Remove tokens and passwords from anything you paste. Run the command with `-o json` to see the error code and hint, and include the command's exit code.
     validations:
       required: true
   - type: textarea
@@ -20,7 +20,7 @@ body:
       description: |
         For example:
         1. Run `rancher get projects --cluster local -o wide`
-        2. Observe the following output: ...
+        2. See this output: ...
   - type: textarea
     id: environment
     attributes:

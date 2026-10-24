@@ -402,7 +402,7 @@ func TestCapableGhAttestationRuns(t *testing.T) {
 		"PATH="+dir+":"+toolPath(t, baseTools...),
 		"RANCHER_TEST_GH_CALL_LOG="+callLog), "--verify-attestation")
 	require.Equalf(t, 0, code, "stderr: %s", errOut)
-	assert.Contains(t, out, "build provenance verified")
+	assert.Contains(t, out, "build provenance attestation verified")
 	logBytes, err := os.ReadFile(callLog)
 	require.NoError(t, err)
 	// Twice, once per binary: a single count would pass if the helper's
