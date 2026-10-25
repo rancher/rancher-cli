@@ -294,9 +294,15 @@ func TestCreateFieldFlagsRefuseEmptyAndSeparateBoolValues(t *testing.T) {
 			message: "--description is empty; pass a value or omit --description",
 		},
 		{
-			name:    "an empty word after --must-change-password, past the username",
+			name:    "an empty word past the argument, a command with no secret input, is named as typed",
+			argv:    []string{"create", "namespace", "ns1", "--dry-run", "", "--cluster", "c-x", "-o", "json"},
+			message: "create namespace takes 1 argument (<name>); unexpected argument ''",
+			hint:    "rancher create namespace --help",
+		},
+		{
+			name:    "an empty word after --must-change-password, past the username, is named by position",
 			argv:    []string{"create", "user", "u", "--password-stdin", "--must-change-password", "", "--dry-run", "-o", "json"},
-			message: "create user takes 1 argument (<username>); unexpected argument ''",
+			message: "create user takes 1 argument (<username>); unexpected argument 2",
 			hint:    "rancher create user --help",
 		},
 		{
@@ -307,14 +313,14 @@ func TestCreateFieldFlagsRefuseEmptyAndSeparateBoolValues(t *testing.T) {
 		{
 			name:    "--from-literal after the end of the flags is an argument, not a second instance",
 			argv:    []string{"create", "secret", "s1", "--cluster", "c-x", "--from-literal", "a=1", "--dry-run", "-o", "json", "--", "--from-literal", "b=2"},
-			message: "create secret takes 1 argument (<name>); unexpected arguments '--from-literal' 'b=2'",
+			message: "create secret takes 1 argument (<name>); unexpected arguments 2 3",
 			hint:    "rancher create secret --help",
 		},
 		{
-			name:    "false after --must-change-password: the joined form is the hint",
+			name:    "false after --must-change-password: a command with a secret input hints its help",
 			argv:    []string{"create", "user", "u", "--password-stdin", "--must-change-password", "false", "--dry-run", "-o", "json"},
-			message: "create user: 'false' after the bool flag --must-change-password" + boolRule,
-			hint:    "rancher create user 'u' --password-stdin --must-change-password='false' --dry-run -o 'json'",
+			message: "create user: argument 2 after the bool flag --must-change-password" + boolRule,
+			hint:    "rancher create user --help",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

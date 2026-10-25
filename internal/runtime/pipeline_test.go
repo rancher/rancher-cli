@@ -1930,3 +1930,133 @@ func TestCancelledContextRendersInterrupted(t *testing.T) {
 		assert.True(t, ce.Retryable)
 	})
 }
+
+// TestValidateFormatLeavesTheValueOutForASecretInput asserts that the
+// refusal of an unknown -o value, and of a template that does not parse,
+// shows the value and the parser's message for an ordinary command, and
+// neither for a command that takes a secret input, whose -o can have taken
+// the word typed after it, a secret among them.
+func TestValidateFormatLeavesTheValueOutForASecretInput(t *testing.T) {
+	t.Parallel()
+	const oneOf = "table|wide|json|yaml|name|template=<go-template>"
+	for _, tc := range []struct {
+		name, format, ordinary, secret string
+	}{
+		{"an unknown value", "s3cretcanary9", `--output="s3cretcanary9" is not one of ` + oneOf, "--output value is not one of " + oneOf},
+		{"a flag typed as the value", "--from-literal=k=s3cretcanary9", `--output="--from-literal=k=s3cretcanary9" is not one of ` + oneOf, "--output value is not one of " + oneOf},
+		{"a bare template", "template", `--output="template" is not one of ` + oneOf, "--output value is not one of " + oneOf},
+		{"a template that does not parse", "template={{s3cretcanary9", "", "--output template does not parse; must be valid Go text/template syntax"},
+		{"a template with no source", "template=", "--output template source is empty; pass -o template='{{ .field }}'", "--output template source is empty; pass -o template='{{ .field }}'"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ordinary := validateFormat(tc.format, false)
+			require.NotNil(t, ordinary)
+			if tc.ordinary != "" {
+				assert.Equal(t, tc.ordinary, ordinary.Message)
+			} else {
+				assert.Contains(t, ordinary.Message, "invalid template: ")
+				assert.Contains(t, ordinary.Message, "s3cretcanary9", "an ordinary command shows the parser's message")
+			}
+			secret := validateFormat(tc.format, true)
+			require.NotNil(t, secret)
+			assert.Equal(t, clierr.CodeValidation, secret.Code)
+			assert.Equal(t, tc.secret, secret.Message)
+			assert.NotContains(t, secret.Message, "s3cretcanary9")
+		})
+	}
+	assert.Nil(t, validateFormat("json", true))
+	assert.Nil(t, validateFormat("template={{.x}}", true))
+	assert.Nil(t, validateFormat("", true))
+}
+
+// TestValidateColorLeavesTheValueOutForASecretInput asserts that the refusal
+// of an unknown --color value shows the value for an ordinary command and
+// leaves it out for a command that takes a secret input.
+func TestValidateColorLeavesTheValueOutForASecretInput(t *testing.T) {
+	t.Parallel()
+	ordinary := validateColor("s3cretcanary9", false)
+	require.NotNil(t, ordinary)
+	assert.Equal(t, `--color="s3cretcanary9" is not one of auto|always|never`, ordinary.Message)
+	secret := validateColor("s3cretcanary9", true)
+	require.NotNil(t, secret)
+	assert.Equal(t, clierr.CodeValidation, secret.Code)
+	assert.Equal(t, "--color value is not one of auto|always|never", secret.Message)
+	assert.Nil(t, validateColor("never", true))
+	assert.Nil(t, validateColor("", true))
+}
+
+// TestValidateOutputPolicyLeavesTheTemplateSourceOutForASecretInput asserts
+// that the refusal of a template format by a command that restricts formats
+// shows the source for an ordinary command and "template" alone for a command
+// that takes a secret input, and that a plain format literal is shown by both.
+func TestValidateOutputPolicyLeavesTheTemplateSourceOutForASecretInput(t *testing.T) {
+	t.Parallel()
+	d := Descriptor{Name: "x", OutputPolicy: OutputPolicy{AllowedFormats: []string{"json"}}}
+	secret := d
+	secret.SecretInput = true
+
+	ce := validateOutputPolicy(d, "template={{s3cretcanary9}}")
+	require.NotNil(t, ce)
+	assert.Equal(t, "x does not support --output=template={{s3cretcanary9}}; allowed: json", ce.Message)
+	ce = validateOutputPolicy(secret, "template={{s3cretcanary9}}")
+	require.NotNil(t, ce)
+	assert.Equal(t, "x does not support --output=template; allowed: json", ce.Message)
+	for _, d := range []Descriptor{d, secret} {
+		ce = validateOutputPolicy(d, "name")
+		require.NotNil(t, ce)
+		assert.Equal(t, "x does not support --output=name; allowed: json", ce.Message)
+	}
+}
+
+// TestValidateInputEnumRefusalsLeaveTheValueOutForASecretInput asserts, at
+// each of the three places that check an enum (a positional argument, a
+// string flag and a string slice flag), that the refusal shows the value for
+// an ordinary command and names only the argument or flag and the allowed
+// values for a command that takes a secret input.
+func TestValidateInputEnumRefusalsLeaveTheValueOutForASecretInput(t *testing.T) {
+	t.Parallel()
+	const word = "--from-literal=k=s3cretcanary9"
+	for _, tc := range []struct {
+		name             string
+		d                Descriptor
+		in               Input
+		ordinary, secret string
+	}{
+		{
+			name:     "a positional argument",
+			d:        Descriptor{Name: "x", Args: []ArgSpec{{Name: "kind", Type: "string", Enum: []string{"a", "b"}}}},
+			in:       mapInput{a: []string{word}},
+			ordinary: `argument <kind>="` + word + `" is not one of a|b`,
+			secret:   "argument <kind> value is not one of a|b",
+		},
+		{
+			name:     "a string flag",
+			d:        Descriptor{Name: "x", Flags: []ArgSpec{{Name: "type", Type: "string", Enum: []string{"json", "merge"}}}},
+			in:       mapInput{s: map[string]string{"type": word}},
+			ordinary: `--type="` + word + `" is not one of json|merge`,
+			secret:   "--type value is not one of json|merge",
+		},
+		{
+			name:     "a string slice flag",
+			d:        Descriptor{Name: "x", Flags: []ArgSpec{{Name: "mode", Type: "stringSlice", Enum: []string{"a", "b"}}}},
+			in:       mapInput{sl: map[string][]string{"mode": {"a", word}}},
+			ordinary: `--mode="` + word + `" is not one of a|b`,
+			secret:   "--mode value is not one of a|b",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ordinary := validateInput(tc.d, tc.in, false)
+			require.NotNil(t, ordinary)
+			assert.Equal(t, tc.ordinary, ordinary.Message)
+			d := tc.d
+			d.SecretInput = true
+			secret := validateInput(d, tc.in, false)
+			require.NotNil(t, secret)
+			assert.Equal(t, clierr.CodeValidation, secret.Code)
+			assert.Equal(t, tc.secret, secret.Message)
+			assert.NotContains(t, secret.Message, "s3cretcanary9")
+		})
+	}
+}

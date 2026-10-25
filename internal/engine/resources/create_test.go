@@ -576,3 +576,95 @@ func (*createClient) PostReview(context.Context, engine.ReviewRequest) (engine.R
 func (*createClient) ServerResources(context.Context) ([]engine.APIResource, error) {
 	return nil, errors.New("ServerResources not scripted in this fake")
 }
+
+// TestCreateResourceManifestErrorsCarryNoContent asserts that a manifest the
+// YAML decoders refuse with a text that quotes the document (a scalar that
+// does not fit its explicit tag, an unknown alias, a map key that is a
+// collection, a repeated key) is refused as VALIDATION with one fixed text
+// that holds none of the document, and that a syntax error keeps the
+// decoder's text with its line number. The manifest comes in through a file
+// and through stdin.
+func TestCreateResourceManifestErrorsCarryNoContent(t *testing.T) {
+	t.Parallel()
+	const canary = "s3cretcanary9"
+	head := "apiVersion: v1\nkind: Secret\nmetadata:\n  name: x\nstringData:\n"
+	for _, tc := range []struct{ name, manifest string }{
+		{"a scalar that does not fit !!int", head + "  password: !!int " + canary + "\n"},
+		{"a scalar that does not fit !!float", head + "  password: !!float " + canary + "\n"},
+		{"a scalar that does not fit !!timestamp", head + "  password: !!timestamp " + canary + "\n"},
+		{"an unknown alias", head + "  password: *" + canary + "\n"},
+		{"a map key that is a map", head + "  ? {a: " + canary + "}\n  : c\n"},
+		{"a map key that is a list", head + "  ? [" + canary + "]\n  : c\n"},
+		{"a repeated key", head + "  " + canary + ": a\n  " + canary + ": b\n"},
+		{"a map key that is a list of numbers", head + "  ? [12345678]\n  : c\n"},
+		{"a document that is one scalar", canary + "\n"},
+		{"a document that is a list", "- " + canary + "\n"},
+	} {
+		for _, path := range []string{"m.yaml", "-"} {
+			t.Run(tc.name+" from "+path, func(t *testing.T) {
+				t.Parallel()
+				cmd := NewCreate(&recFactory{client: &createClient{}}, mapFileSource{path: []byte(tc.manifest)})
+				_, _, err := planCreate(t, cmd, input{s: map[string]string{"filename": path, "cluster": "prod"}})
+				requireValidation(t, err)
+				ce, _ := errors.AsType[*clierr.Error](err)
+				assert.Equal(t, "invalid manifest: the YAML could not be decoded", ce.Message)
+				assert.NotContains(t, err.Error(), canary)
+			})
+		}
+	}
+
+	for _, tc := range []struct{ name, manifest, want string }{
+		{"a syntax error on the first line, with no line number", "a: b: c\n", "invalid manifest: yaml: mapping values are not allowed in this context"},
+		{"a character that cannot start a token on the first line", "a: @\n", "invalid manifest: yaml: found character that cannot start any token"},
+		{"a syntax error on a later line", head + "  password: [x\n", "invalid manifest: yaml: line "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewCreate(&recFactory{client: &createClient{}}, mapFileSource{"m.yaml": []byte(tc.manifest)})
+			_, _, err := planCreate(t, cmd, input{s: map[string]string{"filename": "m.yaml", "cluster": "prod"}})
+			requireValidation(t, err)
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+
+	t.Run("a syntax error keeps the line", func(t *testing.T) {
+		t.Parallel()
+		cmd := NewCreate(&recFactory{client: &createClient{}}, mapFileSource{"m.yaml": []byte(head + "  password: [" + canary + "\n")})
+		_, _, err := planCreate(t, cmd, input{s: map[string]string{"filename": "m.yaml", "cluster": "prod"}})
+		requireValidation(t, err)
+		require.ErrorContains(t, err, "invalid manifest: yaml: line ")
+		assert.NotContains(t, err.Error(), canary)
+	})
+}
+
+// TestInvalidManifestMessageStripsTheConversionPrefix asserts that a syntax
+// error from the YAML to JSON conversion keeps its text without the
+// conversion prefix, and any other conversion error gets the fixed text.
+func TestInvalidManifestMessageStripsTheConversionPrefix(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "invalid manifest: yaml: line 6: did not find expected ',' or ']'",
+		invalidManifestMessage(errors.New("error converting YAML to JSON: yaml: line 6: did not find expected ',' or ']'")))
+	assert.Equal(t, "invalid manifest: the YAML could not be decoded",
+		invalidManifestMessage(errors.New("error converting YAML to JSON: yaml: cannot decode !!str `x` as a !!int")))
+	assert.Equal(t, "invalid manifest: yaml: mapping values are not allowed in this context",
+		invalidManifestMessage(errors.New("error converting YAML to JSON: yaml: mapping values are not allowed in this context")))
+	for _, problem := range []string{
+		"did not find expected '!'", "did not find expected tag URI", "did not find URI escaped octet",
+		"found an incorrect leading UTF-8 octet", "found an incorrect trailing UTF-8 octet",
+	} {
+		assert.Equal(t, "invalid manifest: yaml: "+problem, invalidManifestMessage(errors.New("yaml: "+problem)), problem)
+	}
+	for _, text := range []string{
+		"yaml: invalid map key: []interface {}{12345678}",
+		"yaml: unknown anchor 'x' referenced",
+		"yaml: unmarshal errors:\n  line 7: mapping key \"password\" already defined at line 6",
+		"yaml: mapping values are not allowed in this context; and 12345678",
+		"mapping values are not allowed in this context",
+		"yaml: ",
+		"",
+	} {
+		assert.Equal(t, "invalid manifest: the YAML could not be decoded", invalidManifestMessage(errors.New(text)), text)
+	}
+	assert.Equal(t, "invalid manifest: the YAML could not be decoded",
+		invalidManifestMessage(errors.New("error unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go value of type map[string]interface {}")))
+}

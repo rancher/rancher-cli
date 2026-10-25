@@ -44,8 +44,9 @@ func (configUpdateServerCmd) Describe() runtime.Descriptor {
 			{Name: "cacert", Type: "string", Desc: "PEM CA bundle, a `path` or the literal PEM"},
 			{Name: "clear-cacert", Type: "bool", Desc: "return the entry to system roots"},
 		},
-		Examples: []string{"rancher config update-server qa1 --cacert /etc/rancher/ca.pem"},
-		Shape:    runtime.ShapeText,
+		Examples:    []string{"rancher config update-server qa1 --cacert /etc/rancher/ca.pem"},
+		Shape:       runtime.ShapeText,
+		SecretInput: true,
 	}
 }
 

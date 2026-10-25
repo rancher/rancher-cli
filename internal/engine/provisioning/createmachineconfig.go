@@ -99,6 +99,7 @@ func (createMachineConfigCmd) Describe() runtime.Descriptor {
 		Destructive: "false",
 		Auth:        true,
 		Shape:       runtime.ShapeText,
+		SecretInput: true,
 	}
 }
 
@@ -117,7 +118,7 @@ func (createMachineConfigCmd) build(in runtime.Input) (*unstructured.Unstructure
 	k, found := kinds.Lookup(kindName)
 	if !found || k.GVR.Group != kinds.MachineConfigGroup {
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("argument <kind>=%q is not a machine config kind; one of: %s", kindName, machineConfigKindsHint()))
+			"argument <kind> value is not one of "+runtime.OneOf(machineConfigKindNames()))
 	}
 
 	// Credential rejection folds case - lowercased key → the

@@ -97,8 +97,8 @@ type lineEnd struct {
 	level int
 	// afterError is true for help shown after a parse error: the refusals
 	// then render in the format the whole line selects (readWholeLine).
-	// class is the kind of parse error; only the parse-match test reads it,
-	// to compare urfave's end state.
+	// class is the kind of parse error; the parse-match test reads it to
+	// compare urfave's end state, and leafOfLine to find an undefined flag.
 	afterError bool
 	class      lineErrorClass
 }
@@ -107,8 +107,8 @@ type lineEnd struct {
 type parsedLine struct {
 	argv   []string
 	levels []*lineLevel
-	// urfaveEnd is where urfave's pass ends; only the parse-match test
-	// reads it. endIfBlankAccepted is where the pass would end if urfave
+	// urfaveEnd is where urfave's pass ends; the parse-match test and
+	// leafOfLine read it. endIfBlankAccepted is where the pass would end if urfave
 	// accepted a bool flag typed with "=" and a value of only whitespace
 	// and read on: the same unless the line holds such a word, and the one
 	// the refusals read. levels hold the walk to that end.
@@ -123,12 +123,17 @@ type inWord struct {
 
 // parseLine parses argv, the words typed after the program name, the way
 // urfave parses and dispatches them on root's command tree, before root has
-// run. It does not change the tree: a flag's state is kept in the walk.
+// run or while it runs. It does not change the tree: a flag's state is kept
+// in the walk.
 //
 // A tree no run has set up lacks what urfave adds inside its run: the
 // parent of each command, the help flag of every command, the version flag
 // of the root. The flags each level parses are built from the chain of
-// commands the walk went through instead.
+// commands the walk went through instead. Inside a run urfave has added its
+// help flags to the commands it set up, and the version flag to the root
+// only, so builtinFlag finds a flag of that name already there and returns
+// nil: the walk then reads --help and -h, and at the root --version and -v,
+// as the plain bool flags they are.
 func parseLine(root *ucli.Command, argv []string) parsedLine {
 	w := &walker{flags: map[ucli.Flag]*lineFlag{}}
 	w.p.argv = argv

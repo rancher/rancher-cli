@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -135,7 +136,8 @@ func argValues(args []runtime.ArgSpec) []string {
 
 // TestEveryLeafRefusesAnExtraPositionalArgument asserts that every leaf of
 // the built tree, given one positional argument more than it declares, is
-// refused with VALIDATION at exit 2, a message naming the extra word, the
+// refused with VALIDATION at exit 2, a message naming the extra word (its
+// position for a command that takes a secret input), the
 // command's own --help as the hint, and no request to the server it is
 // pointed at. The commands are built once; each leaf runs once, under a new
 // root, in a subtest of its own, so one failing leaf does not hide another.
@@ -151,6 +153,8 @@ func TestEveryLeafRefusesAnExtraPositionalArgument(t *testing.T) {
 	for _, c := range m.Commands {
 		byName[c.Name] = c
 	}
+
+	secretInput := secretInputCommands(wr)
 
 	leaves, _ := commandPaths(wr.root("v-test"), nil)
 	require.Len(t, leaves, len(m.Commands), "every command in the manifest is a visible leaf")
@@ -177,10 +181,31 @@ func TestEveryLeafRefusesAnExtraPositionalArgument(t *testing.T) {
 			ce := renderedError(t, format, stderr)
 			assert.Equal(t, clierr.CodeValidation, ce.Code, label)
 			assert.Contains(t, ce.Message, name+" "+declaredArgsText(c.Args), label)
-			assert.Contains(t, ce.Message, "unexpected argument "+clierr.ShellQuote(extra), label)
+			assert.Contains(t, ce.Message, "unexpected argument "+namedExtra(secretInput[name], extra, len(c.Args)+1), label)
 			assert.Equal(t, "rancher "+name+" --help", ce.Hint, label)
 		})
 	}
+}
+
+// secretInputCommands returns, by command name, whether the command sets
+// SecretInput, read from the registry's descriptors.
+func secretInputCommands(wr wiredRegistry) map[string]bool {
+	out := map[string]bool{}
+	for _, cmd := range wr.reg.Commands() {
+		d := cmd.Describe()
+		out[d.Name] = d.SecretInput
+	}
+	return out
+}
+
+// namedExtra is how the refusal of an extra argument names word, the
+// argument at the 1-based position: as typed and shell-quoted, or by its
+// position for a command that takes a secret input.
+func namedExtra(secretInput bool, word string, position int) string {
+	if secretInput {
+		return strconv.Itoa(position)
+	}
+	return clierr.ShellQuote(word)
 }
 
 // declaredArgsText is the part of the refusal that states what a command
@@ -239,8 +264,14 @@ func TestBoolValueAfterBoolFlagIsRefused(t *testing.T) {
 		{
 			name:    "a free required slot: the joined line would lack the argument",
 			argv:    []string{"create", "user", "--password-stdin", "--dry-run", "false", "-o", "json"},
-			message: "create user: 'false' after the bool flag --dry-run" + boolRule,
+			message: "create user: argument 1 after the bool flag --dry-run" + boolRule,
 			hint:    "rancher create user --help",
+		},
+		{
+			name:    "a free required slot, a command with no secret input, names the word as typed",
+			argv:    []string{"create", "namespace", "--dry-run", "false", "--cluster", "c-x", "-o", "json"},
+			message: "create namespace: 'false' after the bool flag --dry-run" + boolRule,
+			hint:    "rancher create namespace --help",
 		},
 		{
 			name:    "a free required slot, a destructive command",
@@ -263,8 +294,8 @@ func TestBoolValueAfterBoolFlagIsRefused(t *testing.T) {
 		{
 			name:    "no free slot, a global bool flag",
 			argv:    []string{"create", "user", "u04", "--password-stdin", "--dry-run", "false", "-o", "json"},
-			message: "create user: 'false' after the bool flag --dry-run" + boolRule,
-			hint:    "rancher create user 'u04' --password-stdin --dry-run='false' -o 'json'",
+			message: "create user: argument 2 after the bool flag --dry-run" + boolRule,
+			hint:    "rancher create user --help",
 		},
 		{
 			name:    "no free slot, a command bool flag, any value strconv.ParseBool accepts",
@@ -275,31 +306,43 @@ func TestBoolValueAfterBoolFlagIsRefused(t *testing.T) {
 		{
 			name:    "two bool flags, global flags ahead of the command",
 			argv:    []string{"-o", "json", "--color=never", "create", "user", "it's", "--yes", "0", "--dry-run", "t", "--password-stdin"},
-			message: "create user: '0' after the bool flag --yes, 't' after the bool flag --dry-run" + boolRule,
-			hint:    `rancher -o 'json' --color='never' create user 'it'\''s' --yes='0' --dry-run='t' --password-stdin`,
+			message: "create user: argument 2 after the bool flag --yes, argument 3 after the bool flag --dry-run" + boolRule,
+			hint:    "rancher create user --help",
+		},
+		{
+			name:    "two bool flags, a command with no secret input, global flags ahead of the command",
+			argv:    []string{"-o", "json", "--color=never", "delete", "project", "it's", "--cluster", "c1", "--yes", "0", "--dry-run", "t"},
+			message: "delete project: '0' after the bool flag --yes, 't' after the bool flag --dry-run" + boolRule,
+			hint:    `rancher -o 'json' --color='never' delete project 'it'\''s' --cluster 'c1' --yes='0' --dry-run='t'`,
 		},
 		{
 			name:    "a bool value and an extra word that is not one",
 			argv:    []string{"create", "user", "u04", "--dry-run", "false", "extra", "-o", "json"},
-			message: "create user: 'false' after the bool flag --dry-run" + boolRule + "; create user takes 1 argument (<username>); unexpected argument 'extra'",
+			message: "create user: argument 2 after the bool flag --dry-run" + boolRule + "; create user takes 1 argument (<username>); unexpected argument 3",
 			hint:    "rancher create user --help",
+		},
+		{
+			name:    "a bool value and an extra word that is not one, a command with no secret input",
+			argv:    []string{"create", "namespace", "ns1", "--dry-run", "false", "extra", "--cluster", "c-x", "-o", "json"},
+			message: "create namespace: 'false' after the bool flag --dry-run" + boolRule + "; create namespace takes 1 argument (<name>); unexpected argument 'extra'",
+			hint:    "rancher create namespace --help",
 		},
 		{
 			name:    "a value the flag does not accept",
 			argv:    []string{"create", "user", "u04", "--dry-run", "maybe", "-o", "json"},
-			message: "create user takes 1 argument (<username>); unexpected argument 'maybe'",
+			message: "create user takes 1 argument (<username>); unexpected argument 2",
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "a bool flag with a joined value",
 			argv:    []string{"create", "user", "u04", "--dry-run=true", "false", "-o", "json"},
-			message: "create user takes 1 argument (<username>); unexpected argument 'false'",
+			message: "create user takes 1 argument (<username>); unexpected argument 2",
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "after the end of the flags",
 			argv:    []string{"-o", "json", "create", "user", "u04", "--dry-run", "--", "false"},
-			message: "create user takes 1 argument (<username>); unexpected argument 'false'",
+			message: "create user takes 1 argument (<username>); unexpected argument 2",
 			hint:    "rancher create user --help",
 		},
 	} {
@@ -403,10 +446,11 @@ func TestJoinedFormHintRunsVerbatim(t *testing.T) {
 		{argv: []string{"get", "pod", "--wait", "false", "mypod", "--cluster", "c 1", "--namespace", "n", "-o", "json"}},
 		{argv: []string{"get", "pod", "--wait", "true", "mypod", "--cluster", "c1", "--namespace", "n", "-o", "json"}},
 		{argv: []string{"get", "pod", "--wait", "true", "--cluster", "c1", "--namespace", "n", "-o", "json"}, help: true},
-		{argv: []string{"-o", "json", "create", "user", "it's", "--yes", "0", "--dry-run", "t", "--password-stdin"}},
+		{argv: []string{"-o", "json", "--color=never", "delete", "project", "it's", "--cluster", "c1", "--yes", "0", "--dry-run", "t"}},
 		{argv: []string{"delete", "project", "p1", "--cluster", "c1", "--yes", "true", "--dry-run", "false", "-o", "json"}},
 		{argv: []string{"delete", "project", "--yes", "true", "--cluster", "c1", "-o", "json"}, help: true},
 		{argv: []string{"create", "user", "--password-stdin", "--dry-run", "false", "-o", "json"}, help: true},
+		{argv: []string{"create", "user", "u04", "--password-stdin", "--dry-run", "false", "-o", "json"}, help: true},
 	} {
 		t.Run(strings.Join(tc.argv, " "), func(t *testing.T) {
 			root, err := BuildRoot("v-test")

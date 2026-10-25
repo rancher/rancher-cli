@@ -156,6 +156,57 @@ func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// RedactURLUserinfo returns text with the user and password of a URL in it
+// replaced by "<redacted>", so a message can name the URL the user typed
+// without the password. It fails closed, whether or not the text is a
+// well-formed URL: a password can hold "/", "?", "#", "@" or "://", and a
+// URL typed without its scheme, or with one slash, has no "://".
+//
+// A text with no "@" is returned unchanged. Otherwise k is its last "@". When
+// the text has a "://" before k and what precedes the first "://" is a URL
+// scheme (a letter, then letters, digits, "+", "-" or "."), the part between
+// that "://" and k is replaced and the scheme is kept: "https://u:p@host"
+// becomes "https://<redacted>@host". In every other case the part from the
+// start of the text to k is replaced: "u:p@host", "//u:p@host",
+// "https:/u:p@host" and "u:pa://ss@host" become "<redacted>@host".
+//
+// The argument is the URL value as typed, never a whole message: in "invalid
+// server URL: https://u:p@h" what precedes the first "://" is not a scheme,
+// and the rule would replace the words of the message too. A caller builds
+// the message around the redacted URL.
+//
+// The cost is over-redaction. A plain text that holds an "@" loses what
+// precedes it, and an "@" in a path or query redacts the host and path before
+// it: "https://host/a@b" becomes "https://<redacted>@b". A text with "://"
+// twice is cut at the first one when that comes before k, so a second URL
+// before k is replaced too and one after k is kept.
+func RedactURLUserinfo(text string) string {
+	k := strings.LastIndex(text, "@")
+	if k < 0 {
+		return text
+	}
+	if j := strings.Index(text, "://"); j >= 0 && j+len("://") <= k && isURLScheme(text[:j]) {
+		return text[:j+len("://")] + "<redacted>" + text[k:]
+	}
+	return "<redacted>" + text[k:]
+}
+
+// isURLScheme reports whether s is a URL scheme: a letter, then letters,
+// digits, "+", "-" or ".".
+func isURLScheme(s string) bool {
+	for i, r := range s {
+		letter := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+		digit := r >= '0' && r <= '9'
+		if i == 0 && !letter {
+			return false
+		}
+		if !letter && !digit && r != '+' && r != '-' && r != '.' {
+			return false
+		}
+	}
+	return s != ""
+}
+
 // Candidate is a selectable option returned with AMBIGUOUS_SELECTION,
 // and with NOT_FOUND when the command holds the list.
 type Candidate struct {

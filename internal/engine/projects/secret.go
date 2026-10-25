@@ -20,11 +20,13 @@ const projectScopedSecretLabel = "management.cattle.io/project-scoped-secret"
 // parseLiteralPairs parses a comma-separated k=v list for --from-literal.
 // Unlike quota pairs, an empty value is valid (e.g. an intentionally blank
 // secret entry). Values containing a comma can't be expressed this way -
-// the VALIDATION message points at create resource -f instead.
+// the VALIDATION message points at create resource -f instead. The message
+// never quotes the pair: it may be, or hold the second half of, a secret
+// value.
 func parseLiteralPairs(s string) (map[string]any, error) {
-	return parsePairs(s, "from-literal", true, func(pair string) error {
+	return parsePairs(s, "from-literal", true, func(string) error {
 		return clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("malformed --from-literal pair %q; pass key=value pairs, or for values containing a comma use `create resource -f` instead", pair))
+			"malformed --from-literal value; pass key=value pairs separated by commas (a value containing a comma needs `create resource -f`)")
 	})
 }
 
@@ -64,6 +66,7 @@ func (createSecretCmd) Describe() runtime.Descriptor {
 		Destructive: "true",
 		Auth:        true,
 		Shape:       runtime.ShapeText,
+		SecretInput: true,
 	}
 }
 

@@ -126,6 +126,11 @@ func TestKnownCommandLinesKeepTheirResult(t *testing.T) {
 
 	const flagError = "flag provided but not defined: -madeupflag; pass --help for usage"
 	const allNamespaces = "flag provided but not defined: -A; pass --help for usage; there is no all-namespaces flag"
+	// A group that reports an undefined flag with no leaf command left on the
+	// line may hold a command that takes a secret, so the flag is named by its
+	// position, not as typed.
+	const noLeafFlagError = "unknown flag at word 4 after rancher; pass --help for usage"
+	const noLeafAllNamespaces = "unknown flag at word 4 after rancher; pass --help for usage; there is no all-namespaces flag"
 	const getDetail = " - list operations already span all namespaces; use --namespace where the kind accepts one"
 
 	rows := []struct {
@@ -136,13 +141,13 @@ func TestKnownCommandLinesKeepTheirResult(t *testing.T) {
 	}{
 		{[]string{"-o", "json", "get", "pod", "--madeupflag", "v"}, 2, flagError, ""},
 		{[]string{"get", "-o", "json", "pod", "--madeupflag", "v"}, 2, flagError, ""},
-		{[]string{"-o", "json", "get", "--madeupflag", "v", "pod"}, 2, flagError, ""},
-		{[]string{"-o", "json", "get", "-A"}, 2, allNamespaces + getDetail, ""},
+		{[]string{"-o", "json", "get", "--madeupflag", "v", "pod"}, 2, noLeafFlagError, ""},
+		{[]string{"-o", "json", "get", "-A"}, 2, noLeafAllNamespaces + getDetail, ""},
 		{[]string{"-o", "json", "get", "pod", "-A"}, 2, allNamespaces + getDetail, ""},
 		{[]string{"-o", "json", "access", "-A", "list"}, 2, allNamespaces, ""},
 		{[]string{"-o", "json", "get", "--", "pod"}, 2, "--cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local", ""},
 		{[]string{"-o", "json", "get", "bogus", "--", "--madeupflag"}, 2, `unknown command "bogus"`, ""},
-		{[]string{"-o", "json", "get", "-", "--madeupflag", "v"}, 2, "'--madeupflag' 'v' after a - on its own; a - on its own ends the command line", ""},
+		{[]string{"-o", "json", "get", "-", "--madeupflag", "v"}, 2, bareDashCountMessage(2), ""},
 		{[]string{"--version"}, 0, "", `^rancher version v-test\n$`},
 		{[]string{"-v"}, 0, "", `^rancher version v-test\n$`},
 		{[]string{"get"}, 0, "", `(?m)^USAGE:\n\s+rancher get( |$)`},

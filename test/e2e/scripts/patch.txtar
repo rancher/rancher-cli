@@ -57,7 +57,7 @@ jsonquery stderr data.error.message 'invalid patch: a JSON object is a merge pat
 # -f is not a patch flag: kubectl's -f names the object, not the patch
 ! exec rancher patch configmap patch-cm --cluster testcluster --namespace default -f ops.json -o json
 jsonquery stderr data.error.code VALIDATION
-stderr 'flag provided but not defined: -f'
+stderr 'unknown flag at word 8 after rancher'
 
 env SECRET_PATCH='[{"op":"replace","path":"/data/password","value":"bmV3"}]'
 

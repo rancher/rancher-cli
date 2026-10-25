@@ -82,6 +82,7 @@ func (createCmd) Describe() runtime.Descriptor {
 		Auth:        true,
 		Capability:  engine.UserPasswordWorkflowCapability(),
 		Shape:       runtime.ShapeText,
+		SecretInput: true,
 	}
 }
 

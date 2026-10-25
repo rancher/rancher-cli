@@ -9,6 +9,7 @@ import (
 	"io"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -123,11 +124,11 @@ func Run(ctx context.Context, cmd Command, in Input, streams IO, b safety.Bindin
 		}
 	}
 
-	if ce := validateFormat(streams.Format); ce != nil {
+	if ce := validateFormat(streams.Format, d.SecretInput); ce != nil {
 		return 0, renderErr(streams, ce)
 	}
 
-	if ce := validateColor(streams.Color); ce != nil {
+	if ce := validateColor(streams.Color, d.SecretInput); ce != nil {
 		return 0, renderErr(streams, ce)
 	}
 
@@ -312,8 +313,11 @@ func runRead(ctx context.Context, c ReadCommand, in Input, streams IO, b safety.
 // VALIDATION error and a mutation can never execute and then fail at render.
 // The template parse here makes Render's own parse effectively pre-checked;
 // the duplicate parse is cheap and intentional (Render keeps it as defense in
-// depth for non-pipeline callers).
-func validateFormat(format string) *clierr.Error {
+// depth for non-pipeline callers). A flag typed with no value makes urfave
+// take the next word as its value, a secret among them: for a command that
+// takes a secret input (secret) no text holds the value or the parser's
+// message, which quotes parts of the source.
+func validateFormat(format string, secret bool) *clierr.Error {
 	if format == "" {
 		return nil
 	}
@@ -326,10 +330,18 @@ func validateFormat(format string) *clierr.Error {
 				"--output template source is empty; pass -o template='{{ .field }}'")
 		}
 		if _, err := template.New("out").Parse(src); err != nil {
+			if secret {
+				return clierr.New(clierr.CodeValidation,
+					"--output template does not parse; must be valid Go text/template syntax")
+			}
 			return clierr.New(clierr.CodeValidation,
 				fmt.Sprintf("invalid template: %v; must be valid Go text/template syntax", err))
 		}
 		return nil
+	}
+	if secret {
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("--output value is not one of %s|template=<go-template>", strings.Join(OutputFormats, "|")))
 	}
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("--output=%q is not one of %s|template=<go-template>", format, strings.Join(OutputFormats, "|")))
@@ -338,10 +350,15 @@ func validateFormat(format string) *clierr.Error {
 // validateColor closes the --color value set: "" (the flag omitted, same as
 // "auto") and the ColorModes literals. Run calls it before dispatch so an
 // unrecognized value is a structured VALIDATION error rather than a silent
-// fall-through to auto.
-func validateColor(color string) *clierr.Error {
+// fall-through to auto. For a command that takes a secret input (secret) the
+// text leaves the value out.
+func validateColor(color string, secret bool) *clierr.Error {
 	if color == "" || slices.Contains(ColorModes, color) {
 		return nil
+	}
+	if secret {
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("--color value is not one of %s", strings.Join(ColorModes, "|")))
 	}
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("--color=%q is not one of %s", color, strings.Join(ColorModes, "|")))
@@ -351,7 +368,8 @@ func validateColor(color string) *clierr.Error {
 // restricts formats (typically to exclude "name", which would silently
 // discard a once-only value) rejects an unsupported format here, before any
 // capability resolution or network work - the zero OutputPolicy always
-// passes.
+// passes. A template format of a command that takes a secret input is shown
+// as "template", without its source.
 func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
 	if d.OutputPolicy.Allows(format) {
 		return nil
@@ -359,6 +377,9 @@ func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
 	shown := format
 	if shown == "" {
 		shown = "table (the default)"
+	}
+	if d.SecretInput && strings.HasPrefix(format, output.TemplatePrefix) {
+		shown = "template"
 	}
 	return clierr.New(clierr.CodeValidation,
 		fmt.Sprintf("%s does not support --output=%s; allowed: %s",
@@ -375,7 +396,11 @@ func validateOutputPolicy(d Descriptor, format string) *clierr.Error {
 func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 	args := in.Args()
 	if len(args) > len(d.Args) {
-		return clierr.New(clierr.CodeValidation, extraArgsMessage(d, args[len(d.Args):])).WithHint(helpHint(d))
+		positions := make([]int, len(args)-len(d.Args))
+		for i := range positions {
+			positions[i] = len(d.Args) + i + 1
+		}
+		return clierr.New(clierr.CodeValidation, extraArgsMessage(d, args[len(d.Args):], positions)).WithHint(helpHint(d))
 	}
 	for i, a := range d.Args {
 		if a.Required && (i >= len(args) || args[i] == "") {
@@ -384,8 +409,7 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 		if len(a.Enum) > 0 && i < len(args) && args[i] != "" {
 			ok := slices.Contains(a.Enum, args[i])
 			if !ok {
-				return clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("argument <%s>=%q is not one of %s", a.Name, args[i], OneOf(a.Enum)))
+				return enumRefusal(d, "argument <"+a.Name+">", args[i], a.Enum)
 			}
 		}
 	}
@@ -405,8 +429,7 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 					}
 					ok := slices.Contains(f.Enum, v)
 					if !ok {
-						return clierr.New(clierr.CodeValidation,
-							fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, OneOf(f.Enum)))
+						return enumRefusal(d, "--"+f.Name, v, f.Enum)
 					}
 				}
 			}
@@ -419,12 +442,25 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 		if len(f.Enum) > 0 && v != "" {
 			ok := slices.Contains(f.Enum, v)
 			if !ok {
-				return clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--%s=%q is not one of %s", f.Name, v, OneOf(f.Enum)))
+				return enumRefusal(d, "--"+f.Name, v, f.Enum)
 			}
 		}
 	}
 	return nil
+}
+
+// enumRefusal is the refusal of value for the argument or flag named by
+// what ("--type", "argument <kind>"), whose allowed values are enum. The
+// value is shown quoted, as what="value", except for a command that takes a
+// secret input: a word taken as the value of a flag may be a secret meant
+// for another, so that text names what and the allowed values only.
+func enumRefusal(d Descriptor, what, value string, enum []string) *clierr.Error {
+	if d.SecretInput {
+		return clierr.New(clierr.CodeValidation,
+			fmt.Sprintf("%s value is not one of %s", what, OneOf(enum)))
+	}
+	return clierr.New(clierr.CodeValidation,
+		fmt.Sprintf("%s=%q is not one of %s", what, value, OneOf(enum)))
 }
 
 // BoolValueError is the refusal for positional arguments typed as the
@@ -436,36 +472,50 @@ func validateInput(d Descriptor, in Input, deferCluster bool) *clierr.Error {
 // optional, and the command's help otherwise, so the hint never names a
 // line refused for a bool value, a missing argument or an extra argument.
 // An optional argument counts too: a flag can need it (get refuses --wait
-// without a name).
+// without a name). A command that takes a secret input names each word by
+// its position among the arguments typed instead, and its hint is always
+// its help: the typed line holds every flag value.
 func BoolValueError(d Descriptor, args []string, vals []BoolValue, line string) *clierr.Error {
 	named := make([]string, len(vals))
 	isValue := map[int]bool{}
 	for i, v := range vals {
-		named[i] = clierr.ShellQuote(args[v.Index]) + " after the bool flag " + v.Flag
+		word := clierr.ShellQuote(args[v.Index])
+		if d.SecretInput {
+			word = fmt.Sprintf("argument %d", v.Index+1)
+		}
+		named[i] = word + " after the bool flag " + v.Flag
 		isValue[v.Index] = true
 	}
 	msg := fmt.Sprintf("%s: %s; a bool flag takes its value joined with =, and an argument that reads as a bool goes before the flags or after --",
 		d.Name, firstWords(named, ", "))
 	var rest []string
+	var positions []int
 	for i, a := range args {
 		if !isValue[i] {
 			rest = append(rest, a)
+			positions = append(positions, i+1)
 		}
 	}
 	if len(rest) > len(d.Args) {
-		return clierr.New(clierr.CodeValidation, msg+"; "+extraArgsMessage(d, rest[len(d.Args):])).WithHint(helpHint(d))
+		return clierr.New(clierr.CodeValidation, msg+"; "+extraArgsMessage(d, rest[len(d.Args):], positions[len(d.Args):])).WithHint(helpHint(d))
 	}
-	if len(rest) < len(d.Args) || slices.Contains(rest, "") {
+	if len(rest) < len(d.Args) || slices.Contains(rest, "") || d.SecretInput {
 		return clierr.New(clierr.CodeValidation, msg).WithHint(helpHint(d))
 	}
 	return clierr.New(clierr.CodeValidation, msg).WithHint(line)
 }
 
 // extraArgsMessage states what d takes and the positional arguments
-// beyond it, extra.
-func extraArgsMessage(d Descriptor, extra []string) string {
+// beyond it, extra, which are the arguments typed at the 1-based
+// positions. A command that takes a secret input names each by its
+// position; any other command names the word as typed.
+func extraArgsMessage(d Descriptor, extra []string, positions []int) string {
 	quoted := make([]string, len(extra))
 	for i, a := range extra {
+		if d.SecretInput {
+			quoted[i] = strconv.Itoa(positions[i])
+			continue
+		}
 		quoted[i] = clierr.ShellQuote(a)
 	}
 	noun := "argument"
@@ -1328,6 +1378,19 @@ func DroppedWordsError(words []string) *clierr.Error {
 	}
 	return clierr.New(clierr.CodeValidation,
 		text+" after a - on its own; a - on its own ends the command line").
+		WithHint("put - last, or after -- when it is meant as an argument")
+}
+
+// DroppedWordsCountError is DroppedWordsError for a line the walk has not
+// shown to be an ordinary command's: a command that takes a secret input, a
+// group, or a leaf with no descriptor. The words after a "-" on its own may
+// hold a secret, so it counts them and names none.
+func DroppedWordsCountError(count int) *clierr.Error {
+	text := fmt.Sprintf("%d words after a - on its own are not used", count)
+	if count == 1 {
+		text = "1 word after a - on its own is not used"
+	}
+	return clierr.New(clierr.CodeValidation, text+"; a - on its own ends the command line").
 		WithHint("put - last, or after -- when it is meant as an argument")
 }
 

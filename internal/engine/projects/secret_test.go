@@ -167,19 +167,35 @@ func TestCreateSecretProjectScopedEmptyBackingNamespaceWarns(t *testing.T) {
 	assert.Equal(t, "the project has no status.backingNamespace yet; Rancher might not copy this project-scoped secret into the project's namespaces (copying needs Rancher 2.14 or later, the oldest version this CLI supports)", res.Warnings[0])
 }
 
+// TestCreateSecretMalformedLiteralIsValidation asserts that a --from-literal
+// value with a piece that has no "=", an empty key, or the second half of a
+// value that held a comma is refused as VALIDATION with one fixed message,
+// and that the message carries no part of the value.
 func TestCreateSecretMalformedLiteralIsValidation(t *testing.T) {
 	t.Parallel()
-	client := &memberClient{}
-	cmd := NewCreateSecret(stubFactory{c: client})
-
-	_, _, err := planMember(t, t.Context(), cmd, memberIn{
-		s: map[string]string{"namespace": "team-a", "cluster": "c-x", "from-literal": "notapair"},
-		a: []string{"app-secret"},
-	})
-	require.Error(t, err)
-	var ce *clierr.Error
-	require.ErrorAs(t, err, &ce)
-	assert.Equal(t, clierr.CodeValidation, ce.Code)
+	const canary = "s3cretcanary9"
+	const message = "malformed --from-literal value; pass key=value pairs separated by commas (a value containing a comma needs `create resource -f`)"
+	for _, tc := range []struct{ name, value string }{
+		{"no equals", canary},
+		{"empty key", "=" + canary},
+		{"second half of a value with a comma", "pw=ab," + canary},
+		{"a good pair, then a piece with no equals", "a=b," + canary},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := NewCreateSecret(stubFactory{c: &memberClient{}})
+			_, _, err := planMember(t, t.Context(), cmd, memberIn{
+				s: map[string]string{"namespace": "team-a", "cluster": "c-x", "from-literal": tc.value},
+				a: []string{"app-secret"},
+			})
+			require.Error(t, err)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, message, ce.Message)
+			assert.NotContains(t, err.Error(), canary)
+		})
+	}
 }
 
 // TestCreateSecretDryRunEffectNeverLeaksLiteralValue asserts that the diff of

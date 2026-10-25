@@ -22,7 +22,7 @@ func TestCheckFlagValuesUnsetVariableBeforeFlag(t *testing.T) {
 		{Name: "k8s-version", Type: "string"},
 	}
 	argv := []string{"create", "cluster", "--cloud-credential", "--k8s-version", "v1.35.7+rke2r1"}
-	ce := checkFlagValues(flags, argv, false)
+	ce := checkFlagValues(flags, argv, false, false)
 	require.NotNil(t, ce)
 	assert.Equal(t, "VALIDATION", ce.Code)
 	assert.Contains(t, ce.Message, "--cloud-credential")
@@ -37,14 +37,14 @@ func TestCheckFlagValuesEqualsFormPasses(t *testing.T) {
 	// --flag=--anything is a single token; explicit intent, must pass.
 	flags := []runtime.ArgSpec{{Name: "cloud-credential", Type: "string"}}
 	argv := []string{"create", "cluster", "--cloud-credential=--k8s-version"}
-	ce := checkFlagValues(flags, argv, false)
+	ce := checkFlagValues(flags, argv, false, false)
 	assert.Nil(t, ce)
 }
 
 func TestCheckFlagValuesShortFlagNormalValue(t *testing.T) {
 	t.Parallel()
 	// -o json - short alias, normal non-flag value; must pass.
-	ce := checkFlagValues(nil, []string{"get", "cluster", "-o", "json"}, false)
+	ce := checkFlagValues(nil, []string{"get", "cluster", "-o", "json"}, false, false)
 	assert.Nil(t, ce)
 }
 
@@ -52,7 +52,7 @@ func TestCheckFlagValuesNegativeNumberPasses(t *testing.T) {
 	t.Parallel()
 	// -1 is not a registered flag; must pass as a string value.
 	flags := []runtime.ArgSpec{{Name: "count", Type: "string"}}
-	ce := checkFlagValues(flags, []string{"--count", "-1"}, false)
+	ce := checkFlagValues(flags, []string{"--count", "-1"}, false, false)
 	assert.Nil(t, ce)
 }
 
@@ -64,7 +64,7 @@ func TestCheckFlagValuesCompletionSkips(t *testing.T) {
 		{Name: "k8s-version", Type: "string"},
 	}
 	argv := []string{"create", "cluster", "--cloud-credential", "--k8s-version"}
-	ce := checkFlagValues(flags, argv, true)
+	ce := checkFlagValues(flags, argv, true, false)
 	assert.Nil(t, ce, "guard must not fire during completion")
 }
 
@@ -73,7 +73,7 @@ func TestCheckFlagValuesEndOfFlagsMarker(t *testing.T) {
 	// Tokens after "--" are positional; scan stops, no false positive.
 	flags := []runtime.ArgSpec{{Name: "cloud-credential", Type: "string"}}
 	argv := []string{"create", "cluster", "--", "--cloud-credential", "--dry-run"}
-	ce := checkFlagValues(flags, argv, false)
+	ce := checkFlagValues(flags, argv, false, false)
 	assert.Nil(t, ce)
 }
 
@@ -85,7 +85,7 @@ func TestCheckFlagValuesBoolFlagAdjacency(t *testing.T) {
 		{Name: "cloud-credential", Type: "string"},
 	}
 	argv := []string{"create", "cluster", "--dry-run", "--cloud-credential", "prod-cc"}
-	ce := checkFlagValues(flags, argv, false)
+	ce := checkFlagValues(flags, argv, false, false)
 	assert.Nil(t, ce, "bool flag adjacent to value-taking flag must not fire")
 }
 
@@ -95,7 +95,7 @@ func TestCheckFlagValuesDanglingFlagNoFire(t *testing.T) {
 	// len(argv) guard means there is no next token to examine - no fire.
 	flags := []runtime.ArgSpec{{Name: "cloud-credential", Type: "string"}}
 	argv := []string{"create", "cluster", "--cloud-credential"}
-	ce := checkFlagValues(flags, argv, false)
+	ce := checkFlagValues(flags, argv, false, false)
 	assert.Nil(t, ce, "dangling last flag with no next token must not fire")
 }
 
@@ -111,7 +111,7 @@ func TestCheckFlagValuesCompletionRequestSuppressed(t *testing.T) {
 		{Name: "k8s-version", Type: "string"},
 	}
 	argv := []string{"create", "cluster", "--cloud-credential", "--k8s-version"}
-	ce := checkFlagValues(flags, argv, completionActive())
+	ce := checkFlagValues(flags, argv, completionActive(), false)
 	assert.Nil(t, ce, "guard must not fire during completion")
 }
 
@@ -170,10 +170,69 @@ func TestCheckFlagValuesStopsAtABareDash(t *testing.T) {
 	}
 	for _, dash := range []string{"-", " - ", "\t-"} {
 		argv := []string{"create", "cluster", dash, "--cloud-credential", "--k8s-version", "v1"}
-		assert.Nil(t, checkFlagValues(flags, argv, false), "%q", argv)
+		assert.Nil(t, checkFlagValues(flags, argv, false, false), "%q", argv)
 	}
 	argv := []string{"create", "cluster", "--cloud-credential", "-", "--k8s-version", "--dry-run"}
-	ce := checkFlagValues(flags, argv, false)
+	ce := checkFlagValues(flags, argv, false, false)
 	require.NotNil(t, ce, "%q", argv)
 	assert.Contains(t, ce.Message, "flag --k8s-version got flag --dry-run as its value")
+}
+
+// TestCheckFlagValuesRefusesAFlagWithEqualsTakenAsAValue asserts that, on a
+// command that takes a secret input, a value-taking flag left without its
+// value whose next word is a registered flag spelling written with "="
+// (long, alias and single-dash forms) is refused with the two flag
+// spellings and nothing that follows the "="; that the same words pass on
+// an ordinary command, that a next word with "=" whose part before it is
+// not a registered flag passes, that the equals form of the first flag
+// passes on both, and that a literal value that starts with a registered
+// flag spelling and "=" is refused and the equals form of it passes.
+func TestCheckFlagValuesRefusesAFlagWithEqualsTakenAsAValue(t *testing.T) {
+	t.Parallel()
+	const secret = "s3cretcanary9"
+	flags := []runtime.ArgSpec{
+		{Name: "cluster", Type: "string"},
+		{Name: "from-literal", Type: "string", Aliases: []string{"l"}},
+	}
+	for _, tc := range []struct {
+		name         string
+		argv         []string
+		first, other string
+	}{
+		{"a long flag", []string{"create", "secret", "s1", "--cluster", "--from-literal=k=" + secret}, "--cluster", "--from-literal"},
+		{"an alias", []string{"create", "secret", "s1", "--cluster", "-l=k=" + secret}, "--cluster", "-l"},
+		{"a long flag with one dash", []string{"create", "secret", "s1", "-cluster", "-from-literal=k=" + secret}, "-cluster", "-from-literal"},
+		{"a global flag given a flag", []string{"create", "secret", "s1", "--project", "--cluster=" + secret}, "--project", "--cluster"},
+		{"a literal value that starts with a flag spelling", []string{"create", "secret", "s1", "--from-literal", "-l=" + secret}, "--from-literal", "-l"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ce := checkFlagValues(flags, tc.argv, false, true)
+			require.NotNil(t, ce)
+			assert.Equal(t, "VALIDATION", ce.Code)
+			assert.Equal(t, "flag "+tc.first+" got flag "+tc.other+" as its value - empty shell variable? check that the value for "+tc.first+
+				" is set, or use "+tc.first+"=<value> to pass a literal flag-like string", ce.Message)
+			assert.NotContains(t, ce.Message, secret)
+			assert.NotContains(t, ce.Message, "k=")
+			assert.Empty(t, ce.Hint)
+
+			assert.Nil(t, checkFlagValues(flags, tc.argv, false, false), "an ordinary command takes the word as the value")
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		argv []string
+	}{
+		{"a word that is not a registered flag", []string{"create", "secret", "s1", "--cluster", "-x=1"}},
+		{"a flag spelling joined to its flag with =", []string{"create", "secret", "s1", "--cluster=--from-literal=k=v"}},
+		{"the equals form of a literal that starts with a flag spelling", []string{"create", "secret", "s1", "--from-literal=-l=v"}},
+		{"a value with no dash", []string{"create", "secret", "s1", "--cluster", "c-x", "--from-literal", "k=v"}},
+	} {
+		t.Run(tc.name+" passes on every command", func(t *testing.T) {
+			t.Parallel()
+			assert.Nil(t, checkFlagValues(flags, tc.argv, false, true))
+			assert.Nil(t, checkFlagValues(flags, tc.argv, false, false))
+		})
+	}
 }

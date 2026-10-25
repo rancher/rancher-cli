@@ -37,6 +37,16 @@ func bareDashMessage(more int, words ...string) string {
 	return text + " after a - on its own; a - on its own ends the command line"
 }
 
+// bareDashCountMessage is the message of that refusal when it counts the
+// words and names none, as it does at a group, at the root and for a command
+// that takes a secret input, written independently of the pipeline.
+func bareDashCountMessage(count int) string {
+	if count == 1 {
+		return "1 word after a - on its own is not used; a - on its own ends the command line"
+	}
+	return strconv.Itoa(count) + " words after a - on its own are not used; a - on its own ends the command line"
+}
+
 // TestEveryLeafRefusesWordsAfterABareDash asserts that every leaf of the
 // built tree, given its declared arguments, then a bare "-" and --dry-run,
 // is refused with VALIDATION at exit 2, a message naming --dry-run and a
@@ -58,6 +68,8 @@ func TestEveryLeafRefusesWordsAfterABareDash(t *testing.T) {
 	for _, c := range m.Commands {
 		byName[c.Name] = c
 	}
+
+	secretInput := secretInputCommands(wr)
 
 	leaves, _ := commandPaths(wr.root("v-test"), nil)
 	require.Len(t, leaves, len(m.Commands), "every command in the manifest is a visible leaf")
@@ -85,7 +97,11 @@ func TestEveryLeafRefusesWordsAfterABareDash(t *testing.T) {
 			assertNoFiles(t, label, dirs...)
 			ce := renderedError(t, format, stderr)
 			assert.Equal(t, clierr.CodeValidation, ce.Code, label)
-			assert.Equal(t, bareDashMessage(0, "--dry-run"), ce.Message, label)
+			want := bareDashMessage(0, "--dry-run")
+			if secretInput[name] {
+				want = "1 word after a - on its own is not used; a - on its own ends the command line"
+			}
+			assert.Equal(t, want, ce.Message, label)
 			assert.Equal(t, bareDashHint, ce.Hint, label)
 
 			stderr, code = runOnce(t, wr.root("v-test"), last)
@@ -94,7 +110,7 @@ func TestEveryLeafRefusesWordsAfterABareDash(t *testing.T) {
 			assert.Empty(t, rec.take(), "%s: no request", label)
 			ce = renderedError(t, format, stderr)
 			assert.Equal(t, clierr.CodeValidation, ce.Code, label)
-			assert.Contains(t, ce.Message, name+" "+declaredArgsText(c.Args)+"; unexpected argument '-'", label)
+			assert.Contains(t, ce.Message, name+" "+declaredArgsText(c.Args)+"; unexpected argument "+namedExtra(secretInput[name], "-", len(c.Args)+1), label)
 			assert.Equal(t, "rancher "+name+" --help", ce.Hint, label)
 		})
 	}
@@ -112,7 +128,8 @@ func TestEveryLeafRefusesWordsAfterABareDash(t *testing.T) {
 // looks like a flag waiting for its value (`--cluster --output`) is a word
 // after it, and so is a flag that may be given once, typed again after the
 // "-". Each is VALIDATION at exit 2, naming the words after the "-" as
-// typed, with no request and no file written, rendered in the format the
+// typed at a leaf of a command with no secret input and counting them at a
+// group and at the root, with no request and no file written, rendered in the format the
 // whole line selects, -o typed after the "-" included, at a leaf, a group
 // or the root. An unknown command name typed ahead of the "-" is reported
 // as an unknown command instead. The lines run as the process entry point
@@ -124,29 +141,30 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 	dirs := emptyDirs(t)
 	create := []string{"create", "namespace", "--cluster", "local", "--apply", "-o", "json"}
 	for _, tc := range []struct {
-		name   string
-		argv   []string
-		format string
-		words  []string
+		name    string
+		argv    []string
+		format  string
+		words   []string
+		counted bool
 	}{
-		{"the flags after a get", []string{"get", "pods", "-", "--cluster", "c1", "-o", "json"}, "json", []string{"--cluster", "c1", "-o", "json"}},
-		{"-o yaml after the dash at a leaf", []string{"get", "pods", "--cluster", "c1", "-", "-o", "yaml"}, "yaml", []string{"-o", "yaml"}},
-		{"-o yaml after the dash overrides -o json before it", []string{"get", "pods", "--cluster", "c1", "-o", "json", "-", "--output=yaml"}, "yaml", []string{"--output=yaml"}},
-		{"-o json after the dash at a group", []string{"get", "-", "pods", "-o", "json"}, "json", []string{"pods", "-o", "json"}},
-		{"-o yaml after the dash at a group", []string{"get", "-", "pods", "-o", "yaml"}, "yaml", []string{"pods", "-o", "yaml"}},
-		{"-o json after the dash at the root", []string{"-", "get", "pods", "-o", "json"}, "json", []string{"get", "pods", "-o", "json"}},
-		{"-o yaml after the dash at the root", []string{"-", "get", "pods", "-o", "yaml"}, "yaml", []string{"get", "pods", "-o", "yaml"}},
-		{"a flag given once, typed again after the dash", []string{"create", "project", "p1", "--cluster", "local", "--quota-limit", "limitsCpu=2", "-o", "json", "-", "--quota-limit", "limitsCpu=4"}, "json", []string{"--quota-limit", "limitsCpu=4"}},
-		{"--dry-run after a get", []string{"get", "pods", "--cluster", "c1", "-", "--dry-run"}, "", []string{"--dry-run"}},
-		{"--dry-run after an applied create", append(slices.Clone(create), "-", "--dry-run"), "json", []string{"--dry-run"}},
-		{"--read-only after an applied create", append(slices.Clone(create), "-", "--read-only"), "json", []string{"--read-only"}},
-		{"a padded dash", append(slices.Clone(create), " - ", "--dry-run"), "json", []string{"--dry-run"}},
-		{"a dash with a tab", append(slices.Clone(create), "\t-", "--dry-run"), "json", []string{"--dry-run"}},
-		{"a padded word after the dash", append(slices.Clone(create), "-", " --dry-run"), "json", []string{" --dry-run"}},
-		{"a flag waiting for its value after the dash", []string{"get", "pods", "--cluster", "c1", "-o", "json", "-", "--cluster", "--output", "json"}, "json", []string{"--cluster", "--output", "json"}},
-		{"ahead of the command name", []string{"-o", "json", "-", "get", "pods", "--cluster", "c1"}, "json", []string{"get", "pods", "--cluster", "c1"}},
-		{"ahead of the leaf name", []string{"-o", "json", "get", "-", "pods", "--cluster", "c1"}, "json", []string{"pods", "--cluster", "c1"}},
-		{"ahead of the command name, with --help", []string{"-o", "json", "--help", "-", "get"}, "json", []string{"get"}},
+		{"the flags after a get", []string{"get", "pods", "-", "--cluster", "c1", "-o", "json"}, "json", []string{"--cluster", "c1", "-o", "json"}, false},
+		{"-o yaml after the dash at a leaf", []string{"get", "pods", "--cluster", "c1", "-", "-o", "yaml"}, "yaml", []string{"-o", "yaml"}, false},
+		{"-o yaml after the dash overrides -o json before it", []string{"get", "pods", "--cluster", "c1", "-o", "json", "-", "--output=yaml"}, "yaml", []string{"--output=yaml"}, false},
+		{"-o json after the dash at a group", []string{"get", "-", "pods", "-o", "json"}, "json", []string{"pods", "-o", "json"}, true},
+		{"-o yaml after the dash at a group", []string{"get", "-", "pods", "-o", "yaml"}, "yaml", []string{"pods", "-o", "yaml"}, true},
+		{"-o json after the dash at the root", []string{"-", "get", "pods", "-o", "json"}, "json", []string{"get", "pods", "-o", "json"}, true},
+		{"-o yaml after the dash at the root", []string{"-", "get", "pods", "-o", "yaml"}, "yaml", []string{"get", "pods", "-o", "yaml"}, true},
+		{"a flag given once, typed again after the dash", []string{"create", "project", "p1", "--cluster", "local", "--quota-limit", "limitsCpu=2", "-o", "json", "-", "--quota-limit", "limitsCpu=4"}, "json", []string{"--quota-limit", "limitsCpu=4"}, false},
+		{"--dry-run after a get", []string{"get", "pods", "--cluster", "c1", "-", "--dry-run"}, "", []string{"--dry-run"}, false},
+		{"--dry-run after an applied create", append(slices.Clone(create), "-", "--dry-run"), "json", []string{"--dry-run"}, false},
+		{"--read-only after an applied create", append(slices.Clone(create), "-", "--read-only"), "json", []string{"--read-only"}, false},
+		{"a padded dash", append(slices.Clone(create), " - ", "--dry-run"), "json", []string{"--dry-run"}, false},
+		{"a dash with a tab", append(slices.Clone(create), "\t-", "--dry-run"), "json", []string{"--dry-run"}, false},
+		{"a padded word after the dash", append(slices.Clone(create), "-", " --dry-run"), "json", []string{" --dry-run"}, false},
+		{"a flag waiting for its value after the dash", []string{"get", "pods", "--cluster", "c1", "-o", "json", "-", "--cluster", "--output", "json"}, "json", []string{"--cluster", "--output", "json"}, false},
+		{"ahead of the command name", []string{"-o", "json", "-", "get", "pods", "--cluster", "c1"}, "json", []string{"get", "pods", "--cluster", "c1"}, true},
+		{"ahead of the leaf name", []string{"-o", "json", "get", "-", "pods", "--cluster", "c1"}, "json", []string{"pods", "--cluster", "c1"}, true},
+		{"ahead of the command name, with --help", []string{"-o", "json", "--help", "-", "get"}, "json", []string{"get"}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")
@@ -157,7 +175,11 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 			assertNoFiles(t, tc.name, dirs...)
 			ce := renderedBareDashError(t, tc.format, stderr)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Equal(t, bareDashMessage(0, tc.words...), ce.Message)
+			want := bareDashMessage(0, tc.words...)
+			if tc.counted {
+				want = bareDashCountMessage(len(tc.words))
+			}
+			assert.Equal(t, want, ce.Message)
 			assert.Equal(t, bareDashHint, ce.Hint)
 		})
 	}
@@ -169,7 +191,7 @@ func TestWordsAfterABareDashAreRefused(t *testing.T) {
 	}{
 		{"more words than the refusal names", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "e", "f", "g"}, bareDashMessage(2, "a", "b", "c", "d", "e")},
 		{"a flag and its value across the cap", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "-o", "json", "x"}, bareDashMessage(1, "a", "b", "c", "d", "-o", "json")},
-		{"a flag and its value last, across the cap", []string{"-o", "json", "-", "get", "pods", "--cluster", "c1", "-o", "json"}, bareDashMessage(0, "get", "pods", "--cluster", "c1", "-o", "json")},
+		{"a flag and its value last, across the cap", []string{"-o", "json", "-", "get", "pods", "--cluster", "c1", "-o", "json"}, bareDashCountMessage(6)},
 		{"two flags across the cap", []string{"get", "pods", "-o", "json", "-", "a", "b", "c", "d", "--dry-run", "--apply"}, bareDashMessage(1, "a", "b", "c", "d", "--dry-run")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -233,7 +255,7 @@ func TestEveryGroupRefusesWordsAfterABareDash(t *testing.T) {
 			assertNoFiles(t, name, dirs...)
 			ce := renderedError(t, "json", stderr)
 			assert.Equal(t, clierr.CodeValidation, ce.Code)
-			assert.Equal(t, bareDashMessage(0, "word", "-o", "json"), ce.Message)
+			assert.Equal(t, bareDashCountMessage(3), ce.Message)
 			assert.Equal(t, bareDashHint, ce.Hint)
 		})
 	}

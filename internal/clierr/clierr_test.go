@@ -398,3 +398,48 @@ func TestWithMessageKeepsTheCandidatesTotal(t *testing.T) {
 	assert.Equal(t, 12, got.CandidatesTotal)
 	assert.Len(t, got.Candidates, 10)
 }
+
+// TestRedactURLUserinfoFailsClosed asserts that a text with an "@" is shown
+// with everything up to the last "@" replaced: after the "://" when a URL
+// scheme precedes it and it comes before that "@", from the start of the text
+// otherwise (no scheme, a scheme-relative URL, one slash, a "://" after the
+// "@" or after a prefix that is not a scheme, plain text). A text with no
+// "@" is unchanged. It also asserts the cases the doc comment names: an "@"
+// only in the path or query (the host is redacted too), several "@" in the
+// password, "/", "?" and "#" in the password, "://" twice, an IPv6 host and
+// an empty text.
+func TestRedactURLUserinfoFailsClosed(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, in, want string }{
+		{"a user and a password", "https://u:pw@host:abc", "https://<redacted>@host:abc"},
+		{"no userinfo", "https://host:abc/path", "https://host:abc/path"},
+		{"no scheme", "u:s@host", "<redacted>@host"},
+		{"a scheme-relative URL", "//u:s@host", "<redacted>@host"},
+		{"one slash", "https:/u:s@host", "<redacted>@host"},
+		{"plain text with an at sign", "write to a@b about it", "<redacted>@b about it"},
+		{"the scheme separator after the at sign", "u:pw@host/?r=https://z", "<redacted>@host/?r=https://z"},
+		{"the scheme separator inside the userinfo", "u:pa://ss@host", "<redacted>@host"},
+		{"a scheme with every character it may hold", "a1+b-c.d://u:s@host", "a1+b-c.d://<redacted>@host"},
+		{"a scheme that starts with a digit", "1ab://u:s@host", "<redacted>@host"},
+		{"an empty scheme", "://u:s@host", "<redacted>@host"},
+		{"a slash in the password", "https://u:pa/ss@host:abc", "https://<redacted>@host:abc"},
+		{"a question mark in the password", "https://u:pa?ss@host:abc", "https://<redacted>@host:abc"},
+		{"a number sign in the password", "https://u:pa#ss@host:abc", "https://<redacted>@host:abc"},
+		{"several at signs in the password", "https://u:p@s@s@host:abc", "https://<redacted>@host:abc"},
+		{"an at sign only in the path", "https://host:abc/a@b", "https://<redacted>@b"},
+		{"an at sign only in the query", "https://host/p?mail=a@b.example", "https://<redacted>@b.example"},
+		{"the scheme separator twice, the at sign after the second", "https://host/next?u=http://x:y@z", "https://<redacted>@z"},
+		{"the scheme separator twice, the at sign before the second", "https://u:pw@host/next?u=http://z", "https://<redacted>@host/next?u=http://z"},
+		{"an IPv6 host", "https://u:pw@[::1]:abc/x", "https://<redacted>@[::1]:abc/x"},
+		{"an IPv6 host and no userinfo", "https://[::1]:abc/x", "https://[::1]:abc/x"},
+		{"a whole message, which the caller never passes", "invalid server URL: ftp://u:pw@host/x", "<redacted>@host/x"},
+		{"an empty text", "", ""},
+		{"only the scheme separator", "://", "://"},
+		{"only an at sign", "@", "<redacted>@"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, RedactURLUserinfo(tc.in))
+		})
+	}
+}

@@ -33,6 +33,8 @@ func TestValidateInputRefusesExtraArguments(t *testing.T) {
 	t.Parallel()
 	none := Descriptor{Name: "config path", CommandType: Local}
 	one := Descriptor{Name: "create user", CommandType: Local, Args: []ArgSpec{{Name: "username", Type: "string", Required: true}}}
+	secretOne := one
+	secretOne.SecretInput = true
 	optional := Descriptor{Name: "access can", CommandType: Local, Args: []ArgSpec{
 		{Name: "verb", Type: "string", Required: true},
 		{Name: "resource", Type: "string"},
@@ -68,6 +70,20 @@ func TestValidateInputRefusesExtraArguments(t *testing.T) {
 			hint:    "rancher create user --help",
 		},
 		{
+			name:    "a secret input: one extra word named by its position, not its value",
+			d:       secretOne,
+			in:      mapInput{a: []string{"u1", "s3cretcanary9"}},
+			message: "create user takes 1 argument (<username>); unexpected argument 2",
+			hint:    "rancher create user --help",
+		},
+		{
+			name:    "a secret input: several extra words named by position",
+			d:       secretOne,
+			in:      mapInput{a: []string{"u1", "s3cretcanary9", "it's"}},
+			message: "create user takes 1 argument (<username>); unexpected arguments 2 3",
+			hint:    "rancher create user --help",
+		},
+		{
 			name:    "an optional argument declared",
 			d:       optional,
 			in:      mapInput{a: []string{"get", "pods", "x"}},
@@ -80,6 +96,13 @@ func TestValidateInputRefusesExtraArguments(t *testing.T) {
 			in:      mapInput{a: []string{"c", "s", "x"}},
 			message: "oidc-client remove-secret takes 2 arguments (<client> <secret>); unexpected argument 'x'",
 			hint:    "rancher oidc-client remove-secret --help",
+		},
+		{
+			name:    "a secret input: many extra words, the first five positions and the count of the rest",
+			d:       Descriptor{Name: "config path", CommandType: Local, SecretInput: true},
+			in:      mapInput{a: many},
+			message: "config path takes no arguments; unexpected arguments 1 2 3 4 5 and 2995 more",
+			hint:    "rancher config path --help",
 		},
 		{
 			name:    "many extra words: the first five and the count of the rest",
@@ -135,6 +158,8 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 	t.Parallel()
 	none := Descriptor{Name: "config path", CommandType: Local}
 	one := Descriptor{Name: "create user", CommandType: Local, Args: []ArgSpec{{Name: "username", Type: "string", Required: true}}}
+	secretOne := one
+	secretOne.SecretInput = true
 	optional := Descriptor{Name: "access can", CommandType: Local, Args: []ArgSpec{
 		{Name: "verb", Type: "string", Required: true},
 		{Name: "resource", Type: "string"},
@@ -214,6 +239,24 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			hint:    "rancher create user --wait='true' 'mypod'",
 		},
 		{
+			name:    "a secret input: the words are named by position and the hint is the help, not the typed line",
+			d:       secretOne,
+			args:    []string{"u1", "true"},
+			vals:    []BoolValue{{Index: 1, Flag: "--password-stdin"}},
+			line:    "rancher create user 'u1' --from-literal='pw=hunter2' --password-stdin='true'",
+			message: "create user: argument 2 after the bool flag --password-stdin" + boolRule,
+			hint:    "rancher create user --help",
+		},
+		{
+			name:    "a secret input: an extra word is numbered by its position before the bool values are removed",
+			d:       secretOne,
+			args:    []string{"u1", "false", "extra"},
+			vals:    []BoolValue{{Index: 1, Flag: "--dry-run"}},
+			line:    "rancher create user 'u1' --dry-run='false' 'extra'",
+			message: "create user: argument 2 after the bool flag --dry-run" + boolRule + "; create user takes 1 argument (<username>); unexpected argument 3",
+			hint:    "rancher create user --help",
+		},
+		{
 			name:    "a bool value as typed, with whitespace around it",
 			d:       one,
 			args:    []string{" false", "u1"},
@@ -252,4 +295,17 @@ func TestBoolValueErrorNamesEachValueAndItsFlag(t *testing.T) {
 			assert.Equal(t, 2, ce.ExitCode())
 		})
 	}
+}
+
+// TestDroppedWordsCountErrorNamesNoWord asserts the refusal of words after a
+// "-" on its own, for a command that takes a secret input, counts them with
+// the plain singular or plural and names none.
+func TestDroppedWordsCountErrorNamesNoWord(t *testing.T) {
+	t.Parallel()
+	one := DroppedWordsCountError(1)
+	assert.Equal(t, clierr.CodeValidation, one.Code)
+	assert.Equal(t, "1 word after a - on its own is not used; a - on its own ends the command line", one.Message)
+	assert.Equal(t, "put - last, or after -- when it is meant as an argument", one.Hint)
+	assert.Equal(t, 2, one.ExitCode())
+	assert.Equal(t, "3 words after a - on its own are not used; a - on its own ends the command line", DroppedWordsCountError(3).Message)
 }

@@ -392,7 +392,9 @@ func TestCreateMachineConfigArgValidation(t *testing.T) {
 
 	_, err := buildMachineConfig(t, mcInput{a: []string{"pod", "x"}})
 	ce := requireValidation(t, err)
-	assert.Contains(t, ce.Message, `argument <kind>="pod" is not a machine config kind; one of: `)
+	assert.Equal(t, "argument <kind> value is not one of "+runtime.OneOf(machineConfigKindNames()), ce.Message,
+		"the command takes a secret input: the text names the argument and the allowed kinds, as the enum refusal does")
+	assert.NotContains(t, ce.Message, "pod")
 }
 
 // TestDoCuratedFlagsMatchKindsCurated guards against drift between the two

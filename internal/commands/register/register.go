@@ -69,14 +69,14 @@ func ResolveCA(canonicalURL, selector string) (string, error) {
 func CanonicalizeServerURL(rawURL string) (string, error) {
 	canonical, err := credhelper.CanonicalServerURL(rawURL)
 	if err != nil {
-		return "", clierr.New(clierr.CodeValidation, "invalid server URL: "+rawURL)
+		return "", clierr.New(clierr.CodeValidation, "invalid server URL: "+clierr.RedactURLUserinfo(rawURL))
 	}
 	// Scheme is checked here, not only in Prepare, so the
 	// error can echo the URL as the operator typed it - canonicalization
 	// strips path/query, and a fat-fingered URL is easier to spot whole.
 	if !config.IsSupportedScheme(canonical) {
 		return "", clierr.New(clierr.CodeValidation,
-			"unsupported server URL scheme: "+rawURL+"; use http:// or https://")
+			"unsupported server URL scheme: "+clierr.RedactURLUserinfo(rawURL)+"; use http:// or https://")
 	}
 	return canonical, nil
 }

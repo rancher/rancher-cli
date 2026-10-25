@@ -128,6 +128,9 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		message, hint := emptyBoolMessage(flag)
 		return refused(message, hint)
 	}
+	countRefused := func(n int) lineWant {
+		return refused(bareDashCountMessage(n), dashHint)
+	}
 	droppedRefused := func(words ...string) lineWant {
 		quoted := make([]string, len(words))
 		for i, w := range words {
@@ -142,11 +145,11 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		want lineWant
 	}{
 		{"a padded dash then a flag", line("create", "namespace", "--cluster", "local", "--apply", "-o", "json", " - ", "--dry-run"), droppedRefused("--dry-run")},
-		{"a dash at a group", line("get", "-", "pods", "-o", "json"), droppedRefused("pods", "-o", "json")},
-		{"a dash at the root", line("-", "get", "pods", "-o", "json"), droppedRefused("get", "pods", "-o", "json")},
+		{"a dash at a group", line("get", "-", "pods", "-o", "json"), countRefused(3)},
+		{"a dash at the root", line("-", "get", "pods", "-o", "json"), countRefused(4)},
 		{"a flag given once, typed again after the dash", line("create", "project", "p1", "--cluster", "local", "--quota-limit", "limitsCpu=2", "-o", "json", "-", "--quota-limit", "limitsCpu=4"), droppedRefused("--quota-limit", "limitsCpu=4")},
 		{"a flag waiting for its value after the dash", line("get", "pods", "--cluster", "c1", "-o", "json", "-", "--cluster", "--output", "json"), droppedRefused("--cluster", "--output", "json")},
-		{"help typed before the dash at the root", line("-o", "json", "--help", "-", "get"), droppedRefused("get")},
+		{"help typed before the dash at the root", line("-o", "json", "--help", "-", "get"), countRefused(1)},
 		{"help typed before the dash at a leaf", line("get", "pods", "--help", "-", "x"), helpCard(getPod)},
 		{"the version typed before the dash", line("--version", "-", "get"), versionOut},
 		{"an unknown command before the dash", line("-o", "json", "get", "nosuch", "-", "x"), unknownCommand("nosuch")},
@@ -174,11 +177,17 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"an empty bool value then help", with(get, "--apply=", "--help"), helpCard(getPod)},
 		{"a bool value as its own word then help", with(get, "--dry-run", "false", "--help"), helpCard(getPod)},
 		{"a padded bool value", line("create", "user", "--dry-run", " false", "--password-stdin", "-o", "json"),
-			refused("create user: ' false' after the bool flag --dry-run"+boolRule, "rancher create user --help")},
+			refused("create user: argument 1 after the bool flag --dry-run"+boolRule, "rancher create user --help")},
+		{"a padded bool value, a command with no secret input", line("create", "namespace", "--dry-run", " false", "--cluster", "c-x", "-o", "json"),
+			refused("create namespace: ' false' after the bool flag --dry-run"+boolRule, "rancher create namespace --help")},
 		{"a bool value with a tab", line("create", "user", "u04", "--dry-run", "false\t", "--password-stdin", "-o", "json"),
-			refused("create user: 'false\t' after the bool flag --dry-run"+boolRule, "rancher create user 'u04' --dry-run='false' --password-stdin -o 'json'")},
-		{"a padded extra word", line("create", "user", "u04", " extra", "--password-stdin", "-o", "json"),
-			refused("create user takes 1 argument (<username>); unexpected argument ' extra'", "rancher create user --help")},
+			refused("create user: argument 2 after the bool flag --dry-run"+boolRule, "rancher create user --help")},
+		{"a bool value with a tab, a command with no secret input", line("create", "namespace", "ns1", "--dry-run", "false\t", "--cluster", "c-x", "-o", "json"),
+			refused("create namespace: 'false\t' after the bool flag --dry-run"+boolRule, "rancher create namespace 'ns1' --dry-run='false' --cluster 'c-x' -o 'json'")},
+		{"a padded extra word, a command with a secret input, is named by position", line("create", "user", "u04", " extra", "--password-stdin", "-o", "json"),
+			refused("create user takes 1 argument (<username>); unexpected argument 2", "rancher create user --help")},
+		{"a padded extra word, a command with no secret input, is named as typed", line("create", "namespace", "ns1", " extra", "--cluster", "c-x", "-o", "json"),
+			refused("create namespace takes 1 argument (<name>); unexpected argument ' extra'", "rancher create namespace --help")},
 		{"a padded command name", line(" get", "pods"), unknownCommand(" get")},
 		{"a dash and a symbol is an argument", with(get, "-€"), refused("--namespace is required to address a pod by name", "")},
 		{"a dash and a symbol, a dash and a word", with(get, "-€", "-", "x"), refused("get pod takes at most 1 argument ([name]); unexpected arguments '-' 'x'", "rancher get pod --help")},
@@ -306,7 +315,7 @@ func TestAPaddedBoolValueIsRefusedBeforeThePasswordIsRead(t *testing.T) {
 	root.Reader = input
 	assert.Equal(t, 2, runMain(t, root, "create", "user", "--yes", "--apply", " false", "--password-stdin", "-o", "json"))
 	ce := renderedError(t, "json", errOut.String())
-	assert.Equal(t, "create user: ' false' after the bool flag --apply"+boolRule, ce.Message)
+	assert.Equal(t, "create user: argument 1 after the bool flag --apply"+boolRule, ce.Message)
 	assert.Equal(t, "rancher create user --help", ce.Hint)
 	assert.Equal(t, len("a-password\n"), input.Len(), "standard input is not read")
 	requests, _ := rec.take()

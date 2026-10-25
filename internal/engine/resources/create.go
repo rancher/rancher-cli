@@ -70,6 +70,7 @@ func (*createCmd) Describe() runtime.Descriptor {
 		Destructive: "dependsOnInput", // depends on the manifest's kind (a Sensitive kind is destructive)
 		Auth:        true,
 		Shape:       runtime.ShapeText,
+		SecretInput: true,
 	}
 }
 
@@ -199,7 +200,7 @@ func (c *createCmd) readAndResolve(path string) (*unstructured.Unstructured, kin
 	}
 	n, derr := countDocs(b)
 	if derr != nil {
-		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, "invalid manifest: "+derr.Error())
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, invalidManifestMessage(derr))
 	}
 	if n != 1 {
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
@@ -207,7 +208,7 @@ func (c *createCmd) readAndResolve(path string) (*unstructured.Unstructured, kin
 	}
 	var m map[string]any
 	if err := yaml.Unmarshal(b, &m); err != nil {
-		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, "invalid manifest: "+err.Error())
+		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation, invalidManifestMessage(err))
 	}
 	obj := &unstructured.Unstructured{Object: m}
 
@@ -263,6 +264,92 @@ func (c *createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Inpu
 		}
 	}
 	return overrides, nil
+}
+
+// unreadableManifest is the message for a manifest the YAML decoders refuse
+// with a text that may quote its content.
+const unreadableManifest = "invalid manifest: the YAML could not be decoded"
+
+// yamlSyntaxPrefix starts a YAML decoder's syntax error, which names a line
+// and quotes none of the document.
+const yamlSyntaxPrefix = "yaml: line "
+
+// yamlProblems are fixed problem texts that the scanner (its tag scanner
+// included), parser and reader of gopkg.in/yaml.v3 report, copied from its
+// scannerc.go, parserc.go and readerc.go. Each quotes none of the document.
+// A syntax error on the first line carries one of them with no line number,
+// as "yaml: " and the text. The list makes no claim to hold every text of
+// those files: a text that is not on it gets the fixed message.
+var yamlProblems = map[string]bool{
+	"block sequence entries are not allowed in this context":       true,
+	"control characters are not allowed":                           true,
+	"could not find expected ':'":                                  true,
+	"could not find expected directive name":                       true,
+	"did not find URI escaped octet":                               true,
+	"did not find expected '!'":                                    true,
+	"did not find expected ',' or ']'":                             true,
+	"did not find expected ',' or '}'":                             true,
+	"did not find expected '-' indicator":                          true,
+	"did not find expected <document start>":                       true,
+	"did not find expected <stream-start>":                         true,
+	"did not find expected alphabetic or numeric character":        true,
+	"did not find expected comment or line break":                  true,
+	"did not find expected digit or '.' character":                 true,
+	"did not find expected hexdecimal number":                      true,
+	"did not find expected key":                                    true,
+	"did not find expected node content":                           true,
+	"did not find expected tag URI":                                true,
+	"did not find expected version number":                         true,
+	"did not find expected whitespace":                             true,
+	"did not find expected whitespace or line break":               true,
+	"did not find the expected '>'":                                true,
+	"expected low surrogate area":                                  true,
+	"found a tab character that violates indentation":              true,
+	"found a tab character where an indentation space is expected": true,
+	"found an incorrect leading UTF-8 octet":                       true,
+	"found an incorrect trailing UTF-8 octet":                      true,
+	"found an indentation indicator equal to 0":                    true,
+	"found character that cannot start any token":                  true,
+	"found duplicate %TAG directive":                               true,
+	"found duplicate %YAML directive":                              true,
+	"found extremely long version number":                          true,
+	"found incompatible YAML document":                             true,
+	"found invalid Unicode character escape code":                  true,
+	"found undefined tag handle":                                   true,
+	"found unexpected document indicator":                          true,
+	"found unexpected end of stream":                               true,
+	"found unexpected non-alphabetical character":                  true,
+	"found unknown directive name":                                 true,
+	"found unknown escape character":                               true,
+	"incomplete UTF-16 character":                                  true,
+	"incomplete UTF-16 surrogate pair":                             true,
+	"incomplete UTF-8 octet sequence":                              true,
+	"invalid Unicode character":                                    true,
+	"invalid leading UTF-8 octet":                                  true,
+	"invalid length of a UTF-8 sequence":                           true,
+	"invalid trailing UTF-8 octet":                                 true,
+	"mapping keys are not allowed in this context":                 true,
+	"mapping values are not allowed in this context":               true,
+	"unexpected low surrogate area":                                true,
+}
+
+// invalidManifestMessage is the message for err, a decoder's refusal of a
+// manifest. The decoders quote the document in some refusals: a scalar that
+// does not fit its explicit tag, an unknown alias, a map key that is a
+// collection, a repeated key. A manifest may hold a secret, so the
+// decoder's text is kept only for a syntax error: one that starts with
+// "yaml: line " (it names a line and nothing of the content), or that is
+// "yaml: " and exactly one of the fixed problem texts in yamlProblems.
+// Every other refusal, whatever it says, gets a fixed text.
+func invalidManifestMessage(err error) string {
+	text := strings.TrimPrefix(err.Error(), "error converting YAML to JSON: ")
+	if strings.HasPrefix(text, yamlSyntaxPrefix) {
+		return "invalid manifest: " + text
+	}
+	if problem, ok := strings.CutPrefix(text, "yaml: "); ok && yamlProblems[problem] {
+		return "invalid manifest: " + text
+	}
+	return unreadableManifest
 }
 
 // countDocs counts the YAML documents in b with a structural decoder, so a

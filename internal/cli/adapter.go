@@ -220,7 +220,7 @@ func Adapt(reg *runtime.Registry, rc runtime.Command) *ucli.Command {
 			// Flags have already parsed successfully at this point, so the
 			// invocation's own --output value is trusted directly - no raw-argv
 			// scan needed here, unlike commandNotFound/onUsageError below.
-			if ce := checkFlagValues(d.Flags, rawArgv, completionActive()); ce != nil {
+			if ce := checkFlagValues(d.Flags, rawArgv, completionActive(), d.SecretInput); ce != nil {
 				_ = runtime.RenderErrorStyled(c.Root().ErrWriter, c.String("output"), ce, errStyle(c, c.String("color")))
 				return ctx, exit(ce)
 			}
@@ -661,7 +661,7 @@ func renderRawArgvError(c *ucli.Command, ce *clierr.Error) {
 // command's own flags failed to parse, so - like commandNotFound - the
 // rendering format comes from a raw-argv scan, not a parsed --output value.
 func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
-	msg := err.Error() + "; pass --help for usage"
+	msg := usageErrorText(c, err) + "; pass --help for usage"
 	detail, hint := usageErrorGuidance(c, err)
 	if detail != "" {
 		msg += "; " + detail
@@ -669,4 +669,133 @@ func onUsageError(_ context.Context, c *ucli.Command, err error, _ bool) error {
 	ce := clierr.New(clierr.CodeValidation, msg).WithHint(hint)
 	renderRawArgvError(c, ce)
 	return exit(ce)
+}
+
+// quotedValueTails are the reasons urfave gives after the flag name in an
+// "invalid value ... for flag -name: <reason>" error that quote nothing:
+// a second instance of a flag declared once, and a bool flag given a value.
+var quotedValueTails = []string{"can't duplicate this flag", "parse error"}
+
+// usageErrorText is the text of the flag-parse error err of command c. A
+// command that takes a secret input fails closed, since any text urfave
+// builds from the command line may hold a typed word that is the secret.
+// Only these forms of urfave v3.14.0 get through:
+//   - "flag needs an argument: -<name>", which urfave gives only for a flag
+//     the command defines, and so holds no typed word;
+//   - "flag provided but not defined: -<word>", which becomes the position of
+//     the word (see unknownFlagText);
+//   - "invalid value "<value>" for flag -<name>: <reason>", which becomes the
+//     flag and, for the two reasons that quote nothing, the reason.
+//
+// Every other text becomes a fixed text with no word and no position.
+//
+// A command with no descriptor (the root, a group or a hidden command such as
+// __completion) reports a flag typed before the command name, whose command
+// is not known yet, or a flag of a command that has no descriptor: an undefined
+// flag gets the position text unless the line's command is a leaf that takes
+// no secret input (see unknownFlagTextAt), and an invalid value gets the text
+// that names the flag and not the value. Every other text of such a command
+// passes through. A command with a descriptor that takes no secret input
+// keeps urfave's text.
+func usageErrorText(c *ucli.Command, err error) string {
+	msg := err.Error()
+	d, described := commandDescriptor(c)
+	if described && !d.SecretInput {
+		return msg
+	}
+	if !described {
+		if name, isUnknown := strings.CutPrefix(msg, "flag provided but not defined: -"); isUnknown {
+			return unknownFlagTextAt(c.Root(), name, rawArgv, msg)
+		}
+		if !strings.HasPrefix(msg, "invalid value ") {
+			return msg
+		}
+		return invalidValueText(msg)
+	}
+	if strings.HasPrefix(msg, "flag needs an argument: -") {
+		return msg
+	}
+	if name, isUnknown := strings.CutPrefix(msg, "flag provided but not defined: -"); isUnknown {
+		return unknownFlagText(name, rawArgv)
+	}
+	if !strings.HasPrefix(msg, "invalid value ") {
+		return "the command line could not be parsed"
+	}
+	return invalidValueText(msg)
+}
+
+// invalidValueText is urfave's "invalid value "<value>" for flag -<name>:
+// <reason>" without the value: the flag, and the reason when it is one of
+// the two that quote nothing.
+func invalidValueText(msg string) string {
+	_, flagAndReason, found := strings.CutLast(msg, " for flag -")
+	if !found {
+		return "invalid value for a flag"
+	}
+	name, tail, _ := strings.Cut(flagAndReason, ": ")
+	out := "invalid value for flag -" + name
+	if slices.Contains(quotedValueTails, tail) {
+		out += ": " + tail
+	}
+	return out
+}
+
+// unknownFlagTextAt is the text for the undefined flag name that the root
+// or a group reports, as the line argv is typed. The flag's command is the
+// leaf the rest of the line names (see leafOfLine). It is msg, urfave's
+// text, when that leaf has a descriptor that takes no secret input, since the
+// flag as typed helps a user find a typo there; in every other case, when the
+// leaf takes a secret input, is not found, or has no descriptor (the line
+// names a hidden command such as __completion, which has none), it is the
+// position text, which names no word.
+func unknownFlagTextAt(root *ucli.Command, name string, argv []string, msg string) string {
+	if leaf := leafOfLine(root, argv); leaf != nil {
+		if d, described := commandDescriptor(leaf); described && !d.SecretInput {
+			return msg
+		}
+	}
+	return unknownFlagText(name, argv)
+}
+
+// leafOfLine returns the leaf command the line argv names on root's tree, or
+// nil when the line ends at the root or a group. An undefined flag stops the
+// walk of parseLine at the level that reports it, so the word is taken out
+// and the line read again, until the walk ends for another reason. An
+// undefined flag is read as one that takes no value, since the number of
+// values it takes cannot be known.
+func leafOfLine(root *ucli.Command, argv []string) *ucli.Command {
+	words := slices.Clone(argv)
+	for range len(argv) + 1 {
+		p := parseLine(root, words)
+		end := p.urfaveEnd
+		lv := p.levels[end.level]
+		if end.kind != lineError || end.class != undefinedFlag || len(lv.words) == 0 {
+			if lv.leaf {
+				return lv.cmd
+			}
+			return nil
+		}
+		words = slices.Delete(words, lv.words[len(lv.words)-1].index, lv.words[len(lv.words)-1].index+1)
+	}
+	return nil
+}
+
+// unknownFlagText is the refusal of the undefined flag name for a command
+// that takes a secret input: it gives the position of the word in the
+// arguments typed after rancher, the command path and the global flags
+// included, counted from 1, and not the word, since a word typed with a
+// leading dash may be the secret. The word is the first in argv that starts
+// with "-" and whose text up to any "=" is name with its dashes; a word
+// with no such match (padded with spaces, three dashes) gives no position,
+// and the text names neither the word nor a position.
+func unknownFlagText(name string, argv []string) string {
+	for i, w := range argv {
+		if !strings.HasPrefix(w, "-") {
+			continue
+		}
+		if flag, _, _ := strings.Cut(strings.TrimLeft(w, "-"), "="); flag == name {
+			return fmt.Sprintf("unknown flag at word %d after rancher", i+1)
+		}
+	}
+	return "unknown flag"
 }

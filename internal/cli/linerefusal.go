@@ -25,8 +25,13 @@ import (
 // "=" and a value of only whitespace is an error urfave reports, and the
 // line is read on past it, so a "-" on its own after it is refused as one.
 func lineRefusal(p parsedLine) (ce *clierr.Error, wholeLine bool) {
-	if words, ok := wordsAfterDash(p); ok {
-		return runtime.DroppedWordsError(words), true
+	if words, level, ok := wordsAfterDash(p); ok {
+		if level.leaf {
+			if d, found := commandDescriptor(level.cmd); found && !d.SecretInput {
+				return runtime.DroppedWordsError(words), true
+			}
+		}
+		return runtime.DroppedWordsCountError(len(words)), true
 	}
 	reached := p.endIfBlankAccepted.kind == lineRuns && p.levels[p.endIfBlankAccepted.level].leaf
 	if flags := emptyBoolSpellings(p, reached); len(flags) > 0 {
@@ -43,8 +48,10 @@ func lineRefusal(p parsedLine) (ce *clierr.Error, wholeLine bool) {
 // holding true before the "-" shows help, and at the root the version flag
 // set before it, with the help flag not true, prints the version. At the
 // root or a group the "-" is the word urfave takes for the command name;
-// one that comes after another argument is not read.
-func wordsAfterDash(p parsedLine) ([]string, bool) {
+// one that comes after another argument is not read. It also returns the
+// level the "-" is typed at, which is a leaf when the walk has reached the
+// command.
+func wordsAfterDash(p parsedLine) ([]string, *lineLevel, bool) {
 	for _, lv := range p.levels {
 		for _, w := range lv.words {
 			if !w.dash {
@@ -52,18 +59,18 @@ func wordsAfterDash(p parsedLine) ([]string, bool) {
 			}
 			switch {
 			case w.index == len(p.argv)-1:
-				return nil, false
+				return nil, nil, false
 			case lv.leaf && w.helpOn:
-				return nil, false
+				return nil, nil, false
 			case lv.version != nil && w.versionOn && !w.helpOn:
-				return nil, false
+				return nil, nil, false
 			case !lv.leaf && (len(lv.argAt) == 0 || lv.argAt[0] != w.index):
-				return nil, false
+				return nil, nil, false
 			}
-			return p.argv[w.index+1:], true
+			return p.argv[w.index+1:], lv, true
 		}
 	}
-	return nil, false
+	return nil, nil, false
 }
 
 // emptyBoolSpellings returns the bool flags the walk reads typed with "=" and

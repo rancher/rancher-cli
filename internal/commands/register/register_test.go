@@ -2,6 +2,7 @@ package register
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -45,6 +46,41 @@ func TestCanonicalizeServerURLInvalidURL(t *testing.T) {
 	ce, ok := err.(*clierr.Error)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
+}
+
+// TestCanonicalizeServerURLRefusalsLeaveOutTheUserinfo asserts that the
+// refusal of a server URL that does not parse, or has an unsupported scheme,
+// shows the whole message with only the URL's userinfo replaced: after a
+// scheme's "://" up to the last "@", or from the start of the URL up to the
+// last "@" when there is no scheme. A password holding "/", "?", "#" or "@"
+// is never shown, the host stays, and the message's own words survive
+// because the refusal passes only the URL to the redaction.
+func TestCanonicalizeServerURLRefusalsLeaveOutTheUserinfo(t *testing.T) {
+	const canary = "s3cretcanary9"
+	for _, tc := range []struct{ name, raw, want string }{
+		{"a bad port", "https://u:" + canary + "@rancher.invalid:abc", "invalid server URL: https://<redacted>@rancher.invalid:abc"},
+		{"a bad port with a path", "https://u:" + canary + "@rancher.invalid:abc/x?y=1", "invalid server URL: https://<redacted>@rancher.invalid:abc/x?y=1"},
+		{"an unsupported scheme", "ftp://u:" + canary + "@rancher.invalid/x", "unsupported server URL scheme: ftp://<redacted>@rancher.invalid/x; use http:// or https://"},
+		{"a slash in the password", "https://u:s3cret/canary9@rancher.invalid:abc", "invalid server URL: https://<redacted>@rancher.invalid:abc"},
+		{"a question mark in the password", "https://u:s3cret?canary9@rancher.invalid:abc", "invalid server URL: https://<redacted>@rancher.invalid:abc"},
+		{"a number sign in the password", "https://u:s3cret#canary9@rancher.invalid:abc", "invalid server URL: https://<redacted>@rancher.invalid:abc"},
+		{"an at sign in the password", "https://u:s3cret@canary9@rancher.invalid:abc", "invalid server URL: https://<redacted>@rancher.invalid:abc"},
+		{"an at sign only in the path", "https://rancher.invalid:abc/a@b", "invalid server URL: https://<redacted>@b"},
+		{"no scheme", "u:" + canary + "@rancher.invalid:abc", "invalid server URL: <redacted>@rancher.invalid:abc"},
+		{"one slash", "https:/u:" + canary + "@rancher.invalid", "invalid server URL: <redacted>@rancher.invalid"},
+		{"a scheme-relative URL", "//u:" + canary + "@rancher.invalid", "invalid server URL: <redacted>@rancher.invalid"},
+		{"no userinfo", "https://rancher.invalid:abc", "invalid server URL: https://rancher.invalid:abc"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := CanonicalizeServerURL(tc.raw)
+			ce, ok := errors.AsType[*clierr.Error](err)
+			require.True(t, ok)
+			assert.Equal(t, clierr.CodeValidation, ce.Code)
+			assert.Equal(t, tc.want, ce.Message)
+			assert.NotContains(t, ce.Message, "canary9")
+			assert.NotContains(t, ce.Message, "s3cret")
+		})
+	}
 }
 
 // TestPrepareRegistrationRejectsUnsupportedScheme asserts that a scheme

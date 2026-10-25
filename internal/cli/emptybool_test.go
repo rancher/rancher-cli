@@ -241,7 +241,8 @@ func TestEmptyBoolValueIsRefused(t *testing.T) {
 // whitespace cut off. A padded bool value typed after a bool flag is
 // refused as a bool value, in a free declared slot or beyond the declared
 // argument, and named as typed, with the joined line's value trimmed so the
-// hint runs, and a padded extra word is named as typed. A flag's separate
+// hint runs, and a padded extra word is named as typed (by its position for a
+// command that takes a secret input, whose bool value refusal hints its help). A flag's separate
 // value and a word after "--" stay as typed in the hint. No row makes a
 // request. Not parallel: it sets the process environment and the captured
 // command line.
@@ -257,14 +258,26 @@ func TestPaddedWordsAreReadAsUrfaveReadsThem(t *testing.T) {
 		{
 			name:    "a padded bool value in a free slot",
 			argv:    []string{"create", "user", "--dry-run", " false", "--password-stdin", "-o", "json"},
-			message: "create user: ' false' after the bool flag --dry-run" + boolRule,
+			message: "create user: argument 1 after the bool flag --dry-run" + boolRule,
 			hint:    "rancher create user --help",
 		},
 		{
 			name:    "a padded bool value beyond the declared argument",
 			argv:    []string{"create", "user", "u04", "--dry-run", "false\t", "--password-stdin", "-o", "json"},
-			message: "create user: 'false\t' after the bool flag --dry-run" + boolRule,
-			hint:    "rancher create user 'u04' --dry-run='false' --password-stdin -o 'json'",
+			message: "create user: argument 2 after the bool flag --dry-run" + boolRule,
+			hint:    "rancher create user --help",
+		},
+		{
+			name:    "a padded bool value in a free slot, a command with no secret input, is named as typed",
+			argv:    []string{"create", "namespace", "--dry-run", " false", "--cluster", "c-x", "-o", "json"},
+			message: "create namespace: ' false' after the bool flag --dry-run" + boolRule,
+			hint:    "rancher create namespace --help",
+		},
+		{
+			name:    "a padded bool value beyond the declared argument, a command with no secret input, is named as typed",
+			argv:    []string{"create", "namespace", "ns1", "--dry-run", "false\t", "--cluster", "c-x", "-o", "json"},
+			message: "create namespace: 'false\t' after the bool flag --dry-run" + boolRule,
+			hint:    "rancher create namespace 'ns1' --dry-run='false' --cluster 'c-x' -o 'json'",
 		},
 		{
 			name:    "a padded separate value of a value flag stays as typed",
@@ -279,10 +292,16 @@ func TestPaddedWordsAreReadAsUrfaveReadsThem(t *testing.T) {
 			hint:    "rancher get pod --wait='true' --cluster 'c1' -o 'json' -- ' p1'",
 		},
 		{
-			name:    "a padded extra word",
+			name:    "a padded extra word of a command with a secret input is named by position",
 			argv:    []string{"create", "user", "u04", " extra", "--password-stdin", "-o", "json"},
-			message: "create user takes 1 argument (<username>); unexpected argument ' extra'",
+			message: "create user takes 1 argument (<username>); unexpected argument 2",
 			hint:    "rancher create user --help",
+		},
+		{
+			name:    "a padded extra word, a command with no secret input, is named as typed",
+			argv:    []string{"create", "namespace", "ns1", " extra", "--cluster", "c-x", "-o", "json"},
+			message: "create namespace takes 1 argument (<name>); unexpected argument ' extra'",
+			hint:    "rancher create namespace --help",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

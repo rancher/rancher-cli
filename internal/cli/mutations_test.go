@@ -83,7 +83,8 @@ func TestReadOnlyModeRefusesMutatingBeforeDispatch(t *testing.T) {
 // patch command takes kubectl's spellings of its two input flags: -p is
 // --patch and --patch-file names the patch file, each reaching the leaf
 // (the patch is decoded or the file read), while -f and --filename are
-// unknown flags.
+// unknown flags, which a command that takes a secret input names by their
+// position on the command line, not as typed.
 func TestPatchFlagSpellings(t *testing.T) {
 	restoreRawArgv(t)
 	t.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
@@ -94,9 +95,9 @@ func TestPatchFlagSpellings(t *testing.T) {
 	}{
 		{"-p is --patch", []string{"-p", "{}"}, "invalid patch: "},
 		{"--patch-file reads the file", []string{"--patch-file", "does-not-exist.json"}, `cannot read patch "does-not-exist.json"`},
-		{"-f is unknown", []string{"-f", "ops.json"}, "flag provided but not defined: -f"},
-		{"--filename is unknown", []string{"--filename", "ops.json"}, "flag provided but not defined: -filename"},
-		{"--type takes json or merge", []string{"--type", "strategic", "-p", "{}"}, `--type="strategic" is not one of json|merge`},
+		{"-f is unknown", []string{"-f", "ops.json"}, "unknown flag at word 8 after rancher"},
+		{"--filename is unknown", []string{"--filename", "ops.json"}, "unknown flag at word 8 after rancher"},
+		{"--type takes json or merge", []string{"--type", "strategic", "-p", "{}"}, "--type value is not one of json|merge"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := BuildRoot("v-test")

@@ -213,6 +213,14 @@ type Descriptor struct {
 	// yes to, whose environment already names the directory. Go-only; used
 	// only with RemedyConfigDir.
 	RemedyConfigDirUnless func(Input) bool `json:"-"`
+	// SecretInput marks a command that takes a secret value from an
+	// argument, a flag or stdin. For this command only, the refusal of an
+	// extra argument, of a bool flag's value typed as its own word, of the
+	// words after a "-" on its own and of a flag the command line cannot
+	// parse names the position or the flag and leaves out what was typed,
+	// and a bool-value refusal hints the command's help instead of the
+	// typed line. Go-only; the manifest does not carry it.
+	SecretInput bool `json:"-"`
 }
 
 // EffectiveServerAccess is the server access the command runs with: the

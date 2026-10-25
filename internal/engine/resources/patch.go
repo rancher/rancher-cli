@@ -63,6 +63,7 @@ func (c patchCmd) Describe() runtime.Descriptor {
 		Auth:        true,
 		Capability:  c.k.Capability,
 		Shape:       runtime.ShapeText,
+		SecretInput: true,
 	}
 }
 

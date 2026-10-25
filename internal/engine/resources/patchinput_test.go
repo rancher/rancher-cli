@@ -505,3 +505,51 @@ func TestPatchMergeWarningFallsBackToTheLocalMerge(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"the merge patch drops 1 of 2 entries of the list at /spec/list; a merge patch replaces a whole list and does not merge its entries"}, eff.Warnings)
 }
+
+// TestPatchErrorsCarryNoValue asserts that no refusal of a patch quotes a
+// value the patch carries: a malformed op ahead of an op whose value is the
+// canary, a failing test op, an op on a path that is missing, an op the
+// server owns, and a merge patch of a server-owned field. A path or key is
+// an identifier and may be named.
+func TestPatchErrorsCarryNoValue(t *testing.T) {
+	t.Parallel()
+	const canary = "s3cretcanary9"
+	for _, tc := range []struct{ name, typ, patch, want string }{
+		{"a malformed op, then an op holding the canary", "",
+			`[{"op":"add","path":"/data/a"},{"op":"add","path":"/data/b","value":"` + canary + `"}]`,
+			`patch op 0 (add) has no "value"`},
+		{"an add with a null value, then an op holding the canary", "",
+			`[{"op":"add","path":"/data/a","value":null},{"op":"remove","path":"/data/zz"},{"op":"add","path":"/data/b","value":"` + canary + `"}]`,
+			"cannot apply patch"},
+		{"a test op that fails", "",
+			`[{"op":"test","path":"/data/a","value":"` + canary + `"}]`,
+			"testing value /data/a failed"},
+		{"an op on a path that is missing", "",
+			`[{"op":"add","path":"/nothing/here/` + "x" + `","value":"` + canary + `"}]`,
+			"cannot apply patch"},
+		{"a replace with a value that is not an object", "",
+			`[{"op":"replace","path":"","value":"` + canary + `"}]`,
+			"cannot apply patch"},
+		{"a server-owned field in an op value", "",
+			`[{"op":"add","path":"/metadata","value":{"resourceVersion":"1","note":"` + canary + `"}}]`,
+			"patch op 0 targets /metadata/resourceVersion; the server sets this field"},
+		{"a server-owned field in a merge patch", "merge",
+			`{"metadata":{"resourceVersion":"1","labels":{"a":"` + canary + `"}}}`,
+			"the merge patch targets /metadata/resourceVersion"},
+		{"an unknown op", "",
+			`[{"op":"bogus","path":"/data/a","value":"` + canary + `"}]`,
+			`patch op 0 has the unknown op "bogus"`},
+		{"a patch that is not JSON", "",
+			`[{"op":"add","path":"/data/a","value":"` + canary + `"`,
+			"not valid JSON"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, client, err := planTyped(t, "configmap", "app", configMapJSON, tc.patch, tc.typ)
+			requireValidation(t, err)
+			require.ErrorContains(t, err, tc.want)
+			assert.NotContains(t, err.Error(), canary)
+			assert.Empty(t, client.updates)
+		})
+	}
+}

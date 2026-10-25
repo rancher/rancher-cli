@@ -234,7 +234,8 @@ func (loginCmd) Describe() runtime.Descriptor {
 			"rancher auth login prod",
 			"rancher auth login prod --url https://rancher.ex --token-stdin < token.txt",
 		},
-		Shape: runtime.ShapeText,
+		Shape:       runtime.ShapeText,
+		SecretInput: true,
 	}
 }
 
