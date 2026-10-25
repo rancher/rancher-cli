@@ -1,0 +1,29 @@
+# A command run records one event when recording is on and the config
+# directory already exists. The event names the command and the flag typed,
+# never the flag's value or the directory path, and reading it back with
+# telemetry show records nothing more. A run that kubectl would start as the
+# exec plugin records that fact and the platform it ran on: this reaches the
+# invocation context main hands to the command layer.
+mkdir $RANCHER_CLI_CONFIG_DIR
+env RANCHER_CLI_TELEMETRY=true
+
+exec rancher config path -c $RANCHER_CLI_CONFIG_DIR
+exec rancher telemetry show -o json
+jsonquery stdout 'data.#' 1
+jsonquery stdout data.0.io\.rancher\.cli\.command 'config path'
+jsonquery stdout data.0.io\.rancher\.cli\.command\.flags.0 config
+! stdout rancher-config
+
+exec rancher telemetry show -o json
+jsonquery stdout 'data.#' 1
+
+env KUBERNETES_EXEC_INFO={}
+exec rancher config path
+env KUBERNETES_EXEC_INFO=
+exec rancher telemetry show -o json
+jsonquery stdout 'data.#' 2
+# Events of one hour have no stored order: select the plugin run by its flag.
+jsonquery stdout 'data.#(io\.rancher\.cli\.exec_plugin==true)#|#' 1
+jsonquery stdout 'data.#(io\.rancher\.cli\.exec_plugin==false)#|#' 1
+! jsonquery stdout 'data.#(io\.rancher\.cli\.exec_plugin==true).os\.type' _OTHER
+! jsonquery stdout 'data.#(io\.rancher\.cli\.exec_plugin==true).os\.type' ''

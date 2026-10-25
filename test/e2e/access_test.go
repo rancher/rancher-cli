@@ -127,6 +127,7 @@ func newAccessRunner(t *testing.T) *accessRunner {
 			"RANCHER_CLI_CACERT=" + caPEM,
 			"RANCHER_CLI_CONFIG_DIR=" + filepath.Join(dir, "rancher-config"),
 			"RANCHER_CLI_CREDENTIAL_STORE=file",
+			"RANCHER_CLI_TELEMETRY=false",
 		},
 	}
 }

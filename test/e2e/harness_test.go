@@ -1088,6 +1088,9 @@ func TestScenarios(t *testing.T) {
 			// line (`env RANCHER_CLI_CREDENTIAL_STORE=`) - testscript.Env carries
 			// no script name, so the exemption lives in the script.
 			e.Setenv("RANCHER_CLI_CREDENTIAL_STORE", "file")
+			// Recording is off for every script; a script that tests it sets
+			// the variable itself.
+			e.Setenv("RANCHER_CLI_TELEMETRY", "false")
 			// Go reads SSL_CERT_FILE into the system pool on every platform
 			// (darwin and windows since Go 1.27). Written per script so
 			// concurrent scripts never share a file.

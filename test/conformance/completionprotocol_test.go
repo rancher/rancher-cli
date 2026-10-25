@@ -75,10 +75,11 @@ const completionProtocolMarker = "--rancher-completion-proto=2"
 //   - completionActive: the Before hooks Adapt and adaptEntry install, which
 //     pass it to checkFlagValues so the unset-variable guard stays silent
 //     while a line is completed, and completionDebugEnabled, which keeps the
-//     completion trace to completion requests. Neither picks a way to
-//     complete; a completion callback (universalShellCompleteFunc,
-//     aliasAwareGroupComplete, the root's, completeCurrentWord) runs only
-//     for a marked line and must not ask.
+//     completion trace to completion requests, and resolveReadOnly, which
+//     keeps a completion request from deciding whether to record a usage
+//     event. None picks a way to complete; a completion callback
+//     (universalShellCompleteFunc, aliasAwareGroupComplete, the root's,
+//     completeCurrentWord) runs only for a marked line and must not ask.
 //   - completionDebugEnabled: completionDebugf, which writes the trace.
 //
 // A use is counted against the top-level function that holds it, so a
@@ -87,7 +88,7 @@ var completionNames = map[string][]string{
 	"protoSentinel":    {"completionRequest", "SanitizedArgs", "CaptureArgv"},
 	"completionFlag":   {"OutdatedCompletionScript", "SanitizedArgs", "CaptureArgv"},
 	"rawCompleting":    {"completionActive", "CaptureArgv"},
-	"completionActive": {"Adapt", "adaptEntry", "completionDebugEnabled"},
+	"completionActive": {"Adapt", "adaptEntry", "completionDebugEnabled", "resolveReadOnly"},
 	// completionDebugEnabled carries completionActive, so it is watched too.
 	"completionDebugEnabled": {"completionDebugf"},
 }

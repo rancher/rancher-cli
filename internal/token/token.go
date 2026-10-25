@@ -832,7 +832,7 @@ func computeCacheProbeKey(name, server, cluster, userID, authConfig string) (str
 	if (name == "" && userID == "") || server == "" {
 		return "", false
 	}
-	normalized := applyDefaultScheme(server)
+	normalized := ApplyDefaultScheme(server)
 	cu, err := credhelper.CanonicalServerURL(normalized)
 	if err != nil {
 		return "", false
@@ -1626,7 +1626,7 @@ func connectionTarget(cfg *config.Config, flagServer, cluster, caIn, wantName st
 	// an empty server must stay "" for the fallback-to-config check below,
 	// not become the bogus non-empty "https://".
 	if explicitServer {
-		server = applyDefaultScheme(server)
+		server = ApplyDefaultScheme(server)
 	}
 
 	// A ignoreCurrentContext caller is flag-driven by definition: an absent
@@ -1704,12 +1704,12 @@ func caReadSource(from config.CASource, shim bool) string {
 // fails on schemeless bracketed IPv6, so syntactic detection is necessary.
 var schemeRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+\-.]*://`)
 
-// applyDefaultScheme prepends "https://" when the value has no scheme, so
+// ApplyDefaultScheme prepends "https://" when the value has no scheme, so
 // that both the flag fast path and resolveConn share one normalization policy.
 // An empty input is returned unchanged so the caller can detect the "no flag"
 // case. Scheme detection uses schemeRE rather than url.Parse to handle
 // host:port and bracketed IPv6 authorities correctly.
-func applyDefaultScheme(s string) string {
+func ApplyDefaultScheme(s string) string {
 	if s == "" {
 		return s
 	}

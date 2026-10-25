@@ -31,6 +31,8 @@ var realSurface = surfaceRules{
 		"NewCommandRun", "NewEventsDropped", "ClientTypeFor",
 		"FactsFileName", "SetServer", "OpenStore", "Record", "ContractFiles", "Resolve",
 		"AttributesOf", "SortedNames",
+		// DirExists reads a path and puts nothing into an event.
+		"DirExists",
 		"Store.WriteFacts", "Store.ReadFacts",
 		"Facts.SetVersion", "Facts.SetInstallID",
 	},

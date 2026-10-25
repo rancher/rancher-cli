@@ -1978,6 +1978,38 @@ shown by `rancher telemetry status`. The contract version is the version of
 the event format. The server facts are stored details about Rancher servers:
 version, edition and install id.
 
+Each command run records one event, when recording is on and the config
+directory already exists: a run never creates the directory to record into.
+The event holds:
+
+- the command, by its registered name (`get cluster`, `auth login`), and the
+  names of the flags typed on the command line, never their values;
+- the outcome (`ok` or `error`), the error code when there is one, and the
+  exit code;
+- how long the run took, as a bucket (`lt1s`, `1to5s` or `gt5s`);
+- the operating system, the architecture and the CLI version;
+- the client type (`person`, `agent` or `automation`), whether it ran in CI
+  and whether kubectl ran it as the exec plugin;
+- the server's version, edition and install id, when they are known;
+- a random id for the config directory, a random id for the process and one
+  for the event, and the hour the run happened (never a finer time).
+
+Never recorded: resource, namespace, cluster, project, user or server names,
+server URLs, positional arguments, flag values, file paths, tokens and error
+messages.
+
+A run records nothing when no command was chosen: an unknown command, a
+group or `rancher` alone, `--help`, `--version`, a flag the CLI cannot parse
+(an unknown flag, a flag with no value or a value of the wrong type, or a
+true/false flag with a value that is neither), a line the CLI refuses before
+running it (words after a lone `-`, a true/false flag typed with `=` and no
+value, or a true/false word after a true/false flag), and a shell completion
+request. The `completion`
+command and the `telemetry` commands record nothing either. A refusal after
+the command is chosen, such as a missing argument or an invalid `-o` value, is
+recorded as an error with the code `VALIDATION`. Recording never changes a
+command's output or exit code and never makes a request.
+
 Recording is on by default. The first of these controls that applies decides,
 in this order, and `rancher telemetry status` names it as `decidedBy`:
 

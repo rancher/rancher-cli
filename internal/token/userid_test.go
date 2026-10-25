@@ -188,7 +188,7 @@ func TestUserIDKeyIsOneKeyOnBothPaths(t *testing.T) {
 	} {
 		got, ok := computeCacheProbeKey(tc.name, tc.server, tc.cluster, tc.userID, "")
 		require.True(t, ok)
-		assert.Equal(t, config.CacheKeyFor(tc.name, config.CanonicalServerIdentity(applyDefaultScheme(tc.server)), tc.cluster, tc.userID, ""), got)
+		assert.Equal(t, config.CacheKeyFor(tc.name, config.CanonicalServerIdentity(ApplyDefaultScheme(tc.server)), tc.cluster, tc.userID, ""), got)
 	}
 
 	r := newRecordFixture(t, false)

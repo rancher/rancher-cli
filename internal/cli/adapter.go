@@ -14,6 +14,7 @@ import (
 	"github.com/rancher/rancher-cli/internal/config"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	"github.com/rancher/rancher-cli/internal/runtime/completion"
+	"github.com/rancher/rancher-cli/internal/telemetry"
 	ucli "github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
@@ -162,10 +163,12 @@ func fileIsTTY(w io.Writer) bool {
 // completion always reflects this invocation's config state (one load
 // per TAB). Config load failure degrades gracefully: read-only state still
 // derives from env/flag sources; stored config is cleared rather than left
-// stale.
+// stale. It also keeps what recording a usage event needs (see
+// noteRecording); a config that fails to load turns recording off.
 func resolveReadOnly(c *ucli.Command) (bool, []string) {
 	setStoredConfig(nil, "") // clear any prior stored config for this invocation
 	config.SetProcessCacheAnchor(nil)
+	resetRecordingState()
 	var sources []string
 	if dir, err := config.ResolveDir(c.String("config")); err == nil {
 		// The binding stamp is read BEFORE the config load, and the pair
@@ -174,7 +177,9 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 		// read per invocation: a reader takes a second only when it is
 		// about to hand a cached credential back.
 		anchor := config.NewCacheAnchor(dir)
+		setting := telemetry.ConfigUnreadable
 		if cfg, err := config.Load(config.FilePath(dir)); err == nil {
+			setting = telemetry.ConfigSettingOf(cfg.Telemetry)
 			setStoredConfig(cfg, dir) // single load shared with completion
 			config.SetProcessCacheAnchor(anchor.WithConfig(cfg))
 			completionDebugf("config loaded: dir=%s currentServer=%q servers=%d", dir, cfg.CurrentServer, len(cfg.Servers))
@@ -183,6 +188,12 @@ func resolveReadOnly(c *ucli.Command) (bool, []string) {
 			}
 		} else {
 			completionDebugf("config load failed: %v", err)
+		}
+		// A completion request records nothing: it decides nothing and
+		// checks no directory. The check runs here, before any command can
+		// create the directory.
+		if !completionActive() {
+			noteRecording(dir, setting)
 		}
 	} else {
 		completionDebugf("config dir resolve failed: %v", err)

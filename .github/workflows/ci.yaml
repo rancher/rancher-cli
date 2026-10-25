@@ -187,6 +187,14 @@ jobs:
       # contract files read from a Windows checkout. The telemetry commands
       # list and delete that store, so their tests run here too.
       - run: go test -race -count=1 ./internal/telemetry/ ./internal/fsacl/ ./internal/commands/telemetrycmd/
+      # What one recorded command run costs the exec plugin's cache hit,
+      # through the built command tree: the directory stat and the store's
+      # file operations, on NTFS, on top of the hit's own reads, and no
+      # config load added.
+      - run: go test -race -count=1 -run TestRecordingAddsTheListedOperationsToThePluginHit ./internal/cli/
+      # The same hit timed with recording on and off, ten runs of each, for
+      # the median. No -race: the detector would hide the difference.
+      - run: go test -run '^$' -bench 'BenchmarkPluginHit$' -benchtime 200x -count 10 ./internal/cli/
       # The rename, removal and read retry tests log what Windows
       # returns: errors by errno with the retry off, and what plain reads
       # hit while a file is replaced. -v prints those lines when the

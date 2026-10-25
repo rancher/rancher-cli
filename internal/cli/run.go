@@ -16,22 +16,35 @@ import (
 // or a word that reads as a bool typed after a bool flag. A completion
 // request is left to the completion callbacks, which offer nothing on such
 // a line.
+//
+// After the command ends and its output is written, Run records one usage
+// event when recording is on and the config directory existed when the root
+// Before hook ran. A line with no chosen command (an unknown command, a
+// group or the root alone, help, the version, urfave's flag errors, the
+// refusals above, a completion request) and the completion and telemetry
+// commands record nothing. Recording never changes the output or the exit
+// code.
 func Run(ctx context.Context, root *ucli.Command, args []string) int {
 	return run(ctx, root, args).code
 }
 
 // run is Run with how the run ended, not just the code.
 func run(ctx context.Context, root *ucli.Command, args []string) runResult {
+	start := now()
 	clearUnknownCommand(root)
-	err := runArgv(ctx, root, args)
-	return resolveExit(root, err, recordedUnknownCommand(root))
+	resetRecordingState()
+	k, err := runArgv(ctx, root, args)
+	res := resolveExit(root, err, recordedUnknownCommand(root))
+	recordRun(root, k, res, start)
+	return res
 }
 
-// runArgv runs args on root and returns the error urfave returned, or the
-// one that refuses the line before urfave parses it.
-func runArgv(ctx context.Context, root *ucli.Command, args []string) error {
+// runArgv runs args on root and returns the parse of the line, when it made
+// one, and the error urfave returned, or the one that refuses the line before
+// urfave parses it.
+func runArgv(ctx context.Context, root *ucli.Command, args []string) (k keptLine, err error) {
 	if len(args) == 0 {
-		return root.Run(ctx, args)
+		return k, root.Run(ctx, args)
 	}
 	CaptureArgv(args[1:])
 	// urfave sets the writers inside root.Run, so a refusal written before
@@ -41,14 +54,15 @@ func runArgv(ctx context.Context, root *ucli.Command, args []string) error {
 	}
 	if !completionRequest(args[1:]) {
 		p := parseLine(root, rawArgv)
+		k = keptLine{line: p, parsed: true}
 		if ce, wholeLine := lineRefusal(p); ce != nil {
 			if wholeLine || !p.readWholeLine() {
 				renderRawArgvError(root, ce)
 			} else {
 				_ = runtime.RenderErrorStyled(root.ErrWriter, p.valueOf("output"), ce, errStyle(root, p.valueOf("color")))
 			}
-			return exit(ce)
+			return k, exit(ce)
 		}
 	}
-	return root.Run(ctx, SanitizedArgs(args))
+	return k, root.Run(ctx, SanitizedArgs(args))
 }

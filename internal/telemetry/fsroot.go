@@ -25,6 +25,15 @@ func observeOp(op, name string) {
 	}
 }
 
+// DirExists reports whether path is a directory the caller can stat. Any
+// other result, an error included, is false. It reports one stat operation
+// to the observer and reads nothing from the directory.
+func DirExists(path string) bool {
+	observeOp("stat", path)
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 // openRoot opens a directory by its path.
 func openRoot(dir string) (*root, error) {
 	observeOp("openroot", ".")

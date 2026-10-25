@@ -21,7 +21,9 @@ func main() {
 	if cli.OutdatedCompletionScript(os.Args[1:], os.Stderr) {
 		return
 	}
-	httpx.SetUserAgent(invocation.Detect(VERSION, os.Getenv).UserAgent())
+	ictx := invocation.Detect(VERSION, os.Getenv)
+	httpx.SetUserAgent(ictx.UserAgent())
+	cli.SetInvocation(ictx)
 	root, err := cli.BuildRoot(VERSION)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "rancher:", err)

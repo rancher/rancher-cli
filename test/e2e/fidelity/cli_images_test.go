@@ -121,6 +121,7 @@ func TestCLIImagesWorkload(t *testing.T) {
 		"RANCHER_CLI_CACERT=" + caPEM,
 		"RANCHER_CLI_CONFIG_DIR=" + configDir,
 		"RANCHER_CLI_CREDENTIAL_STORE=file",
+		"RANCHER_CLI_TELEMETRY=false",
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
 	}

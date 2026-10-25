@@ -85,6 +85,7 @@ func TestCLIKubernetesVersions(t *testing.T) {
 		"RANCHER_CLI_CACERT=" + caPEM,
 		"RANCHER_CLI_CONFIG_DIR=" + t.TempDir(),
 		"RANCHER_CLI_CREDENTIAL_STORE=file",
+		"RANCHER_CLI_TELEMETRY=false",
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
 	}

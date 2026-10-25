@@ -40,7 +40,7 @@ func (t tokenCmd) withStoreConflictSteps(err error, server, name, clusterID stri
 	if lerr != nil {
 		cfg = nil
 	}
-	steps := RegenerateSteps(clierr.Rancher, entryOfName(cfg, applyDefaultScheme(server), name, clusterID, false), clusterID)
+	steps := RegenerateSteps(clierr.Rancher, entryOfName(cfg, ApplyDefaultScheme(server), name, clusterID, false), clusterID)
 	return ce.WithMessage(ce.Message + "; if a kubeconfig's exec entry sets it, regenerate the kubeconfig with " +
 		config.EnvCredentialStore + " unset: " + steps)
 }

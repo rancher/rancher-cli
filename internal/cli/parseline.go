@@ -107,11 +107,12 @@ type lineEnd struct {
 type parsedLine struct {
 	argv   []string
 	levels []*lineLevel
-	// urfaveEnd is where urfave's pass ends; the parse-match test and
-	// leafOfLine read it. endIfBlankAccepted is where the pass would end if urfave
-	// accepted a bool flag typed with "=" and a value of only whitespace
-	// and read on: the same unless the line holds such a word, and the one
-	// the refusals read. levels hold the walk to that end.
+	// urfaveEnd is where urfave's pass ends: the parse-match test,
+	// leafOfLine and the recording of a run read it. endIfBlankAccepted is
+	// where the pass would end if urfave accepted a bool flag typed with "="
+	// and a value of only whitespace and read on: the same unless the line
+	// holds such a word, and the one the refusals read. levels hold the walk
+	// to that end.
 	urfaveEnd, endIfBlankAccepted lineEnd
 }
 

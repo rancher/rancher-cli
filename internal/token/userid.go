@@ -83,7 +83,7 @@ func RecordedUserIDs(cfg *config.Config, server, name, clusterID string) []strin
 	if cfg == nil {
 		return nil
 	}
-	server = applyDefaultScheme(server)
+	server = ApplyDefaultScheme(server)
 	if server == "" {
 		server = cfg.EffectiveConnection().URL
 	}

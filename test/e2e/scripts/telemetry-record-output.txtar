@@ -1,0 +1,25 @@
+# Recording changes neither a command's output nor its exit status: the same
+# commands, run with recording on and off, print the same text on both
+# streams and fail with the same error code. The harness has no check of the
+# exit number; the failing command's error envelope names its code.
+mkdir $RANCHER_CLI_CONFIG_DIR
+
+env RANCHER_CLI_TELEMETRY=true
+exec rancher config path -c $RANCHER_CLI_CONFIG_DIR
+cp stdout on-success.out
+cp stderr on-success.err
+! exec rancher config use-server nope -o json
+cp stdout on-failure.out
+cp stderr on-failure.err
+jsonquery on-failure.err data.error.code NOT_FOUND
+exec rancher telemetry show -o json
+jsonquery stdout 'data.#' 2
+
+env RANCHER_CLI_TELEMETRY=false
+exec rancher config path -c $RANCHER_CLI_CONFIG_DIR
+cmp stdout on-success.out
+cmp stderr on-success.err
+! exec rancher config use-server nope -o json
+cmp stdout on-failure.out
+cmp stderr on-failure.err
+jsonquery stderr data.error.code NOT_FOUND

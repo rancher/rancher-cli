@@ -2129,8 +2129,8 @@ func TestApplyDefaultSchemeHostPort(t *testing.T) {
 		{"", ""},
 	}
 	for _, tc := range cases {
-		got := applyDefaultScheme(tc.in)
-		assert.Equal(t, tc.want, got, "applyDefaultScheme(%q)", tc.in)
+		got := ApplyDefaultScheme(tc.in)
+		assert.Equal(t, tc.want, got, "ApplyDefaultScheme(%q)", tc.in)
 	}
 }
 
