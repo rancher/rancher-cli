@@ -82,7 +82,7 @@ func TestWaitForEndsAtOnceOnAuthAndTLSFailures(t *testing.T) {
 // advice for one that is.
 func TestWaitForRetriesOtherGetErrorsAndNamesTheLastOne(t *testing.T) {
 	withFastPoll(t)
-	const retryAdvice = "retry with a longer --timeout or inspect the resource for what is holding it back"
+	const retryAdvice = "retry with a longer --timeout or inspect the resource to see why the wait condition is not met"
 	const fixAdvice = "fix that error, or retry with a longer --timeout"
 	tests := []struct {
 		name   string
@@ -129,7 +129,7 @@ func TestWaitForTimeoutAfterAnErrorThenAnObjectNamesNoError(t *testing.T) {
 		ce, ok := errors.AsType[*clierr.Error](err)
 		require.True(t, ok)
 		assert.Equal(t, "timed out waiting for x; last state: provisioning; "+
-			"retry with a longer --timeout or inspect the resource for what is holding it back", ce.Message)
+			"retry with a longer --timeout or inspect the resource to see why the wait condition is not met", ce.Message)
 	})
 }
 
@@ -162,7 +162,7 @@ func TestWaitForTimeoutDuringAGetNamesNoCutError(t *testing.T) {
 	}{
 		{"no earlier error", nil,
 			"timed out waiting for x; last state: <no state observed>; " +
-				"retry with a longer --timeout or inspect the resource for what is holding it back"},
+				"retry with a longer --timeout or inspect the resource to see why the wait condition is not met"},
 		{"earlier forbidden", []error{clierr.New(clierr.CodeRBAC, "forbidden (403)")},
 			"timed out waiting for x; last state: <no state observed>; last error: RBAC: forbidden (403); " +
 				"fix that error, or retry with a longer --timeout"},

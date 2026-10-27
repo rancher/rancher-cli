@@ -31,7 +31,7 @@ jsonquery flag.json data.objects.1.outcome 'will be deleted'
 jsonquery flag.json data.objects.2.kind project
 jsonquery flag.json data.objects.2.name del-ns
 jsonquery flag.json data.objects.2.outcome 'will be deleted'
-jsonquery flag.json warnings.0 'deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project''s role bindings and project-scoped secrets are removed'
+jsonquery flag.json warnings.0 'deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project''s role bindings and project-scoped secrets are deleted'
 exec rancher delete project del-ns --cluster testcluster --delete-namespaces --dry-run
 stdout 'will be deleted: del-ns-a, del-ns-b'
 

@@ -75,17 +75,17 @@ func parseJSONPatch(raw []byte) (patchDoc, error) {
 		var members map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &members)
 		if jsonClass(members["op"]) == "string" && jsonClass(members["path"]) == "string" {
-			return patchDoc{}, invalidPatch("the patch is one RFC 6902 op; put it inside a JSON array")
+			return patchDoc{}, invalidPatch("the patch is one RFC 6902 operation; put it inside a JSON array")
 		}
-		return patchDoc{}, invalidPatch("a JSON object is a merge patch; pass --type merge, or give RFC 6902 ops as a JSON array")
+		return patchDoc{}, invalidPatch("a JSON object is a merge patch; pass --type merge, or give RFC 6902 operations as a JSON array")
 	case "string", "number", "boolean":
-		return patchDoc{}, invalidPatch(fmt.Sprintf("a JSON %s is not a patch; give RFC 6902 ops as a JSON array", class))
+		return patchDoc{}, invalidPatch(fmt.Sprintf("a JSON %s is not a patch; give RFC 6902 operations as a JSON array", class))
 	case "array":
 		var elems []json.RawMessage
 		_ = json.Unmarshal(raw, &elems)
 		for i, el := range elems {
 			if class := jsonClass(el); class != "object" {
-				return patchDoc{}, invalidPatch(fmt.Sprintf("patch op %d is a JSON %s, not an object with \"op\" and \"path\"", i, class))
+				return patchDoc{}, invalidPatch(fmt.Sprintf("patch operation %d is a JSON %s, not an object with \"op\" and \"path\"", i, class))
 			}
 			var members map[string]json.RawMessage
 			_ = json.Unmarshal(el, &members)
@@ -95,7 +95,7 @@ func parseJSONPatch(raw []byte) (patchDoc, error) {
 					if field == "op" {
 						article = "an"
 					}
-					return patchDoc{}, invalidPatch(fmt.Sprintf("patch op %d has %s %q that is not a string", i, article, field))
+					return patchDoc{}, invalidPatch(fmt.Sprintf("patch operation %d has %s %q that is not a string", i, article, field))
 				}
 			}
 			if err := checkOpFields(i, members); err != nil {
@@ -130,19 +130,19 @@ var opNeeds = map[string]string{
 func checkOpFields(i int, members map[string]json.RawMessage) error {
 	opRaw, ok := members["op"]
 	if !ok {
-		return invalidPatch(fmt.Sprintf("patch op %d has no \"op\"", i))
+		return invalidPatch(fmt.Sprintf("patch operation %d has no \"op\"", i))
 	}
 	var op string
 	_ = json.Unmarshal(opRaw, &op)
 	need, known := opNeeds[op]
 	if !known {
-		return invalidPatch(fmt.Sprintf("patch op %d has the unknown op %q; use add, remove, replace, move, copy or test", i, op))
+		return invalidPatch(fmt.Sprintf("patch operation %d has the unknown operation %q; use add, remove, replace, move, copy or test", i, op))
 	}
 	if _, ok := members["path"]; !ok {
-		return invalidPatch(fmt.Sprintf("patch op %d has no \"path\"", i))
+		return invalidPatch(fmt.Sprintf("patch operation %d has no \"path\"", i))
 	}
 	if _, ok := members[need]; need != "" && !ok {
-		return invalidPatch(fmt.Sprintf("patch op %d (%s) has no %q", i, op, need))
+		return invalidPatch(fmt.Sprintf("patch operation %d (%s) has no %q", i, op, need))
 	}
 	return nil
 }
@@ -155,7 +155,7 @@ func parseMergePatch(raw []byte) (patchDoc, error) {
 	switch class := jsonClass(raw); class {
 	case "object":
 	case "array":
-		return patchDoc{}, invalidPatch("a merge patch is a JSON object, not a JSON array; for RFC 6902 ops in a JSON array leave out --type or pass --type json")
+		return patchDoc{}, invalidPatch("a merge patch is a JSON object, not a JSON array; for RFC 6902 operations in a JSON array leave out --type or pass --type json")
 	default:
 		return patchDoc{}, invalidPatch("a merge patch is a JSON object, not a JSON " + class)
 	}
@@ -327,9 +327,9 @@ func droppedListWarning(dropped, total int, path []string) string {
 	case dropped == 0:
 		return ""
 	case total == 1:
-		return fmt.Sprintf("the merge patch drops the only entry of the list at %s; %s", engine.PointerFor(path), mergeListRule)
+		return fmt.Sprintf("the merge patch removes the only entry of the list at %s; %s", engine.PointerFor(path), mergeListRule)
 	}
-	return fmt.Sprintf("the merge patch drops %d of %d entries of the list at %s; %s", dropped, total, engine.PointerFor(path), mergeListRule)
+	return fmt.Sprintf("the merge patch removes %d of %d entries of the list at %s; %s", dropped, total, engine.PointerFor(path), mergeListRule)
 }
 
 // droppedEntries counts the entries of before with no equal entry left in

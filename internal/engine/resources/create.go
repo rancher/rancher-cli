@@ -171,7 +171,7 @@ func (c *createCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, 
 // filename flag, reading and resolving it at most once per invocation
 // regardless of how many callers (ResolveCapability, Plan) ask. A mismatch
 // between the path this memo was primed with and the path a later caller
-// asks about is a command bug, not a re-read - both callers read the same
+// asks about is an internal error, not a re-read - both callers read the same
 // Input in the same invocation, so they cannot legitimately disagree.
 func (c *createCmd) parseManifest(in runtime.Input) (*unstructured.Unstructured, kinds.Kind, error) {
 	path := in.String(flagFilename)
@@ -181,7 +181,7 @@ func (c *createCmd) parseManifest(in runtime.Input) (*unstructured.Unstructured,
 	})
 	if path != c.parsePath {
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeGeneric,
-			fmt.Sprintf("command bug: create resource parsed manifest %q but is now asked about %q", c.parsePath, path))
+			fmt.Sprintf("internal error: create resource read manifest %q and was then given %q", c.parsePath, path))
 	}
 	return c.parseObj, c.parseKind, c.parseErr
 }
@@ -204,7 +204,7 @@ func (c *createCmd) readAndResolve(path string) (*unstructured.Unstructured, kin
 	}
 	if n != 1 {
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("manifest must contain exactly one document, found %d; split a multi-document manifest into separate invocations", n))
+			fmt.Sprintf("manifest must contain exactly one document, found %d; split a multi-document manifest and run the command once for each document", n))
 	}
 	var m map[string]any
 	if err := yaml.Unmarshal(b, &m); err != nil {
@@ -215,7 +215,7 @@ func (c *createCmd) readAndResolve(path string) (*unstructured.Unstructured, kin
 	k, ok := c.lookupGVK(obj.GetAPIVersion(), obj.GetKind())
 	if !ok {
 		return nil, kinds.Kind{}, clierr.New(clierr.CodeValidation,
-			fmt.Sprintf("unsupported resource %s/%s; supported kinds: %s", obj.GetAPIVersion(), obj.GetKind(), supportedKinds()))
+			fmt.Sprintf("unsupported manifest kind %s/%s; supported kinds: %s", obj.GetAPIVersion(), obj.GetKind(), supportedKinds()))
 	}
 	return obj, k, nil
 }
@@ -240,7 +240,7 @@ func (c *createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Inpu
 			}
 			if id != manifestNS {
 				return nil, clierr.New(clierr.CodeValidation,
-					fmt.Sprintf("--cluster resolves to %q but the manifest namespace is %q; drop metadata.namespace or pass the matching --cluster", id, manifestNS))
+					fmt.Sprintf("--cluster resolves to %q but the manifest namespace is %q; remove metadata.namespace or pass the matching --cluster", id, manifestNS))
 			}
 		}
 		// Both empty: Route rejects the named op with a --cluster hint.
@@ -249,7 +249,7 @@ func (c *createCmd) reconcile(ctx context.Context, k kinds.Kind, in runtime.Inpu
 		flagNS := in.String(FlagNamespace)
 		if manifestNS != "" && flagNS != "" && manifestNS != flagNS {
 			return nil, clierr.New(clierr.CodeValidation,
-				fmt.Sprintf("--namespace %q conflicts with the manifest namespace %q; drop one of them", flagNS, manifestNS))
+				fmt.Sprintf("--namespace %q conflicts with the manifest namespace %q; remove one of them", flagNS, manifestNS))
 		}
 		if ns := flagNS; ns != "" {
 			overrides[FlagNamespace] = ns

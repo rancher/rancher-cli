@@ -35,7 +35,7 @@ const (
 	reasonKubernetes = "Kubernetes never deletes it"
 	reasonLocal      = "Rancher never deletes it on the local cluster"
 
-	warningDeleteNamespaces = `deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project's role bindings and project-scoped secrets are removed`
+	warningDeleteNamespaces = `deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project's role bindings and project-scoped secrets are deleted`
 )
 
 // DeleteProjectPartialFailure is the details payload of a `delete project
@@ -167,7 +167,7 @@ func (c *deleteProjectCmd) planKeep(ctx context.Context, eff safety.Effect, inne
 	eff.Objects = objs
 	if len(kept) > 0 && c.cannotSeeOutsideProjects(ctx, rd.downstream) {
 		eff.Warnings = append(eff.Warnings, fmt.Sprintf(
-			"you cannot see namespaces outside projects; after this delete you will not see the namespaces Rancher keeps: %s",
+			"you cannot get namespaces outside projects; after this delete you will not be able to get the namespaces Rancher keeps: %s",
 			runtime.NameList(kept)))
 	}
 	return eff, c.withObjects(innerExec, objs), nil
@@ -271,7 +271,7 @@ func (c *deleteProjectCmd) planDeleteNamespaces(ctx context.Context, eff safety.
 			o.Outcome, o.Message = safety.OutcomeNotDeleted, reason
 		case rd.unknown(ns):
 			return safety.Effect{}, nil, clierr.New(clierr.CodeValidation, fmt.Sprintf(
-				"cannot read namespace %s in full; --delete-namespaces needs to see each namespace it deletes", nsName)).
+				"cannot read namespace %s in full; --delete-namespaces needs to read each namespace it deletes in full", nsName)).
 				WithHint(deleteProjectHint(name, cluster))
 		default:
 			o.Outcome = safety.OutcomeWillBeDeleted
@@ -358,7 +358,7 @@ func namespaceFailure(failure error, objs []safety.Object) error {
 		}
 	}
 	return clierr.New(ce.Code, fmt.Sprintf(
-		"delete project partially applied: deletion started for %d namespaces, failed on %s, %d not attempted; the project was kept; re-run the same command; it re-reads the project's namespaces",
+		"delete project partially applied: deletion started for %d namespaces, failed on %s, %d not attempted; the project was kept; re-run the same command; it reads the project's namespaces again",
 		started, failed, notAttempted)).
 		WithRetryable(ce.Retryable).
 		WithDetails(DeleteProjectPartialFailure{Objects: objs})

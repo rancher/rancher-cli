@@ -11714,7 +11714,7 @@
       "verbs": {
         "create": {
           "contract": "public",
-          "note": "create tokens with 'rancher create token' (it shows the token's value once)",
+          "note": "create tokens with 'rancher create token' (it prints the token's value once)",
           "stability": "stable",
           "state": "refused"
         },

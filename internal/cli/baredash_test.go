@@ -324,7 +324,7 @@ func TestBareDashLinesTheRuleLeavesAlone(t *testing.T) {
 	assert.Equal(t, 2, code)
 	assert.Empty(t, requests)
 	ce = renderedError(t, "json", stderr)
-	assert.Equal(t, "--namespace is required to address a pod by name", ce.Message, "rancher %s: - is the pod name", strings.Join(argv, " "))
+	assert.Equal(t, "--namespace is required when you give the name of one pod", ce.Message, "rancher %s: - is the pod name", strings.Join(argv, " "))
 }
 
 // TestScanTailStopsAtABareDash asserts how scanTail reads a "-": a word

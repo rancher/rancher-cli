@@ -168,19 +168,19 @@ func TestGetWaitFlagValidation(t *testing.T) {
 		in    input
 		wants string
 	}{
-		{"wait=false with for", "pod", input{args: named, s: with(map[string]string{"for": "state=x"}), b: map[string]bool{"wait": false}, isSet: map[string]bool{"wait": true}}, "--wait=false conflicts with --for; drop one"},
-		{"wait=false with timeout", "pod", input{args: named, s: with(map[string]string{"timeout": "1s"}), b: map[string]bool{"wait": false}, isSet: map[string]bool{"wait": true}}, "--wait=false conflicts with --timeout; drop one"},
-		{"wait=false with both names for", "pod", input{args: named, s: with(map[string]string{"for": "state=x", "timeout": "1s"}), b: map[string]bool{"wait": false}, isSet: map[string]bool{"wait": true}}, "--wait=false conflicts with --for; drop one"},
-		{"wait=false conflict comes before the missing name", "pod", input{s: with(map[string]string{"for": "state=x"}), b: map[string]bool{"wait": false}, isSet: map[string]bool{"wait": true}}, "--wait=false conflicts with --for; drop one"},
-		{"wait without a name", "pod", input{s: routed, b: map[string]bool{"wait": true}}, "--wait requires a resource name"},
-		{"for without a name", "pod", input{s: with(map[string]string{"for": "state=x"})}, "--for requires a resource name"},
-		{"timeout without a name", "pod", input{s: with(map[string]string{"timeout": "1s"})}, "--timeout requires a resource name"},
-		{"for and timeout without a name", "pod", input{s: with(map[string]string{"for": "state=x", "timeout": "1s"})}, "--for requires a resource name"},
-		{"wait and timeout without a name", "pod", input{s: with(map[string]string{"timeout": "1s"}), b: map[string]bool{"wait": true}}, "--wait requires a resource name"},
-		{"for without an id", "user", input{s: map[string]string{"for": "state=x"}}, "--for requires a resource id"},
+		{"wait=false with for", "pod", input{args: named, s: with(map[string]string{"for": "state=x"}), b: map[string]bool{"wait": false}, isSet: map[string]bool{"wait": true}}, "--wait=false conflicts with --for; remove one"},
+		{"wait=false with timeout", "pod", input{args: named, s: with(map[string]string{"timeout": "1s"}), b: map[string]bool{"wait": false}, isSet: map[string]bool{"wait": true}}, "--wait=false conflicts with --timeout; remove one"},
+		{"wait=false with both names for", "pod", input{args: named, s: with(map[string]string{"for": "state=x", "timeout": "1s"}), b: map[string]bool{"wait": false}, isSet: map[string]bool{"wait": true}}, "--wait=false conflicts with --for; remove one"},
+		{"wait=false conflict comes before the missing name", "pod", input{s: with(map[string]string{"for": "state=x"}), b: map[string]bool{"wait": false}, isSet: map[string]bool{"wait": true}}, "--wait=false conflicts with --for; remove one"},
+		{"wait without a name", "pod", input{s: routed, b: map[string]bool{"wait": true}}, "--wait requires the name argument"},
+		{"for without a name", "pod", input{s: with(map[string]string{"for": "state=x"})}, "--for requires the name argument"},
+		{"timeout without a name", "pod", input{s: with(map[string]string{"timeout": "1s"})}, "--timeout requires the name argument"},
+		{"for and timeout without a name", "pod", input{s: with(map[string]string{"for": "state=x", "timeout": "1s"})}, "--for requires the name argument"},
+		{"wait and timeout without a name", "pod", input{s: with(map[string]string{"timeout": "1s"}), b: map[string]bool{"wait": true}}, "--wait requires the name argument"},
+		{"for without an id", "user", input{s: map[string]string{"for": "state=x"}}, "--for requires the id argument"},
 		{"timeout on a kind without a default", "secret", input{args: named, s: with(map[string]string{"timeout": "1s"})}, "secret has no default wait condition; pass --for state=<value> or --for condition=<Type>[=<Status>]"},
 		{"wait on a kind without a default", "secret", input{args: named, s: routed, b: map[string]bool{"wait": true}}, "secret has no default wait condition"},
-		{"for that is not a grammar", "pod", input{args: named, s: with(map[string]string{"for": "garbage"})}, "is not a supported wait grammar"},
+		{"for that is not a condition", "pod", input{args: named, s: with(map[string]string{"for": "garbage"})}, "is not a supported wait condition"},
 		{"timeout that is not a duration", "pod", input{args: named, s: with(map[string]string{"timeout": "soon"})}, `--timeout "soon" is not a valid duration, e.g. 5m`},
 	}
 	for _, row := range rows {

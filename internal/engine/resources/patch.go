@@ -125,7 +125,7 @@ func (c patchCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, ru
 		// Only an op patch fails here: a merge of a checked object into a
 		// fetched object always succeeds.
 		return safety.Effect{}, nil, clierr.New(clierr.CodeValidation,
-			"cannot apply patch: "+err.Error()+"; check the patch ops against the resource")
+			"cannot apply patch: "+err.Error()+"; check the patch operations against the resource")
 	}
 	patched, err := decodePatched(patchedJSON)
 	if err != nil {
@@ -212,7 +212,7 @@ func refuseServerOwnedOps(patch jsonpatch.Patch) error {
 		for _, keys := range engine.ServerOwnedPaths {
 			if matchesRedactPath(path, keys) || (fromErr == nil && matchesRedactPath(from, keys)) || valueCarries(op, path, keys) {
 				return clierr.New(clierr.CodeValidation, fmt.Sprintf(
-					"patch op %d targets %s; the server sets this field and a patch cannot change it", i, engine.PointerFor(keys)))
+					"patch operation %d targets %s; the server sets this field and a patch cannot change it", i, engine.PointerFor(keys)))
 			}
 		}
 	}

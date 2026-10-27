@@ -513,8 +513,8 @@ func TestNewGetCRTSelectorFiltersTheDecodedList(t *testing.T) {
 }
 
 // TestNewGetCRTSelectorValidation asserts the override refuses a
-// malformed selector and a selector on a named get exactly as the generic
-// get does, before any request.
+// malformed selector and a selector on a get of one object exactly as the
+// generic get does, before any request.
 func TestNewGetCRTSelectorValidation(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -534,5 +534,5 @@ func TestNewGetCRTSelectorValidation(t *testing.T) {
 	ce, ok = errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "%v", err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	require.ErrorContains(t, err, "--selector does not apply to a named clusterregistrationtoken")
+	require.ErrorContains(t, err, "--selector does not apply to a get of one clusterregistrationtoken")
 }

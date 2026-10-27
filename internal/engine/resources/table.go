@@ -44,7 +44,7 @@ func newTable(k kinds.Kind, items []unstructured.Unstructured, single bool) tabl
 func (t table) MarshalJSON() ([]byte, error) {
 	if t.single {
 		if len(t.items) != 1 {
-			return nil, fmt.Errorf("table: a single result must have exactly 1 item, got %d", len(t.items))
+			return nil, fmt.Errorf("internal error: a get of one object must return exactly 1 item, got %d", len(t.items))
 		}
 		return json.Marshal(engine.ScrubPaths(t.items[0].Object, t.k.RedactPaths))
 	}

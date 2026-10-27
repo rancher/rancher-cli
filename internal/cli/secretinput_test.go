@@ -201,7 +201,7 @@ func secretRows() []secretRow {
 		"a scalar that does not fit its tag": "invalid manifest: the YAML could not be decoded",
 		"an unknown alias":                   "invalid manifest: the YAML could not be decoded",
 		"a map key that is a map":            "invalid manifest: the YAML could not be decoded",
-		"a kind the CLI does not know":       "unsupported resource v1/Widget",
+		"a kind the CLI does not know":       "unsupported manifest kind v1/Widget",
 		"a namespace the flag contradicts":   "conflicts with the manifest namespace",
 	}
 	for _, name := range slices.Sorted(func(yield func(string) bool) {
@@ -224,11 +224,11 @@ func secretRows() []secretRow {
 	failingTest := `[{"op":"test","path":"/data/a","value":"` + c + `"}]`
 	notJSON := `[{"op":"add","path":"/data/a","value":"` + c + `"`
 	add(
-		secretRow{flag: "patch", name: "a malformed op ahead of an op holding the canary", argv: line(patchLine, "-p", malformedPatch), code: validation, message: `patch op 0 (add) has no "value"`},
+		secretRow{flag: "patch", name: "a malformed op ahead of an op holding the canary", argv: line(patchLine, "-p", malformedPatch), code: validation, message: `patch operation 0 (add) has no "value"`},
 		secretRow{flag: "patch", name: "a test op that fails", argv: line(patchLine, "-p", failingTest), stub: configMapStub, code: validation, message: "testing value /data/a failed"},
 		secretRow{flag: "patch", name: "a patch that is not JSON", argv: line(patchLine, "-p", notJSON), code: validation, message: "not valid JSON"},
 		secretRow{flag: "patch", name: "an extra argument", argv: line(patchLine, "-p", "[]", c), code: validation, message: "unexpected argument 2"},
-		secretRow{flag: "patch-file", name: "a malformed op ahead of an op holding the canary", argv: line(patchLine, "--patch-file", "-"), stdin: malformedPatch, code: validation, message: `patch op 0 (add) has no "value"`},
+		secretRow{flag: "patch-file", name: "a malformed op ahead of an op holding the canary", argv: line(patchLine, "--patch-file", "-"), stdin: malformedPatch, code: validation, message: `patch operation 0 (add) has no "value"`},
 		secretRow{flag: "patch-file", name: "a test op that fails", argv: line(patchLine, "--patch-file", "-"), stdin: failingTest, stub: configMapStub, code: validation, message: "testing value /data/a failed"},
 		secretRow{flag: "patch-file", name: "a patch that is not JSON", argv: line(patchLine, "--patch-file", "-"), stdin: notJSON, code: validation, message: "not valid JSON"},
 	)
@@ -330,7 +330,7 @@ func secretRows() []secretRow {
 		secretRow{flag: "from-literal", name: "a flag typed with no value takes --from-literal=<canary> as its value: --cluster", argv: line("create secret s1 --cluster", "--from-literal=k="+c), code: validation, message: "flag --cluster got flag --from-literal as its value"},
 		secretRow{flag: "from-literal", name: "a flag typed with no value takes --from-literal=<canary> as its value: --namespace", argv: line("create secret s1 --namespace", "--from-literal=k="+c), code: validation, message: "flag --namespace got flag --from-literal as its value"},
 		secretRow{flag: "from-literal", name: "a flag typed with no value takes --from-literal=<canary> as its value: --project", argv: line("create secret s1 --project", "--from-literal=k="+c), code: validation, message: "flag --project got flag --from-literal as its value"},
-		secretRow{flag: "patch", name: "an unknown op names the op field only: the op holds a verb, never a value", argv: line(patchLine, "-p", `[{"op":"`+"bogus"+`","path":"/data/a","value":"`+c+`"}]`), code: validation, message: `patch op 0 has the unknown op "bogus"`},
+		secretRow{flag: "patch", name: "an unknown op names the op field only: the op holds a verb, never a value", argv: line(patchLine, "-p", `[{"op":"`+"bogus"+`","path":"/data/a","value":"`+c+`"}]`), code: validation, message: `patch operation 0 has the unknown operation "bogus"`},
 	)
 	return rows
 }

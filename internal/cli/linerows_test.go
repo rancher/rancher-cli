@@ -189,7 +189,7 @@ func TestCommandLineRowsGiveTheirResult(t *testing.T) {
 		{"a padded extra word, a command with no secret input, is named as typed", line("create", "namespace", "ns1", " extra", "--cluster", "c-x", "-o", "json"),
 			refused("create namespace takes 1 argument (<name>); unexpected argument ' extra'", "rancher create namespace --help")},
 		{"a padded command name", line(" get", "pods"), unknownCommand(" get")},
-		{"a dash and a symbol is an argument", with(get, "-€"), refused("--namespace is required to address a pod by name", "")},
+		{"a dash and a symbol is an argument", with(get, "-€"), refused("--namespace is required when you give the name of one pod", "")},
 		{"a dash and a symbol, a dash and a word", with(get, "-€", "-", "x"), refused("get pod takes at most 1 argument ([name]); unexpected arguments '-' 'x'", "rancher get pod --help")},
 		{"an undefined flag after a bool value as its own word", with(get, "--dry-run", "false", "--bogus"), urfaveError("flag provided but not defined: -bogus")},
 		{"an undefined flag then help after a bool value", with(get, "--dry-run", "false", "--bogus", "--help"), urfaveError("flag provided but not defined: -bogus")},

@@ -360,7 +360,7 @@ func TestCreateResourceRejectsNoCreateViaManifestKind(t *testing.T) {
 		},
 		"token": {
 			"apiVersion: ext.cattle.io/v1\nkind: Token\nmetadata:\n  name: t\nspec:\n  userID: u-1\n",
-			"cannot create a token from a manifest; create tokens with '" + clierr.Rancher + " create token' (it shows the token's value once)",
+			"cannot create a token from a manifest; create tokens with '" + clierr.Rancher + " create token' (it prints the token's value once)",
 		},
 		"kubeconfig": {
 			"apiVersion: ext.cattle.io/v1\nkind: Kubeconfig\nmetadata:\n  name: k\n",

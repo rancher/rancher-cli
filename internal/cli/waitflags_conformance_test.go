@@ -151,7 +151,7 @@ func TestEveryGetRefusesTheWaitFlagsWithoutAName(t *testing.T) {
 				var ce *clierr.Error
 				require.ErrorAs(t, err, &ce)
 				assert.Equal(t, clierr.CodeValidation, ce.Code)
-				require.ErrorContains(t, err, "requires a resource")
+				assert.Regexp(t, ` requires the (id|name) argument$`, ce.Message)
 				require.ErrorContains(t, err, "--"+row.flag)
 			})
 		}

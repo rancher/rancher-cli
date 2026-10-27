@@ -179,7 +179,7 @@ func TestGetTableUnderProjectKeepsTheProjectsNamespaces(t *testing.T) {
 		table := projectTable(t, "ns-a", "ns-b")
 		table.Rows[1].Object.Object = nil
 		_, err := run(t, table)
-		require.ErrorContains(t, err, "a row without its object")
+		require.ErrorContains(t, err, "a row that does not include its object")
 	})
 }
 
@@ -226,7 +226,7 @@ func TestGetNamespaceTableUnderProjectKeepsTheNamespacesTheAnnotationNames(t *te
 
 	table.Rows[0].Object.Object = nil
 	_, err = NewGet(mustKind(t, "namespace"), fac).(runtime.ReadCommand).Execute(ctx, in, nil)
-	require.ErrorContains(t, err, "a row without its object")
+	require.ErrorContains(t, err, "a row that does not include its object")
 }
 
 // tableSeqClient serves a wait's polls through seqClient and the table read
@@ -294,14 +294,14 @@ func TestGetWaitThenTable(t *testing.T) {
 	})
 }
 
-// TestGetTableNeedsATableReader asserts a client that cannot read tables is a
-// command bug for a ServerTable kind that renders a text table.
+// TestGetTableNeedsATableReader asserts a client that cannot read tables is
+// an internal error for a ServerTable kind that renders a text table.
 func TestGetTableNeedsATableReader(t *testing.T) {
 	t.Parallel()
 	client := &seqClient{objs: []*unstructured.Unstructured{conditionObj("Ready", "True")}}
 	_, err := getCommand(t, "pod", &recFactory{client: client}).Execute(t.Context(),
 		tableInput{s: map[string]string{"cluster": "c-abc"}, textTable: true}, nil)
-	require.ErrorContains(t, err, "command bug")
+	require.ErrorContains(t, err, "internal error")
 }
 
 // TestNewGetRefusesEnrichersForAServerTableKind asserts registering an

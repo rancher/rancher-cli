@@ -1151,7 +1151,7 @@ func TestGetUserNamedIncludeSystemRejected(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Contains(t, ce.Message, "a named get always returns the object")
+	assert.Contains(t, ce.Message, "it always returns the object")
 	assert.Empty(t, ce.Hint)
 }
 
@@ -1250,7 +1250,8 @@ func TestGetSelectorInvalidIsValidationBeforeAnyRequest(t *testing.T) {
 }
 
 // TestGetSelectorWithNameIsValidation asserts a name and a selector cannot
-// be combined: a named get returns the object, a selector filters a list.
+// be combined: a get of one object returns that object, a selector filters
+// a list.
 func TestGetSelectorWithNameIsValidation(t *testing.T) {
 	t.Parallel()
 	client := &memClient{items: []unstructured.Unstructured{clusterObj("local", "local", "active")}}
@@ -1260,7 +1261,7 @@ func TestGetSelectorWithNameIsValidation(t *testing.T) {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok, "%v", err)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	require.ErrorContains(t, err, "--selector does not apply to a named cluster")
+	require.ErrorContains(t, err, "--selector does not apply to a get of one cluster")
 	assert.Empty(t, client.getName, "no request is made")
 }
 

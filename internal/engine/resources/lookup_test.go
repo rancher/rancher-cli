@@ -498,16 +498,16 @@ func TestHandleRowRefusalsNameTheID(t *testing.T) {
 
 	user := mustKind(t, "user")
 	_, err = NewGet(user, &recFactory{client: &memClient{}}).(runtime.ReadCommand).Execute(t.Context(), input{b: map[string]bool{"wait": true}}, nil)
-	require.ErrorContains(t, err, "--wait requires a resource id")
+	require.ErrorContains(t, err, "--wait requires the id argument")
 	pod := mustKind(t, "pod")
 	_, err = NewGet(pod, &recFactory{client: &memClient{}}).(runtime.ReadCommand).Execute(t.Context(), input{b: map[string]bool{"wait": true}}, nil)
-	require.ErrorContains(t, err, "--wait requires a resource name")
+	require.ErrorContains(t, err, "--wait requires the name argument")
 
 	project := mustKind(t, "project")
 	_, err = NewGet(project, &recFactory{client: &memClient{}}).(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"x"}}, nil)
-	require.ErrorContains(t, err, "--cluster is required to address a project by id")
+	require.ErrorContains(t, err, "--cluster is required when you give the id of one project")
 	_, err = NewGet(crtb, &recFactory{client: &memClient{}}).(runtime.ReadCommand).Execute(t.Context(), input{args: []string{"x"}}, nil)
-	require.ErrorContains(t, err, "--cluster is required to address a clusterroletemplatebinding by name")
+	require.ErrorContains(t, err, "--cluster is required when you give the name of one clusterroletemplatebinding")
 }
 
 // TestLookupIgnoresAnAnswerAfterTheContextEnds asserts a list that arrives

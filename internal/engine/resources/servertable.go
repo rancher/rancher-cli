@@ -29,7 +29,7 @@ func waitTableWarning(err error) string {
 // listed across namespaces gets a NAMESPACE column first, read from each
 // row's object metadata. It implements output.WideTabular. It never reads a
 // kind's Columns. Structured formats never reach it: the command asks for a
-// Table only when a text table renders, so marshaling it is a command bug.
+// Table only when a text table renders, so marshaling it is an internal error.
 type serverTable struct {
 	defs      []metav1.TableColumnDefinition
 	rows      []metav1.TableRow
@@ -58,13 +58,13 @@ func newServerTable(t *metav1.Table, showNamespace bool) (serverTable, error) {
 }
 
 func rowWithoutObjectError() error {
-	return errors.New("the server's table has a row without its object; the namespace and project of the row cannot be read")
+	return errors.New("the table the server returned has a row that does not include its object; the namespace and project of that row cannot be read")
 }
 
 // MarshalJSON refuses: a structured format is never rendered from the
 // table.
 func (serverTable) MarshalJSON() ([]byte, error) {
-	return nil, errors.New("command bug: the server's table renders only as a text table")
+	return nil, errors.New("internal error: the server's table can be shown only as a text table")
 }
 
 // Columns is the -o table column set.

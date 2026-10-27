@@ -35,9 +35,10 @@ func (c waitCond) isStalledTarget() bool {
 
 // parseWaitCondition parses a --for expression (either the user's explicit
 // flag or a kind's WaitDefault) into a waitCond. JSONPath is deliberately
-// unsupported - that grammar belongs to `kubectl wait` via `rancher
-// kubeconfig`. Callers resolve the empty-expression default (if any) via
-// kinds.Kind.WaitDefault before calling; an empty expr here is invalid.
+// unsupported - use `kubectl wait` with a kubeconfig from `rancher
+// kubeconfig` for that. Callers resolve the empty-expression default (if
+// any) via kinds.Kind.WaitDefault before calling; an empty expr here is
+// invalid.
 func parseWaitCondition(forExpr string) (waitCond, error) {
 	if rest, ok := strings.CutPrefix(forExpr, "state="); ok && rest != "" {
 		return waitCond{kind: "state", name: rest}, nil
@@ -62,8 +63,8 @@ func parseWaitCondition(forExpr string) (waitCond, error) {
 
 func invalidForErr(forExpr string) *clierr.Error {
 	return clierr.New(clierr.CodeValidation,
-		fmt.Sprintf("--for %q is not a supported wait grammar; use state=<value> or condition=<Type>[=<Status>]; "+
-			"JSONPath is not supported - use kubectl wait via rancher kubeconfig for that", forExpr))
+		fmt.Sprintf("--for %q is not a supported wait condition; use state=<value> or condition=<Type>[=<Status>]; "+
+			"JSONPath is not supported - for that, use kubectl wait with a kubeconfig from rancher kubeconfig", forExpr))
 }
 
 // waitFor polls client.Get every pollInterval until cond is satisfied, the
@@ -167,7 +168,7 @@ func waitTimeoutErr(name string, last *unstructured.Unstructured, lastErr *clier
 		}
 	}
 	lastError := ""
-	advice := "retry with a longer --timeout or inspect the resource for what is holding it back"
+	advice := "retry with a longer --timeout or inspect the resource to see why the wait condition is not met"
 	if lastErr != nil {
 		lastError = fmt.Sprintf("; last error: %s: %s", lastErr.Code, lastErr.Message)
 		if !lastErr.Retryable {
@@ -285,7 +286,8 @@ func settled(obj *unstructured.Unstructured) bool {
 // (Fleet flips a bad GitRepo ~15s post-create), while the object carries
 // a default satisfied condition from birth. A wait that succeeds while
 // the object is younger than freshWindow gets an advisory warning naming
-// the re-check, because the success may predate the controller's verdict.
+// the re-check, because the status of a new object may be set before its
+// controller has reconciled it.
 // Applied only to kinds that opted into Stalled semantics.
 const freshWindow = 30 * time.Second
 
@@ -313,6 +315,6 @@ func freshSuccessWarning(obj *unstructured.Unstructured, kindName, name, ns stri
 		// workspace could 404 or, worse, report a same-named stranger.
 		recheck += " --namespace " + ns
 	}
-	return fmt.Sprintf("wait satisfied %s - a fresh %s's status may predate its controller's verdict; re-check shortly with: %s",
+	return fmt.Sprintf("wait satisfied %s - the status of a new %s may be set before its controller has reconciled it; re-check shortly with: %s",
 		when, kindName, recheck)
 }

@@ -92,33 +92,33 @@ func TestPatchInputRefusals(t *testing.T) {
 	for _, tc := range []struct {
 		name, typ, patch, want string
 	}{
-		{"one op as an object", "", `{"op":"add","path":"/data/c","value":"3"}`, "invalid patch: the patch is one RFC 6902 op; put it inside a JSON array"},
-		{"an object without --type", "", `{"data":{"a":"9"}}`, "invalid patch: a JSON object is a merge patch; pass --type merge, or give RFC 6902 ops as a JSON array"},
+		{"one op as an object", "", `{"op":"add","path":"/data/c","value":"3"}`, "invalid patch: the patch is one RFC 6902 operation; put it inside a JSON array"},
+		{"an object without --type", "", `{"data":{"a":"9"}}`, "invalid patch: a JSON object is a merge patch; pass --type merge, or give RFC 6902 operations as a JSON array"},
 		{"an object with --type json", "json", `{}`, "invalid patch: a JSON object is a merge patch; pass --type merge"},
-		{"a string", "", `"x"`, "invalid patch: a JSON string is not a patch; give RFC 6902 ops as a JSON array"},
+		{"a string", "", `"x"`, "invalid patch: a JSON string is not a patch; give RFC 6902 operations as a JSON array"},
 		{"a number", "", `42`, "invalid patch: a JSON number is not a patch"},
 		{"a negative number", "", `-1`, "invalid patch: a JSON number is not a patch"},
 		{"an object after whitespace", "", " \n {\"data\":{}}", "invalid patch: a JSON object is a merge patch"},
 		{"an array after whitespace in a merge patch", "merge", "\n\t[]", "invalid patch: a merge patch is a JSON object, not a JSON array"},
 		{"a negative number in a merge patch", "merge", `-2`, "invalid patch: a merge patch is a JSON object, not a JSON number"},
 		{"a boolean", "", `true`, "invalid patch: a JSON boolean is not a patch"},
-		{"an element that is not an object", "", `[{"op":"remove","path":"/data/a"},1]`, `invalid patch: patch op 1 is a JSON number, not an object with "op" and "path"`},
-		{"a path that is not a string", "", `[{"op":"remove","path":1}]`, `invalid patch: patch op 0 has a "path" that is not a string`},
-		{"an op that is not a string", "", `[{"op":true,"path":"/a"}]`, `invalid patch: patch op 0 has an "op" that is not a string`},
-		{"a from that is not a string", "", `[{"op":"move","from":[],"path":"/a"}]`, `invalid patch: patch op 0 has a "from" that is not a string`},
-		{"an element that is a string", "", `["x"]`, `invalid patch: patch op 0 is a JSON string, not an object with "op" and "path"`},
-		{"an element that is an array", "", `[[]]`, `invalid patch: patch op 0 is a JSON array, not an object with "op" and "path"`},
-		{"an element that is a boolean", "", `[false]`, `invalid patch: patch op 0 is a JSON boolean, not an object with "op" and "path"`},
-		{"an element that is null", "", `[null]`, `invalid patch: patch op 0 is a JSON null, not an object with "op" and "path"`},
-		{"a from that is not a string on add", "", `[{"op":"add","path":"/a","value":1,"from":2}]`, `invalid patch: patch op 0 has a "from" that is not a string`},
-		{"no op", "", `[{"path":"/data/a"}]`, `invalid patch: patch op 0 has no "op"`},
-		{"no path", "", `[{"op":"remove"}]`, `invalid patch: patch op 0 has no "path"`},
-		{"add without value", "", `[{"op":"add","path":"/data/c"}]`, `invalid patch: patch op 0 (add) has no "value"`},
-		{"replace without value", "", `[{"op":"remove","path":"/data/a"},{"op":"replace","path":"/data/b"}]`, `invalid patch: patch op 1 (replace) has no "value"`},
-		{"test without value", "", `[{"op":"test","path":"/data/a"}]`, `invalid patch: patch op 0 (test) has no "value"`},
-		{"move without from", "", `[{"op":"move","path":"/data/c"}]`, `invalid patch: patch op 0 (move) has no "from"`},
-		{"copy without from", "", `[{"op":"copy","path":"/data/c"}]`, `invalid patch: patch op 0 (copy) has no "from"`},
-		{"an unknown op", "", `[{"op":"bogus","path":"/data/a"}]`, `invalid patch: patch op 0 has the unknown op "bogus"; use add, remove, replace, move, copy or test`},
+		{"an element that is not an object", "", `[{"op":"remove","path":"/data/a"},1]`, `invalid patch: patch operation 1 is a JSON number, not an object with "op" and "path"`},
+		{"a path that is not a string", "", `[{"op":"remove","path":1}]`, `invalid patch: patch operation 0 has a "path" that is not a string`},
+		{"an op that is not a string", "", `[{"op":true,"path":"/a"}]`, `invalid patch: patch operation 0 has an "op" that is not a string`},
+		{"a from that is not a string", "", `[{"op":"move","from":[],"path":"/a"}]`, `invalid patch: patch operation 0 has a "from" that is not a string`},
+		{"an element that is a string", "", `["x"]`, `invalid patch: patch operation 0 is a JSON string, not an object with "op" and "path"`},
+		{"an element that is an array", "", `[[]]`, `invalid patch: patch operation 0 is a JSON array, not an object with "op" and "path"`},
+		{"an element that is a boolean", "", `[false]`, `invalid patch: patch operation 0 is a JSON boolean, not an object with "op" and "path"`},
+		{"an element that is null", "", `[null]`, `invalid patch: patch operation 0 is a JSON null, not an object with "op" and "path"`},
+		{"a from that is not a string on add", "", `[{"op":"add","path":"/a","value":1,"from":2}]`, `invalid patch: patch operation 0 has a "from" that is not a string`},
+		{"no op", "", `[{"path":"/data/a"}]`, `invalid patch: patch operation 0 has no "op"`},
+		{"no path", "", `[{"op":"remove"}]`, `invalid patch: patch operation 0 has no "path"`},
+		{"add without value", "", `[{"op":"add","path":"/data/c"}]`, `invalid patch: patch operation 0 (add) has no "value"`},
+		{"replace without value", "", `[{"op":"remove","path":"/data/a"},{"op":"replace","path":"/data/b"}]`, `invalid patch: patch operation 1 (replace) has no "value"`},
+		{"test without value", "", `[{"op":"test","path":"/data/a"}]`, `invalid patch: patch operation 0 (test) has no "value"`},
+		{"move without from", "", `[{"op":"move","path":"/data/c"}]`, `invalid patch: patch operation 0 (move) has no "from"`},
+		{"copy without from", "", `[{"op":"copy","path":"/data/c"}]`, `invalid patch: patch operation 0 (copy) has no "from"`},
+		{"an unknown op", "", `[{"op":"bogus","path":"/data/a"}]`, `invalid patch: patch operation 0 has the unknown operation "bogus"; use add, remove, replace, move, copy or test`},
 		{"a BOM-only file", "", "\xef\xbb\xbf", "invalid patch: the patch is empty"},
 		{"blank", "", " \n\t", "invalid patch: the patch is empty"},
 		{"blank merge", "merge", " ", "invalid patch: the patch is empty"},
@@ -127,7 +127,7 @@ func TestPatchInputRefusals(t *testing.T) {
 		{"trailing data", "", `[] []`, "invalid patch: not valid JSON at byte 4;"},
 		{"a repeated key in a merge patch", "merge", `{"data":{"a":"1"},"data":{"b":"2"}}`, `invalid patch: the key "data" appears twice in one JSON object; name each key once`},
 		{"a repeated key in an op", "", `[{"op":"add","path":"/data/c","value":"1","value":"2"}]`, `invalid patch: the key "value" appears twice in one JSON object; name each key once`},
-		{"a merge array", "merge", `[{"op":"add","path":"/a","value":1}]`, "invalid patch: a merge patch is a JSON object, not a JSON array; for RFC 6902 ops in a JSON array leave out --type or pass --type json"},
+		{"a merge array", "merge", `[{"op":"add","path":"/a","value":1}]`, "invalid patch: a merge patch is a JSON object, not a JSON array; for RFC 6902 operations in a JSON array leave out --type or pass --type json"},
 		{"a merge string", "merge", `"x"`, "invalid patch: a merge patch is a JSON object, not a JSON string"},
 		{"a merge number", "merge", `1`, "invalid patch: a merge patch is a JSON object, not a JSON number"},
 		{"a merge boolean", "merge", `false`, "invalid patch: a merge patch is a JSON object, not a JSON boolean"},
@@ -286,7 +286,7 @@ func TestPatchMachineConfigDiffHidesItsSecretFields(t *testing.T) {
 }
 
 // TestPatchMergeWarnsWhenListEntriesAreDropped asserts the warning for a
-// merge patch that drops entries of a list the object has, and its absence
+// merge patch that removes entries of a list the object has, and its absence
 // for an identical list, an append, an empty or absent fetched list, a
 // value of another type, a null, and a json patch.
 func TestPatchMergeWarnsWhenListEntriesAreDropped(t *testing.T) {
@@ -298,26 +298,26 @@ func TestPatchMergeWarnsWhenListEntriesAreDropped(t *testing.T) {
 		want             []string
 	}{
 		{"two of two dropped", "merge", `{"spec":{"template":{"spec":{"containers":[{"name":"web","image":"v2"}]}}}}`,
-			[]string{"the merge patch drops 2 of 2 entries of the list at " + containers + "; a merge patch replaces a whole list and does not merge its entries"}},
+			[]string{"the merge patch removes 2 of 2 entries of the list at " + containers + "; a merge patch replaces a whole list and does not merge its entries"}},
 		{"one of two kept", "merge", `{"spec":{"template":{"spec":{"containers":[{"name":"web","image":"v1"},{"name":"sidecar","image":"s2"}]}}}}`,
-			[]string{"the merge patch drops 1 of 2 entries of the list at " + containers + "; a merge patch replaces a whole list and does not merge its entries"}},
+			[]string{"the merge patch removes 1 of 2 entries of the list at " + containers + "; a merge patch replaces a whole list and does not merge its entries"}},
 		{"the only entry dropped", "merge", `{"spec":{"one":[]}}`,
-			[]string{"the merge patch drops the only entry of the list at /spec/one; a merge patch replaces a whole list and does not merge its entries"}},
+			[]string{"the merge patch removes the only entry of the list at /spec/one; a merge patch replaces a whole list and does not merge its entries"}},
 		{"identical list of objects with integers", "merge", `{"spec":{"ports":[{"port":80,"name":"http"}]}}`, nil},
 		{"an integer written as a float", "merge", `{"spec":{"ports":[{"port":80.0,"name":"http"}]}}`, nil},
 		{"a list replaced by an object", "merge", `{"spec":{"ports":{"port":80}}}`,
-			[]string{"the merge patch drops the only entry of the list at /spec/ports; a merge patch replaces a whole list and does not merge its entries"}},
+			[]string{"the merge patch removes the only entry of the list at /spec/ports; a merge patch replaces a whole list and does not merge its entries"}},
 		{"a list replaced by a value", "merge", `{"spec":{"template":{"spec":{"containers":"none"}}}}`,
-			[]string{"the merge patch drops 2 of 2 entries of the list at " + containers + "; a merge patch replaces a whole list and does not merge its entries"}},
+			[]string{"the merge patch removes 2 of 2 entries of the list at " + containers + "; a merge patch replaces a whole list and does not merge its entries"}},
 		{"two lists, in key order", "merge", `{"spec":{"one":[],"a/b":[]}}`,
 			[]string{
-				"the merge patch drops the only entry of the list at /spec/a~1b; a merge patch replaces a whole list and does not merge its entries",
-				"the merge patch drops the only entry of the list at /spec/one; a merge patch replaces a whole list and does not merge its entries",
+				"the merge patch removes the only entry of the list at /spec/a~1b; a merge patch replaces a whole list and does not merge its entries",
+				"the merge patch removes the only entry of the list at /spec/one; a merge patch replaces a whole list and does not merge its entries",
 			}},
 		{"an escaped key", "merge", `{"spec":{"a/b":[2]}}`,
-			[]string{"the merge patch drops the only entry of the list at /spec/a~1b; a merge patch replaces a whole list and does not merge its entries"}},
+			[]string{"the merge patch removes the only entry of the list at /spec/a~1b; a merge patch replaces a whole list and does not merge its entries"}},
 		{"a duplicate entry dropped", "merge", `{"spec":{"dup":[1]}}`,
-			[]string{"the merge patch drops 1 of 2 entries of the list at /spec/dup; a merge patch replaces a whole list and does not merge its entries"}},
+			[]string{"the merge patch removes 1 of 2 entries of the list at /spec/dup; a merge patch replaces a whole list and does not merge its entries"}},
 		{"duplicates kept", "merge", `{"spec":{"dup":[1,1]}}`, nil},
 		{"duplicates kept and one added", "merge", `{"spec":{"dup":[1,1,1]}}`, nil},
 		{"identical list", "merge", `{"spec":{"template":{"spec":{"containers":[{"name":"web","image":"v1"},{"name":"sidecar","image":"s1"}]}}}}`, nil},
@@ -383,7 +383,7 @@ func TestPatchRefusesTheInputBeforeTheClusterLookup(t *testing.T) {
 	fac := &recFactory{client: client, resolveErr: map[string]error{"prod": errors.New("lookup reached")}}
 	for _, tc := range []struct{ typ, patch, want string }{
 		{"merge", `[1]`, "invalid patch: a merge patch is a JSON object, not a JSON array"},
-		{"", `[1]`, `invalid patch: patch op 0 is a JSON number`},
+		{"", `[1]`, `invalid patch: patch operation 0 is a JSON number`},
 	} {
 		_, _, err := planPatch(t, NewPatch(mustKind(t, "cluster"), fac, nil), input{args: []string{"prod"}, s: map[string]string{
 			"patch": tc.patch, "type": tc.typ,
@@ -413,7 +413,7 @@ func TestPatchApplyErrorNamesTheCheck(t *testing.T) {
 	_, _, err := planTyped(t, "configmap", "app", configMapJSON, `[{"op":"replace","path":"/data/zz","value":"1"}]`, "")
 	requireValidation(t, err)
 	require.ErrorContains(t, err, "cannot apply patch: ")
-	require.ErrorContains(t, err, "; check the patch ops against the resource")
+	require.ErrorContains(t, err, "; check the patch operations against the resource")
 }
 
 func errText(err error) string {
@@ -448,7 +448,7 @@ func TestPatchMergeWarningComparesWithTheStoredObject(t *testing.T) {
 		want        []string
 	}{
 		{"one of two kept in short form", `{"spec":{"template":{"spec":{"containers":[{"name":"web","image":"v1"}]}}}}`,
-			[]string{"the merge patch drops 1 of 2 entries of the list at /spec/template/spec/containers; a merge patch replaces a whole list and does not merge its entries"}},
+			[]string{"the merge patch removes 1 of 2 entries of the list at /spec/template/spec/containers; a merge patch replaces a whole list and does not merge its entries"}},
 		{"both resent in short form", `{"spec":{"template":{"spec":{"containers":[{"name":"web","image":"v1"},{"name":"sidecar","image":"s1"}]}}}}`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -503,7 +503,7 @@ func TestPatchMergeWarningFallsBackToTheLocalMerge(t *testing.T) {
 		"cluster": "prod", "namespace": "default", "patch": `{"spec":{"list":[1]}}`, "type": "merge",
 	}})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"the merge patch drops 1 of 2 entries of the list at /spec/list; a merge patch replaces a whole list and does not merge its entries"}, eff.Warnings)
+	assert.Equal(t, []string{"the merge patch removes 1 of 2 entries of the list at /spec/list; a merge patch replaces a whole list and does not merge its entries"}, eff.Warnings)
 }
 
 // TestPatchErrorsCarryNoValue asserts that no refusal of a patch quotes a
@@ -517,7 +517,7 @@ func TestPatchErrorsCarryNoValue(t *testing.T) {
 	for _, tc := range []struct{ name, typ, patch, want string }{
 		{"a malformed op, then an op holding the canary", "",
 			`[{"op":"add","path":"/data/a"},{"op":"add","path":"/data/b","value":"` + canary + `"}]`,
-			`patch op 0 (add) has no "value"`},
+			`patch operation 0 (add) has no "value"`},
 		{"an add with a null value, then an op holding the canary", "",
 			`[{"op":"add","path":"/data/a","value":null},{"op":"remove","path":"/data/zz"},{"op":"add","path":"/data/b","value":"` + canary + `"}]`,
 			"cannot apply patch"},
@@ -532,13 +532,13 @@ func TestPatchErrorsCarryNoValue(t *testing.T) {
 			"cannot apply patch"},
 		{"a server-owned field in an op value", "",
 			`[{"op":"add","path":"/metadata","value":{"resourceVersion":"1","note":"` + canary + `"}}]`,
-			"patch op 0 targets /metadata/resourceVersion; the server sets this field"},
+			"patch operation 0 targets /metadata/resourceVersion; the server sets this field"},
 		{"a server-owned field in a merge patch", "merge",
 			`{"metadata":{"resourceVersion":"1","labels":{"a":"` + canary + `"}}}`,
 			"the merge patch targets /metadata/resourceVersion"},
 		{"an unknown op", "",
 			`[{"op":"bogus","path":"/data/a","value":"` + canary + `"}]`,
-			`patch op 0 has the unknown op "bogus"`},
+			`patch operation 0 has the unknown operation "bogus"`},
 		{"a patch that is not JSON", "",
 			`[{"op":"add","path":"/data/a","value":"` + canary + `"`,
 			"not valid JSON"},

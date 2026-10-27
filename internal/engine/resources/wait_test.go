@@ -176,7 +176,7 @@ func TestWaitTimeoutSummarizesPodPhase(t *testing.T) {
 		require.ErrorContains(t, err, "Pending", "timeout message shows the real phase, not <no state>")
 		var ce *clierr.Error
 		require.ErrorAs(t, err, &ce)
-		assert.Contains(t, ce.Message, "retry with a longer --timeout or inspect the resource for what is holding it back")
+		assert.Contains(t, ce.Message, "retry with a longer --timeout or inspect the resource to see why the wait condition is not met")
 		assert.Empty(t, ce.Hint)
 	})
 }
@@ -247,7 +247,7 @@ func TestWaitForTimeoutCarriesLastState(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.True(t, ce.Retryable)
 		require.ErrorContains(t, err, "provisioning")
-		assert.Contains(t, ce.Message, "retry with a longer --timeout or inspect the resource for what is holding it back")
+		assert.Contains(t, ce.Message, "retry with a longer --timeout or inspect the resource to see why the wait condition is not met")
 		assert.Empty(t, ce.Hint)
 	})
 }
@@ -340,7 +340,7 @@ func TestGetWaitRequiresName(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.ErrorContains(t, ce, "--wait requires a resource name")
+	assert.ErrorContains(t, ce, "--wait requires the name argument")
 }
 
 // TestGetForAloneStartsTheWait asserts --for with no --wait waits: the fake

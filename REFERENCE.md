@@ -704,16 +704,16 @@ Every kind that `rancher schema` lists gets its generated verbs by these rules:
   cannot be read, the dry-run warns and the delete goes on. When a namespace is
   kept, the dry-run sends one `SelfSubjectAccessReview` to the project's cluster
   (verb `get`, resource `namespaces`, no name); if the cluster denies it, you
-  can see namespaces only through your project, and a warning names the kept
-  namespaces you will not see after the delete. A failed review gives no
-  warning. `--delete-namespaces` also deletes the project's namespaces: one at a
-  time, in name order, each with the resourceVersion it was read with, then the
-  project. Each namespace the command will delete gets a server-side dry-run
-  delete first; the namespaces left alone, described next, get none. The command
-  is refused before anything is deleted if the server refuses a dry-run delete,
-  if you cannot get one of the namespaces it will delete, or if reading the
-  project's namespaces fails. Namespaces already being deleted are listed and
-  left alone. Kubernetes never deletes `default`, `kube-system` and
+  can get namespaces only through your project, and a warning names the kept
+  namespaces you will not be able to get after the delete. A failed review
+  gives no warning. `--delete-namespaces` also deletes the project's namespaces:
+  one at a time, in name order, each with the resourceVersion it was read with,
+  then the project. Each namespace the command will delete gets a server-side
+  dry-run delete first; the namespaces left alone, described next, get none. The
+  command is refused before anything is deleted if the server refuses a dry-run
+  delete, if you cannot get one of the namespaces it will delete, or if reading
+  the project's namespaces fails. Namespaces already being deleted are listed
+  and left alone. Kubernetes never deletes `default`, `kube-system` and
   `kube-public` on any cluster, and Rancher never deletes `local` and
   `fleet-local` on the local cluster: they are listed as `not deleted` with that
   reason and skipped. With `--delete-namespaces` the outcomes are `will be
@@ -852,8 +852,8 @@ accepts only table output.
 and an RFC 7386 JSON merge patch (an object) with `--type merge`. In a merge
 patch, every list you include replaces the whole list in the object; kubectl's
 default strategic merge patch merges some lists by key, and the CLI does not
-support strategic merge patch. When a merge patch drops entries of a list the
-object has, the dry-run preview carries a warning naming the list.
+support strategic merge patch. When a merge patch removes entries of a list
+the object has, the dry-run preview carries a warning naming the list.
 
 ## Cluster provisioning
 

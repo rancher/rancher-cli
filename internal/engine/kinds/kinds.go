@@ -852,7 +852,7 @@ var table = []Kind{
 		RedactPaths: [][]string{{"status", "bearerToken"}, {"status", "value"}},
 		// A manifest cannot create a token: `create token` shows the value
 		// once under the once-only output rules.
-		NoCreateViaManifest: "create tokens with '" + clierr.Rancher + " create token' (it shows the token's value once)",
+		NoCreateViaManifest: "create tokens with '" + clierr.Rancher + " create token' (it prints the token's value once)",
 	},
 	{
 		// Not on the Rancher Kubernetes Public API list; deprecated in favor of

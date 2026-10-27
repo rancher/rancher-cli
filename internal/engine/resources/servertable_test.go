@@ -205,7 +205,7 @@ func TestServerTableMarshalIsRefused(t *testing.T) {
 	t.Parallel()
 	st := tablePayload(t, tableFixture(t, "nodes"), false)
 	_, err := json.Marshal(st)
-	require.ErrorContains(t, err, "command bug")
+	require.ErrorContains(t, err, "internal error")
 }
 
 // TestServerTableNamespaceColumn asserts the NAMESPACE column comes first,
@@ -223,7 +223,7 @@ func TestServerTableNamespaceColumn(t *testing.T) {
 
 	pods.Rows[0].Object.Object = nil
 	_, err := newServerTable(pods, true)
-	require.ErrorContains(t, err, "a row without its object")
+	require.ErrorContains(t, err, "a row that does not include its object")
 	_, err = newServerTable(pods, false)
 	require.NoError(t, err, "without the NAMESPACE column no object is read")
 }
@@ -308,7 +308,7 @@ func TestServerTableFallbackShowsNameAndAge(t *testing.T) {
 		table.ColumnDefinitions = nil
 		table.Rows[1].Object.Object = nil
 		_, _, err = tableData(mustKind(t, "pod"), engine.TableAnswer{Table: table}, false, scope, false)
-		require.ErrorContains(t, err, "a row without its object")
+		require.ErrorContains(t, err, "a row that does not include its object")
 	})
 	t.Run("the fallback is still the objects for a structured format", func(t *testing.T) {
 		t.Parallel()

@@ -152,10 +152,10 @@ func TestParseManifestSingleReadStdin(t *testing.T) {
 	assert.Equal(t, 1, src.reads, "stdin must be read exactly once across ResolveCapability and Plan")
 }
 
-// TestParseManifestPathMismatchIsCommandBug asserts the memo's defensive
+// TestParseManifestPathMismatchIsInternalError asserts the memo's defensive
 // assertion: both callers must read the same Input's filename in the same
-// invocation, so a differing path is a command bug, never a re-read.
-func TestParseManifestPathMismatchIsCommandBug(t *testing.T) {
+// invocation, so a differing path is an internal error, never a re-read.
+func TestParseManifestPathMismatchIsInternalError(t *testing.T) {
 	t.Parallel()
 	cmd := NewCreate(&recFactory{client: &createClient{}},
 		mapFileSource{"a.yaml": []byte(deploymentManifest), "b.yaml": []byte(deploymentManifest)}).(*createCmd)
@@ -166,5 +166,5 @@ func TestParseManifestPathMismatchIsCommandBug(t *testing.T) {
 	var ce *clierr.Error
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, clierr.CodeGeneric, ce.Code)
-	assert.Contains(t, ce.Message, "command bug")
+	assert.Contains(t, ce.Message, "internal error")
 }

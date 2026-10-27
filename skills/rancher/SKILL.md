@@ -277,17 +277,17 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   (action, target, diff) to the user before applying anything non-trivial.
 - Patch and create previews include a field-level diff (`data.diff`) - show
   it. Its `path` is an RFC 6901 pointer (`~1` for `/`, `~0` for `~`), usable
-  verbatim as the `path` of an op in a `--patch` JSON Patch. A create's diff
-  lists the fields the command sends, with `from` null; a create that sets
-  nothing past its name has no `diff`.
+  verbatim as the `path` of an operation in a `--patch` JSON Patch. A
+  create's diff lists the fields the command sends, with `from` null; a
+  create that sets nothing past its name has no `diff`.
 - A patch preview may carry a warning that a changed field is applied by
   another manager (Flux, Argo CD) which may revert the change on its next
   reconcile; relay it before applying, and suggest changing the source that
   manager applies instead.
 - `--type merge` takes an RFC 7386 JSON merge patch (an object), which
   replaces each list it names as a whole. Its preview warns when entries of
-  a list are dropped; relay it, and to change one entry use a JSON Patch op
-  on that entry's path instead.
+  a list are removed; relay it, and to change one entry use a JSON Patch
+  operation on that entry's path instead.
 - A preview hides secret values by design: the entry keeps its path and each
   side that has a value reads `<redacted>`; a side that has no value stays
   null. Hidden values are a secret's `data` and `stringData`, a user's

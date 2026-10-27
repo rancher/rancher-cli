@@ -183,7 +183,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 
 	if named && c.k.SystemFilter != nil && in.IsSet(flagIncludeSystem) {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--include-system does not apply to a named "+c.k.Name+"; a named get always returns the object")
+			"--include-system does not apply to a get of one "+c.k.Name+"; it always returns the object")
 	}
 	labelSelector := in.String(FlagSelector)
 	if _, err := ParseListSelector(c.k.Name, named, labelSelector); err != nil {
@@ -191,7 +191,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	}
 	if !wait && in.IsSet(flagWait) && (forExpr != "" || timeoutStr != "") {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
-			"--wait=false conflicts with "+givenWaitFlag(forExpr)+"; drop one")
+			"--wait=false conflicts with "+givenWaitFlag(forExpr)+"; remove one")
 	}
 	// --for and --timeout start the wait, as --wait does.
 	if forExpr != "" || timeoutStr != "" {
@@ -202,7 +202,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 		if !in.Bool(flagWait) {
 			first = givenWaitFlag(forExpr)
 		}
-		return runtime.Result{}, clierr.New(clierr.CodeValidation, first+" requires a resource "+argName(c.k))
+		return runtime.Result{}, clierr.New(clierr.CodeValidation, first+" requires the "+argName(c.k)+" argument")
 	}
 	if wait && c.k.WaitDefault == "" && forExpr == "" {
 		return runtime.Result{}, clierr.New(clierr.CodeValidation,
@@ -225,7 +225,7 @@ func (c getCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Prompte
 	if tt, ok := in.(runtime.TextTableInput); ok && c.k.ServerTable && tt.TextTable() {
 		if tables, ok = client.(engine.TableReader); !ok {
 			return runtime.Result{}, clierr.New(clierr.CodeGeneric,
-				"command bug: the cluster client cannot read tables, which "+c.k.Name+" needs for a text table")
+				"internal error: the client for this cluster cannot read tables, which "+c.k.Name+" needs for a text table")
 		}
 	}
 	title := resultKind(c.k)
@@ -491,7 +491,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		if clusterFlag == "" {
 			if named {
 				return "", "", "", nil, clierr.New(clierr.CodeValidation,
-					"--cluster is required to address a "+k.Name+" by "+argName(k))
+					"--cluster is required when you give the "+argName(k)+" of one "+k.Name)
 			}
 			return engine.LocalCluster, "", "", nil, nil // list across all clusters
 		}
@@ -518,7 +518,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		nspace := in.String(FlagNamespace)
 		if named && nspace == "" {
 			return "", "", "", nil, clierr.New(clierr.CodeValidation,
-				"--namespace is required to address a "+k.Name+" by name")
+				"--namespace is required when you give the name of one "+k.Name)
 		}
 		clientCluster, ns, effectCluster, err = routeCluster(ctx, clients, k, in, nspace)
 		if err != nil {
@@ -537,7 +537,7 @@ func Route(ctx context.Context, clients engine.ClusterClientFactory, k kinds.Kin
 		}
 		if nspace != "" && !members[nspace] {
 			return "", "", "", nil, projects.NotMemberError(nspace, p.ID,
-				"pass a project namespace, or omit --namespace to cover every namespace of the project")
+				"pass one of the project's namespaces, or omit --namespace to include every namespace of the project")
 		}
 		return clientCluster, ns, effectCluster, &ProjectScope{Members: members}, nil
 	default: // NSNone
@@ -566,7 +566,7 @@ func routeNamespaceKind(ctx context.Context, in runtime.Input, clusterID string,
 			return "", "", "", nil, merr
 		}
 		if !members[name] {
-			return "", "", "", nil, projects.NotMemberError(name, p.ID, "pass a project namespace")
+			return "", "", "", nil, projects.NotMemberError(name, p.ID, "pass one of the project's namespaces")
 		}
 		return clusterID, "", clusterID, nil, nil
 	}
@@ -604,7 +604,7 @@ func resultKind(k kinds.Kind) string {
 }
 
 // ParseListSelector validates a --selector value for a get: it does not
-// apply to a named get (a named get returns the object, a selector filters
+// apply to a get of one object (it returns that object, a selector filters
 // a list), and a malformed value is a VALIDATION error with the parser's
 // reason before any request, not a generic 400 from the server. An empty
 // value returns a nil selector. Shared by the generic get and the bespoke
@@ -615,7 +615,7 @@ func ParseListSelector(kindName string, named bool, raw string) (labels.Selector
 	}
 	if named {
 		return nil, clierr.New(clierr.CodeValidation,
-			"--selector does not apply to a named "+kindName+"; a named get returns the object, a selector filters a list")
+			"--selector does not apply to a get of one "+kindName+"; it returns that object, and a selector filters a list")
 	}
 	sel, err := labels.Parse(raw)
 	if err != nil {

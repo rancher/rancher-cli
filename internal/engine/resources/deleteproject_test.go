@@ -22,7 +22,7 @@ import (
 
 const (
 	textKeepWarning = "deleting this project keeps its namespaces and their workloads, except a namespace with the field.cattle.io/creatorId annotation (which Rancher writes on namespaces created through its v3 API): that namespace is deleted with everything in it. Rancher removes the project annotation from each kept namespace and deletes the project's role bindings and project-scoped secrets."
-	textFlagWarning = `deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project's role bindings and project-scoped secrets are removed`
+	textFlagWarning = `deleting this project and its namespaces deletes everything in the namespaces marked "will be deleted"; namespaces marked "not deleted" are kept; the project's role bindings and project-scoped secrets are deleted`
 	textFlagHelp    = "also delete the project's namespaces and everything in them"
 )
 
@@ -492,7 +492,7 @@ func TestDeleteProjectPreviewWarnsWhenTheCallerCannotSeeKeptNamespaces(t *testin
 		"status": map[string]any{"allowed": false}}}}
 	allowed := engine.ReviewResponse{Status: 201, Object: &unstructured.Unstructured{Object: map[string]any{
 		"status": map[string]any{"allowed": true}}}}
-	const warning = "you cannot see namespaces outside projects; after this delete you will not see the namespaces Rancher keeps: apps, tools"
+	const warning = "you cannot get namespaces outside projects; after this delete you will not be able to get the namespaces Rancher keeps: apps, tools"
 	tests := []struct {
 		name      string
 		review    engine.ReviewResponse
@@ -519,7 +519,7 @@ func TestDeleteProjectPreviewWarnsWhenTheCallerCannotSeeKeptNamespaces(t *testin
 				assert.Contains(t, eff.Warnings, warning)
 			} else {
 				for _, w := range eff.Warnings {
-					assert.NotContains(t, w, "you cannot see namespaces")
+					assert.NotContains(t, w, "you cannot get namespaces")
 				}
 			}
 			assert.Equal(t, tt.wantAsked, f.down.reviews == 1)
@@ -647,7 +647,7 @@ func TestDeleteProjectFlagRefusesAnUnknownNamespaceBeforeAnyWrite(t *testing.T) 
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeValidation, ce.Code)
-	assert.Equal(t, "cannot read namespace hidden in full; --delete-namespaces needs to see each namespace it deletes", ce.Message)
+	assert.Equal(t, "cannot read namespace hidden in full; --delete-namespaces needs to read each namespace it deletes in full", ce.Message)
 	assert.Equal(t, clierr.Rancher+" delete project 'p-1' --cluster 'c-abc'", ce.Hint)
 	for _, call := range f.log {
 		assert.False(t, strings.HasPrefix(call, "dry-run delete hidden") || strings.HasPrefix(call, "dry-run delete tools"), call)
@@ -754,7 +754,7 @@ func TestDeleteProjectFlagStopsAtTheFirstFailedNamespace(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, clierr.CodeRBAC, ce.Code)
 	assert.Empty(t, ce.Hint)
-	assert.Equal(t, "delete project partially applied: deletion started for 1 namespaces, failed on tools, 1 not attempted; the project was kept; re-run the same command; it re-reads the project's namespaces", ce.Message)
+	assert.Equal(t, "delete project partially applied: deletion started for 1 namespaces, failed on tools, 1 not attempted; the project was kept; re-run the same command; it reads the project's namespaces again", ce.Message)
 	assert.Equal(t, []safety.Object{
 		{Kind: "namespace", Name: "apps", Outcome: "deletion started"},
 		{Kind: "namespace", Name: "old", Outcome: "being deleted"},
@@ -789,7 +789,7 @@ func TestDeleteProjectFlagFailureCounts(t *testing.T) {
 	}{
 		{
 			name: "the first namespace fails", failing: "apps",
-			message: "delete project partially applied: deletion started for 0 namespaces, failed on apps, 2 not attempted; the project was kept; re-run the same command; it re-reads the project's namespaces",
+			message: "delete project partially applied: deletion started for 0 namespaces, failed on apps, 2 not attempted; the project was kept; re-run the same command; it reads the project's namespaces again",
 			want: []safety.Object{
 				{Kind: "namespace", Name: "apps", Outcome: "failed", Code: clierr.CodeRBAC, Message: "forbidden"},
 				{Kind: "namespace", Name: "tools", Outcome: "not attempted"},
@@ -799,7 +799,7 @@ func TestDeleteProjectFlagFailureCounts(t *testing.T) {
 		},
 		{
 			name: "an already gone namespace before the failure", gone: "apps", failing: "tools",
-			message: "delete project partially applied: deletion started for 0 namespaces, failed on tools, 1 not attempted; the project was kept; re-run the same command; it re-reads the project's namespaces",
+			message: "delete project partially applied: deletion started for 0 namespaces, failed on tools, 1 not attempted; the project was kept; re-run the same command; it reads the project's namespaces again",
 			want: []safety.Object{
 				{Kind: "namespace", Name: "apps", Outcome: "already gone"},
 				{Kind: "namespace", Name: "tools", Outcome: "failed", Code: clierr.CodeRBAC, Message: "forbidden"},

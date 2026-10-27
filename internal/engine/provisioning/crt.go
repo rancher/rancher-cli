@@ -127,7 +127,7 @@ func (c *getCRTCmd) Execute(ctx context.Context, in runtime.Input, _ runtime.Pro
 	if named {
 		if ns == "" {
 			return runtime.Result{}, clierr.New(clierr.CodeValidation,
-				"--namespace is required to address a "+c.k.Name+" by name")
+				"--namespace is required when you give the name of one "+c.k.Name)
 		}
 		name := in.Args()[0]
 		path := crtCollectionPath + "/" + ns + "/" + name
