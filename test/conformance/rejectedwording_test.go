@@ -343,7 +343,6 @@ type wordingPhrase struct {
 // wordingPhraseAllowlist: one entry per line, sorted by term, then phrase.
 var wordingPhraseAllowlist = []wordingPhrase{
 	{"junction", "(NTFS junction)", "names the Windows link type where the exact kind matters"},
-	{"the plan", "prints the plan without", "the installer's own --dry-run output, not the CLI's dry-run preview"},
 }
 
 // wordingPath allows count uses of a term in a file and, for a document,
@@ -366,7 +365,6 @@ var wordingPathAllowlist = []wordingPath{
 	{"auth lifecycle", "internal/cli/root.go", "", 1, "text not yet reworded"},
 	{"auth lifecycle", "internal/engine/managementtoken/managementtoken.go", "", 1, "text not yet reworded"},
 	{"bespoke", "internal/cli/capability_coverage.go", "", 4, "text not yet reworded"},
-	{"bin-dir", "README.md", "Install", 1, "text not yet reworded"},
 	{"bin-dir", "install.ps1", "", 1, "the dry-run output key, kept because a test asserts it"},
 	{"bin-dir", "install.sh", "", 1, "the dry-run output key, kept because a test asserts it"},
 	{"budget", "COMMANDS.md", "Servers & configuration", 1, "text not yet reworded"},
@@ -388,7 +386,6 @@ var wordingPathAllowlist = []wordingPath{
 	{"command bug", "internal/runtime/pipeline.go", "", 16, "text not yet reworded"},
 	{"command bug", "internal/runtime/project.go", "", 4, "text not yet reworded"},
 	{"curated flag", "internal/cli/root.go", "", 1, "text not yet reworded"},
-	{"degrades to", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"degrades to", "skills/rancher/SKILL.md", "9. Observability & support", 1, "text not yet reworded"},
 	{"direct context", "COMMANDS.md", "kubectl integration", 1, "text not yet reworded"},
 	{"direct context", "REFERENCE.md", "What each part means", 1, "text not yet reworded"},
@@ -413,12 +410,10 @@ var wordingPathAllowlist = []wordingPath{
 	{"exec entry", "internal/token/signin.go", "", 1, "text not yet reworded"},
 	{"exec entry", "skills/rancher/SKILL.md", "8. kubectl interop", 4, "text not yet reworded"},
 	{"executable", "install.sh", "", 1, "a file permission in an error message, not a program"},
-	{"floor", "README.md", "Shell completion", 1, "text not yet reworded"},
 	{"floor", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
 	{"floor", "skills/rancher/SKILL.md", "1. Verify auth before anything else", 1, "text not yet reworded"},
 	{"hard-error", "CREDENTIAL_HELPERS.md", "Responses", 1, "text not yet reworded"},
 	{"identity probe", "REFERENCE.md", "Supported server version", 2, "text not yet reworded"},
-	{"junction", "README.md", "Install", 1, "text not yet reworded"},
 	{"junction", "install.ps1", "", 2, "not prose: the LinkType value and the New-Item parameter"},
 	{"killed", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
 	{"named get", "internal/engine/resources/get.go", "", 2, "text not yet reworded"},
@@ -428,10 +423,8 @@ var wordingPathAllowlist = []wordingPath{
 	{"provider list", "MIGRATING.md", "Changed in this CLI", 3, "text not yet reworded"},
 	{"provider list", "REFERENCE.md", "Auth configs (`--auth-provider`)", 2, "text not yet reworded"},
 	{"provider list", "internal/token/token.go", "", 2, "text not yet reworded"},
-	{"scriptblock", "README.md", "Install", 1, "text not yet reworded"},
 	{"stamped", "REFERENCE.md", "Revoking the CLI's tokens", 1, "text not yet reworded"},
 	{"stamped", "internal/skillinstall/ops.go", "", 1, "text not yet reworded"},
-	{"the plan", "README.md", "Safety model", 1, "text not yet reworded"},
 	{"the plan", "skills/rancher/SKILL.md", "4. Mutation safety loop - never skip", 1, "text not yet reworded"},
 	{"wins over", "REFERENCE.md", "Access management", 1, "text not yet reworded"},
 	{"wins over", "skills/rancher/SKILL.md", "Conventions", 1, "text not yet reworded"},
