@@ -245,9 +245,9 @@ func TestAddSecretExecTimeoutNamesTheRemovedAnnotation(t *testing.T) {
 }
 
 // TestAddSecretExecTimeoutWithoutAnObservedObject asserts that a wait whose
-// every read fails until the timeout ends with the plain timeout message
-// and no panic: no object was ever read, so there is no request state to
-// name.
+// every read fails until the timeout ends with the timeout message followed
+// by the last read error and no panic: no object was ever read, so there is
+// no request state to name.
 func TestAddSecretExecTimeoutWithoutAnObservedObject(t *testing.T) {
 	withFastPoll(t)
 	before := oidcClientObj("my-app", "client-abc", map[string]any{"client-secret-1": map[string]any{}})
@@ -262,7 +262,7 @@ func TestAddSecretExecTimeoutWithoutAnObservedObject(t *testing.T) {
 	require.Error(t, err)
 	ce, ok := errors.AsType[*clierr.Error](err)
 	require.True(t, ok)
-	assert.Equal(t, "timed out waiting for oidc-client my-app to add a secret", ce.Message)
+	assert.Equal(t, "timed out waiting for oidc-client my-app to add a secret; last error: GENERIC: connection refused", ce.Message)
 	assert.Greater(t, client.pollCalls, 1, "the wait polled and every poll failed")
 }
 

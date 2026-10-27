@@ -467,12 +467,15 @@ Grammar: `state=<value>` or `condition=<Type>[=<Status>]` (default Status
 `True`). JSONPath is deliberately unsupported - for that, use `kubectl wait`
 via `rancher kubeconfig`. Waits fail fast when Rancher marks the object
 `transitioning=error` (non-retryable, with the server's message) instead of
-using up the timeout. On success the `-o json`/`-o yaml` envelope carries a
-one-line `summary` (`wait: condition=Ready satisfied after 53s`) so pass/fail
-needs no object parsing; default/table format prints the same summary as its
-own stdout line above the table header. When only the verdict matters, the
-exit code is authoritative; `-o name` keeps a successful wait's output to
-the bare resource name - no need to receive or parse the full object.
+using up the timeout. An authentication (`AUTH`) or certificate (`TLS_TRUST`)
+failure of a request also ends the wait at once, with that error, and so does
+`NOT_FOUND` (exit 4); any other error is retried, and a timeout names the last
+one. On success the `-o json`/`-o yaml` envelope carries a one-line `summary`
+(`wait: condition=Ready satisfied after 53s`) so pass/fail needs no object
+parsing; default/table format prints the same summary as its own stdout line
+above the table header. When only the verdict matters, the exit code is
+authoritative; `-o name` keeps a successful wait's output to the bare
+resource name - no need to receive or parse the full object.
 
 ### 7. Triage composites
 

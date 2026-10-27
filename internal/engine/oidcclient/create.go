@@ -182,7 +182,8 @@ func (c *createCmd) execute(ctx context.Context, client engine.ClusterClient, k 
 		return waitOutcome{} // clientID set, controller has not generated the initial secret yet
 	}
 	secretName, err := waitForOIDCClient(ctx, client, k.GVR, name, timeout, check,
-		func(last *unstructured.Unstructured) *clierr.Error { return createTimeoutError(name) })
+		func(last *unstructured.Unstructured) *clierr.Error { return createTimeoutError(name) },
+		func(err error) *clierr.Error { return committedPartialSuccess(err, "OIDCClient", name, "", recovery) })
 	if err != nil {
 		return runtime.Result{}, err
 	}

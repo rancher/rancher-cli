@@ -879,7 +879,13 @@ and the Kubernetes version must be one the server accepts
 `--wait` on `get <kind>` applies the kind's default wait condition; for
 clusters that is `condition=Ready`. `--for <condition>` on its own also
 starts the wait; `--timeout` on its own waits for the kind's default wait
-condition, and a kind with none refuses it and asks for `--for`.
+condition, and a kind with none refuses it and asks for `--for`. An
+authentication (`AUTH`) or certificate (`TLS_TRUST`) failure of a request ends
+the wait at once with that error, and so does `NOT_FOUND` (exit 4); any other
+error of a request is retried, and a timeout names the last one (`last error:
+<CODE>: <message>`). The commands that wait on an OIDC client (`create
+oidc-client` and `oidc-client add-secret|rotate-secret|remove-secret`) follow
+the same rule.
 
 `rancher kubeconfig` prints one context through the Rancher proxy and, when the
 cluster has the Authorized Cluster Endpoint enabled and the
@@ -2057,18 +2063,21 @@ groups keep their own handling: the revoke commands (`auth logout`, `auth
 delete-token`, `config delete-server`) report it in their `notRevoked` list
 with `code` `TLS_TRUST`, the message in `error` and the certificate's facts in
 `certificate`, and keep exit 0 when the local deletes succeed; and steps that
-wait or collect across many requests (`--wait`, `support-bundle`, the
-per-cluster notes of `access`, the degraded parts of `inspect`) retry it or
-record it as they do any failed request. The error's `details` hold the
-certificate's kind, subject, issuer and fingerprint (for `auth login` and the
-sign-in of kubectl's credential plugin, inside the login failure's `primary`
-error), and the message names the remedy for the command that failed: a
-command that takes `--cacert` names it, `auth get-token` and `rancher token`
-name their own flags, a command that reads a server entry names
-`rancher config update-server`, and a server taken from `RANCHER_CLI_URL`
-names `RANCHER_CLI_CACERT`. When `RANCHER_CLI_CACERT` supplied the CA, the
-message says so. A certificate failure of an `https://` proxy is not a
-`TLS_TRUST` error: it keeps the transport error's text.
+collect across many requests (`support-bundle`, the per-cluster notes of
+`access`, the degraded parts of `inspect`) record it as they do any failed
+request. A wait (`--wait`, and the OIDC client commands) stops on it at once.
+The error's `details` hold the certificate's kind, subject, issuer and
+fingerprint (for `auth login` and the sign-in of kubectl's credential plugin,
+inside the login failure's `primary` error). Where a command already wrote to
+the server (the four OIDC client commands and `create user`), the error's
+`details` are what the command already changed, and its message names the
+certificate's subject, issuer and fingerprint. The message names the remedy
+for the command that failed: a command that takes `--cacert` names it, `auth
+get-token` and `rancher token` name their own flags, a command that reads a
+server entry names `rancher config update-server`, and a server taken from
+`RANCHER_CLI_URL` names `RANCHER_CLI_CACERT`. When `RANCHER_CLI_CACERT`
+supplied the CA, the message says so. A certificate failure of an `https://`
+proxy is not a `TLS_TRUST` error: it keeps the transport error's text.
 
 There is no skip-verify flag anywhere in the native surface, ever: a
 self-signed or private-CA server is used by pinning its CA (`--cacert`,

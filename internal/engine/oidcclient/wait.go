@@ -2,6 +2,7 @@ package oidcclient
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/rancher/rancher-cli/internal/clierr"
@@ -38,11 +39,20 @@ type waitOutcome struct {
 // bespoke secret-lifecycle verbs - a separate seam because the generated
 // --for grammar expresses only status.state/conditions, not these key-set
 // predicates; it must never diverge from waitFor's
-// semantics: a transient Get error retries, a NOT_FOUND fails fast exactly
-// like waitFor (returned raw, unclassified), check's terminal verdict ends
-// the wait immediately, and an ordinary timeout calls onTimeout with the
-// last-observed object (nil if the client was never successfully observed)
-// to build the caller's per-verb classified error.
+// semantics: a Get error retries unless it ends the wait, a NOT_FOUND fails
+// fast exactly like waitFor (returned raw, unclassified), check's terminal
+// verdict ends the wait immediately, and an ordinary timeout calls onTimeout
+// with the last-observed object (nil if the client was never successfully
+// observed) to build the caller's per-verb classified error.
+//
+// An error engine.WaitShouldStop accepts (an authentication or certificate
+// failure) ends the wait at once, like waitFor. The verb has already written
+// to the server when the wait starts, so the error goes through onAbort,
+// which wraps it with the verb's committed details. A timeout names the last
+// Get error: "; last error: <CODE>: <message>" ends the message onTimeout
+// built. The last Get error is the one of the most recent Get that ended
+// with the wait's context still live; a later Get that returns an object
+// clears it.
 func waitForOIDCClient(
 	ctx context.Context,
 	client engine.ClusterClient,
@@ -51,19 +61,31 @@ func waitForOIDCClient(
 	timeout time.Duration,
 	check func(ctx context.Context, obj *unstructured.Unstructured) waitOutcome,
 	onTimeout func(last *unstructured.Unstructured) *clierr.Error,
+	onAbort func(err error) *clierr.Error,
 ) (string, error) {
 	deadline, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	var last *unstructured.Unstructured
+	var lastErr *clierr.Error
 	for {
 		obj, err := client.Get(deadline, gvr, "", name)
 		switch {
 		case err != nil && clierr.IsNotFound(err):
 			return "", err
+		case err != nil && engine.WaitShouldStop(err):
+			return "", onAbort(err)
+		case err != nil:
+			// A Get cut by the wait's own deadline or by a cancel says nothing
+			// about the server, so only a Get that ended with the context
+			// still live is recorded.
+			if deadline.Err() == nil {
+				lastErr = clierr.From(err)
+			}
 		case err == nil:
 			last = obj
+			lastErr = nil
 			// check is handed the SAME deadline-bound context the poll Get
 			// above used, never the outer ctx: any secret read a check
 			// performs (rotate-secret's per-tick correlation read) must be
@@ -83,7 +105,11 @@ func waitForOIDCClient(
 		// behavior of always reporting the deadline branch as a timeout.
 		select {
 		case <-deadline.Done():
-			return "", onTimeout(last)
+			ce := onTimeout(last)
+			if lastErr != nil {
+				ce = ce.WithMessage(fmt.Sprintf("%s; last error: %s: %s", ce.Message, lastErr.Code, lastErr.Message))
+			}
+			return "", ce
 		case <-ticker.C:
 		}
 	}

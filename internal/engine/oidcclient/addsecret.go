@@ -109,6 +109,9 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 		}
 		return waitOutcome{done: true, value: newKeys[0]}
 	}
+	// A new key may have landed before the wait ended, so the timeout and
+	// an aborted wait share the recovery that says how to find and rotate it.
+	recovery := "check " + getRecovery + "; if a new key landed its value was never shown - rotate that key by name"
 	secretName, err := waitForOIDCClient(ctx, client, k.GVR, clientName, timeout, check,
 		func(last *unstructured.Unstructured) *clierr.Error {
 			msg := fmt.Sprintf("timed out waiting for oidc-client %s to add a secret", clientName)
@@ -118,8 +121,11 @@ func (c *addSecretCmd) execute(ctx context.Context, client engine.ClusterClient,
 			return clierr.New(clierr.CodeGeneric, msg).
 				WithDetails(clierr.CommittedContextDetails{
 					Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName,
-					Recovery: "check " + getRecovery + "; if a new key landed its value was never shown - rotate that key by name",
+					Recovery: recovery,
 				})
+		},
+		func(err error) *clierr.Error {
+			return committedPartialSuccess(err, "OIDCClient", clientName, "", recovery)
 		})
 	if err != nil {
 		return runtime.Result{}, err

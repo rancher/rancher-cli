@@ -294,7 +294,7 @@ func TestWaitForTimeoutWithNoSuccessfulGetCarriesNoStateObserved(t *testing.T) {
 		require.ErrorAs(t, err, &ce)
 		assert.True(t, ce.Retryable)
 		require.ErrorContains(t, err, "no state observed")
-		assert.Contains(t, ce.Message, "retry with a longer --timeout or inspect the resource for what is holding it back")
+		assert.Contains(t, ce.Message, "last error: GENERIC: down; fix that error, or retry with a longer --timeout")
 		assert.Empty(t, ce.Hint)
 	})
 }

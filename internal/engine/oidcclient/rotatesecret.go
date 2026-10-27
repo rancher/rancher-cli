@@ -140,6 +140,9 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 					Committed: true, ResourceKind: "OIDCClient", ResourceName: clientName, SecretName: secretName,
 					Recovery: "rotate the same name again once the controller is healthy",
 				})
+		},
+		func(err error) *clierr.Error {
+			return committedPartialSuccess(err, "OIDCClient", clientName, secretName, getRecovery)
 		})
 	if err != nil {
 		return runtime.Result{}, err
@@ -160,13 +163,17 @@ func (c *rotateSecretCmd) execute(ctx context.Context, client engine.ClusterClie
 }
 
 // isTransientSecretReadError reports whether err should be tolerated and
-// retried on the next poll tick, mirroring waitForOIDCClient's own
-// contract for its OIDCClient Get (wait.go: "a transient Get error
-// retries ... exactly like waitFor"): a *clierr.Error explicitly
-// classified Retryable, or any error that never went through clierr's
-// classification at all (a raw transport error), is transient. A
-// *clierr.Error that is NOT retryable (RBAC, NOT_FOUND) is a definitive,
-// terminal failure - waiting for the deadline could never fix it.
+// retried on the next poll tick: a *clierr.Error explicitly classified
+// Retryable, or any error that never went through clierr's classification
+// at all (a raw transport error), is transient. A *clierr.Error that is NOT
+// retryable (RBAC, NOT_FOUND, AUTH, TLS_TRUST) is a definitive, terminal
+// failure - waiting for the deadline could never fix it.
+//
+// This differs from the rule waitForOIDCClient applies to its OIDCClient
+// Get (engine.WaitShouldStop: only AUTH and TLS_TRUST end the wait, an RBAC
+// error is retried). This is a different request, the read of the client
+// Secret that the verb needs to finish, and a 403 on it means the caller
+// cannot read that Secret.
 func isTransientSecretReadError(err error) bool {
 	ce, ok := errors.AsType[*clierr.Error](err)
 	if !ok {

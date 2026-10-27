@@ -69,26 +69,39 @@ func invalidForErr(forExpr string) *clierr.Error {
 // waitFor polls client.Get every pollInterval until cond is satisfied, the
 // object reports a Rancher fail-fast (status.transitioning == "error"), or
 // timeout elapses. A NOT_FOUND Get error fails immediately (the target is
-// gone, not slow); any other Get error is treated as transient and retried
-// with the last-observed object carried into the eventual timeout message.
-// Fail-fast returns immediately with a non-retryable error; a timeout always
-// returns a retryable error carrying the last-observed state, never a raw Get
-// error; a cancelled context returns its own error.
+// gone, not slow), and so does an error engine.WaitShouldStop accepts (an
+// authentication or certificate failure does not pass on a retry); it is
+// returned as is. Any other Get error is treated as transient and retried,
+// with the last-observed object and the last Get error carried into the
+// eventual timeout message. Fail-fast returns immediately with a
+// non-retryable error; a timeout always returns a retryable error carrying
+// the last-observed state and the last Get error, never a raw Get error; a
+// cancelled context returns its own error.
 func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupVersionResource, ns, name string, cond waitCond, timeout time.Duration, failOnStalled bool) (*unstructured.Unstructured, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	var last *unstructured.Unstructured
+	var lastErr *clierr.Error
 	for {
 		obj, err := client.Get(ctx, gvr, ns, name)
 		switch {
 		case err != nil && clierr.IsNotFound(err):
 			return nil, err
+		case err != nil && engine.WaitShouldStop(err):
+			return nil, err
 		case err != nil:
 			// Transient error: fall through to the poll-or-timeout select below,
 			// carrying whatever state was last observed into the eventual message.
+			// A Get cut by the wait's own deadline or by a cancel says nothing
+			// about the server, so only a Get that ended with the context still
+			// live is recorded.
+			if ctx.Err() == nil {
+				lastErr = clierr.From(err)
+			}
 		default:
 			last = obj
+			lastErr = nil
 			// The generation staleness gate applies only to kstatus-opted
 			// kinds (failOnStalled=true). A controller that has not
 			// reconciled the object's current generation yet has written
@@ -139,13 +152,13 @@ func waitFor(ctx context.Context, client engine.ClusterClient, gvr schema.GroupV
 			if errors.Is(ctx.Err(), context.Canceled) {
 				return nil, ctx.Err()
 			}
-			return nil, waitTimeoutErr(name, last, cond, failOnStalled)
+			return nil, waitTimeoutErr(name, last, lastErr, cond, failOnStalled)
 		case <-time.After(pollInterval):
 		}
 	}
 }
 
-func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond, failOnStalled bool) *clierr.Error {
+func waitTimeoutErr(name string, last *unstructured.Unstructured, lastErr *clierr.Error, cond waitCond, failOnStalled bool) *clierr.Error {
 	summary := "<no state observed>"
 	if last != nil {
 		summary = summarizeState(last, cond)
@@ -153,8 +166,18 @@ func waitTimeoutErr(name string, last *unstructured.Unstructured, cond waitCond,
 			summary += " (from an older generation, not yet reconciled)"
 		}
 	}
+	lastError := ""
+	advice := "retry with a longer --timeout or inspect the resource for what is holding it back"
+	if lastErr != nil {
+		lastError = fmt.Sprintf("; last error: %s: %s", lastErr.Code, lastErr.Message)
+		if !lastErr.Retryable {
+			// A longer timeout does not help while every request fails the
+			// same way; a retryable error (5xx, 429, a slow server) may pass.
+			advice = "fix that error, or retry with a longer --timeout"
+		}
+	}
 	return clierr.Retryable(clierr.CodeGeneric,
-		fmt.Sprintf("timed out waiting for %s; last state: %s; retry with a longer --timeout or inspect the resource for what is holding it back", name, summary))
+		fmt.Sprintf("timed out waiting for %s; last state: %s%s; %s", name, summary, lastError, advice))
 }
 
 // resolvedState reads status.state (the Rancher idiom); when absent it falls
