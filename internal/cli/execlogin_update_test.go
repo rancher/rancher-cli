@@ -32,8 +32,9 @@ func TestExecLoginURLChangeRemedyRunsAsWritten(t *testing.T) {
 	require.Equal(t, 2, exit, "stdout: %s\nstderr: %s", stdout, stderr)
 	got := cmdtest.DecodeErrorEnvelope(t, []byte(strings.TrimSpace(stderr)))
 	assert.Equal(t, clierr.CodeValidation, got.Code)
-	logout := "rancher auth logout " + clierr.ShellQuote(name)
-	deleteServer := "rancher config delete-server " + clierr.ShellQuote(name)
+	named := "rancher --config " + clierr.ShellQuote(dir)
+	logout := named + " auth logout " + clierr.ShellQuote(name)
+	deleteServer := named + " config delete-server " + clierr.ShellQuote(name)
 	require.Contains(t, got.Message, logout)
 	require.Contains(t, got.Message, deleteServer)
 

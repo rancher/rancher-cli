@@ -203,10 +203,12 @@ type Descriptor struct {
 	// verifies the actual Result against it at run time.
 	Shape OutputShape
 	// RemedyConfigDir makes every remedy command the command prints name
-	// the config directory it ran against (IO.RemedyDir): for a command
-	// whose directory can come from an exec entry or a flag, which the
-	// shell that runs the remedy does not carry. Go-only; the manifest
-	// does not carry it.
+	// the config directory it ran against (IO.RemedyDir), the platform
+	// default included: for a command whose directory can come from an exec
+	// entry or a flag, which the shell that runs the remedy does not carry.
+	// Every other command names its directory unless a command pasted
+	// without --config would open the same one. Go-only; the manifest does
+	// not carry it.
 	RemedyConfigDir bool `json:"-"`
 	// RemedyConfigDirUnless, when set, is asked with the parsed flags and
 	// leaves the remedies without the config directory for a call it says

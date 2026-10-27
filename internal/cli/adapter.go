@@ -533,8 +533,7 @@ func helpHint(in notFoundInput) string {
 	words, kept, _ := tailWords(in.after, levelFlags(in.c))
 	typed = append(typed, words[:kept]...)
 
-	var hint strings.Builder
-	hint.WriteString("rancher")
+	var path []string
 	node := in.c.Root()
 	for _, word := range typed {
 		next := visibleSubcommand(node, word)
@@ -542,10 +541,9 @@ func helpHint(in notFoundInput) string {
 			break
 		}
 		node = next
-		hint.WriteString(" " + word)
+		path = append(path, word)
 	}
-	hint.WriteString(" --help")
-	return hint.String()
+	return clierr.DirectoryFree(strings.Join(append(path, "--help"), " "))
 }
 
 // notFoundGuidance returns commandNotFound's message detail (possibly "")

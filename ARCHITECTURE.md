@@ -50,7 +50,7 @@ what drifted the previous revision of this doc).
 | `internal/commands/register` | Server registration shared by `auth login` and `config add-server/update-server`: URL canonicalization, TLS preflight, CA selection, create and update under the config lock. |
 | `internal/commands/skill` | `skill install/uninstall/status` over `internal/skillinstall`. |
 | `internal/commands/telemetrycmd` | The `telemetry` group: `status`, `on`, `off`, `reset` and `show`, as local commands over `internal/telemetry` and the config file's `telemetry` key. They make no request, read no credential and import no client; a conformance test limits their direct imports and their use of `internal/config`. |
-| `internal/remedytest` | Test-only: the top-level commands that read a config directory, from the schema manifest golden, which the checks that every remedy command names the directory share. No production importer. |
+| `internal/remedytest` | Test-only: the top-level commands that read a config directory (the schema manifest golden's commands less `clierr.DirectoryFreeCommands`), which the checks that every remedy command names the directory share, and the helpers a details payload's per-type test uses to walk, plant and classify its text fields (`TextPaths`, `PlantMarked`, `FieldLists`, `AssertEveryFieldClassified`, `AssertMappedAsListed`). No production importer. |
 | `internal/testtransport` | Test-only: `GuardDefaultTransport`, which a test binary that starts httptest servers installs in `TestMain` so a request through `http.DefaultTransport` fails (an httptest server's `Close` closes that transport's idle connections, which breaks such a request in another test). A test sends requests through the server's own client instead. It also holds the helpers a test server uses to stand in for a server that never answers: they wait for the request's context to end, then abort the connection with no response, because a handler that returns sends an implicit 200 that a client whose cancellation lands in the same instant can read. No production importer; `internal/testrancher` imports it. |
 | `internal/commands/cmdtest` | Test-only fakes and fixtures the local command packages share: input, prompter, config view, fake credential helper, lock-ordering harness, an exec-plugin process and the harness that holds one mid-call while a command runs. No production importer. |
 | `internal/cli/completions` | The four in-repo shell completion scripts `completion <shell>` emits (adapted from urfave/cli's own, MIT-attributed), embedded via `go:embed`. |
@@ -251,6 +251,8 @@ graph TD
     kinds --> runtime
 
     completiontest --> completion
+
+    remedytest --> clierr
 
     kindscomplete --> kinds
     kindscomplete --> completion
@@ -892,17 +894,28 @@ success, never `NOT_FOUND`) so teardown scripts stay green.
 
 **Remedies name the invocation's directory.** A remedy command opens with
 `clierr.Rancher`, the word rancher behind a marker character. `runtime.IO.RemedyDir`,
-set by the CLI layer before the config load for a command whose descriptor sets
-`RemedyConfigDir` (`auth get-token`, `kubeconfig`), makes that invocation's
-renderers - errors in text and JSON with their details, warnings, and the
-prompter's notices - write `--config` and the directory, shell-quoted, after
-rancher; every other command prints the plain command, and result data never
-carries the marker (a U+2063 just before the word rancher in structured output
-is dropped, whatever wrote it). It is carried on the invocation, never in a
-process-wide value. For a directory a terminal line cannot show no command is
-offered: each text keeps its words up to the clause holding its first command
-and says the path cannot be printed, the hint is dropped whenever it holds a
-command, and a details payload's command fields are emptied.
+set by the CLI layer before the config load, makes that invocation's renderers - errors
+in text and JSON with their details, warnings, and the prompter's notices - write
+`--config` and the directory, shell-quoted, after rancher. It is set unless a command
+pasted without `--config` in the same environment would open the same directory: the run's
+directory is the platform default (`config.IsDefaultDir`) and `config.ResolveDir("")` is
+that directory too (a directory that cannot be compared is named, and so is the default
+when `RANCHER_CLI_CONFIG_DIR` or `XDG_CONFIG_HOME` points elsewhere); and always for a
+command whose descriptor sets `RemedyConfigDir` (`auth get-token` except in a call with
+`--user-id` and no `--name`, and `kubeconfig`), whose directory can come from an exec entry
+or a flag that shell does not carry. Error details name it too, through the payload's
+`MapText`. A bare command that sets `RemedyConfigDir` has its directory resolved in the bare
+branch only to name it. A command's own text output and its result data print the
+plain command, and result data never carries the marker (a U+2063 just before the word
+rancher in structured output is dropped, whatever wrote it). Errors rendered before the
+directory is resolved (an unknown command or flag, a flag value that is another flag)
+print plain commands. A command that reads no directory (`--help`, `--version`, `schema`,
+`completion`, `skill`) is written without the marker, built through
+`clierr.DirectoryFree` when it is not a literal. The directory is carried on the
+invocation, never in a process-wide value. For a directory a terminal line cannot show no
+command is offered: each text keeps its words up to the clause holding its first command
+and says the path cannot be printed, the hint is dropped whenever it holds a command, and
+a details payload's command fields are emptied.
 
 **Exec-credential cache stays on disk.** Even under the keychain backend, the exec-credential cache
 - live short-lived bearer tokens - still lives in `token-cache.yaml` on disk (0600). The

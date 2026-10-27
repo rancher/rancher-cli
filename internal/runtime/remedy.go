@@ -17,8 +17,9 @@ const UnprintableConfigDirNote = "the config directory's path holds characters t
 
 // RemedyPrefix is what follows the word rancher in every remedy command an
 // invocation against dir prints: --config and the directory, shell-quoted,
-// for any dir, the default included, since the shell that runs the command
-// may resolve another directory. printable is false when the path holds a
+// for any dir, since the shell that runs the command may resolve another
+// directory. Which invocations name their directory is the CLI layer's
+// choice (IO.RemedyDir). printable is false when the path holds a
 // character a terminal line cannot show; the invocation then offers no
 // command at all (withoutCommands).
 func RemedyPrefix(dir string) (prefix string, printable bool) {

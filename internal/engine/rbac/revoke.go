@@ -53,6 +53,14 @@ func (p RevokePartialFailure) TextDetails() []string {
 	return lines
 }
 
+// MapText maps the message of the failed delete, which is the text of the
+// error the delete failed with and can hold a remedy command. The names are
+// the server's, the code is the CLI's own word.
+func (p RevokePartialFailure) MapText(f func(string) string) clierr.TextDetails {
+	p.Failed.Message = f(p.Failed.Message)
+	return p
+}
+
 type revokeCmd struct {
 	clients engine.ClusterClientFactory
 }

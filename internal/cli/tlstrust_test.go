@@ -169,7 +169,7 @@ func TestKindCommandFailsWithTLSTrustThroughTheRealCLI(t *testing.T) {
 	assert.Equal(t, clierr.CodeTLSTrust, got.Code)
 	assert.False(t, got.Retryable)
 	assert.Contains(t, got.Message, "obtain the certificate from a source you trust")
-	assert.Contains(t, got.Message, "; save it for this entry with: rancher config update-server 'acme' --cacert <file>")
+	assert.Contains(t, got.Message, withDirectory(dir, "; save it for this entry with: rancher config update-server 'acme' --cacert <file>"))
 }
 
 // TestCertificateRemedyNamesTheConfigDirectoryUnderKubeconfig asserts the

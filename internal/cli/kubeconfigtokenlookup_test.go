@@ -103,6 +103,8 @@ type tokenLookupRun struct {
 	exit   int
 	stdout string
 	stderr string
+	// cfgDir is the config directory the run used, which its hints name.
+	cfgDir string
 }
 
 // runTokenLookup runs create kubeconfig with args against s, logged in as
@@ -146,7 +148,7 @@ func runTokenLookup(t *testing.T, s *tokenLookupServer, envToken string, args ..
 	defer cancel()
 	runErr := root.Run(ctx, append([]string{"rancher"}, argv...))
 
-	run := tokenLookupRun{stdout: out.String(), stderr: errOut.String()}
+	run := tokenLookupRun{stdout: out.String(), stderr: errOut.String(), cfgDir: cfgDir}
 	if coder, ok := runErr.(ucli.ExitCoder); ok {
 		run.exit = coder.ExitCode()
 	}
@@ -199,11 +201,11 @@ func TestCreateKubeconfigOnOldServerNamesTheVersionItNeeds(t *testing.T) {
 			require.NotNil(t, run.err, "stdout: %s stderr: %s", run.stdout, run.stderr)
 			assert.Equal(t, tt.wantCode, run.err.Code)
 			assert.Equal(t, tt.wantExit, run.exit)
-			assert.Equal(t, tt.wantHint, run.err.Hint)
+			assert.Equal(t, withDirectory(run.cfgDir, tt.wantHint), run.err.Hint)
 			assert.Equal(t, tt.wantAsked, s.versionRequests())
 			assert.Zero(t, s.creates, "the refusal comes from the dry-run")
 			if tt.wantCode == clierr.CodeCapabilityUnsupported {
-				assert.Equal(t, tt.wantMsg, run.err.Message)
+				assert.Equal(t, withDirectory(run.cfgDir, tt.wantMsg), run.err.Message)
 			} else {
 				assert.Contains(t, run.err.Message, tokenLookupText)
 			}

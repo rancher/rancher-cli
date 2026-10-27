@@ -29,7 +29,7 @@ exec rancher delete user u-e2e --apply --yes
 ! exec rancher get user u-e2e -o json
 jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.message 'user not found: u-e2e'
-jsonquery stderr data.error.hint 'list with: rancher get users'
+jsonquery stderr data.error.hint 'list with: rancher --config '''$WORK${/}rancher-config''' get users'
 
 -- user.yaml --
 apiVersion: management.cattle.io/v3

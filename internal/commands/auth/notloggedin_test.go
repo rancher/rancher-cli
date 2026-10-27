@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"net"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -54,8 +55,8 @@ func shellWords(t *testing.T, s string) []string {
 // hint of a directory whose one server entry is the exec plugin's own
 // login entry runs through auth login for an IPv6 server, whose host auth
 // login derives no name from and whose loopback form would begin with a
-// dash: the hint, as auth status prints it, run against the directory
-// with the token on stdin, logs in under the name it names.
+// dash: the hint, as auth status prints it and naming the directory, run
+// as printed with the token on stdin, logs in under the name it names.
 func TestNotLoggedInHintForALonePluginLoginEntryRuns(t *testing.T) {
 	ln, err := net.Listen("tcp", "[::1]:0")
 	if err != nil {
@@ -91,11 +92,13 @@ func TestNotLoggedInHintForALonePluginLoginEntryRuns(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stderr), &env), stderr)
 	require.Equal(t, clierr.CodeNotLoggedIn, env.Data.Error.Code)
 	words := shellWords(t, env.Data.Error.Hint)
-	require.Equal(t, []string{"rancher", "auth", "login"}, words[:3], env.Data.Error.Hint)
-	name := words[3]
+	require.GreaterOrEqual(t, len(words), 6, env.Data.Error.Hint)
+	require.Equal(t, []string{"rancher", "--config", dir}, words[:3], env.Data.Error.Hint)
+	require.Equal(t, []string{"auth", "login"}, words[3:5], env.Data.Error.Hint)
+	name := words[5]
 	assert.False(t, strings.HasPrefix(name, "-"), "a name with a leading dash reads as a flag: %q", name)
 
-	_, stderr, err = runRoot(t, seed+"\n", append(append([]string{"--config", dir}, words[1:]...), "--token-stdin", "--cacert", caPEM)...)
+	_, stderr, err = runRoot(t, seed+"\n", append(slices.Clone(words[1:]), "--token-stdin", "--cacert", caPEM)...)
 	require.NoError(t, err, stderr)
 	after, err := config.Load(config.FilePath(dir))
 	require.NoError(t, err)

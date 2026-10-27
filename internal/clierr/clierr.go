@@ -107,6 +107,15 @@ func (d CommittedContextDetails) TextDetails() []string {
 	return lines
 }
 
+// MapText maps the one field that can hold a command, Recovery, which is
+// prose that may name a command in one of its clauses. The resource kind is
+// the CLI's own word, and the resource and secret names are the user's or the
+// server's text, which never become a command.
+func (d CommittedContextDetails) MapText(f func(string) string) TextDetails {
+	d.Recovery = f(d.Recovery)
+	return d
+}
+
 // exitCodes maps a code to its process exit status.
 var exitCodes = map[string]int{
 	CodeValidation:           2,

@@ -148,6 +148,19 @@ func (fl *flattener) flatten(expr ast.Expr, localAssigns map[string][]ast.Expr, 
 				(sel.Sel.Name == "Sprintf" || sel.Sel.Name == "Errorf") && len(e.Args) > 0 {
 				return fl.flatten(e.Args[0], localAssigns, depth+1)
 			}
+			// clierr.DirectoryFree(x) is the plain command "rancher " + x and
+			// clierr.MarkRemedy(x) is x, the command the marker opens, so a
+			// hint built with either is checked as the command it prints.
+			if id, ok := sel.X.(*ast.Ident); ok && id.Name == "clierr" && len(e.Args) == 1 &&
+				(sel.Sel.Name == "DirectoryFree" || sel.Sel.Name == "MarkRemedy") {
+				rests := fl.flatten(e.Args[0], localAssigns, depth+1)
+				if sel.Sel.Name == "DirectoryFree" {
+					for i, r := range rests {
+						rests[i] = "rancher " + r
+					}
+				}
+				return rests
+			}
 			// Any other qualified call (clierr.ShellQuote, a package-scoped
 			// helper, a method) is out of this walk's reach.
 			return []string{unresolved}
@@ -388,6 +401,29 @@ func packageConsts(files []*ast.File, paths []string) map[string]map[string]cons
 		}
 	}
 	return out
+}
+
+// TestHintFlattenerReadsDirectoryFreeAndMarkRemedy asserts a hint built with
+// clierr.DirectoryFree(x) is read as "rancher " + x and one built with
+// clierr.MarkRemedy(x) as x, so each is checked as the command it prints.
+func TestHintFlattenerReadsDirectoryFreeAndMarkRemedy(t *testing.T) {
+	t.Parallel()
+	fl := &flattener{funcsByName: map[string][]*ast.FuncDecl{}}
+	directoryFree, err := parser.ParseExpr(`clierr.DirectoryFree("get pod --help")`)
+	require.NoError(t, err)
+	require.Equal(t, []string{"rancher get pod --help"}, fl.flatten(directoryFree, nil, 0))
+
+	marked, err := parser.ParseExpr(`clierr.MarkRemedy("rancher auth login 'p'")`)
+	require.NoError(t, err)
+	require.Equal(t, []string{"rancher auth login 'p'"}, fl.flatten(marked, nil, 0))
+
+	// A dynamic argument stays unresolved on both sides of the join, and a
+	// second invocation in one hint is still one too many.
+	built, err := parser.ParseExpr(`clierr.DirectoryFree(path + " --help") + ", then " + clierr.MarkRemedy("rancher config status")`)
+	require.NoError(t, err)
+	got := fl.flatten(built, nil, 0)
+	require.Equal(t, []string{"rancher " + unresolved + " --help, then rancher config status"}, got)
+	require.NotEmpty(t, hintGrammarViolation(got[0]))
 }
 
 // TestHintFlattenerReadsTheRemedyMarkerAsRancher asserts a hint built on

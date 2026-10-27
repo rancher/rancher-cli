@@ -112,7 +112,7 @@ func TestGetProjectByDisplayNameNamesTheIDThroughTheFactory(t *testing.T) {
 	require.NotNil(t, r.err, r.stderr)
 	assert.Equal(t, "NOT_FOUND", r.err.Code)
 	assert.Equal(t, "project not found: web; 'web' is the display name of project p-1", r.err.Message)
-	assert.Equal(t, "rancher get project 'p-1' --cluster 'c-abc'", r.err.Hint)
+	assert.Equal(t, "rancher --config "+clierr.ShellQuote(h.cfgDir)+" get project 'p-1' --cluster 'c-abc'", r.err.Hint)
 
 	var env struct {
 		Data struct {

@@ -12,7 +12,7 @@ jsonquery stdout data.username handle-alice
 ! exec rancher get user handle-alice -o json
 jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.message 'user not found: handle-alice; ''handle-alice'' is the username of user u-handle-1'
-jsonquery stderr data.error.hint 'rancher get user ''u-handle-1'''
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' get user ''u-handle-1'''
 jsonquery stderr data.error.candidates.0.id u-handle-1
 jsonquery stderr data.error.candidates.0.name 'Handle Alice'
 
@@ -20,7 +20,7 @@ jsonquery stderr data.error.candidates.0.name 'Handle Alice'
 ! exec rancher delete user 'Handle Alice' --dry-run -o json
 jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.message 'user not found: Handle Alice; ''Handle Alice'' is the display name of user u-handle-1'
-jsonquery stderr data.error.hint 'rancher get user ''u-handle-1'''
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' get user ''u-handle-1'''
 exec rancher get user u-handle-1 -o json
 jsonquery stdout data.metadata.name u-handle-1
 
@@ -28,7 +28,7 @@ jsonquery stdout data.metadata.name u-handle-1
 ! exec rancher delete user handle-nobody --dry-run -o json
 jsonquery stderr data.error.code NOT_FOUND
 jsonquery stderr data.error.message 'user not found: handle-nobody'
-jsonquery stderr data.error.hint 'list with: rancher get users'
+jsonquery stderr data.error.hint 'list with: rancher --config '''$WORK${/}rancher-config''' get users'
 
 exec rancher delete user u-handle-1 --apply --yes
 

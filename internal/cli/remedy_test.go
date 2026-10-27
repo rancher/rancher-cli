@@ -59,6 +59,13 @@ func writeRemedyConfig(t *testing.T, dir string, cfg *config.Config) {
 	require.NoError(t, cfg.Write())
 }
 
+// withDirectory is s with each remedy command "rancher ..." written as a
+// run against dir prints it, with --config and the directory, shell-quoted,
+// after the word rancher.
+func withDirectory(dir, s string) string {
+	return strings.ReplaceAll(s, "rancher ", "rancher --config "+clierr.ShellQuote(dir)+" ")
+}
+
 // assertEveryCommandNames asserts s holds at least one directory command
 // and that every one of them carries want (the --config part, "" for
 // none).
@@ -76,7 +83,8 @@ func assertEveryCommandNames(t *testing.T, s, want string) {
 // real error paths of auth get-token and kubeconfig, run with a relative
 // --config, name that directory, absolute and shell-quoted, in every
 // command they print - message, hint and JSON alike - while the legacy
-// rancher token command and another command print theirs plain.
+// rancher token command prints its plain and another command names its
+// own directory.
 func TestTheExecPluginAndKubeconfigRemediesNameTheirDirectory(t *testing.T) {
 	t.Setenv(config.EnvURL, "")
 	t.Setenv(config.EnvToken, "")
@@ -169,17 +177,18 @@ func TestTheExecPluginAndKubeconfigRemediesNameTheirDirectory(t *testing.T) {
 	// run at once; runtime asserts the concurrent case per invocation.
 	// Here the invocations alternate in one process: nothing one leaves
 	// behind reaches the next.
-	t.Run("another command in the same process is plain", func(t *testing.T) {
+	t.Run("another command in the same process names its own directory", func(t *testing.T) {
 		require.NoError(t, os.RemoveAll("acct"))
 		require.NoError(t, os.MkdirAll("blank", 0o700))
+		blank := " --config '" + filepath.Join(realWD, "blank") + "'"
 		for range 3 {
 			assertEveryCommandNames(t, runRemedyCLI(t, "--config", "acct", "kubeconfig", "--cluster", "c-1"), named)
-			assertEveryCommandNames(t, runRemedyCLI(t, "--config", "blank", "auth", "status"), "")
+			assertEveryCommandNames(t, runRemedyCLI(t, "--config", "blank", "auth", "status"), blank)
 			// JSON is written as encoded, with nothing like output.Printable
 			// between the text and the terminal, so a marker left there leaks.
 			var doc any
 			require.NoError(t, json.Unmarshal([]byte(runRemedyCLI(t, "--config", "blank", "auth", "status", "-o", "json")), &doc))
-			assertEveryCommandNames(t, strings.Join(jsonStrings(doc), "\n"), "")
+			assertEveryCommandNames(t, strings.Join(jsonStrings(doc), "\n"), blank)
 		}
 	})
 }

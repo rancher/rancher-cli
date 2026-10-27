@@ -12,15 +12,13 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/rancher/rancher-cli/internal/clierr"
 )
 
-// DirectoryFreeCommands are the top-level commands that read no config
-// directory, so a remedy naming one carries no --config: the manifest, the
-// completion scripts and the skill installer (rancher --version is a flag).
-var DirectoryFreeCommands = map[string]bool{"schema": true, "completion": true, "skill": true}
-
 // DirectoryCommandWords is every top-level command the schema manifest
-// golden at path lists that reads the config directory, as a regexp
+// golden at path lists that reads the config directory (clierr.DirectoryFreeCommands
+// lists the others), as a regexp
 // alternation: the command tree itself, so a new command is covered with
 // no list to keep.
 func DirectoryCommandWords(path string) (string, error) {
@@ -38,7 +36,7 @@ func DirectoryCommandWords(path string) (string, error) {
 	}
 	seen := map[string]bool{}
 	for _, c := range m.Commands {
-		if w, _, _ := strings.Cut(c.Name, " "); !DirectoryFreeCommands[w] {
+		if w, _, _ := strings.Cut(c.Name, " "); !clierr.DirectoryFreeCommands[w] {
 			seen[w] = true
 		}
 	}

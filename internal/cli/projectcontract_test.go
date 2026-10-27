@@ -265,6 +265,7 @@ type contractHarness struct {
 	srv      *contractServer
 	base     string
 	manifest string
+	cfgDir   string
 	mu       sync.Mutex
 	reads    []string
 }
@@ -277,6 +278,7 @@ func newContractHarness(t *testing.T) *contractHarness {
 	t.Cleanup(hs.Close)
 	h.base = hs.URL
 	cfgDir, home := t.TempDir(), t.TempDir()
+	h.cfgDir = cfgDir
 	// A command that writes a file where it runs (support-bundle) writes
 	// it here, never into the package directory.
 	t.Chdir(t.TempDir())
@@ -495,7 +497,7 @@ func TestProjectContract(t *testing.T) {
 					assert.Equal(t, "VALIDATION", r.err.Code, "%v", argv)
 					assert.Equal(t, "--project does not apply to "+d.Name, r.err.Message, "%v", argv)
 					if d.Name == "project remove-namespace" {
-						assert.Equal(t, "rancher project remove-namespace 'x' --cluster 'c-abc' --dry-run", r.err.Hint)
+						assert.Equal(t, withDirectory(h.cfgDir, "rancher project remove-namespace 'x' --cluster 'c-abc' --dry-run"), r.err.Hint)
 						hints = append(hints, r.err.Hint)
 					} else {
 						assert.Empty(t, r.err.Hint, "%v", argv)
@@ -524,7 +526,7 @@ func TestProjectContract(t *testing.T) {
 			require.Len(t, r.err.Candidates, 1)
 			assert.Equal(t, "c-abc", r.err.Candidates[0].ID)
 			assert.Equal(t, "prod", r.err.Candidates[0].Name)
-			assert.Equal(t, "rancher access clusters", r.err.Hint)
+			assert.Equal(t, withDirectory(h.cfgDir, "rancher access clusters"), r.err.Hint)
 			assert.Equal(t, []string{"GET /v1/management.cattle.io.projects", "GET /v1/management.cattle.io.clusters"}, r.requests,
 				"%s without --cluster: only the two steve collection reads", d.Name)
 			hints = append(hints, r.err.Hint)
@@ -571,12 +573,12 @@ func TestProjectContract(t *testing.T) {
 		require.NotNil(t, secret.err)
 		assert.Equal(t, "VALIDATION", secret.err.Code)
 		assert.Equal(t, "pass --namespace <namespace> to create a secret in a namespace, or --project <project> to create a project-scoped secret", secret.err.Message)
-		assert.Equal(t, "rancher access projects --cluster 'c-abc'", secret.err.Hint)
+		assert.Equal(t, withDirectory(h.cfgDir, "rancher access projects --cluster 'c-abc'"), secret.err.Hint)
 		assert.Equal(t, validationExit, secret.exit)
 		assert.Empty(t, secret.requests, "the flag combination is refused before any request")
-		assert.Contains(t, hints, "rancher create namespace 'ns1' --cluster 'c-abc' --project 'web' --dry-run")
-		assert.Contains(t, hints, "rancher access projects")
-		assert.Contains(t, hints, "rancher access projects --cluster 'c-abc'")
+		assert.Contains(t, hints, withDirectory(h.cfgDir, "rancher create namespace 'ns1' --cluster 'c-abc' --project 'web' --dry-run"))
+		assert.Contains(t, hints, withDirectory(h.cfgDir, "rancher access projects"))
+		assert.Contains(t, hints, withDirectory(h.cfgDir, "rancher access projects --cluster 'c-abc'"))
 		slices.Sort(hints)
 		for _, hint := range slices.Compact(hints) {
 			r := h.run(t, append(splitHint(t, hint), "-o", "json")...)
@@ -635,8 +637,8 @@ func TestNotLoggedInIsTheSameWhicheverClientReadsFirst(t *testing.T) {
 					r := h.run(t, argv...)
 					require.NotNil(t, r.err, "%v: %s %s", argv, r.stdout, r.stderr)
 					assert.Equal(t, tc.code, r.err.Code, "%v", argv)
-					assert.Equal(t, tc.message, r.err.Message, "%v", argv)
-					assert.Equal(t, tc.hint, r.err.Hint, "%v", argv)
+					assert.Equal(t, withDirectory(dir, tc.message), r.err.Message, "%v", argv)
+					assert.Equal(t, withDirectory(dir, tc.hint), r.err.Hint, "%v", argv)
 					assert.Equal(t, clierr.ExitCode(tc.code), r.exit, "%v", argv)
 					assert.Empty(t, r.requests, "%v: nothing is sent", argv)
 				}

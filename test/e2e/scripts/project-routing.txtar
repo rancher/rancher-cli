@@ -49,7 +49,7 @@ jsonquery stdout 'data.#' 2
 ! exec rancher project remove-namespace proj-ns-second --project web --cluster testcluster --apply -o json
 jsonquery stderr data.error.code VALIDATION
 jsonquery stderr data.error.message '--project does not apply to project remove-namespace'
-jsonquery stderr data.error.hint 'rancher project remove-namespace ''proj-ns-second'' --cluster ''testcluster'' --dry-run'
+jsonquery stderr data.error.hint 'rancher --config '''$WORK${/}rancher-config''' project remove-namespace ''proj-ns-second'' --cluster ''testcluster'' --dry-run'
 exec rancher project remove-namespace proj-ns-second --cluster testcluster --apply
 exec rancher get namespaces --project web --cluster testcluster -o json
 jsonquery stdout 'data.#' 1

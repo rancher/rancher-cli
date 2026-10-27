@@ -1316,6 +1316,24 @@ execute a present hint after the same inspection any other emitted text
 gets before being treated as argv. Windows agents adapt a runnable hint
 themselves - the same posture as the rest of the machine contract.
 
+A remedy command in an error's message, hint, warnings or details, in the
+warnings of a successful run and in the prompter's notices names `--config`
+and the config directory (absolute, shell-quoted) after `rancher` unless a
+command pasted without `--config` in the same environment would open the same
+directory. So a run against a directory other than the platform default
+names it (chosen with `--config`, `RANCHER_CLI_CONFIG_DIR` or a custom
+`XDG_CONFIG_HOME`), and so does a run against the platform default when
+`RANCHER_CLI_CONFIG_DIR` or `XDG_CONFIG_HOME` points elsewhere; a run whose
+directory is the default and nothing else says otherwise prints no
+`--config`. A command's own text output and its json or yaml result data
+print remedy commands without it. Errors rendered before the directory is
+resolved (an unknown command or flag, a flag value that is another flag)
+print them without it too, and so do commands that read no directory
+(`--help`, `--version`, `rancher schema`, `rancher completion`,
+`rancher skill`). `kubeconfig` names the directory in every remedy, the
+default included; `auth get-token` does too, except in a call with
+`--user-id` and no `--name`.
+
 ## Read-only mode
 
 Three sources, OR'd together, put a session into read-only mode, refusing

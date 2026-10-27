@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -507,19 +508,25 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 			}
 			var cmd runtime.Command
 			if bare {
+				// A bare command that sets RemedyConfigDir resolves the
+				// directory only to name it; it opens nothing.
+				if d.RemedyConfigDir {
+					dir, err := config.ResolveDir(c.String("config"))
+					if err != nil {
+						return renderDepsError(c, io, err)
+					}
+					io.RemedyDir = remedyDirOf(d, cmdInput{c}, dir)
+				}
 				cmd = make(runDeps{version: version})
 			} else {
 				// One resolution: the directory the command opens is the
-				// one its remedies name, set before the config load. No load
-				// error carries a remedy today; the order covers any later
-				// one, and a test holds it.
+				// one its remedies name, set before the config load, so a
+				// load error that carries a remedy names it.
 				dir, err := config.ResolveDir(c.String("config"))
 				if err != nil {
 					return renderDepsError(c, io, err)
 				}
-				if d.RemedyConfigDir && (d.RemedyConfigDirUnless == nil || !d.RemedyConfigDirUnless(cmdInput{c})) {
-					io.RemedyDir = remedyDirFor(dir)
-				}
+				io.RemedyDir = remedyDirOf(d, cmdInput{c}, dir)
 				store, anchor, err := openDirectory(dir)
 				if err != nil {
 					return renderDepsError(c, io, err)
@@ -552,6 +559,51 @@ func adaptEntry(reg *runtime.Registry, version string, bare bool, make func(runD
 	}
 	installShellComplete(probe, cmd)
 	return cmd
+}
+
+// remedyDirOf is the directory the remedies of a run of d against dir name
+// after --config, "" for none. A command that sets RemedyConfigDir names it
+// always, unless its RemedyConfigDirUnless says the environment of the call
+// already carries it. Every other command names it unless a command pasted
+// without --config in this environment would open the same directory: dir
+// is the platform default and config.ResolveDir("") is dir too. So a run
+// against another directory is named, and so is a run against the default
+// when RANCHER_CLI_CONFIG_DIR or XDG_CONFIG_HOME points elsewhere. A
+// directory that cannot be compared is named, since naming one is never
+// wrong and leaving it out can be; the ResolveDir error check is kept for
+// that reason although IsDefaultDir fails first today.
+func remedyDirOf(d runtime.Descriptor, in runtime.Input, dir string) string {
+	if d.RemedyConfigDir {
+		if d.RemedyConfigDirUnless != nil && d.RemedyConfigDirUnless(in) {
+			return ""
+		}
+		return remedyDirFor(dir)
+	}
+	if isDefault, err := config.IsDefaultDir(dir); err != nil || !isDefault {
+		return remedyDirFor(dir)
+	}
+	pasted, err := config.ResolveDir("")
+	if err != nil || !sameDirectory(dir, pasted) {
+		return remedyDirFor(dir)
+	}
+	return ""
+}
+
+// sameDirectory reports whether a and b name one directory: equal absolute
+// forms, or, when both exist, the same file, so a symlink or a differently
+// cased spelling of one directory is the same as it.
+func sameDirectory(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	if absA == absB {
+		return true
+	}
+	infoA, errA := os.Stat(absA)
+	infoB, errB := os.Stat(absB)
+	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
 }
 
 // emptyConfigFlag refuses a blank --config. The flag also reads

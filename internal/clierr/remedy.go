@@ -1,15 +1,20 @@
 package clierr
 
-import "strings"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
 
 // RemedyMarker opens every remedy command a builder writes, just ahead of
 // the word rancher, so the invocation that prints the command decides what
-// follows that word: the config directory it runs against (kubectl's exec
-// plugin and the kubeconfig command name it, because their directory comes
-// from the exec entry or a flag the operator's shell does not carry), or
-// nothing. U+2063 is a Unicode format character, which output.Printable
-// removes, so a marker that reaches a terminal without being expanded
-// leaves the plain command, and the command's own text is unchanged.
+// follows that word: the config directory it runs against unless a command
+// pasted without --config would open the same one (kubectl's exec plugin and
+// the kubeconfig command always name it, because their directory comes from
+// the exec entry or a flag the operator's shell does not carry), or nothing.
+// U+2063 is a Unicode format character, which output.Printable removes, so a
+// marker that reaches a terminal without being expanded leaves the plain
+// command, and the command's own text is unchanged.
 const RemedyMarker = "\u2063"
 
 // Rancher begins every remedy command: Rancher + " auth login ...". A Go
@@ -25,6 +30,35 @@ func ExpandRemedies(s, prefix string) string {
 		return s
 	}
 	return strings.ReplaceAll(s, Rancher, "rancher"+prefix)
+}
+
+// DirectoryFreeCommands are the top-level commands that read no config
+// directory, so a remedy naming one carries no --config: the manifest, the
+// completion scripts and the skill installer. (rancher --version is a flag
+// and a command path followed by --help reads no directory either; the
+// closed set DirectoryFree accepts is these, those two forms and --help
+// alone.)
+var DirectoryFreeCommands = map[string]bool{"schema": true, "completion": true, "skill": true}
+
+// directoryFreeHelpRE matches a command path followed by --help.
+var directoryFreeHelpRE = regexp.MustCompile(`^[a-z][a-z0-9-]*( [a-z][a-z0-9-]*)* --help$`)
+
+// DirectoryFree is the command "rancher " + rest for a command that reads
+// no config directory, so it is written without the remedy marker and
+// prints the same under every invocation. rest is --help alone, a command
+// path followed by " --help", --version alone, or one of
+// DirectoryFreeCommands followed by nothing or a space and its arguments.
+// It panics for anything else: the check is on syntax only, and a command
+// path comes from the command tree, so a panic is a defect in the caller.
+func DirectoryFree(rest string) string {
+	if rest == "--help" || rest == "--version" || directoryFreeHelpRE.MatchString(rest) {
+		return "rancher " + rest
+	}
+	word, _, _ := strings.Cut(rest, " ")
+	if DirectoryFreeCommands[word] {
+		return "rancher " + rest
+	}
+	panic(fmt.Sprintf("clierr.DirectoryFree: %q is not a command that reads no config directory", rest))
 }
 
 // HasRemedy reports whether s holds a remedy command.
@@ -95,8 +129,12 @@ func (e *Error) holdsMarker() bool {
 }
 
 // MapCommands maps the payload's two command fields, the recovery
-// commands.
+// commands, and the command fields of the primary's own details when they
+// implement RemedyCommands.
 func (d LoginFailureDetails) MapCommands(f func(string) string) TextDetails {
+	if rc, ok := d.Primary.Details.(RemedyCommands); ok {
+		d.Primary.Details = rc.MapCommands(f)
+	}
 	if d.CredentialRecovery != nil {
 		cr := *d.CredentialRecovery
 		cr.Command = f(cr.Command)
@@ -111,11 +149,14 @@ func (d LoginFailureDetails) MapCommands(f func(string) string) TextDetails {
 }
 
 // MapText maps every string of the payload that can carry a command: the
-// primary failure's message and hint, the two recovery commands and the
-// recovery text.
+// primary failure's message and hint, the primary's own details when they
+// implement RemedyText, the two recovery commands and the recovery text.
 func (d LoginFailureDetails) MapText(f func(string) string) TextDetails {
 	d.Primary.Message = f(d.Primary.Message)
 	d.Primary.Hint = f(d.Primary.Hint)
+	if rt, ok := d.Primary.Details.(RemedyText); ok {
+		d.Primary.Details = rt.MapText(f)
+	}
 	if d.CredentialRecovery != nil {
 		cr := *d.CredentialRecovery
 		cr.Command = f(cr.Command)

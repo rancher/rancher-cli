@@ -593,6 +593,8 @@ func (h *callerHarness) checkRow(t *testing.T, row callerRow, id string, collide
 		want := *row.kindErr
 		want.Message = strings.ReplaceAll(want.Message, "<id>", id)
 		want.Hint = strings.ReplaceAll(want.Hint, "<id>", id)
+		// The run's directory is not the platform default, so its hint names it.
+		want.Hint = withDirectory(h.cfgDir, want.Hint)
 		if assert.NotNil(t, r.err, r.stderr) {
 			assert.Equal(t, want, *r.err)
 		}

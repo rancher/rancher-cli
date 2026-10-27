@@ -79,12 +79,18 @@ type IO struct {
 
 	// RemedyDir is the config directory every remedy command this
 	// invocation prints names with --config, absolute where it can be made
-	// so; "" for a command whose remedies name none. Set by the CLI layer
-	// for the commands whose directory can come from somewhere the
-	// operator's shell does not carry (Descriptor.RemedyConfigDir). The
-	// renderers of this invocation - errors, warnings and the prompter's
-	// notices - write it after the word rancher in every remedy command
-	// (clierr.RemedyMarker); it is never a process-wide value.
+	// so; "" for a run whose remedies name none. Set by the CLI layer
+	// unless a command pasted without --config in this environment would
+	// open the same directory: for a run against a directory other than the
+	// platform default, for a run against the default when
+	// RANCHER_CLI_CONFIG_DIR or XDG_CONFIG_HOME points elsewhere, for a
+	// directory that cannot be compared, and always for the commands whose
+	// directory can come from somewhere the operator's shell does not carry
+	// (Descriptor.RemedyConfigDir). The renderers of this invocation
+	// - errors, warnings and the prompter's notices - write it after the
+	// word rancher in every remedy command (clierr.RemedyMarker); a
+	// command's own text and result data print it without; it is never a
+	// process-wide value.
 	RemedyDir string
 
 	// Projects resolves a typed --project for a command that takes it,
@@ -540,7 +546,7 @@ func firstWords(words []string, sep string) string {
 
 // helpHint is the hint that points at d's help.
 func helpHint(d Descriptor) string {
-	return "rancher " + d.Name + " --help"
+	return clierr.DirectoryFree(d.Name + " --help")
 }
 
 // declaredArgs states how many positional arguments args allows, with

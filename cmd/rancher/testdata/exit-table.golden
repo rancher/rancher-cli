@@ -248,7 +248,7 @@ $ rancher get pod
 exit: 2
 stderr:
 > error (VALIDATION): --cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local
->   hint: rancher access clusters
+>   hint: rancher --config '<TMP>/cfg' access clusters
 
 $ rancher --config "" config path
 exit: 2
@@ -308,7 +308,7 @@ stderr:
 $ rancher get cluster
 exit: 2
 stderr:
-> error (NOT_LOGGED_IN): not logged in and no RANCHER_CLI_URL set; add a server with: rancher auth login --url <url>
+> error (NOT_LOGGED_IN): not logged in and no RANCHER_CLI_URL set; add a server with: rancher --config '<TMP>/cfg' auth login --url <url>
 
 $ rancher get cluster
 config.yaml: "not: [valid yaml\n"
@@ -373,7 +373,7 @@ $ rancher images
 exit: 2
 stderr:
 > error (VALIDATION): --cluster or --all-clusters is required; pass --cluster <id|name> for one cluster, or --all-clusters for every cluster you can list
->   hint: rancher access clusters
+>   hint: rancher --config '<TMP>/cfg' access clusters
 
 $ rancher inspect
 exit: 0
@@ -418,7 +418,7 @@ stderr: (empty)
 $ rancher support-bundle
 exit: 2
 stderr:
-> error (NOT_LOGGED_IN): not logged in and no RANCHER_CLI_URL set; add a server with: rancher auth login --url <url>
+> error (NOT_LOGGED_IN): not logged in and no RANCHER_CLI_URL set; add a server with: rancher --config '<TMP>/cfg' auth login --url <url>
 
 $ rancher telemetry
 exit: 0
@@ -433,4 +433,4 @@ $ rancher usage
 exit: 2
 stderr:
 > error (VALIDATION): --cluster is required; Rancher's own namespaces (cattle-system, cattle-tokens, cattle-fleet-system) live on the local cluster, pass --cluster local
->   hint: rancher access clusters
+>   hint: rancher --config '<TMP>/cfg' access clusters

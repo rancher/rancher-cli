@@ -50,6 +50,19 @@ func (p DeleteProjectPartialFailure) TextDetails() []string {
 	return runtime.ObjectLines(p.Objects, "")
 }
 
+// MapText maps the message of every object, which can hold the text of the
+// error a delete failed with and so a remedy command. The names are the
+// server's, the kind, outcome and code are the CLI's own words.
+func (p DeleteProjectPartialFailure) MapText(f func(string) string) clierr.TextDetails {
+	objects := make([]safety.Object, len(p.Objects))
+	for i, o := range p.Objects {
+		o.Message = f(o.Message)
+		objects[i] = o
+	}
+	p.Objects = objects
+	return p
+}
+
 type deleteProjectCmd struct {
 	k       kinds.Kind
 	inner   deleteCmd
