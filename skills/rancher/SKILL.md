@@ -303,7 +303,10 @@ rancher delete project web --cluster prod --apply --yes       # 3. destructive e
   values. The exceptions are the commands that show a secret once on purpose:
   `create token`, `create oidc-client`, `oidc-client add-secret` and
   `oidc-client rotate-secret`; `create kubeconfig` prints its kubeconfig and
-  accepts only table output.
+  accepts only table output. `get` in json, yaml and template leaves out the
+  same values, except that `get secret` shows `data` and `stringData`; kubectl
+  with a kubeconfig from `rancher create kubeconfig` shows a value the
+  server returns on a read.
 - `--allow-deprecated` is required to write through a deprecated-stability API.
 - `--dry-run` is a real server dry-run: it needs the same RBAC verb as the
   write. An `RBAC` error on dry-run means the write would be denied too.

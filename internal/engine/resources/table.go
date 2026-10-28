@@ -40,17 +40,18 @@ func newTable(k kinds.Kind, items []unstructured.Unstructured, single bool) tabl
 // `data.metadata.name` (single) and `data.0.metadata.name`/`data.#` (list)
 // address the real object graph. sigs.k8s.io/yaml marshals through JSON, so
 // this fixes -o yaml too; no separate MarshalYAML is needed.
-// Fields listed in the kind's RedactPaths are removed before marshaling.
+// The values the kind's read redaction hides are removed before marshaling.
 func (t table) MarshalJSON() ([]byte, error) {
+	redaction := t.k.ReadRedaction()
 	if t.single {
 		if len(t.items) != 1 {
 			return nil, fmt.Errorf("internal error: a get of one object must return exactly 1 item, got %d", len(t.items))
 		}
-		return json.Marshal(engine.ScrubPaths(t.items[0].Object, t.k.RedactPaths))
+		return json.Marshal(engine.ScrubObject(t.items[0].Object, redaction))
 	}
 	objs := make([]map[string]any, len(t.items))
 	for i := range t.items {
-		objs[i] = engine.ScrubPaths(t.items[i].Object, t.k.RedactPaths)
+		objs[i] = engine.ScrubObject(t.items[i].Object, redaction)
 	}
 	return json.Marshal(objs)
 }

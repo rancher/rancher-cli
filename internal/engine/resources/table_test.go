@@ -238,50 +238,62 @@ func TestTableMarshalJSONSingleInvariant(t *testing.T) {
 	}
 }
 
-// TestTableMarshalJSONRedactsKindPaths verifies that a kind's RedactPaths are
-// absent from -o json output. The test decodes the marshaled JSON rather than
-// string-matching, so whitespace or key ordering can never cause a false pass.
-func TestTableMarshalJSONRedactsKindPaths(t *testing.T) {
-	t.Parallel()
-	k := kinds.Kind{
-		Name:        "widget",
-		K8sKind:     "Widget",
-		RedactPaths: [][]string{{"secret"}, {"nested", "cred"}},
-	}
-	obj := unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": "w1"},
-		"public":   "visible",
-		"secret":   "must-be-gone",
-		"nested":   map[string]any{"cred": "also-gone", "safe": "keep"},
-	}}
-	tab := newTable(k, []unstructured.Unstructured{obj}, true)
-	b, err := tab.MarshalJSON()
-	require.NoError(t, err)
+// registeredKind returns the registered row with key. A table hides values
+// only for a registered row, so these tests never build a literal kind.
+func registeredKind(t *testing.T, key string) kinds.Kind {
+	t.Helper()
+	k, ok := kinds.ByKey(key)
+	require.True(t, ok, key)
+	return k
+}
 
+// marshalTableObject marshals a table of one object and decodes the result.
+func marshalTableObject(t *testing.T, k kinds.Kind, obj map[string]any) map[string]any {
+	t.Helper()
+	b, err := newTable(k, []unstructured.Unstructured{{Object: obj}}, true).MarshalJSON()
+	require.NoError(t, err)
 	var decoded map[string]any
 	require.NoError(t, json.Unmarshal(b, &decoded))
-	assert.Equal(t, "visible", decoded["public"], "non-redacted field must be present")
-	assert.NotContains(t, decoded, "secret", "RedactPaths root field must be absent")
-	nested, _ := decoded["nested"].(map[string]any)
-	require.NotNil(t, nested, "parent of a nested redact path must still be present")
-	assert.NotContains(t, nested, "cred", "nested redact field must be absent")
-	assert.Equal(t, "keep", nested["safe"], "sibling of redacted nested field must be present")
+	return decoded
+}
+
+// TestTableMarshalJSONRedactsKindPaths verifies that a kind's hidden paths
+// are absent from -o json output, also for a path nested below another
+// field. The test decodes the marshaled JSON rather than string-matching, so
+// whitespace or key ordering can never cause a false pass.
+func TestTableMarshalJSONRedactsKindPaths(t *testing.T) {
+	t.Parallel()
+	decoded := marshalTableObject(t, registeredKind(t, "token"), map[string]any{
+		"metadata": map[string]any{"name": "t1"},
+		"spec":     map[string]any{"description": "visible"},
+		"status":   map[string]any{"bearerToken": "must-be-gone", "value": "also-gone", "expiresAt": "keep"},
+	})
+	spec, _ := decoded["spec"].(map[string]any)
+	assert.Equal(t, "visible", spec["description"], "non-redacted field must be present")
+	status, _ := decoded["status"].(map[string]any)
+	require.NotNil(t, status, "parent of a nested redact path must still be present")
+	assert.NotContains(t, status, "bearerToken", "nested redact field must be absent")
+	assert.NotContains(t, status, "value", "nested redact field must be absent")
+	assert.Equal(t, "keep", status["expiresAt"], "sibling of redacted nested field must be present")
+
+	decoded = marshalTableObject(t, registeredKind(t, "user"), map[string]any{
+		"metadata": map[string]any{"name": "u-1"},
+		"username": "alice",
+		"password": "must-be-gone",
+	})
+	assert.Equal(t, "alice", decoded["username"])
+	assert.NotContains(t, decoded, "password", "RedactPaths root field must be absent")
 }
 
 // TestTableMarshalJSONRedactsListItems verifies that redaction applies to
 // every item in a list result, not just the first.
 func TestTableMarshalJSONRedactsListItems(t *testing.T) {
 	t.Parallel()
-	k := kinds.Kind{
-		Name:        "widget",
-		K8sKind:     "Widget",
-		RedactPaths: [][]string{{"token"}},
-	}
 	items := []unstructured.Unstructured{
 		{Object: map[string]any{"metadata": map[string]any{"name": "a"}, "token": "cred-a"}},
 		{Object: map[string]any{"metadata": map[string]any{"name": "b"}, "token": "cred-b"}},
 	}
-	tab := newTable(k, items, false)
+	tab := newTable(registeredKind(t, "managementtoken"), items, false)
 	b, err := tab.MarshalJSON()
 	require.NoError(t, err)
 
@@ -290,27 +302,98 @@ func TestTableMarshalJSONRedactsListItems(t *testing.T) {
 	require.Len(t, decoded, 2)
 	assert.NotContains(t, decoded[0], "token", "token must be absent from item 0")
 	assert.NotContains(t, decoded[1], "token", "token must be absent from item 1")
+	assert.Equal(t, "a", decoded[0]["metadata"].(map[string]any)["name"])
+	assert.Equal(t, "b", decoded[1]["metadata"].(map[string]any)["name"])
 }
 
-// TestTableMarshalJSONDoesNotMutateOriginal verifies that engine.ScrubPaths does not
-// mutate the original unstructured object (important: a command may hold the
-// object in memory after serialization).
+// TestTableMarshalJSONHidesWhatThePreviewHides verifies the table hides a
+// path in any letter case, a machine config Secret field in any letter
+// case, the last-applied annotation of a row that hides anything, and
+// nothing of a row that hides nothing.
+func TestTableMarshalJSONHidesWhatThePreviewHides(t *testing.T) {
+	t.Parallel()
+	annotations := func() map[string]any {
+		return map[string]any{kinds.LastAppliedAnnotation: `{"x":"s3cretA"}`, "example.invalid/outside": "outsideA"}
+	}
+	outside := map[string]any{"example.invalid/outside": "outsideA"}
+
+	decoded := marshalTableObject(t, registeredKind(t, "user"), map[string]any{
+		"metadata": map[string]any{"name": "u-1"}, "Password": "s3cretA", "username": "alice",
+	})
+	assert.NotContains(t, decoded, "Password", "a path written in another letter case is hidden")
+	assert.Equal(t, "alice", decoded["username"])
+
+	decoded = marshalTableObject(t, registeredKind(t, "amazonec2config"), map[string]any{
+		"metadata":       map[string]any{"name": "w", "annotations": annotations()},
+		"SSHKeyContents": "s3cretA", "sessiontoken": "s3cretB", "region": "us-east-1",
+	})
+	assert.NotContains(t, decoded, "SSHKeyContents", "a machine config Secret field in another letter case is hidden")
+	assert.NotContains(t, decoded, "sessiontoken")
+	assert.Equal(t, "us-east-1", decoded["region"])
+	assert.Equal(t, map[string]any{"name": "w", "annotations": outside}, decoded["metadata"], "the last-applied annotation is hidden")
+
+	decoded = marshalTableObject(t, registeredKind(t, "namespace"), map[string]any{
+		"metadata": map[string]any{"name": "ns", "annotations": annotations()},
+	})
+	assert.Equal(t, map[string]any{"name": "ns", "annotations": map[string]any{
+		kinds.LastAppliedAnnotation: `{"x":"s3cretA"}`, "example.invalid/outside": "outsideA",
+	}}, decoded["metadata"], "a row that hides nothing shows the annotation")
+}
+
+// TestTableMarshalJSONKeepsASecretPayload verifies a get of a secret shows
+// data and stringData in any letter case and hides the last-applied
+// annotation, for one object and for each item of a list; any other
+// Sensitive row hides its payload.
+func TestTableMarshalJSONKeepsASecretPayload(t *testing.T) {
+	t.Parallel()
+	obj := func() map[string]any {
+		return map[string]any{
+			"metadata": map[string]any{"name": "s", "annotations": map[string]any{
+				kinds.LastAppliedAnnotation: `{"x":"s3cretA"}`, "example.invalid/outside": "outsideA",
+			}},
+			"data": map[string]any{"k": "czNjcmV0QQ=="}, "StringData": map[string]any{"k": "s3cretA"},
+		}
+	}
+	want := map[string]any{
+		"metadata":   map[string]any{"name": "s", "annotations": map[string]any{"example.invalid/outside": "outsideA"}},
+		"data":       map[string]any{"k": "czNjcmV0QQ=="},
+		"StringData": map[string]any{"k": "s3cretA"},
+	}
+	secret := registeredKind(t, "secret")
+	assert.Equal(t, want, marshalTableObject(t, secret, obj()))
+
+	b, err := newTable(secret, []unstructured.Unstructured{{Object: obj()}, {Object: obj()}}, false).MarshalJSON()
+	require.NoError(t, err)
+	var list []map[string]any
+	require.NoError(t, json.Unmarshal(b, &list))
+	assert.Equal(t, []map[string]any{want, want}, list)
+
+	decoded := marshalTableObject(t, registeredKind(t, "setting"), obj())
+	assert.NotContains(t, decoded, "data")
+	assert.NotContains(t, decoded, "StringData")
+}
+
+// TestTableMarshalJSONDoesNotMutateOriginal verifies that marshaling a table
+// leaves the original unstructured object as it was, for a row that removes
+// a value and for one that removes nothing (important: a command may hold
+// the object in memory after serialization).
 func TestTableMarshalJSONDoesNotMutateOriginal(t *testing.T) {
 	t.Parallel()
-	k := kinds.Kind{
-		Name:        "widget",
-		K8sKind:     "Widget",
-		RedactPaths: [][]string{{"secret"}},
+	for _, key := range []string{"user", "secret", "namespace"} {
+		obj := unstructured.Unstructured{Object: map[string]any{
+			"metadata": map[string]any{"name": "w1", "annotations": map[string]any{
+				kinds.LastAppliedAnnotation: "must-survive-in-original",
+			}},
+			"password": "must-survive-in-original",
+			"data":     map[string]any{"k": "must-survive-in-original"},
+		}}
+		want := obj.DeepCopy().Object
+		for _, single := range []bool{true, false} {
+			_, err := newTable(registeredKind(t, key), []unstructured.Unstructured{obj}, single).MarshalJSON()
+			require.NoError(t, err)
+			assert.Equal(t, want, obj.Object, "the original unstructured object must not be mutated: %s", key)
+		}
 	}
-	obj := unstructured.Unstructured{Object: map[string]any{
-		"metadata": map[string]any{"name": "w1"},
-		"secret":   "must-survive-in-original",
-	}}
-	tab := newTable(k, []unstructured.Unstructured{obj}, true)
-	_, err := tab.MarshalJSON()
-	require.NoError(t, err)
-	assert.Equal(t, "must-survive-in-original", obj.Object["secret"],
-		"the original unstructured object must not be mutated by engine.ScrubPaths")
 }
 
 // TestRedactDiffBlanksKindPathEntries asserts that engine.RedactDiff replaces

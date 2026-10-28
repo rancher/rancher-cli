@@ -846,7 +846,10 @@ The `--apply` result of a mutating command in json, yaml and template leaves
 out the same values. The exceptions are the commands that show a secret once on
 purpose: `create token`, `create oidc-client`, `oidc-client add-secret` and
 `oidc-client rotate-secret`. `create kubeconfig` prints its kubeconfig and
-accepts only table output.
+accepts only table output. `get` in json, yaml and template leaves out the same
+values, except that `get secret` shows `data` and `stringData`. kubectl with a
+kubeconfig from `rancher create kubeconfig` shows a value the server returns
+on a read.
 
 `patch <kind>` takes an RFC 6902 JSON Patch (an array of operations) by default,
 and an RFC 7386 JSON merge patch (an object) with `--type merge`. In a merge
@@ -1231,7 +1234,8 @@ output whose newlines are its structure). Structured output (json, yaml, and tem
 omits `metadata.managedFields` (kubectl-parity; no opt-out flag - read the
 raw API for
 [server-side-apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/)
-forensics).
+forensics). The structured output of `get` also leaves out the values a
+preview hides, except that `get secret` shows `data` and `stringData`.
 
 Five commands are exceptions to the versioned-envelope rule, all for the
 same reason: their consumer parses a specific format, not the envelope.

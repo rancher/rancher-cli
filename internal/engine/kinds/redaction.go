@@ -11,8 +11,11 @@ import (
 // of the applied object, secret values included.
 const LastAppliedAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
 
-// Redaction is the set of paths whose values a preview never shows, for one
-// resource. Only Kind.Redaction (for a registered row) and RowlessRedaction
+// Redaction is the set of paths whose values a preview or a read never
+// shows, for one resource. Kind.Redaction builds the one a preview and the
+// result of an apply use. Kind.ReadRedaction builds the one a read (get)
+// uses, which hides the same values except that a Secret keeps its data and
+// stringData. Only those two (for a registered row) and RowlessRedaction
 // build one that is not the zero value, so a call that forgets to pass its
 // redaction is detectable (IsZero) and the preview planners refuse it. The
 // redaction carries the resource it was built for (GVR) so a call that
@@ -25,6 +28,12 @@ type Redaction struct {
 	built bool
 	// secretData hides the Secret payload: /data and /stringData.
 	secretData bool
+	// keepSecretData leaves /data and /stringData visible although
+	// secretData is set, so the redaction still hides the last-applied
+	// annotation. Only Kind.ReadRedaction sets it.
+	keepSecretData bool
+	// read marks a redaction built by Kind.ReadRedaction.
+	read bool
 	// paths are key sequences below the object root, each hiding the value
 	// at the path and everything under it.
 	paths [][]string
@@ -60,6 +69,27 @@ func (k Kind) Redaction() Redaction {
 	return r
 }
 
+// secretsGVR is the resource of the core v1 Secret row.
+var secretsGVR = schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
+
+// ReadRedaction returns the redaction a read of the object uses: what get
+// shows of an object a caller asked the server for. It hides the same
+// values as Redaction, except that a Secret keeps its top-level data and
+// stringData, because a secret's data is what get secret is for and kubectl
+// shows the same. The last-applied annotation stays hidden for a Secret too.
+// A kind that is not a registered row returns the zero value, as Redaction
+// does. A read redaction reports IsRead and no preview or apply result is
+// built from one.
+func (k Kind) ReadRedaction() Redaction {
+	r := k.Redaction()
+	if r.IsZero() {
+		return r
+	}
+	r.read = true
+	r.keepSecretData = r.gvr == secretsGVR
+	return r
+}
+
 // RowlessRedaction builds the redaction of a create whose resource has no
 // kind row: the resource, the key sequences of its secret fields and the
 // reason the resource has no row. An empty reason returns the zero value.
@@ -69,6 +99,9 @@ func RowlessRedaction(gvr schema.GroupVersionResource, reason string, paths ...[
 	}
 	return Redaction{gvr: gvr, built: true, paths: slices.Clone(paths)}
 }
+
+// IsRead reports whether r was built by Kind.ReadRedaction.
+func (r Redaction) IsRead() bool { return r.read }
 
 // IsZero reports whether r is the zero value, which no constructor returns.
 func (r Redaction) IsZero() bool { return !r.built }
@@ -89,7 +122,7 @@ func (r Redaction) Covers(keys []string) bool {
 	if len(keys) == 0 || !r.Hides() {
 		return false
 	}
-	if r.secretData && (strings.EqualFold(keys[0], "data") || strings.EqualFold(keys[0], "stringData")) {
+	if r.secretData && !r.keepSecretData && (strings.EqualFold(keys[0], "data") || strings.EqualFold(keys[0], "stringData")) {
 		return true
 	}
 	for _, p := range r.paths {

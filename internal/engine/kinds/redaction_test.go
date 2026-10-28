@@ -193,3 +193,81 @@ func TestMachineConfigSecretListsAreComplete(t *testing.T) {
 	}
 	assert.Equal(t, len(want), seen)
 }
+
+// TestReadRedactionKeepsOnlyASecretPayload asserts the read redaction of the
+// secret row leaves data and stringData in any letter case visible and
+// still covers the last-applied annotation, so it still hides something,
+// while the redaction of the same row for a preview covers all three.
+func TestReadRedactionKeepsOnlyASecretPayload(t *testing.T) {
+	t.Parallel()
+	secret, ok := Lookup("secret")
+	require.True(t, ok)
+	read := secret.ReadRedaction()
+	assert.True(t, read.Hides(), "the read redaction of a secret still hides the annotation")
+	for _, keys := range [][]string{
+		{"data"}, {"data", "k"}, {"stringData"}, {"stringData", "k", "deep"},
+		{"DATA"}, {"StringData", "k"}, {"STRINGDATA"},
+	} {
+		assert.False(t, read.Covers(keys), "read of %v", keys)
+		assert.True(t, secret.Redaction().Covers(keys), "preview of %v", keys)
+	}
+	lastApplied := []string{"metadata", "annotations", LastAppliedAnnotation}
+	assert.True(t, read.Covers(lastApplied))
+	assert.True(t, read.Covers([]string{"Metadata", "Annotations", "Kubectl.Kubernetes.io/Last-Applied-Configuration"}))
+	assert.False(t, read.Covers([]string{"metadata", "annotations", "owner"}))
+	assert.False(t, read.Covers([]string{"type"}))
+	assert.Equal(t, secret.GVR, read.GVR())
+}
+
+// TestReadRedactionEqualsTheRedactionExceptForASecret asserts every row but
+// secret reads with the redaction it previews with, apart from the mark
+// that says it is a read, and that the secret row's redaction for a preview
+// and an apply result still covers data and stringData.
+func TestReadRedactionEqualsTheRedactionExceptForASecret(t *testing.T) {
+	t.Parallel()
+	for _, k := range All() {
+		read, preview := k.ReadRedaction(), k.Redaction()
+		assert.True(t, read.IsRead(), k.Name)
+		assert.False(t, preview.IsRead(), k.Name)
+		assert.Equal(t, preview.GVR(), read.GVR(), k.Name)
+		assert.Equal(t, preview.Hides(), read.Hides(), k.Name)
+		if k.Key == "secret" {
+			continue
+		}
+		read.read = false
+		assert.Equal(t, preview, read, k.Name)
+	}
+	secret, ok := Lookup("secret")
+	require.True(t, ok)
+	assert.True(t, secret.Redaction().Covers([]string{"data"}))
+	assert.True(t, secret.Redaction().Covers([]string{"stringData", "k"}))
+}
+
+// TestReadRedactionHidesPayloadOfEverySensitiveRowButSecret asserts a Sensitive row other
+// than secret hides data and stringData on a read.
+func TestReadRedactionHidesPayloadOfEverySensitiveRowButSecret(t *testing.T) {
+	t.Parallel()
+	for _, k := range All() {
+		if !k.Sensitive || k.Key == "secret" {
+			continue
+		}
+		read := k.ReadRedaction()
+		assert.True(t, read.Covers([]string{"data", "k"}), k.Name)
+		assert.True(t, read.Covers([]string{"StringData"}), k.Name)
+	}
+}
+
+// TestReadRedactionOfAKindThatIsNotARowIsTheZeroValue asserts a literal kind
+// and a copy of a row with another Key or GVR read with the zero value, as
+// they preview with it.
+func TestReadRedactionOfAKindThatIsNotARowIsTheZeroValue(t *testing.T) {
+	t.Parallel()
+	secret, ok := Lookup("secret")
+	require.True(t, ok)
+	assert.True(t, Kind{}.ReadRedaction().IsZero())
+	assert.False(t, Kind{}.ReadRedaction().IsRead())
+	assert.True(t, Kind{Key: "secret", Sensitive: true}.ReadRedaction().IsZero(), "a literal with a row's Key and no GVR")
+	otherKey := secret
+	otherKey.Key = "nosuchkind"
+	assert.True(t, otherKey.ReadRedaction().IsZero())
+}

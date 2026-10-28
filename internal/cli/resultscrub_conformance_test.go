@@ -55,7 +55,16 @@ type plantSet struct {
 	outside []string
 	// pathValues maps a dotted path of the first-case planting to its value.
 	pathValues map[string]string
-	next       int
+	// payload is the Secret payload of a Sensitive row, in the form each
+	// value is planted; the values are also in values.
+	payload []payloadValue
+	next    int
+}
+
+// payloadValue is one planted Secret payload value: the value and the
+// string the answer carries for it (the value, or its base64 form).
+type payloadValue struct {
+	value, served string
 }
 
 // value returns the next planted value: single-line, no spaces, with a
@@ -114,11 +123,13 @@ func newPlantSet(k *kinds.Kind) *plantSet {
 		hides = r.Hides()
 		if k.Sensitive {
 			v1, v2, v3, v4 := p.value(), p.value(), p.value(), p.value()
-			setNested(p.fragment, []string{"data", "k1"}, base64.StdEncoding.EncodeToString([]byte(v1)))
+			b1, b3 := base64.StdEncoding.EncodeToString([]byte(v1)), base64.StdEncoding.EncodeToString([]byte(v3))
+			setNested(p.fragment, []string{"data", "k1"}, b1)
 			setNested(p.fragment, []string{"stringData", "k2"}, v2)
-			setNested(p.fragment, []string{"Data", "k3"}, base64.StdEncoding.EncodeToString([]byte(v3)))
+			setNested(p.fragment, []string{"Data", "k3"}, b3)
 			setNested(p.fragment, []string{"STRINGDATA", "k4"}, v4)
 			p.values = append(p.values, v1, v2, v3, v4)
+			p.payload = append(p.payload, payloadValue{v1, b1}, payloadValue{v2, v2}, payloadValue{v3, b3}, payloadValue{v4, v4})
 		}
 		paths := slices.Clone(k.RedactPaths)
 		for _, path := range scrubRequiredPaths[k.Key] {
@@ -210,6 +221,15 @@ type scrubFake struct {
 	oidc     *oidcFixture
 	decorate func(obj *unstructured.Unstructured)
 	list     func(gvr schema.GroupVersionResource) []unstructured.Unstructured
+	// lists are the List calls received, in order.
+	lists []scrubListCall
+}
+
+// scrubListCall is one List the fake received: the resource and the label
+// selector it was asked for.
+type scrubListCall struct {
+	gvr      schema.GroupVersionResource
+	selector string
 }
 
 // oidcFixture is the stateful OIDCClient and backing Secret of the
@@ -353,7 +373,10 @@ func (f *scrubFake) oidcSecret(ns, name string) *unstructured.Unstructured {
 	return obj
 }
 
-func (f *scrubFake) List(_ context.Context, gvr schema.GroupVersionResource, ns, _ string) (*unstructured.UnstructuredList, error) {
+func (f *scrubFake) List(_ context.Context, gvr schema.GroupVersionResource, ns, selector string) (*unstructured.UnstructuredList, error) {
+	f.mu.Lock()
+	f.lists = append(f.lists, scrubListCall{gvr: gvr, selector: selector})
+	f.mu.Unlock()
 	out := &unstructured.UnstructuredList{}
 	if f.list != nil {
 		for _, item := range f.list(gvr) {
@@ -498,6 +521,10 @@ type scrubRow struct {
 	extra func(ps *plantSet) []string
 	// refused is the text of the refusal a row ends in; "" for a success.
 	refused string
+	// shown returns the planted Secret payload values the row shows on
+	// purpose in a format; the row must show them and the other planted
+	// values stay hidden. nil for a row that shows none.
+	shown func(ps *plantSet, format string) []payloadValue
 }
 
 func (r scrubRow) name() string {
@@ -755,6 +782,7 @@ type scrubRun struct {
 	fake           *scrubFake
 	absent         []string
 	intended       string
+	shown          []payloadValue
 }
 
 // runScrubRow runs one row through the pipeline with --apply and every gate
@@ -775,9 +803,13 @@ func runScrubRow(t *testing.T, reg *runtime.Registry, entries map[string]entry, 
 	case row.intended != nil:
 		intended = row.intended(f, ps)
 	}
+	var shown []payloadValue
+	if row.shown != nil {
+		shown = row.shown(ps, format)
+	}
 	var absent []string
 	for _, v := range ps.values {
-		if v != intended {
+		if v != intended && !slices.ContainsFunc(shown, func(p payloadValue) bool { return p.value == v }) {
 			absent = append(absent, v)
 		}
 	}
@@ -803,7 +835,7 @@ func runScrubRow(t *testing.T, reg *runtime.Registry, entries map[string]entry, 
 		Apply: true, Yes: true, AllowDeprecated: true,
 		Capability: scrubAllowAll{}, Projects: scrubProjects{},
 	}, reg.Binding(row.command))
-	return scrubRun{stdout: out.String(), stderr: errOut.String(), status: status, ce: ce, fake: f, absent: absent, intended: intended}
+	return scrubRun{stdout: out.String(), stderr: errOut.String(), status: status, ce: ce, fake: f, absent: absent, intended: intended, shown: shown}
 }
 
 // forms are the spellings of a planted value the output must not hold: the
@@ -877,10 +909,18 @@ func requireScrubbed(t *testing.T, row scrubRow, format string, run scrubRun) {
 		if run.intended != "" {
 			assert.Contains(t, leaves, run.intended, "%s: the value shown once is missing from data", row.name())
 		}
+		for _, p := range run.shown {
+			assert.Contains(t, leaves, p.served, "%s: a value the row shows on purpose is missing from data", row.name())
+		}
 		if row.class == classEcho {
 			for _, v := range newPlantSet(scrubKindRow(t, row.kind)).outside {
 				assert.Contains(t, leaves, v, "%s: a value outside the redaction is missing from data", row.name())
 			}
+		}
+	}
+	if format != "json" && format != "yaml" {
+		for _, p := range run.shown {
+			assert.Contains(t, run.stdout, p.served, "%s: a value the row shows on purpose is missing from the output", row.name())
 		}
 	}
 	if len(run.absent) > 0 {

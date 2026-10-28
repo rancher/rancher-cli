@@ -12,13 +12,8 @@ import (
 // fixed keys and never traverse arrays. The copy is shallow at the top
 // level: nested maps along a path are deep-copied only as far as needed -
 // and at most once per parent, even when several paths share one - so the
-// original objects are not mutated. Shared by the resources table's
-// -o json/yaml redaction (kind RedactPaths) and DiffObjects's skipped-path
-// scrub, so path-removal semantics cannot drift between the two. The two
-// callers have different stakes - RedactPaths hides credentials, the diff
-// scrub hides noise - so a semantics change for one (e.g. fail-closed on an
-// unexpected shape, or descending into arrays) must deliberately consider
-// the other.
+// original objects are not mutated. DiffObjects uses it to drop skipped
+// paths. It applies no redaction; ScrubObject does.
 func ScrubPaths(obj map[string]any, paths [][]string) map[string]any {
 	if len(paths) == 0 {
 		return obj
@@ -29,14 +24,20 @@ func ScrubPaths(obj map[string]any, paths [][]string) map[string]any {
 	return out
 }
 
-// scrubResult returns obj without every map entry whose path the redaction
-// covers: the values a preview hides, so a result built from the committed
-// object never shows what the preview of the same command hides. The maps
-// along a removed entry are copied before they change, so obj, which the
-// client may share, is never modified; an object with nothing to remove is
-// returned as it is. A nil value stays and arrays are not entered: a hidden
-// path is a sequence of object keys and never addresses an array item.
+// scrubResult is ScrubObject for the result of a create or an update: the
+// values the preview of the same command hides.
 func scrubResult(obj map[string]any, r kinds.Redaction) map[string]any {
+	return ScrubObject(obj, r)
+}
+
+// ScrubObject returns obj without every map entry whose path the redaction
+// covers, so an object a command shows never holds a value the redaction
+// hides. The maps along a removed entry are copied before they change, so
+// obj, which the client may share, is never modified; an object with
+// nothing to remove is returned as it is. A nil value stays and arrays are
+// not entered: a hidden path is a sequence of object keys and never
+// addresses an array item.
+func ScrubObject(obj map[string]any, r kinds.Redaction) map[string]any {
 	if !r.Hides() {
 		return obj
 	}

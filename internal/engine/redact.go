@@ -43,13 +43,17 @@ func redactedSide(v any) any {
 
 // checkRedaction refuses a preview of action (create or update) built
 // without the redaction of the resource it previews: a zero redaction, or
-// the redaction of another resource. Both are programming errors, refused
+// the redaction of another resource, or a redaction built for a read, which
+// leaves a Secret's payload visible. Each is a programming error, refused
 // before any request.
 func checkRedaction(gvr schema.GroupVersionResource, r kinds.Redaction, action string) error {
 	switch {
 	case r.IsZero():
 		return clierr.New(clierr.CodeGeneric,
 			"internal error: "+action+" preview of "+gvr.Resource+" has no redaction for its kind")
+	case r.IsRead():
+		return clierr.New(clierr.CodeGeneric,
+			"internal error: "+action+" preview of "+gvr.Resource+" has the redaction of a read")
 	case r.GVR() != gvr:
 		return clierr.New(clierr.CodeGeneric,
 			"internal error: "+action+" preview of "+gvr.Resource+" has the redaction of "+r.GVR().Resource)

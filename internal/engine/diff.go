@@ -52,8 +52,7 @@ func isSkippedPath(path string) bool {
 // every segment is a fixed key, never an array index - so a non-map value
 // cannot contain one and is returned unchanged, as is any map when no
 // skipped path can lie under prefix (no allocation on subtrees like /spec).
-// The removal itself is ScrubPaths, the same copy-on-write scrub the
-// resources table uses for RedactPaths.
+// The removal itself is ScrubPaths.
 func scrubValue(prefix string, v any) any {
 	m, ok := v.(map[string]any)
 	if !ok {

@@ -1,101 +1,110 @@
 package engine
 
 import (
+	"bytes"
 	"encoding/hex"
-	"strings"
+	"encoding/json"
 	"testing"
+	"unicode"
 
+	"github.com/rancher/rancher-cli/internal/engine/kinds"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// sentinelMarker is planted at the fuzzed path's leaf. It uses only
-// uppercase letters and a hyphen, so it can never appear as a substring of
-// a lowercase-hex-encoded path segment (see below).
-const sentinelMarker = "SENTINEL-MARKER-VALUE"
+const (
+	fuzzHiddenSentinel  = "HIDDEN-SENTINEL-VALUE"
+	fuzzPayloadSentinel = "PAYLOAD-SENTINEL-VALUE"
+	fuzzOutsideSentinel = "OUTSIDE-SENTINEL-VALUE"
+)
 
-// FuzzScrubPaths fuzzes the marker-secret property: a sentinel planted at
-// every retained fuzzed path must not survive scrubbing. TWO independently
-// fuzzed paths per iteration exercise the multi-path grouping (paths
-// sharing a head bucket, sibling leaves, shared parents) that a single
-// path never reaches. The document is built from the fuzzed paths
-// themselves - maps only - with segments HEX-ENCODED into the keys, so no
-// key can contain the sentinel as a substring (otherwise a fuzzed segment
-// holding the marker would false-fail the search after a correct
-// deletion). Prefix-colliding paths are normalized at construction (a
-// path that is a prefix of the other would overwrite the other's
-// intermediate map with its sentinel leaf); duplicates collapse. Each blob
-// is NUL-split into segments, the same encoding FuzzParseArgTail uses.
-// Never call t.Parallel() here - it panics inside f.Fuzz.
-func FuzzScrubPaths(f *testing.F) {
-	f.Add("secret", "password")
-	f.Add("secret\x00password", "secret\x00token")
-	f.Add("", "")
-	f.Add("a\x00b\x00c", "a\x00b")
-	f.Add("a\x00b", "a\x00b")
+// fuzzScrubRows are the registered rows FuzzScrubObject plants a hidden
+// value in, each with the top-level name its redaction hides: a row path, a
+// machine config Secret field, the Secret payload (which a read keeps) and
+// the payload of another sensitive row (which a read hides).
+var fuzzScrubRows = []struct{ key, hidden string }{
+	{"user", "password"},
+	{"amazonec2config", "sshKeyContents"},
+	{"secret", "data"},
+	{"setting", "data"},
+}
 
-	f.Fuzz(func(t *testing.T, blob1, blob2 string) {
-		decode := func(blob string) []string {
-			segments := strings.Split(blob, "\x00")
-			path := make([]string, len(segments))
-			for i, s := range segments {
-				path[i] = hex.EncodeToString([]byte(s))
-			}
-			return path
+// fuzzCase writes name with each letter in the case the pattern picks: an
+// odd byte makes the letter upper case and an even one lower case, the
+// pattern repeating. An empty pattern leaves the name as it is.
+func fuzzCase(name, pattern string) string {
+	if pattern == "" {
+		return name
+	}
+	out := []rune(name)
+	for i, r := range out {
+		if pattern[i%len(pattern)]&1 == 1 {
+			out[i] = unicode.ToUpper(r)
+		} else {
+			out[i] = unicode.ToLower(r)
 		}
-		paths := [][]string{decode(blob1)}
-		p2 := decode(blob2)
-		if !isPathPrefix(paths[0], p2) && !isPathPrefix(p2, paths[0]) {
-			paths = append(paths, p2)
+	}
+	return string(out)
+}
+
+// FuzzScrubObject fuzzes what a read hides: a sentinel planted at a
+// registered row's hidden name, written in a fuzzed letter case, and in the
+// last-applied annotation must not survive ScrubObject with the row's read
+// redaction, except that a secret keeps its data. A second sentinel, planted
+// under a fuzzed key at a fuzzed depth (the key hex-encoded so it is one
+// valid key that no hidden name matches), must survive, and the input map
+// must stay as it was. Never call t.Parallel() here - it panics inside
+// f.Fuzz.
+func FuzzScrubObject(f *testing.F) {
+	for row := range fuzzScrubRows {
+		for _, pattern := range []string{"", "\x00", "\x01", "\x00\x01\x01"} {
+			f.Add("outside", uint8(0), pattern, uint8(row))
 		}
+		f.Add("a\x00b", uint8(2), "\x01", uint8(row))
+		f.Add("", uint8(3), "\x00\x01", uint8(row))
+	}
 
-		obj := map[string]any{}
-		for _, path := range paths {
-			cur := obj
-			for i, key := range path {
-				if i == len(path)-1 {
-					cur[key] = sentinelMarker
-					break
-				}
-				next, ok := cur[key].(map[string]any)
-				if !ok {
-					next = map[string]any{}
-					cur[key] = next
-				}
-				cur = next
-			}
+	f.Fuzz(func(t *testing.T, outsideKey string, depth uint8, pattern string, rowIndex uint8) {
+		row := fuzzScrubRows[int(rowIndex)%len(fuzzScrubRows)]
+		k, ok := kinds.ByKey(row.key)
+		require.True(t, ok, row.key)
+		r := k.ReadRedaction()
+
+		key := hex.EncodeToString([]byte(outsideKey))
+		outsidePath := make([]string, int(depth)%4+1)
+		for i := range outsidePath {
+			outsidePath[i] = key
 		}
+		require.False(t, r.Covers(outsidePath), "the hex-encoded outside key is hidden: %v", outsidePath)
 
-		out := ScrubPaths(obj, paths) // no panic
+		var outside any = fuzzOutsideSentinel
+		for range outsidePath[1:] {
+			outside = map[string]any{key: outside}
+		}
+		obj := map[string]any{
+			"metadata": map[string]any{"annotations": map[string]any{fuzzCase(kinds.LastAppliedAnnotation, pattern): fuzzHiddenSentinel}},
+			key:        outside,
+		}
+		hiddenName := fuzzCase(row.hidden, pattern)
+		if row.key == "secret" {
+			obj[hiddenName] = map[string]any{"k": fuzzPayloadSentinel}
+		} else {
+			obj[hiddenName] = map[string]any{"k": fuzzHiddenSentinel}
+		}
+		before, err := json.Marshal(obj)
+		require.NoError(t, err)
 
-		assert.False(t, containsSentinel(out), "sentinel survived scrubbing: %#v", out)
+		out := ScrubObject(obj, r) // no panic
+
+		after, err := json.Marshal(obj)
+		require.NoError(t, err)
+		assert.JSONEq(t, string(before), string(after), "the input map changed")
+		scrubbed, err := json.Marshal(out)
+		require.NoError(t, err)
+		assert.False(t, bytes.Contains(scrubbed, []byte(fuzzHiddenSentinel)), "a hidden value survived: %s", scrubbed)
+		assert.Contains(t, string(scrubbed), fuzzOutsideSentinel, "a value outside the redaction was removed")
+		if row.key == "secret" {
+			assert.Contains(t, string(scrubbed), fuzzPayloadSentinel, "a secret lost its data")
+		}
 	})
-}
-
-// isPathPrefix reports whether a is a (non-strict) prefix of b - such
-// pairs cannot coexist in one document (a's sentinel leaf occupies the
-// map b needs as an intermediate), so the harness retains only the first.
-func isPathPrefix(a, b []string) bool {
-	if len(a) > len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func containsSentinel(v any) bool {
-	switch x := v.(type) {
-	case string:
-		return strings.Contains(x, sentinelMarker)
-	case map[string]any:
-		for k, vv := range x {
-			if strings.Contains(k, sentinelMarker) || containsSentinel(vv) {
-				return true
-			}
-		}
-	}
-	return false
 }

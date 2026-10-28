@@ -119,7 +119,7 @@ TARGETS=(
   "FuzzCanonicalServerURL|./credhelper"
   "FuzzParseArgTail|./internal/cli"
   "FuzzConfigLoad|./internal/config"
-  "FuzzScrubPaths|./internal/engine"
+  "FuzzScrubObject|./internal/engine"
   "FuzzTableRender|./internal/engine/resources"
   "FuzzDetect|./internal/invocation"
 )

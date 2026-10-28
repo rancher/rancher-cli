@@ -72,7 +72,7 @@ const (
 var resultDataAllowlist = map[string]string{
 	"internal/engine/effect.go:PlanCreateObserved":                      "the create planner scrubs the committed object with the kind's redaction before it sets the result's Data",
 	"internal/engine/effect.go:PlanUpdateObserved":                      "the update planner scrubs the committed object with the kind's redaction before it sets the result's Data",
-	"internal/engine/resources/get.go:getCmd.Execute":                   "get shows the table of the objects it read; its json and yaml output removes the kind's RedactPaths",
+	"internal/engine/resources/get.go:getCmd.Execute":                   "get shows the table of the objects it read; its json, yaml and template output removes what the kind's read redaction hides",
 	"internal/engine/provisioning/cloudcred.go:getCloudCredCmd.Execute": "get cloud-credential builds its rows from the Secret's metadata and the names of its data keys, never their values",
 	"internal/engine/inspect/deployment.go:deploymentCmd.Execute":       "inspect deployment is a read; the object it shows is one a caller may read",
 	"internal/engine/inspect/pod.go:podCmd.Execute":                     "inspect pod is a read; the object it shows is one a caller may read",

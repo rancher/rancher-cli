@@ -181,3 +181,78 @@ func TestPlanUpdateObservedResultHidesWhatThePreviewHides(t *testing.T) {
 	assert.Equal(t, map[string]any{"example.invalid/outside": "outsideA"},
 		data["metadata"].(map[string]any)["annotations"])
 }
+
+// TestScrubObjectWithAReadRedactionKeepsASecretPayload asserts a read
+// redaction of the secret row leaves data and stringData in any letter case
+// and still removes the last-applied annotation, while the redaction of the
+// same row for a preview removes all three.
+func TestScrubObjectWithAReadRedactionKeepsASecretPayload(t *testing.T) {
+	t.Parallel()
+	secret, ok := kinds.ByKey("secret")
+	require.True(t, ok)
+	obj := func() map[string]any {
+		return map[string]any{
+			"data":       map[string]any{"k": "czNjcmV0QQ=="},
+			"StringData": map[string]any{"k": "s3cretA"},
+			"metadata": map[string]any{"annotations": map[string]any{
+				kinds.LastAppliedAnnotation: `{"data":{"k":"s3cretA"}}`,
+				"example.invalid/outside":   "outsideA",
+			}},
+		}
+	}
+	got := ScrubObject(obj(), secret.ReadRedaction())
+	assert.Equal(t, map[string]any{
+		"data":       map[string]any{"k": "czNjcmV0QQ=="},
+		"StringData": map[string]any{"k": "s3cretA"},
+		"metadata": map[string]any{"annotations": map[string]any{
+			"example.invalid/outside": "outsideA",
+		}},
+	}, got)
+	assert.Equal(t, map[string]any{
+		"metadata": map[string]any{"annotations": map[string]any{
+			"example.invalid/outside": "outsideA",
+		}},
+	}, ScrubObject(obj(), secret.Redaction()))
+}
+
+// TestScrubObjectWithAReadRedactionHidesOtherSensitivePayloads asserts the
+// read redaction of a row other than secret hides what the preview hides:
+// data and stringData of a Sensitive row, a machine config Secret field in
+// another letter case and a row path.
+func TestScrubObjectWithAReadRedactionHidesOtherSensitivePayloads(t *testing.T) {
+	t.Parallel()
+	for key, obj := range map[string]map[string]any{
+		"user":            {"data": "s3cretA", "Password": "s3cretB"},
+		"amazonec2config": {"SSHKeyContents": "s3cretA", "sessiontoken": "s3cretB"},
+		"managementtoken": {"stringData": "s3cretA", "token": "s3cretB"},
+	} {
+		k, ok := kinds.ByKey(key)
+		require.True(t, ok, key)
+		obj["keep"] = "outsideA"
+		assert.Equal(t, map[string]any{"keep": "outsideA"}, ScrubObject(obj, k.ReadRedaction()), key)
+	}
+}
+
+// TestCheckRedactionRefusesAReadRedaction asserts a preview and an apply
+// result cannot be built from a read redaction, even one built for the
+// resource the call previews: the secret row's read redaction leaves the
+// payload visible.
+func TestCheckRedactionRefusesAReadRedaction(t *testing.T) {
+	t.Parallel()
+	secret, ok := kinds.ByKey("secret")
+	require.True(t, ok)
+	read := secret.ReadRedaction()
+	require.True(t, read.IsRead())
+
+	err := checkRedaction(secret.GVR, read, "create")
+	require.ErrorContains(t, err, "internal error: create preview of secrets has the redaction of a read")
+	require.NoError(t, checkRedaction(secret.GVR, secret.Redaction(), "create"))
+
+	client := &obsClient{}
+	obj := newObj(map[string]any{"metadata": map[string]any{"name": "s", "namespace": "ns"}})
+	_, _, _, err = PlanCreateObserved(t.Context(), client, secret.GVR, "ns", obj, read, "c-x", "secret", "Secret", false)
+	require.ErrorContains(t, err, "has the redaction of a read")
+	_, _, _, err = PlanUpdateObserved(t.Context(), client, secret.GVR, "ns", obj, read, "c-x", "secret", "Secret", nil, false)
+	require.ErrorContains(t, err, "has the redaction of a read")
+	assert.Empty(t, client.dryRuns, "no request before the refusal")
+}
