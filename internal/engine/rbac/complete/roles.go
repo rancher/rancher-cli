@@ -56,13 +56,16 @@ func ScopeOfTail(tail []string) (Scope, bool) {
 	return "", false
 }
 
-// RoleSource is the source grant and revoke hand the surface. It claims
-// the --role value site alone (no cluster, a management credential, one
-// listing) and answers the role names of the scope typed on the line, each
-// described by its display name; every other site of the two commands is
-// declined.
+// RoleSource claims the --role value site alone (no cluster, a management
+// credential, one listing) and answers every role name of the scope typed
+// on the line, locked role templates included, each described by its
+// display name; every other site is declined.
 func RoleSource() completion.Source {
-	return completion.Source{Claim: claimRole, Complete: completeRole}
+	return completion.Source{Claim: claimRole, Complete: completeAllRoles}
+}
+
+func completeAllRoles(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
+	return completeRole(ctx, conn, req, true)
 }
 
 func claimRole(req completion.Request) (completion.Requirements, bool) {
@@ -75,9 +78,12 @@ func claimRole(req completion.Request) (completion.Requirements, bool) {
 // completeRole lists the scope's role collection once and keeps the names
 // whose context is the scope's. The filter is client-side: the
 // RoleTemplate CRD declares no selectable field for context, so a field
-// selector cannot express it. No scope, or a conflicting one, answers
+// selector cannot express it. Unless offerLocked is set, a role template
+// whose locked field is the JSON boolean true is left out at project and
+// cluster scope, since Rancher does not allow a new binding to one; a
+// global role is always kept. No scope, or a conflicting one, answers
 // nothing without a request.
-func completeRole(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
+func completeRole(ctx context.Context, conn *completion.Connection, req completion.Request, offerLocked bool) completion.Result {
 	scope, ok := ScopeOfTail(req.Tail)
 	if !ok {
 		return completion.Result{}
@@ -101,6 +107,9 @@ func completeRole(ctx context.Context, conn *completion.Connection, req completi
 	for _, item := range list.Items {
 		if roleContext != "" {
 			if c, _ := item["context"].(string); c != roleContext {
+				continue
+			}
+			if locked, _ := item["locked"].(bool); locked && !offerLocked {
 				continue
 			}
 		}

@@ -753,8 +753,11 @@ Never present a role list as permissions.
   `context=="project"` to find role names for `--role`; `-o table` shows the
   same as a CONTEXT column. Once a scope flag (`--cluster`, `--project`, or
   `--global`) is on the line, `--role <TAB>` completes live (requires the
-  network-completion opt-in). Positional completion may return the full
-  candidate list and rely on the shell's client-side prefix filtering.
+  network-completion opt-in). At project and cluster scope, `grant --role <TAB>`
+  leaves out role templates whose `locked` field is true (Rancher does not allow
+  a new binding to one), and `revoke --role <TAB>` still offers them.
+  Positional completion may return the full candidate list and rely on the
+  shell's client-side prefix filtering.
 - `rancher create secret <name> --namespace <ns> --cluster <c> --from-literal k=v[,k=v...]` -
   an ordinary namespaced secret without hand-rolling base64.
 - `rancher create secret <name> --project <p> --cluster <c> --from-literal k=v` -

@@ -31,33 +31,40 @@ func TestSubjectSourceClaim(t *testing.T) {
 	}
 }
 
-// TestGrantRevokeSourceClaim asserts grant's and revoke's source claims
-// --role under the role rule and the subject positional unless --type
-// group is typed (a bare --type, or --type user, still claims; a --type
-// typed twice takes its last spelling), and declines every other site.
-func TestGrantRevokeSourceClaim(t *testing.T) {
+// TestGrantAndRevokeSourceClaim asserts grant's and revoke's sources claim
+// the same sites: --role under the role rule and the subject positional
+// unless --type group is typed (a bare --type, or --type user, still
+// claims; a --type typed twice takes its last spelling), and decline every
+// other site.
+func TestGrantAndRevokeSourceClaim(t *testing.T) {
 	t.Parallel()
-	src := GrantRevokeSource()
-	reqs, ok := src.Claim(roleRequest("grant", "jane", "--global", "--role"))
-	require.True(t, ok)
-	assert.Equal(t, completion.ManagementListing(), reqs)
-	for _, tail := range [][]string{nil, {"--type"}, {"--type", "user"}, {"--type=user"}, {"--cluster", "prod cluster"}, {"--type", "group", "--type", "user"}} {
-		reqs, ok := src.Claim(completion.Request{Index: 0, Tail: tail})
-		assert.True(t, ok, "%v", tail)
-		assert.Equal(t, completion.ManagementListing(), reqs)
-	}
-	for _, req := range []completion.Request{
-		{Index: 0, Tail: []string{"--type", "group"}},
-		{Index: 0, Tail: []string{"--type=group"}},
-		{Index: 0, Tail: []string{"--type", "user", "--type", "group"}},
-		{Index: 1, Tail: []string{"jane"}},
-		{Flag: "cluster"},
-		{Flag: "project"},
-		{Flag: "type"},
-		{Flag: "as"},
-	} {
-		_, ok := src.Claim(req)
-		assert.False(t, ok, "%+v", req)
+	for name, src := range map[string]completion.Source{"grant": GrantSource(), "revoke": RevokeSource()} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			reqs, ok := src.Claim(roleRequest(name, "jane", "--global", "--role"))
+			require.True(t, ok)
+			assert.Equal(t, completion.ManagementListing(), reqs)
+			_, ok = src.Claim(roleRequest(name, "jane", "--role"))
+			assert.True(t, ok, "a --role site with no scope is still owned; Complete answers nothing")
+			for _, tail := range [][]string{nil, {"--type"}, {"--type", "user"}, {"--type=user"}, {"--cluster", "prod cluster"}, {"--type", "group", "--type", "user"}} {
+				reqs, ok := src.Claim(completion.Request{Index: 0, Tail: tail})
+				assert.True(t, ok, "%v", tail)
+				assert.Equal(t, completion.ManagementListing(), reqs)
+			}
+			for _, req := range []completion.Request{
+				{Index: 0, Tail: []string{"--type", "group"}},
+				{Index: 0, Tail: []string{"--type=group"}},
+				{Index: 0, Tail: []string{"--type", "user", "--type", "group"}},
+				{Index: 1, Tail: []string{"jane"}},
+				{Flag: "cluster"},
+				{Flag: "project"},
+				{Flag: "type"},
+				{Flag: "as"},
+			} {
+				_, ok := src.Claim(req)
+				assert.False(t, ok, "%+v", req)
+			}
+		})
 	}
 }
 
@@ -84,7 +91,7 @@ func TestCompleteSubjects(t *testing.T) {
 	assert.Equal(t, []string{"/k8s/clusters/local/apis/management.cattle.io/v3/users"}, s.Requested())
 
 	again := completiontest.NewFixed(t, completiontest.SubjectsBody)
-	assert.Equal(t, got.Names, GrantRevokeSource().Complete(t.Context(), again.Conn(1), completion.Request{Index: 0}).Names, "the subject positional and --as share the projection")
+	assert.Equal(t, got.Names, GrantSource().Complete(t.Context(), again.Conn(1), completion.Request{Index: 0}).Names, "the subject positional and --as share the projection")
 }
 
 // TestCompleteSubjectsFailsEmpty asserts a refused listing answers
@@ -123,7 +130,7 @@ func TestCompleteSubjectsDescribesEveryIdAndNoUsername(t *testing.T) {
 	}
 
 	again := completiontest.NewFixed(t, completiontest.SubjectsBody)
-	assert.Equal(t, got.Descriptions, GrantRevokeSource().Complete(t.Context(), again.Conn(1), completion.Request{Index: 0}).Descriptions)
+	assert.Equal(t, got.Descriptions, GrantSource().Complete(t.Context(), again.Conn(1), completion.Request{Index: 0}).Descriptions)
 }
 
 // TestCompleteSubjectsKeepsAHostileDisplayNameRaw asserts text with a

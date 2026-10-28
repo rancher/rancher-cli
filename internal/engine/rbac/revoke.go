@@ -103,10 +103,11 @@ func (revokeCmd) Describe() runtime.Descriptor {
 	}
 }
 
-// LiveSource hands the surface revoke's source: --role completes the
-// roles of the scope typed on the line, the subject positional the user
-// subjects unless --type group is typed; every other site is declined.
-func (revokeCmd) LiveSource() completion.Source { return complete.GrantRevokeSource() }
+// LiveSource hands the surface revoke's source: --role completes every
+// role of the scope typed on the line, locked role templates included,
+// and the subject positional the user subjects unless --type group is
+// typed; every other site is declined.
+func (revokeCmd) LiveSource() completion.Source { return complete.RevokeSource() }
 
 func (c revokeCmd) Plan(ctx context.Context, in runtime.Input) (safety.Effect, runtime.ExecuteFunc, error) {
 	args := in.Args()

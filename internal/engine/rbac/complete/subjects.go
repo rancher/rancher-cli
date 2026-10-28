@@ -28,12 +28,21 @@ func claimAs(req completion.Request) (completion.Requirements, bool) {
 	return completion.ManagementListing(), true
 }
 
-// GrantRevokeSource is the source grant and revoke hand the surface: the
-// --role value under RoleSource's rule, and the subject positional, the
-// user subjects of SubjectSource unless --type group is typed, since no
-// group collection can be listed. Every other site is declined.
-func GrantRevokeSource() completion.Source {
-	return completion.Source{Claim: claimGrantRevoke, Complete: completeGrantRevoke}
+// GrantSource is grant's source: the --role value, which leaves out the
+// role templates marked locked at project and cluster scope (Rancher does
+// not allow a new binding to one), and the subject positional, the user
+// subjects of SubjectSource unless --type group is typed, since no group
+// collection can be listed. Every other site is declined.
+func GrantSource() completion.Source {
+	return completion.Source{Claim: claimGrantRevoke, Complete: completeGrant}
+}
+
+// RevokeSource is revoke's source: the --role value of RoleSource, locked
+// role templates included, since a binding to one can still be removed,
+// and the subject positional GrantSource answers. Every other site is
+// declined.
+func RevokeSource() completion.Source {
+	return completion.Source{Claim: claimGrantRevoke, Complete: completeRevoke}
 }
 
 func claimGrantRevoke(req completion.Request) (completion.Requirements, bool) {
@@ -46,9 +55,16 @@ func claimGrantRevoke(req completion.Request) (completion.Requirements, bool) {
 	return completion.Requirements{}, false
 }
 
-func completeGrantRevoke(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
+func completeGrant(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
 	if req.Flag == "role" {
-		return completeRole(ctx, conn, req)
+		return completeRole(ctx, conn, req, false)
+	}
+	return completeSubjects(ctx, conn, req)
+}
+
+func completeRevoke(ctx context.Context, conn *completion.Connection, req completion.Request) completion.Result {
+	if req.Flag == "role" {
+		return RoleSource().Complete(ctx, conn, req)
 	}
 	return completeSubjects(ctx, conn, req)
 }

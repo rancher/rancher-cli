@@ -534,6 +534,10 @@ completion offers as a value carries no description. A description is cut to 56
 characters; control and invisible characters in it are dropped or shown as a
 space.
 
+At project and cluster scope, `grant --role` completion leaves out role
+templates whose `locked` field is true, since Rancher does not allow a new
+binding to one; `revoke --role` still offers them.
+
 - zsh and fish show the description in the completion list; PowerShell shows it
   as the tooltip of the candidate.
 - bash lists descriptions on the second TAB (`token  -- description`) on bash
