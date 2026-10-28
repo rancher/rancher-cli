@@ -83,11 +83,30 @@ func fetchVersionResponse(ctx context.Context, eff config.Effective) (rancherVer
 	if resp.StatusCode != http.StatusOK {
 		return rancherVersionResponse{}, fmt.Errorf("/rancherversion: %w", clierr.ResponseError(http.MethodGet, resp.StatusCode, body))
 	}
-	var r rancherVersionResponse
-	if err := json.Unmarshal(body, &r); err != nil {
+	r, err := decodeVersionResponse(body)
+	if err != nil {
 		return rancherVersionResponse{}, fmt.Errorf("/rancherversion: malformed response: %w", err)
 	}
 	return r, nil
+}
+
+func decodeVersionResponse(body []byte) (rancherVersionResponse, error) {
+	var r rancherVersionResponse
+	if err := json.Unmarshal(body, &r); err != nil {
+		return rancherVersionResponse{}, err
+	}
+	return r, nil
+}
+
+// DecodeServerInfo decodes the body of a GET /rancherversion answer into the
+// version string and the decoded edition. A body that is not JSON is an
+// error; a missing field is empty (EditionUnknown for the edition).
+func DecodeServerInfo(body []byte) (ServerInfo, error) {
+	r, err := decodeVersionResponse(body)
+	if err != nil {
+		return ServerInfo{}, err
+	}
+	return ServerInfo{Version: r.Version, Edition: parseEdition(r.RancherPrime)}, nil
 }
 
 // RancherVersion reads the server's ldflags-stamped version from the

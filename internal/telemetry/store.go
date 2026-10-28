@@ -72,24 +72,27 @@ type Options struct {
 // finish, a failed random source and a panic anywhere below it drop the
 // event without any error, and nothing is written to standard output or
 // standard error.
-func Record(ev Event, opts Options) (st Status) {
+//
+// It also returns what the event read of the server's facts file, so the
+// caller does not read the file a second time.
+func Record(ev Event, opts Options) (st Status, read FactsRead) {
 	if !Resolve(ControlInput{Getenv: opts.Getenv, Config: opts.Config}).On {
-		return StatusOff
+		return StatusOff, FactsRead{}
 	}
 	if !opts.DirExisted {
-		return StatusNoDirectory
+		return StatusNoDirectory, FactsRead{}
 	}
 	if ev.failed() {
-		return StatusFailed
+		return StatusFailed, FactsRead{}
 	}
 	defer func() {
 		if recover() != nil {
-			st = StatusFailed
+			st, read = StatusFailed, FactsRead{}
 		}
 	}()
 	s, err := OpenStore(opts.ConfigDir)
 	if err != nil {
-		return StatusFailed
+		return StatusFailed, FactsRead{}
 	}
 	defer func() { _ = s.Close() }()
 	return s.record(ev)
@@ -198,29 +201,34 @@ func (s *Store) readLimited(name string, limit int64) ([]byte, bool, error) {
 
 func hourName(t time.Time) string { return t.UTC().Format(hourLayout) }
 
-func (s *Store) record(ev Event) Status {
+func (s *Store) record(ev Event) (Status, FactsRead) {
 	if err := s.ensureDir(); err != nil {
-		return StatusFailed
+		return StatusFailed, FactsRead{}
 	}
 	now := nowFunc().UTC()
 	id := s.directoryID(now)
 	due := s.pruneDue(now)
 
-	var facts Facts
+	var facts FactsRead
 	url, _ := Server()
 	if url != "" {
-		if data, err := s.readFile(path.Join(dirServers, FactsFileName(url))); err == nil {
-			facts, _ = parseFacts(data)
+		data, err := s.readFile(path.Join(dirServers, FactsFileName(url)))
+		switch {
+		case err == nil:
+			facts.Facts, _ = parseFacts(data)
+			facts.Usable = true
+		case errors.Is(err, fs.ErrNotExist):
+			facts.Usable = true
 		}
 	}
-	ev = ev.withFacts(url != "", facts, now).withDirectoryID(id)
+	ev = ev.withFacts(url != "", facts.Facts, now).withDirectoryID(id)
 
 	st := s.writeSlot(ev)
 	if due {
 		s.touchMarker(now)
 		s.pass(now, ev.producerInfo(), id)
 	}
-	return st
+	return st, facts
 }
 
 // writeSlot creates a random free slot of the event's hour directory

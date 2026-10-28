@@ -116,7 +116,8 @@ func runEvent(at time.Time) CommandRun {
 
 func record(t *testing.T, dir string, ev Event) Status {
 	t.Helper()
-	return Record(ev, Options{ConfigDir: dir, DirExisted: true})
+	st, _ := Record(ev, Options{ConfigDir: dir, DirExisted: true})
+	return st
 }
 
 // hourPath is the path of an hour directory under a config directory.

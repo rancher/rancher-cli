@@ -3,7 +3,7 @@
 This directory holds the published contract for Rancher usage events: what
 an event is called, which attributes it carries, the values each attribute
 may take, and what a missing attribute means. The CLI is the first producer.
-It records events on the local machine only and sends nothing
+It records events on the local machine only and sends no events
 anywhere. Other Rancher components can write the same events.
 
 ## Layout

@@ -74,7 +74,7 @@ func TestRecordTouchesNothingWhileOff(t *testing.T) {
 		if !c.testBinary {
 			restore = SetEnabledForTest()
 		}
-		got := Record(runEvent(fixedNoon), opts)
+		got, _ := Record(runEvent(fixedNoon), opts)
 		restore()
 		want := StatusOff
 		if c.noDirectory {
@@ -92,8 +92,10 @@ func TestRecordNeverCreatesTheConfigDirectory(t *testing.T) {
 	enable(t)
 	useClock(t, fixedNoon)
 	missing := filepath.Join(t.TempDir(), "rancher")
-	assert.Equal(t, StatusNoDirectory, Record(runEvent(fixedNoon), Options{ConfigDir: missing}))
-	assert.Equal(t, StatusFailed, Record(runEvent(fixedNoon), Options{ConfigDir: missing, DirExisted: true}))
+	st, _ := Record(runEvent(fixedNoon), Options{ConfigDir: missing})
+	assert.Equal(t, StatusNoDirectory, st)
+	st, _ = Record(runEvent(fixedNoon), Options{ConfigDir: missing, DirExisted: true})
+	assert.Equal(t, StatusFailed, st)
 	_, err := os.Stat(missing)
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
@@ -391,7 +393,8 @@ func TestVariableOffDeletesNothing(t *testing.T) {
 	dir := t.TempDir()
 	require.Equal(t, StatusRecorded, record(t, dir, runEvent(fixedNoon)))
 	before := listTree(t, dir)
-	assert.Equal(t, StatusOff, Record(runEvent(fixedNoon), Options{ConfigDir: dir, DirExisted: true, Getenv: envOf(map[string]string{EnvTelemetry: "false"})}))
+	st, _ := Record(runEvent(fixedNoon), Options{ConfigDir: dir, DirExisted: true, Getenv: envOf(map[string]string{EnvTelemetry: "false"})})
+	assert.Equal(t, StatusOff, st)
 	assert.Equal(t, before, listTree(t, dir))
 }
 

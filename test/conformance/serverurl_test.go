@@ -44,7 +44,7 @@ var storedURLReadAllowed = map[string]requestAllowance{
 	"internal/cli/capability.go:Check":                              {1, "the capability details; Effective refused an unusable URL before this read"},
 	"internal/cli/completion_token.go:fileStoreTokenSilent":         {2, "comparison with the effective URL"},
 	"internal/cli/completion_token.go:resolveCompletionConnection":  {1, "completion's connection; completionServerURL refuses an unusable URL and the trace shows the display form"},
-	"internal/cli/engine.go:Root":                                   {2, "request building and the TLS wrap, after Effective refused an unusable URL"},
+	"internal/cli/engine.go:Root":                                   {2, "request building, the TLS wrap and the base of the install id request, after Effective refused an unusable URL"},
 	"internal/cli/engine.go:ServerBaseURL":                          {1, "scheme and host for a request, after Effective refused an unusable URL"},
 	"internal/cli/record.go:currentURL":                             {1, "telemetry: canonicalized, only a host is recorded"},
 	"internal/cli/record.go:effectiveConnectionURL":                 {1, "telemetry: empty for a refused URL, canonicalized otherwise"},

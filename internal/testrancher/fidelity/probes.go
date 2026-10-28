@@ -46,6 +46,7 @@ func All() []Probe {
 	probes = append(probes, revocationProbes()...)
 	probes = append(probes, projectNamespaceProbes()...)
 	probes = append(probes, serverTableProbes()...)
+	probes = append(probes, serverFactsProbes()...)
 	return probes
 }
 

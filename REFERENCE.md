@@ -2000,7 +2000,7 @@ None of them makes a request to a server or reads a credential.
 The config directory id is a random id stored for this config directory,
 shown by `rancher telemetry status`. The contract version is the version of
 the event format. The server facts are stored details about Rancher servers:
-version, edition and install id.
+version, edition and install id. They come from the requests described below.
 
 Each command run records one event, when recording is on and the config
 directory already exists: a run never creates the directory to record into.
@@ -2032,7 +2032,23 @@ request. The `completion`
 command and the `telemetry` commands record nothing either. A refusal after
 the command is chosen, such as a missing argument or an invalid `-o` value, is
 recorded as an error with the code `VALIDATION`. Recording never changes a
-command's output or exit code and never makes a request.
+command's output or exit code.
+
+While recording is on and the config directory existed, a command that got an
+answer from a Rancher server may ask that server for its version and edition
+(`GET /rancherversion`, with no credential). When the command also called the
+root API, it may ask for the install id too, with the command's own token.
+Commands that call the root API include `access`, `inspect cluster`,
+`get kubernetes-versions`, `support-bundle` and `kubeconfig`, and any command
+that names a cluster other than `local` with `--cluster` or a project by name
+with `--project`. A command that names only the `local` cluster, such as
+`get node --cluster local`, does not ask for the install id. These requests go
+out after the output is written, add up to 2 seconds, and never change the
+output or the exit code. A fact is asked for again 24 hours after an answer
+the CLI could use or one it could not, 6 hours after a 403 or 404, and an hour
+after any other failure. The exec plugin never sends them when it serves a
+cached credential. The answers reach the next recorded event, never the one
+just written.
 
 Recording is on by default. The first of these controls that applies decides,
 in this order, and `rancher telemetry status` names it as `decidedBy`:

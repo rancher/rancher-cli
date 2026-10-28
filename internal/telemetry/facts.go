@@ -18,7 +18,8 @@ type FailureKind string
 const (
 	// FailureForbidden is a 403 or 404 answer.
 	FailureForbidden FailureKind = "forbidden"
-	// FailureNetwork is a timeout or a network error.
+	// FailureNetwork is a timeout, a network error, or any answer that is not
+	// a 2xx, a 403 or a 404: a 401, another 4xx, a redirect or a 5xx.
 	FailureNetwork FailureKind = "network"
 	// FailureInvalid is an answer that failed the pattern for the value.
 	FailureInvalid FailureKind = "invalid"

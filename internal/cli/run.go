@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 
+	"github.com/rancher/rancher-cli/internal/client/httpx"
 	"github.com/rancher/rancher-cli/internal/runtime"
 	ucli "github.com/urfave/cli/v3"
 )
@@ -19,11 +20,14 @@ import (
 //
 // After the command ends and its output is written, Run records one usage
 // event when recording is on and the config directory existed when the root
-// Before hook ran. A line with no chosen command (an unknown command, a
-// group or the root alone, help, the version, urfave's flag errors, the
-// refusals above, a completion request) and the completion and telemetry
-// commands record nothing. Recording never changes the output or the exit
-// code.
+// Before hook ran. It then may ask the server the command reached for its
+// version and edition and, when the command built the root client, its
+// install id, within 2 seconds, when they are due; the answers reach the
+// next event, never this one. A line with no chosen command (an unknown
+// command, a group or the root alone, help, the version, urfave's flag
+// errors, the refusals above, a completion request) and the completion and
+// telemetry commands record nothing. Recording never changes the output or
+// the exit code.
 func Run(ctx context.Context, root *ucli.Command, args []string) int {
 	return run(ctx, root, args).code
 }
@@ -33,9 +37,10 @@ func run(ctx context.Context, root *ucli.Command, args []string) runResult {
 	start := now()
 	clearUnknownCommand(root)
 	resetRecordingState()
+	httpx.ClearRecords()
 	k, err := runArgv(ctx, root, args)
 	res := resolveExit(root, err, recordedUnknownCommand(root))
-	recordRun(root, k, res, start)
+	refreshServerFacts(ctx, recordRun(root, k, res, start))
 	return res
 }
 

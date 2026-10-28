@@ -100,6 +100,11 @@ func RESTConfig(eff config.Effective, cluster string) (*rest.Config, error) {
 	// endpoint of a kubeconfig's exec entry) is not the Rancher server and
 	// stays unwrapped.
 	rc.WrapTransport = tlstrust.WrapTransportFor(host, eff.TLSRemedy)
+	// The host of every request that gets a response is recorded, so a
+	// command that sent a request to a server can later ask it for its
+	// version. The wrapper goes on after the classifier, which it must sit
+	// outside, and below client-go's credential round-trippers.
+	rc.Wrap(recordAnswered)
 	return rc, nil
 }
 

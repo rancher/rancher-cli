@@ -180,7 +180,9 @@ func (f *clientFactory) Root() (engine.RootClient, error) {
 			f.rootErr = err
 			return
 		}
-		f.root = &rootClient{base: kube.BaseURL(eff.URL), token: eff.Token, hc: hc}
+		base := kube.BaseURL(eff.URL)
+		f.root = &rootClient{base: base, token: eff.Token, hc: hc}
+		httpx.RegisterInstallIDFetcher(base, provider.InstallIDFetch(hc, base, eff.Token))
 	})
 	return f.root, f.rootErr
 }

@@ -529,6 +529,8 @@ var teardownAllowlist = map[stepKey]string{
 	{"owner/login-body-names-no-owner", "owner user"}:                                "owneruid is stored by the owner user setup step; the step deletes that user",
 	{"revoke-downstream/cluster-scoped-v3-token-logout-401", "owner user"}:           "owneruid is stored by the owner user setup step; the step deletes that user",
 	{"revoke/standard-user-login-token-logout-deletes-itself", "owner user"}:         "owneruid is stored by the owner user setup step; the step deletes that user",
+	{"serverfacts/install-uuid-no-global-role", "role-less user's login token"}:      "rolelesslogin is stored by the role-less user setup step; the step deletes that login token",
+	{"serverfacts/install-uuid-no-global-role", "role-less user"}:                    "rolelessuid is stored by the role-less user setup step; the step deletes that user",
 }
 
 // assertGuardTotals asserts the project delete count the probes' teardowns

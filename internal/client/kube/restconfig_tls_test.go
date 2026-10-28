@@ -92,16 +92,19 @@ func TestHTTPClientInstallsNoClassifier(t *testing.T) {
 }
 
 // TestRESTConfigWrapperLetsClientGoReachTheTransportBeneath asserts the
-// classifying wrapper RESTConfig installs exposes the transport it wraps the
-// way client-go's transport wrappers do, so a client-go client with a timeout
-// can cancel a timed-out request through it instead of logging that it
-// cannot. Mutation: remove WrappedRoundTripper from the wrapper.
+// wrappers RESTConfig installs (the one that records the host that answered
+// outside the classifier) expose the transport they wrap the way client-go's
+// transport wrappers do, so a client-go client with a timeout can cancel a
+// timed-out request through them instead of logging that it cannot.
+// Mutation: remove WrappedRoundTripper from a wrapper.
 func TestRESTConfigWrapperLetsClientGoReachTheTransportBeneath(t *testing.T) {
 	rc, err := RESTConfig(config.Effective{URL: "https://rancher.example", Token: "id:secret"}, "local")
 	require.NoError(t, err)
 	require.NotNil(t, rc.WrapTransport)
 	inner := &http.Transport{}
-	wrapped, ok := rc.WrapTransport(inner).(utilnet.RoundTripperWrapper)
+	recorder, ok := rc.WrapTransport(inner).(utilnet.RoundTripperWrapper)
 	require.True(t, ok, "the wrapper must expose the transport it wraps")
-	assert.Same(t, inner, wrapped.WrappedRoundTripper())
+	classifier, ok := recorder.WrappedRoundTripper().(utilnet.RoundTripperWrapper)
+	require.True(t, ok, "the classifier must expose the transport it wraps")
+	assert.Same(t, inner, classifier.WrappedRoundTripper())
 }

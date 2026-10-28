@@ -1,0 +1,20 @@
+{
+  "oracleImage": "rancher/rancher:v2.15.2@sha256:0c3d8e5702555b2bfd2ec3fe7a6e5f95484a28fcb9787c498db3e5b0f62652ea",
+  "observations": [
+    {
+      "name": "read",
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "apiVersion": "management.cattle.io/v3",
+        "customized": false,
+        "default": "",
+        "id": "install-uuid",
+        "kind": "Setting",
+        "source": "",
+        "type": "management.cattle.io.setting",
+        "value": "\u003cinstall-id\u003e"
+      }
+    }
+  ]
+}

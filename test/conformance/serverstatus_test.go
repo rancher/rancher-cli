@@ -64,6 +64,9 @@ var statusAllowlist = map[string]string{
 	"internal/token/revoke.go:postLogout":                    "returns the logout answer's status, which selects the revoke outcome, never an error",
 	"internal/token/clustertoken.go:createV3ClusterToken":    "a 404 answers whether the server serves v3 cluster tokens",
 	"internal/token/token.go:CreateDerivedToken":             "a 404 answers whether the server serves ext.cattle.io tokens",
+	"internal/client/httpx/answered.go:RequestVersion":       "the status goes to the server facts rule, which stores an outcome per status, never an error",
+	"internal/client/provider/installid.go:InstallIDFetch":   "the status goes to the server facts rule, which stores an outcome per status, never an error",
+	"internal/cli/refresh.go:versionAnswer":                  "the status goes to the server facts rule, which stores an outcome per status, never an error",
 }
 
 // scanServerStatus returns one message per violation in f, at path.

@@ -35,10 +35,21 @@ var realSurface = surfaceRules{
 		"DirExists",
 		"Store.WriteFacts", "Store.ReadFacts",
 		"Facts.SetVersion", "Facts.SetInstallID",
+		// The answer holds a version or an install id the caller parsed from
+		// a response body; the store methods run it through the version rule
+		// and the UUID check, as SetVersion and SetInstallID do.
+		"Facts.StoreVersion", "Facts.StoreInstallID",
+		// SaveFacts writes a Facts value whose strings came through those
+		// setters, under the recording controls.
+		"SaveFacts",
 	},
 	types: []string{
 		"Attribute", "ContractInputs", "EventSpec", "Options", "RunInput", "ControlInput",
 		"Decision", "Facts", "Fact", "Failure", "StoredEvent",
+		// Answer holds the value parsed from a response body; StoreVersion
+		// and StoreInstallID normalize it. FactsRead holds the Facts that
+		// Record read, which were stored through the same normalizers.
+		"Answer", "FactsRead",
 	},
 }
 

@@ -124,17 +124,36 @@ func recordDecision(k keptLine, st recordingState) (runtime.Descriptor, bool) {
 	return d, true
 }
 
+// recordingTarget is recordDecision, and the canonical URL of the server the
+// run targeted, "" when it had none. It is the one decision that a run
+// records, and for which server, that the event and the server facts refresh
+// both follow.
+func recordingTarget(k keptLine, st recordingState) (d runtime.Descriptor, server string, ok bool) {
+	d, ok = recordDecision(k, st)
+	if !ok {
+		return runtime.Descriptor{}, "", false
+	}
+	return d, recordedServer(d, k.line, storedConfigSnapshot()), true
+}
+
 // recordRun records one usage event for the run that ended with res, when
 // the decision says so. Nothing it does changes the run's output or exit
-// code: a failure to record is dropped, and a panic is recovered.
-func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) {
-	defer func() { _ = recover() }()
+// code: a failure to record is dropped, and a panic is recovered. It returns
+// what the server facts refresh needs: the server, the recording options and
+// what the event read of the server's facts file; the zero value when the run
+// records nothing.
+func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) (in refreshInput) {
+	defer func() {
+		if recover() != nil {
+			in = refreshInput{}
+		}
+	}()
 	st := recordingStateNow()
-	d, ok := recordDecision(k, st)
+	d, server, ok := recordingTarget(k, st)
 	if !ok {
-		return
+		return refreshInput{}
 	}
-	in := telemetry.RunInput{
+	run := telemetry.RunInput{
 		Invocation:  currentInvocation(),
 		Command:     d.Name,
 		Flags:       typedFlagNames(k.line),
@@ -145,17 +164,19 @@ func recordRun(root *ucli.Command, k keptLine, res runResult, start time.Time) {
 		StdoutTTY:   fileIsTTY(root.Writer),
 	}
 	if res.err != nil {
-		in.Outcome = telemetry.OutcomeError
-		in.ErrorType = res.err.Code
-		in.ErrorCodes = clierr.AllCodes()
+		run.Outcome = telemetry.OutcomeError
+		run.ErrorType = res.err.Code
+		run.ErrorCodes = clierr.AllCodes()
 	}
-	telemetry.SetServer(recordedServer(d, k.line, storedConfigSnapshot()), "")
-	telemetry.Record(newRunEvent(in), telemetry.Options{
+	telemetry.SetServer(server, "")
+	opts := telemetry.Options{
 		ConfigDir:  st.dir,
 		DirExisted: st.dirExisted,
 		Getenv:     os.Getenv,
 		Config:     st.setting,
-	})
+	}
+	_, read := telemetry.Record(newRunEvent(run), opts)
+	return refreshInput{server: server, opts: opts, start: read}
 }
 
 // typedFlagNames returns the long names of the flags typed on the line:

@@ -75,5 +75,9 @@ func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error
 		clone.Header = http.Header{}
 	}
 	clone.Header.Set("User-Agent", UserAgent())
-	return t.next.RoundTrip(clone)
+	resp, err := t.next.RoundTrip(clone)
+	if err == nil && resp != nil {
+		RecordAnswered(clone.URL, t.next)
+	}
+	return resp, err
 }

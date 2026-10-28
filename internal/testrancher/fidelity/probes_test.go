@@ -70,6 +70,8 @@ func TestExpectedProbeSet(t *testing.T) {
 		"revoke-downstream/cluster-scoped-v3-token-logout-401", "revoke/standard-user-login-token-logout-deletes-itself",
 		"project-namespaces-downstream/annotation-and-label", "project-namespaces-downstream/after-project-delete",
 		"server-table-downstream/nodes-and-pods", "server-table/local-namespaces",
+		"serverfacts/rancherversion", "serverfacts/install-uuid-standard", "serverfacts/install-uuid-admin",
+		"serverfacts/install-uuid-no-global-role",
 	}
 	var got []string
 	for _, p := range All() {
@@ -405,6 +407,7 @@ func TestTokenUsesRightAfterACreateOrDeleteWaitForTheirRecordedStatus(t *testing
 		{"owner-downstream/scoped-creates-and-reviews", "review-local-with-the-scoped-v3-token"}:                "cluster-scoped token refused outside its cluster; never deleted",
 		{"revoke/ext-token-deleted-by-another-token-of-its-user", "second-delete-with-the-other-token"}:         "bearer already accepted on the previous request; the object is read by a direct get",
 		{"access-downstream/member-cluster-token", "downstream-read-with-the-cluster-token"}:                    "token created in a setup step; its failures belong to the access-downstream investigation",
+		{"serverfacts/install-uuid-no-global-role", "read"}:                                                     "login bearer right after the login",
 	}
 	adminReads := map[key]bool{
 		{"tok/create-shape", "get"}:          true,
